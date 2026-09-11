@@ -5,8 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TASK_ID="${TASK_ID:-M01}"
 PROFILE="${1:-m01}"
-if (( $# > 1 )) || [[ ! "$PROFILE" =~ ^(m01|m02|check|release)$ ]]; then
-  printf 'Usage: %s [m01|m02|check|release]\n' "${0##*/}" >&2
+if (( $# > 1 )) || [[ ! "$PROFILE" =~ ^(m01|m02|m03|check|release)$ ]]; then
+  printf 'Usage: %s [m01|m02|m03|check|release]\n' "${0##*/}" >&2
   exit 2
 fi
 if [[ ! "$TASK_ID" =~ ^(M0[0-8]|R-M0[0-8]-[1-9][0-9]*)$ ]]; then
@@ -127,6 +127,12 @@ run_mcp() {
   PATH="$NODE_BIN:$PATH" "$NODE_BIN/node" "$ROOT/tools/browser/mcp-smoke.js"
 }
 
+run_arm64() {
+  # Keep the architecture receipt inside this gate's evidence tree while the ARM helper
+  # independently labels native versus emulated execution and any hardware limitation.
+  STOCK_PROBS_ARM64_EVIDENCE_DIR="$RUN_DIR/arm64" "$ROOT/scripts/arm64-smoke.sh"
+}
+
 printf 'task=%s revision=%s dirty=%s native_arch=%s profile=%s\n' \
   "$TASK_ID" "$REVISION" "$DIRTY" "$NATIVE_ARCH" "$PROFILE"
 printf 'Local scripts are authoritative only with independent review; no external pipeline is used.\n'
@@ -153,6 +159,18 @@ case "$PROFILE" in
     COMPLETED_CHECKS+=("browser")
     run_mcp
     COMPLETED_CHECKS+=("playwright-mcp")
+    ;;
+  m03)
+    run_package
+    COMPLETED_CHECKS+=("package")
+    run_check
+    COMPLETED_CHECKS+=("python-checks")
+    run_browser
+    COMPLETED_CHECKS+=("browser")
+    run_mcp
+    COMPLETED_CHECKS+=("playwright-mcp")
+    run_arm64
+    COMPLETED_CHECKS+=("arm64-functional-package-runtime")
     ;;
   release)
     run_package

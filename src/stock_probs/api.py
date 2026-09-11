@@ -10,10 +10,10 @@ import re
 import sqlite3
 import unicodedata
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from contextlib import asynccontextmanager, suppress
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -22,7 +22,7 @@ from fastapi import Path as PathParameter
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import ClientDisconnect
@@ -50,6 +50,21 @@ class ApiResponse(BaseModel):
     """Keep generated success and error contracts concrete and closed to undocumented fields."""
 
     model_config = ConfigDict(extra="forbid")
+
+
+Probability = Annotated[float, Field(ge=0.0, le=1.0, allow_inf_nan=False)]
+PositivePrice = Annotated[float, Field(gt=0.0, allow_inf_nan=False)]
+FiniteNumber = Annotated[float, Field(allow_inf_nan=False)]
+ThresholdPercent = Annotated[
+    float,
+    Field(
+        allow_inf_nan=False,
+        json_schema_extra={"enum": [-1.0, -3.0, -5.0, -10.0, 1.0, 3.0, 5.0, 10.0]},
+    ),
+]
+IntervalLevel = Annotated[
+    float, Field(ge=0.0, le=1.0, allow_inf_nan=False, json_schema_extra={"enum": [0.5, 0.8, 0.95]})
+]
 
 
 class ValidationIssue(ApiResponse):
@@ -116,10 +131,16 @@ class SearchEventResponse(ApiResponse):
 
 
 class CapturedBarResponse(ApiResponse):
-    timestamp: str
-    end: str
-    close: float
-    duration_seconds: int
+    timestamp: AwareDatetime
+    end: AwareDatetime
+    close: PositivePrice
+    duration_seconds: int = Field(ge=0, le=86_400)
+
+    @model_validator(mode="after")
+    def ordered_boundaries(self) -> CapturedBarResponse:
+        if self.end < self.timestamp:
+            raise ValueError("bar end must not precede bar start")
+        return self
 
 
 class CalendarResponse(ApiResponse):
@@ -134,11 +155,24 @@ class ModelIdentityResponse(ApiResponse):
 
 
 class ModelParametersResponse(ApiResponse):
-    daily_max_samples: int
-    ewma_span_daily: int
-    ewma_span_intraday: int
-    flat_threshold: float
-    return_thresholds_percent: list[float]
+    daily_max_samples: Literal[504]
+    ewma_span_daily: Literal[30]
+    ewma_span_intraday: Literal[10]
+    flat_threshold: Annotated[float, Field(gt=0.0, lt=1.0, allow_inf_nan=False)]
+    maximum_absolute_training_return: Annotated[
+        float, Field(gt=0.0, le=1.0, allow_inf_nan=False)
+    ]
+    return_thresholds_percent: list[ThresholdPercent]
+    evaluation_max_points: Literal[120]
+    reliability_bin_count: Literal[5]
+
+    @model_validator(mode="after")
+    def exact_versioned_parameters(self) -> ModelParametersResponse:
+        if self.flat_threshold != 0.001 or self.maximum_absolute_training_return != 0.5:
+            raise ValueError("model thresholds do not match the published contract version")
+        if self.return_thresholds_percent != [-1.0, -3.0, -5.0, -10.0, 1.0, 3.0, 5.0, 10.0]:
+            raise ValueError("model must define every supported return threshold")
+        return self
 
 
 class StaleStateResponse(ApiResponse):
@@ -155,14 +189,121 @@ class HistoricalAnalysisResponse(ApiResponse):
     provider_content_fingerprint: str | None = None
 
 
+class ProviderSeriesQueryResponse(ApiResponse):
+    """One bounded provider request, with no provider-client implementation details."""
+
+    interval: Literal["1d", "5m"]
+    prepost: Literal[False]
+    auto_adjust: Literal[False]
+    actions: Literal[False]
+    repair: Literal[False]
+    timeout_seconds: Annotated[float, Field(gt=0.0, le=120.0, allow_inf_nan=False)]
+    returned_coverage: ProviderCoverageResponse
+    period: Literal["2y", "5d"] | None = None
+    start: AwareDatetime | None = None
+    end: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def exact_window(self) -> ProviderSeriesQueryResponse:
+        period_window = self.period is not None
+        date_window = self.start is not None and self.end is not None
+        if period_window == date_window:
+            raise ValueError("provider query must use exactly one bounded window")
+        if self.start is not None and self.end is not None and self.end <= self.start:
+            raise ValueError("provider query end must follow start")
+        return self
+
+
+class ProviderQueryResponse(ApiResponse):
+    """Exact normalized query accepted from either the live or deterministic adapter."""
+
+    requested_as_of: AwareDatetime
+    daily: ProviderSeriesQueryResponse | Literal["1d/2y"]
+    intraday: ProviderSeriesQueryResponse | Literal["5m/5d", "5m/60d"]
+    mode: Literal["current", "historical_cutoff"] | None = None
+    data_cutoff: AwareDatetime | None = None
+    fixture: Literal["acdc.json", "spy.json"] | None = None
+    analysis: HistoricalAnalysisResponse | None = None
+
+
+class ProviderCoverageResponse(ApiResponse):
+    first: AwareDatetime | None
+    last: AwareDatetime | None
+    count: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def coverage_is_ordered(self) -> ProviderCoverageResponse:
+        if (self.first is None) != (self.last is None):
+            raise ValueError("coverage bounds must both be present or absent")
+        if self.count == 0 and self.first is not None:
+            raise ValueError("empty coverage cannot have bounds")
+        if self.count > 0 and self.first is None:
+            raise ValueError("non-empty coverage requires bounds")
+        if self.first is not None and self.last is not None and self.last < self.first:
+            raise ValueError("coverage end must not precede start")
+        return self
+
+
+class ProviderSessionEpochResponse(ApiResponse):
+    """Provider-supplied regular-session boundaries represented as Unix seconds."""
+
+    start: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    end: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+
+    @model_validator(mode="after")
+    def session_is_ordered(self) -> ProviderSessionEpochResponse:
+        if self.end <= self.start:
+            raise ValueError("regular-session end must follow start")
+        return self
+
+
+class IntradayArchiveLimitResponse(ApiResponse):
+    approximate_days: Literal[60]
+    statement: str = Field(min_length=1, max_length=300)
+
+
+class ProviderMetadataResponse(ApiResponse):
+    """Bounded public quality facts; arbitrary provider metadata is never serialized."""
+
+    identity_source: Literal["bounded_chart_metadata", "checked_in_fixture"]
+    regular_session: ProviderSessionEpochResponse
+    data_granularity: Literal["5m"]
+    daily_data_granularity: Literal["1d"] | None = None
+    exchange_timezone: str = Field(min_length=1, max_length=80)
+    session_scope: Literal["regular session only (prepost=False)"]
+    intraday_archive_limit: IntradayArchiveLimitResponse
+    daily_coverage: ProviderCoverageResponse
+    intraday_coverage: ProviderCoverageResponse
+    missing_daily_closes: int = Field(ge=0)
+    missing_daily_sessions: int = Field(ge=0)
+    missing_intraday_closes: int = Field(ge=0)
+    missing_intraday_intervals: int = Field(ge=0)
+    trailing_missing_intraday_intervals: int = Field(ge=0)
+    daily_returned_rows: int | None = Field(default=None, ge=0)
+    intraday_returned_rows: int | None = Field(default=None, ge=0)
+    daily_normalized_rows: int | None = Field(default=None, ge=0)
+    intraday_normalized_rows: int | None = Field(default=None, ge=0)
+    daily_rejected_rows: int | None = Field(default=None, ge=0)
+    intraday_rejected_rows: int | None = Field(default=None, ge=0)
+    daily_duplicate_timestamps: int | None = Field(default=None, ge=0)
+    intraday_duplicate_timestamps: int | None = Field(default=None, ge=0)
+    gmtoffset: int | None = None
+    fixture: Literal[True] | None = None
+    fixture_contract: Literal["compact-seed-v1"] | None = None
+    fixture_base_symbol: Literal["ACDC", "SPY"] | None = None
+
+
 class ProvenanceResponse(ApiResponse):
     source: str
-    query: dict[str, Any]
-    response_as_of: str
+    query: ProviderQueryResponse
+    response_as_of: AwareDatetime
     content_fingerprint: str
     instrument_identity: InstrumentIdentityResponse
     identity_fingerprint: str
     model_version: str
+    forecast_contract_version: str
+    evaluation_version: str
+    model_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     calendar_version: str
     analysis: HistoricalAnalysisResponse | None = None
     provider_content_fingerprint: str | None = None
@@ -180,14 +321,14 @@ class ForecastInputResponse(ApiResponse):
     exchange_timezone: str
     currency: str
     provider: str
-    provider_as_of: str
-    request_cutoff: str
-    provider_query: dict[str, Any]
-    provider_metadata: dict[str, Any]
+    provider_as_of: AwareDatetime
+    request_cutoff: AwareDatetime
+    provider_query: ProviderQueryResponse
+    provider_metadata: ProviderMetadataResponse
     content_fingerprint: str
     instrument_identity: InstrumentIdentityResponse
     identity_fingerprint: str
-    captured_at: str
+    captured_at: AwareDatetime
     selected_daily_bars: list[CapturedBarResponse]
     selected_intraday_bars: list[CapturedBarResponse]
     session_rule: str
@@ -196,8 +337,12 @@ class ForecastInputResponse(ApiResponse):
     quality: Literal["current", "stale"]
     quality_reasons: list[str]
     stale_state: StaleStateResponse
-    session_state_at_request: str
+    session_state_at_request: Literal[
+        "closed_session_day", "pre_session", "open", "post_session"
+    ]
+    forecast_contract_version: str
     model: ModelIdentityResponse
+    model_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     parameters: ModelParametersResponse
     provenance: ProvenanceResponse
 
@@ -205,37 +350,371 @@ class ForecastInputResponse(ApiResponse):
 class DirectionDefinitionsResponse(ApiResponse):
     down: str
     flat: str
+    unchanged: str
     up: str
 
 
+class ProbabilityUncertaintyResponse(ApiResponse):
+    low: Probability
+    high: Probability
+    level: Probability
+    method: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def ordered_interval(self) -> ProbabilityUncertaintyResponse:
+        if self.low > self.high:
+            raise ValueError("uncertainty low must not exceed high")
+        return self
+
+
+class DirectionEventCountsResponse(ApiResponse):
+    down: int = Field(ge=0)
+    unchanged: int = Field(ge=0)
+    up: int = Field(ge=0)
+    sample_count: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def partition_matches_sample(self) -> DirectionEventCountsResponse:
+        if self.down + self.unchanged + self.up != self.sample_count:
+            raise ValueError("direction event counts must partition the sample")
+        return self
+
+
+class DirectionUncertaintyResponse(ApiResponse):
+    down: ProbabilityUncertaintyResponse
+    unchanged: ProbabilityUncertaintyResponse
+    up: ProbabilityUncertaintyResponse
+
+
 class DirectionProbabilitiesResponse(ApiResponse):
-    down: float
-    flat: float
-    up: float
+    down: Probability
+    flat: Probability
+    unchanged: Probability
+    up: Probability
     unit: Literal["probability"]
     definitions: DirectionDefinitionsResponse
     flat_definition: str
+    event_counts: DirectionEventCountsResponse
+    uncertainty: DirectionUncertaintyResponse
+
+    @model_validator(mode="after")
+    def exact_probability_partition(self) -> DirectionProbabilitiesResponse:
+        if abs(self.flat - self.unchanged) > 1e-12:
+            raise ValueError("flat compatibility alias must equal unchanged")
+        if abs(self.down + self.unchanged + self.up - 1.0) > 1e-9:
+            raise ValueError("direction probabilities must sum to one")
+        return self
 
 
 class ThresholdProbabilityResponse(ApiResponse):
     operator: Literal["lte", "gte"]
-    threshold: float
+    threshold: ThresholdPercent
     unit: Literal["percent_return"]
     definition: str
-    probability: float
+    probability: Probability
+    event_count: int = Field(ge=0)
+    sample_count: int = Field(ge=1)
+    uncertainty: ProbabilityUncertaintyResponse
+    rare_event: bool
+
+    @model_validator(mode="after")
+    def operator_matches_threshold(self) -> ThresholdProbabilityResponse:
+        if self.event_count > self.sample_count:
+            raise ValueError("threshold event count cannot exceed sample count")
+        if (self.threshold < 0) != (self.operator == "lte"):
+            raise ValueError("threshold sign and operator do not match")
+        if self.rare_event != (self.event_count < 10):
+            raise ValueError("rare-event state must follow the published sample-count rule")
+        return self
 
 
 class IntervalBoundResponse(ApiResponse):
-    low: float
-    high: float
+    low: FiniteNumber
+    high: FiniteNumber
     unit: Literal["percent_return", "quote_currency"]
+
+    @model_validator(mode="after")
+    def ordered_interval(self) -> IntervalBoundResponse:
+        if self.low > self.high:
+            raise ValueError("interval low must not exceed high")
+        if self.unit == "quote_currency" and self.low <= 0:
+            raise ValueError("price intervals must remain positive")
+        return self
 
 
 class MagnitudeIntervalResponse(ApiResponse):
-    level: float
+    level: IntervalLevel
     definition: str
     percent: IntervalBoundResponse
     price: IntervalBoundResponse
+
+    @model_validator(mode="after")
+    def exact_units(self) -> MagnitudeIntervalResponse:
+        if self.percent.unit != "percent_return" or self.price.unit != "quote_currency":
+            raise ValueError("return and price interval units are fixed")
+        return self
+
+
+class ConditionalMagnitudeMetricResponse(ApiResponse):
+    condition: str = Field(min_length=1, max_length=120)
+    observed_count: int = Field(ge=0)
+    sample_count: int = Field(ge=1)
+    expected: FiniteNumber | None
+    median: FiniteNumber | None
+    unit: Literal["percent_return_magnitude"]
+    definition: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def observed_metric_semantics(self) -> ConditionalMagnitudeMetricResponse:
+        if self.observed_count > self.sample_count:
+            raise ValueError("conditional count cannot exceed sample count")
+        has_value = self.expected is not None and self.median is not None
+        if has_value != (self.observed_count > 0):
+            raise ValueError("conditional values require at least one observed event")
+        if (
+            self.expected is not None
+            and self.median is not None
+            and (self.expected <= 0 or self.median <= 0)
+        ):
+            raise ValueError("conditional magnitudes must be positive")
+        return self
+
+
+class ConditionalMagnitudesResponse(ApiResponse):
+    gain: ConditionalMagnitudeMetricResponse
+    loss: ConditionalMagnitudeMetricResponse
+
+
+class SampleFilterResponse(ApiResponse):
+    version: str = Field(min_length=1, max_length=80)
+    rule: str = Field(min_length=1, max_length=200)
+    purpose: str = Field(min_length=1, max_length=300)
+
+
+class SampleAccountingResponse(ApiResponse):
+    candidate_count: int = Field(ge=0)
+    eligible_count: int = Field(ge=0)
+    effective_count: int = Field(ge=0)
+    excluded_anomaly_count: int = Field(ge=0)
+    warmup_excluded_count: int = Field(ge=0)
+    excluded_session_gap_count: int = Field(default=0, ge=0)
+    filter: SampleFilterResponse | None = None
+    transformation: Literal["none"] | None = None
+
+    @model_validator(mode="after")
+    def counts_reconcile(self) -> SampleAccountingResponse:
+        if self.eligible_count + self.excluded_anomaly_count != self.candidate_count:
+            raise ValueError("eligible and excluded counts must reconcile to candidates")
+        if self.effective_count + self.warmup_excluded_count != self.eligible_count:
+            raise ValueError("effective and warmup counts must reconcile to eligible samples")
+        return self
+
+
+class ReliabilityBinResponse(ApiResponse):
+    low: Probability
+    high: Probability
+    includes_high: bool
+    count: int = Field(ge=0)
+    mean_predicted_probability: Probability | None
+    observed_frequency: Probability | None
+
+    @model_validator(mode="after")
+    def exact_bin_semantics(self) -> ReliabilityBinResponse:
+        if self.low >= self.high:
+            raise ValueError("reliability bin low must be below high")
+        values_present = (
+            self.mean_predicted_probability is not None and self.observed_frequency is not None
+        )
+        if values_present != (self.count > 0):
+            raise ValueError("only populated reliability bins may report values")
+        return self
+
+
+class DirectionReliabilityResponse(ApiResponse):
+    down: list[ReliabilityBinResponse]
+    unchanged: list[ReliabilityBinResponse]
+    up: list[ReliabilityBinResponse]
+
+
+class ThresholdReliabilityResponse(ApiResponse):
+    operator: Literal["lte", "gte"]
+    threshold: ThresholdPercent
+    unit: Literal["percent_return"]
+    bins: list[ReliabilityBinResponse]
+
+
+class ReliabilityResponse(ApiResponse):
+    bin_count: Literal[5]
+    direction: DirectionReliabilityResponse
+    thresholds: list[ThresholdReliabilityResponse]
+
+
+class DirectionBrierComponentsResponse(ApiResponse):
+    down: Probability
+    unchanged: Probability
+    up: Probability
+
+
+class DirectionBrierResponse(ApiResponse):
+    multiclass_mean: Annotated[float, Field(ge=0.0, le=2.0, allow_inf_nan=False)]
+    components: DirectionBrierComponentsResponse
+    definition: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def components_match_multiclass_score(self) -> DirectionBrierResponse:
+        component_sum = self.components.down + self.components.unchanged + self.components.up
+        if abs(self.multiclass_mean - component_sum) > 1e-12:
+            raise ValueError("multiclass Brier score must equal its direction components")
+        return self
+
+
+class ThresholdBrierResponse(ApiResponse):
+    operator: Literal["lte", "gte"]
+    threshold: ThresholdPercent
+    unit: Literal["percent_return"]
+    score: Probability
+
+
+class IntervalCoverageResponse(ApiResponse):
+    level: IntervalLevel
+    covered_count: int = Field(ge=0)
+    sample_count: int = Field(ge=1)
+    coverage: Probability
+    definition: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def counts_match_coverage(self) -> IntervalCoverageResponse:
+        if self.covered_count > self.sample_count:
+            raise ValueError("covered count cannot exceed evaluation sample count")
+        if abs(self.coverage - self.covered_count / self.sample_count) > 1e-12:
+            raise ValueError("interval coverage must match the reported counts")
+        return self
+
+
+class EvaluationScoresResponse(ApiResponse):
+    direction_brier: DirectionBrierResponse
+    threshold_brier: list[ThresholdBrierResponse]
+    reliability: ReliabilityResponse
+    interval_coverage: list[IntervalCoverageResponse]
+
+    @model_validator(mode="after")
+    def complete_evaluation_matrix(self) -> EvaluationScoresResponse:
+        expected_thresholds = [
+            ("lte", -1.0),
+            ("lte", -3.0),
+            ("lte", -5.0),
+            ("lte", -10.0),
+            ("gte", 1.0),
+            ("gte", 3.0),
+            ("gte", 5.0),
+            ("gte", 10.0),
+        ]
+        if [(item.operator, item.threshold) for item in self.threshold_brier] != (
+            expected_thresholds
+        ):
+            raise ValueError("evaluation must report Brier scores for every threshold")
+        if [(item.operator, item.threshold) for item in self.reliability.thresholds] != (
+            expected_thresholds
+        ):
+            raise ValueError("evaluation must report reliability for every threshold")
+        if [item.level for item in self.interval_coverage] != [0.5, 0.8, 0.95]:
+            raise ValueError("evaluation must report coverage for every forecast interval")
+        bin_groups = [
+            self.reliability.direction.down,
+            self.reliability.direction.unchanged,
+            self.reliability.direction.up,
+            *(item.bins for item in self.reliability.thresholds),
+        ]
+        expected_bounds = [(index / 5, (index + 1) / 5) for index in range(5)]
+        if any(
+            [(item.low, item.high) for item in bins] != expected_bounds for bins in bin_groups
+        ):
+            raise ValueError("reliability reports must contain the five fixed probability bins")
+        return self
+
+
+class ForecastModelEvaluationResponse(EvaluationScoresResponse):
+    name: str = Field(min_length=1, max_length=120)
+    version: str = Field(min_length=1, max_length=80)
+
+
+class BaselineEvaluationResponse(EvaluationScoresResponse):
+    name: str = Field(min_length=1, max_length=120)
+    version: str = Field(min_length=1, max_length=80)
+    definition: str = Field(min_length=1, max_length=300)
+
+
+class EvaluationDateRangeResponse(ApiResponse):
+    first_origin: AwareDatetime
+    first_target: AwareDatetime
+    last_origin: AwareDatetime
+    last_target: AwareDatetime
+
+    @model_validator(mode="after")
+    def chronological_dates(self) -> EvaluationDateRangeResponse:
+        if self.first_origin > self.first_target or self.last_origin > self.last_target:
+            raise ValueError("each evaluation origin must not follow its target")
+        if self.first_origin > self.last_origin or self.first_target > self.last_target:
+            raise ValueError("evaluation date range must be chronological")
+        return self
+
+
+class TrainingSampleRangeResponse(ApiResponse):
+    minimum_effective_count: int = Field(ge=1)
+    maximum_effective_count: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def ordered_counts(self) -> TrainingSampleRangeResponse:
+        if self.minimum_effective_count > self.maximum_effective_count:
+            raise ValueError("minimum training count must not exceed maximum")
+        return self
+
+
+class ForecastEvaluationResponse(ApiResponse):
+    version: str = Field(min_length=1, max_length=80)
+    method: str = Field(min_length=1, max_length=160)
+    status: Literal["available", "insufficient_history"]
+    reason: str | None = Field(default=None, min_length=1, max_length=240)
+    evaluation_count: int = Field(ge=0)
+    eligible_realized_count: int = Field(ge=0)
+    excluded_anomaly_outcome_count: int = Field(ge=0)
+    date_range: EvaluationDateRangeResponse | None
+    training_sample_range: TrainingSampleRangeResponse | None
+    forecast_model: ForecastModelEvaluationResponse | None
+    baseline: BaselineEvaluationResponse | None
+    max_evaluation_points: int = Field(ge=1)
+    minimum_training_samples: int | None = Field(default=None, ge=1)
+    information_rule: str = Field(min_length=1, max_length=240)
+
+    @model_validator(mode="after")
+    def availability_is_honest(self) -> ForecastEvaluationResponse:
+        reports = (
+            self.date_range,
+            self.training_sample_range,
+            self.forecast_model,
+            self.baseline,
+        )
+        if self.status == "available":
+            if self.evaluation_count < 1 or any(item is None for item in reports):
+                raise ValueError("available evaluation requires dates, scores, and baseline")
+            if self.reason is not None or self.minimum_training_samples is None:
+                raise ValueError("available evaluation cannot report an unavailable reason")
+        elif self.evaluation_count != 0 or any(item is not None for item in reports):
+            raise ValueError("insufficient evaluation cannot fabricate metrics")
+        elif self.reason is None:
+            raise ValueError("insufficient evaluation requires a reason")
+        return self
+
+
+class TargetSelectionResponse(ApiResponse):
+    rule: Literal[
+        "same_open_session_close", "next_session_close_after_completed_origin_session"
+    ]
+    request_session_state: Literal[
+        "closed_session_day", "pre_session", "open", "post_session"
+    ]
+    origin_session_date: date
+    target_session_date: date
 
 
 class OutcomeResponse(ApiResponse):
@@ -252,24 +731,122 @@ class OutcomeResponse(ApiResponse):
 
 class ForecastResultResponse(ApiResponse):
     horizon: Literal["close_to_close", "completed_5m_to_close"]
-    origin_timestamp: str
-    origin_bar_end: str | None = None
-    origin_price: float
-    reference_timestamp: str
-    reference_state: str
-    target_timestamp: str
-    target_state: str
+    origin_timestamp: AwareDatetime
+    origin_bar_end: AwareDatetime | None = None
+    horizon_start_timestamp: AwareDatetime
+    horizon_end_timestamp: AwareDatetime
+    origin_price: PositivePrice
+    reference_timestamp: AwareDatetime
+    reference_state: Literal["completed_session_close", "completed_five_minute_bar_close"]
+    target_timestamp: AwareDatetime
+    target_state: Literal["scheduled_session_close"]
     exchange_timezone: str
-    session_state_at_request: str | None = None
+    session_state_at_request: Literal[
+        "closed_session_day", "pre_session", "open", "post_session"
+    ] | None = None
     stale_state: Literal["current", "stale"]
-    calculated_at: str
+    calculated_at: AwareDatetime
     definition: str
     target_session_rule: str | None = None
+    target_selection: TargetSelectionResponse | None = None
+    forecast_contract_version: str
+    model_version: str
+    model_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    forecast_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
     direction_probabilities: DirectionProbabilitiesResponse
     threshold_probabilities: list[ThresholdProbabilityResponse]
+    conditional_magnitudes: ConditionalMagnitudesResponse
     magnitude_intervals: list[MagnitudeIntervalResponse]
-    sample_size: int
+    sample_size: int = Field(ge=3)
+    sample_accounting: SampleAccountingResponse
+    probability_estimator: str = Field(min_length=1, max_length=200)
     distribution_definition: str
+    evaluation: ForecastEvaluationResponse
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_horizon_boundaries(cls, value: Any) -> Any:
+        """Name the modeled window explicitly while preserving the original timestamp fields."""
+
+        if isinstance(value, dict):
+            value = dict(value)
+            value.setdefault("horizon_start_timestamp", value.get("reference_timestamp"))
+            value.setdefault("horizon_end_timestamp", value.get("target_timestamp"))
+        return value
+
+    @model_validator(mode="after")
+    def numerical_and_time_invariants(self) -> ForecastResultResponse:
+        if self.origin_timestamp > self.reference_timestamp:
+            raise ValueError("origin timestamp must not follow its completed reference")
+        if self.origin_bar_end is not None and self.origin_bar_end != self.reference_timestamp:
+            raise ValueError("completed origin bar end must equal the reference timestamp")
+        if self.horizon_start_timestamp != self.reference_timestamp:
+            raise ValueError("horizon start must equal the completed reference timestamp")
+        if self.horizon_end_timestamp != self.target_timestamp:
+            raise ValueError("horizon end must equal the target timestamp")
+        if self.reference_timestamp >= self.target_timestamp:
+            raise ValueError("forecast target must follow its completed reference")
+        if self.horizon == "completed_5m_to_close":
+            if (
+                self.origin_bar_end is None
+                or self.reference_state != "completed_five_minute_bar_close"
+            ):
+                raise ValueError("five-minute horizon requires an exact completed bar end")
+        elif self.origin_bar_end is not None or self.reference_state != "completed_session_close":
+            raise ValueError("close-to-close horizon uses an instantaneous completed close")
+        expected_thresholds = [
+            ("lte", -1.0),
+            ("lte", -3.0),
+            ("lte", -5.0),
+            ("lte", -10.0),
+            ("gte", 1.0),
+            ("gte", 3.0),
+            ("gte", 5.0),
+            ("gte", 10.0),
+        ]
+        if [(item.operator, item.threshold) for item in self.threshold_probabilities] != (
+            expected_thresholds
+        ):
+            raise ValueError("forecast must report every supported threshold exactly once")
+        if any(item.sample_count != self.sample_size for item in self.threshold_probabilities):
+            raise ValueError("threshold sample counts must match the forecast sample")
+        downside = [item.probability for item in self.threshold_probabilities[:4]]
+        upside = [item.probability for item in self.threshold_probabilities[4:]]
+        if downside != sorted(downside, reverse=True) or upside != sorted(
+            upside, reverse=True
+        ):
+            raise ValueError("more severe threshold events cannot be more probable")
+        if [item.level for item in self.magnitude_intervals] != [0.5, 0.8, 0.95]:
+            raise ValueError("forecast must report 50, 80, and 95 percent intervals")
+        percent_lows = [item.percent.low for item in self.magnitude_intervals]
+        percent_highs = [item.percent.high for item in self.magnitude_intervals]
+        price_lows = [item.price.low for item in self.magnitude_intervals]
+        price_highs = [item.price.high for item in self.magnitude_intervals]
+        if (
+            percent_lows != sorted(percent_lows, reverse=True)
+            or percent_highs != sorted(percent_highs)
+            or price_lows != sorted(price_lows, reverse=True)
+            or price_highs != sorted(price_highs)
+        ):
+            raise ValueError("higher-level forecast intervals must contain lower-level intervals")
+        if self.sample_accounting.effective_count != self.sample_size:
+            raise ValueError("effective sample accounting must match the forecast sample")
+        if self.direction_probabilities.event_counts.sample_count != self.sample_size:
+            raise ValueError("direction sample count must match the forecast sample")
+        for metric in (
+            self.conditional_magnitudes.gain,
+            self.conditional_magnitudes.loss,
+        ):
+            if metric.sample_count != self.sample_size:
+                raise ValueError("conditional sample counts must match the forecast sample")
+        if (
+            self.conditional_magnitudes.gain.observed_count
+            + self.conditional_magnitudes.loss.observed_count
+            + self.direction_probabilities.event_counts.unchanged
+            != self.sample_size
+        ):
+            raise ValueError("conditional direction counts must partition the forecast sample")
+        return self
 
 
 class RecordedForecastResultResponse(ForecastResultResponse):
@@ -1041,6 +1618,37 @@ def create_app(
         )
         return request_id
 
+    def record_malformed_forecast_response(
+        generated: object, *, submitted_symbol: str, asset_type: str
+    ) -> str:
+        """Audit a broken service handoff once, reusing its correlation identity when present."""
+
+        request_id: str | None = None
+        if isinstance(generated, dict):
+            event = generated.get("event")
+            candidate = event.get("request_id") if isinstance(event, dict) else None
+            # request_id is the existing public correlation field. Preserve it while excluding
+            # every other malformed response value from both persistence and the error envelope.
+            if isinstance(candidate, str) and candidate:
+                request_id = candidate
+        request_id = request_id or str(uuid4())
+        now = datetime.now(UTC)
+        # request_id is unique and all other inserted fields are controlled below. An atomic
+        # conflict means the service already committed this request's audit event; a separate
+        # read-before-write check would race with that commit under concurrent requests.
+        with suppress(sqlite3.IntegrityError):
+            repository.record_failure(
+                request_id=request_id,
+                submitted_symbol=submitted_symbol,
+                normalized_symbol=None,
+                asset_type=asset_type,
+                error_code="internal_error",
+                error_message="The local service could not complete the request.",
+                submitted_at=now,
+                completed_at=now,
+            )
+        return request_id
+
     @app.exception_handler(DomainError)
     async def domain_error(_: Request, exc: DomainError) -> JSONResponse:
         return JSONResponse(
@@ -1249,8 +1857,24 @@ def create_app(
         response_model_exclude_unset=True,
         responses=_documented_errors(400, 403, 404, 405, 411, 413, 422, 500, 502, 503),
     )
-    def create_forecast(payload: SearchRequest) -> dict[str, Any]:
-        return service.search(payload.symbol, payload.asset_type)
+    def create_forecast(payload: SearchRequest) -> ForecastCreationResponse:
+        generated = service.search(payload.symbol, payload.asset_type)
+        try:
+            # Validate before FastAPI's response serializer so a malformed service handoff can be
+            # correlated with exactly one failed search rather than escaping as an unaudited 500.
+            return ForecastCreationResponse.model_validate(generated)
+        except Exception:
+            request_id = record_malformed_forecast_response(
+                generated,
+                submitted_symbol=payload.symbol,
+                asset_type=payload.asset_type,
+            )
+            raise DomainError(
+                "internal_error",
+                "The local service could not complete the request.",
+                status_code=500,
+                request_id=request_id,
+            ) from None
 
     @app.get(
         "/api/v1/history",

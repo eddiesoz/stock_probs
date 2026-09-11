@@ -474,6 +474,12 @@ def test_records_survive_a_fresh_repository_instance(settings):
     assert stored_identity["canonical_symbol"] == "ACDC"
     assert stored_identity["company_name"] == "ProFrac Holding Corp."
     assert stored_identity == created["input"]["provenance"]["instrument_identity"]
+    assert all(
+        item["evaluation"]["method"].startswith("bounded chronological")
+        for item in created["results"]
+    )
+    assert all(len(item["forecast_fingerprint"]) == 64 for item in created["results"])
+    assert created["input"]["model_fingerprint"] == created["results"][0]["model_fingerprint"]
 
 
 def test_saved_reopen_never_calls_provider_or_recalculates(settings):
@@ -522,6 +528,16 @@ def test_fresh_historical_cutoff_has_own_event_input_results_and_provenance(sett
     assert fresh["input"]["content_fingerprint"] != recorded["input"][
         "content_fingerprint"
     ]
+    assert all(
+        datetime.fromisoformat(bar["end"]) <= NOW
+        for key in ("selected_daily_bars", "selected_intraday_bars")
+        for bar in fresh["input"][key]
+    )
+    assert all(
+        result["evaluation"]["date_range"] is None
+        or datetime.fromisoformat(result["evaluation"]["date_range"]["last_target"]) <= NOW
+        for result in fresh["results"]
+    )
     fresh_history = repository.history(
         analysis_kind="fresh_historical_reconstruction", include_analysis=True
     )
@@ -699,6 +715,41 @@ def test_repository_rejects_identity_detached_from_forecast_provenance(settings)
             submitted_symbol="ACDC",
             asset_type="stock",
             input_snapshot=detached_top_level,
+            results=results,
+            submitted_at=NOW,
+            completed_at=NOW,
+        )
+    assert repository.representative_counts()["search_events"] == 0
+
+
+def test_repository_rejects_tampered_forecast_or_evaluation_fingerprint(settings):
+    """Versioned model/evaluation payloads cannot be detached before immutable persistence."""
+
+    repository = Repository(settings.database_path)
+    repository.migrate()
+    snapshot, results = calculate_forecasts(FixtureProvider().fetch("ACDC", "stock", NOW), NOW)
+    tampered = deepcopy(results)
+    tampered[0]["evaluation"]["forecast_model"]["direction_brier"]["multiclass_mean"] = 0
+
+    with pytest.raises(ValueError, match="forecast result"):
+        repository.record_success(
+            request_id="tampered-evaluation",
+            submitted_symbol="ACDC",
+            asset_type="stock",
+            input_snapshot=snapshot,
+            results=tampered,
+            submitted_at=NOW,
+            completed_at=NOW,
+        )
+
+    detached_model = deepcopy(snapshot)
+    detached_model["model_fingerprint"] = "0" * 64
+    with pytest.raises(ValueError, match="model and content provenance"):
+        repository.record_success(
+            request_id="detached-model",
+            submitted_symbol="ACDC",
+            asset_type="stock",
+            input_snapshot=detached_model,
             results=results,
             submitted_at=NOW,
             completed_at=NOW,

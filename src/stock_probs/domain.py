@@ -13,7 +13,9 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-MODEL_VERSION = "empirical-ewma-v1"
+MODEL_VERSION = "empirical-ewma-v2"
+FORECAST_CONTRACT_VERSION = "forecast-contract-v2"
+EVALUATION_VERSION = "chronological-walk-forward-v1"
 FLAT_THRESHOLD = 0.001
 # Report symmetric tail magnitudes in increasing severity so monotonicity is auditable.
 TAIL_MAGNITUDES = (0.01, 0.03, 0.05, 0.10)
@@ -22,6 +24,9 @@ SUPPORTED_TIMEZONE = "America/New_York"
 CALENDAR_VERSION = "us-equities-rules-v1"
 SUPPORTED_ASSET_TYPES = {"stock", "etf"}
 QUOTE_TYPE_TO_ASSET = {"EQUITY": "stock", "STOCK": "stock", "ETF": "etf"}
+MAX_ABSOLUTE_RETURN = 0.50
+EVALUATION_MAX_POINTS = 120
+RELIABILITY_BIN_COUNT = 5
 
 
 class DomainError(Exception):
@@ -218,7 +223,11 @@ class MarketData:
             ],
             "metadata": self.provider_metadata,
         }
-        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+        return hashlib.sha256(
+            json.dumps(
+                payload, sort_keys=True, separators=(",", ":"), allow_nan=False
+            ).encode()
+        ).hexdigest()
 
 
 def normalize_symbol(value: str) -> str:
@@ -393,8 +402,10 @@ def _quantile(values: list[float], probability: float) -> float:
 def _ewma_adjusted(returns: list[float], span: int = 30) -> list[float]:
     """Scale each observation using volatility known before it, preventing look-ahead leakage."""
 
-    if len(returns) < 3:
-        return returns
+    if len(returns) <= 3:
+        # Three observations is the explicit small-sample fallback. Estimating prior volatility
+        # from fewer values would discard too much of Yahoo's bounded intraday history.
+        return list(returns)
     alpha = 2.0 / (span + 1.0)
     variance = returns[0] ** 2
     adjusted: list[float] = []
@@ -406,7 +417,56 @@ def _ewma_adjusted(returns: list[float], span: int = 30) -> list[float]:
     return [max(min(value * current_sigma, 0.5), -0.5) for value in adjusted]
 
 
-def _distribution(samples: list[float], origin_price: float) -> dict[str, Any]:
+def _prepare_model_samples(
+    returns: list[float], *, span: int
+) -> tuple[list[float], dict[str, Any]]:
+    """Apply the versioned anomaly filter and prior-only volatility transformation."""
+
+    if any(not math.isfinite(value) or value <= -1.0 for value in returns):
+        raise DomainError("invalid_market_data", "Historical returns contain invalid values.")
+    filtered = [value for value in returns if abs(value) < MAX_ABSOLUTE_RETURN]
+    excluded = len(returns) - len(filtered)
+    adjusted = _ewma_adjusted(filtered, span=span)
+    return adjusted, {
+        "candidate_count": len(returns),
+        "eligible_count": len(filtered),
+        "effective_count": len(adjusted),
+        "excluded_anomaly_count": excluded,
+        "warmup_excluded_count": len(filtered) - len(adjusted),
+        "filter": {
+            "version": "absolute-return-filter-v1",
+            "rule": f"exclude absolute close return at least {MAX_ABSOLUTE_RETURN:.0%}",
+            "purpose": (
+                "avoid treating split, corporate-action, currency, or unit discontinuities "
+                "as ordinary returns"
+            ),
+        },
+    }
+
+
+def _wilson_interval(successes: int, count: int) -> dict[str, float | str]:
+    """Return a dependency-free 95% Wilson interval for an observed binary event rate."""
+
+    if count < 1:
+        return {"low": 0.0, "high": 1.0, "level": 0.95, "method": "Wilson score"}
+    z = 1.959963984540054
+    proportion = successes / count
+    denominator = 1.0 + z * z / count
+    center = (proportion + z * z / (2.0 * count)) / denominator
+    radius = z * math.sqrt(
+        proportion * (1.0 - proportion) / count + z * z / (4.0 * count * count)
+    ) / denominator
+    return {
+        "low": max(0.0, center - radius),
+        "high": min(1.0, center + radius),
+        "level": 0.95,
+        "method": "Wilson score for the unsmoothed empirical event rate",
+    }
+
+
+def _distribution(
+    samples: list[float], origin_price: float, *, sample_accounting: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Build smoothed empirical probabilities and explicit return/price intervals."""
 
     if len(samples) < 3:
@@ -419,13 +479,22 @@ def _distribution(samples: list[float], origin_price: float) -> dict[str, Any]:
         raise DomainError("invalid_market_data", "Historical returns contain non-finite values.")
     count = len(samples)
 
-    def probability(predicate: Any) -> float:
+    def event_summary(predicate: Any) -> dict[str, Any]:
         # Jeffreys-style smoothing prevents false certainty with small intraday samples.
-        return (sum(1 for value in samples if predicate(value)) + 0.5) / (count + 1.0)
+        event_count = sum(1 for value in samples if predicate(value))
+        return {
+            "probability": (event_count + 0.5) / (count + 1.0),
+            "event_count": event_count,
+            "sample_count": count,
+            "uncertainty": _wilson_interval(event_count, count),
+        }
 
-    down = probability(lambda value: value < -FLAT_THRESHOLD)
-    flat = probability(lambda value: -FLAT_THRESHOLD <= value <= FLAT_THRESHOLD)
-    up = probability(lambda value: value > FLAT_THRESHOLD)
+    down_summary = event_summary(lambda value: value < -FLAT_THRESHOLD)
+    flat_summary = event_summary(lambda value: -FLAT_THRESHOLD <= value <= FLAT_THRESHOLD)
+    up_summary = event_summary(lambda value: value > FLAT_THRESHOLD)
+    down = float(down_summary["probability"])
+    flat = float(flat_summary["probability"])
+    up = float(up_summary["probability"])
     total = down + flat + up
     intervals = []
     for level, low_q, high_q in ((0.50, 0.25, 0.75), (0.80, 0.10, 0.90), (0.95, 0.025, 0.975)):
@@ -443,21 +512,41 @@ def _distribution(samples: list[float], origin_price: float) -> dict[str, Any]:
                 },
             }
         )
-    return {
-        "direction_probabilities": {
-            "down": down / total,
-            "flat": flat / total,
-            "up": up / total,
-            "unit": "probability",
-            "definitions": {
-                "down": f"return < {-FLAT_THRESHOLD * 100.0:.1f}%",
-                "flat": f"absolute return <= {FLAT_THRESHOLD * 100.0:.1f}%",
-                "up": f"return > {FLAT_THRESHOLD * 100.0:.1f}%",
-            },
-            # Preserve the original field consumed by the current presentation layer.
-            "flat_definition": f"absolute return <= {FLAT_THRESHOLD:.4f}",
+    direction_probabilities = {
+        "down": down / total,
+        "flat": flat / total,
+        # "flat" remains an API-compatible alias; unchanged is the canonical contract term.
+        "unchanged": flat / total,
+        "up": up / total,
+        "unit": "probability",
+        "definitions": {
+            "down": f"return < {-FLAT_THRESHOLD * 100.0:.1f}%",
+            "flat": f"absolute return <= {FLAT_THRESHOLD * 100.0:.1f}%",
+            "unchanged": f"absolute return <= {FLAT_THRESHOLD * 100.0:.1f}%",
+            "up": f"return > {FLAT_THRESHOLD * 100.0:.1f}%",
         },
-        "threshold_probabilities": [
+        "event_counts": {
+            "down": down_summary["event_count"],
+            "unchanged": flat_summary["event_count"],
+            "up": up_summary["event_count"],
+            "sample_count": count,
+        },
+        "uncertainty": {
+            "down": down_summary["uncertainty"],
+            "unchanged": flat_summary["uncertainty"],
+            "up": up_summary["uncertainty"],
+        },
+        # Preserve the original field consumed by the current presentation layer.
+        "flat_definition": f"absolute return <= {FLAT_THRESHOLD:.4f}",
+    }
+    threshold_probabilities = []
+    for threshold in RETURN_THRESHOLDS:
+        summary = event_summary(
+            (lambda value, t=threshold: value <= t)
+            if threshold < 0
+            else (lambda value, t=threshold: value >= t)
+        )
+        threshold_probabilities.append(
             {
                 "operator": "lte" if threshold < 0 else "gte",
                 "threshold": threshold * 100.0,
@@ -467,21 +556,360 @@ def _distribution(samples: list[float], origin_price: float) -> dict[str, Any]:
                     if threshold < 0
                     else f"probability return >= +{threshold * 100.0:.0f}%"
                 ),
-                "probability": probability(
-                    (lambda value, t=threshold: value <= t)
-                    if threshold < 0
-                    else (lambda value, t=threshold: value >= t)
-                ),
+                **summary,
+                "rare_event": int(summary["event_count"]) < 10,
             }
-            for threshold in RETURN_THRESHOLDS
-        ],
+        )
+
+    gains = [value for value in samples if value > FLAT_THRESHOLD]
+    losses = [-value for value in samples if value < -FLAT_THRESHOLD]
+
+    def conditional(values: list[float], label: str) -> dict[str, Any]:
+        return {
+            "condition": label,
+            "observed_count": len(values),
+            "sample_count": count,
+            "expected": statistics.fmean(values) * 100.0 if values else None,
+            "median": statistics.median(values) * 100.0 if values else None,
+            "unit": "percent_return_magnitude",
+            "definition": "positive return magnitude conditional on the stated direction",
+        }
+
+    return {
+        "direction_probabilities": direction_probabilities,
+        "threshold_probabilities": threshold_probabilities,
+        "conditional_magnitudes": {
+            "gain": conditional(gains, f"return > {FLAT_THRESHOLD * 100.0:.1f}%"),
+            "loss": conditional(losses, f"return < {-FLAT_THRESHOLD * 100.0:.1f}%"),
+        },
         "magnitude_intervals": intervals,
         "sample_size": count,
+        "sample_accounting": sample_accounting
+        or {
+            "candidate_count": count,
+            "eligible_count": count,
+            "effective_count": count,
+            "excluded_anomaly_count": 0,
+            "warmup_excluded_count": 0,
+        },
+        "probability_estimator": "Jeffreys add-one smoothing: (events + 0.5) / (samples + 1)",
         "distribution_definition": (
-            "empirical historical horizon returns standardized by prior-only EWMA volatility "
-            "and rescaled to volatility known at the request cutoff"
+            "filtered historical horizon returns standardized by prior-only EWMA volatility "
+            "and rescaled to volatility known at the request cutoff; interval endpoints are "
+            "empirical interpolated quantiles of that effective sample"
         ),
     }
+
+
+@dataclass(frozen=True)
+class _HorizonObservation:
+    """One realized horizon whose target outcome has an unambiguous availability time."""
+
+    origin_at: datetime
+    target_at: datetime
+    origin_price: float
+    return_value: float
+    comparison_key: str
+
+
+def _direction(value: float) -> str:
+    if value < -FLAT_THRESHOLD:
+        return "down"
+    if value > FLAT_THRESHOLD:
+        return "up"
+    return "unchanged"
+
+
+def _threshold_key(item: dict[str, Any]) -> str:
+    return f"{item['operator']}:{float(item['threshold']):g}"
+
+
+def _reliability_bins(pairs: list[tuple[float, int]]) -> list[dict[str, Any]]:
+    """Aggregate fixed-width bins, retaining empty bins so reports have a stable schema."""
+
+    bins = []
+    for index in range(RELIABILITY_BIN_COUNT):
+        low = index / RELIABILITY_BIN_COUNT
+        high = (index + 1) / RELIABILITY_BIN_COUNT
+        selected = [
+            (probability, observed)
+            for probability, observed in pairs
+            if low <= probability <= high
+            and (probability < high or index == RELIABILITY_BIN_COUNT - 1)
+        ]
+        bins.append(
+            {
+                "low": low,
+                "high": high,
+                "includes_high": index == RELIABILITY_BIN_COUNT - 1,
+                "count": len(selected),
+                "mean_predicted_probability": (
+                    statistics.fmean(item[0] for item in selected) if selected else None
+                ),
+                "observed_frequency": (
+                    statistics.fmean(item[1] for item in selected) if selected else None
+                ),
+            }
+        )
+    return bins
+
+
+def _score_predictions(
+    predictions: list[tuple[dict[str, Any], float]],
+) -> dict[str, Any]:
+    """Score direction, every threshold tail, reliability, and central interval coverage."""
+
+    direction_pairs: dict[str, list[tuple[float, int]]] = {
+        key: [] for key in ("down", "unchanged", "up")
+    }
+    threshold_pairs: dict[str, list[tuple[float, int]]] = {
+        f"{'lte' if threshold < 0 else 'gte'}:{threshold * 100.0:g}": []
+        for threshold in RETURN_THRESHOLDS
+    }
+    coverage: dict[float, list[bool]] = {0.50: [], 0.80: [], 0.95: []}
+    for distribution, observed_return in predictions:
+        observed_direction = _direction(observed_return)
+        for direction in direction_pairs:
+            direction_pairs[direction].append(
+                (
+                    float(distribution["direction_probabilities"][direction]),
+                    int(direction == observed_direction),
+                )
+            )
+        for item in distribution["threshold_probabilities"]:
+            threshold = float(item["threshold"]) / 100.0
+            observed = (
+                observed_return <= threshold
+                if item["operator"] == "lte"
+                else observed_return >= threshold
+            )
+            threshold_pairs[_threshold_key(item)].append(
+                (float(item["probability"]), int(observed))
+            )
+        for interval in distribution["magnitude_intervals"]:
+            level = float(interval["level"])
+            low = float(interval["percent"]["low"]) / 100.0
+            high = float(interval["percent"]["high"]) / 100.0
+            coverage[level].append(low <= observed_return <= high)
+
+    direction_components = {
+        direction: statistics.fmean(
+            (probability - observed) ** 2 for probability, observed in pairs
+        )
+        for direction, pairs in direction_pairs.items()
+    }
+    return {
+        "direction_brier": {
+            "multiclass_mean": sum(direction_components.values()),
+            "components": direction_components,
+            "definition": "mean sum of squared probability errors across down/unchanged/up",
+        },
+        "threshold_brier": [
+            {
+                "operator": key.split(":", 1)[0],
+                "threshold": float(key.split(":", 1)[1]),
+                "unit": "percent_return",
+                "score": statistics.fmean(
+                    (probability - observed) ** 2 for probability, observed in pairs
+                ),
+            }
+            for key, pairs in threshold_pairs.items()
+        ],
+        "reliability": {
+            "bin_count": RELIABILITY_BIN_COUNT,
+            "direction": {
+                direction: _reliability_bins(pairs)
+                for direction, pairs in direction_pairs.items()
+            },
+            "thresholds": [
+                {
+                    "operator": key.split(":", 1)[0],
+                    "threshold": float(key.split(":", 1)[1]),
+                    "unit": "percent_return",
+                    "bins": _reliability_bins(pairs),
+                }
+                for key, pairs in threshold_pairs.items()
+            ],
+        },
+        "interval_coverage": [
+            {
+                "level": level,
+                "covered_count": sum(values),
+                "sample_count": len(values),
+                "coverage": statistics.fmean(values),
+                "definition": "fraction of realized returns inside the forecast interval",
+            }
+            for level, values in coverage.items()
+        ],
+    }
+
+
+def _empty_evaluation(reason: str, eligible_count: int) -> dict[str, Any]:
+    """Keep unavailable evaluation explicit instead of inventing zero-valued scores."""
+
+    return {
+        "version": EVALUATION_VERSION,
+        "method": "bounded chronological expanding-window walk-forward",
+        "status": "insufficient_history",
+        "reason": reason,
+        "evaluation_count": 0,
+        "eligible_realized_count": eligible_count,
+        "excluded_anomaly_outcome_count": 0,
+        "date_range": None,
+        "training_sample_range": None,
+        "forecast_model": None,
+        "baseline": None,
+        "max_evaluation_points": EVALUATION_MAX_POINTS,
+        "information_rule": (
+            "each fit uses only outcomes whose target was completed at or before its origin"
+        ),
+    }
+
+
+def _walk_forward_evaluation(
+    observations: list[_HorizonObservation],
+    *,
+    cutoff: datetime,
+    span: int,
+    minimum_training: int,
+) -> dict[str, Any]:
+    """Evaluate a bounded tail chronologically without making future outcomes fit inputs."""
+
+    cutoff_utc = cutoff.astimezone(UTC)
+    eligible = sorted(
+        (
+            item
+            for item in observations
+            if item.target_at.astimezone(UTC) <= cutoff_utc
+        ),
+        key=lambda item: (item.target_at.astimezone(UTC), item.origin_at.astimezone(UTC)),
+    )
+    candidates = eligible[-EVALUATION_MAX_POINTS:]
+    scored: list[
+        tuple[_HorizonObservation, int, dict[str, Any], dict[str, Any]]
+    ] = []
+    excluded_outcomes = 0
+    for candidate in candidates:
+        # Intraday comparison keys enforce equal clock-time horizons. Daily observations all use
+        # one key. A target at the candidate origin is known; any later target is future leakage.
+        prior = [
+            item.return_value
+            for item in eligible
+            if item.comparison_key == candidate.comparison_key
+            and item.target_at.astimezone(UTC) <= candidate.origin_at.astimezone(UTC)
+        ]
+        filtered_prior = [value for value in prior if abs(value) < MAX_ABSOLUTE_RETURN]
+        if len(filtered_prior) < minimum_training:
+            continue
+        if abs(candidate.return_value) >= MAX_ABSOLUTE_RETURN:
+            excluded_outcomes += 1
+            continue
+        model_samples, accounting = _prepare_model_samples(prior, span=span)
+        if len(model_samples) < 3:
+            continue
+        model = _distribution(model_samples, candidate.origin_price, sample_accounting=accounting)
+        baseline_accounting = {
+            **accounting,
+            "effective_count": len(filtered_prior),
+            "warmup_excluded_count": 0,
+            "transformation": "none",
+        }
+        baseline = _distribution(
+            filtered_prior, candidate.origin_price, sample_accounting=baseline_accounting
+        )
+        scored.append((candidate, len(model_samples), model, baseline))
+
+    if not scored:
+        return _empty_evaluation(
+            f"fewer than {minimum_training} prior comparable realized samples per point",
+            len(eligible),
+        )
+    model_predictions = [(model, item.return_value) for item, _, model, _ in scored]
+    baseline_predictions = [(baseline, item.return_value) for item, _, _, baseline in scored]
+    first = scored[0][0]
+    last = scored[-1][0]
+    training_counts = [training_count for _, training_count, _, _ in scored]
+    return {
+        "version": EVALUATION_VERSION,
+        "method": "bounded chronological expanding-window walk-forward",
+        "status": "available",
+        "evaluation_count": len(scored),
+        "eligible_realized_count": len(eligible),
+        "excluded_anomaly_outcome_count": excluded_outcomes,
+        "date_range": {
+            "first_origin": first.origin_at.isoformat(),
+            "first_target": first.target_at.isoformat(),
+            "last_origin": last.origin_at.isoformat(),
+            "last_target": last.target_at.isoformat(),
+        },
+        "training_sample_range": {
+            "minimum_effective_count": min(training_counts),
+            "maximum_effective_count": max(training_counts),
+        },
+        "forecast_model": {
+            "name": "volatility-adjusted empirical distribution",
+            "version": MODEL_VERSION,
+            **_score_predictions(model_predictions),
+        },
+        "baseline": {
+            "name": "prior-only empirical climatology",
+            "version": "empirical-climatology-v1",
+            "definition": (
+                "the same expanding prior outcomes, anomaly filter, quantiles, and smoothing "
+                "without EWMA volatility standardization"
+            ),
+            **_score_predictions(baseline_predictions),
+        },
+        "max_evaluation_points": EVALUATION_MAX_POINTS,
+        "minimum_training_samples": minimum_training,
+        "information_rule": (
+            "each fit uses only outcomes whose target was completed at or before its origin"
+        ),
+    }
+
+
+def _daily_observations(bars: list[Bar], timezone: str) -> list[_HorizonObservation]:
+    return [
+        _HorizonObservation(
+            origin_at=previous.timestamp,
+            target_at=current.timestamp,
+            origin_price=previous.close,
+            return_value=current.close / previous.close - 1.0,
+            comparison_key="close_to_next_close",
+        )
+        for previous, current in zip(bars[:-1], bars[1:], strict=False)
+        if _next_session_close(previous.timestamp, timezone).astimezone(UTC)
+        == current.timestamp.astimezone(UTC)
+    ]
+
+
+def _intraday_observations(
+    data: MarketData, bars: list[Bar]
+) -> list[_HorizonObservation]:
+    """Build realized same-clock-time-to-close outcomes from complete historical sessions."""
+
+    zone = ZoneInfo(data.timezone)
+    sessions: dict[date, list[Bar]] = {}
+    for bar in bars:
+        sessions.setdefault(bar.timestamp.astimezone(zone).date(), []).append(bar)
+    observations = []
+    for day, session_bars in sessions.items():
+        ordered = sorted(session_bars, key=lambda item: item.timestamp)
+        close = _session_close(data, day)
+        if close is None or not ordered or ordered[-1].end != close:
+            continue
+        final_price = ordered[-1].close
+        for bar in ordered[:-1]:
+            observations.append(
+                _HorizonObservation(
+                    origin_at=bar.end,
+                    target_at=close,
+                    origin_price=bar.close,
+                    return_value=final_price / bar.close - 1.0,
+                    comparison_key=bar.timestamp.astimezone(zone).strftime("%H:%M"),
+                )
+            )
+    return observations
 
 
 def _validated_bars(
@@ -501,14 +929,38 @@ def _validated_bars(
                 status_code=502,
             )
         if not math.isfinite(bar.close) or bar.close <= 0:
-            continue
+            raise DomainError(
+                "invalid_market_data", "Market bars must contain positive finite close prices."
+            )
         # UTC keys make duplicate instants deterministic even across offset representations.
         instant = bar.timestamp.astimezone(UTC)
+        existing = selected.get(instant)
+        if existing is not None and existing.close != bar.close:
+            raise DomainError(
+                "conflicting_provider_bar",
+                "The provider returned conflicting closes for one market timestamp.",
+                status_code=502,
+            )
         selected[instant] = Bar(bar.timestamp.astimezone(zone), bar.close, bar.duration_seconds)
     return sorted(
         (bar for bar in selected.values() if bar.end.astimezone(UTC) <= now),
         key=lambda item: item.timestamp,
     )
+
+
+def _completed_daily_bars(data: MarketData, now: datetime) -> list[Bar]:
+    """Require every daily row to identify an actual completed scheduled session close."""
+
+    bars = _validated_bars(data.daily, duration_seconds=0, now=now, timezone=data.timezone)
+    for bar in bars:
+        expected = _session_close(data, bar.timestamp.astimezone(ZoneInfo(data.timezone)).date())
+        if expected is None or bar.timestamp.astimezone(UTC) != expected.astimezone(UTC):
+            raise DomainError(
+                "invalid_daily_session_close",
+                "A daily bar does not identify its completed regular-session close.",
+                status_code=502,
+            )
+    return bars
 
 
 def _bar_payload(bar: Bar) -> dict[str, Any]:
@@ -577,6 +1029,40 @@ def _missing_scheduled_daily_sessions(bars: list[Bar], timezone: str) -> int:
     return missing
 
 
+def _missing_internal_intraday_intervals(
+    data: MarketData, bars: list[Bar]
+) -> tuple[int, int]:
+    """Count absent calendar-aligned bars only between observed bars in one session."""
+
+    zone = ZoneInfo(data.timezone)
+    sessions: dict[date, set[int]] = {}
+    for bar in bars:
+        local = bar.timestamp.astimezone(zone)
+        session_open = _session_open(data, local.date())
+        session_close = _session_close(data, local.date())
+        if session_open is None or session_close is None:
+            continue
+        elapsed_seconds = (local - session_open).total_seconds()
+        # Only scheduled five-minute slots establish coverage. This avoids interpreting an
+        # off-grid provider timestamp or a closed-period boundary as one or more absent bars.
+        if elapsed_seconds < 0 or elapsed_seconds % 300 or bar.end > session_close:
+            continue
+        sessions.setdefault(local.date(), set()).add(int(elapsed_seconds // 300))
+
+    missing = 0
+    affected_sessions = 0
+    for observed_slots in sessions.values():
+        if len(observed_slots) < 2:
+            continue
+        first_slot = min(observed_slots)
+        last_slot = max(observed_slots)
+        session_missing = last_slot - first_slot + 1 - len(observed_slots)
+        if session_missing:
+            missing += session_missing
+            affected_sessions += 1
+    return missing, affected_sessions
+
+
 def _latest_eligible_intraday_end(data: MarketData, now: datetime) -> datetime | None:
     """Return the latest regular-session boundary that should have a completed five-minute bar."""
 
@@ -617,20 +1103,16 @@ def calculate_forecasts(
         raise DomainError(
             "ambiguous_provider_time", "Provider timezone is not recognized."
         ) from exc
-    # A daily row represents an instantaneous completed session close in this contract.
-    completed_daily = _validated_bars(
-        data.daily, duration_seconds=0, now=now, timezone=data.timezone
-    )
+    completed_daily = _completed_daily_bars(data, now)
     if len(completed_daily) < 61:
         raise DomainError(
             "insufficient_daily_data", "At least 61 completed daily closes are required."
         )
     daily_origin = completed_daily[-1]
-    raw_daily = [
-        current.close / previous.close - 1.0
-        for previous, current in zip(completed_daily[:-1], completed_daily[1:], strict=False)
-    ][-504:]
-    daily_samples = _ewma_adjusted(raw_daily)
+    bounded_daily_bars = completed_daily[-505:]
+    daily_observations = _daily_observations(bounded_daily_bars, data.timezone)
+    raw_daily = [item.return_value for item in daily_observations][-504:]
+    daily_samples, daily_accounting = _prepare_model_samples(raw_daily, span=30)
 
     regular_intraday = _regular_intraday_bars(data, now)
     latest = _latest_completed_intraday(data, now)
@@ -683,8 +1165,26 @@ def calculate_forecasts(
             intraday_raw.append(ordered[-1].close / comparable[-1].close - 1.0)
     # Outside an open session, the completed bar is the prior close and the applicable
     # target is the next close, so close-to-close samples are the matching history.
-    intraday_samples = (
-        _ewma_adjusted(intraday_raw, span=10) if is_open_session_horizon else daily_samples
+    if is_open_session_horizon:
+        intraday_samples, intraday_accounting = _prepare_model_samples(intraday_raw, span=10)
+    else:
+        intraday_samples, intraday_accounting = daily_samples, daily_accounting
+
+    daily_evaluation = _walk_forward_evaluation(
+        daily_observations,
+        cutoff=now,
+        span=30,
+        minimum_training=20,
+    )
+    intraday_evaluation = (
+        _walk_forward_evaluation(
+            _intraday_observations(data, regular_intraday),
+            cutoff=now,
+            span=10,
+            minimum_training=3,
+        )
+        if is_open_session_horizon
+        else daily_evaluation
     )
 
     daily_target = _next_session_close(daily_origin.timestamp, data.timezone)
@@ -718,6 +1218,16 @@ def calculate_forecasts(
     ) + int(data.provider_metadata.get("trailing_missing_intraday_intervals", 0) or 0)
     if missing_intraday:
         stale_reasons.append(f"provider data contains {missing_intraday} missing intraday bars")
+    internal_missing, affected_sessions = _missing_internal_intraday_intervals(
+        data, regular_intraday
+    )
+    if internal_missing:
+        bar_label = "bar" if internal_missing == 1 else "bars"
+        session_label = "session" if affected_sessions == 1 else "sessions"
+        stale_reasons.append(
+            f"intraday history omits {internal_missing} completed internal five-minute "
+            f"{bar_label} within {affected_sessions} regular {session_label}"
+        )
     latest_eligible_end = _latest_eligible_intraday_end(data, now)
     if (
         latest_eligible_end is not None
@@ -728,7 +1238,7 @@ def calculate_forecasts(
             "latest completed intraday bar precedes the latest eligible five-minute boundary"
         )
     quality = "stale" if stale_reasons else "current"
-    common = {
+    common: dict[str, Any] = {
         "symbol": data.symbol,
         "canonical_symbol": identity.canonical_symbol,
         "display_name": identity.display_name,
@@ -767,13 +1277,17 @@ def calculate_forecasts(
         "quality_reasons": stale_reasons,
         "stale_state": {"state": quality, "reasons": stale_reasons},
         "session_state_at_request": request_session_state,
+        "forecast_contract_version": FORECAST_CONTRACT_VERSION,
         "model": {"name": "volatility-adjusted empirical distribution", "version": MODEL_VERSION},
         "parameters": {
             "daily_max_samples": 504,
             "ewma_span_daily": 30,
             "ewma_span_intraday": 10,
             "flat_threshold": FLAT_THRESHOLD,
+            "maximum_absolute_training_return": MAX_ABSOLUTE_RETURN,
             "return_thresholds_percent": [value * 100.0 for value in RETURN_THRESHOLDS],
+            "evaluation_max_points": EVALUATION_MAX_POINTS,
+            "reliability_bin_count": RELIABILITY_BIN_COUNT,
         },
         "provenance": {
             "source": data.provider,
@@ -783,9 +1297,22 @@ def calculate_forecasts(
             "instrument_identity": identity.as_dict(),
             "identity_fingerprint": identity.fingerprint(),
             "model_version": MODEL_VERSION,
+            "forecast_contract_version": FORECAST_CONTRACT_VERSION,
+            "evaluation_version": EVALUATION_VERSION,
             "calendar_version": CALENDAR_VERSION,
         },
     }
+    model_fingerprint_payload = {
+        "contract_version": FORECAST_CONTRACT_VERSION,
+        "model": common["model"],
+        "parameters": common["parameters"],
+        "calendar": common["calendar"],
+    }
+    model_fingerprint = hashlib.sha256(
+        json.dumps(model_fingerprint_payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    common["model_fingerprint"] = model_fingerprint
+    common["provenance"]["model_fingerprint"] = model_fingerprint
     daily_result = {
         "horizon": "close_to_close",
         "origin_timestamp": daily_origin.timestamp.isoformat(),
@@ -798,7 +1325,13 @@ def calculate_forecasts(
         "stale_state": quality,
         "calculated_at": now.isoformat(),
         "definition": "latest completed regular-session close to the next regular-session close",
-        **_distribution(daily_samples, daily_origin.close),
+        "target_session_rule": (
+            "the next scheduled regular-session close after the completed origin close"
+        ),
+        "evaluation": daily_evaluation,
+        **_distribution(
+            daily_samples, daily_origin.close, sample_accounting=daily_accounting
+        ),
     }
     intraday_result = {
         "horizon": "completed_5m_to_close",
@@ -818,8 +1351,28 @@ def calculate_forecasts(
             "same-session close while the regular session is open; otherwise the next scheduled "
             "session close"
         ),
-        **_distribution(intraday_samples, latest.close),
+        "target_selection": {
+            "rule": (
+                "same_open_session_close"
+                if is_open_session_horizon
+                else "next_session_close_after_completed_origin_session"
+            ),
+            "request_session_state": request_session_state,
+            "origin_session_date": origin_local.date().isoformat(),
+            "target_session_date": target.astimezone(zone).date().isoformat(),
+        },
+        "evaluation": intraday_evaluation,
+        **_distribution(
+            intraday_samples, latest.close, sample_accounting=intraday_accounting
+        ),
     }
+    for result in (daily_result, intraday_result):
+        result["model_version"] = MODEL_VERSION
+        result["forecast_contract_version"] = FORECAST_CONTRACT_VERSION
+        result["model_fingerprint"] = model_fingerprint
+        result["forecast_fingerprint"] = hashlib.sha256(
+            json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
     return common, [daily_result, intraday_result]
 
 

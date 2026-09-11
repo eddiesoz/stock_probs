@@ -256,7 +256,9 @@ class Repository:
 
     @staticmethod
     def _json(value: Any) -> str:
-        return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+        # Forecast/domain objects cross this boundary only after explicit serialization. Rejecting
+        # NaN and unknown objects prevents SQLite from preserving non-portable pseudo-JSON.
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
     @staticmethod
     def _insert_id(cursor: sqlite3.Cursor) -> int:
@@ -380,6 +382,7 @@ class Repository:
         """Append a repeated event while reusing only an exact immutable input snapshot."""
 
         self._validate_instrument_provenance(input_snapshot, asset_type)
+        self._validate_forecast_contract(input_snapshot, results)
         symbol = input_snapshot["symbol"]
         fingerprint = input_snapshot["content_fingerprint"]
         horizons = [result.get("horizon") for result in results]
@@ -505,6 +508,71 @@ class Repository:
             != input_snapshot.get("content_fingerprint")
         ):
             raise ValueError("instrument identity must match immutable forecast provenance")
+
+    @staticmethod
+    def _validate_forecast_contract(
+        input_snapshot: dict[str, Any], results: list[dict[str, Any]]
+    ) -> None:
+        """Reject detached model metadata or result digests before immutable insertion."""
+
+        provenance = input_snapshot.get("provenance")
+        model_fingerprint = input_snapshot.get("model_fingerprint")
+        contract_version = input_snapshot.get("forecast_contract_version")
+        content_fingerprint = input_snapshot.get("content_fingerprint")
+        model_payload = {
+            "contract_version": contract_version,
+            "model": input_snapshot.get("model"),
+            "parameters": input_snapshot.get("parameters"),
+            "calendar": input_snapshot.get("calendar"),
+        }
+        calculated_model_fingerprint = hashlib.sha256(
+            json.dumps(
+                model_payload, sort_keys=True, separators=(",", ":"), allow_nan=False
+            ).encode()
+        ).hexdigest()
+        if (
+            not isinstance(provenance, dict)
+            or provenance.get("model_fingerprint") != model_fingerprint
+            or provenance.get("forecast_contract_version") != contract_version
+            or not Repository._is_sha256(model_fingerprint)
+            or not Repository._is_sha256(content_fingerprint)
+            or model_fingerprint != calculated_model_fingerprint
+        ):
+            raise ValueError(
+                "forecast model and content provenance must be complete and consistent"
+            )
+        for result in results:
+            expected = result.get("forecast_fingerprint")
+            fingerprint_payload = dict(result)
+            fingerprint_payload.pop("forecast_fingerprint", None)
+            calculated = hashlib.sha256(
+                json.dumps(
+                    fingerprint_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode()
+            ).hexdigest()
+            evaluation = result.get("evaluation")
+            if (
+                result.get("model_fingerprint") != model_fingerprint
+                or result.get("forecast_contract_version") != contract_version
+                or expected != calculated
+                or not isinstance(evaluation, dict)
+                or evaluation.get("method")
+                != "bounded chronological expanding-window walk-forward"
+            ):
+                raise ValueError(
+                    "forecast result must match immutable model and evaluation provenance"
+                )
+
+    @staticmethod
+    def _is_sha256(value: object) -> bool:
+        return (
+            isinstance(value, str)
+            and len(value) == 64
+            and all(character in "0123456789abcdef" for character in value)
+        )
 
     def history(
         self,

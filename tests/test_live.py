@@ -22,11 +22,20 @@ def test_live_yahoo_forecasts_both_horizons(symbol, asset_type):
     assert snapshot["display_name"] and snapshot["company_name"]
     assert snapshot["instrument_identity"]["quote_type"] in {"EQUITY", "STOCK", "ETF"}
     assert snapshot["instrument_identity"] == snapshot["provenance"]["instrument_identity"]
+    assert snapshot["provider_metadata"]["intraday_archive_limit"]["approximate_days"] == 60
+    assert snapshot["provider_query"]["intraday"]["interval"] == "5m"
     assert {result["horizon"] for result in results} == {"close_to_close", "completed_5m_to_close"}
     # Parse offsets before comparison because Yahoo's intraday and target strings can use UTC/local.
     assert all(
         datetime.fromisoformat(result["origin_timestamp"])
         < datetime.fromisoformat(result["target_timestamp"])
+        for result in results
+    )
+    assert all(result["evaluation"]["status"] == "available" for result in results)
+    assert all(result["evaluation"]["baseline"] for result in results)
+    assert all(
+        result["direction_probabilities"]["event_counts"]["sample_count"]
+        == result["sample_size"]
         for result in results
     )
 

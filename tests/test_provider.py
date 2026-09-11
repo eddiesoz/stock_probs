@@ -27,7 +27,9 @@ class FakeTicker:
             index = pd.date_range("2025-01-03 09:30", periods=3, freq="5min", tz="America/New_York")
         frame = pd.DataFrame({"Close": [100.0, 101.0, 102.0]}, index=index)
         # Real yfinance history caches this same chart metadata during its timeout-bounded call.
-        frame.attrs["history_metadata"] = self.metadata()
+        metadata = self.metadata()
+        metadata["dataGranularity"] = kwargs["interval"]
+        frame.attrs["history_metadata"] = metadata
         return frame
 
     def metadata(self):
@@ -63,17 +65,26 @@ def test_yfinance_adapter_uses_exact_bounded_queries(monkeypatch):
     response_at = datetime(2025, 1, 3, 15, 0, 2, tzinfo=UTC)
     data = YahooProvider(timeout=3, clock=lambda: response_at).fetch("SPY", "etf", now)
 
-    assert [(call["period"], call["interval"]) for call in FakeTicker.calls] == [
-        ("2y", "1d"),
-        ("5d", "5m"),
-    ]
+    daily_call = next(call for call in FakeTicker.calls if call["interval"] == "1d")
+    intraday_call = next(call for call in FakeTicker.calls if call["interval"] == "5m")
+    assert daily_call["period"] == "2y"
+    assert intraday_call["start"] == now - timedelta(days=59)
+    assert intraday_call["end"] == now + timedelta(days=1)
     assert all(call["prepost"] is False and call["timeout"] == 3 for call in FakeTicker.calls)
     assert data.daily[0].timestamp.hour == 16
     assert data.intraday[0].duration_seconds == 300
     assert data.provider_metadata["intraday_coverage"]["count"] == 3
+    assert data.provider_metadata["intraday_archive_limit"]["approximate_days"] == 60
+    assert data.provider_metadata["daily_data_granularity"] == "1d"
+    assert data.query["intraday"]["start"] == (now - timedelta(days=59)).isoformat()
+    assert data.query["intraday"]["end"] == (now + timedelta(days=1)).isoformat()
+    assert data.query["intraday"]["returned_coverage"] == data.provider_metadata[
+        "intraday_coverage"
+    ]
     assert isinstance(data.provider_metadata["regular_session"]["start"], float)
     assert data.fetched_at == response_at
     assert data.query["requested_as_of"] == now.isoformat()
+    assert all(bar.end <= now for bar in (*data.daily, *data.intraday))
     assert data.identity.as_dict() == {
         "canonical_symbol": "SPY",
         "display_name": "SPDR S&P 500 ETF Trust",
@@ -104,6 +115,9 @@ def test_yfinance_historical_cutoff_uses_explicit_bounded_ranges(monkeypatch):
     assert all("period" not in call for call in FakeTicker.calls)
     assert all(isinstance(call["start"], datetime) for call in FakeTicker.calls)
     assert all(isinstance(call["end"], datetime) for call in FakeTicker.calls)
+    intraday_call = next(call for call in FakeTicker.calls if call["interval"] == "5m")
+    assert intraday_call["start"] == cutoff - timedelta(days=57)
+    assert intraday_call["end"] == cutoff + timedelta(days=1)
     assert data.query["mode"] == "historical_cutoff"
     assert data.query["data_cutoff"] == cutoff.isoformat()
     assert data.query["requested_as_of"] == performed.isoformat()
@@ -274,6 +288,24 @@ def test_yfinance_requires_unambiguous_asset_and_session_metadata(monkeypatch):
     assert failure.value.code == "unsupported_asset"
 
 
+@pytest.mark.parametrize(("requested", "reported"), [("1d", "1wk"), ("5m", "15m")])
+def test_yfinance_rejects_silent_interval_substitution(monkeypatch, requested, reported):
+    """Bars are never relabelled as daily or five-minute when Yahoo reports another interval."""
+
+    class SubstitutedTicker(FakeTicker):
+        def history(self, **kwargs):
+            frame = super().history(**kwargs)
+            if kwargs["interval"] == requested:
+                frame.attrs["history_metadata"]["dataGranularity"] = reported
+            return frame
+
+    monkeypatch.setattr("stock_probs.provider.yf.Ticker", SubstitutedTicker)
+
+    with pytest.raises(DomainError) as failure:
+        YahooProvider().fetch("SPY", "etf", datetime(2025, 1, 3, 15, 0, tzinfo=UTC))
+    assert failure.value.code == "provider_interval_mismatch"
+
+
 def test_yfinance_rejects_control_bearing_identity_metadata(monkeypatch):
     class UnsafeNameTicker(FakeTicker):
         def metadata(self):
@@ -328,11 +360,18 @@ def test_provider_reports_omitted_daily_session_and_trailing_completed_bars(monk
                         pd.Timestamp("2025-01-06", tz="America/New_York"),
                     ]
                 )
+            else:
+                frame.index = pd.date_range(
+                    "2025-01-07 09:30",
+                    periods=3,
+                    freq="5min",
+                    tz="America/New_York",
+                )
             return frame
 
     monkeypatch.setattr("stock_probs.provider.yf.Ticker", GappedTicker)
 
-    data = YahooProvider().fetch("SPY", "etf", datetime(2025, 1, 3, 15, 0, tzinfo=UTC))
+    data = YahooProvider().fetch("SPY", "etf", datetime(2025, 1, 7, 15, 0, tzinfo=UTC))
 
     assert data.provider_metadata["missing_daily_sessions"] == 1
     # At 10:00 local, 09:45, 09:50, and 09:55 are completed but absent after 09:40.

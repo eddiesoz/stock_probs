@@ -5,13 +5,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOST_ARCH="$(uname -m)"
 REVISION="$(git -C "$ROOT" rev-parse --verify HEAD)"
+TASK_ID="${STOCK_PROBS_TASK_ID:-M01}"
+if [[ ! "$TASK_ID" =~ ^(M0[0-8]|R-M0[0-8]-[1-9][0-9]*)$ ]]; then
+  printf 'STOCK_PROBS_TASK_ID must be an M00-M08 or R-M##-<n> identifier.\n' >&2
+  exit 2
+fi
+TASK_SLUG="$(printf '%s' "$TASK_ID" | tr '[:upper:]' '[:lower:]')"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-RUN_DIR="$ROOT/test-results/arm64/M01-$STAMP"
+RUN_DIR="${STOCK_PROBS_ARM64_EVIDENCE_DIR:-$ROOT/test-results/arm64/$TASK_ID-$STAMP}"
 RECORD="$RUN_DIR/evidence.json"
 COMPOSE_FILE="$ROOT/scripts/compose.arm64.yml"
-PROJECT="stock-probs-m01-arm64-$(id -u)"
-LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/stock-probs-m01-arm64-$(id -u).lock"
+PROJECT="stock-probs-$TASK_SLUG-arm64-$(id -u)"
+LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/stock-probs-$TASK_SLUG-arm64-$(id -u).lock"
 mkdir -p "$RUN_DIR"
 RESULT="Unavailable"
 EXECUTION_LABEL=""
@@ -20,22 +26,22 @@ REASON=""
 QEMU_VERSION="not used"
 COMPOSE_ACTIVE="false"
 BINFMT_OWNED="false"
-TASK_BINFMT_MARKER="$ROOT/.tools/qemu-arm64/task-binfmt-owned"
+TASK_BINFMT_MARKER="$ROOT/.tools/qemu-arm64/$TASK_SLUG-binfmt-owned"
 
 write_record() {
   ARM_RESULT="$RESULT" ARM_LABEL="$EXECUTION_LABEL" ARM_REASON="$REASON" \
     ARM_QEMU_VERSION="$QEMU_VERSION" python3 - \
     "$RECORD" "$REVISION" "$HOST_ARCH" "$STARTED" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    "$EXIT_CODE" "$RUN_DIR" <<'PY'
+    "$EXIT_CODE" "$RUN_DIR" "$TASK_ID" <<'PY'
 import json
 import os
 import sys
 from pathlib import Path
 
-record, revision, host_arch, started, finished, exit_code, run_dir = sys.argv[1:]
+record, revision, host_arch, started, finished, exit_code, run_dir, task = sys.argv[1:]
 run_path = Path(run_dir)
 payload = {
-    "task": "M01",
+    "task": task,
     "revision": revision,
     "host_architecture": host_arch,
     "target_architecture": "aarch64",
@@ -64,7 +70,7 @@ cleanup_stale_projects() {
   local network project network_label attached
   local -a networks=()
   mapfile -t networks < <(
-    docker network ls --filter 'name=^stock-probs-m01-arm64-' --format '{{.Name}}'
+    docker network ls --filter "name=^$PROJECT" --format '{{.Name}}'
   )
   for network in "${networks[@]}"; do
     project="$(docker network inspect --format \
@@ -72,10 +78,10 @@ cleanup_stale_projects() {
     network_label="$(docker network inspect --format \
       '{{ index .Labels "com.docker.compose.network" }}' "$network")"
     attached="$(docker network inspect --format '{{ len .Containers }}' "$network")"
-    if [[ "$project" =~ ^stock-probs-m01-arm64-[a-zA-Z0-9_-]+$ ]] \
+    if [[ "$project" == "$PROJECT" ]] \
       && [[ "$network" == "${project}_default" ]] && [[ "$network_label" == "default" ]] \
       && [[ "$attached" == "0" ]]; then
-      printf 'Removing verified stale M01 Compose project: %s\n' "$project"
+      printf 'Removing verified stale %s Compose project: %s\n' "$TASK_ID" "$project"
       docker compose --project-name "$project" --file "$COMPOSE_FILE" \
         down --volumes --remove-orphans
     elif [[ "$project" != "$PROJECT" ]]; then
@@ -148,7 +154,7 @@ if ! command -v flock; then
 fi
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
-  REASON="Another M01 ARM64 emulation owns the task Compose project."
+  REASON="Another $TASK_ID ARM64 emulation owns the task Compose project."
   printf 'Unavailable: %s\n' "$REASON" >&2
   exit 3
 fi

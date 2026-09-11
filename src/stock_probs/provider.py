@@ -42,6 +42,7 @@ yf = cast(_YFinanceModule, import_module("yfinance"))
 MAX_LOOKUP_RESULTS = 5
 YAHOO_PROVIDER_NAME = "Yahoo Finance"
 FIXTURE_PROVIDER_NAME = "deterministic fixture"
+YAHOO_INTRADAY_ARCHIVE_APPROXIMATE_DAYS = 60
 
 
 class MarketDataProvider(Protocol):
@@ -321,13 +322,21 @@ class YahooProvider:
     def fetch(self, symbol: str, asset_type: str, now: datetime) -> MarketData:
         """Fetch a current bounded snapshot for an ordinary submitted forecast."""
 
+        if now.tzinfo is None:
+            raise DomainError(
+                "ambiguous_provider_time", "Provider request time must include an offset."
+            )
+        now_utc = now.astimezone(UTC)
         return self._fetch_with_bounds(
             symbol,
             asset_type,
             cutoff=now,
             requested_at=now,
             daily_bounds={"period": "2y"},
-            intraday_bounds={"period": "5d"},
+            intraday_bounds={
+                "start": now_utc - timedelta(days=59),
+                "end": now_utc + timedelta(days=1),
+            },
             mode="current",
         )
 
@@ -346,11 +355,15 @@ class YahooProvider:
             raise DomainError(
                 "future_historical_cutoff", "Historical cutoff cannot be in the future."
             )
-        if now_utc - cutoff_utc > timedelta(days=49):
+        cutoff_age = now_utc - cutoff_utc
+        if cutoff_age > timedelta(days=49):
             raise DomainError(
                 "historical_cutoff_unavailable",
                 "The cutoff plus its 10-day lookback exceeds Yahoo's 60-day five-minute archive.",
             )
+        # Keep the earliest requested bar inside the approximate 60-day archive. Recent cutoffs
+        # receive a longer training window; the oldest supported cutoff still receives ten days.
+        lookback_days = max(10, 59 - int(cutoff_age.total_seconds() // 86_400))
         # Yahoo treats end as exclusive. A one-day upper cushion includes the cutoff's session;
         # the domain still discards every row whose completion is after the exact cutoff.
         return self._fetch_with_bounds(
@@ -363,7 +376,7 @@ class YahooProvider:
                 "end": cutoff_utc + timedelta(days=1),
             },
             intraday_bounds={
-                "start": cutoff_utc - timedelta(days=10),
+                "start": cutoff_utc - timedelta(days=lookback_days),
                 "end": cutoff_utc + timedelta(days=1),
             },
             mode="historical_cutoff",
@@ -391,17 +404,32 @@ class YahooProvider:
         requested_symbol = normalize_symbol(symbol)
         ticker = yf.Ticker(requested_symbol)
         daily_frame = self._history_from_bounds(ticker, interval="1d", bounds=daily_bounds)
+        if daily_frame.empty:
+            raise DomainError(
+                "symbol_not_found",
+                "Yahoo Finance has no required daily data for this symbol.",
+                status_code=404,
+            )
+        # Capture the per-call cache before the next history request replaces it.
+        daily_meta = self._metadata_from_bounded_history(ticker, daily_frame)
         intraday_frame = self._history_from_bounds(
             ticker, interval="5m", bounds=intraday_bounds
         )
-        if daily_frame.empty or intraday_frame.empty:
+        if intraday_frame.empty:
             raise DomainError(
                 "symbol_not_found",
-                "Yahoo Finance has no required daily and five-minute data for this symbol.",
+                "Yahoo Finance has no required five-minute data for this symbol.",
                 status_code=404,
             )
-        # Metadata must come from one of the two timeout-bounded chart responses above.
+        # Metadata comes from the timeout-bounded chart responses, and each response must attest
+        # the requested granularity so no provider fallback can be relabelled silently.
         meta = self._metadata_from_bounded_history(ticker, intraday_frame)
+        if str(daily_meta.get("dataGranularity", "")) != "1d":
+            raise DomainError(
+                "provider_interval_mismatch",
+                "Yahoo did not return the requested daily interval.",
+                status_code=502,
+            )
         response_at = self._response_time()
         identity = self._identity_from_metadata(meta, response_at)
         if identity.canonical_symbol != requested_symbol:
@@ -429,8 +457,19 @@ class YahooProvider:
                 "Yahoo did not return the requested five-minute interval.",
                 status_code=502,
             )
-        daily = self._daily_bars(daily_frame, timezone)
-        intraday = self._intraday_bars(intraday_frame)
+        cutoff_utc = cutoff.astimezone(UTC)
+        # End is intentionally cushioned because Yahoo treats it as exclusive. The adapter, not a
+        # downstream caller, enforces the exact information cutoff on every normalized bar.
+        daily = tuple(
+            bar
+            for bar in self._daily_bars(daily_frame, timezone)
+            if bar.end.astimezone(UTC) <= cutoff_utc
+        )
+        intraday = tuple(
+            bar
+            for bar in self._intraday_bars(intraday_frame)
+            if bar.end.astimezone(UTC) <= cutoff_utc
+        )
 
         def provenance_bounds(bounds: dict[str, object]) -> dict[str, object]:
             """Keep provider call datetimes explicit and JSON-fingerprintable in provenance."""
@@ -460,13 +499,21 @@ class YahooProvider:
                     **provenance_bounds(daily_bounds),
                     "interval": "1d",
                     "prepost": False,
+                    "actions": False,
                     "auto_adjust": False,
+                    "repair": False,
+                    "timeout_seconds": self.timeout,
+                    "returned_coverage": _coverage(daily),
                 },
                 "intraday": {
                     **provenance_bounds(intraday_bounds),
                     "interval": "5m",
                     "prepost": False,
+                    "actions": False,
                     "auto_adjust": False,
+                    "repair": False,
+                    "timeout_seconds": self.timeout,
+                    "returned_coverage": _coverage(intraday),
                 },
             },
             daily=daily,
@@ -478,11 +525,28 @@ class YahooProvider:
                     "end": _provider_epoch(regular.get("end")),
                 },
                 "data_granularity": meta.get("dataGranularity", "5m"),
+                "daily_data_granularity": daily_meta.get("dataGranularity"),
                 "gmtoffset": int(meta["gmtoffset"]) if meta.get("gmtoffset") is not None else None,
+                "exchange_timezone": timezone,
+                "session_scope": "regular session only (prepost=False)",
+                "intraday_archive_limit": {
+                    "approximate_days": YAHOO_INTRADAY_ARCHIVE_APPROXIMATE_DAYS,
+                    "statement": (
+                        "Yahoo five-minute history is limited to approximately 60 recent days; "
+                        "availability may be shorter and historical cutoffs older than 49 days "
+                        "are rejected by this adapter"
+                    ),
+                },
                 "daily_coverage": _coverage(daily),
                 "intraday_coverage": _coverage(intraday),
                 "daily_returned_rows": len(daily_frame.index),
                 "intraday_returned_rows": len(intraday_frame.index),
+                "daily_normalized_rows": len(daily),
+                "intraday_normalized_rows": len(intraday),
+                "daily_rejected_rows": len(daily_frame.index) - len(daily),
+                "intraday_rejected_rows": len(intraday_frame.index) - len(intraday),
+                "daily_duplicate_timestamps": int(daily_frame.index.duplicated().sum()),
+                "intraday_duplicate_timestamps": int(intraday_frame.index.duplicated().sum()),
                 "missing_daily_closes": int(daily_frame["Close"].isna().sum()),
                 "missing_daily_sessions": _missing_daily_sessions(daily, timezone),
                 "missing_intraday_closes": int(intraday_frame["Close"].isna().sum()),
@@ -616,6 +680,7 @@ class FixtureProvider:
                 price *= 1.0 + seed["step_pattern"][len(daily) % len(seed["step_pattern"])]
                 daily.append(Bar(session_close, round(price, 6), 0))
             session_date += timedelta(days=1)
+        daily = [bar for bar in daily if bar.timestamp.astimezone(UTC) <= now.astimezone(UTC)]
         intraday: list[Bar] = []
         price = float(payload["intraday_price"])
         for session_index, session in enumerate(payload["intraday_sessions"]):
@@ -626,8 +691,8 @@ class FixtureProvider:
                     1.0 + session_index * 0.001 + index * 0.00012 + ((index % 7) - 3) * 0.00003
                 )
                 intraday.append(Bar(start + timedelta(minutes=5 * index), round(close, 6), 300))
-        # A fixture response may contain the active bar but never bars that have not started yet.
-        intraday = [bar for bar in intraday if bar.timestamp.astimezone(UTC) <= now.astimezone(UTC)]
+        # Mirror the live adapter: a deterministic response ends at the exact completed-bar cutoff.
+        intraday = [bar for bar in intraday if bar.end.astimezone(UTC) <= now.astimezone(UTC)]
         if normalized_symbol == "STALE":
             # Browser regressions need a deterministic stale success, not a fabricated failure.
             cutoff = datetime(2025, 1, 9, tzinfo=zone).date()
@@ -647,7 +712,9 @@ class FixtureProvider:
                 "fixture": fixture_name,
                 "requested_as_of": now.astimezone(UTC).isoformat(),
                 "daily": "1d/2y",
-                "intraday": "5m/5d",
+                "intraday": "5m/60d",
+                "mode": "current",
+                "data_cutoff": now.astimezone(UTC).isoformat(),
             },
             daily=tuple(daily),
             intraday=tuple(intraday),
@@ -656,8 +723,25 @@ class FixtureProvider:
                 "fixture_contract": "compact-seed-v1",
                 "fixture_base_symbol": base_symbol,
                 "identity_source": "checked_in_fixture",
+                "exchange_timezone": identity.timezone,
+                "session_scope": "regular session only (prepost=False)",
+                "intraday_archive_limit": {
+                    "approximate_days": YAHOO_INTRADAY_ARCHIVE_APPROXIMATE_DAYS,
+                    "statement": (
+                        "Yahoo five-minute history is limited to approximately 60 recent days; "
+                        "this deterministic fixture is smaller and makes no live coverage claim"
+                    ),
+                },
                 "daily_coverage": _coverage(tuple(daily)),
                 "intraday_coverage": _coverage(tuple(intraday)),
+                "daily_returned_rows": len(daily),
+                "intraday_returned_rows": len(intraday),
+                "daily_normalized_rows": len(daily),
+                "intraday_normalized_rows": len(intraday),
+                "daily_rejected_rows": 0,
+                "intraday_rejected_rows": 0,
+                "daily_duplicate_timestamps": 0,
+                "intraday_duplicate_timestamps": 0,
                 "missing_daily_closes": 0,
                 "missing_daily_sessions": 0,
                 "missing_intraday_closes": 0,

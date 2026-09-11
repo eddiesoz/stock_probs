@@ -31,11 +31,15 @@ def test_package_and_local_gate_cover_portable_runtime_assets():
         "fixtures/*.json",
     ]
     assert "scripts/install-node.sh" in makefile
-    assert "package-check:" in makefile and "m01-gate:" in makefile and "m02-gate:" in makefile
+    assert all(
+        target in makefile
+        for target in ("package-check:", "m01-gate:", "m02-gate:", "m03-gate:")
+    )
     assert "set -euo pipefail" in local_gate and '"result": result' in local_gate
-    assert "make " not in local_gate and "run_check" in local_gate and "m02)" in local_gate
+    assert "make " not in local_gate and "run_check" in local_gate and "m03)" in local_gate
     assert 'COMPLETED_CHECKS+=("browser")' in local_gate
     assert 'COMPLETED_CHECKS+=("playwright-mcp")' in local_gate
+    assert 'COMPLETED_CHECKS+=("arm64-functional-package-runtime")' in local_gate
     assert 'os.getenv("STOCK_PROBS_TASK_ID", "M01")' in package_smoke
     assert '"stock_probs/migrations/002_historical_analysis.sql"' in package_smoke
     assert "uv python install" in bootstrap and "3.11.15" in bootstrap
@@ -43,7 +47,8 @@ def test_package_and_local_gate_cover_portable_runtime_assets():
     assert "docker compose" in arm64_gate and "docker run" not in arm64_gate
     assert "emulated ARM64" in arm64_gate
     assert "down --volumes --remove-orphans" in arm64_gate
-    assert "stock-probs-m01-arm64-" in arm64_gate
+    assert 'PROJECT="stock-probs-$TASK_SLUG-arm64-' in arm64_gate
+    assert '"task": task' in arm64_gate
     assert "com.docker.compose.project" in arm64_gate and '"$attached" == "0"' in arm64_gate
     assert "qemu-user-static:7.2.0-1@sha256:" in arm64_compose
     assert "/opt/stock-probs-deps" in arm64_compose

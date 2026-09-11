@@ -43,6 +43,127 @@ function formatTime(value) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
+function formatNumber(value, digits = 4) {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: digits }).format(value);
+}
+
+function contractLabel(value) {
+  const labels = {
+    brier_score: "Brier score",
+    baseline_brier_score: "Baseline Brier score",
+    confidence_level: "Confidence level",
+    interval_coverage: "Interval coverage",
+    sample_size: "Sample count",
+    walk_forward: "Chronological walk-forward",
+  };
+  const label = labels[value] || value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
+  return label.replace(/\bbrier\b/i, "Brier").replace(/\bewma\b/i, "EWMA");
+}
+
+function contractValue(key, value) {
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value !== "number") return String(value);
+  if (/(?:probability|frequency|coverage|confidence_level|calibration_error|^low$|^high$|^level$)$/.test(key)) {
+    return formatPercent(value);
+  }
+  if (key.includes("percent")) return `${formatNumber(value, 2)}%`;
+  return formatNumber(value);
+}
+
+function appendContractRows(body, value, prefix = "") {
+  // Evaluation and uncertainty records are versioned server data. Flattening their bounded
+  // objects keeps every metric available as text without coupling the UI to one chart shape.
+  for (const [key, item] of Object.entries(value || {})) {
+    const path = prefix ? `${prefix} · ${contractLabel(key)}` : contractLabel(key);
+    if (item === null || item === undefined || item === "") continue;
+    if (Array.isArray(item)) {
+      if (item.every((entry) => ["string", "number", "boolean"].includes(typeof entry))) {
+        tableRow(body, path, item.map((entry) => contractValue(key, entry)).join("; "));
+      } else {
+        item.forEach((entry, index) => appendContractRows(body, entry, `${path} ${index + 1}`));
+      }
+    } else if (typeof item === "object") {
+      appendContractRows(body, item, path);
+    } else {
+      tableRow(body, path, contractValue(key, item));
+    }
+  }
+}
+
+function contractSection(title, className, value) {
+  if (!value || (typeof value === "object" && !Object.keys(value).length)) return null;
+  const section = element("section", className);
+  section.append(element("h4", "", title));
+  const table = element("table", "details-table contract-table");
+  table.append(element("caption", "sr-only", `${title} details`));
+  const body = document.createElement("tbody");
+  appendContractRows(body, value);
+  table.append(body);
+  section.append(table);
+  return section;
+}
+
+function compactReliability(reliability) {
+  if (!reliability) return null;
+  const populated = (bins) => (bins || []).filter((bin) => bin.count > 0);
+  const binText = (bin) => (
+    `${formatPercent(bin.low)}–${formatPercent(bin.high)}: ${bin.count} samples, `
+    + `mean predicted ${formatPercent(bin.mean_predicted_probability)}, observed ${formatPercent(bin.observed_frequency)}`
+  );
+  return {
+    bin_count: reliability.bin_count,
+    empty_bins: "Empty fixed-width bins are omitted below; all populated calibration bins are shown.",
+    direction: Object.fromEntries(
+      Object.entries(reliability.direction || {}).map(([direction, bins]) => (
+        [direction, populated(bins).map(binText)]
+      )),
+    ),
+    thresholds: Object.fromEntries((reliability.thresholds || []).map((item) => {
+      const sign = item.threshold > 0 ? "+" : "";
+      return [`${item.operator}_${sign}${item.threshold}_percent`, populated(item.bins).map(binText)];
+    })),
+  };
+}
+
+function compactEvaluationScores(scores) {
+  if (!scores) return null;
+  return {
+    name: scores.name,
+    version: scores.version,
+    definition: scores.definition,
+    direction_Brier: scores.direction_brier,
+    threshold_Brier: (scores.threshold_brier || []).map((item) => (
+      `${item.operator} ${item.threshold > 0 ? "+" : ""}${item.threshold}%: ${formatNumber(item.score)}`
+    )),
+    reliability: compactReliability(scores.reliability),
+    interval_coverage: (scores.interval_coverage || []).map((item) => (
+      `${formatPercent(item.level)}: ${item.covered_count}/${item.sample_count}, ${formatPercent(item.coverage)}; ${item.definition}`
+    )),
+  };
+}
+
+function compactEvaluation(evaluation) {
+  if (!evaluation) return null;
+  // Empty calibration bins carry no estimate. Summarizing them avoids hundreds of redundant
+  // table rows while retaining every populated model/baseline bin and its text values.
+  return {
+    version: evaluation.version,
+    method: evaluation.method,
+    status: evaluation.status,
+    reason: evaluation.reason,
+    evaluation_count: evaluation.evaluation_count,
+    eligible_realized_count: evaluation.eligible_realized_count,
+    excluded_anomaly_outcome_count: evaluation.excluded_anomaly_outcome_count,
+    date_range: evaluation.date_range,
+    training_sample_range: evaluation.training_sample_range,
+    forecast_model: compactEvaluationScores(evaluation.forecast_model),
+    baseline: compactEvaluationScores(evaluation.baseline),
+    maximum_evaluation_points: evaluation.max_evaluation_points,
+    minimum_training_samples: evaluation.minimum_training_samples,
+    information_rule: evaluation.information_rule,
+  };
+}
+
 async function api(path, options = {}) {
   const headers = { Accept: "application/json", ...(options.headers || {}) };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
@@ -164,11 +285,12 @@ async function lookupInstruments(query) {
   lookupSequence += 1;
   const sequence = lookupSequence;
   if (lookupController) lookupController.abort();
-  lookupController = new AbortController();
+  const controller = new AbortController();
+  lookupController = controller;
   lookupStatus.textContent = `Looking up “${query}”…`;
   try {
     const data = await api(`/instruments?${new URLSearchParams({ query, limit: "5" })}`, {
-      signal: lookupController.signal,
+      signal: controller.signal,
     });
     // Sequence and current text checks prevent an older response from replacing newer choices.
     if (sequence !== lookupSequence || symbolInput.value.trim() !== query) return null;
@@ -179,13 +301,23 @@ async function lookupInstruments(query) {
     hideOptions();
     lookupStatus.textContent = `Identity lookup unavailable: ${error.message}`;
     return null;
+  } finally {
+    if (lookupController === controller) lookupController = null;
   }
 }
 
-symbolInput.addEventListener("input", () => {
+function cancelPendingLookup() {
+  // A direct-symbol forecast supersedes suggestions: invalidate callbacks before aborting so the
+  // expected cancellation cannot render an identity error or stale choices over the forecast.
   clearTimeout(lookupTimer);
-  if (lookupController) lookupController.abort();
+  lookupTimer = null;
   lookupSequence += 1;
+  if (lookupController) lookupController.abort();
+  lookupController = null;
+}
+
+symbolInput.addEventListener("input", () => {
+  cancelPendingLookup();
   clearIdentity();
   hideOptions();
   const query = symbolInput.value.trim();
@@ -226,6 +358,7 @@ forecastForm.querySelectorAll('input[name="asset_type"]').forEach((control) => {
 
 function renderForecastCard(result, input) {
   const card = element("article", "forecast-card");
+  card.dataset.horizon = result.horizon;
   const header = element("header", "card-head");
   header.append(
     element("span", "data-label", result.horizon === "close_to_close" ? "Daily horizon" : "Intraday horizon"),
@@ -237,7 +370,7 @@ function renderForecastCard(result, input) {
   const probabilities = result.direction_probabilities;
   const chart = element("div", "probability-chart");
   chart.setAttribute("role", "img");
-  chart.setAttribute("aria-label", `Down ${formatPercent(probabilities.down)}, flat ${formatPercent(probabilities.flat)}, up ${formatPercent(probabilities.up)}`);
+  chart.setAttribute("aria-label", `Down ${formatPercent(probabilities.down)}, unchanged ${formatPercent(probabilities.flat)}, up ${formatPercent(probabilities.up)}`);
   for (const direction of ["down", "flat", "up"]) {
     const bar = element("div", `probability-bar ${direction}`);
     // A native meter avoids CSP-blocked inline styles while preserving a numeric value.
@@ -246,33 +379,99 @@ function renderForecastCard(result, input) {
     fill.max = 1;
     fill.value = probabilities[direction];
     fill.textContent = formatPercent(probabilities[direction]);
-    bar.append(element("span", "value", formatPercent(probabilities[direction])), fill, element("span", "label", direction));
+    const directionLabel = direction === "flat" ? "unchanged" : direction;
+    bar.append(element("span", "value", formatPercent(probabilities[direction])), fill, element("span", "label", directionLabel));
     chart.append(bar);
   }
   card.append(chart);
 
-  // The table duplicates every chart value and adds interval/threshold definitions for non-visual use.
+  // The tables duplicate every visual value and retain definitions/units for non-visual use.
   const table = element("table", "details-table");
-  table.append(element("caption", "", "Numeric forecast details"));
+  table.append(element("caption", "", "Horizon, direction, and threshold details"));
   const body = document.createElement("tbody");
   table.append(body);
-  tableRow(body, "Origin", `${formatPrice(result.origin_price, input.currency)} at ${formatTime(result.origin_timestamp)}`);
+  tableRow(body, "Origin price", formatPrice(result.origin_price, input.currency));
+  tableRow(body, "Origin timestamp", formatTime(result.origin_timestamp));
+  tableRow(body, "Reference timestamp", formatTime(result.reference_timestamp || result.origin_timestamp));
+  tableRow(body, "Reference state", contractLabel(result.reference_state || "reported_origin"));
   tableRow(body, "Target close", formatTime(result.target_timestamp));
-  tableRow(body, "Down / flat / up", `${formatPercent(probabilities.down)} / ${formatPercent(probabilities.flat)} / ${formatPercent(probabilities.up)}`);
-  tableRow(body, "Flat definition", probabilities.flat_definition);
-  for (const threshold of result.threshold_probabilities) {
-    const operator = threshold.operator === "lte" ? "at or below" : "at or above";
-    tableRow(body, `Return ${operator} ${threshold.threshold.toFixed(1)}%`, formatPercent(threshold.probability));
-  }
-  for (const interval of result.magnitude_intervals) {
+  tableRow(body, "Target state", contractLabel(result.target_state || "scheduled_session_close"));
+  tableRow(body, "Session at request", contractLabel(result.session_state_at_request || input.session_state_at_request));
+  tableRow(body, "Session semantics", result.target_session_rule || input.session_rule);
+  tableRow(body, "Calculated at", formatTime(result.calculated_at));
+  if (result.origin_bar_end) {
     tableRow(
       body,
-      `${formatPercent(interval.level)} magnitude interval`,
-      `${interval.definition}: ${interval.percent.low.toFixed(2)}% to ${interval.percent.high.toFixed(2)} percent return; ${formatPrice(interval.price.low, input.currency)} to ${formatPrice(interval.price.high, input.currency)} in quote currency`,
+      "Completed-bar evidence",
+      `Selected five-minute bar ended ${formatTime(result.origin_bar_end)}, at or before request cutoff ${formatTime(input.request_cutoff)}; an active incomplete bar is excluded.`,
     );
   }
-  tableRow(body, "Historical samples", String(result.sample_size));
-  card.append(table);
+  const definitions = probabilities.definitions || {};
+  tableRow(body, "Down probability", `${formatPercent(probabilities.down)} · ${definitions.down || "return below the flat range"}`);
+  tableRow(body, "Unchanged probability", `${formatPercent(probabilities.flat)} · ${definitions.flat || probabilities.flat_definition}`);
+  tableRow(body, "Up probability", `${formatPercent(probabilities.up)} · ${definitions.up || "return above the flat range"}`);
+  for (const threshold of result.threshold_probabilities) {
+    const operator = threshold.operator === "lte" ? "at or below" : "at or above";
+    const signedThreshold = `${threshold.threshold > 0 ? "+" : ""}${threshold.threshold.toFixed(0)}%`;
+    const details = [
+      formatPercent(threshold.probability),
+      threshold.definition,
+      threshold.sample_count === undefined
+        ? null
+        : `${threshold.event_count} events / ${threshold.sample_count} samples`,
+      threshold.rare_event === undefined ? null : `rare-event flag: ${threshold.rare_event ? "yes" : "no"}`,
+      threshold.uncertainty
+        ? `${formatPercent(threshold.uncertainty.level)} ${threshold.uncertainty.method} uncertainty: ${formatPercent(threshold.uncertainty.low)} to ${formatPercent(threshold.uncertainty.high)}`
+        : threshold.uncertainty_method,
+    ].filter(Boolean).join(" · ");
+    tableRow(body, `Return ${operator} ${signedThreshold}`, details);
+  }
+  const conditional = contractSection(
+    "Conditional gain / loss magnitudes",
+    "conditional-details",
+    result.conditional_magnitudes || result.conditional_probabilities || result.conditional_gain_loss,
+  );
+  if (conditional) card.append(table, conditional);
+  else card.append(table);
+
+  const intervalTable = element("table", "details-table interval-table");
+  intervalTable.append(element("caption", "", "Return and price intervals"));
+  const intervalBody = document.createElement("tbody");
+  intervalTable.append(intervalBody);
+  for (const interval of result.magnitude_intervals) {
+    tableRow(
+      intervalBody,
+      `${formatPercent(interval.level)} magnitude interval (return and price)`,
+      `${interval.definition}: ${interval.percent.low.toFixed(2)}% to ${interval.percent.high.toFixed(2)} percent return (${interval.percent.unit}); ${formatPrice(interval.price.low, input.currency)} to ${formatPrice(interval.price.high, input.currency)} (${interval.price.unit})`,
+    );
+  }
+  tableRow(intervalBody, "Model", `${result.model?.name || input.model.name} / ${result.model?.version || result.model_version || input.model.version}`);
+  tableRow(intervalBody, "Forecast contract", result.forecast_contract_version || input.forecast_contract_version);
+  tableRow(intervalBody, "Model fingerprint", result.model_fingerprint || input.model_fingerprint);
+  tableRow(intervalBody, "Forecast fingerprint", result.forecast_fingerprint);
+  tableRow(intervalBody, "Historical sample count", String(result.sample_size));
+  tableRow(intervalBody, "Distribution", result.distribution_definition);
+  card.append(intervalTable);
+
+  const uncertainty = contractSection(
+    "Sample uncertainty",
+    "uncertainty-details",
+    result.uncertainty || result.rare_event_uncertainty || {
+      direction_event_counts: probabilities.event_counts,
+      direction_Wilson_intervals: probabilities.uncertainty,
+      sample_accounting: result.sample_accounting,
+      probability_estimator: result.probability_estimator,
+    },
+  );
+  if (uncertainty) card.append(uncertainty);
+  const evaluation = contractSection(
+    "Chronological walk-forward evaluation",
+    "evaluation-details",
+    compactEvaluation(
+      result.evaluation || input.evaluations?.[result.horizon] || input.evaluation?.[result.horizon],
+    ),
+  );
+  if (evaluation) card.append(evaluation);
 
   if (result.outcomes?.length) {
     const outcomes = element("section", "outcomes");
@@ -345,16 +544,68 @@ function renderResult(data, context = "live") {
   resultContent.append(grid);
   const provenance = element("aside", "provenance");
   provenance.setAttribute("aria-label", "Forecast provenance and quality");
+  provenance.append(element("h3", "", "Data quality, limitations, and provenance"));
+  const providerLimitations = [
+    ...(Array.isArray(input.provider_limitations) ? input.provider_limitations : []),
+    ...(Array.isArray(input.archive_limitations) ? input.archive_limitations : []),
+    ...(Array.isArray(input.provenance?.provider_limitations) ? input.provenance.provider_limitations : []),
+  ];
+  for (const key of ["archive_limitation", "intraday_archive_limitation"]) {
+    const limitation = input.provider_metadata?.[key] || input.provenance?.[key];
+    if (limitation) providerLimitations.push(limitation);
+  }
+  const intradayArchive = input.provider_metadata?.intraday_archive_limit;
+  if (intradayArchive?.statement) providerLimitations.push(intradayArchive.statement);
+  if (!providerLimitations.some((item) => /archive|60.day/i.test(String(item)))) {
+    // Yahoo documents a moving intraday-history window; this product constraint remains visible
+    // even when a deterministic fixture has no remote archive response to report.
+    providerLimitations.push(
+      "Yahoo Finance five-minute history has an approximate 60-day archive limit; older intraday reconstruction may be unavailable.",
+    );
+  }
+  const limitations = [...new Set([...(input.limitations || []), ...providerLimitations])];
+  const missing = Object.fromEntries(
+    Object.entries(input.provider_metadata || {}).filter(([key]) => key.includes("missing")),
+  );
   provenance.append(
-    element("p", "", `Quality: ${input.quality}. ${input.quality_reasons.join("; ") || "No stale-data flags."}`),
-    element("p", "", `Session rule: ${input.session_rule}`),
-    element("p", "", `Calendar: ${input.calendar.name} / ${input.calendar.version}`),
+    element("p", "", `Provider: ${input.provider}. Response as-of: ${formatTime(input.provider_as_of)}.`),
+    element("p", "", `Stale state: ${input.stale_state?.state || input.quality}. ${(input.quality_reasons || input.stale_state?.reasons || []).join("; ") || "No stale-data reasons reported."}`),
+    element("p", "", `Session at request: ${contractLabel(input.session_state_at_request)}. Session rule: ${input.session_rule}`),
+    element("p", "", `Calendar: ${input.calendar.name} / ${input.calendar.version} / ${input.calendar.timezone}.`),
     element("p", "", `Captured prices: ${input.selected_daily_bars.length} daily closes and ${input.selected_intraday_bars.length} completed intraday bars.`),
-    element("p", "", `Provider request: ${JSON.stringify(input.provider_query)}`),
-    element("p", "", `Limitations: ${input.limitations.join(" ")}`),
+    element("p", "", `Missing data: ${Object.keys(missing).length ? "provider missing-data counters follow." : "no missing bars or scheduled closes reported."}`),
+    element("p", "", `Limitations, including archive availability: ${limitations.join(" ") || "No provider limitations reported."}`),
     element("p", "", `Content fingerprint: ${input.content_fingerprint}`),
     element("p", "", `Audit event #${data.event.id}${data.reused ? " references an identical immutable forecast run." : " records a new immutable forecast run."}`),
   );
+  const missingSection = contractSection(
+    "Missing-bar evidence",
+    "missing-details",
+    { ...missing, ...(input.missing_data || {}) },
+  );
+  if (missingSection) provenance.append(missingSection);
+  const coverageSection = contractSection(
+    "Returned provider coverage and archive semantics",
+    "coverage-details",
+    {
+      session_scope: input.provider_metadata?.session_scope,
+      daily_coverage: input.provider_metadata?.daily_coverage,
+      intraday_coverage: input.provider_metadata?.intraday_coverage,
+      intraday_archive_limit: input.provider_metadata?.intraday_archive_limit,
+    },
+  );
+  if (coverageSection) provenance.append(coverageSection);
+  const providerEvidence = contractSection(
+    "Provider request and immutable provenance",
+    "provider-details",
+    input.provenance || {
+      source: input.provider,
+      query: input.provider_query,
+      response_as_of: input.provider_as_of,
+      content_fingerprint: input.content_fingerprint,
+    },
+  );
+  if (providerEvidence) provenance.append(providerEvidence);
   resultContent.append(provenance);
 }
 
@@ -386,7 +637,8 @@ forecastForm.addEventListener("submit", async (event) => {
   const symbolError = document.querySelector("#symbol-error");
   const typedQuery = symbolInput.value.trim();
   const symbol = typedQuery.toUpperCase();
-  clearTimeout(lookupTimer);
+  cancelPendingLookup();
+  hideOptions();
   if (!/^[A-Z0-9.^-]{1,15}$/.test(symbol)) {
     const matches = await lookupInstruments(typedQuery);
     symbolError.textContent = matches?.length
@@ -398,16 +650,7 @@ forecastForm.addEventListener("submit", async (event) => {
   }
   symbolError.textContent = "";
   symbolInput.removeAttribute("aria-invalid");
-  if (!selectedIdentity || selectedIdentity.canonical_symbol !== symbol) {
-    const matches = await lookupInstruments(typedQuery);
-    const exact = matches?.find((identity) => identity.canonical_symbol === symbol);
-    if (exact) {
-      confirmIdentity(exact);
-      announcement.textContent = `Identity confirmed for ${symbol}. Run the forecast when ready.`;
-      return;
-    }
-    // A no-match or unavailable lookup must not remove the established typed-symbol path.
-  }
+  if (!selectedIdentity || selectedIdentity.canonical_symbol !== symbol) lookupStatus.textContent = "";
   const submit = document.querySelector("#forecast-submit");
   submit.disabled = true;
   submit.querySelector("span").textContent = "Calculating…";

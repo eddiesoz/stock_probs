@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictModel(BaseModel):
@@ -32,7 +32,7 @@ class InstrumentIdentityResponse(StrictModel):
     quote_type: Literal["EQUITY", "STOCK", "ETF"]
     asset_type: Literal["stock", "etf"]
     provider: str = Field(min_length=1, max_length=80)
-    provider_as_of: datetime
+    provider_as_of: AwareDatetime
 
 
 class InstrumentLookupResponse(StrictModel):

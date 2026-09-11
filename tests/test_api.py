@@ -280,6 +280,478 @@ def test_success_repeat_failure_and_searchable_history(client):
     assert failures["items"][0]["submitted_symbol"] == "FAIL"
 
 
+def test_forecast_api_exposes_complete_typed_m03_contract(client):
+    """Pin every forecast-facing field at the transport boundary, including B-owned metrics."""
+
+    response = _forecast(client)
+    assert response.status_code == 201
+    payload = response.json()
+    captured = payload["input"]
+    assert set(captured) == {
+        "id",
+        "symbol",
+        "canonical_symbol",
+        "display_name",
+        "company_name",
+        "asset_type",
+        "quote_type",
+        "exchange",
+        "exchange_timezone",
+        "currency",
+        "provider",
+        "provider_as_of",
+        "request_cutoff",
+        "provider_query",
+        "provider_metadata",
+        "content_fingerprint",
+        "instrument_identity",
+        "identity_fingerprint",
+        "captured_at",
+        "selected_daily_bars",
+        "selected_intraday_bars",
+        "session_rule",
+        "calendar",
+        "limitations",
+        "quality",
+        "quality_reasons",
+        "stale_state",
+        "session_state_at_request",
+        "forecast_contract_version",
+        "model",
+        "model_fingerprint",
+        "parameters",
+        "provenance",
+    }
+    assert set(captured["instrument_identity"]) == {
+        "canonical_symbol",
+        "display_name",
+        "company_name",
+        "exchange",
+        "currency",
+        "timezone",
+        "quote_type",
+        "asset_type",
+        "provider",
+        "provider_as_of",
+    }
+    assert captured["company_name"] == captured["instrument_identity"]["company_name"]
+    assert captured["canonical_symbol"] == captured["instrument_identity"]["canonical_symbol"]
+    assert captured["model"]["version"] == captured["provenance"]["model_version"]
+    assert captured["model_fingerprint"] == captured["provenance"]["model_fingerprint"]
+    assert captured["provider_query"] == captured["provenance"]["query"]
+    assert captured["provider_as_of"] == captured["provenance"]["response_as_of"]
+    assert set(captured["provider_query"]) == {
+        "requested_as_of",
+        "daily",
+        "intraday",
+        "mode",
+        "data_cutoff",
+        "fixture",
+    }
+    assert set(captured["provenance"]) == {
+        "source",
+        "query",
+        "response_as_of",
+        "content_fingerprint",
+        "instrument_identity",
+        "identity_fingerprint",
+        "model_version",
+        "forecast_contract_version",
+        "evaluation_version",
+        "calendar_version",
+        "model_fingerprint",
+    }
+    assert set(captured["provider_metadata"]) == {
+        "identity_source",
+        "regular_session",
+        "data_granularity",
+        "exchange_timezone",
+        "session_scope",
+        "intraday_archive_limit",
+        "daily_coverage",
+        "intraday_coverage",
+        "daily_returned_rows",
+        "intraday_returned_rows",
+        "daily_normalized_rows",
+        "intraday_normalized_rows",
+        "daily_rejected_rows",
+        "intraday_rejected_rows",
+        "daily_duplicate_timestamps",
+        "intraday_duplicate_timestamps",
+        "missing_daily_closes",
+        "missing_daily_sessions",
+        "missing_intraday_closes",
+        "missing_intraday_intervals",
+        "trailing_missing_intraday_intervals",
+        "fixture",
+        "fixture_contract",
+        "fixture_base_symbol",
+    }
+    assert captured["provider_metadata"]["intraday_archive_limit"]["approximate_days"] == 60
+    assert "approximately 60" in captured["provider_metadata"]["intraday_archive_limit"][
+        "statement"
+    ]
+    assert captured["provider_metadata"]["session_scope"] == (
+        "regular session only (prepost=False)"
+    )
+    assert captured["provider_metadata"]["exchange_timezone"] == captured[
+        "exchange_timezone"
+    ]
+    for series in ("daily", "intraday"):
+        coverage = captured["provider_metadata"][f"{series}_coverage"]
+        assert set(coverage) == {"first", "last", "count"}
+        assert coverage["first"] <= coverage["last"]
+        assert coverage["count"] > 0
+    assert set(captured["parameters"]) == {
+        "daily_max_samples",
+        "ewma_span_daily",
+        "ewma_span_intraday",
+        "flat_threshold",
+        "maximum_absolute_training_return",
+        "return_thresholds_percent",
+        "evaluation_max_points",
+        "reliability_bin_count",
+    }
+
+    common_result_fields = {
+        "id",
+        "recorded_at",
+        "outcomes",
+        "outcomes_truncated",
+        "horizon",
+        "origin_timestamp",
+        "horizon_start_timestamp",
+        "horizon_end_timestamp",
+        "origin_price",
+        "reference_timestamp",
+        "reference_state",
+        "target_timestamp",
+        "target_state",
+        "exchange_timezone",
+        "stale_state",
+        "calculated_at",
+        "definition",
+        "target_session_rule",
+        "forecast_contract_version",
+        "model_version",
+        "model_fingerprint",
+        "forecast_fingerprint",
+        "direction_probabilities",
+        "threshold_probabilities",
+        "conditional_magnitudes",
+        "magnitude_intervals",
+        "sample_size",
+        "sample_accounting",
+        "probability_estimator",
+        "distribution_definition",
+        "evaluation",
+    }
+    by_horizon = {result["horizon"]: result for result in payload["results"]}
+    assert set(by_horizon) == {"close_to_close", "completed_5m_to_close"}
+    assert set(by_horizon["close_to_close"]) == common_result_fields
+    assert set(by_horizon["completed_5m_to_close"]) == common_result_fields | {
+        "origin_bar_end",
+        "session_state_at_request",
+        "target_selection",
+    }
+
+    for result in by_horizon.values():
+        assert result["horizon_start_timestamp"] == result["reference_timestamp"]
+        assert result["horizon_end_timestamp"] == result["target_timestamp"]
+        assert result["origin_timestamp"] <= result["reference_timestamp"]
+        assert result["reference_timestamp"] < result["target_timestamp"]
+        direction = result["direction_probabilities"]
+        assert set(direction) == {
+            "down",
+            "flat",
+            "unchanged",
+            "up",
+            "unit",
+            "definitions",
+            "flat_definition",
+            "event_counts",
+            "uncertainty",
+        }
+        assert direction["flat"] == direction["unchanged"]
+        assert sum(direction[key] for key in ("down", "unchanged", "up")) == pytest.approx(1)
+        counts = direction["event_counts"]
+        assert counts["sample_count"] == result["sample_size"]
+        assert sum(counts[key] for key in ("down", "unchanged", "up")) == result[
+            "sample_size"
+        ]
+        for uncertainty in direction["uncertainty"].values():
+            assert set(uncertainty) == {"low", "high", "level", "method"}
+            assert 0 <= uncertainty["low"] <= uncertainty["high"] <= 1
+
+        expected_thresholds = [
+            ("lte", -1.0),
+            ("lte", -3.0),
+            ("lte", -5.0),
+            ("lte", -10.0),
+            ("gte", 1.0),
+            ("gte", 3.0),
+            ("gte", 5.0),
+            ("gte", 10.0),
+        ]
+        assert [(item["operator"], item["threshold"]) for item in result[
+            "threshold_probabilities"
+        ]] == expected_thresholds
+        for threshold in result["threshold_probabilities"]:
+            assert set(threshold) == {
+                "operator",
+                "threshold",
+                "unit",
+                "definition",
+                "probability",
+                "event_count",
+                "sample_count",
+                "uncertainty",
+                "rare_event",
+            }
+            assert 0 <= threshold["probability"] <= 1
+            assert threshold["event_count"] <= threshold["sample_count"] == result[
+                "sample_size"
+            ]
+        for name, metric in result["conditional_magnitudes"].items():
+            assert name in {"gain", "loss"}
+            assert set(metric) == {
+                "condition",
+                "observed_count",
+                "sample_count",
+                "expected",
+                "median",
+                "unit",
+                "definition",
+            }
+            assert metric["sample_count"] == result["sample_size"]
+            assert metric["observed_count"] <= metric["sample_count"]
+        assert [item["level"] for item in result["magnitude_intervals"]] == [0.5, 0.8, 0.95]
+        for interval in result["magnitude_intervals"]:
+            assert interval["percent"]["low"] <= interval["percent"]["high"]
+            assert 0 < interval["price"]["low"] <= interval["price"]["high"]
+        accounting = result["sample_accounting"]
+        assert accounting["effective_count"] == result["sample_size"]
+        assert accounting["eligible_count"] + accounting["excluded_anomaly_count"] == accounting[
+            "candidate_count"
+        ]
+
+        evaluation = result["evaluation"]
+        assert set(evaluation) == {
+            "version",
+            "method",
+            "status",
+            "evaluation_count",
+            "eligible_realized_count",
+            "excluded_anomaly_outcome_count",
+            "date_range",
+            "training_sample_range",
+            "forecast_model",
+            "baseline",
+            "max_evaluation_points",
+            "minimum_training_samples",
+            "information_rule",
+        }
+        assert evaluation["status"] == "available"
+        assert evaluation["date_range"]["first_origin"] <= evaluation["date_range"][
+            "last_origin"
+        ]
+        for evaluated in (evaluation["forecast_model"], evaluation["baseline"]):
+            assert set(evaluated["direction_brier"]["components"]) == {
+                "down",
+                "unchanged",
+                "up",
+            }
+            assert 0 <= evaluated["direction_brier"]["multiclass_mean"] <= 2
+            assert len(evaluated["threshold_brier"]) == 8
+            assert evaluated["reliability"]["bin_count"] == 5
+            assert len(evaluated["interval_coverage"]) == 3
+            for coverage in evaluated["interval_coverage"]:
+                assert coverage["coverage"] == pytest.approx(
+                    coverage["covered_count"] / coverage["sample_count"]
+                )
+
+
+@pytest.mark.parametrize(
+    ("symbol", "asset_type", "company_name", "quote_type"),
+    [
+        ("ACDC", "stock", "ProFrac Holding Corp.", "EQUITY"),
+        ("SPY", "etf", "SPDR S&P 500 ETF Trust", "ETF"),
+    ],
+)
+def test_forecast_horizons_remain_bound_to_selected_company_identity(
+    settings, symbol, asset_type, company_name, quote_type
+):
+    fixed_now = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+    with TestClient(create_app(settings, FixtureProvider(), lambda: fixed_now)) as isolated:
+        payload = _forecast(isolated, symbol, asset_type).json()
+
+    identity = payload["input"]["instrument_identity"]
+    assert (identity["canonical_symbol"], identity["asset_type"], identity["company_name"]) == (
+        symbol,
+        asset_type,
+        company_name,
+    )
+    assert identity["quote_type"] == quote_type
+    assert len(payload["results"]) == 2
+    assert all(
+        result["model_fingerprint"] == payload["input"]["model_fingerprint"]
+        for result in payload["results"]
+    )
+
+
+@pytest.mark.parametrize(
+    "corrupt",
+    [
+        lambda result: result["direction_probabilities"].__setitem__("up", 1.5),
+        lambda result: result["threshold_probabilities"][0].__setitem__("sample_count", 0),
+        lambda result: result["magnitude_intervals"][0]["percent"].update(
+            {"low": 2.0, "high": 1.0}
+        ),
+        lambda result: result["evaluation"]["forecast_model"]["interval_coverage"][0].update(
+            {"covered_count": 0, "coverage": 1.0}
+        ),
+    ],
+    ids=["probability", "sample-count", "interval-order", "coverage-count"],
+)
+def test_forecast_api_rejects_invalid_numerical_service_results(settings, monkeypatch, corrupt):
+    """Transport validates supplied calculations; it does not repair or silently publish them."""
+
+    application = create_app(
+        settings,
+        FixtureProvider(),
+        lambda: datetime(2025, 1, 10, 17, 3, tzinfo=UTC),
+    )
+    with TestClient(application, raise_server_exceptions=False) as isolated:
+        valid = _forecast(isolated).json()
+        invalid = json.loads(json.dumps(valid))
+        corrupt(invalid["results"][0])
+        monkeypatch.setattr(application.state.service, "search", lambda *_args: invalid)
+        rejected = _forecast(isolated)
+
+    assert rejected.status_code == 500
+    assert rejected.json()["error"]["code"] == "internal_error"
+    assert "input" not in rejected.json() and "results" not in rejected.json()
+
+
+def test_malformed_service_forecast_without_event_is_failed_and_audited_once(
+    settings, monkeypatch
+):
+    """Response validation owns an audit when a defective service returned no event at all."""
+
+    application = create_app(settings, FixtureProvider())
+    monkeypatch.setattr(
+        application.state.service,
+        "search",
+        lambda *_args: {"event": None, "input": {"provider_secret": "do-not-leak"}},
+    )
+    with TestClient(application, raise_server_exceptions=False) as isolated:
+        response = _forecast(isolated)
+        history = isolated.get("/api/v1/history").json()
+        recorded = isolated.get(f"/api/v1/history/{history['items'][0]['id']}").json()
+
+    assert response.status_code == 500
+    assert response.json()["error"] == {
+        "code": "internal_error",
+        "message": "The local service could not complete the request.",
+        "request_id": history["items"][0]["request_id"],
+    }
+    assert "provider_secret" not in response.text and "do-not-leak" not in response.text
+    assert history["total"] == 1
+    assert history["items"][0]["status"] == "failed"
+    assert history["items"][0]["error_code"] == "internal_error"
+    assert recorded["input"] is None and recorded["results"] == []
+
+
+def test_malformed_service_forecast_reuses_already_persisted_event_without_duplicate(
+    settings, monkeypatch
+):
+    """The event request ID is an atomic idempotency key across service and API ownership."""
+
+    application = create_app(settings, FixtureProvider())
+    request_id = "service-audit-request"
+
+    def malformed_after_audit(submitted_symbol, asset_type):
+        now = datetime.now(UTC)
+        event_id = application.state.repository.record_failure(
+            request_id=request_id,
+            submitted_symbol=submitted_symbol,
+            normalized_symbol="ACDC",
+            asset_type=asset_type,
+            error_code="calculation_failure",
+            error_message="The forecast calculation could not be completed.",
+            submitted_at=now,
+            completed_at=now,
+        )
+        # Preserve the normal event correlation fields while corrupting the success body.
+        return {
+            "event": {
+                "id": event_id,
+                "request_id": request_id,
+                "status": "failed",
+            },
+            "input": {"implementation_detail": "do-not-leak"},
+            "results": [],
+        }
+
+    monkeypatch.setattr(application.state.service, "search", malformed_after_audit)
+    with TestClient(application, raise_server_exceptions=False) as isolated:
+        response = _forecast(isolated)
+        history = isolated.get("/api/v1/history").json()
+        recorded = isolated.get(f"/api/v1/history/{history['items'][0]['id']}").json()
+
+    assert response.status_code == 500
+    assert response.json()["error"]["request_id"] == request_id
+    assert response.json()["error"]["code"] == "internal_error"
+    assert "implementation_detail" not in response.text and "do-not-leak" not in response.text
+    assert history["total"] == 1
+    assert history["items"][0]["request_id"] == request_id
+    assert history["items"][0]["status"] == "failed"
+    assert history["items"][0]["error_code"] == "calculation_failure"
+    assert recorded["input"] is None and recorded["results"] == []
+
+
+def test_openapi_forecast_contract_is_closed_and_timestamp_typed(client):
+    contract = client.get("/api/v1/openapi.json").json()
+    schemas = contract["components"]["schemas"]
+    forecast_schema_names = {
+        name
+        for name in schemas
+        if any(
+            term in name
+            for term in (
+                "Forecast",
+                "Direction",
+                "Threshold",
+                "Interval",
+                "Reliability",
+                "Evaluation",
+                "Provider",
+                "Sample",
+                "Conditional",
+            )
+        )
+    }
+    assert forecast_schema_names
+    assert all(schemas[name].get("additionalProperties") is False for name in forecast_schema_names)
+    result = schemas["RecordedForecastResultResponse"]
+    assert result["properties"]["origin_timestamp"]["format"] == "date-time"
+    assert result["properties"]["horizon_start_timestamp"]["format"] == "date-time"
+    assert result["properties"]["horizon_end_timestamp"]["format"] == "date-time"
+    assert set(result["required"]) >= {
+        "horizon",
+        "horizon_start_timestamp",
+        "horizon_end_timestamp",
+        "direction_probabilities",
+        "threshold_probabilities",
+        "conditional_magnitudes",
+        "magnitude_intervals",
+        "sample_accounting",
+        "evaluation",
+    }
+    serialized = json.dumps({name: schemas[name] for name in forecast_schema_names}).lower()
+    assert not re.search(r"\b(sqlite|sql|database|repository|dataframe)\b", serialized)
+
+
 def test_history_status_filters_and_pagination_keep_repeat_semantics_exact(client):
     _forecast(client, "ACDC")
     _forecast(client, "ACDC")
@@ -1165,8 +1637,11 @@ def test_unexpected_provider_failure_is_safe_and_audited(settings):
     with TestClient(create_app(settings, BrokenProvider())) as isolated:
         response = _forecast(isolated)
         history = isolated.get("/api/v1/history").json()
+        failed_record = isolated.get(f"/api/v1/history/{history['items'][0]['id']}").json()
 
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "provider_unavailable"
     assert "secret" not in str(response.json())
     assert history["items"][0]["status"] == "failed"
+    assert history["items"][0]["run_id"] is None
+    assert failed_record["input"] is None and failed_record["results"] == []

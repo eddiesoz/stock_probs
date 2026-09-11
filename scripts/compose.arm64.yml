@@ -1,4 +1,4 @@
-# M01 extracts a pinned user-mode emulator, then runs a pinned ARM64 package/runtime image.
+# A milestone gate extracts a pinned user-mode emulator, then runs a pinned ARM64 package/runtime image.
 services:
   qemu-acquire:
     image: multiarch/qemu-user-static:7.2.0-1@sha256:fe60359c92e86a43cc87b3d906006245f77bfc0565676b80004cc666e4feb9f0
@@ -74,6 +74,7 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
       STOCK_PROBS_EXECUTION_LABEL: "emulated ARM64 via OCI/QEMU; not native or physical ARM64 performance evidence"
       STOCK_PROBS_REVISION: "${STOCK_PROBS_REVISION:?}"
+      STOCK_PROBS_TASK_ID: "${STOCK_PROBS_TASK_ID:?}"
     volumes:
       - "..:/workspace:ro"
       - "${STOCK_PROBS_ARM64_ARTIFACT_DIR:?}:/artifacts"

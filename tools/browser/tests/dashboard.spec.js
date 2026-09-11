@@ -39,14 +39,117 @@ function expectPublicBackupCounts(label, counts) {
   }
 }
 
-test("forecast journey exposes complete text equivalents and audit states", async ({ page, applicationRequests }, testInfo) => {
-  const securityConsoleErrors = [];
-  page.on("console", (message) => {
-    // A deliberate 502 logs as a browser error; only CSP/style violations fail this gate.
-    if (message.type() === "error" && /content security policy|refused to/i.test(message.text())) {
-      securityConsoleErrors.push(message.text());
-    }
+async function submitUiForecast(page, symbol, assetType = "stock") {
+  await page.getByLabel("Yahoo Finance symbol").fill(symbol);
+  await page.getByLabel(assetType === "etf" ? "ETF" : "Stock").check();
+  const responsePromise = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && new URL(response.url()).pathname === "/api/v1/forecasts"
+  ));
+  await page.getByRole("button", { name: "Run forecast" }).click();
+  const response = await responsePromise;
+  expect(response.status()).toBe(201);
+  return response.json();
+}
+
+function expectM03Payload(payload, assetType) {
+  expect(payload.input.asset_type).toBe(assetType);
+  expect(payload.input.instrument_identity.asset_type).toBe(assetType);
+  expect(payload.input.model.name).toEqual(expect.any(String));
+  expect(payload.input.model.version).toEqual(expect.any(String));
+  expect(payload.input.provider_metadata.intraday_archive_limit).toMatchObject({
+    approximate_days: 60,
   });
+  expect(payload.results.map((result) => result.horizon).sort()).toEqual([
+    "close_to_close",
+    "completed_5m_to_close",
+  ]);
+  for (const result of payload.results) {
+    expect(result.reference_timestamp).toEqual(expect.any(String));
+    expect(result.reference_state).toEqual(expect.any(String));
+    expect(result.target_timestamp).toEqual(expect.any(String));
+    expect(result.model_version).toEqual(expect.any(String));
+    expect(result.direction_probabilities).toMatchObject({
+      down: expect.any(Number),
+      unchanged: expect.any(Number),
+      up: expect.any(Number),
+    });
+    expect(result.threshold_probabilities.map((item) => item.threshold).sort((a, b) => a - b)).toEqual([
+      -10, -5, -3, -1, 1, 3, 5, 10,
+    ]);
+    expect(result.threshold_probabilities.every((item) => (
+      item.sample_count > 0
+      && item.uncertainty.method.includes("Wilson")
+      && typeof item.rare_event === "boolean"
+    ))).toBe(true);
+    expect(result.conditional_magnitudes).toMatchObject({
+      gain: { observed_count: expect.any(Number), unit: "percent_return_magnitude" },
+      loss: { observed_count: expect.any(Number), unit: "percent_return_magnitude" },
+    });
+    expect(result.magnitude_intervals.map((item) => item.level)).toEqual([0.5, 0.8, 0.95]);
+    expect(result.sample_size).toBeGreaterThan(0);
+    expect(result.sample_accounting.effective_count).toBe(result.sample_size);
+    expect(result.evaluation).toMatchObject({
+      method: expect.stringContaining("chronological"),
+      status: "available",
+      forecast_model: {
+        direction_brier: expect.any(Object),
+        reliability: expect.any(Object),
+        interval_coverage: expect.any(Array),
+      },
+      baseline: {
+        direction_brier: expect.any(Object),
+        reliability: expect.any(Object),
+        interval_coverage: expect.any(Array),
+      },
+    });
+  }
+}
+
+async function expectM03Presentation(page, companyName, assetType) {
+  const result = page.locator("#result-content");
+  await expect(result).toContainText(companyName);
+  await expect(result).toContainText(assetType === "etf" ? "ETF / ETF" : "STOCK / EQUITY");
+  await expect(result.getByText("Origin timestamp")).toHaveCount(2);
+  await expect(result.getByText("Reference timestamp")).toHaveCount(2);
+  await expect(result.getByText("Target close")).toHaveCount(2);
+  await expect(result.locator(".forecast-card").getByText("Session at request")).toHaveCount(2);
+  await expect(result.getByText("Down probability")).toHaveCount(2);
+  await expect(result.getByText("Unchanged probability")).toHaveCount(2);
+  await expect(result.getByText("Up probability")).toHaveCount(2);
+  for (const threshold of ["-1%", "-3%", "-5%", "-10%", "+1%", "+3%", "+5%", "+10%"]) {
+    await expect(result.getByText(new RegExp(`Return .* ${threshold.replace("+", "\\+")}$`))).toHaveCount(2);
+  }
+  await expect(result.getByRole("heading", { name: "Conditional gain / loss magnitudes" })).toHaveCount(2);
+  for (const level of ["50%", "80%", "95%"]) {
+    await expect(result.getByText(`${level} magnitude interval (return and price)`)).toHaveCount(2);
+  }
+  await expect(result.getByText("Historical sample count")).toHaveCount(2);
+  await expect(result.getByRole("heading", { name: "Sample uncertainty" })).toHaveCount(2);
+  await expect(result.getByRole("heading", { name: "Chronological walk-forward evaluation" })).toHaveCount(2);
+  await expect(result).toContainText("Direction Brier");
+  await expect(result).toContainText("Baseline");
+  await expect(result).toContainText("Reliability");
+  await expect(result).toContainText("Interval coverage");
+  await expect(result).toContainText("Provider:");
+  await expect(result).toContainText("Response as-of:");
+  await expect(result).toContainText("Stale state:");
+  await expect(result).toContainText("Missing-bar evidence");
+  await expect(result).toContainText("approximately 60 recent days");
+  await expect(result).toContainText("Provider request and immutable provenance");
+  const widths = await page.evaluate(() => ({
+    content: document.body.scrollWidth,
+    visual: window.visualViewport?.width || document.documentElement.clientWidth,
+  }));
+  expect(widths.content).toBeLessThanOrEqual(Math.ceil(widths.visual));
+}
+
+test("forecast journey exposes complete text equivalents and audit states", async ({
+  page,
+  applicationRequests,
+  browserDiagnostics,
+}, testInfo) => {
+  browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/forecasts", status: 502 });
 
   await page.goto("/");
   await expect(page.getByText("No forecast loaded")).toBeVisible();
@@ -76,14 +179,99 @@ test("forecast journey exposes complete text equivalents and audit states", asyn
 
   expect(applicationRequests.length).toBeGreaterThan(0);
   expect(applicationRequests.every((url) => new URL(url).pathname.startsWith("/api/v1"))).toBe(true);
-  expect(securityConsoleErrors).toEqual([]);
+});
+
+test("M03 stock and ETF contracts remain complete, textual, and API-only", async ({
+  page,
+  applicationRequests,
+}) => {
+  for (const instrument of [
+    { symbol: "ACDC-D", assetType: "stock", company: "ProFrac Holding Corp." },
+    { symbol: "SPY-D", assetType: "etf", company: "SPDR S&P 500 ETF Trust" },
+  ]) {
+    await page.goto("/");
+    const payload = await submitUiForecast(page, instrument.symbol, instrument.assetType);
+    expectM03Payload(payload, instrument.assetType);
+    await expectM03Presentation(page, instrument.company, instrument.assetType);
+
+    const intraday = payload.results.find((item) => item.horizon === "completed_5m_to_close");
+    const selectedEnds = payload.input.selected_intraday_bars.map((bar) => Date.parse(bar.end));
+    const cutoff = Date.parse(payload.input.request_cutoff);
+    expect(Math.max(...selectedEnds)).toBeLessThanOrEqual(cutoff);
+    expect(Date.parse(intraday.origin_bar_end)).toBe(Math.max(...selectedEnds));
+    await expect(page.locator('[data-horizon="completed_5m_to_close"]')).toContainText(
+      "an active incomplete bar is excluded",
+    );
+  }
+
+  expect(applicationRequests.length).toBeGreaterThan(0);
+  expect(applicationRequests.every((url) => new URL(url).pathname.startsWith("/api/v1"))).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+test("M03 stale, missing, out-of-session, and failed states are explicit", async ({
+  page,
+  outOfSessionApplication,
+  browserDiagnostics,
+}) => {
+  browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/forecasts", status: 502 });
+  await page.goto("/");
+  await submitUiForecast(page, "STALE");
+  await expect(page.locator("#quality-badge")).toContainText("stale");
+  await expect(page.locator(".provenance")).toContainText(/latest completed intraday bar|applicable close elapsed/);
+
+  await page.route("**/api/v1/forecasts", async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    payload.input.quality = "stale";
+    payload.input.quality_reasons = ["provider data contains 2 missing intraday bars"];
+    payload.input.stale_state = {
+      state: "stale",
+      reasons: payload.input.quality_reasons,
+    };
+    payload.input.provider_metadata.missing_intraday_intervals = 2;
+    await route.fulfill({ response, json: payload });
+  });
+  await page.goto("/");
+  await submitUiForecast(page, "SPY-M", "etf");
+  await expect(page.locator("#quality-badge")).toContainText("stale");
+  await expect(page.locator(".missing-details")).toContainText("Missing intraday intervals");
+  await expect(page.locator(".missing-details")).toContainText("2");
+  await expect(page.locator(".provenance")).toContainText("provider data contains 2 missing intraday bars");
+  await page.unroute("**/api/v1/forecasts");
+
+  await page.goto(outOfSessionApplication.url);
+  const outOfSession = await submitUiForecast(page, "ACDC-D");
+  expect(outOfSession.input.session_state_at_request).toBe("post_session");
+  await expect(page.locator('[data-horizon="completed_5m_to_close"]')).toContainText("Post session");
+  await expect(page.locator('[data-horizon="completed_5m_to_close"]')).toContainText(
+    "next scheduled session close",
+  );
+
+  await page.goto("/");
+  await page.getByLabel("Yahoo Finance symbol").fill("FAIL");
+  await page.getByRole("button", { name: "Run forecast" }).click();
+  const failure = page.getByRole("alert");
+  await expect(failure).toHaveCount(1);
+  await expect(failure).toContainText("Deterministic provider failure");
+  await expect(failure).toContainText("Error code: provider_unavailable");
+  await expect(page.locator("#result-content .error-panel")).toHaveCount(1);
+  await expect(page.locator("#lookup-status")).toBeEmpty();
+  await expect(page.locator("#history-content tbody tr").first()).toContainText("failed");
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
 
 test("managed backup network contract and error UI stay storage-neutral", async ({
   page,
   applicationRequests,
   unexpectedFailureApplication,
+  browserDiagnostics,
 }, testInfo) => {
+  browserDiagnostics.expectHttpFailures(
+    { method: "POST", path: "/api/v1/operations/restores", status: 422 },
+    { method: "POST", path: "/api/v1/forecasts", status: 502 },
+    { method: "POST", path: "/api/v1/operations/backups", status: 500 },
+  );
   await page.goto("/");
   await expect(page.locator("#system-label")).toContainText("backup available");
 
@@ -228,7 +416,9 @@ test("dashboard is keyboard-operable, responsive, and axe-clean", async ({ page 
   await page.getByRole("link", { name: "Skip to forecasts" }).press("Enter");
   await expect(page.locator("#main")).toBeFocused();
 
-  const viewportWidth = await page.evaluate(() => document.documentElement.clientWidth);
+  // Mobile Chromium can widen its layout viewport when an unbreakable result leaks outside the
+  // visual viewport, so compare against the width the user can actually see.
+  const viewportWidth = await page.evaluate(() => window.visualViewport?.width || document.documentElement.clientWidth);
   const bodyWidth = await page.evaluate(() => document.body.scrollWidth);
   expect(bodyWidth).toBeLessThanOrEqual(viewportWidth);
 
@@ -262,11 +452,23 @@ test("company lookup is bounded, race-safe, keyboard-selectable, and confirms id
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
 
-test("a stale lookup response cannot replace newer company choices", async ({ page }) => {
+test("a superseded lookup is aborted once and cannot race a direct-symbol forecast", async ({
+  page,
+  browserDiagnostics,
+}) => {
+  const lookupQueries = [];
   await page.route("**/api/v1/instruments?*", async (route) => {
     const query = new URL(route.request().url()).searchParams.get("query");
-    if (query === "ProFrac") await new Promise((resolve) => setTimeout(resolve, 500));
+    lookupQueries.push(query);
+    if (["ProFrac", "ACDC-D"].includes(query)) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
     await route.continue();
+  });
+  browserDiagnostics.expectRequestAborts({
+    method: "GET",
+    path: "/api/v1/instruments",
+    count: 2,
   });
   await page.goto("/");
   const symbol = page.getByLabel("Company name or Yahoo Finance symbol");
@@ -275,6 +477,19 @@ test("a stale lookup response cannot replace newer company choices", async ({ pa
   await symbol.fill("SPDR");
   await expect(page.getByRole("option", { name: /SPDR S&P 500 ETF Trust/ })).toBeVisible();
   await expect(page.locator("#instrument-options")).not.toContainText("ProFrac Holding Corp");
+
+  await symbol.fill("ACDC-D");
+  await expect(page.getByText("Looking up “ACDC-D”…")).toBeVisible();
+  const forecastResponse = page.waitForResponse((response) => (
+    response.request().method() === "POST"
+    && new URL(response.url()).pathname === "/api/v1/forecasts"
+  ));
+  await page.getByRole("button", { name: "Run forecast" }).click();
+  expect((await forecastResponse).status()).toBe(201);
+  await expect(page.getByRole("heading", { name: "Close → next close" })).toBeVisible();
+  await expect(page.locator("#instrument-options")).toBeHidden();
+  await expect(page.locator("#lookup-status")).toBeEmpty();
+  expect(lookupQueries.filter((query) => query === "ACDC-D")).toHaveLength(1);
 });
 
 test("history filters and immutable saved reopen remain usable", async ({ page }, testInfo) => {
@@ -321,6 +536,9 @@ test("saved results, append-only corrections, and fresh cutoff analysis stay dis
   await expect(historyRow).toContainText(`${expectedRunLabel} #${created.event.run_id}`);
   await historyRow.getByRole("button", { name: "Reopen saved forecast" }).click();
   await expect(page.getByText(/Immutable recorded result · audit event/)).toBeVisible();
+  await expect(page.locator("#result-content .state-strip")).toContainText(
+    "Forecast inputs and values are reopened exactly as saved",
+  );
   await expect(page.getByRole("heading", { name: "Append-only outcome ledger" }).first()).toBeVisible();
   await expect(page.locator(".outcome-list").first()).toContainText("official close");
   await expect(page.locator(".outcome-list").first()).toContainText("vendor correction");
@@ -328,6 +546,8 @@ test("saved results, append-only corrections, and fresh cutoff analysis stay dis
 
   await historyRow.getByRole("button", { name: "Run fresh cutoff analysis" }).click();
   await expect(page.getByRole("heading", { name: "Fresh historical-cutoff analysis" })).toBeVisible();
+  await expect(page.locator("#fresh-analysis-section").getByText("New calculation", { exact: true })).toBeVisible();
+  await expect(page.locator("#fresh-analysis-section")).toContainText("Not the saved forecast");
   await expect(page.locator("#fresh-analysis-content")).toContainText("This is a new calculation");
   await expect(page.locator("#fresh-analysis-content")).toContainText("Historical cutoff");
   expect(await page.locator("#result-content").innerText()).toBe(savedText);

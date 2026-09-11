@@ -93,10 +93,13 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .probability-bar.down .fill { accent-color: var(--red); }
 .probability-bar.up .fill { accent-color: var(--green); }
 .probability-bar .label { padding: .55rem 0; color: var(--muted); font-size: .72rem; font-weight: 800; text-transform: uppercase; }
-.details-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.details-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .82rem; }
 .details-table caption { padding: 1rem 1.2rem .3rem; text-align: left; font-weight: 800; }
-.details-table th, .details-table td { padding: .65rem 1.2rem; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
-.details-table th { color: var(--muted); font-weight: 700; }
+.details-table th, .details-table td { padding: .65rem 1.2rem; border-top: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.details-table th { width: 42%; color: var(--muted); font-weight: 700; }
+.conditional-details, .uncertainty-details, .evaluation-details { border-top: 3px double var(--line); }
+.conditional-details h4, .uncertainty-details h4, .evaluation-details h4 { margin: 0; padding: 1rem 1.2rem .2rem; font: 600 1rem/1.2 Georgia, serif; }
+.contract-table caption { padding: 0; }
 .outcomes { border-top: 3px double var(--line); padding: .7rem 1.2rem 1rem; }
 .outcomes h4 { margin: .3rem 1.2rem .6rem; font: 600 1rem/1.2 Georgia, serif; }
 .outcomes h4 { margin-left: 0; }
@@ -106,7 +109,11 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .outcome-list li::before { content: "Entry " counter(outcome); display: block; margin-bottom: .2rem; color: var(--muted); font-size: .65rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .outcome-state { margin-right: .35rem; font-weight: 900; text-transform: capitalize; }
 .provenance { margin-top: 1.2rem; border-left: 4px solid var(--accent); background: #e8e5dc; padding: 1rem 1.2rem; color: #4e5954; font-size: .82rem; line-height: 1.55; }
+.provenance h3 { margin: 0 0 .7rem; color: var(--ink); font: 600 1.15rem/1.2 Georgia, serif; }
 .provenance p { margin: .2rem 0; overflow-wrap: anywhere; }
+.provenance section { margin-top: .9rem; border-top: 1px solid var(--line); background: var(--sheet); }
+.provenance section h4 { margin: 0; padding: .8rem 1rem .1rem; color: var(--ink); }
+.provenance .details-table { table-layout: fixed; overflow-wrap: anywhere; }
 .fresh-warning { max-width: 70rem; border-left: 4px solid var(--amber); background: #f4ead1; padding: .8rem 1rem; font-size: .82rem; line-height: 1.5; }
 .fresh-analysis-content { background: var(--sheet); }
 
