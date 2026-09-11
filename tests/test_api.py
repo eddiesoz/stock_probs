@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from stock_probs.api import create_app
 from stock_probs.config import Settings
+from stock_probs.provider import FixtureProvider
 
 
 def _forecast(client, symbol="ACDC", asset_type="stock"):
@@ -31,6 +32,25 @@ def test_health_readiness_and_security_headers(client):
     contract = client.get("/api/v1/openapi.json").json()
     assert "/api/v1/forecasts" in contract["paths"]
     assert "/api/v1/operations/restores" in contract["paths"]
+    assert all(path.startswith("/api/v1/") for path in contract["paths"])
+    assert "database_path" not in str(contract) and "backup_dir" not in str(contract)
+
+
+def test_readiness_is_fail_closed_until_lifespan_startup(settings):
+    application = create_app(settings, FixtureProvider())
+    not_started = TestClient(application)
+
+    health = not_started.get("/api/v1/health")
+    readiness = not_started.get("/api/v1/readiness")
+    not_started.close()
+
+    assert health.status_code == 200
+    assert readiness.status_code == 503
+    assert readiness.json() == {
+        "error": {"code": "service_unavailable", "message": "The local service is not ready."}
+    }
+    assert not settings.database_path.exists()
+    assert not settings.backup_dir.exists()
 
 
 def test_openapi_uses_concrete_success_and_safe_error_schemas(client):
@@ -40,6 +60,7 @@ def test_openapi_uses_concrete_success_and_safe_error_schemas(client):
     expected_success = {
         ("/api/v1/health", "get", "200"): "HealthResponse",
         ("/api/v1/readiness", "get", "200"): "ReadinessResponse",
+        ("/api/v1/instruments", "get", "200"): "InstrumentLookupResponse",
         ("/api/v1/forecasts", "post", "201"): "ForecastCreationResponse",
         ("/api/v1/history", "get", "200"): "HistoryResponse",
         ("/api/v1/history/{event_id}", "get", "200"): "ReconstructionResponse",
@@ -74,14 +95,20 @@ def test_router_method_and_mounted_asset_errors_share_safe_envelope(client):
     unknown_api = client.get("/api/v1/not-a-route")
     wrong_method = client.post("/api/v1/health")
     missing_asset = client.get("/assets/not-present.css")
+    wrong_asset_method = client.post("/assets/app.js")
 
     assert unknown_api.status_code == missing_asset.status_code == 404
-    assert unknown_api.json() == {"error": {"code": "not_found", "message": "Not Found"}}
-    assert missing_asset.json() == {"error": {"code": "not_found", "message": "Not Found"}}
+    expected = {
+        "error": {"code": "not_found", "message": "The requested resource was not found."}
+    }
+    assert unknown_api.json() == expected
+    assert missing_asset.json() == expected
     assert wrong_method.status_code == 405
     assert wrong_method.json()["error"]["code"] == "method_not_allowed"
     assert wrong_method.headers["allow"] == "GET"
-    for response in (unknown_api, wrong_method, missing_asset):
+    assert wrong_asset_method.status_code == 405
+    assert wrong_asset_method.json()["error"]["code"] == "method_not_allowed"
+    for response in (unknown_api, wrong_method, missing_asset, wrong_asset_method):
         assert response.headers["content-type"] == "application/json"
         assert response.headers["content-security-policy"]
 
@@ -99,6 +126,82 @@ def test_dependency_free_api_docs_obey_the_strict_csp(client):
     assert "https://" not in response.text
 
 
+def test_company_and_fund_names_remain_attached_to_instrument_identity(settings):
+    with TestClient(create_app(settings, FixtureProvider())) as isolated:
+        stock = isolated.get("/api/v1/instruments", params={"query": "ProFrac", "limit": 1})
+        fund = isolated.get("/api/v1/instruments", params={"query": "SPDR"})
+        history = isolated.get("/api/v1/history").json()
+
+    stock_identity = stock.json()["items"][0]
+    fund_identity = fund.json()["items"][0]
+    assert stock.json()["query"] == "ProFrac"
+    assert stock.json()["limit"] == 1
+    assert stock_identity["company_name"] == "ProFrac Holding Corp."
+    assert stock_identity["canonical_symbol"] == "ACDC"
+    assert stock_identity["asset_type"] == "stock"
+    assert {
+        key: stock_identity[key]
+        for key in ("exchange", "currency", "timezone", "quote_type")
+    } == {
+        "exchange": "NMS",
+        "currency": "USD",
+        "timezone": "America/New_York",
+        "quote_type": "EQUITY",
+    }
+    assert fund_identity["company_name"] == "SPDR S&P 500 ETF Trust"
+    assert fund_identity["canonical_symbol"] == "SPY"
+    assert fund_identity["asset_type"] == "etf"
+    # Identity inspection is not a forecast submission and must not invent an audit event.
+    assert history["total"] == 0
+
+
+def test_instrument_lookup_routes_through_application_service(settings, monkeypatch):
+    application = create_app(settings, FixtureProvider())
+    calls = []
+
+    def lookup(query, limit):
+        calls.append((query, limit))
+        return {"query": "service-result", "items": [], "total": 0, "limit": limit}
+
+    monkeypatch.setattr(application.state.service, "lookup", lookup)
+    with TestClient(application) as isolated:
+        response = isolated.get(
+            "/api/v1/instruments", params={"query": "provider-must-not-run", "limit": 2}
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "query": "service-result",
+        "items": [],
+        "total": 0,
+        "limit": 2,
+    }
+    assert calls == [("provider-must-not-run", 2)]
+
+
+def test_instrument_lookup_is_bounded_and_provider_failures_are_safe(settings):
+    class BrokenLookupProvider(FixtureProvider):
+        def lookup(self, query, limit, now):
+            raise RuntimeError("secret provider implementation detail")
+
+    with TestClient(create_app(settings, FixtureProvider())) as isolated:
+        no_match = isolated.get("/api/v1/instruments", params={"query": "unknown"})
+        invalid_limit = isolated.get(
+            "/api/v1/instruments", params={"query": "ACDC", "limit": 6}
+        )
+        provider_failure = isolated.get("/api/v1/instruments", params={"query": "FAIL"})
+    with TestClient(create_app(settings, BrokenLookupProvider())) as isolated:
+        unexpected = isolated.get("/api/v1/instruments", params={"query": "ACDC"})
+
+    assert no_match.json()["items"] == []
+    assert invalid_limit.status_code == 422
+    assert invalid_limit.json()["error"]["code"] == "validation_error"
+    assert provider_failure.status_code == 502
+    assert provider_failure.json()["error"]["code"] == "provider_unavailable"
+    assert unexpected.status_code == 502
+    assert "secret" not in str(unexpected.json())
+
+
 def test_success_repeat_failure_and_searchable_history(client):
     first = _forecast(client)
     repeated = _forecast(client)
@@ -106,6 +209,8 @@ def test_success_repeat_failure_and_searchable_history(client):
 
     assert first.status_code == 201
     assert first.json()["event"]["status"] == "successful"
+    assert first.json()["input"]["company_name"] == "ProFrac Holding Corp."
+    assert first.json()["input"]["instrument_identity"]["canonical_symbol"] == "ACDC"
     assert repeated.json()["event"]["status"] == "repeated"
     assert repeated.json()["input"]["id"] == first.json()["input"]["id"]
     assert failed.status_code == 502

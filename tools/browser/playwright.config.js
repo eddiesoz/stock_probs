@@ -1,4 +1,4 @@
-// Browser runs are serial and bounded for the target low-resource ARM64 laptop.
+// Browser runs are serial and bounded on both supported Linux architectures.
 const { defineConfig, devices } = require("@playwright/test");
 
 const portText = process.env.STOCK_PROBS_BROWSER_PORT || "8765";
@@ -15,7 +15,7 @@ module.exports = defineConfig({
   workers: 1,
   retries: 0,
   reporter: [["line"], ["html", { outputFolder: "playwright-report", open: "never" }]],
-  metadata: { task: "M06", revision: process.env.GITHUB_SHA || "working-tree" },
+  metadata: { task: "M06", revision: process.env.STOCK_PROBS_REVISION || "working-tree" },
   use: {
     baseURL,
     actionTimeout: 5_000,

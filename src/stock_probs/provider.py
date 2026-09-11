@@ -3,19 +3,52 @@
 from __future__ import annotations
 
 import json
+import math
+import unicodedata
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, time, timedelta
+from importlib import import_module
 from importlib.resources import files
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from zoneinfo import ZoneInfo
 
-import yfinance as yf
+from stock_probs.domain import (
+    Bar,
+    DomainError,
+    InstrumentIdentity,
+    MarketData,
+    normalize_lookup_query,
+    normalize_symbol,
+    scheduled_session_close,
+)
 
-from stock_probs.domain import Bar, DomainError, MarketData, scheduled_session_close
+
+class _YahooSearchResult(Protocol):
+    quotes: object
+
+
+class _YFinanceModule(Protocol):
+    """Type only the two yfinance constructors this bounded adapter is allowed to use."""
+
+    def Search(self, query: str, **kwargs: object) -> _YahooSearchResult: ...
+
+    def Ticker(self, symbol: str) -> object: ...
+
+
+# yfinance does not publish type information; keep its dynamic module behind the narrow facade.
+yf = cast(_YFinanceModule, import_module("yfinance"))
+
+MAX_LOOKUP_RESULTS = 5
+YAHOO_PROVIDER_NAME = "Yahoo Finance"
+FIXTURE_PROVIDER_NAME = "deterministic fixture"
 
 
 class MarketDataProvider(Protocol):
     """Narrow provider boundary keeps deterministic tests out of transport internals."""
+
+    def lookup(
+        self, query: str, limit: int, now: datetime
+    ) -> tuple[InstrumentIdentity, ...]: ...
 
     def fetch(self, symbol: str, asset_type: str, now: datetime) -> MarketData: ...
 
@@ -24,8 +57,25 @@ class YahooProvider:
     """Translate bounded yfinance history calls into the provider-neutral contract."""
 
     def __init__(self, timeout: float = 8.0, clock: Callable[[], datetime] | None = None):
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, int | float)
+            or not math.isfinite(timeout)
+            or not 0.1 <= timeout <= 20.0
+        ):
+            raise ValueError("Yahoo timeout must be between 0.1 and 20 seconds")
         self.timeout = timeout
         self.clock = clock or (lambda: datetime.now(UTC))
+
+    def _response_time(self) -> datetime:
+        """Require an aware completion time so lookup and forecast provenance stay comparable."""
+
+        captured = self.clock()
+        if captured.tzinfo is None:
+            raise DomainError(
+                "ambiguous_provider_time", "Provider response time must include an offset."
+            )
+        return captured.astimezone(UTC)
 
     def _history(self, ticker: Any, *, period: str, interval: str) -> Any:
         try:
@@ -46,6 +96,140 @@ class YahooProvider:
                 "Yahoo Finance did not return usable data within the configured timeout.",
                 status_code=502,
             ) from exc
+
+    @staticmethod
+    def _identity_from_metadata(
+        metadata: Mapping[str, Any],
+        provider_as_of: datetime,
+        *,
+        fallback: Mapping[str, Any] | None = None,
+    ) -> InstrumentIdentity:
+        """Use identity facts from bounded Yahoo responses, never guessed defaults."""
+
+        fallback = fallback or {}
+        quote_type = _metadata_text(
+            metadata.get("instrumentType") or fallback.get("quoteType"), "quote type", 24
+        ).upper()
+        asset_type = {"equity": "stock", "stock": "stock", "etf": "etf"}.get(
+            quote_type.lower()
+        )
+        if asset_type is None:
+            raise DomainError(
+                "unsupported_asset",
+                "Yahoo did not classify this symbol as a supported stock or ETF.",
+            )
+        raw_symbol = metadata.get("symbol") or fallback.get("symbol")
+        if not isinstance(raw_symbol, str):
+            raise DomainError(
+                "invalid_instrument_identity",
+                "Yahoo did not return a canonical instrument symbol.",
+                status_code=502,
+            )
+        try:
+            canonical_symbol = normalize_symbol(raw_symbol)
+        except DomainError as exc:
+            raise DomainError(
+                "invalid_instrument_identity",
+                "Yahoo returned an invalid canonical instrument symbol.",
+                status_code=502,
+            ) from exc
+        long_name = metadata.get("longName") or fallback.get("longname")
+        short_name = metadata.get("shortName") or fallback.get("shortname")
+        display_name = _metadata_text(short_name or long_name, "display name", 200)
+        company_name = _metadata_text(long_name or short_name, "company name", 200)
+        return InstrumentIdentity(
+            canonical_symbol=canonical_symbol,
+            display_name=display_name,
+            company_name=company_name,
+            exchange=_metadata_text(
+                metadata.get("exchangeName") or fallback.get("exchange"), "exchange", 40
+            ),
+            currency=_metadata_text(metadata.get("currency"), "currency", 12),
+            timezone=_metadata_text(metadata.get("exchangeTimezoneName"), "timezone", 80),
+            quote_type=quote_type,
+            asset_type=asset_type,
+            provider=YAHOO_PROVIDER_NAME,
+            provider_as_of=provider_as_of,
+        )
+
+    def lookup(
+        self, query: str, limit: int = MAX_LOOKUP_RESULTS, now: datetime | None = None
+    ) -> tuple[InstrumentIdentity, ...]:
+        """Resolve a bounded Yahoo company-name query to complete, selectable identities."""
+
+        normalized_query = normalize_lookup_query(query)
+        _validate_lookup_limit(limit)
+        requested_at = now or datetime.now(UTC)
+        if requested_at.tzinfo is None:
+            raise DomainError(
+                "ambiguous_provider_time", "Provider lookup time must include an offset."
+            )
+        try:
+            # Search is the only company-name call. News/lists/recommendations are disabled so
+            # Yahoo cannot return unrelated, unbounded payload categories.
+            search = yf.Search(
+                normalized_query,
+                max_results=limit,
+                news_count=0,
+                lists_count=0,
+                include_cb=False,
+                include_nav_links=False,
+                include_research=False,
+                include_cultural_assets=False,
+                enable_fuzzy_query=False,
+                recommended=0,
+                timeout=self.timeout,
+                raise_errors=True,
+            )
+            quotes = search.quotes
+        except Exception as exc:
+            raise DomainError(
+                "provider_unavailable",
+                "Yahoo Finance lookup did not complete within the configured timeout.",
+                status_code=502,
+            ) from exc
+        if not isinstance(quotes, list):
+            raise DomainError(
+                "provider_metadata_unavailable",
+                "Yahoo Finance returned an invalid lookup response.",
+                status_code=502,
+            )
+
+        identities: list[InstrumentIdentity] = []
+        seen: set[str] = set()
+        for quote in quotes[:limit]:
+            if not isinstance(quote, Mapping):
+                continue
+            quote_type = str(quote.get("quoteType", "")).upper()
+            if quote_type not in {"EQUITY", "STOCK", "ETF"}:
+                continue
+            try:
+                searched_symbol = normalize_symbol(str(quote.get("symbol", "")))
+            except DomainError:
+                continue
+            if searched_symbol in seen:
+                continue
+            ticker = yf.Ticker(searched_symbol)
+            # Yahoo search omits currency/timezone. One timeout-bounded chart call per returned
+            # candidate completes identity without using Ticker.info or metadata cache misses.
+            frame = self._history(ticker, period="5d", interval="1d")
+            metadata = self._metadata_from_bounded_history(ticker, frame)
+            identity = self._identity_from_metadata(
+                metadata, self._response_time(), fallback=quote
+            )
+            searched_asset_type = "etf" if quote_type == "ETF" else "stock"
+            if (
+                identity.canonical_symbol != searched_symbol
+                or identity.asset_type != searched_asset_type
+            ):
+                raise DomainError(
+                    "provider_identity_mismatch",
+                    "Yahoo returned inconsistent instrument identity metadata.",
+                    status_code=502,
+                )
+            identities.append(identity)
+            seen.add(identity.canonical_symbol)
+        return tuple(identities)
 
     @staticmethod
     def _metadata_from_bounded_history(ticker: Any, frame: Any) -> dict[str, Any]:
@@ -109,7 +293,8 @@ class YahooProvider:
             )
         if asset_type not in {"stock", "etf"}:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
-        ticker = yf.Ticker(symbol)
+        requested_symbol = normalize_symbol(symbol)
+        ticker = yf.Ticker(requested_symbol)
         daily_frame = self._history(ticker, period="2y", interval="1d")
         intraday_frame = self._history(ticker, period="5d", interval="5m")
         if daily_frame.empty or intraday_frame.empty:
@@ -120,28 +305,20 @@ class YahooProvider:
             )
         # Metadata must come from one of the two timeout-bounded chart responses above.
         meta = self._metadata_from_bounded_history(ticker, intraday_frame)
-        provider_type = str(meta.get("instrumentType", "")).lower()
-        type_mapping = {"etf": "etf", "equity": "stock", "stock": "stock"}
-        normalized_type = type_mapping.get(provider_type)
-        if normalized_type is None:
+        response_at = self._response_time()
+        identity = self._identity_from_metadata(meta, response_at)
+        if identity.canonical_symbol != requested_symbol:
             raise DomainError(
-                "unsupported_asset",
-                "Yahoo did not classify this symbol as a supported stock or ETF.",
+                "provider_identity_mismatch",
+                "Yahoo returned data for a different canonical symbol.",
+                status_code=502,
             )
-        if normalized_type != asset_type:
+        if identity.asset_type != asset_type:
             raise DomainError(
                 "asset_type_mismatch",
-                f"Yahoo classifies {symbol} as {normalized_type}, not {asset_type}.",
+                f"Yahoo classifies {requested_symbol} as {identity.asset_type}, not {asset_type}.",
             )
-        timezone = str(meta.get("exchangeTimezoneName", ""))
-        try:
-            ZoneInfo(timezone)
-        except (KeyError, ValueError) as exc:
-            raise DomainError(
-                "ambiguous_provider_time",
-                "Yahoo did not return a recognized exchange timezone.",
-                status_code=502,
-            ) from exc
+        timezone = identity.timezone
         regular = meta.get("currentTradingPeriod", {}).get("regular", {})
         if not isinstance(regular, dict) or not regular.get("start") or not regular.get("end"):
             raise DomainError(
@@ -158,13 +335,17 @@ class YahooProvider:
         daily = self._daily_bars(daily_frame, timezone)
         intraday = self._intraday_bars(intraday_frame)
         return MarketData(
-            symbol=symbol,
+            symbol=identity.canonical_symbol,
+            display_name=identity.display_name,
+            company_name=identity.company_name,
             asset_type=asset_type,
-            exchange=str(meta.get("exchangeName", "unknown")),
+            quote_type=identity.quote_type,
+            exchange=identity.exchange,
             timezone=timezone,
-            currency=str(meta.get("currency", "USD")),
+            currency=identity.currency,
+            provider=identity.provider,
             # Capture response completion separately from the request/cutoff timestamp.
-            fetched_at=self.clock().astimezone(UTC),
+            fetched_at=response_at,
             query={
                 "requested_as_of": now.astimezone(UTC).isoformat(),
                 "daily": {"period": "2y", "interval": "1d", "prepost": False, "auto_adjust": False},
@@ -178,6 +359,7 @@ class YahooProvider:
             daily=daily,
             intraday=intraday,
             provider_metadata={
+                "identity_source": "bounded_chart_metadata",
                 "regular_session": {
                     "start": _provider_epoch(regular.get("start")),
                     "end": _provider_epoch(regular.get("end")),
@@ -202,6 +384,75 @@ class YahooProvider:
 class FixtureProvider:
     """Expand compact checked-in seeds so tests exercise the real service path."""
 
+    @staticmethod
+    def _payloads() -> tuple[dict[str, Any], ...]:
+        return tuple(
+            json.loads(files("stock_probs.fixtures").joinpath(name).read_text())
+            for name in ("acdc.json", "spy.json")
+        )
+
+    @staticmethod
+    def _identity(
+        payload: Mapping[str, Any], symbol: str, provider_as_of: datetime
+    ) -> InstrumentIdentity:
+        base_symbol = str(payload["symbol"])
+        scenario = symbol != base_symbol
+        display_name = str(payload["display_name"])
+        company_name = str(payload["company_name"])
+        if scenario:
+            # Browser-only aliases are labelled as deterministic scenarios rather than asserted
+            # to be real Yahoo listings. Company lookup itself returns only canonical fixtures.
+            display_name = f"{display_name} ({symbol} deterministic scenario)"
+            company_name = display_name
+        return InstrumentIdentity(
+            canonical_symbol=symbol,
+            display_name=display_name,
+            company_name=company_name,
+            exchange=str(payload["exchange"]),
+            currency=str(payload["currency"]),
+            timezone=str(payload["timezone"]),
+            quote_type=str(payload["quote_type"]),
+            asset_type=str(payload["asset_type"]),
+            provider=FIXTURE_PROVIDER_NAME,
+            provider_as_of=provider_as_of.astimezone(UTC),
+        )
+
+    def lookup(
+        self, query: str, limit: int = MAX_LOOKUP_RESULTS, now: datetime | None = None
+    ) -> tuple[InstrumentIdentity, ...]:
+        """Return stable checked-in company matches without accepting arbitrary fake symbols."""
+
+        normalized_query = normalize_lookup_query(query)
+        _validate_lookup_limit(limit)
+        requested_at = now or datetime.now(UTC)
+        if requested_at.tzinfo is None:
+            raise DomainError(
+                "ambiguous_provider_time", "Fixture lookup time must include an offset."
+            )
+        if normalized_query.upper() == "FAIL":
+            raise DomainError(
+                "provider_unavailable", "Deterministic provider failure.", status_code=502
+            )
+        needle = normalized_query.casefold()
+        matches: list[tuple[tuple[int, str], InstrumentIdentity]] = []
+        for payload in self._payloads():
+            symbol = str(payload["symbol"])
+            identity = self._identity(payload, symbol, requested_at)
+            searchable = " ".join(
+                (identity.canonical_symbol, identity.display_name, identity.company_name)
+            ).casefold()
+            if needle not in searchable:
+                continue
+            rank = (
+                0
+                if needle == identity.canonical_symbol.casefold()
+                else 1
+                if identity.company_name.casefold().startswith(needle)
+                else 2
+            )
+            matches.append(((rank, identity.canonical_symbol), identity))
+        return tuple(identity for _, identity in sorted(matches)[:limit])
+
     def fetch(self, symbol: str, asset_type: str, now: datetime) -> MarketData:
         if now.tzinfo is None:
             raise DomainError(
@@ -209,12 +460,38 @@ class FixtureProvider:
             )
         if asset_type not in {"stock", "etf"}:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
-        if symbol == "FAIL":
+        normalized_symbol = normalize_symbol(symbol)
+        if normalized_symbol == "FAIL":
             raise DomainError(
                 "provider_unavailable", "Deterministic provider failure.", status_code=502
             )
-        fixture_name = "spy.json" if asset_type == "etf" else "acdc.json"
-        payload = json.loads(files("stock_probs.fixtures").joinpath(fixture_name).read_text())
+        fixture_symbols = {
+            "ACDC": "ACDC",
+            "ACDC-D": "ACDC",
+            "ACDC-M": "ACDC",
+            "STALE": "ACDC",
+            "SPY": "SPY",
+            "SPY-D": "SPY",
+            "SPY-M": "SPY",
+        }
+        base_symbol = fixture_symbols.get(normalized_symbol)
+        if base_symbol is None:
+            raise DomainError(
+                "symbol_not_found",
+                "The deterministic fixture has no instrument with that symbol.",
+                status_code=404,
+            )
+        payload = next(
+            item for item in self._payloads() if str(item["symbol"]) == base_symbol
+        )
+        if payload["asset_type"] != asset_type:
+            raise DomainError(
+                "asset_type_mismatch",
+                f"The deterministic fixture classifies {normalized_symbol} as "
+                f"{payload['asset_type']}, not {asset_type}.",
+            )
+        fixture_name = f"{base_symbol.lower()}.json"
+        identity = self._identity(payload, normalized_symbol, now)
         seed = payload["daily_seed"]
         zone = ZoneInfo(payload["timezone"])
         session_date = datetime.fromisoformat(seed["start"]).astimezone(zone).date()
@@ -238,16 +515,20 @@ class FixtureProvider:
                 intraday.append(Bar(start + timedelta(minutes=5 * index), round(close, 6), 300))
         # A fixture response may contain the active bar but never bars that have not started yet.
         intraday = [bar for bar in intraday if bar.timestamp.astimezone(UTC) <= now.astimezone(UTC)]
-        if symbol == "STALE":
+        if normalized_symbol == "STALE":
             # Browser regressions need a deterministic stale success, not a fabricated failure.
             cutoff = datetime(2025, 1, 9, tzinfo=zone).date()
             intraday = [bar for bar in intraday if bar.timestamp.astimezone(zone).date() < cutoff]
         return MarketData(
-            symbol=symbol,
+            symbol=identity.canonical_symbol,
+            display_name=identity.display_name,
+            company_name=identity.company_name,
             asset_type=asset_type,
-            exchange=payload["exchange"],
-            timezone=payload["timezone"],
-            currency=payload["currency"],
+            quote_type=identity.quote_type,
+            exchange=identity.exchange,
+            timezone=identity.timezone,
+            currency=identity.currency,
+            provider=identity.provider,
             fetched_at=now.astimezone(UTC),
             query={
                 "fixture": fixture_name,
@@ -260,6 +541,8 @@ class FixtureProvider:
             provider_metadata={
                 **payload["provider_metadata"],
                 "fixture_contract": "compact-seed-v1",
+                "fixture_base_symbol": base_symbol,
+                "identity_source": "checked_in_fixture",
                 "daily_coverage": _coverage(tuple(daily)),
                 "intraday_coverage": _coverage(tuple(intraday)),
                 "missing_daily_closes": 0,
@@ -269,6 +552,39 @@ class FixtureProvider:
                 "trailing_missing_intraday_intervals": 0,
             },
         )
+
+
+def _validate_lookup_limit(limit: int) -> None:
+    """Keep one lookup to a small, predictable number of metadata hydration calls."""
+
+    if type(limit) is not int or not 1 <= limit <= MAX_LOOKUP_RESULTS:
+        raise DomainError(
+            "invalid_lookup_limit",
+            f"Lookup limit must be between 1 and {MAX_LOOKUP_RESULTS}.",
+        )
+
+
+def _metadata_text(value: Any, field: str, maximum: int) -> str:
+    """Reject missing, oversized, or control-bearing Yahoo labels before persistence/UI use."""
+
+    if not isinstance(value, str):
+        raise DomainError(
+            "provider_metadata_unavailable",
+            f"Yahoo did not return a usable instrument {field}.",
+            status_code=502,
+        )
+    text = value.strip()
+    if (
+        not text
+        or len(text) > maximum
+        or any(unicodedata.category(character).startswith("C") for character in value)
+    ):
+        raise DomainError(
+            "provider_metadata_unavailable",
+            f"Yahoo did not return a usable instrument {field}.",
+            status_code=502,
+        )
+    return text
 
 
 def _positive_finite(value: Any) -> bool:

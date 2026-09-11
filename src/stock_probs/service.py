@@ -8,8 +8,14 @@ from datetime import UTC, datetime
 from threading import BoundedSemaphore
 from uuid import uuid4
 
-from stock_probs.domain import DomainError, calculate_forecasts, evaluate_outcome, normalize_symbol
-from stock_probs.provider import MarketDataProvider
+from stock_probs.domain import (
+    DomainError,
+    calculate_forecasts,
+    evaluate_outcome,
+    normalize_lookup_query,
+    normalize_symbol,
+)
+from stock_probs.provider import MAX_LOOKUP_RESULTS, MarketDataProvider
 from stock_probs.repository import Repository
 
 
@@ -29,7 +35,45 @@ class ForecastService:
         # Yahoo calls are blocking and memory-heavy; bound them independently of HTTP workers.
         self.provider_slots = BoundedSemaphore(max_provider_concurrency)
 
-    def search(self, submitted_symbol: str, asset_type: str) -> dict:
+    def lookup(self, query: str, limit: int = 5) -> dict[str, object]:
+        """Expose one transport-ready company/symbol lookup without leaking provider objects."""
+
+        normalized_query = normalize_lookup_query(query)
+        if type(limit) is not int or not 1 <= limit <= MAX_LOOKUP_RESULTS:
+            raise DomainError(
+                "invalid_lookup_limit",
+                f"Lookup limit must be between 1 and {MAX_LOOKUP_RESULTS}.",
+            )
+        requested_at = self.clock().astimezone(UTC)
+        if not self.provider_slots.acquire(timeout=1.0):
+            raise DomainError(
+                "provider_busy",
+                "Market data capacity is busy; try again shortly.",
+                status_code=503,
+            )
+        try:
+            try:
+                identities = self.provider.lookup(normalized_query, limit, requested_at)
+            except DomainError:
+                raise
+            except Exception as exc:
+                # Search responses receive the same safe provider boundary as market history.
+                raise DomainError(
+                    "provider_unavailable",
+                    "The instrument lookup provider failed unexpectedly.",
+                    status_code=502,
+                ) from exc
+        finally:
+            self.provider_slots.release()
+        bounded_identities = identities[:limit]
+        return {
+            "query": normalized_query,
+            "limit": limit,
+            "items": [identity.as_dict() for identity in bounded_identities],
+            "total": len(bounded_identities),
+        }
+
+    def search(self, submitted_symbol: str, asset_type: str) -> dict[str, object]:
         request_id = str(uuid4())
         submitted_at = self.clock().astimezone(UTC)
         normalized: str | None = None
@@ -111,7 +155,7 @@ class ForecastService:
         observed_at: datetime,
         state: str,
         note: str,
-    ) -> dict | None:
+    ) -> dict[str, object] | None:
         """Keep horizon validation in the domain before appending through persistence."""
 
         if state not in {"observed", "unavailable", "provisional", "corrected"}:

@@ -1,7 +1,10 @@
 {
   "_comment": "The ETF fixture uses the same calendar but distinct deterministic prices and return pattern.",
   "symbol": "SPY",
+  "display_name": "SPDR S&P 500 ETF Trust",
+  "company_name": "SPDR S&P 500 ETF Trust",
   "asset_type": "etf",
+  "quote_type": "ETF",
   "exchange": "PCX",
   "timezone": "America/New_York",
   "currency": "USD",

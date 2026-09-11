@@ -1,4 +1,4 @@
-# Fully pinned CPython 3.11+ set resolved and installed on Linux ARM64.
+# Fully pinned CPython 3.11 dependency set is architecture-neutral on supported Linux targets.
 annotated-types==0.7.0
 anyio==4.10.0
 beautifulsoup4==4.15.0

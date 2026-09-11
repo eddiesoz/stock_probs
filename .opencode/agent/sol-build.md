@@ -1,6 +1,6 @@
 ---
 name: SOL HIGH build
-description: Implements application, configuration, migration, frontend, script, CI, and developer-test code.
+description: Implements application, configuration, migration, frontend, local-gate, and developer-test code.
 mode: subagent
 model: openai/gpt-5.6-sol
 variant: high

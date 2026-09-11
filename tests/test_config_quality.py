@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import re
 import stat
@@ -29,6 +30,11 @@ def test_settings_reject_unbounded_or_ambiguous_environment(monkeypatch):
     monkeypatch.setenv("STOCK_PROBS_PORT", "8000")
     monkeypatch.setenv("STOCK_PROBS_PROVIDER", "unknown")
     with pytest.raises(ValueError, match="PROVIDER"):
+        Settings.from_env()
+
+    monkeypatch.setenv("STOCK_PROBS_PROVIDER", "fixture")
+    monkeypatch.setenv("STOCK_PROBS_PORT", "not-a-number")
+    with pytest.raises(ValueError, match="STOCK_PROBS_PORT"):
         Settings.from_env()
 
 
@@ -68,6 +74,42 @@ def test_cli_requires_explicit_non_loopback_acknowledgement(monkeypatch):
     assert failure.value.code == 2
 
 
+def test_cli_uses_bounded_environment_listener_without_startup_writes(monkeypatch, tmp_path):
+    captured = {}
+    data_dir = tmp_path / "server-state"
+    monkeypatch.setenv("STOCK_PROBS_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("STOCK_PROBS_PROVIDER", "fixture")
+    monkeypatch.setenv("STOCK_PROBS_HOST", "localhost")
+    monkeypatch.setenv("STOCK_PROBS_PORT", "8123")
+    monkeypatch.setattr(sys, "argv", ["stock-probs", "serve"])
+    monkeypatch.setattr(
+        "stock_probs.cli.uvicorn.run", lambda app, **kwargs: captured.update(kwargs)
+    )
+
+    main()
+
+    assert captured["host"] == "localhost"
+    assert captured["port"] == 8123
+    assert captured["workers"] == 1
+    # Uvicorn owns lifespan startup; constructing its ASGI app must not touch user state.
+    assert not data_dir.exists()
+
+
+def test_importing_asgi_module_does_not_create_runtime_storage(tmp_path):
+    import stock_probs.api as api_module
+
+    data_dir = tmp_path / "import-state"
+    with pytest.MonkeyPatch.context() as environment:
+        environment.setenv("STOCK_PROBS_DATA_DIR", str(data_dir))
+        environment.setenv("STOCK_PROBS_PROVIDER", "fixture")
+        # Reload executes the module-level ASGI construction against isolated settings.
+        importlib.reload(api_module)
+
+    assert not data_dir.exists()
+    # Restore the process-global module app to the caller's environment for later tests.
+    importlib.reload(api_module)
+
+
 def test_official_playwright_mcp_is_pinned_headless_and_isolated():
     package = json.loads((ROOT / "tools/browser/package.json").read_text())
     config = json.loads((ROOT / "opencode.json").read_text())
@@ -97,14 +139,15 @@ def test_sol_and_luna_profiles_preserve_ownership_boundaries():
     assert "burry_env/**\": deny" in sol
 
 
-def test_ci_and_frontend_fail_closed_on_required_boundaries():
-    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+def test_local_gate_and_frontend_fail_closed_on_required_boundaries():
+    local_gate = (ROOT / "scripts/local-gate.sh").read_text()
+    makefile = (ROOT / "Makefile").read_text()
     javascript = (ROOT / "src/stock_probs/static/app.js").read_text().lower()
 
-    assert "make check" in workflow and "make browser-test" in workflow
-    assert "make browser-install" in workflow and "make mcp-smoke" in workflow
-    assert "M06-browser-${{ github.sha }}" in workflow
-    assert "comment_audit.py" in workflow
+    assert not (ROOT / ".github/workflows/ci.yml").exists()
+    assert "set -euo pipefail" in local_gate and '"result": result' in local_gate
+    assert "package-check check" in makefile and "release-check: acceptance" in makefile
+    assert "browser-test" in makefile and "comment_audit.py" in makefile
     assert 'const apiroot = "/api/v1"' in javascript
     assert "sqlite" not in javascript and "yahoo.com" not in javascript
 
@@ -112,13 +155,14 @@ def test_ci_and_frontend_fail_closed_on_required_boundaries():
 def test_reproducible_arm64_toolchains_are_pinned_and_generated_files_ignored():
     """Lock source archives and ensure local dependency/output trees never become evidence."""
 
-    node_installer = (ROOT / "scripts/install-node-arm64.sh").read_text()
+    node_installer = (ROOT / "scripts/install-node.sh").read_text()
     requirements = (ROOT / "requirements.lock").read_text()
     ignore = (ROOT / ".gitignore").read_text().splitlines()
     browser_lock = json.loads((ROOT / "tools/browser/package-lock.json").read_text())
 
     assert 'NODE_VERSION="22.19.0"' in node_installer
-    assert "NODE_SHA256=" in node_installer and "--max-time 120" in node_installer
+    assert node_installer.count("NODE_SHA256=") == 2 and "--max-time 120" in node_installer
+    assert "arm64" in node_installer and "x64" in node_installer
     assert "mypy==1.17.1" in requirements and "setuptools==80.9.0" in requirements
     assert "node_modules/" in ignore and "test-results/" in ignore
     assert browser_lock["lockfileVersion"] == 3

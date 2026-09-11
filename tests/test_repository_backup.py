@@ -6,12 +6,13 @@ import json
 import sqlite3
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from stock_probs.backup import BackupError, BackupManager
-from stock_probs.domain import DomainError
+from stock_probs.domain import DomainError, calculate_forecasts
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import Repository
 from stock_probs.service import ForecastService
@@ -120,6 +121,77 @@ def test_records_survive_a_fresh_repository_instance(settings):
 
     assert restarted.history()["total"] == 1
     assert restarted.reconstruction(created["event"]["id"])["input"]["symbol"] == "ACDC"
+    stored_identity = restarted.reconstruction(created["event"]["id"])["input"][
+        "instrument_identity"
+    ]
+    assert stored_identity["canonical_symbol"] == "ACDC"
+    assert stored_identity["company_name"] == "ProFrac Holding Corp."
+    assert stored_identity == created["input"]["provenance"]["instrument_identity"]
+
+
+def test_service_company_lookup_returns_transport_ready_stock_and_etf_identity(settings):
+    _, service = _service(settings)
+
+    stock = service.lookup("ProFrac")
+    fund = service.lookup("SPDR", 5)
+
+    assert stock["query"] == "ProFrac" and stock["limit"] == 5
+    assert stock["items"][0]["canonical_symbol"] == "ACDC"
+    assert fund["items"][0]["canonical_symbol"] == "SPY"
+    assert {stock["items"][0]["asset_type"], fund["items"][0]["asset_type"]} == {
+        "stock",
+        "etf",
+    }
+    assert all(item["provider_as_of"].endswith("+00:00") for item in stock["items"])
+
+
+def test_service_lookup_enforces_its_default_bound_on_provider_results(settings):
+    repository, _ = _service(settings)
+
+    class OverReturningProvider(FixtureProvider):
+        def lookup(self, query, limit=5, now=None):
+            identity = super().lookup("ACDC", 1, now)[0]
+            return (identity,) * 10
+
+    service = ForecastService(repository, OverReturningProvider(), lambda: NOW)
+
+    payload = service.lookup("company")
+
+    assert payload["limit"] == payload["total"] == 5
+    assert len(payload["items"]) == 5
+
+
+def test_repository_rejects_identity_detached_from_forecast_provenance(settings):
+    repository = Repository(settings.database_path)
+    repository.migrate()
+    snapshot, results = calculate_forecasts(FixtureProvider().fetch("ACDC", "stock", NOW), NOW)
+    tampered = deepcopy(snapshot)
+    tampered["instrument_identity"]["company_name"] = "Different company"
+
+    with pytest.raises(ValueError, match="instrument identity"):
+        repository.record_success(
+            request_id="detached-identity",
+            submitted_symbol="ACDC",
+            asset_type="stock",
+            input_snapshot=tampered,
+            results=results,
+            submitted_at=NOW,
+            completed_at=NOW,
+        )
+
+    detached_top_level = deepcopy(snapshot)
+    detached_top_level["company_name"] = "Different company"
+    with pytest.raises(ValueError, match="instrument identity"):
+        repository.record_success(
+            request_id="detached-top-level-identity",
+            submitted_symbol="ACDC",
+            asset_type="stock",
+            input_snapshot=detached_top_level,
+            results=results,
+            submitted_at=NOW,
+            completed_at=NOW,
+        )
+    assert repository.representative_counts()["search_events"] == 0
 
 
 def test_results_and_outcomes_are_immutable_but_corrections_append(settings):

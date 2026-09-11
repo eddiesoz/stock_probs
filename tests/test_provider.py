@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from stock_probs.domain import DomainError
-from stock_probs.provider import YahooProvider
+from stock_probs.provider import FixtureProvider, YahooProvider
 
 
 class FakeTicker:
@@ -32,6 +32,9 @@ class FakeTicker:
 
     def metadata(self):
         return {
+            "symbol": self.symbol,
+            "shortName": "SPDR S&P 500 ETF Trust",
+            "longName": "SPDR S&P 500 ETF Trust",
             "instrumentType": "ETF",
             "exchangeName": "PCX",
             "exchangeTimezoneName": "America/New_York",
@@ -71,6 +74,18 @@ def test_yfinance_adapter_uses_exact_bounded_queries(monkeypatch):
     assert isinstance(data.provider_metadata["regular_session"]["start"], float)
     assert data.fetched_at == response_at
     assert data.query["requested_as_of"] == now.isoformat()
+    assert data.identity.as_dict() == {
+        "canonical_symbol": "SPY",
+        "display_name": "SPDR S&P 500 ETF Trust",
+        "company_name": "SPDR S&P 500 ETF Trust",
+        "exchange": "PCX",
+        "currency": "USD",
+        "timezone": "America/New_York",
+        "quote_type": "ETF",
+        "asset_type": "etf",
+        "provider": "Yahoo Finance",
+        "provider_as_of": response_at.isoformat(),
+    }
 
 
 def test_yfinance_accepts_an_arbitrary_equity_symbol_under_the_same_contract(monkeypatch):
@@ -86,6 +101,8 @@ def test_yfinance_accepts_an_arbitrary_equity_symbol_under_the_same_contract(mon
         def metadata(self):
             metadata = super().metadata()
             metadata["instrumentType"] = "EQUITY"
+            metadata["shortName"] = "Berkshire Hathaway Inc."
+            metadata["longName"] = "Berkshire Hathaway Inc."
             return metadata
 
     monkeypatch.setattr("stock_probs.provider.yf.Ticker", StockTicker)
@@ -93,6 +110,82 @@ def test_yfinance_accepts_an_arbitrary_equity_symbol_under_the_same_contract(mon
 
     assert StockTicker.seen_symbols == ["BRK-B"]
     assert data.symbol == "BRK-B" and data.asset_type == "stock"
+    assert data.company_name == "Berkshire Hathaway Inc."
+
+
+def test_yfinance_company_lookup_uses_bounded_search_and_identity_calls(monkeypatch):
+    """Lookup disables unrelated Yahoo payloads and hydrates complete identity exactly once."""
+
+    class FakeSearch:
+        calls: list[tuple[str, dict]] = []
+
+        def __init__(self, query, **kwargs):
+            self.calls.append((query, kwargs))
+            self.quotes = [
+                {
+                    "symbol": "SPY",
+                    "shortname": "SPDR S&P 500 ETF Trust",
+                    "longname": "SPDR S&P 500 ETF Trust",
+                    "exchange": "PCX",
+                    "quoteType": "ETF",
+                },
+                {"symbol": "^GSPC", "quoteType": "INDEX"},
+            ]
+
+    FakeTicker.calls = []
+    monkeypatch.setattr("stock_probs.provider.yf.Search", FakeSearch)
+    monkeypatch.setattr("stock_probs.provider.yf.Ticker", FakeTicker)
+    now = datetime(2025, 1, 3, 15, 0, tzinfo=UTC)
+
+    identities = YahooProvider(timeout=2, clock=lambda: now).lookup("S&P 500", 2, now)
+
+    assert len(identities) == 1
+    assert identities[0].canonical_symbol == "SPY"
+    assert identities[0].currency == "USD"
+    query, settings = FakeSearch.calls[0]
+    assert query == "S&P 500"
+    assert settings["max_results"] == 2 and settings["timeout"] == 2
+    assert settings["news_count"] == settings["lists_count"] == settings["recommended"] == 0
+    assert [(call["period"], call["interval"]) for call in FakeTicker.calls] == [("5d", "1d")]
+
+
+def test_yfinance_lookup_rejects_unbounded_limit_before_network(monkeypatch):
+    monkeypatch.setattr(
+        "stock_probs.provider.yf.Search",
+        lambda *args, **kwargs: pytest.fail("invalid bounds must fail before Yahoo access"),
+    )
+
+    with pytest.raises(DomainError) as failure:
+        YahooProvider().lookup("SPY", 6, datetime.now(UTC))
+    assert failure.value.code == "invalid_lookup_limit"
+
+
+@pytest.mark.parametrize(
+    ("query", "symbol", "asset_type", "quote_type"),
+    [
+        ("ProFrac Holding", "ACDC", "stock", "EQUITY"),
+        ("s&p 500", "SPY", "etf", "ETF"),
+    ],
+)
+def test_fixture_lookup_is_deterministic_and_returns_real_fixture_identity(
+    query, symbol, asset_type, quote_type
+):
+    now = datetime(2025, 1, 3, 15, 0, tzinfo=UTC)
+
+    first = FixtureProvider().lookup(query, 5, now)
+    second = FixtureProvider().lookup(query, 5, now)
+
+    assert first == second
+    assert [(item.canonical_symbol, item.asset_type, item.quote_type) for item in first] == [
+        (symbol, asset_type, quote_type)
+    ]
+    assert first[0].display_name and first[0].company_name
+
+
+def test_fixture_rejects_unknown_symbols_instead_of_fabricating_identity():
+    with pytest.raises(DomainError) as failure:
+        FixtureProvider().fetch("MSFT", "stock", datetime.now(UTC))
+    assert failure.value.code == "symbol_not_found"
 
 
 def test_daily_rows_use_the_scheduled_early_close_and_ignore_non_sessions():
@@ -141,6 +234,19 @@ def test_yfinance_requires_unambiguous_asset_and_session_metadata(monkeypatch):
     with pytest.raises(DomainError) as failure:
         YahooProvider().fetch("SPY", "etf", datetime.now(UTC))
     assert failure.value.code == "unsupported_asset"
+
+
+def test_yfinance_rejects_control_bearing_identity_metadata(monkeypatch):
+    class UnsafeNameTicker(FakeTicker):
+        def metadata(self):
+            metadata = super().metadata()
+            metadata["shortName"] = "unsafe\nname"
+            return metadata
+
+    monkeypatch.setattr("stock_probs.provider.yf.Ticker", UnsafeNameTicker)
+    with pytest.raises(DomainError) as failure:
+        YahooProvider().fetch("SPY", "etf", datetime.now(UTC))
+    assert failure.value.code == "provider_metadata_unavailable"
 
 
 def test_yfinance_history_failure_is_safely_classified(monkeypatch):

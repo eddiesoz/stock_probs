@@ -13,6 +13,20 @@ PRIVATE_DIRECTORY_MODE = 0o700
 PRIVATE_FILE_MODE = 0o600
 
 
+def _environment_float(name: str, default: str) -> float:
+    try:
+        return float(os.getenv(name, default))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a number") from exc
+
+
+def _environment_int(name: str, default: str) -> int:
+    try:
+        return int(os.getenv(name, default))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+
+
 def ensure_private_directory(path: Path) -> None:
     """Create or harden a runtime directory without chmod following its final symlink."""
 
@@ -63,8 +77,8 @@ class Settings:
         # rather than silently converting a linked data directory into its target.
         configured_data_dir = Path(os.getenv("STOCK_PROBS_DATA_DIR", "data")).expanduser()
         data_dir = configured_data_dir.absolute()
-        timeout = float(os.getenv("STOCK_PROBS_PROVIDER_TIMEOUT", "8"))
-        port = int(os.getenv("STOCK_PROBS_PORT", "8000"))
+        timeout = _environment_float("STOCK_PROBS_PROVIDER_TIMEOUT", "8")
+        port = _environment_int("STOCK_PROBS_PORT", "8000")
         provider = os.getenv("STOCK_PROBS_PROVIDER", "yahoo")
         host = os.getenv("STOCK_PROBS_HOST", "127.0.0.1").strip().lower()
         if not math.isfinite(timeout) or not 1.0 <= timeout <= 20.0:
@@ -78,7 +92,10 @@ class Settings:
         if host not in {"127.0.0.1", "localhost", "::1"}:
             raise ValueError("STOCK_PROBS_HOST must be a loopback host")
         fixture_value = os.getenv("STOCK_PROBS_FIXTURE_NOW")
-        fixture_now = datetime.fromisoformat(fixture_value) if fixture_value else None
+        try:
+            fixture_now = datetime.fromisoformat(fixture_value) if fixture_value else None
+        except ValueError as exc:
+            raise ValueError("STOCK_PROBS_FIXTURE_NOW must be an ISO-8601 timestamp") from exc
         if fixture_now is not None and fixture_now.tzinfo is None:
             raise ValueError("STOCK_PROBS_FIXTURE_NOW must include a timezone offset")
         return cls(

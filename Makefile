@@ -1,18 +1,15 @@
-# All commands use an isolated development environment, never tracked burry_env or local .venv.
-# Pinned local toolchains avoid accidentally using tracked burry_env or a developer's .venv.
+# All commands use an isolated environment bootstrapped by uv, never burry_env or a local .venv.
+# Make remains a convenience wrapper; scripts/local-gate.sh is the make-independent authority.
 PYTHON := .dev-venv/bin/python
 PIP := .dev-venv/bin/pip
 NODE_BIN := .tools/node/bin
 NPM := $(NODE_BIN)/npm
 NPX := $(NODE_BIN)/npx
 
-.PHONY: setup dev migrate test lint typecheck static security restore-test check browser-setup browser-install browser-test mcp-smoke acceptance live live-smoke release release-check backup restore clean
+.PHONY: setup dev migrate test lint typecheck static security restore-test check package-check m01-gate local-gate arm64-smoke browser-setup browser-install browser-test mcp-smoke acceptance live live-smoke release release-check backup restore clean
 
 setup:
-	python3 -m venv .dev-venv
-	$(PYTHON) -m pip install --disable-pip-version-check pip==25.2
-	$(PIP) install --disable-pip-version-check --requirement requirements.lock
-	$(PIP) install --disable-pip-version-check --no-build-isolation --no-deps --editable .
+	./scripts/bootstrap.sh
 
 dev:
 	$(PYTHON) -m stock_probs.cli serve --host 127.0.0.1 --port 8000
@@ -45,8 +42,22 @@ restore-test:
 
 check: lint typecheck static test security restore-test
 
+package-check:
+	$(PYTHON) scripts/package_smoke.py
+
+# Every local gate writes revision/architecture/result evidence and exits at the first failed target.
+# The direct m01 profile preserves the prior package-check check ordering without invoking make.
+m01-gate:
+	TASK_ID=M01 ./scripts/local-gate.sh m01
+
+local-gate:
+	TASK_ID="$${TASK_ID:-M01}" ./scripts/local-gate.sh release
+
+arm64-smoke:
+	./scripts/arm64-smoke.sh
+
 browser-setup:
-	./scripts/install-node-arm64.sh
+	./scripts/install-node.sh
 	PATH="$(CURDIR)/$(NODE_BIN):$$PATH" $(NPM) --prefix tools/browser ci
 
 browser-install: browser-setup

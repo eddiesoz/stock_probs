@@ -8,7 +8,16 @@ const qualityBadge = document.querySelector("#quality-badge");
 const announcement = document.querySelector("#announcement");
 const historyContent = document.querySelector("#history-content");
 const historyForm = document.querySelector("#history-form");
+const symbolInput = document.querySelector("#symbol");
+const lookupStatus = document.querySelector("#lookup-status");
+const instrumentOptions = document.querySelector("#instrument-options");
+const identityConfirmation = document.querySelector("#identity-confirmation");
 let historyPage = 1;
+let selectedIdentity = null;
+let lookupTimer = null;
+let lookupController = null;
+let lookupSequence = 0;
+let activeOption = -1;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -59,6 +68,156 @@ function tableRow(table, label, value) {
   heading.textContent = label;
   row.append(heading, element("td", "", value));
 }
+
+function identityValue(identity, key) {
+  const value = identity?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function hideOptions() {
+  activeOption = -1;
+  instrumentOptions.hidden = true;
+  instrumentOptions.replaceChildren();
+  symbolInput.setAttribute("aria-expanded", "false");
+  symbolInput.removeAttribute("aria-activedescendant");
+}
+
+function clearIdentity() {
+  selectedIdentity = null;
+  identityConfirmation.hidden = true;
+  identityConfirmation.replaceChildren();
+}
+
+function confirmIdentity(identity) {
+  const symbol = identityValue(identity, "canonical_symbol");
+  if (!symbol) return;
+  selectedIdentity = identity;
+  symbolInput.value = symbol;
+  const assetControl = forecastForm.querySelector(
+    `input[name="asset_type"][value="${identity.asset_type}"]`,
+  );
+  if (assetControl) assetControl.checked = true;
+  const title = identityValue(identity, "display_name") || identityValue(identity, "company_name");
+  const details = [
+    symbol,
+    identityValue(identity, "exchange"),
+    identityValue(identity, "currency"),
+    identityValue(identity, "timezone"),
+    identityValue(identity, "asset_type")?.toUpperCase(),
+  ].filter(Boolean).join(" / ");
+  identityConfirmation.replaceChildren(
+    element("strong", "", title || symbol),
+    element("span", "", ` Confirmed identity: ${details}`),
+  );
+  identityConfirmation.hidden = false;
+  lookupStatus.textContent = `Selected ${title || symbol}.`;
+  hideOptions();
+}
+
+function setActiveOption(index) {
+  const options = [...instrumentOptions.querySelectorAll("[role=option]")];
+  if (!options.length) return;
+  activeOption = Math.max(0, Math.min(index, options.length - 1));
+  options.forEach((option, optionIndex) => {
+    option.setAttribute("aria-selected", String(optionIndex === activeOption));
+  });
+  symbolInput.setAttribute("aria-activedescendant", options[activeOption].id);
+  options[activeOption].scrollIntoView({ block: "nearest" });
+}
+
+function renderInstrumentOptions(items, query) {
+  instrumentOptions.replaceChildren();
+  activeOption = -1;
+  if (!items.length) {
+    hideOptions();
+    lookupStatus.textContent = `No identity matches “${query}”; a valid typed symbol can still be submitted.`;
+    return;
+  }
+  items.forEach((identity, index) => {
+    const option = element("li", "instrument-option");
+    option.id = `instrument-option-${lookupSequence}-${index}`;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", "false");
+    const name = identityValue(identity, "display_name") || identityValue(identity, "company_name");
+    const facts = [
+      identityValue(identity, "canonical_symbol"),
+      identityValue(identity, "exchange"),
+      identityValue(identity, "currency"),
+      identityValue(identity, "asset_type")?.toUpperCase(),
+    ].filter(Boolean).join(" / ");
+    option.append(element("strong", "", name || identity.canonical_symbol), element("span", "", facts));
+    option.addEventListener("mousedown", (event) => event.preventDefault());
+    option.addEventListener("click", () => confirmIdentity(identity));
+    instrumentOptions.append(option);
+  });
+  instrumentOptions.hidden = false;
+  symbolInput.setAttribute("aria-expanded", "true");
+  lookupStatus.textContent = `${items.length} bounded identity ${items.length === 1 ? "match" : "matches"}. Use arrow keys and Enter to select.`;
+}
+
+async function lookupInstruments(query) {
+  lookupSequence += 1;
+  const sequence = lookupSequence;
+  if (lookupController) lookupController.abort();
+  lookupController = new AbortController();
+  lookupStatus.textContent = `Looking up “${query}”…`;
+  try {
+    const data = await api(`/instruments?${new URLSearchParams({ query, limit: "5" })}`, {
+      signal: lookupController.signal,
+    });
+    // Sequence and current text checks prevent an older response from replacing newer choices.
+    if (sequence !== lookupSequence || symbolInput.value.trim() !== query) return null;
+    renderInstrumentOptions(data.items.slice(0, 5), query);
+    return data.items.slice(0, 5);
+  } catch (error) {
+    if (error.name === "AbortError" || sequence !== lookupSequence) return null;
+    hideOptions();
+    lookupStatus.textContent = `Identity lookup unavailable: ${error.message}`;
+    return null;
+  }
+}
+
+symbolInput.addEventListener("input", () => {
+  clearTimeout(lookupTimer);
+  if (lookupController) lookupController.abort();
+  lookupSequence += 1;
+  clearIdentity();
+  hideOptions();
+  const query = symbolInput.value.trim();
+  if (query.length < 2) {
+    lookupStatus.textContent = query ? "Type at least 2 characters for identity choices." : "";
+    return;
+  }
+  // A short debounce and API limit cap provider work while still supporting ordinary typing.
+  lookupTimer = setTimeout(() => lookupInstruments(query), 300);
+});
+
+symbolInput.addEventListener("keydown", (event) => {
+  const options = [...instrumentOptions.querySelectorAll("[role=option]")];
+  if (instrumentOptions.hidden || !options.length) return;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    setActiveOption(activeOption + 1);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    setActiveOption(activeOption <= 0 ? options.length - 1 : activeOption - 1);
+  } else if (event.key === "Enter" && activeOption >= 0) {
+    event.preventDefault();
+    options[activeOption].click();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    hideOptions();
+  }
+});
+
+forecastForm.querySelectorAll('input[name="asset_type"]').forEach((control) => {
+  control.addEventListener("change", () => {
+    if (selectedIdentity && control.value !== selectedIdentity.asset_type) {
+      clearIdentity();
+      lookupStatus.textContent = "Asset type changed; confirm the instrument identity again.";
+    }
+  });
+});
 
 function renderForecastCard(result, input) {
   const card = element("article", "forecast-card");
@@ -154,14 +313,19 @@ function renderResult(data, context = "live") {
 
   const meta = element("div", "forecast-meta");
   const fields = [
-    ["Instrument", `${input.symbol} / ${input.asset_type.toUpperCase()}`],
-    ["Exchange", `${input.exchange} / ${input.exchange_timezone}`],
+    ["Display name", input.display_name],
+    ["Company name", input.company_name],
+    ["Canonical symbol", input.canonical_symbol || input.symbol],
+    ["Instrument type", [input.asset_type?.toUpperCase(), input.quote_type].filter(Boolean).join(" / ")],
+    ["Exchange", input.exchange],
+    ["Currency", input.currency],
+    ["Exchange timezone", input.exchange_timezone],
     ["Provider as-of", formatTime(input.provider_as_of)],
     ["Calculated", formatTime(input.captured_at)],
     ["Source", input.provider],
     ["Model", `${input.model.name} / ${input.model.version}`],
   ];
-  for (const [label, value] of fields) {
+  for (const [label, value] of fields.filter(([, value]) => value !== null && value !== undefined && value !== "")) {
     const cell = element("div");
     cell.append(element("span", "data-label", label), element("strong", "", value));
     meta.append(cell);
@@ -210,17 +374,31 @@ function focusResultSection() {
 
 forecastForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const symbolInput = document.querySelector("#symbol");
   const symbolError = document.querySelector("#symbol-error");
-  const symbol = symbolInput.value.trim().toUpperCase();
+  const typedQuery = symbolInput.value.trim();
+  const symbol = typedQuery.toUpperCase();
+  clearTimeout(lookupTimer);
   if (!/^[A-Z0-9.^-]{1,15}$/.test(symbol)) {
-    symbolError.textContent = "Enter 1-15 letters, numbers, '.', '-', or '^'.";
+    const matches = await lookupInstruments(typedQuery);
+    symbolError.textContent = matches?.length
+      ? "Choose a matching instrument before running a forecast."
+      : "Enter a 1-15 character symbol or choose a company-name match.";
     symbolInput.setAttribute("aria-invalid", "true");
     symbolInput.focus();
     return;
   }
   symbolError.textContent = "";
   symbolInput.removeAttribute("aria-invalid");
+  if (!selectedIdentity || selectedIdentity.canonical_symbol !== symbol) {
+    const matches = await lookupInstruments(typedQuery);
+    const exact = matches?.find((identity) => identity.canonical_symbol === symbol);
+    if (exact) {
+      confirmIdentity(exact);
+      announcement.textContent = `Identity confirmed for ${symbol}. Run the forecast when ready.`;
+      return;
+    }
+    // A no-match or unavailable lookup must not remove the established typed-symbol path.
+  }
   const submit = document.querySelector("#forecast-submit");
   submit.disabled = true;
   submit.querySelector("span").textContent = "Calculating…";

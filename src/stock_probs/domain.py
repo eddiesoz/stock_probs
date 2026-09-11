@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import statistics
+import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
@@ -18,6 +19,8 @@ TAIL_MAGNITUDES = (0.01, 0.03, 0.05, 0.10)
 RETURN_THRESHOLDS = tuple(-value for value in TAIL_MAGNITUDES) + TAIL_MAGNITUDES
 SUPPORTED_TIMEZONE = "America/New_York"
 CALENDAR_VERSION = "us-equities-rules-v1"
+SUPPORTED_ASSET_TYPES = {"stock", "etf"}
+QUOTE_TYPE_TO_ASSET = {"EQUITY": "stock", "STOCK": "stock", "ETF": "etf"}
 
 
 class DomainError(Exception):
@@ -38,6 +41,111 @@ class DomainError(Exception):
         self.request_id = request_id
 
 
+def normalize_lookup_query(value: str) -> str:
+    """Bound a company/symbol query while retaining ordinary Unicode company names."""
+
+    if not isinstance(value, str) or any(
+        unicodedata.category(character).startswith("C") for character in value
+    ):
+        raise DomainError(
+            "invalid_lookup_query",
+            "Use 1-80 visible characters for a symbol or company name.",
+        )
+    query = " ".join(value.strip().split())
+    if not 1 <= len(query) <= 80:
+        raise DomainError(
+            "invalid_lookup_query",
+            "Use 1-80 visible characters for a symbol or company name.",
+        )
+    return query
+
+
+@dataclass(frozen=True)
+class InstrumentIdentity:
+    """One provider-resolved identity contract shared by stocks and ETFs."""
+
+    canonical_symbol: str
+    display_name: str
+    company_name: str
+    exchange: str
+    currency: str
+    timezone: str
+    quote_type: str
+    asset_type: str
+    provider: str
+    provider_as_of: datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.canonical_symbol, str) or not isinstance(self.timezone, str):
+            raise DomainError(
+                "invalid_instrument_identity",
+                "The provider returned an incomplete or invalid instrument identity.",
+                status_code=502,
+            )
+        try:
+            normalized_symbol = normalize_symbol(self.canonical_symbol)
+            ZoneInfo(self.timezone)
+        except (DomainError, KeyError, ValueError) as exc:
+            raise DomainError(
+                "invalid_instrument_identity",
+                "The provider returned an incomplete or invalid instrument identity.",
+                status_code=502,
+            ) from exc
+        text_fields = {
+            "display_name": (self.display_name, 200),
+            "company_name": (self.company_name, 200),
+            "exchange": (self.exchange, 40),
+            "currency": (self.currency, 12),
+            "provider": (self.provider, 80),
+        }
+        unsafe_text = any(
+            not isinstance(value, str)
+            or value != value.strip()
+            or not value
+            or len(value) > maximum
+            or any(unicodedata.category(character).startswith("C") for character in value)
+            for value, maximum in text_fields.values()
+        )
+        normalized_quote_type = (
+            self.quote_type.strip().upper() if isinstance(self.quote_type, str) else ""
+        )
+        if (
+            normalized_symbol != self.canonical_symbol
+            or unsafe_text
+            or self.quote_type != normalized_quote_type
+            or QUOTE_TYPE_TO_ASSET.get(normalized_quote_type) != self.asset_type
+            or not isinstance(self.provider_as_of, datetime)
+            or self.provider_as_of.tzinfo is None
+        ):
+            raise DomainError(
+                "invalid_instrument_identity",
+                "The provider returned an incomplete or invalid instrument identity.",
+                status_code=502,
+            )
+
+    def as_dict(self) -> dict[str, str]:
+        """Serialize the exact identity fields used by transport and immutable provenance."""
+
+        return {
+            "canonical_symbol": self.canonical_symbol,
+            "display_name": self.display_name,
+            "company_name": self.company_name,
+            "exchange": self.exchange,
+            "currency": self.currency,
+            "timezone": self.timezone,
+            "quote_type": self.quote_type,
+            "asset_type": self.asset_type,
+            "provider": self.provider,
+            "provider_as_of": self.provider_as_of.isoformat(),
+        }
+
+    def fingerprint(self) -> str:
+        """Give persistence a stable identity component without database-specific fields."""
+
+        payload = json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+
 @dataclass(frozen=True)
 class Bar:
     """A provider bar timestamp denotes its start; duration determines completion."""
@@ -56,24 +164,49 @@ class MarketData:
     """Normalized provider snapshot needed to reproduce both forecast horizons."""
 
     symbol: str
+    display_name: str
+    company_name: str
     asset_type: str
+    quote_type: str
     exchange: str
     timezone: str
     currency: str
+    provider: str
     fetched_at: datetime
     query: dict[str, Any]
     daily: tuple[Bar, ...]
     intraday: tuple[Bar, ...]
     provider_metadata: dict[str, Any]
 
+    @property
+    def identity(self) -> InstrumentIdentity:
+        """Expose the same complete identity contract returned by provider lookup."""
+
+        return InstrumentIdentity(
+            canonical_symbol=self.symbol,
+            display_name=self.display_name,
+            company_name=self.company_name,
+            exchange=self.exchange,
+            currency=self.currency,
+            timezone=self.timezone,
+            quote_type=self.quote_type,
+            asset_type=self.asset_type,
+            provider=self.provider,
+            provider_as_of=self.fetched_at,
+        )
+
     def fingerprint(self) -> str:
         # Hash only normalized immutable content, not incidental object representation.
         payload = {
             "symbol": self.symbol,
+            "display_name": self.display_name,
+            "company_name": self.company_name,
             "asset_type": self.asset_type,
+            "quote_type": self.quote_type,
             "exchange": self.exchange,
             "timezone": self.timezone,
             "currency": self.currency,
+            "provider": self.provider,
             "fetched_at": self.fetched_at.isoformat(),
             "query": self.query,
             "daily": [
@@ -474,10 +607,9 @@ def calculate_forecasts(
             "ambiguous_provider_time", "Request and provider times must include offsets."
         )
     now = now.astimezone(UTC)
-    if data.asset_type not in {"stock", "etf"}:
+    if data.asset_type not in SUPPORTED_ASSET_TYPES:
         raise DomainError("unsupported_asset", "Only Yahoo Finance stocks and ETFs are supported.")
-    if normalize_symbol(data.symbol) != data.symbol:
-        raise DomainError("invalid_market_data", "Provider symbol normalization is inconsistent.")
+    identity = data.identity
     try:
         ZoneInfo(data.timezone)
     except (KeyError, ValueError) as exc:
@@ -597,11 +729,17 @@ def calculate_forecasts(
     quality = "stale" if stale_reasons else "current"
     common = {
         "symbol": data.symbol,
+        "canonical_symbol": identity.canonical_symbol,
+        "display_name": identity.display_name,
+        "company_name": identity.company_name,
         "asset_type": data.asset_type,
+        "quote_type": identity.quote_type,
         "exchange": data.exchange,
         "exchange_timezone": data.timezone,
         "currency": data.currency,
-        "provider": "Yahoo Finance",
+        "instrument_identity": identity.as_dict(),
+        "identity_fingerprint": identity.fingerprint(),
+        "provider": data.provider,
         "provider_as_of": data.fetched_at.isoformat(),
         "request_cutoff": now.isoformat(),
         "provider_query": data.query,
@@ -637,10 +775,12 @@ def calculate_forecasts(
             "return_thresholds_percent": [value * 100.0 for value in RETURN_THRESHOLDS],
         },
         "provenance": {
-            "source": "Yahoo Finance",
+            "source": data.provider,
             "query": data.query,
             "response_as_of": data.fetched_at.isoformat(),
             "content_fingerprint": data.fingerprint(),
+            "instrument_identity": identity.as_dict(),
+            "identity_fingerprint": identity.fingerprint(),
             "model_version": MODEL_VERSION,
             "calendar_version": CALENDAR_VERSION,
         },

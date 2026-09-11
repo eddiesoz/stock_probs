@@ -45,6 +45,15 @@ input, select { width: 100%; border: 1px solid #99a09c; border-radius: 0; backgr
 .symbol-field input { border: 0; border-bottom: 3px solid var(--accent); background: transparent; color: white; padding: .4rem 0; font: 700 2.5rem/1 Georgia, serif; text-transform: uppercase; }
 .hint, .field-error { min-height: 1.15rem; margin: .45rem 0 0; color: #bec7c2; font-size: .74rem; }
 .field-error { color: #ffab91; }
+.lookup-status { min-height: 1rem; }
+.instrument-options { margin: .45rem 0 0; padding: 0; border: 1px solid #77817c; background: var(--sheet); color: var(--ink); list-style: none; }
+.instrument-option { padding: .7rem .8rem; border-bottom: 1px solid var(--line); cursor: pointer; }
+.instrument-option:last-child { border-bottom: 0; }
+.instrument-option[aria-selected="true"] { background: #e1ddd2; outline: 2px solid var(--accent); outline-offset: -2px; }
+.instrument-option strong, .instrument-option span { display: block; }
+.instrument-option span { margin-top: .2rem; color: var(--muted); font-size: .72rem; }
+.identity-confirmation { margin-top: .65rem; border-left: 3px solid #ffab91; background: #29332f; padding: .7rem .8rem; font-size: .76rem; line-height: 1.45; }
+.identity-confirmation strong { color: white; }
 .asset-field { display: flex; gap: 1rem; margin: 1rem 0 1.25rem; padding: 0; border: 0; }
 .asset-field legend { width: 100%; }
 .asset-field label { display: flex; align-items: center; gap: .4rem; font-size: .85rem; }

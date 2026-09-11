@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install a pinned official Node archive locally after checking an embedded release checksum.
+# Install the pinned official Node archive for either supported Linux architecture.
 set -euo pipefail
 
 NODE_VERSION="22.19.0"
@@ -18,12 +18,18 @@ esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL_DIR="$ROOT/.tools/node"
-if [[ -x "$INSTALL_DIR/bin/node" ]]; then
-  if [[ "$("$INSTALL_DIR/bin/node" --version)" == "v${NODE_VERSION}" ]]; then
+if [[ -e "$INSTALL_DIR" ]]; then
+  if [[ ! -x "$INSTALL_DIR/bin/node" ]]; then
+    printf 'Existing local Node installation is incomplete; remove .tools/node before setup.\n' >&2
+    exit 2
+  fi
+  if [[ "$("$INSTALL_DIR/bin/node" --version)" == "v${NODE_VERSION}" ]] \
+    && [[ "$("$INSTALL_DIR/bin/node" -p 'process.arch')" == "$NODE_ARCH" ]]; then
     "$INSTALL_DIR/bin/node" --version
     exit 0
   fi
-  printf 'Existing local Node is not v%s; remove .tools/node before setup.\n' "$NODE_VERSION" >&2
+  printf 'Existing local Node does not match v%s/%s; remove .tools/node before setup.\n' \
+    "$NODE_VERSION" "$NODE_ARCH" >&2
   exit 2
 fi
 

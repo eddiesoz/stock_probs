@@ -7,7 +7,8 @@ build-backend = "setuptools.build_meta"
 name = "stock-probs"
 version = "0.1.0"
 description = "Auditable local stock probability forecasts"
-requires-python = ">=3.11"
+# The executable bootstrap pins the one supported minor instead of falling through to host 3.14.
+requires-python = ">=3.11,<3.12"
 dependencies = [
   "fastapi==0.116.1",
   "uvicorn==0.35.0",

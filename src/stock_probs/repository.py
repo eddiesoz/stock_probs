@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from collections.abc import Iterator
@@ -79,7 +80,7 @@ class Repository:
                 row[0] for row in connection.execute("SELECT version FROM schema_migrations")
             }
             for migration in sorted(migration_dir.iterdir(), key=lambda item: item.name):
-                if migration.suffix != ".sql":
+                if not migration.name.endswith(".sql"):
                     continue
                 version = int(migration.name.split("_", 1)[0])
                 if version in applied:
@@ -95,6 +96,15 @@ class Repository:
     @staticmethod
     def _json(value: Any) -> str:
         return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+    @staticmethod
+    def _insert_id(cursor: sqlite3.Cursor) -> int:
+        """Make SQLite's optional typing explicit for successful INSERT statements."""
+
+        row_id = cursor.lastrowid
+        if row_id is None:
+            raise sqlite3.DatabaseError("SQLite INSERT did not produce a row identifier")
+        return row_id
 
     @staticmethod
     def _row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -137,7 +147,7 @@ class Repository:
                 ),
             )
             connection.commit()
-            return int(cursor.lastrowid)
+            return self._insert_id(cursor)
 
     @staticmethod
     def _has_prior_submission(
@@ -175,10 +185,15 @@ class Repository:
     ) -> tuple[int, int, bool, bool]:
         """Append a repeated event while reusing only an exact immutable input snapshot."""
 
+        self._validate_instrument_provenance(input_snapshot, asset_type)
         symbol = input_snapshot["symbol"]
         fingerprint = input_snapshot["content_fingerprint"]
         horizons = [result.get("horizon") for result in results]
-        if sorted(horizons) != ["close_to_close", "completed_5m_to_close"]:
+        if (
+            len(horizons) != 2
+            or horizons.count("close_to_close") != 1
+            or horizons.count("completed_5m_to_close") != 1
+        ):
             raise ValueError("exactly one result for each supported horizon is required")
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -199,13 +214,13 @@ class Repository:
                     "(symbol, asset_type, content_fingerprint, created_at) VALUES (?, ?, ?, ?)",
                     (symbol, asset_type, fingerprint, completed_at.isoformat()),
                 )
-                run_id = int(run_cursor.lastrowid)
+                run_id = self._insert_id(run_cursor)
                 input_cursor = connection.execute(
                     "INSERT INTO forecast_inputs"
                     "(run_id, snapshot_json, created_at) VALUES (?, ?, ?)",
                     (run_id, self._json(input_snapshot), completed_at.isoformat()),
                 )
-                input_id = int(input_cursor.lastrowid)
+                input_id = self._insert_id(input_cursor)
                 connection.executemany(
                     "INSERT INTO forecast_results"
                     "(input_id, horizon, result_json, created_at) VALUES (?, ?, ?, ?)",
@@ -231,7 +246,56 @@ class Repository:
                 ),
             )
             connection.commit()
-            return int(event_cursor.lastrowid), run_id, repeated, reused
+            return self._insert_id(event_cursor), run_id, repeated, reused
+
+    @staticmethod
+    def _validate_instrument_provenance(
+        input_snapshot: dict[str, Any], asset_type: str
+    ) -> None:
+        """Reject writes that detach selected identity from the immutable provider snapshot."""
+
+        identity = input_snapshot.get("instrument_identity")
+        provenance = input_snapshot.get("provenance")
+        required = {
+            "canonical_symbol",
+            "display_name",
+            "company_name",
+            "exchange",
+            "currency",
+            "timezone",
+            "quote_type",
+            "asset_type",
+            "provider",
+            "provider_as_of",
+        }
+        identity_fingerprint = (
+            hashlib.sha256(
+                json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            if isinstance(identity, dict)
+            else None
+        )
+        if (
+            not isinstance(identity, dict)
+            or not required <= set(identity)
+            or not isinstance(provenance, dict)
+            or provenance.get("instrument_identity") != identity
+            or identity.get("canonical_symbol") != input_snapshot.get("symbol")
+            or identity.get("canonical_symbol") != input_snapshot.get("canonical_symbol")
+            or identity.get("display_name") != input_snapshot.get("display_name")
+            or identity.get("company_name") != input_snapshot.get("company_name")
+            or identity.get("asset_type") != asset_type
+            or identity.get("exchange") != input_snapshot.get("exchange")
+            or identity.get("currency") != input_snapshot.get("currency")
+            or identity.get("timezone") != input_snapshot.get("exchange_timezone")
+            or identity.get("quote_type") != input_snapshot.get("quote_type")
+            or identity.get("provider") != input_snapshot.get("provider")
+            or identity.get("provider_as_of") != input_snapshot.get("provider_as_of")
+            or provenance.get("identity_fingerprint")
+            != input_snapshot.get("identity_fingerprint")
+            or input_snapshot.get("identity_fingerprint") != identity_fingerprint
+        ):
+            raise ValueError("instrument identity must match immutable forecast provenance")
 
     def history(
         self,
@@ -370,7 +434,7 @@ class Repository:
             )
             connection.commit()
             return {
-                "id": int(cursor.lastrowid),
+                "id": self._insert_id(cursor),
                 "result_id": result_id,
                 "observed_close": observed_close,
                 "observed_return": observed_return,

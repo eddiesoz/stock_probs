@@ -57,19 +57,62 @@ test("dashboard is keyboard-operable, responsive, and axe-clean", async ({ page 
   expect(results.violations).toEqual([]);
 });
 
+test("company lookup is bounded, race-safe, keyboard-selectable, and confirms identity", async ({ page, applicationRequests }) => {
+  await page.goto("/");
+  const symbol = page.getByLabel("Company name or Yahoo Finance symbol");
+  await symbol.fill("ProFrac");
+  await expect(page.getByRole("option", { name: /ProFrac Holding Corp/ })).toBeVisible();
+  await symbol.press("ArrowDown");
+  await symbol.press("Enter");
+
+  const confirmation = page.locator("#identity-confirmation");
+  await expect(confirmation).toContainText("Confirmed identity: ACDC / NMS / USD / America/New_York / STOCK");
+  await page.getByRole("button", { name: "Run forecast" }).click();
+  const metadata = page.locator(".forecast-meta");
+  await expect(metadata).toContainText("Display nameProFrac Holding Corp");
+  await expect(metadata).toContainText("Company nameProFrac Holding Corp");
+  await expect(metadata).toContainText("Canonical symbolACDC");
+  await expect(metadata).toContainText("Instrument typeSTOCK / EQUITY");
+  await expect(metadata).toContainText("ExchangeNMS");
+  await expect(metadata).toContainText("CurrencyUSD");
+  await expect(metadata).toContainText("Exchange timezoneAmerica/New_York");
+
+  const lookupURLs = applicationRequests.filter((url) => new URL(url).pathname === "/api/v1/instruments");
+  expect(lookupURLs.length).toBeGreaterThan(0);
+  expect(lookupURLs.every((url) => new URL(url).searchParams.get("limit") === "5")).toBe(true);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+test("a stale lookup response cannot replace newer company choices", async ({ page }) => {
+  await page.route("**/api/v1/instruments?*", async (route) => {
+    const query = new URL(route.request().url()).searchParams.get("query");
+    if (query === "ProFrac") await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.continue();
+  });
+  await page.goto("/");
+  const symbol = page.getByLabel("Company name or Yahoo Finance symbol");
+  await symbol.fill("ProFrac");
+  await expect(page.getByText("Looking up “ProFrac”…")).toBeVisible();
+  await symbol.fill("SPDR");
+  await expect(page.getByRole("option", { name: /SPDR S&P 500 ETF Trust/ })).toBeVisible();
+  await expect(page.locator("#instrument-options")).not.toContainText("ProFrac Holding Corp");
+});
+
 test("history filters and reconstruction remain usable", async ({ page }, testInfo) => {
   await page.goto("/");
   const symbol = testInfo.project.name.startsWith("desktop") ? "SPY-D" : "SPY-M";
   await page.getByLabel("Yahoo Finance symbol").fill(symbol);
   await page.getByLabel("ETF").check();
   await page.getByRole("button", { name: "Run forecast" }).click();
-  await expect(page.getByText(`${symbol} / ETF`)).toBeVisible();
+  await expect(page.locator(".forecast-meta").getByText(symbol, { exact: true })).toBeVisible();
+  await expect(page.getByText("ETF / ETF", { exact: true })).toBeVisible();
 
   await page.getByLabel("Find symbol").fill(symbol);
   await page.getByRole("button", { name: "Filter ledger" }).click();
   await page.getByRole("button", { name: "Reconstruct" }).first().click();
   await expect(page.getByText(/Historical reconstruction \d+ loaded/)).toBeAttached();
-  await expect(page.getByText(`${symbol} / ETF`)).toBeVisible();
+  await expect(page.locator(".forecast-meta").getByText(symbol, { exact: true })).toBeVisible();
+  await expect(page.getByText("ETF / ETF", { exact: true })).toBeVisible();
 });
 
 test("validation, loading, and stale states remain explicit", async ({ page }) => {
@@ -77,7 +120,7 @@ test("validation, loading, and stale states remain explicit", async ({ page }) =
   const symbol = page.getByLabel("Yahoo Finance symbol");
   await symbol.fill("bad symbol");
   await page.getByRole("button", { name: "Run forecast" }).click();
-  await expect(page.getByText("Enter 1-15 letters")).toBeVisible();
+  await expect(page.getByText(/Enter a 1-15 character symbol|Choose a matching instrument/)).toBeVisible();
   await expect(symbol).toBeFocused();
   await expect(symbol).toHaveAttribute("aria-invalid", "true");
 

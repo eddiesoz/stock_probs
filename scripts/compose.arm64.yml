@@ -1,0 +1,92 @@
+# M01 extracts a pinned user-mode emulator, then runs a pinned ARM64 package/runtime image.
+services:
+  qemu-acquire:
+    image: multiarch/qemu-user-static:7.2.0-1@sha256:fe60359c92e86a43cc87b3d906006245f77bfc0565676b80004cc666e4feb9f0
+    platform: linux/amd64
+    user: "${STOCK_PROBS_CONTAINER_UID:?}:${STOCK_PROBS_CONTAINER_GID:?}"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["cp /usr/bin/qemu-aarch64-static /qemu/qemu-aarch64-static && chmod 0755 /qemu/qemu-aarch64-static"]
+    volumes:
+      - "${STOCK_PROBS_QEMU_DIR:?}:/qemu"
+    network_mode: none
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 32
+    mem_limit: 64m
+    cpus: 1
+
+  binfmt-register:
+    image: multiarch/qemu-user-static:7.2.0-1@sha256:fe60359c92e86a43cc87b3d906006245f77bfc0565676b80004cc666e4feb9f0
+    platform: linux/amd64
+    privileged: true
+    entrypoint: ["/bin/sh", "-c"]
+    # Generate/register only aarch64; unlike --reset, this does not alter unrelated handlers.
+    command: ["mkdir -p /config /proc/sys/fs/binfmt_misc && mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc && /qemu-binfmt-conf.sh --systemd aarch64 --exportdir /config --qemu-path /usr/bin --qemu-suffix=-static --persistent yes && cat /config/qemu-aarch64.conf > /proc/sys/fs/binfmt_misc/register"]
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /config:size=1048576,mode=0700
+    pids_limit: 32
+    mem_limit: 64m
+    cpus: 1
+
+  binfmt-unregister:
+    image: multiarch/qemu-user-static:7.2.0-1@sha256:fe60359c92e86a43cc87b3d906006245f77bfc0565676b80004cc666e4feb9f0
+    platform: linux/amd64
+    privileged: true
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /proc/sys/fs/binfmt_misc && mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc && if [ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then echo -1 > /proc/sys/fs/binfmt_misc/qemu-aarch64; fi"]
+    network_mode: none
+    read_only: true
+    pids_limit: 32
+    mem_limit: 64m
+    cpus: 1
+
+  arm64-deps-init:
+    image: python:3.11.13-slim-bookworm@sha256:18ce9b03d18802119f4f9270d10a1ceb45d0acb768c305b7fbbd7c6b5b5a020b
+    platform: linux/arm64
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mkdir -p /opt/stock-probs-deps/home /opt/stock-probs-deps/python && chown -R $${CONTAINER_UID}:$${CONTAINER_GID} /opt/stock-probs-deps"]
+    environment:
+      CONTAINER_UID: "${STOCK_PROBS_CONTAINER_UID:?}"
+      CONTAINER_GID: "${STOCK_PROBS_CONTAINER_GID:?}"
+    volumes:
+      - "arm64-python-deps:/opt/stock-probs-deps"
+    network_mode: none
+    read_only: true
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 32
+    mem_limit: 64m
+    cpus: 1
+
+  arm64-smoke:
+    image: python:3.11.13-slim-bookworm@sha256:18ce9b03d18802119f4f9270d10a1ceb45d0acb768c305b7fbbd7c6b5b5a020b
+    platform: linux/arm64
+    user: "${STOCK_PROBS_CONTAINER_UID:?}:${STOCK_PROBS_CONTAINER_GID:?}"
+    working_dir: /workspace
+    entrypoint: ["/bin/bash", "/workspace/scripts/run-arm64-container.sh"]
+    environment:
+      HOME: /opt/stock-probs-deps/home
+      PYTHONDONTWRITEBYTECODE: "1"
+      STOCK_PROBS_EXECUTION_LABEL: "emulated ARM64 via OCI/QEMU; not native or physical ARM64 performance evidence"
+      STOCK_PROBS_REVISION: "${STOCK_PROBS_REVISION:?}"
+    volumes:
+      - "..:/workspace:ro"
+      - "${STOCK_PROBS_ARM64_ARTIFACT_DIR:?}:/artifacts"
+      - "${STOCK_PROBS_QEMU_DIR:?}:/qemu:ro"
+      - "arm64-python-deps:/opt/stock-probs-deps"
+    tmpfs:
+      - /tmp:size=536870912,mode=1777
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 768m
+    cpus: 2
+
+volumes:
+  arm64-python-deps:

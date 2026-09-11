@@ -32,9 +32,12 @@
       </div>
       <form id="forecast-form" class="search-panel" novalidate>
         <div class="field symbol-field">
-          <label for="symbol">Yahoo Finance symbol</label>
-          <input id="symbol" name="symbol" type="text" value="ACDC" maxlength="15" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="symbol-help symbol-error" required>
-          <p id="symbol-help" class="hint">Examples: ACDC, SPY, BRK-B</p>
+          <label for="symbol">Company name or Yahoo Finance symbol</label>
+          <input id="symbol" name="symbol" type="text" value="ACDC" maxlength="80" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="instrument-options" aria-describedby="symbol-help lookup-status identity-confirmation symbol-error" required>
+          <p id="symbol-help" class="hint">Type a company name to choose its identity, or enter a symbol directly.</p>
+          <p id="lookup-status" class="hint lookup-status" role="status" aria-live="polite"></p>
+          <ul id="instrument-options" class="instrument-options" role="listbox" aria-label="Matching instruments" hidden></ul>
+          <div id="identity-confirmation" class="identity-confirmation" aria-live="polite" hidden></div>
           <p id="symbol-error" class="field-error" aria-live="polite"></p>
         </div>
         <fieldset class="asset-field">

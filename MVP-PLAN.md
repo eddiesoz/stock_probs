@@ -5,14 +5,18 @@
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.
 
 - `M00` is **Completed** for the documentation-only contract: `MVP-PLAN.md`, `MVP-ROADMAP.md`, `AGENTS.md`, and `README.md`.
-- `M01` and `M04` are **Blocked** pending the cancelled independent repair retest; `M02` and `M03` are **In progress** with partial historical checks but no complete milestone record.
+- `EXP-M00` is **Completed** at the current coordinator checkpoint; its exact export, secret-review, commit, push, and remote-revision evidence is recorded below.
+- `M01` is **In progress**, not completed: all three independent QA retests passed their assigned behavior scopes, and `R-M01-3` through `R-M01-15` are completed for those scoped repairs, but `EXP-M01` checkpoint evidence remains pending.
+- `M04` is **Blocked** pending its own later evidence; `M02` and `M03` are **In progress** with partial historical checks but no complete milestone record.
 - `M05` and `M06` are **Blocked** by recorded QA findings, an incomplete repair/retest record, and missing release gates; none of `M01` through `M06` is completed.
-- `M07`, `M08`, and `ASTRA-FINAL` are **Pending**. The milestone export gates `EXP-M00` through `EXP-M08` and final `EXP-FINAL` are also not evidenced by this documentation task.
+- `M07`, `M08`, and `ASTRA-FINAL` are **Pending**. `EXP-M00` is completed; `EXP-M01` through `EXP-M08` and final `EXP-FINAL` remain pending.
 - A task may move to **Completed** only after every acceptance item, independent QA verification, repair history, reviewer, export, secret review, local commit, push, and Git remote revision verification is recorded. Implementation claims alone never change status. A physical ARM64 performance result is never inferred from emulation.
 
-The supplied Git remote receipt is historical context only: remote `main` was reported at `2a7a3bf66c3665552a46d0bd523544a01f894b3f`. It is not an `R-M00-2` checkpoint. The old hosted Actions receipt recorded by `R-M00-1` is obsolete x64-only context, not a current gate, release proof, or ARM64 evidence. No external pipeline is in scope.
+The supplied Git remote receipt is historical context only: remote `main` was reported at `2a7a3bf66c3665552a46d0bd523544a01f894b3f`. The current completed `EXP-M00` checkpoint instead pushed and verified exact SHA `18da1af0b6bc31020d3587e472b8197146795bf1`. The old hosted Actions receipt recorded by `R-M00-1` is obsolete x64-only context, not a current gate, release proof, or ARM64 evidence. No external pipeline is in scope.
 
 ### `R-M00-1` - Documentation recovery repair
+
+The fields in this immutable historical record preserve the state observed during the original recovery. Its then-pending `EXP-M00` is superseded for current chronology only by the separately recorded completed `EXP-M00` checkpoint below; the historical record itself is not rewritten.
 
 - **Status:** Completed for this documentation repair only; no implementation or release acceptance is claimed.
 - **Owner/phase:** `LUNA MAX docs`, M00 recovery/documentation gate.
@@ -54,11 +58,30 @@ The supplied Git remote receipt is historical context only: remote `main` was re
   | `R-M00-2-E3` | Workflow removal, local gate execution, M08 artifact generation, actual-control browser QA, and retrospective | Not run by this docs-only task; exact UTC time/commit unavailable | **Unavailable**; future implementation/M06/M07/M08/Astra evidence required and not hidden. |
   | `R-M00-2-E4` | R-M00-1 identity/history, collision aliases, and repair labels retained | Current docs; exact UTC time and commit unavailable | **Pass** as documentation content; reviewer: `LUNA MAX docs`; no repair retest implied. |
 - **Limitations and repair history:** No implementation QA, native ARM64 run, emulated ARM64 run, walkthrough artifact, browser-control check, retrospective, export, commit, push, or new Git remote verification was performed. `R-M00-2` does not accept any implementation milestone.
-- **Export/Git/reviewer:** `EXP-M00` through `EXP-M08` and `EXP-FINAL` remain pending or unavailable in their exact records; no export/commit/push was performed. Reviewer: `LUNA MAX docs` self-review; independent implementation QA was not performed.
+- **Export/Git/reviewer:** At the time of `R-M00-2`, no export/commit/push was performed by that documentation-only repair. The later coordinator record `EXP-M00` is **Completed** at the exact checkpoint recorded below; `EXP-M01` through `EXP-M08` and `EXP-FINAL` remain pending. Reviewer for `R-M00-2`: `LUNA MAX docs` self-review; independent implementation QA was not performed by that historical docs repair.
+
+### `EXP-M00` - Current completed checkpoint
+
+- **Status:** Completed.
+- **Owner/phase:** coordinator export gate; reviewer/coordinator `OpenCode gpt-5.6-sol`.
+- **Dependencies verified:** `R-M00-1` and `R-M00-2`; the M00 documentation baseline was complete before this checkpoint.
+- **Change summary:** The active full-session export was parsed and reviewed, then committed and pushed. This record does not include the later uncommitted M01 implementation changes.
+- **Evidence ledger:**
+
+  | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+  | --- | --- | --- | --- |
+  | `EXP-M00-E1` | Active export parsed as JSON with `1,413,943` bytes, `4,268` physical lines, `23` messages, `153` parts, `44` tool parts, and `10` task outputs | Current local export; exact UTC completion timestamp was not supplied in the consumed handoff; checkpoint SHA `18da1af0b6bc31020d3587e472b8197146795bf1` | **Pass**; artifact: active session `ses_f71ec0499ffeokWj4h6tVwyYk1`; reviewer: `OpenCode gpt-5.6-sol`; timestamp limitation remains visible. |
+  | `EXP-M00-E2` | Full regex secret review; two credential-like candidates were found and both were masked; no private-key, AWS, GitHub, or Bearer patterns | Same checkpoint; exact UTC time not supplied; SHA `18da1af0b6bc31020d3587e472b8197146795bf1` | **Pass**; artifact: reviewed active export; reviewer: `OpenCode gpt-5.6-sol`. |
+  | `EXP-M00-E3` | Git diff/check review, local commit and push, and `git ls-remote origin refs/heads/main` exact-SHA match | Git remote `origin`, branch `main`; exact SHA `18da1af0b6bc31020d3587e472b8197146795bf1`; exact UTC time not supplied | **Pass**; artifact: exact pushed/remote SHA; reviewer: coordinator `OpenCode gpt-5.6-sol`; no remote CI was used. |
+  | `EXP-M00-E4` | Scope and secret limitation review | Current worktree; exact UTC time not supplied; same checkpoint SHA | **Pass** for the recorded scope; unrelated `?? .vscode/` remained untouched. |
+
+- **Repair history:** None reported for this completed checkpoint. The recovered pre-checkpoint export remains a separate historical record whose command ended `running`; its missing historical secret-review/export-revision evidence is not silently converted to a pass.
+- **Limitations:** Exact UTC completion timestamp was not supplied; no remote CI was used; physical ARM64 performance remains unavailable.
+- **Next gate:** `M01` is in progress; `EXP-M01` is the next gate and is pending.
 
 ## Recovered Historical QA And Gate Record
 
-A bounded review of the root `SESSION-EXPORT.md` recovered the records below. The recovery inventory reports valid parsed JSON of `5,065,391` bytes, `11,093` physical lines, `80` top-level messages, and `384` parts. It contains parent task calls and summarized task handoffs, not complete child transcripts. These are historical OpenCode records from `/home/eddie/stock_probs`, generally against uncommitted working-tree material at historical `HEAD cb7c1b179aa7b33c269e1e8ff41776328d7dccae`; they are not a new QA run in the current repository and do not authorize completion. The export session is `ses_f73b976e8ffekNCE6SNIanpXFb`. The named independent reviewer in the QA rows is `LUNA MAX QA`; `SOL HIGH build` rows are implementation handoffs, not acceptance reviews.
+A bounded review of the recovered pre-checkpoint `SESSION-EXPORT.md` recorded the records below. The recovery inventory reports valid parsed JSON of `5,065,391` bytes, `11,093` physical lines, `80` top-level messages, and `384` parts. It contains parent task calls and summarized task handoffs, not complete child transcripts. These are historical OpenCode records from `/home/eddie/stock_probs`, generally against uncommitted working-tree material at historical `HEAD cb7c1b179aa7b33c269e1e8ff41776328d7dccae`; they are not a new QA run in the current repository and do not authorize completion. The export session is `ses_f73b976e8ffekNCE6SNIanpXFb`. The named independent reviewer in the QA rows is `LUNA MAX QA`; `SOL HIGH build` rows are implementation handoffs, not acceptance reviews.
 
 | Task/evidence record | Check, environment, and UTC evidence | Result | Repair, limitation, and artifact |
 | --- | --- | --- | --- |
@@ -68,18 +91,19 @@ A bounded review of the root `SESSION-EXPORT.md` recovered the records below. Th
 | `R-M03-1`, `R-M03-2`, `R-M05-3`, repair `ses_f72c4f276ffeJm9WRj0aBXCM1X` and retest `ses_f72ab5097ffexdJCun6m6thzDi` | Repair suite/full deterministic checks; retest focused checks `2026-09-10T22:10:19Z`–`22:10:22Z`, full suite 83 passed, 89.23% coverage, and live ACDC/SPY checks passed. | **Pass for the named repair checks** | No commit or push; unscheduled exchange closures remain outside the modeled calendar. Artifact: this export. |
 | `R-M01-1`, `R-M01-2`, `R-M04-1`, `R-M06-1`, repair `ses_f72c4f20effeDoLPC0FuHaaGjZ` and retest `ses_f72ab5027ffeR0shgnOsYGX47N` | Repair handoff reported 22 focused, 83 full non-live, and eight browser checks passing at `2026-09-10T21:57:32Z`. | **Skipped** | The independent retest task was cancelled; no acceptance result may be inferred from the builder report. Artifact: this export. |
  | `R-M05-1`, `R-M05-2`, `R-M05-4`, repair `ses_f72c4f1baffeECZSQ37ujzSmCJ` and retest `ses_f72ab4fc9ffepKCTOlUxIWlRrt` | Independent late retest reported `make check` **Pass**, 83 tests, and 89.23% coverage, plus `make restore-test`, `make release-check`, `make mcp-smoke`, `make live-smoke`, and adversarial HMAC/ZIP/permission checks; environment was historical ARM64/Python 3.11.2/Node 22.19.0. | **Pass for the named checks** | This evidence is from the historical uncommitted revision and is not full milestone acceptance. An earlier concurrent builder aggregate-check limitation is historical context, not a current unresolved result. Export/secret-review/push/Git-revision fields for the milestone remain open. Artifact: this export. |
-| `EXP-M00` | The export command `opencode export ses_f73b976e8ffekNCE6SNIanpXFb > SESSION-EXPORT.md` appears with status `running` at the end of the recovered transcript; no completed exit/result is recorded. | **Unavailable** | Task status remains `Pending`. No exact full secret-review or export-revision evidence was captured. Commit/push of that export and its Git-revision receipt are unavailable; the separate historical x64 receipt above does not complete `EXP-M00`. The root export must not be treated as reviewed or green. Artifact: `SESSION-EXPORT.md`. |
+| Recovered historical `EXP-M00` | The export command `opencode export ses_f73b976e8ffekNCE6SNIanpXFb > SESSION-EXPORT.md` appears with status `running` at the end of the recovered transcript; no completed exit/result is recorded. | **Unavailable** | Historical record only: no exact full secret-review or export-revision evidence was captured for that attempt, and its commit/push/Git-revision receipt is unavailable. It is superseded for current chronology by the completed `EXP-M00` record above and must not be treated as current acceptance. Artifact: recovered `SESSION-EXPORT.md`. |
+| Current `EXP-M00` | Active export session `ses_f71ec0499ffeokWj4h6tVwyYk1`: `1,413,943` bytes, `4,268` lines, `23` messages, `153` parts, `44` tool parts, `10` task outputs; full regex secret review masked two credential-like candidates and found no private-key/AWS/GitHub/Bearer patterns; exact pushed/remote SHA matched. | **Pass** | **Completed**; see the full `EXP-M00-E1`–`E4` ledger above. Exact UTC completion timestamp was not supplied; no remote CI was used. Reviewer/coordinator: `OpenCode gpt-5.6-sol`. Artifact: active export/checkpoint SHA `18da1af0b6bc31020d3587e472b8197146795bf1`. |
 
 The historical transcript reuses `R-M01-1`, `R-M05-1`, `R-M06-1`, and `R-M04-1` for different integration and later QA defects. The fresh source-qualified aliases allocated by `R-M00-1` are listed next; historical labels are not changed. A check-level `Pass` above never overrides a cancelled retest, missing reviewer/gate field, failed check, or unavailable release evidence.
 
 ## Historical Collision And Alias Register
 
-The following IDs are fresh and unique in this plan. Each remains **Pending** until its exact obligation receives an independent QA rerun and the normal export plus Git checkpoint evidence. The old labels remain immutable historical references.
+The following IDs are fresh and unique in this plan. They were pending when allocated; current M01 scoped repair results are recorded below, while later obligations remain pending until their exact independent rerun and normal export plus Git checkpoint evidence. The old labels remain immutable historical references.
 
 | Historical source-qualified label | Defect obligation carried forward | Fresh repair ID | Status and evidence state |
 | --- | --- | --- | --- |
-| `R-M01-1` in QA task `ses_f72f4e2f0ffe6hMpBTmXUnWybW` | Router error envelope/OpenAPI behavior | `R-M01-3` | **Pending**; historical failure, no fresh retest |
-| `R-M01-1` in repair-builder handoff `ses_f72c4f20effeDoLPC0FuHaaGjZ` | Startup harness/launch behavior | `R-M01-4` | **Pending**; builder claim only, cancelled independent retest |
+| `R-M01-1` in QA task `ses_f72f4e2f0ffe6hMpBTmXUnWybW` | Router error envelope/OpenAPI behavior | `R-M01-3` | **Completed** for the current scoped retest; see M01 QA ledger. |
+| `R-M01-1` in repair-builder handoff `ses_f72c4f20effeDoLPC0FuHaaGjZ` | Startup harness/launch behavior | `R-M01-4` | **Completed** for the current scoped retest; see M01 QA ledger. |
 | `R-M05-1` in QA task `ses_f72f4e163ffehgqJPXwbY7ujrX` | Malicious backup artifact handling | `R-M05-5` | **Pending**; historical finding, no fresh retest |
 | `R-M05-1` in the later backup/operations handoff `ses_f72c4f1baffeECZSQ37ujzSmCJ` | Chunked-request/resource handling | `R-M05-6` | **Pending**; source-qualified obligation, no fresh retest |
 | `R-M06-1` in QA/operations task `ses_f72f4e163ffehgqJPXwbY7ujrX` | Port-collision behavior | `R-M06-2` | **Pending**; no independent retest |
@@ -88,7 +112,7 @@ The following IDs are fresh and unique in this plan. Each remains **Pending** un
 | `R-M04-1` in browser/accessibility task `ses_f72f4e261ffeLWQEjyJI4k3hea` | Actual assistive-technology evidence unavailable | `R-M04-2` | **Pending**; evidence unavailable and screen-reader/assistive run still required separately |
 | `R-M04-1` in repair-builder handoff `ses_f72c4f20effeDoLPC0FuHaaGjZ` | Mobile error focus behavior | `R-M04-3` | **Pending**; cancelled independent API/UI retest |
 
-The source task IDs above are evidence locators, not acceptance reviewers. No alias is a pass, and no later repair may reuse one of these fresh IDs for a different defect.
+The source task IDs above are evidence locators, not acceptance reviewers. `R-M01-3` and `R-M01-4` now have current independent scoped pass records; the other listed aliases remain pending, and no later repair may reuse one of these fresh IDs for a different defect. `R-M01-5` through `R-M01-15` are current coordinator-assigned M01 records in the M01 register, not additional collision aliases.
 
 ## Mandatory Delivery Workflow
 
@@ -248,20 +272,43 @@ The coordinator assigns the exact task ID. Each implementation or repair wave ru
 - **Acceptance evidence:** [x] `MVP-PLAN.md`, `MVP-ROADMAP.md`, `AGENTS.md`, and `README.md` exist; [x] current prototype is distinguished from planned implementation; [x] no implementation milestone is presented as completed without its evidence.
 - **Verification:** [x] documentation-only diff reviewed for `R-M00-1`; [x] required product invariants, restored acceptance map, dual-architecture/visual gates, orchestration, evidence fields, repair loop, and final definition of done are present. This is not implementation QA.
 - **Repair record:** `R-M00-1` **Completed** for documentation recovery only; its exact evidence, limitations, and unavailable release fields are recorded above.
-- **Post-milestone gate:** `EXP-M00` must overwrite and review `SESSION-EXPORT.md`, then record the local commit, push, and exact Git remote revision verification. A historical export attempt is recorded above, but its completion, secret review, commit, push, and revision receipt are unavailable.
+- **Post-milestone gate:** `EXP-M00` was required to overwrite and review `SESSION-EXPORT.md`, then record the local commit, push, and exact Git remote revision verification. The recovered historical attempt remains incomplete, but the current coordinator checkpoint is completed above at exact SHA `18da1af0b6bc31020d3587e472b8197146795bf1`.
 
 ### M01 - API And Application Shell
 
-- **Status:** Blocked.
-- **Dependencies:** M00.
-- **Evidence state:** Historical QA recorded `R-M01-1` and `R-M01-2`; the repair handoff reported implementation checks, but the independent retest task was cancelled. M01 remains blocked and not completed.
+- **Status:** In progress.
+- **Dependencies:** `M00` and completed `EXP-M00` checkpoint `18da1af0b6bc31020d3587e472b8197146795bf1` verified. M01 changes are later uncommitted working-tree changes; they are not part of that checkpoint.
+- **Evidence state:** All three builder handoffs and all three independent QA retests were received. No QA lane found a remaining M01 product defect. Independent behavior evidence passes in scope, and `R-M01-3` through `R-M01-15` are completed for their exact assigned repair behavior. M01 remains in progress because `EXP-M01` secret review, export, commit, push, exact remote-revision verification, and remote workflow-removal evidence are pending.
 - **Build wave:** `SOL HIGH-A` transport/application; `SOL HIGH-B` domain/storage interface assumptions; `SOL HIGH-C` presentation/browser/operations integration. Paths must be disjoint and reports must arrive before QA/docs.
 - **Gates:** `LUNA MAX QA` and `LUNA MAX docs` only after the builder wait; export `EXP-M01` after every acceptance row passes.
 - **Scope:** Establish the Linux x86-64/ARM64-friendly application layout, FastAPI service, versioned `/api/v1` boundary, structured errors, health/readiness behavior, company-name/instrument-identity lookup contract, frontend shell, documented local loopback launch path, and removal of any obsolete `.github/workflows/ci.yml` workflow path.
-- **Acceptance evidence:** [ ] API contract and schema tests pass; [ ] company-name lookup returns and preserves the requested symbol, exchange, asset type, and instrument identity; [ ] a browser can obtain application data only through `/api/v1`; [ ] no frontend source imports a database driver or opens a SQLite path; [ ] loopback smoke test passes on native x86-64 and on local native or labelled emulated ARM64; [ ] `.github/workflows/ci.yml` is absent after the M01/M06 cleanup; [ ] package/clean-install assumptions and non-obvious code decisions have useful comments.
-- **Verification:** [ ] unit and API tests; [ ] negative validation tests; [ ] browser network inspection; [ ] native x86-64 startup/loopback smoke test; [ ] local native ARM64 startup when hardware is available, otherwise a labelled QEMU/OCI ARM64 run; [ ] clean package installation.
-- **Repair record:** Record each failed check as `R-M01-<n>` with failing evidence and rerun result.
-- **Post-milestone gate:** `EXP-M01` and its local export/commit/push/Git-revision record are mandatory; a source inspection or passing-looking artifact cannot substitute for them.
+- **Change summary:** The current implementation wave includes the deleted workflow, package/bootstrap and local-gate paths, company/instrument lookup and API/UI identity handling, the service boundary, strict schemas/errors/startup behavior, and associated tests. This summary records changed paths, not a completion claim.
+- **Builder handoff record:**
+  - `SOL HIGH-A` task `ses_f718d04e0ffeqdv2i56c6k72Pg`, repair handoff `ses_f71674730ffeERY2M1p9htV2Or`: `pyproject.toml`, `requirements.lock`, transport/application files under `src/stock_probs/` (`api.py`, `cli.py`, `config.py`, `schemas.py`, `service.py`), and `tests/test_api.py`/`tests/test_config_quality.py`; package metadata, startup/configuration, schemas/errors, and application-shell behavior were changed, with executable Python support metadata `>=3.11,<3.12`.
+  - `SOL HIGH-B` task `ses_f718d04a2ffexmhN4OlHuJlTwt`, repair handoff `ses_f716746fbffe9qOSoMniDzfbNi`: `src/stock_probs/domain.py`, `provider.py`, `repository.py`, `fixtures/acdc.json`, `fixtures/spy.json`, and `tests/test_domain.py`/`test_provider.py`/`test_repository_backup.py`; domain/provider identity and server-side persistence interfaces were changed.
+  - `SOL HIGH-C` task `ses_f718d0469ffeVig2Xix5cE5N1V`, repair handoff `ses_f716746e8ffeEjA0BRqajZ0ycH`: deleted `.github/workflows/ci.yml` and `scripts/install-node-arm64.sh`; changed `.opencode/agent/sol-build.md`, `Makefile`, `src/stock_probs/static/app.css`, `app.js`, `index.html`, `tests/test_live.py`, `tests/test_resource.py`, `tools/browser/package-lock.json`, `tools/browser/playwright.config.js`, and `tools/browser/tests/dashboard.spec.js`; added the ARM64/bootstrap/local-gate scripts listed in the current worktree (`scripts/arm64-smoke.sh`, `bootstrap.sh`, `compose.arm64.yml`, `install-node.sh`, `local-gate.sh`, `package_smoke.py`, and `run-arm64-container.sh`).
+  - Builder reports are implementation handoffs only; their tests are not independent acceptance evidence.
+- **Acceptance evidence:** [x] independent API/schema, negative-validation, startup, and package checks passed in scope; [x] executable Python support metadata is `>=3.11,<3.12` and native x86 bootstrap used Python `3.11.15`; [x] company-name lookup preserved symbol, exchange, stock/ETF asset type, and instrument identity; [x] browser network inspection recorded 53 fetch/XHR requests all under `/api/v1` with no forbidden access or leaks; [x] native x86-64 bootstrap/loopback and clean non-edit wheel install/migration passed; [x] explicitly emulated ARM64 OCI/QEMU `7.2.0` package/install/migration/loopback passed; [x] useful comments and compile/shell checks passed; [x] local worktree has no `.github/workflows/ci.yml`; [ ] remote workflow removal, M01 export, secret review, commit, push, and exact remote-revision verification remain pending.
+- **Independent QA verification:**
+
+  | Evidence ID/task | Check and environment/time | Result, artifact, reviewer, limitation |
+  | --- | --- | --- |
+  | `M01-QA1` / `ses_f71521f9dffeWxILBgUaEBhf0O` | Native x86_64; completed `2026-09-11T04:27:31Z`. `R-M01-3`–`R-M01-7`, `167/167` harness, `100` non-live passed/`4` deselected/`89.17%`, Ruff+S, strict mypy for all 12 production files, 51 comments, compile, and shell checks. | **Pass**; `/tmp/opencode/stock_probs-m01-qa`; reviewer `LUNA MAX QA`. Live/browser/ARM/export were skipped in this lane only. |
+  | `M01-QA2` / `ses_f71521f5effeKu8HF2uh3fxJT1` | Native x86 Python `3.11.15`; direct no-`make` local gate; clean non-edit x86 wheel install/migration/loopback; deliberate safe failure exited nonzero and recorded `Fail`; Node x64/arm64 checksum; OpenCode schema/config/MCP; emulated ARM64 OCI/QEMU `7.2.0` package/install/migration/loopback; cleanup. | **Pass** for coordinator-authoritative `R-M01-8`–`R-M01-13`; artifacts `test-results/local-gates` and `test-results/arm64`; reviewer `LUNA MAX QA`. Completion UTC was not supplied. No native/physical ARM64 or performance evidence. Stale labels `R-M01-16`–`R-M01-19` were not created; their checks are assigned here to `R-M01-8`–`R-M01-13`. |
+  | `M01-QA3` / `ses_f71521efbffeEdTmM7GL4wYmW2` | Native x86_64; latest artifact timestamp `2026-09-11T04:35:01.820Z`. `R-M01-14`/`R-M01-15`, browser `R-M01-3`/`R-M01-4`, checked-in 6 desktop + 6 mobile scenarios, required viewport overflow checks, identity checks, 53 API-only fetch/XHR requests, structured errors/docs/OpenAPI/console, and official MCP actual interaction. | **Pass**; artifacts `/tmp/opencode/m01qa-*`; reviewer `LUNA MAX QA`. No product defects; screen-reader/later polish remain M04/M06. |
+- **Repair register:**
+
+  | Repair ID | Exact scoped behavior and independent evidence | Status |
+  | --- | --- | --- |
+  | `R-M01-3` | Router error/OpenAPI scoped retest; `M01-QA1` and `M01-QA3` pass evidence. | Completed |
+  | `R-M01-4` | Startup/launch-harness scoped retest; `M01-QA1` and `M01-QA3` pass evidence. | Completed |
+  | `R-M01-5`–`R-M01-7` | Coordinator-assigned M01 repair rows; `M01-QA1` passed all three in scope. | Completed |
+  | `R-M01-8`–`R-M01-13` | Coordinator-assigned package/bootstrap, direct local-gate, clean-install/migration/loopback, checksum, OpenCode/MCP, and emulated-ARM64 rows; `M01-QA2` pass evidence. | Completed |
+  | `R-M01-14`–`R-M01-15` | Coordinator-assigned QA3 M01 repair rows; `M01-QA3` passed its recorded browser/API/identity/error/docs/OpenAPI/console/MCP scopes. | Completed |
+
+  The range assignments above are authoritative. No `R-M01-16`, `R-M01-17`, `R-M01-18`, or `R-M01-19` repair records were created from stale export labels.
+- **Limitations and pending fields:** The current host lacks system `make`; the direct executable local-gate path passed and `Makefile` is a convenience wrapper. The local workflow deletion is not remote removal until commit/push. Physical/native ARM64 performance is `Unavailable`; emulated ARM64 evidence is explicitly functional/tool evidence only. M01 live checks skipped in QA1 are not represented as global passes.
+- **Post-milestone gate:** `EXP-M01` is **Pending** and is the next gate. It must include the full active export, secret review, local commit, push, exact Git remote revision verification, and proof that the workflow deletion is absent on the verified remote revision; implementation claims or the current worktree cannot substitute.
 
 ### M02 - SQLite Audit And Immutable Records
 

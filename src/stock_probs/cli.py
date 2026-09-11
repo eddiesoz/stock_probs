@@ -43,8 +43,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="stock-probs")
     subparsers = parser.add_subparsers(dest="command", required=True)
     serve = subparsers.add_parser("serve", help="run the local dashboard and API")
-    serve.add_argument("--host", default="127.0.0.1")
-    serve.add_argument("--port", type=_port, default=8000)
+    serve.add_argument("--host", help="listener host (defaults to STOCK_PROBS_HOST or loopback)")
+    serve.add_argument("--port", type=_port, help="listener port (defaults to STOCK_PROBS_PORT)")
     serve.add_argument(
         "--allow-non-loopback",
         action="store_true",
@@ -60,13 +60,16 @@ def main() -> None:
 
     try:
         if args.command == "serve":
-            if not _is_loopback(args.host) and not args.allow_non_loopback:
+            settings = Settings.from_env()
+            host = args.host or settings.host
+            port = args.port or settings.port
+            if not _is_loopback(host) and not args.allow_non_loopback:
                 parser.error("non-loopback binding requires --allow-non-loopback")
             # One worker and bounded queues/timeouts keep malformed or idle clients inexpensive.
             uvicorn.run(
                 create_app(),
-                host=args.host,
-                port=args.port,
+                host=host,
+                port=port,
                 workers=1,
                 limit_concurrency=32,
                 backlog=64,

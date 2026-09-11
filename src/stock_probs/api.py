@@ -6,11 +6,11 @@ import csv
 import io
 import sqlite3
 import unicodedata
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -21,14 +21,22 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.types import ASGIApp
 
 from stock_probs.backup import MAX_BACKUP_BYTES, BackupError, BackupManager
 from stock_probs.config import Settings
 from stock_probs.domain import DomainError
 from stock_probs.provider import FixtureProvider, MarketDataProvider, YahooProvider
 from stock_probs.repository import SCHEMA_VERSION, Repository
-from stock_probs.schemas import BackupRequest, OutcomeRequest, RestoreRequest, SearchRequest
+from stock_probs.schemas import (
+    BackupRequest,
+    InstrumentIdentityResponse,
+    InstrumentLookupResponse,
+    OutcomeRequest,
+    RestoreRequest,
+    SearchRequest,
+)
 from stock_probs.service import ForecastService
 
 
@@ -118,6 +126,8 @@ class ProvenanceResponse(ApiResponse):
     query: dict[str, Any]
     response_as_of: str
     content_fingerprint: str
+    instrument_identity: InstrumentIdentityResponse
+    identity_fingerprint: str
     model_version: str
     calendar_version: str
 
@@ -125,7 +135,11 @@ class ProvenanceResponse(ApiResponse):
 class ForecastInputResponse(ApiResponse):
     id: int
     symbol: str
+    canonical_symbol: str
+    display_name: str
+    company_name: str
     asset_type: Literal["stock", "etf"]
+    quote_type: Literal["EQUITY", "STOCK", "ETF"]
     exchange: str
     exchange_timezone: str
     currency: str
@@ -135,6 +149,8 @@ class ForecastInputResponse(ApiResponse):
     provider_query: dict[str, Any]
     provider_metadata: dict[str, Any]
     content_fingerprint: str
+    instrument_identity: InstrumentIdentityResponse
+    identity_fingerprint: str
     captured_at: str
     selected_daily_bars: list[CapturedBarResponse]
     selected_intraday_bars: list[CapturedBarResponse]
@@ -304,11 +320,27 @@ class RestoreResponse(ApiResponse):
     rollback_cleanup_required: bool | None = None
 
 
-def _documented_errors(*status_codes: int) -> dict[int, dict[str, Any]]:
+def _documented_errors(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     """Reuse the real safe envelope while documenting only failures applicable to a route."""
 
+    descriptions = {
+        400: "The local host or request framing is invalid.",
+        403: "The browser origin is not an allowed loopback origin.",
+        404: "The requested resource or instrument was not found.",
+        405: "The HTTP method is not supported by this resource.",
+        409: "The requested recorded data is unavailable for this resource.",
+        411: "A bounded Content-Length header is required.",
+        413: "The request body exceeds the local API limit.",
+        422: "The request or domain input is invalid.",
+        500: "The local service could not complete the request.",
+        502: "The market-data provider did not return usable data.",
+        503: "A required local service or bounded provider slot is unavailable.",
+    }
     return {
-        status_code: {"model": ErrorEnvelope, "description": "Structured local API error."}
+        status_code: {
+            "model": ErrorEnvelope,
+            "description": descriptions[status_code],
+        }
         for status_code in status_codes
     }
 
@@ -319,7 +351,9 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
     allowed_hosts = {"127.0.0.1", "localhost", "::1", "testserver"}
     browser_hosts = {"127.0.0.1", "localhost", "::1"}
 
-    def __init__(self, app, repository: Repository, max_request_bytes: int = 16_384):
+    def __init__(
+        self, app: ASGIApp, repository: Repository, max_request_bytes: int = 16_384
+    ) -> None:
         super().__init__(app)
         self.repository = repository
         self.max_request_bytes = max_request_bytes
@@ -343,7 +377,9 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
         )
         return request_id
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         # Handle Host here instead of TrustedHostMiddleware so its rejection also uses the
         # API error envelope and receives the same headers as every other response.
         try:
@@ -424,7 +460,9 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    async def _bounded_request(self, request: Request, call_next: Callable) -> Response:
+    async def _bounded_request(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         """Reject declared oversized bodies before FastAPI allocates or validates JSON."""
 
         content_length = request.headers.get("content-length")
@@ -484,8 +522,8 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
 
 def _error(
     code: str, message: str, request_id: str | None = None, details: object | None = None
-) -> dict:
-    payload: dict = {"error": {"code": code, "message": message}}
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"error": {"code": code, "message": message}}
     if request_id:
         payload["error"]["request_id"] = request_id
     if details:
@@ -522,7 +560,6 @@ def create_app(
     """Build an injectable app so all deterministic tests use temporary SQLite files."""
 
     config = settings or Settings.from_env()
-    config.ensure_local_dirs()
     repository = Repository(config.database_path)
     selected_provider = provider or (
         FixtureProvider()
@@ -530,15 +567,23 @@ def create_app(
         else YahooProvider(config.provider_timeout)
     )
     # Browser fixtures can pin time without changing live Yahoo's real request clock.
-    selected_clock = clock or ((lambda: config.fixture_now) if config.fixture_now else None)
+    fixture_now = config.fixture_now
+    selected_clock = clock or (
+        (lambda: fixture_now) if fixture_now is not None else (lambda: datetime.now(UTC))
+    )
     service = ForecastService(repository, selected_provider, selected_clock)
     backups = BackupManager(repository, config.backup_dir)
     static_dir = Path(__file__).parent / "static"
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI):
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        config.ensure_local_dirs()
         repository.migrate()
-        yield
+        application.state.ready = True
+        try:
+            yield
+        finally:
+            application.state.ready = False
 
     app = FastAPI(
         title="Stock Probability API",
@@ -552,6 +597,7 @@ def create_app(
     app.state.repository = repository
     app.state.service = service
     app.state.backups = backups
+    app.state.ready = False
     app.add_middleware(LocalSecurityMiddleware, repository=repository)
 
     @app.exception_handler(DomainError)
@@ -607,17 +653,12 @@ def create_app(
     @app.exception_handler(StarletteHTTPException)
     async def http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
         # The Starlette base class also catches router and mounted StaticFiles 404/405 errors.
-        code = {
-            404: "not_found",
-            409: "forecast_unavailable",
-            405: "method_not_allowed",
-            503: "service_unavailable",
-        }.get(exc.status_code, "http_error")
-        message = (
-            str(exc.detail)
-            if isinstance(exc.detail, str)
-            else "The request could not be served."
-        )
+        code, message = {
+            404: ("not_found", "The requested resource was not found."),
+            405: ("method_not_allowed", "The request method is not allowed for this resource."),
+            409: ("forecast_unavailable", "The requested recorded data is unavailable."),
+            503: ("service_unavailable", "The local service is not ready."),
+        }.get(exc.status_code, ("http_error", "The request could not be served."))
         return JSONResponse(
             status_code=exc.status_code,
             content=_error(code, message),
@@ -644,7 +685,7 @@ def create_app(
         response_model=HealthResponse,
         responses=_documented_errors(400, 403, 405, 500),
     )
-    def health() -> HealthResponse:
+    def health() -> dict[str, Any]:
         return {"status": "ok", "service": "stock-probs", "api_version": "v1"}
 
     @app.get(
@@ -652,19 +693,36 @@ def create_app(
         response_model=ReadinessResponse,
         responses=_documented_errors(400, 403, 405, 500, 503),
     )
-    def readiness() -> ReadinessResponse:
+    def readiness() -> dict[str, Any]:
+        if not app.state.ready:
+            raise HTTPException(status_code=503)
         # Ask through the repository boundary; transport code must not grow storage-specific SQL.
         repository.representative_counts()
         return {"status": "ready", "schema_version": SCHEMA_VERSION, "provider": config.provider}
+
+    @app.get(
+        "/api/v1/instruments",
+        response_model=InstrumentLookupResponse,
+        responses=_documented_errors(400, 403, 405, 422, 500, 502, 503),
+    )
+    def instrument_lookup(
+        query: str = Query(min_length=1, max_length=80),
+        limit: int = Query(default=5, ge=1, le=5),
+    ) -> dict[str, Any]:
+        """Resolve a bounded company/symbol query without detaching names from identity."""
+
+        # Resolve through app state so transport tests and runtime integrations share the
+        # service's provider concurrency, normalization, and exception boundary.
+        return cast(dict[str, Any], app.state.service.lookup(query, limit))
 
     @app.post(
         "/api/v1/forecasts",
         status_code=201,
         response_model=ForecastCreationResponse,
         response_model_exclude_unset=True,
-        responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 502, 503),
+        responses=_documented_errors(400, 403, 404, 405, 411, 413, 422, 500, 502, 503),
     )
-    def create_forecast(payload: SearchRequest) -> ForecastCreationResponse:
+    def create_forecast(payload: SearchRequest) -> dict[str, Any]:
         return service.search(payload.symbol, payload.asset_type)
 
     @app.get(
@@ -678,7 +736,7 @@ def create_app(
         asset_type: str | None = Query(default=None, pattern="^(stock|etf)$"),
         page: int = Query(default=1, ge=1, le=10_000),
         page_size: int = Query(default=20, ge=1, le=100),
-    ) -> HistoryResponse:
+    ) -> dict[str, Any]:
         return repository.history(
             query=q.strip().upper(),
             status=status,
@@ -741,7 +799,7 @@ def create_app(
     )
     def reconstruction(
         event_id: int = PathParameter(ge=1, le=2_147_483_647),
-    ) -> ReconstructionResponse:
+    ) -> dict[str, Any]:
         result = repository.reconstruction(event_id)
         if result is None:
             raise HTTPException(status_code=404, detail="history event not found")
@@ -756,7 +814,7 @@ def create_app(
         event_id: int = PathParameter(ge=1, le=2_147_483_647),
         series: str = Query(default="daily", pattern="^(daily|intraday)$"),
         limit: int = Query(default=120, ge=1, le=500),
-    ) -> HistoricalPricesResponse:
+    ) -> dict[str, Any]:
         """Expose bounded captured prices, never a fresh provider or browser-side query."""
 
         reconstruction = repository.reconstruction(event_id)
@@ -789,7 +847,7 @@ def create_app(
     )
     def original_forecast_result(
         result_id: int = PathParameter(ge=1, le=2_147_483_647),
-    ) -> OriginalForecastResultResponse:
+    ) -> dict[str, Any]:
         """Return the immutable recorded result without folding later outcomes into it."""
 
         result = repository.forecast_result(result_id)
@@ -806,7 +864,7 @@ def create_app(
     def append_outcome(
         payload: OutcomeRequest,
         result_id: int = PathParameter(ge=1, le=2_147_483_647),
-    ) -> OutcomeResponse:
+    ) -> dict[str, Any]:
         result = service.append_outcome(
             result_id, payload.observed_close, payload.observed_at, payload.state, payload.note
         )
@@ -820,7 +878,7 @@ def create_app(
         response_model=BackupCreatedResponse,
         responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
     )
-    def create_backup(payload: BackupRequest) -> BackupCreatedResponse:
+    def create_backup(payload: BackupRequest) -> dict[str, Any]:
         return backups.create(payload.name)
 
     @app.get(
@@ -828,7 +886,7 @@ def create_app(
         response_model=BackupStatusResponse,
         responses=_documented_errors(400, 403, 405, 500, 503),
     )
-    def backup_status() -> BackupStatusResponse:
+    def backup_status() -> dict[str, Any]:
         """Advertise bounded managed operations without disclosing server paths or filenames."""
 
         repository.representative_counts()
@@ -846,7 +904,7 @@ def create_app(
         response_model_exclude_unset=True,
         responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
     )
-    def restore_backup(payload: RestoreRequest) -> RestoreResponse:
+    def restore_backup(payload: RestoreRequest) -> dict[str, Any]:
         return backups.restore(payload.name, promote=payload.promote)
 
     @app.get("/api/v1/docs", include_in_schema=False)
@@ -855,7 +913,7 @@ def create_app(
 
         return FileResponse(static_dir / "api-docs.html")
 
-    @app.get("/")
+    @app.get("/", include_in_schema=False)
     def dashboard() -> FileResponse:
         return FileResponse(static_dir / "index.html")
 

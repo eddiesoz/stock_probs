@@ -20,6 +20,30 @@ class SearchRequest(StrictModel):
     asset_type: Literal["stock", "etf"]
 
 
+class InstrumentIdentityResponse(StrictModel):
+    """Facts that together distinguish one supported Yahoo instrument."""
+
+    canonical_symbol: str = Field(min_length=1, max_length=15)
+    display_name: str = Field(min_length=1, max_length=200)
+    company_name: str = Field(min_length=1, max_length=200)
+    exchange: str = Field(min_length=1, max_length=40)
+    currency: str = Field(min_length=1, max_length=12)
+    timezone: str = Field(min_length=1, max_length=80)
+    quote_type: Literal["EQUITY", "STOCK", "ETF"]
+    asset_type: Literal["stock", "etf"]
+    provider: str = Field(min_length=1, max_length=80)
+    provider_as_of: datetime
+
+
+class InstrumentLookupResponse(StrictModel):
+    """A display name is always coupled to identity instead of returned as a loose match."""
+
+    query: str = Field(min_length=1, max_length=80)
+    items: list[InstrumentIdentityResponse]
+    total: int = Field(ge=0, le=5)
+    limit: int = Field(ge=1, le=5)
+
+
 class OutcomeRequest(StrictModel):
     observed_close: float | None = Field(default=None, gt=0, le=10_000_000)
     observed_at: datetime

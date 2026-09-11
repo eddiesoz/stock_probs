@@ -13,6 +13,7 @@ from stock_probs.domain import (
     DomainError,
     calculate_forecasts,
     evaluate_outcome,
+    normalize_lookup_query,
     normalize_symbol,
 )
 from stock_probs.provider import FixtureProvider
@@ -28,6 +29,14 @@ def test_fixture_forecast_contract_and_repeatability():
     assert first == second
     snapshot, results = first
     assert snapshot["quality"] == "current"
+    assert snapshot["canonical_symbol"] == "ACDC"
+    assert snapshot["display_name"] == "ProFrac Holding Corp."
+    assert snapshot["company_name"] == "ProFrac Holding Corp."
+    assert snapshot["quote_type"] == "EQUITY"
+    assert snapshot["instrument_identity"]["asset_type"] == "stock"
+    assert snapshot["instrument_identity"] == snapshot["provenance"]["instrument_identity"]
+    assert snapshot["identity_fingerprint"] == snapshot["provenance"]["identity_fingerprint"]
+    assert snapshot["provider"] == "deterministic fixture"
     assert snapshot["provider_query"]["intraday"] == "5m/5d"
     assert [result["horizon"] for result in results] == ["close_to_close", "completed_5m_to_close"]
     for result in results:
@@ -265,3 +274,13 @@ def test_symbol_validation_rejects_unsafe_or_oversized_values(value):
 def test_symbol_normalization_preserves_yahoo_syntax():
     assert normalize_symbol(" brk-b ") == "BRK-B"
     assert normalize_symbol("^gspc") == "^GSPC"
+
+
+def test_company_lookup_query_retains_names_but_rejects_controls_and_unbounded_input():
+    assert normalize_lookup_query("  Berkshire   Hathaway, Inc.  ") == "Berkshire Hathaway, Inc."
+    with pytest.raises(DomainError) as control:
+        normalize_lookup_query("Berkshire\u200bHathaway")
+    assert control.value.code == "invalid_lookup_query"
+    with pytest.raises(DomainError) as oversized:
+        normalize_lookup_query("X" * 81)
+    assert oversized.value.code == "invalid_lookup_query"
