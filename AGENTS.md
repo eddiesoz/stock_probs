@@ -2,36 +2,36 @@
 
 ## Repository truth
 
-- The target is a local ARM64 stock-probability web app; the working tree contains an exploratory prototype plus implementation-shaped source, tests, and operations files. Presence of code is not acceptance evidence.
-- `burry_env/` is tracked legacy dependency noise. Do not treat it as source, add to it, repair it, or remove it.
-- `.venv/` and other local environments are not dependency declarations or release evidence.
-- `M01` through `M07` stay non-completed until the exact task record contains QA evidence, verification, reviewer, repairs, and the required export/remote checks.
+- The contract is a local Linux app for x86-64/amd64 and ARM64/aarch64, designed for low-resource operation. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed.
+- ARM64 verification first uses local native ARM64 hardware if available. Otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior, but every result is labelled emulated; it is not native/physical ARM64 or original-laptop resource evidence.
+- The supplied Git remote revision `2a7a3bf66c3665552a46d0bd523544a01f894b3f` and the old GitHub Actions run are obsolete historical context only, not current gates or release proof. No external pipeline is in scope.
+- `burry_env/` is tracked legacy dependency noise; do not treat it as source, add to it, repair it, or remove it. `.venv/` and other local environments are not dependency declarations or release evidence.
+- `M01` through `M08` remain non-completed until their exact records contain independent QA, verification, reviewer, repair history, and required local/export evidence. `R-M00-2` is documentation-only and does not accept implementation.
 
 ## Product invariants
 
-- Forecast close-to-close and latest-completed-5-minute-bar-to-close horizons for user-selected Yahoo Finance stocks and ETFs, with probabilities and explicit magnitude intervals.
-- All frontend application data goes through FastAPI `/api/v1`; the browser never opens SQLite, issues SQL, receives a database path, or calls Yahoo Finance directly.
-- SQLite retains successful, failed, and repeated searches plus immutable forecast inputs/results and append-only later outcomes.
-- Searchable history, verified backup/restore, accessible responsive UI, secure loopback deployment, bounded ARM64 operation, headless official `@playwright/mcp`, browser regressions, and Git/CI gates are release requirements.
-- Non-obvious implementation behavior must have a useful intent or constraint comment. Any code/config snippet added to documentation must also contain a useful comment.
+- Forecast close-to-close and latest-completed-5-minute-bar-to-close horizons for selected Yahoo Finance stocks and ETFs expose explicit direction/threshold probabilities and return/price intervals.
+- Company-name lookup preserves instrument identity. Saved forecasts reopen as immutable recorded results; historical-cutoff reconstruction is separately labelled fresh analysis.
+- Frontend data uses FastAPI `/api/v1`; the browser never opens SQLite, issues SQL, receives a database path, or calls Yahoo Finance directly. SQLite retains successful, failed, and repeated searches, immutable inputs/results, and append-only outcomes.
+- Searchable history, CSV/JSON export, verified backup/restore, accessible responsive UI, secure loopback, bounded operation, official headless `@playwright/mcp`, browser regressions, and local fail-closed Make/scripts are release requirements. No GitHub workflow or external pipeline may satisfy one.
+- Non-obvious implementation behavior and documentation snippets need useful intent or constraint comments.
 
-## Orchestration
+## Orchestration and ownership
 
-- Maximize safe parallelism with no more than three concurrent subagents. Each build wave uses three `SOL HIGH build` instances only on declared, non-overlapping ownership lanes: transport/application, domain/provider/persistence, and presentation/browser/operations.
-- Builders must finish and report before integration. After the wait, run the independent `LUNA MAX QA` and `LUNA MAX docs` gates; they may run concurrently only after the build handoff and neither may hide a missing check.
-- The coordinator owns integration, status, and git only. It does not implement, perform QA, or write roadmap prose.
-- `SOL HIGH build` owns scoped implementation and engineering fixes; `LUNA MAX QA` owns tests, browser, accessibility, security, resource, migration, restore, and verification; `LUNA MAX docs` owns these four documentation files and honest evidence/status wording.
-- Every assignment names an exact task ID from `MVP-PLAN.md`/`MVP-ROADMAP.md`; use `R-M##-<n>` for repairs, `EXP-M##` for milestone exports, `ASTRA-FINAL` for the final review, `R-ASTRA-<n>` for its repairs, and `EXP-FINAL` for the last export.
-- `README.md` and `AGENTS.md` are roadmap deliverables: reconcile both after each milestone and again during final acceptance.
+- A build wave uses exactly three concurrent `SOL HIGH build` instances: A owns transport/application and package/launch; B owns domain/provider/persistence/migrations/backup; C owns presentation/browser/operations/local gate tooling. Any unlisted implementation/config/test path is assigned before work starts. M01/M06 remove `.github/workflows/ci.yml` if present; local Make/scripts replace that former role.
+- `README.md`, `AGENTS.md`, `MVP-PLAN.md`, and `MVP-ROADMAP.md` belong only to `LUNA MAX docs`; `SESSION-EXPORT.md` belongs only to its export gate. The coordinator owns integration, status, and git only; it does not implement, perform QA, or write roadmap prose.
+- Builders report exact task ID, paths, checks, failures, and assumptions. Only after all three reports arrive do independent `LUNA MAX QA` and `LUNA MAX docs` gates run; docs finalizes only after consuming the completed QA record.
+- Use exact `M00`–`M08`, `R-M##-<n>`, `EXP-M00`–`EXP-M08`, `ASTRA-FINAL`, `R-ASTRA-<n>`, or `EXP-FINAL` IDs. Reconcile README and AGENTS after each milestone and at final acceptance.
 
-## Mandatory gates
+## Gates and sequence
 
-- After every roadmap milestone (`M00` through `M07`), complete its `EXP-M##` gate. OpenCode `/export` (or a verified CLI equivalent) must overwrite the one tracked `SESSION-EXPORT.md` full-session export, including tool calls and subagent outputs. Review the export for secrets before commit; never commit an unreviewed export.
-- The coordinator then records the export revision/commit, pushes it, and verifies the remote branch and CI result. A failed, skipped, unavailable, or connectivity-blocked export, secret review, push, remote check, or CI check is recorded and blocks acceptance; it is never summarized as green.
-- After `M07`, an independent GPT-6 Astra review with task ID `ASTRA-FINAL` must execute an evidence matrix covering every feature, API/UI endpoint, click/control, browser journey, and persistence effect. Any gap creates `R-ASTRA-<n>`; repair, QA, and Astra retest repeat until Astra records `Accepted`.
-- Complete `EXP-FINAL` only after Astra acceptance and all repair retests. The final export/commit/push/remote/CI result is part of the release record.
+- Canonical sequence: `R-M00-1` -> `EXP-M00` -> `M01`/`EXP-M01` -> ... -> `M06`/`EXP-M06` -> `M07` QA/docs -> `EXP-M07` -> `M08` walkthrough QA/docs -> `ASTRA-FINAL` -> repairs/retests until the result is `Accepted` -> `EXP-M08` -> `EXP-FINAL`.
+- Each export overwrites the tracked full-session `SESSION-EXPORT.md`. Secret review, local commit, push to the Git remote, and remote revision verification are separate evidence fields; failed, skipped, unavailable, or connectivity-blocked fields remain visible and block that checkpoint. There is no external-pipeline or hosted-runner field.
+- Commit/push the reviewed export as checkpoint SHA X and verify that exact SHA on the Git remote; preserve the receipt in the next checkpoint. Never claim a future result for SHA X. `ASTRA-FINAL` must matrix M08 as well as every feature, endpoint, control, journey, and persistence effect before `EXP-FINAL`.
 
 ## Evidence discipline
 
-- Each record includes: exact task ID; status (`Pending`, `In progress`, `Blocked`, or `Completed`); owner/phase; verified dependency IDs; change summary; one evidence item per acceptance requirement; command/check, environment, UTC timestamp, commit, result (`Pass`, `Fail`, `Skipped`, or `Unavailable`), artifact/link; repair history; limitations; export ID and revision; remote/CI result; and named reviewer.
-- Record failures, skips, unavailable providers, stale data, accessibility findings, restore failures, secret-review failures, and connectivity loss with their repair ID and rerun result. Never infer completion from implementation claims or omit a failed check.
+- Every record has exact task ID, status only `Pending`, `In progress`, `Blocked`, or `Completed`, owner/phase, verified dependencies, change summary, one evidence item per requirement, check/command, environment, UTC timestamp, commit, result (`Pass`, `Fail`, `Skipped`, or `Unavailable`), artifact/link, repairs, limitations, export/revision, Git checkpoint/remote result, and named reviewer.
+- Record failures, skips, unavailable providers or hardware, stale data, accessibility findings, restore/key failures, secret-review failures, and connectivity loss with a unique repair ID and rerun result. Never infer completion from implementation claims or hide a missing check.
+- The recovered export is valid parsed JSON (`5,065,391` bytes, `11,093` physical lines, `80` top-level messages, `384` parts) but contains parent calls and summarized handoffs; its `EXP-M00` command remains `running` and exact secret-review/export-revision evidence is absent.
+- `R-M00-1` and its collision aliases remain immutable historical records. `R-M00-2` records this docs-only policy repair; no implementation QA, walkthrough artifact, export, commit, or push is performed here.
