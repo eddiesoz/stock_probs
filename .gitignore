@@ -1,0 +1,27 @@
+# Application state and verified backup artifacts are local, never source inputs.
+.dev-venv/
+.venv/
+.tools/
+data/
+*.sqlite3
+*.sqlite3-*
+*.spbackup
+
+# Keep Python, test, browser, and editor products out of release evidence.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.hypothesis/
+*.prof
+npm-debug.log*
+node_modules/
+test-results/
+playwright-report/
+.playwright-mcp/
+dist/
+*.egg-info/
+.DS_Store

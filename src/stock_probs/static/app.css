@@ -1,0 +1,134 @@
+/* A ledger-inspired visual system distinguishes audit detail from generic finance dashboards. */
+:root {
+  --ink: #17201d;
+  --paper: #f2efe7;
+  --sheet: #fbfaf6;
+  --muted: #66716c;
+  --line: #c9cdc4;
+  --accent: #bd3f21;
+  --accent-dark: #963519;
+  --green: #12634a;
+  --amber: #875b00;
+  --red: #9b2c24;
+  --shadow: 0 18px 55px rgba(23, 32, 29, 0.09);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background-image: linear-gradient(rgba(23, 32, 29, .035) 1px, transparent 1px); background-size: 100% 28px; }
+button, input, select { font: inherit; }
+button, a, input, select { outline-offset: 3px; }
+:focus-visible { outline: 3px solid var(--accent); }
+.skip-link { position: fixed; top: -4rem; left: 1rem; z-index: 10; padding: .7rem 1rem; background: var(--ink); color: white; }
+.skip-link:focus { top: 1rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+.masthead { display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem; max-width: 1220px; margin: 0 auto; padding: 2.2rem 2rem 1.3rem; border-bottom: 2px solid var(--ink); }
+.masthead h1 { margin: 0; font: 700 clamp(2rem, 5vw, 4.4rem)/.9 Georgia, "Times New Roman", serif; letter-spacing: -.055em; }
+.eyebrow, .section-number { margin: 0 0 .65rem; color: var(--accent-dark); font-size: .72rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.system-state { display: flex; align-items: center; gap: .55rem; padding-bottom: .2rem; color: var(--muted); font-size: .82rem; font-weight: 700; }
+.status-dot { width: .65rem; height: .65rem; border: 2px solid var(--ink); border-radius: 50%; background: var(--amber); }
+.system-state.ready .status-dot { background: var(--green); }
+.system-state.failed .status-dot { background: var(--red); }
+
+main { max-width: 1220px; margin: 0 auto; padding: 0 2rem 4rem; }
+.hero { display: grid; grid-template-columns: 1.2fr .8fr; gap: clamp(2rem, 7vw, 7rem); align-items: end; padding: clamp(3rem, 8vw, 7rem) 0 3.5rem; }
+.hero-copy h2 { max-width: 760px; margin: 0; font: 500 clamp(3rem, 7vw, 6.8rem)/.88 Georgia, "Times New Roman", serif; letter-spacing: -.065em; }
+.hero-copy > p:last-child { max-width: 660px; margin: 2rem 0 0; color: var(--muted); font-size: 1.05rem; line-height: 1.65; }
+.search-panel { background: var(--ink); color: white; padding: 1.5rem; box-shadow: 10px 10px 0 var(--accent); }
+/* Light coral keeps small section labels readable when the docs reuse the dark search panel. */
+.search-panel .section-number { color: #ffab91; }
+.field label, fieldset legend { display: block; margin-bottom: .45rem; font-size: .78rem; font-weight: 800; letter-spacing: .04em; }
+input, select { width: 100%; border: 1px solid #99a09c; border-radius: 0; background: var(--sheet); color: var(--ink); padding: .8rem .9rem; }
+.symbol-field input { border: 0; border-bottom: 3px solid var(--accent); background: transparent; color: white; padding: .4rem 0; font: 700 2.5rem/1 Georgia, serif; text-transform: uppercase; }
+.hint, .field-error { min-height: 1.15rem; margin: .45rem 0 0; color: #bec7c2; font-size: .74rem; }
+.field-error { color: #ffab91; }
+.asset-field { display: flex; gap: 1rem; margin: 1rem 0 1.25rem; padding: 0; border: 0; }
+.asset-field legend { width: 100%; }
+.asset-field label { display: flex; align-items: center; gap: .4rem; font-size: .85rem; }
+.asset-field input { width: auto; accent-color: var(--accent); }
+button { border-radius: 0; cursor: pointer; font-weight: 800; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+.primary { display: flex; justify-content: space-between; width: 100%; border: 0; background: var(--accent); color: white; padding: 1rem; }
+.primary:hover { background: #9f3219; }
+.secondary { border: 1px solid var(--ink); background: transparent; color: var(--ink); padding: .65rem .9rem; }
+.secondary:hover { background: var(--ink); color: white; }
+
+.results, .ledger { margin-top: 2rem; border-top: 1px solid var(--ink); padding-top: 1.4rem; }
+.section-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; margin-bottom: 1.6rem; }
+.section-head h2 { margin: 0; font: 600 clamp(1.8rem, 3vw, 2.8rem)/1 Georgia, serif; }
+.badge { display: inline-flex; border: 1px solid currentColor; padding: .35rem .55rem; font-size: .68rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.badge.current, .status-successful { color: var(--green); }
+.badge.stale, .badge.repeated, .status-repeated { color: var(--amber); }
+.badge.failed, .status-failed { color: var(--red); }
+.badge.neutral { color: var(--muted); }
+.empty-state { padding: 4rem 1rem; border: 1px dashed var(--line); text-align: center; color: var(--muted); background: rgba(251, 250, 246, .5); }
+.empty-state h3 { margin: .3rem 0; color: var(--ink); }
+.empty-mark { margin: 0; color: var(--accent); font: 4rem/1 Georgia, serif; }
+.state-strip { margin: 0 0 1rem; border-left: 4px solid var(--accent); background: var(--sheet); padding: .8rem 1rem; font-size: .82rem; font-weight: 700; line-height: 1.45; }
+.forecast-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.forecast-meta > div { min-width: 0; background: var(--sheet); padding: 1rem; }
+.data-label { display: block; margin-bottom: .3rem; color: var(--muted); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.forecast-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin-top: 1.25rem; }
+.forecast-card { border: 1px solid var(--line); background: var(--sheet); box-shadow: var(--shadow); }
+.card-head { min-height: 8rem; padding: 1.3rem; border-bottom: 1px solid var(--line); }
+.card-head h3 { margin: .3rem 0 .7rem; font: 600 1.7rem/1.1 Georgia, serif; }
+.card-head p { margin: 0; color: var(--muted); line-height: 1.5; }
+.probability-chart { display: grid; grid-template-columns: repeat(3, 1fr); min-height: 12rem; align-items: end; gap: .7rem; padding: 1.4rem 1.4rem 0; border-bottom: 1px solid var(--line); }
+.probability-bar { display: flex; flex-direction: column; justify-content: flex-end; min-height: 10rem; text-align: center; }
+.probability-bar .value { margin-bottom: .45rem; font: 600 1.35rem Georgia, serif; }
+.probability-bar .fill { width: 100%; height: 1rem; border: 0; background: var(--line); accent-color: var(--muted); }
+.probability-bar.down .fill { accent-color: var(--red); }
+.probability-bar.up .fill { accent-color: var(--green); }
+.probability-bar .label { padding: .55rem 0; color: var(--muted); font-size: .72rem; font-weight: 800; text-transform: uppercase; }
+.details-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.details-table caption { padding: 1rem 1.2rem .3rem; text-align: left; font-weight: 800; }
+.details-table th, .details-table td { padding: .65rem 1.2rem; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
+.details-table th { color: var(--muted); font-weight: 700; }
+.outcomes { border-top: 3px double var(--line); padding-top: .7rem; }
+.outcomes h4 { margin: .3rem 1.2rem .6rem; font: 600 1rem/1.2 Georgia, serif; }
+.provenance { margin-top: 1.2rem; border-left: 4px solid var(--accent); background: #e8e5dc; padding: 1rem 1.2rem; color: #4e5954; font-size: .82rem; line-height: 1.55; }
+.provenance p { margin: .2rem 0; overflow-wrap: anywhere; }
+
+.history-filters { display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 1rem; align-items: end; margin-bottom: 1rem; }
+.history-filters .field label { color: var(--muted); }
+.history-content { overflow-x: auto; border: 1px solid var(--line); background: var(--sheet); }
+.history-loading { margin: 0; padding: 1.2rem; color: var(--muted); }
+.history-table { width: 100%; min-width: 680px; border-collapse: collapse; }
+.history-table th, .history-table td { padding: .8rem 1rem; border-bottom: 1px solid var(--line); text-align: left; font-size: .82rem; }
+.history-table th { color: var(--muted); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; }
+.history-table tr:last-child td { border-bottom: 0; }
+.history-table button { border: 0; border-bottom: 1px solid; padding: .1rem 0; background: transparent; color: var(--accent-dark); }
+.text-link { color: var(--accent-dark); font-size: .8rem; font-weight: 800; }
+.pagination { display: flex; justify-content: flex-end; align-items: center; gap: 1rem; margin-top: 1rem; font-size: .8rem; }
+.error-panel { border-left: 5px solid var(--red); background: #f4ded9; padding: 1.3rem; }
+.error-panel h3 { margin-top: 0; }
+.error-panel .data-label { color: var(--red); }
+.loading { opacity: .65; animation: pulse 1s ease-in-out infinite alternate; }
+footer { border-top: 1px solid var(--line); padding: 1.5rem 2rem; color: var(--muted); text-align: center; font-size: .75rem; }
+@keyframes pulse { to { opacity: .35; } }
+
+@media (max-width: 760px) {
+  .masthead, main { padding-left: 1rem; padding-right: 1rem; }
+  .masthead { align-items: center; }
+  .system-state { max-width: 9rem; text-align: right; }
+  .hero { grid-template-columns: 1fr; padding-top: 3rem; }
+  .hero-copy h2 { font-size: clamp(3rem, 16vw, 5rem); }
+  /* Two compact columns preserve provenance without forcing horizontal page scrolling. */
+  .forecast-meta { grid-template-columns: 1fr 1fr; }
+  .forecast-grid { grid-template-columns: 1fr; }
+  .history-filters { grid-template-columns: 1fr; }
+  .history-filters button { width: 100%; }
+  .section-head { align-items: flex-end; }
+}
+
+@media (max-width: 430px) {
+  .forecast-meta { grid-template-columns: 1fr; }
+  .probability-chart { gap: .35rem; padding-left: .8rem; padding-right: .8rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+}

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Local, auditable stock and ETF probability forecasts">
+  <title>Signal Ledger | Stock Probability</title>
+  <!-- Assets are external so the strict Content Security Policy needs no inline exceptions. -->
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to forecasts</a>
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">Local research instrument / v1</p>
+      <h1>Signal Ledger</h1>
+    </div>
+    <div class="system-state" role="status" aria-live="polite" aria-label="System status">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span id="system-label">Checking local service</span>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="hero" aria-labelledby="forecast-heading">
+      <div class="hero-copy">
+        <p class="section-number">01 / Forecast</p>
+        <h2 id="forecast-heading">Probability, with a paper trail.</h2>
+        <p>Compare next-close risk from the completed daily close and the latest completed five-minute bar. Every request remains in the ledger.</p>
+      </div>
+      <form id="forecast-form" class="search-panel" novalidate>
+        <div class="field symbol-field">
+          <label for="symbol">Yahoo Finance symbol</label>
+          <input id="symbol" name="symbol" type="text" value="ACDC" maxlength="15" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="symbol-help symbol-error" required>
+          <p id="symbol-help" class="hint">Examples: ACDC, SPY, BRK-B</p>
+          <p id="symbol-error" class="field-error" aria-live="polite"></p>
+        </div>
+        <fieldset class="asset-field">
+          <legend>Asset type</legend>
+          <label><input type="radio" name="asset_type" value="stock" checked> Stock</label>
+          <label><input type="radio" name="asset_type" value="etf"> ETF</label>
+        </fieldset>
+        <button id="forecast-submit" class="primary" type="submit">
+          <span>Run forecast</span><span aria-hidden="true">↗</span>
+        </button>
+      </form>
+    </section>
+
+    <div id="announcement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+    <section id="result-section" class="results" aria-labelledby="result-heading" tabindex="-1">
+      <div class="section-head">
+        <div>
+          <p class="section-number">02 / Analysis</p>
+          <h2 id="result-heading">Forecast comparison</h2>
+        </div>
+        <span id="quality-badge" class="badge neutral">Awaiting input</span>
+      </div>
+      <div id="result-content" class="empty-state" aria-busy="false">
+        <p class="empty-mark" aria-hidden="true">∿</p>
+        <h3>No forecast loaded</h3>
+        <p>Submit a symbol to calculate two traceable probability distributions.</p>
+      </div>
+    </section>
+
+    <section class="ledger" aria-labelledby="history-heading">
+      <div class="section-head">
+        <div>
+          <p class="section-number">03 / Audit</p>
+          <h2 id="history-heading">Search ledger</h2>
+        </div>
+        <a id="export-link" class="text-link" href="/api/v1/history-export.csv">Export visible history</a>
+      </div>
+      <form id="history-form" class="history-filters" role="search">
+        <div class="field">
+          <label for="history-query">Find symbol</label>
+          <input id="history-query" name="q" type="search" maxlength="30" placeholder="ACDC">
+        </div>
+        <div class="field">
+          <label for="history-status">Status</label>
+          <select id="history-status" name="status">
+            <option value="">All states</option>
+            <option value="successful">Successful</option>
+            <option value="repeated">Repeated</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="history-asset">Asset type</label>
+          <select id="history-asset" name="asset_type">
+            <option value="">All types</option>
+            <option value="stock">Stock</option>
+            <option value="etf">ETF</option>
+          </select>
+        </div>
+        <button class="secondary" type="submit">Filter ledger</button>
+      </form>
+      <div id="history-content" class="history-content" aria-live="polite">
+        <p>Loading local history…</p>
+      </div>
+      <nav class="pagination" aria-label="History pages">
+        <button id="history-previous" class="secondary" type="button" disabled>Previous</button>
+        <span id="history-page" role="status">Page 1</span>
+        <button id="history-next" class="secondary" type="button" disabled>Next</button>
+      </nav>
+    </section>
+  </main>
+
+  <footer>
+    <p>Research output, not investment advice. Source: Yahoo Finance. Model: empirical EWMA v1.</p>
+  </footer>
+</body>
+</html>

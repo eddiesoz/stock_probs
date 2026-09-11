@@ -1,0 +1,12 @@
+{
+  "_comment": "The ETF fixture uses the same calendar but distinct deterministic prices and return pattern.",
+  "symbol": "SPY",
+  "asset_type": "etf",
+  "exchange": "PCX",
+  "timezone": "America/New_York",
+  "currency": "USD",
+  "daily_seed": {"start": "2024-09-18T20:00:00+00:00", "count": 80, "price": 560.0, "step_pattern": [0.002, -0.001, 0.003, -0.0025, 0.0005]},
+  "intraday_sessions": ["2025-01-06", "2025-01-07", "2025-01-08", "2025-01-09", "2025-01-10"],
+  "intraday_price": 575.0,
+  "provider_metadata": {"regular_session": {"start": 1736519400, "end": 1736542800}, "data_granularity": "5m", "fixture": true}
+}

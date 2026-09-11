@@ -1,0 +1,14 @@
+{
+  "_comment": "Pinned browser and accessibility tools keep desktop/mobile regressions reproducible.",
+  "name": "stock-probs-browser-tests",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/mcp": "0.0.80",
+    "@playwright/test": "1.63.0"
+  }
+}

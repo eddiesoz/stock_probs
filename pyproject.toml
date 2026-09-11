@@ -1,0 +1,57 @@
+# Exact direct versions plus the checked-in transitive lock make ARM64 setup reproducible.
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stock-probs"
+version = "0.1.0"
+description = "Auditable local stock probability forecasts"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi==0.116.1",
+  "uvicorn==0.35.0",
+  "yfinance==1.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx==0.28.1",
+  "mypy==1.17.1",
+  "pytest==8.4.1",
+  "pytest-cov==6.2.1",
+  "ruff==0.12.9",
+]
+
+[project.scripts]
+stock-probs = "stock_probs.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# The server owns these static assets so their only data client remains /api/v1.
+stock_probs = ["static/*", "migrations/*.sql", "fixtures/*.json"]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --disable-warnings"
+testpaths = ["tests"]
+markers = ["live: requires Yahoo network access and is excluded from deterministic gates"]
+
+[tool.mypy]
+# M05 starts strict typing at the backup/CLI boundary without masking debt in other owned layers.
+python_version = "3.11"
+strict = true
+show_error_codes = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["burry_env", ".venv", ".dev-venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM"]
+ignore = ["S101"] # Assertions are intentional in tests and domain invariants.
