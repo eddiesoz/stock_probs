@@ -1,4 +1,4 @@
-"""M01/M03/M06 resource and portability checks keep local work explicitly bounded."""
+"""M01/M02/M03/M06 resource and portability checks keep local work explicitly bounded."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ def test_package_and_local_gate_cover_portable_runtime_assets():
     local_gate = (ROOT / "scripts/local-gate.sh").read_text()
     arm64_gate = (ROOT / "scripts/arm64-smoke.sh").read_text()
     bootstrap = (ROOT / "scripts/bootstrap.sh").read_text()
+    package_smoke = (ROOT / "scripts/package_smoke.py").read_text()
     arm64_compose = (ROOT / "scripts/compose.arm64.yml").read_text()
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
 
@@ -30,9 +31,13 @@ def test_package_and_local_gate_cover_portable_runtime_assets():
         "fixtures/*.json",
     ]
     assert "scripts/install-node.sh" in makefile
-    assert "package-check:" in makefile and "m01-gate:" in makefile
+    assert "package-check:" in makefile and "m01-gate:" in makefile and "m02-gate:" in makefile
     assert "set -euo pipefail" in local_gate and '"result": result' in local_gate
-    assert "make " not in local_gate and "run_check" in local_gate
+    assert "make " not in local_gate and "run_check" in local_gate and "m02)" in local_gate
+    assert 'COMPLETED_CHECKS+=("browser")' in local_gate
+    assert 'COMPLETED_CHECKS+=("playwright-mcp")' in local_gate
+    assert 'os.getenv("STOCK_PROBS_TASK_ID", "M01")' in package_smoke
+    assert '"stock_probs/migrations/002_historical_analysis.sql"' in package_smoke
     assert "uv python install" in bootstrap and "3.11.15" in bootstrap
     assert metadata["requires-python"] == ">=3.11,<3.12"
     assert "docker compose" in arm64_gate and "docker run" not in arm64_gate
@@ -44,6 +49,23 @@ def test_package_and_local_gate_cover_portable_runtime_assets():
     assert "/opt/stock-probs-deps" in arm64_compose
     assert "/tmp/stock-probs-deps" not in arm64_compose  # noqa: S108
     assert not (ROOT / ".github/workflows/ci.yml").exists()
+
+
+def test_m02_dashboard_uses_only_versioned_api_controls():
+    static = ROOT / "src/stock_probs/static"
+    html = (static / "index.html").read_text()
+    script = (static / "app.js").read_text()
+
+    assert "Reopen saved forecast" in script
+    assert "Run fresh cutoff analysis" in script
+    assert "Download CSV" in html and "Download JSON" in html
+    assert 'page_size: pageSize' in script
+    assert "/saved-forecasts/${id}" in script
+    assert "/history/${id}/reconstructions" in script
+    assert "hasPriorRunReference" in script and "item.is_repeat" in script
+    assert "knownRunDispositions" not in script
+    for forbidden in ("sqlite", "yahoo.com", "querySelector(\"#database", "file://"):
+        assert forbidden not in script.lower()
 
 
 def test_bounded_fixture_forecast_batch_stays_small(settings):

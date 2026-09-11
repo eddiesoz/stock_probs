@@ -12,6 +12,7 @@ from stock_probs.domain import (
     DomainError,
     calculate_forecasts,
     evaluate_outcome,
+    label_fresh_historical_analysis,
     normalize_lookup_query,
     normalize_symbol,
 )
@@ -147,6 +148,136 @@ class ForecastService:
             )
             exc.request_id = request_id
             raise
+
+    def fresh_historical_reconstruction(
+        self, source_event_id: int, cutoff: datetime
+    ) -> dict[str, object]:
+        """Submit and audit a fresh cutoff analysis, never a saved-result recalculation."""
+
+        request_id = str(uuid4())
+        submitted_at = self.clock().astimezone(UTC)
+        source = self.repository.reconstruction(source_event_id)
+        source_input = source.get("input") if source is not None else None
+        submitted_symbol = (
+            str(source_input["symbol"])
+            if isinstance(source_input, dict) and "symbol" in source_input
+            else f"<history event {source_event_id}>"
+        )
+        asset_type = (
+            str(source_input["asset_type"])
+            if isinstance(source_input, dict) and "asset_type" in source_input
+            else "invalid"
+        )
+        normalized: str | None = None
+        try:
+            if source is None or not isinstance(source_input, dict):
+                raise DomainError(
+                    "historical_source_unavailable",
+                    "Fresh analysis requires a saved successful forecast event.",
+                    status_code=404 if source is None else 409,
+                )
+            if cutoff.tzinfo is None:
+                raise DomainError(
+                    "ambiguous_historical_cutoff",
+                    "Historical cutoff must include a timezone offset.",
+                )
+            cutoff = cutoff.astimezone(UTC)
+            if cutoff > submitted_at:
+                raise DomainError(
+                    "future_historical_cutoff", "Historical cutoff cannot be in the future."
+                )
+            normalized = normalize_symbol(submitted_symbol)
+            if asset_type not in {"stock", "etf"}:
+                raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
+            if not self.provider_slots.acquire(timeout=1.0):
+                raise DomainError(
+                    "provider_busy",
+                    "Market data capacity is busy; try again shortly.",
+                    status_code=503,
+                )
+            try:
+                try:
+                    # Fetching is deliberately complete before BEGIN IMMEDIATE in persistence.
+                    market_data = self.provider.fetch_at_cutoff(
+                        normalized, asset_type, cutoff, submitted_at
+                    )
+                except DomainError:
+                    raise
+                except Exception as exc:
+                    raise DomainError(
+                        "provider_unavailable",
+                        "The historical market data provider failed unexpectedly.",
+                        status_code=502,
+                    ) from exc
+            finally:
+                self.provider_slots.release()
+            try:
+                snapshot, results = calculate_forecasts(market_data, cutoff)
+            except DomainError:
+                raise
+            except Exception as exc:
+                raise DomainError(
+                    "calculation_failure",
+                    "The historical forecast calculation could not be completed.",
+                    status_code=500,
+                ) from exc
+            snapshot, results = label_fresh_historical_analysis(
+                snapshot,
+                results,
+                request_id=request_id,
+                source_event_id=source_event_id,
+                cutoff=cutoff,
+                performed_at=submitted_at,
+            )
+            completed_at = self.clock().astimezone(UTC)
+            try:
+                event_id, _, repeated, reused = self.repository.record_success(
+                    request_id=request_id,
+                    submitted_symbol=submitted_symbol,
+                    asset_type=asset_type,
+                    input_snapshot=snapshot,
+                    results=results,
+                    submitted_at=submitted_at,
+                    completed_at=completed_at,
+                    analysis_kind="fresh_historical_reconstruction",
+                    source_event_id=source_event_id,
+                    requested_cutoff=cutoff,
+                    reuse_exact_input=False,
+                )
+            except sqlite3.Error as exc:
+                raise DomainError(
+                    "persistence_failure",
+                    "The fresh historical analysis could not be stored immutably.",
+                    status_code=503,
+                ) from exc
+            reconstructed = self.repository.reconstruction(event_id)
+            assert reconstructed is not None
+            reconstructed["analysis_kind"] = "fresh_historical_reconstruction"
+            reconstructed["label"] = "Fresh historical-cutoff analysis"
+            reconstructed["repeated"] = repeated
+            reconstructed["reused"] = reused
+            return reconstructed
+        except DomainError as exc:
+            self.repository.record_failure(
+                request_id=request_id,
+                submitted_symbol=submitted_symbol,
+                normalized_symbol=normalized,
+                asset_type=asset_type,
+                error_code=exc.code,
+                error_message=exc.message,
+                submitted_at=submitted_at,
+                completed_at=self.clock().astimezone(UTC),
+                analysis_kind="fresh_historical_reconstruction",
+                # Persistence resolves this requested ID to an FK only for a real successful
+                # source, so an unknown history ID remains useful context without fabrication.
+                source_event_id=source_event_id,
+                requested_cutoff=cutoff,
+            )
+            exc.request_id = request_id
+            raise
+
+    # Keep the application-layer handoff concise for A while retaining the explicit public name.
+    reconstruct_at_cutoff = fresh_historical_reconstruction
 
     def append_outcome(
         self,

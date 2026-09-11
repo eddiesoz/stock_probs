@@ -12,12 +12,17 @@ const symbolInput = document.querySelector("#symbol");
 const lookupStatus = document.querySelector("#lookup-status");
 const instrumentOptions = document.querySelector("#instrument-options");
 const identityConfirmation = document.querySelector("#identity-confirmation");
+const freshAnalysisSection = document.querySelector("#fresh-analysis-section");
+const freshAnalysisContent = document.querySelector("#fresh-analysis-content");
 let historyPage = 1;
 let selectedIdentity = null;
 let lookupTimer = null;
 let lookupController = null;
 let lookupSequence = 0;
 let activeOption = -1;
+const runRelationPageSize = 100;
+const runRelationMaxPages = 5;
+const runRelationMaxLookups = 10;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -271,22 +276,26 @@ function renderForecastCard(result, input) {
 
   if (result.outcomes?.length) {
     const outcomes = element("section", "outcomes");
-    outcomes.append(element("h4", "", "Observed outcomes (appended later)"));
-    const outcomeTable = element("table", "details-table");
-    outcomeTable.append(element("caption", "sr-only", `Observed outcomes for ${result.horizon}`));
-    const outcomeBody = document.createElement("tbody");
+    outcomes.append(
+      element("h4", "", "Append-only outcome ledger"),
+      element("p", "outcome-note", "Later observations and corrections are additional entries. They never replace this recorded forecast or an earlier outcome."),
+    );
+    const outcomeList = element("ol", "outcome-list");
     for (const outcome of result.outcomes) {
       const observed = outcome.observed_close === null
         ? "Close unavailable"
         : `${formatPrice(outcome.observed_close, input.currency)}; ${formatPercent(outcome.observed_return)}`;
-      tableRow(
-        outcomeBody,
-        `${outcome.state} at ${formatTime(outcome.observed_at)}`,
-        `${observed}. ${outcome.note || "No note."}`,
+      const item = element("li");
+      item.append(
+        element("span", "outcome-state", outcome.state),
+        document.createTextNode(`observed ${formatTime(outcome.observed_at)} — ${observed}. ${outcome.note || "No note."} Appended ${formatTime(outcome.created_at || outcome.recorded_at || outcome.observed_at)}.`),
       );
+      outcomeList.append(item);
     }
-    outcomeTable.append(outcomeBody);
-    outcomes.append(outcomeTable);
+    outcomes.append(outcomeList);
+    if (result.outcomes_truncated) {
+      outcomes.append(element("p", "outcome-note", "Only the newest 100 outcome entries are shown; the append-only ledger contains earlier entries."));
+    }
     card.append(outcomes);
   }
   return card;
@@ -303,8 +312,8 @@ function renderResult(data, context = "live") {
   const stateStrip = element(
     "p",
     "state-strip",
-    context === "history"
-      ? `Historical reconstruction of audit event #${data.event.id}. Forecast values are the originally saved values; outcomes were appended later.`
+    context === "saved"
+      ? `Immutable recorded result · audit event #${data.event.id}. Forecast inputs and values are reopened exactly as saved; append-only outcomes are shown separately below.`
       : data.repeated
         ? `Repeated request recorded as audit event #${data.event.id}; ${data.reused ? "the identical saved forecast was reused." : "new provider input created a new immutable run."}`
         : `Successful request recorded as audit event #${data.event.id}.`,
@@ -425,15 +434,15 @@ forecastForm.addEventListener("submit", async (event) => {
   }
 });
 
-async function showHistoryEvent(id) {
-  announcement.textContent = `Loading historical audit event ${id}.`;
+async function showHistoryEvent(id, isFailure = false) {
+  announcement.textContent = `Loading immutable recorded result for audit event ${id}.`;
   try {
-    const data = await api(`/history/${id}`);
+    const data = await api(isFailure ? `/history/${id}` : `/saved-forecasts/${id}`);
     if (data.input) {
       data.repeated = data.event.status === "repeated";
-      renderResult(data, "history");
+      renderResult(data, "saved");
       focusResultSection();
-      announcement.textContent = `Historical reconstruction ${id} loaded.`;
+      announcement.textContent = `Immutable recorded result ${id} reopened without recalculation.`;
     } else {
       renderError({ code: data.event.error_code, message: data.event.error_message });
       focusResultSection();
@@ -446,7 +455,164 @@ async function showHistoryEvent(id) {
   }
 }
 
-function renderHistory(data) {
+async function runFreshAnalysis(id) {
+  // Fresh analysis has a dedicated region so it can never silently replace the saved output.
+  freshAnalysisSection.hidden = false;
+  freshAnalysisContent.className = "empty-state loading";
+  freshAnalysisContent.setAttribute("aria-busy", "true");
+  freshAnalysisContent.replaceChildren(element("p", "", `Calculating a fresh analysis at audit event #${id}’s historical cutoff…`));
+  announcement.textContent = `Fresh historical-cutoff analysis for event ${id} is running.`;
+  freshAnalysisSection.focus();
+  try {
+    // Resolve the cutoff from the server-owned snapshot; browser controls never fabricate it.
+    const saved = await api(`/saved-forecasts/${id}`);
+    const response = await api(`/history/${id}/reconstructions`, {
+      method: "POST",
+      body: JSON.stringify({
+        analysis_kind: "fresh_historical_reconstruction",
+        cutoff: saved.input.request_cutoff,
+      }),
+    });
+    const data = response.analysis || response;
+    freshAnalysisContent.className = "";
+    freshAnalysisContent.setAttribute("aria-busy", "false");
+    freshAnalysisContent.replaceChildren();
+    const cutoff = data.input?.request_cutoff || response.request_cutoff;
+    freshAnalysisContent.append(element(
+      "p",
+      "state-strip",
+      `Fresh analysis${data.event?.id ? ` recorded as new audit event #${data.event.id}` : ""}${cutoff ? ` at historical cutoff ${formatTime(cutoff)}` : ""}. This is a new calculation, not the immutable saved forecast above.`,
+    ));
+    if (!data.input || !data.results) throw new Error("Fresh analysis response omitted forecast details.");
+    const meta = element("div", "forecast-meta");
+    for (const [label, value] of [
+      ["Historical cutoff", data.input.request_cutoff],
+      ["Provider as-of", data.input.provider_as_of],
+      ["Calculated", data.input.captured_at],
+      ["Model", `${data.input.model.name} / ${data.input.model.version}`],
+      ["Content fingerprint", data.input.content_fingerprint],
+    ]) {
+      const display = label.includes("cutoff") || label.includes("as-of") || label === "Calculated"
+        ? formatTime(value)
+        : value;
+      const cell = element("div");
+      cell.append(element("span", "data-label", label), element("strong", "", display));
+      meta.append(cell);
+    }
+    freshAnalysisContent.append(meta);
+    const grid = element("div", "forecast-grid");
+    for (const result of data.results) grid.append(renderForecastCard(result, data.input));
+    freshAnalysisContent.append(grid);
+    announcement.textContent = `Fresh historical-cutoff analysis for event ${id} is ready in the separate analysis region.`;
+  } catch (error) {
+    freshAnalysisContent.className = "";
+    freshAnalysisContent.setAttribute("aria-busy", "false");
+    const panel = element("div", "error-panel");
+    panel.setAttribute("role", "alert");
+    panel.append(element("h3", "", "Fresh analysis unavailable"), element("p", "", error.message));
+    freshAnalysisContent.replaceChildren(panel);
+    announcement.textContent = `Fresh historical-cutoff analysis failed: ${error.message}`;
+  }
+}
+
+function explicitRunReuse(item) {
+  if (typeof item.reused === "boolean") return item.reused;
+  if (item.run_disposition === "reused") return true;
+  if (item.run_disposition === "new") return false;
+  return null;
+}
+
+function hasPriorRunReference(item, candidates) {
+  return candidates.some((candidate) => (
+    candidate.id < item.id
+    && candidate.run_id === item.run_id
+    && candidate.status !== "failed"
+  ));
+}
+
+async function persistedRunRelations(items) {
+  const relations = new Map();
+  const unresolvedByInstrument = new Map();
+  for (const item of items) {
+    if (item.status === "failed") continue;
+    const explicit = explicitRunReuse(item);
+    if (explicit !== null) {
+      relations.set(item.id, explicit);
+    } else if (item.status === "successful") {
+      relations.set(item.id, false);
+    } else if (item.status === "repeated" && item.is_repeat && item.run_id !== null) {
+      if (hasPriorRunReference(item, items)) {
+        relations.set(item.id, true);
+      } else {
+        const symbol = item.normalized_symbol || item.submitted_symbol;
+        const key = `${item.asset_type}:${symbol}`;
+        const group = unresolvedByInstrument.get(key) || { symbol, assetType: item.asset_type, items: [] };
+        group.items.push(item);
+        unresolvedByInstrument.set(key, group);
+      }
+    }
+  }
+
+  let lookups = 0;
+  for (const group of unresolvedByInstrument.values()) {
+    if (lookups >= runRelationMaxLookups) break;
+    lookups += 1;
+    const candidates = [];
+    let exhausted = false;
+    try {
+      // Status filters can hide the first event for a run. Rebuild that relation only from
+      // bounded, persisted history fields; process memory and equal timestamps are not evidence.
+      for (let page = 1; page <= runRelationMaxPages; page += 1) {
+        const params = new URLSearchParams({
+          q: group.symbol,
+          asset_type: group.assetType,
+          page: String(page),
+          page_size: String(runRelationPageSize),
+        });
+        const history = await api(`/history?${params}`);
+        candidates.push(...history.items);
+        if (page * history.page_size >= history.total) {
+          exhausted = true;
+          break;
+        }
+      }
+      for (const item of group.items) {
+        if (hasPriorRunReference(item, candidates)) {
+          relations.set(item.id, true);
+        } else if (exhausted) {
+          // A complete bounded scan proves this repeated request created a distinct new run.
+          relations.set(item.id, false);
+        }
+      }
+    } catch (_) {
+      // The row remains usable with an honest unknown relation if enrichment is unavailable.
+    }
+  }
+  return relations;
+}
+
+function runDisposition(item, relations) {
+  if (item.status === "failed") return "No forecast run";
+  const reused = relations.get(item.id);
+  if (reused === true) {
+    return `Reused immutable run #${item.run_id}`;
+  }
+  if (reused === false) {
+    return `New immutable run #${item.run_id}`;
+  }
+  return `Repeated submission · immutable run #${item.run_id} relation unavailable`;
+}
+
+function analysisLabel(item) {
+  if (item.analysis_kind === "fresh_historical_reconstruction") {
+    const source = item.source_event_id ? ` · source #${item.source_event_id}` : "";
+    const cutoff = item.requested_cutoff ? ` · ${formatTime(item.requested_cutoff)}` : "";
+    return `Fresh cutoff analysis${source}${cutoff}`;
+  }
+  return "Submitted forecast";
+}
+
+function renderHistory(data, runRelations) {
   historyContent.setAttribute("aria-busy", "false");
   if (!data.items.length) {
     historyContent.replaceChildren(element("p", "empty-state", "No audit events match these filters."));
@@ -455,7 +621,7 @@ function renderHistory(data) {
     const caption = element("caption", "sr-only", "Submitted forecast search history");
     const head = document.createElement("thead");
     const headerRow = document.createElement("tr");
-    for (const label of ["Event", "Symbol", "Type", "Status", "Submitted", "Details"]) {
+    for (const label of ["Request / run", "Symbol", "Type", "Analysis", "Status", "Submitted", "Actions"]) {
       const heading = element("th", "", label);
       heading.scope = "col";
       headerRow.append(heading);
@@ -464,18 +630,32 @@ function renderHistory(data) {
     const body = document.createElement("tbody");
     for (const item of data.items) {
       const row = document.createElement("tr");
+      const requestCell = document.createElement("td");
+      const runLabel = element("span", "run-label", runDisposition(item, runRelations));
+      requestCell.append(
+        element("span", "request-label", `New request #${item.id}`),
+        runLabel,
+      );
       row.append(
-        element("td", "", `#${item.id}`),
+        requestCell,
         element("td", "", item.normalized_symbol || item.submitted_symbol || "Invalid"),
         element("td", "", item.asset_type.toUpperCase()),
+        element("td", "", analysisLabel(item)),
         element("td", `status-${item.status}`, item.status),
         element("td", "", formatTime(item.submitted_at)),
       );
       const actionCell = document.createElement("td");
-      const action = element("button", "", item.status === "failed" ? "View failure" : "Reconstruct");
+      actionCell.className = "history-actions";
+      const action = element("button", "", item.status === "failed" ? "View failed request" : "Reopen saved forecast");
       action.type = "button";
-      action.addEventListener("click", () => showHistoryEvent(item.id));
+      action.addEventListener("click", () => showHistoryEvent(item.id, item.status === "failed"));
       actionCell.append(action);
+      if (item.status !== "failed") {
+        const fresh = element("button", "", "Run fresh cutoff analysis");
+        fresh.type = "button";
+        fresh.addEventListener("click", () => runFreshAnalysis(item.id));
+        actionCell.append(fresh);
+      }
       row.append(actionCell);
       body.append(row);
     }
@@ -488,16 +668,25 @@ function renderHistory(data) {
 }
 
 async function loadHistory() {
-  const params = new URLSearchParams({ page: String(historyPage), page_size: "10" });
   const values = new FormData(historyForm);
+  const pageSize = ["10", "20", "50"].includes(values.get("page_size"))
+    ? values.get("page_size")
+    : "10";
+  const params = new URLSearchParams({ page: String(historyPage), page_size: pageSize });
   if (values.get("q")) params.set("q", values.get("q"));
   if (values.get("status")) params.set("status", values.get("status"));
   if (values.get("asset_type")) params.set("asset_type", values.get("asset_type"));
-  document.querySelector("#export-link").href = `${apiRoot}/history-export.csv?${params}`;
+  if (values.get("analysis_kind")) params.set("analysis_kind", values.get("analysis_kind"));
+  const exportParams = new URLSearchParams(params);
+  exportParams.delete("page");
+  exportParams.delete("page_size");
+  document.querySelector("#export-csv").href = `${apiRoot}/history-export.csv?${exportParams}`;
+  document.querySelector("#export-json").href = `${apiRoot}/history-export.json?${exportParams}`;
   historyContent.setAttribute("aria-busy", "true");
   historyContent.replaceChildren(element("p", "history-loading", "Loading bounded audit history…"));
   try {
-    renderHistory(await api(`/history?${params}`));
+    const data = await api(`/history?${params}`);
+    renderHistory(data, await persistedRunRelations(data.items));
   } catch (error) {
     historyContent.setAttribute("aria-busy", "false");
     const panel = element("p", "error-panel", `History unavailable: ${error.message}`);

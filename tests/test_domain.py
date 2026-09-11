@@ -13,6 +13,7 @@ from stock_probs.domain import (
     DomainError,
     calculate_forecasts,
     evaluate_outcome,
+    label_fresh_historical_analysis,
     normalize_lookup_query,
     normalize_symbol,
 )
@@ -262,6 +263,50 @@ def test_outcome_cannot_precede_immutable_target():
     with pytest.raises(DomainError) as invalid_price:
         evaluate_outcome(results[0], float("nan"), observed_at)
     assert invalid_price.value.code == "invalid_outcome_price"
+
+
+def test_fresh_analysis_labelling_preserves_provider_fingerprint_and_original_values():
+    snapshot, results = calculate_forecasts(FixtureProvider().fetch("ACDC", "stock", NOW), NOW)
+    original_snapshot = snapshot.copy()
+    performed = NOW + timedelta(minutes=2)
+
+    labelled_snapshot, labelled_results = label_fresh_historical_analysis(
+        snapshot,
+        results,
+        request_id="fresh-request-1",
+        source_event_id=7,
+        cutoff=NOW,
+        performed_at=performed,
+    )
+
+    assert snapshot == original_snapshot
+    analysis = labelled_snapshot["provider_query"]["analysis"]
+    assert analysis["provider_content_fingerprint"] == snapshot["content_fingerprint"]
+    assert labelled_snapshot["content_fingerprint"] != snapshot["content_fingerprint"]
+    assert labelled_snapshot["provenance"]["content_fingerprint"] == labelled_snapshot[
+        "content_fingerprint"
+    ]
+    assert labelled_snapshot["provenance"]["query"] == labelled_snapshot["provider_query"]
+    assert labelled_snapshot["provenance"]["analysis"] == {
+        key: value for key, value in analysis.items() if key != "provider_content_fingerprint"
+    }
+    assert labelled_snapshot["provenance"]["provider_content_fingerprint"] == analysis[
+        "provider_content_fingerprint"
+    ]
+    assert analysis["requested_cutoff"] == NOW.isoformat()
+    assert analysis["performed_at"] == performed.isoformat()
+    assert labelled_results == results
+
+    with pytest.raises(DomainError) as ambiguous:
+        label_fresh_historical_analysis(
+            snapshot,
+            results,
+            request_id="bad-time",
+            source_event_id=7,
+            cutoff=NOW.replace(tzinfo=None),
+            performed_at=performed,
+        )
+    assert ambiguous.value.code == "ambiguous_historical_cutoff"
 
 
 @pytest.mark.parametrize("value", ["", "../../etc", "A B", "A" * 16])

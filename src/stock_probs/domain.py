@@ -7,6 +7,7 @@ import json
 import math
 import statistics
 import unicodedata
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
@@ -820,6 +821,63 @@ def calculate_forecasts(
         **_distribution(intraday_samples, latest.close),
     }
     return common, [daily_result, intraday_result]
+
+
+def label_fresh_historical_analysis(
+    snapshot: dict[str, Any],
+    results: list[dict[str, Any]],
+    *,
+    request_id: str,
+    source_event_id: int,
+    cutoff: datetime,
+    performed_at: datetime,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Label a newly calculated historical cutoff without mutating calculated inputs."""
+
+    if cutoff.tzinfo is None or performed_at.tzinfo is None:
+        raise DomainError(
+            "ambiguous_historical_cutoff",
+            "Historical cutoff and analysis timestamps must include an offset.",
+        )
+    if type(source_event_id) is not int or source_event_id < 1:
+        raise DomainError(
+            "invalid_historical_source", "A positive saved history event is required."
+        )
+    labelled_snapshot = deepcopy(snapshot)
+    labelled_results = deepcopy(results)
+    provider_fingerprint = str(labelled_snapshot["content_fingerprint"])
+    analysis: dict[str, Any] = {
+        "kind": "fresh_historical_reconstruction",
+        "label": "Fresh historical-cutoff analysis",
+        "source_event_id": source_event_id,
+        "requested_cutoff": cutoff.astimezone(UTC).isoformat(),
+        "performed_at": performed_at.astimezone(UTC).isoformat(),
+        "provider_content_fingerprint": provider_fingerprint,
+    }
+    # The request identifier makes every submitted fresh analysis an independent immutable
+    # capture, while provider_content_fingerprint preserves source-data comparability.
+    analysis_fingerprint = hashlib.sha256(
+        f"{provider_fingerprint}\0{request_id}".encode()
+    ).hexdigest()
+    labelled_snapshot["content_fingerprint"] = analysis_fingerprint
+    provider_query = dict(labelled_snapshot["provider_query"])
+    provider_query["analysis"] = analysis
+    labelled_snapshot["provider_query"] = provider_query
+    provenance = dict(labelled_snapshot["provenance"])
+    provenance.update(
+        {
+            "analysis": {
+                key: value
+                for key, value in analysis.items()
+                if key != "provider_content_fingerprint"
+            },
+            "provider_content_fingerprint": provider_fingerprint,
+            "content_fingerprint": analysis_fingerprint,
+            "query": provider_query,
+        }
+    )
+    labelled_snapshot["provenance"] = provenance
+    return labelled_snapshot, labelled_results
 
 
 def evaluate_outcome(

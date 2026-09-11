@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -59,6 +59,38 @@ class OutcomeRequest(StrictModel):
             raise ValueError("observed_close must be omitted when state is unavailable")
         if self.observed_at.tzinfo is None:
             raise ValueError("observed_at must include a timezone offset")
+        return self
+
+
+class CorrectionRequest(StrictModel):
+    """A correction is a new observation entry, never an edit instruction."""
+
+    observed_close: float = Field(gt=0, le=10_000_000)
+    observed_at: datetime
+    note: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def timezone_required(self) -> CorrectionRequest:
+        if self.observed_at.tzinfo is None:
+            raise ValueError("observed_at must include a timezone offset")
+        return self
+
+
+class FreshReconstructionRequest(StrictModel):
+    """Label a historical-cutoff request so it cannot be confused with saved replay."""
+
+    analysis_kind: Literal["fresh_historical_reconstruction"] = (
+        "fresh_historical_reconstruction"
+    )
+    cutoff: datetime
+
+    @model_validator(mode="after")
+    def bounded_aware_cutoff(self) -> FreshReconstructionRequest:
+        if self.cutoff.tzinfo is None:
+            raise ValueError("cutoff must include a timezone offset")
+        # Pre-2000 cutoffs cannot be served by the deliberately bounded provider windows.
+        if self.cutoff.astimezone(UTC) < datetime(2000, 1, 1, tzinfo=UTC):
+            raise ValueError("cutoff must be on or after 2000-01-01T00:00:00Z")
         return self
 
 

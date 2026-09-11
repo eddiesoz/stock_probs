@@ -4,28 +4,108 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext, suppress
 from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
-from threading import RLock
-from typing import Any
+from threading import Lock, RLock
+from typing import Any, Final, TypedDict, TypeGuard, cast
 
 from stock_probs.config import ensure_private_directory, ensure_private_file
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 OUTCOME_RECONSTRUCTION_LIMIT = 100
+COORDINATION_TIMEOUT_SECONDS = 5.0
+MIGRATION_NAME = re.compile(r"^(?P<version>[0-9]{3})_[a-z0-9_]+\.sql$")
+PERSISTENCE_FAILURE_CATEGORY = "persistence_unavailable"
+# Digests make shipped migrations immutable; changing any SQL file requires a new number.
+MIGRATION_SHA256 = {
+    1: "0c92dcfb596b6a1b1ce07cf6b4bca15c00f642c7ca69ea5e41e124b49926c98e",
+    2: "d51a8a64f5c32fb77875f0e81642146947be3db43437a1269339343e64225cc2",
+    3: "ebbf91670e8ad0a4f9a80603459c4eb1d2e66459cda500d5c376b1d563949cda",
+}
+
+
+class _RepresentativeStorageCounts(TypedDict):
+    """Private physical-row counts used for backup integrity, not domain/API vocabulary."""
+
+    search_events: int
+    forecast_runs: int
+    forecast_inputs: int
+    forecast_results: int
+    outcomes: int
+
+
+# Keep the SQL allowlist and authenticated manifest shape on one persistence-owned contract.
+_REPRESENTATIVE_STORAGE_TABLES: Final = (
+    "search_events",
+    "forecast_runs",
+    "forecast_inputs",
+    "forecast_results",
+    "outcomes",
+)
+_REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_REPRESENTATIVE_STORAGE_TABLES)
+
+
+def _is_representative_storage_counts(value: object) -> TypeGuard[_RepresentativeStorageCounts]:
+    """Validate exact internal table keys and non-negative, non-boolean physical row counts."""
+
+    return (
+        isinstance(value, dict)
+        and set(value) == _REPRESENTATIVE_STORAGE_KEYS
+        and all(type(count) is int and count >= 0 for count in value.values())
+    )
+
+# Repository and backup objects for one database must coordinate around atomic restore. The
+# registry lock is held only while resolving an RLock, so unrelated databases never serialize.
+_DATABASE_LOCKS: dict[Path, RLock] = {}
+_DATABASE_LOCKS_GUARD = Lock()
+
+
+class RepositoryError(sqlite3.Error):
+    """Base for controlled persistence failures with API-safe classification only."""
+
+    public_category = PERSISTENCE_FAILURE_CATEGORY
+
+
+class RepositoryOperationalError(sqlite3.OperationalError, RepositoryError):
+    """Hide low-level path/SQLite text while retaining it in the exception chain."""
+
+
+class RepositoryDatabaseError(sqlite3.DatabaseError, RepositoryError):
+    """Report controlled migration/schema diagnostics through the same safe category."""
+
+
+def _database_lock(path: Path) -> tuple[Path, RLock]:
+    canonical_path = path.expanduser().resolve(strict=False)
+    with _DATABASE_LOCKS_GUARD:
+        return canonical_path, _DATABASE_LOCKS.setdefault(canonical_path, RLock())
 
 
 class Repository:
     """Open short-lived WAL connections so one local process remains restart-safe."""
 
     def __init__(self, database_path: Path):
-        self.database_path = database_path
-        # One process-wide lock makes restore promotion exclusive with short-lived queries.
-        self._lock = RLock()
+        try:
+            self.database_path, self._lock = _database_lock(database_path)
+        except (OSError, RuntimeError) as exc:
+            raise RepositoryOperationalError(
+                "Local database location could not be resolved safely."
+            ) from exc
+
+    @contextmanager
+    def _coordinated(self) -> Iterator[None]:
+        """Bound waits on the per-database process lock rather than hanging local operations."""
+
+        if not self._lock.acquire(timeout=COORDINATION_TIMEOUT_SECONDS):
+            raise RepositoryOperationalError("database coordination lock timed out")
+        try:
+            yield
+        finally:
+            self._lock.release()
 
     def _harden_sqlite_files(self, *, create_database: bool) -> None:
         """Protect the database and any SQLite sidecars without following attacker links."""
@@ -40,58 +120,139 @@ class Repository:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        with self._lock:
-            # Prepare with no-follow descriptors before SQLite can open a permissive or linked file.
-            ensure_private_directory(self.database_path.parent)
-            self._harden_sqlite_files(create_database=True)
-            connection = sqlite3.connect(self.database_path, timeout=5.0)
-            connection.row_factory = sqlite3.Row
-            connection.execute("PRAGMA foreign_keys = ON")
-            # SQLite REPLACE fires delete triggers only with recursive triggers enabled.
-            connection.execute("PRAGMA recursive_triggers = ON")
-            connection.execute("PRAGMA busy_timeout = 5000")
-            self._harden_sqlite_files(create_database=False)
+        with self._coordinated():
+            connection: sqlite3.Connection | None = None
+            try:
+                # Prepare with no-follow descriptors before SQLite can open a permissive or linked
+                # file. Raw OS/SQLite messages remain chained for operator diagnosis, while the
+                # outer exception is safe for normal repr and structured public classification.
+                ensure_private_directory(self.database_path.parent)
+                self._harden_sqlite_files(create_database=True)
+                connection = sqlite3.connect(self.database_path, timeout=5.0)
+                connection.row_factory = sqlite3.Row
+                connection.execute("PRAGMA foreign_keys = ON")
+                # SQLite REPLACE fires delete triggers only with recursive triggers enabled.
+                connection.execute("PRAGMA recursive_triggers = ON")
+                connection.execute("PRAGMA busy_timeout = 5000")
+                self._harden_sqlite_files(create_database=False)
+            except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
+                if connection is not None:
+                    # The original preparation failure remains the useful chained diagnosis.
+                    with suppress(sqlite3.Error):
+                        connection.close()
+                raise RepositoryOperationalError(
+                    "Local database connection could not be prepared safely."
+                ) from exc
             try:
                 yield connection
             finally:
-                connection.close()
+                try:
+                    connection.close()
+                except sqlite3.Error as exc:
+                    raise RepositoryOperationalError(
+                        "Local database connection could not be closed safely."
+                    ) from exc
                 # SQLite may replace/create its own files, so reassert the active file mode.
-                self._harden_sqlite_files(create_database=False)
+                try:
+                    self._harden_sqlite_files(create_database=False)
+                except (OSError, ValueError) as exc:
+                    raise RepositoryOperationalError(
+                        "Local database files could not be secured after use."
+                    ) from exc
 
     @contextmanager
     def exclusive(self) -> Iterator[None]:
         """Hold the repository lock across multi-step backup or restore operations."""
 
-        with self._lock:
+        with self._coordinated():
             yield
 
     def migrate(self) -> None:
-        """Apply each packaged migration once inside an exclusive transaction."""
+        """Validate and append each packaged migration in its own exclusive transaction."""
 
-        ensure_private_directory(self.database_path.parent)
+        try:
+            ensure_private_directory(self.database_path.parent)
+        except (OSError, ValueError) as exc:
+            raise RepositoryOperationalError(
+                "Local database storage could not be prepared for migration."
+            ) from exc
         migration_dir = files("stock_probs.migrations")
+        packaged: list[tuple[int, str, str]] = []
+        for migration in sorted(migration_dir.iterdir(), key=lambda item: item.name):
+            if not migration.name.endswith(".sql"):
+                continue
+            match = MIGRATION_NAME.fullmatch(migration.name)
+            if match is None:
+                raise RepositoryDatabaseError(
+                    f"invalid packaged migration name: {migration.name}"
+                )
+            version = int(match.group("version"))
+            script = migration.read_text()
+            digest = hashlib.sha256(script.encode()).hexdigest()
+            if MIGRATION_SHA256.get(version) != digest:
+                raise RepositoryDatabaseError(
+                    f"packaged migration {version:03d} failed its immutable checksum"
+                )
+            packaged.append((version, migration.name, script))
+        versions = [version for version, _, _ in packaged]
+        if versions != list(range(1, SCHEMA_VERSION + 1)):
+            raise RepositoryDatabaseError("packaged migrations must be contiguous and complete")
+
         with self.connect() as connection:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS schema_migrations "
                 "(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
             )
-            applied = {
-                row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-            }
-            for migration in sorted(migration_dir.iterdir(), key=lambda item: item.name):
-                if not migration.name.endswith(".sql"):
-                    continue
-                version = int(migration.name.split("_", 1)[0])
-                if version in applied:
-                    continue
-                # executescript owns its transaction, and the version insert is part of that script.
-                timestamp = datetime.now(UTC).isoformat().replace("'", "")
-                script = migration.read_text() + (
-                    "\nINSERT INTO schema_migrations(version, applied_at) "
-                    f"VALUES ({version}, '{timestamp}');\n"
-                )
-                connection.executescript("BEGIN IMMEDIATE;\n" + script + "COMMIT;\n")
+            connection.commit()
+
+        for version, _, script in packaged:
+            # BEGIN IMMEDIATE serializes separate Repository instances. The applied check
+            # occurs after taking the database lock, avoiding a check-then-apply race.
+            with self.connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                try:
+                    applied = [
+                        int(row[0])
+                        for row in connection.execute(
+                            "SELECT version FROM schema_migrations ORDER BY version"
+                        )
+                    ]
+                    if applied != list(range(1, len(applied) + 1)) or any(
+                        item > SCHEMA_VERSION for item in applied
+                    ):
+                        raise RepositoryDatabaseError(
+                            "database migration history is non-contiguous or newer than this app"
+                        )
+                    if version in applied:
+                        connection.rollback()
+                        continue
+                    if version != len(applied) + 1:
+                        raise RepositoryDatabaseError("database migration history has a gap")
+                    self._execute_migration(connection, script)
+                    connection.execute(
+                        "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                        (version, datetime.now(UTC).isoformat()),
+                    )
+                    connection.commit()
+                except Exception:
+                    connection.rollback()
+                    raise
+
+    @staticmethod
+    def _execute_migration(connection: sqlite3.Connection, script: str) -> None:
+        """Execute complete SQLite statements without executescript's implicit commit."""
+
+        statement = ""
+        for line in script.splitlines(keepends=True):
+            statement += line
+            if sqlite3.complete_statement(statement):
+                connection.execute(statement)
+                statement = ""
+        if statement.strip():
+            raise RepositoryDatabaseError(
+                "packaged migration ends with an incomplete statement"
+            )
 
     @staticmethod
     def _json(value: Any) -> str:
@@ -103,7 +264,7 @@ class Repository:
 
         row_id = cursor.lastrowid
         if row_id is None:
-            raise sqlite3.DatabaseError("SQLite INSERT did not produce a row identifier")
+            raise RepositoryDatabaseError("SQLite INSERT did not produce a row identifier")
         return row_id
 
     @staticmethod
@@ -121,19 +282,26 @@ class Repository:
         error_message: str,
         submitted_at: datetime,
         completed_at: datetime,
+        analysis_kind: str = "submitted_forecast",
+        source_event_id: int | None = None,
+        requested_cutoff: datetime | None = None,
     ) -> int:
         """A provider/domain failure still commits exactly one complete search event."""
 
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            resolved_source_event_id = self._resolved_analysis_source(
+                connection, analysis_kind, source_event_id
+            )
             repeated = self._has_prior_submission(
                 connection, submitted_symbol, normalized_symbol, asset_type
             )
             cursor = connection.execute(
                 """INSERT INTO search_events
                 (request_id, submitted_symbol, normalized_symbol, asset_type, status, is_repeat,
-                 error_code, error_message, submitted_at, completed_at)
-                VALUES (?, ?, ?, ?, 'failed', ?, ?, ?, ?, ?)""",
+                  error_code, error_message, submitted_at, completed_at, analysis_kind,
+                  source_event_id, requested_cutoff, requested_source_event_id)
+                VALUES (?, ?, ?, ?, 'failed', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     request_id,
                     submitted_symbol[:64],
@@ -144,10 +312,32 @@ class Repository:
                     error_message,
                     submitted_at.isoformat(),
                     completed_at.isoformat(),
+                    analysis_kind,
+                    resolved_source_event_id,
+                    requested_cutoff.isoformat() if requested_cutoff is not None else None,
+                    source_event_id,
                 ),
             )
             connection.commit()
             return self._insert_id(cursor)
+
+    @staticmethod
+    def _resolved_analysis_source(
+        connection: sqlite3.Connection,
+        analysis_kind: str,
+        requested_source_event_id: int | None,
+    ) -> int | None:
+        """Use an FK only for a real successful source while retaining the requested ID."""
+
+        if analysis_kind != "fresh_historical_reconstruction":
+            return requested_source_event_id
+        if type(requested_source_event_id) is not int or requested_source_event_id < 1:
+            return None
+        row = connection.execute(
+            "SELECT id FROM search_events WHERE id = ? AND run_id IS NOT NULL",
+            (requested_source_event_id,),
+        ).fetchone()
+        return int(row["id"]) if row is not None else None
 
     @staticmethod
     def _has_prior_submission(
@@ -182,6 +372,10 @@ class Repository:
         results: list[dict[str, Any]],
         submitted_at: datetime,
         completed_at: datetime,
+        analysis_kind: str = "submitted_forecast",
+        source_event_id: int | None = None,
+        requested_cutoff: datetime | None = None,
+        reuse_exact_input: bool = True,
     ) -> tuple[int, int, bool, bool]:
         """Append a repeated event while reusing only an exact immutable input snapshot."""
 
@@ -197,16 +391,23 @@ class Repository:
             raise ValueError("exactly one result for each supported horizon is required")
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            prior = connection.execute(
-                "SELECT id FROM forecast_runs "
-                "WHERE symbol = ? AND asset_type = ? AND content_fingerprint = ?",
-                (symbol, asset_type, fingerprint),
-            ).fetchone()
+            resolved_source_event_id = self._resolved_analysis_source(
+                connection, analysis_kind, source_event_id
+            )
+            prior = (
+                connection.execute(
+                    "SELECT id FROM forecast_runs "
+                    "WHERE symbol = ? AND asset_type = ? AND content_fingerprint = ?",
+                    (symbol, asset_type, fingerprint),
+                ).fetchone()
+                if reuse_exact_input
+                else None
+            )
             repeated = self._has_prior_submission(
                 connection, submitted_symbol, symbol, asset_type
             )
             reused = prior is not None
-            if reused:
+            if prior is not None:
                 run_id = int(prior["id"])
             else:
                 run_cursor = connection.execute(
@@ -232,7 +433,9 @@ class Repository:
             event_cursor = connection.execute(
                 """INSERT INTO search_events
                 (request_id, submitted_symbol, normalized_symbol, asset_type, status, is_repeat,
-                 run_id, submitted_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  run_id, submitted_at, completed_at, analysis_kind, source_event_id,
+                   requested_cutoff, requested_source_event_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     request_id,
                     submitted_symbol[:64],
@@ -243,6 +446,10 @@ class Repository:
                     run_id,
                     submitted_at.isoformat(),
                     completed_at.isoformat(),
+                    analysis_kind,
+                    resolved_source_event_id,
+                    requested_cutoff.isoformat() if requested_cutoff is not None else None,
+                    source_event_id,
                 ),
             )
             connection.commit()
@@ -294,6 +501,8 @@ class Repository:
             or provenance.get("identity_fingerprint")
             != input_snapshot.get("identity_fingerprint")
             or input_snapshot.get("identity_fingerprint") != identity_fingerprint
+            or provenance.get("content_fingerprint")
+            != input_snapshot.get("content_fingerprint")
         ):
             raise ValueError("instrument identity must match immutable forecast provenance")
 
@@ -305,6 +514,8 @@ class Repository:
         asset_type: str | None = None,
         page: int = 1,
         page_size: int = 20,
+        analysis_kind: str | None = None,
+        include_analysis: bool = False,
     ) -> dict[str, Any]:
         """Return bounded newest-first history and a stable total for pagination."""
 
@@ -312,6 +523,16 @@ class Repository:
             raise ValueError("history page must be 1-10000 and page_size must be 1-100")
         if len(query) > 30:
             raise ValueError("history query must not exceed 30 characters")
+        if status not in {None, "successful", "failed", "repeated"}:
+            raise ValueError("history status is not supported")
+        if asset_type not in {None, "stock", "etf"}:
+            raise ValueError("history asset_type is not supported")
+        if analysis_kind not in {
+            None,
+            "submitted_forecast",
+            "fresh_historical_reconstruction",
+        }:
+            raise ValueError("history analysis_kind is not supported")
         clauses = ["1 = 1"]
         values: list[Any] = []
         if query:
@@ -326,7 +547,15 @@ class Repository:
         if asset_type:
             clauses.append("asset_type = ?")
             values.append(asset_type)
+        if analysis_kind:
+            clauses.append("analysis_kind = ?")
+            values.append(analysis_kind)
         where = " AND ".join(clauses)
+        analysis_columns = (
+            ", analysis_kind, source_event_id, requested_cutoff, requested_source_event_id"
+            if include_analysis
+            else ""
+        )
         with self.connect() as connection:
             total = int(
                 connection.execute(
@@ -337,6 +566,7 @@ class Repository:
             rows = connection.execute(
                 f"""SELECT id, request_id, submitted_symbol, normalized_symbol, asset_type,
                 status, is_repeat, error_code, error_message, submitted_at, completed_at, run_id
+                {analysis_columns}
                 FROM search_events WHERE {where} ORDER BY id DESC LIMIT ? OFFSET ?""",  # noqa: S608
                 [*values, page_size, (page - 1) * page_size],
             ).fetchall()
@@ -352,11 +582,26 @@ class Repository:
 
         with self.connect() as connection:
             event = connection.execute(
-                "SELECT * FROM search_events WHERE id = ?", (event_id,)
+                """SELECT id, request_id, submitted_symbol, normalized_symbol, asset_type,
+                status, is_repeat, error_code, error_message, run_id, submitted_at, completed_at,
+                analysis_kind, source_event_id, requested_cutoff, requested_source_event_id
+                FROM search_events WHERE id = ?""",
+                (event_id,),
             ).fetchone()
             if event is None:
                 return None
-            response: dict[str, Any] = {"event": dict(event), "input": None, "results": []}
+            event_payload = dict(event)
+            # Preserve compatibility for ordinary saved reopen. Fresh records retain explicit
+            # fields and therefore cannot be mistaken for replay of an original submission.
+            if event_payload["analysis_kind"] == "submitted_forecast":
+                for key in (
+                    "analysis_kind",
+                    "source_event_id",
+                    "requested_cutoff",
+                    "requested_source_event_id",
+                ):
+                    event_payload.pop(key)
+            response: dict[str, Any] = {"event": event_payload, "input": None, "results": []}
             if event["run_id"] is None:
                 return response
             input_row = connection.execute(
@@ -445,23 +690,42 @@ class Repository:
                 "comparison_rule": comparison_rule,
             }
 
-    def representative_counts(self, database_path: Path | None = None) -> dict[str, int]:
-        """Use a fixed table allowlist so backup manifests cannot inject SQL identifiers."""
+    def representative_counts(
+        self, database_path: Path | None = None
+    ) -> _RepresentativeStorageCounts:
+        """Count fixed internal storage tables; these keys are not domain record vocabulary."""
 
         path = database_path or self.database_path
-        connection = sqlite3.connect(path)
+        # Staging databases are private to backup code; only the active canonical path shares
+        # the promotion lock with independent repository and manager instances.
         try:
-            return {
-                table: int(
-                    connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # noqa: S608
-                )
-                for table in (
-                    "search_events",
-                    "forecast_runs",
-                    "forecast_inputs",
-                    "forecast_results",
-                    "outcomes",
-                )
-            }
-        finally:
-            connection.close()
+            coordinated = path.expanduser().resolve(strict=False) == self.database_path
+        except (OSError, RuntimeError) as exc:
+            raise RepositoryOperationalError(
+                "Representative database location could not be resolved safely."
+            ) from exc
+        lock_context = self._coordinated() if coordinated else nullcontext()
+        with lock_context:
+            connection: sqlite3.Connection | None = None
+            try:
+                connection = sqlite3.connect(path)
+                counts = {
+                    table: int(
+                        connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # noqa: S608
+                    )
+                    for table in _REPRESENTATIVE_STORAGE_TABLES
+                }
+                # Construction from the fixed allowlist narrows this beyond dict[str, int].
+                return cast(_RepresentativeStorageCounts, counts)
+            except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
+                raise RepositoryOperationalError(
+                    "Representative database counts could not be read."
+                ) from exc
+            finally:
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except sqlite3.Error as exc:
+                        raise RepositoryOperationalError(
+                            "Representative database connection could not be closed safely."
+                        ) from exc

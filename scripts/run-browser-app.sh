@@ -8,7 +8,7 @@ if [[ ! "$PORT" =~ ^[0-9]+$ ]] || (( 10#$PORT < 1 || 10#$PORT > 65535 )); then
   printf 'STOCK_PROBS_BROWSER_PORT must be between 1 and 65535.\n' >&2
   exit 2
 fi
-RUNTIME="$ROOT/tools/browser/test-results/runtime-$PORT"
+RUNTIME="${STOCK_PROBS_BROWSER_RUNTIME:-$ROOT/tools/browser/test-results/runtime-$PORT}"
 rm -rf "$RUNTIME"
 export STOCK_PROBS_DATA_DIR="$RUNTIME"
 export STOCK_PROBS_PROVIDER="fixture"

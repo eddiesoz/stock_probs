@@ -6,6 +6,7 @@ import json
 import math
 import unicodedata
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta
 from importlib import import_module
 from importlib.resources import files
@@ -52,6 +53,10 @@ class MarketDataProvider(Protocol):
 
     def fetch(self, symbol: str, asset_type: str, now: datetime) -> MarketData: ...
 
+    def fetch_at_cutoff(
+        self, symbol: str, asset_type: str, cutoff: datetime, now: datetime
+    ) -> MarketData: ...
+
 
 class YahooProvider:
     """Translate bounded yfinance history calls into the provider-neutral contract."""
@@ -77,11 +82,24 @@ class YahooProvider:
             )
         return captured.astimezone(UTC)
 
-    def _history(self, ticker: Any, *, period: str, interval: str) -> Any:
+    def _history(
+        self,
+        ticker: Any,
+        *,
+        interval: str,
+        period: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> Any:
+        if (period is None) == (start is None or end is None):
+            raise ValueError("history requires either period or complete start/end bounds")
+        bounds: dict[str, object] = (
+            {"period": period} if period is not None else {"start": start, "end": end}
+        )
         try:
             # Explicit settings prohibit silent extended-session or adjusted-price input.
             return ticker.history(
-                period=period,
+                **bounds,
                 interval=interval,
                 prepost=False,
                 actions=False,
@@ -96,6 +114,20 @@ class YahooProvider:
                 "Yahoo Finance did not return usable data within the configured timeout.",
                 status_code=502,
             ) from exc
+
+    def _history_from_bounds(
+        self, ticker: Any, *, interval: str, bounds: dict[str, object]
+    ) -> Any:
+        """Narrow dynamic query metadata before passing it to the typed provider boundary."""
+
+        period = bounds.get("period")
+        if isinstance(period, str):
+            return self._history(ticker, interval=interval, period=period)
+        start = bounds.get("start")
+        end = bounds.get("end")
+        if not isinstance(start, datetime) or not isinstance(end, datetime):
+            raise ValueError("historical provider bounds require datetime start and end")
+        return self._history(ticker, interval=interval, start=start, end=end)
 
     @staticmethod
     def _identity_from_metadata(
@@ -287,7 +319,70 @@ class YahooProvider:
         return tuple(sorted(bars, key=lambda item: item.timestamp))
 
     def fetch(self, symbol: str, asset_type: str, now: datetime) -> MarketData:
-        if now.tzinfo is None:
+        """Fetch a current bounded snapshot for an ordinary submitted forecast."""
+
+        return self._fetch_with_bounds(
+            symbol,
+            asset_type,
+            cutoff=now,
+            requested_at=now,
+            daily_bounds={"period": "2y"},
+            intraday_bounds={"period": "5d"},
+            mode="current",
+        )
+
+    def fetch_at_cutoff(
+        self, symbol: str, asset_type: str, cutoff: datetime, now: datetime
+    ) -> MarketData:
+        """Fetch only data eligible at a recent historical cutoff using explicit date bounds."""
+
+        if cutoff.tzinfo is None or now.tzinfo is None:
+            raise DomainError(
+                "ambiguous_historical_cutoff", "Historical cutoff times must include an offset."
+            )
+        cutoff_utc = cutoff.astimezone(UTC)
+        now_utc = now.astimezone(UTC)
+        if cutoff_utc > now_utc:
+            raise DomainError(
+                "future_historical_cutoff", "Historical cutoff cannot be in the future."
+            )
+        if now_utc - cutoff_utc > timedelta(days=49):
+            raise DomainError(
+                "historical_cutoff_unavailable",
+                "The cutoff plus its 10-day lookback exceeds Yahoo's 60-day five-minute archive.",
+            )
+        # Yahoo treats end as exclusive. A one-day upper cushion includes the cutoff's session;
+        # the domain still discards every row whose completion is after the exact cutoff.
+        return self._fetch_with_bounds(
+            symbol,
+            asset_type,
+            cutoff=cutoff,
+            requested_at=now,
+            daily_bounds={
+                "start": cutoff_utc - timedelta(days=800),
+                "end": cutoff_utc + timedelta(days=1),
+            },
+            intraday_bounds={
+                "start": cutoff_utc - timedelta(days=10),
+                "end": cutoff_utc + timedelta(days=1),
+            },
+            mode="historical_cutoff",
+        )
+
+    def _fetch_with_bounds(
+        self,
+        symbol: str,
+        asset_type: str,
+        *,
+        cutoff: datetime,
+        requested_at: datetime,
+        daily_bounds: dict[str, object],
+        intraday_bounds: dict[str, object],
+        mode: str,
+    ) -> MarketData:
+        """Normalize current and historical Yahoo requests through one identity path."""
+
+        if cutoff.tzinfo is None or requested_at.tzinfo is None:
             raise DomainError(
                 "ambiguous_provider_time", "Provider request time must include an offset."
             )
@@ -295,8 +390,10 @@ class YahooProvider:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
         requested_symbol = normalize_symbol(symbol)
         ticker = yf.Ticker(requested_symbol)
-        daily_frame = self._history(ticker, period="2y", interval="1d")
-        intraday_frame = self._history(ticker, period="5d", interval="5m")
+        daily_frame = self._history_from_bounds(ticker, interval="1d", bounds=daily_bounds)
+        intraday_frame = self._history_from_bounds(
+            ticker, interval="5m", bounds=intraday_bounds
+        )
         if daily_frame.empty or intraday_frame.empty:
             raise DomainError(
                 "symbol_not_found",
@@ -334,6 +431,15 @@ class YahooProvider:
             )
         daily = self._daily_bars(daily_frame, timezone)
         intraday = self._intraday_bars(intraday_frame)
+
+        def provenance_bounds(bounds: dict[str, object]) -> dict[str, object]:
+            """Keep provider call datetimes explicit and JSON-fingerprintable in provenance."""
+
+            return {
+                key: value.isoformat() if isinstance(value, datetime) else value
+                for key, value in bounds.items()
+            }
+
         return MarketData(
             symbol=identity.canonical_symbol,
             display_name=identity.display_name,
@@ -347,10 +453,17 @@ class YahooProvider:
             # Capture response completion separately from the request/cutoff timestamp.
             fetched_at=response_at,
             query={
-                "requested_as_of": now.astimezone(UTC).isoformat(),
-                "daily": {"period": "2y", "interval": "1d", "prepost": False, "auto_adjust": False},
+                "mode": mode,
+                "requested_as_of": requested_at.astimezone(UTC).isoformat(),
+                "data_cutoff": cutoff.astimezone(UTC).isoformat(),
+                "daily": {
+                    **provenance_bounds(daily_bounds),
+                    "interval": "1d",
+                    "prepost": False,
+                    "auto_adjust": False,
+                },
                 "intraday": {
-                    "period": "5d",
+                    **provenance_bounds(intraday_bounds),
                     "interval": "5m",
                     "prepost": False,
                     "auto_adjust": False,
@@ -375,7 +488,7 @@ class YahooProvider:
                 "missing_intraday_closes": int(intraday_frame["Close"].isna().sum()),
                 "missing_intraday_intervals": _missing_intraday_intervals(intraday, timezone),
                 "trailing_missing_intraday_intervals": _trailing_missing_intraday_intervals(
-                    intraday, timezone, now
+                    intraday, timezone, cutoff
                 ),
             },
         )
@@ -550,6 +663,31 @@ class FixtureProvider:
                 "missing_intraday_closes": 0,
                 "missing_intraday_intervals": 0,
                 "trailing_missing_intraday_intervals": 0,
+            },
+        )
+
+    def fetch_at_cutoff(
+        self, symbol: str, asset_type: str, cutoff: datetime, now: datetime
+    ) -> MarketData:
+        """Recreate fixture data eligible at cutoff while recording the later retrieval time."""
+
+        if cutoff.tzinfo is None or now.tzinfo is None:
+            raise DomainError(
+                "ambiguous_historical_cutoff", "Historical cutoff times must include an offset."
+            )
+        if cutoff.astimezone(UTC) > now.astimezone(UTC):
+            raise DomainError(
+                "future_historical_cutoff", "Historical cutoff cannot be in the future."
+            )
+        data = self.fetch(symbol, asset_type, cutoff)
+        return replace(
+            data,
+            fetched_at=now.astimezone(UTC),
+            query={
+                **data.query,
+                "mode": "historical_cutoff",
+                "requested_as_of": now.astimezone(UTC).isoformat(),
+                "data_cutoff": cutoff.astimezone(UTC).isoformat(),
             },
         )
 

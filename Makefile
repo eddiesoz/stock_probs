@@ -6,7 +6,7 @@ NODE_BIN := .tools/node/bin
 NPM := $(NODE_BIN)/npm
 NPX := $(NODE_BIN)/npx
 
-.PHONY: setup dev migrate test lint typecheck static security restore-test check package-check m01-gate local-gate arm64-smoke browser-setup browser-install browser-test mcp-smoke acceptance live live-smoke release release-check backup restore clean
+.PHONY: setup dev migrate test lint typecheck static security restore-test check package-check m01-gate m02-gate local-gate arm64-smoke browser-setup browser-install browser-test mcp-smoke acceptance live live-smoke release release-check backup restore clean
 
 setup:
 	./scripts/bootstrap.sh
@@ -49,6 +49,10 @@ package-check:
 # The direct m01 profile preserves the prior package-check check ordering without invoking make.
 m01-gate:
 	TASK_ID=M01 ./scripts/local-gate.sh m01
+
+# M02 adds deterministic browser journeys to the direct package and Python checks.
+m02-gate:
+	TASK_ID=M02 ./scripts/local-gate.sh m02
 
 local-gate:
 	TASK_ID="$${TASK_ID:-M01}" ./scripts/local-gate.sh release

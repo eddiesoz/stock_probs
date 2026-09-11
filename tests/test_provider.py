@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 import pytest
@@ -86,6 +86,44 @@ def test_yfinance_adapter_uses_exact_bounded_queries(monkeypatch):
         "provider": "Yahoo Finance",
         "provider_as_of": response_at.isoformat(),
     }
+
+
+def test_yfinance_historical_cutoff_uses_explicit_bounded_ranges(monkeypatch):
+    """Fresh reconstruction never substitutes a current rolling-period provider request."""
+
+    FakeTicker.calls = []
+    monkeypatch.setattr("stock_probs.provider.yf.Ticker", FakeTicker)
+    cutoff = datetime(2025, 1, 3, 15, 0, tzinfo=UTC)
+    performed = cutoff + timedelta(days=2)
+
+    data = YahooProvider(timeout=3, clock=lambda: performed).fetch_at_cutoff(
+        "SPY", "etf", cutoff, performed
+    )
+
+    assert len(FakeTicker.calls) == 2
+    assert all("period" not in call for call in FakeTicker.calls)
+    assert all(isinstance(call["start"], datetime) for call in FakeTicker.calls)
+    assert all(isinstance(call["end"], datetime) for call in FakeTicker.calls)
+    assert data.query["mode"] == "historical_cutoff"
+    assert data.query["data_cutoff"] == cutoff.isoformat()
+    assert data.query["requested_as_of"] == performed.isoformat()
+    assert data.fetched_at == performed
+
+
+def test_yfinance_historical_cutoff_rejects_future_and_archive_overflow(monkeypatch):
+    monkeypatch.setattr(
+        "stock_probs.provider.yf.Ticker",
+        lambda *args, **kwargs: pytest.fail("invalid cutoff must fail before Yahoo access"),
+    )
+    now = datetime(2025, 3, 10, tzinfo=UTC)
+
+    with pytest.raises(DomainError) as future:
+        YahooProvider().fetch_at_cutoff("SPY", "etf", now + timedelta(seconds=1), now)
+    assert future.value.code == "future_historical_cutoff"
+
+    with pytest.raises(DomainError) as unavailable:
+        YahooProvider().fetch_at_cutoff("SPY", "etf", now - timedelta(days=50), now)
+    assert unavailable.value.code == "historical_cutoff_unavailable"
 
 
 def test_yfinance_accepts_an_arbitrary_equity_symbol_under_the_same_contract(monkeypatch):

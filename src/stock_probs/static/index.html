@@ -67,14 +67,30 @@
       </div>
     </section>
 
+    <section id="fresh-analysis-section" class="fresh-analysis" aria-labelledby="fresh-analysis-heading" tabindex="-1" hidden>
+      <div class="section-head">
+        <div>
+          <p class="section-number">02b / Separate analysis</p>
+          <h2 id="fresh-analysis-heading">Fresh historical-cutoff analysis</h2>
+        </div>
+        <span class="badge fresh">New calculation</span>
+      </div>
+      <p class="fresh-warning"><strong>Not the saved forecast.</strong> This separate calculation uses the selected event’s historical cutoff and records its own as-of time and provenance. The immutable recorded result above remains unchanged.</p>
+      <div id="fresh-analysis-content" aria-live="polite"></div>
+    </section>
+
     <section class="ledger" aria-labelledby="history-heading">
       <div class="section-head">
         <div>
           <p class="section-number">03 / Audit</p>
           <h2 id="history-heading">Search ledger</h2>
         </div>
-        <a id="export-link" class="text-link" href="/api/v1/history-export.csv">Export visible history</a>
+        <div class="export-controls" aria-label="Download filtered history">
+          <a id="export-csv" class="text-link" href="/api/v1/history-export.csv" download>Download CSV</a>
+          <a id="export-json" class="text-link" href="/api/v1/history-export.json" download>Download JSON</a>
+        </div>
       </div>
+      <p class="ledger-intro">Every row is a new submitted request. Status and run labels distinguish successful, failed, repeated, newly calculated, and reused results. Results never expire automatically.</p>
       <form id="history-form" class="history-filters" role="search">
         <div class="field">
           <label for="history-query">Find symbol</label>
@@ -95,6 +111,22 @@
             <option value="">All types</option>
             <option value="stock">Stock</option>
             <option value="etf">ETF</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="history-analysis">Analysis type</label>
+          <select id="history-analysis" name="analysis_kind">
+            <option value="">All analyses</option>
+            <option value="submitted_forecast">Submitted forecasts</option>
+            <option value="fresh_historical_reconstruction">Fresh cutoff analyses</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="history-page-size">Rows per page</label>
+          <select id="history-page-size" name="page_size">
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
           </select>
         </div>
         <button class="secondary" type="submit">Filter ledger</button>

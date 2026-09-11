@@ -20,7 +20,12 @@ from pathlib import Path
 from typing import Any
 
 from stock_probs.config import ensure_private_directory, ensure_private_file
-from stock_probs.repository import SCHEMA_VERSION, Repository
+from stock_probs.repository import (
+    SCHEMA_VERSION,
+    Repository,
+    _is_representative_storage_counts,
+    _RepresentativeStorageCounts,
+)
 
 ARTIFACT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\.spbackup$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -36,18 +41,30 @@ COPY_CHUNK_BYTES = 1024 * 1024
 TRUST_KEY_BYTES = 32
 TRUST_KEY_NAME = ".backup-auth.key"
 MANIFEST_AUTH_FIELD = "manifest_hmac_sha256"
+BACKUP_FAILURE_CATEGORY = "backup_creation_failed"
+RESTORE_FAILURE_CATEGORY = "restore_failed"
 ZIP_EOCD = struct.Struct("<4s4H2LH")
-COUNT_TABLES = (
-    "search_events",
-    "forecast_runs",
-    "forecast_inputs",
-    "forecast_results",
-    "outcomes",
-)
 
 
 class BackupError(Exception):
-    """A safe operational failure that does not disclose server filesystem paths."""
+    """Keep detailed safe diagnostics separate from the stable public operation category."""
+
+    def __init__(self, message: str):
+        # Existing callers retain the one-message interface. The private field prevents generic
+        # exception dictionaries from presenting diagnostic state as public response metadata.
+        super().__init__(message)
+        self._public_category = BACKUP_FAILURE_CATEGORY
+
+    @property
+    def public_category(self) -> str:
+        """Return the only exception attribute intended for a transport response."""
+
+        return self._public_category
+
+    def _mark_restore_failure(self) -> None:
+        """Classify errors only at the public restore boundary, never from artifact input."""
+
+        self._public_category = RESTORE_FAILURE_CATEGORY
 
 
 class BackupManager:
@@ -201,7 +218,10 @@ class BackupManager:
         if not ARTIFACT_PATTERN.fullmatch(name):
             raise BackupError("Backup name must be a simple .spbackup filename.")
         # A validated filename has no separators; this containment check guards future regex edits.
-        root = self.backup_dir.resolve()
+        try:
+            root = self.backup_dir.resolve()
+        except (OSError, RuntimeError) as exc:
+            raise BackupError("Managed backup storage could not be resolved safely.") from exc
         candidate = root / name
         if candidate.parent != root:
             raise BackupError("Backup path is outside the managed backup directory.")
@@ -240,7 +260,7 @@ class BackupManager:
         finally:
             os.close(descriptor)
 
-    def _counts(self, path: Path) -> dict[str, int]:
+    def _counts(self, path: Path) -> _RepresentativeStorageCounts:
         try:
             return self.repository.representative_counts(path)
         except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
@@ -326,7 +346,7 @@ class BackupManager:
             return {"name": artifact_name, "sha256": self._checksum(artifact), **manifest}
         except BackupError:
             raise
-        except OSError as exc:
+        except (OSError, sqlite3.Error) as exc:
             artifact.unlink(missing_ok=True)
             raise BackupError("Backup artifact could not be written safely.") from exc
 
@@ -378,9 +398,7 @@ class BackupManager:
         ):
             raise BackupError("Artifact database size is invalid.")
         counts = manifest["counts"]
-        if not isinstance(counts, dict) or set(counts) != set(COUNT_TABLES) or any(
-            type(value) is not int or value < 0 for value in counts.values()
-        ):
+        if not _is_representative_storage_counts(counts):
             raise BackupError("Artifact representative counts are invalid.")
         try:
             created_at = datetime.fromisoformat(manifest["created_at"])
@@ -451,6 +469,17 @@ class BackupManager:
                 raise BackupError("Artifact contains unsafe ZIP member metadata.")
 
     def verify(self, name: str) -> tuple[dict[str, Any], Path, tempfile.TemporaryDirectory[str]]:
+        """Coordinate active-schema inspection with writes and restore promotion."""
+
+        try:
+            with self.repository.exclusive():
+                return self._verify_unlocked(name)
+        except sqlite3.Error as exc:
+            raise BackupError("Database operation did not acquire the bounded local lock.") from exc
+
+    def _verify_unlocked(
+        self, name: str
+    ) -> tuple[dict[str, Any], Path, tempfile.TemporaryDirectory[str]]:
         """Extract only exact expected members and retain staging until caller finishes."""
 
         self._ensure_backup_dir()
@@ -537,10 +566,23 @@ class BackupManager:
             raise
 
     def restore(self, name: str, *, promote: bool = False) -> dict[str, Any]:
+        """Return one safe error if bounded database coordination cannot be acquired."""
+
+        try:
+            return self._restore_coordinated(name, promote=promote)
+        except BackupError as exc:
+            exc._mark_restore_failure()
+            raise
+        except sqlite3.Error as exc:
+            error = BackupError("Database operation did not acquire the bounded local lock.")
+            error._mark_restore_failure()
+            raise error from exc
+
+    def _restore_coordinated(self, name: str, *, promote: bool = False) -> dict[str, Any]:
         """Verify first; promotion keeps a rollback copy until the active recheck passes."""
 
         with self.repository.exclusive():
-            manifest, staged_database, staging = self.verify(name)
+            manifest, staged_database, staging = self._verify_unlocked(name)
             candidate: Path | None = None
             rollback_temporary: Path | None = None
             try:

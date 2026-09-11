@@ -24,9 +24,32 @@ EXPECTED_RESOURCES = {
     "stock_probs/static/api-docs.html",
     "stock_probs/static/favicon.svg",
     "stock_probs/migrations/001_initial.sql",
+    "stock_probs/migrations/002_historical_analysis.sql",
+    "stock_probs/migrations/003_restore_and_immutability_guards.sql",
     "stock_probs/fixtures/acdc.json",
     "stock_probs/fixtures/spy.json",
 }
+
+REGISTERED_MIGRATION_CHECK = """\
+from importlib.resources import files
+from stock_probs.repository import MIGRATION_NAME, MIGRATION_SHA256
+
+names = sorted(
+    item.name for item in files("stock_probs.migrations").iterdir()
+    if item.name.endswith(".sql")
+)
+matches = [MIGRATION_NAME.fullmatch(name) for name in names]
+invalid = [name for name, match in zip(names, matches, strict=True) if match is None]
+if invalid:
+    raise RuntimeError(f"wheel contains invalid migration names: {invalid}")
+packaged_versions = [int(match.group("version")) for match in matches if match is not None]
+registered_versions = sorted(MIGRATION_SHA256)
+if packaged_versions != registered_versions:
+    raise RuntimeError(
+        f"wheel migration versions {packaged_versions} do not match registry {registered_versions}"
+    )
+print(names)
+"""
 
 
 def _run(command: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> None:
@@ -165,6 +188,8 @@ def main() -> None:
             "assert loaded.is_relative_to(root), (loaded, root); print(loaded)"
         )
         _run([sys.executable, "-c", import_check], cwd=temp, env=env)
+        # Read the registry from the wheel installation so a checkout cannot mask omitted data.
+        _run([sys.executable, "-c", REGISTERED_MIGRATION_CHECK], cwd=temp, env=env)
         _run([sys.executable, "-m", "stock_probs.cli", "migrate"], cwd=temp, env=env)
 
         port = _free_loopback_port()
@@ -194,7 +219,7 @@ def main() -> None:
         artifact_wheel = artifact_dir / wheel.name
         shutil.copy2(wheel, artifact_wheel)
         report = {
-            "task": "M01",
+            "task": os.getenv("STOCK_PROBS_TASK_ID", "M01"),
             "revision": os.getenv("STOCK_PROBS_REVISION", "working-tree"),
             "machine": machine,
             "execution_label": execution_label,
@@ -206,6 +231,7 @@ def main() -> None:
                 "wheel-build",
                 "wheel-contents",
                 "non-editable-install",
+                "registered-migration-resources",
                 "migration",
                 "loopback-runtime",
             ],

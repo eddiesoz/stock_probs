@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "../..");
+const task = process.env.STOCK_PROBS_TASK_ID || "M06";
 const config = JSON.parse(fs.readFileSync(path.join(root, "opencode.json"), "utf8"));
 const [command, ...args] = config.mcp.playwright.command;
 const child = spawn(command, args, { cwd: root, stdio: ["pipe", "pipe", "pipe"] });
@@ -59,7 +60,7 @@ child.stdout.on("data", (chunk) => {
       finished = true;
       clearTimeout(timer);
       child.kill("SIGTERM");
-      console.log("M06 MCP smoke passed: official tools and isolated Chromium responded.");
+      console.log(`${task} MCP smoke passed: official tools and isolated Chromium responded.`);
     }
   }
 });
@@ -75,6 +76,6 @@ send({
   params: {
     protocolVersion: "2025-06-18",
     capabilities: {},
-    clientInfo: { name: "stock-probs-m06-smoke", version: "1.0.0" },
+    clientInfo: { name: `stock-probs-${task.toLowerCase()}-smoke`, version: "1.0.0" },
   },
 });
