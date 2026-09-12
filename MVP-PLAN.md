@@ -24,7 +24,8 @@ This is the implementation contract for the planned local Linux stock probabilit
   scopes by this receipt; their earlier failure/repair records remain visible. `M09` is
   **Completed for its declared scope**. `EXP-M09` remains **Pending** for export, secret
   review, local commit, push, and exact remote verification; the integrated `M07` gate is
-  now recorded below as **Completed for its declared scope**, with `EXP-M07` still pending.
+  now recorded below as **Completed for its declared scope**, with `EXP-M07` also completed
+  at the separate receipt recorded below.
 - The following first-gate M09 failure record is retained as immutable pre-acceptance
   history; `M09-E18` above records the later consolidated closure for the declared scope.
 - Current M07 acceptance supersedes the pre-acceptance aggregate wording retained below:
@@ -37,17 +38,32 @@ This is the implementation contract for the planned local Linux stock probabilit
   `17` passed, Ponytail interface precondition **Pass**, and `17` executable performance
   rows **Pass** with ARM64 performance **Unavailable**. Artifacts are under
   `test-results/local-gates/M07-20260912T181408Z/`; reviewer `LUNA MAX QA`.
-  `EXP-M07` remains **Pending** for export, secret review, local commit, push, and exact
-  remote verification; M08 is the next walkthrough gate. The two earlier failed release
-  runs and `R-M09-4`/`R-M09-5` repair records remain visible as history.
-- `M05` is **Completed for its declared scope** through the independent `R-M05-55` Pass receipt. `EXP-M05` is **Completed** at commit `9be15a3ae60b16e7cc7a5b95653f914b578e1a61` with the exact export audit receipt recorded below. `M06` is **Completed for its declared scope** through final clean-target `R-M06-55` on commit `a69df40e15b3136886f26789c27861184c3bbd77`; `EXP-M06` is **Completed** at the same checkpoint. `M09` implementation is **Completed for its declared implementation scope**, but `M09` remains **In progress** pending the boundary `/ponytail-review`, the consolidated M09 gate, docs finalization, and `EXP-M09`. Its supplied scoped QA summary reports `130` news-contract tests plus live ACDC/SPY checks, browser `40` passed/`2` skipped with axe `0/0`, and passing M09 performance rows; the summary's missing session/command/environment/UTC/commit/artifact/reviewer fields are not inferred. `R-M09-1` is the Ponytail-review/local-gate M09 regex repair in flight. `M07` is **In progress** with `R-M07-1` fifth-agent configuration/profile-count test repair in flight, `R-M07-2` Ponytail-review availability pending with findings-only evidence in retained report `test-results/ponytail-m06-m07-boundary.txt` and closure pending, `R-M07-3` completed for supplied repair/test evidence, and `R-M07-4` completed for supplied Ponytail repair evidence. `M08`, `ASTRA-FINAL`, and `EXP-FINAL` are **Pending**. `EXP-M00` through `EXP-M06` are completed; `EXP-M09`, `EXP-M07`, `EXP-M08`, and `EXP-FINAL` remain pending. Actual screen-reader evidence and native/physical ARM64 performance remain **Unavailable**; final release acceptance is not claimed.
+  `EXP-M07` is now **Completed** at commit `779aa749d2f85849427212d890ee6918987492b7`;
+  its export audit is recorded below. M08 is the next walkthrough gate. The two earlier
+  failed release runs and `R-M09-4`/`R-M09-5` repair records remain visible as history.
+- Current `EXP-M07` export receipt: the sanitized export audit reports `281` messages,
+  `1,676` parts, `1,341,738` bytes, `39,520` lines, SHA-256
+  `fddc25e5dbd0bbea4cd70cf3f124476157bb80e4f2cf9fa2ab969e69f7ace487`, and `3,793`
+  redaction markers; secret review found zero canonical secret-pattern matches. Parent:
+  `131aabc0fc0528b1e70ba26e09e2c78565ee8d56`; message: `Record integrated acceptance`;
+  exact remote `main` match; reviewer: `LUNA MAX QA`. The earlier M07 receipt verification
+  also passed with independently recomputed performance rows; its separate command,
+  session, environment, UTC, artifact, and reviewer metadata were not supplied.
+- Current M08 walkthrough-extension evidence is **In progress**: `20` steps, `40` annotated
+  PNGs (`20` desktop at `1280x1000` and `20` mobile at `390x844`), manifest SHA-256
+  `806722ad4321fa3ca25a794192649eb55ad9c55cbba4abf6ec51886ba556df5d`, five companion news
+  states represented as evidence rows, `5,683,157` bytes against the `20 MiB` budget, and
+  zero undeclared requests or page errors. Independent verification, Astra review, and
+  `EXP-M08` remain pending; exact generation command, session, environment, UTC, commit,
+  artifact path, and named reviewer were not supplied and are not inferred.
+- Historical pre-acceptance aggregate status (retained): `M05` is **Completed for its declared scope** through the independent `R-M05-55` Pass receipt. `EXP-M05` is **Completed** at commit `9be15a3ae60b16e7cc7a5b95653f914b578e1a61` with the exact export audit receipt recorded below. `M06` is **Completed for its declared scope** through final clean-target `R-M06-55` on commit `a69df40e15b3136886f26789c27861184c3bbd77`; `EXP-M06` is **Completed** at the same checkpoint. `M09` implementation is **Completed for its declared implementation scope**, but `M09` remains **In progress** pending the boundary `/ponytail-review`, the consolidated M09 gate, docs finalization, and `EXP-M09`. Its supplied scoped QA summary reports `130` news-contract tests plus live ACDC/SPY checks, browser `40` passed/`2` skipped with axe `0/0`, and passing M09 performance rows; the summary's missing session/command/environment/UTC/commit/artifact/reviewer fields are not inferred. `R-M09-1` is the Ponytail-review/local-gate M09 regex repair in flight. `M07` was **In progress** with `R-M07-1` fifth-agent configuration/profile-count test repair in flight, `R-M07-2` Ponytail-review availability pending with findings-only evidence in retained report `test-results/ponytail-m06-m07-boundary.txt` and closure pending, `R-M07-3` completed for supplied repair/test evidence, and `R-M07-4` completed for supplied Ponytail repair evidence. `M08`, `ASTRA-FINAL`, and `EXP-FINAL` were **Pending** at that earlier state. `EXP-M00` through `EXP-M06` were completed; later export state was pending at that time. Actual screen-reader evidence and native/physical ARM64 performance remain **Unavailable**; final release acceptance is not claimed.
 - The first consolidated M09 gate command `TASK_ID=M09 PERFORMANCE_REVIEWER='LUNA MAX QA' ./scripts/local-gate.sh m09` **Failed** with one intermittent `test_success_repeat_failure_and_searchable_history` failure (expected total `2`, observed `3`; the known random request-ID/search-collision flake) and reproducible blocker `R-M09-2`: when local-gate invoked `scripts/arm64-smoke.sh`, it rejected `TASK_ID=M09` and exited `2` before ARM evidence. The clean rerun reported `338 passed/4 deselected/89.62%`. Independent continuation passed the native package (wheel `121,501` bytes including `theme.js` and `news.json`), browser `40` passed/`2` skipped, official MCP, Ponytail interface, and the M09 performance harness `18/18` rows; ARM64 performance is **Unavailable**. A separate functional/package/runtime smoke passed as **emulated ARM64**. `R-M09-2` and `R-M09-3` (flaky-test determinism) repairs remain **In progress**; the consolidated gate rerun and `EXP-M09` remain **Pending**. Session, environment, UTC, commit, and artifact metadata were not supplied and are not inferred.
 - The aggregate M07 in-progress wording in the preceding status line is retained as
   immutable pre-acceptance history. The current `M07-E18` receipt below supersedes it for
   the declared integrated scope without erasing `R-M07-1`–`R-M07-4` or the two earlier
   failed release runs.
 - M05's current `R-M05-55` closure is fully **Pass** for its declared scope, reviewed by `LUNA MAX QA` on native x86_64 with `.dev-venv` Python `3.11.15`: rows `(a)`–`(i)` are session `ses_f6bbd6b46ffes2BM2zVjBC5uLg`, `2026-09-12T06:25:04Z`–`2026-09-12T06:44:37Z` (round trip/checksum `06:42:38Z`–`06:42:39Z`; six-path pre-migration forced-failure matrix `06:32:09Z`–`06:32:10Z`; due-check `60`/`2678400` accepted and `59`/`2678401`/`nan` rejected; retention of `32` artifacts/`256 MiB` with history preserved at `06:43:54Z`; `13/13` fail-closed negatives `06:35:29Z`–`06:35:32Z`; key lifecycle with rollback at `06:44:37Z`; `7/7` watchdog probes `06:35:01Z`–`06:35:02Z`; both-direction **emulated ARM64** cross-architecture restore `06:25:04Z`–`06:28:44Z`, artifact `test-results/arm64/M05-20260912T034933Z/evidence.json`; and the `R-M05-12` rerun `06:38:47Z`–`06:38:49Z`), and row `(j)` is session `ses_f6aa32b01ffexjSm9OhpprFwq4`, `2026-09-12T11:26:29Z`–`2026-09-12T11:28:26Z` (`276` non-live tests/`4` live deselected/`89.51%` coverage, documentation validation of `8` categories/`11` topics/`1` skill, `22` documentation tests, a `77`-file comment audit, Ruff, and mypy). Packaged-CLI end-to-end verification is session `ses_f6a96daceffegfAqyKQL2lf3bS` on native x86_64/Python `3.11.15`, with artifact `/tmp/opencode/stock-probs-m05-cli-20260912T114105Z/M05-packaged-cli-receipt.json` and reviewer `LUNA MAX QA` (fresh-venv wheel install, migration pre-backup, named backup, verify, `restore --promote`, wrong-key/tampered rejection, backup-key rotate/retire, and isolated-port serve readiness). Commands and commit were not supplied; no values are inferred. Earlier failures and pending states remain historical evidence; they are not erased by the later closure receipt.
-- M05 automation is implementation evidence only: migrate pre-backup, serve due-check with `STOCK_PROBS_BACKUP_INTERVAL_SECONDS` default `86400` and bounds `60`–`2678400`, backup-key rotation/retirement, `32` artifact/`256 MiB` retention limits, and no automatic query-history expiry. `docs/operations/backup-restore.md` and `docs/configure/local-configuration.md` were updated for accuracy by `SOL HIGH`. The M08 capture harness supplied `20` annotated screenshots and manifest SHA-256 `f9fef2b2db0a806cc47ff1db82e1e895f4dd4803425c0cf74426f5fa5a12dd5d`; this is preparation evidence only, not M08 acceptance.
+- M05 automation is implementation evidence only: migrate pre-backup, serve due-check with `STOCK_PROBS_BACKUP_INTERVAL_SECONDS` default `86400` and bounds `60`–`2678400`, backup-key rotation/retirement, `32` artifact/`256 MiB` retention limits, and no automatic query-history expiry. `docs/operations/backup-restore.md` and `docs/configure/local-configuration.md` were updated for accuracy by `SOL HIGH`. The earlier M08 capture harness supplied `20` annotated screenshots and manifest SHA-256 `f9fef2b2db0a806cc47ff1db82e1e895f4dd4803425c0cf74426f5fa5a12dd5d`; this remains preparation evidence only, not M08 acceptance, and the current extension is recorded above and below.
 - The earlier `LUNA MAX docs` profile gap is retained as historical evidence: `SOL HIGH` performed those authored documentation repairs. The supplied adoption state now grants `luna-docs` `docs/**` permission, but it is not gate-active until the required parent restart and independent post-restart validation; implementation presence does not close the independent documentation-skill/M06 verification.
 - A task may move to **Completed** for its declared acceptance scope only after every acceptance item in that scope, independent QA verification, repair history, and reviewer are recorded. `R-M05-12` is now independently rerun inside `R-M05-55 (i)` with `4/4` behavior tests **Pass**; its earlier repair-only state remains historical evidence. A milestone's full release checkpoint additionally requires its export, secret review, local commit, push, and exact Git remote revision verification. A milestone explicitly marked **Completed for declared scope** may retain a separately recorded deferred/unavailable later-release row and a **Pending** export gate; neither is counted as a pass, and both can block final release acceptance. Implementation claims alone never change status. `EXP-M02` moved to **Completed** only through the later named repair receipt, not at the earlier missing-review/missing-timing point. A physical ARM64 performance result is never inferred from emulation.
 
@@ -112,7 +128,9 @@ The fields in this immutable historical record preserve the state observed durin
         | `R-M00-2-E17` | `.dev-venv/bin/python scripts/validate_docs.py` after this M09 acceptance root-documentation update | Current native x86_64 Linux; dirty `HEAD` `a69df40e15b3136886f26789c27861184c3bbd77`; UTC was not captured; execution was denied by the tool permission boundary | **Unavailable**; no current validator pass is inferred; artifact: none; reviewer: `LUNA MAX docs`; no implementation or M09 acceptance is inferred from this unavailable check. |
         | `R-M00-2-E18` | `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` after this M09 acceptance root-documentation update | Current native x86_64 Linux; dirty `HEAD` `a69df40e15b3136886f26789c27861184c3bbd77`; UTC was not captured by the command tool | **Pass**; no whitespace errors; artifact: current four-document worktree diff; reviewer: `LUNA MAX docs`; no Git mutation performed. |
         | `R-M00-2-E19` | `.dev-venv/bin/python scripts/validate_docs.py` after this M07 integrated-acceptance root-documentation update | Current native x86_64 Linux; dirty `HEAD` `131aabc0fc0528b1e70ba26e09e2c78565ee8d56`; UTC was not captured; the tool permission boundary denied execution | **Unavailable**; no validator pass is inferred; artifact: none; reviewer: `LUNA MAX docs`; no implementation or Git acceptance inferred. |
-        | `R-M00-2-E20` | `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` after this M07 integrated-acceptance root-documentation update | Current native x86_64 Linux; dirty `HEAD` `131aabc0fc0528b1e70ba26e09e2c78565ee8d56`; UTC was not captured by the command tool | **Pass**; no whitespace errors; artifact: current four-document worktree diff; reviewer: `LUNA MAX docs`; no Git mutation performed. |
+         | `R-M00-2-E20` | `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` after this M07 integrated-acceptance root-documentation update | Current native x86_64 Linux; dirty `HEAD` `131aabc0fc0528b1e70ba26e09e2c78565ee8d56`; UTC was not captured by the command tool | **Pass**; no whitespace errors; artifact: current four-document worktree diff; reviewer: `LUNA MAX docs`; no Git mutation performed. |
+         | `R-M00-2-E21` | `.dev-venv/bin/python scripts/validate_docs.py` after this M07-export/M08-extension root-documentation update | Current native x86_64 Linux; dirty `HEAD` `779aa749d2f85849427212d890ee6918987492b7`; UTC was not captured; execution was denied by the tool permission boundary | **Unavailable**; no current validator pass is inferred; artifact: none; reviewer: `LUNA MAX docs`; rerun remains required when execution is available. |
+         | `R-M00-2-E22` | `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` after this M07-export/M08-extension root-documentation update | Current native x86_64 Linux; dirty `HEAD` `779aa749d2f85849427212d890ee6918987492b7`; UTC was not captured by the command tool | **Pass**; no whitespace errors; artifact: current four-document worktree diff; reviewer: `LUNA MAX docs`; no Git mutation performed. |
 - **Limitations and repair history:** No implementation QA, native ARM64 run, emulated ARM64 run, walkthrough artifact, browser-control check, retrospective, export, commit, push, or new Git remote verification was performed. `R-M00-2` does not accept any implementation milestone.
 - **Export/Git/reviewer:** At the time of `R-M00-2`, no export/commit/push was performed by that documentation-only repair and `EXP-M02` had not yet been completed. The later coordinator records `EXP-M00` through `EXP-M04` are **Completed** at the exact checkpoint receipts recorded below; those later results do not rewrite the historical timing. Later exports remain pending. Reviewer for `R-M00-2`: `LUNA MAX docs` self-review; independent implementation QA was not performed by that historical docs repair.
 
@@ -731,15 +749,16 @@ documentation or M05 verification. The later supplied adoption state grants `lun
 - **Limitations:** The supplied receipt does not provide an export session ID, command, separate export-audit UTC window, or additional check; none is inferred. No external/hosted pipeline result is claimed.
 - **Export/Git:** exact checkpoint `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`, parent `59534faf1cdce493bc51a11d4adbea5e5b2d6892`, message `Add verified backup operations`, commit UTC `2026-09-12T12:41:32Z`, and exact `origin/main` match; reviewer `LUNA MAX QA`.
 
-#### M08 preparation evidence (not M08 acceptance)
+#### Historical M08 preparation evidence (not M08 acceptance)
 
-`M08` remains **Pending**. The supplied capture-harness receipt reports `20` annotated
+At that earlier preparation point, `M08` was **Pending**. The supplied capture-harness receipt reports `20` annotated
 screenshots and manifest SHA-256
 `f9fef2b2db0a806cc47ff1db82e1e895f4dd4803425c0cf74426f5fa5a12dd5d`. This is reusable
 preparation evidence only: no M08 QA, retrospective, Astra review, `EXP-M08`, or final
 walkthrough acceptance is claimed. The generated capture output is not present in this
 worktree for a local hash recheck; the supplied receipt's exact UTC, commit, command, and
-named reviewer were not provided.
+named reviewer were not provided. The current walkthrough-extension evidence is recorded in
+the M08 section below.
 
 ### M06 - Local QA, Playwright MCP, Browser Regressions, And Fail-Closed Gates
 
@@ -1266,8 +1285,8 @@ metadata is not inferred.
 
 ### M07 - Integrated MVP Acceptance
 
-- **Status:** **Completed** for the declared integrated release scope. `EXP-M07` remains
-  **Pending** as the separate export/checkpoint gate.
+- **Status:** **Completed** for the declared integrated release scope. `EXP-M07` is also
+  **Completed** as the separate export/checkpoint gate recorded below.
 - **Dependencies:** the declared M06 and M09 scopes and `EXP-M06` are verified in their
   recorded receipts. `EXP-M09` remains a separately recorded pending export state; this
   M07 release receipt does not invent or close that export evidence.
@@ -1306,14 +1325,16 @@ remain visible even though the current M07 release receipt is now passing:
   this documentation update records the supplied receipt and does not rerun the release
   gate.
 - **Dependencies verified:** the recorded M06/M09 declared scopes, `EXP-M06`, and the
-  retained M07 pre-acceptance repair/failure history. `EXP-M07` remains a separate pending
-  checkpoint; `EXP-M09` remains separately recorded as pending and is not silently closed.
+  retained M07 pre-acceptance repair/failure history. `EXP-M07` is recorded below as the
+  completed checkpoint; `EXP-M09` remains separately recorded as pending and is not silently
+  closed.
 - **Change summary:** no implementation, configuration, skill, test, export, or Git path
   was changed by this documentation update.
 
 | Evidence ID / task | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
 | --- | --- | --- | --- |
 | `M07-E18` / `M07` | Exact command `TASK_ID=M07 PERFORMANCE_REVIEWER='LUNA MAX QA' ./scripts/local-gate.sh release`; `396` tests passed, `4` live deselected, `89.62%` coverage; browser `40` passed/`2` expected performance skips; official MCP; migration with verified pre-migration backup schema v1 to v4; backup CLI `17` passed; Ponytail interface precondition **Pass**; and `17` executable performance rows **Pass** with ARM64 performance **Unavailable**. | Native x86_64 Linux; `2026-09-12T18:14:08Z`–`2026-09-12T18:21:06Z`; clean commit `131aabc0fc0528b1e70ba26e09e2c78565ee8d56` | **Pass**; artifacts under `test-results/local-gates/M07-20260912T181408Z/`; reviewer `LUNA MAX QA`. ARM64 performance remains **Unavailable**; no native/physical ARM64 performance result is claimed. |
+| `M07-E19` / `M07` | Earlier M07 receipt verification with independently recomputed performance rows. | Supplied earlier verification; exact command, session, environment, UTC, commit, artifact, and named reviewer were not supplied. | **Pass as supplied verification evidence**; it supplements `M07-E18` and does not replace the independent release receipt. |
 
 - **Repair/history:** the two earlier failed release runs and `R-M09-4`/`R-M09-5` remain
   visible above. The passing receipt closes the declared integrated M07 release scope but
@@ -1322,15 +1343,15 @@ remain visible even though the current M07 release receipt is now passing:
   ARM64 performance is **Unavailable**; actual screen-reader evidence remains separately
   unavailable and is not substituted by browser/MCP evidence; no final product release is
   claimed from this declared-scope milestone alone.
-- **Export/Git:** `EXP-M07` remains **Pending** for the full-session export, secret review,
-  local commit, push, and exact remote revision verification. The supplied M07 receipt
-  identifies the clean gate commit but does not supply an export checkpoint or remote match.
+- **Export/Git:** `EXP-M07` is **Completed** at commit
+  `779aa749d2f85849427212d890ee6918987492b7`; the separate export, secret-review, push, and
+  exact remote-main evidence is recorded below.
 - **Current declared-scope acceptance evidence:** [x] exact M07 release command and clean
   commit are recorded; [x] `396` tests, coverage, browser/MCP, migration/pre-migration
   schema v1→v4, backup CLI `17`, Ponytail interface precondition, and `17` executable
   performance rows are recorded as supplied; [x] ARM64 performance is explicitly
-  `Unavailable`; [ ] export, secret review, commit, push, and exact remote verification
-  remain the separate `EXP-M07` gate. The original full acceptance matrix below is retained
+  `Unavailable`; [x] the separate `EXP-M07` export, secret review, commit, push, and exact
+  remote verification are recorded below. The original full acceptance matrix below is retained
   for later/final evidence and must not be read as erasing this declared-scope receipt.
 - **Acceptance evidence:** [ ] a user looks up a company name and confirms stock/ETF instrument identity, then receives both forecast horizons; [ ] direction/threshold probabilities, conditional gain/loss, 50/80/95 return and price intervals, evaluation metrics, archive limitations, and provenance are traceable to immutable inputs/results; [ ] saved forecasts reopen unchanged while historical cutoffs are labelled fresh analyses; [ ] historical price/return charts have text/table equivalents; [ ] successful, failed, and repeated searches appear in searchable history with no automatic query-history expiry; [ ] outcomes can be appended without changing forecasts; [ ] CSV and JSON export is verified; [ ] due/pre-migration backup, retention/disk limits, cross-architecture restore, trust-key transfer/lifecycle, and missing/wrong-key fail-closed behavior are verified; [ ] responsive/accessibility visual gates pass at 360/390/768/1280/1440 with Signal Ledger direction, no overlap/overflow, reduced motion, WCAG AA, keyboard, and actual assistive-technology evidence; [ ] every M06 native-x86 performance/UI row has its own independently reviewed structured artifact; [ ] local loopback security, MCP/browser, comments, resource targets, and local fail-closed Make/scripts all pass; [ ] README and roadmap state the shipped scope honestly; [ ] ARM64 functional/build/tool checks identify native or emulated environment; [ ] physical ARM64 low-resource performance is either measured on local native hardware or recorded `Unavailable`, which prevents a full low-resource ARM64 claim; [ ] M09 dark mode is user-selectable, accessible, responsive, and included in the integrated UI; [ ] M09 selected-instrument news is clearly labelled, API-served, provenance-bearing, and includes honest loading/empty/stale/failure states; [ ] options trading and public hosting remain out of scope.
 - **Verification:** [ ] local clean package install, `make check`, loopback, Node/Chromium, official MCP application interaction, and desktop/mobile end-to-end journey on native x86-64; [ ] the same functional/build/tool journey on local native ARM64 or labelled QEMU/OCI emulation; [ ] restore artifacts in both directions with architecture labels; [ ] security and separate keyboard/actual assistive-technology sign-off; [ ] independent review of every M06 performance/UI artifact and its existing-versus-proposed threshold classification; [ ] native x86 memory/latency/idle-CPU evidence and explicit ARM64 physical-performance limitation when hardware is unavailable; [ ] coordinator review of every dependency and evidence field.
@@ -1339,13 +1360,59 @@ remain visible even though the current M07 release receipt is now passing:
   record and affected-check rerun; the current declared-scope gate is closed by `M07-E18`.
 - **Post-milestone gate:** `EXP-M07` follows accepted M07 evidence and records its local Git checkpoint. M08 is the final roadmap milestone before `ASTRA-FINAL`; `EXP-FINAL` is a separate final export/commit/push/Git-revision gate after Astra repairs and the required final learning synthesis.
 
+#### `EXP-M07` completed export checkpoint
+
+- **Status:** `Completed`.
+- **Owner/phase:** coordinator export/checkpoint gate; reviewer `LUNA MAX QA`.
+- **Dependencies verified:** `M07-E18` and the earlier M07 receipt verification with independently
+  recomputed performance rows; the separate `EXP-M09` state remains pending and is not closed by
+  this checkpoint.
+- **Change summary:** The supplied sanitized full-session export audit, secret review, commit,
+  push, and exact remote-main match are recorded here. This documentation update did not edit
+  `SESSION-EXPORT.md`, implementation, configuration, skill, test, or Git paths.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `EXP-M07-E1` | Sanitized export inventory: `281` messages, `1,676` parts, `1,341,738` bytes, `39,520` lines, SHA-256 `fddc25e5dbd0bbea4cd70cf3f124476157bb80e4f2cf9fa2ab969e69f7ace487`, and `3,793` redaction markers. | Supplied export audit receipt; checkpoint `779aa749d2f85849427212d890ee6918987492b7`, parent `131aabc0fc0528b1e70ba26e09e2c78565ee8d56`; export command, session, environment, and exact export UTC were not supplied. | **Pass**; artifact: sanitized `SESSION-EXPORT.md`; reviewer `LUNA MAX QA`. |
+| `EXP-M07-E2` | Full secret review across the canonical secret patterns. | Same supplied export audit and checkpoint; exact scan command and UTC were not supplied. | **Pass**; zero canonical secret-pattern matches; artifact: export audit; reviewer `LUNA MAX QA`. |
+| `EXP-M07-E3` | Commit message, parent, push, and exact remote `main` match. | Commit `779aa749d2f85849427212d890ee6918987492b7`; parent `131aabc0fc0528b1e70ba26e09e2c78565ee8d56`; message `Record integrated acceptance`; exact commit time was not supplied. | **Pass**; exact remote `main` match; artifact: Git checkpoint receipt; reviewer `LUNA MAX QA`. |
+
+- **Repair/history:** The export checkpoint does not erase the two earlier failed M07 release
+  runs, `R-M09-4`/`R-M09-5`, or their separate missing metadata; `M07-E18` and `M07-E19` remain
+  distinct evidence.
+- **Limitations:** Export command, session, environment, and exact export UTC were not supplied;
+  no values are inferred. The earlier M07 verification's metadata limitations remain visible.
+- **Export/Git:** exact checkpoint `779aa749d2f85849427212d890ee6918987492b7`, parent
+  `131aabc0fc0528b1e70ba26e09e2c78565ee8d56`, message `Record integrated acceptance`, exact
+  remote `main` match, and reviewer `LUNA MAX QA`.
+
 ### M08 - Instructional Walkthrough
 
-- **Status:** Pending.
-- **Dependencies:** `M07` must be `Completed` as an integrated implementation/QA/docs result, and `EXP-M07` must have its reviewed local Git checkpoint. M08 is the final roadmap milestone before `ASTRA-FINAL`.
+- **Status:** **In progress**.
+- **Dependencies:** `M07` and `EXP-M07` are completed in the receipts above; independent M08
+  verification, Astra review, and `EXP-M08` remain pending. M08 is the final roadmap milestone
+  before `ASTRA-FINAL`.
 - **Agents/sequence:** `SOL HIGH-C` owns the checked-in generation command/script and browser capture integration; A/B provide only disjoint route/data or fixture interfaces; `LUNA MAX QA` and `LUNA MAX docs` review after all builder reports. No claim is made until the artifact and its evidence exist.
 - **Scope:** Use deterministic fixture data, the real local app, and official browser tooling to produce a tracked lightweight artifact under `docs/walkthrough/` (or an explicitly recorded equivalent). Prefer a compiled sequence of annotated screenshots when a GIF is less accessible, too large, or less readable; otherwise provide an accessible animated GIF plus companion Markdown/transcript.
 - **Artifact contract:** The artifact is step-numbered and includes captions, useful alt text, and a complete Markdown transcript/instruction set. It covers desktop and mobile, including at least representative 1280px desktop and 390px mobile views, and contains no secrets, credentials, tokens, hostnames, or local filesystem paths. A reproducible local `make walkthrough` command (or a checked-in local script named in the record) must regenerate it from fixtures. The tracked walkthrough directory has a total size budget of 20 MiB; any different bounded budget requires an explicit evidence row and reviewer.
+- **Current supplied extension evidence:** `20` steps and `40` annotated PNGs (`20` desktop at
+  `1280x1000`, `20` mobile at `390x844`), manifest SHA-256
+  `806722ad4321fa3ca25a794192649eb55ad9c55cbba4abf6ec51886ba556df5d`, five companion news
+  states represented as evidence rows, `5,683,157` bytes against the `20 MiB` budget, and zero
+  undeclared requests or page errors. The exact artifact path, generation command, session,
+  environment, UTC, commit, and named reviewer were not supplied and are not inferred.
+- **Current extension evidence ledger:**
+
+  | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+  | --- | --- | --- | --- |
+  | `M08-E1` | Twenty numbered steps and forty annotated PNGs: twenty desktop `1280x1000` and twenty mobile `390x844`. | Supplied implementation/artifact report; command, session, environment, UTC, commit, artifact path, and reviewer were not supplied. | **Pass as supplied implementation/artifact evidence**; independent M08 verification remains pending. |
+  | `M08-E2` | Manifest SHA-256 `806722ad4321fa3ca25a794192649eb55ad9c55cbba4abf6ec51886ba556df5d` and `5,683,157` bytes against the `20 MiB` budget. | Same supplied report; exact hash command, environment, UTC, commit, and reviewer were not supplied. | **Pass as supplied artifact evidence**; no independent budget/hash recheck is inferred. |
+  | `M08-E3` | Companion news state 1 evidence row; state name was not supplied. | Same supplied report; exact row artifact and metadata were not supplied. | **Pass as supplied implementation/artifact evidence**; independent verification remains pending. |
+  | `M08-E4` | Companion news state 2 evidence row; state name was not supplied. | Same supplied report; exact row artifact and metadata were not supplied. | **Pass as supplied implementation/artifact evidence**; independent verification remains pending. |
+  | `M08-E5` | Companion news state 3 evidence row; state name was not supplied. | Same supplied report; exact row artifact and metadata were not supplied. | **Pass as supplied implementation/artifact evidence**; independent verification remains pending. |
+  | `M08-E6` | Companion news state 4 evidence row; state name was not supplied. | Same supplied report; exact row artifact and metadata were not supplied. | **Pass as supplied implementation/artifact evidence**; independent verification remains pending. |
+  | `M08-E7` | Companion news state 5 evidence row; state name was not supplied. | Same supplied report; exact row artifact and metadata were not supplied. | **Pass as supplied implementation/artifact evidence**; independent verification remains pending. |
+  | `M08-E8` | No undeclared requests or page errors in the supplied extension evidence. | Same supplied report; exact request/page-error artifact and metadata were not supplied. | **Pass as supplied implementation/artifact evidence**; independent verification remains pending. |
 - **Acceptance evidence:**
   - [ ] setup and local startup, service readiness, normal shutdown, and troubleshooting are demonstrated;
   - [ ] symbol/company lookup, stock selection, ETF selection, instrument identity, and forecast submission use the real controls;
@@ -1364,11 +1431,32 @@ remain visible even though the current M07 release receipt is now passing:
 - **Astra input:** `ASTRA-FINAL` must independently inspect the tracked artifact, transcript/alt text, generation evidence, actual-control browser evidence, and retrospective, then create separate rows for every feature, endpoint, control, UI state, asset, documentation visual, walkthrough frame/segment, media item, static asset, journey, and persistence effect. Every row must be evaluated for requirements, aesthetics, mobile/responsive behavior, accessibility, and measured performance.
 - **Post-milestone gate:** Do not create a green `EXP-M08` from the artifact alone. After M08 QA/docs and Astra review, repair and retest all gaps until the Astra result is `Accepted`; then `EXP-M08` records the reviewed walkthrough/export revision and local Git checkpoint. After all roadmap and Astra repairs, complete the final learning synthesis before `EXP-FINAL`.
 
+### `ASTRA-FINAL` preparation
+
+- **Status:** `Pending`; the final review has not run and no acceptance is claimed.
+- **Owner/phase:** preparation for the independent Astra review; no Astra reviewer result is
+  supplied.
+- **Dependencies verified:** `M08` extension evidence is supplied, but independent M08
+  verification remains pending; `ASTRA-FINAL` therefore remains gated by the M08 QA/docs result.
+- **Change summary:** The matrix skeleton is being assembled at
+  `test-results/astra/astra-final-matrix.md`. This documentation record does not create or
+  verify the skeleton, edit the artifact, or perform Astra review.
+- **Evidence:** `ASTRA-FINAL-E1` — supplied matrix-skeleton path and assembly state. The exact
+  command, environment, UTC, commit, artifact existence, and reviewer were not supplied;
+  independent matrix review is **Unavailable** and no `R-ASTRA-<n>` result is inferred.
+- **Limitations:** No Astra execution, per-row evaluation, acceptance, repair, or reevaluation
+  is claimed. The required full matrix remains pending.
+
 ## Final operational item: selective Ingenium pipeline adoption
 
-- **Status:** `In progress`; the implementation/adoption state is reported implemented,
-  but it is not gate-active until restart and validation. This is the ASTRA-plan operational
+- **Status:** `In progress`; the implementation/adoption state is reported implemented and
+  committed, but it is not gate-active until restart and validation. This is the ASTRA-plan operational
   follow-up, not a new milestone or acceptance ID.
+- **Commit evidence:** the committed adoption/profile change set is in ancestor commit
+  `8084a134ab4950f36446de3af622349cd23423ae` (`Build dark mode and news`), including the
+  ASTRA profile's `variant: max`; the current checkpoint is its descendant
+  `779aa749d2f85849427212d890ee6918987492b7`. This does not replace the required parent
+  restart or independent post-restart validation.
 - **Implemented adoption state (not gate-active):** `stock-orchestrator` is the inline
   primary with the six-agent count option and `subagent_depth: 1`; `luna-docs` has the
   `docs/**` permission; the recorded `.gitignore` additions are present; and the two-skill
@@ -1382,6 +1470,10 @@ remain visible even though the current M07 release receipt is now passing:
 - **ASTRA profile:** The ASTRA agent profile now uses `variant: max`; parent-process
   restart and independent post-restart validation are **Pending**, so no gate effect or
   validation pass is claimed.
+- **ASTRA-FINAL preparation:** The matrix skeleton is being assembled at
+  `test-results/astra/astra-final-matrix.md`. This is preparation only; no ASTRA-FINAL review,
+  matrix acceptance, or `R-ASTRA-<n>` result is claimed. The skeleton's separate command,
+  environment, UTC, commit, and reviewer metadata were not supplied.
 - **ASTRA research state:** The first pass is **Blocked** by the external-directory
   permission boundary. The gitignored snapshot at `test-results/ingenium-snapshot` enables
   the re-run; no re-run result is claimed.

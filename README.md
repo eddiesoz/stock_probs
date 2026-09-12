@@ -76,11 +76,18 @@ As of 2026-09-12:
   `256 MiB`, and query history never expires automatically. The authored operation and
   configuration pages were updated for accuracy by `SOL HIGH`; this is not independent
   QA or M05 acceptance.
-- The M08 capture harness is prepared only: it supplied `20` annotated screenshots and
+- The earlier M08 capture harness was preparation only: it supplied `20` annotated screenshots and
   manifest SHA-256 `f9fef2b2db0a806cc47ff1db82e1e895f4dd4803425c0cf74426f5fa5a12dd5d`.
   This is no M08 acceptance, walkthrough QA, Astra result, or `EXP-M08` checkpoint.
   The eventual walkthrough must include the M09 dark-mode and selected-instrument news
   controls and states; no such walkthrough evidence is claimed.
+- `M08` is now **In progress** for the supplied walkthrough-extension evidence: `20` steps,
+  `40` annotated PNGs (`20` desktop at `1280x1000` and `20` mobile at `390x844`), manifest
+  SHA-256 `806722ad4321fa3ca25a794192649eb55ad9c55cbba4abf6ec51886ba556df5d`, five
+  companion news states represented as evidence rows, `5,683,157` bytes against the `20 MiB`
+  budget, and zero undeclared requests or page errors. Independent M08 verification, Astra
+  review, and `EXP-M08` remain pending; the exact generation command, session, environment,
+  UTC, commit, artifact path, and named reviewer were not supplied and are not inferred.
 - `M06` is **Completed for its declared scope** through the final clean-target
   `R-M06-55` gate on commit `a69df40e15b3136886f26789c27861184c3bbd77`, run
   `2026-09-12T14:40:23Z`–`2026-09-12T14:49:48Z` with exit `0`: `278` tests, `4` live
@@ -124,9 +131,17 @@ As of 2026-09-12:
   `test-results/local-gates/M07-20260912T181408Z/`; reviewer: `LUNA MAX QA`.
 - The two earlier failed release runs and their `R-M09-4`/`R-M09-5` repair records remain
   visible as immutable history below; the supplied M07 receipt is the current integrated
-  release result, not a row-only repair receipt. `EXP-M07` is **Pending** for export,
-  secret review, local commit, push, and exact remote verification. M08 is the next
-  walkthrough gate after that checkpoint.
+  release result, not a row-only repair receipt. `EXP-M07` is now **Completed** at commit
+  `779aa749d2f85849427212d890ee6918987492b7`; its export audit is recorded below. M08 is
+  the next walkthrough gate after that checkpoint.
+- `EXP-M07` export audit is **Completed**: `281` messages, `1,676` parts, `1,341,738` bytes,
+  `39,520` lines, SHA-256
+  `fddc25e5dbd0bbea4cd70cf3f124476157bb80e4f2cf9fa2ab969e69f7ace487`, and `3,793`
+  redaction markers. Secret review found zero canonical secret-pattern matches. Parent:
+  `131aabc0fc0528b1e70ba26e09e2c78565ee8d56`; message: `Record integrated acceptance`;
+  exact remote `main` matched; reviewer: `LUNA MAX QA`. The earlier M07 receipt
+  verification also passed with independently recomputed performance rows; its separate
+  command, session, environment, UTC, artifact, and reviewer metadata were not supplied.
 - `R-M09-4` and `R-M09-5` each retain an earlier failed release result; their separate
   failure output, session, environment, UTC, commit, artifact, and reviewer metadata were
   not supplied here. The current `M07-E18` receipt does not rewrite either historical
@@ -156,7 +171,9 @@ As of 2026-09-12:
   `R-M07-1` was the fifth-agent configuration/profile-count test with repair in flight,
   `R-M07-2` was the pending Ponytail-review availability row, and `R-M07-3`/`R-M07-4`
   retain their supplied repair evidence. The current `M07-E18` receipt above supersedes
-  that wording for the declared integrated scope; it does not create an `EXP-M07` checkpoint.
+  that wording for the declared integrated scope; it does not erase the earlier unavailable
+  boundary evidence. At that earlier state it did not create an `EXP-M07` checkpoint; the
+  later `EXP-M07` receipt above is the separate completed export checkpoint.
 - The retained M09 boundary report
   [`test-results/ponytail-m09-boundary.txt`](test-results/ponytail-m09-boundary.txt) records
   four overengineering findings and net `-119` possible lines. `SOL HIGH` applied minimal
@@ -173,9 +190,11 @@ As of 2026-09-12:
   Ponytail-review availability row, `R-M07-3` recorded the stale three-profile assertion
   repair, and `R-M07-4` recorded two retained Ponytail findings. The current `M07-E18`
   receipt above supersedes that pending state for the declared integrated scope; it does
-  not erase the earlier unavailable boundary evidence or create an `EXP-M07` checkpoint.
-- `EXP-M07`, `M08`, `ASTRA-FINAL`, and `EXP-FINAL` remain **Pending** except that M07's
-  declared integrated gate is now **Completed** as recorded above.
+  not erase the earlier unavailable boundary evidence. At that earlier state it did not create
+  an `EXP-M07` checkpoint; the later export receipt above is the completed checkpoint.
+- `M08` remains **In progress** for the supplied walkthrough-extension implementation
+  evidence; independent verification, Astra review, and `EXP-M08` are still pending.
+  `ASTRA-FINAL` and `EXP-FINAL` remain **Pending**.
 - An earlier `R-M06-55` receipt ran on dirty native x86_64 Linux at revision
   `59534faf1cdce493bc51a11d4adbea5e5b2d6892` from `2026-09-12T04:52:33Z` to
   `2026-09-12T05:03:44Z`: `264` tests, `89.38%` coverage, 32 browser passes plus
@@ -367,7 +386,8 @@ M09's dark-mode and selected-instrument news requirements therefore flow into th
 integrated UI, walkthrough, and `ASTRA-FINAL` review. The declared implementation scope
 and consolidated QA receipt are recorded above; `EXP-M09` remains open for the export,
 secret review, commit, push, and exact remote verification. The integrated `M07` acceptance
-receipt is recorded above; `EXP-M07` is the next checkpoint and `M08` follows it.
+receipt and completed `EXP-M07` checkpoint are recorded above; M08 follows that
+checkpoint.
 
 `ASTRA-FINAL`, its `R-ASTRA-<n>` repairs/retests, `EXP-M08`, the final learning
 synthesis, and `EXP-FINAL` form one combined second-last operational loop, not a new
@@ -386,8 +406,13 @@ Optional notification is last and cannot repair a missing gate.
 
 ## Final operational item: selective Ingenium pipeline adoption
 
-- **Status:** `In progress`; the implementation/adoption changes are reported implemented,
-  but the gate effect is still **Pending** until restart and validation.
+- **Status:** `In progress`; the implementation/adoption changes are reported implemented
+  and committed, but the gate effect is still **Pending** until restart and validation.
+- **Commit evidence:** the committed adoption/profile change set is in ancestor commit
+  `8084a134ab4950f36446de3af622349cd23423ae` (`Build dark mode and news`), including the
+  ASTRA profile's `variant: max`; the current checkpoint is its descendant
+  `779aa749d2f85849427212d890ee6918987492b7`. This commit history does not replace the
+  required restart or independent post-restart validation.
 - **Implemented adoption state (not gate-active):** `stock-orchestrator` is the inline
   primary with the six-agent count option and `subagent_depth: 1`; `luna-docs` has the
   `docs/**` permission; `.gitignore` additions are present; and the two-skill validator
@@ -401,6 +426,10 @@ Optional notification is last and cannot repair a missing gate.
 - **ASTRA profile:** the ASTRA agent profile now uses `variant: max`; parent-process
   restart and independent post-restart validation are **Pending**, so no gate effect or
   validation pass is claimed.
+- **ASTRA-FINAL preparation:** the matrix skeleton is being assembled at
+  `test-results/astra/astra-final-matrix.md`. This is preparation only; no ASTRA-FINAL review,
+  matrix acceptance, or `R-ASTRA-<n>` result is claimed. The skeleton's separate command,
+  environment, UTC, commit, and reviewer metadata were not supplied.
 - **ASTRA research state:** the first pass is **Blocked** by the external-directory
   permission boundary. The gitignored snapshot at `test-results/ingenium-snapshot` enables
   a re-run; no re-run result is claimed.
@@ -471,5 +500,13 @@ exact `.dev-venv/bin/python scripts/validate_docs.py` attempt as **Unavailable**
 the tool permission boundary denied execution; no validator pass is inferred. `R-M00-2-E20`
 records `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` as **Pass**;
 UTC was not captured by the command tool, and the dirty `HEAD` was
-`131aabc0fc0528b1e70ba26e09e2c78565ee8d56`. No code, configuration, skill, export, commit,
-push, or Git-history mutation is part of this update.
+  `131aabc0fc0528b1e70ba26e09e2c78565ee8d56`. No code, configuration, skill, export, commit,
+  push, or Git-history mutation is part of this update.
+
+For this M07 export/M08 walkthrough-extension root-documentation update, `R-M00-2-E21`
+records `.dev-venv/bin/python scripts/validate_docs.py` as **Unavailable** because the tool
+permission boundary denied execution; no validator pass is inferred. `R-M00-2-E22` records
+`git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` as **Pass** on dirty
+`HEAD` `779aa749d2f85849427212d890ee6918987492b7`; UTC was not captured by the command tool.
+No code, configuration, skill, export, commit, push, or Git-history mutation is part of this
+update.
