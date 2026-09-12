@@ -33,8 +33,14 @@ module.exports = defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "desktop-chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile-chromium", use: { ...devices["Pixel 7"] } },
+    {
+      name: "desktop-chromium",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } },
+    },
+    {
+      name: "mobile-chromium",
+      use: { ...devices["Pixel 7"], viewport: { width: 360, height: 800 } },
+    },
   ],
   webServer: {
     command: "../../scripts/run-browser-app.sh",

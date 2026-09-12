@@ -119,7 +119,7 @@ def test_upgrade_from_v2_preserves_legacy_failed_analysis_and_is_idempotent(sett
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
     assert tuple(legacy) == (None, None, None)
-    assert [row[0] for row in versions] == [1, 2, 3]
+    assert [row[0] for row in versions] == [1, 2, 3, 4]
 
 
 def test_migration_rejects_unknown_or_noncontiguous_history(settings):
@@ -159,7 +159,7 @@ def test_concurrent_clean_migration_is_serialized_across_repository_instances(se
         versions = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
-    assert [row[0] for row in versions] == [1, 2, 3]
+    assert [row[0] for row in versions] == [1, 2, 3, 4]
 
 
 def test_database_triggers_reject_mutation_and_deletion(settings):
@@ -834,7 +834,50 @@ def test_backup_restore_round_trip_reverts_later_data(settings):
     assert verified["verified"] is True and verified["promoted"] is False
     assert promoted["promoted"] is True
     assert repository.representative_counts()["search_events"] == 1
+    assert repository.history(company="ProFrac Holding")["total"] == 1
+    assert repository.history(symbol="SPY")["total"] == 0
     assert not settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
+
+
+def test_backup_restore_preserves_exact_history_microsecond_index(settings):
+    repository, _ = _service(settings)
+    submitted = datetime.fromisoformat("2025-01-10T12:03:00.123456-05:00")
+    event_id = repository.record_failure(
+        request_id="precise-offset",
+        submitted_symbol="FAIL",
+        normalized_symbol="FAIL",
+        asset_type="stock",
+        error_code="fixture_failure",
+        error_message="microsecond backup fixture",
+        submitted_at=submitted,
+        completed_at=submitted,
+    )
+    manager = BackupManager(repository, settings.backup_dir)
+    created = manager.create("precise-history.spbackup")
+    repository.record_failure(
+        request_id="later-event",
+        submitted_symbol="FAIL",
+        normalized_symbol="FAIL",
+        asset_type="stock",
+        error_code="fixture_failure",
+        error_message="removed by restore",
+        submitted_at=submitted + timedelta(seconds=1),
+        completed_at=submitted + timedelta(seconds=1),
+    )
+
+    restored = manager.restore(created["name"], promote=True)
+    exact_utc = datetime(2025, 1, 10, 17, 3, 0, 123456, tzinfo=UTC)
+
+    assert restored["promoted"] is True
+    assert [
+        item["id"]
+        for item in repository.history(date_from=exact_utc, date_to=exact_utc)["items"]
+    ] == [event_id]
+    with repository.connect() as connection:
+        stored = connection.execute(
+            "SELECT submitted_at_us FROM history_facets WHERE event_id = ?", (event_id,)
+        ).fetchone()
+    assert stored["submitted_at_us"] == 1_736_528_580_123_456
 
 
 def test_successful_restore_serializes_second_repository_write_without_discarding_it(

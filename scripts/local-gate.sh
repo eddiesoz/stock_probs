@@ -5,8 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TASK_ID="${TASK_ID:-M01}"
 PROFILE="${1:-m01}"
-if (( $# > 1 )) || [[ ! "$PROFILE" =~ ^(m01|m02|m03|check|release)$ ]]; then
-  printf 'Usage: %s [m01|m02|m03|check|release]\n' "${0##*/}" >&2
+if (( $# > 1 )) || [[ ! "$PROFILE" =~ ^(m01|m02|m03|m04|check|release)$ ]]; then
+  printf 'Usage: %s [m01|m02|m03|m04|check|release]\n' "${0##*/}" >&2
   exit 2
 fi
 if [[ ! "$TASK_ID" =~ ^(M0[0-8]|R-M0[0-8]-[1-9][0-9]*)$ ]]; then
@@ -171,6 +171,18 @@ case "$PROFILE" in
     COMPLETED_CHECKS+=("playwright-mcp")
     run_arm64
     COMPLETED_CHECKS+=("arm64-functional-package-runtime")
+    ;;
+  m04)
+    run_package
+    COMPLETED_CHECKS+=("native-package")
+    run_check
+    COMPLETED_CHECKS+=("python-checks")
+    run_browser
+    COMPLETED_CHECKS+=("responsive-browser-visual-accessibility")
+    run_mcp
+    COMPLETED_CHECKS+=("playwright-mcp")
+    run_arm64
+    COMPLETED_CHECKS+=("arm64-native-or-explicitly-emulated-package-runtime")
     ;;
   release)
     run_package

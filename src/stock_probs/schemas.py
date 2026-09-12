@@ -3,9 +3,28 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+
+ForecastHorizon: TypeAlias = Literal["close_to_close", "completed_5m_to_close"]
+HistoryStatus: TypeAlias = Literal["successful", "failed", "repeated"]
+HistoryAnalysisKind: TypeAlias = Literal[
+    "submitted_forecast", "fresh_historical_reconstruction"
+]
+HistorySortField: TypeAlias = Literal[
+    "event_id",
+    "submitted_at",
+    "completed_at",
+    "symbol",
+    "company",
+    "asset_type",
+    "status",
+    "model",
+    "horizon",
+    "request_id",
+]
+SortDirection: TypeAlias = Literal["asc", "desc"]
 
 
 class StrictModel(BaseModel):

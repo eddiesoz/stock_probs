@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import csv
 import io
 import json
@@ -36,12 +37,17 @@ from stock_probs.repository import SCHEMA_VERSION, Repository, RepositoryError
 from stock_probs.schemas import (
     BackupRequest,
     CorrectionRequest,
+    ForecastHorizon,
     FreshReconstructionRequest,
+    HistoryAnalysisKind,
+    HistorySortField,
+    HistoryStatus,
     InstrumentIdentityResponse,
     InstrumentLookupResponse,
     OutcomeRequest,
     RestoreRequest,
     SearchRequest,
+    SortDirection,
 )
 from stock_probs.service import ForecastService
 
@@ -65,6 +71,12 @@ ThresholdPercent = Annotated[
 IntervalLevel = Annotated[
     float, Field(ge=0.0, le=1.0, allow_inf_nan=False, json_schema_extra={"enum": [0.5, 0.8, 0.95]})
 ]
+HistoryStatusParameter = Annotated[HistoryStatus | None, Query()]
+HistoryAnalysisParameter = Annotated[HistoryAnalysisKind | None, Query()]
+HistoryDateParameter = Annotated[datetime | None, Query()]
+HistoryHorizonParameter = Annotated[ForecastHorizon | None, Query()]
+HistorySortParameter = Annotated[HistorySortField, Query()]
+SortDirectionParameter = Annotated[SortDirection, Query()]
 
 
 class ValidationIssue(ApiResponse):
@@ -102,17 +114,32 @@ class SearchEventResponse(ApiResponse):
     submitted_symbol: str
     normalized_symbol: str | None
     asset_type: str
-    status: Literal["successful", "failed", "repeated"]
+    status: HistoryStatus
     is_repeat: bool
     error_code: str | None
     error_message: str | None
-    submitted_at: str
-    completed_at: str
+    submitted_at: AwareDatetime
+    completed_at: AwareDatetime
     run_id: int | None
     analysis_kind: Literal["submitted_forecast", "fresh_historical_reconstruction"] | None = None
     source_event_id: int | None = None
+    # Failed validation attempts can intentionally retain the submitted cutoff text for audit.
     requested_cutoff: str | None = None
     requested_source_event_id: int | None = None
+    canonical_symbol: str | None = None
+    company_name: str | None = None
+    display_name: str | None = None
+    exchange: str | None = None
+    quote_type: Literal["EQUITY", "STOCK", "ETF"] | None = None
+    model_name: str | None = None
+    model_version: str | None = None
+    forecast_contract_version: str | None = None
+    horizons: list[ForecastHorizon] = Field(default_factory=list, max_length=2)
+    outcome_count: int = Field(default=0, ge=0)
+    evaluation_statuses: list[Literal["available", "insufficient_history"]] = Field(
+        default_factory=list, max_length=2
+    )
+    forecast_available: bool = False
 
     @model_validator(mode="after")
     def exact_status_semantics(self) -> SearchEventResponse:
@@ -870,6 +897,9 @@ class ForecastCreationResponse(ApiResponse):
 
 
 class ReconstructionResponse(ApiResponse):
+    record_kind: Literal["recorded_forecast", "failed_search"] | None = None
+    immutable: Literal[True] | None = None
+    forecast_available: bool | None = None
     event: SearchEventResponse
     input: ForecastInputResponse | None
     results: list[RecordedForecastResultResponse]
@@ -905,13 +935,32 @@ class HistoryResponse(ApiResponse):
     page: int
     page_size: int
     total: int
+    total_pages: int
+    has_previous: bool
+    has_next: bool
+    filters: HistoryExportFiltersResponse
+    sort: HistorySortResponse
+
+
+class HistorySortResponse(ApiResponse):
+    field: HistorySortField
+    direction: SortDirection
 
 
 class HistoryExportFiltersResponse(ApiResponse):
     query: str
-    status: Literal["successful", "failed", "repeated"] | None
+    symbol: str | None
+    company: str | None
+    status: HistoryStatus | None
     asset_type: Literal["stock", "etf"] | None
-    analysis_kind: Literal["submitted_forecast", "fresh_historical_reconstruction"] | None
+    analysis_kind: HistoryAnalysisKind | None
+    submitted_from: AwareDatetime | None
+    submitted_to: AwareDatetime | None
+    model: str | None
+    model_version: str | None
+    horizon: ForecastHorizon | None
+    request_id: str | None
+    event_id: int | None
 
 
 class HistoryEventExportRecord(ApiResponse):
@@ -945,8 +994,9 @@ class HistoryExportCountsResponse(ApiResponse):
 class HistoryJsonExportResponse(ApiResponse):
     format: Literal["stock-probs-history"]
     format_version: Literal[1]
-    generated_at: str
+    generated_at: AwareDatetime
     filters: HistoryExportFiltersResponse
+    sort: HistorySortResponse
     total_events: int
     exported_events: int
     truncated: bool
@@ -967,6 +1017,7 @@ class HistoricalPricesResponse(ApiResponse):
     items: list[CapturedBarResponse]
     total_available: int
     truncated: bool
+    available: Literal[True] | None = None
 
 
 class BackupCountsResponse(ApiResponse):
@@ -1450,90 +1501,431 @@ def _safe_csv_cell(value: object) -> str:
     return "'" + text if visible.startswith(("=", "+", "-", "@")) else text
 
 
-def _bounded_history_export(
-    repository: Repository,
+_HISTORY_SCAN_LIMIT = 10_000
+
+
+def _iso_or_none(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _safe_metadata_header(value: dict[str, Any]) -> str:
+    """Encode bounded download metadata with an HTTP-header-safe alphabet."""
+
+    raw = json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _history_filters(
     *,
     query: str,
+    symbol: str | None,
+    company: str | None,
     status: str | None,
     asset_type: str | None,
     analysis_kind: str | None,
+    submitted_from: datetime | None,
+    submitted_to: datetime | None,
+    model: str | None,
+    model_version: str | None,
+    horizon: str | None,
+    request_id: str | None,
+    event_id: int | None,
 ) -> dict[str, Any]:
-    """Build one bounded, storage-neutral event/run/result export for JSON and CSV."""
+    """Normalize one public filter set for list and download responses."""
 
-    history = repository.history(
-        query=query,
-        status=status,
-        asset_type=asset_type,
-        page=1,
-        page_size=100,
-        analysis_kind=analysis_kind,
-        include_analysis=True,
+    text_values = (query, symbol, company, model, model_version, request_id)
+    if any(
+        value is not None
+        and any(unicodedata.category(character).startswith("C") for character in value)
+        for value in text_values
+    ):
+        raise DomainError(
+            "invalid_history_filter",
+            "History filters contain unsupported characters.",
+            status_code=422,
+        )
+    return {
+        "query": query.strip(),
+        "symbol": symbol.strip().upper() if symbol else None,
+        "company": company.strip() if company else None,
+        "status": status,
+        "asset_type": asset_type,
+        "analysis_kind": analysis_kind,
+        "submitted_from": _iso_or_none(submitted_from),
+        "submitted_to": _iso_or_none(submitted_to),
+        "model": model.strip() if model else None,
+        "model_version": model_version.strip() if model_version else None,
+        "horizon": horizon,
+        "request_id": request_id.strip() if request_id else None,
+        "event_id": event_id,
+    }
+
+
+def _validate_history_dates(
+    submitted_from: datetime | None, submitted_to: datetime | None
+) -> None:
+    """Require explicit offsets and an ordered inclusive submission window."""
+
+    if any(value is not None and value.tzinfo is None for value in (submitted_from, submitted_to)):
+        raise DomainError(
+            "invalid_history_date",
+            "History dates must include a timezone offset.",
+            status_code=422,
+        )
+    if (
+        submitted_from is not None
+        and submitted_to is not None
+        and submitted_from > submitted_to
+    ):
+        raise DomainError(
+            "invalid_history_date_range",
+            "History start date must not follow its end date.",
+            status_code=422,
+        )
+
+
+def _history_event_view(
+    service: ForecastService,
+    event: dict[str, Any],
+    detail: dict[str, Any] | None = None,
+    *,
+    hydrate_results: bool = True,
+) -> dict[str, Any]:
+    """Add bounded display facts while keeping a failed request result-free."""
+
+    item = dict(event)
+    if item.get("run_id") is None:
+        item.update(
+            {
+                "canonical_symbol": item.get("normalized_symbol"),
+                "company_name": None,
+                "display_name": None,
+                "exchange": None,
+                "quote_type": None,
+                "model_name": None,
+                "model_version": None,
+                "horizons": [],
+                "outcome_count": 0,
+                "evaluation_statuses": [],
+                "forecast_available": False,
+            }
+        )
+        return item
+
+    if not hydrate_results:
+        item["forecast_available"] = True
+        return item
+    detail = detail or service.history_detail(int(item["id"]))
+    snapshot = detail.get("input") if detail else None
+    results = detail.get("results", []) if detail else []
+    if not isinstance(snapshot, dict):
+        # Do not make a partial run look reopenable when its recorded input is unavailable.
+        item.update(
+            {
+                "horizons": [],
+                "outcome_count": 0,
+                "evaluation_statuses": [],
+                "forecast_available": False,
+            }
+        )
+        return item
+    identity = snapshot.get("instrument_identity")
+    identity = identity if isinstance(identity, dict) else snapshot
+    model_identity = snapshot.get("model")
+    model_identity = model_identity if isinstance(model_identity, dict) else {}
+    item.update(
+        {
+            "canonical_symbol": identity.get("canonical_symbol"),
+            "company_name": identity.get("company_name"),
+            "display_name": identity.get("display_name"),
+            "exchange": identity.get("exchange"),
+            "quote_type": identity.get("quote_type"),
+            "model_name": model_identity.get("name"),
+            "model_version": model_identity.get("version"),
+            "forecast_contract_version": snapshot.get("forecast_contract_version"),
+            "horizons": [result.get("horizon") for result in results],
+            "outcome_count": sum(len(result.get("outcomes", [])) for result in results),
+            "evaluation_statuses": [
+                result.get("evaluation", {}).get("status") for result in results
+            ],
+            "forecast_available": True,
+        }
     )
+    return item
+
+
+def _matches_history_filters(item: dict[str, Any], filters: dict[str, Any]) -> bool:
+    """Apply the exact browser filter meanings to one enriched event."""
+
+    query = str(filters["query"]).casefold()
+    searchable = (
+        item.get("submitted_symbol"),
+        item.get("normalized_symbol"),
+        item.get("company_name"),
+        item.get("display_name"),
+        item.get("request_id"),
+    )
+    if query and not any(query in str(value).casefold() for value in searchable if value):
+        return False
+    if filters["symbol"] and str(
+        item.get("normalized_symbol") or item.get("submitted_symbol")
+    ).upper() != filters["symbol"]:
+        return False
+    if filters["company"] and filters["company"].casefold() not in str(
+        item.get("company_name") or ""
+    ).casefold():
+        return False
+    for name in ("status", "asset_type", "analysis_kind", "request_id"):
+        if filters[name] is not None and item.get(name) != filters[name]:
+            return False
+    if filters["event_id"] is not None and item.get("id") != filters["event_id"]:
+        return False
+    submitted_at = datetime.fromisoformat(str(item["submitted_at"]))
+    if filters["submitted_from"] and submitted_at < datetime.fromisoformat(
+        filters["submitted_from"]
+    ):
+        return False
+    if filters["submitted_to"] and submitted_at > datetime.fromisoformat(filters["submitted_to"]):
+        return False
+    if filters["model"]:
+        needle = filters["model"].casefold()
+        if not any(
+            needle in str(item.get(field) or "").casefold()
+            for field in ("model_name", "model_version")
+        ):
+            return False
+    return not filters["horizon"] or filters["horizon"] in item.get("horizons", [])
+
+
+def _history_sort_value(item: dict[str, Any], field: str) -> tuple[bool, Any]:
+    mapped = {
+        "event_id": item.get("id"),
+        "symbol": item.get("normalized_symbol") or item.get("submitted_symbol"),
+        "company": item.get("company_name"),
+        "model": item.get("model_version") or item.get("model_name"),
+        "horizon": ",".join(item.get("horizons", [])),
+    }.get(field, item.get(field))
+    if isinstance(mapped, str):
+        mapped = mapped.casefold()
+    return mapped is None, mapped
+
+
+def _query_history(
+    service: ForecastService,
+    *,
+    filters: dict[str, Any],
+    sort_by: str,
+    sort_order: str,
+    page: int,
+    page_size: int,
+) -> dict[str, Any]:
+    """Return an exact bounded page using only the established history interface."""
+
+    post_processed = any(
+        filters[name] is not None
+        for name in (
+            "horizon",
+            "event_id",
+        )
+    ) or sort_by != "event_id" or sort_order != "desc"
+
+    def indexed_page(index: int, size: int) -> dict[str, Any]:
+        try:
+            return service.history(
+                query=filters["query"],
+                symbol=filters["symbol"],
+                company=filters["company"],
+                status=filters["status"],
+                asset_type=filters["asset_type"],
+                analysis_kind=filters["analysis_kind"],
+                date_from=(
+                    datetime.fromisoformat(filters["submitted_from"])
+                    if filters["submitted_from"]
+                    else None
+                ),
+                date_to=(
+                    datetime.fromisoformat(filters["submitted_to"])
+                    if filters["submitted_to"]
+                    else None
+                ),
+                model=filters["model"],
+                model_version=filters["model_version"],
+                request_id=filters["request_id"],
+                page=index,
+                page_size=size,
+            )
+        except ValueError:
+            raise DomainError(
+                "invalid_history_filter",
+                "One or more history filters are invalid.",
+                status_code=422,
+            ) from None
+
+    if not post_processed:
+        result = indexed_page(page, page_size)
+        result["items"] = [
+            _history_event_view(service, item, hydrate_results=False)
+            for item in result["items"]
+        ]
+    else:
+        first = indexed_page(1, 100)
+        if first["total"] > _HISTORY_SCAN_LIMIT:
+            raise DomainError(
+                "history_filter_too_broad",
+                "Add an asset, status, or analysis filter to keep this history request bounded.",
+                status_code=422,
+            )
+        raw_items = list(first["items"])
+        for next_page in range(2, (first["total"] + 99) // 100 + 1):
+            raw_items.extend(indexed_page(next_page, 100)["items"])
+        needs_results = filters["horizon"] is not None or sort_by == "horizon"
+        enriched = [
+            _history_event_view(service, item, hydrate_results=needs_results)
+            for item in raw_items
+        ]
+        matched = [item for item in enriched if _matches_history_filters(item, filters)]
+        # ID is the deterministic tie-breaker regardless of the selected display field.
+        matched.sort(key=lambda item: int(item["id"]))
+        matched.sort(
+            key=lambda item: _history_sort_value(item, sort_by),
+            reverse=sort_order == "desc",
+        )
+        # Missing display facets (notably failed requests) stay last in either direction.
+        matched.sort(key=lambda item: _history_sort_value(item, sort_by)[0])
+        offset = (page - 1) * page_size
+        result = {
+            "items": matched[offset : offset + page_size],
+            "page": page,
+            "page_size": page_size,
+            "total": len(matched),
+        }
+    total_pages = (result["total"] + page_size - 1) // page_size
+    return {
+        **result,
+        "total_pages": total_pages,
+        "has_previous": page > 1,
+        "has_next": page < total_pages,
+        "filters": filters,
+        "sort": {"field": sort_by, "direction": sort_order},
+    }
+
+
+def _bounded_history_export(
+    service: ForecastService,
+    *,
+    filters: dict[str, Any],
+    sort_by: str,
+    sort_order: str,
+) -> dict[str, Any]:
+    """Adapt the service's fixed-query bulk stream once for both download formats."""
+
+    try:
+        # Every successful run owns both required horizons, so either horizon has this exact
+        # indexed persistence-side meaning and needs no per-event reconstruction.
+        source = service.history_export(
+            query=filters["query"],
+            symbol=filters["symbol"],
+            company=filters["company"],
+            status=filters["status"],
+            asset_type=filters["asset_type"],
+            analysis_kind=filters["analysis_kind"],
+            semantics="success" if filters["horizon"] else None,
+            date_from=(
+                datetime.fromisoformat(filters["submitted_from"])
+                if filters["submitted_from"]
+                else None
+            ),
+            date_to=(
+                datetime.fromisoformat(filters["submitted_to"])
+                if filters["submitted_to"]
+                else None
+            ),
+            model=filters["model"],
+            model_version=filters["model_version"],
+            request_id=filters["request_id"],
+            event_id=filters["event_id"],
+            max_events=100,
+        )
+    except ValueError:
+        raise DomainError(
+            "invalid_history_filter",
+            "One or more history filters are invalid.",
+            status_code=422,
+        ) from None
+
+    run_records: dict[int, dict[str, Any]] = {}
+    results_by_run: dict[int, list[dict[str, Any]]] = {}
+    raw_events: list[dict[str, Any]] = []
+    for record in source["records"]:
+        if record["record_type"] == "event":
+            raw_events.append(record)
+        elif record["record_type"] == "run":
+            run_records[int(record["run_id"])] = record
+        elif record["record_type"] == "result":
+            results_by_run.setdefault(int(record["run_id"]), []).append(record)
+
+    enriched_events: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for record in raw_events:
+        event = record["data"]
+        run_id = int(record["run_id"]) if record["run_id"] is not None else None
+        detail = None
+        if run_id is not None:
+            run_record = run_records.get(run_id)
+            if run_record is None:
+                raise sqlite3.IntegrityError("forecast run is missing its immutable input")
+            detail = {
+                "input": run_record["data"],
+                "results": [item["data"] for item in results_by_run.get(run_id, [])],
+            }
+        enriched = _history_event_view(service, event, detail)
+        if _matches_history_filters(enriched, filters):
+            enriched_events.append((record, enriched))
+
+    # ID remains the deterministic tie-breaker for every user-selected display order.
+    enriched_events.sort(key=lambda pair: int(pair[1]["id"]))
+    enriched_events.sort(
+        key=lambda pair: _history_sort_value(pair[1], sort_by),
+        reverse=sort_order == "desc",
+    )
+    enriched_events.sort(key=lambda pair: _history_sort_value(pair[1], sort_by)[0])
+    selected = enriched_events[:100]
+
     records: list[dict[str, Any]] = []
     seen_runs: set[int] = set()
-    run_count = 0
     result_count = 0
-    for event in history["items"]:
-        event_id = int(event["id"])
-        run_id = int(event["run_id"]) if event["run_id"] is not None else None
-        records.append(
-            {
-                "record_type": "event",
-                "event_id": event_id,
-                "run_id": run_id,
-                "data": event,
-            }
-        )
+    for event_record, event in selected:
+        run_id = int(event_record["run_id"]) if event_record["run_id"] is not None else None
+        records.append({**event_record, "data": event})
         if run_id is None or run_id in seen_runs:
             continue
-        detail = repository.reconstruction(event_id)
-        if detail is None or detail.get("input") is None:
-            # A referenced run without its immutable input is a persistence failure, not a
-            # partial export that could falsely imply the event was fully preserved.
-            raise sqlite3.IntegrityError("forecast run is missing its immutable input")
         seen_runs.add(run_id)
-        run_count += 1
-        snapshot = detail["input"]
-        input_id = int(snapshot["id"])
-        records.append(
-            {
-                "record_type": "run",
-                "run_id": run_id,
-                "input_id": input_id,
-                "data": snapshot,
-            }
-        )
-        for result in detail["results"]:
-            result_count += 1
-            records.append(
-                {
-                    "record_type": "result",
-                    "run_id": run_id,
-                    "input_id": input_id,
-                    "result_id": int(result["id"]),
-                    "data": result,
-                }
-            )
-    return {
-        "format": "stock-probs-history",
-        "format_version": 1,
-        "generated_at": datetime.now(UTC).isoformat(),
-        "filters": {
-            "query": query,
-            "status": status,
-            "asset_type": asset_type,
-            "analysis_kind": analysis_kind,
-        },
-        "total_events": history["total"],
-        "exported_events": len(history["items"]),
-        "truncated": history["total"] > len(history["items"]),
+        records.append(run_records[run_id])
+        run_results = results_by_run.get(run_id, [])
+        records.extend(run_results)
+        result_count += len(run_results)
+
+    payload = {
+        "format": source["format"],
+        "format_version": source["format_version"],
+        "generated_at": source["generated_at"],
+        "filters": filters,
+        "sort": {"field": sort_by, "direction": sort_order},
+        "total_events": source["total_events"],
+        "exported_events": len(selected),
+        "truncated": source["truncated"],
         "counts": {
-            "events": len(history["items"]),
-            "runs": run_count,
+            "events": len(selected),
+            "runs": len(seen_runs),
             "results": result_count,
         },
         "records": records,
     }
+    # Normalize timestamps and discriminated records before CSV serializes the same contract.
+    return HistoryJsonExportResponse.model_validate(payload).model_dump(
+        mode="json", exclude_unset=True
+    )
 
 
 def create_app(
@@ -1855,14 +2247,28 @@ def create_app(
         status_code=201,
         response_model=ForecastCreationResponse,
         response_model_exclude_unset=True,
-        responses=_documented_errors(400, 403, 404, 405, 411, 413, 422, 500, 502, 503),
+        responses={
+            201: {
+                "description": "Forecast completed and available at its immutable saved URL.",
+                "headers": {
+                    "Location": {"schema": {"type": "string"}},
+                    "X-Request-ID": {"schema": {"type": "string"}},
+                },
+            },
+            **_documented_errors(400, 403, 404, 405, 411, 413, 422, 500, 502, 503),
+        },
     )
-    def create_forecast(payload: SearchRequest) -> ForecastCreationResponse:
+    def create_forecast(payload: SearchRequest, response: Response) -> ForecastCreationResponse:
         generated = service.search(payload.symbol, payload.asset_type)
         try:
             # Validate before FastAPI's response serializer so a malformed service handoff can be
             # correlated with exactly one failed search rather than escaping as an unaudited 500.
-            return ForecastCreationResponse.model_validate(generated)
+            validated = ForecastCreationResponse.model_validate(generated)
+            response.headers["Location"] = (
+                f"/api/v1/saved-forecasts/{validated.event.id}"
+            )
+            response.headers["X-Request-ID"] = validated.event.request_id
+            return validated
         except Exception:
             request_id = record_malformed_forecast_response(
                 generated,
@@ -1879,27 +2285,53 @@ def create_app(
     @app.get(
         "/api/v1/history",
         response_model=HistoryResponse,
+        response_model_exclude_unset=True,
         responses=_documented_errors(400, 403, 405, 422, 500, 503),
     )
     def history(
         q: str = Query(default="", max_length=30),
-        status: Literal["successful", "failed", "repeated"] | None = Query(default=None),
+        symbol: str | None = Query(default=None, min_length=1, max_length=15),
+        company: str | None = Query(default=None, min_length=1, max_length=200),
+        status: HistoryStatusParameter = None,
         asset_type: Literal["stock", "etf"] | None = Query(default=None),
-        analysis_kind: Literal[
-            "submitted_forecast", "fresh_historical_reconstruction"
-        ]
-        | None = Query(default=None),
+        analysis_kind: HistoryAnalysisParameter = None,
+        submitted_from: HistoryDateParameter = None,
+        submitted_to: HistoryDateParameter = None,
+        model: str | None = Query(default=None, min_length=1, max_length=120),
+        model_version: str | None = Query(default=None, min_length=1, max_length=80),
+        horizon: HistoryHorizonParameter = None,
+        request_id: str | None = Query(default=None, min_length=1, max_length=128),
+        event_id: int | None = Query(default=None, ge=1, le=2_147_483_647),
+        sort_by: HistorySortParameter = "event_id",
+        sort_order: SortDirectionParameter = "desc",
         page: int = Query(default=1, ge=1, le=10_000),
         page_size: int = Query(default=20, ge=1, le=100),
     ) -> dict[str, Any]:
-        return repository.history(
-            query=q.strip().upper(),
+        """Search complete display identities and audit facts with stable bounded paging."""
+
+        _validate_history_dates(submitted_from, submitted_to)
+        filters = _history_filters(
+            query=q,
+            symbol=symbol,
+            company=company,
             status=status,
             asset_type=asset_type,
+            analysis_kind=analysis_kind,
+            submitted_from=submitted_from,
+            submitted_to=submitted_to,
+            model=model,
+            model_version=model_version,
+            horizon=horizon,
+            request_id=request_id,
+            event_id=event_id,
+        )
+        return _query_history(
+            service,
+            filters=filters,
+            sort_by=sort_by,
+            sort_order=sort_order,
             page=page,
             page_size=page_size,
-            analysis_kind=analysis_kind,
-            include_analysis=True,
         )
 
     @app.get(
@@ -1909,27 +2341,54 @@ def create_app(
             200: {
                 "description": "Bounded CSV search-history export.",
                 "content": {"text/csv": {"schema": {"type": "string"}}},
+                "headers": {
+                    "Content-Disposition": {"schema": {"type": "string"}},
+                    "X-Export-Filters": {"schema": {"type": "string"}},
+                    "X-Export-Sort": {"schema": {"type": "string"}},
+                },
             },
             **_documented_errors(400, 403, 405, 422, 500, 503),
         },
     )
-    @app.get("/api/v1/history/export.csv", include_in_schema=False)
     def history_export(
         q: str = Query(default="", max_length=30),
-        status: Literal["successful", "failed", "repeated"] | None = Query(default=None),
+        symbol: str | None = Query(default=None, min_length=1, max_length=15),
+        company: str | None = Query(default=None, min_length=1, max_length=200),
+        status: HistoryStatusParameter = None,
         asset_type: Literal["stock", "etf"] | None = Query(default=None),
-        analysis_kind: Literal[
-            "submitted_forecast", "fresh_historical_reconstruction"
-        ]
-        | None = Query(default=None),
+        analysis_kind: HistoryAnalysisParameter = None,
+        submitted_from: HistoryDateParameter = None,
+        submitted_to: HistoryDateParameter = None,
+        model: str | None = Query(default=None, min_length=1, max_length=120),
+        model_version: str | None = Query(default=None, min_length=1, max_length=80),
+        horizon: HistoryHorizonParameter = None,
+        request_id: str | None = Query(default=None, min_length=1, max_length=128),
+        event_id: int | None = Query(default=None, ge=1, le=2_147_483_647),
+        sort_by: HistorySortParameter = "event_id",
+        sort_order: SortDirectionParameter = "desc",
     ) -> Response:
         # Both formats share one record construction so CSV cannot silently omit audit identity.
-        exported = _bounded_history_export(
-            repository,
-            query=q.strip().upper(),
+        _validate_history_dates(submitted_from, submitted_to)
+        filters = _history_filters(
+            query=q,
+            symbol=symbol,
+            company=company,
             status=status,
             asset_type=asset_type,
             analysis_kind=analysis_kind,
+            submitted_from=submitted_from,
+            submitted_to=submitted_to,
+            model=model,
+            model_version=model_version,
+            horizon=horizon,
+            request_id=request_id,
+            event_id=event_id,
+        )
+        exported = _bounded_history_export(
+            service,
+            filters=filters,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
         output = io.StringIO()
         fieldnames = [
@@ -1948,12 +2407,16 @@ def create_app(
             "source_event_id",
             "requested_cutoff",
             "error_code",
+            "error_message",
             "company_name",
             "canonical_symbol",
             "exchange",
             "quote_type",
             "horizon",
             "submitted_at",
+            "export_generated_at",
+            "export_filters",
+            "export_sort",
             "record_json",
         ]
         writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
@@ -1968,6 +2431,13 @@ def create_app(
                 "canonical_symbol": identity.get("canonical_symbol", data.get("canonical_symbol")),
                 "exchange": identity.get("exchange", data.get("exchange")),
                 "quote_type": identity.get("quote_type", data.get("quote_type")),
+                "export_generated_at": exported["generated_at"],
+                "export_filters": json.dumps(
+                    exported["filters"], ensure_ascii=True, sort_keys=True, separators=(",", ":")
+                ),
+                "export_sort": json.dumps(
+                    exported["sort"], ensure_ascii=True, sort_keys=True, separators=(",", ":")
+                ),
                 "record_json": json.dumps(
                     data, ensure_ascii=False, sort_keys=True, separators=(",", ":")
                 ),
@@ -1976,37 +2446,81 @@ def create_app(
         return Response(
             output.getvalue(),
             media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": 'attachment; filename="stock-probs-history.csv"'},
+            headers={
+                "Content-Disposition": 'attachment; filename="stock-probs-history.csv"',
+                "X-Export-Filters": _safe_metadata_header(filters),
+                "X-Export-Sort": _safe_metadata_header(exported["sort"]),
+            },
         )
 
     @app.get(
         "/api/v1/history-export.json",
         response_model=HistoryJsonExportResponse,
         response_model_exclude_unset=True,
-        responses=_documented_errors(400, 403, 405, 422, 500, 503),
+        responses={
+            200: {
+                "description": "Bounded JSON search-history export.",
+                "headers": {
+                    "Content-Disposition": {"schema": {"type": "string"}},
+                    "X-Export-Filters": {"schema": {"type": "string"}},
+                    "X-Export-Sort": {"schema": {"type": "string"}},
+                },
+            },
+            **_documented_errors(400, 403, 405, 422, 500, 503),
+        },
     )
-    @app.get("/api/v1/history/export.json", include_in_schema=False)
     def history_export_json(
+        response: Response,
         q: str = Query(default="", max_length=30),
-        status: Literal["successful", "failed", "repeated"] | None = Query(default=None),
+        symbol: str | None = Query(default=None, min_length=1, max_length=15),
+        company: str | None = Query(default=None, min_length=1, max_length=200),
+        status: HistoryStatusParameter = None,
         asset_type: Literal["stock", "etf"] | None = Query(default=None),
-        analysis_kind: Literal[
-            "submitted_forecast", "fresh_historical_reconstruction"
-        ]
-        | None = Query(default=None),
+        analysis_kind: HistoryAnalysisParameter = None,
+        submitted_from: HistoryDateParameter = None,
+        submitted_to: HistoryDateParameter = None,
+        model: str | None = Query(default=None, min_length=1, max_length=120),
+        model_version: str | None = Query(default=None, min_length=1, max_length=80),
+        horizon: HistoryHorizonParameter = None,
+        request_id: str | None = Query(default=None, min_length=1, max_length=128),
+        event_id: int | None = Query(default=None, ge=1, le=2_147_483_647),
+        sort_by: HistorySortParameter = "event_id",
+        sort_order: SortDirectionParameter = "desc",
     ) -> dict[str, Any]:
         """Export a bounded set of typed audit records."""
 
-        return _bounded_history_export(
-            repository,
-            query=q.strip().upper(),
+        _validate_history_dates(submitted_from, submitted_to)
+        filters = _history_filters(
+            query=q,
+            symbol=symbol,
+            company=company,
             status=status,
             asset_type=asset_type,
             analysis_kind=analysis_kind,
+            submitted_from=submitted_from,
+            submitted_to=submitted_to,
+            model=model,
+            model_version=model_version,
+            horizon=horizon,
+            request_id=request_id,
+            event_id=event_id,
+        )
+        response.headers["Content-Disposition"] = (
+            'attachment; filename="stock-probs-history.json"'
+        )
+        response.headers["X-Export-Filters"] = _safe_metadata_header(filters)
+        response.headers["X-Export-Sort"] = _safe_metadata_header(
+            {"field": sort_by, "direction": sort_order}
+        )
+        return _bounded_history_export(
+            service,
+            filters=filters,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
 
     @app.get(
-        "/api/v1/history/{event_id}",
+        "/api/v1/history/{event_id:int}",
         response_model=ReconstructionResponse,
         response_model_exclude_unset=True,
         responses=_documented_errors(400, 403, 404, 405, 422, 500, 503),
@@ -2014,10 +2528,18 @@ def create_app(
     def reconstruction(
         event_id: int = PathParameter(ge=1, le=2_147_483_647),
     ) -> dict[str, Any]:
-        result = repository.reconstruction(event_id)
+        # Constrain matching at the router boundary so unrelated history paths remain genuine 404s;
+        # the typed parameter still owns numeric bounds and their public validation response.
+        result = service.history_detail(event_id)
         if result is None:
             raise HTTPException(status_code=404, detail="history event not found")
-        return result
+        available = result.get("input") is not None
+        return {
+            "record_kind": "recorded_forecast" if available else "failed_search",
+            "immutable": True,
+            "forecast_available": available,
+            **result,
+        }
 
     @app.get(
         "/api/v1/saved-forecasts/{event_id}",
@@ -2030,7 +2552,7 @@ def create_app(
     ) -> dict[str, Any]:
         """Reopen an immutable recorded forecast without recalculation or provider access."""
 
-        recorded = repository.reconstruction(event_id)
+        recorded = service.history_detail(event_id)
         if recorded is None:
             raise HTTPException(status_code=404, detail="history event not found")
         if recorded.get("input") is None:
@@ -2048,10 +2570,22 @@ def create_app(
         status_code=201,
         response_model=FreshReconstructionResponse,
         response_model_exclude_unset=True,
-        responses=_documented_errors(400, 403, 404, 405, 409, 411, 413, 422, 500, 502, 503),
+        responses={
+            201: {
+                "description": "Fresh cutoff analysis completed as a distinct saved result.",
+                "headers": {
+                    "Location": {"schema": {"type": "string"}},
+                    "X-Request-ID": {"schema": {"type": "string"}},
+                },
+            },
+            **_documented_errors(
+                400, 403, 404, 405, 409, 411, 413, 422, 500, 502, 503
+            ),
+        },
     )
     def fresh_historical_reconstruction(
         payload: FreshReconstructionRequest,
+        response: Response,
         event_id: int = PathParameter(ge=1, le=2_147_483_647),
     ) -> dict[str, Any]:
         """Run a newly audited analysis at a cutoff, never relabel a saved result as fresh."""
@@ -2073,7 +2607,7 @@ def create_app(
             provenance["provider_content_fingerprint"] = analysis.get(
                 "provider_content_fingerprint"
             )
-        return {
+        created = {
             **generated,
             "source_event_id": event_id,
             "requested_cutoff": payload.cutoff.astimezone(UTC).isoformat(),
@@ -2081,6 +2615,11 @@ def create_app(
             "recalculated": True,
             "provenance": provenance,
         }
+        response.headers["Location"] = (
+            f"/api/v1/saved-forecasts/{generated['event']['id']}"
+        )
+        response.headers["X-Request-ID"] = str(generated["event"]["request_id"])
+        return created
 
     @app.get(
         "/api/v1/history/{event_id}/prices",
@@ -2094,27 +2633,12 @@ def create_app(
     ) -> dict[str, Any]:
         """Expose bounded captured prices, never a fresh provider or browser-side query."""
 
-        reconstruction = repository.reconstruction(event_id)
-        if reconstruction is None:
+        historical = service.historical_series(event_id, series=series, limit=limit)
+        if historical is None:
             raise HTTPException(status_code=404, detail="history event not found")
-        snapshot = reconstruction.get("input")
-        if snapshot is None:
+        if historical.get("available") is False:
             raise HTTPException(status_code=409, detail="failed searches have no captured prices")
-        key = "selected_daily_bars" if series == "daily" else "selected_intraday_bars"
-        available = snapshot.get(key, [])
-        items = available[-limit:]
-        return {
-            "event_id": event_id,
-            "symbol": snapshot["symbol"],
-            "series": series,
-            "interval": "1d" if series == "daily" else "5m",
-            "currency": snapshot["currency"],
-            "provider_as_of": snapshot["provider_as_of"],
-            "quality": snapshot["quality"],
-            "items": items,
-            "total_available": len(available),
-            "truncated": len(items) < len(available),
-        }
+        return historical
 
     @app.get(
         "/api/v1/forecasts/{result_id}",

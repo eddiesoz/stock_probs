@@ -20,6 +20,7 @@ let lookupTimer = null;
 let lookupController = null;
 let lookupSequence = 0;
 let activeOption = -1;
+let chartSequence = 0;
 const runRelationPageSize = 100;
 const runRelationMaxPages = 5;
 const runRelationMaxLookups = 10;
@@ -28,6 +29,12 @@ function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function svgElement(tag, attributes = {}) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, String(value));
   return node;
 }
 
@@ -195,6 +202,136 @@ function tableRow(table, label, value) {
   row.append(heading, element("td", "", value));
 }
 
+function directionValue(probabilities, direction) {
+  if (direction === "flat") return probabilities.flat ?? probabilities.unchanged ?? 0;
+  return probabilities[direction] ?? 0;
+}
+
+function renderTailChart(result) {
+  const figure = element("figure", "tail-figure");
+  const caption = element("figcaption", "", "Threshold tail profile");
+  const chartId = `tail-chart-${result.horizon}-${chartSequence += 1}`;
+  const captionId = `${chartId}-caption`;
+  caption.id = captionId;
+  const svg = svgElement("svg", {
+    class: "tail-chart",
+    viewBox: "0 0 452 161",
+    role: "img",
+    "aria-labelledby": captionId,
+  });
+  const description = svgElement("desc");
+  description.textContent = "Probability by return threshold. Loss tails use a solid line and circles; gain tails use a dashed line and diamonds. Visible HTML labels identify both axes, and exact values follow in the details table.";
+  svg.append(description);
+
+  // Keep visible text in HTML so automated contrast analysis can determine the solid figure
+  // background. The SVG retains the plotted meaning and keyboard-operable data points.
+  const visual = element("div", "tail-chart-visual");
+  const yTitle = element("span", "chart-axis-label chart-y-title", "PROBABILITY");
+  const yTicks = element("div", "chart-y-ticks");
+  for (const probability of [1, .5, 0]) {
+    const label = element("span", "chart-axis-label chart-y-tick", formatPercent(probability));
+    label.dataset.axisPosition = String(probability * 100);
+    yTicks.append(label);
+  }
+
+  const left = 0;
+  const right = 452;
+  const top = 0;
+  const bottom = 161;
+  const x = (threshold) => left + ((threshold + 10) / 20) * (right - left);
+  const y = (probability) => bottom - Math.max(0, Math.min(1, probability)) * (bottom - top);
+  for (const probability of [0, .5, 1]) {
+    const rowY = y(probability);
+    svg.append(svgElement("line", { class: "chart-grid", x1: left, y1: rowY, x2: right, y2: rowY }));
+  }
+  svg.append(
+    svgElement("line", { class: "chart-axis", x1: left, y1: bottom, x2: right, y2: bottom }),
+    svgElement("line", { class: "chart-axis", x1: left, y1: top, x2: left, y2: bottom }),
+  );
+
+  const thresholds = [...result.threshold_probabilities].sort((a, b) => a.threshold - b.threshold);
+  const xTicks = element("div", "chart-x-ticks");
+  for (const threshold of thresholds) {
+    const label = element(
+      "span",
+      "chart-axis-label chart-x-tick",
+      `${threshold.threshold > 0 ? "+" : ""}${threshold.threshold}%`,
+    );
+    label.dataset.axisPosition = String(threshold.threshold);
+    xTicks.append(label);
+  }
+  const xTitle = element("span", "chart-axis-label chart-x-title", "RETURN THRESHOLD");
+
+  const tooltip = element("p", "chart-tooltip", "Hover or focus a plotted point for its exact probability.");
+  tooltip.setAttribute("aria-live", "polite");
+  const resetTooltip = () => { tooltip.textContent = "Hover or focus a plotted point for its exact probability."; };
+  for (const [kind, matcher] of [["loss", (item) => item.threshold < 0], ["gain", (item) => item.threshold > 0]]) {
+    const points = thresholds.filter(matcher);
+    const pointText = points.map((item) => `${x(item.threshold)},${y(item.probability)}`).join(" ");
+    svg.append(svgElement("polyline", { class: `chart-line ${kind}`, points: pointText }));
+    for (const item of points) {
+      const operator = item.threshold < 0 ? "at or below" : "at or above";
+      const signed = `${item.threshold > 0 ? "+" : ""}${item.threshold}%`;
+      const accessible = `${formatPercent(item.probability)} probability of return ${operator} ${signed}`;
+      const point = kind === "loss"
+        ? svgElement("circle", { class: `chart-point ${kind}`, cx: x(item.threshold), cy: y(item.probability), r: 6 })
+        : svgElement("rect", {
+          class: `chart-point ${kind}`,
+          x: x(item.threshold) - 5,
+          y: y(item.probability) - 5,
+          width: 10,
+          height: 10,
+          transform: `rotate(45 ${x(item.threshold)} ${y(item.probability)})`,
+        });
+      point.setAttribute("tabindex", "0");
+      point.setAttribute("role", "img");
+      point.setAttribute("aria-label", accessible);
+      const title = svgElement("title");
+      title.textContent = accessible;
+      point.append(title);
+      point.addEventListener("focus", () => { tooltip.textContent = accessible; });
+      point.addEventListener("mouseenter", () => { tooltip.textContent = accessible; });
+      point.addEventListener("blur", resetTooltip);
+      point.addEventListener("mouseleave", resetTooltip);
+      svg.append(point);
+    }
+  }
+
+  const legend = element("div", "chart-legend");
+  const lossLegend = element("span");
+  lossLegend.append(element("i", "legend-mark"), document.createTextNode("Loss tail · at or below · solid circles"));
+  const gainLegend = element("span");
+  gainLegend.append(element("i", "legend-mark gain"), document.createTextNode("Gain tail · at or above · dashed diamonds"));
+  legend.append(lossLegend, gainLegend);
+  visual.append(yTitle, yTicks, svg, xTicks, xTitle);
+  figure.append(caption, visual, legend, tooltip);
+  return figure;
+}
+
+function renderHorizonComparison(results) {
+  const section = element("section", "horizon-comparison");
+  section.setAttribute("aria-labelledby", "horizon-scan-heading");
+  const title = element("header", "comparison-title");
+  const heading = element("h3", "", "Horizon scan");
+  heading.id = "horizon-scan-heading";
+  title.append(heading, element("p", "", "Shared market destination · different completed origins"));
+  const rows = element("div", "comparison-rows");
+  for (const result of results) {
+    const row = element("article", "comparison-row");
+    const rowTitle = element("h4", "", result.horizon === "close_to_close" ? "Daily close origin" : "Five-minute origin");
+    rowTitle.append(element("span", "", result.horizon === "close_to_close" ? "Daily origin" : "Intraday origin"));
+    row.append(rowTitle);
+    for (const [direction, label] of [["down", "Down"], ["flat", "Unchanged"], ["up", "Up"]]) {
+      const stat = element("div", `comparison-stat ${direction}`);
+      stat.append(element("strong", "", formatPercent(directionValue(result.direction_probabilities, direction))), element("small", "", label));
+      row.append(stat);
+    }
+    rows.append(row);
+  }
+  section.append(title, rows);
+  return section;
+}
+
 function identityValue(identity, key) {
   const value = identity?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -325,8 +462,10 @@ symbolInput.addEventListener("input", () => {
     lookupStatus.textContent = query ? "Type at least 2 characters for identity choices." : "";
     return;
   }
-  // A short debounce and API limit cap provider work while still supporting ordinary typing.
-  lookupTimer = setTimeout(() => lookupInstruments(query), 300);
+  // Company text resolves quickly. A deliberate pause for symbol-shaped text lets an immediate
+  // submit supersede suggestions without issuing a second provider request from a slow device.
+  const delay = /^[A-Z0-9.^-]{1,15}$/.test(query) ? 1200 : 300;
+  lookupTimer = setTimeout(() => lookupInstruments(query), delay);
 });
 
 symbolInput.addEventListener("keydown", (event) => {
@@ -370,20 +509,21 @@ function renderForecastCard(result, input) {
   const probabilities = result.direction_probabilities;
   const chart = element("div", "probability-chart");
   chart.setAttribute("role", "img");
-  chart.setAttribute("aria-label", `Down ${formatPercent(probabilities.down)}, unchanged ${formatPercent(probabilities.flat)}, up ${formatPercent(probabilities.up)}`);
+  chart.setAttribute("aria-label", `Down ${formatPercent(directionValue(probabilities, "down"))}, unchanged ${formatPercent(directionValue(probabilities, "flat"))}, up ${formatPercent(directionValue(probabilities, "up"))}`);
   for (const direction of ["down", "flat", "up"]) {
     const bar = element("div", `probability-bar ${direction}`);
     // A native meter avoids CSP-blocked inline styles while preserving a numeric value.
     const fill = element("meter", "fill");
     fill.min = 0;
     fill.max = 1;
-    fill.value = probabilities[direction];
-    fill.textContent = formatPercent(probabilities[direction]);
+    const probability = directionValue(probabilities, direction);
+    fill.value = probability;
+    fill.textContent = formatPercent(probability);
     const directionLabel = direction === "flat" ? "unchanged" : direction;
-    bar.append(element("span", "value", formatPercent(probabilities[direction])), fill, element("span", "label", directionLabel));
+    bar.append(element("span", "value", formatPercent(probability)), fill, element("span", "label", directionLabel));
     chart.append(bar);
   }
-  card.append(chart);
+  card.append(chart, renderTailChart(result));
 
   // The tables duplicate every visual value and retain definitions/units for non-visual use.
   const table = element("table", "details-table");
@@ -408,7 +548,7 @@ function renderForecastCard(result, input) {
   }
   const definitions = probabilities.definitions || {};
   tableRow(body, "Down probability", `${formatPercent(probabilities.down)} · ${definitions.down || "return below the flat range"}`);
-  tableRow(body, "Unchanged probability", `${formatPercent(probabilities.flat)} · ${definitions.flat || probabilities.flat_definition}`);
+  tableRow(body, "Unchanged probability", `${formatPercent(directionValue(probabilities, "flat"))} · ${definitions.flat || definitions.unchanged || probabilities.flat_definition}`);
   tableRow(body, "Up probability", `${formatPercent(probabilities.up)} · ${definitions.up || "return above the flat range"}`);
   for (const threshold of result.threshold_probabilities) {
     const operator = threshold.operator === "lte" ? "at or below" : "at or above";
@@ -539,6 +679,7 @@ function renderResult(data, context = "live") {
     meta.append(cell);
   }
   resultContent.append(meta);
+  resultContent.append(renderHorizonComparison(data.results));
   const grid = element("div", "forecast-grid");
   for (const result of data.results) grid.append(renderForecastCard(result, input));
   resultContent.append(grid);
@@ -654,6 +795,8 @@ forecastForm.addEventListener("submit", async (event) => {
   const submit = document.querySelector("#forecast-submit");
   submit.disabled = true;
   submit.querySelector("span").textContent = "Calculating…";
+  qualityBadge.className = "badge neutral";
+  qualityBadge.textContent = "Calculating";
   resultContent.className = "empty-state loading";
   resultContent.setAttribute("aria-busy", "true");
   resultContent.replaceChildren(element("p", "", `Retrieving completed bars for ${symbol}…`));
@@ -855,6 +998,33 @@ function analysisLabel(item) {
   return "Submitted forecast";
 }
 
+function instrumentHistoryCell(item) {
+  const cell = document.createElement("td");
+  const symbol = item.canonical_symbol || item.normalized_symbol || item.submitted_symbol || "Invalid";
+  const company = item.display_name || item.company_name;
+  cell.append(element("span", "request-label", symbol));
+  if (company) cell.append(element("span", "run-label", company));
+  return cell;
+}
+
+function evidenceHistoryCell(item) {
+  const cell = document.createElement("td");
+  const model = [item.model_name, item.model_version].filter(Boolean).join(" / ");
+  cell.append(element("span", "request-label", model || "No completed model"));
+  const horizonCount = Array.isArray(item.horizons) ? item.horizons.length : 0;
+  const evaluations = Array.isArray(item.evaluation_statuses)
+    ? [...new Set(item.evaluation_statuses)].map(contractLabel).join(", ")
+    : "";
+  if (horizonCount || item.outcome_count || evaluations) {
+    cell.append(element(
+      "span",
+      "run-label",
+      `${horizonCount} ${horizonCount === 1 ? "horizon" : "horizons"} · ${item.outcome_count || 0} outcomes${evaluations ? ` · evaluation ${evaluations}` : ""}`,
+    ));
+  }
+  return cell;
+}
+
 function renderHistory(data, runRelations) {
   historyContent.setAttribute("aria-busy", "false");
   if (!data.items.length) {
@@ -864,7 +1034,7 @@ function renderHistory(data, runRelations) {
     const caption = element("caption", "sr-only", "Submitted forecast search history");
     const head = document.createElement("thead");
     const headerRow = document.createElement("tr");
-    for (const label of ["Request / run", "Symbol", "Type", "Analysis", "Status", "Submitted", "Actions"]) {
+    for (const label of ["Request / run", "Instrument", "Type / venue", "Analysis", "Status", "Model / evidence", "Submitted", "Actions"]) {
       const heading = element("th", "", label);
       heading.scope = "col";
       headerRow.append(heading);
@@ -879,16 +1049,22 @@ function renderHistory(data, runRelations) {
         element("span", "request-label", `New request #${item.id}`),
         runLabel,
       );
-      row.append(
-        requestCell,
-        element("td", "", item.normalized_symbol || item.submitted_symbol || "Invalid"),
-        element("td", "", item.asset_type.toUpperCase()),
-        element("td", "", analysisLabel(item)),
-        element("td", `status-${item.status}`, item.status),
-        element("td", "", formatTime(item.submitted_at)),
-      );
+      const cells = [
+        ["Request / run", requestCell],
+        ["Instrument", instrumentHistoryCell(item)],
+        ["Type / venue", element("td", "", [item.asset_type.toUpperCase(), item.exchange].filter(Boolean).join(" / "))],
+        ["Analysis", element("td", "", analysisLabel(item))],
+        ["Status", element("td", `status-${item.status}`, item.status)],
+        ["Model / evidence", evidenceHistoryCell(item)],
+        ["Submitted", element("td", "", formatTime(item.submitted_at))],
+      ];
+      for (const [label, cell] of cells) {
+        cell.dataset.label = label;
+        row.append(cell);
+      }
       const actionCell = document.createElement("td");
       actionCell.className = "history-actions";
+      actionCell.dataset.label = "Actions";
       const action = element("button", "", item.status === "failed" ? "View failed request" : "Reopen saved forecast");
       action.type = "button";
       action.addEventListener("click", () => showHistoryEvent(item.id, item.status === "failed"));
@@ -920,6 +1096,13 @@ async function loadHistory() {
   if (values.get("status")) params.set("status", values.get("status"));
   if (values.get("asset_type")) params.set("asset_type", values.get("asset_type"));
   if (values.get("analysis_kind")) params.set("analysis_kind", values.get("analysis_kind"));
+  if (values.get("submitted_from")) params.set("submitted_from", `${values.get("submitted_from")}T00:00:00Z`);
+  if (values.get("submitted_to")) params.set("submitted_to", `${values.get("submitted_to")}T23:59:59.999Z`);
+  if (values.get("model")) params.set("model", values.get("model"));
+  if (values.get("horizon")) params.set("horizon", values.get("horizon"));
+  const [sortBy, sortOrder] = String(values.get("sort") || "event_id:desc").split(":");
+  params.set("sort_by", sortBy);
+  params.set("sort_order", sortOrder);
   const exportParams = new URLSearchParams(params);
   exportParams.delete("page");
   exportParams.delete("page_size");

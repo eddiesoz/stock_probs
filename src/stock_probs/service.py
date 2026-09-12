@@ -6,6 +6,7 @@ import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
 from threading import BoundedSemaphore
+from typing import Any
 from uuid import uuid4
 
 from stock_probs.domain import (
@@ -73,6 +74,111 @@ class ForecastService:
             "items": [identity.as_dict() for identity in bounded_identities],
             "total": len(bounded_identities),
         }
+
+    def history(
+        self,
+        *,
+        query: str = "",
+        symbol: str | None = None,
+        company: str | None = None,
+        asset_type: str | None = None,
+        status: str | None = None,
+        semantics: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        model: str | None = None,
+        model_version: str | None = None,
+        request_id: str | None = None,
+        analysis_kind: str | None = None,
+        event_id: int | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> dict[str, Any]:
+        """Serve rich history facets while keeping persistence and transport separable."""
+
+        return self.repository.history(
+            query=query,
+            symbol=symbol,
+            company=company,
+            asset_type=asset_type,
+            status=status,
+            semantics=semantics,
+            date_from=date_from,
+            date_to=date_to,
+            model=model,
+            model_version=model_version,
+            request_id=request_id,
+            analysis_kind=analysis_kind,
+            event_id=event_id,
+            page=page,
+            page_size=page_size,
+            include_analysis=True,
+            include_facets=True,
+        )
+
+    def history_detail(self, event_id: int) -> dict[str, Any] | None:
+        """Return recorded chart, calibration, and outcome data without provider access."""
+
+        return self.repository.reconstruction(event_id)
+
+    def saved_forecast(self, event_id: int) -> dict[str, Any] | None:
+        """Label exact replay explicitly; this method never invokes a provider or calculator."""
+
+        recorded = self.repository.reconstruction(event_id)
+        if recorded is None or recorded.get("input") is None:
+            return None
+        return {
+            "analysis_kind": "saved_recorded_forecast",
+            "immutable": True,
+            "recalculated": False,
+            "provider_called": False,
+            **recorded,
+        }
+
+    def history_export(
+        self,
+        *,
+        query: str = "",
+        symbol: str | None = None,
+        company: str | None = None,
+        asset_type: str | None = None,
+        status: str | None = None,
+        semantics: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        model: str | None = None,
+        model_version: str | None = None,
+        request_id: str | None = None,
+        analysis_kind: str | None = None,
+        event_id: int | None = None,
+        max_events: int = 100,
+    ) -> dict[str, Any]:
+        """Use one UTC generation time for a bounded JSON/CSV source record stream."""
+
+        return self.repository.history_export(
+            generated_at=self.clock().astimezone(UTC),
+            query=query,
+            symbol=symbol,
+            company=company,
+            asset_type=asset_type,
+            status=status,
+            semantics=semantics,
+            date_from=date_from,
+            date_to=date_to,
+            model=model,
+            model_version=model_version,
+            request_id=request_id,
+            analysis_kind=analysis_kind,
+            event_id=event_id,
+            max_events=max_events,
+        )
+
+    def historical_series(
+        self, event_id: int, *, series: str = "daily", limit: int = 120
+    ) -> dict[str, Any] | None:
+        """Expose the same immutable bounded price source to chart and text consumers."""
+
+        return self.repository.historical_series(event_id, series=series, limit=limit)
 
     def search(self, submitted_symbol: str, asset_type: str) -> dict[str, object]:
         request_id = str(uuid4())

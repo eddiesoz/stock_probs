@@ -27,6 +27,85 @@ QUOTE_TYPE_TO_ASSET = {"EQUITY": "stock", "STOCK": "stock", "ETF": "etf"}
 MAX_ABSOLUTE_RETURN = 0.50
 EVALUATION_MAX_POINTS = 120
 RELIABILITY_BIN_COUNT = 5
+HISTORY_SEMANTICS = {"success", "failure", "repeat", "fresh", "saved"}
+
+
+@dataclass(frozen=True)
+class HistoryFilters:
+    """Storage-neutral, bounded filters shared by history list and export reads."""
+
+    query: str = ""
+    symbol: str | None = None
+    company: str | None = None
+    asset_type: str | None = None
+    status: str | None = None
+    semantics: str | None = None
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    model: str | None = None
+    model_version: str | None = None
+    request_id: str | None = None
+    analysis_kind: str | None = None
+    event_id: int | None = None
+
+    def __post_init__(self) -> None:
+        """Reject expensive or ambiguous filters before a query reaches an adapter."""
+
+        limits = {
+            "query": (self.query, 30, True),
+            "company": (self.company, 200, False),
+            "model": (self.model, 120, False),
+            "model_version": (self.model_version, 80, False),
+            "request_id": (self.request_id, 128, False),
+        }
+        for name, (value, maximum, empty_allowed) in limits.items():
+            if value is None:
+                continue
+            if not isinstance(value, str) or len(value) > maximum:
+                raise ValueError(f"history {name} must not exceed {maximum} characters")
+            if not empty_allowed and not value.strip():
+                raise ValueError(f"history {name} must not be empty")
+            if any(unicodedata.category(character).startswith("C") for character in value):
+                raise ValueError(f"history {name} contains unsupported control characters")
+        if self.symbol is not None:
+            if not isinstance(self.symbol, str):
+                raise ValueError("history symbol is not supported")
+            try:
+                normalized = normalize_symbol(self.symbol)
+            except DomainError as exc:
+                raise ValueError("history symbol is not supported") from exc
+            object.__setattr__(self, "symbol", normalized)
+        for name in ("company", "model", "model_version", "request_id"):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, value.strip())
+        if self.asset_type not in {None, "stock", "etf"}:
+            raise ValueError("history asset_type is not supported")
+        if self.status not in {None, "successful", "failed", "repeated"}:
+            raise ValueError("history status is not supported")
+        if self.semantics not in {None, *HISTORY_SEMANTICS}:
+            raise ValueError("history semantics is not supported")
+        if self.analysis_kind not in {
+            None,
+            "submitted_forecast",
+            "fresh_historical_reconstruction",
+        }:
+            raise ValueError("history analysis_kind is not supported")
+        if self.event_id is not None and (
+            type(self.event_id) is not int or not 1 <= self.event_id <= 2_147_483_647
+        ):
+            raise ValueError("history event_id is not supported")
+        for name, timestamp in (("date_from", self.date_from), ("date_to", self.date_to)):
+            if timestamp is not None and (
+                not isinstance(timestamp, datetime) or timestamp.tzinfo is None
+            ):
+                raise ValueError(f"history {name} must include a timezone offset")
+        if (
+            self.date_from is not None
+            and self.date_to is not None
+            and self.date_from.astimezone(UTC) > self.date_to.astimezone(UTC)
+        ):
+            raise ValueError("history date_from must not follow date_to")
 
 
 class DomainError(Exception):

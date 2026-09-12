@@ -15,9 +15,11 @@ from threading import Lock, RLock
 from typing import Any, Final, TypedDict, TypeGuard, cast
 
 from stock_probs.config import ensure_private_directory, ensure_private_file
+from stock_probs.domain import HistoryFilters
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 OUTCOME_RECONSTRUCTION_LIMIT = 100
+HISTORY_EXPORT_LIMIT = 100
 COORDINATION_TIMEOUT_SECONDS = 5.0
 MIGRATION_NAME = re.compile(r"^(?P<version>[0-9]{3})_[a-z0-9_]+\.sql$")
 PERSISTENCE_FAILURE_CATEGORY = "persistence_unavailable"
@@ -26,6 +28,7 @@ MIGRATION_SHA256 = {
     1: "0c92dcfb596b6a1b1ce07cf6b4bca15c00f642c7ca69ea5e41e124b49926c98e",
     2: "d51a8a64f5c32fb77875f0e81642146947be3db43437a1269339343e64225cc2",
     3: "ebbf91670e8ad0a4f9a80603459c4eb1d2e66459cda500d5c376b1d563949cda",
+    4: "4ca9d80a988f59c2c0c289ac34efffc5df170053c0b968180f85fbdf6edc17ea",
 }
 
 
@@ -273,6 +276,55 @@ class Repository:
     def _row(row: sqlite3.Row | None) -> dict[str, Any] | None:
         return dict(row) if row is not None else None
 
+    @staticmethod
+    def _utc_microseconds(value: datetime) -> int:
+        """Return an exact integer UTC key without a float timestamp conversion."""
+
+        if not isinstance(value, datetime) or value.tzinfo is None:
+            raise ValueError("stored audit timestamps must include a timezone offset")
+        utc_value = value.astimezone(UTC)
+        epoch_delta = utc_value - datetime(1970, 1, 1, tzinfo=UTC)
+        return (
+            (epoch_delta.days * 86_400 + epoch_delta.seconds) * 1_000_000
+            + epoch_delta.microseconds
+        )
+
+    @staticmethod
+    def _record_history_facet(
+        connection: sqlite3.Connection,
+        *,
+        event_id: int,
+        submitted_at: datetime,
+        normalized_symbol: str | None,
+        input_snapshot: dict[str, Any] | None,
+    ) -> None:
+        """Append the small indexed projection in the same transaction as its audit event."""
+
+        identity = input_snapshot.get("instrument_identity") if input_snapshot else None
+        model = input_snapshot.get("model") if input_snapshot else None
+        connection.execute(
+            """INSERT INTO history_facets
+            (event_id, canonical_symbol, display_name, company_name, exchange, quote_type,
+             model_name, model_version, forecast_contract_version, submitted_at_us)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                event_id,
+                (
+                    identity.get("canonical_symbol")
+                    if isinstance(identity, dict)
+                    else normalized_symbol
+                ),
+                identity.get("display_name") if isinstance(identity, dict) else None,
+                identity.get("company_name") if isinstance(identity, dict) else None,
+                identity.get("exchange") if isinstance(identity, dict) else None,
+                identity.get("quote_type") if isinstance(identity, dict) else None,
+                model.get("name") if isinstance(model, dict) else None,
+                model.get("version") if isinstance(model, dict) else None,
+                input_snapshot.get("forecast_contract_version") if input_snapshot else None,
+                Repository._utc_microseconds(submitted_at),
+            ),
+        )
+
     def record_failure(
         self,
         *,
@@ -320,8 +372,16 @@ class Repository:
                     source_event_id,
                 ),
             )
+            event_id = self._insert_id(cursor)
+            self._record_history_facet(
+                connection,
+                event_id=event_id,
+                submitted_at=submitted_at,
+                normalized_symbol=normalized_symbol,
+                input_snapshot=None,
+            )
             connection.commit()
-            return self._insert_id(cursor)
+            return event_id
 
     @staticmethod
     def _resolved_analysis_source(
@@ -455,8 +515,16 @@ class Repository:
                     source_event_id,
                 ),
             )
+            event_id = self._insert_id(event_cursor)
+            self._record_history_facet(
+                connection,
+                event_id=event_id,
+                submitted_at=submitted_at,
+                normalized_symbol=symbol,
+                input_snapshot=input_snapshot,
+            )
             connection.commit()
-            return self._insert_id(event_cursor), run_id, repeated, reused
+            return event_id, run_id, repeated, reused
 
     @staticmethod
     def _validate_instrument_provenance(
@@ -584,60 +652,168 @@ class Repository:
         page_size: int = 20,
         analysis_kind: str | None = None,
         include_analysis: bool = False,
+        symbol: str | None = None,
+        company: str | None = None,
+        semantics: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        model: str | None = None,
+        model_version: str | None = None,
+        request_id: str | None = None,
+        event_id: int | None = None,
+        include_facets: bool = False,
     ) -> dict[str, Any]:
-        """Return bounded newest-first history and a stable total for pagination."""
+        """Return an indexed, bounded audit page in deterministic append order."""
 
+        if type(page) is not int or type(page_size) is not int:
+            raise ValueError("history page and page_size must be integers")
         if not 1 <= page <= 10_000 or not 1 <= page_size <= 100:
             raise ValueError("history page must be 1-10000 and page_size must be 1-100")
-        if len(query) > 30:
-            raise ValueError("history query must not exceed 30 characters")
-        if status not in {None, "successful", "failed", "repeated"}:
-            raise ValueError("history status is not supported")
-        if asset_type not in {None, "stock", "etf"}:
-            raise ValueError("history asset_type is not supported")
-        if analysis_kind not in {
-            None,
-            "submitted_forecast",
-            "fresh_historical_reconstruction",
-        }:
-            raise ValueError("history analysis_kind is not supported")
+        filters = HistoryFilters(
+            query=query,
+            symbol=symbol,
+            company=company,
+            asset_type=asset_type,
+            status=status,
+            semantics=semantics,
+            date_from=date_from,
+            date_to=date_to,
+            model=model,
+            model_version=model_version,
+            request_id=request_id,
+            analysis_kind=analysis_kind,
+            event_id=event_id,
+        )
+        with self.connect() as connection:
+            # COUNT and page rows share one snapshot, so concurrent appends cannot disagree about
+            # this response's total even when another local process bypasses the process lock.
+            connection.execute("BEGIN")
+            return self._history_page(
+                connection,
+                filters,
+                page=page,
+                page_size=page_size,
+                include_analysis=include_analysis,
+                include_facets=include_facets,
+            )
+
+    @staticmethod
+    def _escaped_like(value: str) -> str:
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+    @classmethod
+    def _history_where(cls, filters: HistoryFilters) -> tuple[str, list[Any]]:
+        """Compile only fixed clauses; user values always remain bound parameters."""
+
         clauses = ["1 = 1"]
         values: list[Any] = []
-        if query:
+        if filters.query:
             clauses.append(
-                "(normalized_symbol LIKE ? ESCAPE '\\' OR submitted_symbol LIKE ? ESCAPE '\\')"
+                "(event.normalized_symbol LIKE ? ESCAPE '\\' COLLATE NOCASE "
+                "OR event.submitted_symbol LIKE ? ESCAPE '\\' COLLATE NOCASE "
+                "OR event.request_id LIKE ? ESCAPE '\\' COLLATE NOCASE "
+                "OR facet.company_name LIKE ? ESCAPE '\\' COLLATE NOCASE "
+                "OR facet.display_name LIKE ? ESCAPE '\\' COLLATE NOCASE)"
             )
-            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            values.extend([f"%{escaped}%", f"%{escaped}%"])
-        if status:
-            clauses.append("status = ?")
-            values.append(status)
-        if asset_type:
-            clauses.append("asset_type = ?")
-            values.append(asset_type)
-        if analysis_kind:
-            clauses.append("analysis_kind = ?")
-            values.append(analysis_kind)
-        where = " AND ".join(clauses)
+            match = f"%{cls._escaped_like(filters.query)}%"
+            values.extend([match] * 5)
+        if filters.symbol:
+            clauses.append("facet.canonical_symbol = ? COLLATE NOCASE")
+            values.append(filters.symbol)
+        if filters.company:
+            clauses.append("facet.company_name LIKE ? ESCAPE '\\' COLLATE NOCASE")
+            values.append(f"%{cls._escaped_like(filters.company.strip())}%")
+        if filters.status:
+            clauses.append("event.status = ?")
+            values.append(filters.status)
+        if filters.asset_type:
+            clauses.append("event.asset_type = ?")
+            values.append(filters.asset_type)
+        if filters.analysis_kind:
+            clauses.append("event.analysis_kind = ?")
+            values.append(filters.analysis_kind)
+        semantic_clauses = {
+            "success": "event.run_id IS NOT NULL",
+            "failure": "event.status = 'failed'",
+            # is_repeat also includes a repeated failed submission, unlike status='repeated'.
+            "repeat": "event.is_repeat = 1",
+            "fresh": "event.analysis_kind = 'fresh_historical_reconstruction'",
+            "saved": (
+                "event.analysis_kind = 'submitted_forecast' AND event.run_id IS NOT NULL"
+            ),
+        }
+        if filters.semantics:
+            clauses.append(semantic_clauses[filters.semantics])
+        if filters.date_from:
+            clauses.append("facet.submitted_at_us >= ?")
+            values.append(cls._utc_microseconds(filters.date_from))
+        if filters.date_to:
+            clauses.append("facet.submitted_at_us <= ?")
+            values.append(cls._utc_microseconds(filters.date_to))
+        if filters.model:
+            clauses.append(
+                "(facet.model_name LIKE ? ESCAPE '\\' COLLATE NOCASE "
+                "OR facet.model_version LIKE ? ESCAPE '\\' COLLATE NOCASE)"
+            )
+            model_match = f"%{cls._escaped_like(filters.model)}%"
+            values.extend([model_match, model_match])
+        if filters.model_version:
+            clauses.append("facet.model_version = ? COLLATE NOCASE")
+            values.append(filters.model_version.strip())
+        if filters.request_id:
+            clauses.append("event.request_id = ?")
+            values.append(filters.request_id.strip())
+        if filters.event_id is not None:
+            # Apply exact identity in the indexed source query, before pagination/export limits.
+            clauses.append("event.id = ?")
+            values.append(filters.event_id)
+        return " AND ".join(clauses), values
+
+    @classmethod
+    def _history_page(
+        cls,
+        connection: sqlite3.Connection,
+        filters: HistoryFilters,
+        *,
+        page: int,
+        page_size: int,
+        include_analysis: bool,
+        include_facets: bool,
+    ) -> dict[str, Any]:
+        where, values = cls._history_where(filters)
         analysis_columns = (
-            ", analysis_kind, source_event_id, requested_cutoff, requested_source_event_id"
+            ", event.analysis_kind, event.source_event_id, event.requested_cutoff, "
+            "event.requested_source_event_id"
             if include_analysis
             else ""
         )
-        with self.connect() as connection:
-            total = int(
-                connection.execute(
-                    f"SELECT COUNT(*) FROM search_events WHERE {where}",  # noqa: S608
-                    values,
-                ).fetchone()[0]
-            )
-            rows = connection.execute(
-                f"""SELECT id, request_id, submitted_symbol, normalized_symbol, asset_type,
-                status, is_repeat, error_code, error_message, submitted_at, completed_at, run_id
-                {analysis_columns}
-                FROM search_events WHERE {where} ORDER BY id DESC LIMIT ? OFFSET ?""",  # noqa: S608
-                [*values, page_size, (page - 1) * page_size],
-            ).fetchall()
+        facet_columns = (
+            ", facet.canonical_symbol, facet.display_name, facet.company_name, facet.exchange, "
+            "facet.quote_type, facet.model_name, facet.model_version, "
+            "facet.forecast_contract_version"
+            if include_facets
+            else ""
+        )
+        joined = (
+            "search_events AS event LEFT JOIN history_facets AS facet "
+            "ON facet.event_id = event.id"
+        )
+        total = int(
+            connection.execute(
+                f"SELECT COUNT(*) FROM {joined} WHERE {where}",  # noqa: S608
+                values,
+            ).fetchone()[0]
+        )
+        rows = connection.execute(
+            f"""SELECT event.id, event.request_id, event.submitted_symbol,
+            event.normalized_symbol, event.asset_type, event.status, event.is_repeat,
+            event.error_code, event.error_message, event.submitted_at, event.completed_at,
+            event.run_id {analysis_columns} {facet_columns}
+            FROM {joined} WHERE {where}
+            ORDER BY facet.submitted_at_us DESC, event.id DESC
+            LIMIT ? OFFSET ?""",  # noqa: S608
+            [*values, page_size, (page - 1) * page_size],
+        ).fetchall()
         return {
             "items": [dict(row) for row in rows],
             "page": page,
@@ -646,7 +822,7 @@ class Repository:
         }
 
     def reconstruction(self, event_id: int) -> dict[str, Any] | None:
-        """Reconstruct what was displayed from immutable JSON and later append-only outcomes."""
+        """Reconstruct immutable display data with a fixed number of bounded queries."""
 
         with self.connect() as connection:
             event = connection.execute(
@@ -672,33 +848,290 @@ class Repository:
             response: dict[str, Any] = {"event": event_payload, "input": None, "results": []}
             if event["run_id"] is None:
                 return response
-            input_row = connection.execute(
-                "SELECT * FROM forecast_inputs WHERE run_id = ?", (event["run_id"],)
-            ).fetchone()
-            if input_row is None:
+            details = self._load_run_details(connection, [int(event["run_id"])])
+            detail = details.get(int(event["run_id"]))
+            if detail is None:
                 return response
-            response["input"] = {"id": input_row["id"], **json.loads(input_row["snapshot_json"])}
-            result_rows = connection.execute(
-                "SELECT * FROM forecast_results WHERE input_id = ? ORDER BY id", (input_row["id"],)
+            response["input"] = detail["input"]
+            response["results"] = detail["results"]
+            return response
+
+    @classmethod
+    def _load_run_details(
+        cls, connection: sqlite3.Connection, run_ids: list[int]
+    ) -> dict[int, dict[str, Any]]:
+        """Load up to one export page in three queries, independent of event count."""
+
+        if not run_ids:
+            return {}
+        if len(run_ids) > HISTORY_EXPORT_LIMIT:
+            raise ValueError("history detail batch exceeds the export bound")
+        placeholders = ",".join("?" for _ in run_ids)
+        input_rows = connection.execute(
+            f"""SELECT id, run_id, snapshot_json FROM forecast_inputs
+            WHERE run_id IN ({placeholders})""",  # noqa: S608
+            run_ids,
+        ).fetchall()
+        details: dict[int, dict[str, Any]] = {
+            int(row["run_id"]): {
+                "input": {"id": row["id"], **json.loads(row["snapshot_json"])},
+                "results": [],
+            }
+            for row in input_rows
+        }
+        input_to_run = {int(row["id"]): int(row["run_id"]) for row in input_rows}
+        if not input_to_run:
+            return details
+        input_ids = list(input_to_run)
+        input_placeholders = ",".join("?" for _ in input_ids)
+        result_rows = connection.execute(
+            f"""SELECT id, input_id, result_json, created_at FROM forecast_results
+            WHERE input_id IN ({input_placeholders}) ORDER BY input_id, id""",  # noqa: S608
+            input_ids,
+        ).fetchall()
+        result_ids = [int(row["id"]) for row in result_rows]
+        outcomes_by_result: dict[int, list[dict[str, Any]]] = {item: [] for item in result_ids}
+        if result_ids:
+            result_placeholders = ",".join("?" for _ in result_ids)
+            # Window ranking bounds returned memory per result while retaining a truncation row.
+            outcome_rows = connection.execute(
+                f"""WITH ranked AS (
+                    SELECT id, result_id, observed_close, observed_return, observed_at,
+                           comparison_rule, state, note, created_at,
+                           ROW_NUMBER() OVER (PARTITION BY result_id ORDER BY id DESC) AS rank
+                    FROM outcomes WHERE result_id IN ({result_placeholders})
+                )
+                SELECT id, result_id, observed_close, observed_return, observed_at,
+                       comparison_rule, state, note, created_at, rank
+                FROM ranked WHERE rank <= ? ORDER BY result_id, id DESC""",  # noqa: S608
+                [*result_ids, OUTCOME_RECONSTRUCTION_LIMIT + 1],
             ).fetchall()
-            for row in result_rows:
-                outcomes = connection.execute(
-                    "SELECT * FROM outcomes WHERE result_id = ? ORDER BY id DESC LIMIT ?",
-                    (row["id"], OUTCOME_RECONSTRUCTION_LIMIT + 1),
-                ).fetchall()
-                outcomes_truncated = len(outcomes) > OUTCOME_RECONSTRUCTION_LIMIT
-                # Keep the newest bounded window but return it in append order for audit reading.
-                bounded_outcomes = list(reversed(outcomes[:OUTCOME_RECONSTRUCTION_LIMIT]))
-                response["results"].append(
+            for row in outcome_rows:
+                payload = dict(row)
+                payload.pop("rank")
+                outcomes_by_result[int(row["result_id"])].append(payload)
+        for row in result_rows:
+            result_id = int(row["id"])
+            outcomes = outcomes_by_result[result_id]
+            run_id = input_to_run[int(row["input_id"])]
+            details[run_id]["results"].append(
+                {
+                    "id": result_id,
+                    "recorded_at": row["created_at"],
+                    **json.loads(row["result_json"]),
+                    # Return the newest bounded window in chronological append order.
+                    "outcomes": list(reversed(outcomes[:OUTCOME_RECONSTRUCTION_LIMIT])),
+                    "outcomes_truncated": len(outcomes) > OUTCOME_RECONSTRUCTION_LIMIT,
+                }
+            )
+        return details
+
+    def history_export(
+        self,
+        *,
+        generated_at: datetime,
+        query: str = "",
+        status: str | None = None,
+        asset_type: str | None = None,
+        analysis_kind: str | None = None,
+        symbol: str | None = None,
+        company: str | None = None,
+        semantics: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        model: str | None = None,
+        model_version: str | None = None,
+        request_id: str | None = None,
+        event_id: int | None = None,
+        max_events: int = HISTORY_EXPORT_LIMIT,
+    ) -> dict[str, Any]:
+        """Return one faithful bounded record stream without per-event detail queries."""
+
+        if generated_at.tzinfo is None:
+            raise ValueError("history export time must include a timezone offset")
+        if type(max_events) is not int or not 1 <= max_events <= HISTORY_EXPORT_LIMIT:
+            raise ValueError(f"history export max_events must be 1-{HISTORY_EXPORT_LIMIT}")
+        filters = HistoryFilters(
+            query=query,
+            symbol=symbol,
+            company=company,
+            asset_type=asset_type,
+            status=status,
+            semantics=semantics,
+            date_from=date_from,
+            date_to=date_to,
+            model=model,
+            model_version=model_version,
+            request_id=request_id,
+            analysis_kind=analysis_kind,
+            event_id=event_id,
+        )
+        with self.connect() as connection:
+            connection.execute("BEGIN")
+            page = self._history_page(
+                connection,
+                filters,
+                page=1,
+                page_size=max_events,
+                include_analysis=True,
+                include_facets=False,
+            )
+            run_ids = list(
+                dict.fromkeys(
+                    int(event["run_id"])
+                    for event in page["items"]
+                    if event["run_id"] is not None
+                )
+            )
+            details = self._load_run_details(connection, run_ids)
+            records: list[dict[str, Any]] = []
+            seen_runs: set[int] = set()
+            result_count = 0
+            for event in page["items"]:
+                event_id = int(event["id"])
+                run_id = int(event["run_id"]) if event["run_id"] is not None else None
+                records.append(
                     {
-                        "id": row["id"],
-                        "recorded_at": row["created_at"],
-                        **json.loads(row["result_json"]),
-                        "outcomes": [dict(item) for item in bounded_outcomes],
-                        "outcomes_truncated": outcomes_truncated,
+                        "record_type": "event",
+                        "event_id": event_id,
+                        "run_id": run_id,
+                        "data": event,
                     }
                 )
-            return response
+                if run_id is None or run_id in seen_runs:
+                    continue
+                detail = details.get(run_id)
+                if detail is None:
+                    raise RepositoryDatabaseError(
+                        "forecast run is missing its immutable input"
+                    )
+                seen_runs.add(run_id)
+                snapshot = detail["input"]
+                input_id = int(snapshot["id"])
+                records.append(
+                    {
+                        "record_type": "run",
+                        "run_id": run_id,
+                        "input_id": input_id,
+                        "data": snapshot,
+                    }
+                )
+                for result in detail["results"]:
+                    result_count += 1
+                    records.append(
+                        {
+                            "record_type": "result",
+                            "run_id": run_id,
+                            "input_id": input_id,
+                            "result_id": int(result["id"]),
+                            "data": result,
+                        }
+                    )
+        exported_events = len(page["items"])
+        return {
+            "format": "stock-probs-history",
+            "format_version": 1,
+            "generated_at": generated_at.astimezone(UTC).isoformat(),
+            "filters": {
+                "query": filters.query,
+                "symbol": filters.symbol,
+                "company": filters.company,
+                "status": filters.status,
+                "asset_type": filters.asset_type,
+                "semantics": filters.semantics,
+                "date_from": (
+                    filters.date_from.astimezone(UTC).isoformat() if filters.date_from else None
+                ),
+                "date_to": (
+                    filters.date_to.astimezone(UTC).isoformat() if filters.date_to else None
+                ),
+                "model": filters.model,
+                "model_version": filters.model_version,
+                "request_id": filters.request_id,
+                "analysis_kind": filters.analysis_kind,
+                "event_id": filters.event_id,
+            },
+            "total_events": page["total"],
+            "exported_events": exported_events,
+            "truncated": page["total"] > exported_events,
+            "counts": {
+                "events": exported_events,
+                "runs": len(seen_runs),
+                "results": result_count,
+            },
+            "records": records,
+        }
+
+    def historical_series(
+        self, event_id: int, *, series: str = "daily", limit: int = 120
+    ) -> dict[str, Any] | None:
+        """Slice immutable chart and text-equivalent prices to a caller-selected hard limit."""
+
+        if series not in {"daily", "intraday"}:
+            raise ValueError("history price series is not supported")
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise ValueError("history price limit must be 1-500")
+        detail = self.reconstruction(event_id)
+        if detail is None:
+            return None
+        snapshot = detail.get("input")
+        if snapshot is None:
+            return {"event_id": event_id, "available": False}
+        key = "selected_daily_bars" if series == "daily" else "selected_intraday_bars"
+        available = snapshot.get(key, [])
+        items = available[-limit:]
+        return {
+            "event_id": event_id,
+            "symbol": snapshot["symbol"],
+            "series": series,
+            "interval": "1d" if series == "daily" else "5m",
+            "currency": snapshot["currency"],
+            "provider_as_of": snapshot["provider_as_of"],
+            "quality": snapshot["quality"],
+            "items": items,
+            "total_available": len(available),
+            "truncated": len(items) < len(available),
+            "available": True,
+        }
+
+    def outcome_history(
+        self,
+        result_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        state: str | None = None,
+    ) -> dict[str, Any]:
+        """Page append-only observations newest-first without loading a result's full ledger."""
+
+        if type(page) is not int or type(page_size) is not int:
+            raise ValueError("outcome page and page_size must be integers")
+        if not 1 <= page <= 10_000 or not 1 <= page_size <= 100:
+            raise ValueError("outcome page must be 1-10000 and page_size must be 1-100")
+        if state not in {None, "observed", "unavailable", "provisional", "corrected"}:
+            raise ValueError("outcome state is not supported")
+        clause = "result_id = ?" + (" AND state = ?" if state else "")
+        values: list[Any] = [result_id, *([state] if state else [])]
+        with self.connect() as connection:
+            connection.execute("BEGIN")
+            total = int(
+                connection.execute(
+                    f"SELECT COUNT(*) FROM outcomes WHERE {clause}",  # noqa: S608
+                    values,
+                ).fetchone()[0]
+            )
+            rows = connection.execute(
+                f"""SELECT id, result_id, observed_close, observed_return, observed_at,
+                comparison_rule, state, note, created_at FROM outcomes WHERE {clause}
+                ORDER BY id DESC LIMIT ? OFFSET ?""",  # noqa: S608
+                [*values, page_size, (page - 1) * page_size],
+            ).fetchall()
+        return {
+            "items": [dict(row) for row in rows],
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+        }
 
     def forecast_result(self, result_id: int) -> dict[str, Any] | None:
         """Return one immutable result for domain-level outcome validation."""

@@ -26,6 +26,7 @@ EXPECTED_RESOURCES = {
     "stock_probs/migrations/001_initial.sql",
     "stock_probs/migrations/002_historical_analysis.sql",
     "stock_probs/migrations/003_restore_and_immutability_guards.sql",
+    "stock_probs/migrations/004_history_facets.sql",
     "stock_probs/fixtures/acdc.json",
     "stock_probs/fixtures/spy.json",
 }

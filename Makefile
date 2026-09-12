@@ -6,7 +6,7 @@ NODE_BIN := .tools/node/bin
 NPM := $(NODE_BIN)/npm
 NPX := $(NODE_BIN)/npx
 
-.PHONY: setup dev migrate test lint typecheck static security restore-test check package-check m01-gate m02-gate m03-gate local-gate arm64-smoke browser-setup browser-install browser-test mcp-smoke acceptance live live-smoke release release-check backup restore clean
+.PHONY: setup dev migrate test lint typecheck static security restore-test check package-check m01-gate m02-gate m03-gate m04-gate local-gate arm64-smoke browser-setup browser-install browser-test mcp-smoke acceptance live live-smoke release release-check backup restore clean
 
 setup:
 	./scripts/bootstrap.sh
@@ -57,6 +57,10 @@ m02-gate:
 # M03 adds explicitly labelled ARM64 functional package/runtime evidence to the local stack.
 m03-gate:
 	TASK_ID=M03 ./scripts/local-gate.sh m03
+
+# M04 directly verifies the native package, responsive browser/MCP surface, and ARM64 package path.
+m04-gate:
+	TASK_ID=M04 ./scripts/local-gate.sh m04
 
 local-gate:
 	TASK_ID="$${TASK_ID:-M01}" ./scripts/local-gate.sh release

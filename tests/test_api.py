@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import base64
 import csv
 import io
 import json
 import re
-from datetime import UTC, datetime
+from contextlib import contextmanager
+from copy import deepcopy
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -16,6 +19,7 @@ from uvicorn.protocols.http import h11_impl
 from stock_probs.api import create_app
 from stock_probs.backup import BackupError
 from stock_probs.config import Settings
+from stock_probs.domain import calculate_forecasts
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import SCHEMA_VERSION, RepositoryError
 
@@ -145,6 +149,116 @@ def test_openapi_descriptions_use_only_public_product_language(client):
     assert "database_path" not in str(contract) and "backup_dir" not in str(contract)
 
 
+def test_openapi_publishes_concrete_dashboard_filter_and_download_contracts(client):
+    contract = client.get("/api/v1/openapi.json").json()
+    history = contract["paths"]["/api/v1/history"]["get"]
+    csv_download = contract["paths"]["/api/v1/history-export.csv"]["get"]
+    json_download = contract["paths"]["/api/v1/history-export.json"]["get"]
+    parameters = {item["name"]: item for item in history["parameters"]}
+
+    assert set(parameters) == {
+        "q",
+        "symbol",
+        "company",
+        "status",
+        "asset_type",
+        "analysis_kind",
+        "submitted_from",
+        "submitted_to",
+        "model",
+        "model_version",
+        "horizon",
+        "request_id",
+        "event_id",
+        "sort_by",
+        "sort_order",
+        "page",
+        "page_size",
+    }
+    assert parameters["submitted_from"]["schema"]["anyOf"][0]["format"] == "date-time"
+    assert parameters["page_size"]["schema"]["maximum"] == 100
+    assert parameters["event_id"]["schema"]["anyOf"][0]["maximum"] == 2_147_483_647
+    serialized_parameters = json.dumps(parameters)
+    for value in (
+        "successful",
+        "failed",
+        "repeated",
+        "stock",
+        "etf",
+        "submitted_forecast",
+        "fresh_historical_reconstruction",
+        "close_to_close",
+        "completed_5m_to_close",
+        "company",
+        "model",
+        "request_id",
+        "asc",
+        "desc",
+    ):
+        assert value in serialized_parameters
+    assert set(csv_download["responses"]["200"]["content"]) == {"text/csv"}
+    assert set(csv_download["responses"]["200"]["headers"]) == {
+        "Content-Disposition",
+        "X-Export-Filters",
+        "X-Export-Sort",
+    }
+    assert json_download["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/HistoryJsonExportResponse"
+    }
+    assert set(json_download["responses"]["200"]["headers"]) == {
+        "Content-Disposition",
+        "X-Export-Filters",
+        "X-Export-Sort",
+    }
+    forecast_created = contract["paths"]["/api/v1/forecasts"]["post"]["responses"]["201"]
+    assert set(forecast_created["headers"]) == {"Location", "X-Request-ID"}
+    history_schema = contract["components"]["schemas"]["HistoryResponse"]
+    assert set(history_schema["required"]) >= {
+        "items",
+        "total",
+        "total_pages",
+        "has_previous",
+        "has_next",
+        "filters",
+        "sort",
+    }
+    assert contract["components"]["schemas"]["HistoryJsonExportResponse"]["properties"][
+        "generated_at"
+    ]["format"] == "date-time"
+
+
+def test_non_integer_history_details_are_safe_404s_not_export_aliases(client):
+    invalid_details = {
+        "/api/v1/history/export.json",
+        "/api/v1/history/export.csv",
+        "/api/v1/history/not-an-event",
+        "/api/v1/history/123abc",
+    }
+    published = set(client.get("/api/v1/openapi.json").json()["paths"])
+
+    assert invalid_details.isdisjoint(published)
+    for path in invalid_details:
+        response = client.get(path)
+        assert response.status_code == 404
+        assert response.json() == {
+            "error": {"code": "not_found", "message": "The requested resource was not found."}
+        }
+
+
+def test_history_detail_keeps_typed_positive_ids_and_numeric_bounds(client):
+    created = _forecast(client).json()
+
+    detail = client.get(f"/api/v1/history/{created['event']['id']}")
+    too_small = client.get("/api/v1/history/0")
+    too_large = client.get("/api/v1/history/2147483648")
+
+    assert detail.status_code == 200
+    assert detail.json()["event"]["id"] == created["event"]["id"]
+    for response in (too_small, too_large):
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "validation_error"
+
+
 def test_router_method_and_mounted_asset_errors_share_safe_envelope(client):
     """Starlette-generated failures must not regress to its unrelated detail payload."""
 
@@ -265,6 +379,10 @@ def test_success_repeat_failure_and_searchable_history(client):
 
     assert first.status_code == 201
     assert first.json()["event"]["status"] == "successful"
+    assert first.headers["location"] == (
+        f"/api/v1/saved-forecasts/{first.json()['event']['id']}"
+    )
+    assert first.headers["x-request-id"] == first.json()["event"]["request_id"]
     assert first.json()["input"]["company_name"] == "ProFrac Holding Corp."
     assert first.json()["input"]["instrument_identity"]["canonical_symbol"] == "ACDC"
     assert repeated.json()["event"]["status"] == "repeated"
@@ -779,6 +897,91 @@ def test_history_status_filters_and_pagination_keep_repeat_semantics_exact(clien
     assert client.get("/api/v1/history", params={"q": "%"}).json()["total"] == 0
 
 
+def test_dashboard_history_filters_every_public_facet_and_reports_stable_paging(client):
+    acdc = _forecast(client, "ACDC").json()
+    repeated = _forecast(client, "ACDC").json()
+    spy = _forecast(client, "SPY", "etf").json()
+    _forecast(client, "FAIL")
+
+    by_company = client.get("/api/v1/history", params={"company": "profrac"}).json()
+    by_symbol = client.get("/api/v1/history", params={"symbol": "SPY"}).json()
+    by_model = client.get(
+        "/api/v1/history", params={"model_version": acdc["input"]["model"]["version"]}
+    ).json()
+    by_horizon = client.get(
+        "/api/v1/history", params={"horizon": "completed_5m_to_close"}
+    ).json()
+    by_request = client.get(
+        "/api/v1/history", params={"request_id": repeated["event"]["request_id"]}
+    ).json()
+    by_event = client.get(
+        "/api/v1/history", params={"event_id": spy["event"]["id"]}
+    ).json()
+    by_date = client.get(
+        "/api/v1/history",
+        params={
+            "submitted_from": "2025-01-10T17:02:59Z",
+            "submitted_to": "2025-01-10T17:03:01Z",
+            "sort_by": "company",
+            "sort_order": "asc",
+            "page_size": 2,
+        },
+    ).json()
+
+    assert by_company["total"] == 2
+    assert all(item["company_name"] == "ProFrac Holding Corp." for item in by_company["items"])
+    assert by_symbol["total"] == 1
+    assert by_symbol["items"][0]["quote_type"] == "ETF"
+    assert by_model["total"] == by_horizon["total"] == 3
+    assert all(
+        item["horizons"] == ["close_to_close", "completed_5m_to_close"]
+        for item in by_horizon["items"]
+    )
+    assert [item["id"] for item in by_request["items"]] == [repeated["event"]["id"]]
+    assert [item["id"] for item in by_event["items"]] == [spy["event"]["id"]]
+    assert by_date["filters"]["submitted_from"] == "2025-01-10T17:02:59Z"
+    assert by_date["sort"] == {"field": "company", "direction": "asc"}
+    assert by_date["total_pages"] == 2
+    assert by_date["has_previous"] is False and by_date["has_next"] is True
+
+
+def test_failed_history_detail_never_fabricates_identity_forecast_or_evaluation(client):
+    failed = _forecast(client, "FAIL")
+    event = client.get("/api/v1/history", params={"status": "failed"}).json()["items"][0]
+    detail = client.get(f"/api/v1/history/{event['id']}")
+
+    assert failed.status_code == 502
+    assert event["forecast_available"] is False
+    assert event["company_name"] is None
+    assert event["model_version"] is None
+    assert event["horizons"] == []
+    assert event["outcome_count"] == 0
+    assert event["evaluation_statuses"] == []
+    assert detail.json()["record_kind"] == "failed_search"
+    assert detail.json()["immutable"] is True
+    assert detail.json()["forecast_available"] is False
+    assert detail.json()["input"] is None and detail.json()["results"] == []
+
+
+def test_history_date_ranges_and_sort_values_are_strictly_bounded(client):
+    naive = client.get("/api/v1/history", params={"submitted_from": "2025-01-10T00:00:00"})
+    reversed_range = client.get(
+        "/api/v1/history",
+        params={
+            "submitted_from": "2025-01-11T00:00:00Z",
+            "submitted_to": "2025-01-10T00:00:00Z",
+        },
+    )
+    invalid_sort = client.get("/api/v1/history", params={"sort_by": "result_json"})
+    invalid_horizon = client.get("/api/v1/history", params={"horizon": "tomorrow"})
+
+    assert naive.status_code == reversed_range.status_code == 422
+    assert naive.json()["error"]["code"] == "invalid_history_date"
+    assert reversed_range.json()["error"]["code"] == "invalid_history_date_range"
+    assert invalid_sort.json()["error"]["code"] == "validation_error"
+    assert invalid_horizon.json()["error"]["code"] == "validation_error"
+
+
 def test_invalid_symbol_is_an_audited_failure(client):
     response = _forecast(client, "../bad")
 
@@ -990,8 +1193,11 @@ def test_reconstruction_and_append_only_outcome(client):
 
     assert outcome.status_code == 201
     assert outcome.json()["comparison_rule"].startswith("close divided")
+    assert after["record_kind"] == "recorded_forecast"
+    assert after["immutable"] is True and after["forecast_available"] is True
     assert before["results"][0]["origin_price"] == after["results"][0]["origin_price"]
     assert len(after["results"][0]["outcomes"]) == 1
+    assert after["results"][0]["evaluation"]["status"] == "available"
 
     too_early = client.post(
         f"/api/v1/forecasts/{result_id}/outcomes",
@@ -1057,6 +1263,8 @@ def test_saved_reopen_never_calls_provider_but_fresh_cutoff_is_new_audited_analy
     assert analysis["requested_cutoff"].endswith("+00:00")
     assert analysis["source_event_id"] == event_id
     assert provider.cutoff_calls == 1
+    assert fresh.headers["location"] == f"/api/v1/saved-forecasts/{payload['event']['id']}"
+    assert fresh.headers["x-request-id"] == payload["event"]["request_id"]
     assert fresh_history["total"] == 1
     assert fresh_history["items"][0]["id"] == payload["event"]["id"]
 
@@ -1330,7 +1538,7 @@ def test_backup_status_and_export_do_not_expose_server_storage(client):
     _forecast(client)
 
     status = client.get("/api/v1/operations/backups/status")
-    exported = client.get("/api/v1/history/export.csv")
+    exported = client.get("/api/v1/history-export.csv")
 
     assert status.json() == {
         "status": "available",
@@ -1577,7 +1785,203 @@ def test_json_and_csv_exports_preserve_identity_and_distinguish_audit_records(cl
     assert run["data"]["instrument_identity"]["company_name"] == "ProFrac Holding Corp."
     assert {row["record_type"] for row in csv_rows} == {"event", "run", "result"}
     assert all(row["run_id"] for row in csv_rows if row["record_type"] != "event")
+    assert [json.loads(row["record_json"]) for row in csv_rows] == [
+        record["data"] for record in payload["records"]
+    ]
+    assert datetime.fromisoformat(payload["generated_at"]).utcoffset() == timedelta(0)
+    assert {
+        record["data"]["horizon"]
+        for record in payload["records"]
+        if record["record_type"] == "result"
+    } == {"close_to_close", "completed_5m_to_close"}
     assert "database_path" not in json_export.text and "database_path" not in csv_export.text
+
+
+def test_http_bulk_exports_keep_five_reads_for_one_hundred_unique_runs(client, monkeypatch):
+    """The HTTP adapters must consume one bulk service stream, never reconstruct each event."""
+
+    repository = client.app.state.repository
+    now = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+    snapshot, results = calculate_forecasts(FixtureProvider().fetch("ACDC", "stock", now), now)
+    for index in range(100):
+        unique_snapshot = deepcopy(snapshot)
+        fingerprint = f"{index + 1:064x}"
+        unique_snapshot["content_fingerprint"] = fingerprint
+        unique_snapshot["provenance"]["content_fingerprint"] = fingerprint
+        repository.record_success(
+            request_id=f"http-bulk-{index}",
+            submitted_symbol="ACDC",
+            asset_type="stock",
+            input_snapshot=unique_snapshot,
+            results=results,
+            submitted_at=now + timedelta(seconds=index),
+            completed_at=now + timedelta(seconds=index + 1),
+        )
+
+    statements: list[str] = []
+    original_connect = repository.connect
+
+    @contextmanager
+    def traced_connect():
+        with original_connect() as connection:
+            connection.set_trace_callback(statements.append)
+            yield connection
+
+    monkeypatch.setattr(repository, "connect", traced_connect)
+    json_export = client.get("/api/v1/history-export.json")
+    json_reads = [
+        statement
+        for statement in statements
+        if statement.lstrip().upper().startswith(("SELECT", "WITH"))
+    ]
+    statements.clear()
+    csv_export = client.get("/api/v1/history-export.csv")
+    csv_reads = [
+        statement
+        for statement in statements
+        if statement.lstrip().upper().startswith(("SELECT", "WITH"))
+    ]
+
+    assert json_export.status_code == csv_export.status_code == 200
+    assert len(json_reads) == 5
+    assert len(csv_reads) == 5
+    assert json_export.json()["counts"] == {"events": 100, "runs": 100, "results": 200}
+    assert len(list(csv.DictReader(io.StringIO(csv_export.text, newline="")))) == 400
+
+
+def test_history_downloads_apply_identical_filters_sort_and_safe_attachment_contract(client):
+    acdc = _forecast(client, "ACDC").json()
+    _forecast(client, "SPY", "etf")
+    _forecast(client, "FAIL")
+    params = {
+        "symbol": "ACDC",
+        "asset_type": "stock",
+        "status": "successful",
+        "model_version": acdc["input"]["model"]["version"],
+        "horizon": "close_to_close",
+        "request_id": acdc["event"]["request_id"],
+        "event_id": acdc["event"]["id"],
+        "submitted_from": "2025-01-10T17:02:59Z",
+        "submitted_to": "2025-01-10T17:03:01Z",
+        "sort_by": "request_id",
+        "sort_order": "asc",
+    }
+
+    json_export = client.get("/api/v1/history-export.json", params=params)
+    csv_export = client.get("/api/v1/history-export.csv", params=params)
+    payload = json_export.json()
+    csv_rows = list(csv.DictReader(io.StringIO(csv_export.text, newline="")))
+
+    assert payload["counts"] == {"events": 1, "runs": 1, "results": 2}
+    assert payload["filters"]["symbol"] == "ACDC"
+    assert payload["filters"]["submitted_from"] == "2025-01-10T17:02:59Z"
+    assert payload["sort"] == {"field": "request_id", "direction": "asc"}
+    assert {
+        row["event_id"] for row in csv_rows if row["record_type"] == "event"
+    } == {str(acdc["event"]["id"])}
+    assert all(json.loads(row["export_filters"])["symbol"] == "ACDC" for row in csv_rows)
+    assert all(
+        json.loads(row["export_sort"]) == {"field": "request_id", "direction": "asc"}
+        for row in csv_rows
+    )
+    for response, suffix, media_type in (
+        (json_export, "json", "application/json"),
+        (csv_export, "csv", "text/csv"),
+    ):
+        assert response.headers["content-type"].startswith(media_type)
+        assert response.headers["content-disposition"] == (
+            f'attachment; filename="stock-probs-history.{suffix}"'
+        )
+        assert re.fullmatch(r"[A-Za-z0-9_-]+", response.headers["x-export-filters"])
+        encoded = response.headers["x-export-filters"]
+        decoded = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        assert json.loads(decoded)["symbol"] == "ACDC"
+
+
+def test_exact_event_downloads_filter_before_cap_and_keep_json_csv_parity(client):
+    oldest = _forecast(client, "ACDC").json()
+    repository = client.app.state.repository
+    failed_id = None
+    now = datetime(2025, 1, 10, 17, 4, tzinfo=UTC)
+    for index in range(100):
+        failed_id = repository.record_failure(
+            request_id=f"newer-failure-{index}",
+            submitted_symbol="FAIL",
+            normalized_symbol="FAIL",
+            asset_type="stock",
+            error_code="provider_unavailable",
+            error_message="Fixture provider failure.",
+            submitted_at=now + timedelta(seconds=index),
+            completed_at=now + timedelta(seconds=index + 1),
+        )
+
+    assert client.get("/api/v1/history", params={"page_size": 1}).json()["total"] == 101
+    assert failed_id is not None
+    cases = (
+        (
+            {"event_id": oldest["event"]["id"]},
+            {"events": 1, "runs": 1, "results": 2},
+            oldest["event"]["id"],
+        ),
+        (
+            {"event_id": oldest["event"]["id"], "status": "failed"},
+            {"events": 0, "runs": 0, "results": 0},
+            None,
+        ),
+        (
+            {"event_id": 2_147_483_647},
+            {"events": 0, "runs": 0, "results": 0},
+            None,
+        ),
+        (
+            {"event_id": failed_id},
+            {"events": 1, "runs": 0, "results": 0},
+            failed_id,
+        ),
+    )
+    for params, expected_counts, expected_event_id in cases:
+        json_export = client.get("/api/v1/history-export.json", params=params)
+        csv_export = client.get("/api/v1/history-export.csv", params=params)
+        payload = json_export.json()
+        csv_rows = list(csv.DictReader(io.StringIO(csv_export.text, newline="")))
+
+        assert json_export.status_code == csv_export.status_code == 200
+        assert payload["filters"]["event_id"] == params["event_id"]
+        assert payload["counts"] == expected_counts
+        assert payload["total_events"] == payload["exported_events"] == expected_counts["events"]
+        assert payload["truncated"] is False
+        assert [json.loads(row["record_json"]) for row in csv_rows] == [
+            record["data"] for record in payload["records"]
+        ]
+        exported_ids = [
+            record["event_id"]
+            for record in payload["records"]
+            if record["record_type"] == "event"
+        ]
+        assert exported_ids == ([] if expected_event_id is None else [expected_event_id])
+
+
+def test_empty_csv_download_still_carries_exact_non_reflected_filters(client):
+    hostile_company = "=No Match"
+    response = client.get(
+        "/api/v1/history-export.csv",
+        params={"company": hostile_company, "sort_by": "company", "sort_order": "desc"},
+    )
+    encoded = response.headers["x-export-filters"]
+    decoded = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+
+    assert response.status_code == 200
+    assert len(list(csv.DictReader(io.StringIO(response.text, newline="")))) == 0
+    assert hostile_company not in str(response.headers)
+    assert json.loads(decoded)["company"] == hostile_company
+    assert re.fullmatch(r"[A-Za-z0-9_-]+", response.headers["x-export-sort"])
+
+    control = client.get(
+        "/api/v1/history-export.csv", params={"company": "No Match\r\nX-Fake: injected"}
+    )
+    assert control.status_code == 422
+    assert control.json()["error"]["code"] == "invalid_history_filter"
+    assert "X-Fake" not in str(control.headers)
 
 
 def test_history_exports_are_capped_and_report_truncation(client):
