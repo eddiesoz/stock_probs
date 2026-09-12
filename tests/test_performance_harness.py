@@ -55,11 +55,11 @@ def test_artifact_schema_requires_every_evidence_field():
 @pytest.mark.parametrize(
     "task_id",
     [
-        "M06",
-        "R-M06-1",
-        "M09",
-        "EXP-M09",
-        "R-M09-4",
+        *(f"M{milestone:02}" for milestone in range(10)),
+        *(f"EXP-M{milestone:02}" for milestone in range(10)),
+        *(f"R-M{milestone:02}-1" for milestone in range(10)),
+        "R-M07-5",
+        "R-M09-55",
         *(f"m{milestone:02}" for milestone in range(1, 10)),
         "check",
         "release",
@@ -70,7 +70,23 @@ def test_artifact_schema_accepts_harness_task_identities(task_id):
 
 
 @pytest.mark.parametrize(
-    "task_id", ["M10", "EXP-M10", "R-M09-0", "R-M09-nope", "m00", "m10", "development"]
+    "task_id",
+    [
+        "M10",
+        "M100",
+        "EXP-M10",
+        "EXP-M100",
+        "R-M10-1",
+        "R-M100-1",
+        "R-M07-0",
+        "R-M07-nope",
+        "R-M09-0",
+        "R-M09-nope",
+        "m00",
+        "m10",
+        "M07-extra",
+        "arbitrary",
+    ],
 )
 def test_artifact_schema_rejects_invalid_harness_task_identities(task_id):
     with pytest.raises(ValueError, match="task identity is invalid"):

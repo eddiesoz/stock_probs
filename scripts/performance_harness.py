@@ -174,7 +174,7 @@ def validate_artifact(payload: dict[str, Any], *, acceptance: bool = False) -> N
     if payload["schema_version"] != SCHEMA_VERSION or not isinstance(task_id, str):
         raise ValueError("artifact schema/task identity is invalid")
     if re.fullmatch(
-        r"(?:M06|M09|EXP-M09|R-M(?:06|09)-[1-9][0-9]*|m0[1-9]|check|release)",
+        r"(?:M0[0-9]|EXP-M0[0-9]|R-M0[0-9]-[1-9][0-9]*|m0[1-9]|check|release)",
         task_id,
     ) is None:
         raise ValueError("artifact schema/task identity is invalid")
