@@ -1,0 +1,7 @@
+{
+  "_comment": "OpenCode discovers this opt-in skill from SKILL.md frontmatter; this project catalog mirror is validated for exact parity.",
+  "name": "skill-maintenance",
+  "description": "Maintain the approved Stock Probability skill catalog by detecting justified gaps, creating or retiring project skills, regenerating the index, and validating discovery and repository boundaries. Use when a project skill is added, changed, audited, indexed, or removed.",
+  "tags": ["skills", "maintenance", "catalog", "validation", "stock-probability"],
+  "alwaysApply": false
+}

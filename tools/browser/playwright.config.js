@@ -14,7 +14,7 @@ const artifactRoot = process.env.STOCK_PROBS_BROWSER_ARTIFACT_DIR
 module.exports = defineConfig({
   testDir: "./tests",
   outputDir: path.join(artifactRoot, "test-artifacts"),
-  globalTimeout: 180_000,
+  globalTimeout: 300_000,
   timeout: 30_000,
   workers: 1,
   retries: 0,

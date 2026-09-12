@@ -7,6 +7,7 @@
   "overflow_count_max": 0,
   "request_count_max_per_navigation": 7,
   "response_bytes_max_per_navigation": 114688,
+  "static_shell_bytes_strict_max": 98304,
   "designated_response_bytes_strict_max": 8192,
   "warmups": 5,
   "measured_samples": 30,
@@ -15,6 +16,7 @@
     "/",
     "/assets/app.css",
     "/assets/app.js",
+    "/assets/theme.js",
     "/assets/favicon.svg",
     "/api/v1/readiness",
     "/api/v1/operations/backups/status",
@@ -22,7 +24,8 @@
   ],
   "justification": {
     "render_interaction_cls": "Pinned proposed M06 roadmap bounds.",
-    "request_count": "One document, three static assets, and the three API calls made by initialize().",
+    "request_count": "The parser-blocking theme asset raises the measured six-request navigation baseline to seven.",
+    "static_shell_bytes": "All shipped HTML, CSS, JavaScript, and favicon source stays below 96 KiB raw.",
     "response_bytes": "112 KiB permits the sub-96 KiB static shell plus bounded API bodies without compression assumptions.",
     "designated_response": "The readiness response is the designated sub-8 KiB response."
   }

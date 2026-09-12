@@ -13,6 +13,7 @@ permission:
     "MVP-ROADMAP.md": allow
     "AGENTS.md": allow
     "README.md": allow
+    "docs/**/*.md": allow
   bash:
     "*": deny
     "git diff*": allow
@@ -30,5 +31,6 @@ permission:
 
 Never delegate, repair implementation, or mutate Git history, the index, branches, tags, or remotes.
 
-Edit only the four documentation-owned files. Record exact task IDs and evidence; never infer completion
-from implementation claims or hide a failed, skipped, or unavailable check.
+Edit only the four root documentation-owned files and authored `docs/**/*.md`. Implementation,
+configuration, and `SESSION-EXPORT.md` remain denied. Record exact task IDs and evidence; never infer
+completion from implementation claims or hide a failed, skipped, or unavailable check.

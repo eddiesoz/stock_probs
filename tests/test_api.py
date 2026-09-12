@@ -19,7 +19,7 @@ from uvicorn.protocols.http import h11_impl
 from stock_probs.api import create_app
 from stock_probs.backup import BackupError
 from stock_probs.config import Settings
-from stock_probs.domain import calculate_forecasts
+from stock_probs.domain import DomainError, calculate_forecasts
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import SCHEMA_VERSION, RepositoryError
 
@@ -28,6 +28,24 @@ def _forecast(client, symbol="ACDC", asset_type="stock"):
     """Submit through the public transport boundary rather than calling repositories."""
 
     return client.post("/api/v1/forecasts", json={"symbol": symbol, "asset_type": asset_type})
+
+
+def _news_response(symbol="ACDC", limit=5, *, items=None, cache_state="miss"):
+    selected = items if items is not None else []
+    return {
+        "query": {"symbol": symbol, "limit": limit},
+        "provider": "Yahoo Finance",
+        "as_of": "2025-01-10T12:03:00-05:00",
+        "items": selected,
+        "coverage": {
+            "returned_count": len(selected),
+            "partial_metadata": any(
+                item["publisher"] is None or item["published_at"] is None for item in selected
+            ),
+            "refresh_failed": cache_state == "stale_fallback",
+        },
+        "cache_state": cache_state,
+    }
 
 
 def test_health_readiness_and_security_headers(client):
@@ -72,6 +90,7 @@ def test_openapi_uses_concrete_success_and_safe_error_schemas(client):
         ("/api/v1/health", "get", "200"): "HealthResponse",
         ("/api/v1/readiness", "get", "200"): "ReadinessResponse",
         ("/api/v1/instruments", "get", "200"): "InstrumentLookupResponse",
+        ("/api/v1/news", "get", "200"): "NewsResponse",
         ("/api/v1/forecasts", "post", "201"): "ForecastCreationResponse",
         ("/api/v1/history", "get", "200"): "HistoryResponse",
         ("/api/v1/history-export.json", "get", "200"): "HistoryJsonExportResponse",
@@ -284,7 +303,7 @@ def test_router_method_and_mounted_asset_errors_share_safe_envelope(client):
 
 
 def test_dependency_free_api_docs_obey_the_strict_csp(client):
-    """The docs replacement must not depend on scripts, inline policy exceptions, or a CDN."""
+    """The docs replacement uses only its early local theme script, never inline code or a CDN."""
 
     response = client.get("/api/v1/docs")
 
@@ -292,7 +311,10 @@ def test_dependency_free_api_docs_obey_the_strict_csp(client):
     assert response.headers["content-type"].startswith("text/html")
     assert response.headers["content-security-policy"].startswith("default-src 'self'")
     assert "/api/v1/openapi.json" in response.text
-    assert "<script" not in response.text
+    theme_script = '<script src="/assets/theme.js"></script>'
+    assert response.text.count("<script") == 1
+    assert theme_script in response.text
+    assert response.text.index(theme_script) < response.text.index('<link rel="stylesheet"')
     assert "https://" not in response.text
 
 
@@ -372,9 +394,247 @@ def test_instrument_lookup_is_bounded_and_provider_failures_are_safe(settings):
     assert "secret" not in str(unexpected.json())
 
 
-def test_success_repeat_failure_and_searchable_history(client):
+def test_news_normalizes_symbol_and_returns_only_the_typed_service_result(client, monkeypatch):
+    calls = []
+    items = [
+        {
+            "id": "story-1",
+            "title": "ACDC reports results",
+            "publisher": "Example Wire",
+            "url": "https://example.com/news/story-1",
+            "published_at": "2025-01-10T11:00:00-05:00",
+            "related_symbols": ["ACDC", "SPY"],
+        },
+        {
+            "id": "story-2",
+            "title": "ACDC announces an update",
+            "publisher": None,
+            "url": "https://example.com/news/story-2",
+            "published_at": None,
+            "related_symbols": None,
+        },
+    ]
+
+    def news(symbol, limit=5):
+        calls.append((symbol, limit))
+        return _news_response(symbol, limit, items=items)
+
+    monkeypatch.setattr(client.app.state.service, "news", news, raising=False)
+    response = client.get("/api/v1/news", params={"symbol": " acdc ", "limit": 2})
+
+    assert response.status_code == 200
+    assert calls == [("ACDC", 2)]
+    assert response.json() == {
+        **_news_response("ACDC", 2, items=items),
+        "as_of": "2025-01-10T17:03:00Z",
+        "items": [{**items[0], "published_at": "2025-01-10T16:00:00Z"}, items[1]],
+    }
+    assert set(response.json()) == {
+        "query",
+        "provider",
+        "as_of",
+        "items",
+        "coverage",
+        "cache_state",
+    }
+    assert client.get("/api/v1/history").json()["total"] == 0
+
+
+def test_empty_news_is_a_success_and_uses_the_default_limit(client, monkeypatch):
+    monkeypatch.setattr(
+        client.app.state.service,
+        "news",
+        lambda symbol, limit=5: _news_response(symbol, limit),
+        raising=False,
+    )
+
+    response = client.get("/api/v1/news", params={"symbol": "SPY"})
+
+    assert response.status_code == 200
+    assert response.json()["query"] == {"symbol": "SPY", "limit": 5}
+    assert response.json()["items"] == []
+    assert response.json()["coverage"]["returned_count"] == 0
+
+
+def test_fixture_news_service_handoff_matches_the_public_contract(client):
+    response = client.get("/api/v1/news", params={"symbol": "ACDC", "limit": 1})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["query"] == {"symbol": "ACDC", "limit": 1}
+    assert payload["coverage"]["returned_count"] == len(payload["items"]) == 1
+    assert set(payload["items"][0]) == {
+        "id",
+        "title",
+        "publisher",
+        "url",
+        "published_at",
+        "related_symbols",
+    }
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {},
+        {"symbol": ""},
+        {"symbol": "../ACDC"},
+        {"symbol": "ACDC", "limit": "five"},
+        {"symbol": "ACDC", "limit": "5.0"},
+        {"symbol": "ACDC", "limit": 0},
+        {"symbol": "ACDC", "limit": 11},
+        {"symbol": "ACDC", "unknown": "value"},
+        [("symbol", "ACDC"), ("symbol", "SPY")],
+        [("symbol", "ACDC"), ("limit", "2"), ("limit", "3")],
+    ],
+    ids=[
+        "missing-symbol",
+        "empty-symbol",
+        "invalid-symbol",
+        "non-integer-limit",
+        "decimal-limit",
+        "limit-too-small",
+        "limit-too-large",
+        "unknown-field",
+        "duplicate-symbol",
+        "duplicate-limit",
+    ],
+)
+def test_news_rejects_invalid_unknown_and_duplicate_query_fields(client, monkeypatch, params):
+    def unexpected_call(*_args, **_kwargs):
+        raise AssertionError("invalid news query reached the service")
+
+    monkeypatch.setattr(client.app.state.service, "news", unexpected_call, raising=False)
+
+    response = client.get("/api/v1/news", params=params)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.parametrize(
+    ("service_code", "public_code", "status"),
+    [
+        ("provider_unavailable", "provider_unavailable", 502),
+        ("provider_news_invalid", "provider_unavailable", 502),
+        ("provider_busy", "provider_busy", 503),
+    ],
+)
+def test_news_preserves_safe_provider_statuses(
+    client, monkeypatch, service_code, public_code, status
+):
+    def failed_news(*_args, **_kwargs):
+        raise DomainError(
+            service_code,
+            "https://upstream.invalid/private /home/user/data",
+            status_code=status,
+        )
+
+    monkeypatch.setattr(client.app.state.service, "news", failed_news, raising=False)
+
+    response = client.get("/api/v1/news", params={"symbol": "ACDC"})
+
+    assert response.status_code == status
+    assert response.json()["error"]["code"] == public_code
+    assert "upstream.invalid" not in response.text
+    assert "/home/user" not in response.text
+
+
+def test_news_openapi_is_concrete_closed_and_has_no_empty_result_404(client):
+    contract = client.get("/api/v1/openapi.json").json()
+    operation = contract["paths"]["/api/v1/news"]["get"]
+    schemas = contract["components"]["schemas"]
+    parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+
+    assert set(parameters) == {"symbol", "limit"}
+    assert parameters["symbol"]["required"] is True
+    assert {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 15,
+    }.items() <= parameters["symbol"]["schema"].items()
+    assert {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 5,
+    }.items() <= parameters["limit"]["schema"].items()
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/NewsResponse"
+    }
+    assert "404" not in operation["responses"]
+    assert {"422", "502", "503"} <= set(operation["responses"])
+    for status in ("422", "502", "503"):
+        assert operation["responses"][status]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+    for name in ("NewsQuery", "NewsItem", "NewsCoverage", "NewsResponse"):
+        assert schemas[name]["additionalProperties"] is False
+    item_properties = schemas["NewsItem"]["properties"]
+    assert set(schemas["NewsItem"]["required"]) == {
+        "id",
+        "title",
+        "publisher",
+        "url",
+        "published_at",
+        "related_symbols",
+    }
+    assert (item_properties["id"]["minLength"], item_properties["id"]["maxLength"]) == (
+        1,
+        128,
+    )
+    assert (item_properties["title"]["minLength"], item_properties["title"]["maxLength"]) == (
+        1,
+        500,
+    )
+    assert item_properties["publisher"]["anyOf"][0]["maxLength"] == 200
+    assert item_properties["url"]["format"] == "uri"
+    assert item_properties["url"]["maxLength"] == 2048
+    assert item_properties["published_at"]["anyOf"][0]["format"] == "date-time"
+    assert item_properties["related_symbols"]["anyOf"][0]["maxItems"] == 32
+    assert schemas["NewsResponse"]["properties"]["cache_state"]["enum"] == [
+        "miss",
+        "hit",
+        "stale_fallback",
+    ]
+
+
+def test_news_rejects_malformed_service_output_without_leaking_it(settings, monkeypatch):
+    application = create_app(settings, FixtureProvider())
+    malformed = _news_response(
+        items=[
+            {
+                "id": "story-1",
+                "title": "unsafe",
+                "publisher": None,
+                "url": "http://upstream.example/private?token=secret",
+                "published_at": None,
+                "related_symbols": None,
+                "upstream_body": "do-not-leak",
+            }
+        ]
+    )
+    monkeypatch.setattr(
+        application.state.service,
+        "news",
+        lambda *_args, **_kwargs: malformed,
+        raising=False,
+    )
+
+    with TestClient(application, raise_server_exceptions=False) as isolated:
+        response = isolated.get("/api/v1/news", params={"symbol": "ACDC"})
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    assert "upstream.example" not in response.text
+    assert "secret" not in response.text
+    assert "do-not-leak" not in response.text
+
+
+def test_success_repeat_failure_and_searchable_history(client, monkeypatch):
     first = _forecast(client)
     repeated = _forecast(client)
+    monkeypatch.setattr("stock_probs.service.uuid4", lambda: "req-failure-fixed-0001")
     failed = _forecast(client, "FAIL")
 
     assert first.status_code == 201
@@ -389,12 +649,16 @@ def test_success_repeat_failure_and_searchable_history(client):
     assert repeated.json()["input"]["id"] == first.json()["input"]["id"]
     assert failed.status_code == 502
     assert failed.json()["error"]["code"] == "provider_unavailable"
-    assert failed.json()["error"]["request_id"]
+    assert failed.json()["error"]["request_id"] == "req-failure-fixed-0001"
 
     history = client.get("/api/v1/history", params={"q": "ACD", "page_size": 1}).json()
     assert history["total"] == 2
     assert history["page_size"] == 1
+    assert history["items"][0]["id"] == repeated.json()["event"]["id"]
+    assert history["items"][0]["status"] == "repeated"
     failures = client.get("/api/v1/history", params={"status": "failed"}).json()
+    assert failures["total"] == 1
+    assert failures["items"][0]["status"] == "failed"
     assert failures["items"][0]["submitted_symbol"] == "FAIL"
 
 

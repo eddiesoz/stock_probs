@@ -44,6 +44,8 @@ from stock_probs.schemas import (
     HistoryStatus,
     InstrumentIdentityResponse,
     InstrumentLookupResponse,
+    NewsQuery,
+    NewsResponse,
     OutcomeRequest,
     RestoreRequest,
     SearchRequest,
@@ -2241,6 +2243,28 @@ def create_app(
         # Resolve through app state so transport tests and runtime integrations share the
         # service's provider concurrency, normalization, and exception boundary.
         return cast(dict[str, Any], app.state.service.lookup(query, limit))
+
+    @app.get(
+        "/api/v1/news",
+        response_model=NewsResponse,
+        responses=_documented_errors(400, 403, 405, 422, 500, 502, 503),
+    )
+    def news(request: Request, query: Annotated[NewsQuery, Query()]) -> dict[str, Any]:
+        """Return current bounded headlines separately from immutable forecast records."""
+
+        if any(len(request.query_params.getlist(name)) > 1 for name in request.query_params):
+            raise DomainError("validation_error", "Request validation failed.")
+        try:
+            return cast(dict[str, Any], app.state.service.news(query.symbol, limit=query.limit))
+        except DomainError as exc:
+            public_error = {
+                422: ("validation_error", "Request validation failed."),
+                502: ("provider_unavailable", "The news provider is temporarily unavailable."),
+                503: ("provider_busy", "News retrieval capacity is busy; try again shortly."),
+            }.get(exc.status_code)
+            if public_error is None:
+                raise
+            raise DomainError(*public_error, status_code=exc.status_code) from None
 
     @app.post(
         "/api/v1/forecasts",

@@ -7,14 +7,49 @@ import json
 import re
 import sys
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL_NAME = "documentation"
 SKILL_MAX_LINES = 500
-SKILL_TAGS = ["documentation", "markdown", "taxonomy", "audit", "stock-probability"]
-SKILL_REFERENCES = ("audit.md", "authoring.md", "repository-sources.md")
+
+
+@dataclass(frozen=True)
+class SkillDefinition:
+    description: str
+    tags: tuple[str, ...]
+    references: tuple[str, ...]
+
+
+APPROVED_SKILL_CATALOG = {
+    "documentation": SkillDefinition(
+        description=(
+            "Author and audit Stock Probability documentation while preserving authoritative "
+            "sources, generated exports, taxonomy, links, metadata, and evidence-backed status. "
+            "Use when writing or reorganizing guides, documenting application behavior, "
+            "validating documentation, or reconciling evidence-supported wording."
+        ),
+        tags=("documentation", "markdown", "taxonomy", "audit", "stock-probability"),
+        references=("audit.md", "authoring.md", "repository-sources.md"),
+    ),
+    "skill-maintenance": SkillDefinition(
+        description=(
+            "Maintain the approved Stock Probability skill catalog by detecting justified gaps, "
+            "creating or retiring project skills, regenerating the index, and validating "
+            "discovery and repository boundaries. Use when a project skill is added, changed, "
+            "audited, indexed, or removed."
+        ),
+        tags=("skills", "maintenance", "catalog", "validation", "stock-probability"),
+        references=(
+            "creation.md",
+            "detection.md",
+            "index-regeneration.md",
+            "retirement.md",
+            "validation.md",
+        ),
+    ),
+}
 CATEGORIES: dict[str, tuple[str, ...]] = {
     "concepts": ("architecture.md", "forecast-model.md"),
     "configure": ("local-configuration.md",),
@@ -189,106 +224,140 @@ def _validate_taxonomy(root: Path) -> tuple[list[str], dict[Path, str]]:
     return issues, documents
 
 
-def _validate_skill(root: Path) -> tuple[list[str], list[Path]]:
-    skill_root = root / ".opencode" / "skills" / SKILL_NAME
-    skill_path = skill_root / "SKILL.md"
-    metadata_path = skill_root / "metadata.json"
+def _validate_skills(root: Path) -> tuple[list[str], list[Path]]:
+    skills_root = root / ".opencode" / "skills"
     index_path = root / ".opencode" / "SKILL-INDEX.md"
-    learnings_path = root / ".opencode" / "skills" / "learnings.md"
-    required = [skill_path, metadata_path, index_path, learnings_path]
-    issues = [f"missing skill artifact: {path}" for path in required if not path.is_file()]
-    if issues:
-        return issues, [path for path in required if path.is_file()]
+    learnings_path = skills_root / "learnings.md"
+    issues: list[str] = []
+    skill_files = [path for path in (index_path, learnings_path) if path.is_file()]
+    for path in (index_path, learnings_path):
+        if not path.is_file():
+            issues.append(f"missing skill artifact: {path}")
 
-    discovered = sorted((root / ".opencode" / "skills").glob("*/SKILL.md"))
-    if discovered != [skill_path]:
-        issues.append(
-            "project skill discovery must contain only "
-            ".opencode/skills/documentation/SKILL.md"
-        )
-    for discovered_skill in discovered:
-        line_count = len(discovered_skill.read_text(encoding="utf-8").splitlines())
+    actual_names = (
+        {path.name for path in skills_root.iterdir() if path.is_dir()}
+        if skills_root.is_dir()
+        else set()
+    )
+    approved_names = set(APPROVED_SKILL_CATALOG)
+    issues.extend(
+        f"missing admitted project skill: {name}"
+        for name in sorted(approved_names - actual_names)
+    )
+    issues.extend(
+        f"unexpected project skill: {name}" for name in sorted(actual_names - approved_names)
+    )
+
+    for name, definition in APPROVED_SKILL_CATALOG.items():
+        skill_root = skills_root / name
+        skill_path = skill_root / "SKILL.md"
+        metadata_path = skill_root / "metadata.json"
+        for path in (skill_path, metadata_path):
+            if not path.is_file():
+                issues.append(f"missing skill artifact: {path}")
+        if not skill_path.is_file():
+            continue
+
+        skill_files.append(skill_path)
+        line_count = len(skill_path.read_text(encoding="utf-8").splitlines())
         if line_count > SKILL_MAX_LINES:
             issues.append(
-                f"{discovered_skill}: active project SKILL.md must not exceed "
+                f"{skill_path}: active project SKILL.md must not exceed "
                 f"{SKILL_MAX_LINES} lines (found {line_count})"
             )
 
-    frontmatter, _, frontmatter_issues = parse_frontmatter(skill_path)
-    issues.extend(frontmatter_issues)
-    if set(frontmatter) != {"name", "description"}:
-        issues.append(f"{skill_path}: frontmatter must contain only name and description")
-    if frontmatter.get("name") != skill_root.name or not SKILL_NAME_PATTERN.fullmatch(
-        frontmatter.get("name", "")
-    ):
-        issues.append(f"{skill_path}: skill name must match its lowercase-hyphenated directory")
-    description = frontmatter.get("description", "")
+        frontmatter, _, frontmatter_issues = parse_frontmatter(skill_path)
+        issues.extend(frontmatter_issues)
+        if set(frontmatter) != {"name", "description"}:
+            issues.append(f"{skill_path}: frontmatter must contain only name and description")
+        if frontmatter.get("name") != name or not SKILL_NAME_PATTERN.fullmatch(
+            frontmatter.get("name", "")
+        ):
+            issues.append(f"{skill_path}: skill name must match its lowercase-hyphenated directory")
+        if frontmatter.get("description") != definition.description:
+            issues.append(f"{skill_path}: description must match the approved skill catalog")
 
-    try:
-        loaded_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        issues.append(f"{metadata_path}: invalid JSON: {exc}")
-        loaded_metadata = {}
-    if not isinstance(loaded_metadata, dict):
-        issues.append(f"{metadata_path}: metadata must be a JSON object")
         metadata: dict[str, object] = {}
-    else:
-        metadata = loaded_metadata
-    expected_metadata_keys = {"_comment", "name", "description", "tags", "alwaysApply"}
-    if set(metadata) != expected_metadata_keys:
-        issues.append(f"{metadata_path}: metadata fields must match the supported project catalog")
-    if metadata.get("name") != SKILL_NAME:
-        issues.append(f"{metadata_path}: metadata name must match {SKILL_NAME}")
-    if metadata.get("description") != description:
-        issues.append(f"{metadata_path}: metadata description must match SKILL.md frontmatter")
-    if metadata.get("tags") != SKILL_TAGS:
-        issues.append(f"{metadata_path}: metadata tags must match the canonical ordered tags")
-    if metadata.get("alwaysApply") is not False:
-        issues.append(f"{metadata_path}: documentation must remain opt-in with alwaysApply false")
-    comment = metadata.get("_comment")
-    if not isinstance(comment, str) or "SKILL.md frontmatter" not in comment:
-        issues.append(f"{metadata_path}: _comment must explain the stock loader boundary")
+        if metadata_path.is_file():
+            skill_files.append(metadata_path)
+            try:
+                loaded_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                issues.append(f"{metadata_path}: invalid JSON: {exc}")
+            else:
+                if not isinstance(loaded_metadata, dict):
+                    issues.append(f"{metadata_path}: metadata must be a JSON object")
+                else:
+                    metadata = loaded_metadata
+        expected_metadata_keys = {"_comment", "name", "description", "tags", "alwaysApply"}
+        if set(metadata) != expected_metadata_keys:
+            issues.append(
+                f"{metadata_path}: metadata fields must match the supported project catalog"
+            )
+        if metadata.get("name") != name:
+            issues.append(f"{metadata_path}: metadata name must match {name}")
+        if metadata.get("description") != frontmatter.get("description"):
+            issues.append(f"{metadata_path}: metadata description must match SKILL.md frontmatter")
+        if metadata.get("tags") != list(definition.tags):
+            issues.append(f"{metadata_path}: metadata tags must match the canonical ordered tags")
+        if metadata.get("alwaysApply") is not False:
+            issues.append(f"{metadata_path}: {name} must remain opt-in with alwaysApply false")
+        comment = metadata.get("_comment")
+        if not isinstance(comment, str) or "SKILL.md frontmatter" not in comment:
+            issues.append(f"{metadata_path}: _comment must explain the stock loader boundary")
 
-    index = index_path.read_text(encoding="utf-8")
-    if "**1 skill**" not in index:
-        issues.append(f"{index_path}: skill count must be exactly one")
-    expected_link = "skills/documentation/SKILL.md"
-    if len(re.findall(rf"\]\({re.escape(expected_link)}\)", index)) != 2:
-        issues.append(f"{index_path}: expected table and directory links for {SKILL_NAME}")
-    expected_row = (
-        f"| `{SKILL_NAME}` | [`{expected_link}`]({expected_link}) | {description} |"
-    )
-    if index.count(expected_row) != 1:
-        issues.append(
-            f"{index_path}: skill row must match SKILL.md frontmatter name and description"
+        references_root = skill_root / "references"
+        expected_references = {references_root / reference for reference in definition.references}
+        actual_references = (
+            set(references_root.rglob("*.md")) if references_root.exists() else set()
         )
-    expected_listing = f"1. [`{SKILL_NAME}`]({expected_link})"
-    if index.count(expected_listing) != 1:
-        issues.append(f"{index_path}: directory listing must match the canonical name and path")
+        issues.extend(
+            f"missing skill reference: {path}"
+            for path in sorted(expected_references - actual_references)
+        )
+        issues.extend(
+            f"unexpected skill reference: {path}"
+            for path in sorted(actual_references - expected_references)
+        )
+        skill_text = skill_path.read_text(encoding="utf-8")
+        linked_targets = [
+            _link_target(match.group(1)) for match in MARKDOWN_LINK.finditer(skill_text)
+        ]
+        for reference in definition.references:
+            target = f"references/{reference}"
+            if target not in linked_targets:
+                issues.append(f"{skill_path}: missing reference link: {target}")
+        skill_files.extend(sorted(actual_references))
 
-    references_root = skill_root / "references"
-    expected_references = {references_root / name for name in SKILL_REFERENCES}
-    actual_references = set(references_root.rglob("*.md")) if references_root.exists() else set()
-    issues.extend(
-        f"missing skill reference: {path}"
-        for path in sorted(expected_references - actual_references)
-    )
-    issues.extend(
-        f"unexpected skill reference: {path}"
-        for path in sorted(actual_references - expected_references)
-    )
-    skill_text = skill_path.read_text(encoding="utf-8")
-    linked_targets = [_link_target(match.group(1)) for match in MARKDOWN_LINK.finditer(skill_text)]
-    for name in SKILL_REFERENCES:
-        target = f"references/{name}"
-        if target not in linked_targets:
-            issues.append(f"{skill_path}: missing reference link: {target}")
+    if index_path.is_file():
+        index = index_path.read_text(encoding="utf-8")
+        count = len(APPROVED_SKILL_CATALOG)
+        if f"**{count} skills**" not in index:
+            issues.append(f"{index_path}: skill count must be exactly {count}")
+        expected_links: list[str] = []
+        for position, (name, definition) in enumerate(APPROVED_SKILL_CATALOG.items(), start=1):
+            expected_link = f"skills/{name}/SKILL.md"
+            expected_links.extend([expected_link, expected_link])
+            expected_row = (
+                f"| `{name}` | [`{expected_link}`]({expected_link}) | {definition.description} |"
+            )
+            if index.count(expected_row) != 1:
+                issues.append(
+                    f"{index_path}: skill row must match SKILL.md frontmatter name and description"
+                )
+            expected_listing = f"{position}. [`{name}`]({expected_link})"
+            if index.count(expected_listing) != 1:
+                issues.append(
+                    f"{index_path}: directory listing must match the canonical name and path"
+                )
+        indexed_links = re.findall(r"\]\((skills/[^)]+/SKILL\.md)\)", index)
+        if sorted(indexed_links) != sorted(expected_links):
+            issues.append(f"{index_path}: skill links must exactly match the approved catalog")
 
-    skill_files = [skill_path, index_path, learnings_path]
-    skill_files.extend(sorted(actual_references))
     for path in skill_files:
-        issues.extend(_validate_links(path, path.read_text(encoding="utf-8"), root))
-    return issues, [*skill_files, metadata_path]
+        if path.suffix.lower() == ".md":
+            issues.extend(_validate_links(path, path.read_text(encoding="utf-8"), root))
+    return issues, skill_files
 
 
 def _validate_secrets(paths: list[Path]) -> list[str]:
@@ -305,7 +374,7 @@ def validate_repository(root: Path = ROOT) -> list[str]:
     """Return stable sorted validation issues; an empty list is a pass."""
 
     taxonomy_issues, documents = _validate_taxonomy(root)
-    skill_issues, skill_files = _validate_skill(root)
+    skill_issues, skill_files = _validate_skills(root)
     secret_paths = [*documents, *skill_files]
     return sorted({*taxonomy_issues, *skill_issues, *_validate_secrets(secret_paths)})
 
@@ -320,7 +389,7 @@ def main() -> int:
     topic_count = sum(len(topics) for topics in CATEGORIES.values())
     print(
         f"Documentation validation passed: {len(CATEGORIES)} categories, "
-        f"{topic_count} topics, 1 project skill."
+        f"{topic_count} topics, {len(APPROVED_SKILL_CATALOG)} project skills."
     )
     return 0
 

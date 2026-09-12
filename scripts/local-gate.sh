@@ -5,12 +5,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TASK_ID="${TASK_ID:-M01}"
 PROFILE="${1:-m01}"
-if (( $# > 1 )) || [[ ! "$PROFILE" =~ ^(m01|m02|m03|m04|m06|check|release)$ ]]; then
-  printf 'Usage: %s [m01|m02|m03|m04|m06|check|release]\n' "${0##*/}" >&2
+if (( $# > 1 )) || [[ ! "$PROFILE" =~ ^(m01|m02|m03|m04|m06|m09|check|release)$ ]]; then
+  printf 'Usage: %s [m01|m02|m03|m04|m06|m09|check|release]\n' "${0##*/}" >&2
   exit 2
 fi
-if [[ ! "$TASK_ID" =~ ^(M0[0-8]|R-M0[0-8]-[1-9][0-9]*)$ ]]; then
-  printf 'TASK_ID must be an M00-M08 or R-M##-<n> identifier.\n' >&2
+if [[ ! "$TASK_ID" =~ ^(M0[0-9]|R-M0[0-9]-[1-9][0-9]*)$ ]]; then
+  printf 'TASK_ID must be an M00-M09 or R-M##-<n> identifier.\n' >&2
   exit 2
 fi
 
@@ -231,6 +231,23 @@ case "$PROFILE" in
     COMPLETED_CHECKS+=("arm64-native-or-explicitly-emulated-package-runtime")
     run_performance
     COMPLETED_CHECKS+=("mandatory-native-performance")
+    ;;
+  m09)
+    require_performance_acceptance
+    run_ponytail_precondition
+    COMPLETED_CHECKS+=("ponytail-review-interface-available-not-invoked")
+    run_package
+    COMPLETED_CHECKS+=("native-package")
+    run_check
+    COMPLETED_CHECKS+=("python-checks")
+    run_browser
+    COMPLETED_CHECKS+=("responsive-browser-visual-accessibility-theme-news")
+    run_mcp
+    COMPLETED_CHECKS+=("playwright-mcp")
+    run_arm64
+    COMPLETED_CHECKS+=("arm64-native-or-explicitly-emulated-package-runtime")
+    run_performance
+    COMPLETED_CHECKS+=("mandatory-native-m09-performance")
     ;;
   release)
     require_performance_acceptance

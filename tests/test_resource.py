@@ -1,4 +1,4 @@
-"""M01/M02/M03/M06 resource and portability checks keep local work explicitly bounded."""
+"""M01/M02/M03/M06/M09 resource and portability checks keep local work bounded."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def test_package_and_local_gate_cover_portable_runtime_assets():
     assert "scripts/install-node.sh" in makefile
     assert all(
         target in makefile
-        for target in ("package-check:", "m01-gate:", "m02-gate:", "m03-gate:")
+        for target in ("package-check:", "m01-gate:", "m02-gate:", "m03-gate:", "m09-gate:")
     )
     assert "set -euo pipefail" in local_gate and '"result": result' in local_gate
     assert "make " not in local_gate and "run_check" in local_gate and "m03)" in local_gate
@@ -99,6 +99,7 @@ def test_dashboard_and_price_slice_stay_lightweight(client):
             "/api/v1/docs",
             "/assets/app.css",
             "/assets/app.js",
+            "/assets/theme.js",
             "/assets/favicon.svg",
         )
     )

@@ -11,6 +11,8 @@ import pytest
 from stock_probs.domain import (
     Bar,
     DomainError,
+    NewsData,
+    NewsItem,
     calculate_forecasts,
     evaluate_outcome,
     label_fresh_historical_analysis,
@@ -536,3 +538,57 @@ def test_company_lookup_query_retains_names_but_rejects_controls_and_unbounded_i
     with pytest.raises(DomainError) as oversized:
         normalize_lookup_query("X" * 81)
     assert oversized.value.code == "invalid_lookup_query"
+
+
+def test_news_domain_normalizes_utc_and_serializes_only_transport_fields():
+    item = NewsItem(
+        id="story-1",
+        title="A bounded headline",
+        publisher=None,
+        published_at=datetime(2025, 1, 10, 12, tzinfo=ZoneInfo("America/New_York")),
+        url="https://finance.yahoo.com/news/story-1.html",
+        related_symbols=("SPY", "SPY", "CL=F"),
+    )
+    data = NewsData("SPY", "Yahoo Finance", NOW, (item,))
+
+    assert item.published_at == datetime(2025, 1, 10, 17, tzinfo=UTC)
+    assert item.related_symbols == ("SPY", "CL=F")
+    assert data.as_dict(limit=1, cache_state="miss") == {
+        "query": {"symbol": "SPY", "limit": 1},
+        "provider": "Yahoo Finance",
+        "as_of": NOW.isoformat(),
+        "cache_state": "miss",
+        "items": [
+            {
+                "id": "story-1",
+                "title": "A bounded headline",
+                "publisher": None,
+                "published_at": "2025-01-10T17:00:00+00:00",
+                "url": "https://finance.yahoo.com/news/story-1.html",
+                "related_symbols": ["SPY", "CL=F"],
+            }
+        ],
+        "coverage": {
+            "returned_count": 1,
+            "partial_metadata": True,
+            "refresh_failed": False,
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://example.com/story",
+        "https://user@example.com/story",
+        "https://localhost/story",
+        "https://10.0.0.1/story",
+        "https://[::1]/story",
+        "https://example.com:444/story",
+        "https://example.com/story\nnext",
+    ],
+)
+def test_news_domain_rejects_unsafe_article_destinations(url):
+    with pytest.raises(DomainError) as failure:
+        NewsItem("id", "headline", "source", NOW, url)
+    assert failure.value.code == "provider_news_invalid"

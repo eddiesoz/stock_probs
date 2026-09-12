@@ -10,6 +10,7 @@ const root = path.resolve(__dirname, "../../..");
 const budgets = require("../performance-budgets.json");
 const artifactPath = process.env.STOCK_PROBS_PERFORMANCE_ARTIFACT;
 const nativeArchitecture = process.arch === "x64" ? "x86_64" : process.arch;
+const staticShellPaths = ["index.html", "api-docs.html", "app.css", "app.js", "theme.js", "favicon.svg"];
 
 function isoNow() {
   return new Date().toISOString();
@@ -118,6 +119,10 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
   test.skip(process.env.STOCK_PROBS_PERFORMANCE !== "1", "Run only through the M06 harness.");
   test.setTimeout(180_000);
   const startedUtc = isoNow();
+  const staticShell = Object.fromEntries(await Promise.all(staticShellPaths.map(async (name) => (
+    [name, (await fs.stat(path.join(root, "src/stock_probs/static", name))).size]
+  ))));
+  const staticShellBytes = Object.values(staticShell).reduce((total, size) => total + size, 0);
   const runtime = testInfo.outputPath("runtime");
   await fs.rm(runtime, { recursive: true, force: true });
   await fs.mkdir(runtime, { recursive: true });
@@ -151,6 +156,7 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
   const networkResponses = [];
   const networkRequestItems = new Map();
   const networkBodies = [];
+  let m09Browser = null;
   let networkPhase = "startup";
   let readinessAttempts = [];
   let runError = null;
@@ -307,6 +313,71 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
     }
     for (let index = 0; index < budgets.warmups; index += 1) interactionWarmups.push(await interaction());
     for (let index = 0; index < budgets.measured_samples; index += 1) interactionSamples.push(await interaction());
+    if (process.env.STOCK_PROBS_PERFORMANCE_M09 === "true") {
+      page.off("request", auditRequest);
+      page.off("response", auditResponse);
+      page.off("requestfailed", auditRequestFailed);
+      m09Browser = {
+        startedUtc: isoNow(), themeWarmups: [], themeSamples: [],
+        renderWarmups: [], renderSamples: [], itemCounts: [],
+      };
+      await Promise.all([
+        page.waitForResponse((response) => response.url().includes("/api/v1/forecasts")),
+        page.locator("#forecast-submit").click(),
+      ]);
+      await page.locator(".news-panel").waitFor();
+      const fixtureItems = Array.from({ length: 10 }, (_, index) => ({
+        id: `fixture-${index + 1}`,
+        title: `Fixture headline ${index + 1}`,
+        publisher: "Fixture News",
+        published_at: "2025-01-10T17:00:00Z",
+        url: `https://example.com/news/${index + 1}`,
+        related_symbols: ["ACDC"],
+      }));
+      await page.route("**/api/v1/news?*", (route) => route.fulfill({
+        json: {
+          query: { symbol: "ACDC", limit: 10 },
+          provider: "deterministic browser fixture",
+          as_of: "2025-01-10T17:03:00Z",
+          items: fixtureItems,
+          coverage: { returned_count: 10, partial_metadata: false, refresh_failed: false },
+          cache_state: "hit",
+        },
+      }));
+      const themeControl = page.locator('.theme-control [name="theme"]');
+      for (let index = 0; index < budgets.warmups + budgets.measured_samples; index += 1) {
+        await page.evaluate(() => { window.__themeActionStart = performance.now(); });
+        const selected = index % 2 ? "light" : "dark";
+        await themeControl.selectOption(selected);
+        const elapsed = await page.evaluate(async (value) => {
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          if (document.documentElement.dataset.theme !== value) throw new Error("theme did not paint");
+          return performance.now() - window.__themeActionStart;
+        }, selected);
+        (index < budgets.warmups ? m09Browser.themeWarmups : m09Browser.themeSamples).push(elapsed);
+      }
+      await page.locator(".news-panel summary").click();
+      await page.locator('.news-content[data-state="fresh"], .news-content[data-state="partial"]').waitFor();
+      for (let index = 0; index < budgets.warmups + budgets.measured_samples; index += 1) {
+        const sample = await page.evaluate(async () => {
+          performance.clearResourceTimings();
+          const content = document.querySelector(".news-content");
+          await window.loadNews(content, "ACDC", 10);
+          const entries = performance.getEntriesByType("resource")
+            .filter((entry) => entry.name.includes("/api/v1/news?"));
+          const responseEnd = entries.at(-1)?.responseEnd;
+          if (responseEnd === undefined) throw new Error("news response timing is missing");
+          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          return {
+            elapsed: performance.now() - responseEnd,
+            itemCount: content.querySelectorAll(".news-list > li").length,
+          };
+        });
+        (index < budgets.warmups ? m09Browser.renderWarmups : m09Browser.renderSamples)
+          .push(sample.elapsed);
+        if (index >= budgets.warmups) m09Browser.itemCounts.push(sample.itemCount);
+      }
+    }
   } catch (error) {
     runError = `${error.constructor.name}: ${error.message}`;
   } finally {
@@ -383,12 +454,13 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
     || !cleanupProof.database_removed || cleanupProof.error) failures.push("browser runtime cleanup failed");
   if (measuredNavigations.some((sample) => sample.request_count > budgets.request_count_max_per_navigation)) failures.push("request count exceeded");
   if (measuredNavigations.some((sample) => sample.response_bytes > budgets.response_bytes_max_per_navigation)) failures.push("response bytes exceeded");
+  if (staticShellBytes >= budgets.static_shell_bytes_strict_max) failures.push("static shell bytes exceeded");
   if (measuredNavigations.some((sample) => sample.designated_response_bytes === null
     || sample.designated_response_bytes >= budgets.designated_response_bytes_strict_max)) failures.push("designated response bytes exceeded");
   const result = failures.length ? "Fail" : "Pass";
   const payload = {
     schema_version: 1,
-    task_id: "M06",
+    task_id: process.env.STOCK_PROBS_TASK_ID || "M06",
     row: "browser-budgets",
     fixture_identity: {
       name: "checked-in compact fixture / empty isolated browser history",
@@ -435,6 +507,7 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
       render_samples: measuredNavigations,
       layout_samples: layoutSamples,
       interaction_samples_ms: interactionSamples,
+      static_shell: { files: staticShell, bytes: staticShellBytes },
       requests: allRequests,
       responses: allResponses,
       unexpected_requests: unexpectedRequests,
@@ -446,6 +519,7 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
       console_result: runError === null ? "no runner error" : runError,
       lighthouse_used: false,
       external_network_used: externalRequests.length > 0,
+      ...(m09Browser && { m09_browser: m09Browser }),
       failures,
     },
     threshold: { class: "proposed browser budgets", manifest: "tools/browser/performance-budgets.json", ...budgets },

@@ -1,4 +1,4 @@
-"""Run deterministic native-host M06 performance checks and retain row-level JSON evidence."""
+"""Run deterministic native-host M06/M09 performance checks and retain row-level evidence."""
 
 from __future__ import annotations
 
@@ -38,13 +38,18 @@ READINESS_LIMIT_MS = 20_000.0
 IDLE_CPU_LIMIT_CORE_PERCENT = 1.0
 STATIC_LIMIT_BYTES = 96 * 1024
 RESPONSE_LIMIT_BYTES = 8 * 1024
+NEWS_RESPONSE_LIMIT_BYTES = 32 * 1024
+NEWS_ENDPOINT_P95_LIMIT_MS = 100.0
+THEME_ACTION_P95_LIMIT_MS = 100.0
+NEWS_RENDER_P95_LIMIT_MS = 250.0
+NEWS_PROVIDER_DEADLINE_SECONDS = 10.0
 CONCURRENCY_P95_LIMIT_MS = 3_000.0
 CONCURRENCY_BATCH_LIMIT_MS = 5_000.0
 PACKAGE_LIMIT_BYTES = 131_072
 PACKAGE_BUILD_LIMIT_MS = 5_000.0
 BACKUP_LIMIT_MS = 5_000.0
 RESTORE_LIMIT_MS = 5_000.0
-REQUIRED_ROWS = {
+M06_REQUIRED_ROWS = {
     "runtime-isolation",
     "sample-protocol",
     "process-rss",
@@ -59,6 +64,14 @@ REQUIRED_ROWS = {
     "browser-budgets",
     "arm64-performance-limitation",
 }
+M09_REQUIRED_ROWS = M06_REQUIRED_ROWS | {
+    "theme-action-to-painted-theme",
+    "news-cache-hit-endpoint",
+    "ten-item-news-render",
+    "news-response-bytes",
+    "provider-deadline",
+}
+ALL_ROWS = M09_REQUIRED_ROWS
 REQUIRED_FIELDS = {
     "schema_version",
     "task_id",
@@ -148,13 +161,24 @@ def acceptance_precondition_errors(profile: str, dirty: bool, reviewer: object) 
     return errors
 
 
+def required_rows(profile: str) -> set[str]:
+    return M09_REQUIRED_ROWS if profile in {"m09", "release"} else M06_REQUIRED_ROWS
+
+
 def validate_artifact(payload: dict[str, Any], *, acceptance: bool = False) -> None:
     missing = REQUIRED_FIELDS - set(payload)
     if missing:
         raise ValueError(f"artifact is missing required fields: {sorted(missing)}")
-    if payload["schema_version"] != SCHEMA_VERSION or payload["task_id"] != TASK_ID:
+    task_id = payload["task_id"]
+    if payload["schema_version"] != SCHEMA_VERSION or not isinstance(task_id, str):
         raise ValueError("artifact schema/task identity is invalid")
-    if payload["row"] not in REQUIRED_ROWS or payload["result"] not in RESULTS:
+    if not (
+        task_id in {"M06", "M09"}
+        or task_id.startswith("R-M06-")
+        or task_id.startswith("R-M09-")
+    ):
+        raise ValueError("artifact schema/task identity is invalid")
+    if payload["row"] not in ALL_ROWS or payload["result"] not in RESULTS:
         raise ValueError("artifact row/result is invalid")
     if not isinstance(payload["command"], list) or not payload["command"]:
         raise ValueError("artifact command must be a non-empty argv list")
@@ -180,10 +204,36 @@ def validate_artifact(payload: dict[str, Any], *, acceptance: bool = False) -> N
     ):
         raise ValueError("artifact measured metrics are missing or invalid")
     row = payload["row"]
-    if row in {"fixture-cache-hit-forecast", "indexed-100k-history-query"} and (
+    if payload["result"] == "Pass" and row in {
+        "fixture-cache-hit-forecast",
+        "indexed-100k-history-query",
+        "theme-action-to-painted-theme",
+        "news-cache-hit-endpoint",
+        "ten-item-news-render",
+        "news-response-bytes",
+    } and (
         warmups["count"] < WARMUP_COUNT or measured["count"] < MEASURED_COUNT
     ):
         raise ValueError("designated request workload has too few warmups or samples")
+    if row in {
+        "theme-action-to-painted-theme",
+        "news-cache-hit-endpoint",
+        "ten-item-news-render",
+        "news-response-bytes",
+        "provider-deadline",
+    }:
+        samples = measured["raw"]
+        threshold = payload["threshold"]
+        if payload["result"] == "Pass" and (
+            not isinstance(samples, list) or len(samples) != measured["count"] or not samples
+        ):
+            raise ValueError("M09 performance samples are missing or inconsistent")
+        if (
+            not isinstance(threshold, dict)
+            or threshold.get("operator") not in {"<", "<="}
+            or not isinstance(threshold.get("value"), int | float)
+        ):
+            raise ValueError("M09 performance threshold bound is missing or invalid")
     if row == "browser-budgets" and (
         warmups["count"] < WARMUP_COUNT or measured["count"] < MEASURED_COUNT
     ):
@@ -396,6 +446,7 @@ class Harness:
         self.revision, self.dirty = _git_revision()
         self.architecture = platform.machine().lower()
         self.profile = profile
+        self.task_id = os.getenv("STOCK_PROBS_TASK_ID", "M09" if profile == "m09" else TASK_ID)
         self.reviewer = os.getenv("PERFORMANCE_REVIEWER", "PENDING_INDEPENDENT_REVIEW")
         self.command = [sys.executable, "scripts/performance_harness.py", "--profile", profile]
         self.rows: dict[str, dict[str, Any]] = {}
@@ -422,7 +473,7 @@ class Harness:
         artifact_name = f"{row}.json"
         payload = {
             "schema_version": SCHEMA_VERSION,
-            "task_id": TASK_ID,
+            "task_id": self.task_id,
             "row": row,
             "fixture_identity": fixture or self.fixture,
             "isolation": isolation or self.isolation,
@@ -632,6 +683,9 @@ class Harness:
                         ),
                     )
 
+                    if self.profile in {"m09", "release"}:
+                        self._measure_news(port, process.pid)
+
                     history_started = utc_now()
                     connection = sqlite3.connect(database)
                     try:
@@ -831,7 +885,11 @@ class Harness:
                         {
                             "PATH": f"{ROOT / '.tools/node/bin'}:{browser_env.get('PATH', '')}",
                             "STOCK_PROBS_PERFORMANCE": "1",
+                            "STOCK_PROBS_PERFORMANCE_M09": str(
+                                self.profile in {"m09", "release"}
+                            ).lower(),
                             "STOCK_PROBS_PERFORMANCE_ARTIFACT": str(browser_artifact),
+                            "STOCK_PROBS_TASK_ID": self.task_id,
                             "PERFORMANCE_REVIEWER": self.reviewer,
                             "STOCK_PROBS_REVISION": self.revision,
                             "STOCK_PROBS_WORKING_TREE_DIRTY": str(self.dirty).lower(),
@@ -878,6 +936,12 @@ class Harness:
                                 json.dumps(browser_payload, indent=2) + "\n"
                             )
                         self.rows["browser-budgets"] = browser_payload
+
+                    if self.profile in {"m09", "release"}:
+                        self._write_m09_browser_rows(
+                            self.rows["browser-budgets"],
+                            completed,
+                        )
 
                     idle_started = utc_now()
                     cpu_samples: list[dict[str, float]] = []
@@ -961,6 +1025,8 @@ class Harness:
             self._write_rss_row()
             self._write_protocol_row()
             self._write_static_row(readiness_body)
+            if self.profile in {"m09", "release"}:
+                self._write_provider_deadline_row()
             self._write_package_row(temp)
             self._write_backup_row(runtime)
             self.write_row(
@@ -993,6 +1059,184 @@ class Harness:
         self._write_arm_row()
         return self.finish()
 
+    def _write_m09_browser_rows(
+        self,
+        browser_payload: dict[str, Any],
+        completed: subprocess.CompletedProcess[str],
+    ) -> None:
+        raw = browser_payload.get("raw", {}).get("m09_browser") or {}
+        started = raw.get("startedUtc", browser_payload["utc"]["start"])
+        for row, warmup_key, sample_key, limit in (
+            (
+                "theme-action-to-painted-theme",
+                "themeWarmups",
+                "themeSamples",
+                THEME_ACTION_P95_LIMIT_MS,
+            ),
+            ("ten-item-news-render", "renderWarmups", "renderSamples", NEWS_RENDER_P95_LIMIT_MS),
+        ):
+            warmups = [float(value) for value in raw.get(warmup_key, [])]
+            samples = [float(value) for value in raw.get(sample_key, [])]
+            valid_items = row != "ten-item-news-render" or (
+                len(raw.get("itemCounts", [])) >= MEASURED_COUNT
+                and all(count == 10 for count in raw["itemCounts"])
+            )
+            result = sample_result(samples, limit, "<=", MEASURED_COUNT)
+            if (
+                completed.returncode != 0
+                or browser_payload.get("result") != "Pass"
+                or not valid_items
+            ):
+                result = "Fail"
+            self.write_row(
+                row,
+                started=started,
+                warmups={
+                    "count": len(warmups),
+                    "excluded": True,
+                    "raw_ms": [round(value, 3) for value in warmups],
+                },
+                measured={
+                    "count": len(samples),
+                    "unit": "ms",
+                    "raw": [round(value, 3) for value in samples],
+                },
+                statistics=statistics_for(samples, "ms"),
+                raw={
+                    "browser": "pinned Playwright Chromium",
+                    "action": (
+                        "actual theme control action through two animation frames"
+                        if row == "theme-action-to-painted-theme"
+                        else (
+                            "ten validated news items from responseEnd through two animation frames"
+                        )
+                    ),
+                    "item_counts": raw.get("itemCounts", []) if "news" in row else None,
+                    "exit_code": completed.returncode,
+                    "stdout": completed.stdout[-4_096:],
+                    "stderr": completed.stderr[-4_096:],
+                },
+                threshold={
+                    "class": "M09 numeric threshold",
+                    "operator": "<=",
+                    "value": limit,
+                    "unit": "ms p95",
+                },
+                result=result,
+                limitation=(
+                    None
+                    if result == "Pass"
+                    else "Browser samples, painted state, or ten-item validation failed."
+                ),
+                fixture={
+                    "name": (
+                        "deterministic ten-item browser response"
+                        if "news" in row
+                        else "dashboard theme control"
+                    ),
+                    "symbol": "ACDC",
+                    "news_items_required": 10 if "news" in row else None,
+                },
+                isolation=browser_payload["isolation"],
+                command=completed.args,
+            )
+
+    def _measure_news(self, port: int, pid: int) -> None:
+        started = utc_now()
+        request = lambda: _request(  # noqa: E731
+            port, "GET", "/api/v1/news?symbol=ACDC&limit=10"
+        )
+        prime_ms, prime_status, prime_body = request()
+        if prime_status != 200:
+            raise RuntimeError(f"news cache prime returned HTTP {prime_status}")
+        warmups, warmup_responses = self._measure_requests(
+            WARMUP_COUNT, request, 200, pid, "news-warmup"
+        )
+        samples, responses = self._measure_requests(
+            MEASURED_COUNT, request, 200, pid, "news-measured"
+        )
+        decoded = [
+            json.loads(_request(port, "GET", "/api/v1/news?symbol=ACDC&limit=10")[2])
+        ]
+        cache_states = [
+            json.loads(body).get("cache_state") for _, _, body in [request() for _ in range(2)]
+        ]
+        endpoint_result = sample_result(
+            samples, NEWS_ENDPOINT_P95_LIMIT_MS, "<=", MEASURED_COUNT
+        )
+        if any(state != "hit" for state in cache_states):
+            endpoint_result = "Fail"
+        common_raw = {
+            "route": "GET /api/v1/news",
+            "query": "symbol=ACDC&limit=10",
+            "cache_condition": "one prime request precedes all excluded warmups and samples",
+            "prime": {
+                "elapsed_ms": round(prime_ms, 3),
+                "status": prime_status,
+                "bytes": len(prime_body),
+                "cache_state": json.loads(prime_body).get("cache_state"),
+            },
+            "verification_cache_states": cache_states,
+            "decoded_item_count": len(decoded[0].get("items", [])),
+            "warmup_responses": warmup_responses,
+            "measured_responses": responses,
+        }
+        self.write_row(
+            "news-cache-hit-endpoint",
+            started=started,
+            warmups={
+                "count": len(warmups),
+                "excluded": True,
+                "raw_ms": [round(value, 3) for value in warmups],
+            },
+            measured={
+                "count": len(samples),
+                "unit": "ms",
+                "raw": [round(value, 3) for value in samples],
+            },
+            statistics=statistics_for(samples, "ms"),
+            raw=common_raw,
+            threshold={
+                "class": "M09 numeric threshold",
+                "operator": "<=",
+                "value": NEWS_ENDPOINT_P95_LIMIT_MS,
+                "unit": "ms p95",
+            },
+            result=endpoint_result,
+        )
+        response_sizes = [float(item["bytes"]) for item in responses]
+        self.write_row(
+            "news-response-bytes",
+            started=started,
+            warmups={
+                "count": len(warmup_responses),
+                "excluded": True,
+                "raw": [item["bytes"] for item in warmup_responses],
+            },
+            measured={
+                "count": len(response_sizes),
+                "unit": "bytes",
+                "raw": response_sizes,
+            },
+            statistics=statistics_for(response_sizes, "bytes"),
+            raw={**common_raw, "measurement": "decoded HTTP response-body bytes"},
+            threshold={
+                "class": "M09 numeric threshold",
+                "operator": "<=",
+                "value": NEWS_RESPONSE_LIMIT_BYTES,
+                "unit": "bytes maximum",
+            },
+            result=(
+                "Pass"
+                if len(response_sizes) >= MEASURED_COUNT
+                and all(
+                    strict_threshold(value, "<=", NEWS_RESPONSE_LIMIT_BYTES)
+                    for value in response_sizes
+                )
+                else "Fail"
+            ),
+        )
+
     def _write_rss_row(self) -> None:
         started = self.rows["readiness"]["utc"]["start"]
         values = [float(sample["VmRSS"]) for sample in self.rss_samples]
@@ -1021,18 +1265,26 @@ class Harness:
         )
 
     def _write_protocol_row(self) -> None:
+        workloads = {"fixture-cache-hit-forecast", "indexed-100k-history-query"}
+        if self.profile in {"m09", "release"}:
+            workloads |= {
+                "theme-action-to-painted-theme",
+                "news-cache-hit-endpoint",
+                "ten-item-news-render",
+                "news-response-bytes",
+            }
         designated = {
             row: {
                 "warmups": payload["warmups"].get("count", 0),
                 "samples": payload["measured_samples"].get("count", 0),
             }
             for row, payload in self.rows.items()
-            if row in {"fixture-cache-hit-forecast", "indexed-100k-history-query"}
+            if row in workloads
         }
         passed = all(
             item["warmups"] >= WARMUP_COUNT and item["samples"] >= MEASURED_COUNT
             for item in designated.values()
-        ) and len(designated) == 2
+        ) and set(designated) == workloads
         self.write_row(
             "sample-protocol",
             started=min(payload["utc"]["start"] for payload in self.rows.values()),
@@ -1059,7 +1311,7 @@ class Harness:
     def _write_static_row(self, readiness_body: bytes) -> None:
         started = utc_now()
         static_root = ROOT / "src/stock_probs/static"
-        files = [
+        files: list[dict[str, Any]] = [
             {"path": str(path.relative_to(ROOT)), "raw_bytes": path.stat().st_size}
             for path in sorted(static_root.iterdir())
             if path.is_file()
@@ -1096,6 +1348,70 @@ class Harness:
                 "response": {"operator": "<", "value": RESPONSE_LIMIT_BYTES, "unit": "raw bytes"},
             },
             result="Pass" if passed else "Fail",
+        )
+
+    def _write_provider_deadline_row(self) -> None:
+        started = utc_now()
+        import stock_probs.provider as provider_module
+
+        observed: list[float] = []
+
+        class Response:
+            status_code = 200
+
+        class Session:
+            def __enter__(self) -> Session:
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+            def get(self, _url: str, **kwargs: Any) -> Response:
+                observed.append(float(kwargs["timeout"]))
+                callback = kwargs["content_callback"]
+                callback(b'{"news":[]}')
+                return Response()
+
+        original_session = provider_module.curl_requests.Session
+        try:
+            provider_module.curl_requests.Session = Session
+            now = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+            for configured in (8.0, 20.0):
+                provider_module.YahooProvider(configured).fetch_news("ACDC", 10, now)
+        finally:
+            provider_module.curl_requests.Session = original_session
+        expected = [min(value, NEWS_PROVIDER_DEADLINE_SECONDS) for value in (8.0, 20.0)]
+        passed = len(observed) == len(expected) and all(
+            0 <= expected_value - observed_value < 0.1
+            and strict_threshold(observed_value, "<=", NEWS_PROVIDER_DEADLINE_SECONDS)
+            for observed_value, expected_value in zip(observed, expected, strict=True)
+        )
+        self.write_row(
+            "provider-deadline",
+            started=started,
+            warmups={"count": 0, "excluded": True, "raw": []},
+            measured={"count": len(observed), "unit": "seconds", "raw": observed},
+            statistics=statistics_for(observed, "seconds"),
+            raw={
+                "configured_provider_timeout_seconds": [8.0, 20.0],
+                "expected_effective_seconds": expected,
+                "captured_transport_timeout_seconds": observed,
+                "network_used": False,
+                "fixture": "in-process transport captures the actual Yahoo news timeout argument",
+            },
+            threshold={
+                "class": "M09 numeric threshold",
+                "operator": "<=",
+                "value": NEWS_PROVIDER_DEADLINE_SECONDS,
+                "unit": "seconds",
+                "effective": "min(provider_timeout, 10 seconds)",
+            },
+            result="Pass" if passed else "Fail",
+            limitation=(
+                None
+                if passed
+                else "Provider timeout propagation did not match the required cap."
+            ),
         )
 
     def _write_package_row(self, temp: Path) -> None:
@@ -1291,7 +1607,8 @@ class Harness:
         )
 
     def finish(self) -> int:
-        missing = sorted(REQUIRED_ROWS - set(self.rows))
+        expected_rows = required_rows(self.profile)
+        missing = sorted(expected_rows - set(self.rows))
         invalid: list[str] = []
         for row, payload in self.rows.items():
             try:
@@ -1310,10 +1627,10 @@ class Harness:
         )
         summary = {
             "schema_version": SCHEMA_VERSION,
-            "task_id": TASK_ID,
+            "task_id": self.task_id,
             "revision": {"commit": self.revision, "dirty": self.dirty},
             "architecture": self.architecture,
-            "required_rows": sorted(REQUIRED_ROWS),
+            "required_rows": sorted(expected_rows),
             "artifacts": {row: payload["artifact"] for row, payload in sorted(self.rows.items())},
             "missing_rows": missing,
             "nonpassing_rows": sorted(
@@ -1351,7 +1668,7 @@ def main() -> None:
     parser.add_argument("--idle-seconds", type=int, default=60, help=argparse.SUPPRESS)
     parser.add_argument(
         "--profile",
-        choices=("development", "m06", "release"),
+        choices=("development", "m06", "m09", "release"),
         default="development",
         help="Choose explicit development evidence or an acceptance boundary.",
     )

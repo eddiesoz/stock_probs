@@ -7,15 +7,19 @@
   <title>API contract | Signal Ledger</title>
   <!-- This static replacement avoids Swagger's remote assets and inline CSP exceptions. -->
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <script src="/assets/theme.js"></script>
   <link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to API contract</a>
-  <header class="masthead">
+  <header class="masthead masthead-primary">
     <div>
       <p class="eyebrow">Local application boundary / v1</p>
       <h1>Signal Ledger API</h1>
     </div>
+    <label class="theme-control">Theme
+      <select name="theme" aria-label="Color theme"><option value="light">Light</option><option value="dark">Dark</option><option value="system">System</option></select>
+    </label>
   </header>
   <main id="main" tabindex="-1">
     <section class="hero" aria-labelledby="contract-heading">

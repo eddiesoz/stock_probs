@@ -3,9 +3,20 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Literal, TypeAlias
+from typing import Annotated, Literal, TypeAlias
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
+
+from stock_probs.domain import DomainError, normalize_symbol
 
 ForecastHorizon: TypeAlias = Literal["close_to_close", "completed_5m_to_close"]
 HistoryStatus: TypeAlias = Literal["successful", "failed", "repeated"]
@@ -61,6 +72,82 @@ class InstrumentLookupResponse(StrictModel):
     items: list[InstrumentIdentityResponse]
     total: int = Field(ge=0, le=5)
     limit: int = Field(ge=1, le=5)
+
+
+class NewsQuery(StrictModel):
+    symbol: str = Field(min_length=1, max_length=15, pattern=r"^[A-Z0-9.^-]+$")
+    limit: int = Field(default=5, ge=1, le=10)
+
+    @field_validator("symbol", mode="before")
+    @classmethod
+    def normalized_symbol(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("symbol is not supported")
+        try:
+            return normalize_symbol(value)
+        except DomainError:
+            raise ValueError("symbol is not supported") from None
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def integer_limit(cls, value: object) -> object:
+        if isinstance(value, str):
+            if not value.isascii() or not value.isdecimal():
+                raise ValueError("limit must be an integer")
+        elif type(value) is not int:
+            raise ValueError("limit must be an integer")
+        return value
+
+
+class NewsItem(StrictModel):
+    id: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)
+    ]
+    title: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
+    ]
+    publisher: str | None = Field(max_length=200)
+    url: HttpUrl = Field(max_length=2048)
+    published_at: AwareDatetime | None
+    related_symbols: list[str] | None = Field(max_length=32)
+
+    @field_validator("url")
+    @classmethod
+    def https_url(cls, value: HttpUrl) -> HttpUrl:
+        if value.scheme != "https":
+            raise ValueError("news URL must use HTTPS")
+        return value
+
+    @field_validator("published_at")
+    @classmethod
+    def published_at_utc(cls, value: datetime | None) -> datetime | None:
+        return value.astimezone(UTC) if value is not None else None
+
+
+class NewsCoverage(StrictModel):
+    returned_count: int = Field(ge=0, le=10)
+    partial_metadata: bool
+    refresh_failed: bool
+
+
+class NewsResponse(StrictModel):
+    query: NewsQuery
+    provider: str = Field(min_length=1, max_length=80)
+    as_of: AwareDatetime
+    items: list[NewsItem] = Field(max_length=10)
+    coverage: NewsCoverage
+    cache_state: Literal["miss", "hit", "stale_fallback"]
+
+    @field_validator("as_of")
+    @classmethod
+    def as_of_utc(cls, value: datetime) -> datetime:
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def count_matches_items(self) -> NewsResponse:
+        if self.coverage.returned_count != len(self.items) or len(self.items) > self.query.limit:
+            raise ValueError("news coverage must match the bounded returned items")
+        return self
 
 
 class OutcomeRequest(StrictModel):

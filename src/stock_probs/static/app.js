@@ -21,6 +21,7 @@ let lookupController = null;
 let lookupSequence = 0;
 let activeOption = -1;
 let chartSequence = 0;
+let newsController = null;
 const runRelationPageSize = 100;
 const runRelationMaxPages = 5;
 const runRelationMaxLookups = 10;
@@ -78,8 +79,6 @@ function contractValue(key, value) {
 }
 
 function appendContractRows(body, value, prefix = "") {
-  // Evaluation and uncertainty records are versioned server data. Flattening their bounded
-  // objects keeps every metric available as text without coupling the UI to one chart shape.
   for (const [key, item] of Object.entries(value || {})) {
     const path = prefix ? `${prefix} · ${contractLabel(key)}` : contractLabel(key);
     if (item === null || item === undefined || item === "") continue;
@@ -151,8 +150,6 @@ function compactEvaluationScores(scores) {
 
 function compactEvaluation(evaluation) {
   if (!evaluation) return null;
-  // Empty calibration bins carry no estimate. Summarizing them avoids hundreds of redundant
-  // table rows while retaining every populated model/baseline bin and its text values.
   return {
     version: evaluation.version,
     method: evaluation.method,
@@ -182,13 +179,13 @@ async function api(path, options = {}) {
   try {
     body = await response.json();
   } catch (_) {
-    // A proxy or interrupted local process may return non-JSON; keep that failure safe to render.
     body = { error: { code: "invalid_response", message: "The local service returned an invalid response." } };
   }
   if (!response.ok) {
     const error = new Error(body.error?.message || body.detail || "Local service request failed.");
     error.code = body.error?.code || "request_failed";
     error.requestId = body.error?.request_id || "";
+    error.status = response.status;
     throw error;
   }
   return body;
@@ -223,8 +220,6 @@ function renderTailChart(result) {
   description.textContent = "Probability by return threshold. Loss tails use a solid line and circles; gain tails use a dashed line and diamonds. Visible HTML labels identify both axes, and exact values follow in the details table.";
   svg.append(description);
 
-  // Keep visible text in HTML so automated contrast analysis can determine the solid figure
-  // background. The SVG retains the plotted meaning and keyboard-operable data points.
   const visual = element("div", "tail-chart-visual");
   const yTitle = element("span", "chart-axis-label chart-y-title", "PROBABILITY");
   const yTicks = element("div", "chart-y-ticks");
@@ -351,6 +346,124 @@ function clearIdentity() {
   identityConfirmation.replaceChildren();
 }
 
+function setNewsState(content, state, message) {
+  content.dataset.state = state;
+  content.setAttribute("aria-busy", String(state === "loading"));
+  const status = element("p", "news-status", message);
+  status.setAttribute("role", "status");
+  content.replaceChildren(status);
+}
+
+function supersedeNews() {
+  if (!newsController) return;
+  newsController.abort();
+  newsController = null;
+  const content = resultContent.querySelector(".news-content");
+  if (content) setNewsState(content, "superseded", "Headline request superseded because the instrument changed.");
+}
+
+function safeNewsLink(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" ? parsed.href : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function renderNews(content, data, symbol, limit) {
+  const items = data.items.slice(0, limit);
+  if (!items.length) {
+    setNewsState(content, "empty", `No current headlines were returned for ${symbol}.`);
+    return;
+  }
+  const stale = data.cache_state === "stale_fallback";
+  const partial = data.coverage.partial_metadata;
+  content.dataset.state = stale ? "stale" : partial ? "partial" : "fresh";
+  content.replaceChildren(element(
+    "p",
+    "news-status",
+    stale
+      ? "Showing stale cached headlines because the provider refresh failed."
+      : partial
+        ? "Current headlines loaded with partial source or publication metadata."
+        : "Current headlines loaded.",
+  ));
+  content.append(element("p", "news-meta", `Source: ${data.provider} · As of: ${formatTime(data.as_of)}`));
+  const list = element("ol", "news-list");
+  for (const item of items) {
+    const row = element("li");
+    const heading = element("h4");
+    const href = safeNewsLink(item.url);
+    if (href) {
+      const link = element("a", "news-link", item.title);
+      link.href = href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      heading.append(link, element("span", "external-warning", " External site ↗"));
+    } else {
+      heading.append(document.createTextNode(item.title), element("span", "external-warning", " Link unavailable"));
+    }
+    row.append(heading);
+    const metadata = [item.publisher, item.published_at && formatTime(item.published_at)].filter(Boolean);
+    if (metadata.length) row.append(element("p", "news-meta", metadata.join(" · ")));
+    list.append(row);
+  }
+  content.append(list);
+  if (limit === 5 && items.length === 5) {
+    const more = element("button", "secondary news-more", "Show up to 10 headlines");
+    more.type = "button";
+    more.addEventListener("click", () => loadNews(content, symbol, 10));
+    content.append(more);
+  }
+}
+
+async function loadNews(content, symbol, limit = 5) {
+  supersedeNews();
+  const controller = new AbortController();
+  newsController = controller;
+  setNewsState(content, "loading", `Loading current headlines for ${symbol}…`);
+  try {
+    const data = await api(`/news?${new URLSearchParams({ symbol, limit: String(limit) })}`, {
+      signal: controller.signal,
+    });
+    renderNews(content, data, symbol, limit);
+  } catch (error) {
+    if (error.name === "AbortError") return;
+    if (error.status === 503) setNewsState(content, "busy", "Headline capacity is busy. Try again shortly.");
+    else if (error.status === 502) setNewsState(content, "unavailable", "The headline provider is unavailable and no cached headlines exist.");
+    else if (error instanceof TypeError) setNewsState(content, "unreachable", "The local service is unreachable. Start it and try again.");
+    else setNewsState(content, "unavailable", error.message);
+  } finally {
+    if (newsController === controller) newsController = null;
+  }
+}
+
+function newsDisclosure(input, context) {
+  const symbol = input.canonical_symbol || input.symbol;
+  const details = element("details", "news-panel");
+  const summary = element(
+    "summary",
+    "",
+    context === "saved" ? "Load current headlines for this symbol" : "Current headlines for this symbol",
+  );
+  const content = element("div", "news-content");
+  content.setAttribute("aria-live", "polite");
+  setNewsState(content, "not-requested", "Headlines not requested.");
+  details.append(
+    summary,
+    element("p", "news-separation", "Current headlines are live information, not forecast or ledger evidence."),
+    content,
+  );
+  details.addEventListener("toggle", () => {
+    if (details.open && !details.dataset.requested) {
+      details.dataset.requested = "true";
+      loadNews(content, symbol);
+    }
+  });
+  return details;
+}
+
 function confirmIdentity(identity) {
   const symbol = identityValue(identity, "canonical_symbol");
   if (!symbol) return;
@@ -429,7 +542,6 @@ async function lookupInstruments(query) {
     const data = await api(`/instruments?${new URLSearchParams({ query, limit: "5" })}`, {
       signal: controller.signal,
     });
-    // Sequence and current text checks prevent an older response from replacing newer choices.
     if (sequence !== lookupSequence || symbolInput.value.trim() !== query) return null;
     renderInstrumentOptions(data.items.slice(0, 5), query);
     return data.items.slice(0, 5);
@@ -444,8 +556,6 @@ async function lookupInstruments(query) {
 }
 
 function cancelPendingLookup() {
-  // A direct-symbol forecast supersedes suggestions: invalidate callbacks before aborting so the
-  // expected cancellation cannot render an identity error or stale choices over the forecast.
   clearTimeout(lookupTimer);
   lookupTimer = null;
   lookupSequence += 1;
@@ -454,6 +564,7 @@ function cancelPendingLookup() {
 }
 
 symbolInput.addEventListener("input", () => {
+  supersedeNews();
   cancelPendingLookup();
   clearIdentity();
   hideOptions();
@@ -462,8 +573,7 @@ symbolInput.addEventListener("input", () => {
     lookupStatus.textContent = query ? "Type at least 2 characters for identity choices." : "";
     return;
   }
-  // Company text resolves quickly. A deliberate pause for symbol-shaped text lets an immediate
-  // submit supersede suggestions without issuing a second provider request from a slow device.
+  // Delay symbol-shaped lookup so immediate submission can supersede it.
   const delay = /^[A-Z0-9.^-]{1,15}$/.test(query) ? 1200 : 300;
   lookupTimer = setTimeout(() => lookupInstruments(query), delay);
 });
@@ -512,7 +622,6 @@ function renderForecastCard(result, input) {
   chart.setAttribute("aria-label", `Down ${formatPercent(directionValue(probabilities, "down"))}, unchanged ${formatPercent(directionValue(probabilities, "flat"))}, up ${formatPercent(directionValue(probabilities, "up"))}`);
   for (const direction of ["down", "flat", "up"]) {
     const bar = element("div", `probability-bar ${direction}`);
-    // A native meter avoids CSP-blocked inline styles while preserving a numeric value.
     const fill = element("meter", "fill");
     fill.min = 0;
     fill.max = 1;
@@ -525,7 +634,6 @@ function renderForecastCard(result, input) {
   }
   card.append(chart, renderTailChart(result));
 
-  // The tables duplicate every visual value and retain definitions/units for non-visual use.
   const table = element("table", "details-table");
   table.append(element("caption", "", "Horizon, direction, and threshold details"));
   const body = document.createElement("tbody");
@@ -641,6 +749,7 @@ function renderForecastCard(result, input) {
 }
 
 function renderResult(data, context = "live") {
+  supersedeNews();
   const input = data.input;
   resultContent.setAttribute("aria-busy", "false");
   resultContent.className = "";
@@ -679,6 +788,7 @@ function renderResult(data, context = "live") {
     meta.append(cell);
   }
   resultContent.append(meta);
+  resultContent.append(newsDisclosure(input, context));
   resultContent.append(renderHorizonComparison(data.results));
   const grid = element("div", "forecast-grid");
   for (const result of data.results) grid.append(renderForecastCard(result, input));
@@ -698,8 +808,6 @@ function renderResult(data, context = "live") {
   const intradayArchive = input.provider_metadata?.intraday_archive_limit;
   if (intradayArchive?.statement) providerLimitations.push(intradayArchive.statement);
   if (!providerLimitations.some((item) => /archive|60.day/i.test(String(item)))) {
-    // Yahoo documents a moving intraday-history window; this product constraint remains visible
-    // even when a deterministic fixture has no remote archive response to report.
     providerLimitations.push(
       "Yahoo Finance five-minute history has an approximate 60-day archive limit; older intraday reconstruction may be unavailable.",
     );
@@ -768,7 +876,6 @@ function renderError(error) {
 
 function focusResultSection() {
   const section = document.querySelector("#result-section");
-  // Moving focus dismisses a mobile keyboard and makes the newly rendered result visible.
   section.focus();
   section.scrollIntoView({ block: "start" });
 }
@@ -842,7 +949,7 @@ async function showHistoryEvent(id, isFailure = false) {
 }
 
 async function runFreshAnalysis(id) {
-  // Fresh analysis has a dedicated region so it can never silently replace the saved output.
+  // Fresh analysis cannot silently replace the saved output.
   freshAnalysisSection.hidden = false;
   freshAnalysisContent.className = "empty-state loading";
   freshAnalysisContent.setAttribute("aria-busy", "true");
@@ -850,7 +957,6 @@ async function runFreshAnalysis(id) {
   announcement.textContent = `Fresh historical-cutoff analysis for event ${id} is running.`;
   freshAnalysisSection.focus();
   try {
-    // Resolve the cutoff from the server-owned snapshot; browser controls never fabricate it.
     const saved = await api(`/saved-forecasts/${id}`);
     const response = await api(`/history/${id}/reconstructions`, {
       method: "POST",
@@ -946,8 +1052,7 @@ async function persistedRunRelations(items) {
     const candidates = [];
     let exhausted = false;
     try {
-      // Status filters can hide the first event for a run. Rebuild that relation only from
-      // bounded, persisted history fields; process memory and equal timestamps are not evidence.
+      // Rebuild filtered run relations only from bounded persisted history.
       for (let page = 1; page <= runRelationMaxPages; page += 1) {
         const params = new URLSearchParams({
           q: group.symbol,
@@ -966,12 +1071,10 @@ async function persistedRunRelations(items) {
         if (hasPriorRunReference(item, candidates)) {
           relations.set(item.id, true);
         } else if (exhausted) {
-          // A complete bounded scan proves this repeated request created a distinct new run.
           relations.set(item.id, false);
         }
       }
     } catch (_) {
-      // The row remains usable with an honest unknown relation if enrichment is unavailable.
     }
   }
   return relations;
@@ -1132,7 +1235,6 @@ document.querySelector("#history-next").addEventListener("click", () => { histor
 async function initialize() {
   const state = document.querySelector(".system-state");
   try {
-    // Both checks stay behind /api/v1; backup filenames and storage paths never enter the page.
     const [readiness, backup] = await Promise.all([api("/readiness"), api("/operations/backups/status")]);
     state.classList.add("ready");
     document.querySelector("#system-label").textContent = `Local service ready / ${readiness.provider} / backup ${backup.status}`;

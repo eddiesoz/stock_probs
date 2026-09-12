@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import time as monotonic_time
 import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import replace
@@ -18,6 +19,8 @@ from stock_probs.domain import (
     DomainError,
     InstrumentIdentity,
     MarketData,
+    NewsData,
+    NewsItem,
     normalize_lookup_query,
     normalize_symbol,
     scheduled_session_close,
@@ -38,11 +41,15 @@ class _YFinanceModule(Protocol):
 
 # yfinance does not publish type information; keep its dynamic module behind the narrow facade.
 yf = cast(_YFinanceModule, import_module("yfinance"))
+curl_requests = import_module("curl_cffi.requests")
 
 MAX_LOOKUP_RESULTS = 5
 YAHOO_PROVIDER_NAME = "Yahoo Finance"
 FIXTURE_PROVIDER_NAME = "deterministic fixture"
 YAHOO_INTRADAY_ARCHIVE_APPROXIMATE_DAYS = 60
+MAX_NEWS_RESULTS = 10
+MAX_NEWS_BODY_BYTES = 256 * 1024
+YAHOO_NEWS_URL = "https://query2.finance.yahoo.com/v1/finance/search"
 
 
 class MarketDataProvider(Protocol):
@@ -58,11 +65,20 @@ class MarketDataProvider(Protocol):
         self, symbol: str, asset_type: str, cutoff: datetime, now: datetime
     ) -> MarketData: ...
 
+    def fetch_news(
+        self, symbol: str, limit: int = 5, now: datetime | None = None
+    ) -> NewsData: ...
+
 
 class YahooProvider:
     """Translate bounded yfinance history calls into the provider-neutral contract."""
 
-    def __init__(self, timeout: float = 8.0, clock: Callable[[], datetime] | None = None):
+    def __init__(
+        self,
+        timeout: float = 8.0,
+        clock: Callable[[], datetime] | None = None,
+        monotonic_clock: Callable[[], float] | None = None,
+    ):
         if (
             isinstance(timeout, bool)
             or not isinstance(timeout, int | float)
@@ -72,6 +88,7 @@ class YahooProvider:
             raise ValueError("Yahoo timeout must be between 0.1 and 20 seconds")
         self.timeout = timeout
         self.clock = clock or (lambda: datetime.now(UTC))
+        self.monotonic_clock = monotonic_clock or monotonic_time.monotonic
 
     def _response_time(self) -> datetime:
         """Require an aware completion time so lookup and forecast provenance stay comparable."""
@@ -129,6 +146,180 @@ class YahooProvider:
         if not isinstance(start, datetime) or not isinstance(end, datetime):
             raise ValueError("historical provider bounds require datetime start and end")
         return self._history(ticker, interval=interval, start=start, end=end)
+
+    def fetch_news(
+        self, symbol: str, limit: int = 5, now: datetime | None = None
+    ) -> NewsData:
+        """Fetch one bounded Yahoo search payload without yfinance's shared sessions."""
+
+        normalized_symbol = normalize_symbol(symbol)
+        _validate_news_limit(limit)
+        if now is not None and now.tzinfo is None:
+            raise DomainError(
+                "ambiguous_provider_time", "Provider news time must include an offset."
+            )
+        deadline = self.monotonic_clock() + min(float(self.timeout), 10.0)
+        body = bytearray()
+        oversized = False
+        timed_out = False
+
+        def receive(chunk: bytes) -> int:
+            """Stop libcurl while receiving, before an oversized body is buffered."""
+
+            nonlocal oversized, timed_out
+            if self.monotonic_clock() >= deadline:
+                timed_out = True
+                return 0
+            if len(body) + len(chunk) > MAX_NEWS_BODY_BYTES:
+                oversized = True
+                return 0
+            body.extend(chunk)
+            return len(chunk)
+
+        params = {
+            "q": normalized_symbol,
+            "quotesCount": 0,
+            "newsCount": limit,
+            "listsCount": 0,
+            "recommendedCount": 0,
+            "enableFuzzyQuery": "false",
+            "quotesQueryId": "tss_match_phrase_query",
+            "newsQueryId": "news_cie_vespa",
+            "enableCb": "false",
+            "enableNavLinks": "false",
+            "enableResearchReports": "false",
+            "enableCulturalAssets": "false",
+        }
+        try:
+            remaining = deadline - self.monotonic_clock()
+            if remaining <= 0:
+                raise TimeoutError
+            # A per-call session prevents cookie, connection, or option mutation from leaking.
+            with curl_requests.Session() as session:
+                response = session.get(
+                    YAHOO_NEWS_URL,
+                    params=params,
+                    headers={"Accept": "application/json", "User-Agent": "stock-probs/0.1"},
+                    timeout=remaining,
+                    allow_redirects=False,
+                    discard_cookies=True,
+                    default_headers=False,
+                    content_callback=receive,
+                )
+        except Exception as exc:
+            message = (
+                "Yahoo Finance news exceeded the bounded response size."
+                if oversized
+                else "Yahoo Finance news did not complete within the configured deadline."
+                if timed_out or self.monotonic_clock() >= deadline
+                else "Yahoo Finance news is currently unavailable."
+            )
+            raise DomainError("provider_unavailable", message, status_code=502) from exc
+        if oversized or self.monotonic_clock() >= deadline:
+            raise DomainError(
+                "provider_unavailable",
+                "Yahoo Finance news exceeded its size or time boundary.",
+                status_code=502,
+            )
+        if response.status_code != 200:
+            raise DomainError(
+                "provider_unavailable",
+                "Yahoo Finance news is currently unavailable.",
+                status_code=502,
+            )
+        try:
+            payload = json.loads(body)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DomainError(
+                "provider_news_invalid",
+                "Yahoo Finance returned an invalid news response.",
+                status_code=502,
+            ) from exc
+        if not isinstance(payload, Mapping) or not isinstance(payload.get("news"), list):
+            raise DomainError(
+                "provider_news_invalid",
+                "Yahoo Finance returned an invalid news response.",
+                status_code=502,
+            )
+
+        items: list[NewsItem] = []
+        seen: set[str] = set()
+        for raw_item in payload["news"]:
+            if self.monotonic_clock() >= deadline:
+                raise DomainError(
+                    "provider_unavailable",
+                    "Yahoo Finance news did not complete within the configured deadline.",
+                    status_code=502,
+                )
+            if not isinstance(raw_item, Mapping):
+                raise DomainError(
+                    "provider_news_invalid",
+                    "Yahoo Finance returned an invalid news response.",
+                    status_code=502,
+                )
+            item_id = raw_item.get("uuid")
+            published = raw_item.get("providerPublishTime")
+            related = raw_item.get("relatedTickers")
+            title = raw_item.get("title")
+            link = raw_item.get("link")
+            if (
+                not isinstance(item_id, str)
+                or not isinstance(title, str)
+                or not isinstance(link, str)
+                or (
+                    published is not None
+                    and (
+                        isinstance(published, bool)
+                        or not isinstance(published, int | float)
+                        or not math.isfinite(float(published))
+                    )
+                )
+                or (
+                    related is not None
+                    and (
+                        not isinstance(related, list | tuple)
+                        or any(not isinstance(item, str) for item in related)
+                    )
+                )
+            ):
+                raise DomainError(
+                    "provider_news_invalid",
+                    "Yahoo Finance returned an invalid news item.",
+                    status_code=502,
+                )
+            try:
+                published_at = (
+                    datetime.fromtimestamp(float(published), UTC)
+                    if published is not None
+                    else None
+                )
+                item = NewsItem(
+                    id=item_id,
+                    title=title,
+                    publisher=raw_item.get("publisher"),
+                    published_at=published_at,
+                    url=link,
+                    related_symbols=tuple(related[:32]) if related is not None else None,
+                )
+            except (DomainError, OSError, OverflowError, ValueError) as exc:
+                if isinstance(exc, DomainError):
+                    raise
+                raise DomainError(
+                    "provider_news_invalid",
+                    "Yahoo Finance returned an invalid news item.",
+                    status_code=502,
+                ) from exc
+            if item.id not in seen and len(items) < limit:
+                items.append(item)
+                seen.add(item.id)
+        if self.monotonic_clock() >= deadline:
+            raise DomainError(
+                "provider_unavailable",
+                "Yahoo Finance news did not complete within the configured deadline.",
+                status_code=502,
+            )
+        as_of = now.astimezone(UTC) if now is not None else self._response_time()
+        return NewsData(normalized_symbol, YAHOO_PROVIDER_NAME, as_of, tuple(items))
 
     @staticmethod
     def _identity_from_metadata(
@@ -569,6 +760,14 @@ class FixtureProvider:
         )
 
     @staticmethod
+    def _news_payload() -> dict[str, list[dict[str, Any]]]:
+        payload = json.loads(files("stock_probs.fixtures").joinpath("news.json").read_text())
+        return cast(
+            dict[str, list[dict[str, Any]]],
+            {symbol: items for symbol, items in payload.items() if not symbol.startswith("_")},
+        )
+
+    @staticmethod
     def _identity(
         payload: Mapping[str, Any], symbol: str, provider_as_of: datetime
     ) -> InstrumentIdentity:
@@ -750,6 +949,57 @@ class FixtureProvider:
             },
         )
 
+    def fetch_news(
+        self, symbol: str, limit: int = 5, now: datetime | None = None
+    ) -> NewsData:
+        """Return checked-in current headlines without touching forecast fixture data."""
+
+        normalized_symbol = normalize_symbol(symbol)
+        _validate_news_limit(limit)
+        requested_at = now or datetime.now(UTC)
+        if requested_at.tzinfo is None:
+            raise DomainError(
+                "ambiguous_provider_time", "Fixture news time must include an offset."
+            )
+        if normalized_symbol == "FAIL":
+            raise DomainError(
+                "provider_unavailable", "Deterministic news provider failure.", status_code=502
+            )
+        aliases = {
+            "ACDC-D": "ACDC",
+            "ACDC-M": "ACDC",
+            "SPY-D": "SPY",
+            "SPY-M": "SPY",
+            "STALE": "ACDC",
+        }
+        fixture_symbol = aliases.get(normalized_symbol, normalized_symbol)
+        payload = self._news_payload().get(fixture_symbol)
+        if payload is None:
+            raise DomainError(
+                "provider_unavailable",
+                "The deterministic fixture has no news for that symbol.",
+                status_code=502,
+            )
+        items = tuple(
+            NewsItem(
+                id=item["uuid"],
+                title=item["title"],
+                publisher=item.get("publisher"),
+                published_at=datetime.fromtimestamp(item["providerPublishTime"], UTC),
+                url=item["link"],
+                related_symbols=(
+                    tuple(item["relatedTickers"]) if "relatedTickers" in item else None
+                ),
+            )
+            for item in payload[:limit]
+        )
+        return NewsData(
+            normalized_symbol,
+            FIXTURE_PROVIDER_NAME,
+            requested_at.astimezone(UTC),
+            items,
+        )
+
     def fetch_at_cutoff(
         self, symbol: str, asset_type: str, cutoff: datetime, now: datetime
     ) -> MarketData:
@@ -783,6 +1033,14 @@ def _validate_lookup_limit(limit: int) -> None:
         raise DomainError(
             "invalid_lookup_limit",
             f"Lookup limit must be between 1 and {MAX_LOOKUP_RESULTS}.",
+        )
+
+
+def _validate_news_limit(limit: int) -> None:
+    if type(limit) is not int or not 1 <= limit <= MAX_NEWS_RESULTS:
+        raise DomainError(
+            "invalid_news_limit",
+            f"News limit must be between 1 and {MAX_NEWS_RESULTS}.",
         )
 
 

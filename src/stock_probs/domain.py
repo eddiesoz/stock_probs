@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import math
 import statistics
@@ -11,6 +12,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 MODEL_VERSION = "empirical-ewma-v2"
@@ -124,6 +126,202 @@ class DomainError(Exception):
         self.message = message
         self.status_code = status_code
         self.request_id = request_id
+
+
+def _safe_news_text(
+    value: object, field: str, maximum: int, *, optional: bool = False
+) -> str | None:
+    """Reject control-bearing or unbounded provider text without inventing missing metadata."""
+
+    if value is None and optional:
+        return None
+    if not isinstance(value, str):
+        raise DomainError(
+            "provider_news_invalid",
+            f"Yahoo Finance returned an invalid news {field}.",
+            status_code=502,
+        )
+    text = value.strip()
+    if (
+        not text
+        or len(text) > maximum
+        or any(unicodedata.category(character).startswith("C") for character in value)
+    ):
+        raise DomainError(
+            "provider_news_invalid",
+            f"Yahoo Finance returned an invalid news {field}.",
+            status_code=502,
+        )
+    return text
+
+
+def safe_news_url(value: object) -> str:
+    """Allow display-only public HTTPS article links and reject local/userinfo destinations."""
+
+    url = _safe_news_text(value, "URL", 2048)
+    assert url is not None
+    try:
+        parsed = urlsplit(url)
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError as exc:
+        raise DomainError(
+            "provider_news_invalid",
+            "Yahoo Finance returned an unsafe news URL.",
+            status_code=502,
+        ) from exc
+    if (
+        parsed.scheme != "https"
+        or not host
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in {None, 443}
+        or host.casefold() == "localhost"
+        or host.casefold().endswith(
+            (".localhost", ".local", ".internal", ".lan", ".home", ".home.arpa")
+        )
+        or "." not in host
+    ):
+        raise DomainError(
+            "provider_news_invalid",
+            "Yahoo Finance returned an unsafe news URL.",
+            status_code=502,
+        )
+    try:
+        address = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        pass
+    else:
+        if not address.is_global:
+            raise DomainError(
+                "provider_news_invalid",
+                "Yahoo Finance returned an unsafe news URL.",
+                status_code=502,
+            )
+    return url
+
+
+@dataclass(frozen=True)
+class NewsItem:
+    """One provider-neutral headline; unavailable optional metadata remains absent."""
+
+    id: str
+    title: str
+    publisher: str | None
+    published_at: datetime | None
+    url: str
+    related_symbols: tuple[str, ...] | None = None
+
+    def __post_init__(self) -> None:
+        item_id = _safe_news_text(self.id, "identifier", 128)
+        title = _safe_news_text(self.title, "headline", 500)
+        publisher = _safe_news_text(self.publisher, "source", 200, optional=True)
+        if self.published_at is not None and (
+            not isinstance(self.published_at, datetime) or self.published_at.tzinfo is None
+        ):
+            raise DomainError(
+                "provider_news_invalid",
+                "Yahoo Finance returned an invalid news publication time.",
+                status_code=502,
+            )
+        if self.related_symbols is not None and (
+            not isinstance(self.related_symbols, tuple) or len(self.related_symbols) > 32
+        ):
+            raise DomainError(
+                "provider_news_invalid",
+                "Yahoo Finance returned invalid related news symbols.",
+                status_code=502,
+            )
+        try:
+            normalized_related = []
+            for item in self.related_symbols or ():
+                text = _safe_news_text(item, "related symbol", 32)
+                assert text is not None
+                normalized_related.append(text)
+            related = (
+                tuple(dict.fromkeys(normalized_related))
+                if self.related_symbols is not None
+                else None
+            )
+        except (DomainError, TypeError) as exc:
+            raise DomainError(
+                "provider_news_invalid",
+                "Yahoo Finance returned invalid related news symbols.",
+                status_code=502,
+            ) from exc
+        object.__setattr__(self, "id", item_id)
+        object.__setattr__(self, "title", title)
+        object.__setattr__(self, "publisher", publisher)
+        object.__setattr__(
+            self,
+            "published_at",
+            self.published_at.astimezone(UTC) if self.published_at is not None else None,
+        )
+        object.__setattr__(self, "url", safe_news_url(self.url))
+        object.__setattr__(self, "related_symbols", related)
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "publisher": self.publisher,
+            "published_at": (
+                self.published_at.isoformat() if self.published_at is not None else None
+            ),
+            "url": self.url,
+            "related_symbols": (
+                list(self.related_symbols) if self.related_symbols is not None else None
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class NewsData:
+    """A bounded news response kept separate from forecast inputs and persistence."""
+
+    symbol: str
+    provider: str
+    as_of: datetime
+    items: tuple[NewsItem, ...]
+
+    def __post_init__(self) -> None:
+        symbol = normalize_symbol(self.symbol)
+        provider = _safe_news_text(self.provider, "provider", 80)
+        if (
+            symbol != self.symbol
+            or not isinstance(self.as_of, datetime)
+            or self.as_of.tzinfo is None
+            or not isinstance(self.items, tuple)
+            or len(self.items) > 10
+            or any(not isinstance(item, NewsItem) for item in self.items)
+        ):
+            raise DomainError(
+                "provider_news_invalid",
+                "Yahoo Finance returned an invalid news response.",
+                status_code=502,
+            )
+        object.__setattr__(self, "provider", provider)
+        object.__setattr__(self, "as_of", self.as_of.astimezone(UTC))
+
+    def as_dict(self, *, limit: int, cache_state: str) -> dict[str, object]:
+        selected = self.items[:limit]
+        return {
+            "query": {"symbol": self.symbol, "limit": limit},
+            "provider": self.provider,
+            "as_of": self.as_of.isoformat(),
+            "cache_state": cache_state,
+            "items": [item.as_dict() for item in selected],
+            "coverage": {
+                "returned_count": len(selected),
+                "partial_metadata": any(
+                    item.publisher is None
+                    or item.published_at is None
+                    or item.related_symbols is None
+                    for item in selected
+                ),
+                "refresh_failed": cache_state == "stale_fallback",
+            },
+        }
 
 
 def normalize_lookup_query(value: str) -> str:

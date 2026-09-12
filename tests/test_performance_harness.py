@@ -1,4 +1,4 @@
-"""Focused tests keep M06 performance artifacts and thresholds fail closed."""
+"""Focused tests keep M06/M09 performance artifacts and thresholds fail closed."""
 
 from __future__ import annotations
 
@@ -109,6 +109,45 @@ def test_artifact_schema_rejects_claimed_pass_with_missing_workload_samples():
         performance.validate_artifact(payload, acceptance=True)
 
 
+@pytest.mark.parametrize(
+    "row",
+    [
+        "theme-action-to-painted-theme",
+        "news-cache-hit-endpoint",
+        "ten-item-news-render",
+        "news-response-bytes",
+    ],
+)
+def test_m09_claimed_pass_rejects_missing_samples(row):
+    payload = complete_artifact(
+        task_id="M09",
+        row=row,
+        measured_samples={"count": 0, "unit": "ms", "raw": []},
+        threshold={"class": "M09", "operator": "<=", "value": 100},
+    )
+
+    with pytest.raises(ValueError, match="too few warmups or samples"):
+        performance.validate_artifact(payload, acceptance=True)
+
+
+def test_m09_row_rejects_missing_numeric_bound():
+    payload = complete_artifact(
+        task_id="M09",
+        row="provider-deadline",
+        measured_samples={"count": 1, "unit": "seconds", "raw": [10.0]},
+        threshold={"class": "M09 numeric threshold", "operator": "<="},
+    )
+
+    with pytest.raises(ValueError, match="threshold bound is missing"):
+        performance.validate_artifact(payload)
+
+
+def test_m09_and_release_profiles_add_rows_without_removing_m06_rows():
+    assert performance.required_rows("m06") == performance.M06_REQUIRED_ROWS
+    assert performance.required_rows("m09") > performance.M06_REQUIRED_ROWS
+    assert performance.required_rows("release") == performance.M09_REQUIRED_ROWS
+
+
 def test_idle_cpu_statistics_recompute_exactly_and_reject_one_ulp_mutation():
     values = [0.0, 0.1234567890123456]
     payload = json.loads(
@@ -131,22 +170,26 @@ def test_idle_cpu_statistics_recompute_exactly_and_reject_one_ulp_mutation():
         performance.validate_artifact(payload)
 
 
-def test_local_gate_profiles_make_performance_mandatory_only_for_m06_and_release():
+def test_local_gate_profiles_make_performance_mandatory_for_m06_m09_and_release():
     gate = (ROOT / "scripts/local-gate.sh").read_text()
     m04 = gate[gate.index("  m04)") : gate.index("  m06)")]
-    m06 = gate[gate.index("  m06)") : gate.index("  release)")]
+    m06 = gate[gate.index("  m06)") : gate.index("  m09)")]
+    m09 = gate[gate.index("  m09)") : gate.index("  release)")]
     release = gate[gate.index("  release)") : gate.index("esac")]
 
     assert "run_performance" not in m04
     assert "run_performance" in m06
+    assert "run_performance" in m09
     assert "run_performance" in release
     assert 'STOCK_PROBS_PERFORMANCE_ARTIFACT_DIR="$RUN_DIR/performance"' in gate
     assert m04.count("run_ponytail_precondition") == 0
     assert m06.count("run_ponytail_precondition") == 1
+    assert m09.count("run_ponytail_precondition") == 1
     assert release.count("run_ponytail_precondition") == 1
     assert m06.count("require_performance_acceptance") == 1
+    assert m09.count("require_performance_acceptance") == 1
     assert release.count("require_performance_acceptance") == 1
-    assert "ponytail-review.sh\" \"$TASK_ID" not in m06 + release
+    assert "ponytail-review.sh\" \"$TASK_ID" not in m06 + m09 + release
 
 
 def test_proposed_native_bounds_are_explicit_and_not_environment_overrides():
@@ -157,10 +200,48 @@ def test_proposed_native_bounds_are_explicit_and_not_environment_overrides():
     assert performance.BACKUP_LIMIT_MS == 5_000
     assert performance.RESTORE_LIMIT_MS == 5_000
     assert performance.READINESS_LIMIT_MS == 20_000
+    assert performance.THEME_ACTION_P95_LIMIT_MS == 100
+    assert performance.NEWS_ENDPOINT_P95_LIMIT_MS == 100
+    assert performance.NEWS_RENDER_P95_LIMIT_MS == 250
+    assert performance.NEWS_RESPONSE_LIMIT_BYTES == 32 * 1024
+    assert performance.NEWS_PROVIDER_DEADLINE_SECONDS == 10
+    assert performance.STATIC_LIMIT_BYTES == 96 * 1024
     source = (ROOT / "scripts/performance_harness.py").read_text()
     assert "STOCK_PROBS_PERF_CONCURRENCY_P95_MS" not in source
     assert "STOCK_PROBS_PERF_PACKAGE_MAX_BYTES" not in source
     assert "STOCK_PROBS_PERF_BACKUP_MAX_MS" not in source
+
+
+def test_m09_browser_rows_reuse_the_playwright_artifact(tmp_path, monkeypatch):
+    monkeypatch.setattr(performance, "_git_revision", lambda: ("a" * 40, True))
+    harness = performance.Harness(tmp_path, 60, "m09")
+    playwright = complete_artifact(
+        task_id="M09",
+        row="browser-budgets",
+        raw={
+            "m09_browser": {
+                "startedUtc": "2026-01-01T00:00:00Z",
+                "themeWarmups": [1.0] * 5,
+                "themeSamples": [10.0] * 30,
+                "renderWarmups": [2.0] * 5,
+                "renderSamples": [20.0] * 30,
+                "itemCounts": [10] * 30,
+            }
+        },
+    )
+    command = ["npx", "playwright", "test", "tools/browser/tests/performance.spec.js"]
+    completed = performance.subprocess.CompletedProcess(command, 0, "passed", "")
+
+    harness._write_m09_browser_rows(playwright, completed)
+
+    assert harness.rows["theme-action-to-painted-theme"]["result"] == "Pass"
+    news = harness.rows["ten-item-news-render"]
+    assert news["result"] == "Pass"
+    assert news["raw"]["item_counts"] == [10] * 30
+    assert news["command"] == command
+    source = (ROOT / "scripts/performance_harness.py").read_text()
+    assert "m09-browser-measurements.cjs" not in source
+    assert "navigation_request_counts" not in source
 
 
 def test_readiness_poll_aggregates_refusals_and_retains_unexpected_errors(monkeypatch):
@@ -230,6 +311,8 @@ def test_make_performance_is_explicit_development_and_release_uses_one_local_gat
     assert "--profile development" in performance_recipe
     assert "./scripts/local-gate.sh release" in release_recipe
     assert "acceptance performance" not in release_recipe
+    assert "m09-gate:" in makefile
+    assert "./scripts/local-gate.sh m09" in makefile
 
 
 def test_browser_budget_manifest_pins_required_protocol_and_bounds():
@@ -242,6 +325,9 @@ def test_browser_budget_manifest_pins_required_protocol_and_bounds():
     assert manifest["cls_max"] == 0.1
     assert manifest["viewports"] == [360, 390, 768, 1280, 1440]
     assert manifest["designated_response_bytes_strict_max"] == 8 * 1024
+    assert manifest["static_shell_bytes_strict_max"] == 96 * 1024
+    assert manifest["request_count_max_per_navigation"] == 7
+    assert "/assets/theme.js" in manifest["allowed_paths"]
     assert manifest["justification"]
 
 

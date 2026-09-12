@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 import pytest
 
 from stock_probs.domain import DomainError
-from stock_probs.provider import FixtureProvider, YahooProvider
+from stock_probs.provider import MAX_NEWS_BODY_BYTES, FixtureProvider, YahooProvider
 
 
 class FakeTicker:
@@ -376,3 +377,192 @@ def test_provider_reports_omitted_daily_session_and_trailing_completed_bars(monk
     assert data.provider_metadata["missing_daily_sessions"] == 1
     # At 10:00 local, 09:45, 09:50, and 09:55 are completed but absent after 09:40.
     assert data.provider_metadata["trailing_missing_intraday_intervals"] == 3
+
+
+def _news_payload(news):
+    return json.dumps({"news": news}).encode()
+
+
+def _news_item(identifier="news-1", **changes):
+    return {
+        "uuid": identifier,
+        "title": "Markets finish mixed",
+        "publisher": "Example News",
+        "providerPublishTime": 1736503200,
+        "link": "https://finance.yahoo.com/news/markets-finish-mixed.html",
+        "relatedTickers": ["SPY"],
+        **changes,
+    }
+
+
+def fake_curl_session(handler):
+    class Response:
+        status_code = 200
+
+    class Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def get(self, url, **kwargs):
+            handler(self, url, kwargs)
+            return Response()
+
+    return Session
+
+
+def test_yahoo_news_uses_one_request_local_exact_bounded_get(monkeypatch):
+    calls = []
+    sessions = []
+
+    def handler(session, url, kwargs):
+        sessions.append(session)
+        calls.append((url, kwargs))
+        payload = _news_payload(
+            [
+                _news_item(),
+                _news_item("news-1", title="duplicate"),
+                {
+                    key: value
+                    for key, value in _news_item(
+                        "news-2", title="Second headline", publisher=None
+                    ).items()
+                    if key != "relatedTickers"
+                },
+            ]
+        )
+        assert kwargs["content_callback"](payload) == len(payload)
+
+    monkeypatch.setattr(
+        "stock_probs.provider.curl_requests.Session", fake_curl_session(handler)
+    )
+    as_of = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+
+    result = YahooProvider(timeout=20, monotonic_clock=lambda: 100.0).fetch_news(
+        " spy ", 2, as_of
+    )
+
+    assert len(sessions) == len(calls) == 1
+    url, options = calls[0]
+    assert url == "https://query2.finance.yahoo.com/v1/finance/search"
+    assert options["params"] == {
+        "q": "SPY",
+        "quotesCount": 0,
+        "newsCount": 2,
+        "listsCount": 0,
+        "recommendedCount": 0,
+        "enableFuzzyQuery": "false",
+        "quotesQueryId": "tss_match_phrase_query",
+        "newsQueryId": "news_cie_vespa",
+        "enableCb": "false",
+        "enableNavLinks": "false",
+        "enableResearchReports": "false",
+        "enableCulturalAssets": "false",
+    }
+    assert options["timeout"] == 10
+    assert options["allow_redirects"] is False
+    assert options["discard_cookies"] is True
+    assert result.as_of == as_of
+    assert [item.id for item in result.items] == ["news-1", "news-2"]
+    assert result.items[0].published_at.tzinfo is UTC
+    assert result.items[1].publisher is None and result.items[1].related_symbols is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"news": None},
+        {"news": [{}]},
+        {"news": [_news_item(link="http://example.com/story")]},
+        {"news": [_news_item(link="https://127.0.0.1/story")]},
+        {"news": [_news_item(providerPublishTime="yesterday")]},
+    ],
+)
+def test_yahoo_news_rejects_malformed_or_unsafe_payloads(monkeypatch, payload):
+    def handler(_session, _url, kwargs):
+        raw = json.dumps(payload).encode()
+        kwargs["content_callback"](raw)
+
+    monkeypatch.setattr(
+        "stock_probs.provider.curl_requests.Session", fake_curl_session(handler)
+    )
+
+    with pytest.raises(DomainError) as failure:
+        YahooProvider(monotonic_clock=lambda: 0.0).fetch_news("SPY")
+    assert failure.value.status_code == 502
+
+
+def test_yahoo_news_enforces_body_cap_during_receipt(monkeypatch):
+    def handler(_session, _url, kwargs):
+        accepted = kwargs["content_callback"](b"x" * (MAX_NEWS_BODY_BYTES + 1))
+        assert accepted == 0
+        raise RuntimeError("curl write aborted")
+
+    monkeypatch.setattr(
+        "stock_probs.provider.curl_requests.Session", fake_curl_session(handler)
+    )
+
+    with pytest.raises(DomainError, match="response size") as failure:
+        YahooProvider(monotonic_clock=lambda: 0.0).fetch_news("SPY")
+    assert failure.value.code == "provider_unavailable"
+
+
+def test_yahoo_news_deadline_covers_processing_after_receipt(monkeypatch):
+    class Clock:
+        value = 0.0
+
+        def __call__(self):
+            return self.value
+
+    clock = Clock()
+
+    def handler(_session, _url, kwargs):
+        payload = _news_payload([_news_item()])
+        assert kwargs["content_callback"](payload) == len(payload)
+        clock.value = 0.1
+
+    monkeypatch.setattr(
+        "stock_probs.provider.curl_requests.Session", fake_curl_session(handler)
+    )
+
+    with pytest.raises(DomainError, match="time boundary") as failure:
+        YahooProvider(timeout=0.1, monotonic_clock=clock).fetch_news("SPY")
+    assert failure.value.code == "provider_unavailable"
+
+
+def test_fixture_news_is_deterministic_bounded_and_partial_metadata_is_honest():
+    now = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+    result = FixtureProvider().fetch_news("ACDC", 10, now)
+
+    assert result == FixtureProvider().fetch_news("ACDC", 10, now)
+    assert len(result.items) == 2
+    assert result.items[1].publisher is None
+    assert FixtureProvider().fetch_news("EMPTY", now=now).items == ()
+
+
+def test_fixture_news_loader_ignores_metadata_and_keeps_symbol_entries():
+    payload = FixtureProvider._news_payload()
+
+    assert set(payload) == {"ACDC", "SPY", "EMPTY"}
+    assert [item["uuid"] for item in payload["ACDC"]] == [
+        "fixture-acdc-1",
+        "fixture-acdc-2",
+    ]
+
+
+def test_yahoo_news_bounds_optional_related_symbols(monkeypatch):
+    def handler(_session, _url, kwargs):
+        payload = _news_payload(
+            [_news_item(relatedTickers=[f"S{index}" for index in range(40)])]
+        )
+        kwargs["content_callback"](payload)
+
+    monkeypatch.setattr(
+        "stock_probs.provider.curl_requests.Session", fake_curl_session(handler)
+    )
+
+    result = YahooProvider(monotonic_clock=lambda: 0.0).fetch_news("SPY")
+    assert result.items[0].related_symbols == tuple(f"S{index}" for index in range(32))

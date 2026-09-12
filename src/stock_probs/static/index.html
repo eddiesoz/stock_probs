@@ -1,193 +1,199 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Local, auditable stock and ETF probability forecasts">
-  <title>Signal Ledger | Stock Probability</title>
-  <!-- Assets are external so the strict Content Security Policy needs no inline exceptions. -->
-  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/assets/app.css">
-  <script src="/assets/app.js" defer></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Local, auditable stock and ETF probability forecasts">
+<title>Signal Ledger | Stock Probability</title>
+<!-- Assets are external so the strict Content Security Policy needs no inline exceptions. -->
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<script src="/assets/theme.js"></script>
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/app.js" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#main">Skip to forecasts</a>
-  <header class="masthead">
-    <div class="masthead-primary">
-      <a class="brand-lockup" href="#main" aria-label="Signal Ledger home">
-        <span class="ledger-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span><span class="eyebrow">Local probability desk / v1</span><h1>Signal Ledger</h1></span>
-      </a>
-      <nav class="section-nav" aria-label="Dashboard sections">
-        <a href="#forecast-heading"><span>01</span> Forecast</a>
-        <a href="#result-heading"><span>02</span> Analysis</a>
-        <a href="#history-heading"><span>03</span> Ledger</a>
-      </nav>
-    </div>
-    <div class="system-state" role="status" aria-live="polite" aria-label="System status">
-      <span class="status-dot" aria-hidden="true"></span>
-      <span id="system-label">Checking local service</span>
-    </div>
-  </header>
+<a class="skip-link" href="#main">Skip to forecasts</a>
+<header class="masthead">
+<div class="masthead-primary">
+<a class="brand-lockup" href="#main" aria-label="Signal Ledger home">
+<span class="ledger-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+<span><span class="eyebrow">Local probability desk / v1</span><h1>Signal Ledger</h1></span>
+</a>
+<div class="header-controls">
+<nav class="section-nav" aria-label="Dashboard sections">
+<a href="#forecast-heading"><span>01</span> Forecast</a>
+<a href="#result-heading"><span>02</span> Analysis</a>
+<a href="#history-heading"><span>03</span> Ledger</a>
+</nav>
+<label class="theme-control">Theme
+<select name="theme" aria-label="Color theme"><option value="light">Light</option><option value="dark">Dark</option><option value="system">System</option></select>
+</label>
+</div>
+</div>
+<div class="system-state" role="status" aria-live="polite" aria-label="System status">
+<span class="status-dot" aria-hidden="true"></span>
+<span id="system-label">Checking local service</span>
+</div>
+</header>
 
-  <main id="main" tabindex="-1">
-    <section class="hero" aria-labelledby="forecast-heading">
-      <div class="hero-copy">
-        <p class="section-number">01 / Forecast desk</p>
-        <h2 id="forecast-heading">Read the range.<br><em>Keep the record.</em></h2>
-        <p class="hero-deck">Decision-grade probability context for the next market close—measured from both the daily close and the last completed five-minute bar.</p>
-        <ul class="hero-facts" aria-label="Forecast principles">
-          <li><span>Two</span> comparable horizons</li>
-          <li><span>Three</span> confidence bands</li>
-          <li><span>Every</span> request recorded</li>
-        </ul>
-      </div>
-      <form id="forecast-form" class="search-panel" novalidate>
-        <div class="field symbol-field">
-          <div class="field-heading">
-            <label for="symbol">Company name or Yahoo Finance symbol</label>
-            <span class="field-index" aria-hidden="true">QUERY / 01</span>
-          </div>
-          <input id="symbol" name="symbol" type="text" value="ACDC" maxlength="80" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="instrument-options" aria-describedby="symbol-help lookup-status identity-confirmation symbol-error" required>
-          <p id="symbol-help" class="hint">Type a company name to choose its identity, or enter a symbol directly.</p>
-          <p id="lookup-status" class="hint lookup-status" role="status" aria-live="polite"></p>
-          <ul id="instrument-options" class="instrument-options" role="listbox" aria-label="Matching instruments" hidden></ul>
-          <div id="identity-confirmation" class="identity-confirmation" aria-live="polite" hidden></div>
-          <p id="symbol-error" class="field-error" aria-live="polite"></p>
-        </div>
-        <fieldset class="asset-field">
-          <legend>Asset type</legend>
-          <label><input type="radio" name="asset_type" value="stock" checked> Stock</label>
-          <label><input type="radio" name="asset_type" value="etf"> ETF</label>
-        </fieldset>
-        <button id="forecast-submit" class="primary" type="submit"><span>Run forecast</span></button>
-      </form>
-    </section>
+<main id="main" tabindex="-1">
+<section class="hero" aria-labelledby="forecast-heading">
+<div class="hero-copy">
+<p class="section-number">01 / Forecast desk</p>
+<h2 id="forecast-heading">Read the range.<br><em>Keep the record.</em></h2>
+<p class="hero-deck">Decision-grade probability context for the next market close—measured from both the daily close and the last completed five-minute bar.</p>
+<ul class="hero-facts" aria-label="Forecast principles">
+<li><span>Two</span> comparable horizons</li>
+<li><span>Three</span> confidence bands</li>
+<li><span>Every</span> request recorded</li>
+</ul>
+</div>
+<form id="forecast-form" class="search-panel" novalidate>
+<div class="field symbol-field">
+<div class="field-heading">
+<label for="symbol">Company name or Yahoo Finance symbol</label>
+<span class="field-index" aria-hidden="true">QUERY / 01</span>
+</div>
+<input id="symbol" name="symbol" type="text" value="ACDC" maxlength="80" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="instrument-options" aria-describedby="symbol-help lookup-status identity-confirmation symbol-error" required>
+<p id="symbol-help" class="hint">Type a company name to choose its identity, or enter a symbol directly.</p>
+<p id="lookup-status" class="hint lookup-status" role="status" aria-live="polite"></p>
+<ul id="instrument-options" class="instrument-options" role="listbox" aria-label="Matching instruments" hidden></ul>
+<div id="identity-confirmation" class="identity-confirmation" aria-live="polite" hidden></div>
+<p id="symbol-error" class="field-error" aria-live="polite"></p>
+</div>
+<fieldset class="asset-field">
+<legend>Asset type</legend>
+<label><input type="radio" name="asset_type" value="stock" checked> Stock</label>
+<label><input type="radio" name="asset_type" value="etf"> ETF</label>
+</fieldset>
+<button id="forecast-submit" class="primary" type="submit"><span>Run forecast</span></button>
+</form>
+</section>
 
-    <div id="announcement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
-    <section id="result-section" class="results" aria-labelledby="result-heading" tabindex="-1">
-      <div class="section-head">
-        <div>
-          <p class="section-number">02 / Horizon analysis</p>
-          <h2 id="result-heading">Forecast comparison</h2>
-        </div>
-        <span id="quality-badge" class="badge neutral">Awaiting input</span>
-      </div>
-      <div id="result-content" class="empty-state" aria-busy="false">
-        <span class="empty-orbit" aria-hidden="true"><i></i><i></i><i></i></span>
-        <h3>No forecast loaded</h3>
-        <p>Choose an instrument to calculate two traceable probability distributions.</p>
-      </div>
-    </section>
+<div id="announcement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+<section id="result-section" class="results" aria-labelledby="result-heading" tabindex="-1">
+<div class="section-head">
+<div>
+<p class="section-number">02 / Horizon analysis</p>
+<h2 id="result-heading">Forecast comparison</h2>
+</div>
+<span id="quality-badge" class="badge neutral">Awaiting input</span>
+</div>
+<div id="result-content" class="empty-state" aria-busy="false">
+<span class="empty-orbit" aria-hidden="true"><i></i><i></i><i></i></span>
+<h3>No forecast loaded</h3>
+<p>Choose an instrument to calculate two traceable probability distributions.</p>
+</div>
+</section>
 
-    <section id="fresh-analysis-section" class="fresh-analysis" aria-labelledby="fresh-analysis-heading" tabindex="-1" hidden>
-      <div class="section-head">
-        <div>
-          <p class="section-number">02b / Separate analysis</p>
-          <h2 id="fresh-analysis-heading">Fresh historical-cutoff analysis</h2>
-        </div>
-        <span class="badge fresh">New calculation</span>
-      </div>
-      <p class="fresh-warning"><strong>Not the saved forecast.</strong> This separate calculation uses the selected event’s historical cutoff and records its own as-of time and provenance. The immutable recorded result above remains unchanged.</p>
-      <div id="fresh-analysis-content" aria-live="polite"></div>
-    </section>
+<section id="fresh-analysis-section" class="fresh-analysis" aria-labelledby="fresh-analysis-heading" tabindex="-1" hidden>
+<div class="section-head">
+<div>
+<p class="section-number">02b / Separate analysis</p>
+<h2 id="fresh-analysis-heading">Fresh historical-cutoff analysis</h2>
+</div>
+<span class="badge fresh">New calculation</span>
+</div>
+<p class="fresh-warning"><strong>Not the saved forecast.</strong> This separate calculation uses the selected event’s historical cutoff and records its own as-of time and provenance. The immutable recorded result above remains unchanged.</p>
+<div id="fresh-analysis-content" aria-live="polite"></div>
+</section>
 
-    <section class="ledger" aria-labelledby="history-heading">
-      <div class="section-head">
-        <div>
-          <p class="section-number">03 / Permanent record</p>
-          <h2 id="history-heading">Search ledger</h2>
-        </div>
-        <fieldset class="export-controls">
-          <legend class="sr-only">Download filtered history</legend>
-          <a id="export-csv" class="text-link" href="/api/v1/history-export.csv" download>Download CSV</a>
-          <a id="export-json" class="text-link" href="/api/v1/history-export.json" download>Download JSON</a>
-        </fieldset>
-      </div>
-      <p class="ledger-intro">Every row is a new submitted request. Status and run labels distinguish successful, failed, repeated, newly calculated, and reused results. Saved results are immutable and never expire automatically.</p>
-      <form id="history-form" class="history-filters" role="search">
-        <div class="field">
-          <label for="history-query">Find symbol or company</label>
-          <input id="history-query" name="q" type="search" maxlength="30" placeholder="ACDC">
-        </div>
-        <div class="field">
-          <label for="history-status">Status</label>
-          <select id="history-status" name="status">
-            <option value="">All states</option>
-            <option value="successful">Successful</option>
-            <option value="repeated">Repeated</option>
-            <option value="failed">Failed</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="history-asset">Asset type</label>
-          <select id="history-asset" name="asset_type">
-            <option value="">All types</option>
-            <option value="stock">Stock</option>
-            <option value="etf">ETF</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="history-analysis">Analysis type</label>
-          <select id="history-analysis" name="analysis_kind">
-            <option value="">All analyses</option>
-            <option value="submitted_forecast">Submitted forecasts</option>
-            <option value="fresh_historical_reconstruction">Fresh cutoff analyses</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="history-from">Submitted from</label>
-          <input id="history-from" name="submitted_from" type="date">
-        </div>
-        <div class="field">
-          <label for="history-to">Submitted through</label>
-          <input id="history-to" name="submitted_to" type="date">
-        </div>
-        <div class="field">
-          <label for="history-model">Model name or version</label>
-          <input id="history-model" name="model" type="search" maxlength="120" placeholder="empirical">
-        </div>
-        <div class="field">
-          <label for="history-horizon">Forecast horizon</label>
-          <select id="history-horizon" name="horizon">
-            <option value="">Both horizons</option>
-            <option value="close_to_close">Close to next close</option>
-            <option value="completed_5m_to_close">Completed 5m to close</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="history-sort">Sort ledger</label>
-          <select id="history-sort" name="sort">
-            <option value="event_id:desc">Newest request first</option>
-            <option value="event_id:asc">Oldest request first</option>
-            <option value="symbol:asc">Symbol A–Z</option>
-            <option value="company:asc">Company A–Z</option>
-            <option value="status:asc">Status A–Z</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="history-page-size">Rows per page</label>
-          <select id="history-page-size" name="page_size">
-            <option value="10" selected>10</option>
-            <option value="20">20</option>
-            <option value="50">50</option>
-          </select>
-        </div>
-        <button class="secondary" type="submit">Filter ledger</button>
-      </form>
-      <div id="history-content" class="history-content" aria-live="polite">
-        <p>Loading local history…</p>
-      </div>
-      <nav class="pagination" aria-label="History pages">
-        <button id="history-previous" class="secondary" type="button" disabled>Previous</button>
-        <span id="history-page" role="status">Page 1</span>
-        <button id="history-next" class="secondary" type="button" disabled>Next</button>
-      </nav>
-    </section>
-  </main>
+<section class="ledger" aria-labelledby="history-heading">
+<div class="section-head">
+<div>
+<p class="section-number">03 / Permanent record</p>
+<h2 id="history-heading">Search ledger</h2>
+</div>
+<fieldset class="export-controls">
+<legend class="sr-only">Download filtered history</legend>
+<a id="export-csv" class="text-link" href="/api/v1/history-export.csv" download>Download CSV</a>
+<a id="export-json" class="text-link" href="/api/v1/history-export.json" download>Download JSON</a>
+</fieldset>
+</div>
+<p class="ledger-intro">Every row is a new submitted request. Status and run labels distinguish successful, failed, repeated, newly calculated, and reused results. Saved results are immutable and never expire automatically.</p>
+<form id="history-form" class="history-filters" role="search">
+<div class="field">
+<label for="history-query">Find symbol or company</label>
+<input id="history-query" name="q" type="search" maxlength="30" placeholder="ACDC">
+</div>
+<div class="field">
+<label for="history-status">Status</label>
+<select id="history-status" name="status">
+<option value="">All states</option>
+<option value="successful">Successful</option>
+<option value="repeated">Repeated</option>
+<option value="failed">Failed</option>
+</select>
+</div>
+<div class="field">
+<label for="history-asset">Asset type</label>
+<select id="history-asset" name="asset_type">
+<option value="">All types</option>
+<option value="stock">Stock</option>
+<option value="etf">ETF</option>
+</select>
+</div>
+<div class="field">
+<label for="history-analysis">Analysis type</label>
+<select id="history-analysis" name="analysis_kind">
+<option value="">All analyses</option>
+<option value="submitted_forecast">Submitted forecasts</option>
+<option value="fresh_historical_reconstruction">Fresh cutoff analyses</option>
+</select>
+</div>
+<div class="field">
+<label for="history-from">Submitted from</label>
+<input id="history-from" name="submitted_from" type="date">
+</div>
+<div class="field">
+<label for="history-to">Submitted through</label>
+<input id="history-to" name="submitted_to" type="date">
+</div>
+<div class="field">
+<label for="history-model">Model name or version</label>
+<input id="history-model" name="model" type="search" maxlength="120" placeholder="empirical">
+</div>
+<div class="field">
+<label for="history-horizon">Forecast horizon</label>
+<select id="history-horizon" name="horizon">
+<option value="">Both horizons</option>
+<option value="close_to_close">Close to next close</option>
+<option value="completed_5m_to_close">Completed 5m to close</option>
+</select>
+</div>
+<div class="field">
+<label for="history-sort">Sort ledger</label>
+<select id="history-sort" name="sort">
+<option value="event_id:desc">Newest request first</option>
+<option value="event_id:asc">Oldest request first</option>
+<option value="symbol:asc">Symbol A–Z</option>
+<option value="company:asc">Company A–Z</option>
+<option value="status:asc">Status A–Z</option>
+</select>
+</div>
+<div class="field">
+<label for="history-page-size">Rows per page</label>
+<select id="history-page-size" name="page_size">
+<option value="10" selected>10</option>
+<option value="20">20</option>
+<option value="50">50</option>
+</select>
+</div>
+<button class="secondary" type="submit">Filter ledger</button>
+</form>
+<div id="history-content" class="history-content" aria-live="polite">
+<p>Loading local history…</p>
+</div>
+<nav class="pagination" aria-label="History pages">
+<button id="history-previous" class="secondary" type="button" disabled>Previous</button>
+<span id="history-page" role="status">Page 1</span>
+<button id="history-next" class="secondary" type="button" disabled>Next</button>
+</nav>
+</section>
+</main>
 
-  <footer>
-    <p>Research output, not investment advice. Provider, model, version, and limitations are shown with every result.</p>
-  </footer>
+<footer>
+<p>Research output, not investment advice. Provider, model, version, and limitations are shown with every result.</p>
+</footer>
 </body>
 </html>

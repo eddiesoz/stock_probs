@@ -147,8 +147,14 @@ def test_opencode_11830_loads_valid_config_in_isolated_home(tmp_path):
         "LUNA MAX QA": ("openai/gpt-5.6-luna", "max", "subagent"),
         "LUNA MAX docs": ("openai/gpt-5.6-luna", "max", "subagent"),
         "SOL HIGH build": ("openai/gpt-5.6-sol", "high", "subagent"),
+        "stock-orchestrator": ("openai/gpt-5.6-sol", "medium", "primary"),
     }
-    assert all(agent["permission"]["*"] == "deny" for agent in agents.values())
+    assert agents["stock-orchestrator"]["options"]["stock_probs_max_active_subagents"] == 6
+    assert all(
+        agent["permission"]["*"] == "deny"
+        for name, agent in agents.items()
+        if name != "stock-orchestrator"
+    )
     assert agents["LUNA MAX QA"]["mode"] == "subagent"
     review_permission = agents["LUNA MAX QA"]["permission"]
     assert review_permission["edit"] == "deny" and review_permission["task"] == "deny"

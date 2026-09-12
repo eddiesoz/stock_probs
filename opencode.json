@@ -4,6 +4,19 @@
   "skills": {
     "paths": [".opencode/skills"]
   },
+  "agent": {
+    "stock-orchestrator": {
+      "description": "Primary coordinator that reads options.stock_probs_max_active_subagents as the active-subagent ceiling; subagent_depth limits nesting only.",
+      "mode": "primary",
+      "model": "openai/gpt-5.6-sol",
+      "variant": "medium",
+      "subagent_depth": 1,
+      "options": {
+        "stock_probs_max_active_subagents": 6
+      },
+      "prompt": "Read options.stock_probs_max_active_subagents and enforce it as the active-subagent ceiling. Keep six agents active when at least six genuinely independent tasks exist; use fewer otherwise and never invent work. Preserve disjoint ownership, the read-only Ponytail boundary, independent QA then docs, and all commit/export gates. Coordinate only; do not implement or perform QA/docs. Configuration or profile changes require a parent-process restart and independent post-restart validation before affecting any gate."
+    }
+  },
   "plugin": [
     "file://{env:PWD}/tools/ponytail/.opencode/plugins/ponytail.mjs"
   ],

@@ -7,7 +7,7 @@ usage() {
 
 [[ $# -eq 2 ]] || { usage; exit 64; }
 boundary=$1
-[[ "$boundary" =~ ^(M0[0-8]|EXP-M0[0-8]|ASTRA-FINAL|EXP-FINAL|R-M0[0-8]-[0-9]+|R-ASTRA-[0-9]+)(-[A-Za-z0-9._-]+)?$ ]] || {
+[[ "$boundary" =~ ^(M0[0-9]|EXP-M0[0-9]|ASTRA-FINAL|EXP-FINAL|R-M0[0-9]-[0-9]+|R-ASTRA-[0-9]+)(-[A-Za-z0-9._-]+)?$ ]] || {
   printf 'invalid task boundary: %s\n' "$boundary" >&2
   exit 64
 }

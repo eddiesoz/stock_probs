@@ -23,37 +23,48 @@ const REQUEST_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f
 // Ratios are independently recorded from the WCAG relative-luminance formula. The entries cover
 // every authored foreground/background token pairing, including hover, error, and chart states.
 const CONTRAST_STATES = [
-  { state: "primary paper text", foreground: "--ink", background: "--paper", minimum: 4.5, recorded: 13.85 },
-  { state: "secondary paper text", foreground: "--ink-soft", background: "--paper", minimum: 4.5, recorded: 9.65 },
-  { state: "muted paper text", foreground: "--muted", background: "--paper", minimum: 4.5, recorded: 5.13 },
-  { state: "section number on paper", foreground: "--signal-dark", background: "--paper", minimum: 4.5, recorded: 5.89 },
-  { state: "large signal headline on paper", foreground: "--signal", background: "--paper", minimum: 3, recorded: 3.85 },
-  { state: "light text on terminal", foreground: "#ffffff", background: "--ink", minimum: 4.5, recorded: 16.07 },
-  { state: "mint text on terminal", foreground: "--mint", background: "--ink", minimum: 4.5, recorded: 10.94 },
-  { state: "field index on terminal", foreground: "#92a69e", background: "--ink", minimum: 4.5, recorded: 6.25 },
-  { state: "hint text on terminal", foreground: "#b9c6c1", background: "--ink", minimum: 4.5, recorded: 9.12 },
-  { state: "field error on terminal", foreground: "#ffb5a3", background: "--ink", minimum: 4.5, recorded: 9.48 },
-  { state: "primary sheet text", foreground: "--ink", background: "--sheet", minimum: 4.5, recorded: 15.8 },
-  { state: "muted sheet and option text", foreground: "--muted", background: "--sheet", minimum: 4.5, recorded: 5.86 },
+  { state: "primary paper text", foreground: "--text", background: "--canvas", minimum: 4.5, recorded: 13.85 },
+  { state: "secondary paper text", foreground: "--ink-soft", background: "--canvas", minimum: 4.5, recorded: 9.65 },
+  { state: "muted paper text", foreground: "--muted-text", background: "--canvas", minimum: 4.5, recorded: 5.13 },
+  { state: "section number on paper", foreground: "--signal-dark", background: "--canvas", minimum: 4.5, recorded: 5.89 },
+  { state: "large signal headline on paper", foreground: "--focus", background: "--canvas", minimum: 3, recorded: 3.85 },
+  { state: "light text on terminal", foreground: "#ffffff", background: "--text", minimum: 4.5, recorded: 16.07 },
+  { state: "mint text on terminal", foreground: "--mint", background: "--text", minimum: 4.5, recorded: 10.94 },
+  { state: "field index on terminal", foreground: "#92a69e", background: "--text", minimum: 4.5, recorded: 6.25 },
+  { state: "hint text on terminal", foreground: "#b9c6c1", background: "--text", minimum: 4.5, recorded: 9.12 },
+  { state: "field error on terminal", foreground: "#ffb5a3", background: "--text", minimum: 4.5, recorded: 9.48 },
+  { state: "primary sheet text", foreground: "--text", background: "--panel", minimum: 4.5, recorded: 15.8 },
+  { state: "muted sheet and option text", foreground: "--muted-text", background: "--panel", minimum: 4.5, recorded: 5.86 },
   { state: "identity confirmation text", foreground: "#cad8d2", background: "#203b33", minimum: 4.5, recorded: 8.22 },
   { state: "identity confirmation emphasis", foreground: "#ffffff", background: "#203b33", minimum: 4.5, recorded: 12.11 },
-  { state: "primary button text", foreground: "--ink", background: "--lime", minimum: 4.5, recorded: 12.22 },
-  { state: "successful status on paper", foreground: "--green", background: "--paper", minimum: 4.5, recorded: 6.02 },
-  { state: "repeated status on paper", foreground: "--amber", background: "--paper", minimum: 4.5, recorded: 5.87 },
-  { state: "failed status on paper", foreground: "--red", background: "--paper", minimum: 4.5, recorded: 6.27 },
-  { state: "comparison description", foreground: "#b9c9c3", background: "--ink", minimum: 4.5, recorded: 9.34 },
-  { state: "comparison secondary labels", foreground: "#aebeb8", background: "--ink", minimum: 4.5, recorded: 8.31 },
-  { state: "comparison down value", foreground: "#ffad9b", background: "--ink", minimum: 4.5, recorded: 8.96 },
-  { state: "chart label", foreground: "--muted", background: "#f6f4eb", minimum: 4.5, recorded: 5.41 },
+  { state: "primary button text", foreground: "--text", background: "--lime", minimum: 4.5, recorded: 12.22 },
+  { state: "successful status on paper", foreground: "--status-good", background: "--canvas", minimum: 4.5, recorded: 6.02 },
+  { state: "repeated status on paper", foreground: "--status-warn", background: "--canvas", minimum: 4.5, recorded: 5.87 },
+  { state: "failed status on paper", foreground: "--status-bad", background: "--canvas", minimum: 4.5, recorded: 6.27 },
+  { state: "comparison description", foreground: "#b9c9c3", background: "--text", minimum: 4.5, recorded: 9.34 },
+  { state: "comparison secondary labels", foreground: "#aebeb8", background: "--text", minimum: 4.5, recorded: 8.31 },
+  { state: "comparison down value", foreground: "#ffad9b", background: "--text", minimum: 4.5, recorded: 8.96 },
+  { state: "chart label", foreground: "--muted-text", background: "#f6f4eb", minimum: 4.5, recorded: 5.41 },
   { state: "provenance copy", foreground: "#45564f", background: "#e5e5d8", minimum: 4.5, recorded: 6.13 },
-  { state: "provenance heading", foreground: "--ink", background: "#e5e5d8", minimum: 4.5, recorded: 12.65 },
-  { state: "error label", foreground: "--red", background: "#f4ded9", minimum: 4.5, recorded: 5.65 },
-  { state: "error copy", foreground: "--ink", background: "#f4ded9", minimum: 4.5, recorded: 12.47 },
+  { state: "provenance heading", foreground: "--text", background: "#e5e5d8", minimum: 4.5, recorded: 12.65 },
+  { state: "error label", foreground: "--status-bad", background: "#f4ded9", minimum: 4.5, recorded: 5.65 },
+  { state: "error copy", foreground: "--text", background: "#f4ded9", minimum: 4.5, recorded: 12.47 },
   { state: "navigation hover", foreground: "--ink-soft", background: "--lime", minimum: 4.5, recorded: 8.52 },
-  { state: "history action on sheet", foreground: "--signal-dark", background: "--sheet", minimum: 4.5, recorded: 6.72 },
-  { state: "focus and loss-chart signal", foreground: "--signal", background: "--sheet", minimum: 3, recorded: 4.4 },
-  { state: "control boundary", foreground: "--line-dark", background: "--sheet", minimum: 3, recorded: 3.49 },
-  { state: "loading and empty boundary", foreground: "--line-dark", background: "--paper", minimum: 3, recorded: 3.05 },
+  { state: "history action on sheet", foreground: "--signal-dark", background: "--panel", minimum: 4.5, recorded: 6.72 },
+  { state: "focus and loss-chart signal", foreground: "--focus", background: "--panel", minimum: 3, recorded: 4.4 },
+  { state: "control boundary", foreground: "--strong-border", background: "--panel", minimum: 3, recorded: 3.49 },
+  { state: "loading and empty boundary", foreground: "--strong-border", background: "--canvas", minimum: 3, recorded: 3.05 },
+];
+const THEME_ROLE_CONTRAST = [
+  ["text", "--text", "--canvas", 4.5],
+  ["muted text", "--muted-text", "--canvas", 4.5],
+  ["control border", "--strong-border", "--panel", 3],
+  ["focus", "--focus", "--canvas", 3],
+  ["success", "--status-good", "--canvas", 4.5],
+  ["warning", "--status-warn", "--canvas", 4.5],
+  ["error", "--status-bad", "--canvas", 4.5],
+  ["loss chart", "--chart-loss", "--chart-bg", 3],
+  ["gain chart", "--chart-gain", "--chart-bg", 3],
 ];
 
 function relativeLuminance(color) {
@@ -72,7 +83,11 @@ function contrastRatio(foreground, background) {
 async function verifyAuthoredContrastStates(page) {
   const tokens = await page.evaluate((names) => {
     const styles = getComputedStyle(document.documentElement);
-    return Object.fromEntries(names.map((name) => [name, styles.getPropertyValue(name).trim()]));
+    const resolve = (name) => {
+      const value = styles.getPropertyValue(name).trim();
+      return value.startsWith("var(") ? resolve(value.slice(4, -1)) : value;
+    };
+    return Object.fromEntries(names.map((name) => [name, resolve(name)]));
   }, [...new Set(CONTRAST_STATES.flatMap(({ foreground, background }) => (
     [foreground, background].filter((value) => value.startsWith("--"))
   )))]);
@@ -83,6 +98,18 @@ async function verifyAuthoredContrastStates(page) {
     expect(ratio, `${entry.state} drifted from its recorded WCAG ratio`).toBeCloseTo(entry.recorded, 2);
     expect(ratio, `${entry.state} does not meet WCAG contrast`).toBeGreaterThanOrEqual(entry.minimum);
     return { ...entry, foreground, background, calculated: Number(ratio.toFixed(2)) };
+  });
+}
+
+async function verifyThemeRoleContrast(page) {
+  const tokens = await page.evaluate((names) => {
+    const styles = getComputedStyle(document.documentElement);
+    return Object.fromEntries(names.map((name) => [name, styles.getPropertyValue(name).trim()]));
+  }, [...new Set(THEME_ROLE_CONTRAST.flatMap(([, foreground, background]) => [foreground, background]))]);
+  return THEME_ROLE_CONTRAST.map(([state, foreground, background, minimum]) => {
+    const calculated = contrastRatio(tokens[foreground], tokens[background]);
+    expect(calculated, `${state} theme contrast`).toBeGreaterThanOrEqual(minimum);
+    return { state, foreground: tokens[foreground], background: tokens[background], minimum, calculated: Number(calculated.toFixed(2)) };
   });
 }
 
@@ -147,6 +174,24 @@ async function submitUiForecast(page, symbol, assetType = "stock") {
   const response = await responsePromise;
   expect(response.status()).toBe(201);
   return response.json();
+}
+
+function newsPayload(symbol, count) {
+  return {
+    query: { symbol, limit: count > 5 ? 10 : 5 },
+    provider: "Yahoo Finance",
+    as_of: "2025-01-10T17:03:00Z",
+    cache_state: "miss",
+    coverage: { returned_count: count, partial_metadata: false, refresh_failed: false },
+    items: Array.from({ length: count }, (_, index) => ({
+      id: `fixture-${index + 1}`,
+      title: `Current headline ${index + 1}`,
+      publisher: "Fixture News",
+      published_at: `2025-01-10T${String(16 - Math.floor(index / 6)).padStart(2, "0")}:${String((index * 7) % 60).padStart(2, "0")}:00Z`,
+      url: `https://example.com/news/${index + 1}`,
+      related_symbols: [symbol],
+    })),
+  };
 }
 
 function expectM03Payload(payload, assetType) {
@@ -732,6 +777,197 @@ test("validation, loading, and stale states remain explicit", async ({ page }) =
   await expect(page.getByText("Retrieving completed bars for STALE…")).toBeVisible();
   await expect(page.locator("#quality-badge")).toContainText("stale");
   await expect(page.getByText(/intraday origin.*applicable close elapsed/)).toBeVisible();
+  await expectAxeClean(page);
+});
+
+test("theme initializes before CSS and persists light dark and system choices on both pages", async ({
+  page,
+  applicationRequests,
+}, testInfo) => {
+  await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+  await page.goto("/");
+  await page.evaluate(() => localStorage.setItem("stock-probs.theme", "light"));
+  const dashboardResponse = await page.goto("/");
+  const csp = (await dashboardResponse.headers())["content-security-policy"];
+  expect(csp).toBe("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  const ordering = await page.evaluate(() => {
+    const theme = document.querySelector('script[src="/assets/theme.js"]');
+    const css = document.querySelector('link[href="/assets/app.css"]');
+    return {
+      beforeCss: Boolean(theme.compareDocumentPosition(css) & Node.DOCUMENT_POSITION_FOLLOWING),
+      async: theme.async,
+      defer: theme.defer,
+      type: theme.type,
+      firstPaintTheme: document.documentElement.dataset.theme,
+    };
+  });
+  expect(ordering).toEqual({ beforeCss: true, async: false, defer: false, type: "", firstPaintTheme: "light" });
+  const selector = page.getByLabel("Color theme");
+  await selector.selectOption("dark");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
+  expect(await page.evaluate(() => localStorage.getItem("stock-probs.theme"))).toBe("dark");
+  const darkRatios = await verifyThemeRoleContrast(page);
+  await selector.selectOption("system");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  expect(await page.evaluate(() => localStorage.getItem("stock-probs.theme"))).toBeNull();
+  const dashboardAxe = await expectAxeClean(page);
+
+  await page.goto("/api/v1/docs");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByLabel("Color theme").selectOption("light");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  const lightRatios = await verifyThemeRoleContrast(page);
+  const docsAxe = await expectAxeClean(page);
+  expect((await page.locator('script[src="/assets/theme.js"]').getAttribute("defer"))).toBeNull();
+  await page.evaluate(() => localStorage.setItem("stock-probs.theme", "invalid"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  expect(await page.evaluate(() => localStorage.getItem("stock-probs.theme"))).toBeNull();
+  const darkDocsAxe = await expectAxeClean(page);
+  await page.emulateMedia({ media: "print", colorScheme: "dark", forcedColors: "none" });
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("light");
+  await expect(page.locator(".theme-control")).toBeHidden();
+  expect(applicationRequests.some((url) => new URL(url).pathname === "/api/v1/news")).toBe(false);
+  await testInfo.attach("m09-theme-axe-contrast.json", {
+    body: Buffer.from(JSON.stringify({ ordering, lightRatios, darkRatios, axe: { dashboard: dashboardAxe, docs: docsAxe, darkDocs: darkDocsAxe } }, null, 2)),
+    contentType: "application/json",
+  });
+});
+
+test("theme falls back to the system when storage is invalid or unavailable", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.addInitScript(() => {
+    Object.defineProperties(Storage.prototype, {
+      getItem: { value: () => { throw new DOMException("disabled"); } },
+      setItem: { value: () => { throw new DOMException("disabled"); } },
+      removeItem: { value: () => { throw new DOMException("disabled"); } },
+    });
+  });
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByLabel("Color theme").selectOption("light");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await expectAxeClean(page);
+});
+
+test("news disclosure is lazy bounded safe and separate from immutable evidence", async ({
+  page,
+  applicationRequests,
+}, testInfo) => {
+  const requestedLimits = [];
+  await page.route("**/api/v1/news?*", async (route) => {
+    const url = new URL(route.request().url());
+    const limit = Number(url.searchParams.get("limit"));
+    requestedLimits.push(limit);
+    const payload = newsPayload(url.searchParams.get("symbol"), limit);
+    if (limit === 5) payload.items[0].url = "http://unsafe.example/news";
+    await route.fulfill({ status: 200, contentType: "application/json", json: payload });
+  });
+  await page.goto("/");
+  await page.getByLabel("Company name or Yahoo Finance symbol").fill("ProFrac");
+  await expect(page.getByRole("option", { name: /ProFrac Holding Corp/ })).toBeVisible();
+  expect(requestedLimits).toEqual([]);
+  await page.getByLabel("Color theme").selectOption("dark");
+  expect(requestedLimits).toEqual([]);
+  await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
+  await page.getByRole("button", { name: "Run forecast" }).click();
+  const disclosure = page.getByText("Current headlines for this symbol", { exact: true });
+  await expect(disclosure).toBeVisible();
+  await expect(page.locator(".news-panel")).toHaveJSProperty("open", false);
+  await expect(page.locator(".news-content")).toHaveAttribute("data-state", "not-requested");
+  expect(requestedLimits).toEqual([]);
+  await disclosure.click();
+  await expect(page.locator(".news-content")).toHaveAttribute("data-state", "fresh");
+  await expect(page.locator(".news-list li")).toHaveCount(5);
+  await expect(page.locator(".news-content")).toContainText("Source: Yahoo Finance · As of:");
+  await expect(page.locator(".news-list li").first()).toContainText("Link unavailable");
+  const links = page.locator(".news-link");
+  await expect(links).toHaveCount(4);
+  for (const link of await links.all()) {
+    expect(await link.getAttribute("href")).toMatch(/^https:\/\//);
+    expect((await link.getAttribute("rel")).split(/\s+/).sort()).toEqual(["noopener", "noreferrer"]);
+  }
+  await page.getByRole("button", { name: "Show up to 10 headlines" }).click();
+  await expect(page.locator(".news-list li")).toHaveCount(10);
+  expect(requestedLimits).toEqual([5, 10]);
+  await page.waitForTimeout(100);
+  expect(requestedLimits).toEqual([5, 10]);
+  await expect(page.locator("#history-content tbody tr").first()).not.toContainText("Current headline");
+  await page.getByRole("button", { name: "Reopen saved forecast" }).first().click();
+  await expect(page.getByText("Load current headlines for this symbol", { exact: true })).toBeVisible();
+  expect(requestedLimits).toEqual([5, 10]);
+  expect(applicationRequests.every((url) => new URL(url).pathname.startsWith("/api/v1"))).toBe(true);
+  const axe = await expectAxeClean(page);
+  await testInfo.attach("m09-news-axe.json", {
+    body: Buffer.from(JSON.stringify(axe, null, 2)), contentType: "application/json",
+  });
+});
+
+test("news renders empty partial stale failure busy unreachable and superseded states", async ({
+  page,
+  browserDiagnostics,
+}) => {
+  let mode = "empty";
+  await page.route("**/api/v1/news?*", async (route) => {
+    const symbol = new URL(route.request().url()).searchParams.get("symbol");
+    if (mode === "provider") return route.fulfill({ status: 502, contentType: "application/json", json: { error: { code: "provider_unavailable", message: "Provider unavailable" } } });
+    if (mode === "busy") return route.fulfill({ status: 503, contentType: "application/json", json: { error: { code: "capacity_busy", message: "Busy" } } });
+    const payload = newsPayload(symbol, mode === "empty" ? 0 : 1);
+    if (mode === "partial") {
+      payload.items[0] = { id: "partial", title: "Headline with partial metadata", publisher: null, published_at: null, url: "https://example.com/partial", related_symbols: null };
+      payload.coverage.partial_metadata = true;
+    }
+    if (mode === "stale") {
+      payload.cache_state = "stale_fallback";
+      payload.coverage.refresh_failed = true;
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", json: payload });
+  });
+  browserDiagnostics.expectHttpFailures(
+    { method: "GET", path: "/api/v1/news", status: 502 },
+    { method: "GET", path: "/api/v1/news", status: 503 },
+  );
+  await page.goto("/");
+  const run = async (state) => {
+    mode = state;
+    await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
+    await page.getByRole("button", { name: "Run forecast" }).click();
+    await page.getByText("Current headlines for this symbol", { exact: true }).click();
+    return page.locator(".news-content");
+  };
+  await expect(await run("empty")).toHaveAttribute("data-state", "empty");
+  await expect(await run("partial")).toHaveAttribute("data-state", "partial");
+  await expect(await run("stale")).toHaveAttribute("data-state", "stale");
+  await expect(await run("provider")).toHaveAttribute("data-state", "unavailable");
+  await expect(await run("busy")).toHaveAttribute("data-state", "busy");
+
+  await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
+  await page.getByRole("button", { name: "Run forecast" }).click();
+  await page.evaluate(() => {
+    window.__realFetch = window.fetch;
+    window.fetch = (url, options) => String(url).includes("/api/v1/news")
+      ? Promise.reject(new TypeError("Local service unreachable")) : window.__realFetch(url, options);
+  });
+  await page.getByText("Current headlines for this symbol", { exact: true }).click();
+  await expect(page.locator(".news-content")).toHaveAttribute("data-state", "unreachable");
+  await page.evaluate(() => { window.fetch = window.__realFetch; });
+
+  await page.evaluate(() => {
+    window.__realFetch = window.fetch;
+    window.fetch = (url, options) => String(url).includes("/api/v1/news")
+      ? new Promise((resolve, reject) => options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))))
+      : window.__realFetch(url, options);
+  });
+  await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
+  await page.getByRole("button", { name: "Run forecast" }).click();
+  await page.getByText("Current headlines for this symbol", { exact: true }).click();
+  await expect(page.locator(".news-content")).toHaveAttribute("data-state", "loading");
+  await page.getByLabel("Company name or Yahoo Finance symbol").fill("SPY-D");
+  await expect(page.locator(".news-content")).toHaveAttribute("data-state", "superseded");
+  await expect(page.locator(".news-list")).toHaveCount(0);
+  await page.evaluate(() => { window.fetch = window.__realFetch; });
   await expectAxeClean(page);
 });
 

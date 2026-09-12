@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts.validate_docs import CATEGORIES, parse_frontmatter, validate_repository
+from scripts.validate_docs import (
+    APPROVED_SKILL_CATALOG,
+    CATEGORIES,
+    parse_frontmatter,
+    validate_repository,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -16,10 +21,8 @@ def documentation_repository(tmp_path: Path) -> Path:
     shutil.copytree(ROOT / "docs", tmp_path / "docs")
     skill_parent = tmp_path / ".opencode" / "skills"
     skill_parent.mkdir(parents=True)
-    shutil.copytree(
-        ROOT / ".opencode" / "skills" / "documentation",
-        skill_parent / "documentation",
-    )
+    for name in APPROVED_SKILL_CATALOG:
+        shutil.copytree(ROOT / ".opencode" / "skills" / name, skill_parent / name)
     shutil.copy2(ROOT / ".opencode" / "skills" / "learnings.md", skill_parent / "learnings.md")
     shutil.copy2(ROOT / ".opencode" / "SKILL-INDEX.md", tmp_path / ".opencode" / "SKILL-INDEX.md")
     for name in ("README.md", "AGENTS.md", "MVP-PLAN.md", "MVP-ROADMAP.md", "SESSION-EXPORT.md"):
@@ -39,6 +42,29 @@ def test_repository_documentation_contract_passes() -> None:
 def test_documentation_taxonomy_has_expected_size() -> None:
     assert len(CATEGORIES) == 8
     assert sum(map(len, CATEGORIES.values())) == 11
+
+
+def test_unexpected_skill_catalog_mutation_fails(documentation_repository: Path) -> None:
+    unexpected = documentation_repository / ".opencode/skills/unapproved"
+    unexpected.mkdir()
+    (unexpected / "SKILL.md").write_text(
+        '---\nname: "unapproved"\ndescription: "Unapproved test skill."\n---\n',
+        encoding="utf-8",
+    )
+
+    assert any(
+        "unexpected project skill: unapproved" in issue
+        for issue in validate_repository(documentation_repository)
+    )
+
+
+def test_missing_admitted_skill_catalog_mutation_fails(documentation_repository: Path) -> None:
+    shutil.rmtree(documentation_repository / ".opencode/skills/skill-maintenance")
+
+    assert any(
+        "missing admitted project skill: skill-maintenance" in issue
+        for issue in validate_repository(documentation_repository)
+    )
 
 
 def test_unexpected_markdown_page_mutation_fails(documentation_repository: Path) -> None:
@@ -189,11 +215,14 @@ def test_missing_skill_reference_link_mutation_fails(documentation_repository: P
     assert any("missing reference link: references/authoring.md" in issue for issue in issues)
 
 
-def test_skill_name_mutation_fails(documentation_repository: Path) -> None:
-    skill = documentation_repository / ".opencode/skills/documentation/SKILL.md"
+@pytest.mark.parametrize("name", APPROVED_SKILL_CATALOG)
+def test_skill_name_catalog_mutation_fails(
+    documentation_repository: Path, name: str
+) -> None:
+    skill = documentation_repository / f".opencode/skills/{name}/SKILL.md"
     skill.write_text(
         skill.read_text(encoding="utf-8").replace(
-            'name: "documentation"', 'name: "documentation-stale"'
+            f'name: "{name}"', f'name: "{name}-stale"'
         ),
         encoding="utf-8",
     )

@@ -1,0 +1,30 @@
+{
+  "_comment": "Synthetic Yahoo Finance-shaped news entries for deterministic offline provider tests; these are authored fixtures, not live or archived headlines.",
+  "ACDC": [
+    {
+      "uuid": "fixture-acdc-1",
+      "title": "ProFrac reports quarterly operating update",
+      "publisher": "Fixture Business Wire",
+      "providerPublishTime": 1736503200,
+      "link": "https://finance.yahoo.com/news/fixture-acdc-operating-update.html",
+      "relatedTickers": ["ACDC"]
+    },
+    {
+      "uuid": "fixture-acdc-2",
+      "title": "Energy services shares trade after sector report",
+      "providerPublishTime": 1736499600,
+      "link": "https://finance.yahoo.com/news/fixture-energy-services-sector.html"
+    }
+  ],
+  "SPY": [
+    {
+      "uuid": "fixture-spy-1",
+      "title": "US equity index funds track a mixed session",
+      "publisher": "Fixture Market News",
+      "providerPublishTime": 1736501400,
+      "link": "https://finance.yahoo.com/news/fixture-index-funds-session.html",
+      "relatedTickers": ["SPY"]
+    }
+  ],
+  "EMPTY": []
+}

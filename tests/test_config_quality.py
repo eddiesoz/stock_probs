@@ -176,6 +176,42 @@ def test_local_gate_and_frontend_fail_closed_on_required_boundaries():
     assert "sqlite" not in javascript and "yahoo.com" not in javascript
 
 
+def test_m09_is_accepted_by_review_and_local_gate_task_validators():
+    launcher = (ROOT / "scripts/ponytail-review.sh").read_text()
+    local_gate = (ROOT / "scripts/local-gate.sh").read_text()
+    makefile = (ROOT / "Makefile").read_text()
+    launcher_match = re.search(r'"\$boundary" =~ (\^\S+\$)', launcher)
+    local_gate_match = re.search(r'"\$TASK_ID" =~ (\^\S+\$)', local_gate)
+
+    assert launcher_match and local_gate_match
+    launcher_pattern = launcher_match.group(1)
+    local_gate_pattern = local_gate_match.group(1)
+    assert all(
+        re.fullmatch(launcher_pattern, task)
+        for milestone in range(10)
+        for task in (f"M{milestone:02}", f"EXP-M{milestone:02}", f"R-M{milestone:02}-1")
+    )
+    assert re.fullmatch(launcher_pattern, "M10") is None
+    assert re.fullmatch(local_gate_pattern, "M09")
+    assert all(
+        re.fullmatch(local_gate_pattern, task)
+        for milestone in range(9)
+        for task in (f"M{milestone:02}", f"R-M{milestone:02}-1")
+    )
+    assert "  m09)" in local_gate
+    assert "TASK_ID=M09 ./scripts/local-gate.sh m09" in makefile
+
+
+def test_arm64_smoke_accepts_m09_task_ids_and_rejects_invalid_id():
+    arm64_smoke = (ROOT / "scripts/arm64-smoke.sh").read_text()
+    match = re.search(r'"\$TASK_ID" =~ (\^\S+\$)', arm64_smoke)
+
+    assert match
+    pattern = match.group(1)
+    assert all(re.fullmatch(pattern, task) for task in ("M09", "EXP-M09", "R-M09-1"))
+    assert re.fullmatch(pattern, "M10") is None
+
+
 def test_reproducible_arm64_toolchains_are_pinned_and_generated_files_ignored():
     """Lock source archives and ensure local dependency/output trees never become evidence."""
 

@@ -2,23 +2,45 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
+import time as monotonic_time
+from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Lock
 from typing import Any
 from uuid import uuid4
 
 from stock_probs.domain import (
     DomainError,
+    NewsData,
     calculate_forecasts,
     evaluate_outcome,
     label_fresh_historical_analysis,
     normalize_lookup_query,
     normalize_symbol,
 )
-from stock_probs.provider import MAX_LOOKUP_RESULTS, MarketDataProvider
+from stock_probs.provider import MAX_LOOKUP_RESULTS, MAX_NEWS_RESULTS, MarketDataProvider
 from stock_probs.repository import Repository
+
+NEWS_FRESH_SECONDS = 300.0
+NEWS_STALE_SECONDS = 1800.0
+NEWS_EMPTY_SECONDS = 60.0
+NEWS_FAILURE_SECONDS = 30.0
+NEWS_MAX_SYMBOLS = 32
+NEWS_MAX_ENTRY_BYTES = 32 * 1024
+NEWS_MAX_CACHE_BYTES = 1024 * 1024
+
+
+@dataclass
+class _NewsCacheEntry:
+    data: NewsData | None = None
+    requested_limit: int = 0
+    stored_at: float = 0.0
+    size: int = 0
+    failed_at: float | None = None
 
 
 class ForecastService:
@@ -30,12 +52,165 @@ class ForecastService:
         provider: MarketDataProvider,
         clock: Callable[[], datetime] | None = None,
         max_provider_concurrency: int = 2,
+        monotonic_clock: Callable[[], float] | None = None,
     ):
         self.repository = repository
         self.provider = provider
         self.clock = clock or (lambda: datetime.now(UTC))
         # Yahoo calls are blocking and memory-heavy; bound them independently of HTTP workers.
         self.provider_slots = BoundedSemaphore(max_provider_concurrency)
+        self.monotonic_clock = monotonic_clock or monotonic_time.monotonic
+        self.news_slot = BoundedSemaphore(1)
+        self._news_lock = Lock()
+        self._news_cache: OrderedDict[str, _NewsCacheEntry] = OrderedDict()
+
+    @staticmethod
+    def _news_response(data: NewsData, limit: int, cache_state: str) -> dict[str, object]:
+        return data.as_dict(limit=limit, cache_state=cache_state)
+
+    @staticmethod
+    def _news_data_is_stale_eligible(
+        entry: _NewsCacheEntry, now: float, limit: int
+    ) -> bool:
+        return bool(
+            entry.data is not None
+            and entry.data.items
+            and limit <= entry.requested_limit
+            and max(0.0, now - entry.stored_at) <= NEWS_STALE_SECONDS
+            and entry.size <= NEWS_MAX_ENTRY_BYTES
+        )
+
+    def _news_failure(
+        self, symbol: str, now: float, limit: int
+    ) -> dict[str, object] | None:
+        """Record suppression and return an eligible stale response in one locked step."""
+
+        with self._news_lock:
+            entry = self._news_cache.get(symbol) or _NewsCacheEntry()
+            entry.failed_at = now
+            self._news_cache[symbol] = entry
+            self._news_cache.move_to_end(symbol)
+            while len(self._news_cache) > NEWS_MAX_SYMBOLS:
+                self._news_cache.popitem(last=False)
+            if self._news_data_is_stale_eligible(entry, now, limit):
+                assert entry.data is not None
+                return self._news_response(entry.data, limit, "stale_fallback")
+            return None
+
+    def _store_news(self, symbol: str, data: NewsData, limit: int, now: float) -> None:
+        serialized = json.dumps(
+            data.as_dict(limit=limit, cache_state="miss"),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode()
+        if len(serialized) > NEWS_MAX_ENTRY_BYTES:
+            raise DomainError(
+                "provider_news_invalid",
+                "The news provider response exceeds the safe response size.",
+                status_code=502,
+            )
+        with self._news_lock:
+            self._news_cache[symbol] = _NewsCacheEntry(
+                data=data,
+                requested_limit=limit,
+                stored_at=now,
+                size=len(serialized),
+            )
+            self._news_cache.move_to_end(symbol)
+            while len(self._news_cache) > NEWS_MAX_SYMBOLS or sum(
+                entry.size for entry in self._news_cache.values()
+            ) > NEWS_MAX_CACHE_BYTES:
+                self._news_cache.popitem(last=False)
+
+    def news(self, symbol: str, limit: int = 5) -> dict[str, object]:
+        """Return bounded current headlines without reading or writing forecast persistence."""
+
+        normalized_symbol = normalize_symbol(symbol)
+        if type(limit) is not int or not 1 <= limit <= MAX_NEWS_RESULTS:
+            raise DomainError(
+                "invalid_news_limit",
+                f"News limit must be between 1 and {MAX_NEWS_RESULTS}.",
+            )
+        now = self.monotonic_clock()
+        with self._news_lock:
+            entry = self._news_cache.get(normalized_symbol)
+            if entry is not None:
+                age = max(0.0, now - entry.stored_at)
+                within_requested_limit = limit <= entry.requested_limit
+                if entry.data is not None and within_requested_limit:
+                    if entry.data.items and age < NEWS_FRESH_SECONDS:
+                        self._news_cache.move_to_end(normalized_symbol)
+                        return self._news_response(entry.data, limit, "hit")
+                    if not entry.data.items and age < NEWS_EMPTY_SECONDS:
+                        self._news_cache.move_to_end(normalized_symbol)
+                        return self._news_response(entry.data, limit, "hit")
+                empty_expired = (
+                    entry.data is not None
+                    and not entry.data.items
+                    and age >= NEWS_EMPTY_SECONDS
+                )
+                stale_expired = (
+                    entry.data is not None
+                    and bool(entry.data.items)
+                    and age > NEWS_STALE_SECONDS
+                )
+                if empty_expired or stale_expired:
+                    entry.data = None
+                    entry.size = 0
+                    entry.requested_limit = 0
+                suppressed = (
+                    entry.failed_at is not None
+                    and max(0.0, now - entry.failed_at) < NEWS_FAILURE_SECONDS
+                )
+                if suppressed:
+                    if self._news_data_is_stale_eligible(entry, now, limit):
+                        assert entry.data is not None
+                        return self._news_response(entry.data, limit, "stale_fallback")
+                    raise DomainError(
+                        "provider_unavailable",
+                        "The news provider is temporarily unavailable.",
+                        status_code=502,
+                    )
+
+        if not self.news_slot.acquire(blocking=False):
+            raise DomainError(
+                "provider_busy",
+                "News retrieval capacity is busy; try again shortly.",
+                status_code=503,
+            )
+        try:
+            try:
+                requested_at = self.clock()
+                if requested_at.tzinfo is None:
+                    raise DomainError(
+                        "ambiguous_provider_time", "News request time must include an offset."
+                    )
+                data = self.provider.fetch_news(
+                    normalized_symbol, limit, requested_at.astimezone(UTC)
+                )
+                if data.symbol != normalized_symbol or len(data.items) > limit:
+                    raise DomainError(
+                        "provider_news_invalid",
+                        "The news provider returned data outside the requested bounds.",
+                        status_code=502,
+                    )
+                completed = self.monotonic_clock()
+                self._store_news(normalized_symbol, data, limit, completed)
+                return self._news_response(data, limit, "miss")
+            except Exception as exc:
+                failed = self.monotonic_clock()
+                stale = self._news_failure(normalized_symbol, failed, limit)
+                if stale is not None:
+                    return stale
+                if isinstance(exc, DomainError):
+                    raise
+                raise DomainError(
+                    "provider_unavailable",
+                    "The news provider failed unexpectedly.",
+                    status_code=502,
+                ) from exc
+        finally:
+            self.news_slot.release()
 
     def lookup(self, query: str, limit: int = 5) -> dict[str, object]:
         """Expose one transport-ready company/symbol lookup without leaking provider objects."""

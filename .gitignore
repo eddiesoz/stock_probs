@@ -2,6 +2,9 @@
 .dev-venv/
 .venv/
 .tools/
+.env
+.env.*
+!.env.example
 data/
 *.sqlite3
 *.sqlite3-*
@@ -22,6 +25,7 @@ node_modules/
 test-results/
 playwright-report/
 .playwright-mcp/
+build/
 dist/
 *.egg-info/
 .DS_Store
