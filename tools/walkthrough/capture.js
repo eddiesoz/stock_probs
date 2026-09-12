@@ -5,6 +5,7 @@ const fsp = require("node:fs/promises");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
 const { spawn, spawnSync } = require("node:child_process");
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -12,7 +13,7 @@ const OUTPUT = path.join(__dirname, "test-results", "latest");
 const { chromium } = require(path.join(ROOT, "tools/browser/node_modules/playwright"));
 
 const PROFILES = [
-  { name: "desktop", viewport: { width: 1440, height: 1000 } },
+  { name: "desktop", viewport: { width: 1280, height: 1000 } },
   { name: "mobile", viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
 ];
 
@@ -67,19 +68,71 @@ const STEPS = [
     title: "Download the filtered CSV and JSON",
     description: "Both filtered exports are downloaded and structurally checked by the harness before capture completes.",
   },
+  {
+    id: "11-theme-system",
+    title: "Follow the system theme",
+    description: "With no stored override, the dashboard follows the operating-system color preference.",
+  },
+  {
+    id: "12-theme-dark",
+    title: "Choose explicit dark mode",
+    description: "The accessible theme control applies and stores an explicit dark preference.",
+  },
+  {
+    id: "13-theme-reset",
+    title: "Reset the theme to system",
+    description: "Choosing System removes the stored override and immediately follows the system preference.",
+  },
+  {
+    id: "14-theme-first-paint",
+    title: "Verify no-flash first paint",
+    description: "The dashboard and local API contract load theme.js before CSS so their first styled paint uses the selected theme.",
+  },
+  {
+    id: "15-news-fresh",
+    title: "Load fresh current headlines",
+    description: "Five current headlines show source, as-of time, publication metadata, and HTTPS-safe external links.",
+  },
+  {
+    id: "16-news-empty",
+    title: "Show an honest empty news result",
+    description: "A successful empty response says that no current headlines were returned instead of reporting an error.",
+  },
+  {
+    id: "17-news-partial",
+    title: "Label partial headline metadata",
+    description: "A headline remains usable when optional publisher and publication-time metadata are absent.",
+  },
+  {
+    id: "18-news-stale",
+    title: "Explain stale cached headlines",
+    description: "Cached headlines remain visible and are explicitly labelled when the provider refresh fails.",
+  },
+  {
+    id: "19-news-provider-failure",
+    title: "Report provider failure without cache",
+    description: "The disclosure reports provider unavailability when no cached headlines can be shown.",
+  },
+  {
+    id: "20-saved-current-news",
+    title: "Keep saved evidence separate from current headlines",
+    description: "The immutable saved forecast stays provider-free while current headlines remain a separate, optional live action.",
+  },
 ];
 
 const DECLARED_REQUEST_PATHS = [
   /^\/$/,
-  /^\/assets\/(?:app\.css|app\.js|favicon\.svg)$/,
-  /^\/api\/v1\/(?:readiness|operations\/backups\/status|instruments|forecasts|history|history-export\.(?:csv|json)|saved-forecasts\/\d+|history\/\d+\/reconstructions)$/,
+  /^\/assets\/(?:app\.css|app\.js|favicon\.svg|theme\.js)$/,
+  /^\/api\/v1\/(?:docs|news|readiness|operations\/backups\/status|instruments|forecasts|history|history-export\.(?:csv|json)|saved-forecasts\/\d+|history\/\d+\/reconstructions)$/,
 ];
 
+const ARTIFACT_BUDGET_BYTES = 20 * 1024 * 1024;
+
 function assertStepDefinitions(steps = STEPS) {
-  const required = ["lookup", "stock", "chart", "table", "ETF", "history", "saved", "fresh", "CSV", "JSON", "backup"];
+  const required = ["lookup", "stock", "chart", "table", "ETF", "history", "saved", "fresh", "CSV", "JSON", "backup", "theme", "dark", "system", "first paint", "headlines", "empty", "partial", "stale", "provider"];
   const text = steps.map(({ title, description }) => `${title} ${description}`).join(" ");
-  if (steps.length !== 10 || new Set(steps.map(({ id }) => id)).size !== steps.length) {
-    throw new Error("Walkthrough steps must contain ten unique identifiers.");
+  if (steps.length !== 20 || new Set(steps.map(({ id }) => id)).size !== steps.length) {
+    throw new Error("Walkthrough steps must contain twenty unique identifiers.");
   }
   for (const term of required) {
     if (!text.toLowerCase().includes(term.toLowerCase())) {
@@ -251,6 +304,62 @@ function requireStatus(response, expected, label) {
   }
 }
 
+function latestResponseEvidence(responses, method, pathname) {
+  for (let index = responses.length - 1; index >= 0; index -= 1) {
+    const item = responses[index];
+    const url = new URL(item.url);
+    if (item.method === method && url.pathname === pathname) {
+      return { method: item.method, path: `${url.pathname}${url.search}`, status: item.status };
+    }
+  }
+  throw new Error(`Missing response evidence for ${method} ${pathname}.`);
+}
+
+function newsPayload(symbol, mode) {
+  const count = mode === "empty" ? 0 : 5;
+  const payload = {
+    query: { symbol, limit: 5 },
+    provider: "Yahoo Finance",
+    as_of: "2025-01-10T17:03:00Z",
+    cache_state: mode === "stale" ? "stale_fallback" : "miss",
+    coverage: { returned_count: count, partial_metadata: mode === "partial", refresh_failed: mode === "stale" },
+    items: Array.from({ length: count }, (_, index) => ({
+      id: `walkthrough-${index + 1}`,
+      title: `Current headline ${index + 1} for ${symbol}`,
+      publisher: "Fixture News",
+      published_at: `2025-01-10T16:${String(index * 7).padStart(2, "0")}:00Z`,
+      url: `https://example.com/news/${index + 1}`,
+      related_symbols: [symbol],
+    })),
+  };
+  if (mode === "partial") {
+    payload.items[0].publisher = null;
+    payload.items[0].published_at = null;
+  }
+  return payload;
+}
+
+async function themeOrdering(page) {
+  return page.evaluate(() => {
+    const theme = document.querySelector('script[src="/assets/theme.js"]');
+    const css = document.querySelector('link[href="/assets/app.css"]');
+    return {
+      theme_before_css: Boolean(theme && css && (theme.compareDocumentPosition(css) & Node.DOCUMENT_POSITION_FOLLOWING)),
+      parser_blocking: Boolean(theme && !theme.async && !theme.defer && !theme.type),
+      first_paint_theme: document.documentElement.dataset.theme,
+    };
+  });
+}
+
+async function directoryBytes(directory) {
+  let total = 0;
+  for (const entry of await fsp.readdir(directory, { withFileTypes: true })) {
+    const target = path.join(directory, entry.name);
+    total += entry.isDirectory() ? await directoryBytes(target) : (await fsp.stat(target)).size;
+  }
+  return total;
+}
+
 async function addCaptureStyles(page) {
   await page.addStyleTag({ content: `
     *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; caret-color: transparent !important; }
@@ -263,7 +372,7 @@ async function addCaptureStyles(page) {
   ` });
 }
 
-async function capture(page, profile, step, selector, block = "center") {
+async function capture(page, profile, step, selector, evidence, state, block = "center") {
   const target = page.locator(selector).first();
   await target.waitFor({ state: "visible" });
   await target.evaluate((element, placement) => element.scrollIntoView({ block: placement, inline: "nearest" }), block);
@@ -276,17 +385,26 @@ async function capture(page, profile, step, selector, block = "center") {
       document.body.append(annotation);
     }
     const marker = document.createElement("span");
-    marker.textContent = `M08 PREPARATION · ${profileName} · STEP ${item.id.slice(0, 2)}`;
+    marker.textContent = `M08 WALKTHROUGH · ${profileName} · STEP ${item.id.slice(0, 2)}`;
     const title = document.createElement("strong");
     title.textContent = item.title;
     const description = document.createElement("small");
     description.textContent = item.description;
     annotation.replaceChildren(marker, title, description);
-  }, { item: step, profileName: profile.toUpperCase() });
+  }, { item: step, profileName: profile.name.toUpperCase() });
   await page.waitForTimeout(50);
-  const relative = path.join("screenshots", `${profile}-${step.id}.png`);
+  const relative = path.join("screenshots", `${profile.name}-${step.id}.png`);
   await page.screenshot({ path: path.join(OUTPUT, relative), animations: "disabled" });
-  return { ...step, screenshot: relative };
+  return {
+    id: step.id,
+    title: step.title,
+    caption: step.description,
+    alt_text: `Annotated ${profile.name} view: ${step.description}`,
+    viewport: profile.viewport,
+    request_status_evidence: Array.isArray(evidence) ? evidence : [evidence],
+    state,
+    screenshot: relative,
+  };
 }
 
 async function runProfile(browser, profile) {
@@ -304,19 +422,36 @@ async function runProfile(browser, profile) {
   });
   const page = await context.newPage();
   const requests = [];
+  const responses = [];
   const requestViolations = [];
   const pageErrors = [];
-  await page.route("**/*", async (route) => {
+  let newsMode = "fresh";
+  await context.route("**/*", async (route) => {
     const request = route.request();
     const violation = requestPolicyViolation(request.url(), application.baseURL);
     requests.push({ method: request.method(), resource_type: request.resourceType(), url: request.url() });
     if (violation) {
       requestViolations.push(violation);
       await route.abort("blockedbyclient");
+    } else if (new URL(request.url()).pathname === "/api/v1/news") {
+      if (newsMode === "provider") {
+        await route.fulfill({ status: 502, contentType: "application/json", json: { error: { code: "provider_unavailable", message: "Provider unavailable" } } });
+      } else if (newsMode === "busy") {
+        await route.fulfill({ status: 503, contentType: "application/json", json: { error: { code: "capacity_busy", message: "Busy" } } });
+      } else {
+        const symbol = new URL(request.url()).searchParams.get("symbol");
+        await route.fulfill({ status: 200, contentType: "application/json", json: newsPayload(symbol, newsMode) });
+      }
     } else {
       await route.continue();
     }
   });
+  context.on("response", (response) => responses.push({
+    method: response.request().method(),
+    url: response.url(),
+    status: response.status(),
+  }));
+  context.on("page", (openedPage) => openedPage.on("pageerror", (error) => pageErrors.push(error.message)));
   page.on("pageerror", (error) => pageErrors.push(error.message));
   const captures = [];
   const downloadDirectory = path.join(OUTPUT, "downloads", profile.name);
@@ -330,16 +465,19 @@ async function runProfile(browser, profile) {
     if (backup.status !== "available" || !backup.managed_names_only || !backup.verification_required) {
       throw new Error("Backup status did not expose the expected managed, verification-required contract.");
     }
-    captures.push(await capture(page, profile.name, STEPS[0], ".masthead", "start"));
+    captures.push(await capture(page, profile, STEPS[0], ".masthead",
+      latestResponseEvidence(responses, "GET", "/api/v1/operations/backups/status"), "service-ready", "start"));
 
     const symbol = page.getByLabel("Company name or Yahoo Finance symbol");
     await symbol.fill("ProFrac");
     await page.getByRole("option", { name: /ProFrac Holding Corp/ }).waitFor();
-    captures.push(await capture(page, profile.name, STEPS[1], ".search-panel"));
+    captures.push(await capture(page, profile, STEPS[1], ".search-panel",
+      latestResponseEvidence(responses, "GET", "/api/v1/instruments"), "lookup-results"));
     await symbol.press("ArrowDown");
     await symbol.press("Enter");
     await page.locator("#identity-confirmation").filter({ hasText: "Confirmed identity: ACDC" }).waitFor();
-    captures.push(await capture(page, profile.name, STEPS[2], ".search-panel"));
+    captures.push(await capture(page, profile, STEPS[2], ".search-panel",
+      latestResponseEvidence(responses, "GET", "/api/v1/instruments"), "identity-confirmed"));
 
     let responsePromise = page.waitForResponse((response) => (
       response.request().method() === "POST" && new URL(response.url()).pathname === "/api/v1/forecasts"
@@ -348,7 +486,8 @@ async function runProfile(browser, profile) {
     requireStatus(await responsePromise, 201, "Stock forecast");
     await page.getByRole("heading", { name: "Close → next close" }).waitFor();
     await page.getByRole("heading", { name: "Completed 5m → close" }).waitFor();
-    captures.push(await capture(page, profile.name, STEPS[3], ".horizon-comparison"));
+    captures.push(await capture(page, profile, STEPS[3], ".horizon-comparison",
+      latestResponseEvidence(responses, "POST", "/api/v1/forecasts"), "successful-stock-forecast"));
 
     const chartCard = page.locator(".forecast-card").first();
     const point = chartCard.locator(".tail-figure .chart-point").first();
@@ -362,7 +501,8 @@ async function runProfile(browser, profile) {
         value: row.querySelector("td")?.textContent.trim(),
       }))),
     );
-    captures.push(await capture(page, profile.name, STEPS[4], ".tail-figure", "start"));
+    captures.push(await capture(page, profile, STEPS[4], ".tail-figure",
+      latestResponseEvidence(responses, "POST", "/api/v1/forecasts"), "chart-table-equivalent", "start"));
 
     await symbol.fill("SPY");
     await page.getByLabel("ETF").check();
@@ -375,7 +515,8 @@ async function runProfile(browser, profile) {
     await page.getByText("ETF / ETF", { exact: true }).waitFor();
     await page.locator(".forecast-grid").getByRole("heading", { name: "Close → next close", exact: true }).waitFor();
     await page.locator(".forecast-grid").getByRole("heading", { name: "Completed 5m → close", exact: true }).waitFor();
-    captures.push(await capture(page, profile.name, STEPS[5], ".horizon-comparison"));
+    captures.push(await capture(page, profile, STEPS[5], ".horizon-comparison",
+      latestResponseEvidence(responses, "POST", "/api/v1/forecasts"), "successful-etf-forecast"));
 
     await page.getByLabel("Find symbol").fill("SPY");
     await page.getByLabel("Status", { exact: true }).selectOption("successful");
@@ -387,7 +528,8 @@ async function runProfile(browser, profile) {
     requireStatus(await responsePromise, 200, "History filter");
     const historyRow = page.locator("#history-content tbody tr").filter({ hasText: "SPY" }).first();
     await historyRow.waitFor();
-    captures.push(await capture(page, profile.name, STEPS[6], ".ledger", "start"));
+    captures.push(await capture(page, profile, STEPS[6], ".ledger",
+      latestResponseEvidence(responses, "GET", "/api/v1/history"), "filtered-history", "start"));
 
     responsePromise = page.waitForResponse((response) => (
       response.request().method() === "GET" && new URL(response.url()).pathname.startsWith("/api/v1/saved-forecasts/")
@@ -395,7 +537,8 @@ async function runProfile(browser, profile) {
     await historyRow.getByRole("button", { name: "Reopen saved forecast" }).click();
     requireStatus(await responsePromise, 200, "Saved forecast reopen");
     await page.getByText(/Immutable recorded result · audit event/).waitFor();
-    captures.push(await capture(page, profile.name, STEPS[7], "#result-section", "start"));
+    captures.push(await capture(page, profile, STEPS[7], "#result-section",
+      latestResponseEvidence(responses, "GET", new URL((await responsePromise).url()).pathname), "immutable-saved-result", "start"));
 
     responsePromise = page.waitForResponse((response) => (
       response.request().method() === "POST" && /\/api\/v1\/history\/\d+\/reconstructions$/.test(new URL(response.url()).pathname)
@@ -403,16 +546,22 @@ async function runProfile(browser, profile) {
     await historyRow.getByRole("button", { name: "Run fresh cutoff analysis" }).click();
     requireStatus(await responsePromise, 201, "Fresh historical reconstruction");
     await page.locator("#fresh-analysis-content").filter({ hasText: "This is a new calculation" }).waitFor();
-    captures.push(await capture(page, profile.name, STEPS[8], "#fresh-analysis-section", "start"));
+    captures.push(await capture(page, profile, STEPS[8], "#fresh-analysis-section",
+      latestResponseEvidence(responses, "POST", new URL((await responsePromise).url()).pathname), "fresh-reconstruction", "start"));
 
     const downloads = {};
+    const downloadEvidence = [];
     for (const format of ["CSV", "JSON"]) {
+      const pathname = `/api/v1/history-export.${format.toLowerCase()}`;
       const [download] = await Promise.all([
         page.waitForEvent("download"),
         page.getByRole("link", { name: `Download ${format}` }).click(),
       ]);
       const destination = path.join(downloadDirectory, `history.${format.toLowerCase()}`);
       await download.saveAs(destination);
+      const failure = await download.failure();
+      if (failure) throw new Error(`${format} history export download failed: ${failure}`);
+      downloadEvidence.push({ method: "GET", path: new URL(download.url()).pathname + new URL(download.url()).search, status: "downloaded-and-validated" });
       downloads[format.toLowerCase()] = path.relative(OUTPUT, destination);
     }
     const csv = await fsp.readFile(path.join(OUTPUT, downloads.csv), "utf8");
@@ -425,11 +574,185 @@ async function runProfile(browser, profile) {
     ))) {
       throw new Error("JSON download did not contain the filtered history contract.");
     }
-    captures.push(await capture(page, profile.name, STEPS[9], ".ledger .section-head", "start"));
+    captures.push(await capture(page, profile, STEPS[9], ".ledger .section-head",
+      downloadEvidence, "downloads-verified", "start"));
+
+    const resetTheme = async (colorScheme) => {
+      await page.evaluate(() => localStorage.removeItem("stock-probs.theme"));
+      await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await addCaptureStyles(page);
+      await page.locator("#system-label").filter({ hasText: "backup available" }).waitFor();
+    };
+
+    await resetTheme("dark");
+    if (await page.evaluate(() => localStorage.getItem("stock-probs.theme")) !== null) throw new Error("System theme retained an override.");
+    await page.locator('html[data-theme="dark"] select[name="theme"]').waitFor();
+    captures.push(await capture(page, profile, STEPS[10], ".masthead",
+      latestResponseEvidence(responses, "GET", "/assets/theme.js"), "system-dark", "start"));
+
+    await resetTheme("light");
+    await page.getByLabel("Color theme").selectOption("dark");
+    await page.locator('html[data-theme="dark"]').waitFor();
+    if (await page.evaluate(() => localStorage.getItem("stock-probs.theme")) !== "dark") throw new Error("Dark theme was not stored.");
+    captures.push(await capture(page, profile, STEPS[11], ".masthead",
+      latestResponseEvidence(responses, "GET", "/assets/theme.js"), "explicit-dark", "start"));
+
+    await resetTheme("light");
+    await page.getByLabel("Color theme").selectOption("dark");
+    await page.getByLabel("Color theme").selectOption("system");
+    await page.locator('html[data-theme="light"]').waitFor();
+    if (await page.evaluate(() => localStorage.getItem("stock-probs.theme")) !== null) throw new Error("Reset to system did not remove the override.");
+    captures.push(await capture(page, profile, STEPS[12], ".masthead",
+      latestResponseEvidence(responses, "GET", "/assets/theme.js"), "reset-to-system-light", "start"));
+
+    await page.evaluate(() => {
+      localStorage.removeItem("stock-probs.theme");
+      localStorage.setItem("stock-probs.theme", "dark");
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await addCaptureStyles(page);
+    const dashboardThemeOrdering = await themeOrdering(page);
+    const docsPage = await context.newPage();
+    await docsPage.goto(`${application.baseURL}/api/v1/docs`, { waitUntil: "domcontentloaded" });
+    await addCaptureStyles(docsPage);
+    const docsThemeOrdering = await themeOrdering(docsPage);
+    for (const [surface, ordering] of Object.entries({ dashboard: dashboardThemeOrdering, api_docs: docsThemeOrdering })) {
+      if (!ordering.theme_before_css || !ordering.parser_blocking || ordering.first_paint_theme !== "dark") {
+        throw new Error(`${surface} did not provide a parser-blocking dark theme before CSS.`);
+      }
+    }
+    captures.push(await capture(docsPage, profile, STEPS[13], ".masthead", [
+      latestResponseEvidence(responses, "GET", "/api/v1/docs"),
+      latestResponseEvidence(responses, "GET", "/assets/theme.js"),
+      { verification: "dashboard", ...dashboardThemeOrdering },
+      { verification: "api-docs", ...docsThemeOrdering },
+    ], "no-flash-dark-first-paint", "start"));
+    await docsPage.close();
+
+    const reopenSaved = async () => {
+      const row = page.locator("#history-content tbody tr").filter({ hasText: "SPY" }).first();
+      await row.waitFor();
+      const savedResponse = page.waitForResponse((response) => (
+        response.request().method() === "GET" && new URL(response.url()).pathname.startsWith("/api/v1/saved-forecasts/")
+      ));
+      await row.getByRole("button", { name: "Reopen saved forecast" }).click();
+      requireStatus(await savedResponse, 200, "Saved forecast reopen");
+      await page.getByText(/Immutable recorded result · audit event/).waitFor();
+      return page.getByText("Load current headlines for this symbol", { exact: true });
+    };
+    const showSavedNews = async (mode, expectedState) => {
+      newsMode = mode;
+      const disclosure = await reopenSaved();
+      const newsResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/news");
+      await disclosure.click();
+      await page.locator(`.news-content[data-state="${expectedState}"]`).waitFor();
+      return newsResponse;
+    };
+
+    let newsResponse = await showSavedNews("fresh", "fresh");
+    requireStatus(await newsResponse, 200, "Fresh news");
+    captures.push(await capture(page, profile, STEPS[14], ".news-panel",
+      latestResponseEvidence(responses, "GET", "/api/v1/news"), "fresh"));
+
+    newsResponse = await showSavedNews("empty", "empty");
+    requireStatus(await newsResponse, 200, "Empty news");
+    captures.push(await capture(page, profile, STEPS[15], ".news-panel",
+      latestResponseEvidence(responses, "GET", "/api/v1/news"), "empty"));
+
+    newsResponse = await showSavedNews("partial", "partial");
+    requireStatus(await newsResponse, 200, "Partial-metadata news");
+    captures.push(await capture(page, profile, STEPS[16], ".news-panel",
+      latestResponseEvidence(responses, "GET", "/api/v1/news"), "partial-metadata"));
+
+    newsResponse = await showSavedNews("stale", "stale");
+    requireStatus(await newsResponse, 200, "Stale fallback news");
+    captures.push(await capture(page, profile, STEPS[17], ".news-panel",
+      latestResponseEvidence(responses, "GET", "/api/v1/news"), "stale-fallback"));
+
+    newsResponse = await showSavedNews("provider", "unavailable");
+    requireStatus(await newsResponse, 502, "Provider-failure news");
+    captures.push(await capture(page, profile, STEPS[18], ".news-panel",
+      latestResponseEvidence(responses, "GET", "/api/v1/news"), "provider-unavailable"));
+
+    const savedDisclosure = await reopenSaved();
+    await page.locator('.news-content[data-state="not-requested"]').waitFor({ state: "attached" });
+    captures.push(await capture(page, profile, STEPS[19], "#result-section",
+      latestResponseEvidence(responses, "GET", new URL(responses.filter(({ method, url }) => method === "GET" && new URL(url).pathname.startsWith("/api/v1/saved-forecasts/")).at(-1).url).pathname),
+      "saved-provider-free-current-headlines-optional", "start"));
+
+    const companionNewsStates = [{
+      title: "Headlines not requested",
+      caption: "The closed saved-result disclosure issues no news request.",
+      viewport: profile.viewport,
+      request_status_evidence: [{ method: "GET", path: "/api/v1/news", status: "not issued" }],
+      state: "not-requested",
+    }];
+
+    newsMode = "busy";
+    newsResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/news");
+    await savedDisclosure.click();
+    await page.locator('.news-content[data-state="busy"]').waitFor();
+    requireStatus(await newsResponse, 503, "Capacity-busy news");
+    companionNewsStates.push({
+      title: "Headline capacity busy",
+      caption: "A bounded 503 response is presented as a retryable capacity state.",
+      viewport: profile.viewport,
+      request_status_evidence: [latestResponseEvidence(responses, "GET", "/api/v1/news")],
+      state: "capacity-busy",
+    });
+
+    let disclosure = await reopenSaved();
+    await page.evaluate(() => {
+      window.__walkthroughFetch = window.fetch;
+      window.fetch = (url, options) => String(url).includes("/api/v1/news")
+        ? Promise.reject(new TypeError("Local service unreachable")) : window.__walkthroughFetch(url, options);
+    });
+    await disclosure.click();
+    await page.locator('.news-content[data-state="unreachable"]').waitFor();
+    companionNewsStates.push({
+      title: "Local service unreachable",
+      caption: "A local network failure is distinct from an upstream provider failure.",
+      viewport: profile.viewport,
+      request_status_evidence: [{ method: "GET", path: "/api/v1/news", status: "local fetch rejected" }],
+      state: "local-unreachable",
+    });
+    await page.evaluate(() => { window.fetch = window.__walkthroughFetch; delete window.__walkthroughFetch; });
+
+    disclosure = await reopenSaved();
+    await page.evaluate(() => {
+      window.__walkthroughFetch = window.fetch;
+      window.fetch = (url, options) => String(url).includes("/api/v1/news")
+        ? new Promise((resolve, reject) => options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))))
+        : window.__walkthroughFetch(url, options);
+    });
+    await disclosure.click();
+    await page.locator('.news-content[data-state="loading"]').waitFor();
+    companionNewsStates.push({
+      title: "Headlines loading",
+      caption: "The live region exposes its bounded in-progress state.",
+      viewport: profile.viewport,
+      request_status_evidence: [{ method: "GET", path: "/api/v1/news", status: "pending" }],
+      state: "loading",
+    });
+    await page.getByLabel("Company name or Yahoo Finance symbol").fill("S");
+    await page.locator('.news-content[data-state="superseded"]').waitFor();
+    companionNewsStates.push({
+      title: "Instrument changed and request superseded",
+      caption: "Changing the instrument aborts the prior headline request and prevents stale rendering.",
+      viewport: profile.viewport,
+      request_status_evidence: [{ method: "GET", path: "/api/v1/news", status: "aborted" }],
+      state: "superseded",
+    });
+    await page.evaluate(() => { window.fetch = window.__walkthroughFetch; delete window.__walkthroughFetch; });
 
     if (!requests.length) throw new Error("The walkthrough browser issued no requests.");
     if (requestViolations.length) throw new Error(`Blocked walkthrough requests: ${requestViolations.join("; ")}`);
     if (pageErrors.length) throw new Error(`Browser page errors: ${pageErrors.join("; ")}`);
+    const dataRequests = requests.filter(({ resource_type }) => ["fetch", "xhr"].includes(resource_type));
+    if (dataRequests.some(({ url }) => !new URL(url).pathname.startsWith("/api/v1/"))) {
+      throw new Error("Browser data traffic escaped the local /api/v1 boundary.");
+    }
     const requestTypes = Object.fromEntries([...new Set(requests.map(({ resource_type }) => resource_type))]
       .sort()
       .map((type) => [type, requests.filter(({ resource_type }) => resource_type === type).length]));
@@ -444,10 +767,15 @@ async function runProfile(browser, profile) {
         chart_table_match: chartTableCheck,
         etf_horizon_headings: ["Close → next close", "Completed 5m → close"],
         declared_request_count: requests.length,
+        api_data_request_count: dataRequests.length,
+        api_only_data_traffic: true,
         request_types: requestTypes,
         blocked_or_undeclared_requests: requestViolations.length,
         page_errors: pageErrors.length,
+        theme_first_paint: { dashboard: dashboardThemeOrdering, api_docs: docsThemeOrdering },
+        news_screenshot_states: ["fresh", "empty", "partial-metadata", "stale-fallback", "provider-unavailable"],
       },
+      companion_news_states: companionNewsStates,
     };
   } finally {
     await context.close();
@@ -466,9 +794,11 @@ async function main() {
   } finally {
     await browser.close();
   }
+  const screenshotCount = Object.values(profiles).reduce((total, profile) => total + profile.captures.length, 0);
+  if (screenshotCount !== 40) throw new Error(`Walkthrough produced ${screenshotCount} screenshots, expected 40.`);
   const manifest = {
-    task: "M08 preparation",
-    completion_claim: "Reusable capture harness only; this is not M08 acceptance or final walkthrough content.",
+    task: "M08 walkthrough",
+    completion_claim: "Approved 20-step walkthrough captured at both authoritative viewports; acceptance remains a separate gate.",
     fixture: {
       provider: "fixture",
       now: "2025-01-10T17:03:00+00:00",
@@ -479,9 +809,30 @@ async function main() {
     step_definitions: STEPS,
     profiles,
     gif_assembly: gifAssemblySupport(),
+    artifacts: {
+      budget_bytes: ARTIFACT_BUDGET_BYTES,
+      total_bytes: 0,
+      screenshot_count: screenshotCount,
+    },
   };
-  await fsp.writeFile(path.join(OUTPUT, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  process.stdout.write(`${path.join(OUTPUT, "manifest.json")}\n`);
+  const manifestPath = path.join(OUTPUT, "manifest.json");
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await fsp.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    const totalBytes = await directoryBytes(OUTPUT);
+    if (manifest.artifacts.total_bytes === totalBytes) break;
+    manifest.artifacts.total_bytes = totalBytes;
+  }
+  const totalBytes = await directoryBytes(OUTPUT);
+  if (manifest.artifacts.total_bytes !== totalBytes) throw new Error("Artifact byte accounting did not stabilize.");
+  if (totalBytes > ARTIFACT_BUDGET_BYTES) {
+    throw new Error(`Walkthrough artifacts use ${totalBytes} bytes, exceeding the ${ARTIFACT_BUDGET_BYTES}-byte budget.`);
+  }
+  const manifestHash = crypto.createHash("sha256").update(await fsp.readFile(manifestPath)).digest("hex");
+  const requestCounts = Object.fromEntries(Object.entries(profiles).map(([name, profile]) => [name, {
+    total: profile.checks.declared_request_count,
+    api_data: profile.checks.api_data_request_count,
+  }]));
+  process.stdout.write(`${manifestPath}\n${JSON.stringify({ manifest_sha256: manifestHash, screenshot_count: screenshotCount, request_counts: requestCounts, total_bytes: totalBytes })}\n`);
 }
 
 if (require.main === module) {
@@ -493,6 +844,8 @@ if (require.main === module) {
 
 module.exports = {
   STEPS,
+  PROFILES,
+  ARTIFACT_BUDGET_BYTES,
   assertStepDefinitions,
   assertTooltipMatchesTable,
   executableOnPath,

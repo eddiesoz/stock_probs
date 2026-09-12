@@ -4,6 +4,8 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   STEPS,
+  PROFILES,
+  ARTIFACT_BUDGET_BYTES,
   assertStepDefinitions,
   assertTooltipMatchesTable,
   executableOnPath,
@@ -13,8 +15,15 @@ const {
 
 test("manifest steps are unique and cover every requested journey", () => {
   assert.doesNotThrow(() => assertStepDefinitions(STEPS));
+  assert.equal(STEPS.length, 20);
   assert.equal(STEPS[0].id, "01-backup-status");
-  assert.equal(STEPS.at(-1).id, "10-history-downloads");
+  assert.equal(STEPS[9].id, "10-history-downloads");
+  assert.equal(STEPS.at(-1).id, "20-saved-current-news");
+  assert.deepEqual(PROFILES.map(({ name, viewport }) => ({ name, viewport })), [
+    { name: "desktop", viewport: { width: 1280, height: 1000 } },
+    { name: "mobile", viewport: { width: 390, height: 844 } },
+  ]);
+  assert.equal(ARTIFACT_BUDGET_BYTES, 20 * 1024 * 1024);
 });
 
 // PNG frames remain authoritative so optional GIF tooling cannot block walkthrough capture.
@@ -45,7 +54,10 @@ test("request policy allows only declared app paths on the isolated origin", () 
     "/",
     "/assets/app.css",
     "/assets/app.js",
+    "/assets/theme.js",
     "/assets/favicon.svg",
+    "/api/v1/docs",
+    "/api/v1/news?symbol=SPY&limit=5",
     "/api/v1/history?page=1",
     "/api/v1/saved-forecasts/12",
     "/api/v1/history/12/reconstructions",

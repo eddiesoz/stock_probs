@@ -113,6 +113,24 @@ As of 2026-09-12:
   remain visible below. The retained `R-M09-1` boundary report remains overengineering-only
   history; this update does not infer a new Ponytail result. `EXP-M09` is **Pending** for
   the full-session export, secret review, local commit, push, and exact remote verification.
+- `M07` is **Completed for its declared scope** by receipt `M07-E18`: the exact release gate
+  `TASK_ID=M07 PERFORMANCE_REVIEWER='LUNA MAX QA' ./scripts/local-gate.sh release` passed on
+  clean commit `131aabc0fc0528b1e70ba26e09e2c78565ee8d56` at
+  `2026-09-12T18:14:08Z`–`2026-09-12T18:21:06Z`. It recorded `396` tests passed, `4` live
+  deselected, `89.62%` coverage, browser `40` passed/`2` expected performance skips, official
+  MCP, migration with a verified pre-migration backup from schema v1 to v4, backup CLI `17`
+  passed, a Ponytail interface precondition **Pass**, and `17` executable performance rows
+  **Pass** with ARM64 performance **Unavailable**. Artifacts are under
+  `test-results/local-gates/M07-20260912T181408Z/`; reviewer: `LUNA MAX QA`.
+- The two earlier failed release runs and their `R-M09-4`/`R-M09-5` repair records remain
+  visible as immutable history below; the supplied M07 receipt is the current integrated
+  release result, not a row-only repair receipt. `EXP-M07` is **Pending** for export,
+  secret review, local commit, push, and exact remote verification. M08 is the next
+  walkthrough gate after that checkpoint.
+- `R-M09-4` and `R-M09-5` each retain an earlier failed release result; their separate
+  failure output, session, environment, UTC, commit, artifact, and reviewer metadata were
+  not supplied here. The current `M07-E18` receipt does not rewrite either historical
+  failure or invent a row-only repair receipt.
 - The earlier supplied scoped M09 QA summary remains historical: it reported `130`
   news-contract tests plus live ACDC/SPY checks, browser `40` passed/`2` skipped with
   axe `0/0`, and performance rows of `32.4 ms`, `1.564 ms`, `30.3 ms`, `701` bytes, and
@@ -134,10 +152,11 @@ As of 2026-09-12:
   failed attempt.
 - The retained `R-M09-1` boundary report records the earlier pre-acceptance state; the
   current M09 declared-scope result is complete, while the separate `EXP-M09` checkpoint
-  remains pending. `M07` remains **In progress** and is the next integrated acceptance gate;
-  `R-M07-1` is the fifth-agent configuration/profile-count test with repair in flight,
-  `R-M07-2` remains the pending Ponytail-review availability row, and `R-M07-3`/`R-M07-4`
-  retain their supplied repair evidence. No M07 acceptance is claimed.
+  remains pending. The earlier M07 pre-acceptance wording is retained as history:
+  `R-M07-1` was the fifth-agent configuration/profile-count test with repair in flight,
+  `R-M07-2` was the pending Ponytail-review availability row, and `R-M07-3`/`R-M07-4`
+  retain their supplied repair evidence. The current `M07-E18` receipt above supersedes
+  that wording for the declared integrated scope; it does not create an `EXP-M07` checkpoint.
 - The retained M09 boundary report
   [`test-results/ponytail-m09-boundary.txt`](test-results/ponytail-m09-boundary.txt) records
   four overengineering findings and net `-119` possible lines. `SOL HIGH` applied minimal
@@ -149,16 +168,14 @@ As of 2026-09-12:
   re-assertion was deleted. Independent verification of the harness/stub repairs is in
   flight at that historical boundary. This is overengineering-only repair evidence; the
   current M09 gate is recorded above and `EXP-M09` remains **Pending**.
-- `M07` is **In progress**, not released. `R-M07-1` is the fifth-agent
-  configuration/profile-count test with
-  repair in flight and no pass evidence supplied. `R-M07-2` is the Ponytail review
-  availability row; retained report `test-results/ponytail-m06-m07-boundary.txt`
-  records findings only and closure is pending, so its result remains **Unavailable**
-  and the row remains **Pending**. `R-M07-3` records stale three-profile assertions in
-  `tests/test_ponytail_tooling.py` updated to four profiles, with supplied evidence of
-  `278` non-live tests passing; `R-M07-4` records two retained Ponytail findings applied
-  in `tests/test_config_quality.py` with a net `-1` line.
-  `EXP-M07`, `M08`, `ASTRA-FINAL`, and `EXP-FINAL` remain **Pending**.
+- The earlier pre-acceptance M07 record is retained as history: `R-M07-1` was the
+  fifth-agent configuration/profile-count test repair, `R-M07-2` was the findings-only
+  Ponytail-review availability row, `R-M07-3` recorded the stale three-profile assertion
+  repair, and `R-M07-4` recorded two retained Ponytail findings. The current `M07-E18`
+  receipt above supersedes that pending state for the declared integrated scope; it does
+  not erase the earlier unavailable boundary evidence or create an `EXP-M07` checkpoint.
+- `EXP-M07`, `M08`, `ASTRA-FINAL`, and `EXP-FINAL` remain **Pending** except that M07's
+  declared integrated gate is now **Completed** as recorded above.
 - An earlier `R-M06-55` receipt ran on dirty native x86_64 Linux at revision
   `59534faf1cdce493bc51a11d4adbea5e5b2d6892` from `2026-09-12T04:52:33Z` to
   `2026-09-12T05:03:44Z`: `264` tests, `89.38%` coverage, 32 browser passes plus
@@ -223,10 +240,10 @@ reviewers, and checkpoint limitations, remain in the root plan and roadmap.
 
 `EXP-M06` is complete. M09 is complete for its declared implementation and consolidated
 QA scope through the `M09-E18` receipt above. `EXP-M09` remains pending its full-session
-export, secret review, local commit, push, and exact remote verification before integrated
-`M07` acceptance. The detailed rows in [MVP-PLAN.md](MVP-PLAN.md) are authoritative; the
-earlier supplied QA summary and failed gate remain historical evidence, not the M09 export
-checkpoint.
+export, secret review, local commit, push, and exact remote verification; it is not closed
+by the separately recorded `M07-E18` integrated gate. The detailed rows in
+[MVP-PLAN.md](MVP-PLAN.md) are authoritative; the earlier supplied QA summary and failed
+gate remain historical evidence, not the M09 export checkpoint.
 
 - **Theme:** an external parser-blocking `theme.js` initializer is loaded before CSS on
   the dashboard and `/api/v1/docs`. It reads the localStorage key `stock-probs.theme` for
@@ -349,8 +366,8 @@ R-M00-1 → EXP-M00 → M01 → EXP-M01 → M02 → EXP-M02 → M03 → EXP-M03
 M09's dark-mode and selected-instrument news requirements therefore flow into the
 integrated UI, walkthrough, and `ASTRA-FINAL` review. The declared implementation scope
 and consolidated QA receipt are recorded above; `EXP-M09` remains open for the export,
-secret review, commit, push, and exact remote verification. `M07` is the next integrated
-acceptance gate after that checkpoint.
+secret review, commit, push, and exact remote verification. The integrated `M07` acceptance
+receipt is recorded above; `EXP-M07` is the next checkpoint and `M08` follows it.
 
 `ASTRA-FINAL`, its `R-ASTRA-<n>` repairs/retests, `EXP-M08`, the final learning
 synthesis, and `EXP-FINAL` form one combined second-last operational loop, not a new
@@ -448,3 +465,11 @@ validator pass is inferred (`R-M00-2-E17`). `git diff --check -- README.md AGENT
 MVP-PLAN.md MVP-ROADMAP.md` returned **Pass** (`R-M00-2-E18`) on dirty `HEAD`
 `a69df40e15b3136886f26789c27861184c3bbd77`. UTC was not captured; no artifact, commit
 mutation, or Git checkpoint was created.
+
+For this M07 integrated-acceptance root-documentation update, `R-M00-2-E19` records the
+exact `.dev-venv/bin/python scripts/validate_docs.py` attempt as **Unavailable** because
+the tool permission boundary denied execution; no validator pass is inferred. `R-M00-2-E20`
+records `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` as **Pass**;
+UTC was not captured by the command tool, and the dirty `HEAD` was
+`131aabc0fc0528b1e70ba26e09e2c78565ee8d56`. No code, configuration, skill, export, commit,
+push, or Git-history mutation is part of this update.
