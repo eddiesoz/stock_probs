@@ -1,0 +1,10 @@
+scope: overengineering only
+command: /ponytail-review
+boundary: R-M06-1
+tools/browser/tests/performance.spec.js:L227-290: shrink Duplicate per-navigation network collector. Slice the existing page-wide collector by start indices.
+scripts/validate_docs.py:L151-193: yagni Bespoke duplicate-prose parser and arbitrary length threshold. Leave editorial duplication to documentation review.
+scripts/comment_audit.py:L29-92: shrink Second Ponytail provenance/hash verifier. Exclude vendored paths directly and rely on `test_vendored_closure_matches_recorded_upstream_hashes`.
+scripts/validate_docs.py:L15-20: shrink Fourth copy of the canonical skill description. Read it from `SKILL.md` frontmatter when validating metadata and indexes.
+tests/test_performance_harness.py:L142-163: delete String-presence test for JavaScript internals. Rely on the executed Playwright lane and artifact validation.
+tests/test_ponytail_tooling.py:L146-180: delete Launcher source-text assertions duplicated by the following integration test. Keep the behavioral integration test.
+net: -223 lines possible.

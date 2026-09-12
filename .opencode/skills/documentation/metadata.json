@@ -1,0 +1,7 @@
+{
+  "_comment": "OpenCode discovers this opt-in skill from SKILL.md frontmatter; this project catalog mirror is validated for exact parity.",
+  "name": "documentation",
+  "description": "Author and audit Stock Probability documentation while preserving authoritative sources, generated exports, taxonomy, links, metadata, and evidence-backed status. Use when writing or reorganizing guides, documenting application behavior, validating documentation, or reconciling evidence-supported wording.",
+  "tags": ["documentation", "markdown", "taxonomy", "audit", "stock-probability"],
+  "alwaysApply": false
+}

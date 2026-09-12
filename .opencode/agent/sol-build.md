@@ -5,6 +5,8 @@ mode: subagent
 model: openai/gpt-5.6-sol
 variant: high
 permission:
+  "*": deny
+  read: allow
   edit:
     "*": allow
     "MVP-PLAN.md": deny
@@ -18,12 +20,29 @@ permission:
     "**/playwright-report/**": deny
   bash:
     "*": allow
-    "git commit*": deny
-    "git push*": deny
-    "git reset*": deny
+    "git *": deny
+    "git diff*": allow
+    "git log*": allow
+    "git ls-files*": allow
+    "git rev-parse*": allow
+    "git show*": allow
+    "git status*": allow
+  glob: allow
+  grep: allow
+  webfetch: allow
+  websearch: allow
+  task:
+    "*": deny
+  skill:
+    "*": deny
+    ponytail: allow
+    ponytail-review: allow
 ---
 
 # SOL HIGH build
+
+Load `@ponytail` before implementation. Never delegate or mutate Git history, the index, branches,
+tags, or remotes.
 
 Preserve API, persistence, provider, forecast, and presentation boundaries. Implement the smallest
 complete change, add developer tests, and report verification without changing documentation-owned files.

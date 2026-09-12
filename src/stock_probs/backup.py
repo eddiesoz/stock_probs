@@ -13,11 +13,14 @@ import sqlite3
 import stat
 import struct
 import tempfile
+import threading
 import time
 import zipfile
+from collections.abc import Callable
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.repository import (
@@ -33,6 +36,8 @@ SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 MAX_BACKUP_BYTES = 64 * 1024 * 1024
 MAX_DATABASE_BYTES = MAX_BACKUP_BYTES - 1024 * 1024
 MAX_MANIFEST_BYTES = 64 * 1024
+MAX_MANAGED_BACKUPS = 32
+MAX_BACKUP_STORAGE_BYTES = 4 * MAX_BACKUP_BYTES
 # Preflight central-directory limits run before ZipFile allocates one object per entry.
 MAX_ZIP_ENTRIES = 2
 MAX_ZIP_METADATA_BYTES = 16 * 1024
@@ -44,6 +49,8 @@ MANIFEST_AUTH_FIELD = "manifest_hmac_sha256"
 BACKUP_FAILURE_CATEGORY = "backup_creation_failed"
 RESTORE_FAILURE_CATEGORY = "restore_failed"
 ZIP_EOCD = struct.Struct("<4s4H2LH")
+_BACKUP_DEADLINE: ContextVar[float | None] = ContextVar("backup_deadline", default=None)
+_T = TypeVar("_T")
 
 
 class BackupError(Exception):
@@ -67,6 +74,42 @@ class BackupError(Exception):
         self._public_category = RESTORE_FAILURE_CATEGORY
 
 
+def _check_deadline() -> None:
+    deadline = _BACKUP_DEADLINE.get()
+    if deadline is not None and time.monotonic() >= deadline:
+        raise BackupError("Backup operation exceeded its wall-clock time limit.")
+
+
+def _run_with_deadline(operation: Callable[[], _T]) -> _T:
+    """Return at the wall-clock bound while the worker cooperatively refuses late publication."""
+
+    if _BACKUP_DEADLINE.get() is not None:
+        _check_deadline()
+        return operation()
+
+    deadline = time.monotonic() + BACKUP_TIMEOUT_SECONDS
+    results: list[_T] = []
+    failures: list[BaseException] = []
+
+    def run() -> None:
+        token = _BACKUP_DEADLINE.set(deadline)
+        try:
+            results.append(operation())
+        except BaseException as exc:
+            failures.append(exc)
+        finally:
+            _BACKUP_DEADLINE.reset(token)
+
+    worker = threading.Thread(target=run, name="stock-probs-backup", daemon=True)
+    worker.start()
+    worker.join(max(0.0, deadline - time.monotonic()))
+    if worker.is_alive():
+        raise BackupError("Backup operation exceeded its wall-clock time limit.")
+    if failures:
+        raise failures[0]
+    return results[0]
+
+
 class BackupManager:
     """Create and restore server-rooted artifacts without trusting archive paths."""
 
@@ -82,6 +125,7 @@ class BackupManager:
         digest = hashlib.sha256()
         with path.open("rb") as source:
             while chunk := source.read(COPY_CHUNK_BYTES):
+                _check_deadline()
                 digest.update(chunk)
         return digest.hexdigest()
 
@@ -97,7 +141,12 @@ class BackupManager:
         return hashlib.sha256(canonical.encode()).hexdigest()
 
     @classmethod
-    def _integrity(cls, path: Path, expected_schema: str | None = None) -> str:
+    def _integrity(
+        cls,
+        path: Path,
+        expected_schema: str | None = None,
+        expected_version: int = SCHEMA_VERSION,
+    ) -> str:
         """Check pages, foreign keys, migration identity, and exact application DDL."""
 
         try:
@@ -107,6 +156,7 @@ class BackupManager:
             try:
                 connection.execute("PRAGMA query_only = ON")
                 connection.execute("PRAGMA busy_timeout = 5000")
+                connection.set_progress_handler(_check_deadline, 1000)
                 integrity_row = connection.execute("PRAGMA integrity_check").fetchone()
                 foreign_key_error = connection.execute("PRAGMA foreign_key_check").fetchone()
                 versions = [
@@ -119,8 +169,9 @@ class BackupManager:
             finally:
                 connection.close()
         except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
+            _check_deadline()
             raise BackupError("Artifact is not a compatible stock-probs database.") from exc
-        expected_versions = list(range(1, SCHEMA_VERSION + 1))
+        expected_versions = list(range(1, expected_version + 1))
         if integrity_row is None or integrity_row[0] != "ok" or foreign_key_error is not None:
             raise BackupError("Artifact failed SQLite integrity checks.")
         if versions != expected_versions or (
@@ -135,6 +186,26 @@ class BackupManager:
             ensure_private_directory(self.backup_dir)
         except (OSError, ValueError) as exc:
             raise BackupError("Managed backup storage is unavailable.") from exc
+
+    def _managed_backups(self) -> list[tuple[str, int]]:
+        """List only managed artifacts and reject linked or irregular entries fail-closed."""
+
+        managed = []
+        try:
+            with os.scandir(self.backup_dir) as entries:
+                for entry in entries:
+                    _check_deadline()
+                    if not ARTIFACT_PATTERN.fullmatch(entry.name):
+                        continue
+                    metadata = entry.stat(follow_symlinks=False)
+                    if not stat.S_ISREG(metadata.st_mode):
+                        raise BackupError("Managed backup storage contains an unsafe artifact.")
+                    managed.append((entry.name, metadata.st_size))
+        except BackupError:
+            raise
+        except OSError as exc:
+            raise BackupError("Managed backup storage could not be inspected safely.") from exc
+        return sorted(managed)
 
     def _trust_key(self, *, create: bool) -> bytes:
         """Load the installation key, creating it once only while making the first backup."""
@@ -233,6 +304,7 @@ class BackupManager:
 
         copied = 0
         while chunk := source.read(COPY_CHUNK_BYTES):
+            _check_deadline()
             copied += len(chunk)
             if copied > limit:
                 raise BackupError("Artifact member exceeds the restore limit.")
@@ -269,11 +341,8 @@ class BackupManager:
     def _online_snapshot(self, snapshot: Path) -> None:
         """Use SQLite's consistent online API with a callback-enforced wall-clock bound."""
 
-        started = time.monotonic()
-
         def progress(_: int, __: int, ___: int) -> None:
-            if time.monotonic() - started > BACKUP_TIMEOUT_SECONDS:
-                raise BackupError("SQLite backup exceeded the 20 second local limit.")
+            _check_deadline()
 
         try:
             source = sqlite3.connect(self.repository.database_path, timeout=5.0)
@@ -294,61 +363,207 @@ class BackupManager:
         if snapshot.stat().st_size > MAX_DATABASE_BYTES:
             raise BackupError("Database exceeds the bounded backup size.")
 
-    def create(self, name: str | None = None) -> dict[str, Any]:
+    def _package(
+        self, snapshot: Path, manifest: dict[str, Any], trust_key: bytes, target: Path
+    ) -> None:
+        """Write one bounded signed artifact; callers own its publication semantics."""
+
+        _check_deadline()
+        manifest[MANIFEST_AUTH_FIELD] = self._sign_manifest(manifest, trust_key)
+        with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.write(snapshot, "database.sqlite3")
+            archive.writestr("manifest.json", json.dumps(manifest, sort_keys=True, indent=2))
+        _check_deadline()
+        if target.stat().st_size > MAX_BACKUP_BYTES:
+            raise BackupError("Backup artifact exceeds the 64 MB local limit.")
+        target.chmod(0o600)
+        self._sync_file(target)
+
+    def create(
+        self, name: str | None = None, *, schema_version: int = SCHEMA_VERSION
+    ) -> dict[str, Any]:
         """Snapshot through SQLite's online API, then package verified bytes and metadata."""
 
+        return _run_with_deadline(lambda: self._create(name, schema_version=schema_version))
+
+    def _create(
+        self, name: str | None = None, *, schema_version: int = SCHEMA_VERSION
+    ) -> dict[str, Any]:
+        """Create under the current operation deadline, staging until the final hard link."""
+
+        if not 1 <= schema_version <= SCHEMA_VERSION:
+            raise BackupError("Backup schema version is invalid.")
         self._ensure_backup_dir()
         artifact_name = name or f"stock-probs-{datetime.now(UTC):%Y%m%dT%H%M%SZ}.spbackup"
         artifact = self._artifact_path(artifact_name)
         if artifact.exists() or artifact.is_symlink():
             raise BackupError("A backup with that name already exists.")
-        # Invalid/colliding requests must not initialize trust state as a side effect.
-        trust_key = self._trust_key(create=True)
+        published = False
         try:
             with (
                 self.repository.exclusive(),
                 tempfile.TemporaryDirectory(dir=self.backup_dir) as directory,
             ):
+                managed = self._managed_backups()
+                _check_deadline()
+                if len(managed) >= MAX_MANAGED_BACKUPS:
+                    raise BackupError(
+                        "Managed backup retention limit reached; remove an old backup explicitly."
+                    )
+                # Never silently replace lost trust state while prior artifacts still exist.
+                trust_key = self._trust_key(create=not managed)
+                _check_deadline()
                 snapshot = Path(directory) / "database.sqlite3"
                 self._online_snapshot(snapshot)
+                _check_deadline()
                 ensure_private_file(snapshot)
-                schema_checksum = self._integrity(snapshot)
+                schema_checksum = self._integrity(snapshot, expected_version=schema_version)
+                _check_deadline()
                 counts = self._counts(snapshot)
+                _check_deadline()
                 manifest = {
                     "format": "stock-probs-backup",
                     "format_version": 1,
-                    "schema_version": SCHEMA_VERSION,
+                    "schema_version": schema_version,
                     "schema_sha256": schema_checksum,
                     "created_at": datetime.now(UTC).isoformat(),
                     "database_sha256": self._checksum(snapshot),
                     "database_size": snapshot.stat().st_size,
                     "counts": counts,
                 }
-                manifest[MANIFEST_AUTH_FIELD] = self._sign_manifest(manifest, trust_key)
                 temporary_artifact = Path(directory) / "artifact.zip"
-                with zipfile.ZipFile(
-                    temporary_artifact, "w", compression=zipfile.ZIP_DEFLATED
-                ) as archive:
-                    archive.write(snapshot, "database.sqlite3")
-                    archive.writestr(
-                        "manifest.json", json.dumps(manifest, sort_keys=True, indent=2)
+                self._package(snapshot, manifest, trust_key, temporary_artifact)
+                _, _, verification = self._verify_unlocked(
+                    artifact_name,
+                    require_active_schema=False,
+                    artifact_path=temporary_artifact,
+                )
+                verification.cleanup()
+                _check_deadline()
+                if (
+                    sum(size for _, size in managed) + temporary_artifact.stat().st_size
+                    > MAX_BACKUP_STORAGE_BYTES
+                ):
+                    raise BackupError(
+                        "Managed backup storage limit reached; remove an old backup explicitly."
                     )
-                if temporary_artifact.stat().st_size > MAX_BACKUP_BYTES:
-                    raise BackupError("Backup artifact exceeds the 64 MB local limit.")
-                temporary_artifact.chmod(0o600)
-                self._sync_file(temporary_artifact)
                 # Hard-link publication is atomic and cannot overwrite an existing artifact.
                 try:
+                    _check_deadline()
                     os.link(temporary_artifact, artifact)
+                    published = True
                 except FileExistsError as exc:
                     raise BackupError("A backup with that name already exists.") from exc
                 self._sync_directory(self.backup_dir)
-            return {"name": artifact_name, "sha256": self._checksum(artifact), **manifest}
+                _check_deadline()
+            response = {"name": artifact_name, "sha256": self._checksum(artifact), **manifest}
+            _check_deadline()
+            return response
         except BackupError:
+            if published:
+                artifact.unlink(missing_ok=True)
             raise
         except (OSError, sqlite3.Error) as exc:
             artifact.unlink(missing_ok=True)
             raise BackupError("Backup artifact could not be written safely.") from exc
+
+    def create_if_due(
+        self, interval_seconds: float, *, now: datetime | None = None
+    ) -> dict[str, Any]:
+        """Create once the newest managed artifact reaches the configured startup interval."""
+
+        return _run_with_deadline(lambda: self._create_if_due(interval_seconds, now=now))
+
+    def _create_if_due(
+        self, interval_seconds: float, *, now: datetime | None = None
+    ) -> dict[str, Any]:
+        """Inspect and optionally create using the current shared startup deadline."""
+
+        self._ensure_backup_dir()
+        _check_deadline()
+        checked_at = now or datetime.now(UTC)
+        if checked_at.tzinfo is None:
+            raise BackupError("Automatic backup time must include a timezone offset.")
+        with self.repository.exclusive():
+            managed = self._managed_backups()
+            if managed:
+                manifests = []
+                for name, _ in managed:
+                    manifests.append((name, self._authenticated_manifest(name)))
+                    _check_deadline()
+                newest_name, newest_manifest = max(
+                    manifests, key=lambda item: datetime.fromisoformat(item[1]["created_at"])
+                )
+                _, _, staging = self._verify_unlocked(
+                    newest_name, require_active_schema=False
+                )
+                staging.cleanup()
+                _check_deadline()
+                age_seconds = (
+                    checked_at - datetime.fromisoformat(newest_manifest["created_at"])
+                ).total_seconds()
+                if age_seconds < 0:
+                    raise BackupError("Newest managed backup timestamp is in the future.")
+                if age_seconds < interval_seconds:
+                    _check_deadline()
+                    return {
+                        "trigger": "due",
+                        "status": "not_due",
+                        "newest_backup": newest_name,
+                        "age_seconds": age_seconds,
+                        "interval_seconds": interval_seconds,
+                    }
+            created = self.create()
+            _check_deadline()
+            return {
+                "trigger": "due",
+                "status": "created",
+                "interval_seconds": interval_seconds,
+                "backup": created,
+            }
+
+    def _authenticated_manifest(self, name: str) -> dict[str, Any]:
+        """Read bounded signed metadata without expanding every database during a due check."""
+
+        artifact = self._artifact_path(name)
+        try:
+            if artifact.is_symlink() or not artifact.is_file():
+                raise BackupError("Backup does not exist or is not a regular managed artifact.")
+            if artifact.stat().st_size > MAX_BACKUP_BYTES:
+                raise BackupError("Backup does not exist or exceeds the 64 MB local limit.")
+            ensure_private_file(artifact)
+            _check_deadline()
+            directory_offset = self._preflight_zip(artifact)
+            with zipfile.ZipFile(artifact, "r") as archive:
+                entries = archive.infolist()
+                self._validate_zip_entries(entries, directory_offset)
+                manifest_info = next(
+                    info for info in entries if info.filename == "manifest.json"
+                )
+                if not 0 < manifest_info.file_size <= MAX_MANIFEST_BYTES:
+                    raise BackupError("Artifact manifest exceeds the restore limit.")
+                with archive.open(manifest_info) as source:
+                    manifest_bytes = source.read(MAX_MANIFEST_BYTES + 1)
+            _check_deadline()
+            if len(manifest_bytes) > MAX_MANIFEST_BYTES:
+                raise BackupError("Artifact manifest exceeds the restore limit.")
+            manifest = self._validate_manifest(json.loads(manifest_bytes))
+            self._authenticate_manifest(manifest)
+            _check_deadline()
+            return manifest
+        except BackupError:
+            raise
+        except (
+            EOFError,
+            OSError,
+            RuntimeError,
+            StopIteration,
+            UnicodeDecodeError,
+            zipfile.BadZipFile,
+            zipfile.LargeZipFile,
+            json.JSONDecodeError,
+        ) as exc:
+            raise BackupError("Backup artifact is truncated or invalid.") from exc
 
     @staticmethod
     def _validate_manifest(manifest: Any) -> dict[str, Any]:
@@ -377,7 +592,7 @@ class BackupManager:
             or type(manifest["format_version"]) is not int
             or manifest["format_version"] != 1
             or type(manifest["schema_version"]) is not int
-            or manifest["schema_version"] != SCHEMA_VERSION
+            or not 1 <= manifest["schema_version"] <= SCHEMA_VERSION
         ):
             raise BackupError("Artifact format or schema version is incompatible.")
         if not isinstance(manifest["schema_sha256"], str) or not SHA256_PATTERN.fullmatch(
@@ -472,18 +687,34 @@ class BackupManager:
         """Coordinate active-schema inspection with writes and restore promotion."""
 
         try:
-            with self.repository.exclusive():
-                return self._verify_unlocked(name)
+            return _run_with_deadline(lambda: self._verify_coordinated(name))
         except sqlite3.Error as exc:
             raise BackupError("Database operation did not acquire the bounded local lock.") from exc
 
-    def _verify_unlocked(
+    def _verify_coordinated(
         self, name: str
+    ) -> tuple[dict[str, Any], Path, tempfile.TemporaryDirectory[str]]:
+        with self.repository.exclusive():
+            result = self._verify_unlocked(name)
+            try:
+                # A delayed verifier can finish after its caller timed out; discard its staging.
+                _check_deadline()
+            except BackupError:
+                result[2].cleanup()
+                raise
+            return result
+
+    def _verify_unlocked(
+        self,
+        name: str,
+        *,
+        require_active_schema: bool = True,
+        artifact_path: Path | None = None,
     ) -> tuple[dict[str, Any], Path, tempfile.TemporaryDirectory[str]]:
         """Extract only exact expected members and retain staging until caller finishes."""
 
         self._ensure_backup_dir()
-        artifact = self._artifact_path(name)
+        artifact = artifact_path or self._artifact_path(name)
         if artifact.is_symlink() or not artifact.is_file():
             raise BackupError("Backup does not exist or is not a regular managed artifact.")
         try:
@@ -495,6 +726,7 @@ class BackupManager:
         staging = tempfile.TemporaryDirectory(dir=self.backup_dir)
         try:
             directory_offset = self._preflight_zip(artifact)
+            _check_deadline()
             with zipfile.ZipFile(artifact, "r") as archive:
                 entries = archive.infolist()
                 self._validate_zip_entries(entries, directory_offset)
@@ -509,6 +741,7 @@ class BackupManager:
                     raise BackupError("Artifact manifest exceeds the restore limit.")
                 manifest = self._validate_manifest(json.loads(manifest_bytes))
                 self._authenticate_manifest(manifest)
+                _check_deadline()
                 database = Path(staging.name) / "database.sqlite3"
                 with archive.open("database.sqlite3") as source, database.open("xb") as target:
                     copied = self._copy_member(source, target, MAX_DATABASE_BYTES)
@@ -517,12 +750,23 @@ class BackupManager:
                 raise BackupError("Artifact database size does not match its manifest.")
             if self._checksum(database) != manifest["database_sha256"]:
                 raise BackupError("Artifact database checksum does not match its manifest.")
-            active_schema = self._integrity(self.repository.database_path)
-            schema = self._integrity(database, expected_schema=active_schema)
+            schema_version = manifest["schema_version"]
+            schema = self._integrity(
+                database,
+                expected_schema=manifest["schema_sha256"],
+                expected_version=schema_version,
+            )
             if schema != manifest["schema_sha256"]:
                 raise BackupError("Artifact schema checksum does not match its manifest.")
+            if require_active_schema:
+                active_schema = self._integrity(
+                    self.repository.database_path, expected_version=schema_version
+                )
+                if active_schema != schema:
+                    raise BackupError("Artifact failed schema compatibility checks.")
             if self._counts(database) != manifest["counts"]:
                 raise BackupError("Artifact representative counts do not match its manifest.")
+            _check_deadline()
             return manifest, database, staging
         except BackupError:
             staging.cleanup()
@@ -542,6 +786,100 @@ class BackupManager:
         except Exception:
             staging.cleanup()
             raise
+
+    @staticmethod
+    def _write_key(path: Path, key: bytes) -> None:
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            if os.write(descriptor, key) != len(key):
+                raise BackupError("Replacement trust key could not be written completely.")
+            os.fchmod(descriptor, 0o600)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def rotate_key(self) -> dict[str, Any]:
+        """Verify every artifact, then replace its signature and the installation key together."""
+
+        self._ensure_backup_dir()
+        self._trust_key(create=False)
+        managed = self._managed_backups()
+        new_key = secrets.token_bytes(TRUST_KEY_BYTES)
+        try:
+            with self.repository.exclusive(), tempfile.TemporaryDirectory(
+                dir=self.backup_dir
+            ) as directory:
+                staging_root = Path(directory)
+                replacements = staging_root / "replacements"
+                originals = staging_root / "originals"
+                replacements.mkdir(mode=0o700)
+                originals.mkdir(mode=0o700)
+                for name, _ in managed:
+                    manifest, database, staging = self._verify_unlocked(
+                        name, require_active_schema=False
+                    )
+                    try:
+                        self._package(database, manifest, new_key, replacements / name)
+                    finally:
+                        staging.cleanup()
+                    os.link(self._artifact_path(name), originals / name)
+                os.link(self.trust_key_path, originals / TRUST_KEY_NAME)
+                replacement_key = staging_root / TRUST_KEY_NAME
+                self._write_key(replacement_key, new_key)
+
+                swapped: list[str] = []
+                key_swapped = False
+                try:
+                    for name, _ in managed:
+                        os.replace(replacements / name, self._artifact_path(name))
+                        swapped.append(name)
+                    os.replace(replacement_key, self.trust_key_path)
+                    key_swapped = True
+                    self._sync_directory(self.backup_dir)
+                    self._sync_directory(self.trust_key_path.parent)
+                except OSError as exc:
+                    try:
+                        for name in reversed(swapped):
+                            os.replace(originals / name, self._artifact_path(name))
+                        if key_swapped:
+                            os.replace(originals / TRUST_KEY_NAME, self.trust_key_path)
+                        self._sync_directory(self.backup_dir)
+                        self._sync_directory(self.trust_key_path.parent)
+                    except OSError as rollback_error:
+                        raise BackupError(
+                            "Trust-key rotation failed and could not restore every prior file."
+                        ) from rollback_error
+                    raise BackupError(
+                        "Trust-key rotation failed; prior trust was restored."
+                    ) from exc
+            return {"status": "rotated", "artifacts_resigned": len(managed)}
+        except BackupError:
+            raise
+        except (OSError, sqlite3.Error) as exc:
+            raise BackupError("Trust-key rotation could not be completed safely.") from exc
+
+    def retire_key(self) -> dict[str, Any]:
+        """Remove trust only after the operator has explicitly moved or removed every artifact."""
+
+        self._ensure_backup_dir()
+        managed = self._managed_backups()
+        with self.repository.exclusive():
+            self._trust_key(create=False)
+            if managed:
+                raise BackupError(
+                    "Trust key cannot be retired while managed backups remain; transfer or "
+                    "remove them explicitly first."
+                )
+            try:
+                self.trust_key_path.unlink()
+                self._sync_directory(self.trust_key_path.parent)
+            except OSError as exc:
+                raise BackupError("Trust key could not be retired safely.") from exc
+        return {"status": "retired", "artifacts_remaining": 0}
 
     def _stage_promotion(
         self, staged_database: Path, current: Path, manifest: dict[str, Any]
@@ -569,7 +907,9 @@ class BackupManager:
         """Return one safe error if bounded database coordination cannot be acquired."""
 
         try:
-            return self._restore_coordinated(name, promote=promote)
+            return _run_with_deadline(
+                lambda: self._restore_coordinated(name, promote=promote)
+            )
         except BackupError as exc:
             exc._mark_restore_failure()
             raise
@@ -586,6 +926,8 @@ class BackupManager:
             candidate: Path | None = None
             rollback_temporary: Path | None = None
             try:
+                # Refuse a late verification result before returning it or starting promotion.
+                _check_deadline()
                 response = {
                     "name": name,
                     "verified": True,

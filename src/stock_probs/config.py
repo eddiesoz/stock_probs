@@ -70,6 +70,7 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 8000
     fixture_now: datetime | None = None
+    backup_interval_seconds: float = 86_400.0
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -78,11 +79,16 @@ class Settings:
         configured_data_dir = Path(os.getenv("STOCK_PROBS_DATA_DIR", "data")).expanduser()
         data_dir = configured_data_dir.absolute()
         timeout = _environment_float("STOCK_PROBS_PROVIDER_TIMEOUT", "8")
+        backup_interval = _environment_float("STOCK_PROBS_BACKUP_INTERVAL_SECONDS", "86400")
         port = _environment_int("STOCK_PROBS_PORT", "8000")
         provider = os.getenv("STOCK_PROBS_PROVIDER", "yahoo")
         host = os.getenv("STOCK_PROBS_HOST", "127.0.0.1").strip().lower()
         if not math.isfinite(timeout) or not 1.0 <= timeout <= 20.0:
             raise ValueError("STOCK_PROBS_PROVIDER_TIMEOUT must be between 1 and 20 seconds")
+        if not math.isfinite(backup_interval) or not 60.0 <= backup_interval <= 2_678_400.0:
+            raise ValueError(
+                "STOCK_PROBS_BACKUP_INTERVAL_SECONDS must be between 60 and 2678400 seconds"
+            )
         if not 1 <= port <= 65535:
             raise ValueError("STOCK_PROBS_PORT must be between 1 and 65535")
         if provider not in {"yahoo", "fixture"}:
@@ -107,6 +113,7 @@ class Settings:
             host=host,
             port=port,
             fixture_now=fixture_now,
+            backup_interval_seconds=backup_interval,
         )
 
     def ensure_local_dirs(self) -> None:

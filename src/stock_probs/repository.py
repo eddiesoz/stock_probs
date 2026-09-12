@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, nullcontext, suppress
 from datetime import UTC, datetime
 from importlib.resources import files
@@ -170,7 +170,7 @@ class Repository:
         with self._coordinated():
             yield
 
-    def migrate(self) -> None:
+    def migrate(self, before_migration: Callable[[int], None] | None = None) -> None:
         """Validate and append each packaged migration in its own exclusive transaction."""
 
         try:
@@ -209,6 +209,7 @@ class Repository:
             )
             connection.commit()
 
+        backup_completed = False
         for version, _, script in packaged:
             # BEGIN IMMEDIATE serializes separate Repository instances. The applied check
             # occurs after taking the database lock, avoiding a check-then-apply race.
@@ -232,6 +233,11 @@ class Repository:
                         continue
                     if version != len(applied) + 1:
                         raise RepositoryDatabaseError("database migration history has a gap")
+                    if applied and before_migration is not None and not backup_completed:
+                        # The hook runs under the migration write lock, immediately before the
+                        # first upgrade, so a failed backup prevents every pending schema change.
+                        before_migration(applied[-1])
+                        backup_completed = True
                     self._execute_migration(connection, script)
                     connection.execute(
                         "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",

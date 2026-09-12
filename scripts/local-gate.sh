@@ -5,8 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TASK_ID="${TASK_ID:-M01}"
 PROFILE="${1:-m01}"
-if (( $# > 1 )) || [[ ! "$PROFILE" =~ ^(m01|m02|m03|m04|check|release)$ ]]; then
-  printf 'Usage: %s [m01|m02|m03|m04|check|release]\n' "${0##*/}" >&2
+if (( $# > 1 )) || [[ ! "$PROFILE" =~ ^(m01|m02|m03|m04|m06|check|release)$ ]]; then
+  printf 'Usage: %s [m01|m02|m03|m04|m06|check|release]\n' "${0##*/}" >&2
   exit 2
 fi
 if [[ ! "$TASK_ID" =~ ^(M0[0-8]|R-M0[0-8]-[1-9][0-9]*)$ ]]; then
@@ -127,10 +127,41 @@ run_mcp() {
   PATH="$NODE_BIN:$PATH" "$NODE_BIN/node" "$ROOT/tools/browser/mcp-smoke.js"
 }
 
+run_ponytail_precondition() {
+  # A gate verifies the pinned review interface once without self-performing the independent review.
+  command -v opencode >/dev/null
+  command -v timeout >/dev/null
+  [[ -x "$ROOT/scripts/ponytail-review.sh" ]]
+  [[ -f "$ROOT/tools/ponytail/PROVENANCE.md" ]]
+  [[ "$(opencode --version)" == "1.18.30" ]]
+  PATH="$NODE_BIN:$PATH" "$NODE_BIN/node" "$ROOT/tools/ponytail/smoke.mjs"
+}
+
 run_arm64() {
   # Keep the architecture receipt inside this gate's evidence tree while the ARM helper
   # independently labels native versus emulated execution and any hardware limitation.
   STOCK_PROBS_ARM64_EVIDENCE_DIR="$RUN_DIR/arm64" "$ROOT/scripts/arm64-smoke.sh"
+}
+
+run_performance() {
+  # Performance is intentionally native-host only. The harness writes an explicit Unavailable
+  # ARM64 row on this x86 gate and never delegates resource measurements to QEMU/OCI.
+  STOCK_PROBS_PERFORMANCE_ARTIFACT_DIR="$RUN_DIR/performance" \
+    "$PYTHON" "$ROOT/scripts/performance_harness.py" --profile "$PROFILE"
+}
+
+require_performance_acceptance() {
+  local reviewer="${PERFORMANCE_REVIEWER:-}"
+  local normalized
+  normalized="$(printf '%s' "$reviewer" | tr '[:lower:] -' '[:upper:]__')"
+  if [[ ${#reviewer} -lt 3 || "$normalized" =~ (PENDING|PLACEHOLDER|TODO|TBD|UNKNOWN|UNAVAILABLE|N/A) ]]; then
+    printf 'PERFORMANCE_REVIEWER must name a non-placeholder independent reviewer for %s.\n' "$PROFILE" >&2
+    return 2
+  fi
+  if [[ "$PROFILE" == "release" && "$DIRTY" == "true" ]]; then
+    printf 'Release performance requires a clean committed working tree.\n' >&2
+    return 2
+  fi
 }
 
 printf 'task=%s revision=%s dirty=%s native_arch=%s profile=%s\n' \
@@ -184,7 +215,27 @@ case "$PROFILE" in
     run_arm64
     COMPLETED_CHECKS+=("arm64-native-or-explicitly-emulated-package-runtime")
     ;;
+  m06)
+    require_performance_acceptance
+    run_ponytail_precondition
+    COMPLETED_CHECKS+=("ponytail-review-interface-available-not-invoked")
+    run_package
+    COMPLETED_CHECKS+=("native-package")
+    run_check
+    COMPLETED_CHECKS+=("python-checks")
+    run_browser
+    COMPLETED_CHECKS+=("responsive-browser-visual-accessibility")
+    run_mcp
+    COMPLETED_CHECKS+=("playwright-mcp")
+    run_arm64
+    COMPLETED_CHECKS+=("arm64-native-or-explicitly-emulated-package-runtime")
+    run_performance
+    COMPLETED_CHECKS+=("mandatory-native-performance")
+    ;;
   release)
+    require_performance_acceptance
+    run_ponytail_precondition
+    COMPLETED_CHECKS+=("ponytail-review-interface-available-not-invoked")
     run_package
     COMPLETED_CHECKS+=("package")
     run_check
@@ -196,5 +247,7 @@ case "$PROFILE" in
     "$PYTHON" -m stock_probs.cli migrate
     "$PYTHON" -m pytest tests/test_backup_cli.py -q
     COMPLETED_CHECKS+=("release-migration-backup")
+    run_performance
+    COMPLETED_CHECKS+=("mandatory-native-performance")
     ;;
 esac

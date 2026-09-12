@@ -26,10 +26,12 @@ REASON=""
 QEMU_VERSION="not used"
 COMPOSE_ACTIVE="false"
 BINFMT_OWNED="false"
+CROSS_ARCH_RESULT="Not requested for this task."
 TASK_BINFMT_MARKER="$ROOT/.tools/qemu-arm64/$TASK_SLUG-binfmt-owned"
 
 write_record() {
   ARM_RESULT="$RESULT" ARM_LABEL="$EXECUTION_LABEL" ARM_REASON="$REASON" \
+    ARM_CROSS_ARCH_RESULT="$CROSS_ARCH_RESULT" \
     ARM_QEMU_VERSION="$QEMU_VERSION" python3 - \
     "$RECORD" "$REVISION" "$HOST_ARCH" "$STARTED" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     "$EXIT_CODE" "$RUN_DIR" "$TASK_ID" <<'PY'
@@ -53,6 +55,7 @@ payload = {
     "started_utc": started,
     "finished_utc": finished,
     "physical_arm64_performance": "Unavailable unless host_architecture is native ARM64",
+    "cross_architecture_restore": os.environ["ARM_CROSS_ARCH_RESULT"],
     "artifacts": ["evidence.json", *sorted(
         str(path.relative_to(run_path)) for path in run_path.rglob("*") if path.is_file()
     )],
@@ -201,4 +204,39 @@ fi
 RESULT="Fail"
 timeout --signal=TERM --kill-after=15s 900s docker compose \
   --project-name "$PROJECT" --file "$COMPOSE_FILE" run --rm arm64-smoke
+
+if [[ "$TASK_ID" == "M05" || "$TASK_ID" =~ ^R-M05- ]]; then
+  CROSS_DIR="$RUN_DIR/cross-architecture"
+  HOST_PYTHON="$ROOT/.dev-venv/bin/python"
+  export STOCK_PROBS_EXECUTION_LABEL="native x86_64 producer; functional evidence only"
+  "$HOST_PYTHON" "$ROOT/scripts/cross_arch_backup_restore.py" create \
+    "$CROSS_DIR/x86-source" x86-source "$CROSS_DIR/x86-create.json" \
+    "native x86_64 backup for emulated ARM64 restore"
+
+  timeout --signal=TERM --kill-after=15s 300s docker compose \
+    --project-name "$PROJECT" --file "$COMPOSE_FILE" run --rm \
+    --entrypoint /usr/local/bin/python \
+    -e PYTHONPATH=/workspace/src:/opt/stock-probs-deps/python arm64-smoke \
+    /workspace/scripts/cross_arch_backup_restore.py restore \
+    /artifacts/cross-architecture/arm64-restored x86-source \
+    /artifacts/cross-architecture/x86-to-emulated-arm64.json \
+    "native x86_64 backup restored on emulated ARM64" \
+    --source /artifacts/cross-architecture/x86-source
+
+  timeout --signal=TERM --kill-after=15s 300s docker compose \
+    --project-name "$PROJECT" --file "$COMPOSE_FILE" run --rm \
+    --entrypoint /usr/local/bin/python \
+    -e PYTHONPATH=/workspace/src:/opt/stock-probs-deps/python arm64-smoke \
+    /workspace/scripts/cross_arch_backup_restore.py create \
+    /artifacts/cross-architecture/arm64-source arm64-source \
+    /artifacts/cross-architecture/arm64-create.json \
+    "emulated ARM64 backup for native x86_64 restore"
+
+  export STOCK_PROBS_EXECUTION_LABEL="native x86_64 restorer; functional evidence only"
+  "$HOST_PYTHON" "$ROOT/scripts/cross_arch_backup_restore.py" restore \
+    "$CROSS_DIR/x86-restored" arm64-source "$CROSS_DIR/emulated-arm64-to-x86.json" \
+    "emulated ARM64 backup restored on native x86_64" \
+    --source "$CROSS_DIR/arm64-source"
+  CROSS_ARCH_RESULT="Pass: both restore directions; ARM64 execution was emulated functional evidence."
+fi
 RESULT="Pass"

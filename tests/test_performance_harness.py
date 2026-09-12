@@ -1,0 +1,252 @@
+"""Focused tests keep M06 performance artifacts and thresholds fail closed."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import math
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location(
+    "performance_harness", ROOT / "scripts/performance_harness.py"
+)
+assert SPEC is not None and SPEC.loader is not None
+performance = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(performance)
+
+
+def complete_artifact(**overrides):
+    payload = {
+        "schema_version": 1,
+        "task_id": "M06",
+        "row": "process-rss",
+        "fixture_identity": {"name": "fixture"},
+        "isolation": {"process_pid": 1, "port": 1234, "temp_dir": "isolated-fixture"},
+        "environment": {"architecture": "x86_64", "execution": "native x86_64"},
+        "revision": {"commit": "a" * 40, "dirty": False},
+        "utc": {"start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:01:00Z"},
+        "command": ["python", "scripts/performance_harness.py"],
+        "warmups": {"count": 5, "excluded": True, "raw": []},
+        "measured_samples": {"count": 30, "unit": "bytes", "raw": [1] * 30},
+        "statistics": {"p50": 1, "p95": 1, "max": 1, "unit": "bytes"},
+        "raw": {"rss": [1] * 30},
+        "threshold": {"class": "existing numeric threshold", "operator": "<", "value": 2},
+        "result": "Pass",
+        "limitation": None,
+        "artifact": "process-rss.json",
+        "reviewer": "LUNA MAX QA",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_artifact_schema_requires_every_evidence_field():
+    payload = complete_artifact()
+    performance.validate_artifact(payload)
+
+    del payload["raw"]
+    with pytest.raises(ValueError, match="missing required fields"):
+        performance.validate_artifact(payload)
+
+
+@pytest.mark.parametrize(
+    ("values", "bound", "operator", "expected"),
+    [
+        ([999.0] * 30, 1_000.0, "<", "Pass"),
+        ([1_000.0] * 30, 1_000.0, "<", "Fail"),
+        ([250.0] * 30, 250.0, "<", "Fail"),
+        ([1.0] * 29, 1_000.0, "<", "Fail"),
+        ([float("nan")] * 30, 1_000.0, "<", "Fail"),
+    ],
+)
+def test_strict_threshold_and_sample_failures(values, bound, operator, expected):
+    assert performance.sample_result(values, bound, operator, 30) == expected
+
+
+def test_acceptance_validation_rejects_unavailable_baseline_row():
+    payload = complete_artifact(
+        row="package-size-build-time",
+        result="Unavailable",
+        limitation="No approved bound supplied.",
+    )
+
+    with pytest.raises(ValueError, match="did not pass"):
+        performance.validate_artifact(payload, acceptance=True)
+
+
+@pytest.mark.parametrize(
+    "reviewer", ["", "QA", "PENDING_INDEPENDENT_REVIEW", "todo reviewer", "Unavailable"]
+)
+def test_acceptance_validation_rejects_missing_or_placeholder_reviewer(reviewer):
+    payload = complete_artifact(reviewer=reviewer)
+
+    with pytest.raises(ValueError, match="non-placeholder named reviewer"):
+        performance.validate_artifact(payload, acceptance=True)
+
+
+def test_release_requires_clean_commit_while_m06_allows_reviewed_dirty_measurement():
+    assert performance.acceptance_precondition_errors("m06", True, "LUNA MAX QA") == []
+    assert performance.acceptance_precondition_errors("release", False, "LUNA MAX QA") == []
+    assert performance.acceptance_precondition_errors("release", True, "LUNA MAX QA") == [
+        "release performance requires a clean committed working tree"
+    ]
+    assert performance.acceptance_precondition_errors(
+        "development", True, "PENDING_INDEPENDENT_REVIEW"
+    ) == ["PERFORMANCE_REVIEWER is missing or is a placeholder"]
+
+
+def test_artifact_schema_rejects_claimed_pass_with_missing_workload_samples():
+    payload = complete_artifact(
+        row="fixture-cache-hit-forecast",
+        warmups={"count": 4, "excluded": True, "raw_ms": [1.0] * 4},
+        measured_samples={"count": 29, "unit": "ms", "raw": [1.0] * 29},
+    )
+
+    with pytest.raises(ValueError, match="too few warmups or samples"):
+        performance.validate_artifact(payload, acceptance=True)
+
+
+def test_idle_cpu_statistics_recompute_exactly_and_reject_one_ulp_mutation():
+    values = [0.0, 0.1234567890123456]
+    payload = json.loads(
+        json.dumps(
+            complete_artifact(
+                row="idle-cpu",
+                measured_samples={"count": len(values), "unit": "core-percent", "raw": values},
+                statistics=performance.idle_cpu_statistics(values),
+                raw={"duration_seconds": 60.0},
+            )
+        )
+    )
+
+    assert payload["statistics"] == performance.idle_cpu_statistics(
+        payload["measured_samples"]["raw"]
+    )
+    performance.validate_artifact(payload)
+    payload["measured_samples"]["raw"][-1] = math.nextafter(values[-1], math.inf)
+    with pytest.raises(ValueError, match="do not exactly match serialized samples"):
+        performance.validate_artifact(payload)
+
+
+def test_local_gate_profiles_make_performance_mandatory_only_for_m06_and_release():
+    gate = (ROOT / "scripts/local-gate.sh").read_text()
+    m04 = gate[gate.index("  m04)") : gate.index("  m06)")]
+    m06 = gate[gate.index("  m06)") : gate.index("  release)")]
+    release = gate[gate.index("  release)") : gate.index("esac")]
+
+    assert "run_performance" not in m04
+    assert "run_performance" in m06
+    assert "run_performance" in release
+    assert 'STOCK_PROBS_PERFORMANCE_ARTIFACT_DIR="$RUN_DIR/performance"' in gate
+    assert m04.count("run_ponytail_precondition") == 0
+    assert m06.count("run_ponytail_precondition") == 1
+    assert release.count("run_ponytail_precondition") == 1
+    assert m06.count("require_performance_acceptance") == 1
+    assert release.count("require_performance_acceptance") == 1
+    assert "ponytail-review.sh\" \"$TASK_ID" not in m06 + release
+
+
+def test_proposed_native_bounds_are_explicit_and_not_environment_overrides():
+    assert performance.CONCURRENCY_P95_LIMIT_MS == 3_000
+    assert performance.CONCURRENCY_BATCH_LIMIT_MS == 5_000
+    assert performance.PACKAGE_LIMIT_BYTES == 131_072
+    assert performance.PACKAGE_BUILD_LIMIT_MS == 5_000
+    assert performance.BACKUP_LIMIT_MS == 5_000
+    assert performance.RESTORE_LIMIT_MS == 5_000
+    assert performance.READINESS_LIMIT_MS == 20_000
+    source = (ROOT / "scripts/performance_harness.py").read_text()
+    assert "STOCK_PROBS_PERF_CONCURRENCY_P95_MS" not in source
+    assert "STOCK_PROBS_PERF_PACKAGE_MAX_BYTES" not in source
+    assert "STOCK_PROBS_PERF_BACKUP_MAX_MS" not in source
+
+
+def test_readiness_poll_aggregates_refusals_and_retains_unexpected_errors(monkeypatch):
+    outcomes = iter(
+        [
+            ConnectionRefusedError("server is starting"),
+            ValueError("invalid readiness payload"),
+            (4.25, 200, b'{"status":"ready"}'),
+        ]
+    )
+
+    def request(*_args, **_kwargs):
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    class RunningProcess:
+        returncode = None
+
+        @staticmethod
+        def poll():
+            return None
+
+    clocks = iter([10.0, 10.05, 10.1, 10.15])
+    timestamps = iter(["2026-01-01T00:00:00Z", "2026-01-01T00:00:00.100000Z"])
+    monkeypatch.setattr(performance, "_request", request)
+    monkeypatch.setattr(performance.time, "perf_counter", lambda: next(clocks))
+    monkeypatch.setattr(performance.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(performance, "utc_now", lambda: next(timestamps))
+
+    elapsed_ms, body, attempts = performance._poll_readiness(8000, RunningProcess(), 10.0)
+
+    assert elapsed_ms == pytest.approx(150)
+    assert body == b'{"status":"ready"}'
+    assert attempts == {
+        "attempt_count": 3,
+        "startup_refusal_count": 1,
+        "not_ready_response_count": 0,
+        "success": {
+            "attempt": 3,
+            "utc": "2026-01-01T00:00:00.100000Z",
+            "request_elapsed_ms": 4.25,
+            "status": 200,
+        },
+        "total_elapsed_ms": 150.0,
+        "unexpected_errors": [
+            {
+                "attempt": 2,
+                "utc": "2026-01-01T00:00:00Z",
+                "type": "ValueError",
+                "message": "invalid readiness payload",
+            }
+        ],
+    }
+
+
+def test_make_performance_is_explicit_development_and_release_uses_one_local_gate():
+    makefile = (ROOT / "Makefile").read_text()
+    performance_recipe = makefile[
+        makefile.index("performance: browser-setup") : makefile.index("acceptance:")
+    ]
+    release_recipe = makefile[
+        makefile.index("release-check:") : makefile.index("release: release-check")
+    ]
+
+    assert "--profile development" in performance_recipe
+    assert "./scripts/local-gate.sh release" in release_recipe
+    assert "acceptance performance" not in release_recipe
+
+
+def test_browser_budget_manifest_pins_required_protocol_and_bounds():
+    manifest = json.loads((ROOT / "tools/browser/performance-budgets.json").read_text())
+
+    assert manifest["warmups"] == 5
+    assert manifest["measured_samples"] >= 30
+    assert manifest["render_p95_ms"] == 2_000
+    assert manifest["interaction_p95_ms"] == 250
+    assert manifest["cls_max"] == 0.1
+    assert manifest["viewports"] == [360, 390, 768, 1280, 1440]
+    assert manifest["designated_response_bytes_strict_max"] == 8 * 1024
+    assert manifest["justification"]
+
+
+def test_playwright_project_config_is_not_changed_for_the_performance_lane():
+    config = (ROOT / "tools/browser/playwright.config.js").read_text()
+
+    assert "STOCK_PROBS_PERFORMANCE" not in config
+    assert 'command: "../../scripts/run-browser-app.sh"' in config

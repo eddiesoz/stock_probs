@@ -9,13 +9,17 @@ This roadmap tracks delivery of the local Linux stock-probability web app. The s
 - **Completed checkpoint:** `EXP-M00` is **Completed** as the M00 coordinator export, with full regex secret review, exact pushed SHA `18da1af0b6bc31020d3587e472b8197146795bf1`, and matching `git ls-remote` result; its evidence is recorded below.
 - **Completed:** `M01` and `EXP-M01`; M01 scoped repair rows pass independently and the exact export/Git/workflow checkpoint is SHA `5424fa3e22d9229d038d376512e59b3f35c97e78`.
 - **Completed through explicit late repair:** `M02` and `EXP-M02`. The independent receipt `EXP-M02-REPAIR-1`, session `ses_f6eacd1cdffeZxtRNqfzkXOuqJ`, was reviewed by `LUNA MAX QA` at `2026-09-11T17:10:31Z`; the earlier missing review/timing remains historical and no remote CI was run or used. `M03` and `EXP-M03` are **Completed** at exact local/remote SHA `777451643b5ec1a04a37c013a9caf59f0bd58122`, with supplied export commit UTC `2026-09-11T17:46:42Z`.
-- **Completed functional scope:** `M04` is **Completed** after named independent repairs; only `EXP-M04` is **In progress**. `R-M04-30` remains **Pending** because actual screen-reader evidence is **Unavailable** and deferred to M06; it blocks final accessibility/release acceptance, not the exercised M04 feature scope.
-- **Blocked, not completed:** `M05` and `M06`; their records retain their own failed findings or missing mandatory release gates.
-- **Pending:** `M07`, `M08`, `ASTRA-FINAL`, and `EXP-FINAL`. `EXP-M01`, `EXP-M02`, and `EXP-M03` are completed; `EXP-M04` is the current in-progress gate and later exports remain pending.
-- **Future M06 performance gate:** M06 must independently run deterministic native-x86 app/UI performance QA in a fresh isolated fixture runtime. Existing thresholds are process RSS `<500 MiB`, defined fixture/cache-hit forecast p95 `<1 s`, and indexed 100,000-history query p95 `<250 ms`; qualitative `negligible` idle CPU remains existing. Proposed additions are five warmups plus at least 30 measured requests, 60-second idle CPU `<=1 core-percent`, readiness `20 s`, package/build and backup/restore baselines/bounds, static shell/assets `<96 KiB`, designated response `<8 KiB`, and pinned browser render/interaction/layout/request budgets. No current result is claimed; emulated ARM64 cannot satisfy performance rows.
+- **Completed functional and export scope:** `M04` and `EXP-M04` are **Completed** for their recorded scopes. `R-M04-30` remains **Pending** because actual screen-reader evidence is **Unavailable** and deferred to M06; it blocks final accessibility/release acceptance, not the exercised M04 feature scope.
+- **`EXP-M04` receipt:** the sanitized full-session `SESSION-EXPORT.md` was overwritten and parsed as JSON with `140` messages, `844` parts, `101` task outputs, `241` tool parts, `672,190` bytes, `19,855` lines, SHA-256 `5eebab2ce302e9f8b5a08aec5e4773c8bf7e4a99c920fa059c462dd71cecb837`, and `1,817` redaction markers. Secret review found zero webhook/private-key/AWS/GitHub/Bearer/embedded-credential matches. Commit `59534faf1cdce493bc51a11d4adbea5e5b2d6892` (`Build responsive forecast dashboard`, commit UTC `2026-09-11T20:25:10-04:00`) was pushed and exact `origin/main` match verified; no CI was run. Named export reviewer was not supplied in this reconciliation.
+- **Completed for declared scope:** `M05` is closed by the fully passing independent `R-M05-55` receipt: rows `(a)`–`(i)` passed in session `ses_f6bbd6b46ffes2BM2zVjBC5uLg` at `2026-09-12T06:25:04Z`–`2026-09-12T06:44:37Z`, including the `R-M05-12` independent `4/4` behavior-test rerun, and row `(j)` passed in session `ses_f6aa32b01ffexjSm9OhpprFwq4` at `2026-09-12T11:26:29Z`–`2026-09-12T11:28:26Z` with `276` non-live tests/`4` live deselected/`89.51%` coverage, documentation validation of `8` categories/`11` topics/`1` skill, `22` documentation tests, a `77`-file comment audit, Ruff, and mypy. `EXP-M05` remains **Pending** for its separate export/secret-review/commit/push/exact-remote-verification checkpoint. Earlier failures and pending states remain historical evidence.
+- **`R-M05-55` receipt metadata:** `LUNA MAX QA` reviewed the native x86_64/`.dev-venv` Python `3.11.15` receipt. Rows `(a)`–`(i)` record round trip/checksum (`06:42:38Z`–`06:42:39Z`), the six-path pre-migration forced-failure matrix (`06:32:09Z`–`06:32:10Z`), due-check `60`/`2678400` accepted and `59`/`2678401`/`nan` rejected, retention of `32` artifacts/`256 MiB` with history preserved (`06:43:54Z`), `13/13` fail-closed negatives (`06:35:29Z`–`06:35:32Z`), key lifecycle with rollback (`06:44:37Z`), `7/7` watchdog probes (`06:35:01Z`–`06:35:02Z`), both-direction **emulated ARM64** cross-architecture restore (`06:25:04Z`–`06:28:44Z`, artifact `test-results/arm64/M05-20260912T034933Z/evidence.json`), and the `R-M05-12` rerun (`06:38:47Z`–`06:38:49Z`). Packaged-CLI end-to-end verification is session `ses_f6a96daceffegfAqyKQL2lf3bS` on native x86_64/Python `3.11.15`, with artifact `/tmp/opencode/stock-probs-m05-cli-20260912T114105Z/M05-packaged-cli-receipt.json` and reviewer `LUNA MAX QA` (fresh-venv wheel install, migration pre-backup, named backup, verify, `restore --promote`, wrong-key/tampered rejection, backup-key rotate/retire, and isolated-port serve readiness). Commands and commits were not supplied and are not inferred.
+- **In progress, not completed:** `M06` has independent scoped passes for `R-M06-2`, `R-M06-3`, `R-M06-4`, `R-M06-16`–`R-M06-20`, and `R-M06-11`; `R-M06-11` passed twice, each with three hash-stable native runs and exact recomputation. `R-M06-55` passed the scoped gate, and the documentation-skill post-restart receipt passed its listed checks. Final consolidated gate rerun, docs/release reconciliation, screen-reader evidence, and `EXP-M06` remain pending.
+- **M05 implementation/preparation evidence only:** migration pre-backup, serve due-check with `STOCK_PROBS_BACKUP_INTERVAL_SECONDS` default `86400` and bounds `60`–`2678400`, backup-key rotation/retirement, `32`-artifact/`256 MiB` retention, and non-expiring query history are implemented. `docs/operations/backup-restore.md` and `docs/configure/local-configuration.md` were updated for accuracy by `SOL HIGH`. The M08 capture harness supplied `20` annotated screenshots and manifest SHA-256 `f9fef2b2db0a806cc47ff1db82e1e895f4dd4803425c0cf74426f5fa5a12dd5d`, but M08 acceptance is not claimed.
+- **Pending:** `M07`, `M08`, `ASTRA-FINAL`, and `EXP-FINAL`. `EXP-M01` through `EXP-M04` are completed; later exports remain pending.
+- **Current M06 limitation:** `R-M06-11` passed twice in independent QA, with three hash-stable native runs and exact recomputation. `R-M06-55` is a dirty native-x86 gate receipt, not the export checkpoint; actual screen-reader evidence and native/physical ARM64 performance are **Unavailable**, and final consolidated QA/docs plus `EXP-M06` remain open.
 - **Supplied Git receipt:** remote `main` was historically reported at `2a7a3bf66c3665552a46d0bd523544a01f894b3f`; it is not a current checkpoint. The old hosted Actions receipt is obsolete x64-only context and not a current gate or release proof. No external pipeline is in scope.
 - **Current-task limitation:** `R-M00-1` is immutable historical documentation recovery. `R-M00-2` is a documentation-only policy repair; it does not run implementation QA, remove implementation files, create a walkthrough, export, commit, push, or verify a new Git revision. No unavailable field is turned green.
-- **Rule:** no milestone advances to `Completed` from implementation claims, a test file, a generated artifact, or a narrative summary. The exact evidence record in `MVP-PLAN.md` is authoritative. `EXP-M01` verified the workflow deletion on its exact pushed/remote revision; `EXP-M02` is completed only by its later independent repair receipt; `EXP-M03` is completed by its supplied direct export receipt; M04's functional scope is closed but `EXP-M04` still requires its own checkpoint evidence.
+- **Rule:** no milestone advances to `Completed` from implementation claims, a test file, a generated artifact, or a narrative summary. The exact evidence record in `MVP-PLAN.md` is authoritative. `EXP-M01` verified the workflow deletion on its exact pushed/remote revision; `EXP-M02` is completed only by its later independent repair receipt; `EXP-M03` is completed by its supplied direct export receipt; M04's functional scope and `EXP-M04` are completed for their recorded scopes, with the exact export checkpoint recorded above.
 - **Scope discipline:** absent a demonstrated requirement, no auth, MFA, gateway, multi-service split, dual-database restore, direct-route SQL, or replica rate limiting is added. A read-only integrity diagnostic is optional and is not a new acceptance surface.
 
 ### `R-M00-1` documentation recovery record
@@ -42,7 +46,7 @@ This immutable record preserves the state observed during the original recovery.
   | `R-M00-2-E2` | Self-review of local-only, ARM64, M08, sequence, vocabulary, and M05 policy changes | Current docs; exact UTC time and commit unavailable | **Pass** as documentation content; artifact: four docs; reviewer: `LUNA MAX docs`; no behavior inferred. |
   | `R-M00-2-E3` | Workflow removal, local gate execution, M08 artifact/browser QA, and retrospective | Not run by this docs-only task | **Unavailable** to `R-M00-2`; current `EXP-M01` separately records the later workflow check, while the remaining M06/M07/M08/Astra evidence is future evidence. |
   | `R-M00-2-E4` | R-M00-1 identity/history and collision aliases retained | Current docs; exact UTC time and commit unavailable | **Pass** as documentation content; reviewer: `LUNA MAX docs`; no repair retest implied. |
-- **Limitations and export/Git:** At the time of `R-M00-2`, no implementation QA, ARM64 native/emulated run, walkthrough artifact, browser-control check, retrospective, export, commit, push, or new Git revision verification was performed by that docs-only repair; `EXP-M02` was not yet completed then. The later `EXP-M02-REPAIR-1` receipt now completes `EXP-M02` without rewriting that historical timing; `EXP-M03` is completed at the exact receipt below, `EXP-M04` is in progress, and later exports remain pending in their exact records.
+- **Limitations and export/Git:** At the time of `R-M00-2`, no implementation QA, ARM64 native/emulated run, walkthrough artifact, browser-control check, retrospective, export, commit, push, or new Git revision verification was performed by that docs-only repair; `EXP-M02` was not yet completed then. The later `EXP-M02-REPAIR-1` receipt now completes `EXP-M02` without rewriting that historical timing; `EXP-M03` and `EXP-M04` are completed at their exact receipts below, and later exports remain pending in their exact records.
 
 ### `EXP-M00` completed checkpoint record
 
@@ -63,9 +67,9 @@ This immutable record preserves the state observed during the original recovery.
 | `M01` | API and application shell | M00, `EXP-M00` | Completed | All three independent QA retests pass their assigned behavior scopes; `R-M01-3`–`R-M01-15` are completed. `EXP-M01` completed export/secret/Git evidence and verified the remote workflow path absent at SHA `5424fa3e22d9229d038d376512e59b3f35c97e78`. |
 | `M02` | SQLite audit and immutable records | M01, `EXP-M01` | Completed | All scoped records pass independently; `EXP-M02` is completed only through `EXP-M02-REPAIR-1`, session `ses_f6eacd1cdffeZxtRNqfzkXOuqJ`, with parse/secret/commit/remote-main evidence at `2026-09-11T17:10:31Z`. |
 | `M03` | Yahoo Finance data and forecast engine | M01, M02, `EXP-M02` | Completed | `R-M03-3`–`R-M03-22` are completed after their recorded failures/skips and repairs; `R-M03-23` remains pending for unavailable screen-reader evidence deferred to M04/M06. `EXP-M03` is completed at exact local/remote SHA `777451643b5ec1a04a37c013a9caf59f0bd58122`; see its export receipt below. |
-| `M04` | Dashboard and searchable history | M01, M02, M03, `EXP-M03` | Completed | This is limited to the exercised scope: `R-M04-2`–`R-M04-18`, the named responsive/visual records, and `R-M04-55` are completed after repairs; `R-M04-30` remains pending for unavailable actual screen-reader evidence and blocks final accessibility/release acceptance, not the exercised M04 scope. Only `EXP-M04` is **In progress**. |
-| `M05` | Backup, restore, and secure loopback operations | M02, M04 | Blocked | Late backup retest reported `make check` Pass, 83 tests/89.23%, and named adversarial checks; repair-ID collisions and release gates remain. Fresh aliases `R-M05-5`/`R-M05-6` carry the unresolved obligations. Then `EXP-M05`. |
-| `M06` | Local QA, MCP, browser regressions, and fail-closed gates | M01, M02, M03, M04, M05 | Blocked | `R-M06-1` independent retest was cancelled; fresh aliases `R-M06-2`/`R-M06-3`/`R-M06-4`, dual-arch, resource, local-gate, release, pinned Ponytail, project documentation skill, and credential-free onboarding evidence remain open. The three additional configuration/documentation rows are Pending or Blocked on their named preconditions. Then `EXP-M06`. |
+| `M04` | Dashboard and searchable history | M01, M02, M03, `EXP-M03` | Completed | Exercised scope and `EXP-M04` are completed for their recorded scopes; `R-M04-30` remains Pending because actual screen-reader evidence is Unavailable and deferred to M06, blocking final accessibility/release acceptance but not the exercised M04 scope. |
+| `M05` | Backup, restore, and secure loopback operations | M02, M04 | Completed for declared scope | `R-M05-55` is fully **Pass** for rows `(a)`–`(j)`, including the `R-M05-12` `4/4` behavior rerun inside `(i)` and the `(j)` aggregate recorded in the M05 evidence section. `EXP-M05` is **Pending** and is the next export/secret-review/commit/push/exact-remote-verification gate. |
+| `M06` | Local QA, MCP, browser regressions, and fail-closed gates | M01, M02, M03, M04, M05 | In progress | `R-M06-2`, `R-M06-3`, `R-M06-4`, and `R-M06-16`–`R-M06-20` independently pass; `R-M06-11` passed twice, each with three hash-stable native runs and exact recomputation; `R-M06-55` passed its dirty native-x86 scoped gate; and the documentation-skill post-restart receipt passed its listed checks. Final consolidated gate rerun, docs/release reconciliation, actual screen-reader evidence, and `EXP-M06` remain open. Then `EXP-M06`. |
 | `M07` | Integrated MVP acceptance | M06 | Pending | Full local user journey, persistence, restore, dual-architecture semantics, visual/AT, release reconciliation, and sign-off remain open. Then `EXP-M07`. |
 | `M08` | Instructional Walkthrough | M07, `EXP-M07` | Pending | Deterministic fixture walkthrough, real local app, official browser tooling, actual-control evidence, accessibility/transcript artifact, and prompt/approved-plan retrospective remain open. Then `ASTRA-FINAL`, `EXP-M08`, final learning synthesis, and `EXP-FINAL`. |
 
@@ -80,7 +84,7 @@ This immutable record preserves the state observed during the original recovery.
   - `M01-QA2`, task `ses_f71521f5effeKu8HF2uh3fxJT1`, native x86 Python `3.11.15` plus explicitly **emulated ARM64** OCI/QEMU `7.2.0`: executable support metadata `>=3.11,<3.12`, direct no-`make` local gate, clean non-edit wheel install/migration/loopback, safe induced failure nonzero/recorded `Fail`, Node x64/arm64 checksum, OpenCode schema/config/MCP, emulated package/install/migration/loopback, and cleanup passed. Artifacts `test-results/local-gates` and `test-results/arm64`; completion UTC was not supplied. No native/physical ARM64 or performance result.
   - `M01-QA3`, task `ses_f71521efbffeEdTmM7GL4wYmW2`, native x86_64, latest artifact `2026-09-11T04:35:01.820Z`: no product defects; `R-M01-14`/`R-M01-15` and browser `R-M01-3`/`R-M01-4` passed; checked-in 6 desktop + 6 mobile scenarios, no overflow at 360/390/768/1280/1440, stock/ETF identity checks, 53 `/api/v1` fetch/XHR requests with no forbidden/leaked access, structured errors/docs/OpenAPI/console, and official MCP actual interaction passed. Artifacts `/tmp/opencode/m01qa-*`; screen-reader/later polish remain M04/M06.
 - **Repair status:** `R-M01-3` and `R-M01-4` completed for router/OpenAPI and startup-harness scoped behavior; `R-M01-5`–`R-M01-7` completed for their coordinator-assigned QA1 scopes; `R-M01-8`–`R-M01-13` completed for their coordinator-assigned package/bootstrap/local-gate/architecture/tool scopes; `R-M01-14`–`R-M01-15` completed for their coordinator-assigned QA3 scopes, with the recorded browser/API/identity/error/docs/OpenAPI/console/MCP evidence. No `R-M01-16`–`R-M01-19` records were created from stale labels.
-- **Checkpoint limitation:** the host lacks system `make`; the direct executable gate passed and `Makefile` is a convenience wrapper. Physical/native ARM64 performance is `Unavailable`; the ARM64 result is explicitly emulated functional/tool evidence only. `EXP-M01` verified `.github/workflows/ci.yml` absent on the exact remote checkpoint; the unrelated `?? .vscode/` remained untouched and no remote CI was used. `EXP-M02` is completed through its late repair receipt; `EXP-M03` is completed at exact SHA `777451643b5ec1a04a37c013a9caf59f0bd58122`, and `EXP-M04` is current.
+- **Checkpoint limitation:** the host lacks system `make`; the direct executable gate passed and `Makefile` is a convenience wrapper. Physical/native ARM64 performance is `Unavailable`; the ARM64 result is explicitly emulated functional/tool evidence only. `EXP-M01` verified `.github/workflows/ci.yml` absent on the exact remote checkpoint; the unrelated `?? .vscode/` remained untouched and no remote CI was used. `EXP-M02` is completed through its late repair receipt; `EXP-M03` is completed at exact SHA `777451643b5ec1a04a37c013a9caf59f0bd58122`, and `EXP-M04` is completed at the receipt recorded above.
 
 ### `EXP-M01` completed checkpoint
 
@@ -142,7 +146,7 @@ The final scoped records are `R-M02-1`–`R-M02-5`, `R-M02-10`–`R-M02-20`, `R-
 The M02 safety distinctions are explicit: trusted in-app malformed submissions audit once; hostile pre-routing traffic does not write; the wire parser is outside the app; raw `REPLACE` is guarded with recursive triggers off; restore uses a process-wide per-canonical-database lock with no expiry; public backup data is safe and domain-neutral; request IDs are traceable; saved reopen is immutable while fresh reconstruction is separately labelled and newly recorded.
 
 - **Limitations:** native x86_64 only for final QA; no physical/native ARM64 result is claimed. Screen-reader evidence remains later and is not an M02 blocker. No remote CI was run or used. The first-repair browser task ID, final-public-repair B task ID, and cumulative-QA task ID were unavailable in the consumed reports and are not guessed. The original export review/timing gap is preserved as history; the late repair receipt supplies the current checkpoint evidence.
-- **Next gate at that historical checkpoint:** `M03`/`EXP-M03`; this docs gate did not perform the export, commit, push, or remote verification. The current records below supersede that forward-looking status; `EXP-M04` is now the in-progress gate.
+- **Next gate at that historical checkpoint:** `M03`/`EXP-M03`; this docs gate did not perform the export, commit, push, or remote verification. The current records below supersede that forward-looking status; `EXP-M03` and `EXP-M04` are now completed at their separately recorded receipts.
 
 ## Recovered Evidence Register
 
@@ -165,11 +169,13 @@ The historical transcript reuses `R-M01-1`, `R-M05-1`, `R-M06-1`, and `R-M04-1` 
 | --- | --- | --- | --- |
 | `R-M01-1` / QA `ses_f72f4e2f0ffe6hMpBTmXUnWybW` | Router errors/OpenAPI behavior | `R-M01-3` | Completed for current scoped retest; see M01 record |
 | `R-M01-1` / builder `ses_f72c4f20effeDoLPC0FuHaaGjZ` | Startup harness | `R-M01-4` | Completed for current scoped retest; see M01 record |
-| `R-M05-1` / QA `ses_f72f4e163ffehgqJPXwbY7ujrX` | Malicious backup | `R-M05-5` | Pending |
-| `R-M05-1` / backup builder `ses_f72c4f1baffeECZSQ37ujzSmCJ` | Chunked request | `R-M05-6` | Pending |
-| `R-M06-1` / QA/operations `ses_f72f4e163ffehgqJPXwbY7ujrX` | Port collision | `R-M06-2` | Pending |
-| `R-M06-1` / repair builder `ses_f72c4f20effeDoLPC0FuHaaGjZ` | Documentation CSP | `R-M06-3` | Pending |
-| `R-M06-1` / repair builder `ses_f72c4f20effeDoLPC0FuHaaGjZ` | CSV formula issue | `R-M06-4` | Pending |
+| `R-M05-1` / QA `ses_f72f4e163ffehgqJPXwbY7ujrX` | Malicious backup audit/repair | `R-M05-5` | Completed for the declared M05 scope through the later independent `R-M05-55` Pass receipt; the historical source-qualified label remains unchanged |
+| `R-M05-1` / backup builder `ses_f72c4f1baffeECZSQ37ujzSmCJ` | Chunked request and cross-architecture restore harness | `R-M05-6` | Completed for the declared M05 scope through the later independent `R-M05-55` Pass receipt; historical emulated-evidence limitations remain visible |
+| `R-M05-2` / QA `ses_f72f4e163ffehgqJPXwbY7ujrX` | Historical source-qualified label; the recovered record does not supply enough source-specific detail to infer a distinct obligation | No fresh alias allocated | Completed for current declared M05 coverage through the later independent `R-M05-55` Pass receipt; the historical label is retained and is not reused |
+| `R-M05-4` / QA `ses_f72f4e163ffehgqJPXwbY7ujrX` | Historical source-qualified label; the recovered record does not supply enough source-specific detail to infer a distinct obligation | No fresh alias allocated | Completed for current declared M05 coverage through the later independent `R-M05-55` Pass receipt; the historical label is retained and is not reused |
+| `R-M06-1` / QA/operations `ses_f72f4e163ffehgqJPXwbY7ujrX` | Port collision | `R-M06-2` | **Completed**; independent retest **Pass** for occupied-port fail-closed behavior |
+| `R-M06-1` / repair builder `ses_f72c4f20effeDoLPC0FuHaaGjZ` | Documentation CSP | `R-M06-3` | **Completed**; independent retest **Pass** for CSP/host/origin enforcement |
+| `R-M06-1` / repair builder `ses_f72c4f20effeDoLPC0FuHaaGjZ` | CSV formula issue | `R-M06-4` | **Completed**; independent retest **Pass** for CSV formula safety |
 | `R-M04-1` / browser/accessibility `ses_f72f4e261ffeLWQEjyJI4k3hea` | Actual assistive-technology evidence unavailable | `R-M04-2` | Pending; evidence unavailable |
 | `R-M04-1` / repair builder `ses_f72c4f20effeDoLPC0FuHaaGjZ` | Mobile error focus | `R-M04-3` | Pending |
 
@@ -231,7 +237,7 @@ The source task IDs are evidence locators, not independent acceptance reviews. `
 
 ## Current M04 Evidence Record
 
-`M04` is **Completed** for its exercised dashboard/history functional scope after named independent repairs. Only `EXP-M04` is **In progress**. `R-M04-30` remains **Pending** because actual screen-reader evidence is **Unavailable** and deferred to M06; it blocks final accessibility/release acceptance, not the exercised M04 feature scope. The supplied M04 QA/retest evidence ran on dirty native x86_64 Linux WSL2/Python `3.11.15`, revision `777451643b5ec1a04a37c013a9caf59f0bd58122`; this is evidence context, not an M04 export checkpoint.
+`M04` and `EXP-M04` are **Completed** for their recorded scopes. `R-M04-30` remains **Pending** because actual screen-reader evidence is **Unavailable** and deferred to M06; it blocks final accessibility/release acceptance, not the exercised M04 feature scope. The supplied M04 QA/retest evidence ran on dirty native x86_64 Linux WSL2/Python `3.11.15`, revision `777451643b5ec1a04a37c013a9caf59f0bd58122`; this is functional evidence context, not the `EXP-M04` export checkpoint.
 
 - **Builder handoffs:** A `ses_f6e6a711fffeyuef4zb62H0giu`, B `ses_f6e6a70e1ffe26uoiMUKL6tJYQ`, C `ses_f6e6a70c9ffeHInuhUf0xcS4Sf`; implementation handoffs only.
 - **Initial QA:** A `ses_f6e477c95ffewj86nzBDav0XDr` passed `R-M04-2`–`R-M04-10` but failed the supplied `F-M04-1` alias finding. B `ses_f6e477c73ffeTGeXUo9LjYAyzB` passed `R-M04-11`, `R-M04-12`, `R-M04-14`, `R-M04-15`, `R-M04-17`, and `R-M04-18`, and failed `R-M04-13` (migration microseconds) and `R-M04-16` (HTTP N+1/export behavior). C `ses_f6e477c5cffeCcKYsNq7FiB` reported 30 browser/gate passes but found 1024px overlap, 360px loading overflow, and unavailable actual screen-reader evidence `R-M04-30`. Reviewer: `LUNA MAX QA`.
@@ -255,37 +261,120 @@ The source task IDs are evidence locators, not independent acceptance reviews. `
 
 The supplied `F-M04-1` label remains visible as a failure alias/finding rather than an invented canonical repair ID: initial alias behavior returned `422`; closure A passed safe noninteger `404` behavior and absence from OpenAPI. No missing task suffix, repair ID, timestamp, native ARM64 result, or CI result is inferred.
 
-- **Limitations/export:** native x86_64 only; ARM64 evidence explicitly emulated for functional/package behavior; physical/native ARM64 performance and actual screen-reader evidence are unavailable; no CI was run. `EXP-M04` remains **In progress**, and its full-session export, secret review, commit, push, and exact remote-main verification are not supplied or performed by this docs gate.
+- **Limitations/export:** native x86_64 only for the functional QA; ARM64 evidence explicitly emulated for functional/package behavior; physical/native ARM64 performance and actual screen-reader evidence are unavailable; no CI was run. The separate `EXP-M04` receipt below supplies its export, secret, commit, push, and exact remote-main facts; it does not close `R-M04-30`.
+
+### `EXP-M04` completed export checkpoint
+
+- **Status:** Completed.
+- **Owner/phase:** coordinator export gate; this roadmap records the supplied receipt and does not re-run export or Git operations. Named export reviewer was not supplied in this reconciliation.
+- **Dependencies verified:** completed M04 exercised functional scope and `R-M04-55`; `R-M04-30` remains Pending because actual screen-reader evidence is Unavailable and deferred to M06.
+- **Evidence ledger:**
+
+  | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+  | --- | --- | --- | --- |
+  | `EXP-M04-E1` | Sanitized full-session `SESSION-EXPORT.md` overwritten and parsed as JSON: `140` messages, `844` parts, `101` task outputs, `241` tool parts, `672,190` bytes, `19,855` lines, `1,817` redaction markers; SHA-256 `5eebab2ce302e9f8b5a08aec5e4773c8bf7e4a99c920fa059c462dd71cecb837` | Supplied export; commit `59534faf1cdce493bc51a11d4adbea5e5b2d6892`; commit UTC `2026-09-11T20:25:10-04:00` | **Pass as supplied export receipt**; named reviewer not supplied. |
+  | `EXP-M04-E2` | Full secret review: zero webhook, private-key, AWS, GitHub, Bearer, or embedded-credential matches | Same sanitized export/checkpoint | **Pass as supplied secret-review receipt**; named reviewer not supplied. |
+  | `EXP-M04-E3` | Commit, push, and exact remote `main` match | Commit message `Build responsive forecast dashboard`; exact `origin/main` match at `59534faf1cdce493bc51a11d4adbea5e5b2d6892` | **Pass as supplied Git receipt**; named reviewer not supplied. |
+  | `EXP-M04-E4` | CI limitation | Same checkpoint | **Skipped**; no CI was run or used. |
+
+- **Limitations:** `R-M04-30` remains Pending/Unavailable and deferred to M06; no physical/native ARM64 performance or CI result is claimed. The export receipt is complete for `EXP-M04`, but its named reviewer field was not supplied here.
+
+## Current M05 Evidence Record
+
+`M05` is **Completed for the declared scope**. This record retains the repair-wave history
+and consumes the later independent `R-M05-55` closure receipt without converting
+implementation presence into acceptance. The current worktree is dirty native x86_64 Linux
+at HEAD `59534faf1cdce493bc51a11d4adbea5e5b2d6892`. The supplied receipt records session
+`ses_f6bbd6b46ffes2BM2zVjBC5uLg` for rows `(a)`–`(i)` at
+`2026-09-12T06:25:04Z`–`2026-09-12T06:44:37Z` and session
+`ses_f6aa32b01ffexjSm9OhpprFwq4` for row `(j)` at
+`2026-09-12T11:26:29Z`–`2026-09-12T11:28:26Z`, on native x86_64 with `.dev-venv` Python
+`3.11.15`, reviewed by `LUNA MAX QA`. The packaged-CLI session is
+`ses_f6a96daceffegfAqyKQL2lf3bS` on native x86_64/Python `3.11.15`, with artifact
+`/tmp/opencode/stock-probs-m05-cli-20260912T114105Z/M05-packaged-cli-receipt.json` and
+reviewer `LUNA MAX QA`. Commands and commits were not supplied and are not inferred.
+`EXP-M05` remains the next separate checkpoint.
+
+| Task ID | Status | Evidence and current result | Limitation/next gate |
+| --- | --- | --- | --- |
+| `R-M05-5` | **Completed** | Malicious-backup closure evidence covers unsafe archive/member, transferred/wrong-key, lost-key, and retention/storage cases in `tests/test_backup_cli.py`; the later `R-M05-55 (a)`–`(i)` receipt closes the declared scope. | **Pass** in the fully passing `R-M05-55` scope. Exact receipt sessions, windows, native environment, and reviewer are recorded below; command and commit were not supplied. |
+| `R-M05-6` | **Completed** | Chunked-request falsification is represented by `tests/test_m05_request_limits.py`. Supplied `test-results/arm64/M05-20260912T034933Z/evidence.json` reports both x86-64 -> emulated ARM64 and emulated ARM64 -> x86-64 restore directions; the later `R-M05-55 (a)`–`(i)` receipt closes the declared scope. | **Pass** in the fully passing `R-M05-55` scope; the emulated artifact remains functional evidence only, not native ARM64 or performance evidence. Exact receipt sessions, windows, native environment, and reviewer are recorded below; command and commit were not supplied. |
+| `R-M05-7` | **Completed** | The supplied finding records an insufficient due-check watchdog. Initial result: **Fail**; closure is carried by `R-M05-8`/`R-M05-11` and the later `R-M05-55 (a)`–`(i)` receipt. | **Pass** for the declared M05 scope; the initial failure remains visible. Exact receipt sessions, windows, native environment, and reviewer are recorded below; command and commit were not supplied. |
+| `R-M05-8` / `R-M05-11` | **Completed** | The supplied repair statement covers due-check, creation, internal verification, pre-migration, serve startup, and public verify/restore; the later `R-M05-55 (a)`–`(i)` receipt closes the declared scope. | **Pass** in the fully passing `R-M05-55` scope. Exact receipt sessions, windows, native environment, and reviewer are recorded below; command and commit were not supplied. |
+| `R-M05-9` | **Completed** | Walkthrough comment repair is retained; row `(j)` of `R-M05-55` includes the independent `77`-file comment audit. | **Pass** in the fully passing `R-M05-55` scope. Exact receipt sessions, windows, native environment, and reviewer are recorded below; command and commit were not supplied. |
+| `R-M05-10` | **Completed** | All migrating CLI commands route through the protected pre-migration path in the supplied evidence; the later `R-M05-55 (a)`–`(i)` receipt closes the declared scope. | **Pass** in the fully passing `R-M05-55` scope. Exact receipt sessions, windows, native environment, and reviewer are recorded below; command and commit were not supplied. |
+| `R-M05-12` | **Completed** | Ponytail repair record: [`docs/evidence/ponytail-m05-boundary.txt`](docs/evidence/ponytail-m05-boundary.txt) records the two findings and repair. `R-M05-55 (i)` independently reran the affected behavior tests: `4/4` **Pass**. | **Pass** for the independent rerun inside `R-M05-55 (i)`; the receipt retained at `docs/evidence/ponytail-m05-boundary.txt` is overengineering-only. Exact rerun session, window, native environment, and reviewer are recorded below; command and commit were not supplied. |
+| `R-M05-55` | **Completed** | Fully passing consolidated M05 QA: rows `(a)`–`(i)` passed earlier and row `(j)` passed on rerun. | **Pass** for the declared M05 scope; exact sessions, windows, native environments, artifacts, and reviewer are recorded below. `EXP-M05` remains pending; commands and commits were not supplied. |
+
+#### `R-M05-55` consolidated closure receipt
+
+- **Status:** Completed for the declared M05 scope; **Pass**.
+- **Owner/phase:** independent `LUNA MAX QA` consolidated M05 QA receipt; this documentation reconciliation records the supplied result and does not rerun implementation checks.
+- **Dependencies verified:** M05 repair rows and the receipt retained at [`docs/evidence/ponytail-m05-boundary.txt`](docs/evidence/ponytail-m05-boundary.txt); the independent `R-M05-12` behavior rerun is recorded in row `(i)` below.
+- **Change summary:** rows `(a)`–`(i)` were previously passed; row `(j)` was independently rerun and passed. No implementation, configuration, skill, or test path was changed by this documentation update.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `R-M05-55 (a)`–`(i)` | Round trip/checksum (`06:42:38Z`–`06:42:39Z`); six-path pre-migration forced-failure matrix (`06:32:09Z`–`06:32:10Z`); due-check `60`/`2678400` accepted and `59`/`2678401`/`nan` rejected; retention of `32` artifacts/`256 MiB` with history preserved (`06:43:54Z`); `13/13` fail-closed negatives (`06:35:29Z`–`06:35:32Z`); key lifecycle with rollback (`06:44:37Z`); `7/7` watchdog probes (`06:35:01Z`–`06:35:02Z`); both-direction **emulated ARM64** cross-architecture restore (`06:25:04Z`–`06:28:44Z`, artifact `test-results/arm64/M05-20260912T034933Z/evidence.json`); and the `R-M05-12` rerun (`06:38:47Z`–`06:38:49Z`). | Session `ses_f6bbd6b46ffes2BM2zVjBC5uLg`; native x86_64 with `.dev-venv` Python `3.11.15`; overall UTC window `2026-09-12T06:25:04Z`–`2026-09-12T06:44:37Z`; command and commit were not supplied. | **Pass**; reviewer `LUNA MAX QA`. Row `(i)` includes the `R-M05-12` `4/4` behavior-test rerun. The receipt retained at [`docs/evidence/ponytail-m05-boundary.txt`](docs/evidence/ponytail-m05-boundary.txt) remains overengineering-only. No native ARM64 or performance result is inferred. |
+| `R-M05-55 (j)` | Independent consolidated rerun: `276` non-live tests, `4` live tests deselected, `89.51%` coverage, documentation validation of `8` categories/`11` topics/`1` skill, `22` documentation tests, a `77`-file comment audit, Ruff, and mypy. | Session `ses_f6aa32b01ffexjSm9OhpprFwq4`; native x86_64 with `.dev-venv` Python `3.11.15`; UTC window `2026-09-12T11:26:29Z`–`2026-09-12T11:28:26Z`; command and commit were not supplied. | **Pass**; reviewer `LUNA MAX QA`. This is scoped M05 evidence, not the `EXP-M05` checkpoint. |
+| `R-M05-55` packaged-CLI verification | Wheel install in a fresh venv; migrate pre-migration backup; named backup; verify; `restore --promote`; wrong-key and tampered rejection; backup-key rotate/retire; serve readiness on an isolated port. | Session `ses_f6a96daceffegfAqyKQL2lf3bS`; native x86_64/Python `3.11.15`; artifact `/tmp/opencode/stock-probs-m05-cli-20260912T114105Z/M05-packaged-cli-receipt.json`; command, UTC window, and commit were not supplied. | **Pass as supplied packaged-CLI verification evidence**; reviewer `LUNA MAX QA`; it supplements the independent `R-M05-55` receipt and does not create `EXP-M05`. |
+
+Earlier failures and pending states remain visible in the historical repair narrative; this
+later receipt closes the declared M05 scope without backdating or erasing that history.
+
+### M05 implementation evidence (not acceptance)
+
+The implemented automation includes migrate pre-backup; a fail-closed serve due check using
+`STOCK_PROBS_BACKUP_INTERVAL_SECONDS` with default `86400` and bounds `60`–`2678400`;
+`backup-key rotate` and `backup-key retire`; retention limits of `32` artifacts and
+`256 MiB`; and no automatic query-history expiry. `docs/operations/backup-restore.md` and
+`docs/configure/local-configuration.md` were updated for accuracy by `SOL HIGH`. The current
+`LUNA MAX docs` profile cannot edit `docs/**`, so `SOL HIGH` performed those authored-docs
+repairs; this profile gap remains visible and is not independent QA or M05 verification.
+
+`EXP-M05` is **Pending** and is the next checkpoint. No M05 export, full-session secret
+review, local commit, push, or exact remote-revision verification was performed by this
+reconciliation; no new checkpoint exists. Those checkpoint fields remain pending and do not
+become passes from the completed `R-M05-55` scope receipt.
+
+### M08 preparation (not acceptance)
+
+The supplied capture-harness receipt reports `20` annotated screenshots and manifest SHA-256
+`f9fef2b2db0a806cc47ff1db82e1e895f4dd4803425c0cf74426f5fa5a12dd5d`. `M08`, walkthrough
+QA, the retrospective, `ASTRA-FINAL`, and `EXP-M08` remain open; no M08 acceptance is claimed.
+The generated capture output is not present in this worktree for a local hash recheck, and the
+receipt's exact UTC, commit, command, and named reviewer were not supplied.
 
 ## Mandatory Delivery Workflow
 
-The maximum is three concurrent agents overall. The orchestrator proactively fills up to three slots only when genuinely independent todos exist; every active agent owns a distinct todo, path, and evidence lane, with no duplicate work. Launch independent work in parallel, keep dependent steps sequential, and wait for all active lanes before integration and before independent QA. Do not invent busywork merely to fill slots. QA/docs waves may use one to three agents according to genuinely independent scopes. A build wave remains the stricter rule: exactly three concurrent `SOL HIGH build` instances and never more than three concurrent builders. The coordinator does not implement shared files, test, review, or write roadmap prose; it owns mechanical integration, status, and git only. `LUNA MAX QA` is verification-only and denies repair/delegation conceptually; it does not repair implementation/configuration or hand acceptance to a builder. The coordinator routes only reproducible blocking findings with an exact task ID to `SOL HIGH`; speculative or non-blocking preferences are not repair work. Future agent-profile and local-gate changes belong to `SOL HIGH` and require parent-process restart plus independent post-restart validation before affecting a gate.
+The maximum is six concurrent agents overall. The orchestrator proactively fills up to six slots only when genuinely independent todos exist; every active agent owns a distinct todo, path, and evidence lane, with no duplicate work. Launch independent work in parallel, keep dependent steps sequential, and wait for all active lanes before integration and before independent QA. Do not invent busywork merely to fill slots. QA/docs waves may use one to six agents according to genuinely independent scopes. A build wave uses up to six concurrent `SOL HIGH build` instances and never more than six concurrent builders; A/B/C are the base roles and any additional lanes require declared disjoint ownership. The coordinator does not implement shared files, test, review, or write roadmap prose; it owns mechanical integration, status, and git only. `LUNA MAX QA` is verification-only and denies repair/delegation conceptually; it does not repair implementation/configuration or hand acceptance to a builder. The coordinator routes only reproducible blocking findings with an exact task ID to `SOL HIGH`; speculative or non-blocking preferences are not repair work. Future agent-profile and local-gate changes belong to `SOL HIGH` and require parent-process restart plus independent post-restart validation before affecting a gate.
 
 ### Build wave
 
-Every implementation or repair wave uses three `SOL HIGH build` instances with non-overlapping ownership, declared against the exact `M##` or `R-M##-<n>` ID before work begins:
+Every implementation or repair wave uses up to six `SOL HIGH build` instances with non-overlapping ownership, declared against the exact `M##` or `R-M##-<n>` ID before work begins. A/B/C are the base roles; D/E/F exist only when their scopes are separately declared:
 
 | Builder | Non-overlapping ownership lane |
 | --- | --- |
 | `SOL HIGH-A` | Transport/application: FastAPI routes, schemas, settings, CLI, package/launch configuration, and transport-facing implementation tests |
 | `SOL HIGH-B` | Domain/provider/persistence: forecast rules, Yahoo/fixture adapters, services, migrations, SQLite, backup/restore, and domain/storage tests |
 | `SOL HIGH-C` | Presentation/browser/operations: static UI, browser harness, scripts, Make/local-gate tooling, dependency/runtime tooling, and presentation-facing implementation tests |
+| `SOL HIGH-D`–`SOL HIGH-F` | Only a separately declared, disjoint implementation/configuration/test scope |
 
-Each builder reports its exact task ID, changed paths, checks, failures, assumptions, and handoff. No two builders edit the same path. Every implementation/config/test path is assigned to A, B, or C before work starts; the four roadmap docs belong only to `LUNA MAX docs`, and `SESSION-EXPORT.md` belongs only to its export gate. A shared interface is handed to the coordinator for mechanical integration rather than edited concurrently; the coordinator does not author implementation/config/test content.
+Each builder reports its exact task ID, changed paths, checks, failures, assumptions, and handoff. No two builders edit the same path. Every implementation/config/test path is assigned to A, B, C, D, E, or F before work starts; the four roadmap docs belong only to `LUNA MAX docs`, and `SESSION-EXPORT.md` belongs only to its export gate. A shared interface is handed to the coordinator for mechanical integration rather than edited concurrently; the coordinator does not author implementation/config/test content.
 
 After every implementation boundary—builder or repair handoff, integration, profile/local-gate change, or other configuration boundary—and before independent QA, run the read-only `/ponytail-review`. Its scope is overengineering only. A clean record is exactly `Ponytail result | boundary: <exact task ID> | finding: none | scope: overengineering only | command: /ponytail-review | environment | UTC | commit | result | artifact | reviewer`; a finding is exactly `Ponytail finding | boundary: <exact task ID> | path:line | overengineering claim | evidence | minimal SOL HIGH repair | QA rerun | environment | UTC | commit | result | artifact | reviewer`. Use an ordinary `R-M##-<n>` only for a reproducible blocking finding. Only `SOL HIGH` repairs it, independent QA retests it, and a missing/unavailable review blocks the boundary. Ponytail never substitutes for correctness, security, accessibility, or performance evidence.
 
 ### Wait and verification gates
 
 1. Record the task ID, dependencies, lane manifest, change summary, and one acceptance row per requirement.
-2. Run all three non-overlapping `SOL HIGH build` lanes concurrently.
-3. Wait for all three builder reports before integration or acceptance review.
+2. Run all declared non-overlapping `SOL HIGH build` lanes concurrently, using no more than six.
+3. Wait for all active builder reports before integration or acceptance review.
 4. Run the mandatory read-only `/ponytail-review` after the boundary and before independent QA, using the exact clean/finding record; a missing or unavailable review blocks the boundary.
-5. Only after that wait and review, run independent `LUNA MAX QA` and `LUNA MAX docs` waves. Use one to three agents according to genuinely independent scopes; launch independent work in parallel and keep dependent work sequential. Docs finalizes only after consuming the completed QA record and cannot convert missing QA into a pass.
+5. Only after that wait and review, run independent `LUNA MAX QA` and `LUNA MAX docs` waves. Use one to six agents according to genuinely independent scopes; launch independent work in parallel and keep dependent work sequential. Docs finalizes only after consuming the completed QA record and cannot convert missing QA into a pass.
 6. Record every pass, fail, skipped, unavailable, stale, accessibility, restore, secret-review, and connectivity result. A failed or unavailable required gate blocks acceptance.
 7. For a failure, create `R-M##-<n>`, route only the reproducible blocking finding to `SOL HIGH`, repair the root cause, repeat the builder handoff, Ponytail review, QA/docs gates, and affected regression checks. Never weaken the acceptance requirement.
 
-The canonical sequence is `R-M00-1` -> `EXP-M00` (**Completed**) -> `M01` (**Completed**) -> `EXP-M01` (**Completed**) -> `M02` (**Completed**) -> `EXP-M02` (**Completed**) -> `M03` (**Completed**) -> `EXP-M03` (**Completed**, exact checkpoint `777451643b5ec1a04a37c013a9caf59f0bd58122`) -> `M04` (**Completed** for exercised scope) -> `EXP-M04` (**In progress**) -> `M05`/`EXP-M05` -> `M06`/`EXP-M06` -> `M07` QA/docs -> `EXP-M07` -> `M08` walkthrough QA/docs -> `ASTRA-FINAL` dedicated visual/mobile/responsive/accessibility review -> `R-ASTRA-<n>` SOL repairs/retests and Astra reevaluation until the result is `Accepted` -> `EXP-M08` -> final learning synthesis -> `EXP-FINAL` -> optional `NOTIFY-FINAL` last. The Astra design/repair/final-checkpoint and learning-synthesis sequence is one second-last operational loop, not a new milestone. No later task may be used to backfill a missing earlier export gate.
+The canonical sequence is `R-M00-1` -> `EXP-M00` (**Completed**) -> `M01` (**Completed**) -> `EXP-M01` (**Completed**) -> `M02` (**Completed**) -> `EXP-M02` (**Completed**) -> `M03` (**Completed**) -> `EXP-M03` (**Completed**, exact checkpoint `777451643b5ec1a04a37c013a9caf59f0bd58122`) -> `M04` (**Completed** for exercised scope) -> `EXP-M04` (**Completed**, exact checkpoint recorded above) -> `M05`/`EXP-M05` -> `M06`/`EXP-M06` -> `M07` QA/docs -> `EXP-M07` -> `M08` walkthrough QA/docs -> `ASTRA-FINAL` dedicated visual/mobile/responsive/accessibility review -> `R-ASTRA-<n>` SOL repairs/retests and Astra reevaluation until the result is `Accepted` -> `EXP-M08` -> final learning synthesis -> `EXP-FINAL` -> optional `NOTIFY-FINAL` last. The Astra design/repair/final-checkpoint and learning-synthesis sequence is one second-last operational loop, not a new milestone. No later task may be used to backfill a missing earlier export gate.
 
 ## Versioned Export, Commit, Push, And Remote Gates
 
@@ -311,42 +400,98 @@ The condensed plan had omitted the following contract rows. They are restored he
 | `M02` | Saved forecast reopen returns immutable recorded inputs/results; successful, failed, and repeated searches remain auditable; bounded history has no automatic query-history expiry and explicit retention/disk limits are tested. |
 | `M03` | Both horizons exclude an in-progress bar and expose origin/target/session semantics; up/down/unchanged, `+/-1%`, `+/-3%`, `+/-5%`, `+/-10%`, conditional gain/loss, and 50/80/95 return/price intervals are defined; company identity, Yahoo approximate 60-day five-minute archive limitation, chronological walk-forward evaluation, baseline comparison, Brier/reliability, interval coverage, and rare-event uncertainty are evidenced. |
 | `M04` | Saved reopen is distinct from labelled fresh historical-cutoff reconstruction; historical price and return-distribution charts have text/table equivalents; CSV and JSON exports work; Signal Ledger visual direction is polished at 360/390/768/1280/1440 with no overlap/overflow, tabular numeric hierarchy, all states, reduced motion, WCAG AA, keyboard, and actual assistive-technology evidence. Axe and keyboard do not substitute for screen-reader evidence. |
-| `M05` | Automatic due and pre-migration backups, retention/disk limits, non-expiring query history, safe staging/promotion, trust-key transfer/lifecycle, and fail-closed missing/wrong-key behavior are verified. Cross-architecture backup/restore runs x86-64 -> ARM64 and ARM64 -> x86-64 using local native ARM64 when available or labelled emulation otherwise. |
+| `M05` | Automatic due and pre-migration backups, retention/disk limits, non-expiring query history, safe staging/promotion, trust-key transfer/lifecycle, fail-closed missing/wrong-key behavior, bounded chunked-request rejection, watchdog coverage, and protected migration routing are verified. Cross-architecture backup/restore runs x86-64 -> ARM64 and ARM64 -> x86-64 using local native ARM64 when available or labelled emulation otherwise. |
 | `M06` | Local native x86-64 receives mandatory deterministic app/UI performance QA in a fresh isolated fixture runtime: five warmups plus at least 30 measured requests, existing RSS/forecast/history thresholds, proposed CPU/readiness/package/backup/restore/static-byte/browser budgets, concurrency elapsed, and one structured artifact per check. Local native ARM64 is used when available; otherwise QEMU/OCI is explicitly emulated for packaging/runtime/functional/build/tool evidence only. Physical ARM64 low-resource performance is `Unavailable` without local native ARM64 hardware and is never inferred from emulation. |
 | `M07` | The integrated matrix covers every row above, both architecture paths, both backup directions and trust-key lifecycle, all five viewports and states, actual assistive technology, the complete local user journey, local fail-closed gates, honest ARM64 limitations, and honest out-of-scope classification. Optional dark mode/news are not contract; options/public hosting are out of scope. |
 | `M08` | A deterministic-fixture, real-local-app walkthrough under `docs/walkthrough/` (annotated screenshots or accessible GIF plus Markdown/transcript) covers setup through shutdown, all required states/features, actual controls, desktop/mobile accessibility, bounded size, reproducible generation, no secrets/paths, and the prompt/approved-plan retrospective. Retrospective gaps receive `R-M08-<n>` repairs before Astra. |
 
-The M01 and M02 behavior rows above have current independent scoped pass evidence and completed `EXP-M01`/`EXP-M02` checkpoints; M02's checkpoint was completed only by the late `EXP-M02-REPAIR-1` receipt. M03 and `EXP-M03` are completed at exact SHA `777451643b5ec1a04a37c013a9caf59f0bd58122`; M04 is completed for exercised scope and `EXP-M04` is the current in-progress gate. `R-M04-30` remains pending for unavailable screen-reader evidence, and all later rows remain open; neither `R-M00-1` nor `R-M00-2` accepted implementation behavior.
+The M01 and M02 behavior rows above have current independent scoped pass evidence and completed `EXP-M01`/`EXP-M02` checkpoints; M02's checkpoint was completed only by the late `EXP-M02-REPAIR-1` receipt. M03 and `EXP-M03` are completed at exact SHA `777451643b5ec1a04a37c013a9caf59f0bd58122`; M04 and `EXP-M04` are completed for their recorded scopes. M05 is now completed for its declared scope through `R-M05-55`, while `EXP-M05` remains pending; `R-M04-30` remains pending for unavailable screen-reader evidence, and all later rows remain open. Neither `R-M00-1` nor `R-M00-2` accepted implementation behavior.
+
+## Current M06 Evidence Record
+
+`M06` is **In progress**, not released. The row-level statuses below are distinct from
+the milestone and export status. `R-M06-55` is the supplied dirty-worktree gate receipt;
+the documentation-skill post-restart receipt passed its listed checks, and `EXP-M06`
+remains **Pending**.
+
+| Task ID | Status | Exact scoped result | Evidence and limitation |
+| --- | --- | --- | --- |
+| `R-M06-2` | **Completed** | **Pass** — occupied-port fail-closed | Independent retest supplied; separate row-only session/artifact was not supplied. Final artifact set: `test-results/local-gates/R-M06-55-20260912T045233Z/`; reviewer `LUNA MAX QA`. |
+| `R-M06-3` | **Completed** | **Pass** — CSP/host/origin enforcement | Independent retest supplied; separate row-only session/artifact was not supplied. Final artifact set above; reviewer `LUNA MAX QA`. |
+| `R-M06-4` | **Completed** | **Pass** — CSV formula safety | Independent retest supplied; separate row-only session/artifact was not supplied. Final artifact set above; reviewer `LUNA MAX QA`. |
+| `R-M06-11` | **Completed** | **Pass** — two independent QA passes, each with exact recomputation across three hash-stable native runs | Hash values, row-only session, and UTC window were not supplied; none is invented. Named M06 gate reviewer: `LUNA MAX QA`. |
+| [`R-M06-16`](MVP-PLAN.md#r-m06-16) | **Completed** | **Pass** for the supplied independent scope | Row-only locator: [`ponytail-reviews.md#L13-L17`](docs/evidence/ponytail-reviews.md#L13-L17); source receipt: [`ponytail-r-m06-1.txt#L4-L6`](docs/evidence/ponytail-r-m06-1.txt#L4-L6). The retained summary does not name a finer behavior. Final artifact set above; reviewer `LUNA MAX QA`. |
+| [`R-M06-17`](MVP-PLAN.md#r-m06-17) | **Completed** | **Pass** for the supplied independent scope | Row-only locator: [`ponytail-reviews.md#L13-L17`](docs/evidence/ponytail-reviews.md#L13-L17); source receipt: [`ponytail-r-m06-1.txt#L4-L6`](docs/evidence/ponytail-r-m06-1.txt#L4-L6). The retained summary does not name a finer behavior. Final artifact set above; reviewer `LUNA MAX QA`. |
+| [`R-M06-18`](MVP-PLAN.md#r-m06-18) | **Completed** | **Pass** for the supplied independent scope | Row-only locator: [`ponytail-reviews.md#L13-L17`](docs/evidence/ponytail-reviews.md#L13-L17); source receipt: [`ponytail-r-m06-1.txt#L4-L6`](docs/evidence/ponytail-r-m06-1.txt#L4-L6). The retained summary does not name a finer behavior. Final artifact set above; reviewer `LUNA MAX QA`. |
+| [`R-M06-19`](MVP-PLAN.md#r-m06-19) | **Completed** | **Pass** — three `R-M06-15` Ponytail findings repaired | Row-only locator: [`ponytail-reviews.md#L18-L20`](docs/evidence/ponytail-reviews.md#L18-L20); source receipt: [`ponytail-r-m06-15.txt#L4-L6`](docs/evidence/ponytail-r-m06-15.txt#L4-L6). Ponytail remains overengineering-only; reviewer `LUNA MAX QA`. |
+| [`R-M06-20`](MVP-PLAN.md#r-m06-20) | **Completed** | **Pass** for the supplied independent scope | Row-only locator: [`ponytail-reviews.md#L13-L17`](docs/evidence/ponytail-reviews.md#L13-L17). The retained summary explicitly records a supplied scoped pass but no finding mapping; final artifact set above; reviewer `LUNA MAX QA`. |
+| `R-M06-55` | **Completed** | **Pass** — local `m06` gate | Dirty native x86_64 Linux WSL2/Python `3.11.15`, revision `59534faf1cdce493bc51a11d4adbea5e5b2d6892`, `2026-09-12T04:52:33Z`–`2026-09-12T05:03:44Z`, command `./scripts/local-gate.sh m06`; `264` tests, `89.38%` coverage, browser 32 Pass/2 performance-profile Skipped, official MCP, 4/4 live Yahoo, and labelled emulated-ARM64 package/runtime. Artifact `test-results/local-gates/R-M06-55-20260912T045233Z/evidence.json`; reviewer `LUNA MAX QA`. |
+
+The `R-M06-55` performance summary reports all 13 structured rows present, `12/13`
+**Pass**, and ARM64 performance **Unavailable**. The retained Ponytail artifacts are
+[`docs/evidence/ponytail-r-m06-1.txt`](docs/evidence/ponytail-r-m06-1.txt) (six findings repaired),
+[`docs/evidence/ponytail-r-m06-15.txt`](docs/evidence/ponytail-r-m06-15.txt) (three repaired as `R-M06-19`), and
+[`docs/evidence/ponytail-m05-boundary.txt`](docs/evidence/ponytail-m05-boundary.txt) (two repaired as completed repair record
+`R-M05-12`; its independent `4/4` behavior rerun is **Pass** inside `R-M05-55 (i)`). Fresh isolated
+documentation-skill discovery passed the validator, 20 tests, description parity,
+500-line limit, and references. The post-restart receipt is session
+`ses_f6aa32d33ffeAvmiFK8K7Cd8EI` at `2026-09-12T11:35:58Z`–
+`2026-09-12T11:36:02Z`, native x86_64/OpenCode `1.18.30`, dirty commit
+`59534faf1cdce493bc51a11d4adbea5e5b2d6892`; it passed canonical-description discovery,
+six Ponytail commands, three profiles, valid configuration, and no-credential checks.
+Ingenium onboarding is **Blocked** only on authorized workspace credentials, project
+registration, repository-sync dry-run/apply/no-drift, and credential-free evidence.
+Actual screen-reader evidence and native/physical ARM64 performance are **Unavailable**.
+
+M06 documentation-boundary checks do not accept implementation behavior or close
+`EXP-M06`. `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md`
+returned **Pass** on the dirty local native-x86 revision
+`59534faf1cdce493bc51a11d4adbea5e5b2d6892` (UTC was not captured; reviewer
+`LUNA MAX docs`). `.dev-venv/bin/python scripts/validate_docs.py` returned **Pass** for
+`8` categories and `11` topics at `2026-09-12T12:13:23Z`; the supplied receipt has no
+unavailable validator result.
 
 ## M06 Mandatory Deterministic Native-x86 Performance And UI Rows
 
-`M06` remains **Blocked**. The rows below are future acceptance/evidence rows, not
-current results. They require native x86_64 Linux, a fresh isolated deterministic fixture
+`M06` remains **In progress**. `R-M06-55` independently verified the final scoped
+native-x86 receipt, but the dirty worktree receipt is not an M06 export checkpoint.
+The rows below require native x86_64 Linux, a fresh isolated deterministic fixture
 runtime, an exact commit, isolated process/port/temp resources, and independent
 `LUNA MAX QA` review. Reused or dirty runtime state is not silently called fresh.
 
 The existing contract is process RSS `<500 MiB`, defined fixture/cache-hit forecast p95
 `<1 s`, indexed 100,000-history query p95 `<250 ms`, and qualitative `negligible` idle
-CPU. The numeric idle-CPU bound and the additional sample, readiness, packaging,
-backup/restore, byte, and browser budgets are **proposed M06 additions**, not current
-passes.
+CPU. The final structured artifacts are under
+`test-results/local-gates/R-M06-55-20260912T045233Z/performance/` from `R-M06-55`,
+native x86_64 Linux WSL2/Python `3.11.15`, dirty revision
+`59534faf1cdce493bc51a11d4adbea5e5b2d6892`, command `./scripts/local-gate.sh m06`,
+`2026-09-12T04:52:33Z`–`2026-09-12T05:03:44Z`. `R-M06-11` passed twice in
+independent QA, with three hash-stable native runs and exact recomputation. Native/physical ARM64
+performance is **Unavailable**.
+
+The final measured receipt reports process RSS p95 `139,685,888` bytes, fixture/cache-hit
+forecast p95 `121.225 ms`, indexed 100,000-history p95 `3.233 ms`, readiness
+`2,433.622 ms`, idle CPU mean `0.1332848089 core-percent`, static total `91,708` raw
+bytes, designated response `58` raw bytes, browser render p95 `138.681 ms`, and browser
+interaction p95 `21.842 ms`. The performance summary has 13 required rows: `12/13`
+are **Pass**, and the ARM64 performance row is **Unavailable**.
 
 | Task ID | Threshold class | Exact future M06 acceptance/evidence row | Required evidence and fail-closed rule | Current result |
 | --- | --- | --- | --- | --- |
-| `M06` | Proposed protocol | Fresh isolated fixture runtime | New process, deterministic fixture, isolated port/temp directory, exact commit, process tree, cache state, start/end UTC, and cleanup are recorded. | **Unavailable**; no performance run is claimed. |
-| `M06` | Proposed protocol | Five warmups plus `>=30` measured requests | At least five warmups are excluded; at least 30 raw measured requests are recorded for each designated workload and declared concurrency level. Fewer samples are `Fail` or `Unavailable`. | **Unavailable**; no samples are claimed. |
-| `M06` | Existing numeric threshold | Process RSS `<500 MiB` | Peak app/runtime RSS, raw samples, units, measurement method, and child-process scope are recorded. | **Unavailable**; no RSS result is claimed. |
-| `M06` | Existing numeric threshold | Fixture/cache-hit forecast p95 `<1 s` | Forecast route, fixture/input, cache-hit condition, every elapsed sample, errors, and p50/p95/max are recorded. | **Unavailable**; no forecast result is claimed. |
-| `M06` | Existing numeric threshold | Indexed 100,000-history query p95 `<250 ms` and `>=10` repetitions | Exact 100,000-row fixture, schema/index and query plan, at least 10 repetitions, raw timings, and p50/p95/max are recorded; missing plan or repetitions cannot pass. | **Unavailable**; no history result is claimed. |
-| `M06` | Proposed numeric threshold | 60-second idle CPU `<=1 core-percent` | With no requests after readiness, record 60 seconds of raw CPU samples/time, sampling interval, process scope, normalization, and max; the proposed bound applies to mean normalized CPU `<=1 core-percent`. This supplements, not replaces, qualitative `negligible`. | **Unavailable**; no CPU result is claimed. |
-| `M06` | Proposed protocol/bound | Concurrency elapsed | Declare at least concurrency levels 1, 4, and 8 where supported; apply the warmup/sample protocol and record batch wall-clock elapsed, per-request p50/p95/max, errors, and peak RSS. A predeclared bound is required; one-request latency is not a substitute. | **Unavailable**; no concurrency result or bound is claimed. |
-| `M06` | Proposed numeric threshold | Readiness within `20 s` | From fresh process start, record start/readiness timestamps, readiness command, retry behavior, and elapsed time. Hidden retries or a missing timeout result cannot pass. | **Unavailable**; no readiness result is claimed. |
-| `M06` | Proposed baseline/bound | Package size and clean build time | Record package bytes, clean isolated build wall time, tool/runtime versions, exact commit, and a named baseline. Missing baseline or bound is `Unavailable`. | **Unavailable**; no package/build baseline is claimed. |
-| `M06` | Proposed baseline/bound | Backup/restore duration and bounds | For a named representative fixture, record fixture/artifact bytes, backup and restore duration, peak RSS, verification outcome, and predeclared duration bounds. Missing bytes, bound, or restore verification is `Fail` or `Unavailable`. | **Unavailable**; no backup/restore result is claimed. |
-| `M06` | Proposed numeric threshold | Static shell/assets `<96 KiB` and designated response `<8 KiB` | Pin raw-versus-transfer byte semantics, measure production shell/assets and the designated response separately, record every file/response and compression state, and apply strict `<` bounds. | **Unavailable**; no byte result is claimed. |
-| `M06` | Proposed browser budgets | Render, interaction, layout, and request budgets | Pin a browser manifest before execution: proposed render p95 FCP/ready-to-use `<=2 s`; proposed local non-network control-to-visible-state p95 `<=250 ms`; proposed CLS `<=0.1` and zero overlap/overflow at 360/390/768/1280/1440; zero unexpected/direct-provider/direct-SQLite requests, declared request-count/bytes ceiling, and designated response `<8 KiB`. Record raw traces, timings, request names/count/bytes, viewport, and console result. | **Unavailable**; no browser budget result is claimed. |
-| `M06` | Evidence rule | Per-check structured artifacts | Each check gets its own structured artifact containing task ID `M06`, row name, fixture identity, process/port/temp isolation, native x86_64 environment, commit, UTC start/end, command, warmup/measured samples, p50/p95/max where relevant, raw RSS/CPU/request/bytes/timing data, threshold class, result (`Pass`, `Fail`, `Skipped`, or `Unavailable`), limitation, artifact path, and named independent reviewer. | **Unavailable**; no artifact is claimed. |
-| `M06` | Architecture limitation | Native/physical ARM64 performance | Only local native ARM64 hardware may produce ARM64 performance evidence. QEMU/OCI/emulated ARM64 may produce packaging/runtime/functional/build/tool evidence only; its performance fields remain `Unavailable`. | **Unavailable** without qualifying native ARM64 hardware. |
+| `M06` | Proposed protocol | Fresh isolated fixture runtime | New process, deterministic fixture, isolated port/temp directory, exact commit, process tree, cache state, start/end UTC, and cleanup are recorded. | **Pass**; `performance/runtime-isolation.json`; reviewer `LUNA MAX QA`. |
+| `M06` | Proposed protocol | Five warmups plus `>=30` measured requests | At least five warmups are excluded and at least 30 raw measured requests are recorded for each designated workload. | **Pass**; `performance/sample-protocol.json`; 5 warmups/30 samples per workload; reviewer `LUNA MAX QA`. |
+| `M06` | Existing numeric threshold | Process RSS `<500 MiB` | Peak app/runtime RSS, raw samples, units, measurement method, and process scope are recorded. | **Pass**; `performance/process-rss.json`; p95 `139,685,888` bytes; reviewer `LUNA MAX QA`. |
+| `M06` | Existing numeric threshold | Fixture/cache-hit forecast p95 `<1 s` | Forecast route, fixture/input, cache-hit condition, raw samples, errors, and p50/p95/max are recorded. | **Pass**; `performance/fixture-cache-hit-forecast.json`; p95 `121.225 ms`; reviewer `LUNA MAX QA`. |
+| `M06` | Existing numeric threshold | Indexed 100,000-history query p95 `<250 ms` and `>=10` repetitions | Exact fixture, schema/index/query plan, repetitions, raw timings, and p50/p95/max are recorded. | **Pass**; `performance/indexed-100k-history-query.json`; p95 `3.233 ms`; reviewer `LUNA MAX QA`. |
+| `M06` | Proposed numeric threshold | 60-second idle CPU `<=1 core-percent` | Raw 60-second CPU samples, interval, process scope, normalization, and max are recorded. | **Pass**; `performance/idle-cpu.json`; mean `0.1332848089 core-percent`; reviewer `LUNA MAX QA`. |
+| `M06` | Proposed protocol/bound | Concurrency elapsed | Declared levels, warmups, measured batches, p50/p95/max, errors, and peak RSS are recorded. | **Pass**; `performance/concurrency-elapsed.json`; p95 `1003.099 ms`; reviewer `LUNA MAX QA`. |
+| `M06` | Proposed numeric threshold | Readiness within `20 s` | Fresh start, command, timestamp, attempts, and elapsed time are recorded. | **Pass**; `performance/readiness.json`; `2,433.622 ms`; raw refused attempts remain visible; reviewer `LUNA MAX QA`. |
+| `M06` | Proposed baseline/bound | Package size and clean build time | Package bytes, clean build time, tool/runtime, and bound are recorded. | **Pass**; `performance/package-size-build-time.json`; `112,983` bytes/`944.726 ms`; reviewer `LUNA MAX QA`. |
+| `M06` | Proposed baseline/bound | Backup/restore duration and bounds | Fixture/artifact bytes, backup/restore time, RSS, verification, and bounds are recorded. | **Pass**; `performance/backup-restore-duration.json`; p95 `2545.148 ms`; reviewer `LUNA MAX QA`. |
+| `M06` | Proposed numeric threshold | Static shell/assets `<96 KiB` and designated response `<8 KiB` | Raw byte semantics, every file/response, compression, and strict bounds are recorded. | **Pass**; `performance/static-and-response-bytes.json`; `91,708` static bytes/`58` response bytes; reviewer `LUNA MAX QA`. |
+| `M06` | Proposed browser budgets | Render, interaction, layout, and request budgets | Browser manifest, raw traces, timings, requests, viewport, and console result are recorded. | **Pass**; `performance/browser-budgets.json`; render p95 `138.681 ms`, interaction p95 `21.842 ms`; reviewer `LUNA MAX QA`. |
+| `M06` | Evidence rule | Per-check structured artifacts | Every row has a structured artifact with task/row, fixture/isolation, native environment, revision, UTC, command, samples, raw data, classification, result, limitation, path, and reviewer. | **Pass**; `performance/summary.json` reports all 13 rows present and 12 Pass/1 Unavailable; reviewer `LUNA MAX QA`. |
+| `M06` | Architecture limitation | Native/physical ARM64 performance | Only qualifying local native ARM64 hardware can produce this result; emulation cannot. | **Unavailable**; `performance/arm64-performance-limitation.json` records no native ARM64 and zero performance samples. |
 
 This gate fails closed. Missing samples, clean fixture, index plan, baseline, bound, raw
 data, exact command/commit/time, structured artifact, or named reviewer is not a pass.
@@ -356,20 +501,21 @@ result satisfies a performance row.
 ## M06 Additional Ingenium Gates
 
 These are three additional acceptance rows inside `M06`, not new milestones or new
-repair identifiers. `M06` remains **Blocked**. None of these rows is a current
-completion claim.
+repair identifiers. `M06` remains **In progress**; their row-level results remain
+distinct from the milestone result. The documentation-skill row has a listed validation
+pass, while the Ingenium onboarding row remains blocked on its explicitly listed checks.
 
 | Task ID | Row status | Owner/phase | Verified dependencies and preconditions | Required check and current evidence result |
 | --- | --- | --- | --- | --- |
-| `M06` | **Blocked** | `LUNA MAX docs` records the row; `SOL HIGH` owns any repair; `LUNA MAX QA` independently retests | Pinned Ingenium Ponytail closure must be vendored/configured and the required parent restart must be available; run it after every implementation boundary using the exact clean/finding format and overengineering-only scope | Run read-only `/ponytail-review`; if it finds a reproducible blocking overengineering issue, only `SOL HIGH` may repair it, followed by independent QA. No configuration, restart, run, repair, or QA receipt is supplied: **Unavailable** for M06 acceptance. Ponytail cannot substitute for correctness, security, accessibility, or performance evidence. |
-| `M06` | **Pending** | `LUNA MAX docs` plus independent validation after the pre-change checkpoint | A required pre-change commit must exist before creating the project documentation skill | Create and validate the skill with Ingenium's structure, index, metadata, and learnings conventions. No pre-change commit, skill creation, validation, index, or reviewer receipt is supplied: **Unavailable** for M06 acceptance. |
-| `M06` | **Blocked** | `LUNA MAX docs` records credential-free onboarding; independent QA verifies the run | Least-privilege credential-file binding, a parent restart, and authorized workspace credentials/configuration are required | Register the project through MCP; run repository-sync dry-run and apply; verify no drift; record onboarding without credential values. No authorized workspace/configuration or restart run is supplied: **Unavailable** for M06 acceptance. |
+| `M06` | **In progress** | `LUNA MAX docs` records the row; `SOL HIGH` owns any repair; `LUNA MAX QA` independently retests | Pinned Ponytail is vendored/configured. Retained reports: [`docs/evidence/ponytail-r-m06-1.txt`](docs/evidence/ponytail-r-m06-1.txt) (six findings repaired), [`docs/evidence/ponytail-r-m06-15.txt`](docs/evidence/ponytail-r-m06-15.txt) (three repaired as `R-M06-19`), and [`docs/evidence/ponytail-m05-boundary.txt`](docs/evidence/ponytail-m05-boundary.txt) (two repaired as completed repair record `R-M05-12`, independently rerun `4/4` inside `R-M05-55 (i)`). | **Unavailable** for full M06 acceptance: `R-M06-19` is independently **Pass**, but Ponytail remains overengineering-only and does not replace correctness, security, accessibility, or performance evidence. |
+| `M06` | **Completed** for the listed validation scope | `LUNA MAX docs` plus post-restart validation | The authored documentation taxonomy and project documentation skill are implemented under `docs/**` and `.opencode/skills/documentation`; fresh isolated discovery passed the validator, 20 tests, description parity, the 500-line limit, and required references. Receipt: session `ses_f6aa32d33ffeAvmiFK8K7Cd8EI`, `2026-09-12T11:35:58Z`–`2026-09-12T11:36:02Z`, native x86_64/OpenCode `1.18.30`, dirty commit `59534faf1cdce493bc51a11d4adbea5e5b2d6892`; canonical description, six registered Ponytail commands, three loaded profiles, valid configuration, and no credentials all passed. `.dev-venv/bin/python scripts/validate_docs.py` **Pass** for `8` categories and `11` topics at `2026-09-12T12:13:23Z`. |
+| `M06` | **Blocked** | `LUNA MAX docs` records credential-free onboarding; independent QA verifies the run | The restart precondition is satisfied. Remaining required checks are authorized workspace credentials, project registration, repository-sync dry-run/apply/no-drift, and credential-free evidence. | **Blocked** only on those remaining onboarding checks; no credential, endpoint, or token value is recorded, and no onboarding pass is claimed. |
 
 The rows require exact environment, UTC timestamp, commit, command result, artifact/link,
-repair history, limitations, and named independent reviewer when performed. A missing
-credential, restart, workspace, artifact, or reviewer remains **Unavailable** or
-**Blocked**; it is never promoted from an implementation claim. No endpoint or token
-value is recorded here.
+repair history, limitations, and named independent reviewer when performed. The restart
+precondition is evidenced above; any missing credential, workspace, artifact, or reviewer
+remains **Unavailable** or **Blocked** and is never promoted from an implementation claim.
+No endpoint or token value is recorded here.
 
 ### M06 research evidence (not acceptance)
 
@@ -387,23 +533,33 @@ or an export checkpoint.
 The supplied deep read-only research sessions
 `ses_f6d219e22ffeQuT1z7fdC3e4MA`, `ses_f6d219dddffeyB2ZTOmnUMJU3Z`, and
 `ses_f6d219d92ffewot26Lkx216Lqw` are additional design evidence only. The documentation
-adopts/plans these useful conventions without claiming implementation completion:
+records their useful conventions as policy; the authored taxonomy and project skill are
+implemented, and the post-restart validation receipt is **Pass** for its listed checks. The
+`.dev-venv/bin/python scripts/validate_docs.py` receipt is also **Pass** for `8` categories
+and `11` topics at `2026-09-12T12:13:23Z`; Ingenium onboarding remains
+blocked on its separately listed checks:
 
 | Convention | Roadmap disposition | Evidence state |
 | --- | --- | --- |
-| Deny-by-default least privilege | Adopt in permissions, ownership, and credential-file policy. | M06 onboarding remains **Blocked** until restart, authorized workspace, and independent evidence exist. |
-| Source-versus-live evidence separation | Keep historical research/source reports separate from live acceptance. | Every M06 row needs its own live environment, commit, UTC, artifact, and reviewer. |
+| Deny-by-default least privilege | Adopt in permissions, ownership, and credential-file policy. | M06 onboarding remains **Blocked** only on authorized workspace credentials, project registration, repository-sync dry-run/apply/no-drift, and credential-free evidence; the restart precondition is satisfied. |
+| Source-versus-live evidence separation | Keep historical research/source reports separate from live acceptance. | `R-M06-55` names the live native-x86 environment, dirty commit, UTC window, artifacts, and reviewer; its scoped result does not close M06 or `EXP-M06`. |
 | Structured sanitized errors | Retain as an API and export-safety contract. | Independent QA remains required; this docs reconciliation claims no new behavior pass. |
 | Deterministic browser containment with no hidden retries | Use deterministic fixtures, declared requests, and visible failures. | M06/M07 browser/readiness evidence remains future and fail-closed. |
-| Bounded process/port/temp artifacts | Make isolation, bounds, and cleanup part of performance artifacts. | Current performance evidence is **Unavailable**. |
+| Bounded process/port/temp artifacts | Make isolation, bounds, and cleanup part of performance artifacts. | `R-M06-55` records process/port/temp bounds and cleanup per structured performance artifact; ARM64 performance remains **Unavailable**. |
 | Migration/package/resource checks | Keep these as named local acceptance rows. | Builder/generated output cannot replace independent checks. |
 | Optional read-only integrity diagnostic | Permit only as a diagnostic, never as a new gate. | No result is claimed. |
 
-Authored-documentation taxonomy implementation remains **Pending** after the future clean
-pre-skill `EXP-M04` checkpoint. The required pre-change commit and independent validation
-precede any project skill creation; no skill is created by this reconciliation. The research
-does not justify auth, MFA, a gateway, a multi-service split, dual-database restore,
-direct-route SQL, or replica rate limiting absent a demonstrated requirement.
+The authored documentation taxonomy and project documentation skill are implemented under
+`docs/**` and `.opencode/skills/documentation`; fresh isolated discovery passed the validator,
+20 tests, description parity, 500-line limit, and required references. The post-restart receipt
+is session `ses_f6aa32d33ffeAvmiFK8K7Cd8EI` at `2026-09-12T11:35:58Z`–
+`2026-09-12T11:36:02Z`, native x86_64/OpenCode `1.18.30`, dirty commit
+`59534faf1cdce493bc51a11d4adbea5e5b2d6892`; it passed canonical-description discovery,
+six Ponytail commands, three profiles, valid configuration, and no-credential checks. The
+`.dev-venv/bin/python scripts/validate_docs.py` receipt is **Pass** for `8` categories and
+`11` topics at `2026-09-12T12:13:23Z`. The research does not justify auth, MFA, a gateway, a multi-service split,
+dual-database restore, direct-route SQL, or replica rate limiting absent a demonstrated
+requirement.
 
 ## M08 Walkthrough Gate
 
@@ -434,7 +590,7 @@ After `M08` walkthrough QA/docs evidence is complete, independent GPT-6 Astra ex
 - every asset, including images, icons, fonts, charts, tables, media item, documentation visual, static shell, stylesheet, script, and other static asset;
 - M08 walkthrough artifact, every numbered instruction, screenshot/frame, GIF segment, alt text/caption/transcript, deterministic generation command, artifact-size/no-secret/path review, actual-control browser evidence, desktop/mobile usability, and the retrospective comparing the shipped app with the original prompt and approved plan recovered from `SESSION-EXPORT.md`, including the beautiful/well-designed/usable assessment and every `R-M08-<n>` repair.
 
-Each row records task ID `ASTRA-FINAL`, check/command, environment, UTC timestamp, commit, result, artifact/link, limitation, and reviewer, with explicit evidence for all five evaluation dimensions. Any gap or non-pass creates `R-ASTRA-<n>`. Astra evaluates and suggests only; only `SOL HIGH` build agents implement `R-ASTRA-<n>` UI changes. The repair receives the normal three-builder handoff, the mandatory pre-QA Ponytail review, and independent QA/docs gates, then Astra re-evaluates the failed row and affected matrix. If execution evidence shows a tooling, skill, or MCP gap caused poor output, a narrowly scoped `R-ASTRA-<n>` may repair and validate that gap before acceptance; it may not expand scope without a new evidenced requirement. Repeat until the independent record explicitly says **Accepted**. Only then does `EXP-M08` checkpoint the reviewed walkthrough. After all roadmap and Astra repairs, a final pre-`EXP-FINAL` deep learning synthesis must analyze sanitized chat/run evidence, use `skill-maintenance` only for justified reusable Stock Probability development skills, validate and index those skills, and log observations. Only after that record is complete may `EXP-FINAL` sanitize the full chat/export, complete secret review, commit, push, and verify the exact remote revision. `EXP-M08` and `EXP-FINAL` cannot be green before the stated prerequisites; `EXP-M07` is the earlier M07 checkpoint. No Astra or learning-synthesis run is claimed now.
+Each row records task ID `ASTRA-FINAL`, check/command, environment, UTC timestamp, commit, result, artifact/link, limitation, and reviewer, with explicit evidence for all five evaluation dimensions. Any gap or non-pass creates `R-ASTRA-<n>`. Astra evaluates and suggests only; only `SOL HIGH` build agents implement `R-ASTRA-<n>` UI changes. The repair receives the normal up-to-six-lane build handoff, the mandatory pre-QA Ponytail review, and independent QA/docs gates, then Astra re-evaluates the failed row and affected matrix. If execution evidence shows a tooling, skill, or MCP gap caused poor output, a narrowly scoped `R-ASTRA-<n>` may repair and validate that gap before acceptance; it may not expand scope without a new evidenced requirement. Repeat until the independent record explicitly says **Accepted**. Only then does `EXP-M08` checkpoint the reviewed walkthrough. After all roadmap and Astra repairs, a final pre-`EXP-FINAL` deep learning synthesis must analyze sanitized chat/run evidence, use `skill-maintenance` only for justified reusable Stock Probability development skills, validate and index those skills, and log observations. Only after that record is complete may `EXP-FINAL` sanitize the full chat/export, complete secret review, commit, push, and verify the exact remote revision. `EXP-M08` and `EXP-FINAL` cannot be green before the stated prerequisites; `EXP-M07` is the earlier M07 checkpoint. No Astra or learning-synthesis run is claimed now.
 
 ## Roadmap Completion Record
 
@@ -473,5 +629,5 @@ The roadmap is complete only when:
 - M08 has a tracked, lightweight, accessible walkthrough generated from deterministic fixtures against the real local app, with actual-control browser evidence, desktop/mobile instructions, a bounded artifact, and a completed prompt/approved-plan retrospective. Any gap is repaired before Astra.
 - `ASTRA-FINAL` is independently **Accepted** after every requirement, feature, endpoint, control, UI state, asset, documentation visual, walkthrough frame/segment, media item, static asset, journey, and persistence row has passed requirements, aesthetics, mobile/responsive, accessibility, and measured-performance evaluation, plus every `R-ASTRA-<n>` retest.
 - `EXP-M00` through `EXP-M08` and `EXP-FINAL` contain reviewed, secret-free full-session `SESSION-EXPORT.md` revisions with commit, push, exact Git remote revision verification, and no hidden failed, skipped, unavailable, or blocked field; the final learning synthesis is complete and recorded before `EXP-FINAL`.
-- The final deep chat/run learning synthesis is complete before `EXP-FINAL`; only justified reusable Stock Probability skills are created or changed, and they are validated and indexed. Authored-documentation taxonomy remains **Pending** after the future clean pre-skill `EXP-M04` checkpoint and cannot be claimed from this docs reconciliation.
+- The final deep chat/run learning synthesis is complete before `EXP-FINAL`; only justified reusable Stock Probability skills are created or changed, and they are validated and indexed. The authored documentation taxonomy and project documentation skill are implemented, and the post-restart validation receipt is session `ses_f6aa32d33ffeAvmiFK8K7Cd8EI` at `2026-09-12T11:35:58Z`–`2026-09-12T11:36:02Z`, native x86_64/OpenCode `1.18.30`, dirty commit `59534faf1cdce493bc51a11d4adbea5e5b2d6892`, with its listed checks passed. `.dev-venv/bin/python scripts/validate_docs.py` passed `8` categories and `11` topics at `2026-09-12T12:13:23Z`. No M06 acceptance is claimed from this receipt or implementation presence.
 - Optional dark mode/news are not contract requirements; options and public hosting are out of scope for this local app.

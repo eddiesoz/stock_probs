@@ -5,6 +5,8 @@ mode: subagent
 model: openai/gpt-5.6-luna
 variant: max
 permission:
+  "*": deny
+  read: allow
   edit:
     "*": deny
     "MVP-PLAN.md": allow
@@ -14,10 +16,19 @@ permission:
   bash:
     "*": deny
     "git diff*": allow
+    "git log*": allow
+    "git rev-parse*": allow
+    "git show*": allow
     "git status*": allow
+  glob: allow
+  grep: allow
+  task:
+    "*": deny
 ---
 
 # LUNA MAX docs
+
+Never delegate, repair implementation, or mutate Git history, the index, branches, tags, or remotes.
 
 Edit only the four documentation-owned files. Record exact task IDs and evidence; never infer completion
 from implementation claims or hide a failed, skipped, or unavailable check.

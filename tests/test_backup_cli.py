@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sqlite3
 import stat
 import sys
@@ -13,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+import stock_probs.backup as backup_module
 import stock_probs.cli as cli
 from stock_probs.backup import BackupError, BackupManager
 from stock_probs.repository import Repository
@@ -149,6 +151,93 @@ def test_restore_rejects_unsigned_manifest(settings):
         manager.restore("unsigned.spbackup")
 
 
+def test_restore_rejects_zip_slip_member_without_touching_active_data(settings):
+    repository, manager = _manager(settings)
+    _record_failure(repository, "active-event")
+    source = settings.backup_dir / manager.create("safe.spbackup")["name"]
+    before = settings.database_path.read_bytes()
+
+    with zipfile.ZipFile(source) as archive:
+        database = archive.read("database.sqlite3")
+        manifest = archive.read("manifest.json")
+    with zipfile.ZipFile(settings.backup_dir / "zip-slip.spbackup", "w") as archive:
+        archive.writestr("database.sqlite3", database)
+        archive.writestr("manifest.json", manifest)
+        archive.writestr("../outside.sqlite3", b"attacker data")
+
+    with pytest.raises(BackupError, match="too many|unexpected or unsafe"):
+        manager.restore("zip-slip.spbackup", promote=True)
+    assert settings.database_path.read_bytes() == before
+    assert not (settings.backup_dir.parent / "outside.sqlite3").exists()
+
+
+def test_transferred_key_restores_but_wrong_key_fails_closed(settings, tmp_path):
+    source_repository, source = _manager(settings)
+    _record_failure(source_repository, "cross-installation-event")
+    source.create("transfer.spbackup")
+
+    destination_root = tmp_path / "destination"
+    destination_repository = Repository(destination_root / "stock_probs.sqlite3")
+    destination_repository.migrate()
+    destination = BackupManager(destination_repository, destination_root / "backups")
+    destination._ensure_backup_dir()
+    shutil.copy2(source.trust_key_path, destination.trust_key_path)
+    shutil.copy2(
+        settings.backup_dir / "transfer.spbackup",
+        destination.backup_dir / "transfer.spbackup",
+    )
+
+    assert destination.restore("transfer.spbackup", promote=True)["promoted"] is True
+    assert destination_repository.history()["items"][0]["request_id"] == (
+        "cross-installation-event"
+    )
+
+    destination.trust_key_path.write_bytes(b"x" * 32)
+    before = destination_repository.representative_counts()
+    with pytest.raises(BackupError, match="authenticity"):
+        destination.restore("transfer.spbackup", promote=True)
+    assert destination_repository.representative_counts() == before
+
+
+def test_new_backup_does_not_silently_rotate_a_lost_key(settings):
+    repository, manager = _manager(settings)
+    _record_failure(repository, "preserved-event")
+    manager.create("before-key-loss.spbackup")
+    manager.trust_key_path.unlink()
+
+    with pytest.raises(BackupError, match="trust key is missing"):
+        manager.create("after-key-loss.spbackup")
+
+    assert not manager.trust_key_path.exists()
+    assert not (settings.backup_dir / "after-key-loss.spbackup").exists()
+    assert repository.history()["total"] == 1
+
+
+def test_backup_count_and_disk_limits_refuse_creation_without_expiring_history(
+    settings, monkeypatch
+):
+    repository, manager = _manager(settings)
+    _record_failure(repository, "retained-event")
+    monkeypatch.setattr(backup_module, "MAX_MANAGED_BACKUPS", 1)
+    manager.create("first.spbackup")
+
+    with pytest.raises(BackupError, match="retention limit"):
+        manager.create("count-refused.spbackup")
+    assert repository.history()["total"] == 1
+    assert not (settings.backup_dir / "count-refused.spbackup").exists()
+
+    monkeypatch.setattr(backup_module, "MAX_MANAGED_BACKUPS", 32)
+    monkeypatch.setattr(
+        backup_module,
+        "MAX_BACKUP_STORAGE_BYTES",
+        (settings.backup_dir / "first.spbackup").stat().st_size,
+    )
+    with pytest.raises(BackupError, match="storage limit"):
+        manager.create("disk-refused.spbackup")
+    assert repository.history()["total"] == 1
+    assert not (settings.backup_dir / "disk-refused.spbackup").exists()
+
+
 def test_restore_rejects_entry_flood_during_bounded_zip_preflight(settings, monkeypatch):
     """EOCD entry bounds reject a flood before ZipFile parses central-directory objects."""
 
@@ -201,7 +290,9 @@ def test_restore_does_not_regenerate_a_missing_installation_key(settings):
     assert repository.representative_counts()["search_events"] == 1
 
 
-def test_operations_harden_existing_runtime_storage_and_sensitive_files(settings):
+def test_operations_harden_existing_runtime_storage_and_sensitive_files(
+    settings, monkeypatch
+):
     """Startup and backup access repair permissive modes through no-follow descriptors."""
 
     settings.ensure_local_dirs()
@@ -209,6 +300,15 @@ def test_operations_harden_existing_runtime_storage_and_sensitive_files(settings
     settings.backup_dir.chmod(0o777)
     repository, manager = _manager(settings)
     repository.database_path.chmod(0o666)
+    original_package = manager._package
+
+    def assert_private_staging(snapshot, manifest, trust_key, target):
+        assert stat.S_IMODE(target.parent.stat().st_mode) == 0o700
+        assert stat.S_IMODE(snapshot.stat().st_mode) == 0o600
+        original_package(snapshot, manifest, trust_key, target)
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+    monkeypatch.setattr(manager, "_package", assert_private_staging)
     created = manager.create("permissions.spbackup")
     artifact = settings.backup_dir / created["name"]
     artifact.chmod(0o666)
@@ -217,14 +317,25 @@ def test_operations_harden_existing_runtime_storage_and_sensitive_files(settings
     settings.ensure_local_dirs()
     with repository.connect():
         pass
-    manifest, _, staging = manager.verify(created["name"])
-    staging.cleanup()
+    manifest, staged_database, staging = manager.verify(created["name"])
 
-    assert manifest["manifest_hmac_sha256"]
-    assert stat.S_IMODE(settings.data_dir.stat().st_mode) == 0o700
-    assert stat.S_IMODE(settings.backup_dir.stat().st_mode) == 0o700
-    for sensitive in (repository.database_path, artifact, manager.trust_key_path):
-        assert stat.S_IMODE(sensitive.stat().st_mode) == 0o600
+    try:
+        assert manifest["manifest_hmac_sha256"]
+        for private_directory in (
+            settings.data_dir,
+            settings.backup_dir,
+            Path(staging.name),
+        ):
+            assert stat.S_IMODE(private_directory.stat().st_mode) == 0o700
+        for sensitive in (
+            repository.database_path,
+            artifact,
+            manager.trust_key_path,
+            staged_database,
+        ):
+            assert stat.S_IMODE(sensitive.stat().st_mode) == 0o600
+    finally:
+        staging.cleanup()
 
 
 def test_restore_failure_after_swap_atomically_restores_active_database(settings, monkeypatch):

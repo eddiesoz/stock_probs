@@ -1,0 +1,5 @@
+scope: overengineering only
+command: /ponytail-review
+boundary: M05
+L536: shrink duplicate `_check_deadline()` — two identical calls back-to-back; delete one.
+L873-881: yagni `retire_key` verification loop only picks a different error message — the code always raises at L882 whenever `managed` is non-empty. Replace with a single `if managed: raise BackupError(...)`.

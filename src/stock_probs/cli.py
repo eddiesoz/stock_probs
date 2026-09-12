@@ -5,13 +5,22 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import UTC, datetime
+from typing import Any
 
 import uvicorn
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from stock_probs.api import create_app
-from stock_probs.backup import BackupError, BackupManager
+from stock_probs.backup import BackupError, BackupManager, _check_deadline, _run_with_deadline
 from stock_probs.config import Settings
-from stock_probs.repository import Repository
+from stock_probs.repository import SCHEMA_VERSION, Repository
+
+TRUST_KEY_TRANSFER_HELP = (
+    "Trust-key transfer: copy .backup-auth.key with managed .spbackup files over a protected "
+    "channel, retain mode 0600, verify at the destination, then retire the source key only "
+    "after its artifacts are explicitly transferred or removed."
+)
 
 
 def _port(value: str) -> int:
@@ -29,18 +38,94 @@ def _is_loopback(host: str) -> bool:
     return host in {"127.0.0.1", "localhost", "::1"}
 
 
-def _operations() -> tuple[Settings, Repository, BackupManager]:
-    settings = Settings.from_env()
+def _migrate_with_backup(
+    repository: Repository, manager: BackupManager
+) -> dict[str, Any] | None:
+    """Create and re-open one old-schema artifact immediately before an upgrade."""
+
+    def migrate() -> dict[str, Any] | None:
+        # Migration and its callback stay on one worker so the repository lock remains reentrant.
+        receipt: dict[str, Any] | None = None
+
+        def backup_before_migration(schema_version: int) -> None:
+            nonlocal receipt
+            name = (
+                f"pre-migration-v{schema_version}-to-v{SCHEMA_VERSION}-"
+                f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}.spbackup"
+            )
+            created: dict[str, Any] | None = None
+            try:
+                created = manager.create(name, schema_version=schema_version)
+                _check_deadline()
+            except Exception:
+                if created is not None:
+                    try:
+                        (manager.backup_dir / name).unlink(missing_ok=True)
+                        manager._sync_directory(manager.backup_dir)
+                    except OSError as cleanup_error:
+                        raise BackupError(
+                            "Refused pre-migration backup could not be removed safely."
+                        ) from cleanup_error
+                raise
+            receipt = {
+                "trigger": "pre_migration",
+                "verified": True,
+                "name": created["name"],
+                "sha256": created["sha256"],
+                "schema_version": schema_version,
+            }
+
+        repository.migrate(before_migration=backup_before_migration)
+        _check_deadline()
+        return receipt
+
+    return _run_with_deadline(migrate)
+
+
+def _migration_operations(settings: Settings) -> tuple[BackupManager, dict[str, Any] | None]:
     settings.ensure_local_dirs()
     repository = Repository(settings.database_path)
-    repository.migrate()
-    return settings, repository, BackupManager(repository, settings.backup_dir)
+    manager = BackupManager(repository, settings.backup_dir)
+    return manager, _migrate_with_backup(repository, manager)
+
+
+def _serve_app(settings: Settings) -> ASGIApp:
+    """Delay automatic persistence work until Uvicorn actually starts the ASGI lifespan."""
+
+    application = create_app()
+
+    async def automatic_backup(scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "lifespan":
+            try:
+                def startup_backups() -> dict[str, Any]:
+                    manager, migration_backup = _migration_operations(settings)
+                    due_backup = manager.create_if_due(settings.backup_interval_seconds)
+                    _check_deadline()
+                    return {
+                        "status": "automatic_backup_checked",
+                        "pre_migration_backup": migration_backup,
+                        "due_backup": due_backup,
+                    }
+
+                print(json.dumps(_run_with_deadline(startup_backups)))
+            except BackupError as exc:
+                print(
+                    json.dumps({"error": str(exc), "trigger": "automatic_backup"}),
+                    file=sys.stderr,
+                )
+                raise
+        await application(scope, receive, send)
+
+    return automatic_backup
 
 
 def main() -> None:
     """Dispatch bounded local operations; broader network binds require an explicit flag."""
 
-    parser = argparse.ArgumentParser(prog="stock-probs")
+    parser = argparse.ArgumentParser(
+        prog="stock-probs",
+        epilog=TRUST_KEY_TRANSFER_HELP,
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     serve = subparsers.add_parser("serve", help="run the local dashboard and API")
     serve.add_argument("--host", help="listener host (defaults to STOCK_PROBS_HOST or loopback)")
@@ -56,6 +141,16 @@ def main() -> None:
     restore = subparsers.add_parser("restore", help="verify or promote a managed backup")
     restore.add_argument("name")
     restore.add_argument("--promote", action="store_true")
+    backup_key = subparsers.add_parser(
+        "backup-key",
+        help="rotate or retire the managed-backup trust key",
+        epilog=TRUST_KEY_TRANSFER_HELP,
+    )
+    key_commands = backup_key.add_subparsers(dest="key_command", required=True)
+    key_commands.add_parser("rotate", help="verify and re-sign every backup with a new key")
+    key_commands.add_parser(
+        "retire", help="remove the key only after every managed backup is transferred or removed"
+    )
     args = parser.parse_args()
 
     try:
@@ -67,7 +162,7 @@ def main() -> None:
                 parser.error("non-loopback binding requires --allow-non-loopback")
             # One worker and bounded queues/timeouts keep malformed or idle clients inexpensive.
             uvicorn.run(
-                create_app(),
+                _serve_app(settings),
                 host=host,
                 port=port,
                 workers=1,
@@ -77,12 +172,22 @@ def main() -> None:
                 timeout_graceful_shutdown=10,
             )
         elif args.command == "migrate":
-            _operations()
-            print(json.dumps({"status": "migrated"}))
+            _, migration_backup = _migration_operations(Settings.from_env())
+            print(
+                json.dumps(
+                    {"status": "migrated", "pre_migration_backup": migration_backup}, indent=2
+                )
+            )
         elif args.command == "backup":
-            print(json.dumps(_operations()[2].create(args.name), indent=2))
+            manager, _ = _migration_operations(Settings.from_env())
+            print(json.dumps(manager.create(args.name), indent=2))
         elif args.command == "restore":
-            print(json.dumps(_operations()[2].restore(args.name, promote=args.promote), indent=2))
+            manager, _ = _migration_operations(Settings.from_env())
+            print(json.dumps(manager.restore(args.name, promote=args.promote), indent=2))
+        elif args.command == "backup-key":
+            manager, _ = _migration_operations(Settings.from_env())
+            result = manager.rotate_key() if args.key_command == "rotate" else manager.retire_key()
+            print(json.dumps(result, indent=2))
     except BackupError as exc:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)
         raise SystemExit(2) from exc

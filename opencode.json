@@ -1,6 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "instructions": ["AGENTS.md"],
+  "skills": {
+    "paths": [".opencode/skills"]
+  },
+  "plugin": [
+    "file://{env:PWD}/tools/ponytail/.opencode/plugins/ponytail.mjs"
+  ],
   "mcp": {
     "playwright": {
       "type": "local",

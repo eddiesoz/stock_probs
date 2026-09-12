@@ -6,7 +6,10 @@ NODE_BIN := .tools/node/bin
 NPM := $(NODE_BIN)/npm
 NPX := $(NODE_BIN)/npx
 
-.PHONY: setup dev migrate test lint typecheck static security restore-test check package-check m01-gate m02-gate m03-gate m04-gate local-gate arm64-smoke browser-setup browser-install browser-test mcp-smoke acceptance live live-smoke release release-check backup restore clean
+# Resource measurements must not overlap acceptance prerequisites even under an explicit make -j.
+.NOTPARALLEL: performance m06-gate release-check
+
+.PHONY: setup dev migrate test lint typecheck static security restore-test check package-check performance m01-gate m02-gate m03-gate m04-gate m06-gate local-gate arm64-smoke browser-setup browser-install browser-test mcp-smoke acceptance live live-smoke release release-check backup restore clean
 
 setup:
 	./scripts/bootstrap.sh
@@ -62,8 +65,12 @@ m03-gate:
 m04-gate:
 	TASK_ID=M04 ./scripts/local-gate.sh m04
 
+# M06 adds fail-closed row-level native performance evidence to the M04 functional stack.
+m06-gate:
+	TASK_ID=M06 ./scripts/local-gate.sh m06
+
 local-gate:
-	TASK_ID="$${TASK_ID:-M01}" ./scripts/local-gate.sh release
+	TASK_ID="$${TASK_ID:-M06}" ./scripts/local-gate.sh release
 
 arm64-smoke:
 	./scripts/arm64-smoke.sh
@@ -85,6 +92,10 @@ mcp-smoke: browser-setup
 	# The smoke client initializes MCP, lists tools, and opens an isolated Chromium context.
 	PATH="$(CURDIR)/$(NODE_BIN):$$PATH" $(NODE_BIN)/node tools/browser/mcp-smoke.js
 
+# This developer entry point records measurements but cannot hide pending review or dirty-tree evidence.
+performance: browser-setup
+	STOCK_PROBS_PERFORMANCE_ARTIFACT_DIR="$${STOCK_PROBS_PERFORMANCE_ARTIFACT_DIR:-test-results/performance/M06}" $(PYTHON) scripts/performance_harness.py --profile development
+
 acceptance: check browser-test
 
 live-smoke:
@@ -92,9 +103,8 @@ live-smoke:
 
 live: live-smoke
 
-release-check: acceptance
-	$(PYTHON) -m stock_probs.cli migrate
-	$(PYTHON) -m pytest tests/test_backup_cli.py -q
+release-check:
+	TASK_ID="$${TASK_ID:-M06}" ./scripts/local-gate.sh release
 
 release: release-check
 

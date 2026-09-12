@@ -1,60 +1,81 @@
-"""Fail release checks when implementation files omit an intent-bearing comment."""
+"""Fail release checks when authored implementation files omit an intent-bearing comment."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+ROOTS = ("src", "tests", "scripts", "tools", ".opencode", ".github")
+STANDALONE = ("pyproject.toml", "Makefile", "opencode.json")
+EXCLUDED_PARTS = {
+    "node_modules",
+    "test-results",
+    "playwright-report",
+    "__pycache__",
+    "stock_probs.egg-info",
+}
+# JSON has no comment syntax. Only these declarative metadata/budget documents are exempt;
+# authored fixtures and browser package declarations must retain their existing `_comment`.
+DECLARATIVE_JSON = {
+    Path("opencode.json"),
+    Path(".opencode/package.json"),
+    Path(".opencode/package-lock.json"),
+    Path("tools/browser/performance-budgets.json"),
+    Path("tools/ponytail/package.json"),
+}
+GENERATED_METADATA = {Path(".opencode/.gitignore")}
+PONYTAIL = Path("tools/ponytail")
+PONYTAIL_LOCAL_SMOKE = PONYTAIL / "smoke.mjs"
+
 
 def has_comment(path: Path) -> bool:
-    """Recognize comments/docstrings plus JSON's explicit explanatory metadata convention."""
+    """Recognize comments/docstrings without treating arbitrary JSON keys as comments."""
 
     text = path.read_text()
     if path.suffix == ".json":
-        return '"_comment"' in text or '"instructions"' in text or '"$schema"' in text
-    if path.suffix in {".html"}:
+        return '"_comment"' in text
+    if path.suffix == ".html":
         return "<!--" in text
-    if path.suffix in {".css", ".js"}:
+    if path.suffix in {".css", ".js", ".cjs", ".mjs"}:
         return "/*" in text or "//" in text
     return "#" in text or '"""' in text or "--" in text
 
 
-def main() -> None:
-    roots = [
-        Path("src"),
-        Path("tests"),
-        Path("scripts"),
-        Path("tools"),
-        Path(".opencode"),
-        Path(".github"),
-    ]
-    standalone = [Path("pyproject.toml"), Path("Makefile"), Path("opencode.json")]
-    # Generated dependencies and browser artifacts are not authored implementation files.
-    excluded_parts = {
-        "node_modules",
-        "test-results",
-        "playwright-report",
-        "__pycache__",
-        "stock_probs.egg-info",
-    }
-    generated_opencode = {
-        Path(".opencode/.gitignore"),
-        Path(".opencode/package.json"),
-        Path(".opencode/package-lock.json"),
-    }
-    candidates = standalone + [
+def checked_paths(root: Path) -> list[Path]:
+    """Return authored files while keeping exclusions explicit and path-specific."""
+
+    candidates = [root / item for item in STANDALONE] + [
         path
-        for root in roots
-        if root.exists()
-        for path in root.rglob("*")
+        for relative_root in ROOTS
+        if (root / relative_root).exists()
+        for path in (root / relative_root).rglob("*")
         if path.is_file()
-        and path not in generated_opencode
-        and not excluded_parts.intersection(path.parts)
     ]
-    checked = [path for path in candidates if path.suffix not in {".lock", ".png", ".pyc"}]
-    missing = [str(path) for path in checked if not has_comment(path)]
+    checked = []
+    for path in candidates:
+        relative = path.relative_to(root)
+        if relative in DECLARATIVE_JSON:
+            continue
+        if (
+            EXCLUDED_PARTS.intersection(relative.parts)
+            or (PONYTAIL in relative.parents and relative != PONYTAIL_LOCAL_SMOKE)
+            or relative in GENERATED_METADATA
+            or path.suffix in {".lock", ".png", ".pyc"}
+        ):
+            continue
+        checked.append(path)
+    return checked
+
+
+def main() -> None:
+    root = Path.cwd().resolve()
+    try:
+        checked = checked_paths(root)
+        missing = [str(path.relative_to(root)) for path in checked if not has_comment(path)]
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise SystemExit(f"Comment audit scope validation failed: {exc}") from exc
     if missing:
         raise SystemExit("Files missing useful comments: " + ", ".join(missing))
-    print(f"comment audit passed: {len(checked)} implementation files")
+    print(f"comment audit passed: {len(checked)} authored implementation files")
 
 
 if __name__ == "__main__":

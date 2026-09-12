@@ -25,3 +25,6 @@ playwright-report/
 dist/
 *.egg-info/
 .DS_Store
+
+# IDE CONFIG
+.vscode

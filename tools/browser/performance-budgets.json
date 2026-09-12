@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "render_p95_ms": 2000,
+  "interaction_p95_ms": 250,
+  "cls_max": 0.1,
+  "overlap_count_max": 0,
+  "overflow_count_max": 0,
+  "request_count_max_per_navigation": 7,
+  "response_bytes_max_per_navigation": 114688,
+  "designated_response_bytes_strict_max": 8192,
+  "warmups": 5,
+  "measured_samples": 30,
+  "viewports": [360, 390, 768, 1280, 1440],
+  "allowed_paths": [
+    "/",
+    "/assets/app.css",
+    "/assets/app.js",
+    "/assets/favicon.svg",
+    "/api/v1/readiness",
+    "/api/v1/operations/backups/status",
+    "/api/v1/history"
+  ],
+  "justification": {
+    "render_interaction_cls": "Pinned proposed M06 roadmap bounds.",
+    "request_count": "One document, three static assets, and the three API calls made by initialize().",
+    "response_bytes": "112 KiB permits the sub-96 KiB static shell plus bounded API bodies without compression assumptions.",
+    "designated_response": "The readiness response is the designated sub-8 KiB response."
+  }
+}

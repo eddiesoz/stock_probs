@@ -146,7 +146,7 @@ def test_local_gate_and_frontend_fail_closed_on_required_boundaries():
 
     assert not (ROOT / ".github/workflows/ci.yml").exists()
     assert "set -euo pipefail" in local_gate and '"result": result' in local_gate
-    assert "package-check check" in makefile and "release-check: acceptance" in makefile
+    assert "package-check check" in makefile and "./scripts/local-gate.sh release" in makefile
     assert "browser-test" in makefile and "comment_audit.py" in makefile
     assert 'const apiroot = "/api/v1"' in javascript
     assert "sqlite" not in javascript and "yahoo.com" not in javascript

@@ -1,0 +1,6 @@
+scope: overengineering only
+command: /ponytail-review
+boundary: R-M06-15
+L58: yagni json.loads(path.read_text()) side-effect buried in checked_paths. Drop it (and the json.JSONDecodeError catch at :79); JSON validity is not the comment audit's job.
+L71: yagni missing_comments is a one-line wrapper used once. Inline into main.
+L83: shrink checked_paths(root) re-runs the full tree scan (plus re-parses every declarative JSON) just to print a count after missing_comments already ran it. Compute `checked = checked_paths(root)` once; derive missing and count from it.
