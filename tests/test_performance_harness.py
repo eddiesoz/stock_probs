@@ -53,6 +53,31 @@ def test_artifact_schema_requires_every_evidence_field():
 
 
 @pytest.mark.parametrize(
+    "task_id",
+    [
+        "M06",
+        "R-M06-1",
+        "M09",
+        "EXP-M09",
+        "R-M09-4",
+        *(f"m{milestone:02}" for milestone in range(1, 10)),
+        "check",
+        "release",
+    ],
+)
+def test_artifact_schema_accepts_harness_task_identities(task_id):
+    performance.validate_artifact(complete_artifact(task_id=task_id))
+
+
+@pytest.mark.parametrize(
+    "task_id", ["M10", "EXP-M10", "R-M09-0", "R-M09-nope", "m00", "m10", "development"]
+)
+def test_artifact_schema_rejects_invalid_harness_task_identities(task_id):
+    with pytest.raises(ValueError, match="task identity is invalid"):
+        performance.validate_artifact(complete_artifact(task_id=task_id))
+
+
+@pytest.mark.parametrize(
     ("values", "bound", "operator", "expected"),
     [
         ([999.0] * 30, 1_000.0, "<", "Pass"),

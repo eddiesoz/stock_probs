@@ -10,6 +10,7 @@ import json
 import math
 import os
 import platform
+import re
 import shutil
 import socket
 import sqlite3
@@ -172,11 +173,10 @@ def validate_artifact(payload: dict[str, Any], *, acceptance: bool = False) -> N
     task_id = payload["task_id"]
     if payload["schema_version"] != SCHEMA_VERSION or not isinstance(task_id, str):
         raise ValueError("artifact schema/task identity is invalid")
-    if not (
-        task_id in {"M06", "M09"}
-        or task_id.startswith("R-M06-")
-        or task_id.startswith("R-M09-")
-    ):
+    if re.fullmatch(
+        r"(?:M06|M09|EXP-M09|R-M(?:06|09)-[1-9][0-9]*|m0[1-9]|check|release)",
+        task_id,
+    ) is None:
         raise ValueError("artifact schema/task identity is invalid")
     if payload["row"] not in ALL_ROWS or payload["result"] not in RESULTS:
         raise ValueError("artifact row/result is invalid")
