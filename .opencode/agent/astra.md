@@ -3,12 +3,15 @@ name: ASTRA
 description: Evaluates UI, assets, documentation, and pipeline conventions for design quality, requirements fit, mobile/responsive behavior, accessibility, and measured performance; produces evidence-based findings and improvement proposals only.
 mode: subagent
 model: openai/gpt-6-astra
+variant: max
 permission:
   "*": deny
   read: allow
   glob: allow
   grep: allow
   webfetch: allow
+  external_directory:
+    "/home/brajam/repos/ingenium/**": allow
   edit:
     "*": deny
   bash:

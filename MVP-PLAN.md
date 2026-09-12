@@ -9,7 +9,7 @@ This is the implementation contract for the planned local Linux stock probabilit
 - `M01` and `EXP-M01` are **Completed**: all three independent QA retests passed their assigned behavior scopes, `R-M01-3` through `R-M01-15` are completed for those scoped repairs, and the exact checkpoint is SHA `5424fa3e22d9229d038d376512e59b3f35c97e78`.
 - `M02` and `EXP-M02` are **Completed** only through the late independent repair receipt `EXP-M02-REPAIR-1`, session `ses_f6eacd1cdffeZxtRNqfzkXOuqJ`, reviewed by `LUNA MAX QA` at `2026-09-11T17:10:31Z`. Its scoped `R-M02-1`–`R-M02-5`, `R-M02-10`–`R-M02-20`, `R-M02-30`–`R-M02-32`, `R-M02-41`–`R-M02-42`, and `R-M02-55` records have independent pass evidence. The earlier missing review/timing is preserved as history, no repair is backdated, and no remote CI was run or used. `M03` and `EXP-M03` are **Completed** at exact local/remote SHA `777451643b5ec1a04a37c013a9caf59f0bd58122`.
 - `M04` and `EXP-M04` are **Completed** for their recorded scopes. `R-M04-30` remains **Pending** because actual screen-reader evidence is unavailable and deferred to M06; it blocks final accessibility/release acceptance, not the exercised M04 scope. The `EXP-M04` receipt is recorded below.
-- `M05` is **Completed for its declared scope** through the independent `R-M05-55` Pass receipt; `EXP-M05` remains **Pending** for its separate export, secret-review, local commit, push, and exact Git remote-verification checkpoint. `M06` is **In progress**, with measured native-x86 evidence and independent scoped rows, not an M06 pass. `R-M06-11` has two independent QA passes, each with three hash-stable native runs and exact recomputation; this scoped result does not close M06. `M07`, `M08`, `ASTRA-FINAL`, and `EXP-FINAL` are **Pending**. `EXP-M00` through `EXP-M04` are completed; later exports remain pending.
+- `M05` is **Completed for its declared scope** through the independent `R-M05-55` Pass receipt. `EXP-M05` is **Completed** at commit `9be15a3ae60b16e7cc7a5b95653f914b578e1a61` with the exact export audit receipt recorded below. `M06` is **In progress**, with measured native-x86 evidence and independent scoped rows, not an M06 pass; a clean target-commit gate run remains pending. `R-M06-11` has two independent QA passes, each with three hash-stable native runs and exact recomputation; this scoped result does not close M06. `M09` is **Pending** with its ASTRA research-based contract recorded and `SOL HIGH` implementation still future. `M07` is **In progress** with `R-M07-1` profile-count repair in flight, `R-M07-2` Ponytail-review availability pending with findings-only evidence in retained report `test-results/ponytail-m06-m07-boundary.txt` and closure pending, `R-M07-3` completed for supplied repair/test evidence, and `R-M07-4` completed for supplied Ponytail repair evidence. `M08`, `ASTRA-FINAL`, and `EXP-FINAL` are **Pending**. `EXP-M00` through `EXP-M05` are completed; `EXP-M06`, `EXP-M09`, `EXP-M07`, `EXP-M08`, and `EXP-FINAL` remain pending.
 - M05's current `R-M05-55` closure is fully **Pass** for its declared scope, reviewed by `LUNA MAX QA` on native x86_64 with `.dev-venv` Python `3.11.15`: rows `(a)`–`(i)` are session `ses_f6bbd6b46ffes2BM2zVjBC5uLg`, `2026-09-12T06:25:04Z`–`2026-09-12T06:44:37Z` (round trip/checksum `06:42:38Z`–`06:42:39Z`; six-path pre-migration forced-failure matrix `06:32:09Z`–`06:32:10Z`; due-check `60`/`2678400` accepted and `59`/`2678401`/`nan` rejected; retention of `32` artifacts/`256 MiB` with history preserved at `06:43:54Z`; `13/13` fail-closed negatives `06:35:29Z`–`06:35:32Z`; key lifecycle with rollback at `06:44:37Z`; `7/7` watchdog probes `06:35:01Z`–`06:35:02Z`; both-direction **emulated ARM64** cross-architecture restore `06:25:04Z`–`06:28:44Z`, artifact `test-results/arm64/M05-20260912T034933Z/evidence.json`; and the `R-M05-12` rerun `06:38:47Z`–`06:38:49Z`), and row `(j)` is session `ses_f6aa32b01ffexjSm9OhpprFwq4`, `2026-09-12T11:26:29Z`–`2026-09-12T11:28:26Z` (`276` non-live tests/`4` live deselected/`89.51%` coverage, documentation validation of `8` categories/`11` topics/`1` skill, `22` documentation tests, a `77`-file comment audit, Ruff, and mypy). Packaged-CLI end-to-end verification is session `ses_f6a96daceffegfAqyKQL2lf3bS` on native x86_64/Python `3.11.15`, with artifact `/tmp/opencode/stock-probs-m05-cli-20260912T114105Z/M05-packaged-cli-receipt.json` and reviewer `LUNA MAX QA` (fresh-venv wheel install, migration pre-backup, named backup, verify, `restore --promote`, wrong-key/tampered rejection, backup-key rotate/retire, and isolated-port serve readiness). Commands and commit were not supplied; no values are inferred. Earlier failures and pending states remain historical evidence; they are not erased by the later closure receipt.
 - M05 automation is implementation evidence only: migrate pre-backup, serve due-check with `STOCK_PROBS_BACKUP_INTERVAL_SECONDS` default `86400` and bounds `60`–`2678400`, backup-key rotation/retirement, `32` artifact/`256 MiB` retention limits, and no automatic query-history expiry. `docs/operations/backup-restore.md` and `docs/configure/local-configuration.md` were updated for accuracy by `SOL HIGH`. The M08 capture harness supplied `20` annotated screenshots and manifest SHA-256 `f9fef2b2db0a806cc47ff1db82e1e895f4dd4803425c0cf74426f5fa5a12dd5d`; this is preparation evidence only, not M08 acceptance.
 - The current `LUNA MAX docs` profile cannot edit `docs/**`; `SOL HIGH` performed the authored documentation repairs. This profile gap remains visible, and implementation presence does not close the independent documentation-skill/M06 verification.
@@ -52,14 +52,21 @@ The fields in this immutable historical record preserve the state observed durin
 - **Owner/phase:** `LUNA MAX docs`, M00 documentation repair.
 - **Dependencies verified:** Immutable historical `R-M00-1`; no implementation dependency was accepted.
 - **Change summary:** Removed external-pipeline acceptance language; made all checks local; defined native-x64 and local-native-or-emulated-ARM64 completion semantics; required removal of `.github/workflows/ci.yml` during M01/M06 and local fail-closed Make/scripts; added M08/`EXP-M08`, the instructional walkthrough, retrospective, Astra ordering, and exact vocabulary; corrected stale M05 aggregate wording. No implementation/config/test path and no `SESSION-EXPORT.md` path was edited.
+- **Current documentation refinement:** Added the ASTRA-based M09 theme/news contract, exact lane manifest, conditional package gate, performance/byte budgets, ten news states, and M09 acceptance rows. This remains documentation content only; no implementation, configuration, skill, export, or Git-history change was made.
 - **Evidence ledger:**
 
   | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
   | --- | --- | --- | --- |
   | `R-M00-2-E1` | `git status`/`git diff` scope review; only the four documentation paths are intended | Current native x86_64 Linux; exact UTC time and commit unavailable; `.vscode/` remains untracked and untouched | **Pass** for documentation scope; artifact: current worktree; reviewer: `LUNA MAX docs`; no implementation QA. |
-  | `R-M00-2-E2` | Local-only policy, ARM64 strategy, M01/M06 local gate replacement, M08, sequence, vocabulary, and M05 wording self-review | Current docs; exact UTC time and commit unavailable | **Pass** as documentation content; artifact: four docs; reviewer: `LUNA MAX docs`; no behavior inferred. |
-  | `R-M00-2-E3` | Workflow removal, local gate execution, M08 artifact generation, actual-control browser QA, and retrospective | Not run by this docs-only task; exact UTC time/commit unavailable | **Unavailable** to `R-M00-2`; current `EXP-M01` separately records the later workflow check, while the remaining implementation/M06/M07/M08/Astra evidence is future evidence. |
-  | `R-M00-2-E4` | R-M00-1 identity/history, collision aliases, and repair labels retained | Current docs; exact UTC time and commit unavailable | **Pass** as documentation content; reviewer: `LUNA MAX docs`; no repair retest implied. |
+   | `R-M00-2-E2` | Local-only policy, ARM64 strategy, M01/M06 local gate replacement, M08, sequence, vocabulary, and M05 wording self-review | Current docs; exact UTC time and commit unavailable | **Pass** as documentation content; artifact: four docs; reviewer: `LUNA MAX docs`; no behavior inferred. |
+   | `R-M00-2-E3` | Workflow removal, local gate execution, M08 artifact generation, actual-control browser QA, and retrospective | Not run by this docs-only task; exact UTC time/commit unavailable | **Unavailable** to `R-M00-2`; current `EXP-M01` separately records the later workflow check, while the remaining implementation/M06/M07/M08/Astra evidence is future evidence. |
+   | `R-M00-2-E4` | R-M00-1 identity/history, collision aliases, and repair labels retained | Current docs; exact UTC time and commit unavailable | **Pass** as documentation content; reviewer: `LUNA MAX docs`; no repair retest implied. |
+   | `R-M00-2-E5` | `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` | Current native x86_64 Linux; dirty `HEAD` `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`; UTC was not captured by the command tool | **Pass**; no whitespace errors; artifact: current worktree; reviewer: `LUNA MAX docs`; this is a docs-boundary check only. |
+    | `R-M00-2-E6` | `.dev-venv/bin/python scripts/validate_docs.py` | Current native x86_64 Linux; dirty `HEAD` `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`; UTC was not captured; execution was denied by the tool permission boundary | **Unavailable**; no validator result is inferred; artifact: none; reviewer: `LUNA MAX docs`; rerun is required when command execution is available. |
+    | `R-M00-2-E7` | Documentation scope review with `git status --short` and `git diff --name-only -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` | Current native x86_64 Linux; dirty `HEAD` above; UTC was not captured | **Pass** for this task's four-path diff; pre-existing dirty `.opencode/` and `tests/` paths were observed and untouched; reviewer: `LUNA MAX docs`. |
+    | `R-M00-2-E8` | M09 root-documentation self-review: ASTRA rejected scope, the exact ten news UI states, and HTTP status semantics retained across the four owned root documents | Current native x86_64 Linux; dirty `HEAD` `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`; UTC timestamp unavailable from the command tool | **Pass** as documentation content; artifact: `README.md`, `AGENTS.md`, `MVP-PLAN.md`, and `MVP-ROADMAP.md`; reviewer: `LUNA MAX docs`; no M09 implementation or QA acceptance inferred. |
+    | `R-M00-2-E9` | `.dev-venv/bin/python scripts/validate_docs.py` after the M09 root-documentation update | Current native x86_64 Linux; dirty `HEAD` `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`; UTC timestamp unavailable from the command tool | **Unavailable**; the command execution was denied by the tool permission boundary, so no validator result is inferred; artifact: none; reviewer: `LUNA MAX docs`; rerun remains required when execution is available. |
+    | `R-M00-2-E10` | `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` after the M09 root-documentation update | Current native x86_64 Linux; dirty `HEAD` `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`; UTC timestamp unavailable from the command tool | **Pass**; no whitespace errors; artifact: current four-document worktree diff; reviewer: `LUNA MAX docs`; no Git mutation performed. |
 - **Limitations and repair history:** No implementation QA, native ARM64 run, emulated ARM64 run, walkthrough artifact, browser-control check, retrospective, export, commit, push, or new Git remote verification was performed. `R-M00-2` does not accept any implementation milestone.
 - **Export/Git/reviewer:** At the time of `R-M00-2`, no export/commit/push was performed by that documentation-only repair and `EXP-M02` had not yet been completed. The later coordinator records `EXP-M00` through `EXP-M04` are **Completed** at the exact checkpoint receipts recorded below; those later results do not rewrite the historical timing. Later exports remain pending. Reviewer for `R-M00-2`: `LUNA MAX docs` self-review; independent implementation QA was not performed by that historical docs repair.
 
@@ -152,11 +159,11 @@ After every implementation boundary—each builder handoff, repair handoff, inte
 6. The coordinator alone integrates changes, updates status/evidence, and performs git operations. It does not implement, perform QA, route speculative/non-blocking findings, or write roadmap prose. It routes only reproducible blocking findings with an exact task ID to `SOL HIGH`.
 7. Agent-profile and local-gate changes are `SOL HIGH` work; each requires a parent-process restart and independent post-restart validation before it can affect a gate. A profile edit, local script, or generated artifact is never self-validating.
 8. On any failure, skip, unavailable provider, stale-data condition, accessibility finding, restore failure, secret-review failure, connectivity loss, or missing artifact, keep the task `Pending`, `In progress`, or `Blocked`; create `R-M##-<n>`, repair the root cause, and rerun the failed and affected checks.
-9. Follow the canonical sequence exactly: `R-M00-1` -> `EXP-M00` (**Completed**) -> `M01` (**Completed**) -> `EXP-M01` (**Completed**) -> `M02` (**Completed**) -> `EXP-M02` (**Completed**) -> `M03` (**Completed**) -> `EXP-M03` (**Completed**, exact checkpoint `777451643b5ec1a04a37c013a9caf59f0bd58122`) -> `M04` (**Completed** for exercised scope) -> `EXP-M04` (**Completed**, exact checkpoint recorded below) -> `M05`/`EXP-M05` -> `M06`/`EXP-M06` -> `M07` QA/docs -> `EXP-M07` -> `M08` walkthrough QA/docs -> `ASTRA-FINAL` dedicated visual/mobile/responsive/accessibility review -> `R-ASTRA-<n>` SOL repairs/retests and Astra reevaluation until the result is `Accepted` -> `EXP-M08` -> final learning synthesis -> `EXP-FINAL` -> optional `NOTIFY-FINAL` last. The Astra design/repair/final-checkpoint and learning-synthesis sequence is one second-last operational loop, not a new milestone; the final gate is allowed only after Astra acceptance, all repair retests, and the completed learning synthesis.
+9. Follow the canonical sequence exactly: `R-M00-1` -> `EXP-M00` (**Completed**) -> `M01` (**Completed**) -> `EXP-M01` (**Completed**) -> `M02` (**Completed**) -> `EXP-M02` (**Completed**) -> `M03` (**Completed**) -> `EXP-M03` (**Completed**, exact checkpoint `777451643b5ec1a04a37c013a9caf59f0bd58122`) -> `M04` (**Completed** for exercised scope) -> `EXP-M04` (**Completed**, exact checkpoint recorded below) -> `M05`/`EXP-M05` -> `M06`/`EXP-M06` -> `M09` QA/docs -> `EXP-M09` -> `M07` QA/docs -> `EXP-M07` -> `M08` walkthrough QA/docs -> `ASTRA-FINAL` dedicated visual/mobile/responsive/accessibility review -> `R-ASTRA-<n>` SOL repairs/retests and Astra reevaluation until the result is `Accepted` -> `EXP-M08` -> final learning synthesis -> `EXP-FINAL` -> optional `NOTIFY-FINAL` last. The Astra design/repair/final-checkpoint and learning-synthesis sequence is one second-last operational loop, not a new milestone; the final gate is allowed only after Astra acceptance, all repair retests, and the completed learning synthesis.
 
 ### Versioned session-export gates
 
-Every milestone has a separately recorded export task ID: `EXP-M00`, `EXP-M01`, `EXP-M02`, `EXP-M03`, `EXP-M04`, `EXP-M05`, `EXP-M06`, `EXP-M07`, or `EXP-M08`. The coordinator uses OpenCode `/export`, or a verified CLI equivalent, to overwrite exactly one tracked root artifact, `SESSION-EXPORT.md`. The export must be a full-session record containing tool calls and subagent outputs; a summary, partial transcript, or untracked local file does not satisfy the gate.
+Every milestone has a separately recorded export task ID: `EXP-M00`, `EXP-M01`, `EXP-M02`, `EXP-M03`, `EXP-M04`, `EXP-M05`, `EXP-M06`, `EXP-M09`, `EXP-M07`, or `EXP-M08`. The coordinator uses OpenCode `/export`, or a verified CLI equivalent, to overwrite exactly one tracked root artifact, `SESSION-EXPORT.md`. The export must be a full-session record containing tool calls and subagent outputs; a summary, partial transcript, or untracked local file does not satisfy the gate.
 
 Before commit, the export receives a documented full secret review. Commit and push the reviewed export as checkpoint SHA X, then verify that exact SHA on the configured Git remote. The record names the export revision/commit, pushed branch, Git remote revision result, artifact/link, UTC time, environment, and reviewer. Any failed, skipped, unavailable, or connectivity-blocked export, secret review, commit, push, or Git revision check is recorded with its result and blocks that checkpoint. Git history supplies the version for the stable overwritten path; the export task ID supplies milestone identity. No hosted runner or external pipeline is recorded. `R-M00-1` intentionally did not create, review, commit, or push the export.
 
@@ -164,7 +171,7 @@ After `EXP-FINAL` is independently accepted, an optional operational notificatio
 
 ### Independent final Astra gate
 
-After `M08` walkthrough QA/docs evidence is complete, an independent GPT-6 Astra reviewer executes task `ASTRA-FINAL`. `ASTRA-FINAL` must include a dedicated final visual-design, mobile, responsiveness, and accessibility quality evaluation of the completed UI and walkthrough, as well as an evidence matrix—not implementation claims. The matrix must have a separate row for every product requirement, feature, API endpoint, visible click/control, UI state, persistence effect, asset, documentation visual, walkthrough frame/segment, media item, and static asset. Every row is evaluated against requirements, aesthetics, mobile behavior, responsive behavior, accessibility, and measured performance, and names the check, command, environment, UTC timestamp, commit, result, artifact/link, limitation, and reviewer.
+After `M08` walkthrough QA/docs evidence, including the accepted M09 dark-mode/news features, is complete, an independent GPT-6 Astra reviewer executes task `ASTRA-FINAL`. `ASTRA-FINAL` must include a dedicated final visual-design, mobile, responsiveness, and accessibility quality evaluation of the completed UI and walkthrough, as well as an evidence matrix—not implementation claims. The matrix must have a separate row for every product requirement, feature, API endpoint, visible click/control, UI state, persistence effect, asset, documentation visual, walkthrough frame/segment, media item, and static asset. Every row is evaluated against requirements, aesthetics, mobile behavior, responsive behavior, accessibility, and measured performance, and names the check, command, environment, UTC timestamp, commit, result, artifact/link, limitation, and reviewer.
 
 Any missing, failing, skipped, unavailable, or unconfirmed row creates `R-ASTRA-<n>`. Astra evaluates and suggests only; only `SOL HIGH` build agents implement `R-ASTRA-<n>` UI repairs. The repair goes through the same up-to-six-lane build handoff, the mandatory pre-QA Ponytail review, independent QA/docs gates, and Astra re-evaluation of the failed and affected rows. If execution evidence shows that a tooling, skill, or MCP gap caused poor output, a narrowly scoped `R-ASTRA-<n>` may repair and validate that gap before acceptance; it may not expand the product scope without a new evidenced requirement. Repeat until the `ASTRA-FINAL` record explicitly says `Accepted`; only then does `EXP-M08` checkpoint the reviewed walkthrough. After all roadmap and Astra repairs, a final pre-`EXP-FINAL` learning synthesis must deeply analyze sanitized chat/run evidence, use `skill-maintenance` only for justified reusable Stock Probability development skills, validate and index those skills, and log observations. Only after that record is complete may `EXP-FINAL` sanitize the full chat/export, complete secret review, commit, push, and verify the exact remote revision. No final release or `EXP-FINAL` may precede those prerequisites, and no Astra or learning-synthesis run is claimed by this record.
 
@@ -177,7 +184,7 @@ Build a small, auditable, local web application where a user selects a Yahoo Fin
 
 Each view must expose probabilities and magnitude intervals, not just a point estimate. The probability contract includes up/down/unchanged direction, `+/-1%`, `+/-3%`, `+/-5%`, and `+/-10%` return thresholds, conditional gain/loss probabilities, and 50%, 80%, and 95% return and price intervals. Every displayed result must identify its company name, symbol, asset type, instrument identity, input timestamps, provider/as-of time, forecast horizon, model/version, interval level and units, stale-data state, and any limitation or failure.
 
-This is a research and auditability tool, not a trading system or a promise of predictive accuracy. Optional dark mode and news features are not part of the contract; options trading and public hosting are out of scope.
+This is a research and auditability tool, not a trading system or a promise of predictive accuracy. Dark mode and selected-instrument news are contract requirements owned by M09; options trading and public hosting are out of scope.
 
 ## Non-Negotiable Boundaries
 
@@ -187,6 +194,18 @@ This is a research and auditability tool, not a trading system or a promise of p
 - The browser must not import a SQLite client, issue SQL, open a database path, or infer storage details from the API.
 - The API owns validation, provider calls, forecast calculation, persistence, history queries, and backup/restore operations.
 - API errors must be structured, safe to display, and specific enough to distinguish invalid input, unavailable market data, stale data, calculation failure, persistence failure, and restore failure.
+
+### Browser MCP and orchestration invariant
+
+- The stock Playwright MCP entry in `opencode.json` is a hard constraint: retain
+  `./scripts/playwright-mcp.sh` with `--headless`, `--isolated`, and loopback host/origin
+  allowlists. Any selective Ingenium agent-pipeline adoption must never replace this
+  entry with Ingenium browser automation.
+- The local acceptance path remains six-agent orchestration with independent QA/docs order,
+  the read-only Ponytail boundary, and commit/export gates. A future no-plugin subagent
+  count is controlled through the valid `agent.options` field on the orchestrator profile,
+  which the orchestrator reads; the schema has no native concurrency cap and
+  `subagent_depth` controls nesting only.
 
 ### Data source and time semantics
 
@@ -212,6 +231,8 @@ This is a research and auditability tool, not a trading system or a promise of p
 - Every search control needs a visible label, keyboard path, focus state, validation message, loading state, empty state, success state, and failure state.
 - Charts, colors, and interval bands must have text or table equivalents; color alone cannot communicate direction, confidence, stale data, or failure.
 - Historical price and return-distribution charts must have equivalent tables/text and remain understandable in every state. The distinctive Signal Ledger direction is intentional: polished tabular numeric hierarchy, clear status evidence, and restrained visual encoding rather than a generic trading dashboard.
+- Dark mode must be user-selectable and accessible across the dashboard, charts, tables, controls, focus states, and loading/empty/success/stale/failure states at the required viewports; color alone cannot carry meaning.
+- News for the selected stock or ETF must be clearly labelled, served through FastAPI `/api/v1`, preserve instrument identity and source/as-of provenance, and expose honest loading, empty, stale, and failure states.
 - History must support practical search/filtering and expose enough context to distinguish a repeated request from a new forecast.
 - Accessible names, semantic structure, WCAG AA contrast, keyboard operation, reduced-motion behavior, and actual assistive-technology/screen-reader announcements are acceptance concerns, not polish. Axe and keyboard checks do not substitute for an actual screen-reader run.
 
@@ -267,13 +288,19 @@ These requirements were omitted from a condensed milestone plan and are restored
 | Direction is explicit up/down/unchanged; thresholds are `+/-1%`, `+/-3%`, `+/-5%`, `+/-10%`; conditional gain/loss and 50/80/95 return and price intervals are defined. | `M03` numerical contract row and `M04` result presentation row. |
 | Yahoo approximate 60-day five-minute limitation and archive/session semantics are visible and auditable. | `M03` provider limitation row and `M07` limitation/release row. |
 | Automatic due and pre-migration backups, retention/disk limits, no automatic query-history expiry, bounded chunked-request rejection, watchdog coverage, and protected migration routing are verified. | `M05` operations/persistence row and `M07` restore/retention row. |
+| Dark mode is user-selectable and accessible across the dashboard, charts, tables, controls, focus states, and loading/empty/success/stale/failure states at all required viewports without color-only meaning. | `M09` dark-mode implementation/QA/docs rows, `M07` integrated row, `M08` walkthrough row, and `ASTRA-FINAL` matrix rows. |
+| Selected-instrument news is clearly labelled, served through FastAPI `/api/v1`, preserves instrument identity and source/as-of provenance, and exposes honest loading, empty, stale, and failure states. | `M09` news/API/UI QA/docs rows, `M07` integrated row, `M08` walkthrough row, and `ASTRA-FINAL` matrix rows. |
+| M09 theme initializer is external/parser-blocking before CSS on the dashboard and `/api/v1/docs`, uses localStorage/system/reset-to-system without first-paint flash, semantic roles, numeric contrast, forced-colors, reduced-motion, print, and unchanged strict CSP. | `M09-E1`–`M09-E3`, then `M07`/`M08`/`ASTRA-FINAL` per-asset and per-state rows. |
+| M09 news route, closed schemas, separate `fetch_news`, pinned `yfinance==1.7.0` feasibility proof, bounded ephemeral cache, `cache_state`, HTTP `200`/`422`/`502`/`503` semantics with no empty-response `404`, persistence exclusion, provider-free reopen/current-headlines action, safe HTTPS, local-only traffic, and ten UI states are verified. | `M09-E4`–`M09-E8`, then `M07`/`M08`/`ASTRA-FINAL` integrated rows. |
+| M09's ASTRA rejected scope remains out of scope unless a new evidenced requirement is approved. | `M09-E13`, then M07/M08/`ASTRA-FINAL` scope-reconciliation rows. |
+| M09 quality budgets include static-shell/headroom and justified eighth `theme.js` request, theme switch p95 `<=100 ms`, news fixture p95 `<=100 ms`, ten-item render p95 `<=250 ms`, response `<=32 KiB`, and provider deadline `<=10 s` subject to feasibility. | `M09-E9`–`M09-E12`; native x86 performance only, with ARM64 performance remaining subject to the existing limitation. |
 | Both CSV and JSON export are available, safe, and traceable to immutable records. | `M04` user export row and `M06` security/regression row. |
 | Existing measured targets: process RSS `<500 MiB`, defined fixture/cache-hit forecast p95 `<1 s`, indexed 100,000-history query p95 `<250 ms`, and qualitative negligible idle CPU. | `M06` mandatory deterministic native-x86 performance rows below; `M07` records any physical ARM64 limitation explicitly. Proposed numeric additions are not current results. |
 | Linux x86-64/amd64 and ARM64/aarch64 gates cover clean install/package build, `make check`, loopback, Node/Chromium, official MCP interaction, desktop/mobile tests, and cross-architecture backup/key behavior. ARM64 functional/build/tool checks may be local native or labelled emulated; physical low-resource ARM64 performance is never inferred. | `M06` local dual-architecture row and `M07` release row. No external pipeline or hosted runner substitutes for local evidence. |
 | Viewports 360/390/768/1280/1440 have polished no-overlap/no-overflow layouts, tabular numeric hierarchy, all states, charts/tables, reduced motion, WCAG AA, keyboard, and actual assistive-technology evidence. | `M04` visual/accessibility row, `M06` browser gate, `M07` final visual/AT row, and `M08` walkthrough row; axe/keyboard are not screen-reader substitutes. |
 | The final walkthrough is a bounded, accessible, reproducible artifact using deterministic fixtures, the real local app, official browser tooling, actual controls, desktop/mobile steps, and a prompt/plan retrospective with repaired gaps. | `M08` walkthrough and retrospective rows, then `ASTRA-FINAL`. |
 
-Optional dark mode/news are explicitly non-contract; options and public hosting are out of scope.
+Dark mode and selected-instrument news are contract requirements owned by M09; options and public hosting are out of scope.
 
 ## Task Register
 
@@ -575,7 +602,7 @@ The supplied `F-M04-1` label is preserved as a failure alias/finding rather than
 ### M05 - Backup, Restore, And Secure Loopback Operations
 
 - **Status:** Completed for the declared M05 scope.
-- **Dependencies:** M02 and M04 are satisfied; the M05 behavior/repair acceptance scope is closed by `R-M05-55`, while the separate `EXP-M05` checkpoint remains open.
+- **Dependencies:** M02 and M04 are satisfied; the M05 behavior/repair acceptance scope is closed by `R-M05-55`, and the separate `EXP-M05` checkpoint is **Completed** at `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`.
 - **Evidence state:** Historical QA initially blocked M05 with `R-M05-1` through `R-M05-4`; the late independent backup retest and its limitations remain visible. The later independent `R-M05-55` receipt is fully **Pass** for rows `(a)`–`(i)` and `(j)`: row `(i)` includes the `R-M05-12` independent rerun with `4/4` behavior tests, and row `(j)` records `276` non-live tests passed/`4` live deselected/`89.51%` coverage, documentation validation of `8` categories/`11` topics/`1` skill, `22` documentation tests, a `77`-file comment audit, Ruff, and mypy. No failure or earlier pending state is erased by this later closure.
 - **Build wave:** `SOL HIGH-A` operations API/CLI contract; `SOL HIGH-B` backup, restore, filesystem, and SQLite integrity; `SOL HIGH-C` operational UI/scripts and bounded-run integration. No shared paths during the wave.
 - **Gates:** `LUNA MAX QA` and `LUNA MAX docs` only after the builder wait; export `EXP-M05` after every acceptance row passes.
@@ -610,7 +637,7 @@ reviewer `LUNA MAX QA`. Commands and commits were not supplied and are not infer
 | `R-M05-9` | **Completed** | `SOL HIGH` walkthrough/comment repair; independent comment/walkthrough verification. | `R-M05-9-E1` retains the implementation-wave repair surface; row `(j)` of `R-M05-55` records the independent comment audit. | **Pass** in the fully passing `R-M05-55` scope, including the `77`-file comment audit; exact receipt sessions, windows, environment, and reviewer are recorded below; command and commit were not supplied. |
 | `R-M05-10` | **Completed** | `SOL HIGH` CLI migration-protection repair; `LUNA MAX QA` retest. | `R-M05-10-E1` retains the all-command routing statement; the later `R-M05-55 (a)`–`(i)` receipt closes the declared scope. | **Pass** in the fully passing `R-M05-55` consolidated scope; exact receipt sessions, windows, environment, and reviewer are recorded below; command and commit were not supplied. |
 | `R-M05-12` | **Completed** | `SOL HIGH` Ponytail repair record and independent behavior rerun. | `R-M05-12-E1`: [`docs/evidence/ponytail-m05-boundary.txt`](docs/evidence/ponytail-m05-boundary.txt) records the two overengineering findings and repair. `R-M05-55 (i)` independently reran the affected behavior tests: `4/4` **Pass**. | **Pass** for the independent rerun inside `R-M05-55 (i)`; the receipt retained at `docs/evidence/ponytail-m05-boundary.txt` is overengineering-only. Exact rerun session, window, environment, and reviewer are recorded below; command and commit were not supplied. |
-| `R-M05-55` | **Completed** | `LUNA MAX QA` consolidated M05 verification for the declared repair/acceptance scope. | The fully passing consolidated receipt is detailed below: rows `(a)`–`(i)` passed earlier and row `(j)` passed on rerun. | **Pass** for the declared M05 scope; exact receipt sessions, windows, native environments, artifacts, and reviewer are recorded below. `EXP-M05` remains pending; commands and commits were not supplied. |
+  | `R-M05-55` | **Completed** | `LUNA MAX QA` consolidated M05 verification for the declared repair/acceptance scope. | The fully passing consolidated receipt is detailed below: rows `(a)`–`(i)` passed earlier and row `(j)` passed on rerun. | **Pass** for the declared M05 scope; exact receipt sessions, windows, native environments, artifacts, and reviewer are recorded below. `EXP-M05` is completed in the separate checkpoint below; commands and commits for this scoped receipt were not supplied. |
 
 #### `R-M05-55` consolidated closure receipt
 
@@ -638,11 +665,23 @@ were updated for accuracy by `SOL HIGH`. The current `LUNA MAX docs` profile can
 `docs/**`, so those repairs were performed by `SOL HIGH`; this profile gap remains visible
 and does not supply independent documentation or M05 verification.
 
-**M05 export/Git/reviewer fields:** `EXP-M05` is **Pending** and is the next checkpoint.
-No M05 export, full-session secret review, local commit, push, or exact remote-revision
-verification was performed by this reconciliation; no new checkpoint exists. Those
-checkpoint fields remain pending and do not become passes from the completed `R-M05-55`
-scope receipt.
+#### `EXP-M05` completed export checkpoint
+
+- **Status:** Completed.
+- **Owner/phase:** coordinator export/checkpoint gate; reviewer `LUNA MAX QA`.
+- **Dependencies verified:** M05 declared scope and independent `R-M05-55` closure; earlier failures and pending states remain historical evidence.
+- **Change summary:** The sanitized full-session `SESSION-EXPORT.md` received the supplied export audit, secret review, commit, push, and exact remote-main verification. This documentation reconciliation did not edit the export or implementation/configuration/skill/test paths.
+- **Evidence ledger:**
+
+  | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+  | --- | --- | --- | --- |
+  | `EXP-M05-E1` | Parse/inventory the sanitized full-session export: `233` messages, `1,387` parts, `432` tool parts, `185` task outputs, `1,116,276` bytes, `32,915` lines, SHA-256 `ce5f025d41c4757dcf95a336555ce0fdd46ddcf22d1e9bce68d2d8fb5328c181`, and `3,090` redaction markers | Supplied export audit receipt; commit `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`, parent `59534faf1cdce493bc51a11d4adbea5e5b2d6892`, commit UTC `2026-09-12T12:41:32Z` | **Pass**; artifact: sanitized `SESSION-EXPORT.md`; reviewer `LUNA MAX QA`; export session ID and command were not supplied. |
+  | `EXP-M05-E2` | Full secret review across all canonical secret patterns | Same supplied receipt and checkpoint commit | **Pass**; zero matches; artifact: export audit; reviewer `LUNA MAX QA`. |
+  | `EXP-M05-E3` | Commit message, parent, push, and exact remote `main` match | Commit `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`; parent `59534faf1cdce493bc51a11d4adbea5e5b2d6892`; commit UTC `2026-09-12T12:41:32Z`; message `Add verified backup operations` | **Pass**; exact `origin/main` match; artifact: Git checkpoint receipt; reviewer `LUNA MAX QA`. |
+
+- **Repair/history:** The completed export checkpoint does not erase earlier M05 failures or pending states; `R-M05-55` remains the independent behavior/operations closure receipt and `EXP-M05` is the separate export gate.
+- **Limitations:** The supplied receipt does not provide an export session ID, command, separate export-audit UTC window, or additional check; none is inferred. No external/hosted pipeline result is claimed.
+- **Export/Git:** exact checkpoint `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`, parent `59534faf1cdce493bc51a11d4adbea5e5b2d6892`, message `Add verified backup operations`, commit UTC `2026-09-12T12:41:32Z`, and exact `origin/main` match; reviewer `LUNA MAX QA`.
 
 #### M08 preparation evidence (not M08 acceptance)
 
@@ -658,7 +697,7 @@ named reviewer were not provided.
 
 - **Status:** In progress.
 - **Dependencies:** M01, M02, M03, M04, and M05.
-- **Evidence state:** The historical `R-M06-1` independent retest was cancelled and remains visible. Current independent scoped results are **Pass** for `R-M06-2`, `R-M06-3`, `R-M06-4`, `R-M06-16`–`R-M06-20`, and `R-M06-11`, which passed twice, each with three hash-stable native runs and exact recomputation. The documentation-skill post-restart receipt also passed its listed checks. The scoped `R-M06-55` gate passed. M06 itself remains **In progress** pending the final consolidated gate rerun, docs/release reconciliation, and `EXP-M06`; the dirty gate receipt is not a clean release checkpoint.
+- **Evidence state:** The historical `R-M06-1` independent retest was cancelled and remains visible. Current independent scoped results are **Pass** for `R-M06-2`, `R-M06-3`, `R-M06-4`, `R-M06-16`–`R-M06-20`, and `R-M06-11`, which passed twice, each with three hash-stable native runs and exact recomputation. The documentation-skill post-restart receipt also passed its listed checks. The scoped `R-M06-55` gate passed. M06 itself remains **In progress** pending a clean target-commit gate run, the final consolidated gate rerun, docs/release reconciliation, and `EXP-M06`; the dirty gate receipt is not a clean release checkpoint.
 - **Build wave:** `SOL HIGH-A` local API gate integration; `SOL HIGH-B` deterministic fixtures/resource/restore gate integration; `SOL HIGH-C` Playwright MCP/browser/operations and local-gate integration. No shared paths during the wave.
 - **Gates:** wait for all builder reports, then independent `LUNA MAX QA` and `LUNA MAX docs`; export `EXP-M06` only after required gates pass or every limitation is explicitly recorded.
 - **Scope:** Configure the official `@playwright/mcp` headless tool for local agent QA, check in automated browser regressions, remove any remaining `.github/workflows/ci.yml`, and establish fail-closed local Make/scripts for static checks where adopted, unit/API tests, accessibility, security/export safety, resource limits, migration, and backup/restore. The scope also includes the three additional Ingenium configuration/documentation rows recorded below.
@@ -835,14 +874,152 @@ six Ponytail commands, three profiles, valid configuration, and no-credential ch
 `.dev-venv/bin/python scripts/validate_docs.py` **Pass** for `8` categories and
 `11` topics at `2026-09-12T12:13:23Z`.
 
-### M07 - Integrated MVP Acceptance
+### M09 - Dark Mode And News
 
 - **Status:** Pending.
-- **Dependencies:** M06.
+- **Dependencies:** `M06` and its required `EXP-M06` checkpoint, which is currently pending. `M07` cannot begin its integrated acceptance until M09 and `EXP-M09` are complete.
+- **Owner/phase:** The ASTRA research-based plan is recorded here; `SOL HIGH` implements the documented scope after the dependency gate, then `LUNA MAX QA` and `LUNA MAX docs` independently verify it. `EXP-M09` is the separate export/checkpoint gate. No M09 implementation, QA/docs, or export pass is claimed here.
+- **Scope:** Add the contract-bound dashboard/API-docs dark mode and a clearly labelled selected-instrument news view. News must use the FastAPI `/api/v1` boundary, preserve instrument identity and source/as-of provenance, and represent all ten documented UI states honestly. The final UI, M08 walkthrough, and `ASTRA-FINAL` matrix must include both features.
+- **Explicitly rejected scope (ASTRA plan):** Settings database, news archive, article scraper/proxy, sentiment engine, forecast/model/probability changes, Redis or external cache, background scheduler, service worker, separate service, notification feed, full-text search, watchlist, personalized ranking, and any additional market-data provider remain out of scope unless a new evidenced requirement is approved. No current M09 task authorizes or accepts one of these additions.
+- **Planning limitation:** The separate ASTRA research first pass remains **Blocked** by the external-directory permission boundary; this M09 planning state is not a research receipt or `ASTRA-FINAL` acceptance. No implementation result is inferred.
+- **Acceptance evidence:** [ ] every row in the M09 ledger below has an independent `LUNA MAX QA`/`LUNA MAX docs` receipt; [ ] native x86-64 evidence and any local ARM64 functional/build/tool evidence are labelled native or emulated; [ ] the shipped behavior and limitations are reconciled into README, AGENTS, M07, M08, and the Astra handoff. A test file, source inspection, generated artifact, or builder claim alone is not acceptance.
+- **Repair record:** Record each M09 implementation, accessibility, stale-data, API-boundary, responsive, or documentation failure as `R-M09-<n>`; no missing evidence is silently accepted.
+
+#### M09 dark-mode contract
+
+The theme initializer is an external static asset, not inline JavaScript. A parser-blocking
+`theme.js` script must run in the document head before CSS is applied on both the dashboard
+and `/api/v1/docs`. It reads a localStorage light/dark preference, falls back to the system
+`prefers-color-scheme` value when no override exists, and reset-to-system removes the stored
+override. The first styled paint must already use the selected/system theme; a flash of the
+other theme is a failure.
+
+Theme CSS uses semantic roles for surfaces, text, borders, focus, status, and chart marks;
+whole-page inversion is not acceptable. Independent checks must establish text contrast of
+`>=4.5:1`, large text/controls/chart marks of `>=3:1`, and focus indication of `>=3:1`.
+Forced-colors behavior, reduced-motion behavior, and print output are separate acceptance
+rows. Strict CSP is unchanged: no inline script/style, `unsafe-eval`, or newly permitted
+origin is introduced. Both the dashboard and `/api/v1/docs` must receive the same preference,
+no-flash, semantic-role, contrast, and fallback/reset treatment.
+
+#### M09 news contract
+
+The route is exactly `GET /api/v1/news?symbol=<normalized>&limit=5`. `limit` defaults to
+`5` and accepts only `1`–`10`; symbols are normalized before lookup. The response and item
+schemas are closed (unknown fields are rejected), with only the documented identity,
+headline, source, as-of/publication, URL, and `cache_state` data. The browser calls only
+this local API; it never imports SQLite or calls Yahoo Finance.
+
+HTTP semantics are explicit: `200` means fresh, empty, or stale fallback; `422` means
+invalid input; `502` means provider failure; and `503` means capacity busy. An empty news
+response is valid and must never return `404`. Partial metadata is rendered honestly from
+the known fields without fabricated values. A local service unreachable condition has no
+HTTP response, and an instrument changed/request superseded condition must not render a
+response under the wrong instrument.
+
+News retrieval is a separate provider operation named `fetch_news`, not a forecast/provider
+side effect. A pinned `yfinance==1.7.0` feasibility proof is required before the news
+package/launch gate can pass. The proof must cover the pinned install and provider API shape,
+bounded retrieval, response mapping, and safe HTTPS links; a package declaration is not the
+proof. If the proof fails or is unavailable, M09 remains blocked, `R-M09-1` records the
+root cause and rerun, and no unpinned replacement is accepted.
+
+The cache is ephemeral and in memory only: a non-empty successful result is fresh for
+5 minutes and may be served as stale fallback for no more than 30 minutes; empty results
+are cached for 60 seconds; failures suppress another provider attempt for 30 seconds; no
+more than 32 symbols, 32 KiB per entry, or 1 MiB aggregate may be retained; and only one
+provider retrieval may be active at a time. The provider deadline is `<=10 s`, subject to
+the pinned feasibility proof. API responses expose only `cache_state` `miss`, `hit`, or
+`stale_fallback` as applicable.
+
+News must not change storage, backups, model inputs/results, content fingerprints, or the
+search/outcome ledger. Saved forecast reopen is provider-free and shows the immutable
+recorded result; a separately labelled current-headlines action is the only saved-result
+path that requests current news. Every displayed link must be safe HTTPS, and all browser
+application data traffic remains local-only (only the server-owned provider fetch may leave
+the app for the declared Yahoo source).
+
+The ten required news UI states are: (1) **not requested**, (2) **loading**, (3) **fresh**,
+(4) **empty**, (5) **partial metadata**, (6) **stale cached with refresh failure**, (7)
+**provider unavailable without cache**, (8) **local service unreachable**, (9) **capacity
+busy**, and (10) **instrument changed/request superseded**. The first, second, third,
+fourth, and sixth states must preserve the HTTP semantics above: fresh, empty, and stale
+fallback are `200`; invalid input is `422`; provider failure is `502`; capacity busy is
+`503`; and empty is never `404`. These are distinct walkthrough/browser rows even when
+one control leads to several of them. Cache `hit` remains a cache-behavior check under
+`M09-E6`, while saved forecast reopen/provider-free and the separately labelled
+current-headlines action remain separate interaction checks, not additional states.
+
+#### M09 lane manifest and conditional package gate
+
+The three implementation lanes are disjoint; shared interfaces are handed off rather than
+co-edited. The paths below are the exact M09 ownership boundary and are not changed by this
+documentation update:
+
+| Lane | Exact M09 paths | Handoff/acceptance boundary |
+| --- | --- | --- |
+| `SOL HIGH-A` transport/API | `src/stock_probs/api.py`, `src/stock_probs/schemas.py`, `src/stock_probs/config.py`, `tests/test_api.py` | Normalized route, closed schemas, validation/error envelope, cache/deadline configuration contract. |
+| `SOL HIGH-B` provider/domain/service | `src/stock_probs/provider.py`, `src/stock_probs/domain.py`, `src/stock_probs/service.py`, `tests/test_provider.py`, `tests/test_domain.py` | `fetch_news`, identity/provenance, cache policy, persistence exclusion, and the pinned-package feasibility proof. |
+| `SOL HIGH-C` presentation/browser | `src/stock_probs/static/theme.js`, `src/stock_probs/static/index.html`, `src/stock_probs/static/api-docs.html`, `src/stock_probs/static/app.js`, `src/stock_probs/static/app.css`, `tools/browser/playwright.config.js`, `tools/browser/tests/dashboard.spec.js` | No-flash theme/UI states, responsive/accessibility journeys, local-only network checks, and browser budgets. |
+
+`pyproject.toml` and `requirements.lock` are conditional `SOL HIGH-B` package paths: they
+may change only if the `yfinance==1.7.0` feasibility proof shows a pinned package change is
+actually required. If the current pin is sufficient, they stay unchanged. A passing
+conditional gate then includes clean install, package-resource/static-asset, loopback
+launch, and local native or explicitly emulated ARM64 functional/build/tool checks; no
+emulated ARM64 performance claim is allowed. The stock Playwright MCP entry remains hard:
+retain `./scripts/playwright-mcp.sh` with `--headless`, `--isolated`, and loopback
+host/origin allowlists.
+
+#### M09 acceptance and quality rows
+
+Each row has task ID `M09`; the `M09-E*` value is its evidence ID. Every future receipt must
+also record the exact command, environment, UTC time, commit, result, artifact/link,
+limitation, repair history, export/revision state, and named reviewer. All rows are currently
+**Pending**; this documentation update performed no implementation or M09 QA.
+
+| Evidence ID | Acceptance row | Required independent evidence | Current result |
+| --- | --- | --- | --- |
+| `M09-E1` | Parser-blocking theme bootstrap and no-flash first paint on dashboard and `/api/v1/docs`; localStorage light/dark, system fallback, and reset-to-system. | Browser trace at stored light/dark, system light/dark, missing/invalid preference, and reset; actual first-paint ordering. | **Pending**; not run. |
+| `M09-E2` | Semantic theme roles and numeric contrast: text `>=4.5:1`, large text/controls/chart marks `>=3:1`, focus `>=3:1`; no whole-page inversion. | Computed-style/contrast checks and visual/browser evidence for dashboard and API docs. | **Pending**; not run. |
+| `M09-E3` | Forced-colors, reduced-motion, print, strict CSP unchanged, and local-only browser traffic. | Forced-colors/reduced-motion/print checks, CSP/security inspection, console/network capture, and retained official MCP interaction. | **Pending**; not run. |
+| `M09-E4` | `GET /api/v1/news?symbol=<normalized>&limit=5`, normalized identity, `1`–`10` limit validation, closed schemas, and HTTP semantics: `200` fresh/empty/stale fallback, `422` invalid input, `502` provider failure, `503` capacity busy, and no `404` for an empty response. | API positive/negative matrix, unknown-field rejection, safe structured errors, explicit fresh/empty/stale/provider/capacity responses, and OpenAPI/route inspection. | **Pending**; not run. |
+| `M09-E5` | Separate `fetch_news` provider and pinned `yfinance==1.7.0` feasibility proof with `<=10 s` deadline. | Clean pinned install/package proof, fixture/provider mapping, bounded timeout, safe HTTPS URL checks, and no direct browser/provider path. | **Pending**; proof not supplied. |
+| `M09-E6` | Ephemeral cache: 5-minute fresh TTL, 30-minute stale ceiling, 60-second empty cache, 30-second failure suppression, 32 symbols, 32 KiB entry, 1 MiB aggregate, one active retrieval, and `miss`/`hit`/`stale_fallback`. | Deterministic clock/concurrency/eviction/size/failure matrix with raw timings and response bytes. | **Pending**; not run. |
+| `M09-E7` | No storage/backup/model/fingerprint/ledger changes; provider-free saved reopen; labelled current-headlines action; safe HTTPS links. | Persistence/backup/fingerprint/ledger diff checks, saved-reopen network trace, current-action trace, and URL allowlist tests. | **Pending**; not run. |
+| `M09-E8` | Ten documented news UI states: not requested; loading; fresh; empty; partial metadata; stale cached with refresh failure; provider unavailable without cache; local service unreachable; capacity busy; instrument changed/request superseded. | Actual-control browser journeys with fixture data, accessible text/transcript for every state, and the required `200`/`422`/`502`/`503`/no-`404` semantics. | **Pending**; not run. |
+| `M09-E9` | Responsive/accessibility quality across 360/390/768/1280/1440, keyboard/focus, actual assistive technology, and text equivalents. | Official headless MCP plus browser checks, separate actual screen-reader evidence, and no axe/keyboard substitution. | **Pending**; not run. |
+| `M09-E10` | Proposed M09 budgets: theme switch p95 `<=100 ms`, news fixture p95 `<=100 ms`, ten-item render p95 `<=250 ms`, news response `<=32 KiB`, provider deadline `<=10 s` subject to proof. | Fresh isolated fixture runtime, warmups/measured samples, raw traces/bytes, p50/p95/max, and one structured artifact per check; native x86 performance only. | **Pending**; not run. |
+| `M09-E11` | Static shell `<96 KiB` after M09 and justified eighth navigation request for external `theme.js`. | Re-measure every raw static asset and request on the target commit; compare with the existing `91,708`-byte baseline and retain any failure. | **Pending**; no M09 target-commit measurement. |
+| `M09-E12` | Conditional package/launch and architecture scope, exact lane ownership, Playwright retention, and M07/M08/Astra documentation handoff. | Clean package/launch/local gate, native or labelled emulated ARM64 functional/build/tool receipt, path-scope review, and reconciled root docs. | **Pending**; no M09 build or QA receipt. |
+| `M09-E13` | ASTRA rejected scope remains excluded: settings database, news archive, article scraper/proxy, sentiment engine, forecast/model/probability changes, Redis or external cache, background scheduler, service worker, separate service, notification feed, full-text search, watchlist, personalized ranking, and any additional market-data provider. | Final route/dependency/path inventory and independent absence review; any expansion must cite a newly approved evidenced requirement and task row. | **Pending**; no M09 implementation or scope audit has run. |
+
+The existing M06 measurement is a baseline only: `91,708` raw static bytes against
+`96 KiB = 98,304` bytes leaves `6,596` bytes (about `6.44 KiB`, approximately `6.6 KiB`)
+of headroom before M09. The external parser-blocking `theme.js` intentionally adds a
+justified eighth navigation request for no-flash behavior under strict CSP; both its bytes
+and request must be counted. The proposed M09 budgets are additions to, not replacements
+for, the existing M06 thresholds, and no M09 result is inferred from the dirty M06 receipt.
+
+- **Verification:** `LUNA MAX QA` independently exercises the actual theme control, both document contexts, the API boundary, all ten news states, HTTP status semantics, cache/persistence exclusions, rejected-scope absence, responsive/accessibility behavior, and quality budgets; `LUNA MAX docs` consumes that completed record and reconciles the four root documents. Every failed, skipped, unavailable, stale, or unconfirmed row receives a unique `R-M09-<n>` repair and affected-check rerun.
+- **Post-milestone gate:** After independent M09 QA/docs acceptance, `EXP-M09` must overwrite and review the full-session `SESSION-EXPORT.md`, complete secret review, commit and push the reviewed export, and verify the exact remote revision before M07 starts. No `EXP-M09` evidence is supplied by this documentation update.
+
+### M07 - Integrated MVP Acceptance
+
+- **Status:** In progress.
+- **Dependencies:** M06, M09, and their required `EXP-M06`/`EXP-M09` checkpoints, currently pending.
 - **Agents/sequence:** `LUNA MAX QA` and `LUNA MAX docs` perform the integrated gates after the build handoff. `EXP-M07` follows accepted M07 evidence; `ASTRA-FINAL` is later, after M08. Repairs use `R-M07-<n>` or `R-ASTRA-<n>` as applicable.
-- **Evidence state:** No integrated acceptance or Astra evidence is recorded; M07 remains pending.
+- **Evidence state:** M07 integration is in progress, not accepted or released. `R-M07-1` is the profile-count test with repair in flight. `R-M07-2` records Ponytail review availability; the retained report `test-results/ponytail-m06-m07-boundary.txt` records findings only and closure is pending, so its result is **Unavailable** and the row remains **Pending**. `R-M07-3` and `R-M07-4` have supplied repair evidence recorded below; no integrated acceptance or Astra evidence is recorded.
 - **Scope:** Run the complete user journey and release review locally on native x86-64 plus local native or labelled emulated ARM64, reconcile all task evidence, and publish the supported local operation and limitations. No physical ARM64 performance claim is permitted without hardware.
-- **Acceptance evidence:** [ ] a user looks up a company name and confirms stock/ETF instrument identity, then receives both forecast horizons; [ ] direction/threshold probabilities, conditional gain/loss, 50/80/95 return and price intervals, evaluation metrics, archive limitations, and provenance are traceable to immutable inputs/results; [ ] saved forecasts reopen unchanged while historical cutoffs are labelled fresh analyses; [ ] historical price/return charts have text/table equivalents; [ ] successful, failed, and repeated searches appear in searchable history with no automatic query-history expiry; [ ] outcomes can be appended without changing forecasts; [ ] CSV and JSON export is verified; [ ] due/pre-migration backup, retention/disk limits, cross-architecture restore, trust-key transfer/lifecycle, and missing/wrong-key fail-closed behavior are verified; [ ] responsive/accessibility visual gates pass at 360/390/768/1280/1440 with Signal Ledger direction, no overlap/overflow, reduced motion, WCAG AA, keyboard, and actual assistive-technology evidence; [ ] every M06 native-x86 performance/UI row has its own independently reviewed structured artifact; [ ] local loopback security, MCP/browser, comments, resource targets, and local fail-closed Make/scripts all pass; [ ] README and roadmap state the shipped scope honestly; [ ] ARM64 functional/build/tool checks identify native or emulated environment; [ ] physical ARM64 low-resource performance is either measured on local native hardware or recorded `Unavailable`, which prevents a full low-resource ARM64 claim; [ ] optional dark mode/news remain out of contract and options/public hosting remain out of scope.
+- **Current M07 repair/availability register:**
+
+  | Task ID | Status | Requirement/check | Evidence and current result | Limitation/next gate |
+  | --- | --- | --- | --- | --- |
+  | `R-M07-1` | **In progress** | Profile-count test | Repair is in flight; command, session, environment, UTC, commit, artifact, and reviewer were not supplied. | No pass is inferred; independent retest remains required. |
+  | `R-M07-2` | **Pending** | Ponytail review availability | Retained report `test-results/ponytail-m06-m07-boundary.txt` records findings only; closure is pending. Availability evidence, command, environment, UTC, commit, artifact, and reviewer were not supplied. | **Unavailable**; findings-only evidence does not close the affected pre-QA boundary and cannot be substituted by implementation claims. |
+  | `R-M07-3` | **Completed** | Repair stale three-profile assertions in `tests/test_ponytail_tooling.py` | `R-M07-3-E1`: assertions were updated from three profiles to four profiles; supplied test evidence reports `278` non-live tests pass. Exact command, session, environment, UTC, commit, artifact, and reviewer were not supplied. | **Pass as supplied repair/test evidence**; independent receipt metadata and broader M07 acceptance are not claimed. |
+  | `R-M07-4` | **Completed** | Apply two retained Ponytail findings in `tests/test_config_quality.py` | `R-M07-4-E1`: both retained findings were applied; supplied diff evidence reports a net `-1` line. Exact command, session, environment, UTC, commit, artifact, and reviewer were not supplied. | **Completed for the supplied repair scope**; this is Ponytail/repair evidence only, with no independent correctness or M07 acceptance pass inferred. |
+- **Acceptance evidence:** [ ] a user looks up a company name and confirms stock/ETF instrument identity, then receives both forecast horizons; [ ] direction/threshold probabilities, conditional gain/loss, 50/80/95 return and price intervals, evaluation metrics, archive limitations, and provenance are traceable to immutable inputs/results; [ ] saved forecasts reopen unchanged while historical cutoffs are labelled fresh analyses; [ ] historical price/return charts have text/table equivalents; [ ] successful, failed, and repeated searches appear in searchable history with no automatic query-history expiry; [ ] outcomes can be appended without changing forecasts; [ ] CSV and JSON export is verified; [ ] due/pre-migration backup, retention/disk limits, cross-architecture restore, trust-key transfer/lifecycle, and missing/wrong-key fail-closed behavior are verified; [ ] responsive/accessibility visual gates pass at 360/390/768/1280/1440 with Signal Ledger direction, no overlap/overflow, reduced motion, WCAG AA, keyboard, and actual assistive-technology evidence; [ ] every M06 native-x86 performance/UI row has its own independently reviewed structured artifact; [ ] local loopback security, MCP/browser, comments, resource targets, and local fail-closed Make/scripts all pass; [ ] README and roadmap state the shipped scope honestly; [ ] ARM64 functional/build/tool checks identify native or emulated environment; [ ] physical ARM64 low-resource performance is either measured on local native hardware or recorded `Unavailable`, which prevents a full low-resource ARM64 claim; [ ] M09 dark mode is user-selectable, accessible, responsive, and included in the integrated UI; [ ] M09 selected-instrument news is clearly labelled, API-served, provenance-bearing, and includes honest loading/empty/stale/failure states; [ ] options trading and public hosting remain out of scope.
 - **Verification:** [ ] local clean package install, `make check`, loopback, Node/Chromium, official MCP application interaction, and desktop/mobile end-to-end journey on native x86-64; [ ] the same functional/build/tool journey on local native ARM64 or labelled QEMU/OCI emulation; [ ] restore artifacts in both directions with architecture labels; [ ] security and separate keyboard/actual assistive-technology sign-off; [ ] independent review of every M06 performance/UI artifact and its existing-versus-proposed threshold classification; [ ] native x86 memory/latency/idle-CPU evidence and explicit ARM64 physical-performance limitation when hardware is unavailable; [ ] coordinator review of every dependency and evidence field.
 - **Repair record:** Record each failed release check as `R-M07-<n>` and keep M07 pending until repaired and rerun.
 - **Post-milestone gate:** `EXP-M07` follows accepted M07 evidence and records its local Git checkpoint. M08 is the final roadmap milestone before `ASTRA-FINAL`; `EXP-FINAL` is a separate final export/commit/push/Git-revision gate after Astra repairs and the required final learning synthesis.
@@ -861,7 +1038,7 @@ six Ponytail commands, three profiles, valid configuration, and no-credential ch
   - [ ] direction, threshold probabilities, conditional gain/loss, return/price intervals, provenance, stale data, and provider limitations are explained without treating probabilities as guarantees;
   - [ ] stale, provider failure, validation failure, insufficient-data, and repeated-search states are shown honestly;
   - [ ] history filters show successful, failed, and repeated searches; saved reopen is contrasted with separately labelled fresh historical reconstruction;
-  - [ ] CSV and JSON export, append-only outcomes, and backup/restore/status controls are demonstrated when those controls are exposed in the UI; an unexposed feature is labelled `Not exposed in UI`, not fabricated;
+  - [ ] CSV and JSON export, append-only outcomes, backup/restore/status controls, M09 dark mode, and the ten selected-instrument news states—**not requested**, **loading**, **fresh**, **empty**, **partial metadata**, **stale cached with refresh failure**, **provider unavailable without cache**, **local service unreachable**, **capacity busy**, and **instrument changed/request superseded**—are demonstrated when those controls/features are exposed in the UI; an unexposed feature is labelled `Not exposed in UI`, not fabricated;
   - [ ] accessibility names/focus, keyboard operation, reduced-motion behavior, mobile layout, and desktop/mobile responsive use are demonstrated against actual controls;
   - [ ] every frame/image has alt text or a transcript/caption, every instruction has a step number, and no secret or local path appears;
   - [ ] the generation command, fixture identity, app revision, browser-tool version/context, artifact size, and limitations are recorded;
@@ -872,11 +1049,34 @@ six Ponytail commands, three profiles, valid configuration, and no-credential ch
 - **Astra input:** `ASTRA-FINAL` must independently inspect the tracked artifact, transcript/alt text, generation evidence, actual-control browser evidence, and retrospective, then create separate rows for every feature, endpoint, control, UI state, asset, documentation visual, walkthrough frame/segment, media item, static asset, journey, and persistence effect. Every row must be evaluated for requirements, aesthetics, mobile/responsive behavior, accessibility, and measured performance.
 - **Post-milestone gate:** Do not create a green `EXP-M08` from the artifact alone. After M08 QA/docs and Astra review, repair and retest all gaps until the Astra result is `Accepted`; then `EXP-M08` records the reviewed walkthrough/export revision and local Git checkpoint. After all roadmap and Astra repairs, complete the final learning synthesis before `EXP-FINAL`.
 
+## Final operational item: selective Ingenium pipeline adoption
+
+- **Status:** `Pending`; this is the ASTRA-plan operational follow-up, not a new
+  milestone or acceptance ID, and no adoption result is claimed.
+- **Plan:** Adopt Ingenium's agent-pipeline patterns selectively while retaining the
+  six-agent orchestration, independent QA/docs order, the read-only Ponytail boundary,
+  and commit/export gates. Add the simplest no-plugin subagent-count control through the
+  valid `agent.options` field on the orchestrator profile, which the orchestrator reads;
+  the schema has no native concurrency cap, and `subagent_depth` controls nesting only.
+- **Required controls:** Audit `.gitignore`, align `AGENTS.md` principles, retain the
+  stock Playwright MCP entry and its loopback allowlists, and require a parent-process
+  restart plus independent post-restart validation before any profile control affects a
+  gate. This documentation-only reconciliation did not edit `opencode.json`, `.gitignore`,
+  profiles, local gates, or skills, and claims no audit or restart pass.
+- **ASTRA profile:** The ASTRA agent profile now uses `variant: max`; parent-process
+  restart and independent post-restart validation are **Pending**, so no gate effect or
+  validation pass is claimed.
+- **ASTRA research state:** The first pass is **Blocked** by the external-directory
+  permission boundary. The gitignored snapshot at `test-results/ingenium-snapshot` enables
+  the re-run; no re-run result is claimed.
+- This follow-up does not alter the canonical `ASTRA-FINAL` -> `EXP-M08` -> final learning
+  synthesis -> `EXP-FINAL` order, and optional `NOTIFY-FINAL` remains separate and last.
+
 ## Evidence Record Format
 
 Every implementation task must maintain these fields in its task record or linked review:
 
-- **Task ID:** the exact `M00`–`M08`, `R-M##-<n>`, `EXP-M00`–`EXP-M08`, `ASTRA-FINAL`, `R-ASTRA-<n>`, or `EXP-FINAL` identifier; do not replace it with a generic phase name.
+- **Task ID:** the exact `M00`–`M09`, `R-M##-<n>`, `EXP-M00`–`EXP-M09`, `ASTRA-FINAL`, `R-ASTRA-<n>`, or `EXP-FINAL` identifier; do not replace it with a generic phase name.
 - **Status:** exactly `Pending`, `In progress`, `Blocked`, or `Completed`.
 - **Owner/phase:** builder lane, QA gate, docs gate, Astra review, export, or Git remote verification owner.
 - **Dependencies verified:** completed task IDs plus the evidence references that prove each dependency.
@@ -905,14 +1105,14 @@ parent restart plus independent validation before use.
 4. `LUNA MAX QA` and `LUNA MAX docs` run their independent gates after the build wait and Ponytail review; QA denies repair/delegation conceptually and neither gate masks a missing result.
 5. The coordinator alone integrates, updates status/evidence, and performs git operations. It routes only reproducible blocking findings with an exact task ID to `SOL HIGH`; if any check fails, the task remains pending, in progress, or blocked, and the root cause is repaired rather than the check weakened.
 6. QA reruns the failed check and affected regression set. Documentation records the new evidence, limitation, exact timestamp/commit, and any skipped or unavailable result.
-7. The coordinator marks a milestone completed for its declared scope only when every acceptance field in that scope, independent QA/docs review, and reviewer field pass. Full milestone/checkpoint acceptance additionally requires the matching `EXP-M00`–`EXP-M08` export, secret review, push, and exact Git remote revision verification. An explicitly deferred or unavailable later-release field, or an `In progress` export gate for a milestone marked **Completed for exercised scope**, remains visible, is not counted as a pass, and blocks final acceptance. The supplied x64 SHA context is not dual-architecture or `EXP-M00` proof.
+7. The coordinator marks a milestone completed for its declared scope only when every acceptance field in that scope, independent QA/docs review, and reviewer field pass. Full milestone/checkpoint acceptance additionally requires the matching `EXP-M00`–`EXP-M09` export, secret review, push, and exact Git remote revision verification. An explicitly deferred or unavailable later-release field, or an `In progress` export gate for a milestone marked **Completed for exercised scope**, remains visible, is not counted as a pass, and blocks final acceptance. The supplied x64 SHA context is not dual-architecture or `EXP-M00` proof.
 8. After M08, `ASTRA-FINAL` must review the complete feature/API/UI/control/state/asset/journey/persistence matrix plus the walkthrough, media, static assets, documentation visuals, and retrospective. Any gap creates `R-ASTRA-<n>` and requires SOL repair, QA rerun, Astra retest, and explicit `Accepted` before `EXP-M08`; the final deep chat/run skill synthesis must then complete before `EXP-FINAL`.
 
 ## Final Definition Of Done
 
 The MVP is done only when all of the following are true:
 
-- M00 through M08 have explicit statuses and evidence, with no implementation milestone marked complete by assertion alone.
+- M00 through M09 have explicit statuses and evidence, with no implementation milestone marked complete by assertion alone.
 - A user can identify a company and instrument, select Yahoo Finance stocks and ETFs, and receive close-to-close and latest-completed-5-minute-bar-to-close forecasts with clear session/bar semantics.
 - Results contain explicit up/down/unchanged and threshold probabilities, conditional gain/loss, 50/80/95 return and price intervals, walk-forward/baseline/calibration/coverage/rare-event evidence, and source/as-of/stale/error/model/version/input/output provenance.
 - Every submitted successful, failed, and repeated search is retained, history is searchable through `/api/v1`, and forecast inputs/results/outcomes are immutable or append-only as specified.
@@ -920,12 +1120,13 @@ The MVP is done only when all of the following are true:
 - Backup artifacts and restores are verified through integrity, compatibility, representative-data, non-destructive promotion, due/pre-migration, retention/disk, trust-key lifecycle, and both-direction cross-architecture checks; missing/wrong keys fail closed and query history is not silently expired.
 - The frontend uses FastAPI `/api/v1` for all application data and has no direct SQLite access.
 - The dashboard preserves Signal Ledger direction at 360/390/768/1280/1440 without overlap/overflow, with tabular numeric hierarchy, charts/tables, reduced motion, WCAG AA, keyboard, actual assistive technology, and loading/empty/stale/repeated/failure behavior.
+- Dark mode is user-selectable and accessible across the dashboard, charts, tables, controls, focus states, and all required loading/empty/success/stale/failure states; selected-instrument news is clearly labelled, API-served, provenance-bearing, and honest about loading, empty, stale, and failure states.
 - The default deployment is secure loopback and bounded for low-resource Linux x86-64 and ARM64. M06 independently passes every structured native-x86 performance/UI row: fresh isolated fixture runtime, five warmups plus at least 30 samples, process RSS `<500 MiB`, fixture/cache-hit forecast p95 `<1 s`, 100,000-history p95 `<250 ms` with at least 10 repetitions and index plan, proposed 60-second idle CPU `<=1 core-percent`, concurrency elapsed, readiness `20 s`, package/build baseline, backup/restore bounds, static shell/assets `<96 KiB`, designated response `<8 KiB`, and browser budgets. Native x86 resource targets are measured locally; ARM64 physical low-resource performance is claimed only when local native ARM64 hardware supplies evidence, never from emulation or an original-laptop assumption. Any missing field remains unavailable or blocking.
 - The official headless `@playwright/mcp` supports local agent QA, automated browser regressions are checked in, and local Make/scripts fail closed on required regressions.
 - Every implementation boundary has a read-only `/ponytail-review` record in the exact required format before QA; it is overengineering-only and never substitutes for correctness, security, accessibility, or performance evidence. Profile/local-gate changes have parent-restart and independent-validation receipts.
 - Code comments explain non-obvious behavior, the supported local workflow is documented, and `README.md` and `AGENTS.md` are reconciled with the evidence actually shipped.
 - M08 produces a tracked, bounded, accessible instructional walkthrough from deterministic fixtures and the real local app, with actual-control browser evidence, desktop/mobile instructions, and a completed prompt/approved-plan retrospective. Any gap is repaired before Astra.
 - `ASTRA-FINAL` is independently recorded as `Accepted` after separate rows for every requirement, feature, endpoint, control, UI state, asset, documentation visual, walkthrough frame/segment, media item, static asset, journey, and persistence effect have passed requirements, aesthetics, mobile/responsive, accessibility, and measured-performance evaluation, including every `R-ASTRA-<n>` retest. Astra suggests only; SOL implements and QA retests.
-- `EXP-M00` through `EXP-M08` and `EXP-FINAL` each have a reviewed full-session `SESSION-EXPORT.md`, recorded export revision, secret review, commit, push, exact Git remote revision verification, and no hidden unavailable or failed field; the final learning synthesis is recorded before `EXP-FINAL`.
+- `EXP-M00` through `EXP-M09` and `EXP-FINAL` each have a reviewed full-session `SESSION-EXPORT.md`, recorded export revision, secret review, commit, push, exact Git remote revision verification, and no hidden unavailable or failed field; the final learning synthesis is recorded before `EXP-FINAL`.
 - The final learning synthesis deeply analyzes sanitized chat/run evidence, creates or changes only justified reusable Stock Probability skills through validated/indexed `skill-maintenance` work, and records observations before `EXP-FINAL`; the authored documentation taxonomy and project documentation skill are implemented, and the post-restart validation receipt is session `ses_f6aa32d33ffeAvmiFK8K7Cd8EI` at `2026-09-12T11:35:58Z`–`2026-09-12T11:36:02Z`, native x86_64/OpenCode `1.18.30`, dirty commit `59534faf1cdce493bc51a11d4adbea5e5b2d6892`, with its listed checks passed. `.dev-venv/bin/python scripts/validate_docs.py` passed `8` categories and `11` topics at `2026-09-12T12:13:23Z`. This receipt does not close M06 or any export gate.
-- Optional dark mode/news are not release requirements, and options/public hosting are outside this local-app contract.
+- Dark mode and selected-instrument news are release requirements owned by M09; options trading and public hosting are outside this local-app contract.

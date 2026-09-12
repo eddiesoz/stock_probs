@@ -126,17 +126,41 @@ def test_official_playwright_mcp_is_pinned_headless_and_isolated():
     assert "playwright-mcp" in launcher
 
 
-def test_sol_and_luna_profiles_preserve_ownership_boundaries():
-    sol = (ROOT / ".opencode/agent/sol-build.md").read_text()
-    qa = (ROOT / ".opencode/agent/luna-qa.md").read_text()
-    docs = (ROOT / ".opencode/agent/luna-docs.md").read_text()
+def test_agent_profiles_preserve_models_and_ownership_boundaries():
+    expected = {
+        "sol-build.md": ("openai/gpt-5.6-sol", "high"),
+        "luna-qa.md": ("openai/gpt-5.6-luna", "max"),
+        "luna-docs.md": ("openai/gpt-5.6-luna", "max"),
+        "astra.md": ("openai/gpt-6-astra", None),
+    }
+    profiles = {path.name: path.read_text() for path in (ROOT / ".opencode/agent").glob("*.md")}
 
-    assert "model: openai/gpt-5.6-sol" in sol and "variant: high" in sol
-    assert "model: openai/gpt-5.6-luna" in qa and "variant: max" in qa
+    assert set(profiles) == set(expected)
+    for name, (model, variant) in expected.items():
+        assert f"model: {model}" in profiles[name]
+        if variant:
+            assert f"variant: {variant}" in profiles[name]
+
+    sol = profiles["sol-build.md"]
+    qa = profiles["luna-qa.md"]
+    docs = profiles["luna-docs.md"]
+    astra = profiles["astra.md"]
     assert "# SOL HIGH build" in sol and "# LUNA MAX QA" in qa and "# LUNA MAX docs" in docs
     assert '"tests/**": allow' in qa
     assert '"MVP-PLAN.md": allow' in docs
     assert "burry_env/**\": deny" in sol
+    assert re.findall(r"^mode: (.+)$", astra, re.MULTILINE) == ["subagent"]
+    assert 'permission:\n  "*": deny\n  read: allow' in astra
+    assert astra.split("  edit:\n", 1)[1].split("  bash:\n", 1)[0] == '    "*": deny\n'
+    assert astra.split("  bash:\n", 1)[1].split("  task:\n", 1)[0] == """    "*": deny
+    "git diff*": allow
+    "git log*": allow
+    "git ls-files*": allow
+    "git rev-parse*": allow
+    "git show*": allow
+    "git status*": allow
+"""
+    assert astra.split("  task:\n", 1)[1].split("---", 1)[0] == '    "*": deny\n'
 
 
 def test_local_gate_and_frontend_fail_closed_on_required_boundaries():

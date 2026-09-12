@@ -57,8 +57,18 @@ As of 2026-09-12:
   isolated-port serve readiness; artifact
   `/tmp/opencode/stock-probs-m05-cli-20260912T114105Z/M05-packaged-cli-receipt.json`,
   reviewer `LUNA MAX QA`. Commands and commit were not supplied; no values are
-  inferred. `EXP-M05` remains **Pending** for its separate export, secret-review,
-  local commit, push, and exact remote-verification checkpoint.
+  inferred.
+- `EXP-M05` is **Completed** at commit
+  `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`. The export audit receipt reports
+  `233` messages, `1,387` parts, `432` tool parts, `185` task outputs, `1,116,276`
+  bytes, `32,915` lines, SHA-256
+  `ce5f025d41c4757dcf95a336555ce0fdd46ddcf22d1e9bce68d2d8fb5328c181`, and
+  `3,090` redaction markers. Secret review found zero matches across all canonical
+  secret patterns. The commit parent is
+  `59534faf1cdce493bc51a11d4adbea5e5b2d6892`, commit UTC is
+  `2026-09-12T12:41:32Z`, the message is `Add verified backup operations`, and
+  `origin/main` matched the exact commit; reviewer: `LUNA MAX QA`. No export session
+  ID, command, or additional check is inferred.
 - M05 automation is implemented as builder evidence only: migrate creates a verified
   pre-migration backup; serve performs a fail-closed due check using
   `STOCK_PROBS_BACKUP_INTERVAL_SECONDS` (default `86400`, bounds `60`–`2678400`);
@@ -69,13 +79,26 @@ As of 2026-09-12:
 - The M08 capture harness is prepared only: it supplied `20` annotated screenshots and
   manifest SHA-256 `f9fef2b2db0a806cc47ff1db82e1e895f4dd4803425c0cf74426f5fa5a12dd5d`.
   This is no M08 acceptance, walkthrough QA, Astra result, or `EXP-M08` checkpoint.
+  The eventual walkthrough must include the M09 dark-mode and selected-instrument news
+  controls and states; no such walkthrough evidence is claimed.
 - `M06` is **In progress**, not released: `R-M06-2`, `R-M06-3`, `R-M06-4`,
   `R-M06-11`, and `R-M06-16`–`R-M06-20` have supplied independent **Pass** results;
   `R-M06-11` passed twice, each with three hash-stable native runs and exact recomputation.
   `R-M06-55` also passed the scoped M06 gate, but the final consolidated gate rerun,
-  docs/release reconciliation, and `EXP-M06` checkpoint remain pending. Actual
-  screen-reader evidence is **Unavailable**; `M07`, `M08`, `ASTRA-FINAL`, and
-  `EXP-FINAL` remain **Pending**.
+  clean target-commit gate run, docs/release reconciliation, and `EXP-M06` checkpoint
+  remain pending. Actual screen-reader evidence is **Unavailable**.
+- `M09` is **Pending**. Its ASTRA research-based contract is recorded below and in the
+  root plan/roadmap; `SOL HIGH` implementation, independent QA/docs, and `EXP-M09` remain
+  future gates. No M09 implementation or acceptance result is claimed.
+- `M07` is **In progress**, not released. `R-M07-1` is the profile-count test with
+  repair in flight and no pass evidence supplied. `R-M07-2` is the Ponytail review
+  availability row; retained report `test-results/ponytail-m06-m07-boundary.txt`
+  records findings only and closure is pending, so its result remains **Unavailable**
+  and the row remains **Pending**. `R-M07-3` records stale three-profile assertions in
+  `tests/test_ponytail_tooling.py` updated to four profiles, with supplied evidence of
+  `278` non-live tests passing; `R-M07-4` records two retained Ponytail findings applied
+  in `tests/test_config_quality.py` with a net `-1` line.
+  `EXP-M07`, `M08`, `ASTRA-FINAL`, and `EXP-FINAL` remain **Pending**.
 - `R-M06-55` ran on dirty native x86_64 Linux at revision
   `59534faf1cdce493bc51a11d4adbea5e5b2d6892` from `2026-09-12T04:52:33Z` to
   `2026-09-12T05:03:44Z`: `264` tests, `89.38%` coverage, 32 browser passes plus
@@ -116,11 +139,70 @@ reviewers, and checkpoint limitations, remain in the root plan and roadmap.
   label historical-cutoff reconstruction as a new analysis; append outcomes and corrections.
 - Serve browser data through FastAPI `/api/v1`; the browser never opens SQLite, issues
   SQL, receives a database path, or calls Yahoo Finance directly.
+- Retain the stock Playwright MCP entry in `opencode.json`: it invokes
+  `./scripts/playwright-mcp.sh` with `--headless`, `--isolated`, and loopback host/origin
+  allowlists. Selective Ingenium pipeline adoption must never replace this browser
+  automation with Ingenium browser automation.
+- Provide a user-selectable accessible dark mode and clearly labelled selected-instrument
+  news through FastAPI `/api/v1`, including source/as-of information and honest loading,
+  empty, stale, and failure states. M09 owns their implementation and QA/docs. The ten
+  news UI states are **not requested**, **loading**, **fresh**, **empty**, **partial metadata**,
+  **stale cached with refresh failure**, **provider unavailable without cache**, **local
+  service unreachable**, **capacity busy**, and **instrument changed/request superseded**.
+  The route returns `200` for fresh, empty, or stale fallback, `422` for invalid input,
+  `502` for provider failure, and `503` for capacity busy; an empty news response is never
+  `404`.
 - Provide searchable history, CSV/JSON export, verified backup/restore, responsive
   accessible UI, secure loopback defaults, bounded operation, and local fail-closed gates.
 - Keep the smallest contract that evidence requires: absent a demonstrated need, do not
   add auth, MFA, a gateway, a multi-service split, dual-database restore, direct-route SQL,
   or replica rate limiting. A read-only integrity diagnostic is optional.
+
+### M09 ASTRA contract summary (Pending)
+
+M09 starts only after `EXP-M06` and must finish, including `EXP-M09`, before integrated
+`M07` acceptance. The detailed rows in [MVP-PLAN.md](MVP-PLAN.md) are authoritative; this
+summary is a contract, not implementation evidence.
+
+- **Theme:** an external parser-blocking `theme.js` initializer is loaded before CSS on
+  the dashboard and `/api/v1/docs`. It reads a localStorage light/dark preference, falls
+  back to the system preference, and supports reset-to-system by removing the override.
+  The first paint must not flash the wrong theme. Semantic color roles replace whole-page
+  inversion. Text contrast is `>=4.5:1`; large text, controls, and chart marks are
+  `>=3:1`; focus indicators are `>=3:1`. Forced-colors, reduced-motion, print, and
+  strict-CSP behavior are separately tested; CSP is not loosened with inline script/style
+  or new origins.
+- **News:** `GET /api/v1/news?symbol=<normalized>&limit=5`, with `limit` from `1` to
+  `10` and closed response/item schemas. A separate server-side provider `fetch_news`
+  uses pinned `yfinance==1.7.0` only after its feasibility proof passes. Its ephemeral
+  in-memory cache has a 5-minute fresh TTL, 30-minute stale ceiling, 60-second empty
+  cache, 30-second failure suppression, at most 32 symbols, 32 KiB per entry, 1 MiB
+  aggregate, and one active retrieval. Responses expose `cache_state` `miss`, `hit`, or
+  `stale_fallback`; `200` means fresh, empty, or stale fallback, `422` means invalid input,
+  `502` means provider failure, and `503` means capacity busy; an empty response never
+  produces `404`. No storage, backup, model, fingerprint, or ledger changes are allowed.
+  Saved forecasts reopen provider-free; a separately labelled current-headlines action
+  fetches current data. Links are safe HTTPS links and browser traffic remains local-only.
+- **Ten required news states:** **not requested**, **loading**, **fresh**, **empty**, **partial
+  metadata**, **stale cached with refresh failure**, **provider unavailable without cache**,
+  **local service unreachable**, **capacity busy**, and **instrument changed/request
+  superseded**. Cache `hit` remains a cache-behavior check, while saved-reopen/provider-free
+  and the separately labelled current-headlines action remain separate interaction checks;
+  neither adds a UI state. The walkthrough and final Astra matrix must cover each state.
+- **Explicitly rejected scope:** settings database, news archive, article scraper/proxy,
+  sentiment engine, forecast/model/probability changes, Redis or external cache, background
+  scheduler, service worker, separate service, notification feed, full-text search,
+  watchlist, personalized ranking, and any additional market-data provider remain out of
+  scope unless a new evidenced requirement is approved.
+- **Budgets and ownership:** the measured `91,708`-byte static baseline leaves about
+  `6.6 KiB` below the `96 KiB` shell target; the justified external `theme.js` is the
+  eighth navigation request. Proposed M09 budgets are theme switch p95 `<=100 ms`, news
+  fixture p95 `<=100 ms`, ten-item render p95 `<=250 ms`, news response `<=32 KiB`, and a
+  provider deadline `<=10 s` subject to the feasibility proof. `SOL HIGH-A` owns
+  transport/API paths, `SOL HIGH-B` owns provider/domain/service paths and the conditional
+  pinned-package proof, and `SOL HIGH-C` owns presentation/browser paths. Exact paths and
+  the package/launch gate are in the plan; the retained Playwright MCP entry remains
+  mandatory.
 
 Forecasts are informational research outputs, not investment advice or a guarantee.
 
@@ -155,13 +237,16 @@ local native hardware when available; otherwise they may use local QEMU/OCI and 
 labelled **emulated ARM64**. Emulation can verify packaging, runtime, functional, build,
 and tool behavior, but cannot prove physical ARM64 performance.
 
-There is no hosted pipeline acceptance path. A failed, skipped, unavailable, stale, or
+There is no hosted or external pipeline acceptance path. A failed, skipped, unavailable, stale, or
 connectivity-blocked check remains visible and requires a uniquely recorded repair and
-rerun. The exact task vocabulary is `M00`–`M08`, `R-M##-<n>`, `EXP-M00`–`EXP-M08`,
+rerun. The exact task vocabulary is `M00`–`M09`, `R-M##-<n>`, `EXP-M00`–`EXP-M09`,
 `ASTRA-FINAL`, `R-ASTRA-<n>`, and `EXP-FINAL`.
 
 Orchestration allows at most six concurrent agents. Build waves use up to six declared,
 disjoint lanes with A/B/C as the base roles; additional lanes require explicit ownership.
+Any future selective Ingenium pipeline adoption is an operational follow-up only: it keeps
+the six-agent orchestration and commit/export gates, uses the stock Playwright MCP entry,
+and cannot create a hosted acceptance path.
 
 Every implementation boundary is followed, before independent QA, by a read-only
 `/ponytail-review`. It examines overengineering only. Record either
@@ -180,10 +265,15 @@ The canonical order is:
 
 ```text
 R-M00-1 → EXP-M00 → M01 → EXP-M01 → M02 → EXP-M02 → M03 → EXP-M03
-→ M04 → EXP-M04 → M05/EXP-M05 → M06/EXP-M06 → M07/EXP-M07
+→ M04 → EXP-M04 → M05/EXP-M05 → M06/EXP-M06 → M09/EXP-M09
+→ M07/EXP-M07
 → M08 → ASTRA-FINAL → R-ASTRA-<n> SOL repairs and Astra reevaluation
 → EXP-M08 → final learning synthesis → EXP-FINAL → optional NOTIFY-FINAL
 ```
+
+M09's dark-mode and selected-instrument news requirements therefore flow into the
+integrated UI, walkthrough, and `ASTRA-FINAL` review; no M09 implementation or QA result
+is claimed yet.
 
 `ASTRA-FINAL`, its `R-ASTRA-<n>` repairs/retests, `EXP-M08`, the final learning
 synthesis, and `EXP-FINAL` form one combined second-last operational loop, not a new
@@ -199,6 +289,29 @@ The final learning synthesis deeply analyzes sanitized chat/run evidence and use
 `skill-maintenance` only for justified reusable Stock Probability skills, validates and
 indexes any such skill, and logs observations; no such run is claimed now.
 Optional notification is last and cannot repair a missing gate.
+
+## Final operational item: selective Ingenium pipeline adoption
+
+- **Status:** `Pending`; this is an operational follow-up, not a new milestone or
+  acceptance ID, and no adoption result is claimed.
+- **Plan:** Adopt Ingenium's agent-pipeline patterns selectively while retaining the
+  six-agent orchestration, independent QA/docs order, Ponytail boundary, and commit/export
+  gates. Add the simplest no-plugin subagent-count control through the valid `agent.options`
+  field on the orchestrator profile, which the orchestrator reads; the schema has no native
+  concurrency cap, and `subagent_depth` controls nesting only.
+- **Required controls:** audit `.gitignore`, align `AGENTS.md` principles without
+  weakening the local evidence contract, retain the stock Playwright MCP command and
+  loopback allowlists, then require a parent-process restart and independent post-restart
+  validation before the profile control affects any gate. This docs reconciliation edits
+  neither `opencode.json` nor `.gitignore` and claims no audit or restart pass.
+- **ASTRA profile:** the ASTRA agent profile now uses `variant: max`; parent-process
+  restart and independent post-restart validation are **Pending**, so no gate effect or
+  validation pass is claimed.
+- **ASTRA research state:** the first pass is **Blocked** by the external-directory
+  permission boundary. The gitignored snapshot at `test-results/ingenium-snapshot` enables
+  a re-run; no re-run result is claimed.
+- This follow-up does not alter the canonical `ASTRA-FINAL` → `EXP-M08` → final learning
+  synthesis → `EXP-FINAL` order, and optional `NOTIFY-FINAL` remains separate and last.
 
 ## Documentation boundary
 

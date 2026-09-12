@@ -71,9 +71,14 @@ def test_project_registers_one_local_plugin_and_preserves_playwright():
     assert "/home/brajam/repos/ingenium" not in json.dumps(config)
 
 
-def test_profiles_are_three_deny_default_roles_without_qa_repair_or_git_mutation():
+def test_profiles_are_four_deny_default_roles_without_qa_repair_or_git_mutation():
     profiles = sorted((ROOT / ".opencode/agent").glob("*.md"))
-    assert [path.name for path in profiles] == ["luna-docs.md", "luna-qa.md", "sol-build.md"]
+    assert [path.name for path in profiles] == [
+        "astra.md",
+        "luna-docs.md",
+        "luna-qa.md",
+        "sol-build.md",
+    ]
     for profile in profiles:
         text = profile.read_text()
         assert '  "*": deny' in text
@@ -134,7 +139,15 @@ def test_opencode_11830_loads_valid_config_in_isolated_home(tmp_path):
     assert str(PONYTAIL / "skills") in config["skills"]["paths"]
     assert config["plugin"] == [PONYTAIL.joinpath(".opencode/plugins/ponytail.mjs").as_uri()]
     agents = config["agent"]
-    assert set(agents) == {"LUNA MAX QA", "LUNA MAX docs", "SOL HIGH build"}
+    assert {
+        name: (agent["model"], agent.get("variant"), agent["mode"])
+        for name, agent in agents.items()
+    } == {
+        "ASTRA": ("openai/gpt-6-astra", "max", "subagent"),
+        "LUNA MAX QA": ("openai/gpt-5.6-luna", "max", "subagent"),
+        "LUNA MAX docs": ("openai/gpt-5.6-luna", "max", "subagent"),
+        "SOL HIGH build": ("openai/gpt-5.6-sol", "high", "subagent"),
+    }
     assert all(agent["permission"]["*"] == "deny" for agent in agents.values())
     assert agents["LUNA MAX QA"]["mode"] == "subagent"
     review_permission = agents["LUNA MAX QA"]["permission"]
