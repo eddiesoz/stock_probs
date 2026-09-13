@@ -58,12 +58,14 @@
     `skill-maintenance` was **In progress** and `EXP-FINAL` was **Pending** for synthesis
     completion and its separate export, secret review, commit, push, and exact remote
     verification.
-  - The supplied final acceptance receipt records accepted `EXP-FINAL` checkpoint
-    `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`. `NOTIFY-FINAL` is **Completed for its
-    operational scope only**: the optional post-`EXP-FINAL` delivery to the user-supplied
-    out-of-band webhook returned HTTP `204` with an empty response body around
-    `2026-09-13T01:45Z`; no retry was needed, and the bounded success did not change the
-    accepted `EXP-FINAL` result. Reviewer/coordinator: `OpenCode gpt-5.6-sol`.
+   - The earlier supplied final acceptance receipt records accepted `EXP-FINAL` checkpoint
+     `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`. `NOTIFY-FINAL` is **Completed for its
+     operational scope only**: the optional post-`EXP-FINAL` delivery to the user-supplied
+     out-of-band webhook returned HTTP `204` with an empty response body around
+     `2026-09-13T01:45Z`; no retry was needed, and the bounded success did not change the
+     accepted `EXP-FINAL` result. Its retained dirty-worktree context is
+     `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; reviewer/coordinator:
+     `OpenCode gpt-5.6-sol`.
   - The payload was a minimal non-secret receipt containing the accepted result, checkpoint,
     and evidence summary. The endpoint, token, and credential-bearing payload were never
     written to the repository, export, artifacts, or logs; the sanitized export shows zero
@@ -89,8 +91,30 @@
     contract tests and the supplied amd64 image receipt: digest
     `sha256:0dcb3f5ec77d31a5e8f57ef6e5d57b7144b973c3acb73ac360ffe01494735da`, size
     `169,699,932` bytes. The Compose path is one loopback-bound local service; native
-    development remains the `.dev-venv/` path. This current dirty-worktree evidence does not
-    create a clean release/export/commit/push/remote result or a new notification.
+   development remains the `.dev-venv/` path. This current dirty-worktree evidence does not
+   create a clean release/export/commit/push/remote result or a new notification.
+- **Current post-repair `EXP-FINAL`:** `EXP-FINAL` is **Completed** for the same declared
+  final acceptance scope, not a new milestone or acceptance scope. Its implementation
+  checkpoint is `c55064da92dcc8da591494c1c88cf040039e2437`; the release-receipt
+  documentation checkpoint is `830030ab5322e5c7aaaf12e6fde3f6c0ea9b2a12`; and the
+  accepted export checkpoint is commit `10b5de4a1842baf43e847f21f75154966e44b9c0`,
+  parent `830030a`, message `Checkpoint final repair session`. Exact `git push origin main`
+  passed and `git ls-remote origin refs/heads/main` exactly matched
+  `10b5de4a1842baf43e847f21f75154966e44b9c0`. The sanitized export audit used session
+  `ses_f71ec0499ffeokWj4h6tVwyYk1`: `572` messages, `3,155` parts, `952` tool parts,
+  `350` completed task outputs, `2,552,320` bytes, `90,476` lines, SHA-256
+  `cf1b85d07eefc9ff6436ad692ee826cb394be8f39af34caf6b1ff58f1f8517ff`, and `14,895`
+  redaction markers; ordered message-ID hash
+  `ecc9a2be4ebf82e92e459a979cde2ceb93517c61d2ec95708a9f370fff255568`; ordered part-ID
+  hash `0061d16fa7de0a60d8cb159db0d11474f291247708925bc6cb4b65c643da33be`; exact
+  watermark with a later database delta of `1` message/`5` parts, all strictly trailing;
+  and strict allowlist redaction checked `38,686` strings with zero violations and zero
+  webhook/private-key/AWS/GitHub/Bearer/credential-URL matches. The built-in sanitized and
+  unsanitized OpenCode exporter attempts each emitted only `64KiB` of invalid/incomplete
+  JSON; neither corrupt output was accepted. The verified equivalent used a read-only SQLite
+  transaction and strict allowlist redaction. Reviewer: `LUNA MAX QA`; audit UTC
+  `2026-09-13T12:28:44.223816Z`; native x86_64; OpenCode `1.18.30`. Exact export-generation
+  UTC remains **Unavailable**. No CI, new acceptance scope, or new notification is claimed.
  - Earlier supplied `M08` walkthrough-extension evidence remains **In progress**: `20` steps, `40` annotated
   PNGs (`20` desktop `1280x1000`, `20` mobile `390x844`), manifest SHA-256
   `806722ad4321fa3ca25a794192649eb55ad9c55cbba4abf6ec51886ba556df5d`, five companion news
@@ -177,7 +201,7 @@
 
 - Canonical sequence: `R-M00-1` -> `EXP-M00` (**Completed**) -> `M01` (**Completed**) -> `EXP-M01` (**Completed**) -> `M02` (**Completed**) -> `EXP-M02` (**Completed**) -> `M03` (**Completed**) -> `EXP-M03` (**Completed**, exact checkpoint `777451643b5ec1a04a37c013a9caf59f0bd58122`) -> `M04` (**Completed** for exercised scope) -> `EXP-M04` (**Completed**, exact checkpoint recorded in `MVP-PLAN.md`) -> `M05`/`EXP-M05` -> `M06`/`EXP-M06` -> `M09` QA/docs -> `EXP-M09` -> `M07` QA/docs -> `EXP-M07` -> `M08` walkthrough QA/docs -> `ASTRA-FINAL` dedicated visual/mobile/responsive/accessibility review -> `R-ASTRA-<n>` SOL repairs/retests and Astra reevaluation until `ASTRA-FINAL` is **Accepted** -> `EXP-M08` -> final learning synthesis -> `EXP-FINAL` -> optional `NOTIFY-FINAL` last. Astra plus the post-Astra checkpoint and learning synthesis are one second-last operational loop, not a new milestone.
 - Each export overwrites the tracked full-session `SESSION-EXPORT.md`. Secret review, local commit, push to the Git remote, and remote revision verification are separate evidence fields; failed, skipped, unavailable, or connectivity-blocked fields remain visible and block that checkpoint. There is no external-pipeline or hosted-runner field.
-  - Commit/push the reviewed export as checkpoint SHA X and verify that exact SHA on the Git remote; preserve the receipt in the next checkpoint. Never claim a future result for SHA X. `ASTRA-FINAL` must, after UI and walkthrough completion, include a dedicated visual-design/mobile/responsiveness/accessibility quality evaluation and a separate row for every M09 dark-mode/news item and every M08 item, feature, endpoint, control, UI state, asset, documentation visual, walkthrough frame/segment, media item, static asset, journey, and persistence effect. Each row is evaluated against requirements, aesthetics, mobile/responsive behavior, accessibility, and measured performance. Astra evaluates and suggests; only `SOL HIGH` build agents implement `R-ASTRA-<n>` UI repairs, followed by independent QA/docs and Astra reevaluation until **Accepted**. `EXP-M08` then precedes a final pre-`EXP-FINAL` learning synthesis: deeply analyze sanitized chat/run evidence, use `skill-maintenance` only for justified reusable Stock Probability development skills, validate and index those skills, and log observations. `ASTRA-FINAL` is **Accepted for its declared scope** and `EXP-M08` is **Completed** as recorded above; the supplied final receipt records accepted `EXP-FINAL` checkpoint `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`. `NOTIFY-FINAL` is separately **Completed for its operational scope only** and cannot change that result.
+  - Commit/push the reviewed export as checkpoint SHA X and verify that exact SHA on the Git remote; preserve the receipt in the next checkpoint. Never claim a future result for SHA X. `ASTRA-FINAL` must, after UI and walkthrough completion, include a dedicated visual-design/mobile/responsiveness/accessibility quality evaluation and a separate row for every M09 dark-mode/news item and every M08 item, feature, endpoint, control, UI state, asset, documentation visual, walkthrough frame/segment, media item, static asset, journey, and persistence effect. Each row is evaluated against requirements, aesthetics, mobile/responsive behavior, accessibility, and measured performance. Astra evaluates and suggests; only `SOL HIGH` build agents implement `R-ASTRA-<n>` UI repairs, followed by independent QA/docs and Astra reevaluation until **Accepted**. `EXP-M08` then precedes a final pre-`EXP-FINAL` learning synthesis: deeply analyze sanitized chat/run evidence, use `skill-maintenance` only for justified reusable Stock Probability development skills, validate and index those skills, and log observations. `ASTRA-FINAL` is **Accepted for its declared scope** and `EXP-M08` is **Completed** as recorded above; the current post-repair receipt records accepted `EXP-FINAL` checkpoint `10b5de4a1842baf43e847f21f75154966e44b9c0`. The earlier accepted checkpoint `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb` and its `NOTIFY-FINAL` record at dirty context `91ba52eca35fcfc13bd0d9996beb947d65d69d09` remain immutable history; no new notification is claimed.
 - `ASTRA-FINAL` must have a separate matrix row for every asset, control, UI state, documentation visual, walkthrough frame/segment, media item, and static asset, not merely one row per feature. Each row is evaluated against requirements, aesthetics, mobile behavior, responsive behavior, accessibility, and measured performance, with execution evidence rather than implementation claims. Astra evaluates and suggests only; `SOL HIGH` implements any `R-ASTRA-<n>`, independent QA retests it, and Astra reevaluates the affected row. If evidence shows a tooling, skill, or MCP gap caused poor output, a narrowly scoped `R-ASTRA-<n>` may repair and validate that gap before acceptance; it may not expand scope without a new evidenced requirement.
 - After an accepted `EXP-FINAL`, an optional operational notification may be referred to as `NOTIFY-FINAL`; it is not a milestone or acceptance ID and cannot satisfy a missing gate. It may use only a webhook supplied out-of-band by the user, must send a minimal non-secret receipt, must not persist or print the endpoint/token/payload credentials in the repository, export, artifacts, or logs, and must record bounded success, failure, or unavailable delivery without changing the accepted `EXP-FINAL` result.
 - M06's additional rows remain distinct: the retained Ponytail receipts are [`docs/evidence/ponytail-r-m06-1.txt`](docs/evidence/ponytail-r-m06-1.txt) (six findings repaired), [`docs/evidence/ponytail-r-m06-15.txt`](docs/evidence/ponytail-r-m06-15.txt) (three findings repaired as `R-M06-19`), and [`docs/evidence/ponytail-m05-boundary.txt`](docs/evidence/ponytail-m05-boundary.txt) (two findings repaired as completed repair record `R-M05-12`, independently rerun 4/4 inside `R-M05-55 (i)`). The pinned closure is vendored at `tools/ponytail` from upstream `16f29800fd2681bdf24f3eb4ccffe38be3baec6b` and configured in `opencode.json`; Ponytail remains overengineering-only and does not replace correctness, security, accessibility, or performance evidence. The authored documentation taxonomy and project documentation skill are implemented; the fresh isolated discovery and post-restart receipt session `ses_f6aa32d33ffeAvmiFK8K7Cd8EI` at `2026-09-12T11:35:58Z`–`2026-09-12T11:36:02Z` on native x86_64/OpenCode `1.18.30` and dirty commit `59534faf1cdce493bc51a11d4adbea5e5b2d6892` passed their listed checks. `.dev-venv/bin/python scripts/validate_docs.py` passed `8` categories and `11` topics at `2026-09-12T12:13:23Z`. Least-privilege Ingenium MCP onboarding is **Blocked** only on authorized workspace credentials, project registration, repository-sync dry-run/apply/no-drift, and credential-free evidence; no credential is recorded.
@@ -244,6 +268,15 @@
     Linux; dirty `HEAD` `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`; UTC was not captured; artifact:
     none; reviewer: `LUNA MAX docs`. `R-M00-2-E28` records the exact `git diff --check -- README.md
     AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` check as **Pass** on the same dirty `HEAD`; UTC was not
-    captured; artifact: current four-document diff; reviewer: `LUNA MAX docs`. No code,
-    configuration, skill, export, commit, push, or Git-history mutation was performed by this
-    documentation update.
+     captured; artifact: current four-document diff; reviewer: `LUNA MAX docs`. No code,
+     configuration, skill, export, commit, push, or Git-history mutation was performed by this
+     documentation update.
+- `R-M00-2-E42` records the final documentation self-review and scoped name-only diff: exactly
+  `AGENTS.md`, `MVP-PLAN.md`, `MVP-ROADMAP.md`, and `README.md`; concurrent `.opencode/**`,
+  `scripts/validate_docs.py`, and `tests/test_docs_validation.py` changes were preserved. `R-M00-2-E43`
+  records `.dev-venv/bin/python scripts/validate_docs.py` **Pass** with `9` categories, `13`
+  topics, and `7` project skills. `R-M00-2-E44` records the exact documentation-test command as
+  **Unavailable** because the tool permission boundary denied execution; no test pass is inferred.
+  `R-M00-2-E45` records `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs`
+  **Pass**. Environment: native x86_64 Linux; dirty `HEAD`
+  `10b5de4a1842baf43e847f21f75154966e44b9c0`; UTC was not captured; reviewer `LUNA MAX docs`.

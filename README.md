@@ -189,17 +189,39 @@ As of 2026-09-13:
   `skill-maintenance` was **In progress** and `EXP-FINAL` was **Pending** for the completed
   synthesis, final export/secret review, commit, push, and exact remote verification; no final
   export acceptance was inferred at that earlier point.
-- The supplied final acceptance receipt records `EXP-FINAL` as accepted at checkpoint
+- The earlier supplied final acceptance receipt records `EXP-FINAL` as accepted at checkpoint
   `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`. The optional `NOTIFY-FINAL` delivery is
   **Completed for its operational scope only**: the user-supplied out-of-band webhook returned
   HTTP `204` with an empty response body around `2026-09-13T01:45Z`, no retry was needed, and the
-  bounded delivery did not change the accepted `EXP-FINAL` result. The reviewer/coordinator was
-  `OpenCode gpt-5.6-sol`.
+  bounded delivery did not change the accepted `EXP-FINAL` result. Its retained dirty-worktree
+  context is `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; the reviewer/coordinator was `OpenCode
+  gpt-5.6-sol`.
 - `NOTIFY-FINAL` is not a milestone or acceptance ID. Its minimal non-secret payload contained the
   accepted result, checkpoint, and evidence summary; the endpoint, token, and credential-bearing
   payload were never written to the repository, export, artifacts, or logs, and the sanitized
   export shows zero webhook-pattern matches. Exact delivery UTC, network environment, and a
   separate notification artifact were not supplied and are not inferred.
+- **Current post-repair `EXP-FINAL`:** **Completed** for the same declared final acceptance scope,
+  not a new milestone or acceptance scope. The implementation checkpoint is
+  `c55064da92dcc8da591494c1c88cf040039e2437`; the release-receipt documentation checkpoint is
+  `830030ab5322e5c7aaaf12e6fde3f6c0ea9b2a12`; and the accepted export checkpoint is commit
+  `10b5de4a1842baf43e847f21f75154966e44b9c0`, parent `830030a`, message `Checkpoint final repair
+  session`. Exact `git push origin main` passed and `git ls-remote origin refs/heads/main` exactly
+  matched `10b5de4a1842baf43e847f21f75154966e44b9c0`. The sanitized audit used session
+  `ses_f71ec0499ffeokWj4h6tVwyYk1`: `572` messages, `3,155` parts, `952` tool parts, `350`
+  completed task outputs, `2,552,320` bytes, `90,476` lines, SHA-256
+  `cf1b85d07eefc9ff6436ad692ee826cb394be8f39af34caf6b1ff58f1f8517ff`, and `14,895` redaction
+  markers; ordered message-ID hash
+  `ecc9a2be4ebf82e92e459a979cde2ceb93517c61d2ec95708a9f370fff255568`; ordered part-ID hash
+  `0061d16fa7de0a60d8cb159db0d11474f291247708925bc6cb4b65c643da33be`; exact watermark with a
+  later database delta of `1` message/`5` parts, all strictly trailing; and strict allowlist
+  redaction checked `38,686` strings with zero violations and zero webhook/private-key/AWS/GitHub/
+  Bearer/credential-URL matches. Built-in sanitized and unsanitized OpenCode exporter attempts
+  each emitted only `64KiB` of invalid/incomplete JSON; no corrupt export was accepted. The
+  verified equivalent used a read-only SQLite transaction and strict allowlist redaction.
+  Reviewer `LUNA MAX QA`; audit UTC `2026-09-13T12:28:44.223816Z`; native x86_64; OpenCode
+  `1.18.30`. Exact export-generation UTC remains **Unavailable**. No CI, new acceptance scope,
+  or new notification is claimed.
 - **Current post-repair visual result:** the visual-quality requirement was reopened as
   `R-ASTRA-22` and is **Completed for its declared scope**. Independent QA on dirty `HEAD`
   `91ba52eca35fcfc13bd0d9996beb947d65d69d09` reported `425` passed/`4` deselected/`89.65%`
@@ -478,10 +500,11 @@ checkpoint.
 synthesis, and `EXP-FINAL` form one combined second-last operational loop, not a new
 milestone. `ASTRA-FINAL` is now explicitly **Accepted for its declared scope** at
 `261825838d6788afeb9640db8fbbf3f94af3a82b`, and `EXP-M08` is **Completed** at
-`7cf1ca8395b94c2e14e5b02ddf160f3f938091d3`. The supplied final receipt records accepted
-`EXP-FINAL` checkpoint `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`; the optional
-`NOTIFY-FINAL` delivery is separately **Completed for its operational scope only** and cannot
-change that result.
+`7cf1ca8395b94c2e14e5b02ddf160f3f938091d3`. The current post-repair receipt records accepted
+`EXP-FINAL` checkpoint `10b5de4a1842baf43e847f21f75154966e44b9c0`. The earlier accepted
+checkpoint `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb` and its `NOTIFY-FINAL` record at dirty
+context `91ba52eca35fcfc13bd0d9996beb947d65d69d09` remain immutable history; no new
+notification is claimed.
 `ASTRA-FINAL` must separately matrix every asset, control, UI state, documentation visual,
 walkthrough frame/segment, media item, and static asset against requirements, aesthetics,
 mobile/responsive behavior, accessibility, and measured performance. Astra evaluates and
@@ -490,9 +513,10 @@ A demonstrated tooling, skill, or MCP gap may receive a narrowly scoped SOL repa
 validation before acceptance, but it cannot expand scope without a new evidenced need.
 The final learning synthesis deeply analyzes sanitized chat/run evidence and uses
 `skill-maintenance` only for justified reusable Stock Probability skills, validates and
-indexes any such skill, and logs observations. The accepted `EXP-FINAL` checkpoint is
-`b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`. Optional `NOTIFY-FINAL` is last and cannot repair
-a missing gate; its bounded success is recorded above without changing `EXP-FINAL`.
+indexes any such skill, and logs observations. The accepted post-repair `EXP-FINAL` checkpoint is
+`10b5de4a1842baf43e847f21f75154966e44b9c0`. The earlier `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`
+checkpoint and its optional `NOTIFY-FINAL` record remain immutable history; no new notification is
+claimed.
 
 ## Final operational item: selective Ingenium pipeline adoption
 
@@ -632,3 +656,16 @@ captured; artifact: none; reviewer: `LUNA MAX docs`. `R-M00-2-E28` records the e
 same dirty `HEAD`; UTC was not captured; artifact: current four-document diff; reviewer:
 `LUNA MAX docs`. No code, configuration, skill, export, commit, push, or Git-history mutation
 was performed by this documentation update.
+
+For this current post-repair `EXP-FINAL` documentation receipt, `R-M00-2-E42` records the
+scoped name-only diff as exactly `AGENTS.md`, `MVP-PLAN.md`, `MVP-ROADMAP.md`, and `README.md`;
+concurrent `.opencode/**`, `scripts/validate_docs.py`, and `tests/test_docs_validation.py`
+changes were preserved. Environment: native x86_64 Linux; dirty `HEAD`
+`10b5de4a1842baf43e847f21f75154966e44b9c0`; UTC was not captured; reviewer `LUNA MAX docs`.
+`R-M00-2-E43` records `.dev-venv/bin/python scripts/validate_docs.py` as **Pass** with
+`9` categories, `13` topics, and `7` project skills. `R-M00-2-E44` records the exact
+`.dev-venv/bin/python -m pytest tests/test_docs_validation.py` attempt as **Unavailable** because
+the tool permission boundary denied execution; no documentation-test pass is inferred.
+`R-M00-2-E45` records `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs`
+as **Pass**. UTC was not captured for these checks; artifacts are the validator output and
+current owned-document diff; reviewer `LUNA MAX docs`.
