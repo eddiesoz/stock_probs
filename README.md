@@ -163,7 +163,7 @@ As of 2026-09-13:
   exact remote `main` matched; reviewer: `LUNA MAX QA`. The earlier M07 receipt
    verification also passed with independently recomputed performance rows; its separate
    command, session, environment, UTC, artifact, and reviewer metadata were not supplied.
-- Current `ASTRA-FINAL` is **Accepted for its declared scope** at clean commit
+- Earlier accepted `ASTRA-FINAL` is retained at clean commit
   `261825838d6788afeb9640db8fbbf3f94af3a82b`, session
   `ses_f679f906cffexS9H5k8Vwk4d16`. The bound ASTRA evidence covers a `214`-row matrix,
   records no remaining blocking defect and no regression, and preserves the explicit
@@ -200,6 +200,30 @@ As of 2026-09-13:
   payload were never written to the repository, export, artifacts, or logs, and the sanitized
   export shows zero webhook-pattern matches. Exact delivery UTC, network environment, and a
   separate notification artifact were not supplied and are not inferred.
+- **Current post-repair visual result:** the visual-quality requirement was reopened as
+  `R-ASTRA-22` and is **Completed for its declared scope**. Independent QA on dirty `HEAD`
+  `91ba52eca35fcfc13bd0d9996beb947d65d69d09` reported `425` passed/`4` deselected/`89.65%`
+  coverage, provider `32` passed, browser `62` passed/`2` expected performance skips plus `31`
+  checks at `1280px`, `17` executable performance rows passed, static `97,893`/`98,304` bytes,
+  and persistence `55 + 35 + 4` passed. `R-ASTRA-24` records SPY as an ETF in lookup,
+  `R-ASTRA-25` records heading-order pass, `R-ASTRA-26` records `44px` desktop actions, and
+  `R-ASTRA-27` records selector-alignment pass after its failed initial render attempt and
+  successful reruns. The supplied Ponytail result was `Lean already. Ship.`; it is
+  overengineering-only evidence.
+- **Current post-repair ASTRA disposition:** session
+  `ses_f6683138affe6t8S6Z0G66YJDc` is **Accepted** with no reproducible blockers. Artifacts are
+  `test-results/astra-final-live/` and `test-results/astra-final-repair/`; the live browser
+  receipt records event `143`/run `141`, fresh event `145`, `21` localhost-only requests, and
+  axe `0/0` at desktop and `390px`. Physical mobile, actual screen reader, true zoom, and
+  native/physical ARM64 performance remain **Unavailable**. ACDC/SPY flows do not prove news
+  relevance or exact-symbol provider availability.
+- **Current local container follow-on:** `R-M07-5` is **Completed for its declared scope** by
+  two passing container contract tests and the supplied amd64 image receipt (digest
+  `sha256:0dcb3f5ec77d31a5e8f57ef6e5d57b7144b973c3acb73ac360ffe01494735da`,
+  `169,699,932` bytes). The optional Compose path and native-development distinction are
+  documented in [getting started](docs/operations/getting-started.md). This dirty-worktree
+  evidence is not a new clean release, export, commit, push, remote verification, or
+  notification.
 - `R-M09-4` and `R-M09-5` each retain an earlier failed release result; their separate
   failure output, session, environment, UTC, commit, artifact, and reviewer metadata were
   not supplied here. The current `M07-E18` receipt does not rewrite either historical

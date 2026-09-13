@@ -9,6 +9,12 @@ Stock Probability is a local Linux application built as one bounded Python proce
 serves both the browser shell and the `/api/v1` interface. The default listener is loopback;
 there is no hosted service or multi-service control plane.
 
+The optional root `compose.yaml` wraps that same process as one local
+`app` service. Its loopback-only publication, `/data` volume, resource/log bounds, non-root image
+user, and image healthcheck are operational containment; they do not turn the app into a hosted
+or multi-service deployment. Native development remains the `.dev-venv/` plus local CLI path in
+[getting started](../operations/getting-started.md).
+
 ```text
 Browser presentation
         │ HTTP /api/v1 only

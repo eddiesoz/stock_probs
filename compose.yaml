@@ -1,0 +1,33 @@
+services:
+  app:
+    build:
+      context: .
+    image: stock-probs:local
+    environment:
+      STOCK_PROBS_DATA_DIR: /data
+      STOCK_PROBS_PROVIDER: "${STOCK_PROBS_PROVIDER:-yahoo}"
+    ports:
+      - "127.0.0.1:${STOCK_PROBS_PORT:-8000}:8000"
+    # One volume keeps the database, WAL sidecars, trust key, and backups on one filesystem.
+    volumes:
+      - stock-probs-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+volumes:
+  stock-probs-data:

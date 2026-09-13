@@ -207,6 +207,10 @@ class Repository:
                 "CREATE TABLE IF NOT EXISTS schema_migrations "
                 "(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
             )
+            # Only receipts present before this migration loop represent an existing schema.
+            schema_existed_before = connection.execute(
+                "SELECT 1 FROM schema_migrations LIMIT 1"
+            ).fetchone() is not None
             connection.commit()
 
         backup_completed = False
@@ -233,7 +237,12 @@ class Repository:
                         continue
                     if version != len(applied) + 1:
                         raise RepositoryDatabaseError("database migration history has a gap")
-                    if applied and before_migration is not None and not backup_completed:
+                    if (
+                        schema_existed_before
+                        and applied
+                        and before_migration is not None
+                        and not backup_completed
+                    ):
                         # The hook runs under the migration write lock, immediately before the
                         # first upgrade, so a failed backup prevents every pending schema change.
                         before_migration(applied[-1])
@@ -785,6 +794,7 @@ class Repository:
         page_size: int,
         include_analysis: bool,
         include_facets: bool,
+        include_summaries: bool = True,
         sort_by: str | None = None,
         sort_order: str = "desc",
     ) -> dict[str, Any]:
@@ -847,8 +857,49 @@ class Repository:
             LIMIT ? OFFSET ?""",  # noqa: S608
             [*values, page_size, (page - 1) * page_size],
         ).fetchall()
+        items = [dict(row) for row in rows]
+        if include_summaries:
+            run_ids = list(
+                dict.fromkeys(
+                    int(item["run_id"]) for item in items if item["run_id"] is not None
+                )
+            )
+            summaries: dict[int, dict[str, Any]] = {}
+            if run_ids:
+                placeholders = ",".join("?" for _ in run_ids)
+                summary_rows = connection.execute(
+                    f"""SELECT input.run_id, result.horizon,
+                    json_extract(result.result_json, '$.evaluation.status') AS evaluation_status,
+                    COUNT(outcome.id) AS outcome_count
+                    FROM forecast_inputs AS input
+                    JOIN forecast_results AS result ON result.input_id = input.id
+                    LEFT JOIN outcomes AS outcome ON outcome.result_id = result.id
+                    WHERE input.run_id IN ({placeholders})
+                    GROUP BY input.run_id, result.id, result.horizon, evaluation_status
+                    ORDER BY input.run_id, result.id""",  # noqa: S608
+                    run_ids,
+                ).fetchall()
+                for row in summary_rows:
+                    summary = summaries.setdefault(
+                        int(row["run_id"]),
+                        {"horizons": [], "outcome_count": 0, "evaluation_statuses": []},
+                    )
+                    summary["horizons"].append(row["horizon"])
+                    summary["outcome_count"] += int(row["outcome_count"])
+                    summary["evaluation_statuses"].append(row["evaluation_status"])
+            for item in items:
+                summary = (
+                    summaries.get(int(item["run_id"]))
+                    if item["run_id"] is not None
+                    else None
+                )
+                item.update(
+                    summary
+                    or {"horizons": [], "outcome_count": 0, "evaluation_statuses": []}
+                )
+                item["forecast_available"] = item["run_id"] is not None
         return {
-            "items": [dict(row) for row in rows],
+            "items": items,
             "page": page,
             "page_size": page_size,
             "total": total,
@@ -1010,6 +1061,7 @@ class Repository:
                 page_size=max_events,
                 include_analysis=True,
                 include_facets=False,
+                include_summaries=False,
                 sort_by=sort_by,
                 sort_order=sort_order,
             )

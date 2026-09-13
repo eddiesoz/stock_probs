@@ -249,9 +249,10 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
       viewport_width: window.visualViewport?.width || document.documentElement.clientWidth,
       interactive_rects: [...document.querySelectorAll("a, button, input, select")]
         .filter((element) => {
-          const style = getComputedStyle(element);
-          const rect = element.getBoundingClientRect();
-          return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0;
+           const style = getComputedStyle(element);
+           const rect = element.getBoundingClientRect();
+           return style.visibility !== "hidden" && style.display !== "none"
+             && !element.closest("details:not([open])") && rect.width > 0 && rect.height > 0;
         })
         .map((element) => {
           const rect = element.getBoundingClientRect();
@@ -311,6 +312,8 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
       renderSamples.push(sample.render_ms);
       if (index < budgets.viewports.length) layoutSamples.push(sample);
     }
+    const details = page.locator(".advanced-filters");
+    if (!(await details.evaluate((element) => element.open))) await details.locator("summary").click();
     for (let index = 0; index < budgets.warmups; index += 1) interactionWarmups.push(await interaction());
     for (let index = 0; index < budgets.measured_samples; index += 1) interactionSamples.push(await interaction());
     if (process.env.STOCK_PROBS_PERFORMANCE_M09 === "true") {
@@ -344,11 +347,10 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
           cache_state: "hit",
         },
       }));
-      const themeControl = page.locator('.theme-control [name="theme"]');
       for (let index = 0; index < budgets.warmups + budgets.measured_samples; index += 1) {
         await page.evaluate(() => { window.__themeActionStart = performance.now(); });
         const selected = index % 2 ? "light" : "dark";
-        await themeControl.selectOption(selected);
+        await page.locator(`.theme-control [name="theme"][value="${selected}"]`).click();
         const elapsed = await page.evaluate(async (value) => {
           await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
           if (document.documentElement.dataset.theme !== value) throw new Error("theme did not paint");

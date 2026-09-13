@@ -1154,6 +1154,12 @@ def test_history_status_filters_and_pagination_keep_repeat_semantics_exact(clien
     assert len(repeated["items"]) == 1
     assert repeated["items"][0]["status"] == "repeated"
     assert repeated["items"][0]["is_repeat"] is True
+    assert repeated["items"][0]["horizons"] == [
+        "close_to_close",
+        "completed_5m_to_close",
+    ]
+    assert repeated["items"][0]["outcome_count"] == 0
+    assert len(repeated["items"][0]["evaluation_statuses"]) == 2
     # A failed repeat remains failed; is_repeat carries its independent repeat dimension.
     assert [item["is_repeat"] for item in failures["items"]] == [True, False]
     assert all(item["status"] == "failed" and item["run_id"] is None for item in failures["items"])
@@ -1443,6 +1449,7 @@ def test_reconstruction_and_append_only_outcome(client):
     event_id = created["event"]["id"]
     result_id = created["results"][0]["id"]
     before = client.get(f"/api/v1/history/{event_id}").json()
+    summary_before = client.get("/api/v1/history").json()["items"][0]
 
     outcome = client.post(
         f"/api/v1/forecasts/{result_id}/outcomes",
@@ -1454,9 +1461,19 @@ def test_reconstruction_and_append_only_outcome(client):
         },
     )
     after = client.get(f"/api/v1/history/{event_id}").json()
+    summary_after = client.get("/api/v1/history").json()["items"][0]
 
     assert outcome.status_code == 201
     assert outcome.json()["comparison_rule"].startswith("close divided")
+    assert summary_before["horizons"] == [
+        "close_to_close",
+        "completed_5m_to_close",
+    ]
+    assert summary_before["outcome_count"] == 0
+    assert summary_before["evaluation_statuses"] == [
+        result["evaluation"]["status"] for result in created["results"]
+    ]
+    assert summary_after["outcome_count"] == 1
     assert after["record_kind"] == "recorded_forecast"
     assert after["immutable"] is True and after["forecast_available"] is True
     assert before["results"][0]["origin_price"] == after["results"][0]["origin_price"]
@@ -1531,6 +1548,14 @@ def test_saved_reopen_never_calls_provider_but_fresh_cutoff_is_new_audited_analy
     assert fresh.headers["x-request-id"] == payload["event"]["request_id"]
     assert fresh_history["total"] == 1
     assert fresh_history["items"][0]["id"] == payload["event"]["id"]
+    assert fresh_history["items"][0]["horizons"] == [
+        "close_to_close",
+        "completed_5m_to_close",
+    ]
+    assert fresh_history["items"][0]["outcome_count"] == 0
+    assert fresh_history["items"][0]["evaluation_statuses"] == [
+        result["evaluation"]["status"] for result in payload["results"]
+    ]
 
 
 def test_transport_invalid_reconstruction_is_one_labelled_failed_event(client):

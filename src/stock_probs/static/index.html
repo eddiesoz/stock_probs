@@ -25,9 +25,9 @@
 <a href="#result-heading"><span>02</span> Analysis</a>
 <a href="#history-heading"><span>03</span> Ledger</a>
 </nav>
-<label class="theme-control">Theme
-<select name="theme" aria-label="Color theme"><option value="light">Light</option><option value="dark">Dark</option><option value="system">System</option></select>
-</label>
+<fieldset class=theme-control><legend>Theme</legend>
+<div class=theme-options><label><input type=radio name=theme value=light> Light</label><label><input type=radio name=theme value=dark> Dark</label><label><input type=radio name=theme value=system> System</label></div>
+</fieldset>
 </div>
 </div>
 <div class="system-state" role="status" aria-live="polite" aria-label="System status">
@@ -119,26 +119,28 @@
 <div class="field">
 <label for="history-status">Status</label>
 <select id="history-status" name="status">
-<option value="">All states</option>
-<option value="successful">Successful</option>
-<option value="repeated">Repeated</option>
-<option value="failed">Failed</option>
+<option value="">All states
+<option value=successful>Successful
+<option value=repeated>Repeated
+<option value=failed>Failed
 </select>
 </div>
+<details class=advanced-filters><summary>More filters</summary>
+<div class=advanced-filter-grid>
 <div class="field">
 <label for="history-asset">Asset type</label>
 <select id="history-asset" name="asset_type">
-<option value="">All types</option>
-<option value="stock">Stock</option>
-<option value="etf">ETF</option>
+<option value="">All types
+<option value=stock>Stock
+<option value=etf>ETF
 </select>
 </div>
 <div class="field">
 <label for="history-analysis">Analysis type</label>
 <select id="history-analysis" name="analysis_kind">
-<option value="">All analyses</option>
-<option value="submitted_forecast">Submitted forecasts</option>
-<option value="fresh_historical_reconstruction">Fresh cutoff analyses</option>
+<option value="">All analyses
+<option value=submitted_forecast>Submitted forecasts
+<option value=fresh_historical_reconstruction>Fresh cutoff analyses
 </select>
 </div>
 <div class="field">
@@ -156,29 +158,31 @@
 <div class="field">
 <label for="history-horizon">Forecast horizon</label>
 <select id="history-horizon" name="horizon">
-<option value="">Both horizons</option>
-<option value="close_to_close">Close to next close</option>
-<option value="completed_5m_to_close">Completed 5m to close</option>
+<option value="">Both horizons
+<option value=close_to_close>Close to next close
+<option value=completed_5m_to_close>Completed 5m to close
 </select>
 </div>
 <div class="field">
 <label for="history-sort">Sort ledger</label>
 <select id="history-sort" name="sort">
-<option value="event_id:desc">Newest request first</option>
-<option value="event_id:asc">Oldest request first</option>
-<option value="symbol:asc">Symbol A–Z</option>
-<option value="company:asc">Company A–Z</option>
-<option value="status:asc">Status A–Z</option>
+<option value=event_id:desc>Newest request first
+<option value=event_id:asc>Oldest request first
+<option value=symbol:asc>Symbol A–Z
+<option value=company:asc>Company A–Z
+<option value=status:asc>Status A–Z
 </select>
 </div>
 <div class="field">
 <label for="history-page-size">Rows per page</label>
 <select id="history-page-size" name="page_size">
-<option value="10" selected>10</option>
-<option value="20">20</option>
-<option value="50">50</option>
+<option value=10 selected>10
+<option value=20>20
+<option value=50>50
 </select>
 </div>
+</div>
+</details>
 <button class="secondary" type="submit">Filter ledger</button>
 </form>
 <div id="history-content" class="history-content" aria-live="polite">

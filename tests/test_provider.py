@@ -202,6 +202,37 @@ def test_yfinance_company_lookup_uses_bounded_search_and_identity_calls(monkeypa
     assert [(call["period"], call["interval"]) for call in FakeTicker.calls] == [("5d", "1d")]
 
 
+def test_yfinance_lookup_keeps_search_etf_classification_when_chart_is_generic(monkeypatch):
+    class FakeSearch:
+        def __init__(self, *_args, **_kwargs):
+            self.quotes = [
+                {
+                    "symbol": "SPYM",
+                    "shortname": "State Street SPDR Portfolio S&P 500 ETF",
+                    "longname": "State Street SPDR Portfolio S&P 500 ETF",
+                    "exchange": "PCX",
+                    "quoteType": "ETF",
+                }
+            ]
+
+    class GenericChartTicker(FakeTicker):
+        def metadata(self):
+            metadata = super().metadata()
+            metadata["instrumentType"] = "EQUITY"
+            return metadata
+
+    monkeypatch.setattr("stock_probs.provider.yf.Search", FakeSearch)
+    monkeypatch.setattr("stock_probs.provider.yf.Ticker", GenericChartTicker)
+
+    identity = YahooProvider().lookup("SPY", 5, datetime.now(UTC))[0]
+
+    assert (identity.canonical_symbol, identity.quote_type, identity.asset_type) == (
+        "SPYM",
+        "ETF",
+        "etf",
+    )
+
+
 def test_yfinance_lookup_rejects_unbounded_limit_before_network(monkeypatch):
     monkeypatch.setattr(
         "stock_probs.provider.yf.Search",

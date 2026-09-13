@@ -11,24 +11,25 @@ const historyContent = $("#history-content");
 const historyForm = $("#history-form");
 const symbolInput = $("#symbol");
 const lookupStatus = $("#lookup-status");
-const instrumentOptions = $("#instrument-options");
-const identityConfirmation = $("#identity-confirmation");
-const freshAnalysisSection = $("#fresh-analysis-section");
-const freshAnalysisContent = $("#fresh-analysis-content");
+const optionsBox = $("#instrument-options");
+const identityBox = $("#identity-confirmation");
+const freshSection = $("#fresh-analysis-section");
+const freshContent = $("#fresh-analysis-content");
 const symbolError = $("#symbol-error");
 const historyPrevious = $("#history-previous");
 const historyNext = $("#history-next");
 let historyPage = 1;
 let selectedIdentity = null;
 let lookupTimer = null;
-let lookupController = null;
+let lookupRequest = null;
 let lookupSequence = 0;
 let activeOption = -1;
 let chartSequence = 0;
-let newsController = null;
+let newsRequest = null;
 let historySequence = 0;
-let historyLastPage = 1;
-let freshAnalysisInFlight = false;
+let selectionSequence = 0;
+let lastPage = 1;
+let freshInFlight = false;
 const newsTimeoutMs = 10_000;
 const runRelationPageSize = 100;
 const runRelationMaxPages = 5;
@@ -45,6 +46,12 @@ function showContent(content, className, busy, ...children) {
   content.className = className;
   content.setAttribute("aria-busy", String(busy));
   content.replaceChildren(...children);
+}
+
+function disclosure(summary, className, ...children) {
+  const details = element("details", className);
+  details.append(element("summary", "", summary), ...children);
+  return details;
 }
 
 function svgElement(tag, attributes = {}) {
@@ -121,22 +128,18 @@ function contractSection(title, className, value) {
 
 function compactReliability(reliability) {
   if (!reliability) return null;
-  const populated = (bins) => (bins || []).filter((bin) => bin.count > 0);
-  const binText = (bin) => (
-    `${formatPercent(bin.low)}–${formatPercent(bin.high)}: ${bin.count} samples, `
-    + `mean predicted ${formatPercent(bin.mean_predicted_probability)}, observed ${formatPercent(bin.observed_frequency)}`
-  );
+  const populated = (bins) => (bins || []).filter((bin) => bin.count > 0).map((bin) => (
+    `${formatPercent(bin.low)}–${formatPercent(bin.high)}: ${bin.count} samples, mean predicted ${formatPercent(bin.mean_predicted_probability)}, observed ${formatPercent(bin.observed_frequency)}`
+  ));
   return {
     bin_count: reliability.bin_count,
     empty_bins: "Empty fixed-width bins are omitted below; all populated calibration bins are shown.",
-    direction: Object.fromEntries(
-      Object.entries(reliability.direction || {}).map(([direction, bins]) => (
-        [direction, populated(bins).map(binText)]
-      )),
-    ),
+    direction: Object.fromEntries(Object.entries(reliability.direction || {}).map(
+      ([direction, bins]) => [direction, populated(bins)],
+    )),
     thresholds: Object.fromEntries((reliability.thresholds || []).map((item) => {
       const sign = item.threshold > 0 ? "+" : "";
-      return [`${item.operator}_${sign}${item.threshold}_percent`, populated(item.bins).map(binText)];
+      return [`${item.operator}_${sign}${item.threshold}_percent`, populated(item.bins)];
     })),
   };
 }
@@ -145,34 +148,17 @@ function compactEvaluationScores(scores) {
   if (!scores) return null;
   const { name, version, definition, direction_brier, reliability } = scores;
   return {
-    name,
-    version,
-    definition,
+    name, version, definition,
     direction_Brier: direction_brier,
-    threshold_Brier: (scores.threshold_brier || []).map((item) => (
-      `${item.operator} ${item.threshold > 0 ? "+" : ""}${item.threshold}%: ${formatNumber(item.score)}`
-    )),
+    threshold_Brier: (scores.threshold_brier || []).map((item) => `${item.operator} ${item.threshold > 0 ? "+" : ""}${item.threshold}%: ${formatNumber(item.score)}`),
     reliability: compactReliability(reliability),
-    interval_coverage: (scores.interval_coverage || []).map((item) => (
-      `${formatPercent(item.level)}: ${item.covered_count}/${item.sample_count}, ${formatPercent(item.coverage)}; ${item.definition}`
-    )),
+    interval_coverage: (scores.interval_coverage || []).map((item) => `${formatPercent(item.level)}: ${item.covered_count}/${item.sample_count}, ${formatPercent(item.coverage)}; ${item.definition}`),
   };
 }
 
 function compactEvaluation(evaluation) {
   if (!evaluation) return null;
-  const {
-    version, method, status, reason, evaluation_count, eligible_realized_count,
-    excluded_anomaly_outcome_count, date_range, training_sample_range, forecast_model,
-    baseline, maximum_evaluation_points, minimum_training_samples, information_rule,
-  } = evaluation;
-  return {
-    version, method, status, reason, evaluation_count, eligible_realized_count,
-    excluded_anomaly_outcome_count, date_range, training_sample_range,
-    forecast_model: compactEvaluationScores(forecast_model),
-    baseline: compactEvaluationScores(baseline),
-    maximum_evaluation_points, minimum_training_samples, information_rule,
-  };
+  return { ...evaluation, forecast_model: compactEvaluationScores(evaluation.forecast_model), baseline: compactEvaluationScores(evaluation.baseline) };
 }
 
 async function api(path, options = {}) {
@@ -238,7 +224,7 @@ function renderTailChart(result, chartId) {
     "aria-labelledby": captionId,
   });
   const description = svgElement("desc");
-  description.textContent = "Probability by return threshold. Loss tails use a solid line and circles; gain tails use a dashed line and diamonds. Visible HTML labels identify both axes, and exact values follow in the details table.";
+  description.textContent = "Threshold probabilities: loss uses solid circles; gain uses dashed diamonds. Visible axes and details give exact values.";
   svg.append(description);
 
   const visual = element("div", "tail-chart-visual");
@@ -274,7 +260,7 @@ function renderTailChart(result, chartId) {
   }
   const xTitle = element("span", "chart-axis-label chart-x-title", "RETURN THRESHOLD");
 
-  const tooltipText = "Hover or focus a plotted point for its exact probability.";
+  const tooltipText = "Hover or focus a point for its probability.";
   const tooltip = element("p", "chart-tooltip", tooltipText);
   tooltip.setAttribute("aria-live", "polite");
   const resetTooltip = () => { tooltip.textContent = tooltipText; };
@@ -311,7 +297,9 @@ function renderTailChart(result, chartId) {
       point.addEventListener("keydown", (event) => {
         if (event.key !== "Enter") return;
         event.preventDefault();
-        document.getElementById(rowId)?.focus();
+        const row = document.getElementById(rowId);
+        row.closest("details").open = true;
+        row.focus();
       });
       svg.append(point);
     }
@@ -334,7 +322,7 @@ function renderHorizonComparison(results) {
   const title = element("header", "comparison-title");
   const heading = element("h3", "", "Horizon scan");
   heading.id = "horizon-scan-heading";
-  title.append(heading, element("p", "", "Shared market destination · different completed origins"));
+  title.append(heading, element("p", "", "Shared target · different completed origins"));
   const rows = element("div", "comparison-rows");
   for (const result of results) {
     const row = element("article", "comparison-row");
@@ -359,16 +347,16 @@ function identityValue(identity, key) {
 
 function hideOptions() {
   activeOption = -1;
-  instrumentOptions.hidden = true;
-  instrumentOptions.replaceChildren();
+  optionsBox.hidden = true;
+  optionsBox.replaceChildren();
   symbolInput.setAttribute("aria-expanded", "false");
   symbolInput.removeAttribute("aria-activedescendant");
 }
 
 function clearIdentity() {
   selectedIdentity = null;
-  identityConfirmation.hidden = true;
-  identityConfirmation.replaceChildren();
+  identityBox.hidden = true;
+  identityBox.replaceChildren();
 }
 
 function setNewsState(content, state, message) {
@@ -385,18 +373,16 @@ function setNewsRetryState(content, state, message, symbol, limit) {
   retry.type = "button";
   retry.addEventListener("click", () => {
     retry.disabled = true;
-    const details = content.closest("details");
-    delete details.dataset.requested;
-    details.dataset.requested = "true";
     loadNews(content, symbol, limit);
+    content.focus();
   });
   content.append(retry);
 }
 
 function supersedeNews() {
-  if (!newsController) return;
-  newsController.abort();
-  newsController = null;
+  if (!newsRequest) return;
+  newsRequest.abort();
+  newsRequest = null;
   const content = resultContent.querySelector(".news-content");
   if (content) setNewsState(content, "superseded", "Headline request superseded because the instrument changed.");
 }
@@ -430,7 +416,7 @@ function renderNews(content, data, symbol, limit) {
   const list = element("ol", "news-list");
   for (const item of items) {
     const row = element("li");
-    const heading = element("h4");
+    const heading = element("h3");
     const href = safeNewsLink(item.url);
     if (href) {
       const link = element("a", "news-link", item.title);
@@ -450,7 +436,7 @@ function renderNews(content, data, symbol, limit) {
   if (limit === 5 && items.length === 5) {
     const more = element("button", "secondary news-more", "Show up to 10 headlines");
     more.type = "button";
-    more.addEventListener("click", () => loadNews(content, symbol, 10));
+    more.addEventListener("click", () => { loadNews(content, symbol, 10); content.focus(); });
     content.append(more);
   }
 }
@@ -459,7 +445,7 @@ async function loadNews(content, symbol, limit = 5) {
   supersedeNews();
   const controller = new AbortController();
   let timedOut = false;
-  newsController = controller;
+  newsRequest = controller;
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort();
@@ -470,10 +456,10 @@ async function loadNews(content, symbol, limit = 5) {
     const data = await api(`/news?${new URLSearchParams({ symbol, limit: String(limit) })}`, {
       signal: controller.signal,
     });
-    if (newsController !== controller) return;
+    if (newsRequest !== controller) return;
     renderNews(content, data, symbol, limit);
   } catch (error) {
-    if (newsController !== controller) return;
+    if (newsRequest !== controller) return;
     if (error.name === "AbortError" && timedOut) {
       retry("unreachable", "The headline request timed out. Check the local service and try again.");
     } else if (error.name === "AbortError") return;
@@ -483,7 +469,7 @@ async function loadNews(content, symbol, limit = 5) {
     else retry("unavailable", error.message);
   } finally {
     clearTimeout(timeout);
-    if (newsController === controller) newsController = null;
+    if (newsRequest === controller) newsRequest = null;
   }
 }
 
@@ -496,11 +482,12 @@ function newsDisclosure(input, context) {
     context === "saved" ? "Load current headlines for this symbol" : "Current headlines for this symbol",
   );
   const content = element("div", "news-content");
+  content.tabIndex = -1;
   content.setAttribute("aria-live", "polite");
   setNewsState(content, "not-requested", "Headlines not requested.");
   details.append(
     summary,
-    element("p", "news-separation", "Current headlines are live information, not forecast or ledger evidence."),
+    element("p", "news-separation", "Current headlines are live, not forecast or ledger evidence."),
     content,
   );
   details.addEventListener("toggle", () => {
@@ -532,17 +519,17 @@ function confirmIdentity(identity) {
     value("timezone"),
     value("asset_type")?.toUpperCase(),
   ].filter(Boolean).join(" / ");
-  identityConfirmation.replaceChildren(
+  identityBox.replaceChildren(
     element("strong", "", title || symbol),
     element("span", "", ` Confirmed identity: ${details}`),
   );
-  identityConfirmation.hidden = false;
+  identityBox.hidden = false;
   lookupStatus.textContent = `Selected ${title || symbol}.`;
   hideOptions();
 }
 
 function setActiveOption(index) {
-  const options = [...instrumentOptions.querySelectorAll("[role=option]")];
+  const options = [...optionsBox.querySelectorAll("[role=option]")];
   if (!options.length) return;
   activeOption = Math.max(0, Math.min(index, options.length - 1));
   options.forEach((option, optionIndex) => {
@@ -553,7 +540,7 @@ function setActiveOption(index) {
 }
 
 function renderInstrumentOptions(items, query) {
-  instrumentOptions.replaceChildren();
+  optionsBox.replaceChildren();
   activeOption = -1;
   if (!items.length) {
     hideOptions();
@@ -576,9 +563,9 @@ function renderInstrumentOptions(items, query) {
     option.append(element("strong", "", name || identity.canonical_symbol), element("span", "", facts));
     option.addEventListener("mousedown", (event) => event.preventDefault());
     option.addEventListener("click", () => confirmIdentity(identity));
-    instrumentOptions.append(option);
+    optionsBox.append(option);
   });
-  instrumentOptions.hidden = false;
+  optionsBox.hidden = false;
   symbolInput.setAttribute("aria-expanded", "true");
   lookupStatus.textContent = `${items.length} bounded identity ${items.length === 1 ? "match" : "matches"}. Use arrow keys and Enter to select.`;
 }
@@ -586,9 +573,9 @@ function renderInstrumentOptions(items, query) {
 async function lookupInstruments(query) {
   lookupSequence += 1;
   const sequence = lookupSequence;
-  if (lookupController) lookupController.abort();
+  if (lookupRequest) lookupRequest.abort();
   const controller = new AbortController();
-  lookupController = controller;
+  lookupRequest = controller;
   lookupStatus.textContent = `Looking up “${query}”…`;
   try {
     const data = await api(`/instruments?${new URLSearchParams({ query, limit: "5" })}`, {
@@ -603,7 +590,7 @@ async function lookupInstruments(query) {
     lookupStatus.textContent = `Identity lookup unavailable: ${error.message}`;
     return null;
   } finally {
-    if (lookupController === controller) lookupController = null;
+    if (lookupRequest === controller) lookupRequest = null;
   }
 }
 
@@ -611,8 +598,8 @@ function cancelPendingLookup() {
   clearTimeout(lookupTimer);
   lookupTimer = null;
   lookupSequence += 1;
-  if (lookupController) lookupController.abort();
-  lookupController = null;
+  if (lookupRequest) lookupRequest.abort();
+  lookupRequest = null;
 }
 
 symbolInput.addEventListener("input", () => {
@@ -622,7 +609,7 @@ symbolInput.addEventListener("input", () => {
   hideOptions();
   const query = symbolInput.value.trim();
   if (query.length < 2) {
-    lookupStatus.textContent = query ? "Type at least 2 characters for identity choices." : "";
+    lookupStatus.textContent = "";
     return;
   }
   // Delay symbol lookup so immediate submission can supersede it.
@@ -631,8 +618,8 @@ symbolInput.addEventListener("input", () => {
 });
 
 symbolInput.addEventListener("keydown", (event) => {
-  const options = [...instrumentOptions.querySelectorAll("[role=option]")];
-  if (instrumentOptions.hidden || !options.length) return;
+  const options = [...optionsBox.querySelectorAll("[role=option]")];
+  if (optionsBox.hidden || !options.length) return;
   if (event.key === "ArrowDown") {
     event.preventDefault();
     setActiveOption(activeOption + 1);
@@ -687,10 +674,10 @@ function renderForecastCard(result, input) {
   }
   card.append(chart, renderTailChart(result, chartId));
 
-  const table = element("table", "details-table");
-  table.append(element("caption", "", "Horizon, direction, and threshold details"));
-  const body = element("tbody");
-  table.append(body);
+  const contextTable = element("table", "details-table context-table");
+  contextTable.append(element("caption", "", "Origin and target context"));
+  const contextBody = element("tbody");
+  contextTable.append(contextBody);
   for (const [label, value] of [
     ["Origin price", formatPrice(result.origin_price, input.currency)],
     ["Origin timestamp", formatTime(result.origin_timestamp)],
@@ -701,14 +688,20 @@ function renderForecastCard(result, input) {
     ["Session at request", contractLabel(result.session_state_at_request || input.session_state_at_request)],
     ["Session semantics", result.target_session_rule || input.session_rule],
     ["Calculated at", formatTime(result.calculated_at)],
-  ]) tableRow(body, label, value);
+  ]) tableRow(contextBody, label, value);
   if (result.origin_bar_end) {
     tableRow(
-      body,
+      contextBody,
       "Completed-bar evidence",
-      `Selected five-minute bar ended ${formatTime(result.origin_bar_end)}, at or before request cutoff ${formatTime(input.request_cutoff)}; an active incomplete bar is excluded.`,
+      `Five-minute bar ended ${formatTime(result.origin_bar_end)} by cutoff ${formatTime(input.request_cutoff)}; an active incomplete bar is excluded.`,
     );
   }
+  card.append(contextTable);
+
+  const table = element("table", "details-table");
+  table.append(element("caption", "", "Direction and threshold details"));
+  const body = element("tbody");
+  table.append(body);
   const definitions = probabilities.definitions || {};
   tableRow(body, "Down probability", `${formatPercent(probabilities.down)} · ${definitions.down || "return below the flat range"}`);
   tableRow(body, "Unchanged probability", `${formatPercent(directionValue(probabilities, "flat"))} · ${definitions.flat || definitions.unchanged || probabilities.flat_definition}`);
@@ -736,8 +729,6 @@ function renderForecastCard(result, input) {
     "conditional-details",
     result.conditional_magnitudes || result.conditional_probabilities || result.conditional_gain_loss,
   );
-  if (conditional) card.append(table, conditional);
-  else card.append(table);
 
   const intervalTable = element("table", "details-table interval-table");
   intervalTable.append(element("caption", "", "Return and price intervals"));
@@ -750,6 +741,8 @@ function renderForecastCard(result, input) {
       `${interval.definition}: ${interval.percent.low.toFixed(2)}% to ${interval.percent.high.toFixed(2)} percent return (${interval.percent.unit}); ${formatPrice(interval.price.low, input.currency)} to ${formatPrice(interval.price.high, input.currency)} (${interval.price.unit})`,
     );
   }
+  card.append(intervalTable);
+
   for (const [label, value] of [
     ["Model", `${result.model?.name || input.model.name} / ${result.model?.version || result.model_version || input.model.version}`],
     ["Forecast contract", result.forecast_contract_version || input.forecast_contract_version],
@@ -757,8 +750,7 @@ function renderForecastCard(result, input) {
     ["Forecast fingerprint", result.forecast_fingerprint],
     ["Historical sample count", String(result.sample_size)],
     ["Distribution", result.distribution_definition],
-  ]) tableRow(intervalBody, label, value);
-  card.append(intervalTable);
+  ]) tableRow(body, label, value);
 
   const uncertainty = contractSection(
     "Sample uncertainty",
@@ -770,7 +762,6 @@ function renderForecastCard(result, input) {
       probability_estimator: result.probability_estimator,
     },
   );
-  if (uncertainty) card.append(uncertainty);
   const evaluation = contractSection(
     "Chronological walk-forward evaluation",
     "evaluation-details",
@@ -778,7 +769,8 @@ function renderForecastCard(result, input) {
       result.evaluation || input.evaluations?.[result.horizon] || input.evaluation?.[result.horizon],
     ),
   );
-  if (evaluation) card.append(evaluation);
+  card.append(disclosure("Threshold, uncertainty, and evaluation details", "forecast-forensics",
+    table, ...[conditional, uncertainty, evaluation].filter(Boolean)));
 
   if (result.outcomes?.length) {
     const outcomes = element("section", "outcomes");
@@ -820,7 +812,7 @@ function renderResult(data, context = "live") {
     "p",
     "state-strip",
     context === "saved"
-      ? `Immutable recorded result · audit event #${data.event.id}. Forecast inputs and values are reopened exactly as saved; append-only outcomes are shown separately below.`
+      ? `Immutable recorded result · audit event #${data.event.id}. Forecast inputs and values are reopened exactly as saved; append-only outcomes remain separate.`
       : data.repeated
         ? `Repeated request recorded as audit event #${data.event.id}; ${data.reused ? "the identical saved forecast was reused." : "new provider input created a new immutable run."}`
         : `Successful request recorded as audit event #${data.event.id}.`,
@@ -831,16 +823,16 @@ function renderResult(data, context = "live") {
     const summary = element("p", "quality-summary", `Stale-data reason: ${qualityReasons.join("; ") || "No reason reported"}. `);
     const link = element("a", "text-link", "Review detailed provenance");
     link.href = "#forecast-provenance";
+    link.addEventListener("click", () => { document.getElementById(link.hash.slice(1)).open = true; });
     summary.append(link);
     resultContent.append(summary);
   }
 
-  const meta = element("div", "forecast-meta");
   const fields = [
     ["Display name", input.display_name],
     ["Company name", input.company_name],
-    ["Canonical symbol", input.canonical_symbol || input.symbol],
-    ["Instrument type", [input.asset_type?.toUpperCase(), input.quote_type].filter(Boolean).join(" / ")],
+    ["Canonical symbol", `${input.canonical_symbol || input.symbol} · recorded identity`],
+    ["Instrument type", `${[input.asset_type?.toUpperCase(), input.quote_type].filter(Boolean).join(" / ")} · recorded type`],
     ["Exchange", input.exchange],
     ["Currency", input.currency],
     ["Exchange timezone", input.exchange_timezone],
@@ -849,24 +841,30 @@ function renderResult(data, context = "live") {
     ["Source", input.provider],
     ["Model", `${input.model.name} / ${input.model.version}`],
   ];
-  appendMeta(meta, fields);
+  const meta = element("div", "forecast-meta");
+  appendMeta(meta, [
+    ["Instrument", input.canonical_symbol || input.symbol],
+    ["Name", input.display_name || input.company_name],
+    ["Instrument type", [input.asset_type?.toUpperCase(), input.quote_type].filter(Boolean).join(" / ")],
+    ["Context", `${[input.exchange, input.currency].filter(Boolean).join(" / ")} · ${input.provider} · as of ${formatTime(input.provider_as_of)}`],
+  ]);
+  const calculationDetails = element("div", "calculation-details");
+  appendMeta(calculationDetails, fields);
+  meta.append(disclosure("Instrument and calculation details", "instrument-details", calculationDetails));
   resultContent.append(meta);
   resultContent.append(newsDisclosure(input, context));
   resultContent.append(renderHorizonComparison(data.results));
   const grid = element("div", "forecast-grid");
   for (const result of data.results) grid.append(renderForecastCard(result, input));
   resultContent.append(grid);
-  const provenance = element("aside", "provenance");
-  provenance.id = "forecast-provenance";
-  provenance.setAttribute("aria-label", "Forecast provenance and quality");
-  provenance.append(element("h3", "", "Data quality, limitations, and provenance"));
   const limitations = inputLimitations(input);
   const missing = Object.fromEntries(
     Object.entries(input.provider_metadata || {}).filter(([key]) => key.includes("missing")),
   );
+  const provenance = disclosure(`Data quality · Provider: ${input.provider}. Response as-of: ${formatTime(input.provider_as_of)}. Stale state: ${input.stale_state?.state || input.quality}. ${(input.quality_reasons || input.stale_state?.reasons || []).join("; ") || "No stale-data reasons."}`,
+    "provenance provider-provenance");
+  provenance.id = "forecast-provenance";
   for (const text of [
-    `Provider: ${input.provider}. Response as-of: ${formatTime(input.provider_as_of)}.`,
-    `Stale state: ${input.stale_state?.state || input.quality}. ${(input.quality_reasons || input.stale_state?.reasons || []).join("; ") || "No stale-data reasons reported."}`,
     `Session at request: ${contractLabel(input.session_state_at_request)}. Session rule: ${input.session_rule}`,
     `Calendar: ${input.calendar.name} / ${input.calendar.version} / ${input.calendar.timezone}.`,
     `Captured prices: ${input.selected_daily_bars.length} daily closes and ${input.selected_intraday_bars.length} completed intraday bars.`,
@@ -921,10 +919,10 @@ function errorPanel(title, error, context) {
   return panel;
 }
 
-function renderError(error) {
+function renderError(error, title = "Forecast unavailable", context) {
   qualityBadge.className = "badge failed";
   qualityBadge.textContent = "Failed";
-  showContent(resultContent, "", false, errorPanel("Forecast unavailable", error));
+  showContent(resultContent, "", false, errorPanel(title, error, context));
 }
 
 function focusResultSection() {
@@ -940,7 +938,8 @@ forecastForm.addEventListener("submit", async (event) => {
   cancelPendingLookup();
   hideOptions();
   if (!/^[A-Z0-9.^-]{1,15}$/.test(symbol)) {
-    const matches = await lookupInstruments(typedQuery);
+    lookupStatus.textContent = "";
+    const matches = typedQuery.length >= 2 ? await lookupInstruments(typedQuery) : null;
     symbolError.textContent = matches?.length
       ? "Choose a matching instrument before running a forecast."
       : "Enter a 1-15 character symbol or choose a company-name match.";
@@ -952,6 +951,7 @@ forecastForm.addEventListener("submit", async (event) => {
   symbolInput.removeAttribute("aria-invalid");
   if (!selectedIdentity || selectedIdentity.canonical_symbol !== symbol) lookupStatus.textContent = "";
   const submit = $("#forecast-submit");
+  selectionSequence += 1;
   submit.disabled = true;
   submit.querySelector("span").textContent = "Calculating…";
   qualityBadge.className = "badge neutral";
@@ -978,45 +978,64 @@ forecastForm.addEventListener("submit", async (event) => {
 });
 
 async function showHistoryEvent(id, isFailure = false) {
-  announcement.textContent = `Loading immutable recorded result for audit event ${id}.`;
+  const selection = selectionSequence += 1;
+  supersedeNews();
+  qualityBadge.className = "badge neutral";
+  qualityBadge.textContent = "Loading saved event";
+  showContent(resultContent, "empty-state loading", true, element("p", "",
+    isFailure ? `Loading recorded failed request #${id}…` : `Loading saved forecast #${id}…`));
+  announcement.textContent = `Loading saved audit event ${id}.`;
   try {
     const data = await api(isFailure ? `/history/${id}` : `/saved-forecasts/${id}`);
+    if (selection !== selectionSequence) return;
     if (data.input) {
       data.repeated = data.event.status === "repeated";
       renderResult(data, "saved");
       focusResultSection();
       announcement.textContent = `Immutable recorded result ${id} reopened without recalculation.`;
     } else {
-      renderError({ code: data.event.error_code, message: data.event.error_message });
+      const event = data.event;
+      renderError(
+        { code: event.error_code, message: `Saved error: ${event.error_message}`, requestId: event.request_id },
+        "Recorded failed request",
+        `Event #${event.id} · ${event.submitted_symbol} / ${event.asset_type.toUpperCase()} · ${formatTime(event.submitted_at)}. No forecast was saved.`,
+      );
+      qualityBadge.textContent = "Recorded failure";
       focusResultSection();
-      announcement.textContent = `Historical failure ${id} loaded.`;
+      announcement.textContent = `Recorded failed request ${id} loaded.`;
     }
   } catch (error) {
-    renderError(error);
-    announcement.textContent = `Historical event could not be loaded: ${error.message}`;
+    if (selection !== selectionSequence) return;
+    renderError(
+      error,
+      isFailure ? "Recorded failed request could not be retrieved" : "Saved forecast could not be retrieved",
+      "Retrieval failed; no recorded data was replaced.",
+    );
+    qualityBadge.textContent = "Retrieval failed";
+    announcement.textContent = `Saved event retrieval failed: ${error.message}`;
     focusResultSection();
   }
 }
 
 async function runFreshAnalysis(id) {
-  if (freshAnalysisInFlight) return;
-  freshAnalysisInFlight = true;
+  if (freshInFlight) return;
+  freshInFlight = true;
   document.querySelectorAll(".fresh-analysis-action").forEach((button) => { button.disabled = true; });
   let cutoff = null;
   // Keep fresh analysis separate from saved output.
-  freshAnalysisSection.hidden = false;
+  freshSection.hidden = false;
   showContent(
-    freshAnalysisContent,
+    freshContent,
     "empty-state loading",
     true,
     element("p", "", `Loading cutoff for source audit event #${id}…`),
   );
   announcement.textContent = `Fresh historical-cutoff analysis for event ${id} is running.`;
-  freshAnalysisSection.focus();
+  freshSection.focus();
   try {
     const saved = await api(`/saved-forecasts/${id}`);
     cutoff = saved.input.request_cutoff;
-    freshAnalysisContent.replaceChildren(element(
+    freshContent.replaceChildren(element(
       "p",
       "",
       `Calculating fresh analysis from source audit event #${id} at historical cutoff ${formatTime(cutoff)}…`,
@@ -1029,15 +1048,15 @@ async function runFreshAnalysis(id) {
       }),
     });
     const data = response.analysis || response;
-    showContent(freshAnalysisContent, "", false);
+    showContent(freshContent, "", false);
     cutoff = data.input?.request_cutoff || response.request_cutoff || cutoff;
-    freshAnalysisContent.append(element(
+    freshContent.append(element(
       "p",
       "state-strip",
       `Fresh analysis${data.event?.id ? ` recorded as new audit event #${data.event.id}` : ""} from source audit event #${id}${cutoff ? ` at historical cutoff ${formatTime(cutoff)}` : ""}. This is a new calculation and does not alter the immutable source forecast.`,
     ));
     if (!data.input || !data.results) throw new Error("Fresh analysis response omitted forecast details.");
-    if (data.input.quality === "stale") freshAnalysisContent.append(element(
+    if (data.input.quality === "stale") freshContent.append(element(
       "p",
       "fresh-warning",
       `Stale reconstruction: ${data.input.quality_reasons.join("; ") || "No reason reported"}.`,
@@ -1056,14 +1075,14 @@ async function runFreshAnalysis(id) {
       ["Quality reasons", data.input.quality_reasons.join("; ") || "None reported"],
       ["Provider / archive limitations", inputLimitations(data.input).join(" ")],
     ]);
-    freshAnalysisContent.append(meta);
+    freshContent.append(meta);
     const grid = element("div", "forecast-grid");
     for (const result of data.results) grid.append(renderForecastCard(result, data.input));
-    freshAnalysisContent.append(grid);
+    freshContent.append(grid);
     announcement.textContent = `Fresh historical-cutoff analysis for event ${id} is ready in the separate analysis region.`;
   } catch (error) {
     showContent(
-      freshAnalysisContent,
+      freshContent,
       "",
       false,
       errorPanel(
@@ -1074,7 +1093,7 @@ async function runFreshAnalysis(id) {
     );
     announcement.textContent = `Fresh historical-cutoff analysis failed: ${error.message}`;
   } finally {
-    freshAnalysisInFlight = false;
+    freshInFlight = false;
     await loadHistory();
   }
 }
@@ -1257,8 +1276,8 @@ function renderHistory(data, runRelations) {
     historyContent.replaceChildren(table);
   }
   historyPage = data.page;
-  historyLastPage = Math.max(1, Math.ceil(data.total / data.page_size));
-  $("#history-page").textContent = `Page ${data.page} of ${historyLastPage}`;
+  lastPage = Math.max(1, Math.ceil(data.total / data.page_size));
+  $("#history-page").textContent = `Page ${data.page} of ${lastPage}`;
   historyPrevious.disabled = data.page <= 1;
   historyNext.disabled = data.page * data.page_size >= data.total;
 }
@@ -1314,7 +1333,7 @@ historyPrevious.addEventListener("click", () => {
   loadHistory();
 });
 historyNext.addEventListener("click", () => {
-  if (historyPage >= historyLastPage) return;
+  if (historyPage >= lastPage) return;
   historyPage += 1;
   loadHistory();
 });

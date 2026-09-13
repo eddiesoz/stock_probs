@@ -34,9 +34,9 @@
    remote `main` match; reviewer `LUNA MAX QA`. The earlier M07 receipt verification also
    passed with independently recomputed performance rows; its separate metadata was not
    supplied.
- - Current `ASTRA-FINAL` is **Accepted for its declared scope** at clean commit
-   `261825838d6788afeb9640db8fbbf3f94af3a82b`, session
-   `ses_f679f906cffexS9H5k8Vwk4d16`. Its bound evidence covers a `214`-row matrix, records
+  - Earlier accepted `ASTRA-FINAL` is retained at clean commit
+    `261825838d6788afeb9640db8fbbf3f94af3a82b`, session
+    `ses_f679f906cffexS9H5k8Vwk4d16`. Its bound evidence covers a `214`-row matrix, records
    no remaining blocking defect and no regression, and explicitly records actual screen-reader,
    physical-mobile, and native/physical ARM64 performance evidence as **Unavailable**. Those
    limitations remain visible and are not treated as passes.
@@ -70,6 +70,27 @@
     webhook-pattern matches. Exact delivery UTC, network environment, and a separate
     notification artifact were not supplied and are not inferred. `NOTIFY-FINAL` is not a
     milestone or acceptance ID.
+  - Current post-repair visual reconciliation: `R-ASTRA-22` is **Completed for its declared
+    scope**. Independent QA on dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09` reported
+    `425` passed/`4` deselected/`89.65%` coverage, provider `32` passed, browser `62` passed/`2`
+    expected performance skips plus `31` at `1280px`, `17` executable performance rows passed,
+    static `97,893`/`98,304` bytes, and persistence `55 + 35 + 4` passed. `R-ASTRA-24` records
+    SPY lookup as ETF, `R-ASTRA-25` heading order, `R-ASTRA-26` `44px` desktop actions, and
+    `R-ASTRA-27` selector alignment after a failed initial render and successful reruns. The
+    supplied overengineering-only Ponytail result was `Lean already. Ship.`
+  - The post-repair `ASTRA-FINAL` session `ses_f6683138affe6t8S6Z0G66YJDc` is **Accepted** with
+    no reproducible blockers. Artifacts are `test-results/astra-final-live/` and
+    `test-results/astra-final-repair/`; the live browser receipt records event `143`/run `141`,
+    fresh event `145`, `21` localhost-only requests, and axe `0/0` at desktop and `390px`.
+    Physical mobile, actual screen-reader, true-zoom, and native/physical ARM64-performance
+    evidence remain **Unavailable**. ACDC/SPY flows do not prove news relevance or exact-symbol
+    provider availability.
+  - Follow-on `R-M07-5` is **Completed for its declared scope** by two passing container
+    contract tests and the supplied amd64 image receipt: digest
+    `sha256:0dcb3f5ec77d31a5e8f57ef6e5d57b7144b973c3acb73ac360ffe01494735da`, size
+    `169,699,932` bytes. The Compose path is one loopback-bound local service; native
+    development remains the `.dev-venv/` path. This current dirty-worktree evidence does not
+    create a clean release/export/commit/push/remote result or a new notification.
  - Earlier supplied `M08` walkthrough-extension evidence remains **In progress**: `20` steps, `40` annotated
   PNGs (`20` desktop `1280x1000`, `20` mobile `390x844`), manifest SHA-256
   `806722ad4321fa3ca25a794192649eb55ad9c55cbba4abf6ec51886ba556df5d`, five companion news

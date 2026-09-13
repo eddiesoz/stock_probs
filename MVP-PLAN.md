@@ -60,9 +60,9 @@ This is the implementation contract for the planned local Linux stock probabilit
    command, session, environment, UTC, commit, artifact path, and named reviewer were not
    supplied and are not inferred.
   - Historical pre-acceptance `ASTRA-FINAL` state (retained): it was **In progress**, not **Accepted**. Four ASTRA evaluation lanes reviewed all `211` matrix rows and produced findings across assets/controls/charts, UI states/persistence, theme/news/docs, and the walkthrough. SOL applied fourteen repair groups: `R-ASTRA-1`–`R-ASTRA-5` CSS/theme defects including the mobile theme selector, dark/forced-colors/print contrast, mobile navigation, the API-docs label, and chart typography; `R-ASTRA-6`–`R-ASTRA-10` app behavior including news terminal states/retry/abort, history race and pagination guards, fresh-analysis context, saved-replay truthfulness, validation recovery, stale-reason placement, ledger evidence, and chart focus; `R-ASTRA-11` export sort-before-cap; `R-ASTRA-12` `theme.js` package verification; `R-ASTRA-13` walkthrough quality and the tracked [`docs/walkthrough/`](docs/walkthrough/index.md) artifact (7.19 MiB, 52 PNGs, instructional transcript, simulation labels, and manifest revision binding); and `R-ASTRA-14` news/theme documentation. The static shell was repaired from `102,607` to `98,242` bytes, `62` bytes below the `98,304`-byte limit. Independent QA of all 14 repairs and the ASTRA re-evaluation were **In progress** at that historical point. Exact ASTRA/repair commands, sessions, environments, UTC windows, commits, and named reviewers were not supplied for that record; no ASTRA acceptance or `EXP-M08` checkpoint was inferred then.
-  - Current `ASTRA-FINAL` is **Accepted for its declared scope** at clean commit
-    `261825838d6788afeb9640db8fbbf3f94af3a82b`, session
-    `ses_f679f906cffexS9H5k8Vwk4d16`. The bound receipts cover a `214`-row matrix, record no
+   - Earlier accepted `ASTRA-FINAL` is retained at clean commit
+     `261825838d6788afeb9640db8fbbf3f94af3a82b`, session
+     `ses_f679f906cffexS9H5k8Vwk4d16`. The bound receipts cover a `214`-row matrix, record no
     remaining blocking defect and no regression, and explicitly record actual screen-reader,
     physical-mobile, and native/physical ARM64 performance evidence as **Unavailable**. Those
     limitations remain visible and are not treated as passes.
@@ -90,12 +90,33 @@ This is the implementation contract for the planned local Linux stock probabilit
     out-of-band webhook returned HTTP `204` with an empty response body around
     `2026-09-13T01:45Z`; no retry was needed, and the bounded success did not change the
     accepted `EXP-FINAL` result. Reviewer/coordinator: `OpenCode gpt-5.6-sol`.
-  - The payload was a minimal non-secret receipt containing the accepted result, checkpoint,
-    and evidence summary. The endpoint, token, and credential-bearing payload were never
-    written to the repository, export, artifacts, or logs; the sanitized export shows zero
-    webhook-pattern matches. Exact delivery UTC, network environment, and a separate
-    notification artifact were not supplied and are not inferred. `NOTIFY-FINAL` is not a
-    milestone or acceptance ID.
+   - The payload was a minimal non-secret receipt containing the accepted result, checkpoint,
+     and evidence summary. The endpoint, token, and credential-bearing payload were never
+     written to the repository, export, artifacts, or logs; the sanitized export shows zero
+     webhook-pattern matches. Exact delivery UTC, network environment, and a separate
+     notification artifact were not supplied and are not inferred. `NOTIFY-FINAL` is not a
+     milestone or acceptance ID.
+   - Current post-repair visual reconciliation: `R-ASTRA-22` is **Completed for its declared
+     scope**. Independent QA on dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09` reports
+     `425` passed/`4` deselected/`89.65%` coverage, provider `32` passed, browser `62` passed/`2`
+     expected performance skips plus `31` at `1280px`, `17` executable performance rows passed,
+     static `97,893`/`98,304` bytes, and persistence `55 + 35 + 4` passed. `R-ASTRA-24` records
+     SPY lookup as ETF, `R-ASTRA-25` heading order, `R-ASTRA-26` `44px` desktop actions, and
+     `R-ASTRA-27` selector alignment after a failed initial render and successful reruns. The
+     supplied overengineering-only Ponytail result was `Lean already. Ship.`
+   - The post-repair `ASTRA-FINAL` session `ses_f6683138affe6t8S6Z0G66YJDc` is **Accepted** with
+     no reproducible blockers. Artifacts are `test-results/astra-final-live/` and
+     `test-results/astra-final-repair/`; the live browser receipt records event `143`/run `141`,
+     fresh event `145`, `21` localhost-only requests, and axe `0/0` at desktop and `390px`.
+     Physical mobile, actual screen-reader, true-zoom, and native/physical ARM64-performance
+     evidence remain **Unavailable**. ACDC/SPY flows do not prove news relevance or exact-symbol
+     provider availability.
+   - Follow-on `R-M07-5` is **Completed for its declared scope** by two passing container
+     contract tests and the supplied amd64 image receipt: digest
+     `sha256:0dcb3f5ec77d31a5e8f57ef6e5d57b7144b973c3acb73ac360ffe01494735da`, size
+     `169,699,932` bytes. The Compose path is one loopback-bound local service; native
+     development remains the `.dev-venv/` path. This dirty-worktree evidence is not a clean
+     release/export/commit/push/remote result or a new notification.
  - Historical pre-acceptance aggregate status (retained): `M05` is **Completed for its declared scope** through the independent `R-M05-55` Pass receipt. `EXP-M05` is **Completed** at commit `9be15a3ae60b16e7cc7a5b95653f914b578e1a61` with the exact export audit receipt recorded below. `M06` is **Completed for its declared scope** through final clean-target `R-M06-55` on commit `a69df40e15b3136886f26789c27861184c3bbd77`; `EXP-M06` is **Completed** at the same checkpoint. `M09` implementation is **Completed for its declared implementation scope**, but `M09` remains **In progress** pending the boundary `/ponytail-review`, the consolidated M09 gate, docs finalization, and `EXP-M09`. Its supplied scoped QA summary reports `130` news-contract tests plus live ACDC/SPY checks, browser `40` passed/`2` skipped with axe `0/0`, and passing M09 performance rows; the summary's missing session/command/environment/UTC/commit/artifact/reviewer fields are not inferred. `R-M09-1` is the Ponytail-review/local-gate M09 regex repair in flight. `M07` was **In progress** with `R-M07-1` fifth-agent configuration/profile-count test repair in flight, `R-M07-2` Ponytail-review availability pending with findings-only evidence in retained report `test-results/ponytail-m06-m07-boundary.txt` and closure pending, `R-M07-3` completed for supplied repair/test evidence, and `R-M07-4` completed for supplied Ponytail repair evidence. `M08`, `ASTRA-FINAL`, and `EXP-FINAL` were **Pending** at that earlier state. `EXP-M00` through `EXP-M06` were completed; later export state was pending at that time. Actual screen-reader evidence and native/physical ARM64 performance remain **Unavailable**; final release acceptance is not claimed.
 - The first consolidated M09 gate command `TASK_ID=M09 PERFORMANCE_REVIEWER='LUNA MAX QA' ./scripts/local-gate.sh m09` **Failed** with one intermittent `test_success_repeat_failure_and_searchable_history` failure (expected total `2`, observed `3`; the known random request-ID/search-collision flake) and reproducible blocker `R-M09-2`: when local-gate invoked `scripts/arm64-smoke.sh`, it rejected `TASK_ID=M09` and exited `2` before ARM evidence. The clean rerun reported `338 passed/4 deselected/89.62%`. Independent continuation passed the native package (wheel `121,501` bytes including `theme.js` and `news.json`), browser `40` passed/`2` skipped, official MCP, Ponytail interface, and the M09 performance harness `18/18` rows; ARM64 performance is **Unavailable**. A separate functional/package/runtime smoke passed as **emulated ARM64**. `R-M09-2` and `R-M09-3` (flaky-test determinism) repairs remain **In progress**; the consolidated gate rerun and `EXP-M09` remain **Pending**. Session, environment, UTC, commit, and artifact metadata were not supplied and are not inferred.
 - The aggregate M07 in-progress wording in the preceding status line is retained as
@@ -1553,7 +1574,7 @@ the two ranges; this record therefore preserves the supplied ranges rather than 
   acceptance, repair, or reevaluation. The current findings/repair record above supersedes that
   status without deleting the historical limitation.
 
-### Current `ASTRA-FINAL` acceptance and `EXP-M08` checkpoint
+### Earlier accepted `ASTRA-FINAL` acceptance and `EXP-M08` checkpoint
 
 - **`ASTRA-FINAL` status:** `Completed`; verdict **Accepted for its declared scope** at clean
   commit `261825838d6788afeb9640db8fbbf3f94af3a82b`, session
@@ -1626,6 +1647,35 @@ the two ranges; this record therefore preserves the supplied ranges rather than 
 - **Export/Git/reviewer:** `EXP-FINAL` remains the accepted checkpoint above; the notification
   did not overwrite `SESSION-EXPORT.md`, create a Git checkpoint, commit, push, or remote result.
   Reviewer/coordinator: `OpenCode gpt-5.6-sol`.
+
+### Current post-repair visual and container reconciliation
+
+This section records the later supplied repair/QA result without rewriting the earlier accepted
+`ASTRA-FINAL`, `EXP-M08`, `EXP-FINAL`, or `NOTIFY-FINAL` records above. The current worktree was
+dirty at `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; no future commit is inferred.
+
+| Task ID | Status | Requirement/check | Evidence and limitation |
+| --- | --- | --- | --- |
+| `R-ASTRA-22` | **Completed** for declared scope | Reopened visual repair program for theme parity, surfaces/background, density, controls, and mobile metadata. | Independent QA reported `425` passed/`4` deselected/`89.65%` coverage, provider `32` passed, browser `62` passed/`2` expected performance skips plus `31` at `1280px`, static `97,893`/`98,304` bytes, and persistence `55 + 35 + 4` passed. Artifacts: `test-results/astra-final-live/`, `test-results/astra-final-repair/`; reviewer `LUNA MAX QA` as supplied. |
+| `R-ASTRA-24` | **Completed** for declared scope | SPY lookup classification. | **Pass**; SPY classified as ETF. This is identity/lookup evidence only, not exact-symbol provider-news or relevance evidence. |
+| `R-ASTRA-25` | **Completed** for declared scope | Heading order. | **Pass**; heading-order evidence and axe checks passed. Artifact: `test-results/astra-final-repair/r-astra-27-news-evidence-rerun.json`. |
+| `R-ASTRA-26` | **Completed** for declared scope | Desktop action target minimum. | **Pass**; supplied desktop actions met `44px`. Physical mobile and true zoom remain **Unavailable**. |
+| `R-ASTRA-27` | **Completed** for declared scope | Theme-selector alignment and repaired visual/news evidence. | **Pass** after the initial render attempt failed (exit `1`) and deterministic/actual isolated-fixture reruns passed. Artifacts: `test-results/astra-final-repair/`; static size `97,893`/`98,304` bytes. |
+| `ASTRA-FINAL` | **Completed** | Post-repair final disposition. | Session `ses_f6683138affe6t8S6Z0G66YJDc`: **Accepted**, no reproducible blockers. The exact command, UTC, environment, and separate ASTRA artifact were not supplied. |
+| `R-M07-5` | **Completed** for declared scope | Minimal local-production container boundary. | Two container contract tests passed; supplied amd64 image digest `sha256:0dcb3f5ec77d31a5e8f57ef6e5d57b7144b973c3acb73ac360ffe01494735da`, size `169,699,932` bytes; real ACDC/SPY flows were exercised. No exact container command/UTC or clean release checkpoint was supplied. |
+
+The supplied browser receipt records event `143`/run `141`, fresh event `145`, `21`
+localhost-only requests, and axe `0/0` at desktop and `390px`. The supplied performance result
+has `17` executable rows **Pass** and ARM64 performance **Unavailable**. Physical mobile, actual
+screen-reader, true-zoom, and native/physical ARM64-performance evidence remain unavailable.
+The flows do not prove ACDC news relevance or exact-symbol provider availability. The supplied
+Ponytail boundary result was `Lean already. Ship.` and is overengineering-only; it cannot accept
+correctness, accessibility, provider, or performance.
+
+No new export, secret review, commit, push, exact remote verification, or notification is claimed
+for this dirty-worktree reconciliation. The scheduled forecast report email with an attached
+report remains future, unimplemented, and outside the current acceptance records; see the
+roadmap's future design item.
 
 ## Final operational item: selective Ingenium pipeline adoption
 

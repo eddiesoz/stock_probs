@@ -58,10 +58,12 @@ def test_upgrade_from_shipped_initial_schema_matches_clean_schema(settings, tmp_
             (NOW.isoformat(),),
         )
     upgraded = Repository(upgraded_path)
-    upgraded.migrate()
+    upgrade_backups = []
+    upgraded.migrate(before_migration=upgrade_backups.append)
 
     clean = Repository(tmp_path / "clean.sqlite3")
-    clean.migrate()
+    clean_backups = []
+    clean.migrate(before_migration=clean_backups.append)
 
     def schema(repository):
         with repository.connect() as connection:
@@ -72,6 +74,8 @@ def test_upgrade_from_shipped_initial_schema_matches_clean_schema(settings, tmp_
 
     assert [tuple(row) for row in schema(upgraded)] == [tuple(row) for row in schema(clean)]
     assert upgraded.representative_counts() == clean.representative_counts()
+    assert upgrade_backups == [1]
+    assert clean_backups == []
 
 
 def test_upgrade_from_v2_preserves_legacy_failed_analysis_and_is_idempotent(settings):

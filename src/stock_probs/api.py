@@ -1782,9 +1782,8 @@ def _query_history(
         raw_items = list(first["items"])
         for next_page in range(2, (first["total"] + 99) // 100 + 1):
             raw_items.extend(indexed_page(next_page, 100)["items"])
-        needs_results = filters["horizon"] is not None or sort_by == "horizon"
         enriched = [
-            _history_event_view(service, item, hydrate_results=needs_results)
+            _history_event_view(service, item, hydrate_results=False)
             for item in raw_items
         ]
         matched = [item for item in enriched if _matches_history_filters(item, filters)]

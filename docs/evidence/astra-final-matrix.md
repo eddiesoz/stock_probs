@@ -10,6 +10,9 @@ re-evaluation found that the earlier 211-row inventory omitted three rendered co
 not bind every row to all five evaluation dimensions. Existing IDs remain unchanged; `C035`–
 `C037` bring the inventory to 214 rows. The separate [evaluation report](astra-final-report.md)
 records the four lanes, repair program, re-evaluation verdicts, evidence scheme, and limits.
+The later reopened visual repair and accepted post-repair disposition are recorded in the
+[current repair section](astra-final-report.md#reopened-visual-repair-and-final-disposition);
+the supplied post-repair receipt does not provide a replacement matrix count.
 
 ## Verdict and limitation key
 

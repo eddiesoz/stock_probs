@@ -78,7 +78,7 @@ This roadmap tracks delivery of the local Linux stock-probability web app. The s
   and ASTRA re-evaluation were **In progress** at that historical point. Exact ASTRA/repair
   commands, sessions, environments, UTC windows, commits, and named reviewers were not
   supplied for that record; `EXP-M08` was then pending.
-- **Current `ASTRA-FINAL`:** **Accepted for its declared scope** at clean commit
+- **Earlier accepted `ASTRA-FINAL`:** **Accepted for its declared scope** at clean commit
   `261825838d6788afeb9640db8fbbf3f94af3a82b`, session
   `ses_f679f906cffexS9H5k8Vwk4d16`. The bound receipts cover a `214`-row matrix, record no
   remaining blocking defect and no regression, and explicitly record actual screen-reader,
@@ -111,6 +111,28 @@ This roadmap tracks delivery of the local Linux stock-probability web app. The s
   repository, export, artifacts, or logs; the sanitized export shows zero webhook-pattern
   matches. Exact delivery UTC, network environment, and a separate notification artifact were
   not supplied and are not inferred. `NOTIFY-FINAL` is not a milestone or acceptance ID.
+- **Current post-repair visual result:** `R-ASTRA-22` is **Completed for its declared scope**.
+  Independent QA on dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09` reported `425`
+  passed/`4` deselected/`89.65%` coverage, provider `32` passed, browser `62` passed/`2`
+  expected performance skips plus `31` at `1280px`, `17` executable performance rows passed,
+  static `97,893`/`98,304` bytes, and persistence `55 + 35 + 4` passed. `R-ASTRA-24` records
+  SPY lookup as ETF, `R-ASTRA-25` heading order, `R-ASTRA-26` `44px` desktop actions, and
+  `R-ASTRA-27` selector alignment after a failed initial render and successful reruns. The
+  supplied overengineering-only Ponytail result was `Lean already. Ship.`
+- **Current post-repair ASTRA disposition:** session `ses_f6683138affe6t8S6Z0G66YJDc` is
+  **Accepted** with no reproducible blockers. Artifacts are `test-results/astra-final-live/` and
+  `test-results/astra-final-repair/`; the live browser receipt records event `143`/run `141`,
+  fresh event `145`, `21` localhost-only requests, and axe `0/0` at desktop and `390px`.
+  Physical mobile, actual screen-reader, true-zoom, and native/physical ARM64-performance
+  evidence remain **Unavailable**. ACDC/SPY flows do not prove news relevance or exact-symbol
+  provider availability. No new clean release, export, commit, push, remote verification, or
+  notification is claimed.
+- **Current local production containerization:** `R-M07-5` is **Completed for its declared
+  scope** by two passing container contract tests and the supplied amd64 image receipt (digest
+  `sha256:0dcb3f5ec77d31a5e8f57ef6e5d57b7144b973c3acb73ac360ffe01494735da`, size
+  `169,699,932` bytes). The path remains Compose-only, loopback-bound, non-root, healthchecked,
+  persistent for SQLite/WAL/backup data, resource- and log-bounded, real-Yahoo-default, and
+  compatible with retained native non-container development.
 - **M05 implementation/preparation evidence only:** migration pre-backup, serve due-check with `STOCK_PROBS_BACKUP_INTERVAL_SECONDS` default `86400` and bounds `60`–`2678400`, backup-key rotation/retirement, `32`-artifact/`256 MiB` retention, and non-expiring query history are implemented. `docs/operations/backup-restore.md` and `docs/configure/local-configuration.md` were updated for accuracy by `SOL HIGH`. The earlier M08 capture harness supplied `20` annotated screenshots and manifest SHA-256 `f9fef2b2db0a806cc47ff1db82e1e895f4dd4803425c0cf74426f5fa5a12dd5d`, but that remains preparation evidence only; the current extension is recorded above and in the M08 gate section.
 - The following M09 status and boundary bullets retain the pre-consolidated-gate state as
   history; the current declared-scope result and `EXP-M09` pending state are recorded above.
@@ -1217,7 +1239,7 @@ After `M08` walkthrough QA/docs evidence, including M09 dark-mode/news coverage,
 
 Each row records task ID `ASTRA-FINAL`, check/command, environment, UTC timestamp, commit, result, artifact/link, limitation, and reviewer, with explicit evidence for all five evaluation dimensions. Any gap or non-pass creates `R-ASTRA-<n>`. Astra evaluates and suggests only; only `SOL HIGH` build agents implement `R-ASTRA-<n>` UI changes. The repair receives the normal up-to-six-lane build handoff, the mandatory pre-QA Ponytail review, and independent QA/docs gates, then Astra re-evaluates the failed row and affected matrix. If execution evidence shows a tooling, skill, or MCP gap caused poor output, a narrowly scoped `R-ASTRA-<n>` may repair and validate that gap before acceptance; it may not expand scope without a new evidenced requirement. Repeat until the independent record explicitly says **Accepted**. Only then does `EXP-M08` checkpoint the reviewed walkthrough. After all roadmap and Astra repairs, a final pre-`EXP-FINAL` deep learning synthesis must analyze sanitized chat/run evidence, use `skill-maintenance` only for justified reusable Stock Probability development skills, validate and index those skills, and log observations. Only after that record is complete may `EXP-FINAL` sanitize the full chat/export, complete secret review, commit, push, and verify the exact remote revision. `EXP-M08` and `EXP-FINAL` cannot be green before the stated prerequisites; `EXP-M07` is the earlier M07 checkpoint. This paragraph is retained pre-acceptance workflow history; the accepted `ASTRA-FINAL`, completed `EXP-M08`, supplied accepted `EXP-FINAL` checkpoint, and separate `NOTIFY-FINAL` receipt are recorded below.
 
-### Current `ASTRA-FINAL` acceptance and `EXP-M08` checkpoint
+### Earlier accepted `ASTRA-FINAL` acceptance and `EXP-M08` checkpoint
 
 - **`ASTRA-FINAL` status:** `Completed`; verdict **Accepted for its declared scope** at clean
   commit `261825838d6788afeb9640db8fbbf3f94af3a82b`, session
@@ -1326,6 +1348,123 @@ Each row records task ID `ASTRA-FINAL`, check/command, environment, UTC timestam
 - This follow-up does not alter the canonical `ASTRA-FINAL` -> `EXP-M08` -> final learning
   synthesis -> `EXP-FINAL` order, and optional `NOTIFY-FINAL` remains separate and last.
 
+## Current post-acceptance work items
+
+These are current follow-on requirements, not retroactive edits to the historical
+`ASTRA-FINAL`, `EXP-M08`, `EXP-FINAL`, or `NOTIFY-FINAL` receipts. The visual and container items
+below are now closed for their declared scopes by the supplied evidence; they do not create a
+new clean release/export/remote checkpoint.
+
+### `R-ASTRA-22` visual parity and no-known-visual-bug acceptance
+
+- **Status:** `Completed` for the declared visual-repair scope.
+- **Owner/phase:** `SOL HIGH` owns the repair; `LUNA MAX QA` owns independent human-like
+  Playwright QA; `ASTRA-FINAL` owns the screenshot-backed visual reevaluation; `LUNA MAX docs`
+  records the roadmap state.
+- **Dependencies verified:** The prior `ASTRA-FINAL` acceptance and its bound `EXP-M08`,
+  `EXP-FINAL`, and `NOTIFY-FINAL` checkpoints remain historical evidence; the supplied
+  independent QA and post-repair `ASTRA-FINAL` receipt close this declared visual scope.
+- **Change summary:** Dark mode must reach visual-quality parity with light mode across page
+  background/surfaces, typography and hierarchy, density/spacing, controls, charts, tables, and
+  every reachable state. The reported theme-dropdown, background, density, and mobile-metadata
+  defects invalidate the prior visual acceptance for this current requirement. Closure requires
+  human-like Playwright use of every reachable control and state at `320`, `390`, `768`, `1280`,
+  `1440`, and `1920` CSS-pixel widths in Light, Dark, and System modes, with keyboard operation,
+  forced-colors, and reduced-motion coverage, plus screenshot-backed `ASTRA-FINAL` acceptance.
+  The supplied result records no reproducible blockers. `R-ASTRA-22` is closed only for the
+  supplied declared scope; implementation presence alone is not the acceptance basis.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `R-ASTRA-22-E1` | Independent QA totals: `425` passed/`4` deselected/`89.65%`; provider `32` passed; browser `62` passed/`2` expected performance skips plus `31` at `1280px`; static `97,893`/`98,304` bytes; persistence `55 + 35 + 4` passed. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; exact command and UTC not supplied. | **Pass** as supplied independent QA evidence; artifacts `test-results/astra-final-live/` and `test-results/astra-final-repair/`; reviewer `LUNA MAX QA` as supplied. |
+| `R-ASTRA-22-E2` | `17` executable performance rows passed; ARM64 performance remained unavailable. | Native x86_64 Linux; dirty `HEAD` above; exact command and UTC not supplied. | **Pass** for native-x86 executable rows; ARM64 performance **Unavailable**; artifact `test-results/astra-final-repair/`; reviewer `LUNA MAX QA`. |
+| `R-ASTRA-22-E3` | Two container contract tests, supplied amd64 image digest/size, and real ACDC/SPY flows. | Native x86_64 QA context; dirty `HEAD` above; exact container command and UTC not supplied. | **Pass** for supplied container/flow scope; digest `sha256:0dcb3f5ec77d31a5e8f57ef6e5d57b7144b973c3acb73ac360ffe01494735da`, size `169,699,932` bytes; exact image artifact filename not supplied. ACDC news relevance and exact-symbol provider availability remain unproven. |
+| `R-ASTRA-24-E1` | SPY lookup classification. | Native x86_64 browser/QA context; dirty `HEAD` above; exact command and UTC not supplied. | **Pass**; SPY classified as ETF; artifact `test-results/astra-final-live/`; no exact-symbol provider/news claim. |
+| `R-ASTRA-25-E1` | Heading order and heading-order axe checks. | Native x86_64, pinned Playwright Chromium; successful rerun `2026-09-13T06:57:42Z`–`06:58:01Z`; dirty `HEAD` above. | **Pass**; artifact `test-results/astra-final-repair/r-astra-27-news-evidence-rerun.json`; the initial render attempt failed with exit `1` and remains visible. |
+| `R-ASTRA-26-E1` | Desktop action target minimum. | Native x86_64 browser/QA context; dirty `HEAD` above; exact command and UTC not supplied. | **Pass**; supplied desktop actions met `44px`; artifact `test-results/astra-final-live/manifest.json`; physical mobile and true zoom unavailable. |
+| `R-ASTRA-27-E1` | Selector alignment, static-size budget, actual isolated fixture news, axe and heading-order checks. | Native x86_64, pinned Playwright Chromium; successful actual run `2026-09-13T07:00:18Z`–`07:00:36Z`; dirty `HEAD` above. | **Pass**; artifacts `test-results/astra-final-repair/static-size.json`, `r-astra-27-news-evidence-actual.json`, and `diff-check-metadata.txt`; static `97,893`/`98,304` bytes. |
+| `ASTRA-FINAL-POST-E1` | Post-repair ASTRA disposition. | Session `ses_f6683138affe6t8S6Z0G66YJDc`; dirty `HEAD` above; exact command, UTC, environment, and separate artifact not supplied. | **Accepted** with no reproducible blockers; not a new clean release/export/push checkpoint; reviewer identity not separately supplied. |
+
+- **Repair/history:** The prior ASTRA findings and repair receipts remain visible and are not
+  rewritten. The initial `R-ASTRA-27` render failure is retained; the deterministic and actual
+  isolated-fixture reruns are the closure evidence. The supplied Ponytail result was `Lean
+  already. Ship.` and is overengineering-only.
+- **Limitations:** Physical mobile, actual screen-reader, true zoom, and native/physical ARM64
+  performance remain **Unavailable**. The live receipt's ACDC/SPY flows do not prove news
+  relevance or exact-symbol provider availability.
+- **Export/Git/reviewer:** No new export, secret review, commit, push, exact remote verification,
+  or notification was performed for this item. The current worktree is dirty at `HEAD`
+  `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; reviewer `LUNA MAX docs` recorded the supplied
+  evidence, and the exact independent QA/Astra reviewer metadata not supplied remains unavailable.
+
+### `R-M07-5` minimal local production containerization
+
+- **Status:** `Completed` for the declared container scope.
+- **Owner/phase:** `SOL HIGH-C` owns the implementation/configuration handoff; `LUNA MAX QA`
+  independently verifies the container boundary; `LUNA MAX docs` records the roadmap state.
+- **Dependencies verified:** The declared M05 backup/restore scope and M06 local-operation
+  requirements remain the relevant contract context. The supplied Dockerfile/Compose inspection,
+  two container contract tests, image receipt, and independent QA result are recorded below.
+- **Change summary:** The verified path is one Compose `app` service built from the pinned,
+  multi-stage `Dockerfile`. Compose publishes `127.0.0.1:${STOCK_PROBS_PORT:-8000}:8000`, mounts
+  `stock-probs-data:/data`, defaults the provider to Yahoo, and applies read-only, tmpfs,
+  capability, privilege, PID, memory, CPU, log, restart, and stop-grace bounds. The image runs as
+  UID/GID `10001`, carries the `/api/v1/health` healthcheck, and serves on the container listener
+  required by the loopback publication. Native `.dev-venv/` development remains separate. No
+  hosted pipeline, service split, or broader deployment platform is authorized by this item.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `R-M07-5-E1` | Compose-only lifecycle and one-service local production path. | Native amd64 container QA context; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; exact command and UTC not supplied. | **Pass** for two supplied container contract tests; artifact: supplied container QA receipt; reviewer `LUNA MAX QA`. |
+| `R-M07-5-E2` | Published application binding is loopback-only. | Verified `compose.yaml`; dirty `HEAD` above; exact inspection command and UTC not supplied. | **Pass**; artifact: `compose.yaml`; `127.0.0.1:${STOCK_PROBS_PORT:-8000}:8000`. |
+| `R-M07-5-E3` | The application process runs as a non-root user. | Verified `Dockerfile`; dirty `HEAD` above; exact inspection command and UTC not supplied. | **Pass**; artifact: `Dockerfile`; runtime `USER 10001:10001`. |
+| `R-M07-5-E4` | A healthcheck verifies local service health. | Verified `Dockerfile`; dirty `HEAD` above; exact inspection command and UTC not supplied. | **Pass**; artifact: `Dockerfile`; healthcheck requests `http://127.0.0.1:8000/api/v1/health`. |
+| `R-M07-5-E5` | SQLite, WAL state, trust key, and backups persist on the declared volume. | Verified `compose.yaml`; dirty `HEAD` above; exact inspection command and UTC not supplied. | **Pass** for the declared mount behavior; artifact: `compose.yaml`; `stock-probs-data:/data`. Lifecycle recheck metadata were not separately supplied. |
+| `R-M07-5-E6` | CPU/memory/process and log bounds are explicit. | Verified `compose.yaml`; dirty `HEAD` above; exact inspection command and UTC not supplied. | **Pass** for declared bounds: `128` PIDs, `768m`, `1.0` CPU, and `10m` × `3` JSON logs; artifact: `compose.yaml`. |
+| `R-M07-5-E7` | Yahoo is the Compose provider default; fixtures remain an explicit setting. | Verified `compose.yaml`; dirty `HEAD` above; exact inspection command and UTC not supplied. | **Pass** for the declared environment expression `${STOCK_PROBS_PROVIDER:-yahoo}`; artifact: `compose.yaml`; real ACDC/SPY flows do not prove news relevance or exact-symbol provider availability. |
+| `R-M07-5-E8` | Native local development remains distinct from Compose. | Verified `Dockerfile`, `compose.yaml`, and [getting started](docs/operations/getting-started.md); dirty `HEAD` above; exact inspection command and UTC not supplied. | **Pass** for documented distinction; native `.dev-venv/` path remains; no native ARM64 performance claim. |
+
+- **Repair/history:** The supplied independent QA closed the declared container contract scope;
+  this is not a new M07 release or export checkpoint. No separate `/ponytail-review` receipt was
+  supplied for this follow-on item.
+- **Limitations:** The amd64 image receipt reports digest
+  `sha256:0dcb3f5ec77d31a5e8f57ef6e5d57b7144b973c3acb73ac360ffe01494735da` and size
+  `169,699,932` bytes. Native ARM64 performance, physical mobile, actual screen-reader, and true
+  zoom evidence remain unavailable. The exact container command, UTC, artifact filename, and
+  clean release metadata were not supplied.
+- **Export/Git/reviewer:** No new export, secret review, commit, push, or exact remote
+  verification was performed. Current roadmap reviewer: `LUNA MAX docs`; independent QA was
+  supplied as `LUNA MAX QA` without a separate session/UTC receipt.
+
+## Future/post-MVP design item: scheduled forecast report email
+
+- **Status:** Future design only; automated scheduled forecast jobs and email delivery are
+  **not implemented** and **not accepted**. No current milestone, `EXP-*`, `ASTRA-FINAL`,
+  `EXP-FINAL`, or `NOTIFY-FINAL` status changes. The historical M09 exclusion of a background
+  scheduler and notification feed remains unchanged; this is a separately requested future
+  scope item and has no current task or acceptance ID.
+- **Purpose:** A local scheduled job may run a forecast for an explicitly selected set of
+  symbols/assets, generate a report, and deliver that report as an email attachment. Before
+  implementation, define local scheduler semantics, the authoritative timezone, daylight-saving
+  behavior, missed-run policy, bounded cadence, and the maximum selected symbols/assets per run.
+- **Design/acceptance considerations:**
+  - Execute against the real provider path, with provider freshness, timeout, stale/failure
+    handling, and unavailable-provider results shown honestly; fixtures alone cannot accept it.
+  - Link every scheduled run immutably to its schedule, normalized symbol/asset selection,
+    forecast inputs/results, report revision/hash, attempt history, and delivery outcome.
+  - Decide and document an explicit attachment format (CSV, PDF, or another bounded format),
+    including its schema, filenames, encoding, size limit, and a plain-text email alternative.
+  - Keep SMTP or other mail-provider configuration and credentials outside the repository,
+    logs, and exports; retain only sanitized configuration identity and delivery evidence.
+  - Define bounded retries, stable run/delivery idempotency keys, duplicate suppression, and an
+    honest failed-delivery state that cannot be mistaken for a successful forecast or email.
+  - Preserve loopback/local security, least-privilege network behavior, bounded runtime,
+    symbols, report bytes, mailbox attempts, temporary files, and resource consumption.
+  - Acceptance must test timezone/scheduling and missed runs, real-provider execution, report
+    generation, attachment/plain-text delivery, delivery failure, retry/idempotency,
+    duplicate suppression, immutable audit linkage, and backup/restore behavior without losing
+    run history or falsely marking a delivery successful.
+
 ## Roadmap Completion Record
 
 Every milestone, repair, export, and final review uses these exact fields:
@@ -1377,3 +1516,16 @@ The roadmap is complete only when:
 | `R-M00-2-E26` | Exact `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` execution after the accepted `ASTRA-FINAL`/completed `EXP-M08` update. | Native x86_64 Linux; dirty `HEAD` `7cf1ca8395b94c2e14e5b02ddf160f3f938091d`; UTC was not captured. | **Pass**; artifact: current four-document diff; reviewer `LUNA MAX docs`; no code/configuration/skill/export/commit/push/Git-history mutation was performed by this documentation update. |
 | `R-M00-2-E27` | Exact `.dev-venv/bin/python scripts/validate_docs.py` execution after this accepted `EXP-FINAL`/`NOTIFY-FINAL` root-documentation update. | Native x86_64 Linux; dirty `HEAD` `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`; UTC was not captured; execution was denied by the tool permission boundary. | **Unavailable**; no current validator pass is inferred; artifact: none; reviewer `LUNA MAX docs`; rerun remains required when execution is available. |
 | `R-M00-2-E28` | Exact `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` execution after this accepted `EXP-FINAL`/`NOTIFY-FINAL` root-documentation update. | Native x86_64 Linux; dirty `HEAD` `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`; UTC was not captured by the command tool. | **Pass**; artifact: current four-document diff; reviewer `LUNA MAX docs`; no code/configuration/skill/export/commit/push/Git-history mutation was performed by this documentation update. |
+| `R-M00-2-E29` | Documentation self-review of the future/post-MVP scheduled forecast report email item: explicit non-implementation/non-acceptance, required design considerations, and preserved M09 historical exclusion. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured. | **Pass** as documentation content only; artifact: `MVP-ROADMAP.md`; reviewer `LUNA MAX docs`; no milestone, `EXP-*`, `ASTRA-FINAL`, `EXP-FINAL`, or `NOTIFY-FINAL` status changed. |
+| `R-M00-2-E30` | Exact `.dev-venv/bin/python scripts/validate_docs.py` execution after this future/post-MVP roadmap update. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured; execution was denied by the tool permission boundary. | **Unavailable**; no validator pass is inferred; artifact: none; reviewer `LUNA MAX docs`; rerun remains required when execution is available. |
+| `R-M00-2-E31` | Exact `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` execution after this future/post-MVP roadmap update. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured by the command tool. | **Pass**; artifact: current four-document diff; reviewer `LUNA MAX docs`; no code/configuration/skill/export/commit/push/Git-history mutation was performed by this documentation update. |
+| `R-M00-2-E32` | Documentation self-review of current `R-ASTRA-22` visual repair requirements, `R-M07-5` containerization work, explicit non-completion, and preservation of the scheduled-email future item and historical receipts. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured. | **Pass** as documentation content only; artifact: `MVP-ROADMAP.md`; reviewer `LUNA MAX docs`; no implementation, QA, export, commit, push, or Git-history mutation was performed. |
+| `R-M00-2-E33` | Exact `.dev-venv/bin/python scripts/validate_docs.py` execution after this current-work-item roadmap update. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured; execution was denied by the tool permission boundary. | **Unavailable**; no validator pass is inferred; artifact: none; reviewer `LUNA MAX docs`; rerun remains required when execution is available. |
+| `R-M00-2-E34` | Exact `git diff --check -- MVP-ROADMAP.md` execution after this current-work-item roadmap update. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured by the command tool. | **Pass**; artifact: current `MVP-ROADMAP.md` diff; reviewer `LUNA MAX docs`; no code/configuration/skill/export/commit/push/Git-history mutation was performed. |
+| `R-M00-2-E35` | Exact `.dev-venv/bin/python scripts/validate_docs.py` attempt after the final current-doc wording review. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured; the tool permission boundary denied execution. | **Unavailable**; no validator pass is inferred; artifact: none; reviewer `LUNA MAX docs`; rerun remains required when execution is available. |
+| `R-M00-2-E36` | Exact `.dev-venv/bin/python -m pytest tests/test_docs_validation.py` attempt after the final current-doc wording review. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured; the tool permission boundary denied execution. | **Unavailable**; no documentation-test pass is inferred; artifact: none; reviewer `LUNA MAX docs`; rerun remains required when execution is available. |
+| `R-M00-2-E37` | Exact `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs` check after the final current-doc wording review. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured by the command tool. | **Pass**; artifact: current owned-document diff; reviewer `LUNA MAX docs`; no code/configuration/skill/export/commit/push/Git-history mutation was performed. |
+| `R-M00-2-E38` | Direct coordinator rerun of `.dev-venv/bin/python -m pytest tests/test_docs_validation.py` before the link repair. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; exact UTC and independent session were not supplied. | **Fail**; `43` setup errors and `6` tests passed because the isolated fixture omitted root `Dockerfile`/`compose.yaml` targets for the new Markdown links. Artifact: supplied coordinator test result; repair: convert both `compose.yaml` links to inline code references; reviewer `LUNA MAX docs` recording the supplied failure. |
+| `R-M00-2-E39` | Exact `.dev-venv/bin/python scripts/validate_docs.py` rerun after converting root deployment-file links to inline code. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured; the tool permission boundary denied execution. | **Unavailable**; no post-repair validator pass is inferred; artifact: none; reviewer `LUNA MAX docs`; rerun remains required when execution is available. |
+| `R-M00-2-E40` | Exact `.dev-venv/bin/python -m pytest tests/test_docs_validation.py` rerun after converting root deployment-file links to inline code. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured; the tool permission boundary denied execution. | **Unavailable**; no post-repair documentation-test pass is inferred; artifact: none; reviewer `LUNA MAX docs`; rerun remains required when execution is available. |
+| `R-M00-2-E41` | Exact `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs` rerun after the link repair. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; UTC was not captured by the command tool. | **Pass**; artifact: current owned-document diff; reviewer `LUNA MAX docs`; no code/configuration/skill/export/commit/push/Git-history mutation was performed. |

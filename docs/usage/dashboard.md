@@ -68,6 +68,10 @@ forecast remains provider-free and makes no automatic headline request; its sepa
 **Load current headlines for this symbol** action requests current information and does not alter
 the saved result. Headlines are not included in history exports or backups.
 
+Provider search results are not a guarantee of exact-symbol news availability or semantic
+relevance. Real ACDC/SPY flow evidence demonstrates the application/provider path only; it does
+not make every returned headline relevant to the requested symbol.
+
 ## Use the ledger
 
 Filter by symbol/company, status, asset type, analysis type, date, model, or horizon; choose a
@@ -82,7 +86,8 @@ actions as if they had the same provenance.
 
 Use the skip link and section navigation to move between regions. Charts expose text and table
 values, interactive points are keyboard focusable, status changes use live regions, and reduced
-motion preferences are respected. Report an actual screen-reader gap separately; automated
-accessibility checks are not a substitute for assistive-technology evidence.
+motion preferences are respected. Browser viewport emulation is not physical-mobile or true-zoom
+evidence. Report an actual screen-reader gap separately; automated accessibility checks are not a
+substitute for assistive-technology evidence.
 
 For endpoint details, see the [API reference](../reference/api.md).

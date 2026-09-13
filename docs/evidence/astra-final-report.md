@@ -24,6 +24,68 @@ export, push, or remote verification is supplied by these receipts. Missing sess
 commands, UTC windows, environments, and named reviewers remain explicitly unavailable rather
 than inferred.
 
+## Reopened visual repair and final disposition
+
+The earlier accepted `ASTRA-FINAL`/`EXP-M08`/`EXP-FINAL` receipts remain immutable history. The
+visual-quality requirement was subsequently reopened as `R-ASTRA-22`; the supplied repair and
+independent QA then closed the declared visual scope. The scoped repairs are recorded explicitly
+below rather than being folded into the earlier receipt:
+
+| Task ID | Requirement | Disposition |
+| --- | --- | --- |
+| `R-ASTRA-22` | Reopened visual repair program covering theme parity, surfaces/background, density, controls, and mobile metadata. | **Completed** for the declared scope; independent QA passed and the post-repair `ASTRA-FINAL` receipt accepted the reviewed result. |
+| `R-ASTRA-24` | SPY lookup classification. | **Pass**; the lookup flow classified SPY as an ETF. This is lookup/identity evidence, not proof of exact-symbol provider news availability or headline relevance. |
+| `R-ASTRA-25` | Heading order across the repaired desktop/mobile news and forecast surfaces. | **Pass**; the supplied heading-order evidence had no axe violations. |
+| `R-ASTRA-26` | Desktop action target sizing. | **Pass**; desktop actions met the supplied `44px` minimum observation. |
+| `R-ASTRA-27` | Theme-selector alignment and related repaired visual/news evidence. | **Pass** on the successful reruns; the initial render attempt failed and remains recorded below. |
+
+The independent QA receipt was run against dirty `HEAD`
+`91ba52eca35fcfc13bd0d9996beb947d65d69d09` on native x86_64 Linux. It reports `425` passed,
+`4` deselected, and `89.65%` coverage; provider `32` passed; browser `62` passed with `2`
+expected performance skips plus `31` checks at `1280px`; `17` executable performance rows
+passed with ARM64 performance **Unavailable**; static assets measured `97,893` of `98,304`
+bytes; persistence rows `55 + 35 + 4` passed; and two container contract tests passed. The
+container receipt reports final amd64 image digest
+`sha256:0dcb3f5ec77d31a5e8f57ef6e5d57b7144b973c3acb73ac360ffe01494735da`, size
+`169,699,932` bytes, and real ACDC/SPY flows. Those flows do not establish that returned ACDC
+news is relevant or that exact-symbol provider news is available.
+
+The live browser artifact records event `143`/run `141` and fresh event `145`, `21`
+localhost-only requests, and axe `0/0` for desktop and `390px`; it does not provide physical
+mobile, actual screen-reader, or true browser-zoom evidence. The retained artifacts are
+`test-results/astra-final-live/` and `test-results/astra-final-repair/`. The accepted concluding
+ASTRA session is `ses_f6683138affe6t8S6Z0G66YJDc`; its disposition is **Accepted** with no
+reproducible blockers. The exact QA command, QA UTC, and named QA session were not supplied and
+are not inferred.
+
+The mandatory overengineering-only boundary result was supplied as:
+`Ponytail result | boundary: R-ASTRA-22 | finding: none | scope: overengineering only | command:
+/ponytail-review | result: "Lean already. Ship."`. Its exact execution UTC, environment metadata,
+and separate reviewer were not supplied. This result cannot substitute for the correctness,
+accessibility, provider, or performance rows above.
+
+The current post-repair evidence is not a new clean release checkpoint. No new export, secret
+review, commit, push, exact remote verification, or notification is claimed; the earlier accepted
+`EXP-FINAL` checkpoint and the earlier `NOTIFY-FINAL` operational receipt remain unchanged.
+
+### Post-repair evidence details
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `R-ASTRA-22-E1` | Independent QA totals: `425` passed/`4` deselected/`89.65%`; provider `32` passed; browser `62` passed/`2` expected performance skips plus `31` at `1280px`; static `97,893`/`98,304` bytes; persistence `55 + 35 + 4` passed. | Native x86_64 Linux; dirty `HEAD` `91ba52eca35fcfc13bd0d9996beb947d65d69d09`; exact command and UTC not supplied. | **Pass** as supplied independent QA evidence; artifacts `test-results/astra-final-live/` and `test-results/astra-final-repair/`; reviewer `LUNA MAX QA` as supplied scope owner. |
+| `R-ASTRA-22-E2` | `17` executable performance rows passed; ARM64 performance remained unavailable. | Native x86_64 Linux; dirty `HEAD` above; exact command and UTC not supplied. | **Pass** for executable native-x86 rows; ARM64 performance **Unavailable**, not emulated into a pass; artifacts `test-results/astra-final-repair/`; reviewer `LUNA MAX QA`. |
+| `R-ASTRA-22-E3` | Two container contract tests, amd64 image digest/size, and real ACDC/SPY flows. | Native x86_64 QA context; dirty `HEAD` above; exact container command and UTC not supplied. | **Pass** for the supplied container contract/flow scope; artifact `test-results/astra-final-repair/` plus the supplied image receipt; exact artifact filename and reviewer metadata were not supplied. Exact-symbol news availability and ACDC news relevance remain unproven. |
+| `R-ASTRA-24-E1` | SPY lookup classification is ETF. | Native x86_64 browser/QA context; dirty `HEAD` above; exact command and UTC not supplied. | **Pass** for lookup classification; no exact-symbol provider/news claim; artifact `test-results/astra-final-live/`; reviewer metadata not separately supplied. |
+| `R-ASTRA-25-E1` | Heading order and heading-order axe checks. | Native x86_64, pinned Playwright Chromium; `2026-09-13T06:57:42Z`–`06:58:01Z` successful rerun, dirty `HEAD` above. | **Pass**; artifact `test-results/astra-final-repair/r-astra-27-news-evidence-rerun.json`; first `R-ASTRA-27` render attempt failed at `2026-09-13T06:55:15Z`–`06:55:52Z` with exit `1`, and its failure reason was not supplied. Reviewer metadata not separately supplied. |
+| `R-ASTRA-26-E1` | Desktop actions met the supplied `44px` minimum observation. | Native x86_64 browser/QA context; dirty `HEAD` above; exact command and UTC not supplied. | **Pass** for the supplied desktop observation; artifact `test-results/astra-final-live/manifest.json`; physical mobile and true zoom remain unavailable. Reviewer metadata not separately supplied. |
+| `R-ASTRA-27-E1` | Selector alignment, static-size budget, actual isolated fixture news, axe and heading-order checks. | Native x86_64, pinned Playwright Chromium; successful actual run `2026-09-13T07:00:18Z`–`07:00:36Z`; `git diff --check` `2026-09-13T06:56:36Z`; dirty `HEAD` above. | **Pass**; static `97,893`/`98,304` bytes; artifacts `test-results/astra-final-repair/static-size.json`, `r-astra-27-news-evidence-actual.json`, and `diff-check-metadata.txt`; exact reviewer metadata not supplied. |
+| `ASTRA-FINAL-POST-E1` | Final post-repair ASTRA disposition. | Session `ses_f6683138affe6t8S6Z0G66YJDc`; dirty `HEAD` above; exact command, UTC, environment, and separate ASTRA artifact were not supplied. | **Accepted** with no reproducible blockers; scope is the supplied post-repair review, not a new clean release/export/push checkpoint. Reviewer identity was not separately supplied. |
+
+The initial `R-ASTRA-27` render failure is retained rather than hidden: its successful
+deterministic rerun and successful actual isolated-fixture run are the closure evidence. The
+supplied ASTRA disposition does not convert physical-mobile, actual screen-reader, native/physical
+ARM64-performance, or true-zoom gaps into passes.
+
 ## Four evaluation lanes and re-evaluation verdicts
 
 | Lane | Inventory | Re-evaluation verdict | Resolved finding / remaining action |

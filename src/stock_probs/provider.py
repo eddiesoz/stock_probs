@@ -331,8 +331,9 @@ class YahooProvider:
         """Use identity facts from bounded Yahoo responses, never guessed defaults."""
 
         fallback = fallback or {}
+        # Search owns lookup classification; chart metadata generically labels some ETFs EQUITY.
         quote_type = _metadata_text(
-            metadata.get("instrumentType") or fallback.get("quoteType"), "quote type", 24
+            fallback.get("quoteType") or metadata.get("instrumentType"), "quote type", 24
         ).upper()
         asset_type = {"equity": "stock", "stock": "stock", "etf": "etf"}.get(
             quote_type.lower()
