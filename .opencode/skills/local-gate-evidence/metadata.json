@@ -1,0 +1,7 @@
+{
+  "_comment": "OpenCode discovers this opt-in skill from SKILL.md frontmatter; this project catalog mirror is validated for exact parity.",
+  "name": "local-gate-evidence",
+  "description": "Run and audit Stock Probability local gates with fail-closed receipts, structured performance rows, honest architecture labels, and separate export checkpoints. Use when executing, repairing, or reviewing local-gate, performance, ARM64, package, release, or checkpoint evidence.",
+  "tags": ["local-gate", "evidence", "performance", "arm64", "stock-probability"],
+  "alwaysApply": false
+}

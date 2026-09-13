@@ -1,0 +1,7 @@
+{
+  "_comment": "OpenCode discovers this opt-in skill from SKILL.md frontmatter; this project catalog mirror is validated for exact parity.",
+  "name": "ponytail-boundary-review",
+  "description": "Run the read-only Stock Probability Ponytail boundary workflow and preserve overengineering-only findings through minimal repair and independent retest. Use after an implementation or configuration boundary and before independent QA, or when auditing a retained Ponytail receipt.",
+  "tags": ["ponytail", "review", "overengineering", "boundary", "stock-probability"],
+  "alwaysApply": false
+}

@@ -81,15 +81,17 @@ As of 2026-09-12:
   This is no M08 acceptance, walkthrough QA, Astra result, or `EXP-M08` checkpoint.
   The eventual walkthrough must include the M09 dark-mode and selected-instrument news
   controls and states; no such walkthrough evidence is claimed.
-- Earlier supplied `M08` walkthrough-extension evidence remains **In progress**: `20` steps,
+- Historical pre-acceptance `M08` walkthrough-extension evidence remains **In progress**: `20` steps,
   `40` annotated PNGs (`20` desktop at `1280x1000` and `20` mobile at `390x844`), manifest
   SHA-256 `806722ad4321fa3ca25a794192649eb55ad9c55cbba4abf6ec51886ba556df5d`, five
   companion news states represented as evidence rows, `5,683,157` bytes against the `20 MiB`
   budget, and zero undeclared requests or page errors. Independent M08 verification and
-  `EXP-M08` remain pending; the later ASTRA findings and repair program are recorded below.
+  `EXP-M08` remained pending at that historical point; the later ASTRA findings, repair
+  program, and accepted checkpoint are recorded below.
   The exact generation command, session, environment, UTC, commit, artifact path, and named
   reviewer for this extension evidence were not supplied and are not inferred.
-- `ASTRA-FINAL` is **In progress**, not **Accepted**. Four ASTRA evaluation lanes reviewed all
+- Historical pre-acceptance `ASTRA-FINAL` state (retained): it was **In progress**, not
+  **Accepted**. Four ASTRA evaluation lanes reviewed all
   `211` matrix rows and produced findings across assets/controls/charts, UI states/persistence,
   theme/news/docs, and the walkthrough. SOL applied fourteen repair groups: `R-ASTRA-1`–
   `R-ASTRA-5` cover CSS/theme defects including the mobile theme selector, dark/forced-colors/
@@ -102,9 +104,10 @@ As of 2026-09-12:
   artifact (7.19 MiB, 52 PNGs, instructional transcript, simulation labels, and manifest
   revision binding); and `R-ASTRA-14` covers news/theme documentation. The static shell was
   repaired from `102,607` to `98,242` bytes, `62` bytes below the `98,304`-byte limit.
-  Independent QA of all 14 repairs and ASTRA re-evaluation are **In progress**; no ASTRA
-  acceptance or `EXP-M08` checkpoint is inferred. Exact ASTRA/repair commands, sessions,
-  environments, UTC windows, commits, and named reviewers were not supplied.
+  Independent QA of all 14 repairs and ASTRA re-evaluation were **In progress** at that
+  historical point; no ASTRA acceptance or `EXP-M08` checkpoint was then inferred. Exact
+  ASTRA/repair commands, sessions, environments, UTC windows, commits, and named reviewers
+  were not supplied for that earlier record.
 - `M06` is **Completed for its declared scope** through the final clean-target
   `R-M06-55` gate on commit `a69df40e15b3136886f26789c27861184c3bbd77`, run
   `2026-09-12T14:40:23Z`–`2026-09-12T14:49:48Z` with exit `0`: `278` tests, `4` live
@@ -137,7 +140,8 @@ As of 2026-09-12:
   remain visible below. The retained `R-M09-1` boundary report remains overengineering-only
   history; this update does not infer a new Ponytail result. `EXP-M09` is **Pending** for
   the full-session export, secret review, local commit, push, and exact remote verification.
-- `M07` is **Completed for its declared scope** by receipt `M07-E18`: the exact release gate
+- Earlier integrated `M07` release acceptance is **Completed for its declared scope** by receipt
+  `M07-E18`: the exact release gate
   `TASK_ID=M07 PERFORMANCE_REVIEWER='LUNA MAX QA' ./scripts/local-gate.sh release` passed on
   clean commit `131aabc0fc0528b1e70ba26e09e2c78565ee8d56` at
   `2026-09-12T18:14:08Z`–`2026-09-12T18:21:06Z`. It recorded `396` tests passed, `4` live
@@ -157,8 +161,33 @@ As of 2026-09-12:
   redaction markers. Secret review found zero canonical secret-pattern matches. Parent:
   `131aabc0fc0528b1e70ba26e09e2c78565ee8d56`; message: `Record integrated acceptance`;
   exact remote `main` matched; reviewer: `LUNA MAX QA`. The earlier M07 receipt
-  verification also passed with independently recomputed performance rows; its separate
-  command, session, environment, UTC, artifact, and reviewer metadata were not supplied.
+   verification also passed with independently recomputed performance rows; its separate
+   command, session, environment, UTC, artifact, and reviewer metadata were not supplied.
+- Current `ASTRA-FINAL` is **Accepted for its declared scope** at clean commit
+  `261825838d6788afeb9640db8fbbf3f94af3a82b`, session
+  `ses_f679f906cffexS9H5k8Vwk4d16`. The bound ASTRA evidence covers a `214`-row matrix,
+  records no remaining blocking defect and no regression, and preserves the explicit
+  limitations that actual screen-reader, physical-mobile, and native/physical ARM64
+  performance evidence are **Unavailable**. These unavailable fields are not converted to
+  passes; the accepted result is for the recorded ASTRA scope.
+- `EXP-M08` is **Completed** at commit
+  `7cf1ca8395b94c2e14e5b02ddf160f3f938091d3`. Its export audit reports `303` messages,
+  `1,812` parts, `1,466,585` bytes, `43,137` lines, SHA-256
+  `f846722f1c02aefbeb2f784141a022353c91dbf7c9bebde9c68b7a3dc79498d1`, and `4,288`
+  redaction markers; secret review found zero canonical secret-pattern matches. Parent:
+  `261825838d6788afeb9640db8fbbf3f94af3a82b`; message: `Checkpoint instructional walkthrough`;
+  exact remote `main` match; reviewer: `LUNA MAX QA`. The export command, session,
+  environment, and exact export UTC were not supplied and are not inferred.
+- The final `M07` release gate receipt (`EV-8` in the bound ASTRA evidence) passed on clean
+  commit `f511ae3629de679b12c006db5d122b3ed0a22f2c`: `401` tests, `89.61%` coverage,
+  browser `48` passed/`2` expected performance skips, and `17` executable performance rows
+  passed; ARM64 performance is **Unavailable**. Its tracked walkthrough observation is
+  `7,660,518` bytes, below the `20 MiB` budget. The receipt's supplied artifacts are under
+  `test-results/local-gates/M07-20260913T005729Z/`; no native/physical ARM64 performance
+  result is claimed.
+- The final learning synthesis via `skill-maintenance` is **In progress**. `EXP-FINAL` remains
+  **Pending** for the completed synthesis, final export/secret review, commit, push, and exact
+  remote verification; no final export acceptance is inferred.
 - `R-M09-4` and `R-M09-5` each retain an earlier failed release result; their separate
   failure output, session, environment, UTC, commit, artifact, and reviewer metadata were
   not supplied here. The current `M07-E18` receipt does not rewrite either historical
@@ -212,8 +241,8 @@ As of 2026-09-12:
 - Historical pre-ASTRA status: `M08` remained **In progress** for the supplied walkthrough-
   extension implementation evidence; independent verification, Astra review, and `EXP-M08`
   were pending, and `ASTRA-FINAL`/`EXP-FINAL` were **Pending** at that earlier point. The
-  current `ASTRA-FINAL` findings and repair state are recorded above; `EXP-FINAL` remains
-  **Pending**.
+  current accepted `ASTRA-FINAL` and completed `EXP-M08` records are now above; `EXP-FINAL`
+  remains **Pending** while the final learning synthesis is in flight.
 - An earlier `R-M06-55` receipt ran on dirty native x86_64 Linux at revision
   `59534faf1cdce493bc51a11d4adbea5e5b2d6892` from `2026-09-12T04:52:33Z` to
   `2026-09-12T05:03:44Z`: `264` tests, `89.38%` coverage, 32 browser passes plus
@@ -410,8 +439,10 @@ checkpoint.
 
 `ASTRA-FINAL`, its `R-ASTRA-<n>` repairs/retests, `EXP-M08`, the final learning
 synthesis, and `EXP-FINAL` form one combined second-last operational loop, not a new
-milestone. Astra must explicitly be **Accepted** before `EXP-M08`; the learning
-synthesis must complete after all roadmap and Astra repairs and before `EXP-FINAL`.
+milestone. `ASTRA-FINAL` is now explicitly **Accepted for its declared scope** at
+`261825838d6788afeb9640db8fbbf3f94af3a82b`, and `EXP-M08` is **Completed** at
+`7cf1ca8395b94c2e14e5b02ddf160f3f938091d3`; the final learning synthesis must still
+complete before `EXP-FINAL`.
 `ASTRA-FINAL` must separately matrix every asset, control, UI state, documentation visual,
 walkthrough frame/segment, media item, and static asset against requirements, aesthetics,
 mobile/responsive behavior, accessibility, and measured performance. Astra evaluates and
@@ -420,7 +451,8 @@ A demonstrated tooling, skill, or MCP gap may receive a narrowly scoped SOL repa
 validation before acceptance, but it cannot expand scope without a new evidenced need.
 The final learning synthesis deeply analyzes sanitized chat/run evidence and uses
 `skill-maintenance` only for justified reusable Stock Probability skills, validates and
-indexes any such skill, and logs observations; no such run is claimed now.
+indexes any such skill, and logs observations; that synthesis is currently **In progress**,
+and `EXP-FINAL` remains **Pending**.
 Optional notification is last and cannot repair a missing gate.
 
 ## Final operational item: selective Ingenium pipeline adoption
@@ -541,3 +573,13 @@ captured; artifact: none; reviewer: `LUNA MAX docs`. `R-M00-2-E24` records the e
 same dirty `HEAD`; UTC was not captured; artifact: current four-document diff; reviewer:
 `LUNA MAX docs`. No code, configuration, skill, export, commit, push, or Git-history mutation
 was performed.
+
+For this accepted `ASTRA-FINAL`/completed `EXP-M08` root-documentation update,
+`R-M00-2-E25` records the exact `.dev-venv/bin/python scripts/validate_docs.py` attempt as
+**Unavailable** because the tool permission boundary denied execution; no current validator
+pass is inferred. Environment: native x86_64 Linux; dirty `HEAD`
+`7cf1ca8395b94c2e14e5b02ddf160f3f938091d`; UTC was not captured; artifact: none; reviewer:
+`LUNA MAX docs`. `R-M00-2-E26` records the exact `git diff --check -- README.md AGENTS.md
+MVP-PLAN.md MVP-ROADMAP.md` check as **Pass** on the same dirty `HEAD`; UTC was not captured;
+artifact: current four-document diff; reviewer: `LUNA MAX docs`. No code, configuration,
+skill, export, commit, push, or Git-history mutation was performed by this documentation update.

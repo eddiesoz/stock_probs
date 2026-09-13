@@ -49,6 +49,40 @@ APPROVED_SKILL_CATALOG = {
             "validation.md",
         ),
     ),
+    "local-gate-evidence": SkillDefinition(
+        description=(
+            "Run and audit Stock Probability local gates with fail-closed receipts, structured "
+            "performance rows, honest architecture labels, and separate export checkpoints. Use "
+            "when executing, repairing, or reviewing local-gate, performance, ARM64, package, "
+            "release, or checkpoint evidence."
+        ),
+        tags=("local-gate", "evidence", "performance", "arm64", "stock-probability"),
+        references=("checkpoint-boundary.md", "gate-protocol.md", "receipt-audit.md"),
+    ),
+    "browser-qa": SkillDefinition(
+        description=(
+            "Build and audit deterministic Stock Probability browser QA for accessibility, "
+            "responsive themes, race handling, and complete news states. Use when adding or "
+            "reviewing Playwright fixtures, dashboard regressions, walkthrough captures, axe or "
+            "contrast checks, no-flash behavior, or request supersession."
+        ),
+        tags=("playwright", "accessibility", "browser", "deterministic", "stock-probability"),
+        references=(
+            "accessibility-and-theme.md",
+            "fixtures-and-network.md",
+            "states-and-races.md",
+        ),
+    ),
+    "ponytail-boundary-review": SkillDefinition(
+        description=(
+            "Run the read-only Stock Probability Ponytail boundary workflow and preserve "
+            "overengineering-only findings through minimal repair and independent retest. Use "
+            "after an implementation or configuration boundary and before independent QA, or "
+            "when auditing a retained Ponytail receipt."
+        ),
+        tags=("ponytail", "review", "overengineering", "boundary", "stock-probability"),
+        references=("receipt-and-repair.md", "workflow.md"),
+    ),
 }
 CATEGORIES: dict[str, tuple[str, ...]] = {
     "concepts": ("architecture.md", "forecast-model.md"),

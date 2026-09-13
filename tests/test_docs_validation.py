@@ -45,6 +45,16 @@ def test_documentation_taxonomy_has_expected_size() -> None:
     assert sum(map(len, CATEGORIES.values())) == 13
 
 
+def test_project_skill_catalog_has_expected_entries() -> None:
+    assert tuple(APPROVED_SKILL_CATALOG) == (
+        "documentation",
+        "skill-maintenance",
+        "local-gate-evidence",
+        "browser-qa",
+        "ponytail-boundary-review",
+    )
+
+
 def test_astra_matrix_has_214_unique_inventory_rows_and_dimension_keys() -> None:
     text = (ROOT / "docs/evidence/astra-final-matrix.md").read_text(encoding="utf-8")
     report = (ROOT / "docs/evidence/astra-final-report.md").read_text(encoding="utf-8")
@@ -112,11 +122,14 @@ def test_unexpected_skill_catalog_mutation_fails(documentation_repository: Path)
     )
 
 
-def test_missing_admitted_skill_catalog_mutation_fails(documentation_repository: Path) -> None:
-    shutil.rmtree(documentation_repository / ".opencode/skills/skill-maintenance")
+@pytest.mark.parametrize("name", APPROVED_SKILL_CATALOG)
+def test_missing_admitted_skill_catalog_mutation_fails(
+    documentation_repository: Path, name: str
+) -> None:
+    shutil.rmtree(documentation_repository / f".opencode/skills/{name}")
 
     assert any(
-        "missing admitted project skill: skill-maintenance" in issue
+        f"missing admitted project skill: {name}" in issue
         for issue in validate_repository(documentation_repository)
     )
 
@@ -307,11 +320,14 @@ def test_active_skill_500_line_boundary(
     assert bool(line_limit_issues) is fails
 
 
-def test_indexed_skill_path_mutation_fails(documentation_repository: Path) -> None:
+@pytest.mark.parametrize("name", APPROVED_SKILL_CATALOG)
+def test_indexed_skill_path_mutation_fails(
+    documentation_repository: Path, name: str
+) -> None:
     index = documentation_repository / ".opencode/SKILL-INDEX.md"
     index.write_text(
         index.read_text(encoding="utf-8").replace(
-            "skills/documentation/SKILL.md", "skills/documentation/skill.md"
+            f"skills/{name}/SKILL.md", f"skills/{name}/skill.md"
         ),
         encoding="utf-8",
     )

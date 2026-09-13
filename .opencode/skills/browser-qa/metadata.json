@@ -1,0 +1,7 @@
+{
+  "_comment": "OpenCode discovers this opt-in skill from SKILL.md frontmatter; this project catalog mirror is validated for exact parity.",
+  "name": "browser-qa",
+  "description": "Build and audit deterministic Stock Probability browser QA for accessibility, responsive themes, race handling, and complete news states. Use when adding or reviewing Playwright fixtures, dashboard regressions, walkthrough captures, axe or contrast checks, no-flash behavior, or request supersession.",
+  "tags": ["playwright", "accessibility", "browser", "deterministic", "stock-probability"],
+  "alwaysApply": false
+}
