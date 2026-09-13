@@ -14,6 +14,12 @@ The current model contract is `forecast-contract-v2`; the model version is
    target is that session's close. Outside an open session, the completed prior close is the
    origin and the next scheduled close is the target.
 
+Current headlines are presentation-only context. Headline text, publication metadata, links,
+cache state, and retrieval time never enter a forecast input, probability, interval, quality
+label, fingerprint, or evaluation. They also never enter historical-cutoff reconstruction;
+reconstruction uses bounded market-price data for its stated cutoff, while any current-headlines
+action remains a separate request for current information.
+
 An active partial five-minute bar is excluded. Scheduled US equity sessions use
 `America/New_York`, including modeled holidays and common early closes; unscheduled closures
 are a stated limitation.

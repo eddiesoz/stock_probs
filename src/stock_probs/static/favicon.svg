@@ -1,4 +1,4 @@
-<!-- The compact ledger mark avoids a noisy missing-favicon request in local browser QA. -->
+<!-- Local favicon avoids a missing-asset request. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Signal Ledger">
   <rect width="64" height="64" fill="#17201d"/>
   <path d="M10 42 C18 16 25 49 33 25 S47 46 54 16" fill="none" stroke="#f2efe7" stroke-width="6"/>

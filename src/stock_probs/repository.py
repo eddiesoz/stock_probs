@@ -785,6 +785,8 @@ class Repository:
         page_size: int,
         include_analysis: bool,
         include_facets: bool,
+        sort_by: str | None = None,
+        sort_order: str = "desc",
     ) -> dict[str, Any]:
         where, values = cls._history_where(filters)
         analysis_columns = (
@@ -810,13 +812,38 @@ class Repository:
                 values,
             ).fetchone()[0]
         )
+        if sort_by is None:
+            order_by = "facet.submitted_at_us DESC, event.id DESC"
+        else:
+            sort_expressions = {
+                "event_id": "event.id",
+                "submitted_at": "event.submitted_at COLLATE NOCASE",
+                "completed_at": "event.completed_at COLLATE NOCASE",
+                "symbol": (
+                    "COALESCE(event.normalized_symbol, event.submitted_symbol) COLLATE NOCASE"
+                ),
+                "company": "facet.company_name COLLATE NOCASE",
+                "asset_type": "event.asset_type COLLATE NOCASE",
+                "status": "event.status COLLATE NOCASE",
+                "model": "COALESCE(facet.model_version, facet.model_name) COLLATE NOCASE",
+                "horizon": (
+                    "CASE WHEN event.run_id IS NOT NULL "
+                    "THEN 'close_to_close,completed_5m_to_close' END"
+                ),
+                "request_id": "event.request_id COLLATE NOCASE",
+            }
+            if sort_by not in sort_expressions or sort_order not in {"asc", "desc"}:
+                raise ValueError("history export sort is not supported")
+            expression = sort_expressions[sort_by]
+            # Missing display facets stay last; event ID is the stable tie-breaker.
+            order_by = f"({expression}) IS NULL, {expression} {sort_order.upper()}, event.id ASC"
         rows = connection.execute(
             f"""SELECT event.id, event.request_id, event.submitted_symbol,
             event.normalized_symbol, event.asset_type, event.status, event.is_repeat,
             event.error_code, event.error_message, event.submitted_at, event.completed_at,
             event.run_id {analysis_columns} {facet_columns}
             FROM {joined} WHERE {where}
-            ORDER BY facet.submitted_at_us DESC, event.id DESC
+            ORDER BY {order_by}
             LIMIT ? OFFSET ?""",  # noqa: S608
             [*values, page_size, (page - 1) * page_size],
         ).fetchall()
@@ -950,6 +977,8 @@ class Repository:
         request_id: str | None = None,
         event_id: int | None = None,
         max_events: int = HISTORY_EXPORT_LIMIT,
+        sort_by: str = "event_id",
+        sort_order: str = "desc",
     ) -> dict[str, Any]:
         """Return one faithful bounded record stream without per-event detail queries."""
 
@@ -981,6 +1010,8 @@ class Repository:
                 page_size=max_events,
                 include_analysis=True,
                 include_facets=False,
+                sort_by=sort_by,
+                sort_order=sort_order,
             )
             run_ids = list(
                 dict.fromkeys(

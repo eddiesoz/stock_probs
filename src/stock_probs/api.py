@@ -1826,7 +1826,8 @@ def _bounded_history_export(
     try:
         # Every successful run owns both required horizons, so either horizon has this exact
         # indexed persistence-side meaning and needs no per-event reconstruction.
-        source = service.history_export(
+        source = service.repository.history_export(
+            generated_at=service.clock().astimezone(UTC),
             query=filters["query"],
             symbol=filters["symbol"],
             company=filters["company"],
@@ -1849,6 +1850,8 @@ def _bounded_history_export(
             request_id=filters["request_id"],
             event_id=filters["event_id"],
             max_events=100,
+            sort_by=sort_by,
+            sort_order=sort_order,
         )
     except ValueError:
         raise DomainError(
@@ -1885,13 +1888,6 @@ def _bounded_history_export(
         if _matches_history_filters(enriched, filters):
             enriched_events.append((record, enriched))
 
-    # ID remains the deterministic tie-breaker for every user-selected display order.
-    enriched_events.sort(key=lambda pair: int(pair[1]["id"]))
-    enriched_events.sort(
-        key=lambda pair: _history_sort_value(pair[1], sort_by),
-        reverse=sort_order == "desc",
-    )
-    enriched_events.sort(key=lambda pair: _history_sort_value(pair[1], sort_by)[0])
     selected = enriched_events[:100]
 
     records: list[dict[str, Any]] = []

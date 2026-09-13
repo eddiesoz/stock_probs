@@ -49,7 +49,7 @@ const CONTRAST_STATES = [
   { state: "provenance heading", foreground: "--text", background: "#e5e5d8", minimum: 4.5, recorded: 12.65 },
   { state: "error label", foreground: "--status-bad", background: "#f4ded9", minimum: 4.5, recorded: 5.65 },
   { state: "error copy", foreground: "--text", background: "#f4ded9", minimum: 4.5, recorded: 12.47 },
-  { state: "navigation hover", foreground: "--ink-soft", background: "--lime", minimum: 4.5, recorded: 8.52 },
+  { state: "navigation hover", foreground: "--strong-panel", background: "--lime", minimum: 4.5, recorded: 12.22 },
   { state: "history action on sheet", foreground: "--signal-dark", background: "--panel", minimum: 4.5, recorded: 6.72 },
   { state: "focus and loss-chart signal", foreground: "--focus", background: "--panel", minimum: 3, recorded: 4.4 },
   { state: "control boundary", foreground: "--strong-border", background: "--panel", minimum: 3, recorded: 3.49 },
@@ -113,7 +113,7 @@ async function verifyThemeRoleContrast(page) {
   });
 }
 
-async function forcedColorContrast(page, selector, pseudo = null) {
+async function renderedContrast(page, selector, pseudo = null) {
   const colors = await page.evaluate(({ target, pseudoElement }) => {
     const element = document.querySelector(target);
     const foreground = getComputedStyle(element, pseudoElement).color;
@@ -132,7 +132,7 @@ async function forcedColorContrast(page, selector, pseudo = null) {
     return `#${channels.map((channel) => Math.round(channel).toString(16).padStart(2, "0")).join("")}`;
   };
   const ratio = contrastRatio(toHex(colors.foreground), toHex(colors.background));
-  expect(ratio, `${selector}${pseudo || ""} forced-color contrast`).toBeGreaterThanOrEqual(4.5);
+  expect(ratio, `${selector}${pseudo || ""} rendered contrast`).toBeGreaterThanOrEqual(4.5);
   return { selector, pseudo, ...colors, calculated: Number(ratio.toFixed(2)), minimum: 4.5 };
 }
 
@@ -647,6 +647,7 @@ test("history filters and immutable saved reopen remain usable", async ({ page }
   await page.getByRole("button", { name: "Run forecast" }).click();
   await expect(page.locator(".forecast-meta").getByText(symbol, { exact: true })).toBeVisible();
   await expect(page.getByText("ETF / ETF", { exact: true })).toBeVisible();
+  await expect(page.locator('#history-content td[data-label="Model / evidence"] .run-label').first()).toContainText(/2 horizons|Horizon evidence unavailable/);
 
   await page.getByLabel("Find symbol").fill(symbol);
   await page.getByRole("button", { name: "Filter ledger" }).click();
@@ -686,17 +687,51 @@ test("saved results, append-only corrections, and fresh cutoff analysis stay dis
   await expect(page.locator("#result-content .state-strip")).toContainText(
     "Forecast inputs and values are reopened exactly as saved",
   );
+  await expect(page.locator("#quality-badge")).toContainText("Recorded quality:");
+  await expect(page.locator("#result-content")).not.toContainText("records a new immutable forecast run");
   await expect(page.getByRole("heading", { name: "Append-only outcome ledger" }).first()).toBeVisible();
   await expect(page.locator(".outcome-list").first()).toContainText("official close");
   await expect(page.locator(".outcome-list").first()).toContainText("vendor correction");
   const savedText = await page.locator("#result-content").innerText();
 
-  await historyRow.getByRole("button", { name: "Run fresh cutoff analysis" }).click();
+  let releaseFresh;
+  const freshRelease = new Promise((resolve) => { releaseFresh = resolve; });
+  let reconstructionRequests = 0;
+  await page.route("**/api/v1/history/*/reconstructions", async (route) => {
+    reconstructionRequests += 1;
+    await freshRelease;
+    const response = await route.fetch();
+    const payload = await response.json();
+    payload.input.quality = "stale";
+    payload.input.quality_reasons = ["reconstruction provider data is stale"];
+    payload.input.stale_state = { state: "stale", reasons: payload.input.quality_reasons };
+    payload.input.limitations = ["Fresh reconstruction limitation."];
+    payload.input.provider_metadata.intraday_archive_limit.statement = "Archive coverage is limited.";
+    await route.fulfill({ response, json: payload });
+  });
+  const freshAction = historyRow.getByRole("button", { name: "Run fresh cutoff analysis" });
+  await freshAction.click();
+  const formattedCutoff = await page.evaluate((value) => new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium", timeStyle: "short",
+  }).format(new Date(value)), created.input.request_cutoff);
+  await expect(page.locator("#fresh-analysis-content")).toContainText(`source audit event #${created.event.id}`);
+  await expect(page.locator("#fresh-analysis-content")).toContainText(`historical cutoff ${formattedCutoff}`);
+  await expect(freshAction).toBeDisabled();
+  await freshAction.evaluate((button) => button.click());
+  await expect.poll(() => reconstructionRequests).toBe(1);
+  releaseFresh();
   await expect(page.getByRole("heading", { name: "Fresh historical-cutoff analysis" })).toBeVisible();
   await expect(page.locator("#fresh-analysis-section").getByText("New calculation", { exact: true })).toBeVisible();
   await expect(page.locator("#fresh-analysis-section")).toContainText("Not the saved forecast");
   await expect(page.locator("#fresh-analysis-content")).toContainText("This is a new calculation");
   await expect(page.locator("#fresh-analysis-content")).toContainText("Historical cutoff");
+  await expect(page.locator("#fresh-analysis-content")).toContainText(`Source audit event#${created.event.id}`);
+  await expect(page.locator("#fresh-analysis-content")).toContainText(`Instrument${created.input.canonical_symbol}`);
+  await expect(page.locator("#fresh-analysis-content")).toContainText(`Provider${created.input.provider}`);
+  await expect(page.locator("#fresh-analysis-content .fresh-warning")).toContainText("reconstruction provider data is stale");
+  await expect(page.locator("#fresh-analysis-content")).toContainText("Input qualitystale");
+  await expect(page.locator("#fresh-analysis-content")).toContainText("Quality reasonsreconstruction provider data is stale");
+  await expect(page.locator("#fresh-analysis-content")).toContainText("Provider / archive limitationsFresh reconstruction limitation. Archive coverage is limited.");
   expect(await page.locator("#result-content").innerText()).toBe(savedText);
   await page.getByLabel("Analysis type").selectOption("fresh_historical_reconstruction");
   const filter = page.getByRole("button", { name: "Filter ledger" });
@@ -705,6 +740,64 @@ test("saved results, append-only corrections, and fresh cutoff analysis stay dis
   await expect(page.locator("#history-content tbody tr").first()).toContainText("Fresh cutoff analysis");
   expect(applicationRequests.every((url) => new URL(url).pathname.startsWith("/api/v1"))).toBe(true);
   await expectAxeClean(page);
+});
+
+test("fresh-analysis failure keeps source context and refreshes the ledger", async ({
+  page,
+  browserDiagnostics,
+}) => {
+  const createdResponse = await page.request.post("/api/v1/forecasts", {
+    data: { symbol: "ACDC-D", asset_type: "stock" },
+  });
+  const created = await createdResponse.json();
+  let historyRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/v1/history") historyRequests += 1;
+  });
+  await page.route("**/api/v1/history/*/reconstructions", (route) => route.fulfill({
+    status: 502,
+    contentType: "application/json",
+    json: { error: { code: "provider_unavailable", message: "Fresh provider unavailable", request_id: "12345678-1234-4123-8123-123456789abc" } },
+  }));
+  browserDiagnostics.expectHttpFailures({
+    method: "POST", path: `/api/v1/history/${created.event.id}/reconstructions`, status: 502,
+  });
+  await page.goto("/");
+  await expect(page.locator("#history-content")).toHaveAttribute("aria-busy", "false");
+  const beforeFailure = historyRequests;
+  await page.getByRole("button", { name: "Run fresh cutoff analysis" }).first().click();
+  const failure = page.locator("#fresh-analysis-content").getByRole("alert");
+  await expect(failure).toContainText(`Source audit event #${created.event.id}`);
+  await expect(failure).toContainText("historical cutoff");
+  await expect(failure).toContainText("Error code: provider_unavailable");
+  await expect(failure).toContainText("Audit request: 12345678-1234-4123-8123-123456789abc");
+  await expect.poll(() => historyRequests).toBeGreaterThan(beforeFailure);
+});
+
+test("mobile threshold labels remain separate at 360px and 390px", async ({ page }) => {
+  await page.goto("/");
+  await submitUiForecast(page, "ACDC-D");
+  for (const width of [360, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const figures = page.locator(".tail-figure");
+    await expect(figures).toHaveCount(2);
+    for (const figure of await figures.all()) {
+      const ticks = figure.locator(".chart-x-tick");
+      await expect(ticks).toHaveText(["-10%", "-5%", "-3%", "-1%", "+1%", "+3%", "+5%", "+10%"]);
+      const boxes = await ticks.evaluateAll((labels) => labels.map((label) => {
+        const { left, right, top, bottom } = label.getBoundingClientRect();
+        return { left, right, top, bottom };
+      }));
+      for (let first = 0; first < boxes.length; first += 1) {
+        for (let second = first + 1; second < boxes.length; second += 1) {
+          const a = boxes[first];
+          const b = boxes[second];
+          expect(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top,
+            `${width}px threshold labels ${first + 1} and ${second + 1} overlap`).toBe(true);
+        }
+      }
+    }
+  }
 });
 
 test("filtered CSV and JSON downloads are bounded and parseable", async ({ page }, testInfo) => {
@@ -748,8 +841,34 @@ test("history pagination sends only bounded API filters", async ({ page, applica
   await page.getByLabel("Rows per page").selectOption("10");
   await page.getByRole("button", { name: "Filter ledger" }).click();
   await expect(page.locator("#history-page")).toContainText(/Page 1 of [2-9]/);
+  await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
+  await page.getByRole("button", { name: "Previous" }).evaluate((button) => {
+    button.disabled = false;
+    button.click();
+    button.disabled = true;
+  });
+  let releasePage;
+  const pageRelease = new Promise((resolve) => { releasePage = resolve; });
+  await page.route("**/api/v1/history?*", async (route) => {
+    if (new URL(route.request().url()).searchParams.get("page") === "2") await pageRelease;
+    await route.continue();
+  });
   await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.locator("#history-content")).toHaveAttribute("aria-busy", "true");
+  await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+  releasePage();
   await expect(page.locator("#history-page")).toContainText("Page 2");
+  while (!(await page.getByRole("button", { name: "Next" }).isDisabled())) {
+    await page.getByRole("button", { name: "Next" }).click();
+    await expect(page.locator("#history-content")).toHaveAttribute("aria-busy", "false");
+  }
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+  await page.getByRole("button", { name: "Next" }).evaluate((button) => {
+    button.disabled = false;
+    button.click();
+    button.disabled = true;
+  });
 
   const historyURLs = applicationRequests
     .filter((url) => new URL(url).pathname === "/api/v1/history")
@@ -757,6 +876,39 @@ test("history pagination sends only bounded API filters", async ({ page, applica
   expect(historyURLs.length).toBeGreaterThan(0);
   expect(historyURLs.every((url) => Number(url.searchParams.get("page_size")) <= 50)).toBe(true);
   expect(historyURLs.every((url) => Number(url.searchParams.get("page")) <= 10_000)).toBe(true);
+  const lastPage = Number((await page.locator("#history-page").textContent()).match(/of (\d+)/)[1]);
+  expect(historyURLs.every((url) => Number(url.searchParams.get("page")) >= 1)).toBe(true);
+  expect(historyURLs.every((url) => Number(url.searchParams.get("page")) <= lastPage)).toBe(true);
+});
+
+test("latest ledger filters win when delayed responses finish in reverse order", async ({ page }) => {
+  await page.request.post("/api/v1/forecasts", { data: { symbol: "ACDC-D", asset_type: "stock" } });
+  await page.request.post("/api/v1/forecasts", { data: { symbol: "SPY-D", asset_type: "etf" } });
+  let releaseOlder;
+  let markOlder;
+  const olderRelease = new Promise((resolve) => { releaseOlder = resolve; });
+  const olderStarted = new Promise((resolve) => { markOlder = resolve; });
+  await page.route("**/api/v1/history?*", async (route) => {
+    const query = new URL(route.request().url()).searchParams.get("q");
+    if (query !== "ACDC-D") return route.continue();
+    const response = await route.fetch();
+    markOlder();
+    await olderRelease;
+    return route.fulfill({ response });
+  });
+  await page.goto("/");
+  await page.getByLabel("Find symbol").fill("ACDC-D");
+  await page.getByRole("button", { name: "Filter ledger" }).click();
+  await olderStarted;
+  await page.getByLabel("Find symbol").fill("SPY-D");
+  await page.getByRole("button", { name: "Filter ledger" }).click();
+  const currentRow = page.locator("#history-content tbody tr").first();
+  await expect(currentRow).toContainText("SPY-D");
+  releaseOlder();
+  await page.waitForTimeout(50);
+  await expect(currentRow).toContainText("SPY-D");
+  await expect(currentRow).not.toContainText("ACDC-D");
+  expect(new URL(await page.locator("#export-json").getAttribute("href"), page.url()).searchParams.get("q")).toBe("SPY-D");
 });
 
 test("validation, loading, and stale states remain explicit", async ({ page }) => {
@@ -767,6 +919,12 @@ test("validation, loading, and stale states remain explicit", async ({ page }) =
   await expect(page.getByText(/Enter a 1-15 character symbol|Choose a matching instrument/)).toBeVisible();
   await expect(symbol).toBeFocused();
   await expect(symbol).toHaveAttribute("aria-invalid", "true");
+  await symbol.fill("ProFrac");
+  await expect(page.getByRole("option", { name: /ProFrac Holding Corp/ })).toBeVisible();
+  await symbol.press("ArrowDown");
+  await symbol.press("Enter");
+  await expect(symbol).not.toHaveAttribute("aria-invalid");
+  await expect(page.locator("#symbol-error")).toBeEmpty();
 
   await page.route("**/api/v1/forecasts", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -776,7 +934,12 @@ test("validation, loading, and stale states remain explicit", async ({ page }) =
   await page.getByRole("button", { name: "Run forecast" }).click();
   await expect(page.getByText("Retrieving completed bars for STALE…")).toBeVisible();
   await expect(page.locator("#quality-badge")).toContainText("stale");
-  await expect(page.getByText(/intraday origin.*applicable close elapsed/)).toBeVisible();
+  const qualitySummary = page.locator(".quality-summary");
+  await expect(qualitySummary).toContainText(/Stale-data reason:.*intraday origin.*applicable close elapsed/);
+  await expect(qualitySummary.getByRole("link", { name: "Review detailed provenance" })).toHaveAttribute("href", "#forecast-provenance");
+  expect(await qualitySummary.evaluate((summary) => Boolean(summary.compareDocumentPosition(
+    document.querySelector(".forecast-grid"),
+  ) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   await expectAxeClean(page);
 });
 
@@ -805,10 +968,19 @@ test("theme initializes before CSS and persists light dark and system choices on
   expect(ordering).toEqual({ beforeCss: true, async: false, defer: false, type: "", firstPaintTheme: "light" });
   const selector = page.getByLabel("Color theme");
   await selector.selectOption("dark");
+  const dashboardThemeBox = await selector.boundingBox();
+  expect(Math.min(dashboardThemeBox.width, dashboardThemeBox.height)).toBeGreaterThanOrEqual(44);
+  expect(parseFloat(await selector.evaluate((select) => getComputedStyle(select).fontSize))).toBeGreaterThanOrEqual(16);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
   expect(await page.evaluate(() => localStorage.getItem("stock-probs.theme"))).toBe("dark");
   const darkRatios = await verifyThemeRoleContrast(page);
+  const hoveredLink = page.locator(".section-nav a").first();
+  await hoveredLink.hover();
+  const darkHoverRatios = [
+    await renderedContrast(page, ".section-nav a:first-child"),
+    await renderedContrast(page, ".section-nav a:first-child span"),
+  ];
   await selector.selectOption("system");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   expect(await page.evaluate(() => localStorage.getItem("stock-probs.theme"))).toBeNull();
@@ -817,9 +989,13 @@ test("theme initializes before CSS and persists light dark and system choices on
   await page.goto("/api/v1/docs");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.getByLabel("Color theme").selectOption("light");
+  const docsThemeBox = await page.getByLabel("Color theme").boundingBox();
+  expect(Math.min(docsThemeBox.width, docsThemeBox.height)).toBeGreaterThanOrEqual(44);
+  expect(parseFloat(await page.getByLabel("Color theme").evaluate((select) => getComputedStyle(select).fontSize))).toBeGreaterThanOrEqual(16);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   const lightRatios = await verifyThemeRoleContrast(page);
   const docsAxe = await expectAxeClean(page);
+  expect(await page.locator(".search-panel").evaluate((panel) => getComputedStyle(panel, "::before").content)).toBe("none");
   expect((await page.locator('script[src="/assets/theme.js"]').getAttribute("defer"))).toBeNull();
   await page.evaluate(() => localStorage.setItem("stock-probs.theme", "invalid"));
   await page.reload();
@@ -831,7 +1007,7 @@ test("theme initializes before CSS and persists light dark and system choices on
   await expect(page.locator(".theme-control")).toBeHidden();
   expect(applicationRequests.some((url) => new URL(url).pathname === "/api/v1/news")).toBe(false);
   await testInfo.attach("m09-theme-axe-contrast.json", {
-    body: Buffer.from(JSON.stringify({ ordering, lightRatios, darkRatios, axe: { dashboard: dashboardAxe, docs: docsAxe, darkDocs: darkDocsAxe } }, null, 2)),
+    body: Buffer.from(JSON.stringify({ ordering, lightRatios, darkRatios, darkHoverRatios, axe: { dashboard: dashboardAxe, docs: docsAxe, darkDocs: darkDocsAxe } }, null, 2)),
     contentType: "application/json",
   });
 });
@@ -880,6 +1056,7 @@ test("news disclosure is lazy bounded safe and separate from immutable evidence"
   expect(requestedLimits).toEqual([]);
   await disclosure.click();
   await expect(page.locator(".news-content")).toHaveAttribute("data-state", "fresh");
+  await expect(page.locator(".news-content")).toHaveAttribute("aria-busy", "false");
   await expect(page.locator(".news-list li")).toHaveCount(5);
   await expect(page.locator(".news-content")).toContainText("Source: Yahoo Finance · As of:");
   await expect(page.locator(".news-list li").first()).toContainText("Link unavailable");
@@ -891,6 +1068,7 @@ test("news disclosure is lazy bounded safe and separate from immutable evidence"
   }
   await page.getByRole("button", { name: "Show up to 10 headlines" }).click();
   await expect(page.locator(".news-list li")).toHaveCount(10);
+  await expect(page.locator(".news-content")).toHaveAttribute("aria-busy", "false");
   expect(requestedLimits).toEqual([5, 10]);
   await page.waitForTimeout(100);
   expect(requestedLimits).toEqual([5, 10]);
@@ -938,10 +1116,21 @@ test("news renders empty partial stale failure busy unreachable and superseded s
     return page.locator(".news-content");
   };
   await expect(await run("empty")).toHaveAttribute("data-state", "empty");
-  await expect(await run("partial")).toHaveAttribute("data-state", "partial");
-  await expect(await run("stale")).toHaveAttribute("data-state", "stale");
-  await expect(await run("provider")).toHaveAttribute("data-state", "unavailable");
-  await expect(await run("busy")).toHaveAttribute("data-state", "busy");
+  await expect(page.locator(".news-content")).toHaveAttribute("aria-busy", "false");
+  await expect(page.locator(".news-content")).toContainText("Source: Yahoo Finance · As of:");
+  for (const state of ["partial", "stale"]) {
+    await expect(await run(state)).toHaveAttribute("data-state", state);
+    await expect(page.locator(".news-content")).toHaveAttribute("aria-busy", "false");
+  }
+  const provider = await run("provider");
+  await expect(provider).toHaveAttribute("data-state", "unavailable");
+  await expect(provider.getByRole("button", { name: "Retry headlines" })).toHaveCount(1);
+  mode = "partial";
+  await provider.getByRole("button", { name: "Retry headlines" }).click();
+  await expect(provider).toHaveAttribute("data-state", "partial");
+  const busy = await run("busy");
+  await expect(busy).toHaveAttribute("data-state", "busy");
+  await expect(busy.getByRole("button", { name: "Retry headlines" })).toHaveCount(1);
 
   await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
   await page.getByRole("button", { name: "Run forecast" }).click();
@@ -953,12 +1142,22 @@ test("news renders empty partial stale failure busy unreachable and superseded s
   await page.getByText("Current headlines for this symbol", { exact: true }).click();
   await expect(page.locator(".news-content")).toHaveAttribute("data-state", "unreachable");
   await page.evaluate(() => { window.fetch = window.__realFetch; });
+  mode = "empty";
+  await page.getByRole("button", { name: "Retry headlines" }).click();
+  await expect(page.locator(".news-content")).toHaveAttribute("data-state", "empty");
 
   await page.evaluate(() => {
     window.__realFetch = window.fetch;
-    window.fetch = (url, options) => String(url).includes("/api/v1/news")
-      ? new Promise((resolve, reject) => options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))))
-      : window.__realFetch(url, options);
+    window.fetch = async (url, options) => {
+      if (!String(url).includes("/api/v1/news")) return window.__realFetch(url, options);
+      return {
+        ok: true,
+        status: 200,
+        json: () => new Promise((resolve, reject) => (
+          options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")))
+        )),
+      };
+    };
   });
   await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
   await page.getByRole("button", { name: "Run forecast" }).click();
@@ -971,6 +1170,29 @@ test("news renders empty partial stale failure busy unreachable and superseded s
   await expectAxeClean(page);
 });
 
+test("a stalled headline request has one finite timeout and manual retry", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Yahoo Finance symbol").fill("ACDC-D");
+  await page.getByRole("button", { name: "Run forecast" }).click();
+  await page.evaluate(() => {
+    window.__realFetch = window.fetch;
+    window.__realSetTimeout = window.setTimeout;
+    window.setTimeout = (callback, delay, ...args) => window.__realSetTimeout(callback, delay === 10_000 ? 10 : delay, ...args);
+    window.fetch = (url, options) => String(url).includes("/api/v1/news")
+      ? new Promise((resolve, reject) => options.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))))
+      : window.__realFetch(url, options);
+  });
+  await page.getByText("Current headlines for this symbol", { exact: true }).click();
+  const news = page.locator(".news-content");
+  await expect(news).toHaveAttribute("data-state", "unreachable");
+  await expect(news).toHaveAttribute("aria-busy", "false");
+  await expect(news.getByRole("button", { name: "Retry headlines" })).toHaveCount(1);
+  await page.evaluate(() => {
+    window.fetch = window.__realFetch;
+    window.setTimeout = window.__realSetTimeout;
+  });
+});
+
 test("M04 editorial dashboard and horizon visualization match reviewed compositions", async ({
   page,
   applicationRequests,
@@ -979,6 +1201,7 @@ test("M04 editorial dashboard and horizon visualization match reviewed compositi
   await expect(page.locator("#system-label")).toContainText("Local service ready");
   await expect(page.locator(".hero")).toHaveScreenshot("forecast-workbench.png", {
     animations: "disabled",
+    maxDiffPixelRatio: 0.025,
   });
 
   const symbol = testInfo.project.name.startsWith("desktop") ? "ACDC-D" : "ACDC-M";
@@ -999,9 +1222,38 @@ test("M04 editorial dashboard and horizon visualization match reviewed compositi
   }
   await expect(figures.first()).toContainText("Loss tail · at or below · solid circles");
   await expect(figures.first()).toContainText("Gain tail · at or above · dashed diamonds");
+  await figures.first().scrollIntoViewIfNeeded();
+  const chartTypography = await figures.first().evaluate((figure) => ({
+    axis: parseFloat(getComputedStyle(figure.querySelector(".chart-axis-label")).fontSize),
+    legend: parseFloat(getComputedStyle(figure.querySelector(".chart-legend")).fontSize),
+    hitStroke: parseFloat(getComputedStyle(figure.querySelector(".chart-point")).strokeWidth),
+    hitTarget: (() => {
+      const point = figure.querySelector("circle.chart-point");
+      const probe = new DOMPoint(Number(point.getAttribute("cx")) + 10, Number(point.getAttribute("cy")))
+        .matrixTransform(point.getScreenCTM());
+      return document.elementFromPoint(probe.x, probe.y) === point;
+    })(),
+  }));
+  expect(chartTypography.axis).toBeGreaterThanOrEqual(testInfo.project.name.startsWith("mobile") ? 12 : 11);
+  expect(chartTypography.legend).toBeGreaterThanOrEqual(12);
+  expect(chartTypography.hitStroke).toBeGreaterThanOrEqual(26);
+  expect(chartTypography.hitTarget).toBe(true);
+  await page.mouse.move(0, 0);
   const point = figures.first().locator(".chart-point").first();
   await point.focus();
   await expect(figures.first().locator(".chart-tooltip")).toContainText(/probability of return at or below/);
+  const controlledRow = page.locator(`#${await point.getAttribute("aria-controls")}`);
+  await expect(controlledRow).toContainText("Return at or below -10%");
+  await point.press("Enter");
+  await expect(controlledRow).toBeFocused();
+  const gainPoint = figures.first().locator(".chart-point.gain").first();
+  await gainPoint.focus();
+  await expect(figures.first().locator(".chart-tooltip")).toContainText(/probability of return at or above/);
+  await expect(page.locator(`#${await gainPoint.getAttribute("aria-controls")}`)).toContainText("Return at or above +1%");
+  if (testInfo.project.name.startsWith("mobile")) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await point.click();
+  }
   await expect(page.locator(".interval-table").first()).toContainText("50% magnitude interval (return and price)");
   await expect(page.locator(".interval-table").first()).toContainText("95% magnitude interval (return and price)");
   await page.locator("#history-query").fill("ProFrac");
@@ -1074,6 +1326,7 @@ test("R-M04-21/22 exact 1024 query heading and 360 loading state remain separate
   expect(badgeBox.x + badgeBox.width, "360px loading badge escaped the viewport").toBeLessThanOrEqual(360);
   await expect(page.locator("#result-section")).toHaveScreenshot("forecast-loading-360.png", {
     animations: "disabled",
+    maxDiffPixelRatio: 0.025,
   });
   await expectAxeClean(page);
   releaseForecast();
@@ -1099,6 +1352,13 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
       const box = await control.boundingBox();
       expect(box.height, `${width}px touch target was too short`).toBeGreaterThanOrEqual(44);
     }
+    const themeBox = await page.getByLabel("Color theme").boundingBox();
+    expect(Math.min(themeBox.width, themeBox.height), `${width}px theme target was undersized`).toBeGreaterThanOrEqual(44);
+    expect(parseFloat(await page.getByLabel("Color theme").evaluate((select) => getComputedStyle(select).fontSize))).toBeGreaterThanOrEqual(16);
+    if (width <= 820) {
+      await expect(page.locator(".section-nav")).toBeVisible();
+      await expect(page.locator(".section-nav a")).toHaveCount(3);
+    }
   }
 
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -1107,6 +1367,7 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
   await expect(page.locator("#result-content")).not.toHaveClass(/loading/);
   const authoredRatios = await verifyAuthoredContrastStates(page);
   await expectAxeClean(page);
+  await page.getByLabel("Color theme").selectOption("dark");
   await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Filter ledger" }).focus();
   await expect(page.getByRole("button", { name: "Filter ledger" })).toBeFocused();
@@ -1115,18 +1376,43 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
     ["#forecast-heading", null],
     [".search-panel", null],
     [".search-panel", "::before"],
+    ["#forecast-form label", null],
+    ["#symbol", null],
     [".primary", null],
     [".text-link", null],
     [".history-filters label", null],
+    [".history-table th", null],
+    ["#quality-badge", null],
     [".horizon-comparison", null],
     [".comparison-title p", null],
     [".comparison-stat.down strong", null],
   ]) {
-    forcedColorRatios.push(await forcedColorContrast(page, selector, pseudo));
+    forcedColorRatios.push(await renderedContrast(page, selector, pseudo));
   }
+  const forcedChart = await page.locator(".tail-figure").first().evaluate((figure) => {
+    const loss = getComputedStyle(figure.querySelector(".chart-line.loss"));
+    const gain = getComputedStyle(figure.querySelector(".chart-line.gain"));
+    return { loss: loss.stroke, gain: gain.stroke, gainDash: gain.strokeDasharray };
+  });
+  expect(forcedChart.loss).toBe(forcedChart.gain);
+  expect(forcedChart.gainDash).not.toBe("none");
   await expectAxeClean(page);
+  const printSurfaces = {};
+  for (const theme of ["light", "dark"]) {
+    await page.emulateMedia({ media: "screen", forcedColors: "none", reducedMotion: "reduce" });
+    await page.getByLabel("Color theme").selectOption(theme);
+    await page.emulateMedia({ media: "print", forcedColors: "none", reducedMotion: "reduce" });
+    printSurfaces[theme] = await page.evaluate(() => Object.fromEntries([
+      ".search-panel", ".horizon-comparison", ".tail-figure", ".history-table th",
+    ].map((selector) => {
+      const style = getComputedStyle(document.querySelector(selector));
+      return [selector, { color: style.color, background: style.backgroundColor }];
+    })));
+  }
+  expect(printSurfaces.light).toEqual(printSurfaces.dark);
+  expect(new Set(Object.values(printSurfaces.dark).map(({ background }) => background))).toEqual(new Set(["rgb(255, 255, 255)"]));
   await testInfo.attach("wcag-contrast-ratios.json", {
-    body: Buffer.from(JSON.stringify({ authoredRatios, forcedColorRatios }, null, 2)),
+    body: Buffer.from(JSON.stringify({ authoredRatios, forcedColorRatios, forcedChart, printSurfaces }, null, 2)),
     contentType: "application/json",
   });
 });

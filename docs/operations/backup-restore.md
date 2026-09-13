@@ -12,6 +12,12 @@ first attempt can therefore leave the key in place. Preserve that key with the i
 Restore never regenerates a missing key because a replacement could not authenticate earlier
 artifacts.
 
+Backups contain the managed SQLite snapshot and its authenticated manifest. They exclude the
+origin-scoped browser theme preference and the process-memory headline cache. Restoring or moving
+a backup therefore does not change a browser's light/dark/system choice, restore earlier
+headlines, or trigger a headline request; current headlines must be requested separately after
+the service is running.
+
 Create a timestamped backup:
 
 ```bash

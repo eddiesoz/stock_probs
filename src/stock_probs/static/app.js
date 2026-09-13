@@ -1,19 +1,23 @@
-/* DOM construction uses textContent throughout so provider/history strings cannot inject markup. */
+/* textContent protects provider/history strings from markup injection. */
 "use strict";
 
 const apiRoot = "/api/v1";
-const forecastForm = document.querySelector("#forecast-form");
-const resultContent = document.querySelector("#result-content");
-const qualityBadge = document.querySelector("#quality-badge");
-const announcement = document.querySelector("#announcement");
-const historyContent = document.querySelector("#history-content");
-const historyForm = document.querySelector("#history-form");
-const symbolInput = document.querySelector("#symbol");
-const lookupStatus = document.querySelector("#lookup-status");
-const instrumentOptions = document.querySelector("#instrument-options");
-const identityConfirmation = document.querySelector("#identity-confirmation");
-const freshAnalysisSection = document.querySelector("#fresh-analysis-section");
-const freshAnalysisContent = document.querySelector("#fresh-analysis-content");
+const $ = (selector) => document.querySelector(selector);
+const forecastForm = $("#forecast-form");
+const resultContent = $("#result-content");
+const qualityBadge = $("#quality-badge");
+const announcement = $("#announcement");
+const historyContent = $("#history-content");
+const historyForm = $("#history-form");
+const symbolInput = $("#symbol");
+const lookupStatus = $("#lookup-status");
+const instrumentOptions = $("#instrument-options");
+const identityConfirmation = $("#identity-confirmation");
+const freshAnalysisSection = $("#fresh-analysis-section");
+const freshAnalysisContent = $("#fresh-analysis-content");
+const symbolError = $("#symbol-error");
+const historyPrevious = $("#history-previous");
+const historyNext = $("#history-next");
 let historyPage = 1;
 let selectedIdentity = null;
 let lookupTimer = null;
@@ -22,6 +26,10 @@ let lookupSequence = 0;
 let activeOption = -1;
 let chartSequence = 0;
 let newsController = null;
+let historySequence = 0;
+let historyLastPage = 1;
+let freshAnalysisInFlight = false;
+const newsTimeoutMs = 10_000;
 const runRelationPageSize = 100;
 const runRelationMaxPages = 5;
 const runRelationMaxLookups = 10;
@@ -31,6 +39,12 @@ function element(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+function showContent(content, className, busy, ...children) {
+  content.className = className;
+  content.setAttribute("aria-busy", String(busy));
+  content.replaceChildren(...children);
 }
 
 function svgElement(tag, attributes = {}) {
@@ -57,10 +71,6 @@ function formatNumber(value, digits = 4) {
 
 function contractLabel(value) {
   const labels = {
-    brier_score: "Brier score",
-    baseline_brier_score: "Baseline Brier score",
-    confidence_level: "Confidence level",
-    interval_coverage: "Interval coverage",
     sample_size: "Sample count",
     walk_forward: "Chronological walk-forward",
   };
@@ -102,7 +112,7 @@ function contractSection(title, className, value) {
   section.append(element("h4", "", title));
   const table = element("table", "details-table contract-table");
   table.append(element("caption", "sr-only", `${title} details`));
-  const body = document.createElement("tbody");
+  const body = element("tbody");
   appendContractRows(body, value);
   table.append(body);
   section.append(table);
@@ -133,15 +143,16 @@ function compactReliability(reliability) {
 
 function compactEvaluationScores(scores) {
   if (!scores) return null;
+  const { name, version, definition, direction_brier, reliability } = scores;
   return {
-    name: scores.name,
-    version: scores.version,
-    definition: scores.definition,
-    direction_Brier: scores.direction_brier,
+    name,
+    version,
+    definition,
+    direction_Brier: direction_brier,
     threshold_Brier: (scores.threshold_brier || []).map((item) => (
       `${item.operator} ${item.threshold > 0 ? "+" : ""}${item.threshold}%: ${formatNumber(item.score)}`
     )),
-    reliability: compactReliability(scores.reliability),
+    reliability: compactReliability(reliability),
     interval_coverage: (scores.interval_coverage || []).map((item) => (
       `${formatPercent(item.level)}: ${item.covered_count}/${item.sample_count}, ${formatPercent(item.coverage)}; ${item.definition}`
     )),
@@ -150,21 +161,17 @@ function compactEvaluationScores(scores) {
 
 function compactEvaluation(evaluation) {
   if (!evaluation) return null;
+  const {
+    version, method, status, reason, evaluation_count, eligible_realized_count,
+    excluded_anomaly_outcome_count, date_range, training_sample_range, forecast_model,
+    baseline, maximum_evaluation_points, minimum_training_samples, information_rule,
+  } = evaluation;
   return {
-    version: evaluation.version,
-    method: evaluation.method,
-    status: evaluation.status,
-    reason: evaluation.reason,
-    evaluation_count: evaluation.evaluation_count,
-    eligible_realized_count: evaluation.eligible_realized_count,
-    excluded_anomaly_outcome_count: evaluation.excluded_anomaly_outcome_count,
-    date_range: evaluation.date_range,
-    training_sample_range: evaluation.training_sample_range,
-    forecast_model: compactEvaluationScores(evaluation.forecast_model),
-    baseline: compactEvaluationScores(evaluation.baseline),
-    maximum_evaluation_points: evaluation.max_evaluation_points,
-    minimum_training_samples: evaluation.minimum_training_samples,
-    information_rule: evaluation.information_rule,
+    version, method, status, reason, evaluation_count, eligible_realized_count,
+    excluded_anomaly_outcome_count, date_range, training_sample_range,
+    forecast_model: compactEvaluationScores(forecast_model),
+    baseline: compactEvaluationScores(baseline),
+    maximum_evaluation_points, minimum_training_samples, information_rule,
   };
 }
 
@@ -178,7 +185,8 @@ async function api(path, options = {}) {
   let body;
   try {
     body = await response.json();
-  } catch (_) {
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
     body = { error: { code: "invalid_response", message: "The local service returned an invalid response." } };
   }
   if (!response.ok) {
@@ -193,10 +201,24 @@ async function api(path, options = {}) {
 
 function tableRow(table, label, value) {
   const row = table.insertRow();
-  const heading = document.createElement("th");
+  const heading = element("th");
   heading.scope = "row";
   heading.textContent = label;
   row.append(heading, element("td", "", value));
+  return row;
+}
+
+function appendMeta(meta, fields) {
+  for (const [label, value] of fields) {
+    if (value === null || value === undefined || value === "") continue;
+    const cell = element("div");
+    cell.append(element("span", "data-label", label), element("strong", "", value));
+    meta.append(cell);
+  }
+}
+
+function inputLimitations(input) {
+  return [...input.limitations, input.provider_metadata.intraday_archive_limit.statement];
 }
 
 function directionValue(probabilities, direction) {
@@ -204,10 +226,9 @@ function directionValue(probabilities, direction) {
   return probabilities[direction] ?? 0;
 }
 
-function renderTailChart(result) {
+function renderTailChart(result, chartId) {
   const figure = element("figure", "tail-figure");
   const caption = element("figcaption", "", "Threshold tail profile");
-  const chartId = `tail-chart-${result.horizon}-${chartSequence += 1}`;
   const captionId = `${chartId}-caption`;
   caption.id = captionId;
   const svg = svgElement("svg", {
@@ -229,19 +250,15 @@ function renderTailChart(result) {
     yTicks.append(label);
   }
 
-  const left = 0;
-  const right = 452;
-  const top = 0;
-  const bottom = 161;
-  const x = (threshold) => left + ((threshold + 10) / 20) * (right - left);
-  const y = (probability) => bottom - Math.max(0, Math.min(1, probability)) * (bottom - top);
+  const x = (threshold) => (threshold + 10) * 22.6;
+  const y = (probability) => 161 - Math.max(0, Math.min(1, probability)) * 161;
   for (const probability of [0, .5, 1]) {
     const rowY = y(probability);
-    svg.append(svgElement("line", { class: "chart-grid", x1: left, y1: rowY, x2: right, y2: rowY }));
+    svg.append(svgElement("line", { class: "chart-grid", x1: 0, y1: rowY, x2: 452, y2: rowY }));
   }
   svg.append(
-    svgElement("line", { class: "chart-axis", x1: left, y1: bottom, x2: right, y2: bottom }),
-    svgElement("line", { class: "chart-axis", x1: left, y1: top, x2: left, y2: bottom }),
+    svgElement("line", { class: "chart-axis", x1: 0, y1: 161, x2: 452, y2: 161 }),
+    svgElement("line", { class: "chart-axis", x1: 0, y1: 0, x2: 0, y2: 161 }),
   );
 
   const thresholds = [...result.threshold_probabilities].sort((a, b) => a.threshold - b.threshold);
@@ -257,15 +274,16 @@ function renderTailChart(result) {
   }
   const xTitle = element("span", "chart-axis-label chart-x-title", "RETURN THRESHOLD");
 
-  const tooltip = element("p", "chart-tooltip", "Hover or focus a plotted point for its exact probability.");
+  const tooltipText = "Hover or focus a plotted point for its exact probability.";
+  const tooltip = element("p", "chart-tooltip", tooltipText);
   tooltip.setAttribute("aria-live", "polite");
-  const resetTooltip = () => { tooltip.textContent = "Hover or focus a plotted point for its exact probability."; };
+  const resetTooltip = () => { tooltip.textContent = tooltipText; };
   for (const [kind, matcher] of [["loss", (item) => item.threshold < 0], ["gain", (item) => item.threshold > 0]]) {
     const points = thresholds.filter(matcher);
     const pointText = points.map((item) => `${x(item.threshold)},${y(item.probability)}`).join(" ");
     svg.append(svgElement("polyline", { class: `chart-line ${kind}`, points: pointText }));
     for (const item of points) {
-      const operator = item.threshold < 0 ? "at or below" : "at or above";
+      const operator = kind === "loss" ? "at or below" : "at or above";
       const signed = `${item.threshold > 0 ? "+" : ""}${item.threshold}%`;
       const accessible = `${formatPercent(item.probability)} probability of return ${operator} ${signed}`;
       const point = kind === "loss"
@@ -278,16 +296,23 @@ function renderTailChart(result) {
           height: 10,
           transform: `rotate(45 ${x(item.threshold)} ${y(item.probability)})`,
         });
+      const rowId = `${chartId}-threshold-${kind}-${Math.abs(item.threshold)}`;
       point.setAttribute("tabindex", "0");
       point.setAttribute("role", "img");
       point.setAttribute("aria-label", accessible);
+      point.setAttribute("aria-controls", rowId);
       const title = svgElement("title");
       title.textContent = accessible;
       point.append(title);
-      point.addEventListener("focus", () => { tooltip.textContent = accessible; });
-      point.addEventListener("mouseenter", () => { tooltip.textContent = accessible; });
-      point.addEventListener("blur", resetTooltip);
-      point.addEventListener("mouseleave", resetTooltip);
+      for (const event of ["focus", "mouseenter"]) {
+        point.addEventListener(event, () => { tooltip.textContent = accessible; });
+      }
+      for (const event of ["blur", "mouseleave"]) point.addEventListener(event, resetTooltip);
+      point.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        document.getElementById(rowId)?.focus();
+      });
       svg.append(point);
     }
   }
@@ -354,6 +379,20 @@ function setNewsState(content, state, message) {
   content.replaceChildren(status);
 }
 
+function setNewsRetryState(content, state, message, symbol, limit) {
+  setNewsState(content, state, message);
+  const retry = element("button", "secondary news-retry", "Retry headlines");
+  retry.type = "button";
+  retry.addEventListener("click", () => {
+    retry.disabled = true;
+    const details = content.closest("details");
+    delete details.dataset.requested;
+    details.dataset.requested = "true";
+    loadNews(content, symbol, limit);
+  });
+  content.append(retry);
+}
+
 function supersedeNews() {
   if (!newsController) return;
   newsController.abort();
@@ -373,23 +412,21 @@ function safeNewsLink(url) {
 
 function renderNews(content, data, symbol, limit) {
   const items = data.items.slice(0, limit);
-  if (!items.length) {
-    setNewsState(content, "empty", `No current headlines were returned for ${symbol}.`);
-    return;
-  }
   const stale = data.cache_state === "stale_fallback";
   const partial = data.coverage.partial_metadata;
-  content.dataset.state = stale ? "stale" : partial ? "partial" : "fresh";
-  content.replaceChildren(element(
-    "p",
-    "news-status",
-    stale
+  setNewsState(
+    content,
+    !items.length ? "empty" : stale ? "stale" : partial ? "partial" : "fresh",
+    !items.length
+      ? `No current headlines were returned for ${symbol}.`
+      : stale
       ? "Showing stale cached headlines because the provider refresh failed."
       : partial
         ? "Current headlines loaded with partial source or publication metadata."
         : "Current headlines loaded.",
-  ));
+  );
   content.append(element("p", "news-meta", `Source: ${data.provider} · As of: ${formatTime(data.as_of)}`));
+  if (!items.length) return;
   const list = element("ol", "news-list");
   for (const item of items) {
     const row = element("li");
@@ -421,20 +458,31 @@ function renderNews(content, data, symbol, limit) {
 async function loadNews(content, symbol, limit = 5) {
   supersedeNews();
   const controller = new AbortController();
+  let timedOut = false;
   newsController = controller;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, newsTimeoutMs);
   setNewsState(content, "loading", `Loading current headlines for ${symbol}…`);
+  const retry = (state, message) => setNewsRetryState(content, state, message, symbol, limit);
   try {
     const data = await api(`/news?${new URLSearchParams({ symbol, limit: String(limit) })}`, {
       signal: controller.signal,
     });
+    if (newsController !== controller) return;
     renderNews(content, data, symbol, limit);
   } catch (error) {
-    if (error.name === "AbortError") return;
-    if (error.status === 503) setNewsState(content, "busy", "Headline capacity is busy. Try again shortly.");
-    else if (error.status === 502) setNewsState(content, "unavailable", "The headline provider is unavailable and no cached headlines exist.");
-    else if (error instanceof TypeError) setNewsState(content, "unreachable", "The local service is unreachable. Start it and try again.");
-    else setNewsState(content, "unavailable", error.message);
+    if (newsController !== controller) return;
+    if (error.name === "AbortError" && timedOut) {
+      retry("unreachable", "The headline request timed out. Check the local service and try again.");
+    } else if (error.name === "AbortError") return;
+    else if (error.status === 503) retry("busy", "Headline capacity is busy. Try again shortly.");
+    else if (error.status === 502) retry("unavailable", "The headline provider is unavailable and no cached headlines exist.");
+    else if (error instanceof TypeError) retry("unreachable", "The local service is unreachable. Start it and try again.");
+    else retry("unavailable", error.message);
   } finally {
+    clearTimeout(timeout);
     if (newsController === controller) newsController = null;
   }
 }
@@ -465,21 +513,24 @@ function newsDisclosure(input, context) {
 }
 
 function confirmIdentity(identity) {
-  const symbol = identityValue(identity, "canonical_symbol");
+  const value = (key) => identityValue(identity, key);
+  const symbol = value("canonical_symbol");
   if (!symbol) return;
   selectedIdentity = identity;
   symbolInput.value = symbol;
+  symbolError.textContent = "";
+  symbolInput.removeAttribute("aria-invalid");
   const assetControl = forecastForm.querySelector(
     `input[name="asset_type"][value="${identity.asset_type}"]`,
   );
   if (assetControl) assetControl.checked = true;
-  const title = identityValue(identity, "display_name") || identityValue(identity, "company_name");
+  const title = value("display_name") || value("company_name");
   const details = [
     symbol,
-    identityValue(identity, "exchange"),
-    identityValue(identity, "currency"),
-    identityValue(identity, "timezone"),
-    identityValue(identity, "asset_type")?.toUpperCase(),
+    value("exchange"),
+    value("currency"),
+    value("timezone"),
+    value("asset_type")?.toUpperCase(),
   ].filter(Boolean).join(" / ");
   identityConfirmation.replaceChildren(
     element("strong", "", title || symbol),
@@ -510,16 +561,17 @@ function renderInstrumentOptions(items, query) {
     return;
   }
   items.forEach((identity, index) => {
+    const value = (key) => identityValue(identity, key);
     const option = element("li", "instrument-option");
     option.id = `instrument-option-${lookupSequence}-${index}`;
     option.setAttribute("role", "option");
     option.setAttribute("aria-selected", "false");
-    const name = identityValue(identity, "display_name") || identityValue(identity, "company_name");
+    const name = value("display_name") || value("company_name");
     const facts = [
-      identityValue(identity, "canonical_symbol"),
-      identityValue(identity, "exchange"),
-      identityValue(identity, "currency"),
-      identityValue(identity, "asset_type")?.toUpperCase(),
+      value("canonical_symbol"),
+      value("exchange"),
+      value("currency"),
+      value("asset_type")?.toUpperCase(),
     ].filter(Boolean).join(" / ");
     option.append(element("strong", "", name || identity.canonical_symbol), element("span", "", facts));
     option.addEventListener("mousedown", (event) => event.preventDefault());
@@ -573,7 +625,7 @@ symbolInput.addEventListener("input", () => {
     lookupStatus.textContent = query ? "Type at least 2 characters for identity choices." : "";
     return;
   }
-  // Delay symbol-shaped lookup so immediate submission can supersede it.
+  // Delay symbol lookup so immediate submission can supersede it.
   const delay = /^[A-Z0-9.^-]{1,15}$/.test(query) ? 1200 : 300;
   lookupTimer = setTimeout(() => lookupInstruments(query), delay);
 });
@@ -607,6 +659,7 @@ forecastForm.querySelectorAll('input[name="asset_type"]').forEach((control) => {
 
 function renderForecastCard(result, input) {
   const card = element("article", "forecast-card");
+  const chartId = `tail-chart-${result.horizon}-${chartSequence += 1}`;
   card.dataset.horizon = result.horizon;
   const header = element("header", "card-head");
   header.append(
@@ -632,21 +685,23 @@ function renderForecastCard(result, input) {
     bar.append(element("span", "value", formatPercent(probability)), fill, element("span", "label", directionLabel));
     chart.append(bar);
   }
-  card.append(chart, renderTailChart(result));
+  card.append(chart, renderTailChart(result, chartId));
 
   const table = element("table", "details-table");
   table.append(element("caption", "", "Horizon, direction, and threshold details"));
-  const body = document.createElement("tbody");
+  const body = element("tbody");
   table.append(body);
-  tableRow(body, "Origin price", formatPrice(result.origin_price, input.currency));
-  tableRow(body, "Origin timestamp", formatTime(result.origin_timestamp));
-  tableRow(body, "Reference timestamp", formatTime(result.reference_timestamp || result.origin_timestamp));
-  tableRow(body, "Reference state", contractLabel(result.reference_state || "reported_origin"));
-  tableRow(body, "Target close", formatTime(result.target_timestamp));
-  tableRow(body, "Target state", contractLabel(result.target_state || "scheduled_session_close"));
-  tableRow(body, "Session at request", contractLabel(result.session_state_at_request || input.session_state_at_request));
-  tableRow(body, "Session semantics", result.target_session_rule || input.session_rule);
-  tableRow(body, "Calculated at", formatTime(result.calculated_at));
+  for (const [label, value] of [
+    ["Origin price", formatPrice(result.origin_price, input.currency)],
+    ["Origin timestamp", formatTime(result.origin_timestamp)],
+    ["Reference timestamp", formatTime(result.reference_timestamp || result.origin_timestamp)],
+    ["Reference state", contractLabel(result.reference_state || "reported_origin")],
+    ["Target close", formatTime(result.target_timestamp)],
+    ["Target state", contractLabel(result.target_state || "scheduled_session_close")],
+    ["Session at request", contractLabel(result.session_state_at_request || input.session_state_at_request)],
+    ["Session semantics", result.target_session_rule || input.session_rule],
+    ["Calculated at", formatTime(result.calculated_at)],
+  ]) tableRow(body, label, value);
   if (result.origin_bar_end) {
     tableRow(
       body,
@@ -672,7 +727,9 @@ function renderForecastCard(result, input) {
         ? `${formatPercent(threshold.uncertainty.level)} ${threshold.uncertainty.method} uncertainty: ${formatPercent(threshold.uncertainty.low)} to ${formatPercent(threshold.uncertainty.high)}`
         : threshold.uncertainty_method,
     ].filter(Boolean).join(" · ");
-    tableRow(body, `Return ${operator} ${signedThreshold}`, details);
+    const row = tableRow(body, `Return ${operator} ${signedThreshold}`, details);
+    row.id = `${chartId}-threshold-${threshold.threshold < 0 ? "loss" : "gain"}-${Math.abs(threshold.threshold)}`;
+    row.tabIndex = -1;
   }
   const conditional = contractSection(
     "Conditional gain / loss magnitudes",
@@ -684,7 +741,7 @@ function renderForecastCard(result, input) {
 
   const intervalTable = element("table", "details-table interval-table");
   intervalTable.append(element("caption", "", "Return and price intervals"));
-  const intervalBody = document.createElement("tbody");
+  const intervalBody = element("tbody");
   intervalTable.append(intervalBody);
   for (const interval of result.magnitude_intervals) {
     tableRow(
@@ -693,12 +750,14 @@ function renderForecastCard(result, input) {
       `${interval.definition}: ${interval.percent.low.toFixed(2)}% to ${interval.percent.high.toFixed(2)} percent return (${interval.percent.unit}); ${formatPrice(interval.price.low, input.currency)} to ${formatPrice(interval.price.high, input.currency)} (${interval.price.unit})`,
     );
   }
-  tableRow(intervalBody, "Model", `${result.model?.name || input.model.name} / ${result.model?.version || result.model_version || input.model.version}`);
-  tableRow(intervalBody, "Forecast contract", result.forecast_contract_version || input.forecast_contract_version);
-  tableRow(intervalBody, "Model fingerprint", result.model_fingerprint || input.model_fingerprint);
-  tableRow(intervalBody, "Forecast fingerprint", result.forecast_fingerprint);
-  tableRow(intervalBody, "Historical sample count", String(result.sample_size));
-  tableRow(intervalBody, "Distribution", result.distribution_definition);
+  for (const [label, value] of [
+    ["Model", `${result.model?.name || input.model.name} / ${result.model?.version || result.model_version || input.model.version}`],
+    ["Forecast contract", result.forecast_contract_version || input.forecast_contract_version],
+    ["Model fingerprint", result.model_fingerprint || input.model_fingerprint],
+    ["Forecast fingerprint", result.forecast_fingerprint],
+    ["Historical sample count", String(result.sample_size)],
+    ["Distribution", result.distribution_definition],
+  ]) tableRow(intervalBody, label, value);
   card.append(intervalTable);
 
   const uncertainty = contractSection(
@@ -751,11 +810,11 @@ function renderForecastCard(result, input) {
 function renderResult(data, context = "live") {
   supersedeNews();
   const input = data.input;
-  resultContent.setAttribute("aria-busy", "false");
-  resultContent.className = "";
-  resultContent.replaceChildren();
-  qualityBadge.className = `badge ${data.repeated ? "repeated" : input.quality}`;
-  qualityBadge.textContent = data.repeated ? `Repeated / ${input.quality}` : input.quality;
+  showContent(resultContent, "", false);
+  qualityBadge.className = `badge ${context === "saved" ? input.quality : data.repeated ? "repeated" : input.quality}`;
+  qualityBadge.textContent = context === "saved"
+    ? `Recorded quality: ${input.quality}`
+    : data.repeated ? `Repeated / ${input.quality}` : input.quality;
 
   const stateStrip = element(
     "p",
@@ -767,6 +826,14 @@ function renderResult(data, context = "live") {
         : `Successful request recorded as audit event #${data.event.id}.`,
   );
   resultContent.append(stateStrip);
+  const qualityReasons = input.quality_reasons || input.stale_state?.reasons || [];
+  if (input.quality === "stale") {
+    const summary = element("p", "quality-summary", `Stale-data reason: ${qualityReasons.join("; ") || "No reason reported"}. `);
+    const link = element("a", "text-link", "Review detailed provenance");
+    link.href = "#forecast-provenance";
+    summary.append(link);
+    resultContent.append(summary);
+  }
 
   const meta = element("div", "forecast-meta");
   const fields = [
@@ -782,11 +849,7 @@ function renderResult(data, context = "live") {
     ["Source", input.provider],
     ["Model", `${input.model.name} / ${input.model.version}`],
   ];
-  for (const [label, value] of fields.filter(([, value]) => value !== null && value !== undefined && value !== "")) {
-    const cell = element("div");
-    cell.append(element("span", "data-label", label), element("strong", "", value));
-    meta.append(cell);
-  }
+  appendMeta(meta, fields);
   resultContent.append(meta);
   resultContent.append(newsDisclosure(input, context));
   resultContent.append(renderHorizonComparison(data.results));
@@ -794,39 +857,26 @@ function renderResult(data, context = "live") {
   for (const result of data.results) grid.append(renderForecastCard(result, input));
   resultContent.append(grid);
   const provenance = element("aside", "provenance");
+  provenance.id = "forecast-provenance";
   provenance.setAttribute("aria-label", "Forecast provenance and quality");
   provenance.append(element("h3", "", "Data quality, limitations, and provenance"));
-  const providerLimitations = [
-    ...(Array.isArray(input.provider_limitations) ? input.provider_limitations : []),
-    ...(Array.isArray(input.archive_limitations) ? input.archive_limitations : []),
-    ...(Array.isArray(input.provenance?.provider_limitations) ? input.provenance.provider_limitations : []),
-  ];
-  for (const key of ["archive_limitation", "intraday_archive_limitation"]) {
-    const limitation = input.provider_metadata?.[key] || input.provenance?.[key];
-    if (limitation) providerLimitations.push(limitation);
-  }
-  const intradayArchive = input.provider_metadata?.intraday_archive_limit;
-  if (intradayArchive?.statement) providerLimitations.push(intradayArchive.statement);
-  if (!providerLimitations.some((item) => /archive|60.day/i.test(String(item)))) {
-    providerLimitations.push(
-      "Yahoo Finance five-minute history has an approximate 60-day archive limit; older intraday reconstruction may be unavailable.",
-    );
-  }
-  const limitations = [...new Set([...(input.limitations || []), ...providerLimitations])];
+  const limitations = inputLimitations(input);
   const missing = Object.fromEntries(
     Object.entries(input.provider_metadata || {}).filter(([key]) => key.includes("missing")),
   );
-  provenance.append(
-    element("p", "", `Provider: ${input.provider}. Response as-of: ${formatTime(input.provider_as_of)}.`),
-    element("p", "", `Stale state: ${input.stale_state?.state || input.quality}. ${(input.quality_reasons || input.stale_state?.reasons || []).join("; ") || "No stale-data reasons reported."}`),
-    element("p", "", `Session at request: ${contractLabel(input.session_state_at_request)}. Session rule: ${input.session_rule}`),
-    element("p", "", `Calendar: ${input.calendar.name} / ${input.calendar.version} / ${input.calendar.timezone}.`),
-    element("p", "", `Captured prices: ${input.selected_daily_bars.length} daily closes and ${input.selected_intraday_bars.length} completed intraday bars.`),
-    element("p", "", `Missing data: ${Object.keys(missing).length ? "provider missing-data counters follow." : "no missing bars or scheduled closes reported."}`),
-    element("p", "", `Limitations, including archive availability: ${limitations.join(" ") || "No provider limitations reported."}`),
-    element("p", "", `Content fingerprint: ${input.content_fingerprint}`),
-    element("p", "", `Audit event #${data.event.id}${data.reused ? " references an identical immutable forecast run." : " records a new immutable forecast run."}`),
-  );
+  for (const text of [
+    `Provider: ${input.provider}. Response as-of: ${formatTime(input.provider_as_of)}.`,
+    `Stale state: ${input.stale_state?.state || input.quality}. ${(input.quality_reasons || input.stale_state?.reasons || []).join("; ") || "No stale-data reasons reported."}`,
+    `Session at request: ${contractLabel(input.session_state_at_request)}. Session rule: ${input.session_rule}`,
+    `Calendar: ${input.calendar.name} / ${input.calendar.version} / ${input.calendar.timezone}.`,
+    `Captured prices: ${input.selected_daily_bars.length} daily closes and ${input.selected_intraday_bars.length} completed intraday bars.`,
+    `Missing data: ${Object.keys(missing).length ? "provider missing-data counters follow." : "no missing bars or scheduled closes reported."}`,
+    `Limitations, including archive availability: ${limitations.join(" ") || "No provider limitations reported."}`,
+    `Content fingerprint: ${input.content_fingerprint}`,
+    context === "saved"
+      ? `Audit event #${data.event.id} references immutable forecast run #${data.event.run_id}.`
+      : `Audit event #${data.event.id}${data.reused ? " references an identical immutable forecast run." : " records a new immutable forecast run."}`,
+  ]) provenance.append(element("p", "", text));
   const missingSection = contractSection(
     "Missing-bar evidence",
     "missing-details",
@@ -858,31 +908,33 @@ function renderResult(data, context = "live") {
   resultContent.append(provenance);
 }
 
-function renderError(error) {
-  qualityBadge.className = "badge failed";
-  qualityBadge.textContent = "Failed";
+function errorPanel(title, error, context) {
   const panel = element("div", "error-panel");
   panel.setAttribute("role", "alert");
   panel.append(
-    element("h3", "", "Forecast unavailable"),
+    element("h3", "", title),
+    ...(context ? [element("p", "", context)] : []),
     element("p", "", error.message),
     element("p", "data-label", `Error code: ${error.code || "request_failed"}`),
   );
   if (error.requestId) panel.append(element("p", "data-label", `Audit request: ${error.requestId}`));
-  resultContent.setAttribute("aria-busy", "false");
-  resultContent.className = "";
-  resultContent.replaceChildren(panel);
+  return panel;
+}
+
+function renderError(error) {
+  qualityBadge.className = "badge failed";
+  qualityBadge.textContent = "Failed";
+  showContent(resultContent, "", false, errorPanel("Forecast unavailable", error));
 }
 
 function focusResultSection() {
-  const section = document.querySelector("#result-section");
+  const section = $("#result-section");
   section.focus();
   section.scrollIntoView({ block: "start" });
 }
 
 forecastForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const symbolError = document.querySelector("#symbol-error");
   const typedQuery = symbolInput.value.trim();
   const symbol = typedQuery.toUpperCase();
   cancelPendingLookup();
@@ -899,14 +951,12 @@ forecastForm.addEventListener("submit", async (event) => {
   symbolError.textContent = "";
   symbolInput.removeAttribute("aria-invalid");
   if (!selectedIdentity || selectedIdentity.canonical_symbol !== symbol) lookupStatus.textContent = "";
-  const submit = document.querySelector("#forecast-submit");
+  const submit = $("#forecast-submit");
   submit.disabled = true;
   submit.querySelector("span").textContent = "Calculating…";
   qualityBadge.className = "badge neutral";
   qualityBadge.textContent = "Calculating";
-  resultContent.className = "empty-state loading";
-  resultContent.setAttribute("aria-busy", "true");
-  resultContent.replaceChildren(element("p", "", `Retrieving completed bars for ${symbol}…`));
+  showContent(resultContent, "empty-state loading", true, element("p", "", `Retrieving completed bars for ${symbol}…`));
   announcement.textContent = `Loading forecast for ${symbol}.`;
   try {
     const data = await api("/forecasts", {
@@ -949,61 +999,83 @@ async function showHistoryEvent(id, isFailure = false) {
 }
 
 async function runFreshAnalysis(id) {
-  // Fresh analysis cannot silently replace the saved output.
+  if (freshAnalysisInFlight) return;
+  freshAnalysisInFlight = true;
+  document.querySelectorAll(".fresh-analysis-action").forEach((button) => { button.disabled = true; });
+  let cutoff = null;
+  // Keep fresh analysis separate from saved output.
   freshAnalysisSection.hidden = false;
-  freshAnalysisContent.className = "empty-state loading";
-  freshAnalysisContent.setAttribute("aria-busy", "true");
-  freshAnalysisContent.replaceChildren(element("p", "", `Calculating a fresh analysis at audit event #${id}’s historical cutoff…`));
+  showContent(
+    freshAnalysisContent,
+    "empty-state loading",
+    true,
+    element("p", "", `Loading cutoff for source audit event #${id}…`),
+  );
   announcement.textContent = `Fresh historical-cutoff analysis for event ${id} is running.`;
   freshAnalysisSection.focus();
   try {
     const saved = await api(`/saved-forecasts/${id}`);
+    cutoff = saved.input.request_cutoff;
+    freshAnalysisContent.replaceChildren(element(
+      "p",
+      "",
+      `Calculating fresh analysis from source audit event #${id} at historical cutoff ${formatTime(cutoff)}…`,
+    ));
     const response = await api(`/history/${id}/reconstructions`, {
       method: "POST",
       body: JSON.stringify({
         analysis_kind: "fresh_historical_reconstruction",
-        cutoff: saved.input.request_cutoff,
+        cutoff,
       }),
     });
     const data = response.analysis || response;
-    freshAnalysisContent.className = "";
-    freshAnalysisContent.setAttribute("aria-busy", "false");
-    freshAnalysisContent.replaceChildren();
-    const cutoff = data.input?.request_cutoff || response.request_cutoff;
+    showContent(freshAnalysisContent, "", false);
+    cutoff = data.input?.request_cutoff || response.request_cutoff || cutoff;
     freshAnalysisContent.append(element(
       "p",
       "state-strip",
-      `Fresh analysis${data.event?.id ? ` recorded as new audit event #${data.event.id}` : ""}${cutoff ? ` at historical cutoff ${formatTime(cutoff)}` : ""}. This is a new calculation, not the immutable saved forecast above.`,
+      `Fresh analysis${data.event?.id ? ` recorded as new audit event #${data.event.id}` : ""} from source audit event #${id}${cutoff ? ` at historical cutoff ${formatTime(cutoff)}` : ""}. This is a new calculation and does not alter the immutable source forecast.`,
     ));
     if (!data.input || !data.results) throw new Error("Fresh analysis response omitted forecast details.");
+    if (data.input.quality === "stale") freshAnalysisContent.append(element(
+      "p",
+      "fresh-warning",
+      `Stale reconstruction: ${data.input.quality_reasons.join("; ") || "No reason reported"}.`,
+    ));
     const meta = element("div", "forecast-meta");
-    for (const [label, value] of [
-      ["Historical cutoff", data.input.request_cutoff],
-      ["Provider as-of", data.input.provider_as_of],
-      ["Calculated", data.input.captured_at],
+    appendMeta(meta, [
+      ["Instrument", [data.input.canonical_symbol || data.input.symbol, data.input.display_name || data.input.company_name].filter(Boolean).join(" / ")],
+      ["Source audit event", `#${id}`],
+      ["Historical cutoff", formatTime(data.input.request_cutoff)],
+      ["Provider", data.input.provider],
+      ["Provider as-of", formatTime(data.input.provider_as_of)],
+      ["Calculated", formatTime(data.input.captured_at)],
       ["Model", `${data.input.model.name} / ${data.input.model.version}`],
       ["Content fingerprint", data.input.content_fingerprint],
-    ]) {
-      const display = label.includes("cutoff") || label.includes("as-of") || label === "Calculated"
-        ? formatTime(value)
-        : value;
-      const cell = element("div");
-      cell.append(element("span", "data-label", label), element("strong", "", display));
-      meta.append(cell);
-    }
+      ["Input quality", data.input.quality],
+      ["Quality reasons", data.input.quality_reasons.join("; ") || "None reported"],
+      ["Provider / archive limitations", inputLimitations(data.input).join(" ")],
+    ]);
     freshAnalysisContent.append(meta);
     const grid = element("div", "forecast-grid");
     for (const result of data.results) grid.append(renderForecastCard(result, data.input));
     freshAnalysisContent.append(grid);
     announcement.textContent = `Fresh historical-cutoff analysis for event ${id} is ready in the separate analysis region.`;
   } catch (error) {
-    freshAnalysisContent.className = "";
-    freshAnalysisContent.setAttribute("aria-busy", "false");
-    const panel = element("div", "error-panel");
-    panel.setAttribute("role", "alert");
-    panel.append(element("h3", "", "Fresh analysis unavailable"), element("p", "", error.message));
-    freshAnalysisContent.replaceChildren(panel);
+    showContent(
+      freshAnalysisContent,
+      "",
+      false,
+      errorPanel(
+        "Fresh analysis unavailable",
+        error,
+        `Source audit event #${id}${cutoff ? ` · historical cutoff ${formatTime(cutoff)}` : ""}.`,
+      ),
+    );
     announcement.textContent = `Fresh historical-cutoff analysis failed: ${error.message}`;
+  } finally {
+    freshAnalysisInFlight = false;
+    await loadHistory();
   }
 }
 
@@ -1052,7 +1124,7 @@ async function persistedRunRelations(items) {
     const candidates = [];
     let exhausted = false;
     try {
-      // Rebuild filtered run relations only from bounded persisted history.
+      // Rebuild relations only from bounded persisted history.
       for (let page = 1; page <= runRelationMaxPages; page += 1) {
         const params = new URLSearchParams({
           q: group.symbol,
@@ -1102,7 +1174,7 @@ function analysisLabel(item) {
 }
 
 function instrumentHistoryCell(item) {
-  const cell = document.createElement("td");
+  const cell = element("td");
   const symbol = item.canonical_symbol || item.normalized_symbol || item.submitted_symbol || "Invalid";
   const company = item.display_name || item.company_name;
   cell.append(element("span", "request-label", symbol));
@@ -1111,20 +1183,20 @@ function instrumentHistoryCell(item) {
 }
 
 function evidenceHistoryCell(item) {
-  const cell = document.createElement("td");
+  const cell = element("td");
   const model = [item.model_name, item.model_version].filter(Boolean).join(" / ");
   cell.append(element("span", "request-label", model || "No completed model"));
-  const horizonCount = Array.isArray(item.horizons) ? item.horizons.length : 0;
+  const horizons = Array.isArray(item.horizons) ? item.horizons : [];
   const evaluations = Array.isArray(item.evaluation_statuses)
     ? [...new Set(item.evaluation_statuses)].map(contractLabel).join(", ")
     : "";
-  if (horizonCount || item.outcome_count || evaluations) {
-    cell.append(element(
-      "span",
-      "run-label",
-      `${horizonCount} ${horizonCount === 1 ? "horizon" : "horizons"} · ${item.outcome_count || 0} outcomes${evaluations ? ` · evaluation ${evaluations}` : ""}`,
-    ));
-  }
+  cell.append(element("span", "run-label", [
+    horizons.length
+      ? `${horizons.length} ${horizons.length === 1 ? "horizon" : "horizons"} (${horizons.map(contractLabel).join(", ")})`
+      : "Horizon evidence unavailable",
+    item.outcome_count === undefined ? "Outcome evidence unavailable" : `${item.outcome_count} outcomes`,
+    evaluations ? `evaluation ${evaluations}` : "Evaluation evidence unavailable",
+  ].join(" · ")));
   return cell;
 }
 
@@ -1135,18 +1207,18 @@ function renderHistory(data, runRelations) {
   } else {
     const table = element("table", "history-table");
     const caption = element("caption", "sr-only", "Submitted forecast search history");
-    const head = document.createElement("thead");
-    const headerRow = document.createElement("tr");
+    const head = element("thead");
+    const headerRow = element("tr");
     for (const label of ["Request / run", "Instrument", "Type / venue", "Analysis", "Status", "Model / evidence", "Submitted", "Actions"]) {
       const heading = element("th", "", label);
       heading.scope = "col";
       headerRow.append(heading);
     }
     head.append(headerRow);
-    const body = document.createElement("tbody");
+    const body = element("tbody");
     for (const item of data.items) {
-      const row = document.createElement("tr");
-      const requestCell = document.createElement("td");
+      const row = element("tr");
+      const requestCell = element("td");
       const runLabel = element("span", "run-label", runDisposition(item, runRelations));
       requestCell.append(
         element("span", "request-label", `New request #${item.id}`),
@@ -1165,7 +1237,7 @@ function renderHistory(data, runRelations) {
         cell.dataset.label = label;
         row.append(cell);
       }
-      const actionCell = document.createElement("td");
+      const actionCell = element("td");
       actionCell.className = "history-actions";
       actionCell.dataset.label = "Actions";
       const action = element("button", "", item.status === "failed" ? "View failed request" : "Reopen saved forecast");
@@ -1173,7 +1245,7 @@ function renderHistory(data, runRelations) {
       action.addEventListener("click", () => showHistoryEvent(item.id, item.status === "failed"));
       actionCell.append(action);
       if (item.status !== "failed") {
-        const fresh = element("button", "", "Run fresh cutoff analysis");
+        const fresh = element("button", "fresh-analysis-action", "Run fresh cutoff analysis");
         fresh.type = "button";
         fresh.addEventListener("click", () => runFreshAnalysis(item.id));
         actionCell.append(fresh);
@@ -1184,43 +1256,50 @@ function renderHistory(data, runRelations) {
     table.append(caption, head, body);
     historyContent.replaceChildren(table);
   }
-  document.querySelector("#history-page").textContent = `Page ${data.page} of ${Math.max(1, Math.ceil(data.total / data.page_size))}`;
-  document.querySelector("#history-previous").disabled = data.page <= 1;
-  document.querySelector("#history-next").disabled = data.page * data.page_size >= data.total;
+  historyPage = data.page;
+  historyLastPage = Math.max(1, Math.ceil(data.total / data.page_size));
+  $("#history-page").textContent = `Page ${data.page} of ${historyLastPage}`;
+  historyPrevious.disabled = data.page <= 1;
+  historyNext.disabled = data.page * data.page_size >= data.total;
 }
 
 async function loadHistory() {
+  const sequence = historySequence += 1;
+  historyPrevious.disabled = true;
+  historyNext.disabled = true;
   const values = new FormData(historyForm);
   const pageSize = ["10", "20", "50"].includes(values.get("page_size"))
     ? values.get("page_size")
     : "10";
   const params = new URLSearchParams({ page: String(historyPage), page_size: pageSize });
-  if (values.get("q")) params.set("q", values.get("q"));
-  if (values.get("status")) params.set("status", values.get("status"));
-  if (values.get("asset_type")) params.set("asset_type", values.get("asset_type"));
-  if (values.get("analysis_kind")) params.set("analysis_kind", values.get("analysis_kind"));
+  for (const name of ["q", "status", "asset_type", "analysis_kind", "model", "horizon"]) {
+    if (values.get(name)) params.set(name, values.get(name));
+  }
   if (values.get("submitted_from")) params.set("submitted_from", `${values.get("submitted_from")}T00:00:00Z`);
   if (values.get("submitted_to")) params.set("submitted_to", `${values.get("submitted_to")}T23:59:59.999Z`);
-  if (values.get("model")) params.set("model", values.get("model"));
-  if (values.get("horizon")) params.set("horizon", values.get("horizon"));
   const [sortBy, sortOrder] = String(values.get("sort") || "event_id:desc").split(":");
   params.set("sort_by", sortBy);
   params.set("sort_order", sortOrder);
   const exportParams = new URLSearchParams(params);
   exportParams.delete("page");
   exportParams.delete("page_size");
-  document.querySelector("#export-csv").href = `${apiRoot}/history-export.csv?${exportParams}`;
-  document.querySelector("#export-json").href = `${apiRoot}/history-export.json?${exportParams}`;
   historyContent.setAttribute("aria-busy", "true");
   historyContent.replaceChildren(element("p", "history-loading", "Loading bounded audit history…"));
   try {
     const data = await api(`/history?${params}`);
-    renderHistory(data, await persistedRunRelations(data.items));
+    if (sequence !== historySequence) return;
+    const relations = await persistedRunRelations(data.items);
+    if (sequence !== historySequence) return;
+    $("#export-csv").href = `${apiRoot}/history-export.csv?${exportParams}`;
+    $("#export-json").href = `${apiRoot}/history-export.json?${exportParams}`;
+    renderHistory(data, relations);
   } catch (error) {
+    if (sequence !== historySequence) return;
     historyContent.setAttribute("aria-busy", "false");
     const panel = element("p", "error-panel", `History unavailable: ${error.message}`);
     panel.setAttribute("role", "alert");
     historyContent.replaceChildren(panel);
+    $("#history-page").textContent = "Page unavailable";
   }
 }
 
@@ -1229,18 +1308,26 @@ historyForm.addEventListener("submit", (event) => {
   historyPage = 1;
   loadHistory();
 });
-document.querySelector("#history-previous").addEventListener("click", () => { historyPage -= 1; loadHistory(); });
-document.querySelector("#history-next").addEventListener("click", () => { historyPage += 1; loadHistory(); });
+historyPrevious.addEventListener("click", () => {
+  if (historyPage <= 1) return;
+  historyPage -= 1;
+  loadHistory();
+});
+historyNext.addEventListener("click", () => {
+  if (historyPage >= historyLastPage) return;
+  historyPage += 1;
+  loadHistory();
+});
 
 async function initialize() {
-  const state = document.querySelector(".system-state");
+  const state = $(".system-state");
   try {
     const [readiness, backup] = await Promise.all([api("/readiness"), api("/operations/backups/status")]);
     state.classList.add("ready");
-    document.querySelector("#system-label").textContent = `Local service ready / ${readiness.provider} / backup ${backup.status}`;
+    $("#system-label").textContent = `Local service ready / ${readiness.provider} / backup ${backup.status}`;
   } catch (_) {
     state.classList.add("failed");
-    document.querySelector("#system-label").textContent = "Local service unavailable";
+    $("#system-label").textContent = "Local service unavailable";
   }
   await loadHistory();
 }

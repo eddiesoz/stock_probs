@@ -21,6 +21,7 @@ EXPECTED_RESOURCES = {
     "stock_probs/static/index.html",
     "stock_probs/static/app.css",
     "stock_probs/static/app.js",
+    "stock_probs/static/theme.js",
     "stock_probs/static/api-docs.html",
     "stock_probs/static/favicon.svg",
     "stock_probs/migrations/001_initial.sql",
@@ -214,6 +215,10 @@ def main() -> None:
                     raise RuntimeError(
                         "wheel-installed server did not serve the packaged dashboard"
                     )
+            theme_url = f"http://127.0.0.1:{port}/assets/theme.js"
+            with urllib.request.urlopen(theme_url, timeout=2) as response:  # noqa: S310
+                if b"stock-probs.theme" not in response.read():
+                    raise RuntimeError("wheel-installed server did not serve the packaged theme")
         finally:
             _stop(process)
 

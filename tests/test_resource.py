@@ -42,6 +42,8 @@ def test_package_and_local_gate_cover_portable_runtime_assets():
     assert 'COMPLETED_CHECKS+=("arm64-functional-package-runtime")' in local_gate
     assert 'os.getenv("STOCK_PROBS_TASK_ID", "M01")' in package_smoke
     assert '"stock_probs/migrations/002_historical_analysis.sql"' in package_smoke
+    assert '"stock_probs/static/theme.js"' in package_smoke
+    assert 'f"http://127.0.0.1:{port}/assets/theme.js"' in package_smoke
     assert "uv python install" in bootstrap and "3.11.15" in bootstrap
     assert metadata["requires-python"] == ">=3.11,<3.12"
     assert "docker compose" in arm64_gate and "docker run" not in arm64_gate
@@ -92,17 +94,15 @@ def test_bounded_fixture_forecast_batch_stays_small(settings):
 
 def test_dashboard_and_price_slice_stay_lightweight(client):
     # The shell/docs have no framework bundle, and chart consumers request a tiny captured slice.
-    asset_bytes = sum(
-        len(client.get(path).content)
+    responses = [
+        client.get(path)
         for path in (
-            "/",
-            "/api/v1/docs",
-            "/assets/app.css",
-            "/assets/app.js",
-            "/assets/theme.js",
-            "/assets/favicon.svg",
+            "/", "/api/v1/docs", "/assets/app.css", "/assets/app.js",
+            "/assets/theme.js", "/assets/favicon.svg",
         )
-    )
+    ]
+    assert all(response.status_code == 200 for response in responses)
+    asset_bytes = sum(len(response.content) for response in responses)
     created = client.post(
         "/api/v1/forecasts", json={"symbol": "ACDC", "asset_type": "stock"}
     ).json()

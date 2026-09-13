@@ -199,27 +199,32 @@ def test_due_check_manifest_delay_times_out_before_creating_an_artifact(
     manager = BackupManager(repository, settings.backup_dir)
     manager.create("existing.spbackup")
     original_manifest = manager._authenticated_manifest
+    entered = threading.Event()
+    release = threading.Event()
     completed = threading.Event()
 
     def delayed_manifest(name):
+        entered.set()
         try:
-            time.sleep(0.05)
+            release.wait()
             return original_manifest(name)
         finally:
             completed.set()
 
-    monkeypatch.setattr(backup_module, "BACKUP_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(backup_module, "BACKUP_TIMEOUT_SECONDS", 0.5)
     monkeypatch.setattr(manager, "_authenticated_manifest", delayed_manifest)
-    started = time.monotonic()
-    with pytest.raises(BackupError, match="wall-clock time limit"):
-        manager.create_if_due(0, now=datetime.now(UTC))
-    elapsed = time.monotonic() - started
+    try:
+        with pytest.raises(BackupError, match="wall-clock time limit"):
+            manager.create_if_due(0, now=datetime.now(UTC))
+        assert entered.is_set()
+        assert not completed.is_set()
+        assert [path.name for path in settings.backup_dir.glob("*.spbackup")] == [
+            "existing.spbackup"
+        ]
+    finally:
+        release.set()
 
-    assert elapsed < 0.04
-    assert [path.name for path in settings.backup_dir.glob("*.spbackup")] == [
-        "existing.spbackup"
-    ]
-    assert completed.wait(timeout=0.2)
+    assert completed.wait(timeout=1)
     assert repository.history()["items"][0]["request_id"] == "retained-timeout-event"
     assert [path.name for path in settings.backup_dir.iterdir()] == ["existing.spbackup"]
 

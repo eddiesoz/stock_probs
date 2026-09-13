@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -40,8 +41,61 @@ def test_repository_documentation_contract_passes() -> None:
 
 
 def test_documentation_taxonomy_has_expected_size() -> None:
-    assert len(CATEGORIES) == 8
-    assert sum(map(len, CATEGORIES.values())) == 11
+    assert len(CATEGORIES) == 9
+    assert sum(map(len, CATEGORIES.values())) == 13
+
+
+def test_astra_matrix_has_214_unique_inventory_rows_and_dimension_keys() -> None:
+    text = (ROOT / "docs/evidence/astra-final-matrix.md").read_text(encoding="utf-8")
+    report = (ROOT / "docs/evidence/astra-final-report.md").read_text(encoding="utf-8")
+    row_ids = re.findall(r"^\| `([ACSHTNVMWP]\d{3})` \|", text, re.MULTILINE)
+    expected = {
+        f"{prefix}{number:03d}"
+        for prefix, count in {
+            "A": 35,
+            "C": 37,
+            "S": 21,
+            "H": 8,
+            "T": 12,
+            "N": 10,
+            "V": 52,
+            "M": 6,
+            "W": 20,
+            "P": 13,
+        }.items()
+        for number in range(1, count + 1)
+    }
+
+    assert len(row_ids) == len(set(row_ids)) == 214
+    assert set(row_ids) == expected
+    for label in (
+        "Show up to 10 headlines",
+        "Review detailed provenance",
+        "View failed request",
+    ):
+        assert label in text
+    for suffix in ("AE", "MO", "RE", "AX", "PE"):
+        assert f"`<ID>-{suffix}`" in text
+        assert f"(`-{suffix}`)" in report
+    for prefix in "ACSHTNVMWP":
+        assert f"| `{prefix}` |" in report
+
+
+@pytest.mark.parametrize("topic", ["astra-final-matrix.md", "astra-final-report.md"])
+def test_astra_evidence_index_link_mutation_fails(
+    documentation_repository: Path, topic: str
+) -> None:
+    index = documentation_repository / "docs/evidence/index.md"
+    index.write_text(
+        index.read_text(encoding="utf-8").replace(
+            f"({topic})", "(ponytail-reviews.md)"
+        ),
+        encoding="utf-8",
+    )
+
+    issues = validate_repository(documentation_repository)
+
+    assert any(f"must link {topic} exactly once" in issue for issue in issues)
 
 
 def test_unexpected_skill_catalog_mutation_fails(documentation_repository: Path) -> None:
@@ -193,12 +247,18 @@ def test_heading_anchor_mutation_fails(documentation_repository: Path) -> None:
     assert any("unresolved Markdown anchor" in issue for issue in issues)
 
 
-def test_duplicate_taxonomy_link_mutation_fails(documentation_repository: Path) -> None:
-    _append(documentation_repository / "docs/index.md", "\n[Concepts again](concepts/index.md)\n")
+@pytest.mark.parametrize("category", ["concepts", "walkthrough"])
+def test_duplicate_taxonomy_link_mutation_fails(
+    documentation_repository: Path, category: str
+) -> None:
+    _append(
+        documentation_repository / "docs/index.md",
+        f"\n[{category.title()} again]({category}/index.md)\n",
+    )
 
     issues = validate_repository(documentation_repository)
 
-    assert any("must link concepts/index.md exactly once" in issue for issue in issues)
+    assert any(f"must link {category}/index.md exactly once" in issue for issue in issues)
 
 
 def test_missing_skill_reference_link_mutation_fails(documentation_repository: Path) -> None:

@@ -1,4 +1,4 @@
-/* Run before CSS so the first styled paint uses the persisted or system theme. */
+/* Apply theme before CSS to prevent first-paint flash. */
 "use strict";
 (() => {
 const key = "stock-probs.theme";
@@ -6,7 +6,7 @@ const media = matchMedia("(prefers-color-scheme: dark)");
 let choice = null;
 try {
   const saved = localStorage.getItem(key);
-  if (["light", "dark"].includes(saved)) choice = saved;
+  if (saved === "light" || saved === "dark") choice = saved;
   else if (saved !== null) localStorage.removeItem(key);
 } catch (_) {}
 const apply = () => { document.documentElement.dataset.theme = choice || (media.matches ? "dark" : "light"); };
@@ -15,10 +15,7 @@ const bind = () => document.querySelectorAll('.theme-control select[name="theme"
   control.value = choice || "system";
   control.addEventListener("change", () => {
     choice = control.value === "system" ? null : control.value;
-    try {
-      if (choice) localStorage.setItem(key, choice);
-      else localStorage.removeItem(key);
-    } catch (_) {}
+    try { choice ? localStorage.setItem(key, choice) : localStorage.removeItem(key); } catch (_) {}
     apply();
   });
 });

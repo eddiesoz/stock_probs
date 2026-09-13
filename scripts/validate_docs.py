@@ -54,11 +54,12 @@ CATEGORIES: dict[str, tuple[str, ...]] = {
     "concepts": ("architecture.md", "forecast-model.md"),
     "configure": ("local-configuration.md",),
     "develop": ("testing.md", "documentation.md"),
-    "evidence": ("ponytail-reviews.md",),
+    "evidence": ("astra-final-matrix.md", "astra-final-report.md", "ponytail-reviews.md"),
     "operations": ("getting-started.md", "backup-restore.md"),
     "reference": ("api.md",),
     "security": ("threat-model.md",),
     "usage": ("dashboard.md",),
+    "walkthrough": (),
 }
 FRONTMATTER_VALUE = re.compile(r'^([a-zA-Z][a-zA-Z0-9_-]*):\s*"([^"\n]+)"\s*$')
 TOPIC_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\.md$")

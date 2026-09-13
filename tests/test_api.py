@@ -2261,6 +2261,61 @@ def test_history_exports_are_capped_and_report_truncation(client):
     assert len(exported["records"]) == 100
 
 
+def test_history_exports_sort_all_matches_before_the_hundred_event_cap(client, monkeypatch):
+    repository = client.app.state.repository
+    now = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+    expected_ids = []
+    for index in range(101):
+        event_id = repository.record_failure(
+            request_id=f"sorted-{index:03d}",
+            submitted_symbol="FAIL",
+            normalized_symbol="FAIL",
+            asset_type="stock",
+            error_code="provider_unavailable",
+            error_message="Fixture provider failure.",
+            submitted_at=now + timedelta(seconds=index),
+            completed_at=now + timedelta(seconds=index + 1),
+        )
+        if index < 100:
+            expected_ids.append(event_id)
+
+    statements: list[str] = []
+    original_connect = repository.connect
+
+    @contextmanager
+    def traced_connect():
+        with original_connect() as connection:
+            connection.set_trace_callback(statements.append)
+            yield connection
+
+    monkeypatch.setattr(repository, "connect", traced_connect)
+    params = {"sort_by": "request_id", "sort_order": "asc"}
+    json_export = client.get("/api/v1/history-export.json", params=params)
+    json_reads = sum(
+        statement.lstrip().upper().startswith(("SELECT", "WITH")) for statement in statements
+    )
+    statements.clear()
+    csv_export = client.get("/api/v1/history-export.csv", params=params)
+    csv_reads = sum(
+        statement.lstrip().upper().startswith(("SELECT", "WITH")) for statement in statements
+    )
+    payload = json_export.json()
+    json_ids = [
+        record["event_id"] for record in payload["records"] if record["record_type"] == "event"
+    ]
+    csv_ids = [
+        int(row["event_id"])
+        for row in csv.DictReader(io.StringIO(csv_export.text, newline=""))
+        if row["record_type"] == "event"
+    ]
+
+    assert json_export.status_code == csv_export.status_code == 200
+    assert json_ids == csv_ids == expected_ids
+    assert payload["total_events"] == 101
+    assert payload["exported_events"] == 100 and payload["truncated"] is True
+    assert json_reads == csv_reads == 2
+
+
 def test_environment_host_setting_fails_closed_without_cli_acknowledgement(monkeypatch):
     # Settings have no broad-bind escape hatch; only the explicit CLI flag owns that decision.
     monkeypatch.setenv("STOCK_PROBS_HOST", "0.0.0.0")  # noqa: S104

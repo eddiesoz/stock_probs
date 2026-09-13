@@ -1,0 +1,2205 @@
+{
+  "task": "M08 walkthrough",
+  "completion_claim": "The 20-step walkthrough and attached companion states were generated at both authoritative viewports; acceptance remains a separate gate.",
+  "fixture": {
+    "provider": "fixture",
+    "now": "2025-01-10T17:03:00+00:00",
+    "isolation": "A reset runtime and an ephemeral 127.0.0.1 port per viewport."
+  },
+  "generation": {
+    "revision": "cf099754a5c3e4a05f0e785c0d65ff06f96c4d63",
+    "dirty": true,
+    "dirty_entries": [
+      " M AGENTS.md",
+      " M MVP-PLAN.md",
+      " M MVP-ROADMAP.md",
+      " M README.md",
+      " M docs/concepts/architecture.md",
+      " M docs/concepts/forecast-model.md",
+      " M docs/configure/local-configuration.md",
+      " M docs/develop/testing.md",
+      " M docs/evidence/index.md",
+      " M docs/index.md",
+      " M docs/operations/backup-restore.md",
+      " M docs/reference/api.md",
+      " M docs/security/threat-model.md",
+      " M docs/usage/dashboard.md",
+      " M scripts/capture-walkthrough.sh",
+      " M scripts/package_smoke.py",
+      " M scripts/validate_docs.py",
+      " M src/stock_probs/api.py",
+      " M src/stock_probs/repository.py",
+      " M src/stock_probs/static/api-docs.html",
+      " M src/stock_probs/static/app.css",
+      " M src/stock_probs/static/app.js",
+      " M src/stock_probs/static/favicon.svg",
+      " M src/stock_probs/static/index.html",
+      " M src/stock_probs/static/theme.js",
+      " M tests/test_api.py",
+      " M tests/test_backup_automation.py",
+      " M tests/test_docs_validation.py",
+      " M tests/test_resource.py",
+      " M tools/browser/tests/dashboard.spec.js",
+      " M tools/walkthrough/capture.js",
+      " M tools/walkthrough/capture.test.js",
+      "?? docs/walkthrough/"
+    ],
+    "started_utc": "2026-09-13T00:32:24.418Z",
+    "generated_utc": "2026-09-13T00:32:43.223Z",
+    "command": "./scripts/capture-walkthrough.sh",
+    "completed_utc": "2026-09-13T00:32:43.275Z",
+    "versions": {
+      "node": "v22.23.1",
+      "playwright": "1.63.0-alpha-2026-08-31",
+      "chromium": "153.0.8010.12",
+      "platform": "linux x64"
+    }
+  },
+  "capture_limits": {
+    "news": "All displayed news states are simulated browser responses at the fixture clock; they are not live provider/cache/deadline evidence.",
+    "csp": "Annotation captures use bypassCSP=true only for injected labels; separate first-paint execution observations use bypassCSP=false.",
+    "mobile": "Chromium mobile/touch emulation at 390x844, not native or physical-phone evidence.",
+    "animation": "Reduced motion plus capture-only disabled animations; static PNGs are authoritative."
+  },
+  "browser": "Pinned Playwright Chromium from tools/browser",
+  "authoritative_media": "Annotated PNG screenshots",
+  "step_definitions": [
+    {
+      "id": "01-backup-status",
+      "title": "Confirm the local service and backup status",
+      "description": "Open the dashboard and confirm that the status line says ready, fixture provider, and backup available.",
+      "caption": "The ready status identifies deterministic fixture data and says managed backups are available; backup and restore are not exposed in the UI.",
+      "altText": "Dashboard masthead with ready, fixture provider, and backup available status labels."
+    },
+    {
+      "id": "02-company-lookup",
+      "title": "Use company-name lookup",
+      "description": "Type ProFrac in the instrument field, then choose ProFrac Holding Corp. from the result list.",
+      "caption": "The ProFrac query returns one selectable ACDC stock result.",
+      "altText": "Instrument search containing ProFrac with a ProFrac Holding Corp., ACDC result card."
+    },
+    {
+      "id": "03-symbol-identity",
+      "title": "Confirm the selected symbol identity",
+      "description": "Press Arrow Down and Enter, or tap the result, then check the confirmed ACDC identity before continuing.",
+      "caption": "The confirmation shows ACDC, NMS, USD, America/New_York, and Stock.",
+      "altText": "Confirmed identity panel for ProFrac Holding Corp. showing symbol ACDC and stock metadata."
+    },
+    {
+      "id": "04-stock-horizons",
+      "title": "Run the stock forecast",
+      "description": "Select Stock, run the ACDC forecast, and compare the Close → next close and Completed 5m → close cards.",
+      "caption": "The ACDC result presents direction probabilities for both forecast origins.",
+      "altText": "ACDC forecast comparison with close-to-close and completed-five-minute-to-close result cards."
+    },
+    {
+      "id": "05-chart-and-table",
+      "title": "Read a chart point and its table equivalent",
+      "description": "Focus the −10% chart point, read its 0.6% probability, then continue to the matching Return at or below −10% table row.",
+      "caption": "The focused −10% point and the continuation table row both report 0.6%.",
+      "altText": "Focused minus-ten-percent chart point with a tooltip reporting 0.6 percent at or below minus ten percent."
+    },
+    {
+      "id": "06-etf-horizons",
+      "title": "Run the ETF forecast",
+      "description": "Enter SPY, select ETF, run the forecast, and compare the same two forecast horizons.",
+      "caption": "The SPY ETF result uses the close-to-close and completed-five-minute-to-close origins.",
+      "altText": "SPY ETF forecast with two horizon cards and direction probabilities."
+    },
+    {
+      "id": "07-history-filter",
+      "title": "Search and filter the ledger",
+      "description": "Set symbol to SPY, status to Successful, and asset type to ETF; select Filter ledger and inspect the matching result.",
+      "caption": "The active filters narrow the ledger to the successful SPY ETF event.",
+      "altText": "History ledger filtered to a single successful SPY ETF result."
+    },
+    {
+      "id": "08-saved-reopen",
+      "title": "Reopen the immutable saved forecast",
+      "description": "Select Reopen saved forecast on the SPY event and confirm the immutable recorded-result label.",
+      "caption": "Saved event 2 reopens as an immutable recorded SPY result.",
+      "altText": "Reopened SPY forecast headed Immutable recorded result and audit event 2."
+    },
+    {
+      "id": "09-fresh-reconstruction",
+      "title": "Run a fresh historical-cutoff analysis",
+      "description": "Select Run fresh cutoff analysis and verify that the new calculation is labelled Not the saved forecast.",
+      "caption": "Fresh event 3 appears separately with its historical cutoff and leaves the saved result unchanged.",
+      "altText": "Fresh analysis panel labelled Not the saved forecast with a new event and historical cutoff."
+    },
+    {
+      "id": "10-history-downloads",
+      "title": "Download the filtered CSV and JSON",
+      "description": "Keep the SPY, Successful, and ETF filters active; select Download CSV and Download JSON to save history.csv and history.json.",
+      "caption": "The two download controls export the currently filtered SPY history in CSV and JSON formats.",
+      "altText": "Filtered history controls with Download CSV and Download JSON links visible."
+    },
+    {
+      "id": "11-theme-system",
+      "title": "Follow the system theme",
+      "description": "Choose System in the theme control and confirm that the dashboard follows the current dark system preference.",
+      "caption": "System is selected while the dashboard follows a dark operating-system preference.",
+      "altText": "Dark dashboard masthead with System selected in the color theme control."
+    },
+    {
+      "id": "12-theme-dark",
+      "title": "Choose explicit dark mode",
+      "description": "Choose Dark in the theme control and confirm that the dashboard changes to the explicit dark theme.",
+      "caption": "Dark is selected as an explicit preference rather than inherited from the system.",
+      "altText": "Dashboard in dark colors with Dark selected in the theme control."
+    },
+    {
+      "id": "13-theme-reset",
+      "title": "Reset the theme to system",
+      "description": "Choose System again to remove the explicit theme choice and return to the current light system preference.",
+      "caption": "System is selected and the dashboard has returned to the light system theme.",
+      "altText": "Light dashboard masthead after the color theme control is reset to System."
+    },
+    {
+      "id": "14-theme-first-paint",
+      "title": "Open the loaded dark API page",
+      "description": "Choose Dark, open the local API documentation, and inspect the fully loaded dark page; first paint timing is recorded separately.",
+      "caption": "This image shows the settled dark API page, not the earlier paint transition.",
+      "altText": "Loaded local API documentation page using the dark theme."
+    },
+    {
+      "id": "15-news-fresh",
+      "title": "Load fresh current headlines",
+      "description": "Open current headlines and inspect all five items. Simulated response — fixture clock 10 Jan 2025, 17:03 UTC.",
+      "caption": "The simulated fresh response shows five SPY headlines, source, as-of time, publication metadata, and safe links.",
+      "altText": "SPY news panel with five simulated fresh headlines at the 10 January 2025 fixture clock."
+    },
+    {
+      "id": "16-news-empty",
+      "title": "Show an honest empty news result",
+      "description": "Open current headlines and confirm the successful empty message. Simulated response — fixture clock 10 Jan 2025, 17:03 UTC.",
+      "caption": "The simulated empty response says no current headlines were returned and does not present a provider error.",
+      "altText": "SPY news panel showing a simulated successful empty state at the fixture clock."
+    },
+    {
+      "id": "17-news-partial",
+      "title": "Label partial headline metadata",
+      "description": "Inspect item 1 and confirm it remains usable without publisher or publication time. Simulated response — fixture clock 10 Jan 2025, 17:03 UTC.",
+      "caption": "In the simulated partial response, item 1 lacks publisher and time while the remaining headline data stays available.",
+      "altText": "Simulated partial SPY headline list whose first item has no publisher or publication time."
+    },
+    {
+      "id": "18-news-stale",
+      "title": "Explain stale cached headlines",
+      "description": "Inspect the retained cached headlines and their warning. Simulated stale fallback — fixture clock 10 Jan 2025, 17:03 UTC.",
+      "caption": "The simulated stale fallback keeps cached headlines visible and labels the displayed as-of time as cached after refresh failure.",
+      "altText": "Simulated stale SPY news panel with cached headlines and a refresh-failed warning."
+    },
+    {
+      "id": "19-news-provider-failure",
+      "title": "Report provider failure without cache",
+      "description": "Open current headlines and read the unavailable message. Simulated provider failure with no cache — fixture clock 10 Jan 2025, 17:03 UTC.",
+      "caption": "The simulated provider failure reports that no cached headlines can be shown and remains distinct from an empty result.",
+      "altText": "SPY news panel showing a simulated provider-unavailable state with no cached headlines."
+    },
+    {
+      "id": "20-saved-current-news",
+      "title": "Keep saved evidence separate from current headlines",
+      "description": "Reopen the saved SPY forecast and leave Load current headlines for this symbol closed; use it only when current information is wanted.",
+      "caption": "The closed disclosure keeps current headlines separate; the recorded request-count delta for saved reopen is zero.",
+      "altText": "Immutable saved SPY forecast with the Load current headlines disclosure closed."
+    }
+  ],
+  "profiles": {
+    "desktop": {
+      "viewport": {
+        "width": 1280,
+        "height": 1000
+      },
+      "captures": [
+        {
+          "id": "01-backup-status",
+          "title": "Confirm the local service and backup status",
+          "instruction": "Open the dashboard and confirm that the status line says ready, fixture provider, and backup available.",
+          "caption": "The ready status identifies deterministic fixture data and says managed backups are available; backup and restore are not exposed in the UI.",
+          "alt_text": "Dashboard masthead with ready, fixture provider, and backup available status labels.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/operations/backups/status",
+              "status": 200
+            }
+          ],
+          "state": "service-ready",
+          "screenshot": "screenshots/desktop-01-backup-status.png"
+        },
+        {
+          "id": "02-company-lookup",
+          "title": "Use company-name lookup",
+          "instruction": "Type ProFrac in the instrument field, then choose ProFrac Holding Corp. from the result list.",
+          "caption": "The ProFrac query returns one selectable ACDC stock result.",
+          "alt_text": "Instrument search containing ProFrac with a ProFrac Holding Corp., ACDC result card.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/instruments?query=ProFrac&limit=5",
+              "status": 200
+            }
+          ],
+          "state": "lookup-results",
+          "screenshot": "screenshots/desktop-02-company-lookup.png"
+        },
+        {
+          "id": "03-symbol-identity",
+          "title": "Confirm the selected symbol identity",
+          "instruction": "Press Arrow Down and Enter, or tap the result, then check the confirmed ACDC identity before continuing.",
+          "caption": "The confirmation shows ACDC, NMS, USD, America/New_York, and Stock.",
+          "alt_text": "Confirmed identity panel for ProFrac Holding Corp. showing symbol ACDC and stock metadata.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/instruments?query=ProFrac&limit=5",
+              "status": 200
+            }
+          ],
+          "state": "identity-confirmed",
+          "screenshot": "screenshots/desktop-03-symbol-identity.png"
+        },
+        {
+          "id": "04-stock-horizons",
+          "title": "Run the stock forecast",
+          "instruction": "Select Stock, run the ACDC forecast, and compare the Close → next close and Completed 5m → close cards.",
+          "caption": "The ACDC result presents direction probabilities for both forecast origins.",
+          "alt_text": "ACDC forecast comparison with close-to-close and completed-five-minute-to-close result cards.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "POST",
+              "path": "/api/v1/forecasts",
+              "status": 201
+            }
+          ],
+          "state": "successful-stock-forecast",
+          "screenshot": "screenshots/desktop-04-stock-horizons.png"
+        },
+        {
+          "id": "05-chart-and-table",
+          "title": "Read a chart point and its table equivalent",
+          "instruction": "Focus the −10% chart point, read its 0.6% probability, then continue to the matching Return at or below −10% table row.",
+          "caption": "The focused −10% point and the continuation table row both report 0.6%.",
+          "alt_text": "Focused minus-ten-percent chart point with a tooltip reporting 0.6 percent at or below minus ten percent.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "POST",
+              "path": "/api/v1/forecasts",
+              "status": 201
+            }
+          ],
+          "state": "chart-table-equivalent",
+          "screenshot": "screenshots/desktop-05-chart-and-table.png"
+        },
+        {
+          "id": "06-etf-horizons",
+          "title": "Run the ETF forecast",
+          "instruction": "Enter SPY, select ETF, run the forecast, and compare the same two forecast horizons.",
+          "caption": "The SPY ETF result uses the close-to-close and completed-five-minute-to-close origins.",
+          "alt_text": "SPY ETF forecast with two horizon cards and direction probabilities.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "POST",
+              "path": "/api/v1/forecasts",
+              "status": 201
+            }
+          ],
+          "state": "successful-etf-forecast",
+          "screenshot": "screenshots/desktop-06-etf-horizons.png"
+        },
+        {
+          "id": "07-history-filter",
+          "title": "Search and filter the ledger",
+          "instruction": "Set symbol to SPY, status to Successful, and asset type to ETF; select Filter ledger and inspect the matching result.",
+          "caption": "The active filters narrow the ledger to the successful SPY ETF event.",
+          "alt_text": "History ledger filtered to a single successful SPY ETF result.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/history?page=1&page_size=10&q=SPY&status=successful&asset_type=etf&sort_by=event_id&sort_order=desc",
+              "status": 200
+            }
+          ],
+          "state": "filtered-history",
+          "screenshot": "screenshots/desktop-07-history-filter.png"
+        },
+        {
+          "id": "08-saved-reopen",
+          "title": "Reopen the immutable saved forecast",
+          "instruction": "Select Reopen saved forecast on the SPY event and confirm the immutable recorded-result label.",
+          "caption": "Saved event 2 reopens as an immutable recorded SPY result.",
+          "alt_text": "Reopened SPY forecast headed Immutable recorded result and audit event 2.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/saved-forecasts/2",
+              "status": 200
+            }
+          ],
+          "state": "immutable-saved-result",
+          "screenshot": "screenshots/desktop-08-saved-reopen.png"
+        },
+        {
+          "id": "09-fresh-reconstruction",
+          "title": "Run a fresh historical-cutoff analysis",
+          "instruction": "Select Run fresh cutoff analysis and verify that the new calculation is labelled Not the saved forecast.",
+          "caption": "Fresh event 3 appears separately with its historical cutoff and leaves the saved result unchanged.",
+          "alt_text": "Fresh analysis panel labelled Not the saved forecast with a new event and historical cutoff.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "POST",
+              "path": "/api/v1/history/2/reconstructions",
+              "status": 201
+            }
+          ],
+          "state": "fresh-reconstruction",
+          "screenshot": "screenshots/desktop-09-fresh-reconstruction.png"
+        },
+        {
+          "id": "10-history-downloads",
+          "title": "Download the filtered CSV and JSON",
+          "instruction": "Keep the SPY, Successful, and ETF filters active; select Download CSV and Download JSON to save history.csv and history.json.",
+          "caption": "The two download controls export the currently filtered SPY history in CSV and JSON formats.",
+          "alt_text": "Filtered history controls with Download CSV and Download JSON links visible.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/history-export.csv?q=SPY&status=successful&asset_type=etf&sort_by=event_id&sort_order=desc",
+              "status": "downloaded-and-validated"
+            },
+            {
+              "method": "GET",
+              "path": "/api/v1/history-export.json?q=SPY&status=successful&asset_type=etf&sort_by=event_id&sort_order=desc",
+              "status": "downloaded-and-validated"
+            }
+          ],
+          "state": "downloads-verified",
+          "screenshot": "screenshots/desktop-10-history-downloads.png"
+        },
+        {
+          "id": "11-theme-system",
+          "title": "Follow the system theme",
+          "instruction": "Choose System in the theme control and confirm that the dashboard follows the current dark system preference.",
+          "caption": "System is selected while the dashboard follows a dark operating-system preference.",
+          "alt_text": "Dark dashboard masthead with System selected in the color theme control.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/assets/theme.js",
+              "status": 200
+            }
+          ],
+          "state": "system-dark",
+          "screenshot": "screenshots/desktop-11-theme-system.png"
+        },
+        {
+          "id": "12-theme-dark",
+          "title": "Choose explicit dark mode",
+          "instruction": "Choose Dark in the theme control and confirm that the dashboard changes to the explicit dark theme.",
+          "caption": "Dark is selected as an explicit preference rather than inherited from the system.",
+          "alt_text": "Dashboard in dark colors with Dark selected in the theme control.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/assets/theme.js",
+              "status": 200
+            }
+          ],
+          "state": "explicit-dark",
+          "screenshot": "screenshots/desktop-12-theme-dark.png"
+        },
+        {
+          "id": "13-theme-reset",
+          "title": "Reset the theme to system",
+          "instruction": "Choose System again to remove the explicit theme choice and return to the current light system preference.",
+          "caption": "System is selected and the dashboard has returned to the light system theme.",
+          "alt_text": "Light dashboard masthead after the color theme control is reset to System.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/assets/theme.js",
+              "status": 200
+            }
+          ],
+          "state": "reset-to-system-light",
+          "screenshot": "screenshots/desktop-13-theme-reset.png"
+        },
+        {
+          "id": "14-theme-first-paint",
+          "title": "Open the loaded dark API page",
+          "instruction": "Choose Dark, open the local API documentation, and inspect the fully loaded dark page; first paint timing is recorded separately.",
+          "caption": "This image shows the settled dark API page, not the earlier paint transition.",
+          "alt_text": "Loaded local API documentation page using the dark theme.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/docs",
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "path": "/assets/theme.js",
+              "status": 200
+            },
+            {
+              "verification": "dashboard",
+              "theme_before_css": true,
+              "parser_blocking": true,
+              "loaded_theme": "dark"
+            },
+            {
+              "verification": "api-docs",
+              "theme_before_css": true,
+              "parser_blocking": true,
+              "loaded_theme": "dark"
+            }
+          ],
+          "state": "loaded-dark-api-page",
+          "screenshot": "screenshots/desktop-14-theme-first-paint.png"
+        },
+        {
+          "id": "15-news-fresh",
+          "title": "Load fresh current headlines",
+          "instruction": "Open current headlines and inspect all five items. Simulated response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated fresh response shows five SPY headlines, source, as-of time, publication metadata, and safe links.",
+          "alt_text": "SPY news panel with five simulated fresh headlines at the 10 January 2025 fixture clock.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 200
+            },
+            {
+              "verification": "headline-items",
+              "state": "fresh",
+              "selector": "ol.news-list > li",
+              "count": 5
+            }
+          ],
+          "state": "fresh",
+          "screenshot": "screenshots/desktop-15-news-fresh.png"
+        },
+        {
+          "id": "16-news-empty",
+          "title": "Show an honest empty news result",
+          "instruction": "Open current headlines and confirm the successful empty message. Simulated response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated empty response says no current headlines were returned and does not present a provider error.",
+          "alt_text": "SPY news panel showing a simulated successful empty state at the fixture clock.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 200
+            }
+          ],
+          "state": "empty",
+          "screenshot": "screenshots/desktop-16-news-empty.png"
+        },
+        {
+          "id": "17-news-partial",
+          "title": "Label partial headline metadata",
+          "instruction": "Inspect item 1 and confirm it remains usable without publisher or publication time. Simulated response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "In the simulated partial response, item 1 lacks publisher and time while the remaining headline data stays available.",
+          "alt_text": "Simulated partial SPY headline list whose first item has no publisher or publication time.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 200
+            }
+          ],
+          "state": "partial-metadata",
+          "screenshot": "screenshots/desktop-17-news-partial.png"
+        },
+        {
+          "id": "18-news-stale",
+          "title": "Explain stale cached headlines",
+          "instruction": "Inspect the retained cached headlines and their warning. Simulated stale fallback — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated stale fallback keeps cached headlines visible and labels the displayed as-of time as cached after refresh failure.",
+          "alt_text": "Simulated stale SPY news panel with cached headlines and a refresh-failed warning.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 200
+            }
+          ],
+          "state": "stale-fallback",
+          "screenshot": "screenshots/desktop-18-news-stale.png"
+        },
+        {
+          "id": "19-news-provider-failure",
+          "title": "Report provider failure without cache",
+          "instruction": "Open current headlines and read the unavailable message. Simulated provider failure with no cache — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated provider failure reports that no cached headlines can be shown and remains distinct from an empty result.",
+          "alt_text": "SPY news panel showing a simulated provider-unavailable state with no cached headlines.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 502
+            }
+          ],
+          "state": "provider-unavailable",
+          "screenshot": "screenshots/desktop-19-news-provider-failure.png"
+        },
+        {
+          "id": "20-saved-current-news",
+          "title": "Keep saved evidence separate from current headlines",
+          "instruction": "Reopen the saved SPY forecast and leave Load current headlines for this symbol closed; use it only when current information is wanted.",
+          "caption": "The closed disclosure keeps current headlines separate; the recorded request-count delta for saved reopen is zero.",
+          "alt_text": "Immutable saved SPY forecast with the Load current headlines disclosure closed.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/saved-forecasts/3",
+              "status": 200
+            }
+          ],
+          "state": "saved-provider-free-current-headlines-optional",
+          "screenshot": "screenshots/desktop-20-saved-current-news.png"
+        }
+      ],
+      "supplementary_captures": [
+        {
+          "id": "05-chart-and-table-table-continuation",
+          "title": "Continue to the matching table row",
+          "instruction": "Continue below the chart and compare Return at or below −10% with the focused point.",
+          "caption": "The matching table row reports 0.6%, the same value as the focused −10% chart point.",
+          "alt_text": "Details table row for return at or below minus ten percent showing 0.6 percent.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "POST",
+              "path": "/api/v1/forecasts",
+              "status": 201
+            }
+          ],
+          "state": "chart-table-row-continuation",
+          "screenshot": "screenshots/desktop-05-chart-and-table-table-continuation.png"
+        },
+        {
+          "id": "20-saved-current-news-closed-disclosure",
+          "title": "Leave current headlines closed",
+          "instruction": "Leave Load current headlines for this symbol closed after reopening the saved SPY result.",
+          "caption": "The closed disclosure is a separate optional action; saved reopen produced a zero news-request delta.",
+          "alt_text": "Closed Load current headlines disclosure beneath the immutable saved SPY forecast.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "not-issued; asserted request delta 0"
+            }
+          ],
+          "state": "not-requested",
+          "screenshot": "screenshots/desktop-20-saved-current-news-closed-disclosure.png"
+        },
+        {
+          "id": "20-news-capacity-busy",
+          "title": "Retry after headline capacity is busy",
+          "instruction": "Read the retryable busy message. Simulated 503 response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated capacity response presents a retryable busy state.",
+          "alt_text": "Current-headlines panel showing a simulated capacity-busy message.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 503
+            }
+          ],
+          "state": "capacity-busy",
+          "screenshot": "screenshots/desktop-20-news-capacity-busy.png"
+        },
+        {
+          "id": "20-news-local-unreachable",
+          "title": "Recognize a local connection failure",
+          "instruction": "Read the local-service message and distinguish it from provider failure. Simulated fetch rejection — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated local connection failure has its own message and makes no upstream-provider claim.",
+          "alt_text": "Current-headlines panel showing a simulated local service unreachable message.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "local fetch rejected"
+            }
+          ],
+          "state": "local-unreachable",
+          "screenshot": "screenshots/desktop-20-news-local-unreachable.png"
+        },
+        {
+          "id": "20-news-loading",
+          "title": "Wait while headlines load",
+          "instruction": "Keep the disclosure open while its live region says headlines are loading. Simulated pending response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated pending request leaves the current-headlines panel in its announced loading state.",
+          "alt_text": "Current-headlines panel displaying a simulated loading message.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "pending"
+            }
+          ],
+          "state": "loading",
+          "screenshot": "screenshots/desktop-20-news-loading.png"
+        },
+        {
+          "id": "20-news-superseded",
+          "title": "Change instrument to supersede a request",
+          "instruction": "Change the instrument while headlines load and confirm that the old request is superseded. Simulated pending response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The capture observed the pending stub's abort event and no headline items remained in the superseded state.",
+          "alt_text": "Current-headlines panel showing that a simulated request was superseded after the instrument changed.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "abort event observed; headline item count asserted",
+              "verification": "headline-items",
+              "state": "superseded",
+              "selector": "ol.news-list > li",
+              "count": 0,
+              "pending_stub_abort_event_observed": true
+            }
+          ],
+          "state": "superseded",
+          "screenshot": "screenshots/desktop-20-news-superseded.png"
+        }
+      ],
+      "downloads": {
+        "csv": "downloads/desktop/history.csv",
+        "json": "downloads/desktop/history.json"
+      },
+      "checks": {
+        "backup_status": "available",
+        "managed_backup_names_only": true,
+        "backup_verification_required": true,
+        "chart_table_match": {
+          "heading": "Return at or below -10%",
+          "probability": "0.6%"
+        },
+        "etf_horizon_headings": [
+          "Close → next close",
+          "Completed 5m → close"
+        ],
+        "declared_request_count": 67,
+        "api_data_request_count": 44,
+        "api_only_data_traffic": true,
+        "request_types": {
+          "document": 6,
+          "fetch": 44,
+          "script": 11,
+          "stylesheet": 6
+        },
+        "blocked_or_undeclared_requests": 0,
+        "page_errors": 0,
+        "theme_loaded_ordering": {
+          "dashboard": {
+            "theme_before_css": true,
+            "parser_blocking": true,
+            "loaded_theme": "dark"
+          },
+          "api_docs": {
+            "theme_before_css": true,
+            "parser_blocking": true,
+            "loaded_theme": "dark"
+          }
+        },
+        "theme_first_paint_execution": {
+          "dashboard": {
+            "csp_bypassed": false,
+            "entries": [
+              {
+                "name": "first-paint",
+                "start_time_ms": 160,
+                "theme": "dark"
+              },
+              {
+                "name": "first-contentful-paint",
+                "start_time_ms": 160,
+                "theme": "dark"
+              }
+            ]
+          },
+          "api_docs": {
+            "csp_bypassed": false,
+            "entries": [
+              {
+                "name": "first-paint",
+                "start_time_ms": 108,
+                "theme": "dark"
+              },
+              {
+                "name": "first-contentful-paint",
+                "start_time_ms": 108,
+                "theme": "dark"
+              }
+            ]
+          }
+        },
+        "saved_reopen_news_request_count": {
+          "before": 5,
+          "after": 5,
+          "delta": 0
+        },
+        "news_screenshot_states": [
+          "fresh",
+          "empty",
+          "partial-metadata",
+          "stale-fallback",
+          "provider-unavailable"
+        ]
+      },
+      "companion_news_states": [
+        {
+          "title": "Headlines not requested",
+          "instruction": "Reopen the saved result and leave the current-headlines disclosure closed.",
+          "caption": "The closed saved-result disclosure is shown and the measured news-request delta is zero.",
+          "alt_text": "Closed Load current headlines disclosure beneath the immutable saved SPY forecast.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "not-issued; asserted request delta 0"
+            }
+          ],
+          "state": "not-requested",
+          "screenshot": "screenshots/desktop-20-saved-current-news-closed-disclosure.png"
+        },
+        {
+          "title": "Headline capacity busy",
+          "instruction": "Read the busy message and retry later; this is a simulated 503 at the fixture clock.",
+          "caption": "A simulated 503 response is presented as a retryable capacity state.",
+          "alt_text": "Current-headlines panel showing a simulated capacity-busy message.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 503
+            }
+          ],
+          "state": "capacity-busy",
+          "screenshot": "screenshots/desktop-20-news-capacity-busy.png"
+        },
+        {
+          "title": "Local service unreachable",
+          "instruction": "Check the local service when this message appears; the walkthrough simulates the fetch rejection.",
+          "caption": "A simulated local network failure is distinct from an upstream provider failure.",
+          "alt_text": "Current-headlines panel showing a simulated local service unreachable message.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "local fetch rejected"
+            }
+          ],
+          "state": "local-unreachable",
+          "screenshot": "screenshots/desktop-20-news-local-unreachable.png"
+        },
+        {
+          "title": "Headlines loading",
+          "instruction": "Wait while the live region reports loading; this walkthrough response remains deliberately pending.",
+          "caption": "The simulated pending response exposes its in-progress state.",
+          "alt_text": "Current-headlines panel displaying a simulated loading message.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "pending"
+            }
+          ],
+          "state": "loading",
+          "screenshot": "screenshots/desktop-20-news-loading.png"
+        },
+        {
+          "title": "Instrument changed and request superseded",
+          "instruction": "Change the instrument while loading and confirm the superseded message replaces the old request.",
+          "caption": "The capture observed the pending stub's abort event and asserted that no headline items remained.",
+          "alt_text": "Current-headlines panel showing that a simulated request was superseded after the instrument changed.",
+          "viewport": {
+            "width": 1280,
+            "height": 1000
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "abort event observed; headline item count asserted",
+              "verification": "headline-items",
+              "state": "superseded",
+              "selector": "ol.news-list > li",
+              "count": 0,
+              "pending_stub_abort_event_observed": true
+            }
+          ],
+          "state": "superseded",
+          "screenshot": "screenshots/desktop-20-news-superseded.png"
+        }
+      ]
+    },
+    "mobile": {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "captures": [
+        {
+          "id": "01-backup-status",
+          "title": "Confirm the local service and backup status",
+          "instruction": "Open the dashboard and confirm that the status line says ready, fixture provider, and backup available.",
+          "caption": "The ready status identifies deterministic fixture data and says managed backups are available; backup and restore are not exposed in the UI.",
+          "alt_text": "Dashboard masthead with ready, fixture provider, and backup available status labels.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/operations/backups/status",
+              "status": 200
+            }
+          ],
+          "state": "service-ready",
+          "screenshot": "screenshots/mobile-01-backup-status.png"
+        },
+        {
+          "id": "02-company-lookup",
+          "title": "Use company-name lookup",
+          "instruction": "Type ProFrac in the instrument field, then choose ProFrac Holding Corp. from the result list.",
+          "caption": "The ProFrac query returns one selectable ACDC stock result.",
+          "alt_text": "Instrument search containing ProFrac with a ProFrac Holding Corp., ACDC result card.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/instruments?query=ProFrac&limit=5",
+              "status": 200
+            }
+          ],
+          "state": "lookup-results",
+          "screenshot": "screenshots/mobile-02-company-lookup.png"
+        },
+        {
+          "id": "03-symbol-identity",
+          "title": "Confirm the selected symbol identity",
+          "instruction": "Press Arrow Down and Enter, or tap the result, then check the confirmed ACDC identity before continuing.",
+          "caption": "The confirmation shows ACDC, NMS, USD, America/New_York, and Stock.",
+          "alt_text": "Confirmed identity panel for ProFrac Holding Corp. showing symbol ACDC and stock metadata.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/instruments?query=ProFrac&limit=5",
+              "status": 200
+            }
+          ],
+          "state": "identity-confirmed",
+          "screenshot": "screenshots/mobile-03-symbol-identity.png"
+        },
+        {
+          "id": "04-stock-horizons",
+          "title": "Run the stock forecast",
+          "instruction": "Select Stock, run the ACDC forecast, and compare the Close → next close and Completed 5m → close cards.",
+          "caption": "The ACDC result presents direction probabilities for both forecast origins.",
+          "alt_text": "ACDC forecast comparison with close-to-close and completed-five-minute-to-close result cards.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "POST",
+              "path": "/api/v1/forecasts",
+              "status": 201
+            }
+          ],
+          "state": "successful-stock-forecast",
+          "screenshot": "screenshots/mobile-04-stock-horizons.png"
+        },
+        {
+          "id": "05-chart-and-table",
+          "title": "Read a chart point and its table equivalent",
+          "instruction": "Focus the −10% chart point, read its 0.6% probability, then continue to the matching Return at or below −10% table row.",
+          "caption": "The focused −10% point and the continuation table row both report 0.6%.",
+          "alt_text": "Focused minus-ten-percent chart point with a tooltip reporting 0.6 percent at or below minus ten percent.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "POST",
+              "path": "/api/v1/forecasts",
+              "status": 201
+            }
+          ],
+          "state": "chart-table-equivalent",
+          "screenshot": "screenshots/mobile-05-chart-and-table.png"
+        },
+        {
+          "id": "06-etf-horizons",
+          "title": "Run the ETF forecast",
+          "instruction": "Enter SPY, select ETF, run the forecast, and compare the same two forecast horizons.",
+          "caption": "The SPY ETF result uses the close-to-close and completed-five-minute-to-close origins.",
+          "alt_text": "SPY ETF forecast with two horizon cards and direction probabilities.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "POST",
+              "path": "/api/v1/forecasts",
+              "status": 201
+            }
+          ],
+          "state": "successful-etf-forecast",
+          "screenshot": "screenshots/mobile-06-etf-horizons.png"
+        },
+        {
+          "id": "07-history-filter",
+          "title": "Search and filter the ledger",
+          "instruction": "Set symbol to SPY, status to Successful, and asset type to ETF; select Filter ledger and inspect the matching result.",
+          "caption": "The active filters narrow the ledger to the successful SPY ETF event.",
+          "alt_text": "History ledger filtered to a single successful SPY ETF result.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/history?page=1&page_size=10&q=SPY&status=successful&asset_type=etf&sort_by=event_id&sort_order=desc",
+              "status": 200
+            }
+          ],
+          "state": "filtered-history",
+          "screenshot": "screenshots/mobile-07-history-filter.png"
+        },
+        {
+          "id": "08-saved-reopen",
+          "title": "Reopen the immutable saved forecast",
+          "instruction": "Select Reopen saved forecast on the SPY event and confirm the immutable recorded-result label.",
+          "caption": "Saved event 2 reopens as an immutable recorded SPY result.",
+          "alt_text": "Reopened SPY forecast headed Immutable recorded result and audit event 2.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/saved-forecasts/2",
+              "status": 200
+            }
+          ],
+          "state": "immutable-saved-result",
+          "screenshot": "screenshots/mobile-08-saved-reopen.png"
+        },
+        {
+          "id": "09-fresh-reconstruction",
+          "title": "Run a fresh historical-cutoff analysis",
+          "instruction": "Select Run fresh cutoff analysis and verify that the new calculation is labelled Not the saved forecast.",
+          "caption": "Fresh event 3 appears separately with its historical cutoff and leaves the saved result unchanged.",
+          "alt_text": "Fresh analysis panel labelled Not the saved forecast with a new event and historical cutoff.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "POST",
+              "path": "/api/v1/history/2/reconstructions",
+              "status": 201
+            }
+          ],
+          "state": "fresh-reconstruction",
+          "screenshot": "screenshots/mobile-09-fresh-reconstruction.png"
+        },
+        {
+          "id": "10-history-downloads",
+          "title": "Download the filtered CSV and JSON",
+          "instruction": "Keep the SPY, Successful, and ETF filters active; select Download CSV and Download JSON to save history.csv and history.json.",
+          "caption": "The two download controls export the currently filtered SPY history in CSV and JSON formats.",
+          "alt_text": "Filtered history controls with Download CSV and Download JSON links visible.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/history-export.csv?q=SPY&status=successful&asset_type=etf&sort_by=event_id&sort_order=desc",
+              "status": "downloaded-and-validated"
+            },
+            {
+              "method": "GET",
+              "path": "/api/v1/history-export.json?q=SPY&status=successful&asset_type=etf&sort_by=event_id&sort_order=desc",
+              "status": "downloaded-and-validated"
+            }
+          ],
+          "state": "downloads-verified",
+          "screenshot": "screenshots/mobile-10-history-downloads.png"
+        },
+        {
+          "id": "11-theme-system",
+          "title": "Follow the system theme",
+          "instruction": "Choose System in the theme control and confirm that the dashboard follows the current dark system preference.",
+          "caption": "System is selected while the dashboard follows a dark operating-system preference.",
+          "alt_text": "Dark dashboard masthead with System selected in the color theme control.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/assets/theme.js",
+              "status": 200
+            }
+          ],
+          "state": "system-dark",
+          "screenshot": "screenshots/mobile-11-theme-system.png"
+        },
+        {
+          "id": "12-theme-dark",
+          "title": "Choose explicit dark mode",
+          "instruction": "Choose Dark in the theme control and confirm that the dashboard changes to the explicit dark theme.",
+          "caption": "Dark is selected as an explicit preference rather than inherited from the system.",
+          "alt_text": "Dashboard in dark colors with Dark selected in the theme control.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/assets/theme.js",
+              "status": 200
+            }
+          ],
+          "state": "explicit-dark",
+          "screenshot": "screenshots/mobile-12-theme-dark.png"
+        },
+        {
+          "id": "13-theme-reset",
+          "title": "Reset the theme to system",
+          "instruction": "Choose System again to remove the explicit theme choice and return to the current light system preference.",
+          "caption": "System is selected and the dashboard has returned to the light system theme.",
+          "alt_text": "Light dashboard masthead after the color theme control is reset to System.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/assets/theme.js",
+              "status": 200
+            }
+          ],
+          "state": "reset-to-system-light",
+          "screenshot": "screenshots/mobile-13-theme-reset.png"
+        },
+        {
+          "id": "14-theme-first-paint",
+          "title": "Open the loaded dark API page",
+          "instruction": "Choose Dark, open the local API documentation, and inspect the fully loaded dark page; first paint timing is recorded separately.",
+          "caption": "This image shows the settled dark API page, not the earlier paint transition.",
+          "alt_text": "Loaded local API documentation page using the dark theme.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/docs",
+              "status": 200
+            },
+            {
+              "method": "GET",
+              "path": "/assets/theme.js",
+              "status": 200
+            },
+            {
+              "verification": "dashboard",
+              "theme_before_css": true,
+              "parser_blocking": true,
+              "loaded_theme": "dark"
+            },
+            {
+              "verification": "api-docs",
+              "theme_before_css": true,
+              "parser_blocking": true,
+              "loaded_theme": "dark"
+            }
+          ],
+          "state": "loaded-dark-api-page",
+          "screenshot": "screenshots/mobile-14-theme-first-paint.png"
+        },
+        {
+          "id": "15-news-fresh",
+          "title": "Load fresh current headlines",
+          "instruction": "Open current headlines and inspect all five items. Simulated response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated fresh response shows five SPY headlines, source, as-of time, publication metadata, and safe links.",
+          "alt_text": "SPY news panel with five simulated fresh headlines at the 10 January 2025 fixture clock.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 200
+            },
+            {
+              "verification": "headline-items",
+              "state": "fresh",
+              "selector": "ol.news-list > li",
+              "count": 5
+            }
+          ],
+          "state": "fresh",
+          "screenshot": "screenshots/mobile-15-news-fresh.png"
+        },
+        {
+          "id": "16-news-empty",
+          "title": "Show an honest empty news result",
+          "instruction": "Open current headlines and confirm the successful empty message. Simulated response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated empty response says no current headlines were returned and does not present a provider error.",
+          "alt_text": "SPY news panel showing a simulated successful empty state at the fixture clock.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 200
+            }
+          ],
+          "state": "empty",
+          "screenshot": "screenshots/mobile-16-news-empty.png"
+        },
+        {
+          "id": "17-news-partial",
+          "title": "Label partial headline metadata",
+          "instruction": "Inspect item 1 and confirm it remains usable without publisher or publication time. Simulated response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "In the simulated partial response, item 1 lacks publisher and time while the remaining headline data stays available.",
+          "alt_text": "Simulated partial SPY headline list whose first item has no publisher or publication time.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 200
+            }
+          ],
+          "state": "partial-metadata",
+          "screenshot": "screenshots/mobile-17-news-partial.png"
+        },
+        {
+          "id": "18-news-stale",
+          "title": "Explain stale cached headlines",
+          "instruction": "Inspect the retained cached headlines and their warning. Simulated stale fallback — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated stale fallback keeps cached headlines visible and labels the displayed as-of time as cached after refresh failure.",
+          "alt_text": "Simulated stale SPY news panel with cached headlines and a refresh-failed warning.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 200
+            }
+          ],
+          "state": "stale-fallback",
+          "screenshot": "screenshots/mobile-18-news-stale.png"
+        },
+        {
+          "id": "19-news-provider-failure",
+          "title": "Report provider failure without cache",
+          "instruction": "Open current headlines and read the unavailable message. Simulated provider failure with no cache — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated provider failure reports that no cached headlines can be shown and remains distinct from an empty result.",
+          "alt_text": "SPY news panel showing a simulated provider-unavailable state with no cached headlines.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 502
+            }
+          ],
+          "state": "provider-unavailable",
+          "screenshot": "screenshots/mobile-19-news-provider-failure.png"
+        },
+        {
+          "id": "20-saved-current-news",
+          "title": "Keep saved evidence separate from current headlines",
+          "instruction": "Reopen the saved SPY forecast and leave Load current headlines for this symbol closed; use it only when current information is wanted.",
+          "caption": "The closed disclosure keeps current headlines separate; the recorded request-count delta for saved reopen is zero.",
+          "alt_text": "Immutable saved SPY forecast with the Load current headlines disclosure closed.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/saved-forecasts/3",
+              "status": 200
+            }
+          ],
+          "state": "saved-provider-free-current-headlines-optional",
+          "screenshot": "screenshots/mobile-20-saved-current-news.png"
+        }
+      ],
+      "supplementary_captures": [
+        {
+          "id": "05-chart-and-table-table-continuation",
+          "title": "Continue to the matching table row",
+          "instruction": "Continue below the chart and compare Return at or below −10% with the focused point.",
+          "caption": "The matching table row reports 0.6%, the same value as the focused −10% chart point.",
+          "alt_text": "Details table row for return at or below minus ten percent showing 0.6 percent.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "POST",
+              "path": "/api/v1/forecasts",
+              "status": 201
+            }
+          ],
+          "state": "chart-table-row-continuation",
+          "screenshot": "screenshots/mobile-05-chart-and-table-table-continuation.png"
+        },
+        {
+          "id": "20-saved-current-news-closed-disclosure",
+          "title": "Leave current headlines closed",
+          "instruction": "Leave Load current headlines for this symbol closed after reopening the saved SPY result.",
+          "caption": "The closed disclosure is a separate optional action; saved reopen produced a zero news-request delta.",
+          "alt_text": "Closed Load current headlines disclosure beneath the immutable saved SPY forecast.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "not-issued; asserted request delta 0"
+            }
+          ],
+          "state": "not-requested",
+          "screenshot": "screenshots/mobile-20-saved-current-news-closed-disclosure.png"
+        },
+        {
+          "id": "20-news-capacity-busy",
+          "title": "Retry after headline capacity is busy",
+          "instruction": "Read the retryable busy message. Simulated 503 response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated capacity response presents a retryable busy state.",
+          "alt_text": "Current-headlines panel showing a simulated capacity-busy message.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 503
+            }
+          ],
+          "state": "capacity-busy",
+          "screenshot": "screenshots/mobile-20-news-capacity-busy.png"
+        },
+        {
+          "id": "20-news-local-unreachable",
+          "title": "Recognize a local connection failure",
+          "instruction": "Read the local-service message and distinguish it from provider failure. Simulated fetch rejection — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated local connection failure has its own message and makes no upstream-provider claim.",
+          "alt_text": "Current-headlines panel showing a simulated local service unreachable message.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "local fetch rejected"
+            }
+          ],
+          "state": "local-unreachable",
+          "screenshot": "screenshots/mobile-20-news-local-unreachable.png"
+        },
+        {
+          "id": "20-news-loading",
+          "title": "Wait while headlines load",
+          "instruction": "Keep the disclosure open while its live region says headlines are loading. Simulated pending response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The simulated pending request leaves the current-headlines panel in its announced loading state.",
+          "alt_text": "Current-headlines panel displaying a simulated loading message.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "pending"
+            }
+          ],
+          "state": "loading",
+          "screenshot": "screenshots/mobile-20-news-loading.png"
+        },
+        {
+          "id": "20-news-superseded",
+          "title": "Change instrument to supersede a request",
+          "instruction": "Change the instrument while headlines load and confirm that the old request is superseded. Simulated pending response — fixture clock 10 Jan 2025, 17:03 UTC.",
+          "caption": "The capture observed the pending stub's abort event and no headline items remained in the superseded state.",
+          "alt_text": "Current-headlines panel showing that a simulated request was superseded after the instrument changed.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "abort event observed; headline item count asserted",
+              "verification": "headline-items",
+              "state": "superseded",
+              "selector": "ol.news-list > li",
+              "count": 0,
+              "pending_stub_abort_event_observed": true
+            }
+          ],
+          "state": "superseded",
+          "screenshot": "screenshots/mobile-20-news-superseded.png"
+        }
+      ],
+      "downloads": {
+        "csv": "downloads/mobile/history.csv",
+        "json": "downloads/mobile/history.json"
+      },
+      "checks": {
+        "backup_status": "available",
+        "managed_backup_names_only": true,
+        "backup_verification_required": true,
+        "chart_table_match": {
+          "heading": "Return at or below -10%",
+          "probability": "0.6%"
+        },
+        "etf_horizon_headings": [
+          "Close → next close",
+          "Completed 5m → close"
+        ],
+        "declared_request_count": 67,
+        "api_data_request_count": 44,
+        "api_only_data_traffic": true,
+        "request_types": {
+          "document": 6,
+          "fetch": 44,
+          "script": 11,
+          "stylesheet": 6
+        },
+        "blocked_or_undeclared_requests": 0,
+        "page_errors": 0,
+        "theme_loaded_ordering": {
+          "dashboard": {
+            "theme_before_css": true,
+            "parser_blocking": true,
+            "loaded_theme": "dark"
+          },
+          "api_docs": {
+            "theme_before_css": true,
+            "parser_blocking": true,
+            "loaded_theme": "dark"
+          }
+        },
+        "theme_first_paint_execution": {
+          "dashboard": {
+            "csp_bypassed": false,
+            "entries": [
+              {
+                "name": "first-paint",
+                "start_time_ms": 152,
+                "theme": "dark"
+              },
+              {
+                "name": "first-contentful-paint",
+                "start_time_ms": 152,
+                "theme": "dark"
+              }
+            ]
+          },
+          "api_docs": {
+            "csp_bypassed": false,
+            "entries": [
+              {
+                "name": "first-paint",
+                "start_time_ms": 80,
+                "theme": "dark"
+              },
+              {
+                "name": "first-contentful-paint",
+                "start_time_ms": 80,
+                "theme": "dark"
+              }
+            ]
+          }
+        },
+        "saved_reopen_news_request_count": {
+          "before": 5,
+          "after": 5,
+          "delta": 0
+        },
+        "news_screenshot_states": [
+          "fresh",
+          "empty",
+          "partial-metadata",
+          "stale-fallback",
+          "provider-unavailable"
+        ]
+      },
+      "companion_news_states": [
+        {
+          "title": "Headlines not requested",
+          "instruction": "Reopen the saved result and leave the current-headlines disclosure closed.",
+          "caption": "The closed saved-result disclosure is shown and the measured news-request delta is zero.",
+          "alt_text": "Closed Load current headlines disclosure beneath the immutable saved SPY forecast.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "not-issued; asserted request delta 0"
+            }
+          ],
+          "state": "not-requested",
+          "screenshot": "screenshots/mobile-20-saved-current-news-closed-disclosure.png"
+        },
+        {
+          "title": "Headline capacity busy",
+          "instruction": "Read the busy message and retry later; this is a simulated 503 at the fixture clock.",
+          "caption": "A simulated 503 response is presented as a retryable capacity state.",
+          "alt_text": "Current-headlines panel showing a simulated capacity-busy message.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news?symbol=SPY&limit=5",
+              "status": 503
+            }
+          ],
+          "state": "capacity-busy",
+          "screenshot": "screenshots/mobile-20-news-capacity-busy.png"
+        },
+        {
+          "title": "Local service unreachable",
+          "instruction": "Check the local service when this message appears; the walkthrough simulates the fetch rejection.",
+          "caption": "A simulated local network failure is distinct from an upstream provider failure.",
+          "alt_text": "Current-headlines panel showing a simulated local service unreachable message.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "local fetch rejected"
+            }
+          ],
+          "state": "local-unreachable",
+          "screenshot": "screenshots/mobile-20-news-local-unreachable.png"
+        },
+        {
+          "title": "Headlines loading",
+          "instruction": "Wait while the live region reports loading; this walkthrough response remains deliberately pending.",
+          "caption": "The simulated pending response exposes its in-progress state.",
+          "alt_text": "Current-headlines panel displaying a simulated loading message.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "pending"
+            }
+          ],
+          "state": "loading",
+          "screenshot": "screenshots/mobile-20-news-loading.png"
+        },
+        {
+          "title": "Instrument changed and request superseded",
+          "instruction": "Change the instrument while loading and confirm the superseded message replaces the old request.",
+          "caption": "The capture observed the pending stub's abort event and asserted that no headline items remained.",
+          "alt_text": "Current-headlines panel showing that a simulated request was superseded after the instrument changed.",
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "request_status_evidence": [
+            {
+              "method": "GET",
+              "path": "/api/v1/news",
+              "status": "abort event observed; headline item count asserted",
+              "verification": "headline-items",
+              "state": "superseded",
+              "selector": "ol.news-list > li",
+              "count": 0,
+              "pending_stub_abort_event_observed": true
+            }
+          ],
+          "state": "superseded",
+          "screenshot": "screenshots/mobile-20-news-superseded.png"
+        }
+      ]
+    }
+  },
+  "gif_assembly": {
+    "status": "unavailable",
+    "exact_missing_dependency": "Pillow/PIL in .dev-venv, or a GIF-capable ffmpeg, ImageMagick magick/convert, or gifski executable on PATH.",
+    "pillow_in_dev_venv": "not importable from .dev-venv/bin/python",
+    "probes": {
+      "ffmpeg": "not found on PATH",
+      "magick": "not found on PATH",
+      "convert": "not found on PATH",
+      "gifski": "not found on PATH"
+    },
+    "playwright_bundled_ffmpeg": {
+      "found": true,
+      "gif_capable": false,
+      "detail": "The Playwright-bundled FFmpeg has PNG/VP8 support only; it has no GIF encoder.",
+      "executable": "$HOME/.cache/ms-playwright/ffmpeg-1011/ffmpeg-linux"
+    },
+    "authoritative_media": "Annotated PNG screenshots listed in this manifest."
+  },
+  "artifacts": {
+    "budget_bytes": 20971520,
+    "total_bytes": 7639804,
+    "screenshot_count": 52,
+    "primary_screenshot_count": 40,
+    "supplementary_screenshot_count": 12,
+    "files": [
+      {
+        "path": "downloads/desktop/history.csv",
+        "bytes": 115578
+      },
+      {
+        "path": "downloads/desktop/history.json",
+        "bytes": 103690
+      },
+      {
+        "path": "downloads/mobile/history.csv",
+        "bytes": 115578
+      },
+      {
+        "path": "downloads/mobile/history.json",
+        "bytes": 103690
+      },
+      {
+        "path": "manifest.json",
+        "bytes": 86155
+      },
+      {
+        "path": "screenshots/desktop-01-backup-status.png",
+        "bytes": 166394
+      },
+      {
+        "path": "screenshots/desktop-02-company-lookup.png",
+        "bytes": 171958
+      },
+      {
+        "path": "screenshots/desktop-03-symbol-identity.png",
+        "bytes": 175705
+      },
+      {
+        "path": "screenshots/desktop-04-stock-horizons.png",
+        "bytes": 180611
+      },
+      {
+        "path": "screenshots/desktop-05-chart-and-table-table-continuation.png",
+        "bytes": 339026
+      },
+      {
+        "path": "screenshots/desktop-05-chart-and-table.png",
+        "bytes": 232180
+      },
+      {
+        "path": "screenshots/desktop-06-etf-horizons.png",
+        "bytes": 177486
+      },
+      {
+        "path": "screenshots/desktop-07-history-filter.png",
+        "bytes": 173686
+      },
+      {
+        "path": "screenshots/desktop-08-saved-reopen.png",
+        "bytes": 187726
+      },
+      {
+        "path": "screenshots/desktop-09-fresh-reconstruction.png",
+        "bytes": 219499
+      },
+      {
+        "path": "screenshots/desktop-10-history-downloads.png",
+        "bytes": 178943
+      },
+      {
+        "path": "screenshots/desktop-11-theme-system.png",
+        "bytes": 162245
+      },
+      {
+        "path": "screenshots/desktop-12-theme-dark.png",
+        "bytes": 161714
+      },
+      {
+        "path": "screenshots/desktop-13-theme-reset.png",
+        "bytes": 164673
+      },
+      {
+        "path": "screenshots/desktop-14-theme-first-paint.png",
+        "bytes": 120508
+      },
+      {
+        "path": "screenshots/desktop-15-news-fresh.png",
+        "bytes": 197445
+      },
+      {
+        "path": "screenshots/desktop-16-news-empty.png",
+        "bytes": 193546
+      },
+      {
+        "path": "screenshots/desktop-17-news-partial.png",
+        "bytes": 195957
+      },
+      {
+        "path": "screenshots/desktop-18-news-stale.png",
+        "bytes": 201352
+      },
+      {
+        "path": "screenshots/desktop-19-news-provider-failure.png",
+        "bytes": 192836
+      },
+      {
+        "path": "screenshots/desktop-20-news-capacity-busy.png",
+        "bytes": 190284
+      },
+      {
+        "path": "screenshots/desktop-20-news-loading.png",
+        "bytes": 190794
+      },
+      {
+        "path": "screenshots/desktop-20-news-local-unreachable.png",
+        "bytes": 191709
+      },
+      {
+        "path": "screenshots/desktop-20-news-superseded.png",
+        "bytes": 193321
+      },
+      {
+        "path": "screenshots/desktop-20-saved-current-news-closed-disclosure.png",
+        "bytes": 181073
+      },
+      {
+        "path": "screenshots/desktop-20-saved-current-news.png",
+        "bytes": 190195
+      },
+      {
+        "path": "screenshots/mobile-01-backup-status.png",
+        "bytes": 91260
+      },
+      {
+        "path": "screenshots/mobile-02-company-lookup.png",
+        "bytes": 62279
+      },
+      {
+        "path": "screenshots/mobile-03-symbol-identity.png",
+        "bytes": 58997
+      },
+      {
+        "path": "screenshots/mobile-04-stock-horizons.png",
+        "bytes": 77909
+      },
+      {
+        "path": "screenshots/mobile-05-chart-and-table-table-continuation.png",
+        "bytes": 116155
+      },
+      {
+        "path": "screenshots/mobile-05-chart-and-table.png",
+        "bytes": 94977
+      },
+      {
+        "path": "screenshots/mobile-06-etf-horizons.png",
+        "bytes": 77341
+      },
+      {
+        "path": "screenshots/mobile-07-history-filter.png",
+        "bytes": 65466
+      },
+      {
+        "path": "screenshots/mobile-08-saved-reopen.png",
+        "bytes": 92526
+      },
+      {
+        "path": "screenshots/mobile-09-fresh-reconstruction.png",
+        "bytes": 102454
+      },
+      {
+        "path": "screenshots/mobile-10-history-downloads.png",
+        "bytes": 67304
+      },
+      {
+        "path": "screenshots/mobile-11-theme-system.png",
+        "bytes": 85434
+      },
+      {
+        "path": "screenshots/mobile-12-theme-dark.png",
+        "bytes": 84470
+      },
+      {
+        "path": "screenshots/mobile-13-theme-reset.png",
+        "bytes": 89675
+      },
+      {
+        "path": "screenshots/mobile-14-theme-first-paint.png",
+        "bytes": 75836
+      },
+      {
+        "path": "screenshots/mobile-15-news-fresh.png",
+        "bytes": 90387
+      },
+      {
+        "path": "screenshots/mobile-16-news-empty.png",
+        "bytes": 84769
+      },
+      {
+        "path": "screenshots/mobile-17-news-partial.png",
+        "bytes": 91190
+      },
+      {
+        "path": "screenshots/mobile-18-news-stale.png",
+        "bytes": 94539
+      },
+      {
+        "path": "screenshots/mobile-19-news-provider-failure.png",
+        "bytes": 83665
+      },
+      {
+        "path": "screenshots/mobile-20-news-capacity-busy.png",
+        "bytes": 81223
+      },
+      {
+        "path": "screenshots/mobile-20-news-loading.png",
+        "bytes": 80209
+      },
+      {
+        "path": "screenshots/mobile-20-news-local-unreachable.png",
+        "bytes": 82771
+      },
+      {
+        "path": "screenshots/mobile-20-news-superseded.png",
+        "bytes": 82764
+      },
+      {
+        "path": "screenshots/mobile-20-saved-current-news-closed-disclosure.png",
+        "bytes": 81070
+      },
+      {
+        "path": "screenshots/mobile-20-saved-current-news.png",
+        "bytes": 89577
+      }
+    ],
+    "published_path": "docs/walkthrough",
+    "published_total_bytes": 7660518,
+    "published_files": [
+      {
+        "path": "downloads/desktop/history.csv",
+        "bytes": 115578
+      },
+      {
+        "path": "downloads/desktop/history.json",
+        "bytes": 103690
+      },
+      {
+        "path": "downloads/mobile/history.csv",
+        "bytes": 115578
+      },
+      {
+        "path": "downloads/mobile/history.json",
+        "bytes": 103690
+      },
+      {
+        "path": "images/desktop-01-backup-status.png",
+        "bytes": 166394
+      },
+      {
+        "path": "images/desktop-02-company-lookup.png",
+        "bytes": 171958
+      },
+      {
+        "path": "images/desktop-03-symbol-identity.png",
+        "bytes": 175705
+      },
+      {
+        "path": "images/desktop-04-stock-horizons.png",
+        "bytes": 180611
+      },
+      {
+        "path": "images/desktop-05-chart-and-table-table-continuation.png",
+        "bytes": 339026
+      },
+      {
+        "path": "images/desktop-05-chart-and-table.png",
+        "bytes": 232180
+      },
+      {
+        "path": "images/desktop-06-etf-horizons.png",
+        "bytes": 177486
+      },
+      {
+        "path": "images/desktop-07-history-filter.png",
+        "bytes": 173686
+      },
+      {
+        "path": "images/desktop-08-saved-reopen.png",
+        "bytes": 187726
+      },
+      {
+        "path": "images/desktop-09-fresh-reconstruction.png",
+        "bytes": 219499
+      },
+      {
+        "path": "images/desktop-10-history-downloads.png",
+        "bytes": 178943
+      },
+      {
+        "path": "images/desktop-11-theme-system.png",
+        "bytes": 162245
+      },
+      {
+        "path": "images/desktop-12-theme-dark.png",
+        "bytes": 161714
+      },
+      {
+        "path": "images/desktop-13-theme-reset.png",
+        "bytes": 164673
+      },
+      {
+        "path": "images/desktop-14-theme-first-paint.png",
+        "bytes": 120508
+      },
+      {
+        "path": "images/desktop-15-news-fresh.png",
+        "bytes": 197445
+      },
+      {
+        "path": "images/desktop-16-news-empty.png",
+        "bytes": 193546
+      },
+      {
+        "path": "images/desktop-17-news-partial.png",
+        "bytes": 195957
+      },
+      {
+        "path": "images/desktop-18-news-stale.png",
+        "bytes": 201352
+      },
+      {
+        "path": "images/desktop-19-news-provider-failure.png",
+        "bytes": 192836
+      },
+      {
+        "path": "images/desktop-20-news-capacity-busy.png",
+        "bytes": 190284
+      },
+      {
+        "path": "images/desktop-20-news-loading.png",
+        "bytes": 190794
+      },
+      {
+        "path": "images/desktop-20-news-local-unreachable.png",
+        "bytes": 191709
+      },
+      {
+        "path": "images/desktop-20-news-superseded.png",
+        "bytes": 193321
+      },
+      {
+        "path": "images/desktop-20-saved-current-news-closed-disclosure.png",
+        "bytes": 181073
+      },
+      {
+        "path": "images/desktop-20-saved-current-news.png",
+        "bytes": 190195
+      },
+      {
+        "path": "images/mobile-01-backup-status.png",
+        "bytes": 91260
+      },
+      {
+        "path": "images/mobile-02-company-lookup.png",
+        "bytes": 62279
+      },
+      {
+        "path": "images/mobile-03-symbol-identity.png",
+        "bytes": 58997
+      },
+      {
+        "path": "images/mobile-04-stock-horizons.png",
+        "bytes": 77909
+      },
+      {
+        "path": "images/mobile-05-chart-and-table-table-continuation.png",
+        "bytes": 116155
+      },
+      {
+        "path": "images/mobile-05-chart-and-table.png",
+        "bytes": 94977
+      },
+      {
+        "path": "images/mobile-06-etf-horizons.png",
+        "bytes": 77341
+      },
+      {
+        "path": "images/mobile-07-history-filter.png",
+        "bytes": 65466
+      },
+      {
+        "path": "images/mobile-08-saved-reopen.png",
+        "bytes": 92526
+      },
+      {
+        "path": "images/mobile-09-fresh-reconstruction.png",
+        "bytes": 102454
+      },
+      {
+        "path": "images/mobile-10-history-downloads.png",
+        "bytes": 67304
+      },
+      {
+        "path": "images/mobile-11-theme-system.png",
+        "bytes": 85434
+      },
+      {
+        "path": "images/mobile-12-theme-dark.png",
+        "bytes": 84470
+      },
+      {
+        "path": "images/mobile-13-theme-reset.png",
+        "bytes": 89675
+      },
+      {
+        "path": "images/mobile-14-theme-first-paint.png",
+        "bytes": 75836
+      },
+      {
+        "path": "images/mobile-15-news-fresh.png",
+        "bytes": 90387
+      },
+      {
+        "path": "images/mobile-16-news-empty.png",
+        "bytes": 84769
+      },
+      {
+        "path": "images/mobile-17-news-partial.png",
+        "bytes": 91190
+      },
+      {
+        "path": "images/mobile-18-news-stale.png",
+        "bytes": 94539
+      },
+      {
+        "path": "images/mobile-19-news-provider-failure.png",
+        "bytes": 83665
+      },
+      {
+        "path": "images/mobile-20-news-capacity-busy.png",
+        "bytes": 81223
+      },
+      {
+        "path": "images/mobile-20-news-loading.png",
+        "bytes": 80209
+      },
+      {
+        "path": "images/mobile-20-news-local-unreachable.png",
+        "bytes": 82771
+      },
+      {
+        "path": "images/mobile-20-news-superseded.png",
+        "bytes": 82764
+      },
+      {
+        "path": "images/mobile-20-saved-current-news-closed-disclosure.png",
+        "bytes": 81070
+      },
+      {
+        "path": "images/mobile-20-saved-current-news.png",
+        "bytes": 89577
+      },
+      {
+        "path": "index.md",
+        "bytes": 20714
+      },
+      {
+        "path": "manifest.json",
+        "bytes": 86155
+      }
+    ],
+    "prior_703_byte_discrepancy": {
+      "preparation_receipt_bytes": 5683157,
+      "prior_manifest_bytes": 5682454,
+      "difference_bytes": 703,
+      "resolution": "The prior aggregate mismatch cannot be attributed from the old inventory. This generation supersedes it with exact per-file byte inventories for generated and published artifacts."
+    }
+  }
+}

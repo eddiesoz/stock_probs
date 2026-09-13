@@ -81,13 +81,30 @@ As of 2026-09-12:
   This is no M08 acceptance, walkthrough QA, Astra result, or `EXP-M08` checkpoint.
   The eventual walkthrough must include the M09 dark-mode and selected-instrument news
   controls and states; no such walkthrough evidence is claimed.
-- `M08` is now **In progress** for the supplied walkthrough-extension evidence: `20` steps,
+- Earlier supplied `M08` walkthrough-extension evidence remains **In progress**: `20` steps,
   `40` annotated PNGs (`20` desktop at `1280x1000` and `20` mobile at `390x844`), manifest
   SHA-256 `806722ad4321fa3ca25a794192649eb55ad9c55cbba4abf6ec51886ba556df5d`, five
   companion news states represented as evidence rows, `5,683,157` bytes against the `20 MiB`
-  budget, and zero undeclared requests or page errors. Independent M08 verification, Astra
-  review, and `EXP-M08` remain pending; the exact generation command, session, environment,
-  UTC, commit, artifact path, and named reviewer were not supplied and are not inferred.
+  budget, and zero undeclared requests or page errors. Independent M08 verification and
+  `EXP-M08` remain pending; the later ASTRA findings and repair program are recorded below.
+  The exact generation command, session, environment, UTC, commit, artifact path, and named
+  reviewer for this extension evidence were not supplied and are not inferred.
+- `ASTRA-FINAL` is **In progress**, not **Accepted**. Four ASTRA evaluation lanes reviewed all
+  `211` matrix rows and produced findings across assets/controls/charts, UI states/persistence,
+  theme/news/docs, and the walkthrough. SOL applied fourteen repair groups: `R-ASTRA-1`–
+  `R-ASTRA-5` cover CSS/theme defects including the mobile theme selector, dark/forced-colors/
+  print contrast, mobile navigation, the API-docs label, and chart typography; `R-ASTRA-6`–
+  `R-ASTRA-10` cover app behavior including news terminal states/retry/abort, history race and
+  pagination guards, fresh-analysis context, saved-replay truthfulness, validation recovery,
+  stale-reason placement, ledger evidence, and chart focus; `R-ASTRA-11` covers export
+  sort-before-cap; `R-ASTRA-12` covers `theme.js` package verification; `R-ASTRA-13` covers
+  walkthrough quality and the tracked [`docs/walkthrough/`](docs/walkthrough/index.md)
+  artifact (7.19 MiB, 52 PNGs, instructional transcript, simulation labels, and manifest
+  revision binding); and `R-ASTRA-14` covers news/theme documentation. The static shell was
+  repaired from `102,607` to `98,242` bytes, `62` bytes below the `98,304`-byte limit.
+  Independent QA of all 14 repairs and ASTRA re-evaluation are **In progress**; no ASTRA
+  acceptance or `EXP-M08` checkpoint is inferred. Exact ASTRA/repair commands, sessions,
+  environments, UTC windows, commits, and named reviewers were not supplied.
 - `M06` is **Completed for its declared scope** through the final clean-target
   `R-M06-55` gate on commit `a69df40e15b3136886f26789c27861184c3bbd77`, run
   `2026-09-12T14:40:23Z`–`2026-09-12T14:49:48Z` with exit `0`: `278` tests, `4` live
@@ -192,9 +209,11 @@ As of 2026-09-12:
   receipt above supersedes that pending state for the declared integrated scope; it does
   not erase the earlier unavailable boundary evidence. At that earlier state it did not create
   an `EXP-M07` checkpoint; the later export receipt above is the completed checkpoint.
-- `M08` remains **In progress** for the supplied walkthrough-extension implementation
-  evidence; independent verification, Astra review, and `EXP-M08` are still pending.
-  `ASTRA-FINAL` and `EXP-FINAL` remain **Pending**.
+- Historical pre-ASTRA status: `M08` remained **In progress** for the supplied walkthrough-
+  extension implementation evidence; independent verification, Astra review, and `EXP-M08`
+  were pending, and `ASTRA-FINAL`/`EXP-FINAL` were **Pending** at that earlier point. The
+  current `ASTRA-FINAL` findings and repair state are recorded above; `EXP-FINAL` remains
+  **Pending**.
 - An earlier `R-M06-55` receipt ran on dirty native x86_64 Linux at revision
   `59534faf1cdce493bc51a11d4adbea5e5b2d6892` from `2026-09-12T04:52:33Z` to
   `2026-09-12T05:03:44Z`: `264` tests, `89.38%` coverage, 32 browser passes plus
@@ -426,10 +445,12 @@ Optional notification is last and cannot repair a missing gate.
 - **ASTRA profile:** the ASTRA agent profile now uses `variant: max`; parent-process
   restart and independent post-restart validation are **Pending**, so no gate effect or
   validation pass is claimed.
-- **ASTRA-FINAL preparation:** the matrix skeleton is being assembled at
-  `test-results/astra/astra-final-matrix.md`. This is preparation only; no ASTRA-FINAL review,
-  matrix acceptance, or `R-ASTRA-<n>` result is claimed. The skeleton's separate command,
-  environment, UTC, commit, and reviewer metadata were not supplied.
+- **Historical ASTRA-FINAL preparation:** the matrix skeleton was being assembled at
+  `test-results/astra/astra-final-matrix.md` before the supplied four-lane review. That
+  preparation record did not claim a review, matrix acceptance, or `R-ASTRA-<n>` result; the
+  current findings and repair program are recorded above and in the plan/roadmap. The
+  preparation skeleton's separate command, environment, UTC, commit, and reviewer metadata
+  were not supplied.
 - **ASTRA research state:** the first pass is **Blocked** by the external-directory
   permission boundary. The gitignored snapshot at `test-results/ingenium-snapshot` enables
   a re-run; no re-run result is claimed.
@@ -510,3 +531,13 @@ permission boundary denied execution; no validator pass is inferred. `R-M00-2-E2
 `HEAD` `779aa749d2f85849427212d890ee6918987492b7`; UTC was not captured by the command tool.
 No code, configuration, skill, export, commit, push, or Git-history mutation is part of this
 update.
+
+For this `ASTRA-FINAL` findings/repair root-documentation update, `R-M00-2-E23` records the
+exact `.dev-venv/bin/python scripts/validate_docs.py` attempt as **Unavailable** because the
+tool permission boundary denied execution; no current validator pass is inferred. Environment:
+native x86_64 Linux; dirty `HEAD` `cf099754a5c3e4a05f0e785c0d65ff06f96c4d63`; UTC was not
+captured; artifact: none; reviewer: `LUNA MAX docs`. `R-M00-2-E24` records the exact
+`git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` check as **Pass** on the
+same dirty `HEAD`; UTC was not captured; artifact: current four-document diff; reviewer:
+`LUNA MAX docs`. No code, configuration, skill, export, commit, push, or Git-history mutation
+was performed.

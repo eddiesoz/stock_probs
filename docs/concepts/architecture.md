@@ -15,8 +15,9 @@ Browser presentation
         ▼
 FastAPI transport ── application service ── forecast domain
                             │                    ▲
-                            ├── provider adapter ┘
+                            ├── market-data provider adapter ┘
                             │   Yahoo or deterministic fixture
+                            ├── news provider ── ephemeral memory cache
                             └── repository ── SQLite
                                   │
                                   └── backup manager ── managed .spbackup artifacts
@@ -29,13 +30,20 @@ FastAPI transport ── application service ── forecast domain
 - **Application service** coordinates provider capacity, forecast calculation, and exactly
   classified audit writes.
 - **Provider** turns bounded Yahoo Finance responses or packaged fixtures into normalized
-  identities and daily/five-minute bars.
+  identities and daily/five-minute bars. Its separate `fetch_news` operation returns bounded
+  current headlines to an ephemeral service cache; headlines never enter the repository.
 - **Forecast domain** owns session completion, historical samples, model calculations,
   evaluation, quality labels, and immutable provenance payloads.
 - **Persistence** applies checksum-pinned additive migrations and stores each submission.
   Forecast inputs/results are immutable; outcomes and corrections are append-only.
 - **Presentation** calls only `/api/v1`. It does not open SQLite, receive database paths, or
-  call Yahoo Finance directly.
+  call Yahoo Finance directly. User-activated external article navigation is not an alternate
+  browser data-provider path.
+
+The color theme is presentation state only. An origin-scoped browser preference selects light,
+dark, or the operating-system setting; it does not create server configuration, SQLite state, or
+backup content. News is likewise separate from forecast and persistence paths, but it is fetched
+server-side and held only in bounded process memory.
 
 Exact repeated provider content may reuse one immutable forecast run, but every submitted
 request still receives its own search event. Reopening a saved forecast reads captured data;
