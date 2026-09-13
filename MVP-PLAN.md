@@ -80,9 +80,22 @@ This is the implementation contract for the planned local Linux stock probabilit
     passed; ARM64 performance is **Unavailable**. The tracked walkthrough observation is
     `7,660,518` bytes under the `20 MiB` budget; artifacts are under
     `test-results/local-gates/M07-20260913T005729Z/`.
-  - The final learning synthesis via `skill-maintenance` is **In progress** and `EXP-FINAL`
-    remains **Pending** for synthesis completion and its separate export, secret review,
-    commit, push, and exact remote verification.
+  - Historical pre-notification status (retained): the final learning synthesis via
+    `skill-maintenance` was **In progress** and `EXP-FINAL` was **Pending** for synthesis
+    completion and its separate export, secret review, commit, push, and exact remote
+    verification.
+  - The supplied final acceptance receipt records accepted `EXP-FINAL` checkpoint
+    `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`. `NOTIFY-FINAL` is **Completed for its
+    operational scope only**: the optional post-`EXP-FINAL` delivery to the user-supplied
+    out-of-band webhook returned HTTP `204` with an empty response body around
+    `2026-09-13T01:45Z`; no retry was needed, and the bounded success did not change the
+    accepted `EXP-FINAL` result. Reviewer/coordinator: `OpenCode gpt-5.6-sol`.
+  - The payload was a minimal non-secret receipt containing the accepted result, checkpoint,
+    and evidence summary. The endpoint, token, and credential-bearing payload were never
+    written to the repository, export, artifacts, or logs; the sanitized export shows zero
+    webhook-pattern matches. Exact delivery UTC, network environment, and a separate
+    notification artifact were not supplied and are not inferred. `NOTIFY-FINAL` is not a
+    milestone or acceptance ID.
  - Historical pre-acceptance aggregate status (retained): `M05` is **Completed for its declared scope** through the independent `R-M05-55` Pass receipt. `EXP-M05` is **Completed** at commit `9be15a3ae60b16e7cc7a5b95653f914b578e1a61` with the exact export audit receipt recorded below. `M06` is **Completed for its declared scope** through final clean-target `R-M06-55` on commit `a69df40e15b3136886f26789c27861184c3bbd77`; `EXP-M06` is **Completed** at the same checkpoint. `M09` implementation is **Completed for its declared implementation scope**, but `M09` remains **In progress** pending the boundary `/ponytail-review`, the consolidated M09 gate, docs finalization, and `EXP-M09`. Its supplied scoped QA summary reports `130` news-contract tests plus live ACDC/SPY checks, browser `40` passed/`2` skipped with axe `0/0`, and passing M09 performance rows; the summary's missing session/command/environment/UTC/commit/artifact/reviewer fields are not inferred. `R-M09-1` is the Ponytail-review/local-gate M09 regex repair in flight. `M07` was **In progress** with `R-M07-1` fifth-agent configuration/profile-count test repair in flight, `R-M07-2` Ponytail-review availability pending with findings-only evidence in retained report `test-results/ponytail-m06-m07-boundary.txt` and closure pending, `R-M07-3` completed for supplied repair/test evidence, and `R-M07-4` completed for supplied Ponytail repair evidence. `M08`, `ASTRA-FINAL`, and `EXP-FINAL` were **Pending** at that earlier state. `EXP-M00` through `EXP-M06` were completed; later export state was pending at that time. Actual screen-reader evidence and native/physical ARM64 performance remain **Unavailable**; final release acceptance is not claimed.
 - The first consolidated M09 gate command `TASK_ID=M09 PERFORMANCE_REVIEWER='LUNA MAX QA' ./scripts/local-gate.sh m09` **Failed** with one intermittent `test_success_repeat_failure_and_searchable_history` failure (expected total `2`, observed `3`; the known random request-ID/search-collision flake) and reproducible blocker `R-M09-2`: when local-gate invoked `scripts/arm64-smoke.sh`, it rejected `TASK_ID=M09` and exited `2` before ARM evidence. The clean rerun reported `338 passed/4 deselected/89.62%`. Independent continuation passed the native package (wheel `121,501` bytes including `theme.js` and `news.json`), browser `40` passed/`2` skipped, official MCP, Ponytail interface, and the M09 performance harness `18/18` rows; ARM64 performance is **Unavailable**. A separate functional/package/runtime smoke passed as **emulated ARM64**. `R-M09-2` and `R-M09-3` (flaky-test determinism) repairs remain **In progress**; the consolidated gate rerun and `EXP-M09` remain **Pending**. Session, environment, UTC, commit, and artifact metadata were not supplied and are not inferred.
 - The aggregate M07 in-progress wording in the preceding status line is retained as
@@ -258,13 +271,13 @@ Every milestone has a separately recorded export task ID: `EXP-M00`, `EXP-M01`, 
 
 Before commit, the export receives a documented full secret review. Commit and push the reviewed export as checkpoint SHA X, then verify that exact SHA on the configured Git remote. The record names the export revision/commit, pushed branch, Git remote revision result, artifact/link, UTC time, environment, and reviewer. Any failed, skipped, unavailable, or connectivity-blocked export, secret review, commit, push, or Git revision check is recorded with its result and blocks that checkpoint. Git history supplies the version for the stable overwritten path; the export task ID supplies milestone identity. No hosted runner or external pipeline is recorded. `R-M00-1` intentionally did not create, review, commit, or push the export.
 
-After `EXP-FINAL` is independently accepted, an optional operational notification may be referred to as `NOTIFY-FINAL`. This is not a milestone or acceptance task ID and cannot satisfy a missing gate. It may use only a webhook supplied out-of-band by the user and may send only a minimal non-secret receipt, such as the accepted result and checkpoint SHA. The endpoint, token, headers, and credential-bearing payload must be supplied without being persisted or printed in the repository, export, artifacts, screenshots, or logs; the request must be bounded and transport errors redacted. Record bounded success, failure, or unavailable delivery separately without changing the accepted `EXP-FINAL` result. No notification is attempted by this documentation gate.
+After `EXP-FINAL` is independently accepted, an optional operational notification may be referred to as `NOTIFY-FINAL`. This is not a milestone or acceptance task ID and cannot satisfy a missing gate. It may use only a webhook supplied out-of-band by the user and may send only a minimal non-secret receipt, such as the accepted result and checkpoint SHA. The endpoint, token, headers, and credential-bearing payload must be supplied without being persisted or printed in the repository, export, artifacts, screenshots, or logs; the request must be bounded and transport errors redacted. Record bounded success, failure, or unavailable delivery separately without changing the accepted `EXP-FINAL` result. The prior pre-notification documentation gate made no notification attempt; the current bounded-success receipt is recorded below and does not alter this policy or any prior limitation.
 
 ### Independent final Astra gate
 
 After `M08` walkthrough QA/docs evidence, including the accepted M09 dark-mode/news features, is complete, an independent GPT-6 Astra reviewer executes task `ASTRA-FINAL`. `ASTRA-FINAL` must include a dedicated final visual-design, mobile, responsiveness, and accessibility quality evaluation of the completed UI and walkthrough, as well as an evidence matrix—not implementation claims. The matrix must have a separate row for every product requirement, feature, API endpoint, visible click/control, UI state, persistence effect, asset, documentation visual, walkthrough frame/segment, media item, and static asset. Every row is evaluated against requirements, aesthetics, mobile behavior, responsive behavior, accessibility, and measured performance, and names the check, command, environment, UTC timestamp, commit, result, artifact/link, limitation, and reviewer.
 
-Any missing, failing, skipped, unavailable, or unconfirmed row creates `R-ASTRA-<n>`. Astra evaluates and suggests only; only `SOL HIGH` build agents implement `R-ASTRA-<n>` UI repairs. The repair goes through the same up-to-six-lane build handoff, the mandatory pre-QA Ponytail review, independent QA/docs gates, and Astra re-evaluation of the failed and affected rows. If execution evidence shows that a tooling, skill, or MCP gap caused poor output, a narrowly scoped `R-ASTRA-<n>` may repair and validate that gap before acceptance; it may not expand the product scope without a new evidenced requirement. Repeat until the `ASTRA-FINAL` record explicitly says `Accepted`; only then does `EXP-M08` checkpoint the reviewed walkthrough. After all roadmap and Astra repairs, a final pre-`EXP-FINAL` learning synthesis must deeply analyze sanitized chat/run evidence, use `skill-maintenance` only for justified reusable Stock Probability development skills, validate and index those skills, and log observations. Only after that record is complete may `EXP-FINAL` sanitize the full chat/export, complete secret review, commit, push, and verify the exact remote revision. The current accepted ASTRA and completed `EXP-M08` records are below; the final learning synthesis remains **In progress** and `EXP-FINAL` remains **Pending**.
+Any missing, failing, skipped, unavailable, or unconfirmed row creates `R-ASTRA-<n>`. Astra evaluates and suggests only; only `SOL HIGH` build agents implement `R-ASTRA-<n>` UI repairs. The repair goes through the same up-to-six-lane build handoff, the mandatory pre-QA Ponytail review, independent QA/docs gates, and Astra re-evaluation of the failed and affected rows. If execution evidence shows that a tooling, skill, or MCP gap caused poor output, a narrowly scoped `R-ASTRA-<n>` may repair and validate that gap before acceptance; it may not expand the product scope without a new evidenced requirement. Repeat until the `ASTRA-FINAL` record explicitly says `Accepted`; only then does `EXP-M08` checkpoint the reviewed walkthrough. After all roadmap and Astra repairs, a final pre-`EXP-FINAL` learning synthesis must deeply analyze sanitized chat/run evidence, use `skill-maintenance` only for justified reusable Stock Probability development skills, validate and index those skills, and log observations. Only after that record is complete may `EXP-FINAL` sanitize the full chat/export, complete secret review, commit, push, and verify the exact remote revision. The accepted `ASTRA-FINAL` and completed `EXP-M08` records are below; the supplied final receipt records accepted `EXP-FINAL` checkpoint `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`. The separate `NOTIFY-FINAL` receipt is recorded below.
 
 ## Product Goal
 
@@ -1465,7 +1478,7 @@ remain visible even though the current M07 release receipt is now passing:
 - **Historical pre-acceptance verification checklist:** [ ] run the exact local generation command against deterministic fixtures; [ ] inspect the complete artifact for secrets and local paths; [ ] verify the 20 MiB budget; [ ] use official `@playwright/mcp` and browser regression tooling against the real local app and actual controls at desktop/mobile viewports; [ ] record accessibility/keyboard findings separately from visual and functional findings; [ ] independently review the prompt/plan comparison and UI design/usability assessment; [ ] record every missing, skipped, unavailable, stale, or failed check with its repair ID and rerun result.
 - **Repair record:** Record each failed, inaccessible, oversized, nondeterministic, incomplete, or materially altered walkthrough requirement as `R-M08-<n>`; no retrospective gap is silently accepted.
 - **Astra input:** `ASTRA-FINAL` must independently inspect the tracked artifact, transcript/alt text, generation evidence, actual-control browser evidence, and retrospective, then create separate rows for every feature, endpoint, control, UI state, asset, documentation visual, walkthrough frame/segment, media item, static asset, journey, and persistence effect. Every row must be evaluated for requirements, aesthetics, mobile/responsive behavior, accessibility, and measured performance.
-- **Post-milestone gate rule:** Do not create a green `EXP-M08` from the artifact alone. After M08 QA/docs and Astra review, repair and retest all gaps until the Astra result is `Accepted`; then `EXP-M08` records the reviewed walkthrough/export revision and local Git checkpoint. That sequence is now satisfied by the accepted ASTRA and completed `EXP-M08` records below; the final learning synthesis remains required before `EXP-FINAL`.
+- **Post-milestone gate rule:** Do not create a green `EXP-M08` from the artifact alone. After M08 QA/docs and Astra review, repair and retest all gaps until the Astra result is `Accepted`; then `EXP-M08` records the reviewed walkthrough/export revision and local Git checkpoint. That sequence is satisfied by the accepted ASTRA and completed `EXP-M08` records below; the pre-notification rule required the final learning synthesis before `EXP-FINAL`, and the supplied final receipt now records accepted `EXP-FINAL` checkpoint `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`, with the separate `NOTIFY-FINAL` receipt following.
 
 ### Historical `ASTRA-FINAL` findings and repair program (pre-acceptance)
 
@@ -1576,10 +1589,43 @@ the two ranges; this record therefore preserves the supplied ranges rather than 
   and are not inferred. No code, configuration, skill, test, or Git-history mutation was made by
   this documentation update.
 
-- **Final learning synthesis:** via `skill-maintenance`, **In progress**. `EXP-FINAL` remains
-  **Pending** for synthesis completion and its separate full-session export, secret review,
-  commit, push, and exact remote verification. The completed `EXP-M08` checkpoint does not close
-  `EXP-FINAL` or convert unavailable physical-evidence fields into passes.
+- **Historical pre-notification status (retained):** via `skill-maintenance`, the final learning
+  synthesis was **In progress** and `EXP-FINAL` was **Pending** for synthesis completion and its
+  separate full-session export, secret review, commit, push, and exact remote verification. The
+  completed `EXP-M08` checkpoint did not close `EXP-FINAL` or convert unavailable
+  physical-evidence fields into passes at that earlier point.
+
+#### `EXP-FINAL` accepted checkpoint and `NOTIFY-FINAL` operational receipt
+
+- **`EXP-FINAL` status:** **Completed**; the final acceptance receipt identifies the accepted
+  checkpoint as `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`. This
+  notification record does not change that accepted result or infer unprovided final-export
+  inventory, command, session, environment, or exact remote-verification metadata.
+- **`NOTIFY-FINAL` status:** **Completed for its operational scope only**; this optional item is
+  not a milestone or acceptance ID and cannot satisfy or repair a missing gate.
+- **Owner/phase:** optional post-`EXP-FINAL` delivery; reviewer/coordinator `OpenCode
+  gpt-5.6-sol`.
+- **Dependencies verified:** accepted `EXP-FINAL` checkpoint above. The delivery was sent only to
+  the user-supplied out-of-band webhook; its endpoint and credentials are intentionally absent.
+- **Change summary:** sent a bounded minimal non-secret receipt containing the accepted result,
+  checkpoint, and evidence summary. No repository, export, artifact, log, code, configuration,
+  skill, or Git-history content was changed by the delivery.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `NOTIFY-FINAL-E1` | Bounded delivery to the user-supplied out-of-band webhook; HTTP `204` success with an empty response body; no retry needed. | Delivery environment was user-supplied and out-of-band; exact network environment and exact UTC were not supplied, only a window around `2026-09-13T01:45Z`; accepted checkpoint `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`. | **Pass**; artifact: supplied delivery receipt, with no tracked notification artifact; reviewer/coordinator `OpenCode gpt-5.6-sol`. |
+| `NOTIFY-FINAL-E2` | Minimal non-secret payload and credential handling; endpoint, token, and credential-bearing payload were not written to the repository, export, artifacts, or logs; sanitized export shows zero webhook-pattern matches. | Sanitized export evidence; exact export revision, command, environment, and scan UTC were not supplied in this notification receipt and are not inferred. | **Pass as supplied receipt evidence**; artifact: sanitized export reference, exact path/revision not supplied; reviewer/coordinator `OpenCode gpt-5.6-sol`. |
+| `NOTIFY-FINAL-E3` | Notification did not change the accepted `EXP-FINAL` result. | Accepted `EXP-FINAL` checkpoint `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`; delivery window around `2026-09-13T01:45Z`. | **Pass**; no repair or retry; artifact: accepted checkpoint and supplied delivery receipt; reviewer/coordinator `OpenCode gpt-5.6-sol`. |
+
+- **Repair history:** None; no retry was needed. The notification does not create an `R-M##-<n>`
+  repair and does not substitute for any failed, skipped, unavailable, or limited acceptance row.
+- **Limitations:** Exact delivery UTC, network environment, endpoint identity, token, verbatim
+  payload, separate notification artifact, and a new remote-verification result are unavailable
+  by design or were not supplied. Existing screen-reader, physical-mobile, native/physical ARM64
+  performance, provider, and other historical limitations remain unchanged.
+- **Export/Git/reviewer:** `EXP-FINAL` remains the accepted checkpoint above; the notification
+  did not overwrite `SESSION-EXPORT.md`, create a Git checkpoint, commit, push, or remote result.
+  Reviewer/coordinator: `OpenCode gpt-5.6-sol`.
 
 ## Final operational item: selective Ingenium pipeline adoption
 
@@ -1620,7 +1666,7 @@ the two ranges; this record therefore preserves the supplied ranges rather than 
 
 Every implementation task must maintain these fields in its task record or linked review:
 
-- **Task ID:** the exact `M00`–`M09`, `R-M##-<n>`, `EXP-M00`–`EXP-M09`, `ASTRA-FINAL`, `R-ASTRA-<n>`, or `EXP-FINAL` identifier; do not replace it with a generic phase name.
+- **Task ID:** the exact `M00`–`M09`, `R-M##-<n>`, `EXP-M00`–`EXP-M09`, `ASTRA-FINAL`, `R-ASTRA-<n>`, or `EXP-FINAL` identifier; `NOTIFY-FINAL` is a separate optional operational record, not a milestone or acceptance ID; do not replace an identifier with a generic phase name.
 - **Status:** exactly `Pending`, `In progress`, `Blocked`, or `Completed`.
 - **Owner/phase:** builder lane, QA gate, docs gate, Astra review, export, or Git remote verification owner.
 - **Dependencies verified:** completed task IDs plus the evidence references that prove each dependency.
@@ -1683,3 +1729,5 @@ The MVP is done only when all of the following are true:
 | `R-M00-2-E24` | Exact `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` execution after the same update. | Native x86_64 Linux; dirty `HEAD` `cf099754a5c3e4a05f0e785c0d65ff06f96c4d63`; UTC was not captured. | **Pass**; artifact: current four-document diff; reviewer `LUNA MAX docs`; no code/configuration/skill/export/commit/push/Git-history mutation was performed. |
 | `R-M00-2-E25` | Exact `.dev-venv/bin/python scripts/validate_docs.py` execution after the accepted `ASTRA-FINAL`/completed `EXP-M08` update. | Native x86_64 Linux; dirty `HEAD` `7cf1ca8395b94c2e14e5b02ddf160f3f938091d`; UTC was not captured; execution was denied by the tool permission boundary. | **Unavailable**; no current validator pass is inferred; artifact: none; reviewer `LUNA MAX docs`; rerun remains required when execution is available. |
 | `R-M00-2-E26` | Exact `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` execution after the accepted `ASTRA-FINAL`/completed `EXP-M08` update. | Native x86_64 Linux; dirty `HEAD` `7cf1ca8395b94c2e14e5b02ddf160f3f938091d`; UTC was not captured. | **Pass**; artifact: current four-document diff; reviewer `LUNA MAX docs`; no code/configuration/skill/export/commit/push/Git-history mutation was performed by this documentation update. |
+| `R-M00-2-E27` | Exact `.dev-venv/bin/python scripts/validate_docs.py` execution after this accepted `EXP-FINAL`/`NOTIFY-FINAL` root-documentation update. | Native x86_64 Linux; dirty `HEAD` `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`; UTC was not captured; execution was denied by the tool permission boundary. | **Unavailable**; no current validator pass is inferred; artifact: none; reviewer `LUNA MAX docs`; rerun remains required when execution is available. |
+| `R-M00-2-E28` | Exact `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` execution after this accepted `EXP-FINAL`/`NOTIFY-FINAL` root-documentation update. | Native x86_64 Linux; dirty `HEAD` `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`; UTC was not captured by the command tool. | **Pass**; artifact: current four-document diff; reviewer `LUNA MAX docs`; no code/configuration/skill/export/commit/push/Git-history mutation was performed by this documentation update. |

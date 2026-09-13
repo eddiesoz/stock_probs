@@ -17,7 +17,7 @@ does not duplicate their detailed ledgers.
 
 ## Current evidence-backed status
 
-As of 2026-09-12:
+As of 2026-09-13:
 
 - `M00`, `EXP-M00`, `M01`, `EXP-M01`, `M02`, `EXP-M02`, `M03`, and `EXP-M03` are
   **Completed** for their recorded scopes. `EXP-M03` is verified at exact local and
@@ -185,9 +185,21 @@ As of 2026-09-12:
   `7,660,518` bytes, below the `20 MiB` budget. The receipt's supplied artifacts are under
   `test-results/local-gates/M07-20260913T005729Z/`; no native/physical ARM64 performance
   result is claimed.
-- The final learning synthesis via `skill-maintenance` is **In progress**. `EXP-FINAL` remains
-  **Pending** for the completed synthesis, final export/secret review, commit, push, and exact
-  remote verification; no final export acceptance is inferred.
+- Historical pre-notification status (retained): the final learning synthesis via
+  `skill-maintenance` was **In progress** and `EXP-FINAL` was **Pending** for the completed
+  synthesis, final export/secret review, commit, push, and exact remote verification; no final
+  export acceptance was inferred at that earlier point.
+- The supplied final acceptance receipt records `EXP-FINAL` as accepted at checkpoint
+  `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`. The optional `NOTIFY-FINAL` delivery is
+  **Completed for its operational scope only**: the user-supplied out-of-band webhook returned
+  HTTP `204` with an empty response body around `2026-09-13T01:45Z`, no retry was needed, and the
+  bounded delivery did not change the accepted `EXP-FINAL` result. The reviewer/coordinator was
+  `OpenCode gpt-5.6-sol`.
+- `NOTIFY-FINAL` is not a milestone or acceptance ID. Its minimal non-secret payload contained the
+  accepted result, checkpoint, and evidence summary; the endpoint, token, and credential-bearing
+  payload were never written to the repository, export, artifacts, or logs, and the sanitized
+  export shows zero webhook-pattern matches. Exact delivery UTC, network environment, and a
+  separate notification artifact were not supplied and are not inferred.
 - `R-M09-4` and `R-M09-5` each retain an earlier failed release result; their separate
   failure output, session, environment, UTC, commit, artifact, and reviewer metadata were
   not supplied here. The current `M07-E18` receipt does not rewrite either historical
@@ -399,7 +411,8 @@ and tool behavior, but cannot prove physical ARM64 performance.
 There is no hosted or external pipeline acceptance path. A failed, skipped, unavailable, stale, or
 connectivity-blocked check remains visible and requires a uniquely recorded repair and
 rerun. The exact task vocabulary is `M00`–`M09`, `R-M##-<n>`, `EXP-M00`–`EXP-M09`,
-`ASTRA-FINAL`, `R-ASTRA-<n>`, and `EXP-FINAL`.
+`ASTRA-FINAL`, `R-ASTRA-<n>`, and `EXP-FINAL`; `NOTIFY-FINAL` is a separate optional
+operational record, not a milestone or acceptance ID.
 
 Orchestration allows at most six concurrent agents. Build waves use up to six declared,
 disjoint lanes with A/B/C as the base roles; additional lanes require explicit ownership.
@@ -441,8 +454,10 @@ checkpoint.
 synthesis, and `EXP-FINAL` form one combined second-last operational loop, not a new
 milestone. `ASTRA-FINAL` is now explicitly **Accepted for its declared scope** at
 `261825838d6788afeb9640db8fbbf3f94af3a82b`, and `EXP-M08` is **Completed** at
-`7cf1ca8395b94c2e14e5b02ddf160f3f938091d3`; the final learning synthesis must still
-complete before `EXP-FINAL`.
+`7cf1ca8395b94c2e14e5b02ddf160f3f938091d3`. The supplied final receipt records accepted
+`EXP-FINAL` checkpoint `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`; the optional
+`NOTIFY-FINAL` delivery is separately **Completed for its operational scope only** and cannot
+change that result.
 `ASTRA-FINAL` must separately matrix every asset, control, UI state, documentation visual,
 walkthrough frame/segment, media item, and static asset against requirements, aesthetics,
 mobile/responsive behavior, accessibility, and measured performance. Astra evaluates and
@@ -451,9 +466,9 @@ A demonstrated tooling, skill, or MCP gap may receive a narrowly scoped SOL repa
 validation before acceptance, but it cannot expand scope without a new evidenced need.
 The final learning synthesis deeply analyzes sanitized chat/run evidence and uses
 `skill-maintenance` only for justified reusable Stock Probability skills, validates and
-indexes any such skill, and logs observations; that synthesis is currently **In progress**,
-and `EXP-FINAL` remains **Pending**.
-Optional notification is last and cannot repair a missing gate.
+indexes any such skill, and logs observations. The accepted `EXP-FINAL` checkpoint is
+`b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`. Optional `NOTIFY-FINAL` is last and cannot repair
+a missing gate; its bounded success is recorded above without changing `EXP-FINAL`.
 
 ## Final operational item: selective Ingenium pipeline adoption
 
@@ -583,3 +598,13 @@ pass is inferred. Environment: native x86_64 Linux; dirty `HEAD`
 MVP-PLAN.md MVP-ROADMAP.md` check as **Pass** on the same dirty `HEAD`; UTC was not captured;
 artifact: current four-document diff; reviewer: `LUNA MAX docs`. No code, configuration,
 skill, export, commit, push, or Git-history mutation was performed by this documentation update.
+
+For this accepted `EXP-FINAL`/`NOTIFY-FINAL` root-documentation update, `R-M00-2-E27` records
+the exact `.dev-venv/bin/python scripts/validate_docs.py` attempt as **Unavailable** because
+the tool permission boundary denied execution; no current validator pass is inferred. Environment:
+native x86_64 Linux; dirty `HEAD` `b96cb6954ecf6e03b3bcdb0ad52af38ed7eae4cb`; UTC was not
+captured; artifact: none; reviewer: `LUNA MAX docs`. `R-M00-2-E28` records the exact
+`git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` check as **Pass** on the
+same dirty `HEAD`; UTC was not captured; artifact: current four-document diff; reviewer:
+`LUNA MAX docs`. No code, configuration, skill, export, commit, push, or Git-history mutation
+was performed by this documentation update.
