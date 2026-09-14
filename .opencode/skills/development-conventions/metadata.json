@@ -1,0 +1,7 @@
+{
+  "_comment": "OpenCode discovers this opt-in skill from SKILL.md frontmatter; this project catalog mirror is validated for exact parity.",
+  "name": "development-conventions",
+  "description": "Action-oriented conventions for writing, reviewing, and testing source code and documentation across README/docs, APIs, Next.js 16 App Router, Python, Go/Rust, regex, Mermaid, gitignore, web/UI, mail, and Ingenium-specific work.",
+  "tags": ["development", "conventions", "source-editing", "code-review", "testing", "readme", "documentation", "api", "nextjs", "python", "go", "rust", "regex", "mermaid", "gitignore", "web-ui", "mail", "ingenium"],
+  "alwaysApply": false
+}

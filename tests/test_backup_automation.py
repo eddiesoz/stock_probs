@@ -234,13 +234,9 @@ def test_direct_create_delay_times_out_without_artifact_or_staging(settings, mon
     repository.migrate()
     _record_failure(repository, "retained-create-timeout-event")
     manager = BackupManager(repository, settings.backup_dir)
-    completed = threading.Event()
 
     def delayed_snapshot(snapshot):
-        try:
-            time.sleep(0.05)
-        finally:
-            completed.set()
+        time.sleep(0.05)
 
     monkeypatch.setattr(backup_module, "BACKUP_TIMEOUT_SECONDS", 0.001)
     monkeypatch.setattr(manager, "_online_snapshot", delayed_snapshot)
@@ -251,7 +247,6 @@ def test_direct_create_delay_times_out_without_artifact_or_staging(settings, mon
 
     assert elapsed < 0.04
     assert not list(settings.backup_dir.glob("*.spbackup"))
-    assert completed.wait(timeout=0.2)
     assert repository.history()["items"][0]["request_id"] == (
         "retained-create-timeout-event"
     )

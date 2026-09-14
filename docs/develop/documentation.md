@@ -35,9 +35,27 @@ The project `documentation` skill contains the agent-facing version of this work
 or configuration-time changes require an OpenCode restart before discovery can be validated;
 the editing session itself is not proof that the restarted process loaded them.
 
-This repair uses declared `SOL HIGH` documentation scope because the `LUNA MAX docs` profile
-currently lacks `docs/**` edit permission. The profile and configuration are unchanged, and
-independent documentation closure/restart verification remains pending.
+`R-ASTRA-70` is **Completed** for its declared documentation-only portable-link repair: eight
+ignored-artifact links were changed to inline code. The current `R-ASTRA-71` documentation
+reconciliation records the named initial ASTRA failure, the `R-ASTRA-66`–`R-ASTRA-69` repair
+progression, the clean final `R-ASTRA-69` Ponytail boundary, independent repair QA, and the
+accepted final ASTRA scope. The earlier `R-ASTRA-64` reconciliation remains historical. The
+current final ASTRA session is `ses_f622707a4ffeAE3Zx8Lt2zYiC1`, reviewer `ASTRA`, model
+`openai/gpt-6-astra`, on native x86_64 with official MCP/headless Chromium `153.0.8010.12`,
+reviewing `/` and `/api/v1/docs` at `320x844` and `1280x1000` in Light and Dark; its scope is
+accepted with no blockers. Physical mobile, actual screen-reader, true-zoom, fresh ASTRA
+axe/screenshots, and native/physical ARM64-performance evidence remain unavailable. Local and
+ignored artifact paths in documentation remain inline code, never Markdown links.
+
+`R-ASTRA-72` records the validated rename to exact `Orchestrator` and the required parent-process
+restart. Independent post-restart QA passed the declared rename/restart-validation scope; full
+evidence and limitations are recorded in [`docs/evidence/astra-final-report.md`](../evidence/astra-final-report.md).
+No release, export, commit, push, or remote result is implied.
+
+The existing `development-conventions` skill is explicitly admitted as the eighth opt-in project
+skill, and fresh discovery is recorded as **Pass**. Skill/profile activation still requires a
+parent OpenCode restart and independent post-restart discovery; implementation presence does not
+create that gate effect.
 
 The validator checks heading anchors, high-confidence credential patterns, duplicate taxonomy
 links, exact description parity between the skill frontmatter, project catalog metadata, and

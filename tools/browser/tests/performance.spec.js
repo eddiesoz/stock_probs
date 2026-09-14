@@ -10,7 +10,9 @@ const root = path.resolve(__dirname, "../../..");
 const budgets = require("../performance-budgets.json");
 const artifactPath = process.env.STOCK_PROBS_PERFORMANCE_ARTIFACT;
 const nativeArchitecture = process.arch === "x64" ? "x86_64" : process.arch;
-const staticShellPaths = ["index.html", "api-docs.html", "app.css", "app.js", "theme.js", "favicon.svg"];
+const staticRoot = path.join(root, "src/stock_probs/static");
+const assetNames = ["app.css", "app.js", "theme.js", "favicon.svg"];
+const nextStaticPath = /^\/_next\/static\/.+/;
 
 function isoNow() {
   return new Date().toISOString();
@@ -29,6 +31,16 @@ function statistics(values, unit) {
     max: Number(Math.max(...values).toFixed(3)),
     unit,
   };
+}
+
+async function fileInventory(directory, prefix) {
+  const files = (await fs.readdir(directory, { recursive: true, withFileTypes: true }))
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.join(entry.parentPath, entry.name))
+    .sort();
+  return Promise.all(files.map(async (source) => (
+    [`${prefix}/${path.relative(directory, source).split(path.sep).join("/")}`, (await fs.stat(source)).size]
+  )));
 }
 
 async function freePort() {
@@ -119,9 +131,12 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
   test.skip(process.env.STOCK_PROBS_PERFORMANCE !== "1", "Run only through the M06 harness.");
   test.setTimeout(180_000);
   const startedUtc = isoNow();
-  const staticShell = Object.fromEntries(await Promise.all(staticShellPaths.map(async (name) => (
-    [name, (await fs.stat(path.join(root, "src/stock_probs/static", name))).size]
-  ))));
+  const staticShell = Object.fromEntries([
+    ...await fileInventory(path.join(staticRoot, "next"), "static/next"),
+    ...await Promise.all(assetNames.map(async (name) => (
+      [`/assets/${name}`, (await fs.stat(path.join(staticRoot, name))).size]
+    ))),
+  ]);
   const staticShellBytes = Object.values(staticShell).reduce((total, size) => total + size, 0);
   const runtime = testInfo.outputPath("runtime");
   await fs.rm(runtime, { recursive: true, force: true });
@@ -347,15 +362,29 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
           cache_state: "hit",
         },
       }));
+      await page.locator('.settings-trigger[popovertarget="settings-menu"]').click();
+      await expect(page.locator("#settings-menu.settings-menu[popover]")).toBeVisible();
       for (let index = 0; index < budgets.warmups + budgets.measured_samples; index += 1) {
-        await page.evaluate(() => { window.__themeActionStart = performance.now(); });
         const selected = index % 2 ? "light" : "dark";
-        await page.locator(`.theme-control [name="theme"][value="${selected}"]`).click();
-        const elapsed = await page.evaluate(async (value) => {
-          await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-          if (document.documentElement.dataset.theme !== value) throw new Error("theme did not paint");
-          return performance.now() - window.__themeActionStart;
+        await page.evaluate((value) => {
+          const radio = document.querySelector(`.theme-control [name="theme"][value="${value}"]`);
+          window.__themePaintSample = new Promise((resolve, reject) => {
+            // Start at trusted click dispatch so Playwright protocol/actionability time is excluded.
+            radio.addEventListener("click", (event) => {
+              if (!event.isTrusted) return reject(new Error("theme timing requires a trusted click"));
+              const started = performance.now();
+              requestAnimationFrame(() => requestAnimationFrame(() => {
+                if (document.documentElement.dataset.theme !== value) {
+                  reject(new Error("theme did not paint"));
+                } else {
+                  resolve(performance.now() - started);
+                }
+              }));
+            }, { capture: true, once: true });
+          });
         }, selected);
+        await page.locator(`.theme-control [name="theme"][value="${selected}"]`).click();
+        const elapsed = await page.evaluate(() => window.__themePaintSample);
         (index < budgets.warmups ? m09Browser.themeWarmups : m09Browser.themeSamples).push(elapsed);
       }
       await page.locator(".news-panel summary").click();
@@ -422,7 +451,9 @@ test("pinned render interaction layout and request budgets", async ({ page }, te
   const allRequests = networkRequests;
   const allResponses = networkResponses;
   const unexpectedRequests = allRequests.filter((request) => (
-    request.method !== "GET" || !budgets.allowed_paths.includes(request.pathname)
+    request.method !== "GET"
+    || request.pathname.endsWith(".txt")
+    || (!budgets.allowed_paths.includes(request.pathname) && !nextStaticPath.test(request.pathname))
   ));
   const unexpectedOriginRequests = allRequests.filter((request) => request.origin !== baseURL);
   const externalRequests = allRequests.filter((request) => (

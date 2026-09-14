@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import subprocess
 import tomllib
 import tracemalloc
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+from setuptools import Distribution
+from setuptools.command.build_py import build_py
+
+from scripts import build_frontend
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import Repository
 from stock_probs.service import ForecastService
@@ -27,16 +33,22 @@ def test_package_and_local_gate_cover_portable_runtime_assets():
 
     assert package_data["package-data"]["stock_probs"] == [
         "static/*",
+        "static/next/**/*",
         "migrations/*.sql",
         "fixtures/*.json",
     ]
-    assert "scripts/install-node.sh" in makefile
+    assert "./scripts/build-frontend.sh" in makefile
+    assert "frontend-build:" in makefile
+    assert "npm --prefix frontend ci" not in makefile
+    assert "dev: frontend-build" in makefile
+    assert "acceptance: frontend-build check browser-test" in makefile
     assert all(
         target in makefile
         for target in ("package-check:", "m01-gate:", "m02-gate:", "m03-gate:", "m09-gate:")
     )
     assert "set -euo pipefail" in local_gate and '"result": result' in local_gate
     assert "make " not in local_gate and "run_check" in local_gate and "m03)" in local_gate
+    assert '"$ROOT/scripts/build-frontend.sh"' in local_gate
     assert 'COMPLETED_CHECKS+=("browser")' in local_gate
     assert 'COMPLETED_CHECKS+=("playwright-mcp")' in local_gate
     assert 'COMPLETED_CHECKS+=("arm64-functional-package-runtime")' in local_gate
@@ -58,9 +70,128 @@ def test_package_and_local_gate_cover_portable_runtime_assets():
     assert not (ROOT / ".github/workflows/ci.yml").exists()
 
 
+def test_generated_next_stage_is_ignored_but_authored_assets_are_not():
+    ignored = subprocess.run(  # noqa: S603, S607 - exercises the repository Git contract.
+        [
+            "/usr/bin/git",
+            "check-ignore",
+            "--no-index",
+            "-q",
+            "--",
+            "src/stock_probs/static/next/index.html",
+        ],
+        cwd=ROOT,
+        check=False,
+    )
+    authored = subprocess.run(  # noqa: S603, S607 - exercises the repository Git contract.
+        [
+            "/usr/bin/git",
+            "check-ignore",
+            "--no-index",
+            "-q",
+            "--",
+            "src/stock_probs/static/app.css",
+        ],
+        cwd=ROOT,
+        check=False,
+    )
+
+    assert ignored.returncode == 0
+    assert authored.returncode == 1
+
+
+def test_next_export_stages_only_served_files_and_packages_them_recursively():
+    source = ROOT / "frontend/out"
+    staged = ROOT / "src/stock_probs/static/next"
+
+    assert {path.name for path in staged.iterdir()} == {"index.html", "api-docs.html", "_next"}
+    assert (staged / "index.html").read_bytes() == (source / "index.html").read_bytes()
+    assert (staged / "api-docs.html").read_bytes() == (source / "api-docs.html").read_bytes()
+    source_next = {
+        path.relative_to(source / "_next").as_posix(): path.read_bytes()
+        for path in (source / "_next").rglob("*")
+        if path.is_file()
+    }
+    staged_next = {
+        path.relative_to(staged / "_next").as_posix(): path.read_bytes()
+        for path in (staged / "_next").rglob("*")
+        if path.is_file()
+    }
+    assert staged_next == source_next
+    assert any(path.startswith("static/chunks/") for path in staged_next)
+
+    package_data = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["setuptools"]
+    distribution = Distribution(
+        {
+            "packages": ["stock_probs"],
+            "package_dir": {"": "src"},
+            "package_data": package_data["package-data"],
+        }
+    )
+    command = build_py(distribution)
+    command.ensure_finalized()
+    command.analyze_manifest()
+    packaged = {
+        Path(path).resolve().relative_to(ROOT / "src/stock_probs").as_posix()
+        for path in command.find_data_files("stock_probs", "src/stock_probs")
+    }
+    staged_files = {
+        path.relative_to(staged).as_posix() for path in staged.rglob("*") if path.is_file()
+    }
+    assert {f"static/next/{path}" for path in staged_files} <= packaged
+
+
+def test_frontend_staging_rejects_invalid_sources_and_destination_symlink(tmp_path, monkeypatch):
+    source = tmp_path / "out"
+    destination = tmp_path / "static/next"
+    source.mkdir()
+    destination.parent.mkdir()
+    monkeypatch.setattr(build_frontend, "SOURCE", source)
+    monkeypatch.setattr(build_frontend, "DESTINATION", destination)
+
+    with pytest.raises(SystemExit, match="not a complete Next export"):
+        build_frontend.main()
+
+    for name in ("index.html", "api-docs.html"):
+        (source / name).write_text("new")
+    with pytest.raises(SystemExit, match="not a complete Next export"):
+        build_frontend.main()
+
+    (source / "_next").mkdir()
+    linked = source / "_next/linked.js"
+    linked.symlink_to(source / "index.html")
+    with pytest.raises(SystemExit, match="must not contain symlinks"):
+        build_frontend.main()
+
+    linked.unlink()
+    destination.symlink_to(source, target_is_directory=True)
+    with pytest.raises(SystemExit, match="static/next must not be a symlink"):
+        build_frontend.main()
+
+
+def test_frontend_staging_replaces_stale_export(tmp_path, monkeypatch):
+    source = tmp_path / "out"
+    destination = tmp_path / "static/next"
+    source.mkdir()
+    destination.mkdir(parents=True)
+    for name in ("index.html", "api-docs.html"):
+        (source / name).write_text("new")
+    chunks = source / "_next/static/chunks"
+    chunks.mkdir(parents=True)
+    (chunks / "app.js").write_text("chunk")
+    (destination / "stale.txt").write_text("stale")
+    monkeypatch.setattr(build_frontend, "SOURCE", source)
+    monkeypatch.setattr(build_frontend, "DESTINATION", destination)
+
+    build_frontend.main()
+
+    assert {path.name for path in destination.iterdir()} == {"index.html", "api-docs.html", "_next"}
+    assert (destination / "_next/static/chunks/app.js").read_text() == "chunk"
+
+
 def test_m02_dashboard_uses_only_versioned_api_controls():
     static = ROOT / "src/stock_probs/static"
-    html = (static / "index.html").read_text()
+    html = (static / "next/index.html").read_text()
     script = (static / "app.js").read_text()
 
     assert "Reopen saved forecast" in script
@@ -93,7 +224,7 @@ def test_bounded_fixture_forecast_batch_stays_small(settings):
 
 
 def test_dashboard_and_price_slice_stay_lightweight(client):
-    # The shell/docs have no framework bundle, and chart consumers request a tiny captured slice.
+    # Exported route HTML and preserved assets remain bounded; charts request a tiny captured slice.
     responses = [
         client.get(path)
         for path in (
@@ -111,6 +242,6 @@ def test_dashboard_and_price_slice_stay_lightweight(client):
         params={"series": "daily", "limit": 10},
     )
 
-    assert asset_bytes < 96 * 1024
+    assert asset_bytes < 128 * 1024
     assert prices.status_code == 200
     assert len(prices.content) < 8 * 1024

@@ -3,18 +3,21 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON_IMAGE = (
+    "python:3.11.15-slim@sha256:"
+    "90744cff8f32887f075c47d747a173ff333e9e98801667af93c357fa9f5e28ff"
+)
+NODE_IMAGE = (
+    "node:22.19.0-bookworm-slim@sha256:"
+    "4a4884e8a44826194dff92ba316264f392056cbe243dcc9fd3551e71cea02b90"
+)
 
 
 def test_image_is_pinned_wheel_installed_non_root_and_exec_form() -> None:
     """The runtime image retains only installed artifacts and an unprivileged process."""
 
     dockerfile = (ROOT / "Dockerfile").read_text()
-    pinned_image = (
-        "python:3.11.15-slim@sha256:"
-        "90744cff8f32887f075c47d747a173ff333e9e98801667af93c357fa9f5e28ff"
-    )
-
-    assert dockerfile.count(f"FROM {pinned_image}") == 2
+    assert dockerfile.count(f"FROM {PYTHON_IMAGE}") == 2
     assert "python -m pip wheel" in dockerfile
     assert "--constraint requirements.lock" in dockerfile
     assert "--no-index" in dockerfile and "stock-probs==0.1.0" in dockerfile
@@ -23,6 +26,37 @@ def test_image_is_pinned_wheel_installed_non_root_and_exec_form() -> None:
     assert '"--allow-non-loopback"]' in dockerfile
     assert "urllib.request.urlopen" in dockerfile
     assert "http://127.0.0.1:8000/api/v1/health" in dockerfile
+
+
+def test_next_export_is_built_with_pinned_node_but_runtime_is_python_only() -> None:
+    """Node builds the export without crossing into the final Python stage."""
+
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    frontend_stage, python_stages = dockerfile.split(f"FROM {PYTHON_IMAGE}", maxsplit=1)
+    _, runtime_stage = python_stages.split(f"FROM {PYTHON_IMAGE}", maxsplit=1)
+
+    assert frontend_stage.startswith(f"FROM {NODE_IMAGE} AS frontend-builder\n")
+    assert "COPY frontend/package.json frontend/package-lock.json ./" in frontend_stage
+    assert "RUN npm ci" in frontend_stage
+    assert "COPY frontend/ ./" in frontend_stage
+    assert "RUN npm run typecheck && npm run build && npm run test" in frontend_stage
+    retained_export = (
+        "RUN mkdir /static-next \\\n"
+        "    && cp out/index.html out/api-docs.html /static-next/ \\\n"
+        "    && cp -R out/_next /static-next/"
+    )
+    assert retained_export in frontend_stage
+    assert all(name not in frontend_stage for name in (".txt", "404", "_not-found"))
+    export_copy = (
+        "COPY --from=frontend-builder /static-next "
+        "./src/stock_probs/static/next"
+    )
+    assert python_stages.index(export_copy) < python_stages.index("python -m pip wheel")
+    assert "COPY --from=frontend-builder /build/frontend/out" not in dockerfile
+    assert "node:" not in runtime_stage
+    assert "npm " not in runtime_stage
+    assert "frontend" not in runtime_stage
+    assert "COPY src" not in runtime_stage
 
 
 def test_compose_limits_access_resources_and_keeps_all_state_on_data_volume() -> None:
@@ -56,6 +90,10 @@ def test_compose_limits_access_resources_and_keeps_all_state_on_data_volume() ->
             ".git/",
             ".venv/",
             "burry_env/",
+            "frontend/node_modules/",
+            "frontend/.next/",
+            "frontend/out/",
+            "src/stock_probs/static/next/",
             "data/",
             "*.sqlite3-*",
             "*.spbackup",
@@ -66,3 +104,5 @@ def test_compose_limits_access_resources_and_keeps_all_state_on_data_volume() ->
             "*.pem",
         )
     )
+    assert "frontend/" not in dockerignore.splitlines()
+    assert "frontend/package-lock.json" not in dockerignore

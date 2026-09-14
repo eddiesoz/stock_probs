@@ -48,11 +48,57 @@ def test_documentation_taxonomy_has_expected_size() -> None:
 def test_project_skill_catalog_has_expected_entries() -> None:
     assert tuple(APPROVED_SKILL_CATALOG) == (
         "documentation",
-        "skill-maintenance",
+        "development-conventions",
+        "stock-probability-skill-maintenance",
         "local-gate-evidence",
         "browser-qa",
         "ponytail-boundary-review",
+        "database-conventions",
+        "security-audit",
     )
+
+
+def test_agent_profile_skill_grants_are_narrow() -> None:
+    expected = {
+        "sol-build.md": (
+            '"*": deny',
+            "browser-qa: allow",
+            "database-conventions: allow",
+            "development-conventions: allow",
+            "local-gate-evidence: allow",
+            "ponytail: allow",
+            "ponytail-review: allow",
+            "security-audit: allow",
+            "stock-probability-skill-maintenance: allow",
+        ),
+        "luna-qa.md": (
+            '"*": deny',
+            "browser-qa: allow",
+            "development-conventions: allow",
+            "local-gate-evidence: allow",
+            "ponytail-review: allow",
+            "ponytail-boundary-review: allow",
+            "security-audit: allow",
+        ),
+        "luna-docs.md": (
+            '"*": deny',
+            "development-conventions: allow",
+            "documentation: allow",
+        ),
+        "astra.md": (
+            '"*": deny',
+            "browser-qa: allow",
+            "development-conventions: allow",
+        ),
+    }
+    for name, grants in expected.items():
+        text = (ROOT / ".opencode/agent" / name).read_text(encoding="utf-8")
+        block = re.search(r"^  skill:\n((?:    .*\n)+)", text, re.MULTILINE)
+        assert block
+        assert tuple(line.strip() for line in block.group(1).splitlines()) == grants
+
+    docs = (ROOT / ".opencode/agent/luna-docs.md").read_text(encoding="utf-8")
+    assert '    ".dev-venv/bin/python scripts/validate_docs.py": allow' in docs
 
 
 def test_astra_matrix_has_214_unique_inventory_rows_and_dimension_keys() -> None:
@@ -118,6 +164,19 @@ def test_unexpected_skill_catalog_mutation_fails(documentation_repository: Path)
 
     assert any(
         "unexpected project skill: unapproved" in issue
+        for issue in validate_repository(documentation_repository)
+    )
+
+
+def test_skill_index_count_mutation_fails(documentation_repository: Path) -> None:
+    index = documentation_repository / ".opencode/SKILL-INDEX.md"
+    index.write_text(
+        index.read_text(encoding="utf-8").replace("**8 skills**", "**0 skills**"),
+        encoding="utf-8",
+    )
+
+    assert any(
+        "skill count must be exactly 8" in issue
         for issue in validate_repository(documentation_repository)
     )
 

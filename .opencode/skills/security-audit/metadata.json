@@ -1,0 +1,7 @@
+{
+  "_comment": "OpenCode discovers this opt-in skill from SKILL.md frontmatter; this project catalog mirror is validated for exact parity.",
+  "name": "security-audit",
+  "description": "Audit Stock Probability local security boundaries for loopback HTTP, provider links, SQLite and backups, exports, and dependencies. Use when changing LocalSecurityMiddleware, provider URL handling, storage or backup trust, export handling, or security-relevant dependencies.",
+  "tags": ["security", "loopback", "backup", "dependencies", "stock-probability"],
+  "alwaysApply": false
+}

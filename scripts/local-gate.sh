@@ -169,6 +169,10 @@ printf 'task=%s revision=%s dirty=%s native_arch=%s profile=%s\n' \
 printf 'Local scripts are authoritative only with independent review; no external pipeline is used.\n'
 "$ROOT/scripts/bootstrap.sh"
 cd "$ROOT"
+if [[ -f "$ROOT/frontend/package-lock.json" ]]; then
+  "$ROOT/scripts/build-frontend.sh"
+  COMPLETED_CHECKS+=("frontend-npm-ci-typecheck-test-build-stage")
+fi
 
 case "$PROFILE" in
   check)

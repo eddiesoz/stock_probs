@@ -16,6 +16,12 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC is not None and SPEC.loader is not None
 performance = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(performance)
+COMMENT_SPEC = importlib.util.spec_from_file_location(
+    "comment_audit", ROOT / "scripts/comment_audit.py"
+)
+assert COMMENT_SPEC is not None and COMMENT_SPEC.loader is not None
+comment_audit = importlib.util.module_from_spec(COMMENT_SPEC)
+COMMENT_SPEC.loader.exec_module(comment_audit)
 
 
 def complete_artifact(**overrides):
@@ -236,7 +242,7 @@ def test_local_gate_profiles_make_performance_mandatory_for_m06_m09_and_release(
 def test_proposed_native_bounds_are_explicit_and_not_environment_overrides():
     assert performance.CONCURRENCY_P95_LIMIT_MS == 3_000
     assert performance.CONCURRENCY_BATCH_LIMIT_MS == 5_000
-    assert performance.PACKAGE_LIMIT_BYTES == 131_072
+    assert performance.PACKAGE_LIMIT_BYTES == 328 * 1024
     assert performance.PACKAGE_BUILD_LIMIT_MS == 5_000
     assert performance.BACKUP_LIMIT_MS == 5_000
     assert performance.RESTORE_LIMIT_MS == 5_000
@@ -246,7 +252,7 @@ def test_proposed_native_bounds_are_explicit_and_not_environment_overrides():
     assert performance.NEWS_RENDER_P95_LIMIT_MS == 250
     assert performance.NEWS_RESPONSE_LIMIT_BYTES == 32 * 1024
     assert performance.NEWS_PROVIDER_DEADLINE_SECONDS == 10
-    assert performance.STATIC_LIMIT_BYTES == 96 * 1024
+    assert performance.STATIC_LIMIT_BYTES == 736 * 1024
     source = (ROOT / "scripts/performance_harness.py").read_text()
     assert "STOCK_PROBS_PERF_CONCURRENCY_P95_MS" not in source
     assert "STOCK_PROBS_PERF_PACKAGE_MAX_BYTES" not in source
@@ -366,10 +372,129 @@ def test_browser_budget_manifest_pins_required_protocol_and_bounds():
     assert manifest["cls_max"] == 0.1
     assert manifest["viewports"] == [360, 390, 768, 1280, 1440]
     assert manifest["designated_response_bytes_strict_max"] == 8 * 1024
-    assert manifest["static_shell_bytes_strict_max"] == 96 * 1024
-    assert manifest["request_count_max_per_navigation"] == 7
+    assert manifest["static_shell_bytes_strict_max"] == 736 * 1024
+    assert manifest["response_bytes_max_per_navigation"] == 640 * 1024
+    assert manifest["request_count_max_per_navigation"] == 16
     assert "/assets/theme.js" in manifest["allowed_paths"]
+    assert not any(path.startswith("/_next/") for path in manifest["allowed_paths"])
     assert manifest["justification"]
+
+
+def test_static_row_inventory_is_recursive_sorted_and_exact(tmp_path, monkeypatch):
+    static = tmp_path / "src/stock_probs/static"
+    (static / "next/_next/static/chunks").mkdir(parents=True)
+    (static / "next/index.html").write_bytes(b"dashboard")
+    (static / "next/api-docs.html").write_bytes(b"docs")
+    (static / "next/_next/static/chunks/hash1234.js").write_bytes(b"chunk")
+    (static / "app.js").write_bytes(b"app")
+    monkeypatch.setattr(performance, "ROOT", tmp_path)
+    monkeypatch.setattr(performance, "_git_revision", lambda: ("a" * 40, True))
+    harness = performance.Harness(tmp_path / "artifacts", 60)
+    harness.rows["browser-budgets"] = {"result": "Pass"}
+
+    harness._write_static_row(b"x")
+
+    row = harness.rows["static-and-response-bytes"]
+    assert row["result"] == "Pass"
+    assert row["raw"]["static_total_raw_bytes"] == 21
+    assert [item["path"] for item in row["raw"]["static_files"]] == sorted(
+        item["path"] for item in row["raw"]["static_files"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("artifact_result", "returncode", "expected"),
+    [("Pass", 0, "Pass"), ("Fail", 0, "Fail"), ("Pass", 1, "Fail")],
+)
+def test_browser_artifact_or_process_failure_stays_failed(
+    tmp_path, monkeypatch, artifact_result, returncode, expected
+):
+    monkeypatch.setattr(performance, "_git_revision", lambda: ("a" * 40, True))
+    harness = performance.Harness(tmp_path, 60)
+    artifact = tmp_path / "browser-budgets.json"
+    artifact.write_text(
+        json.dumps(
+            complete_artifact(
+                task_id=harness.task_id,
+                row="browser-budgets",
+                environment={"architecture": harness.architecture},
+                revision={"commit": "a" * 40, "dirty": harness.dirty},
+                result=artifact_result,
+                artifact=artifact.name,
+                reviewer=harness.reviewer,
+            )
+        )
+    )
+
+    assert harness._load_browser_budget(artifact, returncode)["result"] == expected
+
+
+@pytest.mark.parametrize("browser_result", ["Pass", "Fail"])
+def test_static_row_requires_browser_result(tmp_path, monkeypatch, browser_result):
+    monkeypatch.setattr(performance, "_git_revision", lambda: ("a" * 40, True))
+    harness = performance.Harness(tmp_path, 60)
+    harness.rows["browser-budgets"] = {"result": browser_result}
+
+    harness._write_static_row(b"{}")
+
+    row = harness.rows["static-and-response-bytes"]
+    assert row["result"] == browser_result
+    assert "initial_navigation" not in row["raw"]
+    assert set(row["threshold"]) == {"class", "static", "response"}
+
+
+def test_local_gate_builds_and_stages_frontend_before_profile_gates():
+    gate = (ROOT / "scripts/local-gate.sh").read_text()
+    frontend_path = ROOT / "scripts/build-frontend.sh"
+    frontend = frontend_path.read_text()
+    makefile = (ROOT / "Makefile").read_text()
+
+    assert gate.index('\n  "$ROOT/scripts/build-frontend.sh"\n') < gate.index(
+        "\ncase \"$PROFILE\" in"
+    )
+    assert frontend_path.stat().st_mode & 0o111
+    assert all(
+        command in frontend
+        for command in (
+            '"$ROOT/scripts/install-node.sh"',
+            '"$NODE_BIN/npm" --prefix "$ROOT/frontend" ci',
+            '"$NODE_BIN/npm" --prefix "$ROOT/frontend" run typecheck',
+            '"$NODE_BIN/npm" --prefix "$ROOT/frontend" test',
+            '"$NODE_BIN/npm" --prefix "$ROOT/frontend" run build',
+            '"$ROOT/.dev-venv/bin/python" "$ROOT/scripts/build_frontend.py"',
+        )
+    )
+    assert "frontend-build:\n\t./scripts/build-frontend.sh\n" in makefile
+    assert "frontend-npm-ci-typecheck-test-build-stage" in gate
+
+
+def test_comment_audit_includes_frontend_typescript_but_not_generated_next(tmp_path):
+    source = tmp_path / "frontend/app"
+    generated = tmp_path / "frontend/.next/types"
+    source.mkdir(parents=True)
+    generated.mkdir(parents=True)
+    component = source / "page.tsx"
+    component.write_text("// route intent\nexport default function Page() {}\n")
+    (generated / "route.ts").write_text("generated\n")
+
+    checked = comment_audit.checked_paths(tmp_path)
+
+    assert component in checked
+    assert generated / "route.ts" not in checked
+
+
+def test_comment_audit_exempts_only_opencode_metadata_json(tmp_path):
+    skill_metadata = tmp_path / ".opencode/skills/example/metadata.json"
+    other_metadata = tmp_path / "tools/example/metadata.json"
+    skill_metadata.parent.mkdir(parents=True)
+    other_metadata.parent.mkdir(parents=True)
+    skill_metadata.write_text('{"name": "example"}\n')
+    other_metadata.write_text('{"name": "example"}\n')
+
+    checked = comment_audit.checked_paths(tmp_path)
+
+    assert skill_metadata not in checked
+    assert other_metadata in checked
 
 
 def test_playwright_project_config_is_not_changed_for_the_performance_lane():

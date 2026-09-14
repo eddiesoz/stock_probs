@@ -147,13 +147,13 @@ def test_opencode_11830_loads_valid_config_in_isolated_home(tmp_path):
         "LUNA MAX QA": ("openai/gpt-5.6-luna", "max", "subagent"),
         "LUNA MAX docs": ("openai/gpt-5.6-luna", "max", "subagent"),
         "SOL HIGH build": ("openai/gpt-5.6-sol", "high", "subagent"),
-        "stock-orchestrator": ("openai/gpt-5.6-sol", "medium", "primary"),
+        "Orchestrator": ("openai/gpt-5.6-sol", "medium", "primary"),
     }
-    assert agents["stock-orchestrator"]["options"]["stock_probs_max_active_subagents"] == 6
+    assert agents["Orchestrator"]["options"]["stock_probs_max_active_subagents"] == 6
     assert all(
         agent["permission"]["*"] == "deny"
         for name, agent in agents.items()
-        if name != "stock-orchestrator"
+        if name != "Orchestrator"
     )
     assert agents["LUNA MAX QA"]["mode"] == "subagent"
     review_permission = agents["LUNA MAX QA"]["permission"]
@@ -271,7 +271,8 @@ if os.environ.get("FAKE_OPENCODE_FAIL"):
 
 assert sys.argv[1:] == [
     "run", "--dir", str(root), "--agent", "LUNA MAX QA",
-    "--command", "ponytail-review", "--format", "json"
+    "--command", "ponytail-review", "--format", "json",
+    "Return only canonical plain text: path:Lstart[-end]: tag: claim (tag is delete, stdlib, native, yagni, or shrink), or exactly Lean already. Ship. when there are no findings. Do not use Markdown or backticks anywhere, including around identifiers."
 ]
 assert Path.cwd() == root
 assert os.environ["PWD"] == str(root)
@@ -299,15 +300,21 @@ injected = [
     "src/leak.py:L9: shrink: diff --git a/src/leak.py b/src/leak.py",
     "src/leak.py:L10: shrink: @@ -1 +1 @@",
     "src/leak.py:L11: shrink: +print('raw source must stay private')",
+    "src/malformed.py:not-a-line: yagni: reject malformed location",
+    "- \x60src/prose.py:21-22: yagni: reject Markdown prose\x60",
 ]
 if os.environ.get("FAKE_OPENCODE_MUTATION_ONLY"):
     events = [{"type": "text", "part": {"text": "\\n".join(injected)}}]
+elif os.environ.get("FAKE_OPENCODE_CLEAN_ONLY"):
+    events = [{"type": "text", "part": {"text": "\x60Lean already. Ship.\x60"}}]
+elif os.environ.get("FAKE_OPENCODE_NET_ONLY"):
+    events = [{"type": "text", "part": {"text": "\x60net: -2 lines possible.\x60\\n\x60Net removable: ~2 lines.\x60"}}]
 else:
     events = [
         {"type": "step_start", "part": {"type": "step-start"}},
         {"type": "tool_use", "part": {"tool": "read", "state": {"status": "completed", "output": "+API_KEY=" + secret + "private diff " * 70000}}},
         {"type": "text", "part": {"text": "nested progress: reading diff"}},
-        {"type": "text", "part": {"text": "src/example.py:L12-14: shrink: duplicate wrapper. Call helper directly.\\nLean already. Ship.\\nnet: -2 lines possible.\\n" + "\\n".join(injected)}},
+        {"type": "text", "part": {"text": "src/example.py:L12-14: shrink: duplicate wrapper. Call helper directly.\\nL15-16: native: use the platform helper.\\nsrc/example.py:15 \u2014 delete: redundant wrapper. Call helper directly.\\n\x60scripts/example.py:16-18\x60 \u2014 shrink: remove the duplicate wrapper; call the helper.\\n\x60safe/path:167-177: yagni: remove the speculative wrapper.\x60\\nsafe/path:178-179: shrink: reuse \x60identifier\x60 directly.\\nLean already. Ship.\\nnet: -2 lines possible.\\nNet removable: ~2 lines.\\n" + "\\n".join(injected)}},
     ]
 for event in events:
     print(json.dumps(event), flush=True)
@@ -361,8 +368,14 @@ for event in events:
             "command: /ponytail-review\n"
             "boundary: R-M06-20\n"
             "src/example.py:L12-14: shrink: duplicate wrapper. Call helper directly.\n"
+            "L15-16: native: use the platform helper.\n"
+            "src/example.py:15: delete: redundant wrapper. Call helper directly.\n"
+            "scripts/example.py:16-18: shrink: remove the duplicate wrapper; call the helper.\n"
+            "safe/path:167-177: yagni: remove the speculative wrapper.\n"
+            "safe/path:178-179: shrink: reuse identifier directly.\n"
             "Lean already. Ship.\n"
             "net: -2 lines possible.\n"
+            "Net removable: ~2 lines.\n"
         )
         assert "nested progress" not in report.read_text()
         assert "diff source" not in report.read_text()
@@ -378,6 +391,46 @@ for event in events:
             assert parent_check.execute("SELECT value FROM parent_state").fetchall() == [
                 ("live-parent-session",)
             ]
+
+        clean_report = reports / "clean-review.txt"
+        environment["FAKE_OPENCODE_CLEAN_ONLY"] = "1"
+        clean = subprocess.run(
+            [str(ROOT / "scripts/ponytail-review.sh"), "R-ASTRA-29", str(clean_report)],
+            cwd=ROOT,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+        assert "retained sanitized report" in clean.stdout
+        assert clean.stderr == ""
+        assert clean_report.read_text() == (
+            "scope: overengineering only\n"
+            "command: /ponytail-review\n"
+            "boundary: R-ASTRA-29\n"
+            "Lean already. Ship.\n"
+        )
+        environment.pop("FAKE_OPENCODE_CLEAN_ONLY")
+
+        net_report = reports / "net-review.txt"
+        environment["FAKE_OPENCODE_NET_ONLY"] = "1"
+        net_failed = subprocess.run(
+            [str(ROOT / "scripts/ponytail-review.sh"), "R-ASTRA-28", str(net_report)],
+            cwd=ROOT,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert net_failed.returncode == 65
+        assert net_failed.stdout == ""
+        assert net_failed.stderr == (
+            "review returned no allowlisted Ponytail result lines; no report retained\n"
+        )
+        assert not net_report.exists()
+        environment.pop("FAKE_OPENCODE_NET_ONLY")
 
         mutation_report = reports / "mutation-review.txt"
         environment["FAKE_OPENCODE_MUTATION_ONLY"] = "1"

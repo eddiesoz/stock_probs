@@ -28,7 +28,9 @@ and touch simulation as emulated mobile, not physical-mobile evidence.
 ## No-flash theme behavior
 
 On both `/` and `/api/v1/docs`, inspect the external theme initializer in the DOM: it precedes CSS,
-is parser blocking, and has no async/defer/module behavior. Set storage before navigation and assert
-the first observable `data-theme`. Then exercise light, dark, system reset, invalid storage, storage
-failure, reduced motion, and shared persistence through actual controls. A settled screenshot alone
-does not prove first paint.
+is parser blocking, and has no async/defer/module behavior. That loaded-DOM ordering and a post-load
+`data-theme` assertion support the implementation contract but do not observe first paint. For
+first-paint evidence, use a fresh context, set storage in an init script before navigation, observe
+the browser `paint` entries, and record the theme present at `first-paint` without CSP bypass. Then
+exercise light, dark, system reset, invalid storage, storage failure, reduced motion, and shared
+persistence through actual controls. Screenshots prove only their settled state.

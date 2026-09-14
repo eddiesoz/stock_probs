@@ -88,6 +88,7 @@ structured_text="$sandbox/structured-text"
 # wc reports only line counts; allowing that read-only query avoids a denied
 # inventory command without exposing source text or permitting mutation.
 readonly_review_config='{"agent":{"LUNA MAX QA":{"model":"openai/gpt-5.6-luna","variant":"max","permission":{"*":"deny","read":{"*":"allow","*.env*":"deny","**/*credential*":"deny","**/*secret*":"deny"},"edit":"deny","write":"deny","glob":"allow","grep":"allow","bash":{"*":"deny","git diff*":"allow","git rev-parse*":"allow","git status*":"allow","wc -l":"allow","wc -l *":"allow"},"task":"deny","skill":{"*":"deny","ponytail-review":"allow"}}}}}'
+review_prompt='Return only canonical plain text: path:Lstart[-end]: tag: claim (tag is delete, stdlib, native, yagni, or shrink), or exactly Lean already. Ship. when there are no findings. Do not use Markdown or backticks anywhere, including around identifiers.'
 parent_rg="${XDG_CACHE_HOME:-$HOME/.cache}/opencode/bin/rg"
 if [[ -f "$parent_rg" && -x "$parent_rg" && ! -L "$parent_rg" ]]; then
   mkdir -m 700 -p "$sandbox/cache/opencode/bin"
@@ -130,7 +131,7 @@ provider_status=0
   ulimit -f 65536
   run_isolated timeout --signal=TERM --kill-after=10s 300s \
     opencode run --dir "$repo_root" --agent 'LUNA MAX QA' \
-    --command ponytail-review --format json
+    --command ponytail-review --format json "$review_prompt"
 ) >"$raw" 2>"$provider_error" || provider_status=$?
 
 # JSON mode keeps progress, source excerpts, and tool output private while giving
@@ -175,8 +176,10 @@ fi
   exit 65
 }
 
-matches=0
+outcomes=0
 sanitized=$(mktemp "$report_dir/.ponytail-review.XXXXXX")
+backtick=$'\x60'
+em_dash=$'\u2014'
 sensitive_line() {
   local value=$1
   local lower=${value,,}
@@ -199,27 +202,36 @@ raw_diff_body() {
   [[ "$body" =~ $diff ]]
 }
 
+finding_pattern='^(L[0-9]+(-[0-9]+)?|([A-Za-z0-9_.-][A-Za-z0-9_./-]*):L?[0-9]+(-[0-9]+)?):[[:space:]](delete|stdlib|native|yagni|shrink):[[:space:]](.+)$'
+
 {
   printf 'scope: overengineering only\ncommand: /ponytail-review\nboundary: %s\n' "$boundary"
   while IFS= read -r line; do
     line=${line//$'\r'/}
+    candidate=${line//"$backtick"/}
+    candidate=${candidate//" ${em_dash} "/': '}
     body=''
-    if [[ "$line" == 'Lean already. Ship.' ]] \
-      || [[ "$line" =~ ^net:[[:space:]]-[0-9]+[[:space:]]lines[[:space:]]possible\.$ ]]; then
+    outcome=0
+    if [[ "$candidate" == 'Lean already. Ship.' ]]; then
+      outcome=1
+    elif [[ "$candidate" =~ ^net:[[:space:]]-[0-9]+[[:space:]]lines[[:space:]]possible\.$ ]] \
+      || [[ "$candidate" =~ ^Net[[:space:]]removable:[[:space:]]~[0-9]+[[:space:]]lines\.$ ]]; then
       :
-    elif [[ "$line" =~ ^([^[:space:]]+:)?L[0-9]+(-[0-9]+)?:[[:space:]](delete|stdlib|native|yagni|shrink):?[[:space:]](.+)$ ]]; then
-      body=${BASH_REMATCH[4]}
+    elif [[ "$candidate" =~ $finding_pattern ]]; then
+      body=${BASH_REMATCH[6]}
+      outcome=1
     else
       continue
     fi
-    if ! sensitive_line "$line" && { [[ -z "$body" ]] || ! raw_diff_body "$body"; }; then
-      printf '%s\n' "${line:0:4096}"
-      matches=$((matches + 1))
+    if ! sensitive_line "$candidate" \
+      && { [[ -z "$body" ]] || ! raw_diff_body "$body"; }; then
+      printf '%s\n' "${candidate:0:4096}"
+      outcomes=$((outcomes + outcome))
     fi
   done <"$structured_text"
 } >"$sanitized"
 
-[[ $matches -gt 0 ]] || {
+[[ $outcomes -gt 0 ]] || {
   printf 'review returned no allowlisted Ponytail result lines; no report retained\n' >&2
   exit 65
 }

@@ -194,8 +194,58 @@ function newsPayload(symbol, count) {
   };
 }
 
+// Dashboard helpers use test-runner expect, optional status, keyboard opening, and literal source assertions.
 function themeRadio(page, name) {
   return page.locator(".theme-control").getByRole("radio", { name, exact: true });
+}
+
+async function waitForImperativeApp(page) {
+  const status = page.locator("#system-label");
+  if (await status.count()) await expect(status).not.toHaveText("Checking local service");
+}
+
+async function gotoSurface(page, url) {
+  const response = await page.goto(url);
+  await waitForImperativeApp(page);
+  return response;
+}
+
+async function reloadSurface(page) {
+  const response = await page.reload();
+  await waitForImperativeApp(page);
+  return response;
+}
+
+function expectApiOnlyDataRequests(urls) {
+  expect(
+    urls.filter((url) => !new URL(url).pathname.startsWith("/api/v1")),
+    "fetch/XHR traffic, including Next RSC .txt requests, must stay below /api/v1",
+  ).toEqual([]);
+}
+
+function literalThemeOrdering(html) {
+  const theme = '<script src="/assets/theme.js"></script>';
+  const css = '<link rel="stylesheet" href="/assets/app.css"';
+  return {
+    count: html.split(theme).length - 1,
+    beforeCss: html.indexOf(theme) >= 0 && html.indexOf(theme) < html.indexOf(css),
+  };
+}
+
+async function openSettings(page, keyboard = false) {
+  const trigger = page.locator('.settings-trigger[popovertarget="settings-menu"]');
+  const menu = page.locator("#settings-menu.settings-menu[popover]");
+  if (await menu.isHidden()) {
+    if (keyboard) {
+      await trigger.focus();
+      await trigger.press("Enter");
+    } else {
+      await trigger.click();
+    }
+  }
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate((element) => element.matches(":popover-open"))).toBe(true);
+  return menu;
 }
 
 async function attachScreenshot(testInfo, name, locator) {
@@ -205,7 +255,35 @@ async function attachScreenshot(testInfo, name, locator) {
   });
 }
 
+async function settingsGeometry(page) {
+  return page.evaluate(() => {
+    const rectangle = (element) => {
+      const box = element.getBoundingClientRect();
+      return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+    };
+    const trigger = rectangle(document.querySelector(".settings-trigger"));
+    const menuElement = document.querySelector("#settings-menu.settings-menu");
+    const menu = rectangle(menuElement);
+    const focusedElement = document.activeElement;
+    const focused = rectangle(focusedElement);
+    return {
+      scrollY,
+      viewport: { width: innerWidth, height: innerHeight, documentHeight: document.documentElement.scrollHeight },
+      positionAnchor: getComputedStyle(menuElement).positionAnchor,
+      trigger,
+      menu,
+      focused: {
+        ...focused,
+        inSettings: Boolean(focusedElement.closest("#settings-menu")),
+        overlappedByMenu: menu.left < focused.right && menu.right > focused.left
+          && menu.top < focused.bottom && menu.bottom > focused.top,
+      },
+    };
+  });
+}
+
 async function expectVisibleThemeControl(page, width) {
+  await openSettings(page);
   const control = page.locator(".theme-control");
   await expect(control).toBeVisible();
   await expect(control.locator("select")).toHaveCount(0);
@@ -221,7 +299,7 @@ async function expectVisibleThemeControl(page, width) {
   }
 
   const boxes = await page.locator(
-    ".masthead .brand-lockup, .masthead .section-nav a, .masthead .theme-control, .masthead-primary > div:first-child",
+    ".masthead .brand-lockup, .masthead .section-nav a, .masthead .settings-trigger, .masthead-primary > div:first-child",
   ).evaluateAll((elements) => elements.filter((element) => {
     const style = getComputedStyle(element);
     return style.display !== "none" && style.visibility !== "hidden";
@@ -342,7 +420,7 @@ test("forecast journey exposes complete text equivalents and audit states", asyn
   browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/forecasts", status: 502 });
   browserDiagnostics.expectHttpFailures({ method: "GET", path: "/api/v1/instruments", status: 502 });
 
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await expect(page.getByText("No forecast loaded")).toBeVisible();
   if (testInfo.project.name.startsWith("desktop")) {
     await expect(page.getByText("No audit events match these filters.")).toBeVisible();
@@ -368,12 +446,12 @@ test("forecast journey exposes complete text equivalents and audit states", asyn
   await page.getByLabel("Yahoo Finance symbol").fill("FAIL");
   await expect(page.locator("#lookup-status")).toContainText("Identity lookup unavailable");
   await page.getByRole("button", { name: "Run forecast" }).click();
-  await expect(page.getByRole("alert")).toContainText("Deterministic provider failure");
+  await expect(page.locator("#result-content .error-panel[role=alert]")).toContainText("Deterministic provider failure");
   await expect(page.locator("#history-content tbody tr").first()).toContainText("failed");
   await expectAxeClean(page);
 
   expect(applicationRequests.length).toBeGreaterThan(0);
-  expect(applicationRequests.every((url) => new URL(url).pathname.startsWith("/api/v1"))).toBe(true);
+  expectApiOnlyDataRequests(applicationRequests);
 });
 
 test("M03 stock and ETF contracts remain complete, textual, and API-only", async ({
@@ -384,7 +462,7 @@ test("M03 stock and ETF contracts remain complete, textual, and API-only", async
     { symbol: "ACDC-D", assetType: "stock", company: "ProFrac Holding Corp." },
     { symbol: "SPY-D", assetType: "etf", company: "SPDR S&P 500 ETF Trust" },
   ]) {
-    await page.goto("/");
+    await gotoSurface(page, "/");
     const payload = await submitUiForecast(page, instrument.symbol, instrument.assetType);
     expectM03Payload(payload, instrument.assetType);
     await expectM03Presentation(page, instrument.company, instrument.assetType);
@@ -400,14 +478,14 @@ test("M03 stock and ETF contracts remain complete, textual, and API-only", async
   }
 
   expect(applicationRequests.length).toBeGreaterThan(0);
-  expect(applicationRequests.every((url) => new URL(url).pathname.startsWith("/api/v1"))).toBe(true);
+  expectApiOnlyDataRequests(applicationRequests);
   await expectAxeClean(page);
 });
 
 test("result summaries keep complete values in native disclosures and semantic surfaces", async ({
   page,
 }, testInfo) => {
-  await page.goto("/");
+  await gotoSurface(page, "/");
   const payload = await submitUiForecast(page, testInfo.project.name.startsWith("desktop") ? "ACDC-D" : "ACDC-M");
   const result = page.locator("#result-content");
   const disclosures = result.locator(".forecast-card details");
@@ -434,6 +512,7 @@ test("result summaries keep complete values in native disclosures and semantic s
   await expect(firstDisclosure).toHaveJSProperty("open", true);
 
   const palettes = {};
+  await openSettings(page);
   for (const theme of ["Light", "Dark"]) {
     await themeRadio(page, theme).click();
     palettes[theme.toLowerCase()] = await page.evaluate(() => {
@@ -486,7 +565,7 @@ test("M03 stale, missing, out-of-session, and failed states are explicit", async
 }) => {
   browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/forecasts", status: 502 });
   browserDiagnostics.expectHttpFailures({ method: "GET", path: "/api/v1/instruments", status: 502 });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await submitUiForecast(page, "STALE");
   await expect(page.locator("#quality-badge")).toContainText("stale");
   await expect(page.locator(".provenance")).toContainText(/latest completed intraday bar|applicable close elapsed/);
@@ -503,7 +582,7 @@ test("M03 stale, missing, out-of-session, and failed states are explicit", async
     payload.input.provider_metadata.missing_intraday_intervals = 2;
     await route.fulfill({ response, json: payload });
   });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await submitUiForecast(page, "SPY-M", "etf");
   await expect(page.locator("#quality-badge")).toContainText("stale");
   await expect(page.locator(".missing-details")).toContainText("Missing intraday intervals");
@@ -511,7 +590,7 @@ test("M03 stale, missing, out-of-session, and failed states are explicit", async
   await expect(page.locator(".provenance")).toContainText("provider data contains 2 missing intraday bars");
   await page.unroute("**/api/v1/forecasts");
 
-  await page.goto(outOfSessionApplication.url);
+  await gotoSurface(page, outOfSessionApplication.url);
   const outOfSession = await submitUiForecast(page, "ACDC-D");
   expect(outOfSession.input.session_state_at_request).toBe("post_session");
   await expect(page.locator('[data-horizon="completed_5m_to_close"]')).toContainText("Post session");
@@ -519,11 +598,11 @@ test("M03 stale, missing, out-of-session, and failed states are explicit", async
     "next scheduled session close",
   );
 
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await page.getByLabel("Yahoo Finance symbol").fill("FAIL");
   await expect(page.locator("#lookup-status")).toContainText("Identity lookup unavailable");
   await page.getByRole("button", { name: "Run forecast" }).click();
-  const failure = page.getByRole("alert");
+  const failure = page.locator("#result-content .error-panel[role=alert]");
   await expect(failure).toHaveCount(1);
   await expect(failure).toContainText("Deterministic provider failure");
   await expect(failure).toContainText("Error code: provider_unavailable");
@@ -545,7 +624,7 @@ test("managed backup network contract and error UI stay storage-neutral", async 
     { method: "GET", path: "/api/v1/instruments", status: 502 },
     { method: "POST", path: "/api/v1/operations/backups", status: 500 },
   );
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await expect(page.locator("#system-label")).toContainText("backup available");
 
   const artifactName = `browser-${testInfo.project.name}.spbackup`;
@@ -617,11 +696,11 @@ test("managed backup network contract and error UI stay storage-neutral", async 
   await page.getByLabel("Yahoo Finance symbol").fill("FAIL");
   await expect(page.locator("#lookup-status")).toContainText("Identity lookup unavailable");
   await page.getByRole("button", { name: "Run forecast" }).click();
-  const errorAlert = page.getByRole("alert");
+  const errorAlert = page.locator("#result-content .error-panel[role=alert]");
   await expect(errorAlert).toContainText("Deterministic provider failure");
   expectStorageNeutral("forecast error UI", await errorAlert.innerText());
 
-  await page.goto(unexpectedFailureApplication.url);
+  await gotoSurface(page, unexpectedFailureApplication.url);
   const unexpected = await page.evaluate(async () => {
     const response = await fetch("/api/v1/operations/backups", {
       method: "POST",
@@ -646,13 +725,13 @@ test("managed backup network contract and error UI stay storage-neutral", async 
   expectStorageNeutral("unexpected failure response", unexpected.text);
 
   expect(applicationRequests.length).toBeGreaterThanOrEqual(exchanges.length);
-  expect(applicationRequests.every((url) => new URL(url).pathname.startsWith("/api/v1"))).toBe(true);
+  expectApiOnlyDataRequests(applicationRequests);
 });
 
 test("persisted repeated run relation survives an application restart", async ({ page, restartableApplication }) => {
   // Each project receives an isolated runtime, so the canonical fixture symbol is deterministic.
   const symbol = "ACDC";
-  await page.goto(restartableApplication.url);
+  await gotoSurface(page, restartableApplication.url);
   for (let request = 0; request < 2; request += 1) {
     const responseStatus = await page.evaluate(async (submittedSymbol) => {
       const response = await fetch("/api/v1/forecasts", {
@@ -664,12 +743,12 @@ test("persisted repeated run relation survives an application restart", async ({
     }, symbol);
     expect(responseStatus).toBe(201);
   }
-  await page.reload();
+  await reloadSurface(page);
   const repeatedBeforeRestart = page.locator("#history-content tbody tr").filter({ hasText: "repeated" });
   await expect(repeatedBeforeRestart).toContainText(/Reused immutable run #\d+/);
 
   await restartableApplication.restart();
-  await page.goto(restartableApplication.url);
+  await gotoSurface(page, restartableApplication.url);
   await page.getByLabel("Find symbol").fill(symbol);
   await page.getByLabel("Status", { exact: true }).selectOption("repeated");
   await page.getByRole("button", { name: "Filter ledger" }).click();
@@ -684,7 +763,7 @@ test("persisted repeated run relation survives an application restart", async ({
 });
 
 test("dashboard is keyboard-operable, responsive, and axe-clean", async ({ page }) => {
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to forecasts" })).toBeFocused();
   await page.getByRole("link", { name: "Skip to forecasts" }).press("Enter");
@@ -699,8 +778,27 @@ test("dashboard is keyboard-operable, responsive, and axe-clean", async ({ page 
   await expectAxeClean(page);
 });
 
+test("Next framework assets stay same-origin while fetch and XHR stay API-only", async ({
+  page,
+  applicationRequests,
+}) => {
+  const requests = [];
+  page.on("request", (request) => requests.push(request.url()));
+  await gotoSurface(page, "/");
+  const origin = new URL(page.url()).origin;
+  await gotoSurface(page, "/api/v1/docs");
+
+  const framework = requests.filter((url) => new URL(url).pathname.startsWith("/_next/"));
+  expect(framework.length).toBeGreaterThan(0);
+  expect(framework.every((url) => (
+    new URL(url).origin === origin && new URL(url).pathname.startsWith("/_next/static/")
+  ))).toBe(true);
+  expect(requests.filter((url) => new URL(url).pathname.endsWith(".txt"))).toEqual([]);
+  expectApiOnlyDataRequests(applicationRequests);
+});
+
 test("company lookup is bounded, race-safe, keyboard-selectable, and confirms identity", async ({ page, applicationRequests }) => {
-  await page.goto("/");
+  await gotoSurface(page, "/");
   const symbol = page.getByLabel("Company name or Yahoo Finance symbol");
   await symbol.fill("ProFrac");
   await expect(page.getByRole("option", { name: /ProFrac Holding Corp/ })).toBeVisible();
@@ -743,7 +841,7 @@ test("a superseded lookup is aborted once and cannot race a direct-symbol foreca
     path: "/api/v1/instruments",
     count: 2,
   });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   const symbol = page.getByLabel("Company name or Yahoo Finance symbol");
   await symbol.fill("ProFrac");
   await expect(page.getByText("Looking up “ProFrac”…")).toBeVisible();
@@ -766,7 +864,7 @@ test("a superseded lookup is aborted once and cannot race a direct-symbol foreca
 });
 
 test("history filters and immutable saved reopen remain usable", async ({ page }, testInfo) => {
-  await page.goto("/");
+  await gotoSurface(page, "/");
   const symbol = testInfo.project.name.startsWith("desktop") ? "SPY-D" : "SPY-M";
   await page.getByLabel("Yahoo Finance symbol").fill(symbol);
   await page.getByLabel("ETF").check();
@@ -788,7 +886,7 @@ test("failed event reopen shows the recorded request identity", async ({
   browserDiagnostics,
 }) => {
   browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/forecasts", status: 502 });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await expect(page.locator("#history-content")).toHaveAttribute("aria-busy", "false");
   await page.getByLabel("Yahoo Finance symbol").fill("FAIL");
   const refreshedHistory = page.waitForResponse((response) => (
@@ -834,7 +932,7 @@ test("only the latest saved reopen may replace its explicit loading state", asyn
       markOlderSettled();
     }
   });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   const history = page.locator("#history-content tbody");
   await history.locator("tr").filter({ hasText: `New request #${older.event.id}` }).getByRole("button", { name: "Reopen saved forecast" }).click();
   await olderStarted;
@@ -867,7 +965,7 @@ test("saved results, append-only corrections, and fresh cutoff analysis stay dis
     expect(response.ok()).toBe(true);
   }
 
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await page.getByLabel("Find symbol").fill(symbol);
   await page.getByRole("button", { name: "Filter ledger" }).click();
   const historyRow = page.locator("#history-content tbody tr").first();
@@ -936,7 +1034,7 @@ test("saved results, append-only corrections, and fresh cutoff analysis stay dis
   await filter.focus();
   await filter.press("Enter");
   await expect(page.locator("#history-content tbody tr").first()).toContainText("Fresh cutoff analysis");
-  expect(applicationRequests.every((url) => new URL(url).pathname.startsWith("/api/v1"))).toBe(true);
+  expectApiOnlyDataRequests(applicationRequests);
   await expectAxeClean(page);
 });
 
@@ -960,7 +1058,7 @@ test("fresh-analysis failure keeps source context and refreshes the ledger", asy
   browserDiagnostics.expectHttpFailures({
     method: "POST", path: `/api/v1/history/${created.event.id}/reconstructions`, status: 502,
   });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await expect(page.locator("#history-content")).toHaveAttribute("aria-busy", "false");
   const beforeFailure = historyRequests;
   await page.getByRole("button", { name: "Run fresh cutoff analysis" }).first().click();
@@ -988,7 +1086,7 @@ test("390px result metadata keeps long values intact without horizontal overflow
     Object.assign(payload.input, longValues);
     await route.fulfill({ response, json: payload });
   });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await submitUiForecast(page, "ACDC-M");
   await page.locator(".instrument-details summary").click();
   for (const value of Object.values(longValues)) {
@@ -1012,7 +1110,7 @@ test("390px result metadata keeps long values intact without horizontal overflow
 });
 
 test("mobile threshold labels remain separate at 360px and 390px", async ({ page }) => {
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await submitUiForecast(page, "ACDC-D");
   for (const width of [360, 390]) {
     await page.setViewportSize({ width, height: 844 });
@@ -1042,7 +1140,7 @@ test("mobile advanced ledger filters retain every value and history actions alig
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.request.post("/api/v1/forecasts", { data: { symbol: "ACDC-M", asset_type: "stock" } });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   const advanced = page.locator("#history-form details");
   await expect(advanced).toHaveJSProperty("open", false);
   const advancedSummary = advanced.locator("summary");
@@ -1113,7 +1211,7 @@ test("mobile advanced ledger filters retain every value and history actions alig
 test("768px ledger cards expose every label and action in light and dark", async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.request.post("/api/v1/forecasts", { data: { symbol: "ACDC-D", asset_type: "stock" } });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await expect(page.locator("#history-content")).toHaveAttribute("aria-busy", "false");
 
   const advanced = page.locator(".advanced-filters");
@@ -1129,6 +1227,7 @@ test("768px ledger cards expose every label and action in light and dark", async
     "Request / run", "Instrument", "Type / venue", "Analysis",
     "Status", "Model / evidence", "Submitted", "Actions",
   ];
+  await openSettings(page);
   for (const theme of ["Light", "Dark"]) {
     await themeRadio(page, theme).click();
     const layout = await page.locator("#history-content tbody tr").first().evaluate((row) => ({
@@ -1163,7 +1262,7 @@ test("768px ledger cards expose every label and action in light and dark", async
 test("filtered CSV and JSON downloads are bounded and parseable", async ({ page }, testInfo) => {
   const symbol = testInfo.project.name.startsWith("desktop") ? "ACDC-D" : "ACDC-M";
   await page.request.post("/api/v1/forecasts", { data: { symbol, asset_type: "stock" } });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await page.getByLabel("Find symbol").fill(symbol);
   await page.getByRole("button", { name: "Filter ledger" }).click();
 
@@ -1196,7 +1295,7 @@ test("history pagination sends only bounded API filters", async ({ page, applica
       data: { symbol: "FAIL", asset_type: "stock" },
     });
   }
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await page.getByLabel("Status", { exact: true }).selectOption("failed");
   await page.locator(".advanced-filters summary").click();
   await page.getByLabel("Rows per page").selectOption("10");
@@ -1260,7 +1359,7 @@ test("latest ledger filters win when delayed responses finish in reverse order",
     await route.fulfill({ response });
     markOlderSettled();
   });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await page.getByLabel("Find symbol").fill("ACDC-D");
   await page.getByRole("button", { name: "Filter ledger" }).click();
   await olderStarted;
@@ -1277,7 +1376,7 @@ test("latest ledger filters win when delayed responses finish in reverse order",
 });
 
 test("validation, loading, and stale states remain explicit", async ({ page }) => {
-  await page.goto("/");
+  await gotoSurface(page, "/");
   const symbol = page.getByLabel("Yahoo Finance symbol");
   await symbol.fill("bad symbol");
   await page.getByRole("button", { name: "Run forecast" }).click();
@@ -1313,23 +1412,157 @@ test("validation, loading, and stale states remain explicit", async ({ page }) =
   await expectAxeClean(page);
 });
 
-test("theme radios and masthead remain usable at every agreed viewport", async ({ page }, testInfo) => {
-  const widths = testInfo.project.name.startsWith("desktop") ? [1440] : [390, 320];
+test("native settings popover is hidden, responsive, persistent, keyboard-operable, and axe-clean", async ({ page }, testInfo) => {
+  const widths = testInfo.project.name.startsWith("desktop") ? [820] : [390, 320];
+  const geometry = [];
   for (const path of ["/", "/api/v1/docs"]) {
     for (const width of widths) {
-      await page.setViewportSize({ width, height: width === 1440 ? 1000 : 844 });
-      await page.goto(path);
+      await page.setViewportSize({ width, height: 844 });
+      await gotoSurface(page, path);
+      const trigger = page.locator(".settings-trigger");
+      const menu = page.locator("#settings-menu.settings-menu");
+      await expect(trigger).toHaveAttribute("popovertarget", "settings-menu");
+      await expect(menu).toHaveAttribute("popover", "");
+      await expect(menu).toBeHidden();
+      await expect(page.locator(".theme-control")).toBeHidden();
+      for (const name of ["Light", "Dark", "System"]) await expect(themeRadio(page, name)).toBeHidden();
+      await expect(page.locator(".theme-control select")).toHaveCount(0);
+      if (path === "/" && width === 320) {
+        await trigger.evaluate((element) => {
+          const scrollIntoView = element.scrollIntoView.bind(element);
+          element.scrollIntoView = (options) => {
+            element.dataset.scrollCalls = String(Number(element.dataset.scrollCalls || 0) + 1);
+            scrollIntoView(options);
+          };
+        });
+      }
+      const triggerBox = await trigger.boundingBox();
+      expect(triggerBox.width, `${path} ${width}px Settings target was too narrow`).toBeGreaterThanOrEqual(44);
+      expect(triggerBox.height, `${path} ${width}px Settings target was too short`).toBeGreaterThanOrEqual(44);
+
+      await openSettings(page, true);
       await expectVisibleThemeControl(page, width);
-      const dimensions = await page.evaluate(() => ({
+      const dimensions = await menu.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          left: box.left, right: box.right, top: box.top, bottom: box.bottom,
+          document: document.documentElement.scrollWidth,
+          viewport: document.documentElement.clientWidth,
+          viewportHeight: window.innerHeight,
+        };
+      });
+      expect(dimensions.left, `${path} settings escaped the left edge at ${width}px`).toBeGreaterThanOrEqual(0);
+      expect(dimensions.top, `${path} settings escaped the top edge at ${width}px`).toBeGreaterThanOrEqual(0);
+      expect(dimensions.right, `${path} settings escaped the right edge at ${width}px`).toBeLessThanOrEqual(dimensions.viewport);
+      expect(dimensions.bottom, `${path} settings escaped the bottom edge at ${width}px`).toBeLessThanOrEqual(dimensions.viewportHeight);
+      expect(dimensions.document, `${path} overflowed at ${width}px`).toBeLessThanOrEqual(dimensions.viewport);
+      await expectAxeClean(page);
+
+      let focusedThemeRadio = await page.locator(":focus").evaluate((element) => Boolean(element.closest(".theme-control")));
+      for (let tabs = 0; !focusedThemeRadio && tabs < 2; tabs += 1) {
+        await page.keyboard.press("Tab");
+        focusedThemeRadio = await page.locator(":focus").evaluate((element) => Boolean(element.closest(".theme-control")));
+      }
+      expect(focusedThemeRadio, `${path} keyboard entry skipped the theme radios at ${width}px`).toBe(true);
+      if (path === "/" && width === 320) {
+        const entryScrollCalls = await trigger.getAttribute("data-scroll-calls");
+        await page.keyboard.press("ArrowRight");
+        await expect(page.locator(".theme-control").getByRole("radio", { checked: true })).toBeFocused();
+        expect(await trigger.getAttribute("data-scroll-calls"), "radio-to-radio focus scrolled the anchor")
+          .toBe(entryScrollCalls);
+      }
+      await page.keyboard.press("Tab");
+      expect(await page.locator(":focus").evaluate((element) => Boolean(element.closest("#settings-menu")))).toBe(false);
+      await expect(menu).toBeVisible();
+      const beforeScroll = await settingsGeometry(page);
+      expect(beforeScroll.positionAnchor, `${path} open settings used its fixed fallback at ${width}px`).toBe("--settings-trigger");
+      expect(beforeScroll.focused.overlappedByMenu, `${path} settings covered the next focused control at ${width}px`).toBe(false);
+      await testInfo.attach(`${path === "/" ? "dashboard" : "api-docs"}-settings-${width}-before-scroll.png`, {
+        body: await page.screenshot({ animations: "disabled" }), contentType: "image/png",
+      });
+      await page.evaluate(({ exactMobileSequence }) => window.scrollBy(
+        0,
+        exactMobileSequence ? 200 : Math.min(240, document.documentElement.scrollHeight - innerHeight - scrollY),
+      ), { exactMobileSequence: path === "/" && width === 320 });
+      const afterScroll = await settingsGeometry(page);
+      const triggerMovement = afterScroll.trigger.top - beforeScroll.trigger.top;
+      const menuMovement = afterScroll.menu.top - beforeScroll.menu.top;
+      expect(afterScroll.positionAnchor, `${path} settings detached after scrolling at ${width}px`).toBe("--settings-trigger");
+      if (afterScroll.scrollY > beforeScroll.scrollY) {
+        expect(menuMovement, `${path} settings stayed at its fixed fallback after scrolling at ${width}px`).toBeCloseTo(triggerMovement, 0);
+      } else {
+        expect(beforeScroll.viewport.documentHeight, `${path} unexpectedly had no scroll range at ${width}px`)
+          .toBeLessThanOrEqual(beforeScroll.viewport.height);
+        expect({ triggerMovement, menuMovement }).toEqual({ triggerMovement: 0, menuMovement: 0 });
+      }
+      expect(afterScroll.focused.inSettings, `${path} focus returned to settings at ${width}px`).toBe(false);
+      expect(afterScroll.focused.overlappedByMenu, `${path} scrolled settings covered the focused control at ${width}px`).toBe(false);
+      geometry.push({ path, width, beforeScroll, afterScroll });
+      await testInfo.attach(`${path === "/" ? "dashboard" : "api-docs"}-settings-${width}-after-scroll.png`, {
+        body: await page.screenshot({ animations: "disabled" }), contentType: "image/png",
+      });
+
+      if (path === "/" && width === 320) {
+        expect(afterScroll.scrollY - beforeScroll.scrollY, "dashboard did not scroll meaningfully after Tab")
+          .toBeGreaterThanOrEqual(100);
+        await expect(page.getByLabel("Company name or Yahoo Finance symbol")).toBeFocused();
+        await page.keyboard.press("Shift+Tab");
+        await expect(page.locator(".theme-control").getByRole("radio", { checked: true })).toBeFocused();
+        await expect(page.locator(":focus")).toBeInViewport({ ratio: 1 });
+        await page.evaluate(() => window.scrollTo(0, 200));
+      }
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+      expect(await page.locator(":focus").evaluate((element) => Boolean(element.closest("#settings-menu")))).toBe(false);
+      if (path === "/" && width === 320) {
+        await expect(trigger).toBeFocused();
+        const restoredTrigger = await trigger.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return { top: box.top, bottom: box.bottom, viewportHeight: innerHeight };
+        });
+        expect(restoredTrigger.top, "restored Settings trigger was above the viewport").toBeGreaterThanOrEqual(0);
+        expect(restoredTrigger.bottom, "restored Settings trigger was below the viewport")
+          .toBeLessThanOrEqual(restoredTrigger.viewportHeight);
+      }
+
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await openSettings(page, true);
+      await themeRadio(page, "Dark").click();
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+      await expect(trigger).toBeFocused();
+
+      await reloadSurface(page);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+      await expect(page.locator(".theme-control")).toBeHidden();
+      await openSettings(page, true);
+      await expect(themeRadio(page, "Dark")).toBeChecked();
+      const dismissPoint = await menu.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return [[1, 1], [innerWidth - 1, 1], [1, innerHeight - 1], [innerWidth - 1, innerHeight - 1]]
+          .find(([x, y]) => x < box.left || x > box.right || y < box.top || y > box.bottom);
+      });
+      expect(dismissPoint, `${path} settings left no light-dismiss target at ${width}px`).toBeDefined();
+      await page.mouse.click(...dismissPoint);
+      await expect(menu).toBeHidden();
+      await page.keyboard.press("Tab");
+      const restoredFocus = page.locator(":focus");
+      await expect(restoredFocus).toBeVisible();
+      expect(await restoredFocus.evaluate((element) => element.closest("#settings-menu") === null)).toBe(true);
+      const persistedDimensions = await page.evaluate(() => ({
         document: document.documentElement.scrollWidth,
         viewport: document.documentElement.clientWidth,
       }));
-      expect(dimensions.document, `${path} overflowed at ${width}px`).toBeLessThanOrEqual(dimensions.viewport);
+      expect(persistedDimensions.document, `${path} overflowed after dismissal at ${width}px`).toBeLessThanOrEqual(persistedDimensions.viewport);
       if (width === 390) {
+        await openSettings(page);
         await attachScreenshot(testInfo, `${path === "/" ? "dashboard" : "api-docs"}-theme-390.png`, page.locator(".masthead"));
       }
     }
   }
+  await testInfo.attach("settings-anchor-geometry.json", {
+    body: Buffer.from(JSON.stringify(geometry, null, 2)), contentType: "application/json",
+  });
 });
 
 test("theme initializes before CSS and persists light dark and system choices on both pages", async ({
@@ -1337,36 +1570,43 @@ test("theme initializes before CSS and persists light dark and system choices on
   applicationRequests,
 }, testInfo) => {
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await page.evaluate(() => localStorage.setItem("stock-probs.theme", "light"));
-  const dashboardResponse = await page.goto("/");
+  const dashboardResponse = await gotoSurface(page, "/");
+  const dashboardHtml = await dashboardResponse.text();
   const csp = (await dashboardResponse.headers())["content-security-policy"];
-  expect(csp).toBe("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+  expect(csp).toMatch(/^default-src 'self'; script-src 'self'(?: 'sha256-[A-Za-z0-9+/]+=*')+; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'$/);
+  expect(csp).not.toMatch(/'unsafe-(?:eval|inline)'/);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  const ordering = await page.evaluate(() => {
-    const theme = document.querySelector('script[src="/assets/theme.js"]');
-    const css = document.querySelector('link[href="/assets/app.css"]');
-    return {
-      beforeCss: Boolean(theme.compareDocumentPosition(css) & Node.DOCUMENT_POSITION_FOLLOWING),
-      async: theme.async,
-      defer: theme.defer,
-      type: theme.type,
-      firstPaintTheme: document.documentElement.dataset.theme,
-    };
-  });
+  const ordering = {
+    ...await page.evaluate(() => {
+      const theme = document.querySelector('script[src="/assets/theme.js"]');
+      return {
+        async: theme.async,
+        defer: theme.defer,
+        type: theme.type,
+        firstPaintTheme: document.documentElement.dataset.theme,
+      };
+    }),
+    beforeCss: literalThemeOrdering(dashboardHtml).beforeCss,
+  };
+  expect(literalThemeOrdering(dashboardHtml).count).toBe(1);
   expect(ordering).toEqual({ beforeCss: true, async: false, defer: false, type: "", firstPaintTheme: "light" });
+  await openSettings(page);
   const darkTheme = themeRadio(page, "Dark");
   await darkTheme.click();
   await expect(darkTheme).toBeChecked();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
   expect(await page.evaluate(() => localStorage.getItem("stock-probs.theme"))).toBe("dark");
-  await page.reload();
+  await reloadSurface(page);
+  await openSettings(page);
   await expect(darkTheme).toBeChecked();
   await darkTheme.press("ArrowLeft");
   await expect(themeRadio(page, "Light")).toBeChecked();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  await page.reload();
+  await reloadSurface(page);
+  await openSettings(page);
   await expect(themeRadio(page, "Light")).toBeChecked();
   await themeRadio(page, "Light").press("ArrowRight");
   await expect(darkTheme).toBeChecked();
@@ -1381,12 +1621,16 @@ test("theme initializes before CSS and persists light dark and system choices on
   await expect(themeRadio(page, "System")).toBeChecked();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   expect(await page.evaluate(() => localStorage.getItem("stock-probs.theme"))).toBeNull();
-  await page.reload();
+  await reloadSurface(page);
+  await openSettings(page);
   await expect(themeRadio(page, "System")).toBeChecked();
   const dashboardAxe = await expectAxeClean(page);
 
-  await page.goto("/api/v1/docs");
+  const docsResponse = await gotoSurface(page, "/api/v1/docs");
+  const docsHtml = await docsResponse.text();
+  expect(literalThemeOrdering(docsHtml)).toEqual({ count: 1, beforeCss: true });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await openSettings(page);
   await themeRadio(page, "Light").click();
   await expect(themeRadio(page, "Light")).toBeChecked();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -1395,7 +1639,7 @@ test("theme initializes before CSS and persists light dark and system choices on
   expect(await page.locator(".search-panel").evaluate((panel) => getComputedStyle(panel, "::before").content)).toBe("none");
   expect((await page.locator('script[src="/assets/theme.js"]').getAttribute("defer"))).toBeNull();
   await page.evaluate(() => localStorage.setItem("stock-probs.theme", "invalid"));
-  await page.reload();
+  await reloadSurface(page);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   expect(await page.evaluate(() => localStorage.getItem("stock-probs.theme"))).toBeNull();
   const darkDocsAxe = await expectAxeClean(page);
@@ -1418,8 +1662,9 @@ test("theme falls back to the system when storage is invalid or unavailable", as
       removeItem: { value: () => { throw new DOMException("disabled"); } },
     });
   });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await openSettings(page);
   await themeRadio(page, "Light").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expectAxeClean(page);
@@ -1438,10 +1683,11 @@ test("news disclosure is lazy bounded safe and separate from immutable evidence"
     if (limit === 5) payload.items[0].url = "http://unsafe.example/news";
     await route.fulfill({ status: 200, contentType: "application/json", json: payload });
   });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await page.getByLabel("Company name or Yahoo Finance symbol").fill("ProFrac");
   await expect(page.getByRole("option", { name: /ProFrac Holding Corp/ })).toBeVisible();
   expect(requestedLimits).toEqual([]);
+  await openSettings(page);
   await themeRadio(page, "Dark").click();
   expect(requestedLimits).toEqual([]);
   await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
@@ -1475,7 +1721,7 @@ test("news disclosure is lazy bounded safe and separate from immutable evidence"
   await page.getByRole("button", { name: "Reopen saved forecast" }).first().click();
   await expect(page.getByText("Load current headlines for this symbol", { exact: true })).toBeVisible();
   expect(requestedLimits).toEqual([5, 10]);
-  expect(applicationRequests.every((url) => new URL(url).pathname.startsWith("/api/v1"))).toBe(true);
+  expectApiOnlyDataRequests(applicationRequests);
   const axe = await expectAxeClean(page);
   await testInfo.attach("m09-news-axe.json", {
     body: Buffer.from(JSON.stringify(axe, null, 2)), contentType: "application/json",
@@ -1506,7 +1752,7 @@ test("news renders empty partial stale failure busy unreachable and superseded s
     { method: "GET", path: "/api/v1/news", status: 502 },
     { method: "GET", path: "/api/v1/news", status: 503 },
   );
-  await page.goto("/");
+  await gotoSurface(page, "/");
   const run = async (state) => {
     mode = state;
     await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
@@ -1571,7 +1817,7 @@ test("news renders empty partial stale failure busy unreachable and superseded s
 });
 
 test("a stalled headline request has one finite timeout and manual retry", async ({ page }) => {
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await page.getByLabel("Yahoo Finance symbol").fill("ACDC-D");
   await page.getByRole("button", { name: "Run forecast" }).click();
   await page.evaluate(() => {
@@ -1597,7 +1843,7 @@ test("M04 editorial dashboard and horizon visualization match reviewed compositi
   page,
   applicationRequests,
 }, testInfo) => {
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await expect(page.locator("#system-label")).toContainText("Local service ready");
   await attachScreenshot(testInfo, "forecast-workbench.png", page.locator(".hero"));
 
@@ -1670,7 +1916,7 @@ test("M04 editorial dashboard and horizon visualization match reviewed compositi
   const filteredRow = page.locator("#history-content tbody tr").first();
   await expect(filteredRow).toContainText("ProFrac Holding Corp.");
   await expect(filteredRow).toContainText(/2 horizons|evaluation Available/);
-  expect(applicationRequests.every((url) => new URL(url).pathname.startsWith("/api/v1"))).toBe(true);
+  expectApiOnlyDataRequests(applicationRequests);
   await expectAxeClean(page);
 });
 
@@ -1679,7 +1925,7 @@ test("R-M04-21/22 exact 1024 query heading and 360 loading state remain separate
 }, testInfo) => {
   if (testInfo.project.name.startsWith("desktop")) {
     await page.setViewportSize({ width: 1024, height: 900 });
-    await page.goto("/");
+    await gotoSurface(page, "/");
     await expect(page.locator("#system-label")).toContainText("Local service ready");
     const label = page.locator(".symbol-field label");
     const index = page.locator(".symbol-field .field-index");
@@ -1699,7 +1945,7 @@ test("R-M04-21/22 exact 1024 query heading and 360 loading state remain separate
     await forecastRelease;
     await route.continue();
   });
-  await page.goto("/");
+  await gotoSurface(page, "/");
   await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-M");
   await page.getByRole("button", { name: "Run forecast" }).click();
   await expect(page.locator("#quality-badge")).toHaveText("Calculating");
@@ -1732,7 +1978,7 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
 }, testInfo) => {
   for (const width of [360, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: width === 360 ? 800 : 900 });
-    await page.goto("/");
+    await gotoSurface(page, "/");
     const dimensions = await page.evaluate(() => ({
       document: document.documentElement.scrollWidth,
       viewport: document.documentElement.clientWidth,
@@ -1759,7 +2005,9 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
   await expect(page.locator("#result-content")).not.toHaveClass(/loading/);
   const authoredRatios = await verifyAuthoredContrastStates(page);
   await expectAxeClean(page);
+  await openSettings(page);
   await themeRadio(page, "Dark").click();
+  await page.keyboard.press("Escape");
   await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Filter ledger" }).focus();
   await expect(page.getByRole("button", { name: "Filter ledger" })).toBeFocused();
@@ -1792,7 +2040,10 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
   const printSurfaces = {};
   for (const theme of ["light", "dark"]) {
     await page.emulateMedia({ media: "screen", forcedColors: "none", reducedMotion: "reduce" });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await openSettings(page);
     await themeRadio(page, theme === "light" ? "Light" : "Dark").click();
+    await page.keyboard.press("Escape");
     await page.emulateMedia({ media: "print", forcedColors: "none", reducedMotion: "reduce" });
     printSurfaces[theme] = await page.evaluate(() => Object.fromEntries([
       ".search-panel", ".horizon-comparison", ".tail-figure", ".history-table th",

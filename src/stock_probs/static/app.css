@@ -17,7 +17,6 @@ color-scheme:dark;--canvas:#171b19;--panel:#242c28;--text:#eee9df;
 --shadow:0 22px 55px rgba(0,0,0,.32)
 }
 
-/* Flat semantic surfaces keep theme, print, and forced-color behavior explicit. */
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;min-width:320px;min-height:100vh;background:var(--canvas)}
@@ -32,8 +31,13 @@ a{color:inherit}
 .masthead{max-width:1440px;margin:0 auto;padding:1rem clamp(1rem,4vw,3.5rem) 0}
 .masthead-primary{display:flex;align-items:center;justify-content:space-between;gap:2rem;border-bottom:1px solid var(--text);padding-bottom:.9rem}
 .header-controls{display:flex;align-items:center}
-.theme-control{display:flex;align-items:center;gap:.25rem;margin:0;padding:0;border:0;color:var(--muted);font-size:.66rem;font-weight:800;text-transform:uppercase}
-.theme-control legend{margin:0;padding:0 .35rem 0 0}
+.settings-menu{position:fixed;inset:4.75rem 1rem auto auto;width:min(18rem,calc(100vw - 2rem));max-height:calc(100dvh - 5.75rem);margin:0;border:1px solid var(--text);background:var(--panel);color:var(--text);padding:1rem;box-shadow:8px 8px 0 var(--lime);overflow:auto}
+/* Anchor positioning follows the wrapped trigger; the fixed inset is fallback-only. */
+@supports (anchor-name:--settings-trigger){
+.settings-trigger{anchor-name:--settings-trigger}
+.settings-menu:popover-open{position-anchor:--settings-trigger;inset:auto;top:anchor(bottom);right:anchor(right);max-height:calc(100dvh - 2rem);margin-top:.5rem;position-try-fallbacks:flip-block,flip-inline,flip-block flip-inline}
+}
+.theme-control{margin:0;padding:0;border:0;color:var(--muted);text-transform:uppercase}
 .theme-options{display:flex;border:1px solid var(--edge)}
 .theme-control label{display:flex;align-items:center;min-width:44px;min-height:44px;margin:0;padding:0 .35rem;color:var(--text);font-size:.72rem}
 .theme-control label+label{border-left:1px solid var(--border)}
@@ -323,7 +327,6 @@ footer{border-top:1px solid var(--edge);padding:1.5rem 2rem;color:var(--muted);t
 .header-controls{gap:.35rem;width:100%}
 .section-nav{flex:1 0 100%;width:100%}
 .section-nav a{padding:0 .3rem}
-.theme-control{flex:1 0 100%;font-size:.66rem}
 .system-state{justify-content:flex-start;padding-top:.45rem}
 .hero{gap:2.4rem;padding:2.4rem 0 calc(3.5rem - 1px)}
 .hero-copy h2{font-size:3rem;line-height:.98;letter-spacing:-.035em}
@@ -383,7 +386,7 @@ button,input,select{color:ButtonText!important}
 
 @media print{
 :root,:root[data-theme="dark"]{color-scheme:light}
-.theme-control{display:none}
+.settings-trigger,.settings-menu{display:none}
 body,body *{background:#fff!important;color:#000!important;box-shadow:none!important}
 .chart-line,.chart-axis,.chart-grid{stroke:#000!important}
 .chart-point{fill:#000!important}

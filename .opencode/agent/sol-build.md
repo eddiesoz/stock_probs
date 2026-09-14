@@ -35,8 +35,14 @@ permission:
     "*": deny
   skill:
     "*": deny
+    browser-qa: allow
+    database-conventions: allow
+    development-conventions: allow
+    local-gate-evidence: allow
     ponytail: allow
     ponytail-review: allow
+    security-audit: allow
+    stock-probability-skill-maintenance: allow
 ---
 
 # SOL HIGH build

@@ -35,7 +35,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 # The server owns these static assets so their only data client remains /api/v1.
-stock_probs = ["static/*", "migrations/*.sql", "fixtures/*.json"]
+stock_probs = ["static/*", "static/next/**/*", "migrations/*.sql", "fixtures/*.json"]
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --disable-warnings"

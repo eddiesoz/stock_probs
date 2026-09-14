@@ -29,7 +29,12 @@ permission:
     "*": deny
   skill:
     "*": deny
+    browser-qa: allow
+    development-conventions: allow
+    local-gate-evidence: allow
     ponytail-review: allow
+    ponytail-boundary-review: allow
+    security-audit: allow
 ---
 
 # LUNA MAX QA

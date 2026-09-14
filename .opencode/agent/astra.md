@@ -6,12 +6,17 @@ model: openai/gpt-6-astra
 variant: max
 permission:
   "*": deny
+  "playwright_*": allow
   read: allow
   glob: allow
   grep: allow
   webfetch: allow
   external_directory:
     "/home/brajam/repos/ingenium/**": allow
+  skill:
+    "*": deny
+    browser-qa: allow
+    development-conventions: allow
   edit:
     "*": deny
   bash:

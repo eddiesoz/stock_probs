@@ -118,6 +118,8 @@ test("request policy allows only declared app paths on the isolated origin", () 
   const baseURL = "http://127.0.0.1:43210";
   for (const pathname of [
     "/",
+    "/_next/static/chunks/framework.js",
+    "/_next/static/build-id/_buildManifest.js",
     "/assets/app.css",
     "/assets/app.js",
     "/assets/theme.js",
@@ -130,6 +132,9 @@ test("request policy allows only declared app paths on the isolated origin", () 
   ]) assert.equal(requestPolicyViolation(`${baseURL}${pathname}`, baseURL), null, pathname);
   assert.match(requestPolicyViolation("https://example.com/app.js", baseURL), /Non-loopback/);
   assert.match(requestPolicyViolation(`${baseURL}/assets/undeclared.js`, baseURL), /Undeclared/);
+  assert.match(requestPolicyViolation(`${baseURL}/index.txt`, baseURL), /RSC/);
+  assert.match(requestPolicyViolation(`${baseURL}/api-docs.txt`, baseURL), /RSC/);
+  assert.match(requestPolicyViolation(`${baseURL}/_next/static/chunks/flight.txt`, baseURL), /RSC/);
 });
 
 test("generated and published manifests account for themselves and every artifact", async (t) => {

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import csv
+import hashlib
 import io
 import json
 import logging
@@ -13,6 +14,7 @@ import unicodedata
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, date, datetime
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 from urllib.parse import urlparse
@@ -1057,6 +1059,48 @@ class RestoreResponse(ApiResponse):
 logger = logging.getLogger(__name__)
 
 
+class _InlineScriptHashParser(HTMLParser):
+    """Parse elements so CSP authorization cannot misclassify script attributes or text."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.hashes: set[str] = set()
+        self._script: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "script":
+            return
+        attributes = dict(attrs)
+        self._script = [] if "src" not in attributes else None
+
+    def handle_data(self, data: str) -> None:
+        if self._script is not None:
+            self._script.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script" and self._script is not None:
+            digest = hashlib.sha256("".join(self._script).encode()).digest()
+            self.hashes.add(f"'sha256-{base64.b64encode(digest).decode()}'")
+            self._script = None
+
+
+def _static_script_csp(dashboard_path: Path, docs_path: Path) -> str:
+    """Authorize only local scripts and exact inline code emitted by the static export."""
+
+    hashes: set[str] = set()
+    for path in (dashboard_path, docs_path):
+        parser = _InlineScriptHashParser()
+        parser.feed(path.read_bytes().decode("utf-8"))
+        parser.close()
+        hashes.update(parser.hashes)
+    script_sources = " ".join(("'self'", *sorted(hashes)))
+    return (
+        f"default-src 'self'; script-src {script_sources}; style-src 'self'; "
+        "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; "
+        "frame-ancestors 'none'; form-action 'self'"
+    )
+
+
 _PUBLIC_BACKUP_COUNT_FIELDS = {
     "searches": "search_events",
     "forecast_analyses": "forecast_runs",
@@ -1179,10 +1223,15 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
     browser_hosts = {"127.0.0.1", "localhost", "::1"}
 
     def __init__(
-        self, app: ASGIApp, repository: Repository, max_request_bytes: int = 16_384
+        self,
+        app: ASGIApp,
+        repository: Repository,
+        content_security_policy: str,
+        max_request_bytes: int = 16_384,
     ) -> None:
         super().__init__(app)
         self.repository = repository
+        self.content_security_policy = content_security_policy
         self.max_request_bytes = max_request_bytes
 
     def _record_bounded_rejection(
@@ -1363,16 +1412,11 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
             response = await self._bounded_request(request, call_next)
         return self._secure(response)
 
-    @staticmethod
-    def _secure(response: Response) -> Response:
+    def _secure(self, response: Response) -> Response:
         """Apply browser isolation even to validation, host, and mounted-asset errors."""
 
         # Error responses receive the same protections as successful HTML/API responses.
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-            "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
-            "form-action 'self'"
-        )
+        response.headers["Content-Security-Policy"] = self.content_security_policy
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -1947,6 +1991,10 @@ def create_app(
     service = ForecastService(repository, selected_provider, selected_clock)
     backups = BackupManager(repository, config.backup_dir)
     static_dir = Path(__file__).parent / "static"
+    next_dir = static_dir / "next"
+    content_security_policy = _static_script_csp(
+        next_dir / "index.html", next_dir / "api-docs.html"
+    )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -1971,7 +2019,11 @@ def create_app(
     app.state.service = service
     app.state.backups = backups
     app.state.ready = False
-    app.add_middleware(LocalSecurityMiddleware, repository=repository)
+    app.add_middleware(
+        LocalSecurityMiddleware,
+        repository=repository,
+        content_security_policy=content_security_policy,
+    )
 
     def record_submitted_failure(
         *,
@@ -2754,12 +2806,13 @@ def create_app(
     def api_docs() -> FileResponse:
         """Serve a CSP-compatible, dependency-free pointer to the machine-readable contract."""
 
-        return FileResponse(static_dir / "api-docs.html")
+        return FileResponse(next_dir / "api-docs.html")
 
     @app.get("/", include_in_schema=False)
     def dashboard() -> FileResponse:
-        return FileResponse(static_dir / "index.html")
+        return FileResponse(next_dir / "index.html")
 
+    app.mount("/_next", StaticFiles(directory=next_dir / "_next"), name="next-assets")
     app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
     return app
 

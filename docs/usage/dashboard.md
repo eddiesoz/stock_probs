@@ -24,9 +24,11 @@ and target times, sample counts, evaluation, provider as-of time, model/version,
 reasons together. A stale badge is a warning with explicit reasons, not permission to silently
 treat old data as current. See [forecast model](../concepts/forecast-model.md) for definitions.
 
-## Choose a color theme
+## Use Settings and choose a color theme
 
-Use **Color theme** to select **Light**, **Dark**, or **System**. Light and Dark are saved under
+Open the native **Settings** popover and select **Light**, **Dark**, or **System**. The
+`R-ASTRA-59` repair corrected the popover's open-state anchor; the current supplied QA reports
+all `8/8` focus-geometry checks passing. Light and Dark are saved under
 `stock-probs.theme` in browser local storage. Selecting System removes that override and follows
 the operating-system preference, including later system changes while no explicit choice exists.
 The preference is scoped to the browser origin, so another browser profile, host name, or port

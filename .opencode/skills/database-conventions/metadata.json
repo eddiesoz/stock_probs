@@ -1,0 +1,7 @@
+{
+  "_comment": "OpenCode discovers this opt-in skill from SKILL.md frontmatter; this project catalog mirror is validated for exact parity.",
+  "name": "database-conventions",
+  "description": "Apply Stock Probability SQLite repository and migration rules for schema changes, bound queries, immutable audit records, and backup-safe upgrades. Use when changing repository.py, packaged migrations, persistence SQL, or migration and restore checks.",
+  "tags": ["sqlite", "migrations", "persistence", "immutability", "stock-probability"],
+  "alwaysApply": false
+}

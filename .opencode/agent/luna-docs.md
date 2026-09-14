@@ -16,6 +16,7 @@ permission:
     "docs/**/*.md": allow
   bash:
     "*": deny
+    ".dev-venv/bin/python scripts/validate_docs.py": allow
     "git diff*": allow
     "git log*": allow
     "git rev-parse*": allow
@@ -25,6 +26,10 @@ permission:
   grep: allow
   task:
     "*": deny
+  skill:
+    "*": deny
+    development-conventions: allow
+    documentation: allow
 ---
 
 # LUNA MAX docs

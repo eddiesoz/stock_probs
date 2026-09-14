@@ -22,6 +22,10 @@ htmlcov/
 *.prof
 npm-debug.log*
 node_modules/
+frontend/.next/
+frontend/out/
+frontend/*.tsbuildinfo
+/src/stock_probs/static/next/
 test-results/
 playwright-report/
 .playwright-mcp/

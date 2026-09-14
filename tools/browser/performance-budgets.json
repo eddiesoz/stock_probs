@@ -5,9 +5,9 @@
   "cls_max": 0.1,
   "overlap_count_max": 0,
   "overflow_count_max": 0,
-  "request_count_max_per_navigation": 7,
-  "response_bytes_max_per_navigation": 114688,
-  "static_shell_bytes_strict_max": 98304,
+  "request_count_max_per_navigation": 16,
+  "response_bytes_max_per_navigation": 655360,
+  "static_shell_bytes_strict_max": 753664,
   "designated_response_bytes_strict_max": 8192,
   "warmups": 5,
   "measured_samples": 30,
@@ -24,9 +24,9 @@
   ],
   "justification": {
     "render_interaction_cls": "Pinned proposed M06 roadmap bounds.",
-    "request_count": "The parser-blocking theme asset raises the measured six-request navigation baseline to seven.",
-    "static_shell_bytes": "All shipped HTML, CSS, JavaScript, and favicon source stays below 96 KiB raw.",
-    "response_bytes": "112 KiB permits the sub-96 KiB static shell plus bounded API bodies without compression assumptions.",
+    "request_count": "Sixteen permits the measured 13-request Next 16 production navigation with modest deterministic headroom.",
+    "static_shell_bytes": "736 KiB covers the measured 696,788-byte recursive pruned Next export and directly served assets with deterministic headroom.",
+    "response_bytes": "640 KiB covers the measured 574,712 initial-navigation response-body bytes without compression assumptions.",
     "designated_response": "The readiness response is the designated sub-8 KiB response."
   }
 }

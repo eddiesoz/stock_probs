@@ -28,7 +28,7 @@
 ## 2026-09-12 — final learning synthesis
 
 - **Before:** `7cf1ca8395b94c2e14e5b02ddf160f3f938091d3`, captured from a clean worktree before
-  this skill-maintenance change.
+  this skill-catalog change.
 - **Session observation:** `SESSION-EXPORT.md` parses as session
   `ses_f71ec0499ffeokWj4h6tVwyYk1` with 303 top-level messages and 1,812 parts, including
   573 tool parts. All 223 text parts are sanitized placeholders, so the export supports structural
@@ -47,10 +47,32 @@
   collectors, scans, aliases, and source-text assertions. Their repairs stayed builder-owned and
   required independent behavior reruns; the review never substituted for QA. Added
   `ponytail-boundary-review` to preserve that exact boundary and receipt discipline.
-- **Overlap and exclusions:** The existing `documentation` and `skill-maintenance` skills remain
-  authoritative for authored docs and catalog changes. No forecast, provider, persistence, ASTRA,
-  walkthrough, export-only, or generic testing skill was added: the evidence does not show a
-  separate recurring guidance gap beyond the three admitted workflows.
+- **Overlap and exclusions:** The existing `documentation` and
+  `stock-probability-skill-maintenance` skills remain authoritative for authored docs and catalog
+  changes. No forecast, provider, persistence, ASTRA, walkthrough, export-only, or generic testing
+  skill was added: the evidence does not show a separate recurring guidance gap beyond the three
+  admitted workflows.
 - **After:** Pending coordinator-owned commit/export checkpoint and independent post-restart
   validation. This synthesis does not stage, commit, push, edit root documentation, or infer gate
   acceptance.
+
+## 2026-09-12 — project skill catalog maintenance
+
+- **Before:** `91ba52eca35fcfc13bd0d9996beb947d65d69d09`, the HEAD consumed by this integration lane.
+- **Audit:** Nine project skill trees were audited. `devops-conventions` and
+  `development-conventions` were retired; `database-conventions` and `security-audit` were
+  rewritten; project maintenance was renamed `stock-probability-skill-maintenance` to avoid a
+  global-name collision; and the retained core skills were corrected.
+- **Boundary:** No commit, export, or root-document change was made. Parent-process restart and
+  independent post-restart discovery remain pending, so these changes are not gate-active.
+
+## 2026-09-13 — development conventions re-admission
+
+- **Approval:** `R-ASTRA-46` explicitly re-admitted the existing broad `development-conventions`
+  tree for the Next task after its earlier retirement.
+- **Normalization:** Registered every nested Markdown reference, restored opt-in metadata and exact
+  catalog/index parity, and made this repository's pinned Playwright MCP contract override the
+  imported `@latest` example.
+- **Boundary:** The four approved agent profiles receive only the explicit skill grant. No commit,
+  export, root-document edit, or gate acceptance is claimed; a parent-process restart and
+  independent post-restart discovery remain required before the profile edits affect later agents.

@@ -9,10 +9,10 @@ tags: [markdown, taxonomy, frontmatter, links]
 
 ### Placement
 
-Select one existing category: `concepts`, `configure`, `develop`, `operations`, `reference`,
-`security`, or `usage`. Add a category only for a demonstrated set of topics, never for empty
-symmetry. A topic page covers one user intent; split unrelated procedures rather than adding a
-catch-all guide.
+Select one of the nine admitted categories: `concepts`, `configure`, `develop`, `evidence`,
+`operations`, `reference`, `security`, `usage`, or `walkthrough`. A new category requires an
+explicit taxonomy change; never add one for empty symmetry. A topic page covers one user intent;
+split unrelated procedures rather than adding a catch-all guide.
 
 Topic names use `^[a-z0-9]+(?:-[a-z0-9]+)*\.md$`. `index.md` is reserved for navigation.
 Every page starts with exactly this minimal frontmatter shape:

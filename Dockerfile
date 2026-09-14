@@ -1,9 +1,21 @@
-# Build wheels separately so compilers and package indexes are absent from the runtime image.
+FROM node:22.19.0-bookworm-slim@sha256:4a4884e8a44826194dff92ba316264f392056cbe243dcc9fd3551e71cea02b90 AS frontend-builder
+
+WORKDIR /build/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run typecheck && npm run build && npm run test
+RUN mkdir /static-next \
+    && cp out/index.html out/api-docs.html /static-next/ \
+    && cp -R out/_next /static-next/
+
+# Build wheels separately so Node, compilers, and package indexes are absent from runtime.
 FROM python:3.11.15-slim@sha256:90744cff8f32887f075c47d747a173ff333e9e98801667af93c357fa9f5e28ff AS builder
 
 WORKDIR /build
 COPY pyproject.toml requirements.lock ./
 COPY src ./src
+COPY --from=frontend-builder /static-next ./src/stock_probs/static/next
 RUN python -m pip wheel \
     --wheel-dir /wheels \
     --constraint requirements.lock \

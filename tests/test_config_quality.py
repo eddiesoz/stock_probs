@@ -117,10 +117,13 @@ def test_official_playwright_mcp_is_pinned_headless_and_isolated():
     command = config["mcp"]["playwright"]["command"]
 
     assert package["devDependencies"]["@playwright/mcp"] == "0.0.80"
+    assert set(config["mcp"]) == {"playwright"}
     assert command[0] == "./scripts/playwright-mcp.sh"
     assert command[1:6] == ["--headless", "--isolated", "--browser", "chromium", "--allowed-hosts"]
-    assert "127.0.0.1,localhost,[::1]" in command
-    assert "http://127.0.0.1:*;http://localhost:*" in " ".join(command)
+    assert command[command.index("--allowed-hosts") + 1] == "127.0.0.1,localhost,[::1]"
+    assert command[command.index("--allowed-origins") + 1] == (
+        "http://127.0.0.1:*;http://localhost:*;http://[::1]:8000;http://[::1]:8765"
+    )
     assert "--output-max-size" in command and "--timeout-navigation" in command
     assert config["tool_output"]["max_bytes"] == 32768
     assert "playwright-mcp" in launcher
@@ -131,7 +134,7 @@ def test_agent_profiles_preserve_models_and_ownership_boundaries():
         "sol-build.md": ("openai/gpt-5.6-sol", "high"),
         "luna-qa.md": ("openai/gpt-5.6-luna", "max"),
         "luna-docs.md": ("openai/gpt-5.6-luna", "max"),
-        "astra.md": ("openai/gpt-6-astra", None),
+        "astra.md": ("openai/gpt-6-astra", "max"),
     }
     profiles = {path.name: path.read_text() for path in (ROOT / ".opencode/agent").glob("*.md")}
 
@@ -150,7 +153,8 @@ def test_agent_profiles_preserve_models_and_ownership_boundaries():
     assert '"MVP-PLAN.md": allow' in docs
     assert "burry_env/**\": deny" in sol
     assert re.findall(r"^mode: (.+)$", astra, re.MULTILINE) == ["subagent"]
-    assert 'permission:\n  "*": deny\n  read: allow' in astra
+    assert 'permission:\n  "*": deny\n  "playwright_*": allow\n  read: allow' in astra
+    assert sum('"playwright_*": allow' in profile for profile in profiles.values()) == 1
     assert astra.split("  edit:\n", 1)[1].split("  bash:\n", 1)[0] == '    "*": deny\n'
     assert astra.split("  bash:\n", 1)[1].split("  task:\n", 1)[0] == """    "*": deny
     "git diff*": allow

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import csv
+import hashlib
 import io
 import json
 import re
@@ -22,6 +23,9 @@ from stock_probs.config import Settings
 from stock_probs.domain import DomainError, calculate_forecasts
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import SCHEMA_VERSION, RepositoryError
+
+_SCRIPT = re.compile(r"<script\b(?P<attrs>[^>]*)>(?P<text>.*?)</script>", re.I | re.S)
+_SCRIPT_SRC = re.compile(r'''(?:^|\s)src\s*=\s*["'](?P<src>[^"']+)["']''', re.I)
 
 
 def _forecast(client, symbol="ACDC", asset_type="stock"):
@@ -285,37 +289,105 @@ def test_router_method_and_mounted_asset_errors_share_safe_envelope(client):
     wrong_method = client.post("/api/v1/health")
     missing_asset = client.get("/assets/not-present.css")
     wrong_asset_method = client.post("/assets/app.js")
+    missing_next_asset = client.get("/_next/static/not-present.js")
+    wrong_next_method = client.post("/_next/static/not-present.js")
+    missing_page = client.get("/not-a-generated-page")
 
-    assert unknown_api.status_code == missing_asset.status_code == 404
-    expected = {
-        "error": {"code": "not_found", "message": "The requested resource was not found."}
-    }
-    assert unknown_api.json() == expected
-    assert missing_asset.json() == expected
+    assert {
+        unknown_api.status_code,
+        missing_asset.status_code,
+        missing_next_asset.status_code,
+        missing_page.status_code,
+    } == {404}
+    expected = {"error": {"code": "not_found", "message": "The requested resource was not found."}}
+    for response in (unknown_api, missing_asset, missing_next_asset, missing_page):
+        assert response.json() == expected
     assert wrong_method.status_code == 405
     assert wrong_method.json()["error"]["code"] == "method_not_allowed"
     assert wrong_method.headers["allow"] == "GET"
     assert wrong_asset_method.status_code == 405
     assert wrong_asset_method.json()["error"]["code"] == "method_not_allowed"
-    for response in (unknown_api, wrong_method, missing_asset, wrong_asset_method):
+    assert wrong_next_method.status_code == 405
+    assert wrong_next_method.json()["error"]["code"] == "method_not_allowed"
+    for response in (
+        unknown_api,
+        wrong_method,
+        missing_asset,
+        wrong_asset_method,
+        missing_next_asset,
+        wrong_next_method,
+        missing_page,
+    ):
         assert response.headers["content-type"] == "application/json"
         assert response.headers["content-security-policy"]
 
 
-def test_dependency_free_api_docs_obey_the_strict_csp(client):
-    """The docs replacement uses only its early local theme script, never inline code or a CDN."""
+def test_generated_dashboard_and_docs_authorize_only_their_exact_local_scripts(client):
+    pages = {path: client.get(path) for path in ("/", "/api/v1/docs")}
+    parsed = {path: list(_SCRIPT.finditer(response.text)) for path, response in pages.items()}
+    inline_hashes = {
+        f"'sha256-{base64.b64encode(hashlib.sha256(script['text'].encode()).digest()).decode()}'"
+        for scripts in parsed.values()
+        for script in scripts
+        if _SCRIPT_SRC.search(script["attrs"]) is None
+    }
 
-    response = client.get("/api/v1/docs")
+    assert inline_hashes
+    assert "/api/v1/history-export.csv" in pages["/"].text
+    assert "/api/v1/openapi.json" in pages["/api/v1/docs"].text
+    for path, response in pages.items():
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html")
+        policy = response.headers["content-security-policy"]
+        script_sources = next(
+            directive.removeprefix("script-src ").split()
+            for directive in map(str.strip, policy.split(";"))
+            if directive.startswith("script-src ")
+        )
+        assert set(script_sources) == {"'self'", *inline_hashes}
+        assert "'unsafe-inline'" not in policy
+        assert "'unsafe-eval'" not in policy
+        theme = next(
+            script
+            for script in parsed[path]
+            if (source := _SCRIPT_SRC.search(script["attrs"])) is not None
+            and source["src"] == "/assets/theme.js"
+        )
+        assert theme.start() < response.text.index('<link rel="stylesheet" href="/assets/app.css"')
 
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/html")
-    assert response.headers["content-security-policy"].startswith("default-src 'self'")
-    assert "/api/v1/openapi.json" in response.text
-    theme_script = '<script src="/assets/theme.js"></script>'
-    assert response.text.count("<script") == 1
-    assert theme_script in response.text
-    assert response.text.index(theme_script) < response.text.index('<link rel="stylesheet"')
-    assert "https://" not in response.text
+    external_scripts = {
+        source["src"]
+        for scripts in parsed.values()
+        for script in scripts
+        if (source := _SCRIPT_SRC.search(script["attrs"])) is not None
+    }
+    assert external_scripts
+    assert all(
+        source.startswith("/") and not source.startswith("//") for source in external_scripts
+    )
+    assert any(source.startswith("/_next/") for source in external_scripts)
+    for source in external_scripts:
+        asset = client.get(source)
+        assert asset.status_code == 200
+        assert asset.headers["x-content-type-options"] == "nosniff"
+
+    for legacy_asset in (
+        "/assets/app.css",
+        "/assets/app.js",
+        "/assets/theme.js",
+        "/assets/favicon.svg",
+    ):
+        assert client.get(legacy_asset).status_code == 200
+
+
+@pytest.mark.parametrize("path", ["/", "/api/v1/docs"])
+def test_generated_html_wrong_methods_keep_safe_json_errors(client, path):
+    response = client.post(path)
+
+    assert response.status_code == 405
+    assert response.json()["error"]["code"] == "method_not_allowed"
+    assert response.headers["content-type"] == "application/json"
+    assert response.headers["content-security-policy"]
 
 
 def test_company_and_fund_names_remain_attached_to_instrument_identity(settings):

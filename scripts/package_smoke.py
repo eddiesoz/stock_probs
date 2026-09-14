@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -18,11 +19,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_RESOURCES = {
-    "stock_probs/static/index.html",
+    "stock_probs/static/next/index.html",
     "stock_probs/static/app.css",
     "stock_probs/static/app.js",
     "stock_probs/static/theme.js",
-    "stock_probs/static/api-docs.html",
+    "stock_probs/static/next/api-docs.html",
     "stock_probs/static/favicon.svg",
     "stock_probs/migrations/001_initial.sql",
     "stock_probs/migrations/002_historical_analysis.sql",
@@ -31,7 +32,6 @@ EXPECTED_RESOURCES = {
     "stock_probs/fixtures/acdc.json",
     "stock_probs/fixtures/spy.json",
 }
-
 REGISTERED_MIGRATION_CHECK = """\
 from importlib.resources import files
 from stock_probs.repository import MIGRATION_NAME, MIGRATION_SHA256
@@ -151,6 +151,15 @@ def main() -> None:
         missing = sorted(EXPECTED_RESOURCES - contents)
         if missing:
             raise RuntimeError("wheel omitted packaged resources: " + ", ".join(missing))
+        # A .js suffix also admits fixed manifests; require a content-named runtime chunk.
+        next_chunks = sorted(
+            name
+            for name in contents
+            if name.startswith("stock_probs/static/next/_next/static/chunks/")
+            and re.fullmatch(r"[a-z0-9][a-z0-9_-]{7,}\.js", Path(name).name)
+        )
+        if not next_chunks:
+            raise RuntimeError("wheel omitted hashed Next JavaScript chunks")
 
         _run(
             [
@@ -215,10 +224,23 @@ def main() -> None:
                     raise RuntimeError(
                         "wheel-installed server did not serve the packaged dashboard"
                     )
+            docs_url = f"http://127.0.0.1:{port}/api/v1/docs"
+            with urllib.request.urlopen(docs_url, timeout=2) as response:  # noqa: S310
+                if b"Signal Ledger API" not in response.read():
+                    raise RuntimeError("wheel-installed server did not serve the packaged docs")
             theme_url = f"http://127.0.0.1:{port}/assets/theme.js"
             with urllib.request.urlopen(theme_url, timeout=2) as response:  # noqa: S310
                 if b"stock-probs.theme" not in response.read():
                     raise RuntimeError("wheel-installed server did not serve the packaged theme")
+            app_url = f"http://127.0.0.1:{port}/assets/app.js"
+            with urllib.request.urlopen(app_url, timeout=2) as response:  # noqa: S310
+                if b"/api/v1" not in response.read():
+                    raise RuntimeError("wheel-installed server did not serve the packaged app.js")
+            chunk_path = next_chunks[0].split("/next/_next/", 1)[1]
+            chunk_url = f"http://127.0.0.1:{port}/_next/{chunk_path}"
+            with urllib.request.urlopen(chunk_url, timeout=2) as response:  # noqa: S310
+                if not response.read():
+                    raise RuntimeError("wheel-installed server returned an empty Next chunk")
         finally:
             _stop(process)
 
@@ -232,7 +254,7 @@ def main() -> None:
             "result": "Pass",
             "wheel": artifact_wheel.name,
             "wheel_bytes": artifact_wheel.stat().st_size,
-            "verified_resources": sorted(EXPECTED_RESOURCES),
+            "verified_resources": sorted(EXPECTED_RESOURCES | {next_chunks[0]}),
             "checks": [
                 "wheel-build",
                 "wheel-contents",
@@ -240,6 +262,11 @@ def main() -> None:
                 "registered-migration-resources",
                 "migration",
                 "loopback-runtime",
+                "dashboard-html",
+                "api-docs-html",
+                "literal-theme-initializer",
+                "app-js",
+                "hashed-next-chunk",
             ],
         }
         (artifact_dir / "manifest.json").write_text(json.dumps(report, indent=2) + "\n")

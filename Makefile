@@ -6,15 +6,18 @@ NODE_BIN := .tools/node/bin
 NPM := $(NODE_BIN)/npm
 NPX := $(NODE_BIN)/npx
 
-# Resource measurements must not overlap acceptance prerequisites even under an explicit make -j.
-.NOTPARALLEL: performance m06-gate m09-gate release-check
+# Resource measurements and setup must not overlap prerequisites under an explicit make -j.
+.NOTPARALLEL: performance m06-gate m09-gate release-check acceptance
 
-.PHONY: setup dev migrate test lint typecheck static security restore-test check package-check performance m01-gate m02-gate m03-gate m04-gate m06-gate m09-gate local-gate arm64-smoke browser-setup browser-install browser-test mcp-smoke acceptance live live-smoke release release-check backup restore clean
+.PHONY: setup frontend-build dev migrate test lint typecheck static security restore-test check package-check performance m01-gate m02-gate m03-gate m04-gate m06-gate m09-gate local-gate arm64-smoke browser-setup browser-install browser-test mcp-smoke acceptance live live-smoke release release-check backup restore clean
 
 setup:
 	./scripts/bootstrap.sh
 
-dev:
+frontend-build:
+	./scripts/build-frontend.sh
+
+dev: frontend-build
 	$(PYTHON) -m stock_probs.cli serve --host 127.0.0.1 --port 8000
 
 migrate:
@@ -100,7 +103,7 @@ mcp-smoke: browser-setup
 performance: browser-setup
 	STOCK_PROBS_PERFORMANCE_ARTIFACT_DIR="$${STOCK_PROBS_PERFORMANCE_ARTIFACT_DIR:-test-results/performance/M06}" $(PYTHON) scripts/performance_harness.py --profile development
 
-acceptance: check browser-test
+acceptance: frontend-build check browser-test
 
 live-smoke:
 	$(PYTHON) -m pytest -m live -v

@@ -11,6 +11,7 @@ legacy noise and must not be used as the environment or dependency declaration.
 
 ```bash
 ./scripts/bootstrap.sh
+./scripts/build-frontend.sh
 .dev-venv/bin/python -m stock_probs.cli migrate
 .dev-venv/bin/python -m stock_probs.cli serve
 ```
@@ -18,6 +19,14 @@ legacy noise and must not be used as the environment or dependency declaration.
 Open `http://127.0.0.1:8000/`. Readiness is available at
 `http://127.0.0.1:8000/api/v1/readiness`, and the local API pointer is at
 `http://127.0.0.1:8000/api/v1/docs`.
+
+`./scripts/build-frontend.sh` runs the pinned Next.js `16.3.5` / React `19.3` static App
+Router export, typecheck, and frontend tests, then stages the result for the Python package.
+Its stable build ID is `stock-probs`. `frontend/.next/`, `frontend/out/`, and
+`src/stock_probs/static/next/` are generated and ignored; do not treat their presence as source
+or release evidence. FastAPI remains the only production server and `/api/v1` remains the only
+application-data boundary. The Docker path uses Node in a build-only stage and copies the staged
+static files into the Python wheel; Node is not part of the runtime image.
 
 The default provider is Yahoo Finance and requires network availability. For a repeatable
 offline-oriented development run, use the fixture settings in
@@ -57,4 +66,6 @@ docker compose down
 The native path above remains the development path: it uses `.dev-venv/`, the local CLI, and
 directly selected `STOCK_PROBS_DATA_DIR`/provider settings. The Compose path builds the pinned
 wheel image and does not claim native ARM64 performance, physical-mobile behavior, screen-reader
-coverage, or true browser-zoom evidence.
+coverage, or true browser-zoom evidence. Physical mobile, actual screen-reader, and true-zoom
+evidence are unavailable in the current post-final QA record; emulated ARM64 covers functional,
+package, and runtime behavior only, not ARM64 performance.

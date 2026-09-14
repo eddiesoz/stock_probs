@@ -164,6 +164,7 @@ const STEPS = [
 
 const DECLARED_REQUEST_PATHS = [
   /^\/$/,
+  /^\/_next\/static\/.+$/,
   /^\/assets\/(?:app\.css|app\.js|favicon\.svg|theme\.js)$/,
   /^\/api\/v1\/(?:docs|news|readiness|operations\/backups\/status|instruments|forecasts|history|history-export\.(?:csv|json)|saved-forecasts\/\d+|history\/\d+\/reconstructions)$/,
 ];
@@ -195,6 +196,7 @@ function requestPolicyViolation(url, baseURL) {
     return `Invalid request URL: ${url}`;
   }
   if (requestURL.origin !== new URL(baseURL).origin) return `Non-loopback request origin: ${requestURL.origin}`;
+  if (requestURL.pathname.endsWith(".txt")) return `Undeclared Next RSC request path: ${requestURL.pathname}`;
   if (!DECLARED_REQUEST_PATHS.some((pattern) => pattern.test(requestURL.pathname))) {
     return `Undeclared request path: ${requestURL.pathname}`;
   }
@@ -398,16 +400,34 @@ function newsPayload(symbol, mode) {
   return payload;
 }
 
-async function themeOrdering(page) {
-  return page.evaluate(() => {
-    const theme = document.querySelector('script[src="/assets/theme.js"]');
-    const css = document.querySelector('link[href="/assets/app.css"]');
-    return {
-      theme_before_css: Boolean(theme && css && (theme.compareDocumentPosition(css) & Node.DOCUMENT_POSITION_FOLLOWING)),
-      parser_blocking: Boolean(theme && !theme.async && !theme.defer && !theme.type),
-      loaded_theme: document.documentElement.dataset.theme,
-    };
-  });
+// Standalone capture requires service readiness and loaded-theme evidence, without expect or keyboard paths.
+async function themeOrdering(page, response) {
+  const html = await response.text();
+  const theme = '<script src="/assets/theme.js"></script>';
+  const css = '<link rel="stylesheet" href="/assets/app.css"';
+  return {
+    theme_before_css: html.indexOf(theme) >= 0 && html.indexOf(theme) < html.indexOf(css),
+    parser_blocking: html.split(theme).length - 1 === 1,
+    loaded_theme: await page.locator("html").getAttribute("data-theme"),
+  };
+}
+
+async function waitForImperativeApp(page) {
+  await page.locator("#system-label").filter({ hasText: "Local service ready" }).waitFor();
+}
+
+async function openSettings(page) {
+  const menu = page.locator("#settings-menu.settings-menu[popover]");
+  if (await menu.isHidden()) await page.locator('.settings-trigger[popovertarget="settings-menu"]').click();
+  await menu.waitFor({ state: "visible" });
+  return menu;
+}
+
+async function chooseTheme(page, value) {
+  const menu = await openSettings(page);
+  const radio = menu.locator(`[name="theme"][value="${value}"]`);
+  await radio.click();
+  if (!(await radio.isChecked())) throw new Error(`Theme ${value} was not selected.`);
 }
 
 async function firstPaintObservation(browser, application, profile) {
@@ -505,7 +525,7 @@ async function capture(page, profile, step, selector, evidence, state, block = "
     description.textContent = item.description;
     annotation.replaceChildren(marker, title, description);
   }, { item: step, profileName: profile.name.toUpperCase() });
-  await page.waitForTimeout(50);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const relative = path.join("screenshots", `${profile.name}-${step.id}${suffix ? `-${suffix}` : ""}.png`);
   await page.screenshot({ path: path.join(OUTPUT, relative), animations: "disabled" });
   return {
@@ -575,7 +595,7 @@ async function runProfile(browser, profile) {
   try {
     await page.goto(application.baseURL, { waitUntil: "domcontentloaded" });
     await addCaptureStyles(page);
-    await page.locator("#system-label").filter({ hasText: "backup available" }).waitFor();
+    await waitForImperativeApp(page);
     const backup = await page.evaluate(async () => (await fetch("/api/v1/operations/backups/status")).json());
     if (backup.status !== "available" || !backup.managed_names_only || !backup.verification_required) {
       throw new Error("Backup status did not expose the expected managed, verification-required contract.");
@@ -706,25 +726,26 @@ async function runProfile(browser, profile) {
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
       await page.reload({ waitUntil: "domcontentloaded" });
       await addCaptureStyles(page);
-      await page.locator("#system-label").filter({ hasText: "backup available" }).waitFor();
+      await waitForImperativeApp(page);
     };
 
     await resetTheme("dark");
     if (await page.evaluate(() => localStorage.getItem("stock-probs.theme")) !== null) throw new Error("System theme retained an override.");
-    await page.locator('html[data-theme="dark"] select[name="theme"]').waitFor();
+    const systemTheme = (await openSettings(page)).locator('[name="theme"][value="system"]');
+    if (!(await systemTheme.isChecked())) throw new Error("System theme was not selected.");
     captures.push(await capture(page, profile, STEPS[10], ".masthead",
       latestResponseEvidence(responses, "GET", "/assets/theme.js"), "system-dark", "start"));
 
     await resetTheme("light");
-    await page.getByLabel("Color theme").selectOption("dark");
+    await chooseTheme(page, "dark");
     await page.locator('html[data-theme="dark"]').waitFor();
     if (await page.evaluate(() => localStorage.getItem("stock-probs.theme")) !== "dark") throw new Error("Dark theme was not stored.");
     captures.push(await capture(page, profile, STEPS[11], ".masthead",
       latestResponseEvidence(responses, "GET", "/assets/theme.js"), "explicit-dark", "start"));
 
     await resetTheme("light");
-    await page.getByLabel("Color theme").selectOption("dark");
-    await page.getByLabel("Color theme").selectOption("system");
+    await chooseTheme(page, "dark");
+    await chooseTheme(page, "system");
     await page.locator('html[data-theme="light"]').waitFor();
     if (await page.evaluate(() => localStorage.getItem("stock-probs.theme")) !== null) throw new Error("Reset to system did not remove the override.");
     captures.push(await capture(page, profile, STEPS[12], ".masthead",
@@ -734,13 +755,14 @@ async function runProfile(browser, profile) {
       localStorage.removeItem("stock-probs.theme");
       localStorage.setItem("stock-probs.theme", "dark");
     });
-    await page.reload({ waitUntil: "domcontentloaded" });
+    const dashboardResponse = await page.reload({ waitUntil: "domcontentloaded" });
     await addCaptureStyles(page);
-    const dashboardThemeOrdering = await themeOrdering(page);
+    await waitForImperativeApp(page);
+    const dashboardThemeOrdering = await themeOrdering(page, dashboardResponse);
     const docsPage = await context.newPage();
-    await docsPage.goto(`${application.baseURL}/api/v1/docs`, { waitUntil: "domcontentloaded" });
+    const docsResponse = await docsPage.goto(`${application.baseURL}/api/v1/docs`, { waitUntil: "domcontentloaded" });
     await addCaptureStyles(docsPage);
-    const docsThemeOrdering = await themeOrdering(docsPage);
+    const docsThemeOrdering = await themeOrdering(docsPage, docsResponse);
     for (const [surface, ordering] of Object.entries({ dashboard: dashboardThemeOrdering, api_docs: docsThemeOrdering })) {
       if (!ordering.theme_before_css || !ordering.parser_blocking || ordering.loaded_theme !== "dark") {
         throw new Error(`${surface} did not provide a parser-blocking dark theme before CSS.`);

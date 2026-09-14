@@ -17,7 +17,7 @@ does not duplicate their detailed ledgers.
 
 ## Current evidence-backed status
 
-As of 2026-09-13:
+As of 2026-09-14:
 
 - `M00`, `EXP-M00`, `M01`, `EXP-M01`, `M02`, `EXP-M02`, `M03`, and `EXP-M03` are
   **Completed** for their recorded scopes. `EXP-M03` is verified at exact local and
@@ -232,20 +232,108 @@ As of 2026-09-13:
   `R-ASTRA-27` records selector-alignment pass after its failed initial render attempt and
   successful reruns. The supplied Ponytail result was `Lean already. Ship.`; it is
   overengineering-only evidence.
-- **Current post-repair ASTRA disposition:** session
-  `ses_f6683138affe6t8S6Z0G66YJDc` is **Accepted** with no reproducible blockers. Artifacts are
-  `test-results/astra-final-live/` and `test-results/astra-final-repair/`; the live browser
-  receipt records event `143`/run `141`, fresh event `145`, `21` localhost-only requests, and
-  axe `0/0` at desktop and `390px`. Physical mobile, actual screen reader, true zoom, and
-  native/physical ARM64 performance remain **Unavailable**. ACDC/SPY flows do not prove news
-  relevance or exact-symbol provider availability.
-- **Current local container follow-on:** `R-M07-5` is **Completed for its declared scope** by
+ - **Current final documentation reconciliation (`R-ASTRA-71`):** `R-ASTRA-70` is **Completed**
+   as the docs-only portable-link repair that changed eight ignored-artifact links to inline code.
+   The final ASTRA session `ses_f622707a4ffeAE3Zx8Lt2zYiC1` is **Accepted** for its affected
+   post-repair scope with no blockers: reviewer `ASTRA`, model `openai/gpt-6-astra`, native
+   x86_64, official MCP/headless Chromium `153.0.8010.12`, dirty `HEAD`
+   `5633f87f8cff04b5b33640f6633ff31c667c0435`, `2026-09-14T02:57:56Z`–`03:16:35Z`, routes `/`
+   and `/api/v1/docs`, viewports `320x844` and `1280x1000`, Light/Dark. Exact shell command and
+   separate ASTRA artifact were not supplied; the named session, reviewer, model, and revision
+   are supplied. The initial named session `ses_f6276e3a8ffeR3awDDSYKonmLk` remains **Blocked** at
+   `2026-09-14T01:30:13Z`–`01:47:02Z`, reviewer `ASTRA`, model `openai/gpt-6-astra`: official MCP
+   exposure passed, but reverse-Tab then Escape at `320x844` restored focus off-screen;
+   forecast/chart/news evaluation was **Unavailable** because the first isolated server used the
+   wrong 2026 fixture clock and correctly returned `stale_data`, not because of a production defect.
+   The repair history preserves incomplete `R-ASTRA-66`, independent-QA failures after `R-ASTRA-67`,
+   guarded external entry/trigger-focus restoration in `R-ASTRA-68`, and 320px Pixel/mobile
+   restoration in `R-ASTRA-69`. Final `R-ASTRA-69` Ponytail is **CLEAN** (`Lean already. Ship.` at
+   `2026-09-14T02:41:58Z`, native x86_64, dirty `HEAD` above, reviewer `OpenCode gpt-5.6-sol`).
+   Separate findings-only artifacts are historical/unrelated and do not override this clean boundary.
+   Independent QA (`LUNA MAX QA`) used `/tmp/opencode/r-astra-69-20260914T025542940Z.json` at
+   `2026-09-14T02:55:42.940Z`–`02:55:54.436Z`: `66/66`, axe `0/0`, Light/Dark focus,
+   HTTP `201` forecast with charts/text, HTTP `200` partial news/2 items, local-only traffic, and
+   no current errors. The final review also passed prior focus/fixture blockers, the `8px` popover
+   gap and containment, no overlap/overflow, `44px` controls, focus/dismissal, sampled contrast,
+   first paint/System/CSP/media emulation, ACDC-M event `#6`/run `#2`, charts/text, partial news
+   (2 items), OpenAPI, and `103` requests/`18` data requests with no off-origin, non-API, `.txt`,
+    or current errors; `.data-label` is optional/nonblocking and no repair is authorized. Full artifact:
+    `test-results/r-astra-69-browser-20260914T0248Z/` (`64`
+    passed/`2` expected skips; `33` desktop/`33` mobile). Physical mobile, actual screen-reader,
+    true-zoom, fresh ASTRA axe/screenshots, and native/physical ARM64-performance evidence remain
+    **Unavailable**. Full rows: `docs/evidence/astra-final-report.md`.
+ - **Current Orchestrator rename validation (`R-ASTRA-72`):** **Completed for its declared
+   rename/restart-validation scope** from independent post-restart QA by `LUNA MAX QA`. The
+   historical `R-ASTRA-72` rename performed the change to exact `Orchestrator` and required
+   restart validation. Full QA, Ponytail, and limitation rows are in
+   `docs/evidence/astra-final-report.md`; no new release, export, commit, push, or remote result
+   is claimed.
+ - **Current local container follow-on:** `R-M07-5` is **Completed for its declared scope** by
   two passing container contract tests and the supplied amd64 image receipt (digest
   `sha256:0dcb3f5ec77d31a5e8f57ef6e5d57b7144b973c3acb73ac360ffe01494735da`,
   `169,699,932` bytes). The optional Compose path and native-development distinction are
   documented in [getting started](docs/operations/getting-started.md). This dirty-worktree
   evidence is not a new clean release, export, commit, push, remote verification, or
   notification.
+  - **Earlier post-final frontend/documentation reconciliation (`R-ASTRA-64`, retained):**
+   **Completed for
+   its declared documentation scope** after the supplied implementation and independent QA
+  evidence; this is a docs-only record, not a new
+  milestone or release checkpoint. FastAPI remains the sole production server and `/api/v1`
+  remains the sole application-data API; it serves `/` and `/api/v1/docs`. Next.js `16.3.5` /
+  React `19.3` builds a static App Router export through `./scripts/build-frontend.sh` with
+  stable build ID `stock-probs`. Generated `frontend/.next/`, `frontend/out/`, and staged
+  `src/stock_probs/static/next/` trees are ignored; 12 staged served files are packaged into
+  the wheel. Node is build-only in the container. The routes retain strict CSP with exact
+  inline hashes and parser-blocking `theme.js`; native Settings offers Light/Dark/System, and
+  `R-ASTRA-59` repaired its open-state anchor.
+  The supplied QA summary reports Python `444` pass/`4` deselected/`89.73%`, docs `52`,
+  browser `64` pass/`2` expected performance skips, axe `0/0`, focus geometry `8/8`, and no
+  external or `.txt` traffic. Deterministic builds are `26` files/`703,175` bytes and staged
+  `12`/`608,713` bytes; the wheel is approximately `306,559` bytes. The supplied amd64 image
+  is digest `sha256:0d68e3d9a78d626a61a1a82c455ea1734ddaa753f562d74022b94986c477bb12`,
+  `170,062,564` bytes. Native M09 reports `18` rows, theme p95 `32.7 ms`, render p95
+  `168.649 ms`, static `696,727`/`753,664` bytes, navigation `13`/`574,661` bytes, and
+  wheel `306,553`/`335,872` bytes; ARM64 performance is **Unavailable**. Earlier theme
+  failures at `120.2`/`120.8 ms` remain history. Emulated ARM64 is functional/package/runtime
+  only; physical mobile, screen-reader, and true zoom remain **Unavailable**.
+  `development-conventions` is explicitly admitted as the eighth opt-in skill and fresh
+   discovery passed, but profile activation requires a parent restart. At that earlier
+   checkpoint, the post-migration ASTRA review was **Blocked**/**Unavailable** for named
+   live-browser evidence because the current parent lacked the official `playwright_*` tools and
+   fresh delegated attempts timed out; no remaining reproducible app blocker was reported. The
+   `R-ASTRA-43`/`R-ASTRA-46` Ponytail
+   history (including the clean `R-ASTRA-46` recheck), subsequent repair records, and rejected
+   `R-ASTRA-63` CSP-regex suggestion
+   are retained in [the evidence report](docs/evidence/astra-final-report.md). No clean
+   release, commit, export, push, or remote result is claimed here.
+  - **Earlier final gate artifact consumed by `R-ASTRA-64` (retained):**
+   `test-results/local-gates/M09-20260914T002732Z/` was **Pass**, exit `0`, dirty `HEAD`
+   `5633f87f8cff04b5b33640f6633ff31c667c0435`, native x86_64, at
+   `2026-09-14T00:27:32Z`–`2026-09-14T00:40:00Z`, with command `./scripts/local-gate.sh m09`.
+   It recorded the eight checks, `444` Python tests with zero errors/failures and `89.73%`
+   coverage, browser `64` passed/`2` expected performance skips, `18` performance rows with
+   `17` executable **Pass**, and ARM64 performance **Unavailable**. Its `306,553`-byte wheel,
+   `34.9 ms` theme p95, `152.881 ms` browser-render p95, and other row values remain historical.
+   The unsupported `TASK_ID=R-ASTRA-64` attempt, the first supported M09 timing-race failure,
+   `R-ASTRA-65` repair, and findings-only CSP observation remain visible; no clean release or
+   Git/export result was claimed for that reconciliation.
+  - **Current post-ASTRA M09 gate rerun:** task `M09` ran `./scripts/local-gate.sh m09` and
+   **Passed** with exit `0` in artifact directory `test-results/local-gates/M09-20260914T032442Z/`.
+   The native x86_64 run used dirty `HEAD` `5633f87f8cff04b5b33640f6633ff31c667c0435` from
+   `2026-09-14T03:24:42Z` to `2026-09-14T03:37:22Z`; all eight completed checks, official MCP,
+   Python `444`/`0` errors/`0` failures/`89.73%`, browser `64` passed/`2` expected skips, and
+    `18` performance rows (`17` executable **Pass**, ARM64 performance **Unavailable**) are
+   recorded. Current measured rows include theme p95 `35.0 ms`, browser render p95 `151.958 ms`,
+   interaction p95 `24.027 ms`, ten-item news render p95 `35.0 ms`, news cache-hit p95 `1.809 ms`,
+   news response `701` bytes, provider deadline `10 s`, static assets `697,667` bytes below
+   `753,664`, readiness `2,633.207 ms`, process RSS `144,457,728` bytes, and wheel `307,483`
+    bytes below `335,872`. The ARM64 receipt is explicitly emulated QEMU `7.2.0` package/runtime/
+    functional evidence, not native or physical ARM64 performance evidence. The earlier failed
+    rerun at `test-results/local-gates/M09-20260914T031828Z/` remains visible with `46`
+    documentation-link setup errors; `EXP-M09` is still **Pending** for export, secret review,
+    commit, push, and exact remote verification. No clean release/export/commit/push/remote/CI/
+    notification result is claimed for this current reconciliation.
 - `R-M09-4` and `R-M09-5` each retain an earlier failed release result; their separate
   failure output, session, environment, UTC, commit, artifact, and reviewer metadata were
   not supplied here. The current `M07-E18` receipt does not rewrite either historical
@@ -279,7 +367,7 @@ As of 2026-09-13:
   boundary evidence. At that earlier state it did not create an `EXP-M07` checkpoint; the
   later `EXP-M07` receipt above is the separate completed export checkpoint.
 - The retained M09 boundary report
-  [`test-results/ponytail-m09-boundary.txt`](test-results/ponytail-m09-boundary.txt) records
+   `test-results/ponytail-m09-boundary.txt` records
   four overengineering findings and net `-119` possible lines. `SOL HIGH` applied minimal
   `R-M09-1` repairs: theme/news p95 sampling moved from the harness-generated Node script
   into `tools/browser/tests/performance.spec.js` (net `-25`; supplied `338` tests pass),
@@ -520,23 +608,24 @@ claimed.
 
 ## Final operational item: selective Ingenium pipeline adoption
 
-- **Status:** `In progress`; the implementation/adoption changes are reported implemented
-  and committed, but the gate effect is still **Pending** until restart and validation.
+- **Status:** `In progress`; the broader implementation/adoption follow-up remains open. The
+  `R-ASTRA-72` rename/restart-validation scope is independently verified, but no broader gate
+  effect is inferred.
 - **Commit evidence:** the committed adoption/profile change set is in ancestor commit
   `8084a134ab4950f36446de3af622349cd23423ae` (`Build dark mode and news`), including the
   ASTRA profile's `variant: max`; the current checkpoint is its descendant
   `779aa749d2f85849427212d890ee6918987492b7`. This commit history does not replace the
   required restart or independent post-restart validation.
-- **Implemented adoption state (not gate-active):** `stock-orchestrator` is the inline
+- **Adoption state (rename scope validated):** `Orchestrator` is the inline
   primary with the six-agent count option and `subagent_depth: 1`; `luna-docs` has the
   `docs/**` permission; `.gitignore` additions are present; and the two-skill validator
   catalog contains `documentation` plus the new `skill-maintenance` skill.
 - **Required controls:** retain the six-agent orchestration, independent QA/docs order,
   Ponytail boundary, and commit/export gates; retain the stock Playwright MCP command and
-  loopback allowlists; then perform a parent-process restart and independent post-restart
-  validation before any of these profile/catalog/ignore changes affect a gate. This docs
-  reconciliation edits neither `opencode.json`, `.gitignore`, profiles, local gates, nor
-  skills, and claims no restart or post-restart validation pass.
+  loopback allowlists. `R-ASTRA-72` supplies independent post-restart validation for the
+  `Orchestrator` rename only; unvalidated profile/catalog/ignore changes still require their
+  own restart validation before affecting a gate. This docs reconciliation edits neither
+  `opencode.json`, `.gitignore`, profiles, local gates, nor skills.
 - **ASTRA profile:** the ASTRA agent profile now uses `variant: max`; parent-process
   restart and independent post-restart validation are **Pending**, so no gate effect or
   validation pass is claimed.
@@ -585,26 +674,26 @@ performed those authored documentation repairs. The supplied adoption state now 
 and independent post-restart validation; no new documentation-skill or M06 verification is
 inferred here.
 
-For the current four-document reconciliation, `.dev-venv/bin/python scripts/validate_docs.py`
+For an earlier four-document reconciliation, `.dev-venv/bin/python scripts/validate_docs.py`
 was attempted but execution was **Unavailable** because the tool permission boundary denied
 it; no current validator pass is inferred. `git diff --check -- README.md AGENTS.md
 MVP-PLAN.md MVP-ROADMAP.md` returned **Pass**. UTC, commit, and artifact metadata were not
 captured for these command attempts.
 
-For this M09 boundary-receipt update, the same validator command was attempted and remained
+For the earlier M09 boundary-receipt update, the same validator command was attempted and remained
 **Unavailable** because the tool permission boundary denied execution; no validator pass is
 inferred. `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` returned
 **Pass** on dirty `HEAD` `a69df40e15b3136886f26789c27861184c3bbd77`. UTC was not captured;
 no artifact, commit mutation, or Git checkpoint was created.
 
-For this consolidated M09 gate-state root-documentation update, `.dev-venv/bin/python
+For the earlier consolidated M09 gate-state root-documentation update, `.dev-venv/bin/python
 scripts/validate_docs.py` was attempted and was **Unavailable** because the tool permission
 boundary denied execution; no current validator pass is inferred (`R-M00-2-E15`). `git
 diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` returned **Pass** on dirty
 `HEAD` `a69df40e15b3136886f26789c27861184c3bbd77` (`R-M00-2-E16`). UTC was not captured;
 no artifact, commit mutation, or Git checkpoint was created.
 
-For this M09 acceptance root-documentation update, the same validator command was attempted
+For the earlier M09 acceptance root-documentation update, the same validator command was attempted
 and was **Unavailable** because the tool permission boundary denied execution; no current
 validator pass is inferred (`R-M00-2-E17`). `git diff --check -- README.md AGENTS.md
 MVP-PLAN.md MVP-ROADMAP.md` returned **Pass** (`R-M00-2-E18`) on dirty `HEAD`
@@ -669,3 +758,45 @@ the tool permission boundary denied execution; no documentation-test pass is inf
 `R-M00-2-E45` records `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs`
 as **Pass**. UTC was not captured for these checks; artifacts are the validator output and
 current owned-document diff; reviewer `LUNA MAX docs`.
+
+For the prior `R-ASTRA-70` documentation reconciliation, `R-M00-2-E50` records the exact
+`.dev-venv/bin/python scripts/validate_docs.py` run as **Pass** with `9` categories, `13` topics,
+and `8` project skills. `R-M00-2-E51` records the exact
+`.dev-venv/bin/python -m pytest tests/test_docs_validation.py` attempt as **Unavailable** because
+the tool permission boundary denied execution; `R-M00-2-E52` records the exact
+`.dev-venv/bin/python scripts/comment_audit.py` attempt as **Unavailable** for the same reason.
+`R-M00-2-E53` records `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs`
+as **Pass**. These checks ran on native x86_64 Linux at dirty `HEAD`
+`5633f87f8cff04b5b33640f6633ff31c667c0435`; UTC was not captured; artifact: none for the Python
+checks and the current documentation diff for `git diff --check`; reviewer `LUNA MAX docs`; no
+Git mutation was performed.
+`R-M00-2-E54` records the final `.dev-venv/bin/python scripts/validate_docs.py` rerun as **Pass**
+with `9` categories, `13` topics, and `8` project skills. `R-M00-2-E55` records the final
+`git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs` rerun as **Pass**.
+Both ran on native x86_64 Linux at dirty `HEAD` `5633f87f8cff04b5b33640f6633ff31c667c0435`;
+UTC was not captured by the command tool; artifacts are none for the validator and the current
+documentation diff for `git diff --check`; reviewer `LUNA MAX docs`; no Git mutation occurred.
+For current `R-ASTRA-71`, `R-M00-2-E56` records `.dev-venv/bin/python scripts/validate_docs.py`
+as **Pass** with `9` categories, `13` topics, and `8` project skills. `R-M00-2-E57` records the
+exact `.dev-venv/bin/python -m pytest tests/test_docs_validation.py` attempt as **Unavailable**
+because the tool permission boundary denied execution; no documentation-test pass is inferred.
+`R-M00-2-E58` records `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs`
+as **Pass**. All three checks ran on native x86_64 Linux at dirty `HEAD`
+`5633f87f8cff04b5b33640f6633ff31c667c0435`; UTC was not captured by the command tool; artifacts
+are none for the validator/test attempt and the current owned-document diff for diff-check;
+reviewer `LUNA MAX docs`; no Git mutation occurred.
+`R-M00-2-E59` records the final `.dev-venv/bin/python scripts/validate_docs.py` rerun after the
+last wording correction as **Pass** with `9` categories, `13` topics, and `8` project skills.
+`R-M00-2-E60` records the final `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md
+docs` rerun after the last wording correction as **Pass**. Both ran on native x86_64 Linux at
+dirty `HEAD` `5633f87f8cff04b5b33640f6633ff31c667c0435`; UTC was not captured by the command tool;
+artifacts are none for the validator and the current owned-document diff for diff-check; reviewer
+`LUNA MAX docs`; no Git mutation occurred.
+For current `R-ASTRA-72`, `R-M00-2-E61` records `.dev-venv/bin/python scripts/validate_docs.py`
+as **Pass** with `9` categories, `13` topics, and `8` project skills. `R-M00-2-E62` records the
+exact `.dev-venv/bin/python -m pytest tests/test_docs_validation.py` attempt as **Unavailable**
+because the tool permission boundary denied execution; no documentation-test pass is inferred.
+`R-M00-2-E63` records `git diff --check -- README.md AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs` as **Pass**.
+All three ran on native x86_64 Linux at dirty `HEAD` `5633f87f8cff04b5b33640f6633ff31c667c0435`;
+UTC was not captured by the command tool; artifacts are none for the validator/test attempt and
+the current owned-document diff for diff-check; reviewer `LUNA MAX docs`; no Git mutation occurred.

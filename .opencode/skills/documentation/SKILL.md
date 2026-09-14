@@ -16,7 +16,8 @@ live in `references/`.
 - Document application architecture, forecast semantics, configuration, development,
   operations, API behavior, security, or dashboard usage.
 - Reconcile root documentation with facts already established by an evidence record.
-- Audit frontmatter, index coverage, relative links, skill metadata, or credential-like content.
+- Audit frontmatter, index coverage, relative links, or credential-like content; report project-skill
+  metadata drift to `SOL HIGH build`.
 
 ## Hard rules
 
@@ -31,9 +32,15 @@ live in `references/`.
 
 ### Keep one topic per page
 
-Every authored `docs/**/*.md` file has quoted `title` and `description` frontmatter. Category
-folders and topic filenames are lowercase and hyphenated; each category has an `index.md`.
-Indexes navigate. Topic pages explain. Do not add empty sections for visual symmetry.
+Follow [`references/authoring.md`](references/authoring.md) for page shape, taxonomy, naming, and
+index rules.
+
+### Preserve skill and Git ownership
+
+Project-local skill trees, their validator catalog, `.opencode/SKILL-INDEX.md`, and
+`.opencode/skills/learnings.md` are `SOL HIGH build` changes, not `LUNA MAX docs` changes. Route
+skill findings to that owner. The coordinator alone owns the Git index, commits, exports, and
+remote operations.
 
 ### Report status from evidence only
 

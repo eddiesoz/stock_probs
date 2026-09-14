@@ -33,12 +33,110 @@ APPROVED_SKILL_CATALOG = {
         tags=("documentation", "markdown", "taxonomy", "audit", "stock-probability"),
         references=("audit.md", "authoring.md", "repository-sources.md"),
     ),
-    "skill-maintenance": SkillDefinition(
+    "development-conventions": SkillDefinition(
+        description=(
+            "Action-oriented conventions for writing, reviewing, and testing source code and "
+            "documentation across README/docs, APIs, Next.js 16 App Router, Python, Go/Rust, "
+            "regex, Mermaid, gitignore, web/UI, mail, and Ingenium-specific work."
+        ),
+        tags=(
+            "development",
+            "conventions",
+            "source-editing",
+            "code-review",
+            "testing",
+            "readme",
+            "documentation",
+            "api",
+            "nextjs",
+            "python",
+            "go",
+            "rust",
+            "regex",
+            "mermaid",
+            "gitignore",
+            "web-ui",
+            "mail",
+            "ingenium",
+        ),
+        references=(
+            "api-design/api-patterns.md",
+            "api-design/error-responses.md",
+            "api-design/status-codes.md",
+            "create-readme/guidelines.md",
+            "gitignore/patterns.md",
+            "mermaid/diagrams.md",
+            "nextjs-conventions/_sections.md",
+            "nextjs-conventions/action-optimistic-updates.md",
+            "nextjs-conventions/action-pending-states.md",
+            "nextjs-conventions/action-revalidation.md",
+            "nextjs-conventions/action-server-action-forms.md",
+            "nextjs-conventions/build-barrel-files.md",
+            "nextjs-conventions/build-dynamic-imports.md",
+            "nextjs-conventions/build-external-packages.md",
+            "nextjs-conventions/build-optimize-package-imports.md",
+            "nextjs-conventions/build-turbopack-config.md",
+            "nextjs-conventions/cache-fetch-options.md",
+            "nextjs-conventions/cache-react-cache.md",
+            "nextjs-conventions/cache-revalidate-path.md",
+            "nextjs-conventions/cache-revalidate-tag.md",
+            "nextjs-conventions/cache-segment-config.md",
+            "nextjs-conventions/cache-use-cache-directive.md",
+            "nextjs-conventions/client-children-pattern.md",
+            "nextjs-conventions/client-hydration-mismatch.md",
+            "nextjs-conventions/client-third-party-scripts.md",
+            "nextjs-conventions/client-use-client-boundary.md",
+            "nextjs-conventions/cross-boundary-coherence.md",
+            "nextjs-conventions/cross-component-consolidation.md",
+            "nextjs-conventions/cross-dead-code.md",
+            "nextjs-conventions/cross-extract-shared-logic.md",
+            "nextjs-conventions/cross-prop-shape-drift.md",
+            "nextjs-conventions/meta-generate-metadata.md",
+            "nextjs-conventions/meta-opengraph-images.md",
+            "nextjs-conventions/meta-robots.md",
+            "nextjs-conventions/meta-sitemap.md",
+            "nextjs-conventions/route-intercepting-routes.md",
+            "nextjs-conventions/route-not-found.md",
+            "nextjs-conventions/route-parallel-routes.md",
+            "nextjs-conventions/route-prefetching.md",
+            "nextjs-conventions/route-proxy-ts.md",
+            "nextjs-conventions/server-avoid-client-fetching.md",
+            "nextjs-conventions/server-component-streaming.md",
+            "nextjs-conventions/server-data-colocation.md",
+            "nextjs-conventions/server-error-handling.md",
+            "nextjs-conventions/server-parallel-fetching.md",
+            "nextjs-conventions/server-preload-pattern.md",
+            "nextjs-conventions/stream-error-tsx.md",
+            "nextjs-conventions/stream-loading-tsx.md",
+            "nextjs-conventions/stream-nested-suspense.md",
+            "nextjs-conventions/stream-skeleton-matching.md",
+            "nextjs-conventions/stream-suspense-boundaries.md",
+            "python-conventions/build-and-test.md",
+            "python-conventions/style-and-security.md",
+            "python-conventions/testing-and-tools.md",
+            "python-conventions/typing-and-docs.md",
+            "regex-reference/patterns.md",
+            "sources/api-aggregation-patterns/references/getProjectDetail-pattern.md",
+            "sources/api-aggregation-patterns/source-index.md",
+            "sources/ingenium-ops/references/dashboard-ui.md",
+            "sources/ingenium-ops/references/layered-crud.md",
+            "sources/ingenium-ops/references/mcp-tool-parity.md",
+            "sources/ingenium-ops/source-index.md",
+            "sources/language-conventions/source-index.md",
+            "sources/mail-app-ui-conventions/source-index.md",
+            "sources/visual-standards-conventions/source-index.md",
+            "testing/patterns.md",
+            "useful-comments/guidelines.md",
+            "web-design/reviewer.md",
+            "write-docs/guide.md",
+        ),
+    ),
+    "stock-probability-skill-maintenance": SkillDefinition(
         description=(
             "Maintain the approved Stock Probability skill catalog by detecting justified gaps, "
-            "creating or retiring project skills, regenerating the index, and validating "
-            "discovery and repository boundaries. Use when a project skill is added, changed, "
-            "audited, indexed, or removed."
+            "creating or retiring project skills, regenerating the project skill index, and "
+            "validating discovery and repository boundaries. Use when a project skill is added, "
+            "changed, audited, indexed, or removed."
         ),
         tags=("skills", "maintenance", "catalog", "validation", "stock-probability"),
         references=(
@@ -82,6 +180,25 @@ APPROVED_SKILL_CATALOG = {
         ),
         tags=("ponytail", "review", "overengineering", "boundary", "stock-probability"),
         references=("receipt-and-repair.md", "workflow.md"),
+    ),
+    "database-conventions": SkillDefinition(
+        description=(
+            "Apply Stock Probability SQLite repository and migration rules for schema changes, "
+            "bound queries, immutable audit records, and backup-safe upgrades. Use when changing "
+            "repository.py, packaged migrations, persistence SQL, or migration and restore checks."
+        ),
+        tags=("sqlite", "migrations", "persistence", "immutability", "stock-probability"),
+        references=("sqlite-change-checklist.md",),
+    ),
+    "security-audit": SkillDefinition(
+        description=(
+            "Audit Stock Probability local security boundaries for loopback HTTP, provider links, "
+            "SQLite and backups, exports, and dependencies. Use when changing "
+            "LocalSecurityMiddleware, provider URL handling, storage or backup trust, export "
+            "handling, or security-relevant dependencies."
+        ),
+        tags=("security", "loopback", "backup", "dependencies", "stock-probability"),
+        references=("audit-checklist.md",),
     ),
 }
 CATEGORIES: dict[str, tuple[str, ...]] = {
