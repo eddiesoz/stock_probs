@@ -3,6 +3,14 @@ const { defineConfig, devices } = require("@playwright/test");
 const path = require("node:path");
 
 const portText = process.env.STOCK_PROBS_BROWSER_PORT || "8765";
+const externalText = process.env.STOCK_PROBS_BROWSER_EXTERNAL ?? "0";
+if (!/^[01]$/.test(externalText)) {
+  throw new Error("STOCK_PROBS_BROWSER_EXTERNAL must be 0 or 1");
+}
+const externalServer = externalText === "1";
+if (externalServer && process.env.STOCK_PROBS_BROWSER_PORT === undefined) {
+  throw new Error("STOCK_PROBS_BROWSER_PORT is required for an external browser server");
+}
 if (!/^\d+$/.test(portText) || Number(portText) < 1 || Number(portText) > 65535) {
   throw new Error("STOCK_PROBS_BROWSER_PORT must be between 1 and 65535");
 }
@@ -24,6 +32,9 @@ module.exports = defineConfig({
     revision: process.env.STOCK_PROBS_REVISION || "working-tree",
     architecture: process.arch,
     execution: `native ${process.arch}`,
+    backend: externalServer
+      ? process.env.STOCK_PROBS_BROWSER_BACKEND_EXECUTION || "external loopback server"
+      : `native ${process.arch} fixture server`,
   },
   use: {
     baseURL,
@@ -42,10 +53,12 @@ module.exports = defineConfig({
       use: { ...devices["Pixel 7"], viewport: { width: 360, height: 800 } },
     },
   ],
-  webServer: {
-    command: "../../scripts/run-browser-app.sh",
-    url: `${baseURL}/api/v1/readiness`,
-    reuseExistingServer: false,
-    timeout: 30_000,
-  },
+  ...(externalServer ? {} : {
+    webServer: {
+      command: "../../scripts/run-browser-app.sh",
+      url: `${baseURL}/api/v1/readiness`,
+      reuseExistingServer: false,
+      timeout: 30_000,
+    },
+  }),
 });

@@ -30,6 +30,7 @@ export function Settings() {
           }
         }}
       >
+        <p className="panel-kicker">Display</p>
         <fieldset className="theme-control">
           <legend>Theme</legend>
           <div className="theme-options">

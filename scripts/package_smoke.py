@@ -13,9 +13,12 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 import zipfile
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_RESOURCES = {
@@ -54,30 +57,134 @@ print(names)
 """
 
 
+class _RuntimeResourceParser(HTMLParser):
+    """Collect browser-executed scripts and stylesheets from one packaged page."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.references: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        reference: str | None = None
+        if tag == "script":
+            reference = attributes.get("src")
+        elif tag == "link":
+            rel = (attributes.get("rel") or "").lower().split()
+            if "stylesheet" in rel or "modulepreload" in rel or (
+                attributes.get("as") or ""
+            ).lower() in {
+                "script",
+                "style",
+            }:
+                reference = attributes.get("href")
+        if reference is not None:
+            self.references.add(_validate_runtime_resource(reference))
+
+
+def _validate_runtime_resource(reference: str) -> str:
+    """Return a safe first-party resource path or reject the packaged page."""
+
+    parsed = urlsplit(reference)
+    decoded_path = unquote(parsed.path)
+    if (
+        parsed.scheme
+        or parsed.netloc
+        or parsed.fragment
+        or not parsed.path.startswith("/")
+        or "\\" in decoded_path
+        or ".." in decoded_path.split("/")
+        or not decoded_path.startswith(("/assets/", "/_next/"))
+    ):
+        raise RuntimeError(f"packaged HTML references unsafe runtime resource: {reference!r}")
+    return reference
+
+
+def _runtime_resources(html: str) -> set[str]:
+    """Parse all local script and stylesheet requests made by a packaged page."""
+
+    parser = _RuntimeResourceParser()
+    parser.feed(html)
+    parser.close()
+    return parser.references
+
+
+def _packaged_resource_name(reference: str) -> str:
+    """Map an HTTP resource path to its wheel member name."""
+
+    path = urlsplit(reference).path
+    if path.startswith("/_next/"):
+        return f"stock_probs/static/next{path}"
+    return f"stock_probs/static/{path.removeprefix('/assets/')}"
+
+
+def _get(
+    url: str,
+    *,
+    method: str = "GET",
+    payload: object | None = None,
+    status: int = 200,
+    timeout: float = 2,
+) -> tuple[bytes, dict[str, str]]:
+    """Fetch one generated loopback URL and retain normalized response headers."""
+
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname != "127.0.0.1"
+        or parsed.username is not None
+    ):
+        raise ValueError(f"refusing non-loopback smoke URL: {url!r}")
+    data = None if payload is None else json.dumps(payload).encode()
+    request = urllib.request.Request(  # noqa: S310 - URL was constrained to loopback above.
+        url,
+        data=data,
+        headers={} if data is None else {"Content-Type": "application/json"},
+        method=method,
+    )
+    try:
+        response = urllib.request.urlopen(request, timeout=timeout)  # noqa: S310
+    except urllib.error.HTTPError as error:
+        response = error
+    with response:
+        observed = response.getcode()
+        body = response.read(1024 * 1024 + 1)
+        headers = {name.lower(): value for name, value in response.headers.items()}
+    if len(body) > 1024 * 1024:
+        raise RuntimeError(f"loopback response exceeded 1 MiB: {url}")
+    if observed != status:
+        raise RuntimeError(f"{url} returned HTTP {observed}, expected {status}: {body!r}")
+    return body, headers
+
+
 def _run(command: list[str], *, cwd: Path, env: dict[str, str] | None = None) -> None:
     print("+", " ".join(command), flush=True)
     subprocess.run(command, cwd=cwd, env=env, check=True)  # noqa: S603
 
 
-def _free_loopback_port() -> int:
+def _free_port() -> int:
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         return int(listener.getsockname()[1])
 
 
-def _wait_for_json(url: str, expected_status: str, process: subprocess.Popen[bytes]) -> None:
-    deadline = time.monotonic() + 20
+def _wait_for_json(
+    url: str,
+    expected_status: str,
+    process: subprocess.Popen[bytes] | None,
+    *,
+    timeout: float = 20,
+) -> None:
+    deadline = time.monotonic() + timeout
     last_error: Exception | None = None
     while time.monotonic() < deadline:
-        if process.poll() is not None:
+        if process is not None and process.poll() is not None:
             raise RuntimeError(f"wheel-installed server exited with {process.returncode}")
         try:
-            # Only a generated loopback URL is accepted; this smoke never contacts a provider.
-            with urllib.request.urlopen(url, timeout=1) as response:  # noqa: S310
-                payload = json.load(response)
+            payload = json.loads(_get(url, timeout=1)[0])
             if payload.get("status") == expected_status:
                 return
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, RuntimeError) as exc:
             last_error = exc
             time.sleep(0.1)
     raise RuntimeError(f"wheel-installed server was not ready: {last_error}")
@@ -148,6 +255,13 @@ def main() -> None:
         wheel = wheels[0]
         with zipfile.ZipFile(wheel) as archive:
             contents = set(archive.namelist())
+            page_resources = {
+                page: _runtime_resources(archive.read(page).decode())
+                for page in (
+                    "stock_probs/static/next/index.html",
+                    "stock_probs/static/next/api-docs.html",
+                )
+            }
         missing = sorted(EXPECTED_RESOURCES - contents)
         if missing:
             raise RuntimeError("wheel omitted packaged resources: " + ", ".join(missing))
@@ -160,6 +274,16 @@ def main() -> None:
         )
         if not next_chunks:
             raise RuntimeError("wheel omitted hashed Next JavaScript chunks")
+        referenced_resources = set().union(*page_resources.values())
+        missing_references = sorted(
+            resource_name
+            for reference in referenced_resources
+            if (resource_name := _packaged_resource_name(reference)) not in contents
+        )
+        if missing_references:
+            raise RuntimeError(
+                "wheel omitted HTML-referenced resources: " + ", ".join(missing_references)
+            )
 
         _run(
             [
@@ -203,7 +327,7 @@ def main() -> None:
         _run([sys.executable, "-c", REGISTERED_MIGRATION_CHECK], cwd=temp, env=env)
         _run([sys.executable, "-m", "stock_probs.cli", "migrate"], cwd=temp, env=env)
 
-        port = _free_loopback_port()
+        port = _free_port()
         command = [
             sys.executable,
             "-m",
@@ -219,28 +343,44 @@ def main() -> None:
         try:
             _wait_for_json(f"http://127.0.0.1:{port}/api/v1/health", "ok", process)
             dashboard_url = f"http://127.0.0.1:{port}/"
-            with urllib.request.urlopen(dashboard_url, timeout=2) as response:  # noqa: S310
-                if b"Signal Ledger" not in response.read():
+            served_resources: set[str] = set()
+            for page_url, marker in (
+                (dashboard_url, b"Signal Ledger"),
+                (f"http://127.0.0.1:{port}/api/v1/docs", b"Signal Ledger API"),
+            ):
+                page, headers = _get(page_url)
+                if marker not in page:
                     raise RuntimeError(
-                        "wheel-installed server did not serve the packaged dashboard"
+                        f"wheel-installed server returned the wrong HTML for {page_url}"
                     )
-            docs_url = f"http://127.0.0.1:{port}/api/v1/docs"
-            with urllib.request.urlopen(docs_url, timeout=2) as response:  # noqa: S310
-                if b"Signal Ledger API" not in response.read():
-                    raise RuntimeError("wheel-installed server did not serve the packaged docs")
-            theme_url = f"http://127.0.0.1:{port}/assets/theme.js"
-            with urllib.request.urlopen(theme_url, timeout=2) as response:  # noqa: S310
-                if b"stock-probs.theme" not in response.read():
-                    raise RuntimeError("wheel-installed server did not serve the packaged theme")
-            app_url = f"http://127.0.0.1:{port}/assets/app.js"
-            with urllib.request.urlopen(app_url, timeout=2) as response:  # noqa: S310
-                if b"/api/v1" not in response.read():
-                    raise RuntimeError("wheel-installed server did not serve the packaged app.js")
-            chunk_path = next_chunks[0].split("/next/_next/", 1)[1]
-            chunk_url = f"http://127.0.0.1:{port}/_next/{chunk_path}"
-            with urllib.request.urlopen(chunk_url, timeout=2) as response:  # noqa: S310
-                if not response.read():
-                    raise RuntimeError("wheel-installed server returned an empty Next chunk")
+                policy = headers.get("content-security-policy", "")
+                if (
+                    "default-src 'self'" not in policy
+                    or "script-src 'self'" not in policy
+                    or "'unsafe-inline'" in policy
+                    or "'unsafe-eval'" in policy
+                ):
+                    raise RuntimeError(
+                        f"wheel-installed server returned an unsafe CSP for {page_url}"
+                    )
+                served_resources.update(_runtime_resources(page.decode()))
+            if served_resources != referenced_resources:
+                raise RuntimeError("served HTML resource references differ from the packaged wheel")
+            expected_markers = {
+                "/assets/theme.js": b"stock-probs.theme",
+                "/assets/app.js": b"/api/v1",
+            }
+            for reference in sorted(served_resources):
+                body, headers = _get(f"http://127.0.0.1:{port}{reference}")
+                if not body or headers.get("x-content-type-options") != "nosniff":
+                    raise RuntimeError(
+                        f"wheel-installed server returned an invalid local asset: {reference}"
+                    )
+                marker = expected_markers.get(urlsplit(reference).path)
+                if marker is not None and marker not in body:
+                    raise RuntimeError(
+                        f"wheel-installed server returned the wrong local asset: {reference}"
+                    )
         finally:
             _stop(process)
 
@@ -254,7 +394,14 @@ def main() -> None:
             "result": "Pass",
             "wheel": artifact_wheel.name,
             "wheel_bytes": artifact_wheel.stat().st_size,
-            "verified_resources": sorted(EXPECTED_RESOURCES | {next_chunks[0]}),
+            "verified_resources": sorted(
+                EXPECTED_RESOURCES
+                | set(next_chunks)
+                | {_packaged_resource_name(reference) for reference in referenced_resources}
+            ),
+            "html_resource_references": {
+                page: sorted(references) for page, references in page_resources.items()
+            },
             "checks": [
                 "wheel-build",
                 "wheel-contents",
@@ -267,6 +414,8 @@ def main() -> None:
                 "literal-theme-initializer",
                 "app-js",
                 "hashed-next-chunk",
+                "strict-html-csp",
+                "all-html-script-stylesheet-assets",
             ],
         }
         (artifact_dir / "manifest.json").write_text(json.dumps(report, indent=2) + "\n")

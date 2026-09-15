@@ -1,5 +1,49 @@
 # A milestone gate extracts a pinned user-mode emulator, then runs a pinned ARM64 package/runtime image.
 services:
+  arm64-frontend-builder:
+    image: "${STOCK_PROBS_ARM64_FRONTEND_IMAGE:?}"
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: frontend-builder
+    platform: linux/arm64
+    network_mode: none
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 2
+
+  arm64-app:
+    image: "${STOCK_PROBS_ARM64_IMAGE:?}"
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    platform: linux/arm64
+    environment:
+      STOCK_PROBS_DATA_DIR: /data
+      STOCK_PROBS_PROVIDER: fixture
+      STOCK_PROBS_FIXTURE_NOW: "2025-01-10T17:03:00+00:00"
+    ports:
+      - "127.0.0.1:${STOCK_PROBS_ARM64_PORT:?}:8000"
+    volumes:
+      - "arm64-app-data:/data"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 1
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    stop_grace_period: 15s
+
   qemu-acquire:
     image: multiarch/qemu-user-static:7.2.0-1@sha256:fe60359c92e86a43cc87b3d906006245f77bfc0565676b80004cc666e4feb9f0
     platform: linux/amd64
@@ -91,3 +135,4 @@ services:
 
 volumes:
   arm64-python-deps:
+  arm64-app-data:

@@ -15,8 +15,7 @@ export default function DashboardPage() {
       <header className="masthead">
         <div className="masthead-primary">
           <a className="brand-lockup" href="#main" aria-label="Signal Ledger home">
-            <span className="ledger-mark" aria-hidden="true"><i /><i /><i /></span>
-            <span><span className="eyebrow">Local probability desk / v1</span><h1>Signal Ledger</h1></span>
+            <span><span className="eyebrow">Local research terminal / API v1</span><h1>Signal Ledger</h1></span>
           </a>
           <div className="header-controls">
             <nav className="section-nav" aria-label="Dashboard sections">
@@ -35,17 +34,14 @@ export default function DashboardPage() {
 
       <main id="main" tabIndex={-1}>
         <section className="hero" aria-labelledby="forecast-heading">
-          <div className="hero-copy">
-            <p className="section-number">01 / Forecast desk</p>
-            <h2 id="forecast-heading">Read the range.<br /><em>Keep the record.</em></h2>
-            <p className="hero-deck">Decision-grade probability context for the next market close—measured from both the daily close and the last completed five-minute bar.</p>
-            <ul className="hero-facts" aria-label="Forecast principles">
-              <li><span>Two</span> comparable horizons</li>
-              <li><span>Three</span> confidence bands</li>
-              <li><span>Every</span> request recorded</li>
-            </ul>
+          <div className="hero-copy workspace-intro">
+            <p className="section-number panel-kicker">01 / Forecast workspace</p>
+            <h2 id="forecast-heading" className="workspace-title">Next-close probability forecast</h2>
+            <p className="workspace-summary">Compare close-to-close and latest-completed-five-minute-bar horizons with explicit probabilities, ranges, and model evidence.</p>
+            <p className="desk-meta">Local FastAPI /api/v1 · Two horizons · Immutable audit ledger</p>
           </div>
           <form id="forecast-form" className="search-panel" noValidate>
+            <p className="panel-kicker">Instrument composer</p>
             <div className="field symbol-field">
               <div className="field-heading">
                 <label htmlFor="symbol">Company name or Yahoo Finance symbol</label>
@@ -71,8 +67,9 @@ export default function DashboardPage() {
         <section id="result-section" className="results" aria-labelledby="result-heading" tabIndex={-1}>
           <div className="section-head">
             <div>
-              <p className="section-number">02 / Horizon analysis</p>
+              <p className="section-number panel-kicker">02 / Horizon analysis</p>
               <h2 id="result-heading">Forecast comparison</h2>
+              <p className="section-summary">Two completed origins, one next-close target, with probabilities and intervals shown together.</p>
             </div>
             <span id="quality-badge" className="badge neutral">Awaiting input</span>
           </div>
@@ -86,7 +83,7 @@ export default function DashboardPage() {
         <section id="fresh-analysis-section" className="fresh-analysis" aria-labelledby="fresh-analysis-heading" tabIndex={-1} hidden>
           <div className="section-head">
             <div>
-              <p className="section-number">02b / Separate analysis</p>
+              <p className="section-number panel-kicker">02b / Separate analysis</p>
               <h2 id="fresh-analysis-heading">Fresh historical-cutoff analysis</h2>
             </div>
             <span className="badge fresh">New calculation</span>
@@ -98,7 +95,7 @@ export default function DashboardPage() {
         <section className="ledger" aria-labelledby="history-heading">
           <div className="section-head">
             <div>
-              <p className="section-number">03 / Permanent record</p>
+              <p className="section-number panel-kicker">03 / Permanent record</p>
               <h2 id="history-heading">Search ledger</h2>
             </div>
             <fieldset className="export-controls">
@@ -107,7 +104,7 @@ export default function DashboardPage() {
               <a id="export-json" className="text-link" href="/api/v1/history-export.json" download>Download JSON</a>
             </fieldset>
           </div>
-          <p className="ledger-intro">Every row is a new submitted request. Status and run labels distinguish successful, failed, repeated, newly calculated, and reused results. Saved results are immutable and never expire automatically.</p>
+          <p className="ledger-intro section-summary">Search every submitted request by instrument, status, model, horizon, or date. Saved results are immutable and never expire automatically; fresh historical-cutoff analysis remains a separate calculation.</p>
           <form id="history-form" className="history-filters" role="search">
             <div className="field">
               <label htmlFor="history-query">Find symbol or company</label>
@@ -194,7 +191,7 @@ export default function DashboardPage() {
         </section>
       </main>
 
-      <footer>
+      <footer className="terminal-footer">
         <p>Research output, not investment advice. Provider, model, version, and limitations are shown with every result.</p>
       </footer>
       <Script src="/assets/app.js" strategy="afterInteractive" />

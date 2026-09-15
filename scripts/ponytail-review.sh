@@ -34,7 +34,7 @@ command -v install >/dev/null
 command -v jq >/dev/null
 command -v stat >/dev/null
 
-# OpenCode 1.18.30 documents auth.json as its credential store. Its documented
+# OpenCode 1.18.31 documents auth.json as its credential store. Its documented
 # environment interface has no whole-store auth override, so bridge only that
 # file rather than exposing credential contents in an environment variable.
 parent_data_home=${XDG_DATA_HOME:-${HOME:-}/.local/share}
@@ -117,8 +117,8 @@ version_status=0
   run_isolated opencode --version
 ) >"$version_raw" 2>&1 || version_status=$?
 installed_version=$(<"$version_raw")
-[[ $version_status -eq 0 && "$installed_version" == "1.18.30" ]] || {
-  printf 'opencode 1.18.30 is required\n' >&2
+[[ $version_status -eq 0 && "$installed_version" == "1.18.31" ]] || {
+  printf 'opencode 1.18.31 is required\n' >&2
   exit 69
 }
 

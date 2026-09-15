@@ -106,3 +106,29 @@ def test_compose_limits_access_resources_and_keeps_all_state_on_data_volume() ->
     )
     assert "frontend/" not in dockerignore.splitlines()
     assert "frontend/package-lock.json" not in dockerignore
+
+
+def test_arm64_compose_builds_actual_targets_and_contains_the_production_runtime() -> None:
+    """The architecture smoke uses the production Dockerfile and a loopback-only app."""
+
+    compose = (ROOT / "scripts/compose.arm64.yml").read_text()
+
+    assert compose.count("platform: linux/arm64") >= 4
+    assert "target: frontend-builder" in compose
+    assert 'image: "${STOCK_PROBS_ARM64_FRONTEND_IMAGE:?}"' in compose
+    assert 'image: "${STOCK_PROBS_ARM64_IMAGE:?}"' in compose
+    assert '"127.0.0.1:${STOCK_PROBS_ARM64_PORT:?}:8000"' in compose
+    assert "STOCK_PROBS_PROVIDER: fixture" in compose
+    assert '"arm64-app-data:/data"' in compose
+    assert all(
+        value in compose
+        for value in (
+            "read_only: true",
+            'cap_drop: ["ALL"]',
+            'security_opt: ["no-new-privileges:true"]',
+            "pids_limit: 128",
+            "mem_limit: 768m",
+            "max-size: 10m",
+            'max-file: "3"',
+        )
+    )

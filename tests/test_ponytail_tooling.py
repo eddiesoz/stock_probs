@@ -101,7 +101,7 @@ def test_node_plugin_smoke_has_no_credential_io():
     assert completed.stdout.strip() == "ponytail plugin smoke: pass"
 
 
-def test_opencode_11830_loads_valid_config_in_isolated_home(tmp_path):
+def test_opencode_11831_loads_valid_config_in_isolated_home(tmp_path):
     environment = os.environ.copy()
     for name in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"):
         location = tmp_path / name.lower()
@@ -117,7 +117,7 @@ def test_opencode_11830_loads_valid_config_in_isolated_home(tmp_path):
     version = subprocess.run(
         ["opencode", "--version"], text=True, capture_output=True, check=True, timeout=10
     ).stdout.strip()
-    assert version == "1.18.30"
+    assert version == "1.18.31"
     resolved = subprocess.run(
         ["opencode", "debug", "config"],
         cwd=ROOT,
@@ -257,7 +257,7 @@ with sqlite3.connect(db) as connection:
 (sandbox / "config/opencode/.ponytail-active").write_text("review")
 
 if sys.argv[1:] == ["--version"]:
-    print("1.18.30")
+    print("1.18.31")
     raise SystemExit
 
 if os.environ.get("FAKE_OPENCODE_FAIL"):
@@ -527,7 +527,7 @@ def test_review_launcher_rejects_invalid_json_without_disclosing_it(tmp_path):
     fake_opencode = fake_bin / "opencode"
     fake_opencode.write_text(
         "#!/bin/sh\n"
-        "if [ \"$1\" = \"--version\" ]; then printf '1.18.30\\n'; exit 0; fi\n"
+        "if [ \"$1\" = \"--version\" ]; then printf '1.18.31\\n'; exit 0; fi\n"
         f"printf '%s\\n' 'not-json-{secret}'\n"
     )
     fake_opencode.chmod(0o700)

@@ -380,6 +380,56 @@ def test_generated_dashboard_and_docs_authorize_only_their_exact_local_scripts(c
         assert client.get(legacy_asset).status_code == 200
 
 
+def test_generated_files_have_no_legacy_asset_aliases(client):
+    """Generated exports remain reachable only through their canonical routes."""
+
+    dashboard = client.get("/")
+    next_asset = next(
+        source["src"]
+        for script in _SCRIPT.finditer(dashboard.text)
+        if (source := _SCRIPT_SRC.search(script["attrs"])) is not None
+        and source["src"].startswith("/_next/")
+    )
+    canonical = (
+        dashboard,
+        client.get("/api/v1/docs"),
+        client.get("/assets/app.css"),
+        client.get("/assets/app.js"),
+        client.get("/assets/theme.js"),
+        client.get("/assets/favicon.svg"),
+        client.get(next_asset),
+    )
+    assert {response.status_code for response in canonical} == {200}
+
+    forbidden = (
+        "/assets/next",
+        "/assets/next/",
+        "/assets/next/index.html",
+        "/assets/next/api-docs.html",
+        f"/assets/next{next_asset}",
+        "/assets/%6e%65%78%74/index.html",
+        "/assets/%2e/next/index.html",
+        "/assets/other/%2e%2e/next/api-docs.html",
+        "/assets/next/%2e%2e/next/index.html",
+    )
+    responses = [client.get(path, follow_redirects=False) for path in forbidden]
+    assert {response.status_code for response in responses} == {404}
+    assert all(
+        response.json()
+        == {
+            "error": {
+                "code": "not_found",
+                "message": "The requested resource was not found.",
+            }
+        }
+        for response in responses
+    )
+    assert all(
+        response.headers["content-security-policy"] == dashboard.headers["content-security-policy"]
+        for response in (*canonical, *responses)
+    )
+
+
 @pytest.mark.parametrize("path", ["/", "/api/v1/docs"])
 def test_generated_html_wrong_methods_keep_safe_json_errors(client, path):
     response = client.post(path)

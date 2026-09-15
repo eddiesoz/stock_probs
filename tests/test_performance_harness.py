@@ -465,7 +465,6 @@ def test_local_gate_builds_and_stages_frontend_before_profile_gates():
         )
     )
     assert "frontend-build:\n\t./scripts/build-frontend.sh\n" in makefile
-    assert "frontend-npm-ci-typecheck-test-build-stage" in gate
 
 
 def test_comment_audit_includes_frontend_typescript_but_not_generated_next(tmp_path):

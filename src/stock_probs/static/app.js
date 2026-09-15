@@ -263,7 +263,12 @@ function renderTailChart(result, chartId) {
   const tooltipText = "Hover or focus a point for its probability.";
   const tooltip = element("p", "chart-tooltip", tooltipText);
   tooltip.setAttribute("aria-live", "polite");
-  const resetTooltip = () => { tooltip.textContent = tooltipText; };
+  // Keyboard focus owns the readout so a later pointer leave cannot erase its evidence.
+  let hoveredPoint = null;
+  let focusedPoint = null;
+  const updateTooltip = () => {
+    tooltip.textContent = (focusedPoint || hoveredPoint)?.getAttribute("aria-label") || tooltipText;
+  };
   for (const [kind, matcher] of [["loss", (item) => item.threshold < 0], ["gain", (item) => item.threshold > 0]]) {
     const points = thresholds.filter(matcher);
     const pointText = points.map((item) => `${x(item.threshold)},${y(item.probability)}`).join(" ");
@@ -290,10 +295,10 @@ function renderTailChart(result, chartId) {
       const title = svgElement("title");
       title.textContent = accessible;
       point.append(title);
-      for (const event of ["focus", "mouseenter"]) {
-        point.addEventListener(event, () => { tooltip.textContent = accessible; });
-      }
-      for (const event of ["blur", "mouseleave"]) point.addEventListener(event, resetTooltip);
+      point.addEventListener("focus", () => { focusedPoint = point; updateTooltip(); });
+      point.addEventListener("blur", () => { if (focusedPoint === point) focusedPoint = null; updateTooltip(); });
+      point.addEventListener("mouseenter", () => { hoveredPoint = point; updateTooltip(); });
+      point.addEventListener("mouseleave", () => { if (hoveredPoint === point) hoveredPoint = null; updateTooltip(); });
       point.addEventListener("keydown", (event) => {
         if (event.key !== "Enter") return;
         event.preventDefault();
@@ -316,12 +321,12 @@ function renderTailChart(result, chartId) {
   return figure;
 }
 
-function renderHorizonComparison(results) {
+function renderHorizonComparison(results, headingId = "horizon-scan-heading", headingText = "Horizon scan") {
   const section = element("section", "horizon-comparison");
-  section.setAttribute("aria-labelledby", "horizon-scan-heading");
+  section.setAttribute("aria-labelledby", headingId);
   const title = element("header", "comparison-title");
-  const heading = element("h3", "", "Horizon scan");
-  heading.id = "horizon-scan-heading";
+  const heading = element("h3", "", headingText);
+  heading.id = headingId;
   title.append(heading, element("p", "", "Shared target · different completed origins"));
   const rows = element("div", "comparison-rows");
   for (const result of results) {
@@ -656,24 +661,6 @@ function renderForecastCard(result, input) {
   );
   card.append(header);
 
-  const probabilities = result.direction_probabilities;
-  const chart = element("div", "probability-chart");
-  chart.setAttribute("role", "img");
-  chart.setAttribute("aria-label", `Down ${formatPercent(directionValue(probabilities, "down"))}, unchanged ${formatPercent(directionValue(probabilities, "flat"))}, up ${formatPercent(directionValue(probabilities, "up"))}`);
-  for (const direction of ["down", "flat", "up"]) {
-    const bar = element("div", `probability-bar ${direction}`);
-    const fill = element("meter", "fill");
-    fill.min = 0;
-    fill.max = 1;
-    const probability = directionValue(probabilities, direction);
-    fill.value = probability;
-    fill.textContent = formatPercent(probability);
-    const directionLabel = direction === "flat" ? "unchanged" : direction;
-    bar.append(element("span", "value", formatPercent(probability)), fill, element("span", "label", directionLabel));
-    chart.append(bar);
-  }
-  card.append(chart, renderTailChart(result, chartId));
-
   const contextTable = element("table", "details-table context-table");
   contextTable.append(element("caption", "", "Origin and target context"));
   const contextBody = element("tbody");
@@ -697,6 +684,44 @@ function renderForecastCard(result, input) {
     );
   }
   card.append(contextTable);
+
+  const probabilities = result.direction_probabilities;
+  const chart = element("div", "probability-chart");
+  chart.setAttribute("role", "img");
+  chart.setAttribute("aria-label", `Down ${formatPercent(directionValue(probabilities, "down"))}, unchanged ${formatPercent(directionValue(probabilities, "flat"))}, up ${formatPercent(directionValue(probabilities, "up"))}`);
+  for (const direction of ["down", "flat", "up"]) {
+    const bar = element("div", `probability-bar ${direction}`);
+    const fill = element("meter", "fill");
+    fill.min = 0;
+    fill.max = 1;
+    const probability = directionValue(probabilities, direction);
+    fill.value = probability;
+    fill.textContent = formatPercent(probability);
+    const directionLabel = direction === "flat" ? "unchanged" : direction;
+    bar.append(element("span", "value", formatPercent(probability)), fill, element("span", "label", directionLabel));
+    chart.append(bar);
+  }
+  card.append(chart);
+
+  const intervalTable = element("table", "details-table interval-table");
+  intervalTable.append(element("caption", "", "Return and price intervals"));
+  const intervalBody = element("tbody");
+  intervalTable.append(intervalBody);
+  for (const interval of result.magnitude_intervals) {
+    const coverage = formatPercent(interval.level);
+    tableRow(intervalBody, `${coverage} magnitude interval (return and price)`, `${interval.definition} · level ${interval.level}`);
+    tableRow(
+      intervalBody,
+      `${coverage} return range`,
+      `${interval.percent.low.toFixed(2)}% to ${interval.percent.high.toFixed(2)}% (${interval.percent.unit}; raw ${interval.percent.low} to ${interval.percent.high} ${interval.percent.unit})`,
+    );
+    tableRow(
+      intervalBody,
+      `${coverage} price range`,
+      `${formatPrice(interval.price.low, input.currency)} to ${formatPrice(interval.price.high, input.currency)} (${interval.price.unit}; quote currency ${input.currency}; raw ${interval.price.low} to ${interval.price.high} ${interval.price.unit})`,
+    );
+  }
+  card.append(intervalTable, renderTailChart(result, chartId));
 
   const table = element("table", "details-table");
   table.append(element("caption", "", "Direction and threshold details"));
@@ -730,19 +755,6 @@ function renderForecastCard(result, input) {
     result.conditional_magnitudes || result.conditional_probabilities || result.conditional_gain_loss,
   );
 
-  const intervalTable = element("table", "details-table interval-table");
-  intervalTable.append(element("caption", "", "Return and price intervals"));
-  const intervalBody = element("tbody");
-  intervalTable.append(intervalBody);
-  for (const interval of result.magnitude_intervals) {
-    tableRow(
-      intervalBody,
-      `${formatPercent(interval.level)} magnitude interval (return and price)`,
-      `${interval.definition}: ${interval.percent.low.toFixed(2)}% to ${interval.percent.high.toFixed(2)} percent return (${interval.percent.unit}); ${formatPrice(interval.price.low, input.currency)} to ${formatPrice(interval.price.high, input.currency)} (${interval.price.unit})`,
-    );
-  }
-  card.append(intervalTable);
-
   for (const [label, value] of [
     ["Model", `${result.model?.name || input.model.name} / ${result.model?.version || result.model_version || input.model.version}`],
     ["Forecast contract", result.forecast_contract_version || input.forecast_contract_version],
@@ -769,7 +781,7 @@ function renderForecastCard(result, input) {
       result.evaluation || input.evaluations?.[result.horizon] || input.evaluation?.[result.horizon],
     ),
   );
-  card.append(disclosure("Threshold, uncertainty, and evaluation details", "forecast-forensics",
+  card.append(disclosure("Detailed forecast evidence", "forecast-forensics",
     table, ...[conditional, uncertainty, evaluation].filter(Boolean)));
 
   if (result.outcomes?.length) {
@@ -1076,6 +1088,7 @@ async function runFreshAnalysis(id) {
       ["Provider / archive limitations", inputLimitations(data.input).join(" ")],
     ]);
     freshContent.append(meta);
+    freshContent.append(renderHorizonComparison(data.results, "fresh-horizon-scan-heading", "Fresh horizon scan"));
     const grid = element("div", "forecast-grid");
     for (const result of data.results) grid.append(renderForecastCard(result, data.input));
     freshContent.append(grid);
@@ -1228,7 +1241,7 @@ function renderHistory(data, runRelations) {
     const caption = element("caption", "sr-only", "Submitted forecast search history");
     const head = element("thead");
     const headerRow = element("tr");
-    for (const label of ["Request / run", "Instrument", "Type / venue", "Analysis", "Status", "Model / evidence", "Submitted", "Actions"]) {
+    for (const label of ["Instrument", "Status", "Submitted", "Request / run", "Type / venue", "Analysis", "Model / evidence", "Actions"]) {
       const heading = element("th", "", label);
       heading.scope = "col";
       headerRow.append(heading);
@@ -1244,13 +1257,13 @@ function renderHistory(data, runRelations) {
         runLabel,
       );
       const cells = [
-        ["Request / run", requestCell],
         ["Instrument", instrumentHistoryCell(item)],
+        ["Status", element("td", `status-${item.status}`, item.status)],
+        ["Submitted", element("td", "", formatTime(item.submitted_at))],
+        ["Request / run", requestCell],
         ["Type / venue", element("td", "", [item.asset_type.toUpperCase(), item.exchange].filter(Boolean).join(" / "))],
         ["Analysis", element("td", "", analysisLabel(item))],
-        ["Status", element("td", `status-${item.status}`, item.status)],
         ["Model / evidence", evidenceHistoryCell(item)],
-        ["Submitted", element("td", "", formatTime(item.submitted_at))],
       ];
       for (const [label, cell] of cells) {
         cell.dataset.label = label;

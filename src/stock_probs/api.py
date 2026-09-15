@@ -2812,8 +2812,20 @@ def create_app(
     def dashboard() -> FileResponse:
         return FileResponse(next_dir / "index.html")
 
+    @app.api_route(
+        "/assets/{path:path}",
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+        name="assets",
+    )
+    def static_asset(path: str) -> FileResponse:
+        """Serve authored assets without aliasing the generated export beneath /assets."""
+
+        if path not in ("app.css", "app.js", "theme.js", "favicon.svg"):
+            raise HTTPException(status_code=404)
+        return FileResponse(static_dir / path)
+
     app.mount("/_next", StaticFiles(directory=next_dir / "_next"), name="next-assets")
-    app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
     return app
 
 

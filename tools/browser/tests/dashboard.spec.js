@@ -19,58 +19,59 @@ const PUBLIC_COUNT_LABELS = [
 ];
 const STORAGE_IMPLEMENTATION_LEAK = /(?:\bsqlite3?\b|\bdatabase(?:_[a-z0-9_]*)?\b|\bsql\b|\btraceback\b|\bfile:\/\/|(?:^|[\s"'=])\/(?:home|tmp|var|etc|root|users|usr|opt|srv)\/|\b[a-z]:\\|\b(?:search_events|forecast_runs|forecast_inputs|forecast_results)\b)/i;
 const REQUEST_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+const TERMINAL_VIEWPORTS = [
+  { width: 1440, height: 1000 },
+  { width: 768, height: 900 },
+  { width: 390, height: 844 },
+  { width: 320, height: 844 },
+];
+const HISTORY_CARD_LABELS = [
+  "Instrument", "Status", "Submitted", "Request / run",
+  "Type / venue", "Analysis", "Model / evidence", "Actions",
+];
 
-// Ratios are independently recorded from the WCAG relative-luminance formula. The entries cover
-// every authored foreground/background token pairing, including hover, error, and chart states.
-const CONTRAST_STATES = [
-  { state: "primary paper text", foreground: "--text", background: "--canvas", minimum: 4.5, recorded: 13.85 },
-  { state: "secondary paper text", foreground: "--soft", background: "--canvas", minimum: 4.5, recorded: 9.65 },
-  { state: "muted paper text", foreground: "--muted", background: "--canvas", minimum: 4.5, recorded: 5.13 },
-  { state: "section number on paper", foreground: "--signal", background: "--canvas", minimum: 4.5, recorded: 5.89 },
-  { state: "large signal headline on paper", foreground: "--focus", background: "--canvas", minimum: 3, recorded: 3.85 },
-  { state: "light text on terminal", foreground: "#ffffff", background: "--text", minimum: 4.5, recorded: 16.07 },
-  { state: "mint text on terminal", foreground: "--mint", background: "--text", minimum: 4.5, recorded: 10.94 },
-  { state: "field index on terminal", foreground: "#92a69e", background: "--text", minimum: 4.5, recorded: 6.25 },
-  { state: "hint text on terminal", foreground: "#b9c6c1", background: "--text", minimum: 4.5, recorded: 9.12 },
-  { state: "field error on terminal", foreground: "#ffb5a3", background: "--text", minimum: 4.5, recorded: 9.48 },
-  { state: "primary sheet text", foreground: "--text", background: "--panel", minimum: 4.5, recorded: 15.8 },
-  { state: "muted sheet and option text", foreground: "--muted", background: "--panel", minimum: 4.5, recorded: 5.86 },
-  { state: "identity confirmation text", foreground: "#cad8d2", background: "#203b33", minimum: 4.5, recorded: 8.22 },
-  { state: "identity confirmation emphasis", foreground: "#ffffff", background: "#203b33", minimum: 4.5, recorded: 12.11 },
-  { state: "primary button text", foreground: "--text", background: "--lime", minimum: 4.5, recorded: 12.22 },
-  { state: "successful status on paper", foreground: "--good", background: "--canvas", minimum: 4.5, recorded: 6.02 },
-  { state: "repeated status on paper", foreground: "--warn", background: "--canvas", minimum: 4.5, recorded: 5.87 },
-  { state: "failed status on paper", foreground: "--bad", background: "--canvas", minimum: 4.5, recorded: 6.27 },
-  { state: "comparison description", foreground: "#b9c9c3", background: "--text", minimum: 4.5, recorded: 9.34 },
-  { state: "comparison secondary labels", foreground: "#aebeb8", background: "--text", minimum: 4.5, recorded: 8.31 },
-  { state: "comparison down value", foreground: "#ffad9b", background: "--text", minimum: 4.5, recorded: 8.96 },
-  { state: "chart label", foreground: "--muted", background: "#f6f4eb", minimum: 4.5, recorded: 5.41 },
-  { state: "provenance copy", foreground: "#45564f", background: "#e5e5d8", minimum: 4.5, recorded: 6.13 },
-  { state: "provenance heading", foreground: "--text", background: "#e5e5d8", minimum: 4.5, recorded: 12.65 },
-  { state: "error label", foreground: "--bad", background: "#f4ded9", minimum: 4.5, recorded: 5.65 },
-  { state: "error copy", foreground: "--text", background: "#f4ded9", minimum: 4.5, recorded: 12.47 },
-  { state: "navigation hover", foreground: "--strong", background: "--lime", minimum: 4.5, recorded: 12.22 },
-  { state: "history action on sheet", foreground: "--signal", background: "--panel", minimum: 4.5, recorded: 6.72 },
-  { state: "focus and loss-chart signal", foreground: "--focus", background: "--panel", minimum: 3, recorded: 4.4 },
-  { state: "control boundary", foreground: "--edge", background: "--panel", minimum: 3, recorded: 3.49 },
-  { state: "loading and empty boundary", foreground: "--edge", background: "--canvas", minimum: 3, recorded: 3.05 },
+const RENDERED_CONTRAST_STATES = [
+  ["primary copy", ".workspace-summary", 4.5],
+  ["section label", ".section-number", 4.5],
+  ["composer label", "#forecast-form label", 4.5],
+  ["composer hint", "#symbol-help", 4.5],
+  ["primary action", "#forecast-submit", 4.5],
+  ["comparison description", ".comparison-title p", 4.5],
+  ["comparison label", ".comparison-stat small", 4.5],
+  ["comparison value", ".comparison-stat.down strong", 4.5],
+  ["chart label", ".chart-axis-label", 4.5],
+  ["chart legend", ".chart-legend", 4.5],
+  ["chart text equivalent", ".details-table th", 4.5],
+  ["history value", ".history-table td", 4.5],
+  ["history action", ".history-actions button", 4.5],
 ];
 const THEME_ROLE_CONTRAST = [
   ["text", "--text", "--canvas", 4.5],
+  ["panel text", "--text", "--panel", 4.5],
   ["muted text", "--muted", "--canvas", 4.5],
+  ["muted panel text", "--muted", "--panel", 4.5],
+  ["terminal text", "--terminal-text", "--terminal", 4.5],
+  ["terminal muted text", "--terminal-muted", "--terminal", 4.5],
+  ["accent", "--accent", "--canvas", 4.5],
   ["control border", "--edge", "--panel", 3],
   ["focus", "--focus", "--canvas", 3],
+  ["panel focus", "--focus", "--panel", 3],
+  ["chart focus", "--focus", "--plot", 3],
   ["success", "--good", "--canvas", 4.5],
   ["warning", "--warn", "--canvas", 4.5],
   ["error", "--bad", "--canvas", 4.5],
   ["loss chart", "--loss", "--plot", 3],
   ["gain chart", "--gain", "--plot", 3],
+  ["chart grid", "--grid", "--plot", 3],
 ];
 
 function relativeLuminance(color) {
-  const channels = color.match(/[\da-f]{2}/gi).map((channel) => parseInt(channel, 16) / 255);
+  const channels = /^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(color)
+    ? color.slice(1).match(color.length === 4 ? /./g : /../g).map((channel) => parseInt(channel.length === 1 ? channel.repeat(2) : channel, 16))
+    : color.match(/^rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, [\d.]+)?\)$/)?.slice(1, 4).map(Number);
+  expect(channels?.length, `unsupported color ${color}`).toBe(3);
   const linear = channels.map((channel) => (
-    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+    channel / 255 <= 0.04045 ? channel / 255 / 12.92 : ((channel / 255 + 0.055) / 1.055) ** 2.4
   ));
   return (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
 }
@@ -80,25 +81,13 @@ function contrastRatio(foreground, background) {
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
 
-async function verifyAuthoredContrastStates(page) {
-  const tokens = await page.evaluate((names) => {
-    const styles = getComputedStyle(document.documentElement);
-    const resolve = (name) => {
-      const value = styles.getPropertyValue(name).trim();
-      return value.startsWith("var(") ? resolve(value.slice(4, -1)) : value;
-    };
-    return Object.fromEntries(names.map((name) => [name, resolve(name)]));
-  }, [...new Set(CONTRAST_STATES.flatMap(({ foreground, background }) => (
-    [foreground, background].filter((value) => value.startsWith("--"))
-  )))]);
-  return CONTRAST_STATES.map((entry) => {
-    const foreground = entry.foreground.startsWith("--") ? tokens[entry.foreground] : entry.foreground;
-    const background = entry.background.startsWith("--") ? tokens[entry.background] : entry.background;
-    const ratio = contrastRatio(foreground, background);
-    expect(ratio, `${entry.state} drifted from its recorded WCAG ratio`).toBeCloseTo(entry.recorded, 2);
-    expect(ratio, `${entry.state} does not meet WCAG contrast`).toBeGreaterThanOrEqual(entry.minimum);
-    return { ...entry, foreground, background, calculated: Number(ratio.toFixed(2)) };
-  });
+async function verifyRenderedContrastStates(page) {
+  const results = [];
+  for (const [state, selector, minimum] of RENDERED_CONTRAST_STATES) {
+    await expect(page.locator(selector).first(), `${state} must be rendered`).toBeVisible();
+    results.push({ state, ...await renderedContrast(page, selector, null, minimum) });
+  }
+  return results;
 }
 
 async function verifyThemeRoleContrast(page) {
@@ -113,7 +102,7 @@ async function verifyThemeRoleContrast(page) {
   });
 }
 
-async function renderedContrast(page, selector, pseudo = null) {
+async function renderedContrast(page, selector, pseudo = null, minimum = 4.5) {
   const colors = await page.evaluate(({ target, pseudoElement }) => {
     const element = document.querySelector(target);
     const foreground = getComputedStyle(element, pseudoElement).color;
@@ -127,13 +116,9 @@ async function renderedContrast(page, selector, pseudo = null) {
     }
     return { foreground, background };
   }, { target: selector, pseudoElement: pseudo });
-  const toHex = (color) => {
-    const channels = color.match(/[\d.]+/g).slice(0, 3).map(Number);
-    return `#${channels.map((channel) => Math.round(channel).toString(16).padStart(2, "0")).join("")}`;
-  };
-  const ratio = contrastRatio(toHex(colors.foreground), toHex(colors.background));
-  expect(ratio, `${selector}${pseudo || ""} rendered contrast`).toBeGreaterThanOrEqual(4.5);
-  return { selector, pseudo, ...colors, calculated: Number(ratio.toFixed(2)), minimum: 4.5 };
+  const ratio = contrastRatio(colors.foreground, colors.background);
+  expect(ratio, `${selector}${pseudo || ""} rendered contrast`).toBeGreaterThanOrEqual(minimum);
+  return { selector, pseudo, ...colors, calculated: Number(ratio.toFixed(2)), minimum };
 }
 
 async function expectAxeClean(page) {
@@ -505,6 +490,13 @@ test("result summaries keep complete values in native disclosures and semantic s
     await expect(card).toContainText(forecast.model_fingerprint || payload.input.model_fingerprint);
     await expect(card).toContainText(forecast.forecast_fingerprint);
     await expect(card).toContainText(String(forecast.sample_size));
+    await expect(card.getByText("Machine-facing interval contract")).toHaveCount(0);
+    const intervalTable = card.locator(".interval-table");
+    for (const interval of forecast.magnitude_intervals) {
+      await expect(intervalTable).toContainText(`${interval.definition} · level ${interval.level}`);
+      await expect(intervalTable).toContainText(`raw ${interval.percent.low} to ${interval.percent.high} ${interval.percent.unit}`);
+      await expect(intervalTable).toContainText(`raw ${interval.price.low} to ${interval.price.high} ${interval.price.unit}`);
+    }
   }
 
   const firstDisclosure = disclosures.first();
@@ -529,12 +521,14 @@ test("result summaries keep complete values in native disclosures and semantic s
       ]));
       const values = {
         roles: {
-          canvas: token("--canvas"), panel: token("--panel"), strongPanel: token("--strong"),
+          canvas: token("--canvas"), panel: token("--panel"), raisedPanel: token("--panel-raised"),
+          mutedPanel: token("--panel-muted"), terminal: token("--terminal"),
           chart: token("--plot"), bad: token("--bad"), flat: token("--muted"), good: token("--good"),
         },
         surfaces: {
           body: background("body"), search: background(".search-panel"), card: background(".forecast-card"),
           probability: background(".probability-chart"), chart: background(".tail-figure"),
+          comparison: background(".horizon-comparison"),
         },
         meters,
       };
@@ -543,10 +537,11 @@ test("result summaries keep complete values in native disclosures and semantic s
     });
     expect(palettes[theme.toLowerCase()].surfaces).toEqual({
       body: palettes[theme.toLowerCase()].roles.canvas,
-      search: palettes[theme.toLowerCase()].roles.strongPanel,
+      search: palettes[theme.toLowerCase()].roles.raisedPanel,
       card: palettes[theme.toLowerCase()].roles.panel,
-      probability: palettes[theme.toLowerCase()].roles.panel,
+      probability: palettes[theme.toLowerCase()].roles.mutedPanel,
       chart: palettes[theme.toLowerCase()].roles.chart,
+      comparison: palettes[theme.toLowerCase()].roles.terminal,
     });
     expect(palettes[theme.toLowerCase()].meters).toEqual({
       down: palettes[theme.toLowerCase()].roles.bad,
@@ -556,6 +551,57 @@ test("result summaries keep complete values in native disclosures and semantic s
   }
   expect(palettes.light.roles).not.toEqual(palettes.dark.roles);
   await attachScreenshot(testInfo, "forecast-summary-and-disclosure.png", page.locator("#result-section"));
+});
+
+test("analysis leads with cross-horizon comparison and keeps essential values readable", async ({ page }) => {
+  await gotoSurface(page, "/");
+  await submitUiForecast(page, "ACDC-D");
+  const comparison = page.locator(".horizon-comparison");
+  const cards = page.locator(".forecast-card");
+  await expect(comparison).toBeVisible();
+  await expect(cards).toHaveCount(2);
+  await expect(comparison.locator(".comparison-row")).toHaveCount(2);
+  const verticalOrder = await page.evaluate(() => ({
+    comparison: document.querySelector(".horizon-comparison").getBoundingClientRect().top,
+    firstCard: document.querySelector(".forecast-card").getBoundingClientRect().top,
+  }));
+  expect(verticalOrder.comparison).toBeLessThan(verticalOrder.firstCard);
+
+  for (const [label, selector, minimum] of [
+    ["comparison probabilities", ".comparison-stat strong", 16],
+    ["comparison labels", ".comparison-stat small", 12],
+    ["direction probabilities", ".probability-bar .value", 16],
+    ["direction labels", ".probability-bar .label", 12],
+    ["chart axes", ".chart-axis-label", 12],
+    ["chart legends", ".chart-legend", 12],
+    ["chart guidance", ".chart-tooltip", 12],
+  ]) {
+    const sizes = await page.locator(selector).evaluateAll((elements) => (
+      elements.map((element) => parseFloat(getComputedStyle(element).fontSize))
+    ));
+    expect(sizes.length, `${label} must be rendered`).toBeGreaterThan(0);
+    expect(sizes.every((size) => size >= minimum), `${label} font sizes: ${sizes.join(", ")}`).toBe(true);
+  }
+
+  for (const [index, figure] of (await page.locator(".tail-figure").all()).entries()) {
+    const equivalents = await figure.locator(".chart-point").evaluateAll((points) => points.map((point) => {
+      const target = document.getElementById(point.getAttribute("aria-controls"));
+      return {
+        tabIndex: point.tabIndex,
+        label: point.getAttribute("aria-label"),
+        target: target?.textContent.trim() || "",
+      };
+    }));
+    expect(equivalents).toHaveLength(8);
+    expect(equivalents.every(({ tabIndex, label, target }) => tabIndex === 0 && label && target)).toBe(true);
+    const point = figure.locator(".chart-point").first();
+    const target = page.locator(`#${await point.getAttribute("aria-controls")}`);
+    await point.focus();
+    await expect(point).toBeFocused();
+    await point.press("Enter");
+    await expect(target, `horizon ${index + 1} chart equivalent`).toBeVisible();
+    await expect(target).toBeFocused();
+  }
 });
 
 test("M03 stale, missing, out-of-session, and failed states are explicit", async ({
@@ -778,6 +824,49 @@ test("dashboard is keyboard-operable, responsive, and axe-clean", async ({ page 
   await expectAxeClean(page);
 });
 
+test("precision terminal keeps its masthead and complete composer in the initial viewport", async ({ page }) => {
+  for (const viewport of TERMINAL_VIEWPORTS) {
+    await page.setViewportSize(viewport);
+    await gotoSurface(page, "/");
+    const input = page.getByRole("combobox", { name: "Company name or Yahoo Finance symbol" });
+    const run = page.getByRole("button", { name: "Run forecast" });
+    const settings = page.getByRole("button", { name: "Settings" });
+    await expect(input).toBeInViewport({ ratio: 1 });
+    await expect(run).toBeInViewport({ ratio: 1 });
+    await expect(settings).toBeInViewport({ ratio: 1 });
+
+    const layout = await page.evaluate(() => {
+      const rectangle = (selector) => {
+        const box = document.querySelector(selector).getBoundingClientRect();
+        return { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
+      };
+      return {
+        scrollY,
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: document.documentElement.clientWidth,
+        masthead: rectangle(".masthead"),
+        settings: rectangle(".settings-trigger"),
+        settingsInHeaderControls: Boolean(document.querySelector(".header-controls .settings-trigger")),
+        input: rectangle("#symbol"),
+      };
+    });
+    expect(layout.scrollY, `${viewport.width}px did not open at the top`).toBe(0);
+    expect(layout.documentWidth, `${viewport.width}px widened the terminal`).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.settings.left).toBeGreaterThanOrEqual(layout.masthead.left);
+    expect(layout.settings.right).toBeLessThanOrEqual(layout.masthead.right);
+    expect(layout.settings.bottom).toBeLessThanOrEqual(layout.masthead.bottom);
+    expect(layout.settingsInHeaderControls).toBe(true);
+    expect(layout.masthead.bottom, `${viewport.width}px masthead covered the composer`).toBeLessThanOrEqual(layout.input.top);
+
+    await settings.focus();
+    await expect(settings).toBeFocused();
+    await settings.press("Enter");
+    await expect(page.locator("#settings-menu")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(settings).toBeFocused();
+  }
+});
+
 test("Next framework assets stay same-origin while fetch and XHR stay API-only", async ({
   page,
   applicationRequests,
@@ -795,6 +884,44 @@ test("Next framework assets stay same-origin while fetch and XHR stay API-only",
   ))).toBe(true);
   expect(requests.filter((url) => new URL(url).pathname.endsWith(".txt"))).toEqual([]);
   expectApiOnlyDataRequests(applicationRequests);
+});
+
+test("API docs provides terminal navigation and a bounded responsive composition", async ({ page }) => {
+  for (const viewport of TERMINAL_VIEWPORTS) {
+    await page.setViewportSize(viewport);
+    await gotoSurface(page, "/api/v1/docs");
+    const dashboard = page.getByRole("link", { name: /(?:return|back) to (?:the )?dashboard/i });
+    const openApi = page.getByRole("link", { name: /open .*openapi json/i });
+    await expect(dashboard).toHaveAttribute("href", "/");
+    await expect(openApi).toHaveAttribute("href", "/api/v1/openapi.json");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+    const composition = await page.evaluate(() => {
+      const rectangle = (element) => {
+        const box = element.getBoundingClientRect();
+        return { left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width, height: box.height };
+      };
+      const copy = rectangle(document.querySelector("main .hero-copy"));
+      const terminal = rectangle(document.querySelector("main .search-panel"));
+      const action = rectangle(document.querySelector('a[href="/api/v1/openapi.json"]'));
+      return {
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: document.documentElement.clientWidth,
+        copy,
+        terminal,
+        action,
+        separated: copy.right <= terminal.left || terminal.right <= copy.left
+          || copy.bottom <= terminal.top || terminal.bottom <= copy.top,
+      };
+    });
+    expect(composition.documentWidth, `${viewport.width}px API docs overflow`).toBeLessThanOrEqual(composition.viewportWidth);
+    expect(composition.separated, `${viewport.width}px API docs terminal overlapped its introduction`).toBe(true);
+    for (const [name, box] of [["introduction", composition.copy], ["terminal", composition.terminal], ["OpenAPI action", composition.action]]) {
+      expect(box.left, `${viewport.width}px API docs ${name} clipped left`).toBeGreaterThanOrEqual(0);
+      expect(box.right, `${viewport.width}px API docs ${name} clipped right`).toBeLessThanOrEqual(viewport.width);
+    }
+    expect(composition.action.height, `${viewport.width}px OpenAPI action target`).toBeGreaterThanOrEqual(44);
+  }
 });
 
 test("company lookup is bounded, race-safe, keyboard-selectable, and confirms identity", async ({ page, applicationRequests }) => {
@@ -1135,6 +1262,40 @@ test("mobile threshold labels remain separate at 360px and 390px", async ({ page
   }
 });
 
+test("320px y-axis labels align to their SVG gridlines in light and dark", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await gotoSurface(page, "/");
+  await submitUiForecast(page, "ACDC-M");
+  await openSettings(page);
+  for (const theme of ["Light", "Dark"]) {
+    await themeRadio(page, theme).click();
+    const figures = page.locator(".tail-figure");
+    await expect(figures).toHaveCount(2);
+    for (const [index, figure] of (await figures.all()).entries()) {
+      const alignment = await figure.evaluate((element) => {
+        const svg = element.querySelector("svg.tail-chart");
+        const matrix = svg.getScreenCTM();
+        const height = svg.viewBox.baseVal.height;
+        const gridlines = [...svg.querySelectorAll(".chart-grid")];
+        return [...element.querySelectorAll(".chart-y-tick")].map((tick) => {
+          const position = Number(tick.dataset.axisPosition);
+          const expectedLocalY = height * (1 - (position / 100));
+          const gridline = gridlines.reduce((closest, line) => (
+            Math.abs(Number(line.getAttribute("y1")) - expectedLocalY)
+              < Math.abs(Number(closest.getAttribute("y1")) - expectedLocalY) ? line : closest
+          ));
+          const point = new DOMPoint(0, Number(gridline.getAttribute("y1"))).matrixTransform(matrix);
+          const box = tick.getBoundingClientRect();
+          const labelAnchor = position === 100 ? box.top : position === 0 ? box.bottom : (box.top + box.bottom) / 2;
+          return { label: tick.textContent.trim(), gridlineY: point.y, labelAnchor, delta: Math.abs(point.y - labelAnchor) };
+        });
+      });
+      expect(alignment.map(({ label }) => label)).toEqual(["100%", "50%", "0%"]);
+      expect(alignment.every(({ delta }) => delta <= 0.5), `${theme} horizon ${index + 1} y-axis alignment: ${JSON.stringify(alignment)}`).toBe(true);
+    }
+  }
+});
+
 test("mobile advanced ledger filters retain every value and history actions align", async ({
   page,
 }, testInfo) => {
@@ -1208,6 +1369,69 @@ test("mobile advanced ledger filters retain every value and history actions alig
   await attachScreenshot(testInfo, "ledger-filters-and-row-390.png", page.locator(".ledger"));
 });
 
+test("mobile history cards retain every value and distinguish reopen from fresh analysis", async ({ page }) => {
+  const createdResponse = await page.request.post("/api/v1/forecasts", {
+    data: { symbol: "ACDC-M", asset_type: "stock" },
+  });
+  expect(createdResponse.ok()).toBe(true);
+  const created = await createdResponse.json();
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await gotoSurface(page, "/");
+    const row = page.locator("#history-content tbody tr").filter({ hasText: `New request #${created.event.id}` });
+    await expect(row).toHaveCount(1);
+    const cells = row.locator("td");
+    await expect(cells).toHaveCount(HISTORY_CARD_LABELS.length);
+    expect(await cells.evaluateAll((items) => items.map((cell) => cell.dataset.label))).toEqual(HISTORY_CARD_LABELS);
+    expect(await cells.evaluateAll((items) => items.every((cell) => cell.textContent.trim().length > 0))).toBe(true);
+    await expect(row).toContainText(`New request #${created.event.id}`);
+    await expect(row).toContainText(`immutable run #${created.event.run_id}`);
+    await expect(row).toContainText(created.input.canonical_symbol);
+    await expect(row).toContainText("STOCK");
+    await expect(row).toContainText("Submitted forecast");
+    await expect(row).toContainText(/successful|repeated/);
+    await expect(row).toContainText(created.input.model.name);
+    await expect(row).toContainText(created.input.model.version);
+    await expect(row).toContainText("2 horizons");
+
+    const reopen = row.getByRole("button", { name: "Reopen saved forecast" });
+    const fresh = row.getByRole("button", { name: "Run fresh cutoff analysis" });
+    await expect(reopen).toBeVisible();
+    await expect(fresh).toBeVisible();
+    expect(await reopen.evaluate((button) => button.compareDocumentPosition(
+      button.parentElement.querySelector(".fresh-analysis-action"),
+    ) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTruthy();
+    const actionPresentation = await row.locator(".history-actions").evaluate((container) => {
+      const values = [...container.querySelectorAll("button")].map((button) => {
+        const style = getComputedStyle(button);
+        const box = button.getBoundingClientRect();
+        return {
+          background: style.backgroundColor,
+          border: `${style.borderTopWidth} ${style.borderTopStyle} ${style.borderTopColor}`,
+          color: style.color,
+          fontWeight: style.fontWeight,
+          fontSize: parseFloat(style.fontSize),
+          height: box.height,
+          left: box.left,
+          right: box.right,
+        };
+      });
+      return { reopen: values[0], fresh: values[1] };
+    });
+    const visualStyle = ({ background, border, color, fontWeight }) => ({ background, border, color, fontWeight });
+    expect(visualStyle(actionPresentation.reopen), `${width}px Reopen must be visually primary`).not.toEqual(
+      visualStyle(actionPresentation.fresh),
+    );
+    for (const [name, action] of Object.entries(actionPresentation)) {
+      expect(action.height, `${width}px ${name} action target`).toBeGreaterThanOrEqual(44);
+      expect(action.fontSize, `${width}px ${name} action text`).toBeGreaterThanOrEqual(12);
+      expect(action.left, `${width}px ${name} clipped left`).toBeGreaterThanOrEqual(0);
+      expect(action.right, `${width}px ${name} clipped right`).toBeLessThanOrEqual(width);
+    }
+    expect(await cells.evaluateAll((items) => items.every((cell) => parseFloat(getComputedStyle(cell).fontSize) >= 12))).toBe(true);
+  }
+});
+
 test("768px ledger cards expose every label and action in light and dark", async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.request.post("/api/v1/forecasts", { data: { symbol: "ACDC-D", asset_type: "stock" } });
@@ -1223,10 +1447,6 @@ test("768px ledger cards expose every label and action in light and dark", async
     })
   ))).toBe(true);
 
-  const expectedLabels = [
-    "Request / run", "Instrument", "Type / venue", "Analysis",
-    "Status", "Model / evidence", "Submitted", "Actions",
-  ];
   await openSettings(page);
   for (const theme of ["Light", "Dark"]) {
     await themeRadio(page, theme).click();
@@ -1248,7 +1468,7 @@ test("768px ledger cards expose every label and action in light and dark", async
     }));
     expect(layout.documentWidth, `${theme} document overflow`).toBeLessThanOrEqual(layout.viewportWidth);
     expect(layout.historyWidth, `${theme} ledger required horizontal scrolling`).toBeLessThanOrEqual(layout.historyViewport);
-    expect(layout.labels.map(({ label }) => label)).toEqual(expectedLabels);
+    expect(layout.labels.map(({ label }) => label)).toEqual(HISTORY_CARD_LABELS);
     expect(layout.labels.every(({ label, rendered, left, right }) => (
       rendered === label && left >= 0 && right <= layout.viewportWidth
     ))).toBe(true);
@@ -1874,7 +2094,7 @@ test("M04 editorial dashboard and horizon visualization match reviewed compositi
       return document.elementFromPoint(probe.x, probe.y) === point;
     })(),
   }));
-  expect(chartTypography.axis).toBeGreaterThanOrEqual(testInfo.project.name.startsWith("mobile") ? 12 : 11);
+  expect(chartTypography.axis).toBeGreaterThanOrEqual(12);
   expect(chartTypography.legend).toBeGreaterThanOrEqual(12);
   expect(chartTypography.hitStroke).toBeGreaterThanOrEqual(26);
   expect(chartTypography.hitTarget).toBe(true);
@@ -2003,7 +2223,7 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
   await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC");
   await page.getByRole("button", { name: "Run forecast" }).click();
   await expect(page.locator("#result-content")).not.toHaveClass(/loading/);
-  const authoredRatios = await verifyAuthoredContrastStates(page);
+  const semanticRatios = await verifyRenderedContrastStates(page);
   await expectAxeClean(page);
   await openSettings(page);
   await themeRadio(page, "Dark").click();
@@ -2055,7 +2275,7 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
   expect(printSurfaces.light).toEqual(printSurfaces.dark);
   expect(new Set(Object.values(printSurfaces.dark).map(({ background }) => background))).toEqual(new Set(["rgb(255, 255, 255)"]));
   await testInfo.attach("wcag-contrast-ratios.json", {
-    body: Buffer.from(JSON.stringify({ authoredRatios, forcedColorRatios, forcedChart, printSurfaces }, null, 2)),
+    body: Buffer.from(JSON.stringify({ semanticRatios, forcedColorRatios, forcedChart, printSurfaces }, null, 2)),
     contentType: "application/json",
   });
 });

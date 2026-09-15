@@ -171,7 +171,7 @@ printf 'Local scripts are authoritative only with independent review; no externa
 cd "$ROOT"
 if [[ -f "$ROOT/frontend/package-lock.json" ]]; then
   "$ROOT/scripts/build-frontend.sh"
-  COMPLETED_CHECKS+=("frontend-npm-ci-typecheck-test-build-stage")
+  COMPLETED_CHECKS+=("frontend-npm-ci-typecheck-build-test-stage")
 fi
 
 case "$PROFILE" in
