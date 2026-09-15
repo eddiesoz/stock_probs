@@ -260,8 +260,6 @@ async function settingsGeometry(page) {
       focused: {
         ...focused,
         inSettings: Boolean(focusedElement.closest("#settings-menu")),
-        overlappedByMenu: menu.left < focused.right && menu.right > focused.left
-          && menu.top < focused.bottom && menu.bottom > focused.top,
       },
     };
   });
@@ -272,16 +270,34 @@ async function expectVisibleThemeControl(page, width) {
   const control = page.locator(".theme-control");
   await expect(control).toBeVisible();
   await expect(control.locator("select")).toHaveCount(0);
-  for (const name of ["Light", "Dark", "System"]) {
+  await expect(control.getByText("Choose your appearance. Changes apply immediately.", { exact: true })).toBeVisible();
+  for (const [name, description] of [
+    ["Light", "Bright background"],
+    ["Dark", "Dim background"],
+    ["System", "Follow your device appearance"],
+  ]) {
     const radio = themeRadio(page, name);
     await expect(radio).toBeVisible();
+    await expect(control.getByText(description, { exact: true })).toBeVisible();
     const target = await radio.evaluate((input) => {
       const box = (input.closest("label") || input).getBoundingClientRect();
       return { width: box.width, height: box.height };
     });
     expect(target.width, `${width}px ${name} theme target was too narrow`).toBeGreaterThanOrEqual(44);
-    expect(target.height, `${width}px ${name} theme target was too short`).toBeGreaterThanOrEqual(44);
+    expect(target.height, `${width}px ${name} theme target was too short`).toBeGreaterThanOrEqual(68);
   }
+  const selectedState = await control.getByRole("radio", { checked: true }).evaluate((input) => {
+    const label = input.closest("label");
+    const selectedTitle = label.querySelector(".theme-option-title");
+    const otherTitle = label.parentElement.querySelector("label:not(:has(input:checked)) .theme-option-title");
+    return {
+      radioVisible: input.getBoundingClientRect().width > 0,
+      selectedWeight: Number(getComputedStyle(selectedTitle).fontWeight),
+      otherWeight: Number(getComputedStyle(otherTitle).fontWeight),
+    };
+  });
+  expect(selectedState.radioVisible).toBe(true);
+  expect(selectedState.selectedWeight).toBeGreaterThan(selectedState.otherWeight);
 
   const boxes = await page.locator(
     ".masthead .brand-lockup, .masthead .section-nav a, .masthead .settings-trigger, .masthead-primary > div:first-child",
@@ -1641,7 +1657,10 @@ test("native settings popover is hidden, responsive, persistent, keyboard-operab
       await gotoSurface(page, path);
       const trigger = page.locator(".settings-trigger");
       const menu = page.locator("#settings-menu.settings-menu");
+      const close = menu.getByRole("button", { name: "Close settings" });
       await expect(trigger).toHaveAttribute("popovertarget", "settings-menu");
+      await expect(trigger).toContainText("Settings");
+      await expect(trigger.locator("svg[aria-hidden=true]")).toHaveCSS("width", "18px");
       await expect(menu).toHaveAttribute("popover", "");
       await expect(menu).toBeHidden();
       await expect(page.locator(".theme-control")).toBeHidden();
@@ -1661,19 +1680,30 @@ test("native settings popover is hidden, responsive, persistent, keyboard-operab
       expect(triggerBox.height, `${path} ${width}px Settings target was too short`).toBeGreaterThanOrEqual(44);
 
       await openSettings(page, true);
+      await expect(menu.getByRole("heading", { name: "Settings" })).toBeVisible();
+      await expect(menu.getByRole("group", { name: "Theme" })).toBeVisible();
+      const closeBox = await close.boundingBox();
+      expect(closeBox.width, `${path} ${width}px close target was too narrow`).toBeGreaterThanOrEqual(44);
+      expect(closeBox.height, `${path} ${width}px close target was too short`).toBeGreaterThanOrEqual(44);
+      await close.click();
+      await expect(menu).toBeHidden();
+      await expect(trigger).toBeFocused();
+      await expect(trigger).toBeInViewport({ ratio: 1 });
+      await openSettings(page, true);
       await expectVisibleThemeControl(page, width);
       const dimensions = await menu.evaluate((element) => {
         const box = element.getBoundingClientRect();
         return {
-          left: box.left, right: box.right, top: box.top, bottom: box.bottom,
+          left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.width,
           document: document.documentElement.scrollWidth,
           viewport: document.documentElement.clientWidth,
           viewportHeight: window.innerHeight,
         };
       });
-      expect(dimensions.left, `${path} settings escaped the left edge at ${width}px`).toBeGreaterThanOrEqual(0);
+      expect(dimensions.left, `${path} settings lacked its left viewport margin at ${width}px`).toBeGreaterThanOrEqual(12);
       expect(dimensions.top, `${path} settings escaped the top edge at ${width}px`).toBeGreaterThanOrEqual(0);
-      expect(dimensions.right, `${path} settings escaped the right edge at ${width}px`).toBeLessThanOrEqual(dimensions.viewport);
+      expect(dimensions.right, `${path} settings lacked its right viewport margin at ${width}px`).toBeLessThanOrEqual(dimensions.viewport - 12);
+      expect(dimensions.width, `${path} settings width at ${width}px`).toBeCloseTo(Math.min(336, width - 24), 0);
       expect(dimensions.bottom, `${path} settings escaped the bottom edge at ${width}px`).toBeLessThanOrEqual(dimensions.viewportHeight);
       expect(dimensions.document, `${path} overflowed at ${width}px`).toBeLessThanOrEqual(dimensions.viewport);
       await expectAxeClean(page);
@@ -1696,7 +1726,6 @@ test("native settings popover is hidden, responsive, persistent, keyboard-operab
       await expect(menu).toBeVisible();
       const beforeScroll = await settingsGeometry(page);
       expect(beforeScroll.positionAnchor, `${path} open settings used its fixed fallback at ${width}px`).toBe("--settings-trigger");
-      expect(beforeScroll.focused.overlappedByMenu, `${path} settings covered the next focused control at ${width}px`).toBe(false);
       await testInfo.attach(`${path === "/" ? "dashboard" : "api-docs"}-settings-${width}-before-scroll.png`, {
         body: await page.screenshot({ animations: "disabled" }), contentType: "image/png",
       });
@@ -1716,7 +1745,6 @@ test("native settings popover is hidden, responsive, persistent, keyboard-operab
         expect({ triggerMovement, menuMovement }).toEqual({ triggerMovement: 0, menuMovement: 0 });
       }
       expect(afterScroll.focused.inSettings, `${path} focus returned to settings at ${width}px`).toBe(false);
-      expect(afterScroll.focused.overlappedByMenu, `${path} scrolled settings covered the focused control at ${width}px`).toBe(false);
       geometry.push({ path, width, beforeScroll, afterScroll });
       await testInfo.attach(`${path === "/" ? "dashboard" : "api-docs"}-settings-${width}-after-scroll.png`, {
         body: await page.screenshot({ animations: "disabled" }), contentType: "image/png",

@@ -1,0 +1,85 @@
+- generic [ref=e1] [box=0,-678,1280,1766]:
+  - link "Skip to forecasts" [ref=e2] [cursor=pointer] [box=16,-80,157,48]:
+    - /url: "#main"
+  - banner [ref=e3] [box=0,-678,1280,88]:
+    - generic [ref=e4] [box=36,-678,1208,62]:
+      - link "Signal Ledger home" [ref=e5] [cursor=pointer] [box=36,-669,238,44]:
+        - /url: "#main"
+        - generic [ref=e6] [box=36,-668,238,40]:
+          - generic [ref=e7] [box=36,-668,238,13]: Local research terminal / API v1
+          - heading "Signal Ledger" [level=1] [ref=e8] [box=36,-650,238,23]
+      - generic [ref=e9] [box=860,-669,384,44]:
+        - navigation "Dashboard sections" [ref=e10] [box=860,-669,287,44]:
+          - link "01 Forecast" [ref=e11] [cursor=pointer] [box=860,-669,101,44]:
+            - /url: "#forecast-heading"
+          - link "02 Analysis" [ref=e13] [cursor=pointer] [box=961,-669,98,44]:
+            - /url: "#result-heading"
+          - link "03 Ledger" [ref=e15] [cursor=pointer] [box=1059,-669,88,44]:
+            - /url: "#history-heading"
+        - button "Settings" [ref=e17] [cursor=pointer] [box=1155,-669,89,44]
+    - status "System status" [ref=e18] [box=36,-616,1208,26]:
+      - generic [ref=e20] [box=936,-611,308,16]: Local service ready / yahoo / backup available
+  - main [ref=e21] [box=0,-590,1280,1567]:
+    - region [ref=e22] [box=36,-590,1208,394]:
+      - generic [ref=e23] [box=36,-516,665,247]:
+        - paragraph [ref=e24] [box=36,-516,665,13]: 01 / Forecast workspace
+        - heading "Next-close probability forecast" [level=2] [ref=e25] [box=36,-499,665,130]
+        - paragraph [ref=e26] [box=36,-353,665,46]: Compare close-to-close and latest-completed-five-minute-bar horizons with explicit probabilities, ranges, and model evidence.
+        - paragraph [ref=e27] [box=36,-295,665,26]: Local FastAPI /api/v1 · Two horizons · Immutable audit ledger
+      - generic [ref=e28] [box=752,-554,492,322]:
+        - paragraph [ref=e29] [box=769,-535,458,13]: Instrument composer
+        - generic [ref=e30] [box=769,-518,458,141]:
+          - generic [ref=e31] [box=769,-518,458,23]
+          - combobox "Company name or Yahoo Finance symbol" [ref=e34] [box=769,-495,458,55]: ACDC
+          - paragraph [ref=e35] [box=769,-435,458,16]: Type a company name to choose its identity, or enter a symbol directly.
+          - status [ref=e36] [box=769,-414,458,16]
+          - paragraph [ref=e37] [box=769,-393,458,16]
+        - group "Asset type" [ref=e38] [box=769,-367,458,61]:
+          - generic [ref=e40] [box=769,-349,58,44]
+          - generic [ref=e42] [box=847,-349,45,44]
+        - button "Run forecast" [ref=e44] [cursor=pointer] [box=769,-293,458,45]
+    - region [ref=e47] [box=36,-160,1208,313]:
+      - generic [ref=e48] [box=36,-145,1208,99]:
+        - generic [ref=e49] [box=36,-145,647,99]:
+          - paragraph [ref=e50] [box=36,-145,647,13]: 02 / Horizon analysis
+          - heading "Forecast comparison" [level=2] [ref=e51] [box=36,-128,647,43]
+          - paragraph [ref=e52] [box=36,-69,647,23]: Two completed origins, one next-close target, with probabilities and intervals shown together.
+        - generic [ref=e53] [box=1108,-145,136,30]: Awaiting input
+      - generic [ref=e54] [box=36,-30,1208,183]:
+        - heading "No forecast loaded" [level=3] [ref=e57] [box=550,62,181,28]
+        - paragraph [ref=e58] [box=382,96,517,22]: Choose an instrument to calculate two traceable probability distributions.
+    - region [ref=e59] [box=36,189,1208,740]:
+      - generic [ref=e60] [box=36,204,1208,60]:
+        - generic [ref=e61] [box=36,204,275,60]:
+          - paragraph [ref=e62] [box=36,204,275,13]: 03 / Permanent record
+          - heading "Search ledger" [level=2] [ref=e63] [box=36,221,275,43]
+        - group "Download filtered history" [ref=e64] [box=999,204,245,44]:
+          - link "Download CSV" [ref=e66] [cursor=pointer] [box=999,204,116,44]:
+            - /url: /api/v1/history-export.csv?sort_by=event_id&sort_order=desc
+          - link "Download JSON" [ref=e67] [cursor=pointer] [box=1121,204,123,44]:
+            - /url: /api/v1/history-export.json?sort_by=event_id&sort_order=desc
+      - paragraph [ref=e68] [box=36,280,1152,40]: Search every submitted request by instrument, status, model, horizon, or date. Saved results are immutable and never expire automatically; fresh historical-cutoff analysis remains a separate calculation.
+      - search [ref=e69] [box=36,336,1208,361]:
+        - generic [ref=e70] [box=50,350,387,67]:
+          - generic [ref=e71] [box=50,350,387,17]: Find symbol or company
+          - searchbox "Find symbol or company" [ref=e72] [box=50,373,387,44]
+        - generic [ref=e73] [box=447,350,188,67]:
+          - generic [ref=e74] [box=447,350,188,17]: Status
+          - combobox "Status" [ref=e75] [box=447,373,188,44]
+        - group [ref=e76] [box=50,427,1180,201]:
+          - generic "More filters" [active] [ref=e77] [cursor=pointer] [box=50,428,1180,44]
+          - generic [ref=e78] [box=50,472,1180,156]
+        - button "Filter ledger" [ref=e103] [cursor=pointer] [box=50,639,188,44]
+      - table [ref=e105] [box=37,710,1206,162]:
+        - caption [ref=e106] [box=36,759,1,1]: Submitted forecast search history
+        - rowgroup [ref=e107] [box=37,710,1206,50]:
+          - row "Instrument Status Submitted Request / run Type / venue Analysis Model / evidence Actions" [ref=e108] [box=37,710,1206,50]
+        - rowgroup [ref=e117] [box=37,760,1206,112]:
+          - 'row "ACDC ProFrac Holding Corp. successful Sep 15, 2026, 11:28 AM New request #1 New immutable run #1 STOCK / NMS Submitted forecast volatility-adjusted empirical distribution / empirical-ewma-v2 2 horizons (Close to close, Completed 5m to close) · 0 outcomes · evaluation Available Reopen saved forecast Run fresh cutoff analysis" [ref=e118] [box=37,760,1206,112]'
+      - navigation "History pages" [ref=e135] [box=36,885,1208,44]:
+        - button "Previous" [disabled] [ref=e136] [box=1031,885,77,44]
+        - status [ref=e137] [box=1118,898,60,17]: Page 1 of 1
+        - button "Next" [disabled] [ref=e138] [box=1189,885,55,44]
+  - contentinfo [ref=e139] [box=0,1009,1280,80]:
+    - paragraph [ref=e140] [box=16,1041,1248,16]: Research output, not investment advice. Provider, model, version, and limitations are shown with every result.
+  - alert [ref=e141] [box=-1,1087,1,1]
