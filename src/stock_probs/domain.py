@@ -6,6 +6,7 @@ import hashlib
 import ipaddress
 import json
 import math
+import socket
 import statistics
 import unicodedata
 from copy import deepcopy
@@ -23,13 +24,45 @@ FLAT_THRESHOLD = 0.001
 TAIL_MAGNITUDES = (0.01, 0.03, 0.05, 0.10)
 RETURN_THRESHOLDS = tuple(-value for value in TAIL_MAGNITUDES) + TAIL_MAGNITUDES
 SUPPORTED_TIMEZONE = "America/New_York"
+TORONTO_TIMEZONE = "America/Toronto"
 CALENDAR_VERSION = "us-equities-rules-v1"
+TORONTO_CALENDAR_VERSION = "tsx-equities-rules-v1"
 SUPPORTED_ASSET_TYPES = {"stock", "etf"}
 QUOTE_TYPE_TO_ASSET = {"EQUITY": "stock", "STOCK": "stock", "ETF": "etf"}
 MAX_ABSOLUTE_RETURN = 0.50
 EVALUATION_MAX_POINTS = 120
 RELIABILITY_BIN_COUNT = 5
 HISTORY_SEMANTICS = {"success", "failure", "repeat", "fresh", "saved"}
+HORIZON_DEFINITION_VERSION = "rolling-horizons-v1"
+# Short horizons need enough outcomes to represent ordinary day-to-day variation.
+# Longer horizons use lower minima because Yahoo's bounded two-year window contains fewer
+# non-overlapping 21/63-session periods; the overlap-adjusted count remains explicit.
+HORIZON_MINIMUM_EFFECTIVE_SAMPLES = {
+    "five_min_forward": 20,
+    "daily_1": 30,
+    "weekly_5": 12,
+    "monthly_21": 3,
+    "quarterly_63": 1,
+}
+DAILY_ROLLING_HORIZONS = {
+    "daily_1": (1, "latest completed daily close to the next trading-session close"),
+    "weekly_5": (5, "latest completed daily close to the fifth subsequent trading-session close"),
+    "monthly_21": (
+        21,
+        "latest completed daily close to the twenty-first subsequent trading-session close",
+    ),
+    "quarterly_63": (
+        63,
+        "latest completed daily close to the sixty-third subsequent trading-session close",
+    ),
+}
+FORECAST_INTERVAL_HORIZONS = {
+    "5min": "five_min_forward",
+    "daily": "daily_1",
+    "weekly": "weekly_5",
+    "monthly": "monthly_21",
+    "quarterly": "quarterly_63",
+}
 
 
 @dataclass(frozen=True)
@@ -176,10 +209,6 @@ def safe_news_url(value: object) -> str:
         or parsed.username is not None
         or parsed.password is not None
         or port not in {None, 443}
-        or host.casefold() == "localhost"
-        or host.casefold().endswith(
-            (".localhost", ".local", ".internal", ".lan", ".home", ".home.arpa")
-        )
         or "." not in host
     ):
         raise DomainError(
@@ -187,10 +216,30 @@ def safe_news_url(value: object) -> str:
             "Yahoo Finance returned an unsafe news URL.",
             status_code=502,
         )
+    normalized_host = host.casefold().rstrip(".")
+    if normalized_host == "localhost" or normalized_host.endswith(
+        (".localhost", ".local", ".internal", ".lan", ".home", ".home.arpa")
+    ):
+        raise DomainError(
+            "provider_news_invalid",
+            "Yahoo Finance returned an unsafe news URL.",
+            status_code=502,
+        )
     try:
-        address = ipaddress.ip_address(host.strip("[]"))
+        address = ipaddress.ip_address(normalized_host.strip("[]"))
     except ValueError:
-        pass
+        try:
+            # Browsers accept legacy integer/octal/hex IPv4 forms that ipaddress rejects.
+            legacy_address = ipaddress.ip_address(socket.inet_aton(normalized_host))
+        except OSError:
+            pass
+        else:
+            if normalized_host != str(legacy_address) or not legacy_address.is_global:
+                raise DomainError(
+                    "provider_news_invalid",
+                    "Yahoo Finance returned an unsafe news URL.",
+                    status_code=502,
+                )
     else:
         if not address.is_global:
             raise DomainError(
@@ -443,6 +492,78 @@ class Bar:
 
 
 @dataclass(frozen=True)
+class QuoteSnapshot:
+    """One provider-labelled price observation, not a real-time-price claim."""
+
+    symbol: str
+    price: float
+    currency: str
+    as_of: datetime
+    provider: str
+    delayed: bool
+    delay_minutes: int | None
+    label: str
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    previous_close: float | None = None
+    volume: int | None = None
+    last_trade: float | None = None
+    change: float | None = None
+    change_percent: float | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "symbol": self.symbol,
+            "price": self.price,
+            "currency": self.currency,
+            "as_of": self.as_of.isoformat(),
+            "provider": self.provider,
+            "delayed": self.delayed,
+            "delay_minutes": self.delay_minutes,
+            "label": self.label,
+            "open": self.open,
+            "high": self.high,
+            "low": self.low,
+            "previous_close": self.previous_close,
+            "volume": self.volume,
+            "last_trade": self.last_trade,
+            "change": self.change,
+            "change_percent": self.change_percent,
+        }
+
+
+@dataclass(frozen=True)
+class HistoricalBarSeries:
+    """A bounded provider chart series with its exact requested range and interval."""
+
+    symbol: str
+    range: str
+    interval: str
+    adjustment_basis: str
+    as_of: datetime
+    provider: str
+    bars: tuple[Bar, ...]
+    delayed: bool = False
+    delay_minutes: int | None = None
+    label: str = "Provider chart series."
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "symbol": self.symbol,
+            "range": self.range,
+            "interval": self.interval,
+            "adjustment_basis": self.adjustment_basis,
+            "as_of": self.as_of.isoformat(),
+            "provider": self.provider,
+            "delayed": self.delayed,
+            "delay_minutes": self.delay_minutes,
+            "label": self.label,
+            "bars": [_bar_payload(bar) for bar in self.bars],
+        }
+
+
+@dataclass(frozen=True)
 class MarketData:
     """Normalized provider snapshot needed to reproduce both forecast horizons."""
 
@@ -580,27 +701,71 @@ def _us_exchange_holidays(year: int) -> set[date]:
     return holidays
 
 
-def scheduled_session_close(day: date, timezone: str) -> datetime | None:
-    """Resolve supported US sessions, including common scheduled 13:00 closes."""
+def _tsx_exchange_holidays(year: int) -> set[date]:
+    """Return the regular TSX/TSXV full-day closures used by both Toronto exchanges."""
 
-    if timezone != SUPPORTED_TIMEZONE:
-        raise DomainError(
-            "unsupported_market",
-            "Forecast session rules currently support America/New_York US equities only.",
-        )
-    if day.weekday() >= 5 or day in _us_exchange_holidays(day.year):
-        return None
-    thanksgiving = _nth_weekday(day.year, 11, 3, 4)
-    early_close = (
-        day == thanksgiving + timedelta(days=1)
-        or (day.month == 7 and day.day == 3 and day.weekday() < 4)
-        or (day.month == 12 and day.day == 24 and day.weekday() < 4)
+    canada_day = _observed_holiday(date(year, 7, 1))
+    christmas = date(year, 12, 25)
+    boxing_day = date(year, 12, 26)
+    if christmas.weekday() in {5, 6}:
+        christmas, boxing_day = date(year, 12, 27), date(year, 12, 28)
+    else:
+        christmas = _observed_holiday(christmas)
+        boxing_day = _observed_holiday(boxing_day)
+        if christmas == boxing_day:
+            boxing_day += timedelta(days=1)
+    victoria_day = date(year, 5, 24)
+    victoria_day -= timedelta(days=(victoria_day.weekday() - 0) % 7)
+    return {
+        _observed_holiday(date(year, 1, 1)),
+        _nth_weekday(year, 2, 0, 3),
+        _easter_sunday(year) - timedelta(days=2),
+        victoria_day,
+        canada_day,
+        _nth_weekday(year, 8, 0, 1),
+        _nth_weekday(year, 9, 0, 1),
+        _nth_weekday(year, 10, 0, 2),
+        christmas,
+        boxing_day,
+    }
+
+
+def _calendar_details(timezone: str) -> tuple[str, str]:
+    if timezone == SUPPORTED_TIMEZONE:
+        return "scheduled US equity sessions", CALENDAR_VERSION
+    if timezone == TORONTO_TIMEZONE:
+        return "scheduled TSX/TSXV equity sessions", TORONTO_CALENDAR_VERSION
+    raise DomainError(
+        "unsupported_market",
+        "Forecast session rules support America/New_York and America/Toronto equities only.",
     )
+
+
+def scheduled_session_close(day: date, timezone: str) -> datetime | None:
+    """Resolve supported US and Toronto regular sessions."""
+
+    _calendar_details(timezone)
+    holidays = (
+        _us_exchange_holidays(day.year)
+        if timezone == SUPPORTED_TIMEZONE
+        else _tsx_exchange_holidays(day.year)
+    )
+    if day.weekday() >= 5 or day in holidays:
+        return None
+    if timezone == SUPPORTED_TIMEZONE:
+        thanksgiving = _nth_weekday(day.year, 11, 3, 4)
+        early_close = (
+            day == thanksgiving + timedelta(days=1)
+            or (day.month == 7 and day.day == 3 and day.weekday() < 4)
+            or (day.month == 12 and day.day == 24 and day.weekday() < 4)
+        )
+    else:
+        early_close = day.month == 12 and day.day == 24 and day.weekday() < 5
     return datetime.combine(day, time(13 if early_close else 16, 0), ZoneInfo(timezone))
 
 
 def _next_session_close(origin: datetime, timezone: str) -> datetime:
-    """Choose the next scheduled US close rather than silently targeting a holiday."""
+    """Choose the next scheduled close rather than silently targeting a holiday."""
 
     day = origin.astimezone(ZoneInfo(timezone)).date() + timedelta(days=1)
     for _ in range(15):
@@ -609,6 +774,15 @@ def _next_session_close(origin: datetime, timezone: str) -> datetime:
             return close
         day += timedelta(days=1)
     raise DomainError("calendar_unavailable", "No supported market close was found within 15 days.")
+
+
+def _nth_session_close(origin: datetime, timezone: str, sessions: int) -> datetime:
+    """Return the Nth subsequent scheduled trading-session close."""
+
+    target = origin
+    for _ in range(sessions):
+        target = _next_session_close(target, timezone)
+    return target
 
 
 def _provider_session_bounds(
@@ -1271,11 +1445,7 @@ def _latest_completed_intraday(data: MarketData, now: datetime) -> Bar:
 
     zone = ZoneInfo(data.timezone)
     local_now = now.astimezone(zone)
-    if data.timezone != SUPPORTED_TIMEZONE:
-        raise DomainError(
-            "unsupported_market",
-            "Forecast session rules currently support America/New_York US equities only.",
-        )
+    _calendar_details(data.timezone)
     candidates = _regular_intraday_bars(data, now)
     if not candidates:
         raise DomainError(
@@ -1361,15 +1531,277 @@ def _latest_eligible_intraday_end(data: MarketData, now: datetime) -> datetime |
     return None
 
 
+def _rolling_daily_observations(
+    bars: list[Bar], timezone: str, sessions: int
+) -> list[_HorizonObservation]:
+    """Build rolling N-session returns only where no scheduled close is omitted."""
+
+    return [
+        _HorizonObservation(
+            origin_at=origin.timestamp,
+            target_at=target.timestamp,
+            origin_price=origin.close,
+            return_value=target.close / origin.close - 1.0,
+            comparison_key=f"{sessions}_sessions",
+        )
+        for origin, target in zip(bars[:-sessions], bars[sessions:], strict=False)
+        if _nth_session_close(origin.timestamp, timezone, sessions).astimezone(UTC)
+        == target.timestamp.astimezone(UTC)
+    ]
+
+
+def _forward_intraday_observations(
+    data: MarketData, bars: list[Bar]
+) -> list[_HorizonObservation]:
+    """Build close-to-next-close returns from contiguous bars in the same regular session."""
+
+    zone = ZoneInfo(data.timezone)
+    observations = []
+    for origin, target in zip(bars[:-1], bars[1:], strict=False):
+        origin_day = origin.timestamp.astimezone(zone).date()
+        if (
+            target.timestamp.astimezone(zone).date() != origin_day
+            or origin.end.astimezone(UTC) != target.timestamp.astimezone(UTC)
+        ):
+            continue
+        close = _session_close(data, origin_day)
+        if close is None or target.end > close:
+            continue
+        observations.append(
+            _HorizonObservation(
+                origin_at=origin.end,
+                target_at=target.end,
+                origin_price=origin.close,
+                return_value=target.close / origin.close - 1.0,
+                comparison_key="next_contiguous_five_minute_bar",
+            )
+        )
+    return observations
+
+
+def _rolling_samples(
+    observations: list[_HorizonObservation], *, span: int, overlap_stride: int
+) -> tuple[list[float], dict[str, Any]]:
+    raw = [observation.return_value for observation in observations]
+    samples, accounting = _prepare_model_samples(raw, span=span)
+    effective = int(accounting["effective_count"])
+    accounting.update(
+        {
+            "overlap_stride": overlap_stride,
+            # Rolling N-session windows share closes. This conservative count makes that
+            # dependence visible instead of presenting every overlap as independent evidence.
+            "overlap_adjusted_effective_count": (
+                math.ceil(effective / overlap_stride) if effective else 0
+            ),
+        }
+    )
+    return samples, accounting
+
+
+def _horizon_provenance(
+    data: MarketData,
+    *,
+    horizon: str,
+    definition: str,
+    origin_at: datetime,
+    target_at: datetime | None,
+    accounting: dict[str, Any],
+    overlap_stride: int,
+) -> dict[str, Any]:
+    calendar_name, calendar_version = _calendar_details(data.timezone)
+    return {
+        "horizon": horizon,
+        "definition": definition,
+        "definition_version": HORIZON_DEFINITION_VERSION,
+        "origin_at": origin_at.isoformat(),
+        "target_at": target_at.isoformat() if target_at is not None else None,
+        "calendar": {
+            "name": calendar_name,
+            "version": calendar_version,
+            "timezone": data.timezone,
+        },
+        "adjustment_basis": "unadjusted provider closes (actions=False, auto_adjust=False)",
+        "sample_counts": {
+            "candidate": int(accounting.get("candidate_count", 0)),
+            "eligible": int(accounting.get("eligible_count", 0)),
+            "effective": int(accounting.get("effective_count", 0)),
+            "overlap_stride": overlap_stride,
+            "overlap_adjusted_effective": int(
+                accounting.get("overlap_adjusted_effective_count", 0)
+            ),
+        },
+        "provider_snapshot": {
+            "provider": data.provider,
+            "fingerprint": data.fingerprint(),
+            "as_of": data.fetched_at.isoformat(),
+        },
+    }
+
+
+def _rolling_horizon_result(
+    data: MarketData,
+    *,
+    horizon: str,
+    definition: str,
+    origin: Bar,
+    origin_at: datetime,
+    target_at: datetime | None,
+    samples: list[float],
+    accounting: dict[str, Any],
+    overlap_stride: int,
+    calculated_at: datetime,
+    quality: str,
+    observations: list[_HorizonObservation],
+    span: int,
+    interval: str,
+    target_state: str,
+    unavailable_reason: str | None = None,
+) -> dict[str, Any]:
+    provenance = _horizon_provenance(
+        data,
+        horizon=horizon,
+        definition=definition,
+        origin_at=origin_at,
+        target_at=target_at,
+        accounting=accounting,
+        overlap_stride=overlap_stride,
+    )
+    result: dict[str, Any] = {
+        "horizon": horizon,
+        "interval": interval,
+        "availability": "unavailable" if unavailable_reason else "available",
+        "unavailable_reason": unavailable_reason,
+        "origin_timestamp": origin_at.isoformat(),
+        "origin_price": origin.close,
+        "target_timestamp": target_at.isoformat() if target_at is not None else None,
+        "target_state": target_state if target_at is not None else "unavailable",
+        "exchange_timezone": data.timezone,
+        "stale_state": quality,
+        "calculated_at": calculated_at.isoformat(),
+        "definition": definition,
+        "definition_version": HORIZON_DEFINITION_VERSION,
+        "minimum_effective_samples": HORIZON_MINIMUM_EFFECTIVE_SAMPLES[horizon],
+        "provenance": provenance,
+        "model_version": MODEL_VERSION,
+        "forecast_contract_version": FORECAST_CONTRACT_VERSION,
+    }
+    if unavailable_reason is None:
+        result.update(
+            _distribution(samples, origin.close, sample_accounting=accounting)
+        )
+        result["evaluation"] = _walk_forward_evaluation(
+            observations,
+            cutoff=calculated_at,
+            span=span,
+            minimum_training=max(3, HORIZON_MINIMUM_EFFECTIVE_SAMPLES[horizon]),
+        )
+    return result
+
+
+def _new_rolling_horizons(
+    data: MarketData,
+    *,
+    now: datetime,
+    completed_daily: list[Bar],
+    regular_intraday: list[Bar],
+    latest_intraday: Bar,
+    quality: str,
+    interval: str,
+) -> list[dict[str, Any]]:
+    """Calculate only the rolling horizon selected by the request."""
+
+    if interval == "5min":
+        intraday_observations = _forward_intraday_observations(data, regular_intraday)
+        intraday_samples, intraday_accounting = _rolling_samples(
+            intraday_observations, span=10, overlap_stride=1
+        )
+        origin_at = latest_intraday.end
+        session_close = _session_close(
+            data, latest_intraday.timestamp.astimezone(ZoneInfo(data.timezone)).date()
+        )
+        next_intraday_end = origin_at + timedelta(minutes=5)
+        intraday_target: datetime | None = next_intraday_end
+        reason = None
+        if session_close is None or next_intraday_end > session_close:
+            intraday_target = None
+            reason = (
+                "no next contiguous regular-session five-minute bar exists in the same session"
+            )
+        elif (
+            int(intraday_accounting["overlap_adjusted_effective_count"])
+            < HORIZON_MINIMUM_EFFECTIVE_SAMPLES["five_min_forward"]
+        ):
+            reason = "insufficient contiguous five-minute training history"
+        return [
+            _rolling_horizon_result(
+                data,
+                horizon="five_min_forward",
+                definition=(
+                    "latest completed regular-session five-minute bar close to the next "
+                    "contiguous five-minute bar close in the same session"
+                ),
+                origin=latest_intraday,
+                origin_at=origin_at,
+                target_at=intraday_target,
+                samples=intraday_samples,
+                accounting=intraday_accounting,
+                overlap_stride=1,
+                calculated_at=now,
+                quality=quality,
+                observations=intraday_observations,
+                span=10,
+                interval=interval,
+                target_state="scheduled_five_minute_bar_close",
+                unavailable_reason=reason,
+            )
+        ]
+
+    daily_origin = completed_daily[-1]
+    horizon = FORECAST_INTERVAL_HORIZONS[interval]
+    sessions, definition = DAILY_ROLLING_HORIZONS[horizon]
+    observations = _rolling_daily_observations(completed_daily, data.timezone, sessions)
+    samples, accounting = _rolling_samples(observations, span=30, overlap_stride=sessions)
+    target = _nth_session_close(daily_origin.timestamp, data.timezone, sessions)
+    reason = (
+        f"insufficient {sessions}-session training history"
+        if int(accounting["overlap_adjusted_effective_count"])
+        < HORIZON_MINIMUM_EFFECTIVE_SAMPLES[horizon]
+        or len(samples) < 3
+        else None
+    )
+    return [
+        _rolling_horizon_result(
+            data,
+            horizon=horizon,
+            definition=definition,
+            origin=daily_origin,
+            origin_at=daily_origin.timestamp,
+            target_at=target,
+            samples=samples,
+            accounting=accounting,
+            overlap_stride=sessions,
+            calculated_at=now,
+            quality=quality,
+            observations=observations,
+            span=30,
+            interval=interval,
+            target_state="scheduled_session_close",
+            unavailable_reason=reason,
+        )
+    ]
+
+
 def calculate_forecasts(
-    data: MarketData, now: datetime
+    data: MarketData, now: datetime, interval: str | None = None
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Return one immutable shared input snapshot and two fully described results."""
+    """Return the legacy pair or the one rolling horizon selected by the request."""
 
     if now.tzinfo is None or data.fetched_at.tzinfo is None:
         raise DomainError(
             "ambiguous_provider_time", "Request and provider times must include offsets."
         )
+    if interval is not None and interval not in FORECAST_INTERVAL_HORIZONS:
+        raise DomainError("unsupported_forecast_interval", "Forecast interval is not supported.")
     now = now.astimezone(UTC)
     if data.asset_type not in SUPPORTED_ASSET_TYPES:
         raise DomainError("unsupported_asset", "Only Yahoo Finance stocks and ETFs are supported.")
@@ -1515,6 +1947,14 @@ def calculate_forecasts(
             "latest completed intraday bar precedes the latest eligible five-minute boundary"
         )
     quality = "stale" if stale_reasons else "current"
+    provider_content_fingerprint = data.fingerprint()
+    content_fingerprint = (
+        provider_content_fingerprint
+        if interval is None
+        else hashlib.sha256(
+            f"{provider_content_fingerprint}\0interval={interval}".encode()
+        ).hexdigest()
+    )
     common: dict[str, Any] = {
         "symbol": data.symbol,
         "canonical_symbol": identity.canonical_symbol,
@@ -1532,21 +1972,24 @@ def calculate_forecasts(
         "request_cutoff": now.isoformat(),
         "provider_query": data.query,
         "provider_metadata": data.provider_metadata,
-        "content_fingerprint": data.fingerprint(),
+        "content_fingerprint": content_fingerprint,
         "captured_at": now.isoformat(),
         "selected_daily_bars": [_bar_payload(bar) for bar in completed_daily[-505:]],
         "selected_intraday_bars": [_bar_payload(bar) for bar in regular_intraday],
         "session_rule": (
             "America/New_York regular sessions only; a five-minute bar is completed when "
             "bar start plus 300 seconds is at or before the request cutoff"
+            if data.timezone == SUPPORTED_TIMEZONE
+            else "America/Toronto regular sessions only; a five-minute bar is completed when "
+            "bar start plus 300 seconds is at or before the request cutoff"
         ),
         "calendar": {
-            "name": "scheduled US equity sessions",
-            "version": CALENDAR_VERSION,
-            "timezone": SUPPORTED_TIMEZONE,
+            "name": _calendar_details(data.timezone)[0],
+            "version": _calendar_details(data.timezone)[1],
+            "timezone": data.timezone,
         },
         "limitations": [
-            "Scheduled US holidays and common early closes are modeled; "
+            "Scheduled exchange holidays and common early closes are modeled; "
             "unscheduled closures are not.",
             "Empirical intervals describe historical sample coverage, not guaranteed confidence.",
         ],
@@ -1570,15 +2013,18 @@ def calculate_forecasts(
             "source": data.provider,
             "query": data.query,
             "response_as_of": data.fetched_at.isoformat(),
-            "content_fingerprint": data.fingerprint(),
+            "content_fingerprint": content_fingerprint,
             "instrument_identity": identity.as_dict(),
             "identity_fingerprint": identity.fingerprint(),
             "model_version": MODEL_VERSION,
             "forecast_contract_version": FORECAST_CONTRACT_VERSION,
             "evaluation_version": EVALUATION_VERSION,
-            "calendar_version": CALENDAR_VERSION,
+            "calendar_version": _calendar_details(data.timezone)[1],
         },
     }
+    if interval is not None:
+        common["requested_interval"] = interval
+        common["provenance"]["provider_content_fingerprint"] = provider_content_fingerprint
     model_fingerprint_payload = {
         "contract_version": FORECAST_CONTRACT_VERSION,
         "model": common["model"],
@@ -1650,7 +2096,25 @@ def calculate_forecasts(
         result["forecast_fingerprint"] = hashlib.sha256(
             json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
-    return common, [daily_result, intraday_result]
+    rolling_results = (
+        _new_rolling_horizons(
+            data,
+            now=now,
+            completed_daily=completed_daily,
+            regular_intraday=regular_intraday,
+            latest_intraday=latest,
+            quality=quality,
+            interval=interval,
+        )
+        if interval is not None
+        else []
+    )
+    for result in rolling_results:
+        result["model_fingerprint"] = model_fingerprint
+        result["forecast_fingerprint"] = hashlib.sha256(
+            json.dumps(result, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    return common, rolling_results if interval is not None else [daily_result, intraday_result]
 
 
 def label_fresh_historical_analysis(

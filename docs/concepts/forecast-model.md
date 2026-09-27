@@ -1,6 +1,6 @@
 ---
 title: "Forecast model"
-description: "How Stock Probability builds two empirical return distributions and reports probabilities, intervals, quality, and evaluation."
+description: "How Stock Probability builds empirical return distributions across legacy and rolling horizons and reports probabilities, intervals, quality, and evaluation."
 ---
 
 # Forecast model
@@ -13,6 +13,24 @@ The current model contract is `forecast-contract-v2`; the model version is
    five-minute bar whose end is at or before the request cutoff. During an open session the
    target is that session's close. Outside an open session, the completed prior close is the
    origin and the next scheduled close is the target.
+
+The root dashboard keeps this legacy pair when no interval is supplied. The Forecast tool and
+`POST /api/v1/forecasts` can instead select one rolling horizon. The request values and public
+horizon identifiers are:
+
+| Interval | Horizon | Definition |
+| --- | --- | --- |
+| `5min` | `five_min_forward` | Latest completed five-minute bar to the next completed five-minute bar. |
+| `daily` | `daily_1` | Latest completed daily close to the next scheduled session close. |
+| `weekly` | `weekly_5` | Latest completed daily close to the fifth subsequent session close. |
+| `monthly` | `monthly_21` | Latest completed daily close to the 21st subsequent session close. |
+| `quarterly` | `quarterly_63` | Latest completed daily close to the 63rd subsequent session close. |
+
+A selected interval returns one result with `definition_version=rolling-horizons-v1`, explicit
+origin/target timestamps, sample accounting, availability, intervals, and provider provenance.
+Insufficient history is reported as `availability=unavailable` with a reason; another horizon is
+not substituted. The rolling daily horizons use 1, 5, 21, or 63 scheduled sessions and therefore
+must preserve exchange-calendar and timezone semantics.
 
 Current headlines are presentation-only context. Headline text, publication metadata, links,
 cache state, and retrieval time never enter a forecast input, probability, interval, quality

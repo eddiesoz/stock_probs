@@ -1,11 +1,12 @@
 ---
 title: "Usage"
-description: "User guides for running forecasts, reading horizon results, and working with the searchable audit ledger."
+description: "User guides for navigating the research workspace, maintaining market context, running forecasts, and reading the searchable audit ledger."
 ---
 
 # Usage
 
-- [Dashboard](dashboard.md) covers instrument selection, forecast interpretation, immutable
-  saved results, fresh cutoff analyses, filtering, and exports.
+- [Dashboard](dashboard.md) covers workspace routes, manual portfolio/watchlist context, bounded
+  quotes and charts, rolling forecast intervals, current headlines, immutable saved results, fresh
+  cutoff analyses, filtering, and exports.
 
 [Back to documentation](../index.md)

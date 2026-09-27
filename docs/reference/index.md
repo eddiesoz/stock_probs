@@ -5,7 +5,8 @@ description: "Technical API reference and links to the authoritative product pla
 
 # Reference
 
-- [API](api.md) inventories the versioned HTTP surface and response conventions.
+- [API](api.md) inventories the versioned HTTP surface, workspace market contracts, forecast
+  intervals, and response conventions.
 - [MVP plan](../../MVP-PLAN.md) is the authoritative product contract and evidence ledger.
 - [MVP roadmap](../../MVP-ROADMAP.md) is the authoritative milestone dependency and status view.
 - [Agent rules](../../AGENTS.md) define ownership, verification, and evidence discipline.

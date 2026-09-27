@@ -37,7 +37,6 @@ FORECAST_P95_LIMIT_MS = 1_000.0
 HISTORY_P95_LIMIT_MS = 250.0
 READINESS_LIMIT_MS = 20_000.0
 IDLE_CPU_LIMIT_CORE_PERCENT = 1.0
-STATIC_LIMIT_BYTES = 736 * 1024
 RESPONSE_LIMIT_BYTES = 8 * 1024
 NEWS_RESPONSE_LIMIT_BYTES = 32 * 1024
 NEWS_ENDPOINT_P95_LIMIT_MS = 100.0
@@ -46,7 +45,9 @@ NEWS_RENDER_P95_LIMIT_MS = 250.0
 NEWS_PROVIDER_DEADLINE_SECONDS = 10.0
 CONCURRENCY_P95_LIMIT_MS = 3_000.0
 CONCURRENCY_BATCH_LIMIT_MS = 5_000.0
-PACKAGE_LIMIT_BYTES = 328 * 1024
+STATIC_BUDGET_MANIFEST_MAX_BYTES = 16 * 1024
+STATIC_LIMIT_MAX_BYTES = 16 * 1024 * 1024
+PACKAGE_LIMIT_BYTES = 384 * 1024
 PACKAGE_BUILD_LIMIT_MS = 5_000.0
 BACKUP_LIMIT_MS = 5_000.0
 RESTORE_LIMIT_MS = 5_000.0
@@ -94,6 +95,29 @@ REQUIRED_FIELDS = {
     "reviewer",
 }
 RESULTS = {"Pass", "Fail", "Skipped", "Unavailable"}
+
+
+def _load_static_budget(path: Path) -> int:
+    with path.open("rb") as source:
+        raw = source.read(STATIC_BUDGET_MANIFEST_MAX_BYTES + 1)
+    if len(raw) > STATIC_BUDGET_MANIFEST_MAX_BYTES:
+        raise ValueError("static budget manifest exceeds its size limit")
+    manifest = json.loads(raw)
+    if not isinstance(manifest, dict):
+        raise ValueError("static budget manifest must be an object")
+    if "static_shell_bytes_strict_max" not in manifest:
+        raise ValueError("static budget manifest is missing its limit")
+    limit = manifest["static_shell_bytes_strict_max"]
+    if (
+        not isinstance(limit, int)
+        or isinstance(limit, bool)
+        or not 0 < limit <= STATIC_LIMIT_MAX_BYTES
+    ):
+        raise ValueError("static budget limit must be a positive bounded integer")
+    return limit
+
+
+STATIC_LIMIT_BYTES = _load_static_budget(ROOT / "tools/browser/performance-budgets.json")
 
 
 def utc_now() -> str:
@@ -174,7 +198,8 @@ def validate_artifact(payload: dict[str, Any], *, acceptance: bool = False) -> N
     if payload["schema_version"] != SCHEMA_VERSION or not isinstance(task_id, str):
         raise ValueError("artifact schema/task identity is invalid")
     if re.fullmatch(
-        r"(?:M0[0-9]|EXP-M0[0-9]|R-M0[0-9]-[1-9][0-9]*|m0[1-9]|check|release)",
+        r"(?:M0[0-9]|EXP-M0[0-9]|ASTRA-FINAL|EXP-FINAL|"
+        r"R-M0[0-9]-[1-9][0-9]*|R-ASTRA-[0-9]+|m0[1-9]|check|release)",
         task_id,
     ) is None:
         raise ValueError("artifact schema/task identity is invalid")
@@ -1364,6 +1389,7 @@ class Harness:
                 "class": "proposed numeric thresholds",
                 "static": {"operator": "<", "value": STATIC_LIMIT_BYTES, "unit": "raw bytes"},
                 "response": {"operator": "<", "value": RESPONSE_LIMIT_BYTES, "unit": "raw bytes"},
+                "evidence_basis": "tools/browser/performance-budgets.json",
             },
             result="Pass" if passed else "Fail",
         )
@@ -1490,8 +1516,7 @@ class Harness:
                 "package_bytes_max": PACKAGE_LIMIT_BYTES,
                 "build_ms_max": PACKAGE_BUILD_LIMIT_MS,
                 "evidence_basis": (
-                    "The measured 306,624-byte pruned Next-export wheel retains deterministic "
-                    "headroom under 328 KiB and the existing five-second local-build budget."
+                    "The measured expansion wheel remains within the fixed 384 KiB bound."
                 ),
             },
             result=result,

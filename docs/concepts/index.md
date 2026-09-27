@@ -6,7 +6,7 @@ description: "Conceptual guides to Stock Probability architecture, data boundari
 # Concepts
 
 - [Architecture](architecture.md) explains the local process, provider, persistence, API,
-  and presentation boundaries.
+  workspace, and presentation boundaries.
 - [Forecast model](forecast-model.md) explains horizons, samples, probability estimates,
   intervals, evaluation, and limitations.
 

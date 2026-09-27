@@ -19,7 +19,7 @@ root export artifact rather than authored documentation.
 - [Operations](operations/index.md) — installation, launch, backup, and restore.
 - [Reference](reference/index.md) — API inventory and authoritative root records.
 - [Security](security/index.md) — trust boundary and threat model.
-- [Usage](usage/index.md) — dashboard workflows and result interpretation.
+- [Usage](usage/index.md) — workspace navigation, market context, forecast workflows, and result interpretation.
 - [Walkthrough](walkthrough/index.md) — annotated desktop and mobile product journey.
 
 Forecasts are informational research outputs, not investment advice or guarantees.

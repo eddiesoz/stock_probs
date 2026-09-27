@@ -1,0 +1,34 @@
+.page{padding-bottom:3rem}
+.hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(16rem,.38fr);gap:clamp(1.5rem,4vw,3.5rem);align-items:end;padding:clamp(2rem,5vw,4rem) 0 2.25rem;border-bottom:1px solid var(--border)}
+.hero h1{max-width:54rem;margin:0;font-size:clamp(2.4rem,4vw,3.6rem);font-weight:740;line-height:1.04;letter-spacing:-.045em}
+.hero p{max-width:44rem;margin:.9rem 0 0;color:var(--muted);font-size:1rem;line-height:1.55}
+.hero aside{display:grid;gap:.4rem;padding:1.15rem 1.2rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-raised);box-shadow:var(--shadow)}
+.hero aside strong{font-size:.95rem}
+.hero aside span{color:var(--muted);font-size:.82rem;line-height:1.5}
+.workspace{padding-top:1.6rem}
+.heading{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start}
+.heading h2{margin:0;font-size:clamp(1.65rem,3.5vw,2.55rem);line-height:1.05;letter-spacing:-.04em}
+.heading p{max-width:48rem;margin:.65rem 0 0;color:var(--muted);line-height:1.55}
+.form{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr) minmax(9rem,.7fr) minmax(9rem,.75fr);gap:.85rem;align-items:start;margin:1.25rem 0 .55rem;padding:1.2rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-raised);box-shadow:var(--shadow)}
+.form label{display:grid;gap:.4rem;color:var(--muted);font-size:.78rem;font-weight:750}
+.form button{align-self:end}
+.error{color:var(--bad);font-size:.75rem}
+.status{min-height:1.35rem;margin:.4rem 0 .85rem;color:var(--muted);font-size:.8rem}
+.portfolios{display:grid;gap:0;border:1px solid var(--edge);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow);overflow:hidden}
+.portfolioHeading{display:flex;justify-content:space-between;gap:.75rem;align-items:center;padding:.85rem 1.1rem;border-bottom:1px solid var(--edge);background:var(--panel-raised)}
+.portfolioHeading h3{margin:0;font-size:1.05rem}
+.portfolioHeading span{color:var(--muted);font-size:.72rem;font-weight:750;letter-spacing:.08em;text-transform:uppercase}
+.portfolios ul{margin:0;padding:0;list-style:none}
+.portfolios li{display:grid;grid-template-columns:minmax(0,1fr) minmax(7rem,auto) auto;gap:1rem;align-items:center;min-height:64px;padding:.7rem 1.1rem;border-top:1px solid var(--border)}
+.portfolios li:first-child{border-top:0}
+.portfolios li:nth-child(even){background:var(--panel-muted)}
+.portfolios li>span{display:grid;min-width:0;gap:.1rem}
+.portfolios li>span:last-child{text-align:right}
+.portfolios li strong{font-variant-numeric:tabular-nums;font-size:1rem}
+.portfolios small{color:var(--muted);font-size:.76rem;overflow-wrap:anywhere}
+.context{margin-top:1rem;padding:1.25rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-raised);box-shadow:var(--shadow)}
+.contextHead{display:flex;align-items:start;justify-content:space-between;gap:1rem}.contextHead h3{margin:.25rem 0 0;font-size:1.35rem}.contextGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem;margin-top:1rem}.contextGrid>div{display:grid;align-content:start;gap:.45rem;padding:1rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel)}.contextGrid strong{font-size:1.3rem;font-variant-numeric:tabular-nums}.contextGrid p,.contextGrid small{margin:0;color:var(--muted);line-height:1.5}.contextActions{display:flex;flex-wrap:wrap;gap:1rem;margin-top:1rem}
+@media(max-width:900px){.hero{grid-template-columns:1fr}.hero aside{max-width:32rem}.form{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.hero{padding-top:1.4rem}.hero h1{font-size:clamp(2.2rem,10vw,3rem)}.heading{align-items:flex-start;flex-direction:column}.form{grid-template-columns:1fr;padding:.9rem}.form button{width:100%}.portfolios li{grid-template-columns:minmax(0,1fr) auto;padding:.7rem .8rem}.portfolios li>button{grid-column:1/-1}.portfolios li>span:last-child{text-align:right}.portfolios small{font-size:.7rem}.contextHead{flex-direction:column}.contextGrid{grid-template-columns:1fr}}
+@media(forced-colors:active){.hero aside,.form,.portfolios{border:2px solid CanvasText;background:Canvas;box-shadow:none}.hero::after{background:CanvasText}}
+@media print{.form{display:none}.hero{display:block}.hero h1{font-size:2rem}.hero aside,.portfolios{box-shadow:none}}

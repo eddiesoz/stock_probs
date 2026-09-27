@@ -1,0 +1,10 @@
+.toolNav{margin-bottom:.4rem}
+.page{display:grid;grid-template-columns:minmax(0,1fr);gap:1.1rem;padding:1.2rem 0 2.5rem}
+.hero{position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:1.5rem;min-width:0;padding:clamp(1.5rem,3vw,2.15rem);border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-raised);box-shadow:var(--shadow);color:var(--text);overflow:hidden}
+.hero h1{max-width:54rem;margin:.3rem 0;font-size:clamp(2.15rem,3.6vw,3rem);font-weight:745;line-height:1.04;letter-spacing:-.045em;color:var(--text)}
+.hero :global(.panel-kicker){color:var(--accent);font-size:.77rem;font-weight:720}
+.hero p:not(:global(.panel-kicker)){max-width:64ch;margin:.75rem 0 0;color:var(--muted);font-size:1rem;line-height:1.55}
+.hero :global(.badge.neutral){flex:0 0 auto;border-color:var(--border);background:var(--accent-soft);color:var(--text)}
+@media(max-width:700px){.page{padding-top:.65rem}.hero{display:block;padding:1.35rem}.hero h1{font-size:clamp(2rem,7vw,2.5rem)}.hero>span{margin-top:1rem}}
+@media(forced-colors:active){.hero{border:2px solid CanvasText;background:Canvas;box-shadow:none}.hero h1,.hero p,.hero :global(.panel-kicker),.hero :global(.badge){color:CanvasText}}
+@media print{.page{padding-top:0}.hero{border:1px solid #000;background:#fff;box-shadow:none;color:#000}.hero h1,.hero p,.hero :global(.panel-kicker),.hero :global(.badge){color:#000}}

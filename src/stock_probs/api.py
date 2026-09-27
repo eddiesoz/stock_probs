@@ -14,6 +14,7 @@ import unicodedata
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, date, datetime
+from functools import partial
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
@@ -33,18 +34,21 @@ from starlette.types import ASGIApp
 
 from stock_probs.backup import MAX_BACKUP_BYTES, BackupError, BackupManager
 from stock_probs.config import Settings
-from stock_probs.domain import DomainError
+from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, DomainError, normalize_symbol
 from stock_probs.provider import FixtureProvider, MarketDataProvider, YahooProvider
 from stock_probs.repository import SCHEMA_VERSION, Repository, RepositoryError
 from stock_probs.schemas import (
     BackupRequest,
+    ChartRange,
     CorrectionRequest,
     ForecastHorizon,
+    ForecastInterval,
     FreshReconstructionRequest,
     HistoryAnalysisKind,
     HistorySortField,
     HistoryStatus,
     InstrumentIdentityResponse,
+    InstrumentListMutationRequest,
     InstrumentLookupResponse,
     NewsQuery,
     NewsResponse,
@@ -81,6 +85,7 @@ HistoryDateParameter = Annotated[datetime | None, Query()]
 HistoryHorizonParameter = Annotated[ForecastHorizon | None, Query()]
 HistorySortParameter = Annotated[HistorySortField, Query()]
 SortDirectionParameter = Annotated[SortDirection, Query()]
+ForecastIntervalParameter = Annotated[ForecastInterval | None, Query()]
 
 
 class ValidationIssue(ApiResponse):
@@ -112,6 +117,83 @@ class ReadinessResponse(ApiResponse):
     provider: str
 
 
+class QuoteItemResponse(ApiResponse):
+    symbol: str = Field(min_length=1, max_length=15)
+    name: str = Field(min_length=1, max_length=200)
+    asset_type: Literal["stock", "etf"]
+    exchange: str = Field(min_length=1, max_length=40)
+    last: PositivePrice
+    currency: str = Field(min_length=1, max_length=12)
+    source: str = Field(min_length=1, max_length=80)
+    as_of: AwareDatetime
+    state: Literal["provider_reported", "delayed", "simulated"]
+    delayed: bool
+    delay_minutes: int | None = Field(default=None, ge=1, le=1440)
+    label: str = Field(min_length=1, max_length=300)
+    open: PositivePrice | None = None
+    high: PositivePrice | None = None
+    low: PositivePrice | None = None
+    previous_close: PositivePrice | None = None
+    volume: int | None = Field(default=None, ge=0, le=2**63 - 1)
+    last_trade: PositivePrice | None = None
+    change: FiniteNumber | None = None
+    change_percent: FiniteNumber | None = None
+
+    @model_validator(mode="after")
+    def delay_is_explicit(self) -> QuoteItemResponse:
+        if self.delayed != (self.delay_minutes is not None):
+            raise ValueError("delayed quotes require a positive provider delay")
+        if (self.state == "delayed") != self.delayed:
+            raise ValueError("quote state must preserve the provider delay disclosure")
+        return self
+
+
+class QuotesResponse(ApiResponse):
+    items: list[QuoteItemResponse] = Field(max_length=20)
+
+
+class CapturedBarResponse(ApiResponse):
+    timestamp: AwareDatetime
+    end: AwareDatetime
+    close: PositivePrice
+    duration_seconds: int = Field(ge=0, le=86_400)
+
+    @model_validator(mode="after")
+    def ordered_boundaries(self) -> CapturedBarResponse:
+        if self.end < self.timestamp:
+            raise ValueError("bar end must not precede bar start")
+        return self
+
+
+class MarketBarsResponse(ApiResponse):
+    symbol: str = Field(min_length=1, max_length=15)
+    range: ChartRange
+    interval: Literal["1d"]
+    adjustment_basis: str = Field(min_length=1, max_length=160)
+    source: str = Field(min_length=1, max_length=80)
+    as_of: AwareDatetime
+    state: Literal["provider_reported", "delayed", "simulated"]
+    delayed: bool
+    delay_minutes: int | None = Field(default=None, ge=1, le=1440)
+    label: str = Field(min_length=1, max_length=300)
+    bars: list[CapturedBarResponse] = Field(max_length=500)
+
+
+class InstrumentListItemResponse(ApiResponse):
+    symbol: str = Field(min_length=1, max_length=15)
+    display_name: str = Field(min_length=1, max_length=200)
+    provider: str = Field(min_length=1, max_length=80)
+    asset_type: Literal["stock", "etf"]
+    exchange: str = Field(min_length=1, max_length=40)
+    quantity: FiniteNumber | None = Field(ge=0)
+    added_at: AwareDatetime
+
+
+class InstrumentListsResponse(ApiResponse):
+    kind: Literal["watchlist", "portfolio", "all"]
+    items: list[InstrumentListItemResponse] = Field(max_length=1000)
+
+
 class SearchEventResponse(ApiResponse):
     id: int
     request_id: str
@@ -138,10 +220,10 @@ class SearchEventResponse(ApiResponse):
     model_name: str | None = None
     model_version: str | None = None
     forecast_contract_version: str | None = None
-    horizons: list[ForecastHorizon] = Field(default_factory=list, max_length=2)
+    horizons: list[ForecastHorizon] = Field(default_factory=list, max_length=7)
     outcome_count: int = Field(default=0, ge=0)
     evaluation_statuses: list[Literal["available", "insufficient_history"]] = Field(
-        default_factory=list, max_length=2
+        default_factory=list, max_length=7
     )
     forecast_available: bool = False
 
@@ -158,19 +240,6 @@ class SearchEventResponse(ApiResponse):
             raise ValueError("a first successful submission cannot be marked repeated")
         if self.status == "repeated" and not self.is_repeat:
             raise ValueError("a repeated successful submission must be marked repeated")
-        return self
-
-
-class CapturedBarResponse(ApiResponse):
-    timestamp: AwareDatetime
-    end: AwareDatetime
-    close: PositivePrice
-    duration_seconds: int = Field(ge=0, le=86_400)
-
-    @model_validator(mode="after")
-    def ordered_boundaries(self) -> CapturedBarResponse:
-        if self.end < self.timestamp:
-            raise ValueError("bar end must not precede bar start")
         return self
 
 
@@ -357,6 +426,7 @@ class ForecastInputResponse(ApiResponse):
     provider_query: ProviderQueryResponse
     provider_metadata: ProviderMetadataResponse
     content_fingerprint: str
+    requested_interval: ForecastInterval | None = None
     instrument_identity: InstrumentIdentityResponse
     identity_fingerprint: str
     captured_at: AwareDatetime
@@ -760,6 +830,37 @@ class OutcomeResponse(ApiResponse):
     comparison_rule: str
 
 
+class RollingSampleCountsResponse(ApiResponse):
+    candidate: int = Field(ge=0)
+    eligible: int = Field(ge=0)
+    effective: int = Field(ge=0)
+    overlap_stride: int = Field(ge=1)
+    overlap_adjusted_effective: int = Field(ge=0)
+
+
+class RollingProviderSnapshotResponse(ApiResponse):
+    provider: str = Field(min_length=1, max_length=80)
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    as_of: AwareDatetime
+
+
+class RollingProvenanceResponse(ApiResponse):
+    horizon: ForecastHorizon
+    definition: str = Field(min_length=1, max_length=300)
+    definition_version: Literal["rolling-horizons-v1"]
+    origin_at: AwareDatetime
+    target_at: AwareDatetime | None
+    calendar: CalendarResponse
+    adjustment_basis: str = Field(min_length=1, max_length=160)
+    sample_counts: RollingSampleCountsResponse
+    provider_snapshot: RollingProviderSnapshotResponse
+
+
+class RollingSampleAccountingResponse(SampleAccountingResponse):
+    overlap_stride: int = Field(ge=1)
+    overlap_adjusted_effective_count: int = Field(ge=0)
+
+
 class ForecastResultResponse(ApiResponse):
     horizon: Literal["close_to_close", "completed_5m_to_close"]
     origin_timestamp: AwareDatetime
@@ -880,7 +981,94 @@ class ForecastResultResponse(ApiResponse):
         return self
 
 
+class RollingForecastResultResponse(ApiResponse):
+    horizon: Literal["five_min_forward", "daily_1", "weekly_5", "monthly_21", "quarterly_63"]
+    interval: ForecastInterval
+    availability: Literal["available", "unavailable"]
+    unavailable_reason: str | None = Field(default=None, min_length=1, max_length=240)
+    origin_timestamp: AwareDatetime
+    horizon_start_timestamp: AwareDatetime
+    horizon_end_timestamp: AwareDatetime | None
+    origin_price: PositivePrice
+    target_timestamp: AwareDatetime | None
+    target_state: Literal[
+        "scheduled_five_minute_bar_close", "scheduled_session_close", "unavailable"
+    ]
+    exchange_timezone: str = Field(min_length=1, max_length=80)
+    stale_state: Literal["current", "stale"]
+    calculated_at: AwareDatetime
+    definition: str = Field(min_length=1, max_length=300)
+    definition_version: Literal["rolling-horizons-v1"]
+    minimum_effective_samples: int = Field(ge=1)
+    provenance: RollingProvenanceResponse
+    model_version: str = Field(min_length=1, max_length=80)
+    model_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    forecast_contract_version: str = Field(min_length=1, max_length=80)
+    forecast_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    direction_probabilities: DirectionProbabilitiesResponse | None = None
+    threshold_probabilities: list[ThresholdProbabilityResponse] | None = None
+    conditional_magnitudes: ConditionalMagnitudesResponse | None = None
+    magnitude_intervals: list[MagnitudeIntervalResponse] | None = None
+    sample_size: int | None = Field(default=None, ge=3)
+    sample_accounting: RollingSampleAccountingResponse | None = None
+    probability_estimator: str | None = Field(default=None, min_length=1, max_length=200)
+    distribution_definition: str | None = Field(default=None, min_length=1, max_length=400)
+    evaluation: ForecastEvaluationResponse | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def explicit_rolling_boundaries(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            value = dict(value)
+            value.setdefault("horizon_start_timestamp", value.get("origin_timestamp"))
+            value.setdefault("horizon_end_timestamp", value.get("target_timestamp"))
+        return value
+
+    @model_validator(mode="after")
+    def availability_and_boundaries_are_honest(self) -> RollingForecastResultResponse:
+        if self.horizon_start_timestamp != self.origin_timestamp:
+            raise ValueError("rolling horizon start must equal its completed origin")
+        if self.horizon_end_timestamp != self.target_timestamp:
+            raise ValueError("rolling horizon end must equal its target")
+        if self.interval != _HORIZON_INTERVALS[self.horizon]:
+            raise ValueError("forecast interval does not match its rolling horizon")
+        distribution = (
+            self.direction_probabilities,
+            self.threshold_probabilities,
+            self.conditional_magnitudes,
+            self.magnitude_intervals,
+            self.sample_size,
+            self.sample_accounting,
+            self.probability_estimator,
+            self.distribution_definition,
+            self.evaluation,
+        )
+        if self.availability == "unavailable":
+            if self.unavailable_reason is None or any(value is not None for value in distribution):
+                raise ValueError("unavailable rolling forecasts cannot fabricate a distribution")
+            return self
+        if self.unavailable_reason is not None or self.target_timestamp is None:
+            raise ValueError("available rolling forecasts require an exact future target")
+        if any(value is None for value in distribution):
+            raise ValueError("available rolling forecasts require the complete distribution")
+        assert self.sample_size is not None
+        assert self.sample_accounting is not None
+        assert self.direction_probabilities is not None
+        if self.sample_accounting.effective_count != self.sample_size:
+            raise ValueError("rolling sample accounting must match the forecast sample")
+        if self.direction_probabilities.event_counts.sample_count != self.sample_size:
+            raise ValueError("rolling direction counts must match the forecast sample")
+        return self
+
+
 class RecordedForecastResultResponse(ForecastResultResponse):
+    id: int
+    recorded_at: str
+    outcomes: list[OutcomeResponse]
+    outcomes_truncated: bool
+
+
+class RecordedRollingForecastResultResponse(RollingForecastResultResponse):
     id: int
     recorded_at: str
     outcomes: list[OutcomeResponse]
@@ -892,10 +1080,15 @@ class OriginalForecastResultResponse(ForecastResultResponse):
     immutable: Literal[True]
 
 
+class OriginalRollingForecastResultResponse(RollingForecastResultResponse):
+    id: int
+    immutable: Literal[True]
+
+
 class ForecastCreationResponse(ApiResponse):
     event: SearchEventResponse
     input: ForecastInputResponse
-    results: list[RecordedForecastResultResponse]
+    results: list[RecordedForecastResultResponse | RecordedRollingForecastResultResponse]
     repeated: bool
     reused: bool
 
@@ -906,7 +1099,7 @@ class ReconstructionResponse(ApiResponse):
     forecast_available: bool | None = None
     event: SearchEventResponse
     input: ForecastInputResponse | None
-    results: list[RecordedForecastResultResponse]
+    results: list[RecordedForecastResultResponse | RecordedRollingForecastResultResponse]
 
 
 class SavedForecastResponse(ApiResponse):
@@ -916,7 +1109,7 @@ class SavedForecastResponse(ApiResponse):
     provider_called: Literal[False]
     event: SearchEventResponse
     input: ForecastInputResponse
-    results: list[RecordedForecastResultResponse]
+    results: list[RecordedForecastResultResponse | RecordedRollingForecastResultResponse]
 
 
 class FreshReconstructionResponse(ApiResponse):
@@ -929,7 +1122,7 @@ class FreshReconstructionResponse(ApiResponse):
     provenance: ProvenanceResponse
     event: SearchEventResponse
     input: ForecastInputResponse
-    results: list[RecordedForecastResultResponse]
+    results: list[RecordedForecastResultResponse | RecordedRollingForecastResultResponse]
     repeated: bool
     reused: bool
 
@@ -986,7 +1179,7 @@ class ForecastResultExportRecord(ApiResponse):
     run_id: int
     input_id: int
     result_id: int
-    data: RecordedForecastResultResponse
+    data: RecordedForecastResultResponse | RecordedRollingForecastResultResponse
 
 
 class HistoryExportCountsResponse(ApiResponse):
@@ -1084,11 +1277,11 @@ class _InlineScriptHashParser(HTMLParser):
             self._script = None
 
 
-def _static_script_csp(dashboard_path: Path, docs_path: Path) -> str:
+def _static_script_csp(*html_paths: Path) -> str:
     """Authorize only local scripts and exact inline code emitted by the static export."""
 
     hashes: set[str] = set()
-    for path in (dashboard_path, docs_path):
+    for path in html_paths:
         parser = _InlineScriptHashParser()
         parser.feed(path.read_bytes().decode("utf-8"))
         parser.close()
@@ -1370,6 +1563,21 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
             )
             return self._secure(response)
 
+        history_suffix = request.url.path.removeprefix("/api/v1/history/")
+        history_id = history_suffix.split("/", 1)[0]
+        if (
+            history_suffix != request.url.path
+            and len(history_id) > 10
+            and history_id.isascii()
+            and history_id.isdecimal()
+        ):
+            return self._secure(
+                JSONResponse(
+                    status_code=422,
+                    content=_error("validation_error", "Request validation failed."),
+                )
+            )
+
         origin = request.headers.get("origin")
         if origin:
             parsed_host = None
@@ -1548,6 +1756,43 @@ def _safe_csv_cell(value: object) -> str:
 
 
 _HISTORY_SCAN_LIMIT = 10_000
+_HORIZON_INTERVALS: dict[str, ForecastInterval] = {
+    horizon: cast(ForecastInterval, interval)
+    for interval, horizon in FORECAST_INTERVAL_HORIZONS.items()
+}
+_LEGACY_HORIZONS = {"close_to_close", "completed_5m_to_close"}
+_ALL_HORIZONS = _LEGACY_HORIZONS | set(_HORIZON_INTERVALS)
+
+
+def _forecast_response_view(
+    generated: dict[str, Any], interval: ForecastInterval | None = None
+) -> dict[str, Any]:
+    """Project the requested persisted contract while retaining legacy reopen behavior."""
+
+    snapshot = generated.get("input")
+    recorded_interval = snapshot.get("requested_interval") if isinstance(snapshot, dict) else None
+    if interval is not None and isinstance(snapshot, dict) and recorded_interval != interval:
+        # A saved run is immutable: a different requested interval is a conflict, not an empty
+        # successful forecast. Starlette's existing 409 handler supplies the public error shape.
+        raise HTTPException(status_code=409)
+    effective_interval = interval or recorded_interval
+    selected = (
+        _LEGACY_HORIZONS
+        if effective_interval is None
+        else {FORECAST_INTERVAL_HORIZONS[effective_interval]}
+    )
+    results = []
+    for source in generated.get("results", []):
+        if source.get("horizon") not in selected:
+            continue
+        result = dict(source)
+        rolling_interval = _HORIZON_INTERVALS.get(str(result.get("horizon")))
+        if rolling_interval is not None:
+            result["interval"] = rolling_interval
+            result.setdefault("horizon_start_timestamp", result.get("origin_timestamp"))
+            result.setdefault("horizon_end_timestamp", result.get("target_timestamp"))
+        results.append(result)
+    return {**generated, "results": results}
 
 
 def _iso_or_none(value: datetime | None) -> str | None:
@@ -1638,6 +1883,7 @@ def _history_event_view(
     detail: dict[str, Any] | None = None,
     *,
     hydrate_results: bool = True,
+    visible_horizon: str | None = None,
 ) -> dict[str, Any]:
     """Add bounded display facts while keeping a failed request result-free."""
 
@@ -1661,11 +1907,40 @@ def _history_event_view(
         return item
 
     if not hydrate_results:
+        horizons = list(item.get("horizons", []))
+        statuses = list(item.get("evaluation_statuses", []))
+        visible = (
+            _ALL_HORIZONS
+            if visible_horizon is None
+            else {visible_horizon}
+            if visible_horizon in _HORIZON_INTERVALS
+            else _LEGACY_HORIZONS
+        )
+        item["horizons"] = [horizon for horizon in horizons if horizon in visible]
+        item["evaluation_statuses"] = [
+            status
+            for horizon, status in zip(horizons, statuses, strict=False)
+            if horizon in visible
+        ]
         item["forecast_available"] = True
         return item
     detail = detail or service.history_detail(int(item["id"]))
     snapshot = detail.get("input") if detail else None
-    results = detail.get("results", []) if detail else []
+    recorded_interval = snapshot.get("requested_interval") if isinstance(snapshot, dict) else None
+    visible = (
+        {visible_horizon}
+        if visible_horizon in _ALL_HORIZONS
+        else (
+            {FORECAST_INTERVAL_HORIZONS[recorded_interval]}
+            if recorded_interval in FORECAST_INTERVAL_HORIZONS
+            else _ALL_HORIZONS
+        )
+    )
+    results = [
+        result
+        for result in (detail.get("results", []) if detail else [])
+        if result.get("horizon") in visible
+    ]
     if not isinstance(snapshot, dict):
         # Do not make a partial run look reopenable when its recorded input is unavailable.
         item.update(
@@ -1812,7 +2087,12 @@ def _query_history(
     if not post_processed:
         result = indexed_page(page, page_size)
         result["items"] = [
-            _history_event_view(service, item, hydrate_results=False)
+            _history_event_view(
+                service,
+                item,
+                hydrate_results=False,
+                visible_horizon=filters["horizon"],
+            )
             for item in result["items"]
         ]
     else:
@@ -1827,7 +2107,12 @@ def _query_history(
         for next_page in range(2, (first["total"] + 99) // 100 + 1):
             raw_items.extend(indexed_page(next_page, 100)["items"])
         enriched = [
-            _history_event_view(service, item, hydrate_results=False)
+            _history_event_view(
+                service,
+                item,
+                hydrate_results=False,
+                visible_horizon=filters["horizon"],
+            )
             for item in raw_items
         ]
         matched = [item for item in enriched if _matches_history_filters(item, filters)]
@@ -1892,6 +2177,7 @@ def _bounded_history_export(
             model_version=filters["model_version"],
             request_id=filters["request_id"],
             event_id=filters["event_id"],
+            horizon=filters["horizon"],
             max_events=100,
             sort_by=sort_by,
             sort_order=sort_order,
@@ -1912,7 +2198,22 @@ def _bounded_history_export(
         elif record["record_type"] == "run":
             run_records[int(record["run_id"])] = record
         elif record["record_type"] == "result":
-            results_by_run.setdefault(int(record["run_id"]), []).append(record)
+            horizon = record["data"].get("horizon")
+            visible = (
+                _ALL_HORIZONS
+                if filters["horizon"] is None
+                else {filters["horizon"]}
+                if filters["horizon"] in _HORIZON_INTERVALS
+                else _LEGACY_HORIZONS
+            )
+            if horizon in visible:
+                projected = _forecast_response_view(
+                    {"results": [record["data"]]}, _HORIZON_INTERVALS.get(horizon)
+                )["results"]
+                if projected:
+                    results_by_run.setdefault(int(record["run_id"]), []).append(
+                        {**record, "data": projected[0]}
+                    )
 
     enriched_events: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for record in raw_events:
@@ -1927,7 +2228,12 @@ def _bounded_history_export(
                 "input": run_record["data"],
                 "results": [item["data"] for item in results_by_run.get(run_id, [])],
             }
-        enriched = _history_event_view(service, event, detail)
+        enriched = _history_event_view(
+            service,
+            event,
+            detail,
+            visible_horizon=filters["horizon"],
+        )
         if _matches_history_filters(enriched, filters):
             enriched_events.append((record, enriched))
 
@@ -1992,8 +2298,19 @@ def create_app(
     backups = BackupManager(repository, config.backup_dir)
     static_dir = Path(__file__).parent / "static"
     next_dir = static_dir / "next"
+    workspace_pages = {
+        "/": next_dir / "index.html",
+        "/api-docs": next_dir / "api-docs.html",
+        "/api/v1/docs": next_dir / "api-docs.html",
+        "/overview": next_dir / "overview.html",
+        "/research": next_dir / "research.html",
+        "/tools": next_dir / "tools.html",
+        "/tools/forecast": next_dir / "tools" / "forecast.html",
+        "/tools/live-trading": next_dir / "tools" / "live-trading.html",
+        "/tools/markets": next_dir / "tools" / "markets.html",
+    }
     content_security_policy = _static_script_csp(
-        next_dir / "index.html", next_dir / "api-docs.html"
+        *(path for path in workspace_pages.values() if path.is_file())
     )
 
     @asynccontextmanager
@@ -2276,6 +2593,41 @@ def create_app(
         repository.representative_counts()
         return {"status": "ready", "schema_version": SCHEMA_VERSION, "provider": config.provider}
 
+    def market_identity(symbol: str, asset_type: str | None = None) -> dict[str, Any]:
+        """Resolve one exact provider identity before requesting or persisting market data."""
+
+        normalized = normalize_symbol(symbol)
+        lookup = cast(dict[str, Any], app.state.service.lookup(normalized, 1))
+        identity = next(
+            (item for item in lookup["items"] if item.get("canonical_symbol") == normalized),
+            None,
+        )
+        if identity is None:
+            raise DomainError(
+                "instrument_not_found", "The instrument was not found.", status_code=404
+            )
+        if asset_type is not None and identity.get("asset_type") != asset_type:
+            raise DomainError(
+                "asset_type_mismatch",
+                "The selected asset type does not match the provider identity.",
+                status_code=422,
+            )
+        return cast(dict[str, Any], identity)
+
+    def flattened_list_items(kind: str | None) -> list[dict[str, Any]]:
+        return [
+            {
+                "symbol": item["canonical_symbol"],
+                "display_name": item["display_name"],
+                "provider": item["provider"],
+                "asset_type": item["asset_type"],
+                "exchange": item["exchange"],
+                "quantity": item["quantity"],
+                "added_at": item["added_at"],
+            }
+            for item in repository.instrument_list_items(kind)
+        ]
+
     @app.get(
         "/api/v1/instruments",
         response_model=InstrumentLookupResponse,
@@ -2290,6 +2642,206 @@ def create_app(
         # Resolve through app state so transport tests and runtime integrations share the
         # service's provider concurrency, normalization, and exception boundary.
         return cast(dict[str, Any], app.state.service.lookup(query, limit))
+
+    @app.get(
+        "/api/v1/quotes",
+        response_model=QuotesResponse,
+        responses=_documented_errors(400, 403, 404, 405, 422, 500, 502, 503),
+    )
+    def quotes(
+        request: Request,
+        symbols: str = Query(min_length=1, max_length=319),
+    ) -> dict[str, Any]:
+        """Return up to twenty provider-labelled observations without real-time claims."""
+
+        if (
+            set(request.query_params) != {"symbols"}
+            or len(request.query_params.getlist("symbols")) != 1
+        ):
+            raise DomainError("validation_error", "Request validation failed.")
+        parts = symbols.split(",")
+        if not 1 <= len(parts) <= 20 or any(not part.strip() for part in parts):
+            raise DomainError("validation_error", "Request validation failed.")
+        normalized = list(dict.fromkeys(normalize_symbol(part) for part in parts))
+        items = []
+        for symbol in normalized:
+            identity = market_identity(symbol)
+            quote = cast(
+                dict[str, Any],
+                app.state.service.quote_snapshot(symbol, identity["asset_type"]),
+            )
+            simulated = quote["provider"] == "deterministic fixture"
+            items.append(
+                {
+                    "symbol": quote["symbol"],
+                    "name": identity["display_name"],
+                    "asset_type": identity["asset_type"],
+                    "exchange": identity["exchange"],
+                    "last": quote["price"],
+                    "currency": quote["currency"],
+                    "source": quote["provider"],
+                    "as_of": quote["as_of"],
+                    "state": (
+                        "simulated"
+                        if simulated
+                        else "delayed"
+                        if quote["delayed"]
+                        else "provider_reported"
+                    ),
+                    "delayed": quote["delayed"],
+                    "delay_minutes": quote["delay_minutes"],
+                    "label": quote["label"],
+                    **{
+                        key: quote[key]
+                        for key in (
+                            "open",
+                            "high",
+                            "low",
+                            "previous_close",
+                            "volume",
+                            "last_trade",
+                            "change",
+                            "change_percent",
+                        )
+                    },
+                }
+            )
+        return {"items": items}
+
+    @app.get(
+        "/api/v1/bars",
+        response_model=MarketBarsResponse,
+        responses=_documented_errors(400, 403, 404, 405, 422, 500, 502, 503),
+    )
+    def market_bars(
+        symbol: str = Query(min_length=1, max_length=15),
+        asset_type: Literal["stock", "etf"] | None = Query(default=None),
+        chart_range: ChartRange = Query(default="1mo", alias="range"),  # noqa: B008
+    ) -> dict[str, Any]:
+        """Return a bounded daily chart for the requested provider-supported range."""
+
+        identity = market_identity(symbol, asset_type)
+        series = cast(
+            dict[str, Any],
+            # ForecastService owns provider slots and exception classification. Its existing
+            # convenience method is fixed at the default range, so use the same private boundary
+            # with the explicit chart range rather than bypassing capacity/error handling.
+            service._provider_capability(  # noqa: SLF001
+                lambda requested_at: service.provider.historical_bars(
+                    identity["canonical_symbol"],
+                    identity["asset_type"],
+                    requested_at,
+                    range=chart_range,
+                ).as_dict(),
+                "The chart provider failed unexpectedly.",
+            ),
+        )
+        simulated = series["provider"] == "deterministic fixture"
+        return {
+            **{key: series[key] for key in ("symbol", "range", "interval", "adjustment_basis")},
+            "source": series["provider"],
+            "as_of": series["as_of"],
+            "state": (
+                "simulated"
+                if simulated
+                else "delayed"
+                if series["delayed"]
+                else "provider_reported"
+            ),
+            "delayed": series["delayed"],
+            "delay_minutes": series["delay_minutes"],
+            "label": series["label"],
+            "bars": series["bars"],
+        }
+
+    @app.get(
+        "/api/v1/lists",
+        response_model=InstrumentListsResponse,
+        responses=_documented_errors(400, 403, 405, 422, 500, 503),
+    )
+    def instrument_lists(
+        kind: Literal["watchlist", "portfolio"] | None = Query(default=None),
+    ) -> dict[str, Any]:
+        return {"kind": kind or "all", "items": flattened_list_items(kind)}
+
+    @app.post(
+        "/api/v1/lists",
+        status_code=201,
+        response_model=InstrumentListsResponse,
+        responses=_documented_errors(400, 403, 404, 405, 409, 411, 413, 422, 500, 502, 503),
+    )
+    def add_instrument_list_item(
+        payload: InstrumentListMutationRequest, response: Response
+    ) -> dict[str, Any]:
+        identity = market_identity(payload.item.symbol, payload.item.asset_type)
+        items = repository.instrument_list_items(payload.kind)
+        now = selected_clock().astimezone(UTC)
+        try:
+            existing = next(
+                (
+                    item
+                    for item in items
+                    if item["canonical_symbol"] == identity["canonical_symbol"]
+                    and item["asset_type"] == identity["asset_type"]
+                ),
+                None,
+            )
+            if existing is None:
+                repository.add_instrument_list_item(
+                    payload.kind,
+                    provider=identity["provider"],
+                    canonical_symbol=identity["canonical_symbol"],
+                    asset_type=identity["asset_type"],
+                    exchange=identity["exchange"],
+                    display_name=identity["display_name"],
+                    quantity=payload.item.quantity,
+                    added_at=now,
+                )
+            elif payload.kind == "portfolio":
+                repository.set_instrument_list_item_holding(
+                    payload.kind,
+                    provider=existing["provider"],
+                    canonical_symbol=existing["canonical_symbol"],
+                    asset_type=existing["asset_type"],
+                    quantity=payload.item.quantity,
+                )
+        except ValueError as exc:
+            raise DomainError(
+                "instrument_list_conflict",
+                "The instrument list update conflicts with its current bounded state.",
+                status_code=409,
+            ) from exc
+        response.headers["Location"] = f"/api/v1/lists?kind={payload.kind}"
+        return {"kind": payload.kind, "items": flattened_list_items(payload.kind)}
+
+    @app.delete(
+        "/api/v1/lists",
+        status_code=204,
+        response_class=Response,
+        responses=_documented_errors(400, 403, 404, 405, 422, 500, 503),
+    )
+    def remove_instrument_list_item(
+        kind: Literal["watchlist", "portfolio"] = Query(),
+        symbol: str = Query(min_length=1, max_length=15),
+    ) -> Response:
+        normalized = normalize_symbol(symbol)
+        item = next(
+            (
+                candidate
+                for candidate in repository.instrument_list_items(kind)
+                if candidate["canonical_symbol"] == normalized
+            ),
+            None,
+        )
+        if item is not None:
+            repository.remove_instrument_list_item(
+                kind,
+                provider=item["provider"],
+                canonical_symbol=item["canonical_symbol"],
+                asset_type=item["asset_type"],
+            )
+            return Response(status_code=204)
+        raise HTTPException(status_code=404)
 
     @app.get(
         "/api/v1/news",
@@ -2330,14 +2882,17 @@ def create_app(
         },
     )
     def create_forecast(payload: SearchRequest, response: Response) -> ForecastCreationResponse:
-        generated = service.search(payload.symbol, payload.asset_type)
+        generated = service.search(payload.symbol, payload.asset_type, payload.interval)
         try:
             # Validate before FastAPI's response serializer so a malformed service handoff can be
             # correlated with exactly one failed search rather than escaping as an unaudited 500.
-            validated = ForecastCreationResponse.model_validate(generated)
+            visible = _forecast_response_view(cast(dict[str, Any], generated), payload.interval)
+            validated = ForecastCreationResponse.model_validate(visible)
             response.headers["Location"] = (
                 f"/api/v1/saved-forecasts/{validated.event.id}"
             )
+            if payload.interval is not None:
+                response.headers["Location"] += f"?interval={payload.interval}"
             response.headers["X-Request-ID"] = validated.event.request_id
             return validated
         except Exception:
@@ -2598,6 +3153,7 @@ def create_app(
     )
     def reconstruction(
         event_id: int = PathParameter(ge=1, le=2_147_483_647),
+        interval: ForecastIntervalParameter = None,
     ) -> dict[str, Any]:
         # Constrain matching at the router boundary so unrelated history paths remain genuine 404s;
         # the typed parameter still owns numeric bounds and their public validation response.
@@ -2605,12 +3161,15 @@ def create_app(
         if result is None:
             raise HTTPException(status_code=404, detail="history event not found")
         available = result.get("input") is not None
-        return {
-            "record_kind": "recorded_forecast" if available else "failed_search",
-            "immutable": True,
-            "forecast_available": available,
-            **result,
-        }
+        return _forecast_response_view(
+            {
+                "record_kind": "recorded_forecast" if available else "failed_search",
+                "immutable": True,
+                "forecast_available": available,
+                **result,
+            },
+            interval,
+        )
 
     @app.get(
         "/api/v1/saved-forecasts/{event_id}",
@@ -2620,6 +3179,7 @@ def create_app(
     )
     def saved_forecast(
         event_id: int = PathParameter(ge=1, le=2_147_483_647),
+        interval: ForecastIntervalParameter = None,
     ) -> dict[str, Any]:
         """Reopen an immutable recorded forecast without recalculation or provider access."""
 
@@ -2628,13 +3188,16 @@ def create_app(
             raise HTTPException(status_code=404, detail="history event not found")
         if recorded.get("input") is None:
             raise HTTPException(status_code=409, detail="failed searches have no saved forecast")
-        return {
-            "analysis_kind": "saved_recorded_forecast",
-            "immutable": True,
-            "recalculated": False,
-            "provider_called": False,
-            **recorded,
-        }
+        return _forecast_response_view(
+            {
+                "analysis_kind": "saved_recorded_forecast",
+                "immutable": True,
+                "recalculated": False,
+                "provider_called": False,
+                **recorded,
+            },
+            interval,
+        )
 
     @app.post(
         "/api/v1/history/{event_id}/reconstructions",
@@ -2678,17 +3241,22 @@ def create_app(
             provenance["provider_content_fingerprint"] = analysis.get(
                 "provider_content_fingerprint"
             )
-        created = {
-            **generated,
-            "source_event_id": event_id,
-            "requested_cutoff": payload.cutoff.astimezone(UTC).isoformat(),
-            "provider_called": True,
-            "recalculated": True,
-            "provenance": provenance,
-        }
+        created = _forecast_response_view(
+            {
+                **generated,
+                "source_event_id": event_id,
+                "requested_cutoff": payload.cutoff.astimezone(UTC).isoformat(),
+                "provider_called": True,
+                "recalculated": True,
+                "provenance": provenance,
+            }
+        )
         response.headers["Location"] = (
             f"/api/v1/saved-forecasts/{generated['event']['id']}"
         )
+        requested_interval = generated["input"].get("requested_interval")
+        if requested_interval is not None:
+            response.headers["Location"] += f"?interval={requested_interval}"
         response.headers["X-Request-ID"] = str(generated["event"]["request_id"])
         return created
 
@@ -2713,7 +3281,7 @@ def create_app(
 
     @app.get(
         "/api/v1/forecasts/{result_id}",
-        response_model=OriginalForecastResultResponse,
+        response_model=OriginalForecastResultResponse | OriginalRollingForecastResultResponse,
         response_model_exclude_unset=True,
         responses=_documented_errors(400, 403, 404, 405, 422, 500, 503),
     )
@@ -2725,7 +3293,10 @@ def create_app(
         result = repository.forecast_result(result_id)
         if result is None:
             raise HTTPException(status_code=404, detail="forecast result not found")
-        return {"id": result_id, "immutable": True, **result}
+        horizon = result.get("horizon")
+        interval = _HORIZON_INTERVALS.get(horizon) if isinstance(horizon, str) else None
+        visible = _forecast_response_view({"results": [result]}, interval)
+        return {"id": result_id, "immutable": True, **visible["results"][0]}
 
     @app.post(
         "/api/v1/forecasts/{result_id}/outcomes",
@@ -2806,11 +3377,34 @@ def create_app(
     def api_docs() -> FileResponse:
         """Serve a CSP-compatible, dependency-free pointer to the machine-readable contract."""
 
-        return FileResponse(next_dir / "api-docs.html")
+        return FileResponse(workspace_pages["/api/v1/docs"])
 
     @app.get("/", include_in_schema=False)
     def dashboard() -> FileResponse:
-        return FileResponse(next_dir / "index.html")
+        return FileResponse(workspace_pages["/"])
+
+    def workspace_page(route: str) -> FileResponse:
+        page = workspace_pages[route]
+        if not page.is_file():
+            raise HTTPException(status_code=404)
+        return FileResponse(page)
+
+    for route in (
+        "/api-docs",
+        "/overview",
+        "/research",
+        "/tools",
+        "/tools/forecast",
+        "/tools/live-trading",
+        "/tools/markets",
+    ):
+        app.add_api_route(
+            route,
+            partial(workspace_page, route),
+            methods=["GET"],
+            include_in_schema=False,
+            name=f"workspace-{route.strip('/').replace('/', '-')}",
+        )
 
     @app.api_route(
         "/assets/{path:path}",

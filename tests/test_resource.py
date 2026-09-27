@@ -258,9 +258,10 @@ def test_next_export_stages_only_served_files_and_packages_them_recursively():
     source = ROOT / "frontend/out"
     staged = ROOT / "src/stock_probs/static/next"
 
-    assert {path.name for path in staged.iterdir()} == {"index.html", "api-docs.html", "_next"}
-    assert (staged / "index.html").read_bytes() == (source / "index.html").read_bytes()
-    assert (staged / "api-docs.html").read_bytes() == (source / "api-docs.html").read_bytes()
+    expected_top_level = {"_next"} | {Path(name).parts[0] for name in build_frontend.PAGES}
+    assert {path.name for path in staged.iterdir()} == expected_top_level
+    for name in build_frontend.PAGES:
+        assert (staged / name).read_bytes() == (source / name).read_bytes()
     source_next = {
         path.relative_to(source / "_next").as_posix(): path.read_bytes()
         for path in (source / "_next").rglob("*")
@@ -306,8 +307,10 @@ def test_frontend_staging_rejects_invalid_sources_and_destination_symlink(tmp_pa
     with pytest.raises(SystemExit, match="not a complete Next export"):
         build_frontend.main()
 
-    for name in ("index.html", "api-docs.html"):
-        (source / name).write_text("new")
+    for name in build_frontend.PAGES:
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("new")
     with pytest.raises(SystemExit, match="not a complete Next export"):
         build_frontend.main()
 
@@ -328,8 +331,10 @@ def test_frontend_staging_replaces_stale_export(tmp_path, monkeypatch):
     destination = tmp_path / "static/next"
     source.mkdir()
     destination.mkdir(parents=True)
-    for name in ("index.html", "api-docs.html"):
-        (source / name).write_text("new")
+    for name in build_frontend.PAGES:
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("new")
     chunks = source / "_next/static/chunks"
     chunks.mkdir(parents=True)
     (chunks / "app.js").write_text("chunk")
@@ -339,7 +344,8 @@ def test_frontend_staging_replaces_stale_export(tmp_path, monkeypatch):
 
     build_frontend.main()
 
-    assert {path.name for path in destination.iterdir()} == {"index.html", "api-docs.html", "_next"}
+    expected_top_level = {"_next"} | {Path(name).parts[0] for name in build_frontend.PAGES}
+    assert {path.name for path in destination.iterdir()} == expected_top_level
     assert (destination / "_next/static/chunks/app.js").read_text() == "chunk"
 
 

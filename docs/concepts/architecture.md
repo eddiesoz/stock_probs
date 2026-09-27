@@ -6,9 +6,10 @@ description: "The single-process application architecture and its API, service, 
 # Architecture
 
 Stock Probability is a local Linux application built as one bounded Python process. FastAPI
-remains the sole production server: it serves the browser routes `/` and `/api/v1/docs` and
-the application API below `/api/v1`. The default listener is loopback; there is no hosted
-service, Node production server, or multi-service control plane.
+remains the sole production server: it serves `/`, `/api/v1/docs`, and the workspace routes
+`/overview`, `/research`, `/tools`, `/tools/forecast`, `/tools/live-trading`, and
+`/tools/markets`, plus the application API below `/api/v1`. The default listener is loopback;
+there is no hosted service, Node production server, or multi-service control plane.
 
 The presentation source is a Next.js `16.3.5` / React `19.3` App Router project, but it is a
 static build-time input rather than another runtime. Run `./scripts/build-frontend.sh` to create
@@ -26,7 +27,7 @@ or multi-service deployment. Native development remains the `.dev-venv/` plus lo
 
 ```text
 Browser presentation
-        │ local HTML/assets and HTTP /api/v1
+        │ local workspace HTML/assets and HTTP /api/v1
         ▼
 FastAPI (`/`, `/api/v1/docs`, `/api/v1`) ── application service ── forecast domain
                             │                    ▲
@@ -45,16 +46,18 @@ FastAPI (`/`, `/api/v1/docs`, `/api/v1`) ── application service ── forec
 - **Application service** coordinates provider capacity, forecast calculation, and exactly
   classified audit writes.
 - **Provider** turns bounded Yahoo Finance responses or packaged fixtures into normalized
-  identities and daily/five-minute bars. Its separate `fetch_news` operation returns bounded
-  current headlines to an ephemeral service cache; headlines never enter the repository.
+  identities, quote snapshots, daily/five-minute bars, and daily chart series. Its separate
+  `fetch_news` operation returns bounded current headlines to an ephemeral service cache; headlines
+  never enter the repository. It has no market-depth capability.
 - **Forecast domain** owns session completion, historical samples, model calculations,
   evaluation, quality labels, and immutable provenance payloads.
-- **Persistence** applies checksum-pinned additive migrations and stores each submission.
-  Forecast inputs/results are immutable; outcomes and corrections are append-only.
-- **Presentation** uses the static Next export for the two local pages and calls only `/api/v1`
+- **Persistence** applies checksum-pinned additive migrations and stores each submission plus
+  bounded local watchlist and portfolio records. Forecast inputs/results are immutable; outcomes
+  and corrections are append-only; manual quantities are research context, not broker positions.
+- **Presentation** uses the static Next export for the workspace pages and calls only `/api/v1`
   for application data. It does not open SQLite, receive database paths, or call Yahoo Finance
   directly. User-activated external article navigation is not an alternate browser data-provider
-  path.
+  path, and no presentation control places an order.
 
 The color theme is presentation state only. A parser-blocking `theme.js` runs before the
 stylesheet, and the server's strict CSP authorizes local scripts plus the exact hashes of the

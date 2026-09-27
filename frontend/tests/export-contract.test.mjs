@@ -3,6 +3,16 @@ import { readFile, readdir } from "node:fs/promises";
 import test from "node:test";
 
 const buildId = "stock-probs";
+const routeFiles = [
+  "index.html",
+  "api-docs.html",
+  "overview.html",
+  "research.html",
+  "tools.html",
+  "tools/forecast.html",
+  "tools/live-trading.html",
+  "tools/markets.html",
+];
 const dashboardIds = [
   "settings-menu", "system-label", "main", "forecast-heading", "forecast-form", "symbol",
   "symbol-help", "lookup-status", "instrument-options", "identity-confirmation", "symbol-error",
@@ -32,9 +42,13 @@ function resourcesFor(elements, path) {
   return elements.filter(({ attributes }) => attributes.src === path || attributes.href === path);
 }
 
-test("static export keeps dashboard hooks and route-specific scripts", async () => {
-  const dashboard = await readFile(new URL("../out/index.html", import.meta.url), "utf8");
-  const apiDocs = await readFile(new URL("../out/api-docs.html", import.meta.url), "utf8");
+test("static export keeps dashboard hooks and every packaged route", async () => {
+  const exports = Object.fromEntries(await Promise.all(routeFiles.map(async (path) => [
+    path,
+    await readFile(new URL(`../out/${path}`, import.meta.url), "utf8"),
+  ])));
+  const dashboard = exports["index.html"];
+  const apiDocs = exports["api-docs.html"];
   const dashboardResources = headResourceElements(dashboard);
   const apiDocsResources = headResourceElements(apiDocs);
 
@@ -44,7 +58,8 @@ test("static export keeps dashboard hooks and route-specific scripts", async () 
   assert.match(apiDocs, /id=["']contract-heading["']/);
   assert.match(apiDocs, /id=["']settings-menu["'][^>]*popover=["']["']/);
 
-  for (const resources of [dashboardResources, apiDocsResources]) {
+  for (const html of Object.values(exports)) {
+    const resources = headResourceElements(html);
     const [theme] = resourcesFor(resources, "/assets/theme.js");
     const [stylesheet] = resourcesFor(resources, "/assets/app.css")
       .filter(({ tag, attributes }) => tag === "link" && attributes.rel === "stylesheet");
@@ -66,7 +81,7 @@ test("static export keeps dashboard hooks and route-specific scripts", async () 
   });
   assert.equal(resourcesFor(apiDocsResources, "/assets/app.js").length, 0);
 
-  assert.equal((await readFile(new URL("../.next/BUILD_ID", import.meta.url), "utf8")).trim(), buildId);
+  // The exported build-ID directory is packaged; transient .next metadata is not.
   const staticRoot = new URL("../out/_next/static/", import.meta.url);
   const staticDirectories = (await readdir(staticRoot, { withFileTypes: true }))
     .filter((entry) => entry.isDirectory())

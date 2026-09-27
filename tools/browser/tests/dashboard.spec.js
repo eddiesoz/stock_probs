@@ -510,8 +510,10 @@ test("result summaries keep complete values in native disclosures and semantic s
     const intervalTable = card.locator(".interval-table");
     for (const interval of forecast.magnitude_intervals) {
       await expect(intervalTable).toContainText(`${interval.definition} · level ${interval.level}`);
-      await expect(intervalTable).toContainText(`raw ${interval.percent.low} to ${interval.percent.high} ${interval.percent.unit}`);
-      await expect(intervalTable).toContainText(`raw ${interval.price.low} to ${interval.price.high} ${interval.price.unit}`);
+      await expect(intervalTable).not.toContainText("raw ");
+      const exactIntervals = card.locator(".exact-intervals");
+      await expect(exactIntervals).toContainText(`${interval.percent.low} to ${interval.percent.high} ${interval.percent.unit}`);
+      await expect(exactIntervals).toContainText(`${interval.price.low} to ${interval.price.high} ${interval.price.unit}`);
     }
   }
 
@@ -974,7 +976,7 @@ test("a superseded lookup is aborted once and cannot race a direct-symbol foreca
   await page.route("**/api/v1/instruments?*", async (route) => {
     const query = new URL(route.request().url()).searchParams.get("query");
     lookupQueries.push(query);
-    if (["ProFrac", "ACDC-D"].includes(query)) {
+    if (query === "ACDC-D") {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
     await route.continue();
@@ -982,18 +984,20 @@ test("a superseded lookup is aborted once and cannot race a direct-symbol foreca
   browserDiagnostics.expectRequestAborts({
     method: "GET",
     path: "/api/v1/instruments",
-    count: 2,
+    count: 1,
   });
   await gotoSurface(page, "/");
   const symbol = page.getByLabel("Company name or Yahoo Finance symbol");
   await symbol.fill("ProFrac");
-  await expect(page.getByText("Looking up “ProFrac”…")).toBeVisible();
+  await expect(page.getByRole("option", { name: /ProFrac Holding Corp/ })).toBeVisible();
+  await expect.poll(() => lookupQueries.filter((query) => query === "ProFrac").length).toBe(1);
   await symbol.fill("SPDR");
   await expect(page.getByRole("option", { name: /SPDR S&P 500 ETF Trust/ })).toBeVisible();
   await expect(page.locator("#instrument-options")).not.toContainText("ProFrac Holding Corp");
 
   await symbol.fill("ACDC-D");
   await expect(page.getByText("Looking up “ACDC-D”…")).toBeVisible();
+  await expect.poll(() => lookupQueries.filter((query) => query === "ACDC-D").length).toBe(1);
   const forecastResponse = page.waitForResponse((response) => (
     response.request().method() === "POST"
     && new URL(response.url()).pathname === "/api/v1/forecasts"
@@ -1649,6 +1653,8 @@ test("validation, loading, and stale states remain explicit", async ({ page }) =
 });
 
 test("native settings popover is hidden, responsive, persistent, keyboard-operable, and axe-clean", async ({ page }, testInfo) => {
+  // Mobile checks capture both routes at two widths and run full axe scans.
+  test.setTimeout(90_000);
   const widths = testInfo.project.name.startsWith("desktop") ? [820] : [390, 320];
   const geometry = [];
   for (const path of ["/", "/api/v1/docs"]) {
@@ -1859,12 +1865,12 @@ test("theme initializes before CSS and persists light dark and system choices on
   await themeRadio(page, "Light").press("ArrowRight");
   await expect(darkTheme).toBeChecked();
   const darkRatios = await verifyThemeRoleContrast(page);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#settings-menu")).toBeHidden();
   const hoveredLink = page.locator(".section-nav a").first();
   await hoveredLink.hover();
-  const darkHoverRatios = [
-    await renderedContrast(page, ".section-nav a:first-child"),
-    await renderedContrast(page, ".section-nav a:first-child span"),
-  ];
+  const darkHoverRatios = [await renderedContrast(page, ".section-nav a:first-child")];
+  await openSettings(page);
   await darkTheme.press("ArrowRight");
   await expect(themeRadio(page, "System")).toBeChecked();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -1938,6 +1944,8 @@ test("news disclosure is lazy bounded safe and separate from immutable evidence"
   await openSettings(page);
   await themeRadio(page, "Dark").click();
   expect(requestedLimits).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#settings-menu")).toBeHidden();
   await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
   await page.getByRole("button", { name: "Run forecast" }).click();
   const panel = page.locator(".news-panel");
@@ -2224,6 +2232,8 @@ test("R-M04-21/22 exact 1024 query heading and 360 loading state remain separate
 test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast stay usable", async ({
   page,
 }, testInfo) => {
+  // Four viewport navigations plus two full axe passes need more than the default per-test budget.
+  test.setTimeout(90_000);
   for (const width of [360, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: width === 360 ? 800 : 900 });
     await gotoSurface(page, "/");
@@ -2248,6 +2258,8 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
   }
 
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#settings-menu")).toBeHidden();
   await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC");
   await page.getByRole("button", { name: "Run forecast" }).click();
   await expect(page.locator("#result-content")).not.toHaveClass(/loading/);

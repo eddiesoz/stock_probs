@@ -1,0 +1,50 @@
+.sectionHeading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}
+.composer,.results{min-width:0;max-width:100%;padding:1.2rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-raised);box-shadow:var(--shadow)}
+.sectionHeading{margin-bottom:.9rem}
+.sectionHeading h2{margin:0;font-size:clamp(1.4rem,3vw,2rem)}
+.identity{padding:.4rem .6rem;border:1px solid var(--border);color:var(--muted);font-size:.72rem;font-weight:800;text-transform:uppercase}
+.fields{display:grid;grid-template-columns:1.1fr .7fr 1fr;gap:.7rem}
+.fields label{color:var(--muted);font-size:.75rem;font-weight:750}
+.fields label>span{display:block;margin-bottom:.35rem}
+.boundary,.exactBoundary,.range{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:.9rem 0;border:1px solid var(--border);background:var(--panel-muted)}
+.boundary div,.exactBoundary div,.range div{min-width:0;padding:.7rem;border-right:1px solid var(--border)}
+.boundary div:last-child,.exactBoundary div:last-child,.range div:last-child{border-right:0}
+.boundary dt,.exactBoundary dt,.range dt,.resultIdentity span,.probabilities span{color:var(--muted);font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.boundary dd,.exactBoundary dd,.range dd{margin:.2rem 0 0;font-weight:720;overflow-wrap:anywhere}
+.hint{margin:.5rem 0 .8rem;color:var(--muted);font-size:.75rem}
+.results{margin-bottom:2rem}
+.resultCard{min-width:0;max-width:100%;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel);overflow:hidden}
+.dataNotice{margin:0;padding:.65rem;border-left:4px solid var(--accent);background:var(--accent-soft);color:var(--text);font-size:.75rem;line-height:1.45}
+.resultIdentity{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-bottom:1px solid var(--edge);background:var(--terminal);color:var(--terminal-text)}
+.resultIdentity span{color:var(--terminal-muted)}
+.resultIdentity strong{color:var(--terminal-text)}
+.resultIdentity div{display:grid;gap:.2rem;padding:.75rem;overflow-wrap:anywhere}
+.resultIdentity div+div{border-left:1px solid var(--border)}
+.probabilities{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--panel-muted)}
+.probabilities .loss{background:var(--bad-soft)}
+.probabilities .gain{background:var(--good-soft)}
+.probabilities div{display:grid;gap:.25rem;padding:1rem;text-align:center}
+.probabilities div+div{border-left:1px solid var(--border)}
+.probabilities strong{font-size:clamp(1.75rem,4vw,3rem);font-variant-numeric:tabular-nums;letter-spacing:-.045em;line-height:1.1}
+.loss strong{color:var(--loss)}
+.gain strong{color:var(--gain)}
+.range{grid-template-columns:repeat(3,minmax(0,1fr));margin:0;border-width:1px 0 0}
+.resultSection{min-width:0;max-width:100%;padding:.85rem;border-top:1px solid var(--border)}
+.resultSection h3{margin:0 0 .65rem;font-size:1rem}
+.resultSection p{margin:0;color:var(--muted)}
+.thresholds{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0;border-top:1px solid var(--border);border-left:1px solid var(--border)}
+.thresholds div{padding:.7rem;border-right:1px solid var(--border);border-bottom:1px solid var(--border)}
+.thresholds div:nth-child(even){background:var(--panel-muted)}
+.thresholds dt,.intervalTable th,.provenance dt{color:var(--muted);font-size:.68rem;font-weight:800;text-transform:uppercase}
+.thresholds dd{margin:.2rem 0 0;font-weight:750}
+.intervalTableWrap{min-width:0;max-width:100%;overflow-x:auto}
+.intervalTable{width:100%;min-width:520px;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.intervalTable th,.intervalTable td{padding:.65rem;border:1px solid var(--border);text-align:left;font-variant-numeric:tabular-nums}
+.intervalTable thead th{background:var(--terminal);color:var(--terminal-text)}
+.provenance{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:0;border-top:1px solid var(--border)}
+.provenance div{padding:.65rem;border-right:1px solid var(--border);border-bottom:1px solid var(--border)}
+.provenance dd{margin:.2rem 0 0;overflow-wrap:anywhere}
+@media (max-width:700px){.fields{grid-template-columns:1fr}.boundary,.exactBoundary,.resultIdentity,.range,.provenance{grid-template-columns:1fr}.thresholds{grid-template-columns:repeat(2,minmax(0,1fr))}.boundary div,.exactBoundary div,.range div,.resultIdentity div+div{border-right:0;border-bottom:1px solid var(--border)}.boundary div:last-child,.exactBoundary div:last-child,.range div:last-child{border-bottom:0}.intervalTable{min-width:0;table-layout:fixed}.intervalTable th,.intervalTable td{overflow-wrap:anywhere}}
+@media (max-width:420px){.composer,.results{padding:.75rem}.probabilities strong{font-size:1.35rem}}
+@media (forced-colors:active){.composer,.results,.resultCard{border:2px solid CanvasText;box-shadow:none}.loss strong,.gain strong{color:CanvasText}}
+@media print{.composer button{display:none}.composer,.results,.resultCard{box-shadow:none}.resultCard{break-inside:avoid}}

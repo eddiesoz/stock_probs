@@ -14,7 +14,7 @@ export default function ApiDocsPage() {
         <div className="masthead-primary">
           <a className="brand-lockup" href="/" aria-label="Signal Ledger dashboard">
             <span className="ledger-mark" aria-hidden="true"><i /><i /><i /></span>
-            <span><span className="eyebrow">Precision Research Terminal / API v1</span><h1>Signal Ledger API</h1></span>
+            <h1>Signal Ledger API</h1>
           </a>
           <div className="header-controls">
             <a className="text-link" href="/">Return to dashboard</a>

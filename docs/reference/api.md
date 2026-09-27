@@ -1,6 +1,6 @@
 ---
 title: "API reference"
-description: "Versioned FastAPI endpoint inventory for health, forecasts, current news, immutable history, outcomes, exports, backups, restores, and local documentation."
+description: "Versioned FastAPI endpoint inventory for workspace instruments, quotes, charts, lists, forecasts, current news, immutable history, outcomes, exports, backups, restores, and local documentation."
 ---
 
 # API reference
@@ -14,8 +14,13 @@ dependency-free local pointer is `/api/v1/docs`.
 | `GET` | `/api/v1/health` | Process health and API version. |
 | `GET` | `/api/v1/readiness` | Migration-backed readiness, schema version, and selected provider. |
 | `GET` | `/api/v1/instruments` | Bounded company/symbol lookup (`query`, optional `limit` up to 5) with complete selectable identity. |
+| `GET` | `/api/v1/quotes` | Provider-labelled quote snapshots for one comma-separated batch of up to 20 normalized symbols. |
+| `GET` | `/api/v1/bars` | One symbol's bounded daily chart for `range=5d`, `1mo`, `3mo`, `6mo`, or `1y`; the response interval is fixed at `1d`. |
+| `GET` | `/api/v1/lists` | Read the bounded local `watchlist`, `portfolio`, or `all` instrument list. |
+| `POST` | `/api/v1/lists` | Add or update one local list item; manual `quantity` is allowed only for `portfolio`. Returns `201` and `Location`. |
+| `DELETE` | `/api/v1/lists` | Remove one local list item by `kind` and normalized `symbol`. Returns `204`. |
 | `GET` | `/api/v1/news?symbol=<normalized>&limit=5` | Read ephemeral current headlines for a normalized symbol; `limit` defaults to 5 and is bounded from 1 through 10. No persistence effect. |
-| `POST` | `/api/v1/forecasts` | Submit `{symbol, asset_type}` and create an audited two-horizon forecast. Returns `201`, `Location`, and `X-Request-ID`. |
+| `POST` | `/api/v1/forecasts` | Submit `{symbol, asset_type, interval?}` and create an audited forecast. Without `interval` it returns the legacy two-horizon pair; with one of `5min`, `daily`, `weekly`, `monthly`, or `quarterly` it returns the selected rolling horizon. Returns `201`, `Location`, and `X-Request-ID`. |
 | `GET` | `/api/v1/history` | Filter, sort, and page submitted events; page size is bounded to 100. |
 | `GET` | `/api/v1/history-export.csv` | Download at most 100 filtered audit events with CSV formula-safety handling. |
 | `GET` | `/api/v1/history-export.json` | Download the same bounded typed audit record stream as JSON. |
@@ -29,6 +34,54 @@ dependency-free local pointer is `/api/v1/docs`.
 | `POST` | `/api/v1/operations/backups` | Create a verified managed backup with an optional managed name. |
 | `GET` | `/api/v1/operations/backups/status` | Report bounded backup capability without filesystem paths. |
 | `POST` | `/api/v1/operations/restores` | Verify a managed backup, and promote only when `promote` is explicitly true. |
+
+There is no `/api/v1/market-depth` endpoint and no `MarketDepthResponse` schema. The Live Trading
+workspace may disclose that free data has no exchange-depth entitlement, but it does not fabricate
+bid/ask rows or claim Nasdaq TotalView, exchange depth, order execution, brokerage connectivity, or
+real-time delivery.
+
+## Research-workspace contracts
+
+`GET /api/v1/instruments` returns at most five identity-complete matches. Each match keeps the
+canonical symbol with display/company name, exchange, currency, timezone, quote type, asset type,
+provider, and provider as-of time; callers must not detach a company name from its identity.
+
+`GET /api/v1/quotes?symbols=ACDC,SPY` accepts one `symbols` parameter containing one through 20
+comma-separated symbols. Each returned item includes `last`, optional OHLC/volume/trade fields,
+`source`, UTC `as_of`, `state` (`provider_reported`, `delayed`, or `simulated`), `delayed`, an
+optional positive `delay_minutes`, and a disclosure `label`. A missing delay does not become a
+real-time claim.
+
+`GET /api/v1/bars` accepts `symbol`, optional matching `asset_type`, and the bounded `range` query
+parameter. It returns `range`, `interval: "1d"`, an adjustment-basis statement, source/as-of and
+delay disclosure, plus captured bars with timestamp, end, close, and duration. The endpoint is a
+daily chart surface; it does not expose market depth or an unbounded intraday stream.
+
+`GET /api/v1/lists?kind=watchlist|portfolio` reads local records. A `POST` body is:
+
+```json
+{"kind":"portfolio","item":{"symbol":"SPY","asset_type":"etf","quantity":2}}
+```
+
+`quantity` is optional and must be finite and non-negative, but it is rejected for a watchlist.
+The server resolves the submitted symbol to a provider identity before persisting it. Duplicate or
+bounded-list conflicts return `409`; `DELETE` requires `kind` and `symbol` and returns `404` when
+the item is absent.
+
+The forecast interval mapping is:
+
+| Request interval | Horizon | Boundary |
+| --- | --- | --- |
+| `5min` | `five_min_forward` | Latest completed five-minute bar to the next completed five-minute bar. |
+| `daily` | `daily_1` | Latest completed daily close to the next scheduled session close. |
+| `weekly` | `weekly_5` | Latest completed daily close to the fifth subsequent session close. |
+| `monthly` | `monthly_21` | Latest completed daily close to the 21st subsequent session close. |
+| `quarterly` | `quarterly_63` | Latest completed daily close to the 63rd subsequent session close. |
+
+Each selected interval returns one result and preserves its interval, target boundary, availability,
+sample accounting, empirical intervals, provider snapshot, and provenance. Insufficient history is
+an explicit unavailable result, not a substituted horizon. See [forecast model](../concepts/forecast-model.md)
+for calculation semantics.
 
 ## News contract
 

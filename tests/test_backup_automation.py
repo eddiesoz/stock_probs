@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import multiprocessing
 import sqlite3
 import sys
 import threading
@@ -32,6 +33,53 @@ def _record_failure(repository: Repository, request_id: str) -> None:
         submitted_at=now,
         completed_at=now,
     )
+
+
+def _paused_process_create(database_path, backup_dir, entered, release, output) -> None:
+    manager = BackupManager(Repository(database_path), backup_dir)
+    package = manager._package
+
+    def paused_package(*args, **kwargs):
+        entered.set()
+        # Generous bound: this process must never exit and drop its flock inside any window
+        # the parent uses to observe mutual exclusion.
+        if not release.wait(timeout=60):
+            raise BackupError("test process was not released")
+        return package(*args, **kwargs)
+
+    manager._package = paused_package
+    try:
+        output.put(("ok", manager.create("concurrent.spbackup")))
+    except Exception as exc:
+        output.put(("error", str(exc)))
+
+
+def _process_locked_operation(
+    database_path, backup_dir, operation, inner_name, started, critical, finished, output
+) -> None:
+    """Run one mutating operation, signalling entry to its post-lock critical section."""
+
+    manager = BackupManager(Repository(database_path), backup_dir)
+    inner = getattr(manager, inner_name)
+
+    def tracked_inner(*args, **kwargs):
+        critical.set()
+        return inner(*args, **kwargs)
+
+    setattr(manager, inner_name, tracked_inner)
+    started.set()
+    try:
+        if operation == "create":
+            result = manager.create("locked.spbackup")
+        elif operation == "create_if_due":
+            result = manager.create_if_due(0)
+        else:
+            result = getattr(manager, operation)()
+        output.put(("ok", result))
+    except Exception as exc:
+        output.put(("error", str(exc)))
+    finally:
+        finished.set()
 
 
 def _version_one_database(settings: Settings) -> None:
@@ -184,7 +232,7 @@ def test_due_backup_creates_only_when_due_and_never_expires_query_history(
     def fail_due(*args, **kwargs):
         raise BackupError("intentional due-backup failure")
 
-    monkeypatch.setattr(manager, "create", fail_due)
+    monkeypatch.setattr(manager, "_create", fail_due)
     with pytest.raises(BackupError, match="intentional due-backup failure"):
         manager.create_if_due(60, now=datetime.now(UTC) + timedelta(seconds=61))
     assert repository.history()["items"][0]["request_id"] == "retained-due-event"
@@ -314,17 +362,22 @@ def test_pre_migration_verification_delay_never_publishes_or_migrates(
     settings, monkeypatch
 ):
     _version_one_database(settings)
+    original_create = BackupManager._create
     original_verify = BackupManager._verify_unlocked
     completed = threading.Event()
 
     def delayed_verify(self, *args, **kwargs):
+        time.sleep(0.1)
+        return original_verify(self, *args, **kwargs)
+
+    def tracked_create(self, *args, **kwargs):
         try:
-            time.sleep(0.1)
-            return original_verify(self, *args, **kwargs)
+            return original_create(self, *args, **kwargs)
         finally:
             completed.set()
 
     monkeypatch.setattr(backup_module, "BACKUP_TIMEOUT_SECONDS", 0.02)
+    monkeypatch.setattr(BackupManager, "_create", tracked_create)
     monkeypatch.setattr(BackupManager, "_verify_unlocked", delayed_verify)
     started = time.monotonic()
     with pytest.raises(BackupError, match="wall-clock time limit"):
@@ -333,7 +386,7 @@ def test_pre_migration_verification_delay_never_publishes_or_migrates(
 
     assert elapsed < 0.06
     assert not list(settings.backup_dir.glob("*.spbackup"))
-    assert completed.wait(timeout=0.2)
+    assert completed.wait(timeout=2)
     with sqlite3.connect(settings.database_path) as connection:
         assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 1
         assert connection.execute("SELECT request_id FROM search_events").fetchone()[0] == (
@@ -441,6 +494,136 @@ def test_backup_key_rotate_command_resigns_all_verified_artifacts(
         manager.verify(names[0])
     manager.trust_key_path.write_bytes(new_key)
     assert repository.history()["items"][0]["request_id"] == "retained-rotation-event"
+
+
+@pytest.mark.parametrize(
+    ("operation", "inner_name"),
+    [
+        ("create", "_create"),
+        ("create_if_due", "_create_if_due"),
+        ("rotate_key", "_rotate_key"),
+        ("retire_key", "_retire_key"),
+    ],
+)
+def test_every_backup_mutation_serializes_on_the_shared_cross_process_lock(
+    settings, operation, inner_name
+):
+    """Holding the one lock blocks entry to every mutating backup operation."""
+
+    repository = Repository(settings.database_path)
+    repository.migrate()
+    manager = BackupManager(repository, settings.backup_dir)
+    manager._trust_key(create=True)
+    context = multiprocessing.get_context("spawn")
+    started = context.Event()
+    critical = context.Event()
+    finished = context.Event()
+    output = context.Queue()
+    worker = context.Process(
+        target=_process_locked_operation,
+        args=(
+            settings.database_path,
+            settings.backup_dir,
+            operation,
+            inner_name,
+            started,
+            critical,
+            finished,
+            output,
+        ),
+    )
+
+    with manager._trust_lifecycle_lock():
+        worker.start()
+        assert started.wait(timeout=10)
+        # A separate lock, a narrower lock scope, or a window before lock acquisition would
+        # let the worker reach its inner method while this process still holds the lock.
+        assert not critical.wait(timeout=1)
+        assert not finished.wait(timeout=1)
+
+    worker.join(timeout=10)
+    if worker.is_alive():
+        worker.terminate()
+        worker.join(timeout=2)
+    assert worker.exitcode == 0
+    assert critical.is_set()
+    assert finished.is_set()
+    status, result = output.get(timeout=5)
+    assert status == "ok", result
+
+
+@pytest.mark.parametrize("operation", ["rotate_key", "retire_key"])
+def test_create_holds_the_lock_through_its_critical_section(settings, operation):
+    """A paused create keeps rotate/retire out of their critical sections."""
+
+    repository = Repository(settings.database_path)
+    repository.migrate()
+    manager = BackupManager(repository, settings.backup_dir)
+    manager.create("seed.spbackup")
+    if operation == "retire_key":
+        (settings.backup_dir / "seed.spbackup").unlink()
+    context = multiprocessing.get_context("spawn")
+    entered = context.Event()
+    release = context.Event()
+    started = context.Event()
+    critical = context.Event()
+    finished = context.Event()
+    create_output = context.Queue()
+    lifecycle_output = context.Queue()
+    creator = context.Process(
+        target=_paused_process_create,
+        args=(settings.database_path, settings.backup_dir, entered, release, create_output),
+    )
+    lifecycle = context.Process(
+        target=_process_locked_operation,
+        args=(
+            settings.database_path,
+            settings.backup_dir,
+            operation,
+            f"_{operation}",
+            started,
+            critical,
+            finished,
+            lifecycle_output,
+        ),
+    )
+
+    creator.start()
+    assert entered.wait(timeout=10)
+    lifecycle.start()
+    assert started.wait(timeout=10)
+    try:
+        # The creator holds the flock while paused inside its critical section, so the
+        # lifecycle cannot enter its own critical section or complete until release.
+        assert not critical.wait(timeout=1)
+        assert not finished.wait(timeout=1)
+    finally:
+        release.set()
+        creator.join(timeout=10)
+        lifecycle.join(timeout=10)
+        for process in (creator, lifecycle):
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=2)
+
+    assert creator.exitcode == lifecycle.exitcode == 0
+    assert create_output.get(timeout=5)[0] == "ok"
+    assert critical.is_set()
+    lifecycle_status, lifecycle_result = lifecycle_output.get(timeout=5)
+    if operation == "rotate_key":
+        assert (lifecycle_status, lifecycle_result) == (
+            "ok",
+            {"status": "rotated", "artifacts_resigned": 2},
+        )
+        names = ("seed.spbackup", "concurrent.spbackup")
+    else:
+        assert lifecycle_status == "error"
+        assert "managed backups remain" in lifecycle_result
+        assert manager.trust_key_path.is_file()
+        names = ("concurrent.spbackup",)
+    for name in names:
+        _, _, staging = manager.verify(name)
+        staging.cleanup()
 
 
 def test_rotation_and_retirement_fail_closed_then_retirement_succeeds(

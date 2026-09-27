@@ -509,6 +509,8 @@ def test_yahoo_news_uses_one_request_local_exact_bounded_get(monkeypatch):
         {"news": [{}]},
         {"news": [_news_item(link="http://example.com/story")]},
         {"news": [_news_item(link="https://127.0.0.1/story")]},
+        {"news": [_news_item(link="https://localhost./story")]},
+        {"news": [_news_item(link="https://2130706433/story")]},
         {"news": [_news_item(providerPublishTime="yesterday")]},
     ],
 )

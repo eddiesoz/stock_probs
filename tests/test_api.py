@@ -28,10 +28,13 @@ _SCRIPT = re.compile(r"<script\b(?P<attrs>[^>]*)>(?P<text>.*?)</script>", re.I |
 _SCRIPT_SRC = re.compile(r'''(?:^|\s)src\s*=\s*["'](?P<src>[^"']+)["']''', re.I)
 
 
-def _forecast(client, symbol="ACDC", asset_type="stock"):
+def _forecast(client, symbol="ACDC", asset_type="stock", interval=None):
     """Submit through the public transport boundary rather than calling repositories."""
 
-    return client.post("/api/v1/forecasts", json={"symbol": symbol, "asset_type": asset_type})
+    payload = {"symbol": symbol, "asset_type": asset_type}
+    if interval is not None:
+        payload["interval"] = interval
+    return client.post("/api/v1/forecasts", json=payload)
 
 
 def _news_response(symbol="ACDC", limit=5, *, items=None, cache_state="miss"):
@@ -94,6 +97,10 @@ def test_openapi_uses_concrete_success_and_safe_error_schemas(client):
         ("/api/v1/health", "get", "200"): "HealthResponse",
         ("/api/v1/readiness", "get", "200"): "ReadinessResponse",
         ("/api/v1/instruments", "get", "200"): "InstrumentLookupResponse",
+        ("/api/v1/quotes", "get", "200"): "QuotesResponse",
+        ("/api/v1/bars", "get", "200"): "MarketBarsResponse",
+        ("/api/v1/lists", "get", "200"): "InstrumentListsResponse",
+        ("/api/v1/lists", "post", "201"): "InstrumentListsResponse",
         ("/api/v1/news", "get", "200"): "NewsResponse",
         ("/api/v1/forecasts", "post", "201"): "ForecastCreationResponse",
         ("/api/v1/history", "get", "200"): "HistoryResponse",
@@ -106,7 +113,6 @@ def test_openapi_uses_concrete_success_and_safe_error_schemas(client):
             "201",
         ): "FreshReconstructionResponse",
         ("/api/v1/history/{event_id}/prices", "get", "200"): "HistoricalPricesResponse",
-        ("/api/v1/forecasts/{result_id}", "get", "200"): "OriginalForecastResultResponse",
         ("/api/v1/forecasts/{result_id}/outcomes", "post", "201"): "OutcomeResponse",
         ("/api/v1/forecasts/{result_id}/corrections", "post", "201"): "OutcomeResponse",
         ("/api/v1/operations/backups", "post", "201"): "BackupCreatedResponse",
@@ -119,6 +125,14 @@ def test_openapi_uses_concrete_success_and_safe_error_schemas(client):
         ]["schema"]
         assert schema == {"$ref": f"#/components/schemas/{model}"}
 
+    original_result = contract["paths"]["/api/v1/forecasts/{result_id}"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]
+    assert original_result["anyOf"] == [
+        {"$ref": "#/components/schemas/OriginalForecastResultResponse"},
+        {"$ref": "#/components/schemas/OriginalRollingForecastResultResponse"},
+    ]
+
     for path_item in contract["paths"].values():
         for operation in path_item.values():
             for status, response in operation["responses"].items():
@@ -130,6 +144,50 @@ def test_openapi_uses_concrete_success_and_safe_error_schemas(client):
     assert set(csv_success["content"]) == {"text/csv"}
     assert contract["components"]["schemas"]["ErrorEnvelope"]["required"] == ["error"]
     schemas = contract["components"]["schemas"]
+    for name in ("OriginalRollingForecastResultResponse", "RecordedRollingForecastResultResponse"):
+        rolling_properties = schemas[name]["properties"]
+        assert rolling_properties["magnitude_intervals"]["anyOf"][0]["items"] == {
+            "$ref": "#/components/schemas/MagnitudeIntervalResponse"
+        }
+    assert schemas["RollingProvenanceResponse"]["properties"]["calendar"] == {
+        "$ref": "#/components/schemas/CalendarResponse"
+    }
+    assert "/api/v1/market-depth" not in contract["paths"]
+    assert "MarketDepthResponse" not in schemas
+    assert schemas["MarketBarsResponse"]["properties"]["bars"]["items"] == {
+        "$ref": "#/components/schemas/CapturedBarResponse"
+    }
+    assert schemas["MarketBarsResponse"]["properties"]["range"]["enum"] == [
+        "5d",
+        "1mo",
+        "3mo",
+        "6mo",
+        "1y",
+    ]
+    assert schemas["MarketBarsResponse"]["properties"]["interval"]["const"] == "1d"
+    bars_parameters = contract["paths"]["/api/v1/bars"]["get"]["parameters"]
+    assert {item["name"] for item in bars_parameters} == {
+        "symbol",
+        "asset_type",
+        "range",
+    }
+    assert set(schemas["InstrumentListItemRequest"]["properties"]) == {
+        "symbol",
+        "asset_type",
+        "quantity",
+    }
+    assert set(schemas["InstrumentListItemResponse"]["properties"]) == {
+        "symbol",
+        "display_name",
+        "provider",
+        "asset_type",
+        "exchange",
+        "quantity",
+        "added_at",
+    }
+    assert schemas["InstrumentListItemResponse"]["properties"]["quantity"]["anyOf"][0][
+        "minimum"
+    ] == 0
     assert schemas["BackupCreatedResponse"]["additionalProperties"] is False
     assert set(schemas["BackupCreatedResponse"]["required"]) == {
         "created",
@@ -282,6 +340,19 @@ def test_history_detail_keeps_typed_positive_ids_and_numeric_bounds(client):
         assert response.json()["error"]["code"] == "validation_error"
 
 
+def test_oversized_history_id_is_a_bounded_secure_validation_error(client):
+    response = client.get(f"/api/v1/history/{'9' * 5000}")
+
+    assert response.status_code == 422
+    assert response.json() == {
+        "error": {"code": "validation_error", "message": "Request validation failed."}
+    }
+    assert len(response.content) < 256
+    assert response.headers["content-security-policy"]
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["cache-control"] == "no-store"
+
+
 def test_router_method_and_mounted_asset_errors_share_safe_envelope(client):
     """Starlette-generated failures must not regress to its unrelated detail payload."""
 
@@ -323,7 +394,18 @@ def test_router_method_and_mounted_asset_errors_share_safe_envelope(client):
 
 
 def test_generated_dashboard_and_docs_authorize_only_their_exact_local_scripts(client):
-    pages = {path: client.get(path) for path in ("/", "/api/v1/docs")}
+    paths = (
+        "/",
+        "/api-docs",
+        "/api/v1/docs",
+        "/overview",
+        "/research",
+        "/tools",
+        "/tools/forecast",
+        "/tools/live-trading",
+        "/tools/markets",
+    )
+    pages = {path: client.get(path) for path in paths}
     parsed = {path: list(_SCRIPT.finditer(response.text)) for path, response in pages.items()}
     inline_hashes = {
         f"'sha256-{base64.b64encode(hashlib.sha256(script['text'].encode()).digest()).decode()}'"
@@ -335,6 +417,7 @@ def test_generated_dashboard_and_docs_authorize_only_their_exact_local_scripts(c
     assert inline_hashes
     assert "/api/v1/history-export.csv" in pages["/"].text
     assert "/api/v1/openapi.json" in pages["/api/v1/docs"].text
+    assert pages["/api-docs"].text == pages["/api/v1/docs"].text
     for path, response in pages.items():
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/html")
@@ -430,7 +513,29 @@ def test_generated_files_have_no_legacy_asset_aliases(client):
     )
 
 
-@pytest.mark.parametrize("path", ["/", "/api/v1/docs"])
+def test_workspace_static_pages_have_exact_local_routes(client):
+    routes = {
+        getattr(route, "path", None): getattr(route, "name", None) for route in client.app.routes
+    }
+    workspace_routes = {
+        "/api-docs",
+        "/overview",
+        "/research",
+        "/tools",
+        "/tools/forecast",
+        "/tools/live-trading",
+        "/tools/markets",
+    }
+
+    assert workspace_routes <= routes.keys()
+    assert {route: routes[route] for route in workspace_routes} == {
+        route: f"workspace-{route.strip('/').replace('/', '-')}" for route in workspace_routes
+    }
+    published = client.get("/api/v1/openapi.json").json()["paths"]
+    assert workspace_routes.isdisjoint(published)
+
+
+@pytest.mark.parametrize("path", ["/", "/api-docs", "/api/v1/docs"])
 def test_generated_html_wrong_methods_keep_safe_json_errors(client, path):
     response = client.post(path)
 
@@ -514,6 +619,143 @@ def test_instrument_lookup_is_bounded_and_provider_failures_are_safe(settings):
     assert provider_failure.json()["error"]["code"] == "provider_unavailable"
     assert unexpected.status_code == 502
     assert "secret" not in str(unexpected.json())
+
+
+def test_workspace_market_data_is_bounded_provider_labelled_and_not_audit_history(client):
+    quotes = client.get("/api/v1/quotes", params={"symbols": "ACDC,SPY"})
+    bars = client.get(
+        "/api/v1/bars",
+        params={"symbol": "SPY", "asset_type": "etf"},
+    )
+    assert quotes.status_code == bars.status_code == 200
+    assert [item["symbol"] for item in quotes.json()["items"]] == ["ACDC", "SPY"]
+    assert all(
+        item["state"] == "simulated"
+        and item["source"] == "deterministic fixture"
+        and "not live market data" in item["label"]
+        for item in quotes.json()["items"]
+    )
+    assert all(
+        item["last_trade"] == item["last"]
+        and item["open"] is not None
+        and item["high"] is not None
+        and item["low"] is not None
+        and item["previous_close"] is not None
+        and item["volume"] is None
+        and item["change"] is not None
+        and item["change_percent"] is not None
+        for item in quotes.json()["items"]
+    )
+    assert bars.json()["interval"] == "1d"
+    assert bars.json()["range"] == "1mo"
+    assert bars.json()["bars"]
+    assert {"total_available", "truncated"}.isdisjoint(bars.json())
+    assert bars.json()["source"] == "deterministic fixture"
+    assert client.get("/api/v1/history").json()["total"] == 0
+
+
+@pytest.mark.parametrize("symbol", ["SHOP.TO", "PNG.V"])
+@pytest.mark.parametrize("requested_range", ["5d", "1mo", "3mo", "6mo", "1y"])
+def test_market_chart_range_is_bounded_and_preserves_canadian_fixture_identity(
+    client, symbol, requested_range
+):
+    response = client.get(
+        "/api/v1/bars",
+        params={"symbol": symbol, "asset_type": "stock", "range": requested_range},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == symbol
+    assert payload["range"] == requested_range
+    assert payload["interval"] == "1d"
+    assert payload["bars"]
+    assert payload["source"] == "deterministic fixture"
+
+
+def test_market_chart_rejects_an_unknown_range(client):
+    response = client.get(
+        "/api/v1/bars",
+        params={"symbol": "SPY", "asset_type": "etf", "range": "2y"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_instrument_lists_and_manual_portfolio_holdings_round_trip(client):
+    created = client.post(
+        "/api/v1/lists",
+        json={
+            "kind": "portfolio",
+            "item": {
+                "symbol": "SPY",
+                "asset_type": "etf",
+                "quantity": 2.5,
+            },
+        },
+    )
+    listed = client.get("/api/v1/lists", params={"kind": "portfolio"})
+    assert created.status_code == 201
+    assert created.headers["location"] == "/api/v1/lists?kind=portfolio"
+    assert listed.json() == created.json()
+    holding = listed.json()["items"][0]
+    assert holding["provider"] == "deterministic fixture"
+    assert holding["symbol"] == "SPY"
+    assert holding["display_name"] == "SPDR S&P 500 ETF Trust"
+    assert "name" not in holding
+    assert holding["quantity"] == 2.5
+    assert set(holding) == {
+        "symbol",
+        "display_name",
+        "provider",
+        "asset_type",
+        "exchange",
+        "quantity",
+        "added_at",
+    }
+    assert "market_value" not in listed.text
+
+
+@pytest.mark.parametrize("quantity", [True, False])
+def test_manual_portfolio_quantity_rejects_json_booleans(client, quantity):
+    response = client.post(
+        "/api/v1/lists",
+        json={
+            "kind": "portfolio",
+            "item": {"symbol": "SPY", "asset_type": "etf", "quantity": quantity},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
+    assert client.get("/api/v1/lists", params={"kind": "portfolio"}).json()["items"] == []
+
+
+def test_watchlist_item_can_be_added_and_removed_through_local_list_contract(client):
+    created = client.post(
+        "/api/v1/lists",
+        json={"kind": "watchlist", "item": {"symbol": "ACDC", "asset_type": "stock"}},
+    )
+    removed = client.delete("/api/v1/lists", params={"kind": "watchlist", "symbol": "ACDC"})
+
+    assert created.status_code == 201
+    assert [item["symbol"] for item in created.json()["items"]] == ["ACDC"]
+    assert removed.status_code == 204 and removed.content == b""
+    assert client.get("/api/v1/lists", params={"kind": "watchlist"}).json()["items"] == []
+
+
+def test_list_mutation_strict_schema_rejects_an_unknown_field(client):
+    response = client.post(
+        "/api/v1/lists",
+        json={
+            "kind": "watchlist",
+            "item": {"symbol": "ACDC", "asset_type": "stock", "unknown": "value"},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"
 
 
 def test_news_normalizes_symbol_and_returns_only_the_typed_service_result(client, monkeypatch):
@@ -1104,6 +1346,80 @@ def test_forecast_horizons_remain_bound_to_selected_company_identity(
 
 
 @pytest.mark.parametrize(
+    ("interval", "horizon", "target_state"),
+    [
+        ("5min", "five_min_forward", "scheduled_five_minute_bar_close"),
+        ("daily", "daily_1", "scheduled_session_close"),
+        ("weekly", "weekly_5", "scheduled_session_close"),
+        ("monthly", "monthly_21", "scheduled_session_close"),
+        ("quarterly", "quarterly_63", "scheduled_session_close"),
+    ],
+)
+def test_optional_interval_selects_one_rolling_horizon_without_changing_legacy_default(
+    client, interval, horizon, target_state
+):
+    selected = _forecast(client, interval=interval)
+    legacy = _forecast(client)
+
+    assert selected.status_code == 201
+    assert selected.headers["location"].endswith(f"?interval={interval}")
+    assert [(item["interval"], item["horizon"]) for item in selected.json()["results"]] == [
+        (interval, horizon)
+    ]
+    result = selected.json()["results"][0]
+    assert result["horizon_start_timestamp"] == result["origin_timestamp"]
+    assert result["horizon_end_timestamp"] == result["target_timestamp"]
+    assert result["provenance"]["horizon"] == horizon
+    assert result["target_state"] == target_state
+    assert [item["horizon"] for item in legacy.json()["results"]] == [
+        "close_to_close",
+        "completed_5m_to_close",
+    ]
+
+    reopened = client.get(selected.headers["location"])
+    assert reopened.status_code == 200
+    assert reopened.json()["results"] == selected.json()["results"]
+
+
+def test_saved_forecast_interval_reopen_requires_the_recorded_interval(client):
+    created = _forecast(client, interval="daily")
+    event_id = created.json()["event"]["id"]
+    expected_results = created.json()["results"]
+
+    without_interval = client.get(f"/api/v1/saved-forecasts/{event_id}")
+    same_interval = client.get(
+        f"/api/v1/saved-forecasts/{event_id}", params={"interval": "daily"}
+    )
+    mismatched_interval = client.get(
+        f"/api/v1/saved-forecasts/{event_id}", params={"interval": "weekly"}
+    )
+
+    assert without_interval.status_code == same_interval.status_code == 200
+    assert without_interval.json()["results"] == same_interval.json()["results"] == expected_results
+    assert mismatched_interval.status_code == 409
+    assert mismatched_interval.json() == {
+        "error": {
+            "code": "forecast_unavailable",
+            "message": "The requested recorded data is unavailable.",
+        }
+    }
+
+
+def test_different_interval_requests_cannot_reuse_one_immutable_run(client):
+    daily = _forecast(client, interval="daily").json()
+    weekly = _forecast(client, interval="weekly").json()
+    daily_repeat = _forecast(client, interval="daily").json()
+
+    assert daily["input"]["requested_interval"] == "daily"
+    assert weekly["input"]["requested_interval"] == "weekly"
+    assert daily["input"]["content_fingerprint"] != weekly["input"]["content_fingerprint"]
+    assert daily["input"]["id"] != weekly["input"]["id"]
+    assert weekly["reused"] is False
+    assert daily_repeat["reused"] is True
+    assert daily_repeat["input"]["id"] == daily["input"]["id"]
+
+
+@pytest.mark.parametrize(
     "corrupt",
     [
         lambda result: result["direction_probabilities"].__setitem__("up", 1.5),
@@ -1174,7 +1490,7 @@ def test_malformed_service_forecast_reuses_already_persisted_event_without_dupli
     application = create_app(settings, FixtureProvider())
     request_id = "service-audit-request"
 
-    def malformed_after_audit(submitted_symbol, asset_type):
+    def malformed_after_audit(submitted_symbol, asset_type, interval=None):
         now = datetime.now(UTC)
         event_id = application.state.repository.record_failure(
             request_id=request_id,
@@ -2206,6 +2522,132 @@ def test_json_and_csv_exports_preserve_identity_and_distinguish_audit_records(cl
         if record["record_type"] == "result"
     } == {"close_to_close", "completed_5m_to_close"}
     assert "database_path" not in json_export.text and "database_path" not in csv_export.text
+
+
+def test_json_and_csv_exports_include_and_filter_rolling_horizons(client):
+    expected = {
+        "five_min_forward",
+        "daily_1",
+        "weekly_5",
+        "monthly_21",
+        "quarterly_63",
+    }
+    for interval in ("5min", "daily", "weekly", "monthly", "quarterly"):
+        _forecast(client, interval=interval)
+
+    unfiltered_json = client.get("/api/v1/history-export.json")
+    unfiltered_csv = client.get("/api/v1/history-export.csv")
+    json_payload = unfiltered_json.json()
+    json_horizons = {
+        record["data"]["horizon"]
+        for record in json_payload["records"]
+        if record["record_type"] == "result"
+    }
+    csv_rows = list(csv.DictReader(io.StringIO(unfiltered_csv.text, newline="")))
+    csv_horizons = {
+        json.loads(row["record_json"])["horizon"]
+        for row in csv_rows
+        if row["record_type"] == "result"
+    }
+
+    assert unfiltered_json.status_code == unfiltered_csv.status_code == 200
+    assert json_payload["exported_events"] == 5
+    assert json_payload["counts"] == {"events": 5, "runs": 5, "results": 5}
+    assert json_horizons == csv_horizons == expected
+
+    for horizon in expected:
+        json_filtered = client.get(
+            "/api/v1/history-export.json", params={"horizon": horizon}
+        )
+        csv_filtered = client.get(
+            "/api/v1/history-export.csv", params={"horizon": horizon}
+        )
+        filtered_payload = json_filtered.json()
+        filtered_rows = list(csv.DictReader(io.StringIO(csv_filtered.text, newline="")))
+        filtered_json_horizons = {
+            record["data"]["horizon"]
+            for record in filtered_payload["records"]
+            if record["record_type"] == "result"
+        }
+        filtered_csv_horizons = {
+            json.loads(row["record_json"])["horizon"]
+            for row in filtered_rows
+            if row["record_type"] == "result"
+        }
+        assert json_filtered.status_code == csv_filtered.status_code == 200
+        assert filtered_payload["exported_events"] == 1
+        assert filtered_payload["counts"] == {"events": 1, "runs": 1, "results": 1}
+        assert filtered_json_horizons == filtered_csv_horizons == {horizon}
+
+
+def test_rolling_export_filters_before_the_hundred_event_cap(client):
+    repository = client.app.state.repository
+    now = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+    provider = FixtureProvider(clock=lambda: now)
+    daily_snapshot, daily_results = calculate_forecasts(
+        provider.fetch("ACDC", "stock", now), now, interval="daily"
+    )
+    weekly_snapshot, weekly_results = calculate_forecasts(
+        provider.fetch("ACDC", "stock", now), now, interval="weekly"
+    )
+
+    def record(
+        index: int,
+        snapshot: dict,
+        results: list[dict],
+        submitted_at: datetime,
+    ) -> int:
+        unique_snapshot = deepcopy(snapshot)
+        fingerprint = f"{index + 1:064x}"
+        unique_snapshot["content_fingerprint"] = fingerprint
+        unique_snapshot["provenance"]["content_fingerprint"] = fingerprint
+        return repository.record_success(
+            request_id=f"rolling-export-{index}",
+            submitted_symbol="ACDC",
+            asset_type="stock",
+            input_snapshot=unique_snapshot,
+            results=results,
+            submitted_at=submitted_at,
+            completed_at=submitted_at + timedelta(seconds=1),
+        )[0]
+
+    daily_event_id = record(0, daily_snapshot, daily_results, now)
+    for index in range(1, 101):
+        record(index, weekly_snapshot, weekly_results, now + timedelta(seconds=index))
+
+    unfiltered = client.get("/api/v1/history-export.json")
+    daily_json = client.get(
+        "/api/v1/history-export.json", params={"horizon": "daily_1"}
+    )
+    daily_csv = client.get(
+        "/api/v1/history-export.csv", params={"horizon": "daily_1"}
+    )
+
+    assert unfiltered.status_code == daily_json.status_code == daily_csv.status_code == 200
+    assert unfiltered.json()["total_events"] == 101
+    assert unfiltered.json()["exported_events"] == 100
+    assert unfiltered.json()["truncated"] is True
+
+    payload = daily_json.json()
+    rows = list(csv.DictReader(io.StringIO(daily_csv.text, newline="")))
+    json_event_ids = [
+        record["event_id"]
+        for record in payload["records"]
+        if record["record_type"] == "event"
+    ]
+    csv_event_ids = [
+        int(row["event_id"]) for row in rows if row["record_type"] == "event"
+    ]
+
+    assert payload["total_events"] == payload["exported_events"] == 1
+    assert payload["truncated"] is False
+    assert payload["counts"] == {"events": 1, "runs": 1, "results": 1}
+    assert json_event_ids == csv_event_ids == [daily_event_id]
+    assert {
+        record["data"]["horizon"]
+        for record in payload["records"]
+        if record["record_type"] == "result"
+    } == {"daily_1"}
 
 
 def test_http_bulk_exports_keep_five_reads_for_one_hundred_unique_runs(client, monkeypatch):

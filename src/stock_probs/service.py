@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import BoundedSemaphore, Lock
-from typing import Any
+from typing import Any, TypeVar
 from uuid import uuid4
 
 from stock_probs.domain import (
@@ -32,6 +32,7 @@ NEWS_FAILURE_SECONDS = 30.0
 NEWS_MAX_SYMBOLS = 32
 NEWS_MAX_ENTRY_BYTES = 32 * 1024
 NEWS_MAX_CACHE_BYTES = 1024 * 1024
+_ProviderResult = TypeVar("_ProviderResult")
 
 
 @dataclass
@@ -221,7 +222,7 @@ class ForecastService:
                 "invalid_lookup_limit",
                 f"Lookup limit must be between 1 and {MAX_LOOKUP_RESULTS}.",
             )
-        requested_at = self.clock().astimezone(UTC)
+        requested_at = self._provider_request_time()
         if not self.provider_slots.acquire(timeout=1.0):
             raise DomainError(
                 "provider_busy",
@@ -249,6 +250,62 @@ class ForecastService:
             "items": [identity.as_dict() for identity in bounded_identities],
             "total": len(bounded_identities),
         }
+
+    def quote_snapshot(self, symbol: str, asset_type: str) -> dict[str, object]:
+        """Return one provider quote without crossing the persistence boundary."""
+
+        return self._provider_capability(
+            lambda requested_at: self.provider.quote_snapshot(
+                symbol, asset_type, requested_at
+            ).as_dict(),
+            "The quote provider failed unexpectedly.",
+        )
+
+    def historical_bars(self, symbol: str, asset_type: str) -> dict[str, object]:
+        """Return a bounded provider chart without reading forecast persistence."""
+
+        return self._provider_capability(
+            lambda requested_at: self.provider.historical_bars(
+                symbol, asset_type, requested_at
+            ).as_dict(),
+            "The chart provider failed unexpectedly.",
+        )
+
+    def _provider_capability(
+        self,
+        operation: Callable[[datetime], _ProviderResult],
+        failure_message: str,
+    ) -> _ProviderResult:
+        """Apply the shared capacity and safe-exception boundary to one provider call."""
+
+        requested_at = self._provider_request_time()
+        if not self.provider_slots.acquire(timeout=1.0):
+            raise DomainError(
+                "provider_busy", "Market data capacity is busy; try again shortly.", status_code=503
+            )
+        try:
+            try:
+                return operation(requested_at)
+            except DomainError:
+                raise
+            except Exception as exc:
+                raise DomainError(
+                    "provider_unavailable",
+                    failure_message,
+                    status_code=502,
+                ) from exc
+        finally:
+            self.provider_slots.release()
+
+    def _provider_request_time(self) -> datetime:
+        """Reject a naive application clock before it becomes provider provenance."""
+
+        requested_at = self.clock()
+        if requested_at.tzinfo is None:
+            raise DomainError(
+                "ambiguous_provider_time", "Market data request time must include an offset."
+            )
+        return requested_at.astimezone(UTC)
 
     def history(
         self,
@@ -355,7 +412,9 @@ class ForecastService:
 
         return self.repository.historical_series(event_id, series=series, limit=limit)
 
-    def search(self, submitted_symbol: str, asset_type: str) -> dict[str, object]:
+    def search(
+        self, submitted_symbol: str, asset_type: str, interval: str | None = None
+    ) -> dict[str, object]:
         request_id = str(uuid4())
         submitted_at = self.clock().astimezone(UTC)
         normalized: str | None = None
@@ -384,7 +443,9 @@ class ForecastService:
             finally:
                 self.provider_slots.release()
             try:
-                snapshot, results = calculate_forecasts(market_data, submitted_at)
+                snapshot, results = calculate_forecasts(
+                    market_data, submitted_at, interval=interval
+                )
             except DomainError:
                 raise
             except Exception as exc:
@@ -493,7 +554,14 @@ class ForecastService:
             finally:
                 self.provider_slots.release()
             try:
-                snapshot, results = calculate_forecasts(market_data, cutoff)
+                requested_interval = source_input.get("requested_interval")
+                snapshot, results = calculate_forecasts(
+                    market_data,
+                    cutoff,
+                    interval=(
+                        str(requested_interval) if requested_interval is not None else None
+                    ),
+                )
             except DomainError:
                 raise
             except Exception as exc:

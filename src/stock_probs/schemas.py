@@ -18,7 +18,17 @@ from pydantic import (
 
 from stock_probs.domain import DomainError, normalize_symbol
 
-ForecastHorizon: TypeAlias = Literal["close_to_close", "completed_5m_to_close"]
+ForecastHorizon: TypeAlias = Literal[
+    "close_to_close",
+    "completed_5m_to_close",
+    "five_min_forward",
+    "daily_1",
+    "weekly_5",
+    "monthly_21",
+    "quarterly_63",
+]
+ForecastInterval: TypeAlias = Literal["5min", "daily", "weekly", "monthly", "quarterly"]
+ChartRange: TypeAlias = Literal["5d", "1mo", "3mo", "6mo", "1y"]
 HistoryStatus: TypeAlias = Literal["successful", "failed", "repeated"]
 HistoryAnalysisKind: TypeAlias = Literal[
     "submitted_forecast", "fresh_historical_reconstruction"
@@ -48,6 +58,37 @@ class SearchRequest(StrictModel):
     # Symbol syntax is audited by the domain so validly submitted bad symbols persist as failures.
     symbol: str = Field(max_length=64)
     asset_type: Literal["stock", "etf"]
+    interval: ForecastInterval | None = None
+
+
+class InstrumentListItemRequest(StrictModel):
+    """Identify one list instrument and its optional manual quantity."""
+
+    symbol: str = Field(min_length=1, max_length=64)
+    asset_type: Literal["stock", "etf"]
+    quantity: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+
+    @field_validator("quantity", mode="before")
+    @classmethod
+    def quantity_is_not_boolean(cls, value: object) -> object:
+        """JSON booleans are not manual holding quantities, despite Python bool being numeric."""
+
+        if isinstance(value, bool):
+            raise ValueError("quantity must be a finite number")
+        return value
+
+
+class InstrumentListMutationRequest(StrictModel):
+    """Add or update one instrument in a bounded local list."""
+
+    kind: Literal["watchlist", "portfolio"]
+    item: InstrumentListItemRequest
+
+    @model_validator(mode="after")
+    def holdings_are_portfolio_only(self) -> InstrumentListMutationRequest:
+        if self.kind != "portfolio" and self.item.quantity is not None:
+            raise ValueError("manual holding values are available only for portfolios")
+        return self
 
 
 class InstrumentIdentityResponse(StrictModel):

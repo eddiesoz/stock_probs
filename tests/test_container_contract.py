@@ -17,9 +17,13 @@ def test_image_is_pinned_wheel_installed_non_root_and_exec_form() -> None:
     """The runtime image retains only installed artifacts and an unprivileged process."""
 
     dockerfile = (ROOT / "Dockerfile").read_text()
+    assert dockerfile.startswith("ARG SOURCE_DATE_EPOCH=1757894400\n")
+    assert dockerfile.count("ARG SOURCE_DATE_EPOCH") == 4
     assert dockerfile.count(f"FROM {PYTHON_IMAGE}") == 2
     assert "python -m pip wheel" in dockerfile
     assert "--constraint requirements.lock" in dockerfile
+    assert "--no-compile" in dockerfile and "PYTHONDONTWRITEBYTECODE=1" in dockerfile
+    assert "--root /install" in dockerfile and "COPY --from=builder /install /" in dockerfile
     assert "--no-index" in dockerfile and "stock-probs==0.1.0" in dockerfile
     assert "USER 10001:10001" in dockerfile
     assert 'CMD ["stock-probs", "serve", "--host", "0.0.0.0", "--port", "8000",' in dockerfile
@@ -35,14 +39,17 @@ def test_next_export_is_built_with_pinned_node_but_runtime_is_python_only() -> N
     frontend_stage, python_stages = dockerfile.split(f"FROM {PYTHON_IMAGE}", maxsplit=1)
     _, runtime_stage = python_stages.split(f"FROM {PYTHON_IMAGE}", maxsplit=1)
 
-    assert frontend_stage.startswith(f"FROM {NODE_IMAGE} AS frontend-builder\n")
+    assert f"FROM {NODE_IMAGE} AS frontend-builder\nARG SOURCE_DATE_EPOCH\n" in frontend_stage
     assert "COPY frontend/package.json frontend/package-lock.json ./" in frontend_stage
     assert "RUN npm ci" in frontend_stage
     assert "COPY frontend/ ./" in frontend_stage
     assert "RUN npm run typecheck && npm run build && npm run test" in frontend_stage
     retained_export = (
-        "RUN mkdir /static-next \\\n"
-        "    && cp out/index.html out/api-docs.html /static-next/ \\\n"
+        "RUN mkdir -p /static-next/tools \\\n"
+        "    && cp out/index.html out/api-docs.html out/overview.html out/research.html "
+        "out/tools.html /static-next/ \\\n"
+        "    && cp out/tools/forecast.html out/tools/live-trading.html out/tools/markets.html "
+        "/static-next/tools/ \\\n"
         "    && cp -R out/_next /static-next/"
     )
     assert retained_export in frontend_stage

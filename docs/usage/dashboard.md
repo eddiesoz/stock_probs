@@ -6,23 +6,66 @@ description: "How to use the Signal Ledger dashboard, its theme and current-head
 # Dashboard
 
 Start the local app, open its loopback URL, and wait for the system status to report readiness.
-The dashboard has three primary areas: Forecast desk, Horizon analysis, and Search ledger.
+The local workspace keeps portfolio context, recorded research, and bounded market tools separate;
+it is not a brokerage or order-entry system.
+
+## Navigate the research workspace
+
+The shared navigation exposes these routes:
+
+| Route | Purpose |
+| --- | --- |
+| `/overview` | Maintain manually entered portfolio holdings as research context. |
+| `/research` | Open the recorded forecast ledger, Forecast tool, or Markets tool. |
+| `/tools` | Choose Forecast, Live Trading, or Markets without submitting a request. |
+| `/tools/forecast` | Submit one explicit rolling-horizon forecast. |
+| `/tools/live-trading` | Inspect provider-labelled quote context for manual holdings; no orders. |
+| `/tools/markets` | Maintain a watchlist, filter quote snapshots, and inspect a daily chart. |
+
+The root `/` remains the original forecast-and-ledger surface: it provides instrument lookup,
+the legacy two-horizon comparison, immutable history, current-headline disclosure, and saved or
+fresh-analysis actions. Opening a workspace route with a selected symbol only restores context;
+it never submits a forecast or saves a holding automatically.
+
+## Maintain portfolio and watchlist context
+
+On **Overview**, add one stock or ETF with a manually entered quantity. The value is stored in the
+local portfolio list and is not a broker position, valuation, order, or real-time balance. On
+**Markets**, add or remove watchlist instruments, then filter by symbol/name, exchange, asset type,
+price, percentage change, volume, or an additional quote metric. Watchlist and portfolio records
+are local bounded lists; quote snapshots are refreshed by the browser while symbols exist and
+always disclose provider, as-of time, state, and any delay.
+
+On **Live Trading**, the page can edit a bounded `SYMBOL: quantity` portfolio draft, select a
+returned quote, save browser-local notes, and create active-page-only price thresholds. Notes are
+not sent to the server; alerts have no scheduler or delivery path. The page has no order controls,
+brokerage connection, execution endpoint, or live-trading guarantee. Market depth is explicitly
+unavailable: no `/api/v1/market-depth` endpoint exists, no bid/ask rows are fabricated, and Nasdaq
+TotalView or exchange-depth entitlement is not claimed.
+
+On **Markets**, choose `5d`, `1mo`, `3mo`, `6mo`, or `1y` for the selected chart. The chart response
+uses daily bars (`interval=1d`); it is bounded provider context, not an intraday or real-time feed.
 
 ## Run a forecast
 
-1. Enter a company name or Yahoo Finance symbol.
+1. Enter a company name or Yahoo Finance symbol on `/` or `/tools/forecast`.
 2. When lookup suggestions appear, choose the identity whose symbol, name, exchange, and
    stock/ETF classification match your intent. Keyboard users can navigate the listbox and
    confirm a choice without a pointer.
-3. If entering a symbol directly, select Stock or ETF explicitly.
+3. If entering a symbol directly, select Stock or ETF explicitly. On the Forecast tool, also
+   select `5min`, `daily`, `weekly`, `monthly`, or `quarterly`; the form shows the exact origin
+   and target boundary before submission.
 4. Activate **Run forecast**. Loading and failures are announced in the page; a failed
    submitted search is retained in the ledger with its request ID.
 
-The result compares close-to-close with completed-five-minute-bar-to-close. Read direction
-probabilities, tail thresholds, conditional magnitude, central return/price intervals, origin
-and target times, sample counts, evaluation, provider as-of time, model/version, and quality
-reasons together. A stale badge is a warning with explicit reasons, not permission to silently
-treat old data as current. See [forecast model](../concepts/forecast-model.md) for definitions.
+The root result compares close-to-close with completed-five-minute-bar-to-close. A selected
+Forecast-tool interval returns one rolling horizon: five-minute forward, one session, five
+sessions, 21 sessions, or 63 sessions. Read direction probabilities, tail thresholds, conditional
+magnitude, central return/price intervals, origin and target times, sample counts, evaluation,
+provider as-of time, model/version, and quality reasons together. An unavailable horizon is shown
+with its explicit reason rather than being filled with a different horizon. A stale badge is a
+warning with explicit reasons, not permission to silently treat old data as current. See
+[forecast model](../concepts/forecast-model.md) for definitions.
 
 ## Use Settings and choose a color theme
 

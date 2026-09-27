@@ -123,7 +123,7 @@ def test_upgrade_from_v2_preserves_legacy_failed_analysis_and_is_idempotent(sett
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
     assert tuple(legacy) == (None, None, None)
-    assert [row[0] for row in versions] == [1, 2, 3, 4]
+    assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6]
 
 
 def test_migration_rejects_unknown_or_noncontiguous_history(settings):
@@ -163,7 +163,7 @@ def test_concurrent_clean_migration_is_serialized_across_repository_instances(se
         versions = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
-    assert [row[0] for row in versions] == [1, 2, 3, 4]
+    assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6]
 
 
 def test_database_triggers_reject_mutation_and_deletion(settings):
@@ -381,6 +381,25 @@ def test_failed_event_insert_rolls_back_new_input_and_results(settings):
             submitted_at=NOW,
             completed_at=NOW,
             analysis_kind="not-a-real-analysis",
+        )
+
+    assert all(value == 0 for value in repository.representative_counts().values())
+
+
+def test_new_forecast_write_requires_cardinality_matching_the_input(settings):
+    repository = Repository(settings.database_path)
+    repository.migrate()
+    snapshot, results = calculate_forecasts(FixtureProvider().fetch("ACDC", "stock", NOW), NOW)
+
+    with pytest.raises(ValueError, match="cardinality"):
+        repository.record_success(
+            request_id="missing-quarterly",
+            submitted_symbol="ACDC",
+            asset_type="stock",
+            input_snapshot=snapshot,
+            results=results[:1],
+            submitted_at=NOW,
+            completed_at=NOW,
         )
 
     assert all(value == 0 for value in repository.representative_counts().values())

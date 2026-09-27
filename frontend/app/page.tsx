@@ -1,5 +1,6 @@
 import Script from "next/script";
 
+import { WorkspaceLink } from "../components/workspace-link";
 import { Settings } from "./settings";
 
 // Existing app.js owns interaction while this route supplies stable server-rendered hooks.
@@ -15,13 +16,14 @@ export default function DashboardPage() {
       <header className="masthead">
         <div className="masthead-primary">
           <a className="brand-lockup" href="#main" aria-label="Signal Ledger home">
-            <span><span className="eyebrow">Local research terminal / API v1</span><h1>Signal Ledger</h1></span>
+            <span className="ledger-mark" aria-hidden="true"><i /><i /><i /></span>
+            <h1>Signal Ledger</h1>
           </a>
           <div className="header-controls">
-            <nav className="section-nav" aria-label="Dashboard sections">
-              <a href="#forecast-heading"><span>01</span> Forecast</a>
-              <a href="#result-heading"><span>02</span> Analysis</a>
-              <a href="#history-heading"><span>03</span> Ledger</a>
+            <nav className="section-nav" aria-label="Primary navigation">
+              <WorkspaceLink path="/overview">Overview</WorkspaceLink>
+              <WorkspaceLink path="/research">Research</WorkspaceLink>
+              <WorkspaceLink path="/tools">Tools</WorkspaceLink>
             </nav>
             <Settings />
           </div>
@@ -36,9 +38,9 @@ export default function DashboardPage() {
         <section className="hero" aria-labelledby="forecast-heading">
           <div className="hero-copy workspace-intro">
             <p className="section-number panel-kicker">01 / Forecast workspace</p>
-            <h2 id="forecast-heading" className="workspace-title">Next-close probability forecast</h2>
-            <p className="workspace-summary">Compare close-to-close and latest-completed-five-minute-bar horizons with explicit probabilities, ranges, and model evidence.</p>
-            <p className="desk-meta">Local FastAPI /api/v1 · Two horizons · Immutable audit ledger</p>
+            <h2 id="forecast-heading" className="workspace-title">Probability forecasts, recorded clearly</h2>
+            <p className="workspace-summary">Run a next-close forecast, then revisit saved daily, intraday, or longer-horizon research with its original model evidence.</p>
+            <p className="desk-meta">Local FastAPI /api/v1 · Recorded horizons · Immutable audit ledger</p>
           </div>
           <form id="forecast-form" className="search-panel" noValidate>
             <p className="panel-kicker">Instrument composer</p>
@@ -60,6 +62,7 @@ export default function DashboardPage() {
               <label><input type="radio" name="asset_type" value="etf" /> ETF</label>
             </fieldset>
             <button id="forecast-submit" className="primary" type="submit"><span>Run forecast</span></button>
+            <p className="hint">This composer compares two completed origins against the next close. Other horizons can be opened from the ledger.</p>
           </form>
         </section>
 
@@ -68,15 +71,15 @@ export default function DashboardPage() {
           <div className="section-head">
             <div>
               <p className="section-number panel-kicker">02 / Horizon analysis</p>
-              <h2 id="result-heading">Forecast comparison</h2>
-              <p className="section-summary">Two completed origins, one next-close target, with probabilities and intervals shown together.</p>
+              <h2 id="result-heading">Forecast result</h2>
+              <p id="result-summary" className="section-summary">Probabilities, intervals, quality, and provenance for the selected recorded horizons.</p>
             </div>
             <span id="quality-badge" className="badge neutral">Awaiting input</span>
           </div>
           <div id="result-content" className="empty-state" aria-busy="false">
             <span className="empty-orbit" aria-hidden="true"><i /></span>
             <h3>No forecast loaded</h3>
-            <p>Choose an instrument to calculate two traceable probability distributions.</p>
+            <p>Choose an instrument to calculate the next-close forecast, or reopen an immutable result below.</p>
           </div>
         </section>
 
@@ -153,9 +156,14 @@ export default function DashboardPage() {
                 <div className="field">
                   <label htmlFor="history-horizon">Forecast horizon</label>
                   <select id="history-horizon" name="horizon" defaultValue="">
-                    <option value="">Both horizons</option>
+                    <option value="">All horizons</option>
                     <option value="close_to_close">Close to next close</option>
                     <option value="completed_5m_to_close">Completed 5m to close</option>
+                    <option value="five_min_forward">Next completed 5-minute bar</option>
+                    <option value="daily_1">1 session</option>
+                    <option value="weekly_5">5 sessions</option>
+                    <option value="monthly_21">21 sessions</option>
+                    <option value="quarterly_63">63 sessions</option>
                   </select>
                 </div>
                 <div className="field">

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import sqlite3
 from collections.abc import Callable, Iterator
@@ -15,12 +16,14 @@ from threading import Lock, RLock
 from typing import Any, Final, TypedDict, TypeGuard, cast
 
 from stock_probs.config import ensure_private_directory, ensure_private_file
-from stock_probs.domain import HistoryFilters
+from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, HistoryFilters
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 6
 OUTCOME_RECONSTRUCTION_LIMIT = 100
 HISTORY_EXPORT_LIMIT = 100
+INSTRUMENT_LIST_ITEM_LIMIT = 100
 COORDINATION_TIMEOUT_SECONDS = 5.0
+_ROLLING_RESULT_HORIZONS = frozenset(FORECAST_INTERVAL_HORIZONS.values())
 MIGRATION_NAME = re.compile(r"^(?P<version>[0-9]{3})_[a-z0-9_]+\.sql$")
 PERSISTENCE_FAILURE_CATEGORY = "persistence_unavailable"
 # Digests make shipped migrations immutable; changing any SQL file requires a new number.
@@ -29,6 +32,8 @@ MIGRATION_SHA256 = {
     2: "d51a8a64f5c32fb77875f0e81642146947be3db43437a1269339343e64225cc2",
     3: "ebbf91670e8ad0a4f9a80603459c4eb1d2e66459cda500d5c376b1d563949cda",
     4: "4ca9d80a988f59c2c0c289ac34efffc5df170053c0b968180f85fbdf6edc17ea",
+    5: "c7be8e52cedc9d4e476bc36994115148ccaa11b62aaffb3e01b5a308accddc6f",
+    6: "1218aa2c8b762f441feebcd870053f374af326a4b852bd4789e66e3c5f824e69",
 }
 
 
@@ -461,12 +466,16 @@ class Repository:
         symbol = input_snapshot["symbol"]
         fingerprint = input_snapshot["content_fingerprint"]
         horizons = [result.get("horizon") for result in results]
-        if (
-            len(horizons) != 2
-            or horizons.count("close_to_close") != 1
-            or horizons.count("completed_5m_to_close") != 1
-        ):
-            raise ValueError("exactly one result for each supported horizon is required")
+        requested_interval = input_snapshot.get("requested_interval")
+        if requested_interval is None:
+            expected_horizons = {"close_to_close", "completed_5m_to_close"}
+        else:
+            requested_horizon = FORECAST_INTERVAL_HORIZONS.get(requested_interval)
+            if requested_horizon is None:
+                raise ValueError("forecast input interval is not supported")
+            expected_horizons = {requested_horizon}
+        if len(horizons) != len(expected_horizons) or set(horizons) != expected_horizons:
+            raise ValueError("forecast result cardinality must match the requested interval")
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             resolved_source_event_id = self._resolved_analysis_source(
@@ -637,6 +646,23 @@ class Repository:
                 ).encode()
             ).hexdigest()
             evaluation = result.get("evaluation")
+            # Explicitly unavailable rolling horizons carry fingerprints and a reason instead
+            # of a walk-forward evaluation; they are never presented as measured results.
+            if (
+                result.get("horizon") in _ROLLING_RESULT_HORIZONS
+                and result.get("availability") == "unavailable"
+            ):
+                if (
+                    result.get("model_fingerprint") != model_fingerprint
+                    or result.get("forecast_contract_version") != contract_version
+                    or expected != calculated
+                    or not isinstance(result.get("unavailable_reason"), str)
+                    or not result["unavailable_reason"]
+                ):
+                    raise ValueError(
+                        "forecast result must match immutable model and evaluation provenance"
+                    )
+                continue
             if (
                 result.get("model_fingerprint") != model_fingerprint
                 or result.get("forecast_contract_version") != contract_version
@@ -717,7 +743,9 @@ class Repository:
         return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     @classmethod
-    def _history_where(cls, filters: HistoryFilters) -> tuple[str, list[Any]]:
+    def _history_where(
+        cls, filters: HistoryFilters, *, horizon: str | None = None
+    ) -> tuple[str, list[Any]]:
         """Compile only fixed clauses; user values always remain bound parameters."""
 
         clauses = ["1 = 1"]
@@ -782,6 +810,17 @@ class Repository:
             # Apply exact identity in the indexed source query, before pagination/export limits.
             clauses.append("event.id = ?")
             values.append(filters.event_id)
+        if horizon is not None:
+            clauses.append(
+                "event.run_id IS NOT NULL AND EXISTS ("
+                "SELECT 1 FROM forecast_inputs AS horizon_input "
+                "JOIN forecast_results AS horizon_result "
+                "ON horizon_result.input_id = horizon_input.id "
+                "WHERE horizon_input.run_id = event.run_id "
+                "AND json_extract(horizon_result.result_json, '$.horizon') = ?"
+                ")"
+            )
+            values.append(horizon)
         return " AND ".join(clauses), values
 
     @classmethod
@@ -797,8 +836,9 @@ class Repository:
         include_summaries: bool = True,
         sort_by: str | None = None,
         sort_order: str = "desc",
+        horizon: str | None = None,
     ) -> dict[str, Any]:
-        where, values = cls._history_where(filters)
+        where, values = cls._history_where(filters, horizon=horizon)
         analysis_columns = (
             ", event.analysis_kind, event.source_event_id, event.requested_cutoff, "
             "event.requested_source_event_id"
@@ -838,7 +878,8 @@ class Repository:
                 "model": "COALESCE(facet.model_version, facet.model_name) COLLATE NOCASE",
                 "horizon": (
                     "CASE WHEN event.run_id IS NOT NULL "
-                    "THEN 'close_to_close,completed_5m_to_close' END"
+                    "THEN 'close_to_close,completed_5m_to_close,five_min_forward,"
+                    "daily_1,weekly_5,monthly_21,quarterly_63' END"
                 ),
                 "request_id": "event.request_id COLLATE NOCASE",
             }
@@ -886,15 +927,16 @@ class Repository:
                     )
                     summary["horizons"].append(row["horizon"])
                     summary["outcome_count"] += int(row["outcome_count"])
-                    summary["evaluation_statuses"].append(row["evaluation_status"])
+                    if row["evaluation_status"] is not None:
+                        summary["evaluation_statuses"].append(row["evaluation_status"])
             for item in items:
-                summary = (
+                event_summary = (
                     summaries.get(int(item["run_id"]))
                     if item["run_id"] is not None
                     else None
                 )
                 item.update(
-                    summary
+                    event_summary
                     or {"horizons": [], "outcome_count": 0, "evaluation_statuses": []}
                 )
                 item["forecast_available"] = item["run_id"] is not None
@@ -1027,6 +1069,7 @@ class Repository:
         model_version: str | None = None,
         request_id: str | None = None,
         event_id: int | None = None,
+        horizon: str | None = None,
         max_events: int = HISTORY_EXPORT_LIMIT,
         sort_by: str = "event_id",
         sort_order: str = "desc",
@@ -1064,6 +1107,7 @@ class Repository:
                 include_summaries=False,
                 sort_by=sort_by,
                 sort_order=sort_order,
+                horizon=horizon,
             )
             run_ids = list(
                 dict.fromkeys(
@@ -1279,6 +1323,173 @@ class Repository:
                 "created_at": created_at_text,
                 "comparison_rule": comparison_rule,
             }
+
+    @staticmethod
+    def _holding_value(value: float | None, field: str) -> float | None:
+        if value is None:
+            return None
+        if type(value) not in {int, float} or not math.isfinite(value) or value < 0:
+            raise ValueError(f"{field} must be null or a non-negative finite number")
+        return float(value)
+
+    @staticmethod
+    def _instrument_list_kind(value: str) -> str:
+        if value not in {"portfolio", "watchlist"}:
+            raise ValueError("instrument list kind is not supported")
+        return value
+
+    @staticmethod
+    def _instrument_list_item(
+        connection: sqlite3.Connection,
+        kind: str,
+        provider: str,
+        canonical_symbol: str,
+        asset_type: str,
+    ) -> dict[str, Any] | None:
+        row = connection.execute(
+            "SELECT kind, provider, canonical_symbol, asset_type, exchange, display_name, "
+            "quantity, added_at "
+            "FROM instrument_list_items WHERE kind = ? AND provider = ? "
+            "AND canonical_symbol = ? AND asset_type = ?",
+            (kind, provider, canonical_symbol, asset_type),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+    def instrument_list_items(self, kind: str | None = None) -> list[dict[str, Any]]:
+        """Return the fixed portfolio, watchlist, or both in deterministic insertion order."""
+
+        if kind is not None:
+            kind = self._instrument_list_kind(kind)
+        with self.connect() as connection:
+            if kind is None:
+                rows = connection.execute(
+                    "SELECT kind, provider, canonical_symbol, asset_type, exchange, display_name, "
+                    "quantity, added_at FROM instrument_list_items "
+                    "ORDER BY kind, added_at, canonical_symbol"
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT kind, provider, canonical_symbol, asset_type, exchange, display_name, "
+                    "quantity, added_at FROM instrument_list_items "
+                    "WHERE kind = ? ORDER BY added_at, canonical_symbol",
+                    (kind,),
+                ).fetchall()
+        return [dict(row) for row in rows]
+
+    def add_instrument_list_item(
+        self,
+        kind: str,
+        *,
+        provider: str,
+        canonical_symbol: str,
+        asset_type: str,
+        exchange: str,
+        display_name: str,
+        added_at: datetime,
+        quantity: float | None = None,
+    ) -> dict[str, Any] | None:
+        """Insert an item atomically under the fixed list's one-hundred-item bound."""
+
+        kind = self._instrument_list_kind(kind)
+        if not isinstance(added_at, datetime) or added_at.tzinfo is None:
+            raise ValueError("added_at must include a timezone offset")
+        timestamp = added_at.astimezone(UTC).isoformat()
+        quantity = self._holding_value(quantity, "quantity")
+        if kind != "portfolio" and quantity is not None:
+            raise ValueError("manual holdings require a portfolio")
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if self._instrument_list_item(
+                connection, kind, provider, canonical_symbol, asset_type
+            ) is not None:
+                connection.rollback()
+                raise ValueError("instrument is already in this list")
+            count = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM instrument_list_items WHERE kind = ?", (kind,)
+                ).fetchone()[0]
+            )
+            if count >= INSTRUMENT_LIST_ITEM_LIMIT:
+                connection.rollback()
+                raise ValueError(f"instrument list item limit is {INSTRUMENT_LIST_ITEM_LIMIT}")
+            connection.execute(
+                "INSERT INTO instrument_list_items"
+                "(kind, provider, canonical_symbol, asset_type, exchange, display_name, "
+                "quantity, added_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    kind,
+                    provider,
+                    canonical_symbol,
+                    asset_type,
+                    exchange,
+                    display_name,
+                    quantity,
+                    timestamp,
+                ),
+            )
+            connection.commit()
+            return self._instrument_list_item(
+                connection, kind, provider, canonical_symbol, asset_type
+            )
+
+    def remove_instrument_list_item(
+        self,
+        kind: str,
+        *,
+        provider: str,
+        canonical_symbol: str,
+        asset_type: str,
+    ) -> bool:
+        """Remove one item without affecting the other fixed list."""
+
+        kind = self._instrument_list_kind(kind)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                "DELETE FROM instrument_list_items WHERE kind = ? AND provider = ? "
+                "AND canonical_symbol = ? AND asset_type = ?",
+                (kind, provider, canonical_symbol, asset_type),
+            )
+            if not cursor.rowcount:
+                connection.rollback()
+                return False
+            connection.commit()
+            return True
+
+    def set_instrument_list_item_holding(
+        self,
+        kind: str,
+        *,
+        provider: str,
+        canonical_symbol: str,
+        asset_type: str,
+        quantity: float | None,
+    ) -> bool:
+        """Set nullable quantity while retaining the selected instrument identity."""
+
+        kind = self._instrument_list_kind(kind)
+        quantity = self._holding_value(quantity, "quantity")
+        if kind != "portfolio" and quantity is not None:
+            raise ValueError("manual holdings require a portfolio")
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                "UPDATE instrument_list_items SET quantity = ? "
+                "WHERE kind = ? AND provider = ? AND canonical_symbol = ? AND asset_type = ?",
+                (
+                    quantity,
+                    kind,
+                    provider,
+                    canonical_symbol,
+                    asset_type,
+                ),
+            )
+            if not cursor.rowcount:
+                connection.rollback()
+                return False
+            connection.commit()
+            return True
 
     def representative_counts(
         self, database_path: Path | None = None

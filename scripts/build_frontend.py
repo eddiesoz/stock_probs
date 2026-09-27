@@ -9,10 +9,20 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 SOURCE = ROOT / "frontend/out"
 DESTINATION = ROOT / "src/stock_probs/static/next"
+PAGES = (
+    "index.html",
+    "api-docs.html",
+    "overview.html",
+    "research.html",
+    "tools.html",
+    "tools/forecast.html",
+    "tools/live-trading.html",
+    "tools/markets.html",
+)
 
 
 def main() -> None:
-    if not all((SOURCE / name).is_file() for name in ("index.html", "api-docs.html")):
+    if not all((SOURCE / name).is_file() for name in PAGES):
         raise SystemExit("frontend/out is not a complete Next export")
     if not (SOURCE / "_next").is_dir():
         raise SystemExit("frontend/out is not a complete Next export")
@@ -25,8 +35,10 @@ def main() -> None:
         shutil.rmtree(DESTINATION)
     DESTINATION.mkdir()
     # FastAPI serves only these pages and /_next; omit Next route metadata and error files.
-    for name in ("index.html", "api-docs.html"):
-        shutil.copy2(SOURCE / name, DESTINATION / name)
+    for name in PAGES:
+        destination = DESTINATION / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(SOURCE / name, destination)
     shutil.copytree(SOURCE / "_next", DESTINATION / "_next")
 
 

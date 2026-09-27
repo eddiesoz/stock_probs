@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import hmac
 import json
@@ -16,7 +17,8 @@ import tempfile
 import threading
 import time
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
@@ -45,6 +47,7 @@ BACKUP_TIMEOUT_SECONDS = 20.0
 COPY_CHUNK_BYTES = 1024 * 1024
 TRUST_KEY_BYTES = 32
 TRUST_KEY_NAME = ".backup-auth.key"
+TRUST_LOCK_NAME = ".backup-auth.lock"
 MANIFEST_AUTH_FIELD = "manifest_hmac_sha256"
 BACKUP_FAILURE_CATEGORY = "backup_creation_failed"
 RESTORE_FAILURE_CATEGORY = "restore_failed"
@@ -186,6 +189,47 @@ class BackupManager:
             ensure_private_directory(self.backup_dir)
         except (OSError, ValueError) as exc:
             raise BackupError("Managed backup storage is unavailable.") from exc
+
+    @contextmanager
+    def _trust_lifecycle_lock(self) -> Iterator[None]:
+        """Serialize create/due-create/rotate/retire across processes on one lock file.
+
+        Every path that can publish an artifact or change the trust key takes this exact
+        lock for its whole critical section. A second lock, a narrower scope, or a window
+        before acquisition would let one process observe a half-swapped key/artifact pair
+        and publish a backup that cannot be verified afterwards.
+        """
+
+        self._ensure_backup_dir()
+        try:
+            descriptor = os.open(
+                self.backup_dir.parent / TRUST_LOCK_NAME,
+                os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+        except OSError as exc:
+            raise BackupError("Backup trust operations could not be coordinated safely.") from exc
+        try:
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                raise BackupError("Backup trust coordination path is not a regular file.")
+            os.fchmod(descriptor, 0o600)
+            while True:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    _check_deadline()
+                    time.sleep(0.01)
+        except BackupError:
+            os.close(descriptor)
+            raise
+        except OSError as exc:
+            os.close(descriptor)
+            raise BackupError("Backup trust operations could not be coordinated safely.") from exc
+        try:
+            yield
+        finally:
+            os.close(descriptor)
 
     def _managed_backups(self) -> list[tuple[str, int]]:
         """List only managed artifacts and reject linked or irregular entries fail-closed."""
@@ -384,7 +428,11 @@ class BackupManager:
     ) -> dict[str, Any]:
         """Snapshot through SQLite's online API, then package verified bytes and metadata."""
 
-        return _run_with_deadline(lambda: self._create(name, schema_version=schema_version))
+        def create_locked() -> dict[str, Any]:
+            with self._trust_lifecycle_lock():
+                return self._create(name, schema_version=schema_version)
+
+        return _run_with_deadline(create_locked)
 
     def _create(
         self, name: str | None = None, *, schema_version: int = SCHEMA_VERSION
@@ -472,7 +520,11 @@ class BackupManager:
     ) -> dict[str, Any]:
         """Create once the newest managed artifact reaches the configured startup interval."""
 
-        return _run_with_deadline(lambda: self._create_if_due(interval_seconds, now=now))
+        def create_if_due_locked() -> dict[str, Any]:
+            with self._trust_lifecycle_lock():
+                return self._create_if_due(interval_seconds, now=now)
+
+        return _run_with_deadline(create_if_due_locked)
 
     def _create_if_due(
         self, interval_seconds: float, *, now: datetime | None = None
@@ -513,7 +565,7 @@ class BackupManager:
                         "age_seconds": age_seconds,
                         "interval_seconds": interval_seconds,
                     }
-            created = self.create()
+            created = self._create()
             _check_deadline()
             return {
                 "trigger": "due",
@@ -759,8 +811,13 @@ class BackupManager:
             if schema != manifest["schema_sha256"]:
                 raise BackupError("Artifact schema checksum does not match its manifest.")
             if require_active_schema:
+                if schema_version != SCHEMA_VERSION:
+                    raise BackupError(
+                        f"Backup schema version {schema_version} cannot be restored over active "
+                        f"schema version {SCHEMA_VERSION}; migrate a copy before restore."
+                    )
                 active_schema = self._integrity(
-                    self.repository.database_path, expected_version=schema_version
+                    self.repository.database_path, expected_version=SCHEMA_VERSION
                 )
                 if active_schema != schema:
                     raise BackupError("Artifact failed schema compatibility checks.")
@@ -805,6 +862,10 @@ class BackupManager:
     def rotate_key(self) -> dict[str, Any]:
         """Verify every artifact, then replace its signature and the installation key together."""
 
+        with self._trust_lifecycle_lock():
+            return self._rotate_key()
+
+    def _rotate_key(self) -> dict[str, Any]:
         self._ensure_backup_dir()
         self._trust_key(create=False)
         managed = self._managed_backups()
@@ -865,6 +926,10 @@ class BackupManager:
     def retire_key(self) -> dict[str, Any]:
         """Remove trust only after the operator has explicitly moved or removed every artifact."""
 
+        with self._trust_lifecycle_lock():
+            return self._retire_key()
+
+    def _retire_key(self) -> dict[str, Any]:
         self._ensure_backup_dir()
         managed = self._managed_backups()
         with self.repository.exclusive():

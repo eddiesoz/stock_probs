@@ -513,7 +513,25 @@ def test_migration_004_preserves_exact_legacy_microseconds_and_canonical_rows(
         connection.executemany(
             "INSERT INTO forecast_results(input_id, horizon, result_json, created_at) "
             "VALUES (?, ?, ?, ?)",
-            [(input_id, item["horizon"], json.dumps(item), NOW.isoformat()) for item in results],
+            # The legacy upgrade path predates rolling horizons; the migration under test
+            # preserves whatever rows exist rather than widening historical coverage.
+            [
+                (input_id, item["horizon"], json.dumps(item), NOW.isoformat())
+                for item in results
+                if item["horizon"] in ("close_to_close", "completed_5m_to_close")
+            ],
+        )
+        result_id = connection.execute(
+            "SELECT id FROM forecast_results WHERE input_id = ? ORDER BY id LIMIT 1",
+            (input_id,),
+        ).fetchone()[0]
+        connection.execute(
+            """INSERT INTO outcomes
+            (result_id, observed_close, observed_return, observed_at, comparison_rule, state,
+             note, created_at)
+            VALUES (?, 500.0, 0.01, ?, 'legacy exact comparison', 'observed',
+                    'retained through result-table migration', ?)""",
+            (result_id, NOW.isoformat(), NOW.isoformat()),
         )
         connection.execute(
             """INSERT INTO search_events

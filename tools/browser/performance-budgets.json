@@ -7,7 +7,7 @@
   "overflow_count_max": 0,
   "request_count_max_per_navigation": 16,
   "response_bytes_max_per_navigation": 655360,
-  "static_shell_bytes_strict_max": 753664,
+  "static_shell_bytes_strict_max": 921600,
   "designated_response_bytes_strict_max": 8192,
   "warmups": 5,
   "measured_samples": 30,
@@ -25,7 +25,16 @@
   "justification": {
     "render_interaction_cls": "Pinned proposed M06 roadmap bounds.",
     "request_count": "Sixteen permits the measured 13-request Next 16 production navigation with modest deterministic headroom.",
-    "static_shell_bytes": "736 KiB covers the measured 696,788-byte recursive pruned Next export and directly served assets with deterministic headroom.",
+    "static_shell_bytes": {
+      "measured_bytes": 895883,
+      "non_expansion_baseline_bytes": 717490,
+      "required_six_route_html_bytes": 89707,
+      "required_expansion_js_css_bytes": 88686,
+      "limit_bytes": 921600,
+      "headroom_bytes": 25717,
+      "ceiling_bytes": 1048576,
+      "policy": "900 KiB is the smallest boring round limit above the required deterministic output and below 1 MiB."
+    },
     "response_bytes": "640 KiB covers the measured 574,712 initial-navigation response-body bytes without compression assumptions.",
     "designated_response": "The readiness response is the designated sub-8 KiB response."
   }

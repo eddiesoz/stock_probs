@@ -377,6 +377,25 @@ def test_restore_rejects_symlinked_artifact(settings):
     assert stat.S_IMODE(real.stat().st_mode) == 0o666
 
 
+def test_backup_mutation_rejects_symlinked_coordination_file(settings):
+    _, manager = _manager(settings)
+    target = settings.data_dir / "unrelated.txt"
+    target.write_text("untouched")
+    target.chmod(0o666)
+    lock_path = settings.data_dir / backup_module.TRUST_LOCK_NAME
+    try:
+        lock_path.symlink_to(target)
+    except OSError:
+        pytest.skip("filesystem does not support symlinks")
+
+    with pytest.raises(BackupError, match="coordinated safely"):
+        manager.create("must-not-exist.spbackup")
+
+    assert target.read_text() == "untouched"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o666
+    assert not (settings.backup_dir / "must-not-exist.spbackup").exists()
+
+
 def test_cli_serve_passes_loopback_resource_and_timeout_bounds(monkeypatch):
     captured = {}
     monkeypatch.setattr(cli, "create_app", lambda: object())

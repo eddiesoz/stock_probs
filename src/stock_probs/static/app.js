@@ -321,18 +321,37 @@ function renderTailChart(result, chartId) {
   return figure;
 }
 
+// The ledger reopens legacy two-origin forecasts and newer single-interval forecasts. Keep
+// their labels tied to the saved horizon id so a daily-close result is never shown as intraday.
+function horizonPresentation(horizon) {
+  const labels = {
+    close_to_close: ["Daily close origin", "Daily origin", "Daily horizon", "Close → next close"],
+    completed_5m_to_close: ["Five-minute origin", "Intraday origin", "Intraday horizon", "Completed 5m → close"],
+    five_min_forward: ["Five-minute origin", "5-minute target", "5-minute horizon", "Completed 5m → next 5m"],
+    daily_1: ["Daily close origin", "1-session target", "1-session horizon", "Close → next close"],
+    weekly_5: ["Daily close origin", "5-session target", "5-session horizon", "Close → 5-session close"],
+    monthly_21: ["Daily close origin", "21-session target", "21-session horizon", "Close → 21-session close"],
+    quarterly_63: ["Daily close origin", "63-session target", "63-session horizon", "Close → 63-session close"],
+  };
+  return labels[horizon] || ["Completed origin", "Recorded target", "Recorded horizon", contractLabel(horizon)];
+}
+
 function renderHorizonComparison(results, headingId = "horizon-scan-heading", headingText = "Horizon scan") {
   const section = element("section", "horizon-comparison");
   section.setAttribute("aria-labelledby", headingId);
   const title = element("header", "comparison-title");
   const heading = element("h3", "", headingText);
   heading.id = headingId;
-  title.append(heading, element("p", "", "Shared target · different completed origins"));
+  const sharedTarget = results.length > 1 && results.every((result) => result.target_timestamp === results[0].target_timestamp);
+  title.append(heading, element("p", "", results.length > 1
+    ? sharedTarget ? "Shared target · different completed origins" : "Different recorded targets · inspect each horizon separately"
+    : "Recorded completed origin and target"));
   const rows = element("div", "comparison-rows");
   for (const result of results) {
     const row = element("article", "comparison-row");
-    const rowTitle = element("h4", "", result.horizon === "close_to_close" ? "Daily close origin" : "Five-minute origin");
-    rowTitle.append(element("span", "", result.horizon === "close_to_close" ? "Daily origin" : "Intraday origin"));
+    const [originTitle, targetLabel] = horizonPresentation(result.horizon);
+    const rowTitle = element("h4", "", originTitle);
+    rowTitle.append(element("span", "", targetLabel));
     row.append(rowTitle);
     for (const [direction, label] of [["down", "Down"], ["flat", "Unchanged"], ["up", "Up"]]) {
       const stat = element("div", `comparison-stat ${direction}`);
@@ -654,9 +673,10 @@ function renderForecastCard(result, input) {
   const chartId = `tail-chart-${result.horizon}-${chartSequence += 1}`;
   card.dataset.horizon = result.horizon;
   const header = element("header", "card-head");
+  const [, , horizonLabel, horizonTitle] = horizonPresentation(result.horizon);
   header.append(
-    element("span", "data-label", result.horizon === "close_to_close" ? "Daily horizon" : "Intraday horizon"),
-    element("h3", "", result.horizon === "close_to_close" ? "Close → next close" : "Completed 5m → close"),
+    element("span", "data-label", horizonLabel),
+    element("h3", "", horizonTitle),
     element("p", "", result.definition),
   );
   card.append(header);
@@ -713,12 +733,12 @@ function renderForecastCard(result, input) {
     tableRow(
       intervalBody,
       `${coverage} return range`,
-      `${interval.percent.low.toFixed(2)}% to ${interval.percent.high.toFixed(2)}% (${interval.percent.unit}; raw ${interval.percent.low} to ${interval.percent.high} ${interval.percent.unit})`,
+      `${interval.percent.low.toFixed(2)}% to ${interval.percent.high.toFixed(2)}%`,
     );
     tableRow(
       intervalBody,
       `${coverage} price range`,
-      `${formatPrice(interval.price.low, input.currency)} to ${formatPrice(interval.price.high, input.currency)} (${interval.price.unit}; quote currency ${input.currency}; raw ${interval.price.low} to ${interval.price.high} ${interval.price.unit})`,
+      `${formatPrice(interval.price.low, input.currency)} to ${formatPrice(interval.price.high, input.currency)}`,
     );
   }
   card.append(intervalTable, renderTailChart(result, chartId));
@@ -781,8 +801,19 @@ function renderForecastCard(result, input) {
       result.evaluation || input.evaluations?.[result.horizon] || input.evaluation?.[result.horizon],
     ),
   );
+  const exactIntervals = element("section", "exact-intervals");
+  exactIntervals.append(element("h4", "", "Exact recorded interval values"));
+  const exactTable = element("table", "details-table");
+  const exactBody = element("tbody");
+  for (const interval of result.magnitude_intervals) {
+    const coverage = formatPercent(interval.level);
+    tableRow(exactBody, `${coverage} return`, `${interval.percent.low} to ${interval.percent.high} ${interval.percent.unit}`);
+    tableRow(exactBody, `${coverage} price`, `${interval.price.low} to ${interval.price.high} ${interval.price.unit} · ${input.currency}`);
+  }
+  exactTable.append(exactBody);
+  exactIntervals.append(exactTable);
   card.append(disclosure("Detailed forecast evidence", "forecast-forensics",
-    table, ...[conditional, uncertainty, evaluation].filter(Boolean)));
+    exactIntervals, table, ...[conditional, uncertainty, evaluation].filter(Boolean)));
 
   if (result.outcomes?.length) {
     const outcomes = element("section", "outcomes");
@@ -814,6 +845,11 @@ function renderForecastCard(result, input) {
 function renderResult(data, context = "live") {
   supersedeNews();
   const input = data.input;
+  const horizons = data.results.map((result) => horizonPresentation(result.horizon)[2]);
+  $("#result-heading").textContent = data.results.length === 1 ? horizons[0] : "Forecast comparison";
+  $("#result-summary").textContent = data.results.length === 1
+    ? `One recorded completed origin and target · ${horizons[0]} · probabilities and intervals as saved.`
+    : `${data.results.length} recorded horizons · probabilities and intervals shown together.`;
   showContent(resultContent, "", false);
   qualityBadge.className = `badge ${context === "saved" ? input.quality : data.repeated ? "repeated" : input.quality}`;
   qualityBadge.textContent = context === "saved"
@@ -1362,6 +1398,10 @@ async function initialize() {
     $("#system-label").textContent = "Local service unavailable";
   }
   await loadHistory();
+  const requestedEvent = new URLSearchParams(window.location.search).get("event_id");
+  if (requestedEvent && /^[1-9][0-9]*$/.test(requestedEvent)) {
+    await showHistoryEvent(Number(requestedEvent));
+  }
 }
 
 initialize();

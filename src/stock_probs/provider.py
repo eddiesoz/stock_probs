@@ -17,10 +17,12 @@ from zoneinfo import ZoneInfo
 from stock_probs.domain import (
     Bar,
     DomainError,
+    HistoricalBarSeries,
     InstrumentIdentity,
     MarketData,
     NewsData,
     NewsItem,
+    QuoteSnapshot,
     normalize_lookup_query,
     normalize_symbol,
     scheduled_session_close,
@@ -50,6 +52,33 @@ YAHOO_INTRADAY_ARCHIVE_APPROXIMATE_DAYS = 60
 MAX_NEWS_RESULTS = 10
 MAX_NEWS_BODY_BYTES = 256 * 1024
 YAHOO_NEWS_URL = "https://query2.finance.yahoo.com/v1/finance/search"
+CHART_RANGES = ("5d", "1mo", "3mo", "6mo", "1y")
+CHART_RANGE_DAYS = {
+    "1mo": 31,
+    "3mo": 93,
+    "6mo": 186,
+    "1y": 365,
+}
+CANADIAN_FIXTURE_IDENTITIES = (
+    {
+        "symbol": "SHOP.TO",
+        "display_name": "Shopify Inc.",
+        "company_name": "Shopify Inc.",
+        "exchange": "TSE",
+        "timezone": "America/Toronto",
+        "currency": "CAD",
+        "fixture": "acdc.json",
+    },
+    {
+        "symbol": "PNG.V",
+        "display_name": "Kraken Robotics Inc.",
+        "company_name": "Kraken Robotics Inc.",
+        "exchange": "VAN",
+        "timezone": "America/Toronto",
+        "currency": "CAD",
+        "fixture": "acdc.json",
+    },
+)
 
 
 class MarketDataProvider(Protocol):
@@ -69,6 +98,18 @@ class MarketDataProvider(Protocol):
         self, symbol: str, limit: int = 5, now: datetime | None = None
     ) -> NewsData: ...
 
+    def quote_snapshot(
+        self, symbol: str, asset_type: str, now: datetime | None = None
+    ) -> QuoteSnapshot: ...
+
+    def historical_bars(
+        self,
+        symbol: str,
+        asset_type: str,
+        now: datetime | None = None,
+        *,
+        range: str = "1mo",
+    ) -> HistoricalBarSeries: ...
 
 class YahooProvider:
     """Translate bounded yfinance history calls into the provider-neutral contract."""
@@ -474,6 +515,194 @@ class YahooProvider:
             )
         return dict(metadata)
 
+    def _capability_history(
+        self,
+        symbol: str,
+        asset_type: str,
+        *,
+        period: str,
+        interval: str,
+    ) -> tuple[Any, dict[str, Any], InstrumentIdentity, datetime]:
+        """Use one bounded chart request for quote and chart capabilities."""
+
+        if asset_type not in {"stock", "etf"}:
+            raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
+        normalized_symbol = normalize_symbol(symbol)
+        ticker = yf.Ticker(normalized_symbol)
+        frame = self._history(ticker, period=period, interval=interval)
+        if frame.empty:
+            raise DomainError(
+                "symbol_not_found",
+                "Yahoo Finance has no market data for this symbol and range.",
+                status_code=404,
+            )
+        metadata = self._metadata_from_bounded_history(ticker, frame)
+        if str(metadata.get("dataGranularity", "")) != interval:
+            raise DomainError(
+                "provider_interval_mismatch",
+                "Yahoo did not return the requested chart interval.",
+                status_code=502,
+            )
+        response_at = self._response_time()
+        identity = self._identity_from_metadata(metadata, response_at)
+        if identity.canonical_symbol != normalized_symbol:
+            raise DomainError(
+                "provider_identity_mismatch",
+                "Yahoo returned data for a different canonical symbol.",
+                status_code=502,
+            )
+        if identity.asset_type != asset_type:
+            raise DomainError(
+                "asset_type_mismatch",
+                f"Yahoo classifies {normalized_symbol} as {identity.asset_type}, not {asset_type}.",
+            )
+        return frame, metadata, identity, response_at
+
+    @staticmethod
+    def _timed_bars(frame: Any, duration_seconds: int) -> tuple[Bar, ...]:
+        bars = []
+        for timestamp, row in frame.iterrows():
+            close = row.get("Close")
+            if close is None or not _positive_finite(close):
+                continue
+            raw_timestamp = timestamp.to_pydatetime()
+            if raw_timestamp.tzinfo is None:
+                raise DomainError(
+                    "ambiguous_provider_time",
+                    "Yahoo returned chart bars without a timezone.",
+                    status_code=502,
+                )
+            bars.append(
+                Bar(
+                    raw_timestamp.astimezone(UTC),
+                    float(close),
+                    duration_seconds,
+                )
+            )
+        return tuple(sorted(bars, key=lambda item: item.timestamp))
+
+    def quote_snapshot(
+        self, symbol: str, asset_type: str, now: datetime | None = None
+    ) -> QuoteSnapshot:
+        """Return Yahoo's latest bounded chart price with an explicit delay disclosure."""
+
+        if now is not None and now.tzinfo is None:
+            raise DomainError(
+                "ambiguous_provider_time", "Provider quote time must include an offset."
+            )
+        frame, metadata, identity, response_at = self._capability_history(
+            symbol, asset_type, period="1d", interval="1m"
+        )
+        reference_at = now.astimezone(UTC) if now is not None else response_at
+        bars = tuple(
+            bar
+            for bar in self._timed_bars(frame, 60)
+            if bar.end.astimezone(UTC) <= reference_at
+        )
+        if not bars:
+            raise DomainError(
+                "provider_market_data_invalid",
+                "Yahoo Finance returned no usable quote price.",
+                status_code=502,
+            )
+        delayed, delay_minutes, label = _delay_disclosure(
+            metadata, subject="Yahoo Finance quote"
+        )
+        rows = tuple(frame.iterrows())
+        opens = [_optional_positive(row.get("Open")) for _, row in rows]
+        highs = [_optional_positive(row.get("High")) for _, row in rows]
+        lows = [_optional_positive(row.get("Low")) for _, row in rows]
+        volumes = [_optional_volume(row.get("Volume")) for _, row in rows]
+        open_price = _optional_positive(metadata.get("regularMarketOpen")) or next(
+            (value for value in opens if value is not None), None
+        )
+        high = _optional_positive(metadata.get("regularMarketDayHigh")) or max(
+            (value for value in highs if value is not None), default=None
+        )
+        low = _optional_positive(metadata.get("regularMarketDayLow")) or min(
+            (value for value in lows if value is not None), default=None
+        )
+        previous_close = _optional_positive(
+            metadata.get("chartPreviousClose") or metadata.get("previousClose")
+        )
+        volume = _optional_volume(metadata.get("regularMarketVolume"))
+        if volume is None and any(value is not None for value in volumes):
+            volume = _optional_volume(sum(value for value in volumes if value is not None))
+        last_trade = _optional_positive(metadata.get("regularMarketPrice")) or bars[-1].close
+        change = last_trade - previous_close if previous_close is not None else None
+        change_percent = (
+            change / previous_close * 100.0
+            if change is not None and previous_close is not None
+            else None
+        )
+        change = change if change is None or math.isfinite(change) else None
+        change_percent = (
+            change_percent
+            if change_percent is None or math.isfinite(change_percent)
+            else None
+        )
+        return QuoteSnapshot(
+            symbol=identity.canonical_symbol,
+            price=bars[-1].close,
+            currency=identity.currency,
+            # Yahoo's one-minute index identifies the bar start; expose its completed endpoint
+            # rather than claiming the close was observed at the beginning of that minute.
+            as_of=bars[-1].end.astimezone(UTC),
+            provider=identity.provider,
+            delayed=delayed,
+            delay_minutes=delay_minutes if delayed else None,
+            label=label,
+            open=open_price,
+            high=high,
+            low=low,
+            previous_close=previous_close,
+            volume=volume,
+            last_trade=last_trade,
+            change=change,
+            change_percent=change_percent,
+        )
+
+    def historical_bars(
+        self,
+        symbol: str,
+        asset_type: str,
+        now: datetime | None = None,
+        *,
+        range: str = "1mo",
+    ) -> HistoricalBarSeries:
+        """Return a bounded daily chart for one of the supported Yahoo periods."""
+
+        if now is not None and now.tzinfo is None:
+            raise DomainError(
+                "ambiguous_provider_time", "Provider chart time must include an offset."
+            )
+        requested_range = _validate_chart_range(range)
+        frame, metadata, identity, response_at = self._capability_history(
+            symbol, asset_type, period=requested_range, interval="1d"
+        )
+        bars = self._daily_bars(frame, identity.timezone)
+        if not bars:
+            raise DomainError(
+                "provider_market_data_invalid",
+                "Yahoo Finance returned no usable chart bars.",
+                status_code=502,
+            )
+        delayed, delay_minutes, label = _delay_disclosure(
+            metadata, subject="Yahoo Finance chart"
+        )
+        return HistoricalBarSeries(
+            symbol=identity.canonical_symbol,
+            range=requested_range,
+            interval="1d",
+            adjustment_basis="unadjusted closes (actions=False, auto_adjust=False)",
+            as_of=response_at,
+            provider=identity.provider,
+            bars=bars,
+            delayed=delayed,
+            delay_minutes=delay_minutes if delayed else None,
+            label=label,
+        )
+
     @staticmethod
     def _daily_bars(frame: Any, timezone: str) -> tuple[Bar, ...]:
         zone = ZoneInfo(timezone)
@@ -492,23 +721,6 @@ class YahooProvider:
             session_close = scheduled_session_close(session_date, timezone)
             if session_close is not None:
                 bars.append(Bar(session_close, float(close), 0))
-        return tuple(sorted(bars, key=lambda item: item.timestamp))
-
-    @staticmethod
-    def _intraday_bars(frame: Any) -> tuple[Bar, ...]:
-        bars = []
-        for timestamp, row in frame.iterrows():
-            close = row.get("Close")
-            if close is None or not _positive_finite(close):
-                continue
-            raw_timestamp = timestamp.to_pydatetime()
-            if raw_timestamp.tzinfo is None:
-                raise DomainError(
-                    "ambiguous_provider_time",
-                    "Yahoo returned intraday bars without a timezone.",
-                    status_code=502,
-                )
-            bars.append(Bar(raw_timestamp.astimezone(UTC), float(close), 300))
         return tuple(sorted(bars, key=lambda item: item.timestamp))
 
     def fetch(self, symbol: str, asset_type: str, now: datetime) -> MarketData:
@@ -659,7 +871,7 @@ class YahooProvider:
         )
         intraday = tuple(
             bar
-            for bar in self._intraday_bars(intraday_frame)
+            for bar in self._timed_bars(intraday_frame, 300)
             if bar.end.astimezone(UTC) <= cutoff_utc
         )
 
@@ -753,12 +965,33 @@ class YahooProvider:
 class FixtureProvider:
     """Expand compact checked-in seeds so tests exercise the real service path."""
 
+    def __init__(self, clock: Callable[[], datetime] | None = None):
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    def _time(self, now: datetime | None, label: str) -> datetime:
+        captured = now if now is not None else self.clock()
+        if captured.tzinfo is None:
+            raise DomainError(
+                "ambiguous_provider_time",
+                f"Fixture {label} time must include an offset.",
+            )
+        return captured.astimezone(UTC)
+
     @staticmethod
     def _payloads() -> tuple[dict[str, Any], ...]:
-        return tuple(
+        payloads = tuple(
             json.loads(files("stock_probs.fixtures").joinpath(name).read_text())
             for name in ("acdc.json", "spy.json")
         )
+        template = payloads[0]
+        canadian = tuple(
+            {
+                **template,
+                **identity,
+            }
+            for identity in CANADIAN_FIXTURE_IDENTITIES
+        )
+        return (*payloads, *canadian)
 
     @staticmethod
     def _news_payload() -> dict[str, list[dict[str, Any]]]:
@@ -801,11 +1034,7 @@ class FixtureProvider:
 
         normalized_query = normalize_lookup_query(query)
         _validate_lookup_limit(limit)
-        requested_at = now or datetime.now(UTC)
-        if requested_at.tzinfo is None:
-            raise DomainError(
-                "ambiguous_provider_time", "Fixture lookup time must include an offset."
-            )
+        requested_at = self._time(now, "lookup")
         if normalized_query.upper() == "FAIL":
             raise DomainError(
                 "provider_unavailable", "Deterministic provider failure.", status_code=502
@@ -830,11 +1059,10 @@ class FixtureProvider:
             matches.append(((rank, identity.canonical_symbol), identity))
         return tuple(identity for _, identity in sorted(matches)[:limit])
 
-    def fetch(self, symbol: str, asset_type: str, now: datetime) -> MarketData:
-        if now.tzinfo is None:
-            raise DomainError(
-                "ambiguous_provider_time", "Fixture request time must include an offset."
-            )
+    def fetch(
+        self, symbol: str, asset_type: str, now: datetime | None = None
+    ) -> MarketData:
+        now = self._time(now, "request")
         if asset_type not in {"stock", "etf"}:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
         normalized_symbol = normalize_symbol(symbol)
@@ -850,6 +1078,8 @@ class FixtureProvider:
             "SPY": "SPY",
             "SPY-D": "SPY",
             "SPY-M": "SPY",
+            "SHOP.TO": "SHOP.TO",
+            "PNG.V": "PNG.V",
         }
         base_symbol = fixture_symbols.get(normalized_symbol)
         if base_symbol is None:
@@ -867,7 +1097,7 @@ class FixtureProvider:
                 f"The deterministic fixture classifies {normalized_symbol} as "
                 f"{payload['asset_type']}, not {asset_type}.",
             )
-        fixture_name = f"{base_symbol.lower()}.json"
+        fixture_name = str(payload.get("fixture", f"{base_symbol.lower()}.json"))
         identity = self._identity(payload, normalized_symbol, now)
         seed = payload["daily_seed"]
         zone = ZoneInfo(payload["timezone"])
@@ -890,7 +1120,9 @@ class FixtureProvider:
                 close = price * (
                     1.0 + session_index * 0.001 + index * 0.00012 + ((index % 7) - 3) * 0.00003
                 )
-                intraday.append(Bar(start + timedelta(minutes=5 * index), round(close, 6), 300))
+                intraday.append(
+                    Bar(start + timedelta(minutes=5 * index), round(close, 6), 300)
+                )
         # Mirror the live adapter: a deterministic response ends at the exact completed-bar cutoff.
         intraday = [bar for bar in intraday if bar.end.astimezone(UTC) <= now.astimezone(UTC)]
         if normalized_symbol == "STALE":
@@ -921,7 +1153,7 @@ class FixtureProvider:
             provider_metadata={
                 **payload["provider_metadata"],
                 "fixture_contract": "compact-seed-v1",
-                "fixture_base_symbol": base_symbol,
+                "fixture_base_symbol": fixture_name.removesuffix(".json").upper(),
                 "identity_source": "checked_in_fixture",
                 "exchange_timezone": identity.timezone,
                 "session_scope": "regular session only (prepost=False)",
@@ -957,11 +1189,7 @@ class FixtureProvider:
 
         normalized_symbol = normalize_symbol(symbol)
         _validate_news_limit(limit)
-        requested_at = now or datetime.now(UTC)
-        if requested_at.tzinfo is None:
-            raise DomainError(
-                "ambiguous_provider_time", "Fixture news time must include an offset."
-            )
+        requested_at = self._time(now, "news")
         if normalized_symbol == "FAIL":
             raise DomainError(
                 "provider_unavailable", "Deterministic news provider failure.", status_code=502
@@ -1001,12 +1229,93 @@ class FixtureProvider:
             items,
         )
 
+    def quote_snapshot(
+        self, symbol: str, asset_type: str, now: datetime | None = None
+    ) -> QuoteSnapshot:
+        """Return a deterministic simulated quote at the fixture clock."""
+
+        requested_at = self._time(now, "quote")
+        data = self.fetch(symbol, asset_type, requested_at)
+        latest = max((*data.daily, *data.intraday), key=lambda bar: bar.end)
+        zone = ZoneInfo(data.timezone)
+        latest_day = latest.timestamp.astimezone(zone).date()
+        session = [
+            bar
+            for bar in data.intraday
+            if bar.timestamp.astimezone(zone).date() == latest_day
+        ]
+        previous = next(
+            (bar.close for bar in reversed(data.daily) if bar.timestamp < latest.timestamp),
+            None,
+        )
+        change = latest.close - previous if previous is not None else None
+        return QuoteSnapshot(
+            symbol=data.symbol,
+            price=latest.close,
+            currency=data.currency,
+            as_of=latest.end.astimezone(UTC),
+            provider=data.provider,
+            delayed=False,
+            delay_minutes=None,
+            label="Deterministic simulated fixture quote; not live market data.",
+            open=session[0].close if session else None,
+            high=max((bar.close for bar in session), default=None),
+            low=min((bar.close for bar in session), default=None),
+            previous_close=previous,
+            volume=None,
+            last_trade=latest.close,
+            change=change,
+            change_percent=change / previous * 100.0 if change is not None and previous else None,
+        )
+
+    def historical_bars(
+        self,
+        symbol: str,
+        asset_type: str,
+        now: datetime | None = None,
+        *,
+        range: str = "1mo",
+    ) -> HistoricalBarSeries:
+        """Return the requested bounded daily range represented by fixture data."""
+
+        requested_at = self._time(now, "chart")
+        requested_range = _validate_chart_range(range)
+        data = self.fetch(symbol, asset_type, requested_at)
+        if requested_range == "5d":
+            # Yahoo's five-day daily period is a trading-day window; use completed fixture
+            # sessions rather than inventing weekend bars or claiming a wider calendar span.
+            bars = data.daily[-5:]
+        else:
+            cutoff = requested_at - timedelta(days=CHART_RANGE_DAYS[requested_range])
+            bars = tuple(
+                bar for bar in data.daily if bar.timestamp.astimezone(UTC) >= cutoff
+            )
+        if not bars:
+            raise DomainError(
+                "chart_range_unavailable",
+                "The deterministic fixture has no bars in that range.",
+                status_code=404,
+            )
+        return HistoricalBarSeries(
+            symbol=data.symbol,
+            range=requested_range,
+            interval="1d",
+            adjustment_basis="unadjusted simulated closes",
+            as_of=requested_at,
+            provider=data.provider,
+            bars=bars,
+            delayed=False,
+            delay_minutes=None,
+            label="Deterministic simulated fixture chart; not live market data.",
+        )
+
     def fetch_at_cutoff(
-        self, symbol: str, asset_type: str, cutoff: datetime, now: datetime
+        self, symbol: str, asset_type: str, cutoff: datetime, now: datetime | None = None
     ) -> MarketData:
         """Recreate fixture data eligible at cutoff while recording the later retrieval time."""
 
-        if cutoff.tzinfo is None or now.tzinfo is None:
+        now = self._time(now, "historical retrieval")
+        if cutoff.tzinfo is None:
             raise DomainError(
                 "ambiguous_historical_cutoff", "Historical cutoff times must include an offset."
             )
@@ -1035,6 +1344,19 @@ def _validate_lookup_limit(limit: int) -> None:
             "invalid_lookup_limit",
             f"Lookup limit must be between 1 and {MAX_LOOKUP_RESULTS}.",
         )
+
+
+def _validate_chart_range(value: str) -> str:
+    """Keep chart periods finite so provider and fixture windows cannot grow implicitly."""
+
+    if value not in CHART_RANGES:
+        allowed = "|".join(CHART_RANGES)
+        raise DomainError(
+            "invalid_chart_range",
+            f"Chart range must be one of {allowed}.",
+            status_code=422,
+        )
+    return value
 
 
 def _validate_news_limit(limit: int) -> None:
@@ -1076,6 +1398,53 @@ def _positive_finite(value: Any) -> bool:
     except (TypeError, ValueError):
         return False
     return number > 0 and number != float("inf") and number != float("-inf")
+
+
+def _optional_positive(value: Any) -> float | None:
+    """Keep only usable optional provider prices; missing or malformed metadata stays absent."""
+
+    return float(value) if not isinstance(value, bool) and _positive_finite(value) else None
+
+
+def _optional_volume(value: Any) -> int | None:
+    """Keep bounded whole-share volume without coercing booleans or fractional metadata."""
+
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    valid = math.isfinite(number) and number.is_integer() and 0 <= number < 2**63
+    return int(number) if valid else None
+
+
+def _delay_disclosure(
+    metadata: Mapping[str, Any], *, subject: str
+) -> tuple[bool, int | None, str]:
+    """Report Yahoo's delay field without turning missing metadata into a live claim."""
+
+    value = metadata.get("exchangeDataDelayedBy")
+    if (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and 0 <= value <= 1440
+        and float(value).is_integer()
+    ):
+        minutes = int(value)
+        if minutes:
+            return (
+                True,
+                minutes,
+                f"{subject}; provider reports approximately {minutes} minute delay.",
+            )
+        return False, None, f"{subject}; timing is provider-reported and not guaranteed real-time."
+    return (
+        False,
+        None,
+        f"{subject}; provider delay is unavailable and real-time is not claimed.",
+    )
 
 
 def _coverage(bars: tuple[Bar, ...]) -> dict[str, str | int | None]:

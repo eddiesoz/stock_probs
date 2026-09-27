@@ -104,3 +104,11 @@ for the full reconciliation and limitations.
 ARM64 checks must identify whether execution is native or QEMU/OCI-emulated. Emulation can
 exercise package, runtime, functional, build, and tool behavior; it cannot prove native
 resource performance. See the [MVP plan](../../MVP-PLAN.md) for current gate requirements.
+
+## Frontend gate receipt label
+
+The local-gate receipt label `frontend-npm-ci-typecheck-build-test-stage` matches the actual
+order in `scripts/build-frontend.sh`: `npm ci`, frontend typecheck, production build, frontend
+tests, and static staging. It identifies the completed frontend subcheck in a gate receipt; it
+is not independent acceptance by itself and must be read with the exact command, exit status,
+evidence, and independent QA result.

@@ -447,3 +447,10 @@
     the same dirty `HEAD`; UTC was not captured; artifact: current 11-file documentation diff;
     reviewer: `LUNA MAX docs`. No code, configuration, test, export, commit, push, or Git-history
     mutation was performed by this reconciliation.
+
+## Frontend gate receipt label
+
+Local-gate receipts use `frontend-npm-ci-typecheck-build-test-stage` because
+`scripts/build-frontend.sh` executes `npm ci`, typecheck, build, test, and staging in that order.
+This is a receipt label for the completed prerequisite, not an independent acceptance result;
+acceptance still requires the exact command, exit status, evidence, and applicable reviewer record.

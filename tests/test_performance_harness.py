@@ -64,6 +64,11 @@ def test_artifact_schema_requires_every_evidence_field():
         *(f"M{milestone:02}" for milestone in range(10)),
         *(f"EXP-M{milestone:02}" for milestone in range(10)),
         *(f"R-M{milestone:02}-1" for milestone in range(10)),
+        "R-ASTRA-0",
+        "R-ASTRA-98",
+        "R-ASTRA-999999",
+        "ASTRA-FINAL",
+        "EXP-FINAL",
         "R-M07-5",
         "R-M09-55",
         *(f"m{milestone:02}" for milestone in range(1, 10)),
@@ -88,6 +93,13 @@ def test_artifact_schema_accepts_harness_task_identities(task_id):
         "R-M07-nope",
         "R-M09-0",
         "R-M09-nope",
+        "R-ASTRA-",
+        "R-ASTRA--1",
+        "R-ASTRA-98-extra",
+        "R-ASTRA-98.1",
+        "R-ASTRA-98-1",
+        "r-astra-98",
+        "NOTIFY-FINAL",
         "m00",
         "m10",
         "M07-extra",
@@ -229,20 +241,23 @@ def test_local_gate_profiles_make_performance_mandatory_for_m06_m09_and_release(
     assert "run_performance" in m09
     assert "run_performance" in release
     assert 'STOCK_PROBS_PERFORMANCE_ARTIFACT_DIR="$RUN_DIR/performance"' in gate
-    assert m04.count("run_ponytail_precondition") == 0
-    assert m06.count("run_ponytail_precondition") == 1
-    assert m09.count("run_ponytail_precondition") == 1
-    assert release.count("run_ponytail_precondition") == 1
-    assert m06.count("require_performance_acceptance") == 1
-    assert m09.count("require_performance_acceptance") == 1
-    assert release.count("require_performance_acceptance") == 1
-    assert "ponytail-review.sh\" \"$TASK_ID" not in m06 + m09 + release
+    assert "run_ponytail_precondition" not in gate
+    assert "ponytail-review.sh" not in gate
+    for profile in (m06, m09, release):
+        assert "run_ponytail_precondition" not in profile
+        assert "ponytail-review.sh" not in profile
+        assert profile.count("require_performance_acceptance") == 1
+    assert 'PERFORMANCE_REVIEWER:-' in gate
+    assert '[[ "$PROFILE" == "release" && "$DIRTY" == "true" ]]' in gate
+    assert "Release performance requires a clean committed working tree." in gate
 
 
 def test_proposed_native_bounds_are_explicit_and_not_environment_overrides():
+    manifest = json.loads((ROOT / "tools/browser/performance-budgets.json").read_text())
+
     assert performance.CONCURRENCY_P95_LIMIT_MS == 3_000
     assert performance.CONCURRENCY_BATCH_LIMIT_MS == 5_000
-    assert performance.PACKAGE_LIMIT_BYTES == 328 * 1024
+    assert performance.PACKAGE_LIMIT_BYTES == 384 * 1024
     assert performance.PACKAGE_BUILD_LIMIT_MS == 5_000
     assert performance.BACKUP_LIMIT_MS == 5_000
     assert performance.RESTORE_LIMIT_MS == 5_000
@@ -252,7 +267,8 @@ def test_proposed_native_bounds_are_explicit_and_not_environment_overrides():
     assert performance.NEWS_RENDER_P95_LIMIT_MS == 250
     assert performance.NEWS_RESPONSE_LIMIT_BYTES == 32 * 1024
     assert performance.NEWS_PROVIDER_DEADLINE_SECONDS == 10
-    assert performance.STATIC_LIMIT_BYTES == 736 * 1024
+    assert manifest["static_shell_bytes_strict_max"] == performance.STATIC_LIMIT_BYTES
+    assert performance.STATIC_LIMIT_BYTES == 900 * 1024
     source = (ROOT / "scripts/performance_harness.py").read_text()
     assert "STOCK_PROBS_PERF_CONCURRENCY_P95_MS" not in source
     assert "STOCK_PROBS_PERF_PACKAGE_MAX_BYTES" not in source
@@ -372,12 +388,61 @@ def test_browser_budget_manifest_pins_required_protocol_and_bounds():
     assert manifest["cls_max"] == 0.1
     assert manifest["viewports"] == [360, 390, 768, 1280, 1440]
     assert manifest["designated_response_bytes_strict_max"] == 8 * 1024
-    assert manifest["static_shell_bytes_strict_max"] == 736 * 1024
+    assert manifest["static_shell_bytes_strict_max"] == 900 * 1024
     assert manifest["response_bytes_max_per_navigation"] == 640 * 1024
     assert manifest["request_count_max_per_navigation"] == 16
     assert "/assets/theme.js" in manifest["allowed_paths"]
     assert not any(path.startswith("/_next/") for path in manifest["allowed_paths"])
-    assert manifest["justification"]
+
+
+@pytest.mark.parametrize(
+    ("contents", "error"),
+    [
+        (None, FileNotFoundError),
+        ("{", json.JSONDecodeError),
+        ('{"static_shell_bytes_strict_max": 921600} trailing', json.JSONDecodeError),
+        ("{}", ValueError),
+        ('{"static_shell_bytes_strict_max": "921600"}', ValueError),
+        ('{"static_shell_bytes_strict_max": true}', ValueError),
+    ],
+)
+def test_static_budget_manifest_invalid_contract_fails_closed(tmp_path, contents, error):
+    path = tmp_path / "performance-budgets.json"
+    if contents is not None:
+        path.write_text(contents)
+
+    with pytest.raises(error):
+        performance._load_static_budget(path)
+
+
+def test_static_budget_loader_accepts_current_manifest():
+    path = ROOT / "tools/browser/performance-budgets.json"
+
+    assert performance._load_static_budget(path) == 900 * 1024
+
+
+def test_static_budget_loader_rejects_oversized_manifest(tmp_path):
+    path = tmp_path / "performance-budgets.json"
+    path.write_bytes(b"{}" + b" " * performance.STATIC_BUDGET_MANIFEST_MAX_BYTES)
+
+    with pytest.raises(ValueError, match="exceeds its size limit"):
+        performance._load_static_budget(path)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(10**100, id="huge"),
+    ],
+)
+def test_static_budget_loader_rejects_out_of_range_integer(tmp_path, value):
+    path = tmp_path / "performance-budgets.json"
+    path.write_text(json.dumps({"static_shell_bytes_strict_max": value}))
+
+    with pytest.raises(ValueError, match="positive bounded integer"):
+        performance._load_static_budget(path)
 
 
 def test_static_row_inventory_is_recursive_sorted_and_exact(tmp_path, monkeypatch):
@@ -397,6 +462,7 @@ def test_static_row_inventory_is_recursive_sorted_and_exact(tmp_path, monkeypatc
     row = harness.rows["static-and-response-bytes"]
     assert row["result"] == "Pass"
     assert row["raw"]["static_total_raw_bytes"] == 21
+    assert row["threshold"]["evidence_basis"] == "tools/browser/performance-budgets.json"
     assert [item["path"] for item in row["raw"]["static_files"]] == sorted(
         item["path"] for item in row["raw"]["static_files"]
     )
@@ -440,7 +506,7 @@ def test_static_row_requires_browser_result(tmp_path, monkeypatch, browser_resul
     row = harness.rows["static-and-response-bytes"]
     assert row["result"] == browser_result
     assert "initial_navigation" not in row["raw"]
-    assert set(row["threshold"]) == {"class", "static", "response"}
+    assert set(row["threshold"]) == {"class", "static", "response", "evidence_basis"}
 
 
 def test_local_gate_builds_and_stages_frontend_before_profile_gates():
