@@ -223,15 +223,69 @@ No historical acceptance record is changed by this follow-on. Provider capacity 
 hardware, physical mobile, true browser zoom, actual screen-reader, native/physical ARM64
 performance, and project-profile runtime discovery remain separate evidence categories.
 
+## Current authentication and production deployment follow-on (`R-ASTRA-101`)
+
+`R-ASTRA-101` carries the invite-only multi-user boundary and the private Linode deployment
+forward from the completed UI follow-ons. Production uses GitHub's authorization-code flow with
+state and PKCE, the numeric GitHub account ID as the stable identity, and a required user-verifying
+passkey after invitation. Sessions are opaque server-side records with hashed tokens, idle and
+absolute expiry, revocation, secure host-only cookies, exact-origin/Host handling, and CSRF
+protection. Private records derive ownership from the session, including history, saved results,
+exports, outcomes, reconstructions, holdings, and watchlists. Backup and restore operations are
+administrator-only; restore promotion requires a fresh passkey check, a verified pre-restore
+backup, matching account-security state, maintenance serialization, and session revocation.
+
+The deployment shape is one FastAPI app, one persistent SQLite volume, and one host-managed
+Cloudflare Tunnel. The application port stays on loopback. A separate local stdio MCP exposes
+only typed `inspect`, `plan_deploy`, `deploy`, `status`, and `rollback` operations. The image is
+built and published locally to the fixed GHCR repository, then pulled on Linode by immutable
+digest; the VM never builds source and the MCP cannot accept arbitrary shell, path, URL, Compose,
+registry, tag, or Docker-socket input.
+
+- **Status:** **In progress**. Local implementation, source review, and isolated deployment
+  evidence are recorded below. GHCR publication, the replacement Linode, OAuth application
+  credentials, Tunnel canary, and VM Backup recovery rehearsal remain pending external operations.
+- **Owner/phase:** implementation and security repair; independent `LUNA MAX QA` browser and
+  deployment checks; `ASTRA` medium security review; `LUNA MAX docs` evidence reconciliation.
+- **Dependencies verified:** `R-ASTRA-100` is complete for its declared UI scope; schema 8 and
+  the owner-scoped persistence/auth implementation are present in the current source handoff.
+- **Operational boundary:** the old VM and current local port-8000 application remain untouched.
+  This follow-on does not claim a public route, a remote image, a production VM, or a release
+  checkpoint.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `R-ASTRA-101-E1` | Initial Astra medium source security review of authentication, Host/origin handling, dependency surface, and deployment helper. | Native x86_64; dirty source revision `893a146dcb0cf3ba03b435307dec1fb138941cd0`; exact review command and UTC were not supplied. | **Fail** at initial review: request-path Host authority poisoning and the Starlette range denial-of-service advisory were reported as P1 launch blockers; reviewer `ASTRA` medium. The findings remain visible and are closed only by the recheck row. |
+| `R-ASTRA-101-E2` | Recheck of the initial P1 findings after scope-path handling and dependency repairs. | Native x86_64; dirty source revision `893a146dcb0cf3ba03b435307dec1fb138941cd0`; exact command and UTC were not supplied. | **Pass** as supplied Astra recheck: no remaining source blocker was reported. Actual public-hosting acceptance remains pending; reviewer `ASTRA` medium. |
+| `R-ASTRA-101-E3` | Fresh Python application lock and separate deployment-MCP lock dependency audit. | Native x86_64; current dirty worktree; exact commands, UTC, and artifact paths were not supplied. | **Pass**: both recorded `pip-audit` runs reported zero advisories. This is dependency evidence, not a clean release or remote image result. |
+| `R-ASTRA-101-E4` | Focused backend/auth regression and deployment tooling checks. | Native x86_64; current dirty worktree; exact commands and UTC were not supplied. | **Pass** as supplied scoped evidence: API/auth checks reported `151` passed and production-helper/MCP checks reported `31` passed. The completed `R-ASTRA-101` local-gate rerun is recorded in E12; no remote image or public result is inferred. |
+| `R-ASTRA-101-E5` | Frontend/auth surface build and tests. | Native x86_64; current dirty worktree; exact command and UTC were not supplied. | **Pass**: frontend tests reported `27` passed. No release or clean-tree result is inferred. |
+| `R-ASTRA-101-E6` | Isolated production-shaped browser security and responsive auth flow. | Official Playwright; isolated app at `127.0.0.1:8766`; Light/Dark at `1280x720` and `390x844`; exact UTC and source revision were not supplied. | **Pass** for the scoped checks: sign-in rendered without horizontal overflow, all eight protected routes redirected `303` to sign-in, private history returned `401`, spoofed Host returned `400`, spoofed Origin returned `403`, 104 browser requests stayed loopback-only, and focus/44px target checks passed. CUA, full axe, physical mobile, actual screen-reader, and true-zoom evidence remain **Unavailable**; reviewer `LUNA MAX QA`. |
+| `R-ASTRA-101-E7` | Online snapshot, signed backup, schema migration, and legacy owner transfer rehearsal. | Native x86_64; current live schema-6 app; exact UTC and source revision were not supplied. | **Pass** as local isolated evidence: verified read-only `pre-production-20260927.spbackup` database SHA-256 `2533d3bf96db79610b4616531e047df434ed54b1b2e1243c8a65b4e8401adcfd`; a separate mode-`0600` online SQLite snapshot matched the hash and passed `PRAGMA integrity_check=ok`; counts were 13 events, 13 runs, 20 results, 6 portfolio holdings, and 3 watchlist items. Disposable schema 6→8 migration produced verified pre/post backups; a simulated claim to GitHub ID `86915618` preserved all 13 events, 6 holdings, and 3 watchlist items. Re-take the live snapshot at cutover if data changes. |
+| `R-ASTRA-101-E8` | Local image and protected-route readiness. | Native x86_64; disposable production-shaped container; exact image revision/digest and UTC were not supplied. | **Pass** for the local candidate: readiness reported schema `8`, authentication status returned `200`, and private history returned `401` without a session. The candidate is not a GHCR publication or remote deployment result. |
+| `R-ASTRA-101-E9` | Broad Astra product gate carried into this security follow-on. | Native x86_64; `R-ASTRA-100` evidence on dirty worktree; exact aggregate command and UTC were not supplied. | **Unavailable** as one historical green aggregate: `603` cases passed, `5` failed, and `4` were deselected; four failures were stale schema expectations and one was a timing race, with a targeted `33`-pass repair run. The current `R-ASTRA-101` local-gate rerun is recorded separately in E12; the earlier failed identities remain visible. |
+| `R-ASTRA-101-E10` | External production prerequisites: local GHCR publication, replacement Linode, GitHub OAuth app credentials, Cloudflare Tunnel owner-only canary, and VM Backup recovery rehearsal. | External provider consoles; no completion timestamp or remote revision supplied. | **Pending**. The old VM and current local app remain untouched. This row blocks public exposure and any production release claim. |
+| `R-ASTRA-101-E11` | Authored documentation validation, coverage, self-test, and whitespace checks. | Native x86_64; current dirty worktree; exact UTC and source revision were not supplied. | **Pass**: with `TMPDIR=/home/james/.cache/stock-probs-gate-tmp`, `scripts/check-doc-coverage-self-test.py` exited 0 with 26 cases and `tests/test_docs_validation.py -q` exited 0 with 57/57 tests (collect-only confirmed 57); `scripts/validate_docs.py` reported 9 categories and 13 topics; `scripts/check-doc-coverage.py --root . --map documentation-map.json` checked 133 mapped files; and scoped `git diff --check` passed. Earlier quota-limited attempts remain historical: the self-test exited 1 during fixture creation and pytest exited 1 after 40 passed tests and 13 setup errors, both with errno 122. Reviewer `LUNA MAX docs`. |
+| `R-ASTRA-101-E12` | Full local security/deployment gate for the current authentication and private deployment follow-on. | Native x86_64; `2026-09-27T10:59:03Z`–`2026-09-27T11:11:45Z`; dirty `HEAD` `893a146dcb0cf3ba03b435307dec1fb138941cd0`; command `TMPDIR=/home/james/.cache/stock-probs-gate-tmp TASK_ID=R-ASTRA-101 ./scripts/local-gate.sh check`. | **Pass**, exit 0; artifact `test-results/local-gates/R-ASTRA-101-20260927T105903Z/evidence.json`. Python checks: 612 passed, 4 live deselected, 85.36% coverage. Frontend typecheck/build/test: 27 tests passed. Documentation coverage checked 133 files; comment audit covered 229 files. Completed checks were documentation-completeness, frontend-npm-ci-typecheck-build-test-stage, and python-checks. Reviewer was not supplied. This is local dirty-worktree evidence; it does not claim GHCR publication, a remote image, a Linode deployment, public exposure, or a release checkpoint. |
+
+The local source and completed gate provide implementation and bounded security evidence, but
+`R-ASTRA-101` remains **In progress** until the external prerequisites complete. The historical
+R-ASTRA-100 aggregate remains separately recorded and is not relabelled by E12.
+The final deployment must record the exact reviewed `main` revision, GHCR manifest digest,
+Cloudflare hostname, Linode host, schema, verified backups, canary result, and VM Backup rehearsal.
+No public route, GitHub OAuth credential, tunnel token, production secret, or private key belongs in
+this plan or any tracked documentation.
+
 ### Current approval status
 
-`EXP-M09` remains the current approval-gated export item. `R-ASTRA-100` is **Completed for its
-declared UI scope** with the evidence recorded above; this does not create a broader release or
-export checkpoint. `M09-E18`, `M07-E20`, and `R-ASTRA-98` remain recorded for their declared scopes.
-The remaining M09 action is `EXP-M09`: full-session export, secret review, local commit, push,
-and exact remote verification. Unavailable evidence categories—actual screen reader, physical
-mobile, true browser zoom, native ARM64 performance, provider runtime, and project-profile/skill
-runtime discovery—remain separate limitations and are not converted into passes by this follow-on.
+`R-ASTRA-101` is the current in-progress authentication and private deployment follow-on.
+`EXP-M09` remains a separate historical export action and is not a production deployment gate.
+`R-ASTRA-100` is **Completed for its declared UI scope** with the evidence recorded above; this
+does not create a broader release or export checkpoint. `M09-E18`, `M07-E20`, and `R-ASTRA-98`
+remain recorded for their declared scopes. Unavailable evidence categories—actual screen reader,
+physical mobile, true browser zoom, native ARM64 performance, provider runtime, CUA, and
+project-profile/skill runtime discovery—remain separate limitations and are not converted into
+passes by this follow-on.
 
 `M09-E13` is a frozen historical constraint for the M09 contract, not a current absence-audit
 task. Its original rejected M09 scope remains intact. Later `R-ASTRA-98` separately

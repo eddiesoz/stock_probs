@@ -1,6 +1,7 @@
 import Script from "next/script";
 
 import { WorkspaceLink } from "../components/workspace-link";
+import { AuthControls } from "../components/auth-controls";
 import { Settings } from "./settings";
 
 // Existing app.js owns interaction while this route supplies stable server-rendered hooks.
@@ -26,6 +27,7 @@ export default function DashboardPage() {
               <WorkspaceLink path="/tools">Tools</WorkspaceLink>
             </nav>
             <Settings />
+            <AuthControls />
           </div>
         </div>
         <div className="system-state" role="status" aria-live="polite" aria-label="System status">

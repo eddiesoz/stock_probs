@@ -7,6 +7,8 @@ from pathlib import Path
 ROOTS = ("src", "tests", "scripts", "tools", ".opencode", ".github")
 STANDALONE = ("pyproject.toml", "Makefile", "opencode.json")
 EXCLUDED_PARTS = {
+    # The deployment MCP has its own ignored uv environment under tools/.
+    ".venv",
     "node_modules",
     ".next",
     "out",

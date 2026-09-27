@@ -91,9 +91,7 @@ def _assert_sensitive_reads_are_terminally_denied(
         assert matches, path
         assert matches[-1][1] == "deny", path
         assert matches[-1][0] > broad_allow, path
-    general_matches = [
-        effect for pattern, effect in rules if fnmatchcase("src/module.py", pattern)
-    ]
+    general_matches = [effect for pattern, effect in rules if fnmatchcase("src/module.py", pattern)]
     assert general_matches[-1] == "allow"
 
 
@@ -199,7 +197,7 @@ def test_official_playwright_mcp_is_pinned_headless_and_isolated():
 
     assert package["devDependencies"]["@playwright/mcp"] == "0.0.80"
     assert set(config["mcp"]) == {"servers"}
-    assert set(config["mcp"]["servers"]) == {"playwright"}
+    assert set(config["mcp"]["servers"]) == {"playwright", "signal-ledger-deploy"}
     assert command == [
         "./scripts/playwright-mcp.sh",
         "--headless",
@@ -256,13 +254,9 @@ def test_native_agents_keep_builtins_for_sol_and_luna_for_custom_subagents():
     for agent in builtin_agents.values():
         assert "permissions" in agent
         assert "permission" not in agent
-        assert all(
-            set(rule) == {"action", "resource", "effect"}
-            for rule in agent["permissions"]
-        )
+        assert all(set(rule) == {"action", "resource", "effect"} for rule in agent["permissions"])
     assert all(
-        builtin_agents[agent]["model"] == "openai/gpt-5.6-sol#medium"
-        for agent in ("build", "plan")
+        builtin_agents[agent]["model"] == "openai/gpt-5.6-sol#medium" for agent in ("build", "plan")
     )
     build_permissions = builtin_agents["build"]["permissions"]
     assert {"action": "edit", "resource": "*", "effect": "deny"} in build_permissions
@@ -297,9 +291,7 @@ def test_native_agents_keep_builtins_for_sol_and_luna_for_custom_subagents():
     assert all("ponytail" not in profile.lower() for profile in profiles.values())
 
     commands = ROOT / ".opencode/commands"
-    assert {"qa.md", "handoff.md", "resume.md"} <= {
-        path.name for path in commands.glob("*.md")
-    }
+    assert {"qa.md", "handoff.md", "resume.md"} <= {path.name for path in commands.glob("*.md")}
     assert "agent: luna-qa" in (commands / "qa.md").read_text()
     assert "agent: build" in (commands / "handoff.md").read_text()
     assert "agent: build" in (commands / "resume.md").read_text()
@@ -319,9 +311,7 @@ def test_sensitive_read_rules_are_final_and_fail_closed_for_build_and_luna():
     _assert_sensitive_reads_are_terminally_denied(build_rules)
 
     for path in sorted((ROOT / ".opencode/agents").glob("*.md")):
-        _assert_sensitive_reads_are_terminally_denied(
-            _frontmatter_read_rules(path.read_text())
-        )
+        _assert_sensitive_reads_are_terminally_denied(_frontmatter_read_rules(path.read_text()))
 
 
 def test_local_gate_and_frontend_fail_closed_on_required_boundaries():
@@ -428,7 +418,7 @@ def test_reproducible_arm64_toolchains_are_pinned_and_generated_files_ignored():
     assert 'NODE_VERSION="22.19.0"' in node_installer
     assert node_installer.count("NODE_SHA256=") == 2 and "--max-time 120" in node_installer
     assert "arm64" in node_installer and "x64" in node_installer
-    assert "mypy==1.17.1" in requirements and "setuptools==80.9.0" in requirements
+    assert "mypy==1.17.1" in requirements and "setuptools==84.0.0" in requirements
     assert "node_modules/" in ignore and "test-results/" in ignore
     assert browser_lock["lockfileVersion"] == 3
 
@@ -459,6 +449,4 @@ def test_browser_gate_allocates_an_isolated_loopback_port_by_default():
 
     assert 's.bind(("127.0.0.1", 0))' in makefile
     assert 'STOCK_PROBS_BROWSER_PORT="$$PORT"' in makefile
-    assert "reuseExistingServer: false" in (
-        ROOT / "tools/browser/playwright.config.js"
-    ).read_text()
+    assert "reuseExistingServer: false" in (ROOT / "tools/browser/playwright.config.js").read_text()

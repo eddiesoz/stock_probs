@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
+import { apiFetch } from "../../../components/auth-client";
 import { replaceInstrumentInUrl } from "../../../components/workspace-context-url";
 import { apiPayload, delay, snapshotState, time } from "../client-utils";
 import styles from "./workspace.module.css";
@@ -200,7 +201,7 @@ export function ForecastWorkspace() {
     setResponse(null);
 
     try {
-      const apiResponse = await fetch("/api/v1/forecasts", {
+      const apiResponse = await apiFetch("/api/v1/forecasts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ symbol: normalized, asset_type: assetType, interval }),

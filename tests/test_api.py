@@ -10,6 +10,7 @@ import json
 import re
 from contextlib import contextmanager
 from copy import deepcopy
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -18,14 +19,17 @@ from fastapi.testclient import TestClient
 from uvicorn.protocols.http import h11_impl
 
 from stock_probs.api import create_app
+from stock_probs.auth import SESSION_COOKIE_NAME
 from stock_probs.backup import BackupError
 from stock_probs.config import Settings
 from stock_probs.domain import DomainError, calculate_forecasts
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import SCHEMA_VERSION, RepositoryError
 
+OWNER_USER_ID = 1
+
 _SCRIPT = re.compile(r"<script\b(?P<attrs>[^>]*)>(?P<text>.*?)</script>", re.I | re.S)
-_SCRIPT_SRC = re.compile(r'''(?:^|\s)src\s*=\s*["'](?P<src>[^"']+)["']''', re.I)
+_SCRIPT_SRC = re.compile(r"""(?:^|\s)src\s*=\s*["'](?P<src>[^"']+)["']""", re.I)
 
 
 def _forecast(client, symbol="ACDC", asset_type="stock", interval=None):
@@ -185,9 +189,9 @@ def test_openapi_uses_concrete_success_and_safe_error_schemas(client):
         "quantity",
         "added_at",
     }
-    assert schemas["InstrumentListItemResponse"]["properties"]["quantity"]["anyOf"][0][
-        "minimum"
-    ] == 0
+    assert (
+        schemas["InstrumentListItemResponse"]["properties"]["quantity"]["anyOf"][0]["minimum"] == 0
+    )
     assert schemas["BackupCreatedResponse"]["additionalProperties"] is False
     assert set(schemas["BackupCreatedResponse"]["required"]) == {
         "created",
@@ -303,9 +307,12 @@ def test_openapi_publishes_concrete_dashboard_filter_and_download_contracts(clie
         "filters",
         "sort",
     }
-    assert contract["components"]["schemas"]["HistoryJsonExportResponse"]["properties"][
-        "generated_at"
-    ]["format"] == "date-time"
+    assert (
+        contract["components"]["schemas"]["HistoryJsonExportResponse"]["properties"][
+            "generated_at"
+        ]["format"]
+        == "date-time"
+    )
 
 
 def test_non_integer_history_details_are_safe_404s_not_export_aliases(client):
@@ -559,8 +566,7 @@ def test_company_and_fund_names_remain_attached_to_instrument_identity(settings)
     assert stock_identity["canonical_symbol"] == "ACDC"
     assert stock_identity["asset_type"] == "stock"
     assert {
-        key: stock_identity[key]
-        for key in ("exchange", "currency", "timezone", "quote_type")
+        key: stock_identity[key] for key in ("exchange", "currency", "timezone", "quote_type")
     } == {
         "exchange": "NMS",
         "currency": "USD",
@@ -605,9 +611,7 @@ def test_instrument_lookup_is_bounded_and_provider_failures_are_safe(settings):
 
     with TestClient(create_app(settings, FixtureProvider())) as isolated:
         no_match = isolated.get("/api/v1/instruments", params={"query": "unknown"})
-        invalid_limit = isolated.get(
-            "/api/v1/instruments", params={"query": "ACDC", "limit": 6}
-        )
+        invalid_limit = isolated.get("/api/v1/instruments", params={"query": "ACDC", "limit": 6})
         provider_failure = isolated.get("/api/v1/instruments", params={"query": "FAIL"})
     with TestClient(create_app(settings, BrokenLookupProvider())) as isolated:
         unexpected = isolated.get("/api/v1/instruments", params={"query": "ACDC"})
@@ -1003,9 +1007,7 @@ def test_success_repeat_failure_and_searchable_history(client, monkeypatch):
 
     assert first.status_code == 201
     assert first.json()["event"]["status"] == "successful"
-    assert first.headers["location"] == (
-        f"/api/v1/saved-forecasts/{first.json()['event']['id']}"
-    )
+    assert first.headers["location"] == (f"/api/v1/saved-forecasts/{first.json()['event']['id']}")
     assert first.headers["x-request-id"] == first.json()["event"]["request_id"]
     assert first.json()["input"]["company_name"] == "ProFrac Holding Corp."
     assert first.json()["input"]["instrument_identity"]["canonical_symbol"] == "ACDC"
@@ -1134,15 +1136,13 @@ def test_forecast_api_exposes_complete_typed_m03_contract(client):
         "fixture_base_symbol",
     }
     assert captured["provider_metadata"]["intraday_archive_limit"]["approximate_days"] == 60
-    assert "approximately 60" in captured["provider_metadata"]["intraday_archive_limit"][
-        "statement"
-    ]
+    assert (
+        "approximately 60" in captured["provider_metadata"]["intraday_archive_limit"]["statement"]
+    )
     assert captured["provider_metadata"]["session_scope"] == (
         "regular session only (prepost=False)"
     )
-    assert captured["provider_metadata"]["exchange_timezone"] == captured[
-        "exchange_timezone"
-    ]
+    assert captured["provider_metadata"]["exchange_timezone"] == captured["exchange_timezone"]
     for series in ("daily", "intraday"):
         coverage = captured["provider_metadata"][f"{series}_coverage"]
         assert set(coverage) == {"first", "last", "count"}
@@ -1222,9 +1222,7 @@ def test_forecast_api_exposes_complete_typed_m03_contract(client):
         assert sum(direction[key] for key in ("down", "unchanged", "up")) == pytest.approx(1)
         counts = direction["event_counts"]
         assert counts["sample_count"] == result["sample_size"]
-        assert sum(counts[key] for key in ("down", "unchanged", "up")) == result[
-            "sample_size"
-        ]
+        assert sum(counts[key] for key in ("down", "unchanged", "up")) == result["sample_size"]
         for uncertainty in direction["uncertainty"].values():
             assert set(uncertainty) == {"low", "high", "level", "method"}
             assert 0 <= uncertainty["low"] <= uncertainty["high"] <= 1
@@ -1239,9 +1237,9 @@ def test_forecast_api_exposes_complete_typed_m03_contract(client):
             ("gte", 5.0),
             ("gte", 10.0),
         ]
-        assert [(item["operator"], item["threshold"]) for item in result[
-            "threshold_probabilities"
-        ]] == expected_thresholds
+        assert [
+            (item["operator"], item["threshold"]) for item in result["threshold_probabilities"]
+        ] == expected_thresholds
         for threshold in result["threshold_probabilities"]:
             assert set(threshold) == {
                 "operator",
@@ -1255,9 +1253,7 @@ def test_forecast_api_exposes_complete_typed_m03_contract(client):
                 "rare_event",
             }
             assert 0 <= threshold["probability"] <= 1
-            assert threshold["event_count"] <= threshold["sample_count"] == result[
-                "sample_size"
-            ]
+            assert threshold["event_count"] <= threshold["sample_count"] == result["sample_size"]
         for name, metric in result["conditional_magnitudes"].items():
             assert name in {"gain", "loss"}
             assert set(metric) == {
@@ -1277,9 +1273,10 @@ def test_forecast_api_exposes_complete_typed_m03_contract(client):
             assert 0 < interval["price"]["low"] <= interval["price"]["high"]
         accounting = result["sample_accounting"]
         assert accounting["effective_count"] == result["sample_size"]
-        assert accounting["eligible_count"] + accounting["excluded_anomaly_count"] == accounting[
-            "candidate_count"
-        ]
+        assert (
+            accounting["eligible_count"] + accounting["excluded_anomaly_count"]
+            == accounting["candidate_count"]
+        )
 
         evaluation = result["evaluation"]
         assert set(evaluation) == {
@@ -1298,9 +1295,7 @@ def test_forecast_api_exposes_complete_typed_m03_contract(client):
             "information_rule",
         }
         assert evaluation["status"] == "available"
-        assert evaluation["date_range"]["first_origin"] <= evaluation["date_range"][
-            "last_origin"
-        ]
+        assert evaluation["date_range"]["first_origin"] <= evaluation["date_range"]["last_origin"]
         for evaluated in (evaluation["forecast_model"], evaluation["baseline"]):
             assert set(evaluated["direction_brier"]["components"]) == {
                 "down",
@@ -1387,9 +1382,7 @@ def test_saved_forecast_interval_reopen_requires_the_recorded_interval(client):
     expected_results = created.json()["results"]
 
     without_interval = client.get(f"/api/v1/saved-forecasts/{event_id}")
-    same_interval = client.get(
-        f"/api/v1/saved-forecasts/{event_id}", params={"interval": "daily"}
-    )
+    same_interval = client.get(f"/api/v1/saved-forecasts/{event_id}", params={"interval": "daily"})
     mismatched_interval = client.get(
         f"/api/v1/saved-forecasts/{event_id}", params={"interval": "weekly"}
     )
@@ -1445,7 +1438,11 @@ def test_forecast_api_rejects_invalid_numerical_service_results(settings, monkey
         valid = _forecast(isolated).json()
         invalid = json.loads(json.dumps(valid))
         corrupt(invalid["results"][0])
-        monkeypatch.setattr(application.state.service, "search", lambda *_args: invalid)
+        monkeypatch.setattr(
+            application.state.service,
+            "search",
+            lambda *_args, owner_user_id: invalid,
+        )
         rejected = _forecast(isolated)
 
     assert rejected.status_code == 500
@@ -1453,16 +1450,17 @@ def test_forecast_api_rejects_invalid_numerical_service_results(settings, monkey
     assert "input" not in rejected.json() and "results" not in rejected.json()
 
 
-def test_malformed_service_forecast_without_event_is_failed_and_audited_once(
-    settings, monkeypatch
-):
+def test_malformed_service_forecast_without_event_is_failed_and_audited_once(settings, monkeypatch):
     """Response validation owns an audit when a defective service returned no event at all."""
 
     application = create_app(settings, FixtureProvider())
     monkeypatch.setattr(
         application.state.service,
         "search",
-        lambda *_args: {"event": None, "input": {"provider_secret": "do-not-leak"}},
+        lambda *_args, owner_user_id: {
+            "event": None,
+            "input": {"provider_secret": "do-not-leak"},
+        },
     )
     with TestClient(application, raise_server_exceptions=False) as isolated:
         response = _forecast(isolated)
@@ -1490,9 +1488,10 @@ def test_malformed_service_forecast_reuses_already_persisted_event_without_dupli
     application = create_app(settings, FixtureProvider())
     request_id = "service-audit-request"
 
-    def malformed_after_audit(submitted_symbol, asset_type, interval=None):
+    def malformed_after_audit(submitted_symbol, asset_type, interval=None, *, owner_user_id):
         now = datetime.now(UTC)
         event_id = application.state.repository.record_failure(
+            owner_user_id=owner_user_id,
             request_id=request_id,
             submitted_symbol=submitted_symbol,
             normalized_symbol="ACDC",
@@ -1616,15 +1615,11 @@ def test_dashboard_history_filters_every_public_facet_and_reports_stable_paging(
     by_model = client.get(
         "/api/v1/history", params={"model_version": acdc["input"]["model"]["version"]}
     ).json()
-    by_horizon = client.get(
-        "/api/v1/history", params={"horizon": "completed_5m_to_close"}
-    ).json()
+    by_horizon = client.get("/api/v1/history", params={"horizon": "completed_5m_to_close"}).json()
     by_request = client.get(
         "/api/v1/history", params={"request_id": repeated["event"]["request_id"]}
     ).json()
-    by_event = client.get(
-        "/api/v1/history", params={"event_id": spy["event"]["id"]}
-    ).json()
+    by_event = client.get("/api/v1/history", params={"event_id": spy["event"]["id"]}).json()
     by_date = client.get(
         "/api/v1/history",
         params={
@@ -1743,9 +1738,7 @@ def test_chunked_search_is_rejected_without_unbounded_buffering_and_audited(clie
 
 
 @pytest.mark.parametrize("content_length", ["invalid", "-1", "+2", "1, 1", "0" * 21])
-def test_invalid_content_length_is_a_single_audited_forecast_rejection(
-    client, content_length
-):
+def test_invalid_content_length_is_a_single_audited_forecast_rejection(client, content_length):
     before = client.get("/api/v1/history").json()["total"]
 
     response = client.post(
@@ -1857,9 +1850,7 @@ def test_host_origin_and_cross_site_rejections_never_create_audit_events(client)
             json=payload,
             headers={"Origin": "https://attacker.example"},
         ),
-        client.post(
-            "/api/v1/forecasts", json=payload, headers={"Sec-Fetch-Site": "cross-site"}
-        ),
+        client.post("/api/v1/forecasts", json=payload, headers={"Sec-Fetch-Site": "cross-site"}),
     ]
 
     assert [response.status_code for response in responses] == [400, 403, 403]
@@ -1871,8 +1862,7 @@ def test_uvicorn_rejects_wire_malformed_framing_before_the_asgi_application(clie
 
     parser = h11_impl.h11.Connection(h11_impl.h11.SERVER)
     malformed_wire_request = (
-        b"POST /api/v1/forecasts HTTP/1.1\r\n"
-        b"Host: 127.0.0.1\r\nContent-Length: invalid\r\n\r\n{}"
+        b"POST /api/v1/forecasts HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: invalid\r\n\r\n{}"
     )
 
     parser.receive_data(malformed_wire_request)
@@ -1996,6 +1986,99 @@ def test_saved_reopen_never_calls_provider_but_fresh_cutoff_is_new_audited_analy
     ]
 
 
+def test_foreign_successful_reconstruction_matches_unknown_audit_shape(settings):
+    """An inaccessible source has the same safe response and audit shape as an unknown ID."""
+
+    protected_settings = replace(
+        settings,
+        auth_mode="local",
+        auth_session_secret="reconstruction-test-session-secret",  # noqa: S106
+        auth_public_origin="http://testserver",
+        bootstrap_username="admin",
+        bootstrap_password="reconstruction-admin-password",  # noqa: S106
+        bootstrap_member_username="member",
+        bootstrap_member_password="reconstruction-member-password",  # noqa: S106
+    )
+    now = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+    application = create_app(protected_settings, FixtureProvider(), lambda: now)
+    with TestClient(application) as client:
+        admin_login = client.post(
+            "/api/v1/auth/local/login",
+            json={"username": "admin", "password": "reconstruction-admin-password"},
+        )
+        assert admin_login.status_code == 200, admin_login.text
+        admin_cookie = client.cookies.get(SESSION_COOKIE_NAME)
+        assert isinstance(admin_cookie, str)
+        admin_forecast = client.post(
+            "/api/v1/forecasts",
+            json={"symbol": "ACDC", "asset_type": "stock"},
+            headers={"x-csrf-token": admin_login.json()["csrf_token"]},
+        )
+        assert admin_forecast.status_code == 201, admin_forecast.text
+        source_event_id = admin_forecast.json()["event"]["id"]
+
+        member_login = client.post(
+            "/api/v1/auth/local/login",
+            json={"username": "member", "password": "reconstruction-member-password"},
+        )
+        assert member_login.status_code == 200, member_login.text
+        response = client.post(
+            f"/api/v1/history/{source_event_id}/reconstructions",
+            json={"cutoff": "2025-01-10T16:55:00Z"},
+            headers={"x-csrf-token": member_login.json()["csrf_token"]},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "historical_source_unavailable"
+        assert "ACDC" not in response.text
+        foreign_history = client.get(
+            "/api/v1/history",
+            params={"analysis_kind": "fresh_historical_reconstruction"},
+        )
+        assert foreign_history.status_code == 200
+        assert foreign_history.json()["total"] == 1
+        foreign_item = foreign_history.json()["items"][0]
+        assert foreign_item["status"] == "failed"
+        assert foreign_item["error_code"] == "historical_source_unavailable"
+        assert foreign_item["source_event_id"] is None
+        assert foreign_item["requested_source_event_id"] == source_event_id
+        assert foreign_item["submitted_symbol"] == f"<history event {source_event_id}>"
+
+        unknown = client.post(
+            "/api/v1/history/900001/reconstructions",
+            json={"cutoff": "2025-01-10T16:55:00Z"},
+            headers={"x-csrf-token": member_login.json()["csrf_token"]},
+        )
+        assert unknown.status_code == 404
+        assert unknown.json()["error"]["code"] == response.json()["error"]["code"]
+        member_history = client.get(
+            "/api/v1/history",
+            params={"analysis_kind": "fresh_historical_reconstruction"},
+        )
+        assert member_history.status_code == 200
+        assert member_history.json()["total"] == 2
+        items = {item["requested_source_event_id"]: item for item in member_history.json()["items"]}
+        unknown_item = items[900001]
+        for field in (
+            "analysis_kind",
+            "asset_type",
+            "normalized_symbol",
+            "source_event_id",
+            "requested_cutoff",
+            "status",
+            "error_code",
+            "error_message",
+            "run_id",
+            "forecast_available",
+        ):
+            assert unknown_item[field] == foreign_item[field]
+        assert unknown_item["submitted_symbol"] == "<history event 900001>"
+
+        client.cookies.clear()
+        client.cookies.set(SESSION_COOKIE_NAME, admin_cookie, path="/")
+        assert client.get(f"/api/v1/history/{source_event_id}").status_code == 200
+
+
 def test_transport_invalid_reconstruction_is_one_labelled_failed_event(client):
     source_event_id = _forecast(client).json()["event"]["id"]
 
@@ -2091,12 +2174,15 @@ def test_unknown_reconstruction_transport_failures_are_safe_and_audited_once(set
         "validation_error",
         "invalid_content_length",
     ]
-    assert all(response.json()["error"]["request_id"] for response in (
-        unknown,
-        oversized,
-        malformed_json,
-        malformed_length,
-    ))
+    assert all(
+        response.json()["error"]["request_id"]
+        for response in (
+            unknown,
+            oversized,
+            malformed_json,
+            malformed_length,
+        )
+    )
     assert history["total"] == 4
     assert all(item["status"] == "failed" for item in history["items"])
     assert all(item["source_event_id"] is None for item in history["items"])
@@ -2106,9 +2192,7 @@ def test_unknown_reconstruction_transport_failures_are_safe_and_audited_once(set
         900003,
         900004,
     }
-    events_by_requested_id = {
-        item["requested_source_event_id"]: item for item in history["items"]
-    }
+    events_by_requested_id = {item["requested_source_event_id"]: item for item in history["items"]}
     assert events_by_requested_id[900001]["requested_cutoff"] == "2025-01-10T16:55:00+00:00"
     assert provider.cutoff_calls == 0
 
@@ -2179,15 +2263,11 @@ def test_loopback_origin_and_host_are_enforced(client):
     assert malformed_origin.json()["error"]["code"] == "origin_rejected"
     assert rejected_origin.headers["x-content-type-options"] == "nosniff"
 
-    wrong_loopback_port = client.get(
-        "/api/v1/health", headers={"Origin": "http://testserver:9999"}
-    )
+    wrong_loopback_port = client.get("/api/v1/health", headers={"Origin": "http://testserver:9999"})
     zero_loopback_port = client.get(
         "/api/v1/health", headers={"Origin": "http://localhost:0", "Host": "localhost"}
     )
-    cross_site_fetch = client.get(
-        "/api/v1/health", headers={"Sec-Fetch-Site": "cross-site"}
-    )
+    cross_site_fetch = client.get("/api/v1/health", headers={"Sec-Fetch-Site": "cross-site"})
     same_origin = client.get("/api/v1/health", headers={"Origin": "http://testserver"})
     assert wrong_loopback_port.status_code == 403
     assert zero_loopback_port.status_code == 403
@@ -2251,9 +2331,7 @@ def test_failed_search_prices_and_path_bounds_use_structured_errors(client):
 
     no_prices = client.get(f"/api/v1/history/{failed_event}/prices")
     invalid_id = client.get("/api/v1/forecasts/0")
-    invalid_limit = client.get(
-        f"/api/v1/history/{failed_event}/prices", params={"limit": 501}
-    )
+    invalid_limit = client.get(f"/api/v1/history/{failed_event}/prices", params={"limit": 501})
 
     assert no_prices.status_code == 409
     assert no_prices.json()["error"]["code"] == "forecast_unavailable"
@@ -2283,9 +2361,7 @@ def test_backup_and_restore_successes_expose_only_api_neutral_integrity_fields(c
     """Operational adapters may return internal metadata, but the browser contract may not."""
 
     _forecast(client)
-    created = client.post(
-        "/api/v1/operations/backups", json={"name": "api-round-trip.spbackup"}
-    )
+    created = client.post("/api/v1/operations/backups", json={"name": "api-round-trip.spbackup"})
     restored = client.post(
         "/api/v1/operations/restores",
         json={"name": "api-round-trip.spbackup", "promote": False},
@@ -2390,9 +2466,7 @@ def test_backup_and_repository_failures_are_stable_safe_and_correlated(
     monkeypatch.setattr(application.state.backups, "restore", fail_restore)
     caplog.set_level("ERROR", logger="stock_probs.api")
     with TestClient(application) as isolated:
-        backup = isolated.post(
-            "/api/v1/operations/backups", json={"name": "safe-name.spbackup"}
-        )
+        backup = isolated.post("/api/v1/operations/backups", json={"name": "safe-name.spbackup"})
         restore = isolated.post(
             "/api/v1/operations/restores",
             json={"name": "safe-name.spbackup", "promote": True},
@@ -2432,9 +2506,7 @@ def test_unexpected_backup_and_restore_failures_are_generic_correlated_and_safel
     monkeypatch.setattr(application.state.backups, "restore", fail_unexpected)
     caplog.set_level("ERROR", logger="stock_probs.api")
     with TestClient(application, raise_server_exceptions=False) as isolated:
-        backup = isolated.post(
-            "/api/v1/operations/backups", json={"name": "safe-name.spbackup"}
-        )
+        backup = isolated.post("/api/v1/operations/backups", json={"name": "safe-name.spbackup"})
         restore = isolated.post(
             "/api/v1/operations/restores",
             json={"name": "safe-name.spbackup", "promote": False},
@@ -2443,8 +2515,10 @@ def test_unexpected_backup_and_restore_failures_are_generic_correlated_and_safel
     assert backup.status_code == restore.status_code == 500
     assert backup.json()["error"]["code"] == "internal_error"
     assert restore.json()["error"]["code"] == "internal_error"
-    assert backup.json()["error"]["message"] == restore.json()["error"]["message"] == (
-        "The local service could not complete the request."
+    assert (
+        backup.json()["error"]["message"]
+        == restore.json()["error"]["message"]
+        == ("The local service could not complete the request.")
     )
     for response in (backup, restore):
         assert re.fullmatch(
@@ -2556,12 +2630,8 @@ def test_json_and_csv_exports_include_and_filter_rolling_horizons(client):
     assert json_horizons == csv_horizons == expected
 
     for horizon in expected:
-        json_filtered = client.get(
-            "/api/v1/history-export.json", params={"horizon": horizon}
-        )
-        csv_filtered = client.get(
-            "/api/v1/history-export.csv", params={"horizon": horizon}
-        )
+        json_filtered = client.get("/api/v1/history-export.json", params={"horizon": horizon})
+        csv_filtered = client.get("/api/v1/history-export.csv", params={"horizon": horizon})
         filtered_payload = json_filtered.json()
         filtered_rows = list(csv.DictReader(io.StringIO(csv_filtered.text, newline="")))
         filtered_json_horizons = {
@@ -2602,6 +2672,7 @@ def test_rolling_export_filters_before_the_hundred_event_cap(client):
         unique_snapshot["content_fingerprint"] = fingerprint
         unique_snapshot["provenance"]["content_fingerprint"] = fingerprint
         return repository.record_success(
+            owner_user_id=OWNER_USER_ID,
             request_id=f"rolling-export-{index}",
             submitted_symbol="ACDC",
             asset_type="stock",
@@ -2616,12 +2687,8 @@ def test_rolling_export_filters_before_the_hundred_event_cap(client):
         record(index, weekly_snapshot, weekly_results, now + timedelta(seconds=index))
 
     unfiltered = client.get("/api/v1/history-export.json")
-    daily_json = client.get(
-        "/api/v1/history-export.json", params={"horizon": "daily_1"}
-    )
-    daily_csv = client.get(
-        "/api/v1/history-export.csv", params={"horizon": "daily_1"}
-    )
+    daily_json = client.get("/api/v1/history-export.json", params={"horizon": "daily_1"})
+    daily_csv = client.get("/api/v1/history-export.csv", params={"horizon": "daily_1"})
 
     assert unfiltered.status_code == daily_json.status_code == daily_csv.status_code == 200
     assert unfiltered.json()["total_events"] == 101
@@ -2631,13 +2698,9 @@ def test_rolling_export_filters_before_the_hundred_event_cap(client):
     payload = daily_json.json()
     rows = list(csv.DictReader(io.StringIO(daily_csv.text, newline="")))
     json_event_ids = [
-        record["event_id"]
-        for record in payload["records"]
-        if record["record_type"] == "event"
+        record["event_id"] for record in payload["records"] if record["record_type"] == "event"
     ]
-    csv_event_ids = [
-        int(row["event_id"]) for row in rows if row["record_type"] == "event"
-    ]
+    csv_event_ids = [int(row["event_id"]) for row in rows if row["record_type"] == "event"]
 
     assert payload["total_events"] == payload["exported_events"] == 1
     assert payload["truncated"] is False
@@ -2662,6 +2725,7 @@ def test_http_bulk_exports_keep_five_reads_for_one_hundred_unique_runs(client, m
         unique_snapshot["content_fingerprint"] = fingerprint
         unique_snapshot["provenance"]["content_fingerprint"] = fingerprint
         repository.record_success(
+            owner_user_id=OWNER_USER_ID,
             request_id=f"http-bulk-{index}",
             submitted_symbol="ACDC",
             asset_type="stock",
@@ -2696,8 +2760,10 @@ def test_http_bulk_exports_keep_five_reads_for_one_hundred_unique_runs(client, m
     ]
 
     assert json_export.status_code == csv_export.status_code == 200
-    assert len(json_reads) == 5
-    assert len(csv_reads) == 5
+    # The owner-scoped export performs two bounded principal checks in addition to the
+    # five bulk data reads; the count must remain constant in the number of events.
+    assert len(json_reads) == 7
+    assert len(csv_reads) == 7
     assert json_export.json()["counts"] == {"events": 100, "runs": 100, "results": 200}
     assert len(list(csv.DictReader(io.StringIO(csv_export.text, newline="")))) == 400
 
@@ -2729,9 +2795,9 @@ def test_history_downloads_apply_identical_filters_sort_and_safe_attachment_cont
     assert payload["filters"]["symbol"] == "ACDC"
     assert payload["filters"]["submitted_from"] == "2025-01-10T17:02:59Z"
     assert payload["sort"] == {"field": "request_id", "direction": "asc"}
-    assert {
-        row["event_id"] for row in csv_rows if row["record_type"] == "event"
-    } == {str(acdc["event"]["id"])}
+    assert {row["event_id"] for row in csv_rows if row["record_type"] == "event"} == {
+        str(acdc["event"]["id"])
+    }
     assert all(json.loads(row["export_filters"])["symbol"] == "ACDC" for row in csv_rows)
     assert all(
         json.loads(row["export_sort"]) == {"field": "request_id", "direction": "asc"}
@@ -2758,6 +2824,7 @@ def test_exact_event_downloads_filter_before_cap_and_keep_json_csv_parity(client
     now = datetime(2025, 1, 10, 17, 4, tzinfo=UTC)
     for index in range(100):
         failed_id = repository.record_failure(
+            owner_user_id=OWNER_USER_ID,
             request_id=f"newer-failure-{index}",
             submitted_symbol="FAIL",
             normalized_symbol="FAIL",
@@ -2807,9 +2874,7 @@ def test_exact_event_downloads_filter_before_cap_and_keep_json_csv_parity(client
             record["data"] for record in payload["records"]
         ]
         exported_ids = [
-            record["event_id"]
-            for record in payload["records"]
-            if record["record_type"] == "event"
+            record["event_id"] for record in payload["records"] if record["record_type"] == "event"
         ]
         assert exported_ids == ([] if expected_event_id is None else [expected_event_id])
 
@@ -2856,6 +2921,7 @@ def test_history_exports_sort_all_matches_before_the_hundred_event_cap(client, m
     expected_ids = []
     for index in range(101):
         event_id = repository.record_failure(
+            owner_user_id=OWNER_USER_ID,
             request_id=f"sorted-{index:03d}",
             submitted_symbol="FAIL",
             normalized_symbol="FAIL",
@@ -2902,7 +2968,9 @@ def test_history_exports_sort_all_matches_before_the_hundred_event_cap(client, m
     assert json_ids == csv_ids == expected_ids
     assert payload["total_events"] == 101
     assert payload["exported_events"] == 100 and payload["truncated"] is True
-    assert json_reads == csv_reads == 2
+    # Ownership validation adds one principal lookup per export while preserving the
+    # constant-size bulk query plan.
+    assert json_reads == csv_reads == 4
 
 
 def test_environment_host_setting_fails_closed_without_cli_acknowledgement(monkeypatch):

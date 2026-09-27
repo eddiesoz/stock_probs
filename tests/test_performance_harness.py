@@ -268,7 +268,7 @@ def test_proposed_native_bounds_are_explicit_and_not_environment_overrides():
     assert performance.NEWS_RESPONSE_LIMIT_BYTES == 32 * 1024
     assert performance.NEWS_PROVIDER_DEADLINE_SECONDS == 10
     assert manifest["static_shell_bytes_strict_max"] == performance.STATIC_LIMIT_BYTES
-    assert performance.STATIC_LIMIT_BYTES == 900 * 1024
+    assert performance.STATIC_LIMIT_BYTES == 1_152 * 1024
     source = (ROOT / "scripts/performance_harness.py").read_text()
     assert "STOCK_PROBS_PERF_CONCURRENCY_P95_MS" not in source
     assert "STOCK_PROBS_PERF_PACKAGE_MAX_BYTES" not in source
@@ -388,11 +388,25 @@ def test_browser_budget_manifest_pins_required_protocol_and_bounds():
     assert manifest["cls_max"] == 0.1
     assert manifest["viewports"] == [360, 390, 768, 1280, 1440]
     assert manifest["designated_response_bytes_strict_max"] == 8 * 1024
-    assert manifest["static_shell_bytes_strict_max"] == 900 * 1024
+    assert manifest["static_shell_bytes_strict_max"] == 1_152 * 1024
     assert manifest["response_bytes_max_per_navigation"] == 640 * 1024
     assert manifest["request_count_max_per_navigation"] == 16
     assert "/assets/theme.js" in manifest["allowed_paths"]
+    assert "/api/v1/auth/session" in manifest["allowed_paths"]
+    assert "/sign-in" in manifest["allowed_paths"]
     assert not any(path.startswith("/_next/") for path in manifest["allowed_paths"])
+    static_justification = manifest["justification"]["static_shell_bytes"]
+    assert static_justification["measured_bytes"] == 1_155_082
+    assert static_justification["measured_bytes"] == (
+        static_justification["non_expansion_baseline_bytes"]
+        + static_justification["required_auth_route_html_bytes"]
+        + static_justification["required_auth_expansion_js_css_bytes"]
+    )
+    assert static_justification["limit_bytes"] == manifest["static_shell_bytes_strict_max"]
+    assert static_justification["headroom_bytes"] == (
+        static_justification["limit_bytes"] - static_justification["measured_bytes"]
+    )
+    assert static_justification["limit_bytes"] < static_justification["ceiling_bytes"]
 
 
 @pytest.mark.parametrize(
@@ -418,7 +432,7 @@ def test_static_budget_manifest_invalid_contract_fails_closed(tmp_path, contents
 def test_static_budget_loader_accepts_current_manifest():
     path = ROOT / "tools/browser/performance-budgets.json"
 
-    assert performance._load_static_budget(path) == 900 * 1024
+    assert performance._load_static_budget(path) == 1_152 * 1024
 
 
 def test_static_budget_loader_rejects_oversized_manifest(tmp_path):

@@ -28,6 +28,32 @@ project is needed to observe agent, skill, and MCP discovery after a configurati
 This Codex setup does not alter prior OpenCode receipts or establish provider, project-profile,
 release, export, or remote acceptance.
 
+### Local deployment MCP boundary
+
+Both `.codex/config.toml` and `opencode.json` declare the enabled local
+`signal-ledger-deploy` MCP with `./scripts/deploy-mcp.sh`. The wrapper runs the separate,
+locked `tools/deploy_mcp` project over stdio; Codex allows a 30-second startup and 1,800-second
+tool deadline, while OpenCode declares the same catalog and execution limits. This is a static
+configuration contract. It does not prove that a running parent loaded the server or that an SSH
+target is configured.
+
+The server exposes only five typed tools: `inspect`, `plan_deploy`, `deploy`, `status`, and
+`rollback`. The controller reads one fixed target and SSH identity from its process environment,
+then sends bounded JSON through `ssh -T` to the fixed remote command
+`signal-ledger-deploy-helper`. Tool requests cannot provide shell text, arbitrary host or
+filesystem paths, URLs, Compose edits, registry names, mutable tags, or Docker-socket operations.
+Deployment revisions must be 40-character reviewed commit IDs; image identity is the fixed
+`ghcr.io/jtmb/signal-ledger@sha256:<64-hex-digest>` form. The host helper verifies the reviewed
+revision, registry digest, Compose bytes, schema, backup, and readiness, and only performs a
+schema-compatible rollback. Responses are bounded and credential-free.
+
+After changing either MCP configuration, `scripts/deploy-mcp.sh`, `tools/deploy_mcp/**`, or its
+lock, restart the parent process and open a fresh Codex/OpenCode task to verify that the server
+appears in the tool catalog and that its typed tools are discoverable. A configuration parse,
+file-presence check, or the editing session is not runtime discovery evidence. With
+`OPENCODE_DISABLE_PROJECT_CONFIG=1`, project MCP discovery is **Pending**/**Unavailable** and no
+deployment or provider acceptance may be inferred.
+
 ## Current native OpenCode V2 documentation workflow
 
 Native OpenCode V2 is the current operational workflow. The builtin `build` and `plan` entry

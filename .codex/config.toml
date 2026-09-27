@@ -22,3 +22,8 @@ args = [
 ]
 startup_timeout_sec = 30
 tool_timeout_sec = 30
+
+[mcp_servers.signal_ledger_deploy]
+command = "./scripts/deploy-mcp.sh"
+startup_timeout_sec = 30
+tool_timeout_sec = 1800

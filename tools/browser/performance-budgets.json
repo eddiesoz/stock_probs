@@ -7,7 +7,7 @@
   "overflow_count_max": 0,
   "request_count_max_per_navigation": 16,
   "response_bytes_max_per_navigation": 655360,
-  "static_shell_bytes_strict_max": 921600,
+  "static_shell_bytes_strict_max": 1179648,
   "designated_response_bytes_strict_max": 8192,
   "warmups": 5,
   "measured_samples": 30,
@@ -20,20 +20,22 @@
     "/assets/favicon.svg",
     "/api/v1/readiness",
     "/api/v1/operations/backups/status",
-    "/api/v1/history"
+    "/api/v1/history",
+    "/api/v1/auth/session",
+    "/sign-in"
   ],
   "justification": {
     "render_interaction_cls": "Pinned proposed M06 roadmap bounds.",
-    "request_count": "Sixteen permits the measured 13-request Next 16 production navigation with modest deterministic headroom.",
+    "request_count": "Sixteen is the measured auth-aware production navigation count, including the session check and sign-in prefetch; further requests require an explicit budget update.",
     "static_shell_bytes": {
-      "measured_bytes": 895883,
-      "non_expansion_baseline_bytes": 717490,
-      "required_six_route_html_bytes": 89707,
-      "required_expansion_js_css_bytes": 88686,
-      "limit_bytes": 921600,
-      "headroom_bytes": 25717,
-      "ceiling_bytes": 1048576,
-      "policy": "900 KiB is the smallest boring round limit above the required deterministic output and below 1 MiB."
+      "measured_bytes": 1155082,
+      "non_expansion_baseline_bytes": 1018737,
+      "required_auth_route_html_bytes": 41231,
+      "required_auth_expansion_js_css_bytes": 95114,
+      "limit_bytes": 1179648,
+      "headroom_bytes": 24566,
+      "ceiling_bytes": 1310720,
+      "policy": "1,152 KiB is the smallest binary round limit above the stable auth-aware export, with 24,566 bytes of headroom and a 1,280 KiB upper ceiling."
     },
     "response_bytes": "640 KiB covers the measured 574,712 initial-navigation response-body bytes without compression assumptions.",
     "designated_response": "The readiness response is the designated sub-8 KiB response."

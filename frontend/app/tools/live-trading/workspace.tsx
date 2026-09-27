@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
+import { apiFetch } from "../../../components/auth-client";
 import { replaceInstrumentInUrl } from "../../../components/workspace-context-url";
 import { apiPayload, delay, number, quoteBatches, quotePrice, record, snapshotState, time } from "../client-utils";
 import styles from "./workspace.module.css";
@@ -272,7 +273,7 @@ export function LiveTradingWorkspace() {
         if (!match || (match.asset_type !== "stock" && match.asset_type !== "etf")) throw new Error(`${symbol} was not found.`);
         assetType = match.asset_type;
       }
-      const response = await fetch("/api/v1/lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "portfolio", item: { symbol, asset_type: assetType, quantity } }) });
+      const response = await apiFetch("/api/v1/lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "portfolio", item: { symbol, asset_type: assetType, quantity } }) });
       const saved = portfolioItems(await apiPayload(response, `Portfolio update failed (${response.status}).`));
       applyPortfolio(saved);
       setNewSymbol("");
@@ -313,7 +314,7 @@ export function LiveTradingWorkspace() {
           if (!match || (match.asset_type !== "stock" && match.asset_type !== "etf")) throw new Error(`${entry.symbol} was not found.`);
           assetType = match.asset_type;
         }
-        const response = await fetch("/api/v1/lists", {
+        const response = await apiFetch("/api/v1/lists", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ kind: "portfolio", item: { symbol: entry.symbol, asset_type: assetType, quantity: entry.quantity } }),
@@ -321,7 +322,7 @@ export function LiveTradingWorkspace() {
         await apiPayload(response, `Portfolio update failed (${response.status}).`);
       }
       for (const item of portfolio.filter((current) => !symbols.includes(current.symbol))) {
-        const response = await fetch(`/api/v1/lists?kind=portfolio&symbol=${encodeURIComponent(item.symbol)}`, { method: "DELETE" });
+        const response = await apiFetch(`/api/v1/lists?kind=portfolio&symbol=${encodeURIComponent(item.symbol)}`, { method: "DELETE" });
         await apiPayload(response, `Portfolio update failed (${response.status}).`);
       }
       const refreshedResponse = await fetch("/api/v1/lists?kind=portfolio");
@@ -342,7 +343,7 @@ export function LiveTradingWorkspace() {
     if (!identity.symbol) return;
     setWatchlistMessage("Adding…");
     try {
-      const response = await fetch("/api/v1/lists", {
+      const response = await apiFetch("/api/v1/lists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind: "watchlist", item: { symbol: identity.symbol, asset_type: identity.assetType } }),

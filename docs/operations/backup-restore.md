@@ -112,3 +112,11 @@ or bounded-lock failure must be resolved rather than bypassed.
 
 The HTTP operations in the [API reference](../reference/api.md) accept managed names and expose
 storage-neutral results/status; neither CLI nor browser receives an arbitrary restore destination.
+
+In production, backup status and creation are administrator operations, and restore promotion also
+requires a fresh passkey check, a verified pre-restore backup, matching account-security state,
+maintenance serialization, and revocation of all sessions. The deployment helper performs a
+pre-deploy backup before promotion and a pre-migration backup when an imported database advances
+schema. Linode VM Backups are an additional host recovery layer; this release has no independent
+encrypted off-server backup, so the configured Linode retention and a recorded recovery rehearsal
+remain launch prerequisites. See [getting started](getting-started.md).

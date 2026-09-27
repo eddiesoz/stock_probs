@@ -23,6 +23,7 @@ from stock_probs.repository import Repository
 from stock_probs.service import ForecastService
 
 FIXED_NOW = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+OWNER_USER_ID = 1
 ROOT = Path(__file__).parents[1]
 
 
@@ -357,12 +358,12 @@ def test_m02_dashboard_uses_only_versioned_api_controls():
     assert "Reopen saved forecast" in script
     assert "Run fresh cutoff analysis" in script
     assert "Download CSV" in html and "Download JSON" in html
-    assert 'page_size: pageSize' in script
+    assert "page_size: pageSize" in script
     assert "/saved-forecasts/${id}" in script
     assert "/history/${id}/reconstructions" in script
     assert "hasPriorRunReference" in script and "item.is_repeat" in script
     assert "knownRunDispositions" not in script
-    for forbidden in ("sqlite", "yahoo.com", "querySelector(\"#database", "file://"):
+    for forbidden in ("sqlite", "yahoo.com", 'querySelector("#database', "file://"):
         assert forbidden not in script.lower()
 
 
@@ -373,14 +374,14 @@ def test_bounded_fixture_forecast_batch_stays_small(settings):
 
     tracemalloc.start()
     for _ in range(20):
-        service.search("ACDC", "stock")
+        service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
     # Twenty audited requests cover a useful repeated-search burst without desktop-scale use.
     assert peak < 64 * 1024 * 1024
     assert settings.database_path.stat().st_size < 16 * 1024 * 1024
-    assert repository.history(page_size=100)["total"] == 20
+    assert repository.history(owner_user_id=OWNER_USER_ID, page_size=100)["total"] == 20
 
 
 def test_dashboard_and_price_slice_stay_lightweight(client):
@@ -388,8 +389,12 @@ def test_dashboard_and_price_slice_stay_lightweight(client):
     responses = [
         client.get(path)
         for path in (
-            "/", "/api/v1/docs", "/assets/app.css", "/assets/app.js",
-            "/assets/theme.js", "/assets/favicon.svg",
+            "/",
+            "/api/v1/docs",
+            "/assets/app.css",
+            "/assets/app.js",
+            "/assets/theme.js",
+            "/assets/favicon.svg",
         )
     ]
     assert all(response.status_code == 200 for response in responses)
@@ -404,6 +409,6 @@ def test_dashboard_and_price_slice_stay_lightweight(client):
 
     # The authored redesign shell has its own tight ceiling; the complete staged tree and wheel
     # retain their stricter release budgets in the performance and package checks.
-    assert asset_bytes < 140 * 1024
+    assert asset_bytes < 160 * 1024
     assert prices.status_code == 200
     assert len(prices.content) < 8 * 1024

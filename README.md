@@ -183,6 +183,30 @@ For a local production-style container, use the root `compose.yaml` as described
 [Getting started](docs/operations/getting-started.md). It publishes the service on loopback and
 keeps application data in a named volume.
 
+## Private production deployment
+
+The production path is invite-only GitHub OAuth plus a required passkey, with each user's
+holdings, watchlists, forecasts, exports, outcomes, and reconstructions scoped to that account.
+The app runs on one Linode with SQLite on a persistent private volume and is published only
+through a Cloudflare Tunnel. The application port stays on `127.0.0.1`; the deployment helper
+does not expose a public Docker port.
+
+Build and publish the reviewed image locally:
+
+```bash
+./scripts/publish-production-image.sh
+```
+
+The script publishes `ghcr.io/jtmb/signal-ledger`, verifies the exact `main` revision, and
+returns an immutable image digest. The Linode pulls that digest through the local stdio deployment
+MCP; the VM does not build source. The five deployment operations are `inspect`, `plan_deploy`,
+`deploy`, `status`, and `rollback`. See [Getting started](docs/operations/getting-started.md)
+for the restricted host setup, owner migration, tunnel canary, and recovery procedure.
+
+The public canary, replacement Linode, GitHub OAuth credentials, GHCR publication, and VM backup
+rehearsal are operational deployment steps. They are not included in the local development quick
+start, and the current local application remains independent of that private deployment.
+
 ## Development
 
 Read [developer testing](docs/develop/testing.md) for the deterministic Python, frontend,

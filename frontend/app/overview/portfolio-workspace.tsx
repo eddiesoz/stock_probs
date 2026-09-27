@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
+import { apiFetch } from "../../components/auth-client";
 import { instrumentFromSearch, replaceInstrumentInUrl } from "../../components/workspace-context-url";
 import { manualHoldingErrors, type PortfolioHolding, portfolioFromPayload, portfolioMutation } from "./portfolio-data";
 import styles from "./workspace.module.css";
@@ -123,7 +124,7 @@ export function PortfolioWorkspace() {
     setSaving(true);
     setMessage("Saving manual holding…");
     try {
-      const response = await fetch("/api/v1/lists", {
+      const response = await apiFetch("/api/v1/lists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(portfolioMutation(symbol, assetType, quantity)),

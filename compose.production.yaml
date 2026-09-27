@@ -1,0 +1,55 @@
+name: signal-ledger
+
+services:
+  app:
+    image: "${STOCK_PROBS_IMAGE:?STOCK_PROBS_IMAGE is supplied by the fixed deployment helper}"
+    environment:
+      STOCK_PROBS_DATA_DIR: /data
+      STOCK_PROBS_ENV: production
+      # Settings keeps its loopback authority; the Dockerfile's explicit serve flags bind
+      # the container interface while the published host port remains loopback-only.
+      STOCK_PROBS_HOST: 127.0.0.1
+      STOCK_PROBS_PORT: "8000"
+      STOCK_PROBS_PROVIDER: "${STOCK_PROBS_PROVIDER:-yahoo}"
+      STOCK_PROBS_AUTH_MODE: github
+      STOCK_PROBS_PUBLIC_ORIGIN: "${STOCK_PROBS_PUBLIC_ORIGIN:?set the HTTPS Cloudflare hostname}"
+      STOCK_PROBS_AUTH_SESSION_SECRET: "${STOCK_PROBS_AUTH_SESSION_SECRET:?set a 32-byte session secret}"
+      STOCK_PROBS_AUTH_COOKIE_SECURE: "1"
+      STOCK_PROBS_AUTH_COOKIE_DOMAIN: "${STOCK_PROBS_AUTH_COOKIE_DOMAIN:-}"
+      STOCK_PROBS_GITHUB_CLIENT_ID: "${STOCK_PROBS_GITHUB_CLIENT_ID:?set the GitHub OAuth client ID}"
+      STOCK_PROBS_GITHUB_CLIENT_SECRET: "${STOCK_PROBS_GITHUB_CLIENT_SECRET:?set the GitHub OAuth client secret}"
+      STOCK_PROBS_GITHUB_REDIRECT_URI: "${STOCK_PROBS_GITHUB_REDIRECT_URI:?set the exact GitHub OAuth callback}"
+      STOCK_PROBS_OWNER_GITHUB_ID: "${STOCK_PROBS_OWNER_GITHUB_ID:?set the owner's numeric GitHub account ID}"
+      STOCK_PROBS_TRUSTED_PROXY_HOSTS: 127.0.0.1
+    ports:
+      # cloudflared is the only public ingress; Docker never binds the app to a public address.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - signal-ledger-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 1.0
+    init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    restart: unless-stopped
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/readiness', timeout=3).close()"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  signal-ledger-data:

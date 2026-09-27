@@ -9,8 +9,8 @@ test("forecast tool exports an explicit, non-automatic interval form", async () 
     assert.match(source, new RegExp(label));
   }
   for (const label of ["Exact origin", "Exact target"]) assert.match(source, new RegExp(label));
-  assert.match(source, /fetch\("\/api\/v1\/forecasts"/);
-  for (const call of source.matchAll(/fetch\((?:`|")([^`"]+)/g)) assert.match(call[1], /^\/api\/v1\//);
+  assert.match(source, /apiFetch\("\/api\/v1\/forecasts"/);
+  for (const call of source.matchAll(/(?:fetch|apiFetch)\((?:`|")([^`"]+)/g)) assert.match(call[1], /^\/api\/v1\//);
   assert.match(source, /JSON\.stringify\(\{ symbol: normalized, asset_type: assetType, interval \}\)/);
   assert.match(source, /item\.interval === interval \|\| item\.horizon === selected\.horizon/);
   assert.match(source, /Selected horizon unavailable/);

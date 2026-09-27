@@ -70,9 +70,7 @@ class ForecastService:
         return data.as_dict(limit=limit, cache_state=cache_state)
 
     @staticmethod
-    def _news_data_is_stale_eligible(
-        entry: _NewsCacheEntry, now: float, limit: int
-    ) -> bool:
+    def _news_data_is_stale_eligible(entry: _NewsCacheEntry, now: float, limit: int) -> bool:
         return bool(
             entry.data is not None
             and entry.data.items
@@ -81,9 +79,7 @@ class ForecastService:
             and entry.size <= NEWS_MAX_ENTRY_BYTES
         )
 
-    def _news_failure(
-        self, symbol: str, now: float, limit: int
-    ) -> dict[str, object] | None:
+    def _news_failure(self, symbol: str, now: float, limit: int) -> dict[str, object] | None:
         """Record suppression and return an eligible stale response in one locked step."""
 
         with self._news_lock:
@@ -118,9 +114,10 @@ class ForecastService:
                 size=len(serialized),
             )
             self._news_cache.move_to_end(symbol)
-            while len(self._news_cache) > NEWS_MAX_SYMBOLS or sum(
-                entry.size for entry in self._news_cache.values()
-            ) > NEWS_MAX_CACHE_BYTES:
+            while (
+                len(self._news_cache) > NEWS_MAX_SYMBOLS
+                or sum(entry.size for entry in self._news_cache.values()) > NEWS_MAX_CACHE_BYTES
+            ):
                 self._news_cache.popitem(last=False)
 
     def news(self, symbol: str, limit: int = 5) -> dict[str, object]:
@@ -146,14 +143,10 @@ class ForecastService:
                         self._news_cache.move_to_end(normalized_symbol)
                         return self._news_response(entry.data, limit, "hit")
                 empty_expired = (
-                    entry.data is not None
-                    and not entry.data.items
-                    and age >= NEWS_EMPTY_SECONDS
+                    entry.data is not None and not entry.data.items and age >= NEWS_EMPTY_SECONDS
                 )
                 stale_expired = (
-                    entry.data is not None
-                    and bool(entry.data.items)
-                    and age > NEWS_STALE_SECONDS
+                    entry.data is not None and bool(entry.data.items) and age > NEWS_STALE_SECONDS
                 )
                 if empty_expired or stale_expired:
                     entry.data = None
@@ -310,6 +303,7 @@ class ForecastService:
     def history(
         self,
         *,
+        owner_user_id: int,
         query: str = "",
         symbol: str | None = None,
         company: str | None = None,
@@ -329,6 +323,7 @@ class ForecastService:
         """Serve rich history facets while keeping persistence and transport separable."""
 
         return self.repository.history(
+            owner_user_id=owner_user_id,
             query=query,
             symbol=symbol,
             company=company,
@@ -348,15 +343,15 @@ class ForecastService:
             include_facets=True,
         )
 
-    def history_detail(self, event_id: int) -> dict[str, Any] | None:
+    def history_detail(self, event_id: int, *, owner_user_id: int) -> dict[str, Any] | None:
         """Return recorded chart, calibration, and outcome data without provider access."""
 
-        return self.repository.reconstruction(event_id)
+        return self.repository.reconstruction(owner_user_id, event_id)
 
-    def saved_forecast(self, event_id: int) -> dict[str, Any] | None:
+    def saved_forecast(self, event_id: int, *, owner_user_id: int) -> dict[str, Any] | None:
         """Label exact replay explicitly; this method never invokes a provider or calculator."""
 
-        recorded = self.repository.reconstruction(event_id)
+        recorded = self.repository.reconstruction(owner_user_id, event_id)
         if recorded is None or recorded.get("input") is None:
             return None
         return {
@@ -370,6 +365,7 @@ class ForecastService:
     def history_export(
         self,
         *,
+        owner_user_id: int,
         query: str = "",
         symbol: str | None = None,
         company: str | None = None,
@@ -388,6 +384,7 @@ class ForecastService:
         """Use one UTC generation time for a bounded JSON/CSV source record stream."""
 
         return self.repository.history_export(
+            owner_user_id=owner_user_id,
             generated_at=self.clock().astimezone(UTC),
             query=query,
             symbol=symbol,
@@ -406,14 +403,21 @@ class ForecastService:
         )
 
     def historical_series(
-        self, event_id: int, *, series: str = "daily", limit: int = 120
+        self, event_id: int, *, owner_user_id: int, series: str = "daily", limit: int = 120
     ) -> dict[str, Any] | None:
         """Expose the same immutable bounded price source to chart and text consumers."""
 
-        return self.repository.historical_series(event_id, series=series, limit=limit)
+        return self.repository.historical_series(
+            owner_user_id, event_id, series=series, limit=limit
+        )
 
     def search(
-        self, submitted_symbol: str, asset_type: str, interval: str | None = None
+        self,
+        submitted_symbol: str,
+        asset_type: str,
+        interval: str | None = None,
+        *,
+        owner_user_id: int,
     ) -> dict[str, object]:
         request_id = str(uuid4())
         submitted_at = self.clock().astimezone(UTC)
@@ -457,6 +461,7 @@ class ForecastService:
             completed_at = self.clock().astimezone(UTC)
             try:
                 event_id, _, repeated, reused = self.repository.record_success(
+                    owner_user_id=owner_user_id,
                     request_id=request_id,
                     submitted_symbol=submitted_symbol,
                     asset_type=asset_type,
@@ -472,13 +477,14 @@ class ForecastService:
                     "The forecast could not be stored immutably.",
                     status_code=503,
                 ) from exc
-            reconstructed = self.repository.reconstruction(event_id)
+            reconstructed = self.repository.reconstruction(owner_user_id, event_id)
             assert reconstructed is not None
             reconstructed["repeated"] = repeated
             reconstructed["reused"] = reused
             return reconstructed
         except DomainError as exc:
             self.repository.record_failure(
+                owner_user_id=owner_user_id,
                 request_id=request_id,
                 submitted_symbol=submitted_symbol,
                 normalized_symbol=normalized,
@@ -492,13 +498,15 @@ class ForecastService:
             raise
 
     def fresh_historical_reconstruction(
-        self, source_event_id: int, cutoff: datetime
+        self, source_event_id: int, cutoff: datetime, *, owner_user_id: int
     ) -> dict[str, object]:
         """Submit and audit a fresh cutoff analysis, never a saved-result recalculation."""
 
         request_id = str(uuid4())
         submitted_at = self.clock().astimezone(UTC)
-        source = self.repository.reconstruction(source_event_id)
+        # Source lookup is owner-scoped.  An inaccessible source follows the same failed-audit
+        # path as an unknown ID; the requested ID is context only and never becomes a source FK.
+        source = self.repository.reconstruction(owner_user_id, source_event_id)
         source_input = source.get("input") if source is not None else None
         submitted_symbol = (
             str(source_input["symbol"])
@@ -558,9 +566,7 @@ class ForecastService:
                 snapshot, results = calculate_forecasts(
                     market_data,
                     cutoff,
-                    interval=(
-                        str(requested_interval) if requested_interval is not None else None
-                    ),
+                    interval=(str(requested_interval) if requested_interval is not None else None),
                 )
             except DomainError:
                 raise
@@ -581,6 +587,7 @@ class ForecastService:
             completed_at = self.clock().astimezone(UTC)
             try:
                 event_id, _, repeated, reused = self.repository.record_success(
+                    owner_user_id=owner_user_id,
                     request_id=request_id,
                     submitted_symbol=submitted_symbol,
                     asset_type=asset_type,
@@ -599,7 +606,7 @@ class ForecastService:
                     "The fresh historical analysis could not be stored immutably.",
                     status_code=503,
                 ) from exc
-            reconstructed = self.repository.reconstruction(event_id)
+            reconstructed = self.repository.reconstruction(owner_user_id, event_id)
             assert reconstructed is not None
             reconstructed["analysis_kind"] = "fresh_historical_reconstruction"
             reconstructed["label"] = "Fresh historical-cutoff analysis"
@@ -608,6 +615,7 @@ class ForecastService:
             return reconstructed
         except DomainError as exc:
             self.repository.record_failure(
+                owner_user_id=owner_user_id,
                 request_id=request_id,
                 submitted_symbol=submitted_symbol,
                 normalized_symbol=normalized,
@@ -635,6 +643,8 @@ class ForecastService:
         observed_at: datetime,
         state: str,
         note: str,
+        *,
+        owner_user_id: int,
     ) -> dict[str, object] | None:
         """Keep horizon validation in the domain before appending through persistence."""
 
@@ -646,11 +656,12 @@ class ForecastService:
             )
         if state != "unavailable" and observed_close is None:
             raise DomainError("invalid_outcome_price", "This outcome state requires a close.")
-        result = self.repository.forecast_result(result_id)
+        result = self.repository.forecast_result(owner_user_id, result_id)
         if result is None:
             return None
         observed_return, comparison_rule = evaluate_outcome(result, observed_close, observed_at)
         return self.repository.append_outcome(
+            owner_user_id,
             result_id,
             observed_close,
             observed_return,

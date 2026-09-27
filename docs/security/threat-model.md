@@ -5,16 +5,33 @@ description: "Threats and controls for loopback HTTP, untrusted requests, Yahoo 
 
 # Threat model
 
-Stock Probability assumes one local operator on a Linux machine. It protects audit history,
-forecast provenance, local filesystem locations, backup authenticity, and process availability
-from accidental corruption and untrusted browser/provider/request input. It is not designed as
-a publicly exposed multi-user service.
+Signal Ledger has two supported security modes. Development may use a local bootstrap account on
+loopback; production is an invite-only multi-user deployment behind a Cloudflare Tunnel. The
+production image binds the app to the host loopback interface, uses GitHub's authorization-code
+flow plus a passkey, and keeps SQLite on a private persistent volume. The public route remains
+closed until the owner-only canary, recovery rehearsal, and security gates pass.
+
+The model protects account identity, owner-scoped research history, forecast provenance, local
+filesystem locations, backup authenticity, and process availability from accidental corruption and
+untrusted browser, provider, request, and deployment input. A Cloudflare Tunnel supplies ingress;
+it does not make the application a brokerage, order router, real-time feed, or market-depth
+service.
 
 ## Trust boundaries and controls
 
 | Boundary or threat | Control |
 | --- | --- |
 | Remote access or browser cross-origin traffic | Loopback-only environment configuration, explicit warning flag for unsupported broader CLI binds, host/origin checks, strict response headers, and no permissive cross-origin API policy. |
+| Forged Host, forwarded-host, or path authority | Production requires one exact HTTPS public origin. Host parsing rejects URL syntax, duplicate or non-ASCII authorities, and unexpected ports; forwarded headers are accepted only from the local trusted proxy. Path decisions use the ASGI scope rather than an attacker-controlled URL reconstruction. |
+| OAuth callback substitution or login CSRF | GitHub numeric account IDs are the stable identity; the authorization-code flow uses a short-lived server-side state value and PKCE, checks the exact callback/origin, and never accepts a client-supplied identity. |
+| Invitation theft or account takeover | Invitations resolve a GitHub account, expire, are single-use, and are redeemed before passkey enrollment. Production rejects development bootstrap credentials. Every invited account must complete a user-verifying passkey ceremony. |
+| Session theft, fixation, or replay | Sessions are opaque server-side records addressed by hashed tokens, with idle and absolute expiry, revocation, host-only `Secure`/`HttpOnly` cookies, CSRF tokens for mutations, and no browser storage for credentials. Passkey step-up markers are short-lived and process-local. |
+| Cross-user IDOR or legacy-data disclosure | Forecasts, events, results, outcomes, reconstructions, exports, holdings, watchlists, and account operations derive the owner from the session. Legacy rows attach to one reserved owner claim; a new user cannot claim or query them by changing an ID. |
+| Privileged backup or restore abuse | Backup status and creation require an administrator. Restore promotion requires an administrator, a fresh passkey check, a verified pre-restore backup, matching account-security state, maintenance-mode serialization, and revocation of all sessions. |
+| Deployment MCP command injection or supply-chain substitution | The local stdio MCP exposes only `inspect`, `plan_deploy`, `deploy`, `status`, and `rollback`. The fixed SSH helper accepts bounded typed fields, a reviewed `main` revision, and a GHCR digest; it rejects arbitrary commands, paths, URLs, Compose edits, registry names, tags, and Docker-socket access. |
+| Mutable image or remote-build drift | The image is built and published locally with the exact reviewed revision label. The Linode pulls only `ghcr.io/jtmb/signal-ledger@sha256:<digest>`, verifies the registry digest, revision label, and schema, and never builds source on the VM. |
+| Public-ingress or cache bypass | The app port is published only on `127.0.0.1`; `cloudflared` is a locked-down host service and is disabled until the canary passes. HTML and authenticated API responses must bypass shared caching, and proxy trust is local-only. |
+| Host compromise or lost recovery channel | Use a restricted deployment account with a forced command, public-key-only SSH, no forwarding or TTY, least-privilege sudo, private state directories, and an operator-managed tunnel token. Enable Linode VM Backups and rehearse recovery; this release has no independent encrypted off-server backup. |
 | Oversized, malformed, or slow request bodies | Bounded framing/body checks, bounded server concurrency/backlog/keep-alive, typed validation, and sanitized error envelopes. |
 | Provider delay or malformed Yahoo market data | Explicit 1–20 second configured timeout, bounded lookup/history calls, provider concurrency of two, normalized identity/bar contracts, and no provider objects exposed by transport. |
 | Untrusted headline text or article destinations | Headline fields reject controls and enforce length/type bounds; presentation inserts them as text, not HTML. Links must be public HTTPS destinations without credentials, local/private hosts, or non-HTTPS ports; invalid links are not made operable. |
@@ -29,16 +46,20 @@ a publicly exposed multi-user service.
 
 ## Operator responsibilities
 
-Keep the listener on loopback, restrict access to the operating-system account, protect the
-data directory and backup trust key, review exports before sharing, and stop the process before
-moving active storage. Treat Yahoo content and imported artifacts as untrusted even on a local
-machine. Review an article destination before following it; the destination receives an ordinary
-browser navigation even though application data traffic remains local. Do not disable
-verification to recover an artifact.
+For development, keep the listener on loopback, use only generated local bootstrap credentials,
+and never copy them into production. For production, keep the app port loopback-only, protect the
+data directory, trust key, app environment, tunnel token, and deployment key, and review exports
+before sharing. Re-take the online SQLite snapshot at cutover, stop public ingress while moving
+active storage, and verify signed backups before migration or restore. Treat Yahoo content,
+imported artifacts, OAuth profile data, and browser input as untrusted. Review an article
+destination before following it; the destination receives an ordinary browser navigation even
+though application data traffic remains local. Do not disable verification to recover an artifact.
 
-Authentication, MFA, an API gateway, a multi-service split, replicas, and public hosting are
-deliberate non-goals absent a new demonstrated requirement. The application is research
-software; security controls do not make forecasts investment advice.
+The deployment is intentionally one app process, one SQLite volume, and one connector service;
+that shape does not substitute for the account, ownership, session, backup, or recovery controls
+above. Signal Ledger remains research software; security controls do not make forecasts investment
+advice.
 
-See [backup and restore](../operations/backup-restore.md) and
+See [getting started](../operations/getting-started.md),
+[backup and restore](../operations/backup-restore.md), and
 [architecture](../concepts/architecture.md).

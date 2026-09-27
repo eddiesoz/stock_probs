@@ -6,10 +6,14 @@ ARG SOURCE_DATE_EPOCH
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
+ENV NODE_OPTIONS=--max-old-space-size=512
 COPY frontend/ ./
-RUN npm run typecheck && npm run build && npm run test
+# Frontend contract tests inspect the legacy dashboard and shared theme initializer.
+COPY src/stock_probs/static/app.js src/stock_probs/static/theme.js /build/src/stock_probs/static/
+RUN npm run typecheck && npm run build && npm run test -- --test-concurrency=1
 RUN mkdir -p /static-next/tools \
-    && cp out/index.html out/api-docs.html out/overview.html out/research.html out/tools.html /static-next/ \
+    && cp out/index.html out/api-docs.html out/overview.html out/research.html out/tools.html \
+       out/sign-in.html out/invite.html out/passkey.html out/account.html out/admin.html /static-next/ \
     && cp out/tools/forecast.html out/tools/live-trading.html out/tools/markets.html /static-next/tools/ \
     && cp -R out/_next /static-next/
 
@@ -37,12 +41,18 @@ RUN python -m pip wheel \
 
 FROM python:3.11.15-slim@sha256:90744cff8f32887f075c47d747a173ff333e9e98801667af93c357fa9f5e28ff
 ARG SOURCE_DATE_EPOCH
+ARG REVISION
+
+LABEL org.opencontainers.image.source="https://github.com/eddiesoz/stock_probs" \
+      org.opencontainers.image.revision="${REVISION}"
 
 ENV HOME=/tmp \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     STOCK_PROBS_DATA_DIR=/data
 
+# Runtime does not install packages; remove base-image package managers and build tooling.
+RUN python -m pip uninstall --yes setuptools wheel pip
 COPY --from=builder /install /
 RUN install --directory --owner=10001 --group=10001 --mode=0700 /data \
     && touch --date="@${SOURCE_DATE_EPOCH}" / /data

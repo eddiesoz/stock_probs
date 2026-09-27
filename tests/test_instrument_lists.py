@@ -14,6 +14,7 @@ from stock_probs.cli import _migrate_with_backup
 from stock_probs.repository import INSTRUMENT_LIST_ITEM_LIMIT, Repository
 
 NOW = datetime(2026, 9, 15, 12, 0, tzinfo=UTC)
+OWNER_USER_ID = 1
 
 
 def _repository(settings) -> Repository:
@@ -54,14 +55,13 @@ def test_every_shipped_legacy_schema_upgrades_to_fixed_lists(settings, legacy_ve
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'instrument_lists'"
         ).fetchone()
         table_sql = connection.execute(
-            "SELECT sql FROM sqlite_master "
-            "WHERE type = 'table' AND name = 'instrument_list_items'"
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'instrument_list_items'"
         ).fetchone()[0]
         triggers = connection.execute(
             "SELECT name FROM sqlite_master "
             "WHERE type = 'trigger' AND tbl_name = 'instrument_list_items'"
         ).fetchall()
-    assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6]
+    assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8]
     assert {row[1] for row in columns} == {
         "kind",
         "provider",
@@ -80,6 +80,7 @@ def test_every_shipped_legacy_schema_upgrades_to_fixed_lists(settings, legacy_ve
 def _add(repository: Repository, kind: str, symbol: str, added_at=NOW, **holdings):
     return repository.add_instrument_list_item(
         kind,
+        owner_user_id=OWNER_USER_ID,
         provider="yahoo",
         canonical_symbol=symbol,
         asset_type="etf" if symbol == "SPY" else "stock",
@@ -92,16 +93,23 @@ def _add(repository: Repository, kind: str, symbol: str, added_at=NOW, **holding
 
 def test_v4_migration_backup_and_v6_fixed_list_restore_round_trip(settings):
     repository = _create_legacy_database(settings.database_path, 4)
-    repository.record_failure(
-        request_id="retained-v4-event",
-        submitted_symbol="FAIL",
-        normalized_symbol="FAIL",
-        asset_type="stock",
-        error_code="fixture_failure",
-        error_message="retained through v6",
-        submitted_at=NOW,
-        completed_at=NOW,
-    )
+    # Schema v4 predates users, so seed its legacy event directly and let migration 007
+    # attach it to the designated owner sidecar.
+    with repository.connect() as connection:
+        event_id = connection.execute(
+            """INSERT INTO search_events
+            (request_id, submitted_symbol, normalized_symbol, asset_type, status, is_repeat,
+             error_code, error_message, submitted_at, completed_at, analysis_kind)
+            VALUES ('retained-v4-event', 'FAIL', 'FAIL', 'stock', 'failed', 0,
+                    'fixture_failure', 'retained through v6', ?, ?, 'submitted_forecast')""",
+            (NOW.isoformat(), NOW.isoformat()),
+        ).lastrowid
+        connection.execute(
+            "INSERT INTO history_facets(event_id, canonical_symbol, submitted_at_us) "
+            "VALUES (?, 'FAIL', ?)",
+            (event_id, Repository._utc_microseconds(NOW)),
+        )
+        connection.commit()
     manager = BackupManager(repository, settings.backup_dir)
 
     migration_backup = _migrate_with_backup(repository, manager)
@@ -119,6 +127,7 @@ def test_v4_migration_backup_and_v6_fixed_list_restore_round_trip(settings):
     current_backup = manager.create("v6-lists.spbackup")
     repository.set_instrument_list_item_holding(
         "portfolio",
+        owner_user_id=OWNER_USER_ID,
         provider="yahoo",
         canonical_symbol="SPY",
         asset_type="etf",
@@ -127,8 +136,11 @@ def test_v4_migration_backup_and_v6_fixed_list_restore_round_trip(settings):
 
     assert manager.restore(current_backup["name"], promote=True)["promoted"] is True
     restored = Repository(settings.database_path)
-    assert restored.instrument_list_items("portfolio")[0]["quantity"] == 2
-    assert restored.history()["items"][0]["request_id"] == "retained-v4-event"
+    assert restored.instrument_list_items(OWNER_USER_ID, "portfolio")[0]["quantity"] == 2
+    assert (
+        restored.history(owner_user_id=OWNER_USER_ID)["items"][0]["request_id"]
+        == "retained-v4-event"
+    )
 
 
 def test_fixed_lists_persist_independently_across_restart(settings):
@@ -138,23 +150,31 @@ def test_fixed_lists_persist_independently_across_restart(settings):
     assert watch_item is not None
     assert watch_item["quantity"] is None
 
-    assert repository.set_instrument_list_item_holding(
-        "portfolio",
-        provider="yahoo",
-        canonical_symbol="ACDC",
-        asset_type="stock",
-        quantity=12.5,
-    ) is True
-    assert repository.set_instrument_list_item_holding(
-        "portfolio",
-        provider="yahoo",
-        canonical_symbol="MISSING",
-        asset_type="stock",
-        quantity=1,
-    ) is False
+    assert (
+        repository.set_instrument_list_item_holding(
+            "portfolio",
+            owner_user_id=OWNER_USER_ID,
+            provider="yahoo",
+            canonical_symbol="ACDC",
+            asset_type="stock",
+            quantity=12.5,
+        )
+        is True
+    )
+    assert (
+        repository.set_instrument_list_item_holding(
+            "portfolio",
+            owner_user_id=OWNER_USER_ID,
+            provider="yahoo",
+            canonical_symbol="MISSING",
+            asset_type="stock",
+            quantity=1,
+        )
+        is False
+    )
     restarted = Repository(settings.database_path)
     restarted.migrate()
-    persisted = restarted.instrument_list_items()
+    persisted = restarted.instrument_list_items(OWNER_USER_ID)
 
     assert json.loads(json.dumps(persisted, allow_nan=False)) == persisted
     assert {(item["kind"], item["canonical_symbol"]) for item in persisted} == {
@@ -163,18 +183,20 @@ def test_fixed_lists_persist_independently_across_restart(settings):
     }
     assert restarted.remove_instrument_list_item(
         "watchlist",
+        owner_user_id=OWNER_USER_ID,
         provider="yahoo",
         canonical_symbol="SPY",
         asset_type="etf",
     )
-    assert restarted.instrument_list_items("watchlist") == []
+    assert restarted.instrument_list_items(OWNER_USER_ID, "watchlist") == []
     assert not restarted.remove_instrument_list_item(
         "watchlist",
+        owner_user_id=OWNER_USER_ID,
         provider="yahoo",
         canonical_symbol="SPY",
         asset_type="etf",
     )
-    assert restarted.instrument_list_items("portfolio")[0]["quantity"] == 12.5
+    assert restarted.instrument_list_items(OWNER_USER_ID, "portfolio")[0]["quantity"] == 12.5
 
 
 def test_list_item_timestamp_requires_timezone_and_is_stored_as_utc(settings):
@@ -200,7 +222,10 @@ def test_duplicate_and_per_kind_item_limits_are_rejected(settings):
         _add(repository, "watchlist", f"S{index}")
     with pytest.raises(ValueError, match="item limit"):
         _add(repository, "watchlist", "OVER")
-    assert len(repository.instrument_list_items("watchlist")) == INSTRUMENT_LIST_ITEM_LIMIT
+    assert (
+        len(repository.instrument_list_items(OWNER_USER_ID, "watchlist"))
+        == INSTRUMENT_LIST_ITEM_LIMIT
+    )
     _add(repository, "portfolio", "OVER")
 
 
@@ -212,8 +237,9 @@ def test_database_constraints_reject_invalid_kind_and_watchlist_holdings(setting
         _add(repository, "portfolio", "ACDC", quantity=-1)
     with pytest.raises(ValueError, match="require a portfolio"):
         _add(repository, "watchlist", "SPY", quantity=1)
-    with repository.connect() as connection, pytest.raises(
-        sqlite3.IntegrityError, match="CHECK constraint failed"
+    with (
+        repository.connect() as connection,
+        pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"),
     ):
         connection.execute(
             "INSERT INTO instrument_list_items"
@@ -223,10 +249,11 @@ def test_database_constraints_reject_invalid_kind_and_watchlist_holdings(setting
             (NOW.isoformat(),),
         )
     _add(repository, "watchlist", "SPY")
-    with repository.connect() as connection, pytest.raises(
-        sqlite3.IntegrityError, match="CHECK constraint failed"
+    with (
+        repository.connect() as connection,
+        pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"),
     ):
         connection.execute(
-            "UPDATE instrument_list_items SET quantity = 1 "
-            "WHERE kind = 'watchlist' AND canonical_symbol = 'SPY'"
+            "UPDATE user_instrument_list_items SET quantity = 1 "
+            "WHERE owner_user_id = 1 AND kind = 'watchlist' AND canonical_symbol = 'SPY'"
         )

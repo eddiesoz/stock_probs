@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
+import { apiFetch } from "../../../components/auth-client";
 import { replaceInstrumentInUrl } from "../../../components/workspace-context-url";
 import { apiPayload, delay, number, quoteBatches, quotePrice, record, snapshotState, time } from "../client-utils";
 import styles from "./workspace.module.css";
@@ -339,7 +340,7 @@ export function MarketsWorkspace() {
     if (!item.symbol) return;
     setMutationMessage("Saving watchlist item…");
     try {
-      const response = await fetch("/api/v1/lists", {
+      const response = await apiFetch("/api/v1/lists", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind: "watchlist", item: { symbol: item.symbol, asset_type: item.asset_type } }),
@@ -359,7 +360,7 @@ export function MarketsWorkspace() {
   async function removeItem(item: WatchItem) {
     setMutationMessage(`Removing ${item.symbol}…`);
     try {
-      const response = await fetch(`/api/v1/lists?kind=watchlist&symbol=${encodeURIComponent(item.symbol)}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/v1/lists?kind=watchlist&symbol=${encodeURIComponent(item.symbol)}`, { method: "DELETE" });
       await apiPayload(response, `Watchlist removal failed (${response.status}).`);
       const next = items.filter((current) => current.symbol !== item.symbol);
       setItems(next);

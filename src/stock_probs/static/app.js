@@ -34,6 +34,7 @@ const newsTimeoutMs = 10_000;
 const runRelationPageSize = 100;
 const runRelationMaxPages = 5;
 const runRelationMaxLookups = 10;
+const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -162,8 +163,25 @@ function compactEvaluation(evaluation) {
 }
 
 async function api(path, options = {}) {
-  const headers = { Accept: "application/json", ...(options.headers || {}) };
-  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  const headers = new Headers(options.headers || {});
+  headers.set("Accept", "application/json");
+  if (options.body !== undefined) headers.set("Content-Type", "application/json");
+  if (mutationMethods.has(String(options.method || "GET").toUpperCase())) {
+    const sessionResponse = await fetch(`${apiRoot}/auth/session`, {
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    let session = null;
+    try {
+      session = await sessionResponse.json();
+    } catch (error) {
+      if (error.name === "AbortError") throw error;
+    }
+    if (sessionResponse.ok && typeof session?.csrf_token === "string" && session.csrf_token) {
+      headers.set("X-CSRF-Token", session.csrf_token);
+    }
+  }
   const response = await fetch(`${apiRoot}${path}`, {
     ...options,
     headers,

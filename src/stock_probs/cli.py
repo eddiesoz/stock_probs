@@ -38,9 +38,7 @@ def _is_loopback(host: str) -> bool:
     return host in {"127.0.0.1", "localhost", "::1"}
 
 
-def _migrate_with_backup(
-    repository: Repository, manager: BackupManager
-) -> dict[str, Any] | None:
+def _migrate_with_backup(repository: Repository, manager: BackupManager) -> dict[str, Any] | None:
     """Create and re-open one old-schema artifact immediately before an upgrade."""
 
     def migrate() -> dict[str, Any] | None:
@@ -92,11 +90,12 @@ def _migration_operations(settings: Settings) -> tuple[BackupManager, dict[str, 
 def _serve_app(settings: Settings) -> ASGIApp:
     """Delay automatic persistence work until Uvicorn actually starts the ASGI lifespan."""
 
-    application = create_app()
+    application = create_app(settings)
 
     async def automatic_backup(scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "lifespan":
             try:
+
                 def startup_backups() -> dict[str, Any]:
                     manager, migration_backup = _migration_operations(settings)
                     due_backup = manager.create_if_due(settings.backup_interval_seconds)

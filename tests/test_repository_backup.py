@@ -21,6 +21,7 @@ from stock_probs.repository import SCHEMA_VERSION, Repository, RepositoryError
 from stock_probs.service import ForecastService
 
 NOW = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+OWNER_USER_ID = 1
 
 
 def _service(settings):
@@ -49,8 +50,7 @@ def test_upgrade_from_shipped_initial_schema_matches_clean_schema(settings, tmp_
     with sqlite3.connect(upgraded_path) as connection:
         # The shipped v1 runner created this receipt table before executing migration 001.
         connection.execute(
-            "CREATE TABLE schema_migrations "
-            "(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
         )
         connection.executescript(initial_sql)
         connection.execute(
@@ -82,13 +82,12 @@ def test_upgrade_from_v2_preserves_legacy_failed_analysis_and_is_idempotent(sett
     """Migration 003 constrains future inserts without rewriting valid append-only v2 rows."""
 
     initial_sql = files("stock_probs.migrations").joinpath("001_initial.sql").read_text()
-    historical_sql = files("stock_probs.migrations").joinpath(
-        "002_historical_analysis.sql"
-    ).read_text()
+    historical_sql = (
+        files("stock_probs.migrations").joinpath("002_historical_analysis.sql").read_text()
+    )
     with sqlite3.connect(settings.database_path) as connection:
         connection.execute(
-            "CREATE TABLE schema_migrations "
-            "(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
         )
         connection.executescript(initial_sql)
         connection.execute(
@@ -123,7 +122,7 @@ def test_upgrade_from_v2_preserves_legacy_failed_analysis_and_is_idempotent(sett
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
     assert tuple(legacy) == (None, None, None)
-    assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6]
+    assert [row[0] for row in versions] == list(range(1, SCHEMA_VERSION + 1))
 
 
 def test_migration_rejects_unknown_or_noncontiguous_history(settings):
@@ -163,18 +162,19 @@ def test_concurrent_clean_migration_is_serialized_across_repository_instances(se
         versions = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
-    assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6]
+    assert [row[0] for row in versions] == list(range(1, SCHEMA_VERSION + 1))
 
 
 def test_database_triggers_reject_mutation_and_deletion(settings):
     repository, service = _service(settings)
-    created = service.search("ACDC", "stock")
+    created = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     outcome = service.append_outcome(
         created["results"][0]["id"],
         24.0,
         datetime(2025, 1, 13, 21, 1, tzinfo=UTC),
         "observed",
         "mutation target",
+        owner_user_id=OWNER_USER_ID,
     )
     assert outcome is not None
 
@@ -196,7 +196,8 @@ def test_database_triggers_reject_mutation_and_deletion(settings):
         for table, row_id in ids.items():
             with pytest.raises(sqlite3.IntegrityError, match="immutable|append-only"):
                 connection.execute(
-                    f"UPDATE {table} SET id = id WHERE id = ?", (row_id,)  # noqa: S608
+                    f"UPDATE {table} SET id = id WHERE id = ?",  # noqa: S608
+                    (row_id,),
                 )
             with pytest.raises(sqlite3.IntegrityError, match="immutable|append-only"):
                 connection.execute(f"DELETE FROM {table} WHERE id = ?", (row_id,))  # noqa: S608
@@ -217,13 +218,14 @@ def test_raw_default_connection_rejects_primary_and_natural_key_replace(settings
     """Migration 003 must not depend on a caller enabling recursive DELETE triggers."""
 
     repository, service = _service(settings)
-    created = service.search("ACDC", "stock")
+    created = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     outcome = service.append_outcome(
         created["results"][0]["id"],
         24.0,
         datetime(2025, 1, 13, 21, 1, tzinfo=UTC),
         "observed",
         "raw replace target",
+        owner_user_id=OWNER_USER_ID,
     )
     assert outcome is not None
     ids = {
@@ -269,7 +271,7 @@ def test_database_rejects_null_fresh_failure_cutoff_and_requested_source(setting
     """Failed fresh analyses retain both attempted cutoff and requested-source context."""
 
     repository, service = _service(settings)
-    source = service.search("ACDC", "stock")["event"]["id"]
+    source = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)["event"]["id"]
     columns = (
         "request_id, submitted_symbol, normalized_symbol, asset_type, status, is_repeat, "
         "error_code, error_message, submitted_at, completed_at, analysis_kind, "
@@ -299,13 +301,18 @@ def test_database_rejects_null_fresh_failure_cutoff_and_requested_source(setting
                     ),
                 )
 
-    assert repository.history()["total"] == 1
+    assert repository.history(owner_user_id=OWNER_USER_ID)["total"] == 1
 
 
 def test_concurrent_repeats_each_append_one_event(settings):
     repository, service = _service(settings)
     with ThreadPoolExecutor(max_workers=4) as workers:
-        results = list(workers.map(lambda _: service.search("SPY", "etf"), range(8)))
+        results = list(
+            workers.map(
+                lambda _: service.search("SPY", "etf", owner_user_id=OWNER_USER_ID),
+                range(8),
+            )
+        )
 
     assert len({item["event"]["id"] for item in results}) == 8
     assert repository.representative_counts()["search_events"] == 8
@@ -315,15 +322,15 @@ def test_concurrent_repeats_each_append_one_event(settings):
 def test_success_repeat_failure_matrix_appends_exactly_one_event_each(settings):
     repository, service = _service(settings)
 
-    first = service.search("ACDC", "stock")
-    repeat = service.search("ACDC", "stock")
+    first = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
+    repeat = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     with pytest.raises(DomainError) as failure:
-        service.search("FAIL", "stock")
+        service.search("FAIL", "stock", owner_user_id=OWNER_USER_ID)
 
     assert first["event"]["status"] == "successful"
     assert repeat["event"]["status"] == "repeated"
     assert failure.value.request_id
-    assert repository.history()["total"] == 3
+    assert repository.history(owner_user_id=OWNER_USER_ID)["total"] == 3
     assert repository.representative_counts() == {
         "search_events": 3,
         "forecast_runs": 1,
@@ -337,14 +344,15 @@ def test_backup_representative_counts_are_internal_physical_row_semantics(settin
     """Integrity keys name storage tables, not the public event/run/result vocabulary."""
 
     repository, service = _service(settings)
-    first = service.search("ACDC", "stock")
-    service.search("ACDC", "stock")
+    first = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
+    service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     service.append_outcome(
         first["results"][0]["id"],
         24.0,
         datetime(2025, 1, 13, 21, 1, tzinfo=UTC),
         "observed",
         "representative count contract",
+        owner_user_id=OWNER_USER_ID,
     )
     expected = {
         "search_events": 2,
@@ -373,6 +381,7 @@ def test_failed_event_insert_rolls_back_new_input_and_results(settings):
 
     with pytest.raises(sqlite3.IntegrityError, match="analysis provenance"):
         repository.record_success(
+            owner_user_id=OWNER_USER_ID,
             request_id="invalid-analysis-kind",
             submitted_symbol="ACDC",
             asset_type="stock",
@@ -393,6 +402,7 @@ def test_new_forecast_write_requires_cardinality_matching_the_input(settings):
 
     with pytest.raises(ValueError, match="cardinality"):
         repository.record_success(
+            owner_user_id=OWNER_USER_ID,
             request_id="missing-quarterly",
             submitted_symbol="ACDC",
             asset_type="stock",
@@ -411,10 +421,10 @@ def test_repeated_provider_failures_are_audited_without_forecast_records(setting
     repository, service = _service(settings)
     for _ in range(2):
         with pytest.raises(DomainError) as failure:
-            service.search("FAIL", "stock")
+            service.search("FAIL", "stock", owner_user_id=OWNER_USER_ID)
         assert failure.value.code == "provider_unavailable"
 
-    history = repository.history(status="failed")
+    history = repository.history(owner_user_id=OWNER_USER_ID, status="failed")
     assert history["total"] == 2
     assert [item["is_repeat"] for item in reversed(history["items"])] == [0, 1]
     counts = repository.representative_counts()
@@ -428,13 +438,13 @@ def test_repository_history_enforces_resource_bounds(settings):
     repository, _ = _service(settings)
 
     with pytest.raises(ValueError, match="page_size"):
-        repository.history(page_size=101)
+        repository.history(owner_user_id=OWNER_USER_ID, page_size=101)
     with pytest.raises(ValueError, match="query"):
-        repository.history(query="X" * 31)
+        repository.history(owner_user_id=OWNER_USER_ID, query="X" * 31)
     with pytest.raises(ValueError, match="status"):
-        repository.history(status="anything")
+        repository.history(owner_user_id=OWNER_USER_ID, status="anything")
     with pytest.raises(ValueError, match="analysis_kind"):
-        repository.history(analysis_kind="recorded-ish")
+        repository.history(owner_user_id=OWNER_USER_ID, analysis_kind="recorded-ish")
 
 
 def test_history_paginates_without_automatic_expiry(settings):
@@ -443,6 +453,7 @@ def test_history_paginates_without_automatic_expiry(settings):
     repository, _ = _service(settings)
     for index in range(125):
         repository.record_failure(
+            owner_user_id=OWNER_USER_ID,
             request_id=f"retained-{index}",
             submitted_symbol=f"BAD{index}",
             normalized_symbol=f"BAD{index}",
@@ -453,8 +464,8 @@ def test_history_paginates_without_automatic_expiry(settings):
             completed_at=NOW,
         )
 
-    first = repository.history(page=1, page_size=100)
-    second = repository.history(page=2, page_size=100)
+    first = repository.history(owner_user_id=OWNER_USER_ID, page=1, page_size=100)
+    second = repository.history(owner_user_id=OWNER_USER_ID, page=2, page_size=100)
     assert first["total"] == second["total"] == 125
     assert len(first["items"]) == 100 and len(second["items"]) == 25
     assert second["items"][-1]["request_id"] == "retained-0"
@@ -473,8 +484,8 @@ def test_repeat_with_new_provider_as_of_creates_a_new_immutable_run(settings):
     )
     service = ForecastService(repository, FixtureProvider(), lambda: next(moments))
 
-    first = service.search("ACDC", "stock")
-    second = service.search("ACDC", "stock")
+    first = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
+    second = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
 
     assert first["event"]["status"] == "successful"
     assert second["event"]["status"] == "repeated"
@@ -484,14 +495,16 @@ def test_repeat_with_new_provider_as_of_creates_a_new_immutable_run(settings):
 
 def test_records_survive_a_fresh_repository_instance(settings):
     repository, service = _service(settings)
-    created = service.search("ACDC", "stock")
+    created = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
 
     restarted = Repository(settings.database_path)
     restarted.migrate()
 
-    assert restarted.history()["total"] == 1
-    assert restarted.reconstruction(created["event"]["id"])["input"]["symbol"] == "ACDC"
-    stored_identity = restarted.reconstruction(created["event"]["id"])["input"][
+    assert restarted.history(owner_user_id=OWNER_USER_ID)["total"] == 1
+    assert (
+        restarted.reconstruction(OWNER_USER_ID, created["event"]["id"])["input"]["symbol"] == "ACDC"
+    )
+    stored_identity = restarted.reconstruction(OWNER_USER_ID, created["event"]["id"])["input"][
         "instrument_identity"
     ]
     assert stored_identity["canonical_symbol"] == "ACDC"
@@ -507,7 +520,7 @@ def test_records_survive_a_fresh_repository_instance(settings):
 
 def test_saved_reopen_never_calls_provider_or_recalculates(settings):
     repository, service = _service(settings)
-    created = service.search("ACDC", "stock")
+    created = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     saved = deepcopy(created)
 
     class ProviderMustNotRun(FixtureProvider):
@@ -520,18 +533,20 @@ def test_saved_reopen_never_calls_provider_or_recalculates(settings):
     restarted_service = ForecastService(repository, ProviderMustNotRun(), lambda: NOW)
 
     # Reopen is deliberately a repository call; constructing a new service changes nothing.
-    assert restarted_service.repository.reconstruction(created["event"]["id"]) == {
+    assert restarted_service.repository.reconstruction(OWNER_USER_ID, created["event"]["id"]) == {
         key: saved[key] for key in ("event", "input", "results")
     }
 
 
 def test_fresh_historical_cutoff_has_own_event_input_results_and_provenance(settings):
     repository, service = _service(settings)
-    recorded = service.search("ACDC", "stock")
+    recorded = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     performed = NOW + timedelta(minutes=1)
     fresh_service = ForecastService(repository, FixtureProvider(), lambda: performed)
 
-    fresh = fresh_service.fresh_historical_reconstruction(recorded["event"]["id"], NOW)
+    fresh = fresh_service.fresh_historical_reconstruction(
+        recorded["event"]["id"], NOW, owner_user_id=OWNER_USER_ID
+    )
 
     assert fresh["analysis_kind"] == "fresh_historical_reconstruction"
     assert fresh["label"] == "Fresh historical-cutoff analysis"
@@ -548,9 +563,7 @@ def test_fresh_historical_cutoff_has_own_event_input_results_and_provenance(sett
     assert fresh["input"]["provider_query"] == fresh["input"]["provenance"]["query"]
     assert len(analysis["provider_content_fingerprint"]) == 64
     assert analysis["provider_content_fingerprint"] != fresh["input"]["content_fingerprint"]
-    assert fresh["input"]["content_fingerprint"] != recorded["input"][
-        "content_fingerprint"
-    ]
+    assert fresh["input"]["content_fingerprint"] != recorded["input"]["content_fingerprint"]
     assert all(
         datetime.fromisoformat(bar["end"]) <= NOW
         for key in ("selected_daily_bars", "selected_intraday_bars")
@@ -562,7 +575,9 @@ def test_fresh_historical_cutoff_has_own_event_input_results_and_provenance(sett
         for result in fresh["results"]
     )
     fresh_history = repository.history(
-        analysis_kind="fresh_historical_reconstruction", include_analysis=True
+        owner_user_id=OWNER_USER_ID,
+        analysis_kind="fresh_historical_reconstruction",
+        include_analysis=True,
     )
     assert fresh_history["total"] == 1
     assert fresh_history["items"][0]["source_event_id"] == recorded["event"]["id"]
@@ -570,19 +585,24 @@ def test_fresh_historical_cutoff_has_own_event_input_results_and_provenance(sett
 
 def test_each_repeated_fresh_historical_submission_gets_independent_records(settings):
     repository, service = _service(settings)
-    recorded = service.search("ACDC", "stock")
+    recorded = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     fresh_service = ForecastService(
         repository, FixtureProvider(), lambda: NOW + timedelta(minutes=1)
     )
 
-    first = fresh_service.reconstruct_at_cutoff(recorded["event"]["id"], NOW)
-    second = fresh_service.reconstruct_at_cutoff(recorded["event"]["id"], NOW)
+    first = fresh_service.reconstruct_at_cutoff(
+        recorded["event"]["id"], NOW, owner_user_id=OWNER_USER_ID
+    )
+    second = fresh_service.reconstruct_at_cutoff(
+        recorded["event"]["id"], NOW, owner_user_id=OWNER_USER_ID
+    )
 
     assert first["event"]["id"] != second["event"]["id"]
     assert first["input"]["id"] != second["input"]["id"]
-    assert first["input"]["provider_query"]["analysis"][
-        "provider_content_fingerprint"
-    ] == second["input"]["provider_query"]["analysis"]["provider_content_fingerprint"]
+    assert (
+        first["input"]["provider_query"]["analysis"]["provider_content_fingerprint"]
+        == second["input"]["provider_query"]["analysis"]["provider_content_fingerprint"]
+    )
     assert first["input"]["content_fingerprint"] != second["input"]["content_fingerprint"]
     counts = repository.representative_counts()
     assert counts["search_events"] == 3 and counts["forecast_runs"] == 3
@@ -590,7 +610,7 @@ def test_each_repeated_fresh_historical_submission_gets_independent_records(sett
 
 def test_fresh_historical_failure_appends_exactly_one_audit_event(settings):
     repository, service = _service(settings)
-    recorded = service.search("ACDC", "stock")
+    recorded = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
 
     class FailingHistoricalProvider(FixtureProvider):
         def fetch_at_cutoff(self, *args, **kwargs):
@@ -600,11 +620,15 @@ def test_fresh_historical_failure_appends_exactly_one_audit_event(settings):
         repository, FailingHistoricalProvider(), lambda: NOW + timedelta(minutes=1)
     )
     with pytest.raises(DomainError) as failure:
-        fresh_service.reconstruct_at_cutoff(recorded["event"]["id"], NOW)
+        fresh_service.reconstruct_at_cutoff(
+            recorded["event"]["id"], NOW, owner_user_id=OWNER_USER_ID
+        )
 
     assert failure.value.request_id
     fresh_history = repository.history(
-        analysis_kind="fresh_historical_reconstruction", include_analysis=True
+        owner_user_id=OWNER_USER_ID,
+        analysis_kind="fresh_historical_reconstruction",
+        include_analysis=True,
     )
     assert fresh_history["total"] == 1
     assert fresh_history["items"][0]["status"] == "failed"
@@ -616,11 +640,13 @@ def test_unknown_reconstruction_source_appends_one_failure_without_fabricated_fk
     repository, service = _service(settings)
 
     with pytest.raises(DomainError) as failure:
-        service.reconstruct_at_cutoff(999, NOW)
+        service.reconstruct_at_cutoff(999, NOW, owner_user_id=OWNER_USER_ID)
 
     assert failure.value.code == "historical_source_unavailable"
     history = repository.history(
-        analysis_kind="fresh_historical_reconstruction", include_analysis=True
+        owner_user_id=OWNER_USER_ID,
+        analysis_kind="fresh_historical_reconstruction",
+        include_analysis=True,
     )
     assert history["total"] == 1
     event = history["items"][0]
@@ -634,15 +660,17 @@ def test_unknown_reconstruction_source_appends_one_failure_without_fabricated_fk
 
 def test_ambiguous_reconstruction_cutoff_retains_attempted_context(settings):
     repository, service = _service(settings)
-    source = service.search("ACDC", "stock")["event"]["id"]
+    source = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)["event"]["id"]
     attempted = NOW.replace(tzinfo=None)
 
     with pytest.raises(DomainError) as failure:
-        service.reconstruct_at_cutoff(source, attempted)
+        service.reconstruct_at_cutoff(source, attempted, owner_user_id=OWNER_USER_ID)
 
     assert failure.value.code == "ambiguous_historical_cutoff"
     event = repository.history(
-        analysis_kind="fresh_historical_reconstruction", include_analysis=True
+        owner_user_id=OWNER_USER_ID,
+        analysis_kind="fresh_historical_reconstruction",
+        include_analysis=True,
     )["items"][0]
     assert event["source_event_id"] == event["requested_source_event_id"] == source
     assert event["requested_cutoff"] == attempted.isoformat()
@@ -663,9 +691,10 @@ def test_provider_wait_does_not_hold_a_sqlite_write_transaction(settings):
 
     service = ForecastService(repository, BlockingProvider(), lambda: NOW)
     with ThreadPoolExecutor(max_workers=1) as workers:
-        pending = workers.submit(service.search, "ACDC", "stock")
+        pending = workers.submit(service.search, "ACDC", "stock", owner_user_id=OWNER_USER_ID)
         assert entered.wait(timeout=2)
         repository.record_failure(
+            owner_user_id=OWNER_USER_ID,
             request_id="while-provider-waits",
             submitted_symbol="FAIL",
             normalized_symbol="FAIL",
@@ -677,7 +706,7 @@ def test_provider_wait_does_not_hold_a_sqlite_write_transaction(settings):
         )
         release.set()
         pending.result(timeout=5)
-    assert repository.history()["total"] == 2
+    assert repository.history(owner_user_id=OWNER_USER_ID)["total"] == 2
 
 
 def test_service_company_lookup_returns_transport_ready_stock_and_etf_identity(settings):
@@ -721,6 +750,7 @@ def test_repository_rejects_identity_detached_from_forecast_provenance(settings)
 
     with pytest.raises(ValueError, match="instrument identity"):
         repository.record_success(
+            owner_user_id=OWNER_USER_ID,
             request_id="detached-identity",
             submitted_symbol="ACDC",
             asset_type="stock",
@@ -734,6 +764,7 @@ def test_repository_rejects_identity_detached_from_forecast_provenance(settings)
     detached_top_level["company_name"] = "Different company"
     with pytest.raises(ValueError, match="instrument identity"):
         repository.record_success(
+            owner_user_id=OWNER_USER_ID,
             request_id="detached-top-level-identity",
             submitted_symbol="ACDC",
             asset_type="stock",
@@ -756,6 +787,7 @@ def test_repository_rejects_tampered_forecast_or_evaluation_fingerprint(settings
 
     with pytest.raises(ValueError, match="forecast result"):
         repository.record_success(
+            owner_user_id=OWNER_USER_ID,
             request_id="tampered-evaluation",
             submitted_symbol="ACDC",
             asset_type="stock",
@@ -769,6 +801,7 @@ def test_repository_rejects_tampered_forecast_or_evaluation_fingerprint(settings
     detached_model["model_fingerprint"] = "0" * 64
     with pytest.raises(ValueError, match="model and content provenance"):
         repository.record_success(
+            owner_user_id=OWNER_USER_ID,
             request_id="detached-model",
             submitted_symbol="ACDC",
             asset_type="stock",
@@ -784,14 +817,18 @@ def test_results_and_outcomes_are_immutable_but_corrections_append(settings):
     """A correction adds an outcome row and cannot rewrite either prior record."""
 
     repository, service = _service(settings)
-    created = service.search("ACDC", "stock")
+    created = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     result_id = created["results"][0]["id"]
     observed_at = datetime(2025, 1, 13, 21, 1, tzinfo=UTC)
-    first = service.append_outcome(result_id, 24.0, observed_at, "observed", "first")
-    second = service.append_outcome(result_id, 24.1, observed_at, "corrected", "vendor fix")
+    first = service.append_outcome(
+        result_id, 24.0, observed_at, "observed", "first", owner_user_id=OWNER_USER_ID
+    )
+    second = service.append_outcome(
+        result_id, 24.1, observed_at, "corrected", "vendor fix", owner_user_id=OWNER_USER_ID
+    )
 
     assert first is not None and second is not None and first["id"] != second["id"]
-    reconstructed = repository.reconstruction(created["event"]["id"])
+    reconstructed = repository.reconstruction(OWNER_USER_ID, created["event"]["id"])
     assert reconstructed is not None
     assert [item["state"] for item in reconstructed["results"][0]["outcomes"]] == [
         "observed",
@@ -820,11 +857,12 @@ def test_reconstruction_bounds_outcomes_without_discarding_stored_rows(settings)
     """History returns the newest audit window while SQLite retains every appended outcome."""
 
     repository, service = _service(settings)
-    created = service.search("ACDC", "stock")
+    created = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     result_id = created["results"][0]["id"]
     observed_at = datetime(2025, 1, 13, 21, 1, tzinfo=UTC)
     for index in range(102):
         repository.append_outcome(
+            OWNER_USER_ID,
             result_id,
             24.0,
             0.01,
@@ -835,7 +873,7 @@ def test_reconstruction_bounds_outcomes_without_discarding_stored_rows(settings)
             observed_at,
         )
 
-    reconstructed = repository.reconstruction(created["event"]["id"])
+    reconstructed = repository.reconstruction(OWNER_USER_ID, created["event"]["id"])
     assert reconstructed is not None
     outcomes = reconstructed["results"][0]["outcomes"]
     assert len(outcomes) == 100
@@ -846,10 +884,10 @@ def test_reconstruction_bounds_outcomes_without_discarding_stored_rows(settings)
 
 def test_backup_restore_round_trip_reverts_later_data(settings):
     repository, service = _service(settings)
-    service.search("ACDC", "stock")
+    service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     manager = BackupManager(repository, settings.backup_dir)
     created = manager.create("round-trip.spbackup")
-    service.search("SPY", "etf")
+    service.search("SPY", "etf", owner_user_id=OWNER_USER_ID)
 
     verified = manager.restore(created["name"])
     promoted = manager.restore(created["name"], promote=True)
@@ -857,8 +895,8 @@ def test_backup_restore_round_trip_reverts_later_data(settings):
     assert verified["verified"] is True and verified["promoted"] is False
     assert promoted["promoted"] is True
     assert repository.representative_counts()["search_events"] == 1
-    assert repository.history(company="ProFrac Holding")["total"] == 1
-    assert repository.history(symbol="SPY")["total"] == 0
+    assert repository.history(owner_user_id=OWNER_USER_ID, company="ProFrac Holding")["total"] == 1
+    assert repository.history(owner_user_id=OWNER_USER_ID, symbol="SPY")["total"] == 0
     assert not settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
 
 
@@ -866,6 +904,7 @@ def test_backup_restore_preserves_exact_history_microsecond_index(settings):
     repository, _ = _service(settings)
     submitted = datetime.fromisoformat("2025-01-10T12:03:00.123456-05:00")
     event_id = repository.record_failure(
+        owner_user_id=OWNER_USER_ID,
         request_id="precise-offset",
         submitted_symbol="FAIL",
         normalized_symbol="FAIL",
@@ -878,6 +917,7 @@ def test_backup_restore_preserves_exact_history_microsecond_index(settings):
     manager = BackupManager(repository, settings.backup_dir)
     created = manager.create("precise-history.spbackup")
     repository.record_failure(
+        owner_user_id=OWNER_USER_ID,
         request_id="later-event",
         submitted_symbol="FAIL",
         normalized_symbol="FAIL",
@@ -894,7 +934,9 @@ def test_backup_restore_preserves_exact_history_microsecond_index(settings):
     assert restored["promoted"] is True
     assert [
         item["id"]
-        for item in repository.history(date_from=exact_utc, date_to=exact_utc)["items"]
+        for item in repository.history(
+            owner_user_id=OWNER_USER_ID, date_from=exact_utc, date_to=exact_utc
+        )["items"]
     ] == [event_id]
     with repository.connect() as connection:
         stored = connection.execute(
@@ -908,6 +950,7 @@ def test_successful_restore_serializes_second_repository_write_without_discardin
 ):
     repository, _ = _service(settings)
     repository.record_failure(
+        owner_user_id=OWNER_USER_ID,
         request_id="backup-event",
         submitted_symbol="FAIL",
         normalized_symbol="FAIL",
@@ -920,6 +963,7 @@ def test_successful_restore_serializes_second_repository_write_without_discardin
     manager = BackupManager(repository, settings.backup_dir)
     manager.create("coordinated-success.spbackup")
     repository.record_failure(
+        owner_user_id=OWNER_USER_ID,
         request_id="discarded-by-requested-restore",
         submitted_symbol="FAIL",
         normalized_symbol="FAIL",
@@ -944,6 +988,7 @@ def test_successful_restore_serializes_second_repository_write_without_discardin
     def write_after_restore_starts():
         writer_started.set()
         return second.record_failure(
+            owner_user_id=OWNER_USER_ID,
             request_id="concurrent-preserved",
             submitted_symbol="FAIL",
             normalized_symbol="FAIL",
@@ -965,7 +1010,9 @@ def test_successful_restore_serializes_second_repository_write_without_discardin
         assert restore.result(timeout=5)["promoted"] is True
         writer.result(timeout=5)
 
-    request_ids = {item["request_id"] for item in repository.history()["items"]}
+    request_ids = {
+        item["request_id"] for item in repository.history(owner_user_id=OWNER_USER_ID)["items"]
+    }
     assert request_ids == {"backup-event", "concurrent-preserved"}
 
 
@@ -975,6 +1022,7 @@ def test_failed_restore_serializes_second_repository_write_and_preserves_active_
     repository, _ = _service(settings)
     for request_id in ("backup-event",):
         repository.record_failure(
+            owner_user_id=OWNER_USER_ID,
             request_id=request_id,
             submitted_symbol="FAIL",
             normalized_symbol="FAIL",
@@ -987,6 +1035,7 @@ def test_failed_restore_serializes_second_repository_write_and_preserves_active_
     manager = BackupManager(repository, settings.backup_dir)
     manager.create("coordinated-failure.spbackup")
     repository.record_failure(
+        owner_user_id=OWNER_USER_ID,
         request_id="active-later-event",
         submitted_symbol="FAIL",
         normalized_symbol="FAIL",
@@ -1011,15 +1060,17 @@ def test_failed_restore_serializes_second_repository_write_and_preserves_active_
 
     def fail_promoted_counts(path):
         counts = original_counts(path)
-        if path == settings.database_path and settings.database_path.with_suffix(
-            ".pre-restore.sqlite3"
-        ).exists():
+        if (
+            path == settings.database_path
+            and settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
+        ):
             counts["search_events"] += 1
         return counts
 
     def concurrent_write():
         writer_started.set()
         return second.record_failure(
+            owner_user_id=OWNER_USER_ID,
             request_id="concurrent-after-failure",
             submitted_symbol="FAIL",
             normalized_symbol="FAIL",
@@ -1043,7 +1094,9 @@ def test_failed_restore_serializes_second_repository_write_and_preserves_active_
             restore.result(timeout=5)
         writer.result(timeout=5)
 
-    request_ids = {item["request_id"] for item in repository.history()["items"]}
+    request_ids = {
+        item["request_id"] for item in repository.history(owner_user_id=OWNER_USER_ID)["items"]
+    }
     assert request_ids == {
         "backup-event",
         "active-later-event",
@@ -1060,6 +1113,7 @@ def test_process_coordination_does_not_serialize_different_databases(settings, t
     with first.exclusive(), ThreadPoolExecutor(max_workers=1) as workers:
         write = workers.submit(
             second.record_failure,
+            owner_user_id=OWNER_USER_ID,
             request_id="independent",
             submitted_symbol="FAIL",
             normalized_symbol="FAIL",
@@ -1071,7 +1125,7 @@ def test_process_coordination_does_not_serialize_different_databases(settings, t
         )
         write.result(timeout=2)
 
-    assert second.history()["total"] == 1
+    assert second.history(owner_user_id=OWNER_USER_ID)["total"] == 1
 
 
 def test_process_coordination_wait_is_bounded_for_the_same_database(settings, monkeypatch):
@@ -1082,7 +1136,7 @@ def test_process_coordination_wait_is_bounded_for_the_same_database(settings, mo
     monkeypatch.setattr(repository_module, "COORDINATION_TIMEOUT_SECONDS", 0.01)
 
     with first.exclusive(), ThreadPoolExecutor(max_workers=1) as workers:
-        blocked = workers.submit(second.history)
+        blocked = workers.submit(second.history, owner_user_id=OWNER_USER_ID)
         with pytest.raises(sqlite3.OperationalError, match="coordination lock timed out"):
             blocked.result(timeout=1)
         restore = workers.submit(manager.restore, "not-reached.spbackup")
@@ -1090,9 +1144,7 @@ def test_process_coordination_wait_is_bounded_for_the_same_database(settings, mo
             restore.result(timeout=1)
 
 
-def test_repository_error_keeps_injected_path_detail_out_of_public_structure(
-    settings, monkeypatch
-):
+def test_repository_error_keeps_injected_path_detail_out_of_public_structure(settings, monkeypatch):
     """Transport gets one category while operators can inspect the chained SQLite cause."""
 
     repository = Repository(settings.database_path)
@@ -1103,7 +1155,7 @@ def test_repository_error_keeps_injected_path_detail_out_of_public_structure(
 
     monkeypatch.setattr(repository_module.sqlite3, "connect", fail_connect)
     with pytest.raises(RepositoryError) as failure:
-        repository.history()
+        repository.history(owner_user_id=OWNER_USER_ID)
 
     error = failure.value
     assert error.public_category == "persistence_unavailable"
@@ -1115,9 +1167,7 @@ def test_repository_error_keeps_injected_path_detail_out_of_public_structure(
     assert error.__cause__ is not None and sensitive in str(error.__cause__)
 
 
-def test_backup_error_keeps_injected_path_detail_out_of_public_structure(
-    settings, monkeypatch
-):
+def test_backup_error_keeps_injected_path_detail_out_of_public_structure(settings, monkeypatch):
     """Path diagnostics stay chained and never become public backup metadata."""
 
     repository = Repository(settings.database_path)
@@ -1144,7 +1194,7 @@ def test_backup_error_keeps_injected_path_detail_out_of_public_structure(
 
 def test_restore_rejects_tampering_and_unsafe_names(settings):
     repository, service = _service(settings)
-    service.search("ACDC", "stock")
+    service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     manager = BackupManager(repository, settings.backup_dir)
     manager.create("valid-copy.spbackup")
 
@@ -1165,7 +1215,7 @@ def test_restore_rejects_tampering_and_unsafe_names(settings):
 
 def test_restore_rejects_incompatible_manifest_and_truncated_archive(settings):
     repository, service = _service(settings)
-    service.search("ACDC", "stock")
+    service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     manager = BackupManager(repository, settings.backup_dir)
     manager.create("source.spbackup")
 

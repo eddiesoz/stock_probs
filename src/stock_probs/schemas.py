@@ -30,9 +30,7 @@ ForecastHorizon: TypeAlias = Literal[
 ForecastInterval: TypeAlias = Literal["5min", "daily", "weekly", "monthly", "quarterly"]
 ChartRange: TypeAlias = Literal["5d", "1mo", "3mo", "6mo", "1y"]
 HistoryStatus: TypeAlias = Literal["successful", "failed", "repeated"]
-HistoryAnalysisKind: TypeAlias = Literal[
-    "submitted_forecast", "fresh_historical_reconstruction"
-]
+HistoryAnalysisKind: TypeAlias = Literal["submitted_forecast", "fresh_historical_reconstruction"]
 HistorySortField: TypeAlias = Literal[
     "event_id",
     "submitted_at",
@@ -141,12 +139,8 @@ class NewsQuery(StrictModel):
 
 
 class NewsItem(StrictModel):
-    id: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)
-    ]
-    title: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
-    ]
+    id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
     publisher: str | None = Field(max_length=200)
     url: HttpUrl = Field(max_length=2048)
     published_at: AwareDatetime | None
@@ -226,9 +220,7 @@ class CorrectionRequest(StrictModel):
 class FreshReconstructionRequest(StrictModel):
     """Label a historical-cutoff request so it cannot be confused with saved replay."""
 
-    analysis_kind: Literal["fresh_historical_reconstruction"] = (
-        "fresh_historical_reconstruction"
-    )
+    analysis_kind: Literal["fresh_historical_reconstruction"] = "fresh_historical_reconstruction"
     cutoff: datetime
 
     @model_validator(mode="after")
@@ -248,3 +240,101 @@ class BackupRequest(StrictModel):
 class RestoreRequest(StrictModel):
     name: str = Field(min_length=10, max_length=73)
     promote: bool = False
+
+
+class LocalLoginRequest(StrictModel):
+    """Development-only local account credentials."""
+
+    username: str = Field(min_length=3, max_length=64)
+    password: str = Field(min_length=12, max_length=1024)
+
+
+class AuthUserResponse(StrictModel):
+    """Public account identity and authentication capabilities."""
+
+    id: int = Field(ge=1)
+    role: Literal["admin", "member"]
+    username: str | None = Field(default=None, max_length=64)
+    login: str | None = Field(default=None, max_length=100)
+    name: str | None = Field(default=None, max_length=200)
+    github_login: str | None = Field(default=None, max_length=100)
+    email: str | None = Field(default=None, max_length=320)
+    avatar_url: str | None = Field(default=None, max_length=2048)
+    passkey_enrolled: bool
+    passkey_required: bool
+    passkey_registered: bool = False
+
+
+class AuthSessionResponse(StrictModel):
+    """Current session state returned without exposing the session cookie."""
+
+    authenticated: bool
+    user: AuthUserResponse | None = None
+    csrf_token: str | None = Field(default=None, min_length=20, max_length=256)
+    requires_passkey: bool = False
+    expires_at: AwareDatetime | None = None
+    role: Literal["admin", "member"] | None = None
+    local_login_enabled: bool = False
+    github_required: bool = False
+    invitation_github_id: int | None = Field(default=None, ge=1)
+    message: str | None = Field(default=None, max_length=300)
+    authorization_url: str | None = Field(default=None, max_length=2048)
+
+
+class AuthLoginResponse(StrictModel):
+    """Successful local or OAuth-completed sign-in response."""
+
+    authenticated: Literal[True]
+    user: AuthUserResponse
+    csrf_token: str = Field(min_length=20, max_length=256)
+    requires_passkey: bool = False
+    expires_at: AwareDatetime
+
+
+class AuthInvitationRequest(StrictModel):
+    """Invite one resolved GitHub account by its stable numeric ID."""
+
+    github_id: int = Field(ge=1, le=2_147_483_647)
+    github_login: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class AuthInvitationResponse(StrictModel):
+    """One-time invitation code and bounded expiry returned to an administrator."""
+
+    code: str = Field(min_length=20, max_length=128)
+    github_id: int = Field(ge=1, le=2_147_483_647)
+    github_login: str | None = Field(default=None, max_length=100)
+    expires_at: AwareDatetime
+
+
+class AuthInvitationRedeemRequest(StrictModel):
+    """Single-use invitation code submitted by the invitation screen."""
+
+    code: str = Field(min_length=20, max_length=128)
+
+
+class PasskeyResponseRequest(StrictModel):
+    """Bounded WebAuthn JSON response passed to the cryptographic backend."""
+
+    response: dict[str, object] = Field(default_factory=dict)
+    id: str = Field(min_length=1, max_length=512)
+    raw_id: str = Field(min_length=1, max_length=512)
+    type: Literal["public-key"] = "public-key"
+
+
+class PasskeyOptionsResponse(StrictModel):
+    """WebAuthn creation or assertion options."""
+
+    # Keep the API envelope stable for the browser client; nested WebAuthn keys retain
+    # their standards-defined camelCase spelling.
+    public_key: dict[str, object]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AuthStatusResponse(StrictModel):
+    """Bounded authentication service status for readiness and operator screens."""
+
+    status: Literal["disabled", "local", "github"]
+    public_origin: str | None = None
+    passkey_required: bool

@@ -19,6 +19,8 @@ import stock_probs.cli as cli
 from stock_probs.backup import BackupError, BackupManager
 from stock_probs.repository import Repository
 
+OWNER_USER_ID = 1
+
 
 def _manager(settings) -> tuple[Repository, BackupManager]:
     """Create the migrated operation boundary without involving provider or presentation code."""
@@ -33,6 +35,7 @@ def _record_failure(repository: Repository, request_id: str) -> None:
 
     now = datetime(2025, 1, 1, tzinfo=UTC)
     repository.record_failure(
+        owner_user_id=OWNER_USER_ID,
         request_id=request_id,
         submitted_symbol="FAIL",
         normalized_symbol="FAIL",
@@ -63,9 +66,10 @@ def test_manifest_records_database_schema_checksum_counts_and_timezone(settings)
     created = manager.create("manifest.spbackup")
     manifest, _, staging = manager.verify("manifest.spbackup")
     try:
-        assert created["sha256"] == hashlib.sha256(
-            (settings.backup_dir / "manifest.spbackup").read_bytes()
-        ).hexdigest()
+        assert (
+            created["sha256"]
+            == hashlib.sha256((settings.backup_dir / "manifest.spbackup").read_bytes()).hexdigest()
+        )
         assert len(manifest["database_sha256"]) == len(manifest["schema_sha256"]) == 64
         assert manifest["counts"]["search_events"] == 1
         assert manifest["created_at"].endswith("+00:00")
@@ -188,9 +192,9 @@ def test_transferred_key_restores_but_wrong_key_fails_closed(settings, tmp_path)
     )
 
     assert destination.restore("transfer.spbackup", promote=True)["promoted"] is True
-    assert destination_repository.history()["items"][0]["request_id"] == (
-        "cross-installation-event"
-    )
+    assert destination_repository.history(owner_user_id=OWNER_USER_ID)["items"][0][
+        "request_id"
+    ] == ("cross-installation-event")
 
     destination.trust_key_path.write_bytes(b"x" * 32)
     before = destination_repository.representative_counts()
@@ -210,7 +214,7 @@ def test_new_backup_does_not_silently_rotate_a_lost_key(settings):
 
     assert not manager.trust_key_path.exists()
     assert not (settings.backup_dir / "after-key-loss.spbackup").exists()
-    assert repository.history()["total"] == 1
+    assert repository.history(owner_user_id=OWNER_USER_ID)["total"] == 1
 
 
 def test_backup_count_and_disk_limits_refuse_creation_without_expiring_history(
@@ -223,7 +227,7 @@ def test_backup_count_and_disk_limits_refuse_creation_without_expiring_history(
 
     with pytest.raises(BackupError, match="retention limit"):
         manager.create("count-refused.spbackup")
-    assert repository.history()["total"] == 1
+    assert repository.history(owner_user_id=OWNER_USER_ID)["total"] == 1
     assert not (settings.backup_dir / "count-refused.spbackup").exists()
 
     monkeypatch.setattr(backup_module, "MAX_MANAGED_BACKUPS", 32)
@@ -234,7 +238,7 @@ def test_backup_count_and_disk_limits_refuse_creation_without_expiring_history(
     )
     with pytest.raises(BackupError, match="storage limit"):
         manager.create("disk-refused.spbackup")
-    assert repository.history()["total"] == 1
+    assert repository.history(owner_user_id=OWNER_USER_ID)["total"] == 1
     assert not (settings.backup_dir / "disk-refused.spbackup").exists()
 
 
@@ -290,9 +294,7 @@ def test_restore_does_not_regenerate_a_missing_installation_key(settings):
     assert repository.representative_counts()["search_events"] == 1
 
 
-def test_operations_harden_existing_runtime_storage_and_sensitive_files(
-    settings, monkeypatch
-):
+def test_operations_harden_existing_runtime_storage_and_sensitive_files(settings, monkeypatch):
     """Startup and backup access repair permissive modes through no-follow descriptors."""
 
     settings.ensure_local_dirs()
@@ -398,7 +400,7 @@ def test_backup_mutation_rejects_symlinked_coordination_file(settings):
 
 def test_cli_serve_passes_loopback_resource_and_timeout_bounds(monkeypatch):
     captured = {}
-    monkeypatch.setattr(cli, "create_app", lambda: object())
+    monkeypatch.setattr(cli, "create_app", lambda _settings: object())
     monkeypatch.setattr(cli.uvicorn, "run", lambda app, **kwargs: captured.update(kwargs))
     monkeypatch.setattr(sys, "argv", ["stock-probs", "serve", "--host", "127.0.0.1"])
 
@@ -427,7 +429,7 @@ def test_cli_requires_explicit_acknowledgement_for_broader_bind(monkeypatch):
     """The security-sensitive flag is observable and never implied by an environment default."""
 
     captured = {}
-    monkeypatch.setattr(cli, "create_app", lambda: object())
+    monkeypatch.setattr(cli, "create_app", lambda _settings: object())
     monkeypatch.setattr(cli.uvicorn, "run", lambda app, **kwargs: captured.update(kwargs))
     monkeypatch.setattr(
         sys,

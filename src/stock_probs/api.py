@@ -5,26 +5,30 @@ from __future__ import annotations
 import base64
 import csv
 import hashlib
+import hmac
 import io
 import json
 import logging
 import re
 import sqlite3
+import threading
+import time
 import unicodedata
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, date, datetime
 from functools import partial
 from html.parser import HTMLParser
+from inspect import signature
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, quote, urlparse
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi import Path as PathParameter
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -32,12 +36,32 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import ClientDisconnect
 from starlette.types import ASGIApp
 
+from stock_probs.auth import (
+    CSRF_COOKIE_NAME,
+    OAUTH_TRANSACTION_COOKIE_NAME,
+    SESSION_COOKIE_NAME,
+    AuthContext,
+    AuthenticationRequired,
+    AuthError,
+    AuthManager,
+    AuthorizationDenied,
+    AuthUnavailable,
+    InvitationRejected,
+    PasskeyBackend,
+    UserRecord,
+)
 from stock_probs.backup import MAX_BACKUP_BYTES, BackupError, BackupManager
 from stock_probs.config import Settings
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, DomainError, normalize_symbol
 from stock_probs.provider import FixtureProvider, MarketDataProvider, YahooProvider
 from stock_probs.repository import SCHEMA_VERSION, Repository, RepositoryError
 from stock_probs.schemas import (
+    AuthInvitationRedeemRequest,
+    AuthInvitationRequest,
+    AuthInvitationResponse,
+    AuthLoginResponse,
+    AuthSessionResponse,
+    AuthStatusResponse,
     BackupRequest,
     ChartRange,
     CorrectionRequest,
@@ -50,9 +74,12 @@ from stock_probs.schemas import (
     InstrumentIdentityResponse,
     InstrumentListMutationRequest,
     InstrumentLookupResponse,
+    LocalLoginRequest,
     NewsQuery,
     NewsResponse,
     OutcomeRequest,
+    PasskeyOptionsResponse,
+    PasskeyResponseRequest,
     RestoreRequest,
     SearchRequest,
     SortDirection,
@@ -259,9 +286,7 @@ class ModelParametersResponse(ApiResponse):
     ewma_span_daily: Literal[30]
     ewma_span_intraday: Literal[10]
     flat_threshold: Annotated[float, Field(gt=0.0, lt=1.0, allow_inf_nan=False)]
-    maximum_absolute_training_return: Annotated[
-        float, Field(gt=0.0, le=1.0, allow_inf_nan=False)
-    ]
+    maximum_absolute_training_return: Annotated[float, Field(gt=0.0, le=1.0, allow_inf_nan=False)]
     return_thresholds_percent: list[ThresholdPercent]
     evaluation_max_points: Literal[120]
     reliability_bin_count: Literal[5]
@@ -438,9 +463,7 @@ class ForecastInputResponse(ApiResponse):
     quality: Literal["current", "stale"]
     quality_reasons: list[str]
     stale_state: StaleStateResponse
-    session_state_at_request: Literal[
-        "closed_session_day", "pre_session", "open", "post_session"
-    ]
+    session_state_at_request: Literal["closed_session_day", "pre_session", "open", "post_session"]
     forecast_contract_version: str
     model: ModelIdentityResponse
     model_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -727,9 +750,7 @@ class EvaluationScoresResponse(ApiResponse):
             *(item.bins for item in self.reliability.thresholds),
         ]
         expected_bounds = [(index / 5, (index + 1) / 5) for index in range(5)]
-        if any(
-            [(item.low, item.high) for item in bins] != expected_bounds for bins in bin_groups
-        ):
+        if any([(item.low, item.high) for item in bins] != expected_bounds for bins in bin_groups):
             raise ValueError("reliability reports must contain the five fixed probability bins")
         return self
 
@@ -808,12 +829,8 @@ class ForecastEvaluationResponse(ApiResponse):
 
 
 class TargetSelectionResponse(ApiResponse):
-    rule: Literal[
-        "same_open_session_close", "next_session_close_after_completed_origin_session"
-    ]
-    request_session_state: Literal[
-        "closed_session_day", "pre_session", "open", "post_session"
-    ]
+    rule: Literal["same_open_session_close", "next_session_close_after_completed_origin_session"]
+    request_session_state: Literal["closed_session_day", "pre_session", "open", "post_session"]
     origin_session_date: date
     target_session_date: date
 
@@ -873,9 +890,9 @@ class ForecastResultResponse(ApiResponse):
     target_timestamp: AwareDatetime
     target_state: Literal["scheduled_session_close"]
     exchange_timezone: str
-    session_state_at_request: Literal[
-        "closed_session_day", "pre_session", "open", "post_session"
-    ] | None = None
+    session_state_at_request: (
+        Literal["closed_session_day", "pre_session", "open", "post_session"] | None
+    ) = None
     stale_state: Literal["current", "stale"]
     calculated_at: AwareDatetime
     definition: str
@@ -944,9 +961,7 @@ class ForecastResultResponse(ApiResponse):
             raise ValueError("threshold sample counts must match the forecast sample")
         downside = [item.probability for item in self.threshold_probabilities[:4]]
         upside = [item.probability for item in self.threshold_probabilities[4:]]
-        if downside != sorted(downside, reverse=True) or upside != sorted(
-            upside, reverse=True
-        ):
+        if downside != sorted(downside, reverse=True) or upside != sorted(upside, reverse=True):
             raise ValueError("more severe threshold events cannot be more probable")
         if [item.level for item in self.magnitude_intervals] != [0.5, 0.8, 0.95]:
             raise ValueError("forecast must report 50, 80, and 95 percent intervals")
@@ -1198,9 +1213,7 @@ class HistoryJsonExportResponse(ApiResponse):
     exported_events: int
     truncated: bool
     counts: HistoryExportCountsResponse
-    records: list[
-        HistoryEventExportRecord | ForecastRunExportRecord | ForecastResultExportRecord
-    ]
+    records: list[HistoryEventExportRecord | ForecastRunExportRecord | ForecastResultExportRecord]
 
 
 class HistoricalPricesResponse(ApiResponse):
@@ -1337,9 +1350,7 @@ def _public_restore_result(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-_FRESH_RECONSTRUCTION_PATH = re.compile(
-    r"^/api/v1/history/(?P<event_id>[0-9]+)/reconstructions$"
-)
+_FRESH_RECONSTRUCTION_PATH = re.compile(r"^/api/v1/history/(?P<event_id>[0-9]+)/reconstructions$")
 
 
 def _reconstruction_source_id(path: str) -> int | None:
@@ -1351,7 +1362,7 @@ def _reconstruction_source_id(path: str) -> int | None:
 
 
 def _reconstruction_submission_context(
-    repository: Repository, path: str
+    repository: Repository, path: str, owner_user_id: int | None = None
 ) -> tuple[str, str | None, str, int | None] | None:
     """Recover trusted source identity while retaining an unknown requested ID safely."""
 
@@ -1362,7 +1373,7 @@ def _reconstruction_submission_context(
     if event_id is None:
         return "<invalid history event ID>", None, "invalid", None
     try:
-        source = repository.reconstruction(event_id)
+        source = _call_with_owner(repository.reconstruction, owner_user_id, event_id)
     except sqlite3.Error:
         # Framing errors still receive their safe response if local audit lookup is unavailable.
         source = None
@@ -1372,8 +1383,8 @@ def _reconstruction_submission_context(
         return f"<history event {event_id}>", None, "invalid", event_id
     event = source["event"]
     snapshot = source.get("input")
-    normalized = snapshot.get("symbol") if isinstance(snapshot, dict) else event.get(
-        "normalized_symbol"
+    normalized = (
+        snapshot.get("symbol") if isinstance(snapshot, dict) else event.get("normalized_symbol")
     )
     submitted = normalized or event.get("submitted_symbol") or "<historical reconstruction>"
     return (
@@ -1409,23 +1420,258 @@ def _documented_errors(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     }
 
 
+class _RestoreRequestGate:
+    """Stop new database requests and drain existing ones before promotion."""
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._active = 0
+        self._draining = False
+
+    def try_enter(self) -> bool:
+        """Count a request unless a restore has already started draining."""
+
+        with self._condition:
+            if self._draining:
+                return False
+            self._active += 1
+            return True
+
+    def leave(self) -> None:
+        """Release one request slot and wake a waiting promotion."""
+
+        with self._condition:
+            if self._active <= 0:
+                raise RuntimeError("restore request gate underflow")
+            self._active -= 1
+            if self._active == 0:
+                self._condition.notify_all()
+
+    def begin_drain(self, timeout: float) -> bool:
+        """Block new requests and wait for the bounded in-flight set to finish."""
+
+        deadline = time.monotonic() + timeout
+        with self._condition:
+            if self._draining:
+                return False
+            self._draining = True
+            while self._active:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self._draining = False
+                    self._condition.notify_all()
+                    return False
+                self._condition.wait(remaining)
+            return True
+
+    def end_drain(self) -> None:
+        """Reopen normal traffic after a failed or completed promotion."""
+
+        with self._condition:
+            self._draining = False
+            self._condition.notify_all()
+
+
+RESTORE_DRAIN_TIMEOUT_SECONDS = 5.0
+
+
 class LocalSecurityMiddleware(BaseHTTPMiddleware):
-    """Defend the loopback origin and attach one policy to every response type."""
+    """Defend the configured origin and attach one policy to every response type."""
 
     allowed_hosts = {"127.0.0.1", "localhost", "::1", "testserver"}
     browser_hosts = {"127.0.0.1", "localhost", "::1"}
+
+    @staticmethod
+    def _host_authority(raw: str) -> ParseResult | None:
+        """Accept only an HTTP Host authority, never URL path/query/fragment syntax.
+
+        Starlette can derive request.url.path from Host. A malformed Host containing a path
+        must not change the path used by authentication or maintenance decisions.
+        """
+
+        if (
+            not raw
+            or len(raw) > 253
+            or any(char in raw for char in "/\\?#@%")
+            or any(ord(char) < 33 or ord(char) > 126 for char in raw)
+        ):
+            return None
+        try:
+            authority = urlparse(f"//{raw}")
+            if (
+                authority.netloc != raw
+                or authority.path
+                or authority.params
+                or authority.query
+                or authority.fragment
+                or authority.hostname is None
+                or authority.username is not None
+                or authority.password is not None
+                or (authority.port is not None and not 1 <= authority.port <= 65_535)
+            ):
+                return None
+        except ValueError:
+            return None
+        return authority
 
     def __init__(
         self,
         app: ASGIApp,
         repository: Repository,
         content_security_policy: str,
+        content_security_policies: Mapping[str, str] | None = None,
+        auth_manager: AuthManager | None = None,
+        public_origin: str | None = None,
+        trusted_proxy_hosts: tuple[str, ...] = (),
+        maintenance_event: threading.Event | None = None,
+        request_gate: _RestoreRequestGate | None = None,
         max_request_bytes: int = 16_384,
     ) -> None:
         super().__init__(app)
         self.repository = repository
         self.content_security_policy = content_security_policy
+        self.content_security_policies = dict(content_security_policies or {})
+        self.auth_manager = auth_manager
+        self.public_origin = public_origin.rstrip("/") if public_origin else None
+        self.trusted_proxy_hosts = set(trusted_proxy_hosts)
+        self.maintenance_event = maintenance_event or threading.Event()
+        self.request_gate = request_gate or _RestoreRequestGate()
         self.max_request_bytes = max_request_bytes
+
+    @property
+    def public_hostname(self) -> str | None:
+        """Return the configured public hostname without trusting request headers."""
+
+        if self.public_origin is None:
+            return None
+        try:
+            return urlparse(self.public_origin).hostname
+        except ValueError:
+            return None
+
+    def _trusted_proxy(self, request: Request) -> bool:
+        client = request.client.host if request.client is not None else None
+        return client is not None and client.lower() in self.trusted_proxy_hosts
+
+    def _effective_origin(self, request: Request, authority: str) -> str:
+        """Build the request origin, accepting forwarded values only from the connector."""
+
+        if self._trusted_proxy(request):
+            forwarded_host = request.headers.get("x-forwarded-host")
+            forwarded_proto = request.headers.get("x-forwarded-proto")
+            if (
+                forwarded_host
+                and forwarded_proto in {"http", "https"}
+                and self._host_authority(forwarded_host) is not None
+            ):
+                return f"{forwarded_proto}://{forwarded_host}"
+        scheme = request.url.scheme
+        return f"{scheme}://{authority}"
+
+    def _allowed_origin(self, request: Request, authority: str) -> str | None:
+        """Return the one origin against which a browser request may be compared."""
+
+        public_hostname = self.public_hostname
+        parsed_authority = self._host_authority(authority)
+        host = parsed_authority.hostname if parsed_authority is not None else None
+        if self.public_origin and (host == public_hostname or self._trusted_proxy(request)):
+            return self.public_origin
+        return self._effective_origin(request, authority)
+
+    def _requires_authentication(self, request: Request) -> bool:
+        """Keep health, sign-in, and machine contract discovery available anonymously."""
+
+        if self.auth_manager is None or not self.auth_manager.enabled:
+            return False
+        path = request.scope["path"]
+        if path in {
+            "/api/v1/health",
+            "/api/v1/readiness",
+            "/api/v1/openapi.json",
+            "/api/v1/auth/status",
+            "/api/v1/auth/session",
+            "/api/v1/auth/local/login",
+            "/api/v1/auth/github/start",
+            "/api/v1/auth/github/callback",
+            "/api/v1/auth/invites/redeem",
+        }:
+            return False
+        if path.startswith("/api/v1/auth/passkeys/"):
+            return False
+        return path.startswith("/api/v1/") or path in {
+            "/",
+            "/overview",
+            "/research",
+            "/tools",
+            "/tools/forecast",
+            "/tools/live-trading",
+            "/tools/markets",
+            "/account",
+            "/admin",
+        }
+
+    def _auth_rejection(self, error: AuthError) -> JSONResponse:
+        return JSONResponse(
+            status_code=error.status_code, content=_error(error.code, error.public_message)
+        )
+
+    def _authenticate_request(self, request: Request) -> Response | None:
+        """Attach the validated context before any protected handler executes."""
+
+        if not self._requires_authentication(request):
+            return None
+        if self.auth_manager is None:
+            return JSONResponse(
+                status_code=503,
+                content=_error(
+                    "authentication_unavailable", "Authentication is temporarily unavailable."
+                ),
+            )
+        try:
+            context = self.auth_manager.authenticate(
+                request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC)
+            )
+            if (
+                self.auth_manager.settings.mode == "github"
+                and context.user.passkey_required
+                and not context.user.passkey_enrolled
+            ):
+                if not request.scope["path"].startswith("/api/v1/"):
+                    return RedirectResponse(
+                        "/passkey?mode=enroll&next=" + quote(request.scope["path"], safe="/"),
+                        status_code=303,
+                    )
+                return JSONResponse(
+                    status_code=403,
+                    content=_error(
+                        "passkey_required",
+                        "A passkey must be enrolled before using this application.",
+                    ),
+                )
+            if self.auth_manager.settings.mode == "github" and context.auth_method != "passkey":
+                if not request.scope["path"].startswith("/api/v1/"):
+                    return RedirectResponse(
+                        "/passkey?mode=verify&next=" + quote(request.scope["path"], safe="/"),
+                        status_code=303,
+                    )
+                return JSONResponse(
+                    status_code=403,
+                    content=_error(
+                        "passkey_required",
+                        "Verify your passkey before using this application.",
+                    ),
+                )
+            request.state.auth_context = context
+            return None
+        except AuthError as exc:
+            if (
+                not request.scope["path"].startswith("/api/v1/")
+                and exc.code == "authentication_required"
+            ):
+                return RedirectResponse(
+                    "/sign-in?next=" + quote(request.scope["path"], safe="/"), status_code=303
+                )
+            return self._auth_rejection(exc)
 
     def _record_bounded_rejection(
         self,
@@ -1437,6 +1683,7 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
         asset_type: str = "invalid",
         analysis_kind: str = "submitted_forecast",
         source_event_id: int | None = None,
+        owner_user_id: int | None = None,
     ) -> str | None:
         """Audit a rejected forecast without parsing or retaining its untrusted body."""
 
@@ -1446,7 +1693,9 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
         # the receipt time is the only truthful bounded marker available; error_code records why.
         requested_cutoff = now if analysis_kind == "fresh_historical_reconstruction" else None
         try:
-            self.repository.record_failure(
+            _call_with_owner(
+                self.repository.record_failure,
+                owner_user_id,
                 request_id=request_id,
                 submitted_symbol=submitted_symbol,
                 normalized_symbol=normalized_symbol,
@@ -1473,9 +1722,21 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
     ) -> str | None:
         """Append one event only for application submissions, never hostile security probes."""
 
-        reconstruction = _reconstruction_submission_context(self.repository, request.url.path)
+        owner_user_id = (
+            request.state.auth_context.user.id
+            if isinstance(getattr(request.state, "auth_context", None), AuthContext)
+            else None
+        )
+        if owner_user_id is None and (self.auth_manager is None or not self.auth_manager.enabled):
+            try:
+                owner_user_id = self.repository.legacy_owner_id()
+            except (sqlite3.Error, ValueError, AttributeError):
+                return None
+        reconstruction = _reconstruction_submission_context(
+            self.repository, request.scope["path"], owner_user_id
+        )
         if request.method != "POST" or (
-            request.url.path != "/api/v1/forecasts" and reconstruction is None
+            request.scope["path"] != "/api/v1/forecasts" and reconstruction is None
         ):
             return None
         submitted, normalized, asset, source_event_id = reconstruction or (
@@ -1496,6 +1757,7 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
                 else "submitted_forecast"
             ),
             source_event_id=source_event_id,
+            owner_user_id=owner_user_id,
         )
 
     async def _cache_bounded_body(
@@ -1539,92 +1801,141 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
         request._body = bytes(body)
         return None
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Handle Host here instead of TrustedHostMiddleware so its rejection also uses the
         # API error envelope and receives the same headers as every other response. These
         # checks intentionally precede audit handling: hostile browser traffic is not a trusted
         # application submission and must not be able to grow the local event ledger.
-        try:
-            authority = urlparse(f"//{request.headers.get('host', '')}")
-            host_is_allowed = (
-                authority.hostname in self.allowed_hosts
-                and authority.username is None
-                and authority.password is None
-                and (authority.port is None or 1 <= authority.port <= 65_535)
+        host_values = request.headers.getlist("host")
+        host_header = host_values[0] if len(host_values) == 1 else ""
+        authority = self._host_authority(host_header)
+        public_authority = urlparse(self.public_origin).netloc if self.public_origin else None
+        host_is_allowed = authority is not None and (
+            authority.hostname in self.allowed_hosts
+            or (
+                public_authority is not None
+                and authority.netloc.lower() == public_authority.lower()
             )
-        except ValueError:
-            host_is_allowed = False
+        )
         if not host_is_allowed:
             response: Response = JSONResponse(
                 status_code=400,
-                content=_error("host_rejected", "Only local service hosts are allowed."),
+                content=_error("host_rejected", "The requested host is not configured."),
             )
-            return self._secure(response)
+            return self._secure(response, request)
 
-        history_suffix = request.url.path.removeprefix("/api/v1/history/")
-        history_id = history_suffix.split("/", 1)[0]
-        if (
-            history_suffix != request.url.path
-            and len(history_id) > 10
-            and history_id.isascii()
-            and history_id.isdecimal()
-        ):
-            return self._secure(
-                JSONResponse(
-                    status_code=422,
-                    content=_error("validation_error", "Request validation failed."),
+        request_gate_exempt = request.scope["path"] in {
+            "/api/v1/health",
+            "/api/v1/readiness",
+            "/api/v1/operations/restores",
+        }
+        gate_entered = False
+        if not request_gate_exempt:
+            if not self.request_gate.try_enter():
+                response = JSONResponse(
+                    status_code=503,
+                    content=_error(
+                        "maintenance_mode",
+                        "The application is temporarily unavailable during a verified restore.",
+                    ),
                 )
-            )
+                return self._secure(response, request)
+            gate_entered = True
+        try:
+            if self.maintenance_event.is_set() and request.scope["path"] not in {
+                "/api/v1/health",
+                "/api/v1/readiness",
+                "/api/v1/operations/restores",
+            }:
+                response = JSONResponse(
+                    status_code=503,
+                    content=_error(
+                        "maintenance_mode",
+                        "The application is temporarily unavailable during a verified restore.",
+                    ),
+                )
+                return self._secure(response, request)
 
-        origin = request.headers.get("origin")
-        if origin:
-            parsed_host = None
-            try:
-                parsed = urlparse(origin)
-                target = request.url
-                parsed_host = parsed.hostname
-                origin_port = parsed.port
-                target_port = target.port
-                same_origin = (
-                    parsed.scheme == target.scheme
-                    and parsed_host == target.hostname
-                    and parsed.username is None
-                    and parsed.password is None
-                    and (origin_port is None or 1 <= origin_port <= 65_535)
-                    and (origin_port if origin_port is not None else _default_port(parsed.scheme))
-                    == (target_port if target_port is not None else _default_port(target.scheme))
+            history_suffix = request.scope["path"].removeprefix("/api/v1/history/")
+            history_id = history_suffix.split("/", 1)[0]
+            if (
+                history_suffix != request.scope["path"]
+                and len(history_id) > 10
+                and history_id.isascii()
+                and history_id.isdecimal()
+            ):
+                return self._secure(
+                    JSONResponse(
+                        status_code=422,
+                        content=_error("validation_error", "Request validation failed."),
+                    ),
+                    request,
                 )
-            except ValueError:
-                same_origin = False
-            if parsed_host not in self.browser_hosts or not same_origin:
+
+            origin = request.headers.get("origin")
+            if origin:
+                parsed_host = None
+                try:
+                    parsed = urlparse(origin)
+                    parsed_host = parsed.hostname
+                    origin_port = parsed.port
+                    expected = self._allowed_origin(request, host_header)
+                    expected_parsed = urlparse(expected) if expected else None
+                    same_origin = (
+                        expected_parsed is not None
+                        and (origin_port is None or 1 <= origin_port <= 65_535)
+                        and parsed.scheme == expected_parsed.scheme
+                        and parsed_host == expected_parsed.hostname
+                        and parsed.username is None
+                        and parsed.password is None
+                        and (
+                            origin_port if origin_port is not None else _default_port(parsed.scheme)
+                        )
+                        == (
+                            expected_parsed.port
+                            if expected_parsed.port is not None
+                            else _default_port(expected_parsed.scheme)
+                        )
+                    )
+                except ValueError:
+                    same_origin = False
+                allowed_browser_hosts = set(self.browser_hosts)
+                if self.public_hostname:
+                    allowed_browser_hosts.add(self.public_hostname)
+                if parsed_host not in allowed_browser_hosts or not same_origin:
+                    response = JSONResponse(
+                        status_code=403,
+                        content=_error("origin_rejected", "The browser origin is not allowed."),
+                    )
+                else:
+                    auth_response = self._authenticate_request(request)
+                    response = auth_response or await self._bounded_request(request, call_next)
+            elif request.headers.get("sec-fetch-site", "").lower() == "cross-site" and not (
+                request.method == "GET" and request.scope["path"] == "/api/v1/auth/github/callback"
+            ):
+                # Modern browsers provide this header even on requests where Origin is omitted.
                 response = JSONResponse(
                     status_code=403,
-                    content={
-                        "error": {
-                            "code": "origin_rejected",
-                            "message": "Only loopback origins are allowed.",
-                        }
-                    },
+                    content=_error(
+                        "origin_rejected", "Cross-site browser requests are not allowed."
+                    ),
                 )
             else:
-                response = await self._bounded_request(request, call_next)
-        elif request.headers.get("sec-fetch-site", "").lower() == "cross-site":
-            # Modern browsers provide this header even on requests where Origin is omitted.
-            response = JSONResponse(
-                status_code=403,
-                content=_error("origin_rejected", "Cross-site browser requests are not allowed."),
-            )
-        else:
-            response = await self._bounded_request(request, call_next)
-        return self._secure(response)
+                auth_response = self._authenticate_request(request)
+                response = auth_response or await self._bounded_request(request, call_next)
+            return self._secure(response, request)
 
-    def _secure(self, response: Response) -> Response:
+        finally:
+            if gate_entered:
+                self.request_gate.leave()
+
+    def _secure(self, response: Response, request: Request) -> Response:
         """Apply browser isolation even to validation, host, and mounted-asset errors."""
 
         # Error responses receive the same protections as successful HTML/API responses.
-        response.headers["Content-Security-Policy"] = self.content_security_policy
+        response.headers["Content-Security-Policy"] = self.content_security_policies.get(
+            request.scope["path"], self.content_security_policy
+        )
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -1632,6 +1943,8 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
         response.headers["Cache-Control"] = "no-store"
+        if self.public_origin and self.public_origin.startswith("https://"):
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
     async def _bounded_request(
@@ -1713,9 +2026,7 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
         framing_error = await self._cache_bounded_body(request, declared_size)
         if framing_error is not None:
             status_code, code, message, forecast_label = framing_error
-            request_id = self._audit_transport_rejection(
-                request, code, message, forecast_label
-            )
+            request_id = self._audit_transport_rejection(request, code, message, forecast_label)
             return JSONResponse(
                 status_code=status_code,
                 content=_error(code, message, request_id=request_id),
@@ -1732,6 +2043,140 @@ def _error(
     if details:
         payload["error"]["details"] = details
     return payload
+
+
+def _call_with_owner(
+    callable_value: Callable[..., Any], owner_user_id: int | None, *args: Any, **kwargs: Any
+) -> Any:
+    """Pass ownership explicitly and fail closed when a private method lacks the boundary."""
+
+    if owner_user_id is not None:
+        try:
+            parameters = signature(callable_value).parameters
+        except (TypeError, ValueError) as exc:
+            raise AuthUnavailable("Private data ownership could not be verified.") from exc
+        if "owner_user_id" not in parameters:
+            raise AuthUnavailable("Private data ownership is not enforced by this operation.")
+        owner_parameter = parameters["owner_user_id"]
+        if owner_parameter.kind in {
+            owner_parameter.POSITIONAL_ONLY,
+            owner_parameter.POSITIONAL_OR_KEYWORD,
+        }:
+            # Persistence uses positional owner IDs for simple record lookups and keyword-only
+            # ownership for larger writes. Put the ID in the declared slot so a following
+            # event/result ID is not accidentally bound twice.
+            args = (owner_user_id, *args)
+        else:
+            kwargs["owner_user_id"] = owner_user_id
+    return callable_value(*args, **kwargs)
+
+
+_RESTORE_SECURITY_TABLES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "users",
+        (
+            "id",
+            "github_user_id",
+            "login",
+            "email",
+            "display_name",
+            "password_hash",
+            "role",
+            "status",
+            "legacy_owner_claimed_at",
+        ),
+    ),
+    (
+        "invitations",
+        (
+            "id",
+            "github_user_id",
+            "github_login",
+            "token_hash",
+            "invited_by_user_id",
+            "expires_at",
+            "used_at",
+            "created_at",
+        ),
+    ),
+    (
+        "passkeys",
+        (
+            "id",
+            "user_id",
+            "credential_id",
+            "public_key",
+            "sign_count",
+            "transports",
+            "revoked_at",
+        ),
+    ),
+    (
+        "oauth_states",
+        (
+            "id",
+            "state_hash",
+            "code_verifier",
+            "redirect_uri",
+            "invitation_code_hash",
+            "created_at",
+            "expires_at",
+            "consumed_at",
+        ),
+    ),
+)
+
+
+def _restore_security_digest(path: Path) -> str:
+    """Fingerprint account and authenticator state without exposing its secret values."""
+
+    try:
+        connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        connection.row_factory = sqlite3.Row
+        try:
+            connection.execute("PRAGMA query_only = ON")
+            state: list[tuple[str, list[tuple[object, ...]]]] = []
+            for table, columns in _RESTORE_SECURITY_TABLES:
+                quoted_columns = ", ".join(columns)
+                rows = connection.execute(
+                    f"SELECT {quoted_columns} FROM {table} ORDER BY id"  # noqa: S608
+                ).fetchall()
+                state.append((table, [tuple(row[column] for column in columns) for row in rows]))
+        finally:
+            connection.close()
+    except (OSError, sqlite3.Error, ValueError) as exc:
+        raise AuthUnavailable("Account security state could not be verified.") from exc
+    encoded = json.dumps(state, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _revoke_every_session(repository: Repository, revoked_at: datetime) -> None:
+    """Invalidate sessions in the promoted database before the route returns."""
+
+    timestamp = revoked_at.astimezone(UTC).isoformat()
+    try:
+        with repository.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "UPDATE sessions SET revoked_at = ?, revocation_reason = ? "
+                "WHERE revoked_at IS NULL",
+                (timestamp, "restore_promotion"),
+            )
+            connection.commit()
+    except (OSError, sqlite3.Error) as exc:
+        raise AuthUnavailable("Promoted restore could not revoke existing sessions.") from exc
+
+
+def _clear_pending_oauth_states(repository: Repository) -> None:
+    """Discard transient OAuth/PKCE transactions after a database promotion."""
+
+    try:
+        with repository.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("DELETE FROM oauth_states")
+            connection.commit()
+    except (OSError, sqlite3.Error) as exc:
+        raise AuthUnavailable("Promoted restore could not clear OAuth transactions.") from exc
 
 
 def _default_port(scheme: str) -> int:
@@ -1854,9 +2299,7 @@ def _history_filters(
     }
 
 
-def _validate_history_dates(
-    submitted_from: datetime | None, submitted_to: datetime | None
-) -> None:
+def _validate_history_dates(submitted_from: datetime | None, submitted_to: datetime | None) -> None:
     """Require explicit offsets and an ordered inclusive submission window."""
 
     if any(value is not None and value.tzinfo is None for value in (submitted_from, submitted_to)):
@@ -1865,11 +2308,7 @@ def _validate_history_dates(
             "History dates must include a timezone offset.",
             status_code=422,
         )
-    if (
-        submitted_from is not None
-        and submitted_to is not None
-        and submitted_from > submitted_to
-    ):
+    if submitted_from is not None and submitted_to is not None and submitted_from > submitted_to:
         raise DomainError(
             "invalid_history_date_range",
             "History start date must not follow its end date.",
@@ -1884,6 +2323,7 @@ def _history_event_view(
     *,
     hydrate_results: bool = True,
     visible_horizon: str | None = None,
+    owner_user_id: int | None = None,
 ) -> dict[str, Any]:
     """Add bounded display facts while keeping a failed request result-free."""
 
@@ -1924,7 +2364,7 @@ def _history_event_view(
         ]
         item["forecast_available"] = True
         return item
-    detail = detail or service.history_detail(int(item["id"]))
+    detail = detail or _call_with_owner(service.history_detail, owner_user_id, int(item["id"]))
     snapshot = detail.get("input") if detail else None
     recorded_interval = snapshot.get("requested_interval") if isinstance(snapshot, dict) else None
     visible = (
@@ -1990,13 +2430,16 @@ def _matches_history_filters(item: dict[str, Any], filters: dict[str, Any]) -> b
     )
     if query and not any(query in str(value).casefold() for value in searchable if value):
         return False
-    if filters["symbol"] and str(
-        item.get("normalized_symbol") or item.get("submitted_symbol")
-    ).upper() != filters["symbol"]:
+    if (
+        filters["symbol"]
+        and str(item.get("normalized_symbol") or item.get("submitted_symbol")).upper()
+        != filters["symbol"]
+    ):
         return False
-    if filters["company"] and filters["company"].casefold() not in str(
-        item.get("company_name") or ""
-    ).casefold():
+    if (
+        filters["company"]
+        and filters["company"].casefold() not in str(item.get("company_name") or "").casefold()
+    ):
         return False
     for name in ("status", "asset_type", "analysis_kind", "request_id"):
         if filters[name] is not None and item.get(name) != filters[name]:
@@ -2041,20 +2484,27 @@ def _query_history(
     sort_order: str,
     page: int,
     page_size: int,
+    owner_user_id: int | None = None,
 ) -> dict[str, Any]:
     """Return an exact bounded page using only the established history interface."""
 
-    post_processed = any(
-        filters[name] is not None
-        for name in (
-            "horizon",
-            "event_id",
+    post_processed = (
+        any(
+            filters[name] is not None
+            for name in (
+                "horizon",
+                "event_id",
+            )
         )
-    ) or sort_by != "event_id" or sort_order != "desc"
+        or sort_by != "event_id"
+        or sort_order != "desc"
+    )
 
     def indexed_page(index: int, size: int) -> dict[str, Any]:
         try:
-            return service.history(
+            return _call_with_owner(
+                service.history,
+                owner_user_id,
                 query=filters["query"],
                 symbol=filters["symbol"],
                 company=filters["company"],
@@ -2092,6 +2542,7 @@ def _query_history(
                 item,
                 hydrate_results=False,
                 visible_horizon=filters["horizon"],
+                owner_user_id=owner_user_id,
             )
             for item in result["items"]
         ]
@@ -2112,6 +2563,7 @@ def _query_history(
                 item,
                 hydrate_results=False,
                 visible_horizon=filters["horizon"],
+                owner_user_id=owner_user_id,
             )
             for item in raw_items
         ]
@@ -2148,13 +2600,16 @@ def _bounded_history_export(
     filters: dict[str, Any],
     sort_by: str,
     sort_order: str,
+    owner_user_id: int | None = None,
 ) -> dict[str, Any]:
     """Adapt the service's fixed-query bulk stream once for both download formats."""
 
     try:
         # Every successful run owns both required horizons, so either horizon has this exact
         # indexed persistence-side meaning and needs no per-event reconstruction.
-        source = service.repository.history_export(
+        source = _call_with_owner(
+            service.repository.history_export,
+            owner_user_id,
             generated_at=service.clock().astimezone(UTC),
             query=filters["query"],
             symbol=filters["symbol"],
@@ -2169,9 +2624,7 @@ def _bounded_history_export(
                 else None
             ),
             date_to=(
-                datetime.fromisoformat(filters["submitted_to"])
-                if filters["submitted_to"]
-                else None
+                datetime.fromisoformat(filters["submitted_to"]) if filters["submitted_to"] else None
             ),
             model=filters["model"],
             model_version=filters["model_version"],
@@ -2279,6 +2732,9 @@ def create_app(
     settings: Settings | None = None,
     provider: MarketDataProvider | None = None,
     clock: Callable[[], datetime] | None = None,
+    *,
+    auth_store: object | None = None,
+    passkey_backend: PasskeyBackend | None = None,
 ) -> FastAPI:
     """Build an injectable app so all deterministic tests use temporary SQLite files."""
 
@@ -2296,6 +2752,11 @@ def create_app(
     )
     service = ForecastService(repository, selected_provider, selected_clock)
     backups = BackupManager(repository, config.backup_dir)
+    auth_manager = AuthManager(
+        auth_store if auth_store is not None else repository,
+        config.auth_settings(),
+        passkey_backend=passkey_backend,
+    )
     static_dir = Path(__file__).parent / "static"
     next_dir = static_dir / "next"
     workspace_pages = {
@@ -2308,15 +2769,65 @@ def create_app(
         "/tools/forecast": next_dir / "tools" / "forecast.html",
         "/tools/live-trading": next_dir / "tools" / "live-trading.html",
         "/tools/markets": next_dir / "tools" / "markets.html",
+        "/sign-in": next_dir / "sign-in.html",
+        "/invite": next_dir / "invite.html",
+        "/passkey": next_dir / "passkey.html",
+        "/account": next_dir / "account.html",
+        "/admin": next_dir / "admin.html",
     }
-    content_security_policy = _static_script_csp(
-        *(path for path in workspace_pages.values() if path.is_file())
+    legacy_page_paths = tuple(
+        workspace_pages[route]
+        for route in (
+            "/",
+            "/api-docs",
+            "/api/v1/docs",
+            "/overview",
+            "/research",
+            "/tools",
+            "/tools/forecast",
+            "/tools/live-trading",
+            "/tools/markets",
+        )
+        if workspace_pages[route].is_file()
     )
+    content_security_policy = _static_script_csp(*legacy_page_paths)
+    # Keep the legacy dashboard/docs contract stable while granting each auth shell only the
+    # inline hashes emitted by that page. A single union policy would authorize unrelated auth
+    # bootstraps on every public document.
+    auth_content_security_policies = {
+        route: _static_script_csp(workspace_pages[route])
+        for route in ("/sign-in", "/invite", "/passkey", "/account", "/admin")
+        if workspace_pages[route].is_file()
+    }
+    restore_lock = threading.Lock()
+    maintenance_event = threading.Event()
+    request_gate = _RestoreRequestGate()
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         config.ensure_local_dirs()
         repository.migrate()
+        if (
+            auth_manager.settings.mode == "local"
+            and config.bootstrap_username
+            and config.bootstrap_password
+        ):
+            auth_manager.ensure_local_bootstrap(
+                config.bootstrap_username,
+                config.bootstrap_password,
+                datetime.now(UTC),
+            )
+        if (
+            auth_manager.settings.mode == "local"
+            and config.bootstrap_member_username
+            and config.bootstrap_member_password
+        ):
+            auth_manager.ensure_local_bootstrap(
+                config.bootstrap_member_username,
+                config.bootstrap_member_password,
+                datetime.now(UTC),
+                role="member",
+            )
         application.state.ready = True
         try:
             yield
@@ -2335,12 +2846,95 @@ def create_app(
     app.state.repository = repository
     app.state.service = service
     app.state.backups = backups
+    app.state.auth = auth_manager
     app.state.ready = False
     app.add_middleware(
         LocalSecurityMiddleware,
         repository=repository,
         content_security_policy=content_security_policy,
+        content_security_policies=auth_content_security_policies,
+        auth_manager=auth_manager,
+        public_origin=config.auth_public_origin,
+        trusted_proxy_hosts=config.trusted_proxy_hosts,
+        maintenance_event=maintenance_event,
+        request_gate=request_gate,
     )
+
+    def _public_user(user: UserRecord) -> dict[str, object]:
+        """Serialize account identity without password, token, or provider secrets."""
+
+        return user.public_dict()
+
+    def _auth_context(
+        request: Request, *, role: str | None = None, step_up: bool = False
+    ) -> AuthContext:
+        """Resolve middleware identity and enforce role, CSRF, and admin step-up rules."""
+
+        if not auth_manager.enabled:
+            raise AuthenticationRequired()
+        context = getattr(request.state, "auth_context", None)
+        if not isinstance(context, AuthContext):
+            context = auth_manager.authenticate(
+                request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC)
+            )
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            auth_manager.require_csrf(context, request.headers.get("x-csrf-token"))
+        if role == "admin":
+            auth_manager.require_role(context, "admin")
+        if step_up and not auth_manager.has_recent_step_up(context, datetime.now(UTC)):
+            raise AuthorizationDenied("A fresh passkey check is required for this operation.")
+        return context
+
+    def _owner_user_id(request: Request) -> int | None:
+        """Return the authenticated owner or the designated legacy owner in disabled mode."""
+
+        if not auth_manager.enabled:
+            return repository.legacy_owner_id()
+        return _auth_context(request).user.id
+
+    def _set_auth_cookies(
+        response: Response, session_token: str, csrf_token: str, expires_at: datetime
+    ) -> None:
+        """Set one HttpOnly session cookie and one non-secret CSRF token cookie."""
+
+        common = {
+            "path": "/",
+            "secure": config.auth_cookie_secure,
+            "httponly": False,
+            "samesite": "lax",
+            "domain": config.auth_cookie_domain,
+            "expires": expires_at,
+        }
+        response.set_cookie(
+            SESSION_COOKIE_NAME,
+            session_token,
+            **{**common, "httponly": True},
+        )
+        response.set_cookie(CSRF_COOKIE_NAME, csrf_token, **common)
+
+    def _set_oauth_transaction_cookie(response: Response, state: str) -> None:
+        """Bind the OAuth redirect to this host's initiating browser transaction."""
+
+        response.set_cookie(
+            OAUTH_TRANSACTION_COOKIE_NAME,
+            state,
+            max_age=auth_manager.settings.oauth_state_ttl_seconds,
+            path="/",
+            secure=config.auth_cookie_secure,
+            httponly=True,
+            samesite="lax",
+        )
+
+    def _clear_oauth_transaction_cookie(response: Response) -> None:
+        """Expire the one-time OAuth transaction after callback success or rejection."""
+
+        response.delete_cookie(OAUTH_TRANSACTION_COOKIE_NAME, path="/")
+
+    def _clear_auth_cookies(response: Response) -> None:
+        """Expire both browser cookies after logout or a rejected session."""
+
+        response.delete_cookie(SESSION_COOKIE_NAME, path="/", domain=config.auth_cookie_domain)
+        response.delete_cookie(CSRF_COOKIE_NAME, path="/", domain=config.auth_cookie_domain)
 
     def record_submitted_failure(
         *,
@@ -2352,6 +2946,7 @@ def create_app(
         analysis_kind: str = "submitted_forecast",
         source_event_id: int | None = None,
         requested_cutoff: datetime | None = None,
+        owner_user_id: int | None = None,
     ) -> str:
         """Append one transport-classified event when no service call will own the audit."""
 
@@ -2361,7 +2956,9 @@ def create_app(
             # Validation can fail before a cutoff exists; preserve one labelled event using its
             # receipt time rather than retaining or reparsing an untrusted body value.
             requested_cutoff = now
-        repository.record_failure(
+        _call_with_owner(
+            repository.record_failure,
+            owner_user_id,
             request_id=request_id,
             submitted_symbol=submitted_symbol,
             normalized_symbol=normalized_symbol,
@@ -2377,7 +2974,11 @@ def create_app(
         return request_id
 
     def record_malformed_forecast_response(
-        generated: object, *, submitted_symbol: str, asset_type: str
+        generated: object,
+        *,
+        submitted_symbol: str,
+        asset_type: str,
+        owner_user_id: int | None = None,
     ) -> str:
         """Audit a broken service handoff once, reusing its correlation identity when present."""
 
@@ -2395,7 +2996,9 @@ def create_app(
         # conflict means the service already committed this request's audit event; a separate
         # read-before-write check would race with that commit under concurrent requests.
         with suppress(sqlite3.IntegrityError):
-            repository.record_failure(
+            _call_with_owner(
+                repository.record_failure,
+                owner_user_id,
                 request_id=request_id,
                 submitted_symbol=submitted_symbol,
                 normalized_symbol=None,
@@ -2407,6 +3010,14 @@ def create_app(
             )
         return request_id
 
+    @app.exception_handler(AuthError)
+    async def auth_error(_: Request, exc: AuthError) -> JSONResponse:
+        """Return stable auth errors without revealing account or provider internals."""
+
+        return JSONResponse(
+            status_code=exc.status_code, content=_error(exc.code, exc.public_message)
+        )
+
     @app.exception_handler(DomainError)
     async def domain_error(_: Request, exc: DomainError) -> JSONResponse:
         return JSONResponse(
@@ -2417,7 +3028,7 @@ def create_app(
     @app.exception_handler(BackupError)
     async def backup_error(request: Request, exc: BackupError) -> JSONResponse:
         request_id = str(uuid4())
-        restoring = request.url.path == "/api/v1/operations/restores"
+        restoring = request.scope["path"] == "/api/v1/operations/restores"
         code = "restore_failed" if restoring else "backup_creation_failed"
         message = (
             "The backup artifact could not be verified or restored."
@@ -2445,8 +3056,16 @@ def create_app(
             {"location": list(item["loc"]), "message": item["msg"], "type": item["type"]}
             for item in exc.errors()
         ]
+        if request.scope["path"] == "/api/v1/auth/invites/redeem":
+            # Invitation redemption is intentionally anonymous. Do not enter the generic POST
+            # audit path here: resolving its owner would turn malformed invite input into a
+            # misleading authentication failure before the invitation recovery message is shown.
+            return JSONResponse(
+                status_code=InvitationRejected.status_code,
+                content=_error(InvitationRejected.code, InvitationRejected.message),
+            )
         request_id = None
-        if request.url.path in {
+        if request.scope["path"] in {
             "/api/v1/operations/backups",
             "/api/v1/operations/restores",
         }:
@@ -2454,7 +3073,7 @@ def create_app(
             # without reflecting a local-looking path or implementation term into the browser.
             details = []
             request_id = str(uuid4())
-        elif request.method == "POST" and request.url.path == "/api/v1/forecasts":
+        elif request.method == "POST" and request.scope["path"] == "/api/v1/forecasts":
             # Transport-invalid forecast attempts are still append-only submitted searches.
             body = exc.body if isinstance(exc.body, dict) else {}
             raw_symbol = body.get("symbol")
@@ -2467,10 +3086,12 @@ def create_app(
                 asset_type=asset_type,
                 error_code="validation_error",
                 error_message="Request validation failed.",
+                owner_user_id=_owner_user_id(request),
             )
         elif request.method == "POST":
+            validation_owner_id = _owner_user_id(request)
             reconstruction_context = _reconstruction_submission_context(
-                repository, request.url.path
+                repository, request.scope["path"], validation_owner_id
             )
             if reconstruction_context is not None:
                 (
@@ -2483,9 +3104,7 @@ def create_app(
                 raw_cutoff = body.get("cutoff")
                 try:
                     requested_cutoff = (
-                        datetime.fromisoformat(raw_cutoff)
-                        if isinstance(raw_cutoff, str)
-                        else None
+                        datetime.fromisoformat(raw_cutoff) if isinstance(raw_cutoff, str) else None
                     )
                 except ValueError:
                     requested_cutoff = None
@@ -2498,6 +3117,7 @@ def create_app(
                     analysis_kind="fresh_historical_reconstruction",
                     source_event_id=source_event_id,
                     requested_cutoff=requested_cutoff,
+                    owner_user_id=validation_owner_id,
                 )
         return JSONResponse(
             status_code=422,
@@ -2528,7 +3148,7 @@ def create_app(
     @app.exception_handler(sqlite3.Error)
     async def repository_error(request: Request, exc: sqlite3.Error) -> JSONResponse:
         request_id = str(uuid4())
-        backup_operation = request.url.path.startswith("/api/v1/operations/")
+        backup_operation = request.scope["path"].startswith("/api/v1/operations/")
         code = "operation_unavailable" if backup_operation else "persistence_unavailable"
         message = (
             "The requested backup operation is temporarily unavailable."
@@ -2555,7 +3175,7 @@ def create_app(
             "/api/v1/operations/backups": "backup-create",
             "/api/v1/operations/backups/status": "backup-status",
             "/api/v1/operations/restores": "restore",
-        }.get(request.url.path, "application")
+        }.get(request.scope["path"], "application")
         logger.error(
             "Unexpected application failure request_id=%s operation=%s code=internal_error "
             "exception_type=%s",
@@ -2574,6 +3194,454 @@ def create_app(
         )
 
     @app.get(
+        "/api/v1/auth/status",
+        response_model=AuthStatusResponse,
+        responses=_documented_errors(400, 403, 405, 500),
+    )
+    def auth_status() -> dict[str, object]:
+        """Expose only the enabled sign-in mode and public origin to the sign-in screen."""
+
+        return {
+            "status": auth_manager.settings.mode,
+            "public_origin": config.auth_public_origin,
+            "passkey_required": auth_manager.settings.mode == "github",
+        }
+
+    @app.get(
+        "/api/v1/auth/session",
+        response_model=AuthSessionResponse,
+        responses=_documented_errors(400, 403, 405, 500, 503),
+    )
+    def auth_session(request: Request) -> dict[str, object]:
+        """Return the current account without reflecting an invalid cookie as a server error."""
+
+        if not auth_manager.enabled:
+            return {"authenticated": False, "user": None, "requires_passkey": False}
+        try:
+            context = auth_manager.authenticate(
+                request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC)
+            )
+        except AuthError:
+            return {"authenticated": False, "user": None, "requires_passkey": False}
+        record = auth_manager.store.auth_get_session(context.token_hash)
+        expires_at = record.get("expires_at") if record else None
+        requires_passkey = context.user.passkey_required and (
+            not context.user.passkey_enrolled
+            or (auth_manager.settings.mode == "github" and context.auth_method != "passkey")
+        )
+        return {
+            "authenticated": True,
+            "user": _public_user(context.user),
+            "csrf_token": request.cookies.get(CSRF_COOKIE_NAME),
+            "requires_passkey": requires_passkey,
+            "expires_at": expires_at,
+            "role": context.user.role,
+            "local_login_enabled": auth_manager.settings.mode == "local",
+        }
+
+    @app.get(
+        "/api/v1/auth/sessions",
+        responses=_documented_errors(400, 403, 405, 500, 503),
+    )
+    def list_auth_sessions(request: Request) -> dict[str, object]:
+        """List safe session metadata for the current account only."""
+
+        context = _auth_context(request)
+        records = auth_manager.store.auth_list_sessions(context.user.id)
+        return {
+            "sessions": [
+                {
+                    "id": item.get("session_id"),
+                    "created_at": item.get("created_at"),
+                    "last_seen_at": item.get("last_seen_at"),
+                    "expires_at": item.get("expires_at"),
+                    "current": item.get("session_id") == context.session_id,
+                    "user_agent": item.get("user_agent"),
+                }
+                for item in records
+                if isinstance(item.get("session_id"), str) and item.get("revoked_at") is None
+            ]
+        }
+
+    @app.delete(
+        "/api/v1/auth/sessions/{session_id}",
+        status_code=204,
+        response_class=Response,
+        responses=_documented_errors(400, 403, 404, 405, 422, 500, 503),
+    )
+    def revoke_auth_session(request: Request, session_id: str) -> Response:
+        """Revoke one sibling session after validating account ownership."""
+
+        context = _auth_context(request)
+        if not 8 <= len(session_id) <= 128 or not session_id.isascii():
+            raise HTTPException(status_code=404)
+        records = auth_manager.store.auth_list_sessions(context.user.id)
+        if not any(item.get("session_id") == session_id for item in records):
+            raise HTTPException(status_code=404)
+        auth_manager.store.auth_revoke_session_by_id(
+            context.user.id, session_id, datetime.now(UTC).isoformat()
+        )
+        return Response(status_code=204)
+
+    @app.post(
+        "/api/v1/auth/local/login",
+        response_model=AuthLoginResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
+    )
+    def local_login(payload: LocalLoginRequest, response: Response) -> dict[str, object]:
+        """Authenticate only when development local mode is explicitly enabled."""
+
+        issue = auth_manager.local_login(payload.username, payload.password, datetime.now(UTC))
+        _set_auth_cookies(response, issue.session_token, issue.csrf_token, issue.expires_at)
+        return {
+            "authenticated": True,
+            "user": _public_user(issue.context.user),
+            "csrf_token": issue.csrf_token,
+            "requires_passkey": issue.context.user.passkey_required
+            and not issue.context.user.passkey_enrolled,
+            "expires_at": issue.expires_at,
+        }
+
+    @app.post(
+        "/api/v1/auth/logout",
+        status_code=204,
+        response_class=Response,
+        responses=_documented_errors(400, 403, 405, 500, 503),
+    )
+    def logout(request: Request) -> Response:
+        """Revoke the current session and expire both browser cookies."""
+
+        context = _auth_context(request)
+        auth_manager.logout(context, datetime.now(UTC))
+        logged_out = Response(status_code=204)
+        _clear_auth_cookies(logged_out)
+        return logged_out
+
+    @app.get(
+        "/api/v1/auth/github/start",
+        include_in_schema=False,
+        responses={
+            302: {"description": "Redirect to GitHub authorization."},
+            **_documented_errors(400, 403, 405, 503),
+        },
+    )
+    def github_start(
+        invite: str | None = Query(default=None, min_length=20, max_length=128),
+    ) -> RedirectResponse:
+        """Start a server-side GitHub OAuth authorization-code transaction."""
+
+        authorization = auth_manager.begin_github(datetime.now(UTC), invitation_code=invite)
+        redirect = RedirectResponse(authorization.url, status_code=302)
+        _set_oauth_transaction_cookie(redirect, authorization.state)
+        return redirect
+
+    @app.get(
+        "/api/v1/auth/github/callback",
+        response_model=AuthLoginResponse,
+        responses=_documented_errors(400, 403, 405, 422, 500, 503),
+    )
+    def github_callback(
+        request: Request,
+        code: str = Query(min_length=8, max_length=512),
+        state: str = Query(min_length=16, max_length=256),
+    ) -> Response:
+        """Finish browser-bound GitHub OAuth and issue a provisional session."""
+
+        try:
+            identity = auth_manager.finish_github(
+                code,
+                state,
+                datetime.now(UTC),
+                browser_transaction=request.cookies.get(OAUTH_TRANSACTION_COOKIE_NAME),
+            )
+            user_record = auth_manager.store.auth_get_user_by_github_id(identity.github_id)
+            if identity.invitation_code_hash is not None:
+                invitation = auth_manager.inspect_invitation_hash(
+                    identity.invitation_code_hash, datetime.now(UTC)
+                )
+                invited_github_id = invitation.get("github_id", invitation.get("github_user_id"))
+                if invited_github_id != identity.github_id:
+                    raise InvitationRejected()
+                auth_manager.consume_invitation_hash(
+                    identity.invitation_code_hash, datetime.now(UTC)
+                )
+            elif user_record is None:
+                if auth_manager.settings.owner_github_id != identity.github_id:
+                    # A first-time member must arrive through an administrator invitation. The
+                    # configured owner is the one exception and atomically claims legacy data.
+                    raise InvitationRejected()
+                user_record = auth_manager.store.auth_claim_legacy_owner(
+                    {
+                        "login": identity.login,
+                        "display_name": identity.login,
+                        "claimed_at": datetime.now(UTC).isoformat(),
+                        "github_user_id": identity.github_id,
+                        "email": identity.email,
+                        "password_hash": None,
+                    }
+                )
+                if user_record is None:
+                    raise AuthUnavailable("The owner account could not be provisioned safely.")
+            if user_record is None:
+                user_record = auth_manager.store.auth_create_user(
+                    {
+                        "github_id": identity.github_id,
+                        "github_login": identity.login,
+                        "email": identity.email,
+                        "role": "member",
+                        "status": "active",
+                        "passkey_required": True,
+                        "passkey_enrolled": False,
+                        "created_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+            user = auth_manager.user_from_record(user_record)
+            issue = auth_manager.issue_session(user, datetime.now(UTC), "github")
+            target = (
+                "/passkey?mode=enroll&next=/overview"
+                if not issue.context.user.passkey_enrolled
+                else "/passkey?mode=verify&next=/overview"
+            )
+            redirect = RedirectResponse(target, status_code=303)
+            _set_auth_cookies(redirect, issue.session_token, issue.csrf_token, issue.expires_at)
+            _clear_oauth_transaction_cookie(redirect)
+            return redirect
+        except AuthError as exc:
+            rejected = JSONResponse(
+                status_code=exc.status_code,
+                content=_error(exc.code, exc.public_message),
+            )
+            _clear_oauth_transaction_cookie(rejected)
+            return rejected
+        except Exception as exc:
+            logger.error(
+                "GitHub callback failed code=internal_error exception_type=%s",
+                type(exc).__name__,
+            )
+            rejected = JSONResponse(
+                status_code=500,
+                content=_error(
+                    "internal_error", "The local service could not complete the request."
+                ),
+            )
+            _clear_oauth_transaction_cookie(rejected)
+            return rejected
+
+    @app.post(
+        "/api/v1/auth/invitations",
+        status_code=201,
+        response_model=AuthInvitationResponse,
+        include_in_schema=False,
+    )
+    @app.post(
+        "/api/v1/auth/invites",
+        status_code=201,
+        response_model=AuthInvitationResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
+    )
+    def create_invitation(request: Request, payload: AuthInvitationRequest) -> dict[str, object]:
+        """Create a single-use GitHub invitation for an administrator."""
+
+        context = _auth_context(request, role="admin")
+        code, result = auth_manager.create_invitation(
+            payload.github_id,
+            context.user.id,
+            datetime.now(UTC),
+            github_login=payload.github_login,
+        )
+        return {
+            "code": code,
+            "github_id": result.get("github_id", payload.github_id),
+            "github_login": result.get("github_login", payload.github_login),
+            "expires_at": result["expires_at"],
+        }
+
+    @app.get(
+        "/api/v1/auth/invites",
+        responses=_documented_errors(400, 403, 405, 500, 503),
+    )
+    def list_invitations(request: Request) -> dict[str, object]:
+        """List bounded invitation metadata for the current administrator."""
+
+        _auth_context(request, role="admin")
+        method = getattr(auth_manager.store, "auth_list_invitations", None)
+        if not callable(method):
+            method = getattr(repository, "list_invitations", None)
+        records = method() if callable(method) else []
+        return {"invitations": [dict(item) for item in records if isinstance(item, Mapping)]}
+
+    @app.post(
+        "/api/v1/auth/invites/redeem",
+        response_model=AuthSessionResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
+    )
+    def redeem_invitation(
+        payload: AuthInvitationRedeemRequest, response: Response
+    ) -> dict[str, object]:
+        """Validate an invitation and return a server-bound GitHub OAuth URL."""
+
+        if auth_manager.settings.mode != "github":
+            raise AuthUnavailable("Invitation sign-in is not enabled.")
+        invitation = auth_manager.inspect_invitation(payload.code, datetime.now(UTC))
+        authorization = auth_manager.begin_github(datetime.now(UTC), invitation_code=payload.code)
+        _set_oauth_transaction_cookie(response, authorization.state)
+        # The raw code is never persisted in a cookie.  The client must continue through the
+        # GitHub authorization route with this code so OAuth state can bind the invitation.
+        return {
+            "authenticated": False,
+            "user": None,
+            "requires_passkey": True,
+            "role": None,
+            "local_login_enabled": False,
+            "invitation_github_id": invitation.get("github_id", invitation.get("github_user_id")),
+            "github_required": True,
+            "authorization_url": authorization.url,
+            "message": (
+                "Invitation accepted. Continue with GitHub sign-in to prove the invited identity."
+            ),
+        }
+
+    @app.post(
+        "/api/v1/auth/passkeys/registration/options",
+        response_model=PasskeyOptionsResponse,
+        include_in_schema=False,
+    )
+    @app.post(
+        "/api/v1/auth/passkeys/register/options",
+        response_model=PasskeyOptionsResponse,
+        responses=_documented_errors(400, 403, 405, 500, 503),
+    )
+    def passkey_registration_options(request: Request) -> dict[str, object]:
+        """Begin passkey enrollment for the authenticated account."""
+
+        context = _auth_context(request)
+        if (
+            auth_manager.settings.mode == "github"
+            and context.user.passkey_enrolled
+            and (
+                context.auth_method != "passkey"
+                or not auth_manager.has_recent_step_up(context, datetime.now(UTC))
+            )
+        ):
+            raise AuthorizationDenied(
+                "A fresh passkey check is required before adding another passkey."
+            )
+        rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
+        options = auth_manager.begin_passkey_registration(
+            context.user, rp_id, config.auth_public_origin or "http://127.0.0.1"
+        )
+        return {"public_key": options.get("publicKey", options.get("public_key", {}))}
+
+    @app.post(
+        "/api/v1/auth/passkeys/registration/finish",
+        response_model=AuthLoginResponse,
+        include_in_schema=False,
+    )
+    @app.post(
+        "/api/v1/auth/passkeys/register",
+        response_model=AuthLoginResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
+    )
+    def passkey_registration_finish(
+        request: Request, payload: PasskeyResponseRequest, response: Response
+    ) -> dict[str, object]:
+        """Complete passkey enrollment using the one-time server challenge."""
+
+        context = _auth_context(request)
+        if (
+            auth_manager.settings.mode == "github"
+            and context.user.passkey_enrolled
+            and (
+                context.auth_method != "passkey"
+                or not auth_manager.has_recent_step_up(context, datetime.now(UTC))
+            )
+        ):
+            raise AuthorizationDenied(
+                "A fresh passkey check is required before adding another passkey."
+            )
+        rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
+        auth_manager.finish_passkey_registration(
+            context.user,
+            {
+                "response": payload.response,
+                "id": payload.id,
+                "rawId": payload.raw_id,
+                "type": payload.type,
+            },
+            rp_id,
+            config.auth_public_origin or "http://127.0.0.1",
+        )
+        updated = auth_manager.store.auth_get_user_by_id(context.user.id)
+        if updated is None:
+            raise AuthUnavailable("Account security state is invalid.")
+        user = auth_manager.user_from_record(updated)
+        issue = auth_manager.issue_session(user, datetime.now(UTC), "passkey")
+        _set_auth_cookies(response, issue.session_token, issue.csrf_token, issue.expires_at)
+        return {
+            "authenticated": True,
+            "user": _public_user(issue.context.user),
+            "csrf_token": issue.csrf_token,
+            "requires_passkey": False,
+            "expires_at": issue.expires_at,
+        }
+
+    @app.post(
+        "/api/v1/auth/passkeys/assertion/options",
+        response_model=PasskeyOptionsResponse,
+        include_in_schema=False,
+    )
+    @app.post(
+        "/api/v1/auth/passkeys/authenticate/options",
+        response_model=PasskeyOptionsResponse,
+        responses=_documented_errors(400, 403, 405, 500, 503),
+    )
+    def passkey_assertion_options(request: Request) -> dict[str, object]:
+        """Begin a passkey assertion for the provisional or current account."""
+
+        context = _auth_context(request)
+        rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
+        options = auth_manager.begin_passkey_assertion(context.user, rp_id)
+        return {"public_key": options.get("publicKey", options.get("public_key", {}))}
+
+    @app.post(
+        "/api/v1/auth/passkeys/assertion/finish",
+        response_model=AuthLoginResponse,
+        include_in_schema=False,
+    )
+    @app.post(
+        "/api/v1/auth/passkeys/authenticate",
+        response_model=AuthLoginResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
+    )
+    def passkey_assertion_finish(
+        request: Request, payload: PasskeyResponseRequest, response: Response
+    ) -> dict[str, object]:
+        """Verify a passkey assertion and rotate into a step-up session."""
+
+        context = _auth_context(request)
+        rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
+        issue = auth_manager.finish_passkey_assertion(
+            context.user,
+            {
+                "response": payload.response,
+                "id": payload.id,
+                "rawId": payload.raw_id,
+                "type": payload.type,
+            },
+            rp_id,
+            config.auth_public_origin or "http://127.0.0.1",
+            datetime.now(UTC),
+        )
+        _set_auth_cookies(response, issue.session_token, issue.csrf_token, issue.expires_at)
+        return {
+            "authenticated": True,
+            "user": _public_user(issue.context.user),
+            "csrf_token": issue.csrf_token,
+            "requires_passkey": False,
+            "expires_at": issue.expires_at,
+        }
+
+    @app.get(
         "/api/v1/health",
         response_model=HealthResponse,
         responses=_documented_errors(400, 403, 405, 500),
@@ -2587,7 +3655,7 @@ def create_app(
         responses=_documented_errors(400, 403, 405, 500, 503),
     )
     def readiness() -> dict[str, Any]:
-        if not app.state.ready:
+        if not app.state.ready or maintenance_event.is_set():
             raise HTTPException(status_code=503)
         # Ask through the repository boundary; transport code must not grow storage-specific SQL.
         repository.representative_counts()
@@ -2614,7 +3682,9 @@ def create_app(
             )
         return cast(dict[str, Any], identity)
 
-    def flattened_list_items(kind: str | None) -> list[dict[str, Any]]:
+    def flattened_list_items(
+        kind: str | None, owner_user_id: int | None = None
+    ) -> list[dict[str, Any]]:
         return [
             {
                 "symbol": item["canonical_symbol"],
@@ -2625,7 +3695,7 @@ def create_app(
                 "quantity": item["quantity"],
                 "added_at": item["added_at"],
             }
-            for item in repository.instrument_list_items(kind)
+            for item in _call_with_owner(repository.instrument_list_items, owner_user_id, kind)
         ]
 
     @app.get(
@@ -2760,9 +3830,14 @@ def create_app(
         responses=_documented_errors(400, 403, 405, 422, 500, 503),
     )
     def instrument_lists(
+        request: Request,
         kind: Literal["watchlist", "portfolio"] | None = Query(default=None),
     ) -> dict[str, Any]:
-        return {"kind": kind or "all", "items": flattened_list_items(kind)}
+        owner_user_id = _owner_user_id(request)
+        return {
+            "kind": kind or "all",
+            "items": flattened_list_items(kind, owner_user_id),
+        }
 
     @app.post(
         "/api/v1/lists",
@@ -2771,10 +3846,11 @@ def create_app(
         responses=_documented_errors(400, 403, 404, 405, 409, 411, 413, 422, 500, 502, 503),
     )
     def add_instrument_list_item(
-        payload: InstrumentListMutationRequest, response: Response
+        request: Request, payload: InstrumentListMutationRequest, response: Response
     ) -> dict[str, Any]:
+        owner_user_id = _owner_user_id(request)
         identity = market_identity(payload.item.symbol, payload.item.asset_type)
-        items = repository.instrument_list_items(payload.kind)
+        items = _call_with_owner(repository.instrument_list_items, owner_user_id, payload.kind)
         now = selected_clock().astimezone(UTC)
         try:
             existing = next(
@@ -2787,7 +3863,9 @@ def create_app(
                 None,
             )
             if existing is None:
-                repository.add_instrument_list_item(
+                _call_with_owner(
+                    repository.add_instrument_list_item,
+                    owner_user_id,
                     payload.kind,
                     provider=identity["provider"],
                     canonical_symbol=identity["canonical_symbol"],
@@ -2798,7 +3876,9 @@ def create_app(
                     added_at=now,
                 )
             elif payload.kind == "portfolio":
-                repository.set_instrument_list_item_holding(
+                _call_with_owner(
+                    repository.set_instrument_list_item_holding,
+                    owner_user_id,
                     payload.kind,
                     provider=existing["provider"],
                     canonical_symbol=existing["canonical_symbol"],
@@ -2812,7 +3892,10 @@ def create_app(
                 status_code=409,
             ) from exc
         response.headers["Location"] = f"/api/v1/lists?kind={payload.kind}"
-        return {"kind": payload.kind, "items": flattened_list_items(payload.kind)}
+        return {
+            "kind": payload.kind,
+            "items": flattened_list_items(payload.kind, owner_user_id),
+        }
 
     @app.delete(
         "/api/v1/lists",
@@ -2821,20 +3904,26 @@ def create_app(
         responses=_documented_errors(400, 403, 404, 405, 422, 500, 503),
     )
     def remove_instrument_list_item(
+        request: Request,
         kind: Literal["watchlist", "portfolio"] = Query(),
         symbol: str = Query(min_length=1, max_length=15),
     ) -> Response:
+        owner_user_id = _owner_user_id(request)
         normalized = normalize_symbol(symbol)
         item = next(
             (
                 candidate
-                for candidate in repository.instrument_list_items(kind)
+                for candidate in _call_with_owner(
+                    repository.instrument_list_items, owner_user_id, kind
+                )
                 if candidate["canonical_symbol"] == normalized
             ),
             None,
         )
         if item is not None:
-            repository.remove_instrument_list_item(
+            _call_with_owner(
+                repository.remove_instrument_list_item,
+                owner_user_id,
                 kind,
                 provider=item["provider"],
                 canonical_symbol=item["canonical_symbol"],
@@ -2881,16 +3970,23 @@ def create_app(
             **_documented_errors(400, 403, 404, 405, 411, 413, 422, 500, 502, 503),
         },
     )
-    def create_forecast(payload: SearchRequest, response: Response) -> ForecastCreationResponse:
-        generated = service.search(payload.symbol, payload.asset_type, payload.interval)
+    def create_forecast(
+        request: Request, payload: SearchRequest, response: Response
+    ) -> ForecastCreationResponse:
+        owner_user_id = _owner_user_id(request)
+        generated = _call_with_owner(
+            service.search,
+            owner_user_id,
+            payload.symbol,
+            payload.asset_type,
+            payload.interval,
+        )
         try:
             # Validate before FastAPI's response serializer so a malformed service handoff can be
             # correlated with exactly one failed search rather than escaping as an unaudited 500.
             visible = _forecast_response_view(cast(dict[str, Any], generated), payload.interval)
             validated = ForecastCreationResponse.model_validate(visible)
-            response.headers["Location"] = (
-                f"/api/v1/saved-forecasts/{validated.event.id}"
-            )
+            response.headers["Location"] = f"/api/v1/saved-forecasts/{validated.event.id}"
             if payload.interval is not None:
                 response.headers["Location"] += f"?interval={payload.interval}"
             response.headers["X-Request-ID"] = validated.event.request_id
@@ -2900,6 +3996,7 @@ def create_app(
                 generated,
                 submitted_symbol=payload.symbol,
                 asset_type=payload.asset_type,
+                owner_user_id=owner_user_id,
             )
             raise DomainError(
                 "internal_error",
@@ -2915,6 +4012,7 @@ def create_app(
         responses=_documented_errors(400, 403, 405, 422, 500, 503),
     )
     def history(
+        request: Request,
         q: str = Query(default="", max_length=30),
         symbol: str | None = Query(default=None, min_length=1, max_length=15),
         company: str | None = Query(default=None, min_length=1, max_length=200),
@@ -2958,6 +4056,7 @@ def create_app(
             sort_order=sort_order,
             page=page,
             page_size=page_size,
+            owner_user_id=_owner_user_id(request),
         )
 
     @app.get(
@@ -2977,6 +4076,7 @@ def create_app(
         },
     )
     def history_export(
+        request: Request,
         q: str = Query(default="", max_length=30),
         symbol: str | None = Query(default=None, min_length=1, max_length=15),
         company: str | None = Query(default=None, min_length=1, max_length=200),
@@ -3015,6 +4115,7 @@ def create_app(
             filters=filters,
             sort_by=sort_by,
             sort_order=sort_order,
+            owner_user_id=_owner_user_id(request),
         )
         output = io.StringIO()
         fieldnames = [
@@ -3096,6 +4197,7 @@ def create_app(
         },
     )
     def history_export_json(
+        request: Request,
         response: Response,
         q: str = Query(default="", max_length=30),
         symbol: str | None = Query(default=None, min_length=1, max_length=15),
@@ -3131,9 +4233,7 @@ def create_app(
             request_id=request_id,
             event_id=event_id,
         )
-        response.headers["Content-Disposition"] = (
-            'attachment; filename="stock-probs-history.json"'
-        )
+        response.headers["Content-Disposition"] = 'attachment; filename="stock-probs-history.json"'
         response.headers["X-Export-Filters"] = _safe_metadata_header(filters)
         response.headers["X-Export-Sort"] = _safe_metadata_header(
             {"field": sort_by, "direction": sort_order}
@@ -3143,6 +4243,7 @@ def create_app(
             filters=filters,
             sort_by=sort_by,
             sort_order=sort_order,
+            owner_user_id=_owner_user_id(request),
         )
 
     @app.get(
@@ -3152,12 +4253,13 @@ def create_app(
         responses=_documented_errors(400, 403, 404, 405, 422, 500, 503),
     )
     def reconstruction(
+        request: Request,
         event_id: int = PathParameter(ge=1, le=2_147_483_647),
         interval: ForecastIntervalParameter = None,
     ) -> dict[str, Any]:
         # Constrain matching at the router boundary so unrelated history paths remain genuine 404s;
         # the typed parameter still owns numeric bounds and their public validation response.
-        result = service.history_detail(event_id)
+        result = _call_with_owner(service.history_detail, _owner_user_id(request), event_id)
         if result is None:
             raise HTTPException(status_code=404, detail="history event not found")
         available = result.get("input") is not None
@@ -3178,12 +4280,13 @@ def create_app(
         responses=_documented_errors(400, 403, 404, 405, 409, 422, 500, 503),
     )
     def saved_forecast(
+        request: Request,
         event_id: int = PathParameter(ge=1, le=2_147_483_647),
         interval: ForecastIntervalParameter = None,
     ) -> dict[str, Any]:
         """Reopen an immutable recorded forecast without recalculation or provider access."""
 
-        recorded = service.history_detail(event_id)
+        recorded = _call_with_owner(service.history_detail, _owner_user_id(request), event_id)
         if recorded is None:
             raise HTTPException(status_code=404, detail="history event not found")
         if recorded.get("input") is None:
@@ -3212,12 +4315,11 @@ def create_app(
                     "X-Request-ID": {"schema": {"type": "string"}},
                 },
             },
-            **_documented_errors(
-                400, 403, 404, 405, 409, 411, 413, 422, 500, 502, 503
-            ),
+            **_documented_errors(400, 403, 404, 405, 409, 411, 413, 422, 500, 502, 503),
         },
     )
     def fresh_historical_reconstruction(
+        request: Request,
         payload: FreshReconstructionRequest,
         response: Response,
         event_id: int = PathParameter(ge=1, le=2_147_483_647),
@@ -3227,7 +4329,12 @@ def create_app(
         generated = cast(
             dict[str, Any],
             # This one service call owns both the new event and its success/failure status.
-            service.fresh_historical_reconstruction(event_id, payload.cutoff),
+            _call_with_owner(
+                service.fresh_historical_reconstruction,
+                _owner_user_id(request),
+                event_id,
+                payload.cutoff,
+            ),
         )
         provenance = dict(generated["input"]["provenance"])
         analysis = provenance.get("analysis")
@@ -3251,9 +4358,7 @@ def create_app(
                 "provenance": provenance,
             }
         )
-        response.headers["Location"] = (
-            f"/api/v1/saved-forecasts/{generated['event']['id']}"
-        )
+        response.headers["Location"] = f"/api/v1/saved-forecasts/{generated['event']['id']}"
         requested_interval = generated["input"].get("requested_interval")
         if requested_interval is not None:
             response.headers["Location"] += f"?interval={requested_interval}"
@@ -3266,13 +4371,20 @@ def create_app(
         responses=_documented_errors(400, 403, 404, 405, 409, 422, 500, 503),
     )
     def historical_prices(
+        request: Request,
         event_id: int = PathParameter(ge=1, le=2_147_483_647),
         series: str = Query(default="daily", pattern="^(daily|intraday)$"),
         limit: int = Query(default=120, ge=1, le=500),
     ) -> dict[str, Any]:
         """Expose bounded captured prices, never a fresh provider or browser-side query."""
 
-        historical = service.historical_series(event_id, series=series, limit=limit)
+        historical = _call_with_owner(
+            service.historical_series,
+            _owner_user_id(request),
+            event_id,
+            series=series,
+            limit=limit,
+        )
         if historical is None:
             raise HTTPException(status_code=404, detail="history event not found")
         if historical.get("available") is False:
@@ -3286,11 +4398,12 @@ def create_app(
         responses=_documented_errors(400, 403, 404, 405, 422, 500, 503),
     )
     def original_forecast_result(
+        request: Request,
         result_id: int = PathParameter(ge=1, le=2_147_483_647),
     ) -> dict[str, Any]:
         """Return the immutable recorded result without folding later outcomes into it."""
 
-        result = repository.forecast_result(result_id)
+        result = _call_with_owner(repository.forecast_result, _owner_user_id(request), result_id)
         if result is None:
             raise HTTPException(status_code=404, detail="forecast result not found")
         horizon = result.get("horizon")
@@ -3305,11 +4418,18 @@ def create_app(
         responses=_documented_errors(400, 403, 404, 405, 411, 413, 422, 500, 503),
     )
     def append_outcome(
+        request: Request,
         payload: OutcomeRequest,
         result_id: int = PathParameter(ge=1, le=2_147_483_647),
     ) -> dict[str, Any]:
-        result = service.append_outcome(
-            result_id, payload.observed_close, payload.observed_at, payload.state, payload.note
+        result = _call_with_owner(
+            service.append_outcome,
+            _owner_user_id(request),
+            result_id,
+            payload.observed_close,
+            payload.observed_at,
+            payload.state,
+            payload.note,
         )
         if result is None:
             raise HTTPException(status_code=404, detail="forecast result not found")
@@ -3322,12 +4442,15 @@ def create_app(
         responses=_documented_errors(400, 403, 404, 405, 411, 413, 422, 500, 503),
     )
     def append_correction(
+        request: Request,
         payload: CorrectionRequest,
         result_id: int = PathParameter(ge=1, le=2_147_483_647),
     ) -> dict[str, Any]:
         """Make correction append semantics explicit instead of offering an update verb."""
 
-        result = service.append_outcome(
+        result = _call_with_owner(
+            service.append_outcome,
+            _owner_user_id(request),
             result_id,
             payload.observed_close,
             payload.observed_at,
@@ -3344,7 +4467,11 @@ def create_app(
         response_model=BackupCreatedResponse,
         responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
     )
-    def create_backup(payload: BackupRequest) -> dict[str, Any]:
+    def create_backup(request: Request, payload: BackupRequest) -> dict[str, Any]:
+        # The legacy local mode remains available for deterministic development fixtures; any
+        # enabled auth mode requires an authenticated administrator with recent passkey proof.
+        if auth_manager.enabled:
+            _auth_context(request, role="admin", step_up=True)
         return _public_backup_result(backups.create(payload.name))
 
     @app.get(
@@ -3352,9 +4479,11 @@ def create_app(
         response_model=BackupStatusResponse,
         responses=_documented_errors(400, 403, 405, 500, 503),
     )
-    def backup_status() -> dict[str, Any]:
+    def backup_status(request: Request) -> dict[str, Any]:
         """Report bounded managed backup capabilities."""
 
+        if auth_manager.enabled:
+            _auth_context(request, role="admin")
         repository.representative_counts()
         return {
             "status": "available",
@@ -3370,7 +4499,76 @@ def create_app(
         response_model_exclude_unset=True,
         responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
     )
-    def restore_backup(payload: RestoreRequest) -> dict[str, Any]:
+    def restore_backup(
+        request: Request, payload: RestoreRequest, response: Response
+    ) -> dict[str, Any]:
+        if auth_manager.enabled:
+            context = _auth_context(request, role="admin", step_up=True)
+            if payload.promote:
+                # Promotion is a short, serialized maintenance operation. The pre-restore
+                # artifact and target are independently verified before BackupManager touches
+                # the active database, and account/authenticator rows must match exactly.
+                if not restore_lock.acquire(blocking=False):
+                    raise AuthorizationDenied("Another restore operation is in progress.")
+                if not request_gate.begin_drain(RESTORE_DRAIN_TIMEOUT_SECONDS):
+                    restore_lock.release()
+                    raise AuthUnavailable(
+                        "Active requests did not drain before the restore deadline."
+                    )
+                maintenance_event.set()
+                restore_started = False
+                cleanup_complete = False
+                try:
+                    pre_restore = backups.create()
+                    pre_restore_name = pre_restore.get("name")
+                    if not isinstance(pre_restore_name, str):
+                        raise AuthUnavailable("The pre-restore backup could not be verified.")
+                    pre_manifest, _, pre_staging = backups.verify(pre_restore_name)
+                    try:
+                        if pre_manifest.get("schema_version") != SCHEMA_VERSION:
+                            raise AuthUnavailable("The pre-restore backup schema is incompatible.")
+                    finally:
+                        pre_staging.cleanup()
+
+                    target_manifest, target_database, target_staging = backups.verify(payload.name)
+                    try:
+                        if target_manifest.get("schema_version") != SCHEMA_VERSION:
+                            raise AuthorizationDenied(
+                                "The restore artifact schema is incompatible."
+                            )
+                        active_digest = _restore_security_digest(repository.database_path)
+                        target_digest = _restore_security_digest(target_database)
+                        if not hmac.compare_digest(active_digest, target_digest):
+                            raise AuthorizationDenied(
+                                "The restore artifact account-security state does not match "
+                                "the active account state."
+                            )
+                    finally:
+                        target_staging.cleanup()
+                    restore_started = True
+                    result = backups.restore(payload.name, promote=True)
+                    revoked_at = datetime.now(UTC)
+                    _revoke_every_session(repository, revoked_at)
+                    # Keep injected/test stores consistent with the promoted repository. The
+                    # production adapter points at the same database, while this also closes
+                    # the current in-memory session used by deterministic API checks.
+                    auth_manager.store.auth_revoke_all_sessions(
+                        context.user.id, revoked_at.isoformat()
+                    )
+                    _clear_pending_oauth_states(repository)
+                    auth_manager.clear_pending_challenges()
+                    cleanup_complete = True
+                    # The current cookie is now revoked along with every other session.
+                    _clear_auth_cookies(response)
+                    return _public_restore_result(result)
+                finally:
+                    # If the database swap succeeded but security cleanup failed, leave the
+                    # maintenance barrier closed. Operators must inspect/restart rather than
+                    # serving the restored database with an uncertain session state.
+                    if not restore_started or cleanup_complete:
+                        maintenance_event.clear()
+                    request_gate.end_drain()
+                    restore_lock.release()
         return _public_restore_result(backups.restore(payload.name, promote=payload.promote))
 
     @app.get("/api/v1/docs", include_in_schema=False)
@@ -3397,11 +4595,16 @@ def create_app(
         "/tools/forecast",
         "/tools/live-trading",
         "/tools/markets",
+        "/sign-in",
+        "/invite",
+        "/passkey",
+        "/account",
+        "/admin",
     ):
         app.add_api_route(
             route,
             partial(workspace_page, route),
-            methods=["GET"],
+            methods=["GET", "HEAD"],
             include_in_schema=False,
             name=f"workspace-{route.strip('/').replace('/', '-')}",
         )

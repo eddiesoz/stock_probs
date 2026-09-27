@@ -18,6 +18,11 @@ PAGES = (
     "tools/forecast.html",
     "tools/live-trading.html",
     "tools/markets.html",
+    "sign-in.html",
+    "invite.html",
+    "passkey.html",
+    "account.html",
+    "admin.html",
 )
 
 

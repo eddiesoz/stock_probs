@@ -20,10 +20,13 @@ from stock_probs.backup import BackupError, BackupManager
 from stock_probs.config import Settings
 from stock_probs.repository import SCHEMA_VERSION, Repository
 
+OWNER_USER_ID = 1
+
 
 def _record_failure(repository: Repository, request_id: str) -> None:
     now = datetime(2025, 1, 1, tzinfo=UTC)
     repository.record_failure(
+        owner_user_id=OWNER_USER_ID,
         request_id=request_id,
         submitted_symbol="FAIL",
         normalized_symbol="FAIL",
@@ -138,9 +141,7 @@ def test_migrate_cli_creates_and_reports_verified_pre_migration_backup(
         staging.cleanup()
 
 
-def test_failed_pre_migration_backup_blocks_every_pending_migration(
-    settings, monkeypatch, capsys
-):
+def test_failed_pre_migration_backup_blocks_every_pending_migration(settings, monkeypatch, capsys):
     _version_one_database(settings)
     _cli_environment(monkeypatch, settings)
     monkeypatch.setattr(sys, "argv", ["stock-probs", "migrate"])
@@ -204,9 +205,7 @@ def test_every_operational_cli_command_protects_pending_migration(
         )
 
 
-def test_due_backup_creates_only_when_due_and_never_expires_query_history(
-    settings, monkeypatch
-):
+def test_due_backup_creates_only_when_due_and_never_expires_query_history(settings, monkeypatch):
     repository = Repository(settings.database_path)
     repository.migrate()
     _record_failure(repository, "retained-due-event")
@@ -223,7 +222,7 @@ def test_due_backup_creates_only_when_due_and_never_expires_query_history(
     monkeypatch.setattr(backup_module, "datetime", datetime)
     created = manager.create_if_due(60, now=now)
     assert created["status"] == "created"
-    assert repository.history()["total"] == 1
+    assert repository.history(owner_user_id=OWNER_USER_ID)["total"] == 1
 
     not_due = manager.create_if_due(60, now=datetime.now(UTC))
     assert not_due["status"] == "not_due"
@@ -235,12 +234,13 @@ def test_due_backup_creates_only_when_due_and_never_expires_query_history(
     monkeypatch.setattr(manager, "_create", fail_due)
     with pytest.raises(BackupError, match="intentional due-backup failure"):
         manager.create_if_due(60, now=datetime.now(UTC) + timedelta(seconds=61))
-    assert repository.history()["items"][0]["request_id"] == "retained-due-event"
+    assert (
+        repository.history(owner_user_id=OWNER_USER_ID)["items"][0]["request_id"]
+        == "retained-due-event"
+    )
 
 
-def test_due_check_manifest_delay_times_out_before_creating_an_artifact(
-    settings, monkeypatch
-):
+def test_due_check_manifest_delay_times_out_before_creating_an_artifact(settings, monkeypatch):
     repository = Repository(settings.database_path)
     repository.migrate()
     _record_failure(repository, "retained-timeout-event")
@@ -273,7 +273,10 @@ def test_due_check_manifest_delay_times_out_before_creating_an_artifact(
         release.set()
 
     assert completed.wait(timeout=1)
-    assert repository.history()["items"][0]["request_id"] == "retained-timeout-event"
+    assert (
+        repository.history(owner_user_id=OWNER_USER_ID)["items"][0]["request_id"]
+        == "retained-timeout-event"
+    )
     assert [path.name for path in settings.backup_dir.iterdir()] == ["existing.spbackup"]
 
 
@@ -295,16 +298,14 @@ def test_direct_create_delay_times_out_without_artifact_or_staging(settings, mon
 
     assert elapsed < 0.04
     assert not list(settings.backup_dir.glob("*.spbackup"))
-    assert repository.history()["items"][0]["request_id"] == (
+    assert repository.history(owner_user_id=OWNER_USER_ID)["items"][0]["request_id"] == (
         "retained-create-timeout-event"
     )
     assert not list(settings.backup_dir.iterdir())
 
 
 @pytest.mark.parametrize("operation", ["verify", "restore"])
-def test_public_verification_paths_timeout_and_clean_staging(
-    settings, monkeypatch, operation
-):
+def test_public_verification_paths_timeout_and_clean_staging(settings, monkeypatch, operation):
     repository = Repository(settings.database_path)
     repository.migrate()
     _record_failure(repository, f"retained-{operation}-timeout-event")
@@ -329,12 +330,10 @@ def test_public_verification_paths_timeout_and_clean_staging(
 
     assert elapsed < 0.04
     assert completed.wait(timeout=0.2)
-    assert repository.history()["items"][0]["request_id"] == (
+    assert repository.history(owner_user_id=OWNER_USER_ID)["items"][0]["request_id"] == (
         f"retained-{operation}-timeout-event"
     )
-    assert [path.name for path in settings.backup_dir.iterdir()] == [
-        "timeout-source.spbackup"
-    ]
+    assert [path.name for path in settings.backup_dir.iterdir()] == ["timeout-source.spbackup"]
 
 
 def test_public_verify_and_non_promoting_restore_complete_normally(settings):
@@ -350,19 +349,17 @@ def test_public_verify_and_non_promoting_restore_complete_normally(settings):
 
     assert manifest["counts"]["search_events"] == 1
     assert restored["verified"] is True and restored["promoted"] is False
-    assert repository.history()["items"][0]["request_id"] == (
+    assert repository.history(owner_user_id=OWNER_USER_ID)["items"][0]["request_id"] == (
         "retained-normal-verification-event"
     )
-    assert [path.name for path in settings.backup_dir.iterdir()] == [
-        "normal-verification.spbackup"
-    ]
+    assert [path.name for path in settings.backup_dir.iterdir()] == ["normal-verification.spbackup"]
 
 
-def test_pre_migration_verification_delay_never_publishes_or_migrates(
-    settings, monkeypatch
-):
+def test_pre_migration_verification_delay_never_publishes_or_migrates(settings, monkeypatch):
     _version_one_database(settings)
-    original_create = BackupManager._create
+    # Observe the complete public backup call. Under load, the bounded worker may reach the
+    # migration hook only after its deadline, before the private _create body starts.
+    original_create = BackupManager.create
     original_verify = BackupManager._verify_unlocked
     completed = threading.Event()
 
@@ -377,7 +374,7 @@ def test_pre_migration_verification_delay_never_publishes_or_migrates(
             completed.set()
 
     monkeypatch.setattr(backup_module, "BACKUP_TIMEOUT_SECONDS", 0.02)
-    monkeypatch.setattr(BackupManager, "_create", tracked_create)
+    monkeypatch.setattr(BackupManager, "create", tracked_create)
     monkeypatch.setattr(BackupManager, "_verify_unlocked", delayed_verify)
     started = time.monotonic()
     with pytest.raises(BackupError, match="wall-clock time limit"):
@@ -407,7 +404,7 @@ def test_serve_lifespan_runs_observable_due_check_and_surfaces_failure(
         def create_if_due(self, interval):
             return {"trigger": "due", "status": "created", "interval_seconds": interval}
 
-    monkeypatch.setattr(cli, "create_app", lambda: application)
+    monkeypatch.setattr(cli, "create_app", lambda _settings: application)
     monkeypatch.setattr(cli, "_migration_operations", lambda configured: (Manager(), None))
     wrapped = cli._serve_app(settings)
 
@@ -431,9 +428,7 @@ def test_serve_lifespan_runs_observable_due_check_and_surfaces_failure(
     assert "startup backup failed" in capsys.readouterr().err
 
 
-def test_serve_lifespan_watchdog_bounds_a_non_cooperative_due_check(
-    settings, monkeypatch, capsys
-):
+def test_serve_lifespan_watchdog_bounds_a_non_cooperative_due_check(settings, monkeypatch, capsys):
     called = []
     completed = threading.Event()
 
@@ -455,7 +450,7 @@ def test_serve_lifespan_watchdog_bounds_a_non_cooperative_due_check(
         return None
 
     monkeypatch.setattr(backup_module, "BACKUP_TIMEOUT_SECONDS", 0.001)
-    monkeypatch.setattr(cli, "create_app", lambda: application)
+    monkeypatch.setattr(cli, "create_app", lambda _settings: application)
     monkeypatch.setattr(cli, "_migration_operations", lambda configured: (SlowManager(), None))
     started = time.monotonic()
     with pytest.raises(BackupError, match="wall-clock time limit"):
@@ -468,9 +463,7 @@ def test_serve_lifespan_watchdog_bounds_a_non_cooperative_due_check(
     assert "wall-clock time limit" in capsys.readouterr().err
 
 
-def test_backup_key_rotate_command_resigns_all_verified_artifacts(
-    settings, monkeypatch, capsys
-):
+def test_backup_key_rotate_command_resigns_all_verified_artifacts(settings, monkeypatch, capsys):
     repository = Repository(settings.database_path)
     repository.migrate()
     _record_failure(repository, "retained-rotation-event")
@@ -493,7 +486,10 @@ def test_backup_key_rotate_command_resigns_all_verified_artifacts(
     with pytest.raises(BackupError, match="authenticity"):
         manager.verify(names[0])
     manager.trust_key_path.write_bytes(new_key)
-    assert repository.history()["items"][0]["request_id"] == "retained-rotation-event"
+    assert (
+        repository.history(owner_user_id=OWNER_USER_ID)["items"][0]["request_id"]
+        == "retained-rotation-event"
+    )
 
 
 @pytest.mark.parametrize(
@@ -653,7 +649,10 @@ def test_rotation_and_retirement_fail_closed_then_retirement_succeeds(
         cli.main()
     assert retirement_failure.value.code == 2
     assert "managed backups remain; transfer or remove them explicitly" in capsys.readouterr().err
-    assert repository.history()["items"][0]["request_id"] == "retained-key-event"
+    assert (
+        repository.history(owner_user_id=OWNER_USER_ID)["items"][0]["request_id"]
+        == "retained-key-event"
+    )
 
     for name in (first, second):
         (settings.backup_dir / name).unlink()

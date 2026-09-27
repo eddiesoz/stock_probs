@@ -1,4 +1,5 @@
 import { Settings } from "../app/settings";
+import { AuthControls } from "./auth-controls";
 import { SelectedInstrumentStatus, WorkspaceLink } from "./workspace-link";
 
 // Fixed route order and labels keep the primary workspace navigation predictable.
@@ -38,6 +39,7 @@ export function WorkspaceNav({ current }: Readonly<{ current: "overview" | "rese
               ))}
             </nav>
             <Settings />
+            <AuthControls />
           </div>
         </div>
         <SelectedInstrumentStatus />

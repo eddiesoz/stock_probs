@@ -122,14 +122,15 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 
 ### Current approval status
 
-`EXP-M09` is the sole current approval-gated item. `M09-E18` completed M09 for its declared
-scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded for their declared scopes.
-No unblocked implementation or repair boundary is current, and no current Ponytail review,
-repair, or rerun is authorized. The only remaining M09 action is `EXP-M09`: full-session
-export, secret review, local commit, push, and exact remote verification. Unavailable evidence
-categories—actual screen reader, physical mobile, true browser zoom, native ARM64 performance,
-provider runtime, and project-profile/skill runtime discovery—are non-coding limitations, not
-open repair or implementation work.
+`R-ASTRA-101` is the current in-progress authentication and private deployment follow-on.
+`EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
+completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
+for their declared scopes. The current follow-on is not complete: GHCR publication, replacement
+Linode creation, GitHub OAuth credentials, the Cloudflare Tunnel owner-only canary, and VM Backup
+recovery rehearsal remain pending external operations. No public route or production release is
+claimed. Unavailable evidence categories—actual screen reader, physical mobile, true browser zoom,
+native ARM64 performance, provider runtime, CUA, and project-profile/skill runtime discovery—remain
+separate limitations.
 
 `M09-E13` is a frozen historical constraint for the M09 contract, not a current absence-audit
 task. Its original rejected M09 scope remains intact. Later `R-ASTRA-98` separately
@@ -141,6 +142,54 @@ declared M09 scope by `M09-E18`; no current repair or Ponytail action follows fr
 `R-M07-1` and `R-M07-2` retain historical statuses only and are superseded for M07's declared
 integrated scope by `M07-E20`; no current M07 repair, Ponytail availability review, or retest is
 open.
+
+### Current secure production follow-on (`R-ASTRA-101`)
+
+- Production is invite-only GitHub OAuth plus a required user-verifying passkey. GitHub's numeric
+  account ID is the stable identity; invitations are resolved, expiring, and single-use. Local
+  bootstrap credentials are development-only and production startup rejects them.
+- Sessions are opaque server-side records addressed by hashed tokens, with idle and absolute
+  expiry, revocation, host-only `Secure`/`HttpOnly` cookies, exact-origin/Host checks, and CSRF
+  protection. Every private query and ID lookup derives ownership from the session, including
+  events, saved results, exports, outcomes, reconstructions, holdings, and watchlists.
+- Backup status/creation and restore promotion are administrator operations. Restore promotion
+  requires recent passkey proof, a verified pre-restore backup, matching account-security state,
+  serialized maintenance, and revocation of all sessions.
+- The production app remains one FastAPI process with SQLite on a persistent Linode volume. Docker
+  publishes only `127.0.0.1:8000`; a host-managed Cloudflare Tunnel is the only intended ingress
+  and stays disabled until the owner-only canary passes. HTML and authenticated API responses must
+  bypass shared caching, and proxy information is trusted only from the local connector.
+- The local stdio deployment MCP exposes only typed `inspect`, `plan_deploy`, `deploy`, `status`,
+  and `rollback` tools. Its fixed forced-command helper accepts a reviewed `main` revision and
+  immutable GHCR digest only; it cannot receive arbitrary shell commands, paths, URLs, Compose
+  files, registry names, tags, or Docker-socket requests. The VM never builds source.
+- Current evidence is bounded: native x86_64 dependency audits for the application and MCP both
+  reported zero advisories; frontend tests reported `27` passed; focused API/auth checks reported
+  `151` passed; production-helper/MCP checks reported `31` passed; and the isolated production-
+  shaped browser review passed sign-in Light/Dark at `1280x720` and `390x844`, protected-route
+  redirects, private-history denial, Host/Origin spoof rejection, 104 loopback-only requests,
+  focus, and 44px targets. CUA, full axe, physical mobile, actual screen reader, and true zoom
+  evidence remain **Unavailable**.
+- The completed local `R-ASTRA-101` gate passed at dirty `HEAD`
+  `893a146dcb0cf3ba03b435307dec1fb138941cd0` from `2026-09-27T10:59:03Z` to
+  `2026-09-27T11:11:45Z`: Python `612` passed/`4` live deselected with `85.36%` coverage,
+  frontend typecheck/build plus `27` tests passed, documentation coverage checked `133` files,
+  and comment audit covered `229` files. The receipt is
+  `test-results/local-gates/R-ASTRA-101-20260927T105903Z/evidence.json`; this is local dirty-tree
+  evidence and does not claim GHCR, a remote image, Linode deployment, public exposure, or release.
+- The local schema-6 snapshot and verified signed backup share database SHA-256
+  `2533d3bf96db79610b4616531e047df434ed54b1b2e1243c8a65b4e8401adcfd`; integrity is `ok`, with
+  13 events, 13 runs, 20 results, 6 portfolio holdings, and 3 watchlist items. Disposable
+  schema-6→8 migration and a simulated owner claim to GitHub ID `86915618` preserved those rows.
+  Re-take the live snapshot at cutover if data changes.
+- Astra's initial medium source review found Host path poisoning and a Starlette range denial-of-
+  service advisory; the targeted repairs were rechecked with no remaining source blocker reported.
+  The historical `R-ASTRA-100` run remains **Unavailable** as one green aggregate (`603` pass,
+  `5` fail, `4` deselected); four stale schema expectations and one timing race have a targeted
+  `33`-pass repair run. The completed `R-ASTRA-101` local gate is recorded separately above.
+- The replacement Linode, GHCR push, GitHub OAuth application credentials, Cloudflare Tunnel
+  canary, and VM Backup recovery rehearsal remain pending. The old VM and current local app are
+  untouched. This evidence does not authorize public exposure or claim a release checkpoint.
 
 ## Repository truth
 

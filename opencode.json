@@ -61,6 +61,15 @@
   },
   "mcp": {
     "servers": {
+      "signal-ledger-deploy": {
+        "type": "local",
+        "command": ["./scripts/deploy-mcp.sh"],
+        "disabled": false,
+        "timeout": {
+          "catalog": 30000,
+          "execution": 1800000
+        }
+      },
       "playwright": {
         "type": "local",
         "command": [

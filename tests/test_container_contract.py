@@ -4,8 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_IMAGE = (
-    "python:3.11.15-slim@sha256:"
-    "90744cff8f32887f075c47d747a173ff333e9e98801667af93c357fa9f5e28ff"
+    "python:3.11.15-slim@sha256:90744cff8f32887f075c47d747a173ff333e9e98801667af93c357fa9f5e28ff"
 )
 NODE_IMAGE = (
     "node:22.19.0-bookworm-slim@sha256:"
@@ -47,17 +46,16 @@ def test_next_export_is_built_with_pinned_node_but_runtime_is_python_only() -> N
     retained_export = (
         "RUN mkdir -p /static-next/tools \\\n"
         "    && cp out/index.html out/api-docs.html out/overview.html out/research.html "
-        "out/tools.html /static-next/ \\\n"
+        "out/tools.html \\\n"
+        "       out/sign-in.html out/invite.html out/passkey.html out/account.html "
+        "out/admin.html /static-next/ \\\n"
         "    && cp out/tools/forecast.html out/tools/live-trading.html out/tools/markets.html "
         "/static-next/tools/ \\\n"
         "    && cp -R out/_next /static-next/"
     )
     assert retained_export in frontend_stage
     assert all(name not in frontend_stage for name in (".txt", "404", "_not-found"))
-    export_copy = (
-        "COPY --from=frontend-builder /static-next "
-        "./src/stock_probs/static/next"
-    )
+    export_copy = "COPY --from=frontend-builder /static-next ./src/stock_probs/static/next"
     assert python_stages.index(export_copy) < python_stages.index("python -m pip wheel")
     assert "COPY --from=frontend-builder /build/frontend/out" not in dockerfile
     assert "node:" not in runtime_stage

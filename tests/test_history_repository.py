@@ -20,6 +20,7 @@ from stock_probs.repository import HISTORY_EXPORT_LIMIT, Repository
 from stock_probs.service import ForecastService
 
 NOW = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+OWNER_USER_ID = 1
 
 
 def _repository(settings) -> Repository:
@@ -48,6 +49,7 @@ def _record_success(
         snapshot["content_fingerprint"] = "f" * 64
         snapshot["provenance"]["content_fingerprint"] = "f" * 64
     return repository.record_success(
+        owner_user_id=OWNER_USER_ID,
         request_id=request_id,
         submitted_symbol=symbol,
         asset_type=asset_type,
@@ -83,6 +85,7 @@ def test_history_filters_identity_semantics_dates_model_and_request_id(settings)
         source_event_id=first_id,
     )
     repository.record_failure(
+        owner_user_id=OWNER_USER_ID,
         request_id="failure-first",
         submitted_symbol="FAIL",
         normalized_symbol="FAIL",
@@ -93,6 +96,7 @@ def test_history_filters_identity_semantics_dates_model_and_request_id(settings)
         completed_at=NOW + timedelta(hours=1, seconds=1),
     )
     repository.record_failure(
+        owner_user_id=OWNER_USER_ID,
         request_id="failure-repeat",
         submitted_symbol="FAIL",
         normalized_symbol="FAIL",
@@ -105,35 +109,54 @@ def test_history_filters_identity_semantics_dates_model_and_request_id(settings)
 
     assert repeated is reused is True
     assert fresh_repeated is True and fresh_reused is False
-    assert repository.history(query="ProFrac")["total"] == 3
-    assert repository.history(symbol="spy")["items"][0]["id"] == spy_id
-    assert repository.history(company="S&P 500")["total"] == 1
-    assert repository.history(asset_type="etf")["total"] == 1
-    assert repository.history(status="failed")["total"] == 2
-    assert repository.history(semantics="success")["total"] == 4
-    assert repository.history(semantics="failure")["total"] == 2
-    assert repository.history(semantics="repeat")["total"] == 3
-    assert repository.history(semantics="fresh")["items"][0]["id"] == fresh_id
-    assert repository.history(semantics="saved")["total"] == 3
-    assert repository.history(
-        date_from=NOW - timedelta(days=2), date_to=NOW - timedelta(days=1)
-    )["total"] == 2
-    assert repository.history(model="volatility-adjusted empirical distribution")["total"] == 4
-    assert repository.history(model_version="empirical-ewma-v2")["total"] == 4
-    assert repository.history(request_id="acdc-repeat")["items"][0]["id"] == repeat_id
+    assert repository.history(owner_user_id=OWNER_USER_ID, query="ProFrac")["total"] == 3
+    assert repository.history(owner_user_id=OWNER_USER_ID, symbol="spy")["items"][0]["id"] == spy_id
+    assert repository.history(owner_user_id=OWNER_USER_ID, company="S&P 500")["total"] == 1
+    assert repository.history(owner_user_id=OWNER_USER_ID, asset_type="etf")["total"] == 1
+    assert repository.history(owner_user_id=OWNER_USER_ID, status="failed")["total"] == 2
+    assert repository.history(owner_user_id=OWNER_USER_ID, semantics="success")["total"] == 4
+    assert repository.history(owner_user_id=OWNER_USER_ID, semantics="failure")["total"] == 2
+    assert repository.history(owner_user_id=OWNER_USER_ID, semantics="repeat")["total"] == 3
+    assert (
+        repository.history(owner_user_id=OWNER_USER_ID, semantics="fresh")["items"][0]["id"]
+        == fresh_id
+    )
+    assert repository.history(owner_user_id=OWNER_USER_ID, semantics="saved")["total"] == 3
+    assert (
+        repository.history(
+            owner_user_id=OWNER_USER_ID,
+            date_from=NOW - timedelta(days=2),
+            date_to=NOW - timedelta(days=1),
+        )["total"]
+        == 2
+    )
+    assert (
+        repository.history(
+            owner_user_id=OWNER_USER_ID, model="volatility-adjusted empirical distribution"
+        )["total"]
+        == 4
+    )
+    assert (
+        repository.history(owner_user_id=OWNER_USER_ID, model_version="empirical-ewma-v2")["total"]
+        == 4
+    )
+    assert (
+        repository.history(owner_user_id=OWNER_USER_ID, request_id="acdc-repeat")["items"][0]["id"]
+        == repeat_id
+    )
 
-    rich = repository.history(symbol="ACDC", include_analysis=True, include_facets=True)
+    rich = repository.history(
+        owner_user_id=OWNER_USER_ID, symbol="ACDC", include_analysis=True, include_facets=True
+    )
     assert [item["id"] for item in rich["items"]] == [fresh_id, repeat_id, first_id]
     assert all(item["company_name"] == "ProFrac Holding Corp." for item in rich["items"])
     assert all(item["model_version"] == "empirical-ewma-v2" for item in rich["items"])
-    first_page = repository.history(page=1, page_size=2)["items"]
-    second_page = repository.history(page=2, page_size=2)["items"]
+    first_page = repository.history(owner_user_id=OWNER_USER_ID, page=1, page_size=2)["items"]
+    second_page = repository.history(owner_user_id=OWNER_USER_ID, page=2, page_size=2)["items"]
     assert [item["id"] for item in first_page] == sorted(
         (item["id"] for item in first_page), reverse=True
     )
-    assert {item["id"] for item in first_page}.isdisjoint(
-        item["id"] for item in second_page
-    )
+    assert {item["id"] for item in first_page}.isdisjoint(item["id"] for item in second_page)
 
 
 def test_filter_boundaries_reject_ambiguous_or_unbounded_values():
@@ -166,6 +189,7 @@ def test_exact_event_export_filters_before_cap_and_intersects_every_indexed_filt
 
     repository = _repository(settings)
     oldest_id = repository.record_failure(
+        owner_user_id=OWNER_USER_ID,
         request_id="oldest-selected",
         submitted_symbol="FAIL",
         normalized_symbol="FAIL",
@@ -177,6 +201,7 @@ def test_exact_event_export_filters_before_cap_and_intersects_every_indexed_filt
     )
     for index in range(HISTORY_EXPORT_LIMIT):
         repository.record_failure(
+            owner_user_id=OWNER_USER_ID,
             request_id=f"newer-{index}",
             submitted_symbol="FAIL",
             normalized_symbol="FAIL",
@@ -188,6 +213,7 @@ def test_exact_event_export_filters_before_cap_and_intersects_every_indexed_filt
         )
 
     selected = repository.history_export(
+        owner_user_id=OWNER_USER_ID,
         generated_at=NOW,
         event_id=oldest_id,
         request_id="oldest-selected",
@@ -210,21 +236,21 @@ def test_exact_event_export_filters_before_cap_and_intersects_every_indexed_filt
         {"date_to": NOW - timedelta(microseconds=1)},
     ):
         empty = repository.history_export(
-            generated_at=NOW, event_id=oldest_id, **mismatch
+            owner_user_id=OWNER_USER_ID, generated_at=NOW, event_id=oldest_id, **mismatch
         )
         assert empty["total_events"] == empty["exported_events"] == 0
         assert empty["records"] == [] and empty["truncated"] is False
 
-    unknown = repository.history_export(generated_at=NOW, event_id=2_147_483_647)
+    unknown = repository.history_export(
+        owner_user_id=OWNER_USER_ID, generated_at=NOW, event_id=2_147_483_647
+    )
     assert unknown["counts"] == {"events": 0, "runs": 0, "results": 0}
     assert unknown["total_events"] == 0 and unknown["truncated"] is False
 
 
 def test_exact_event_export_preserves_repeat_saved_and_fresh_semantics(settings):
     repository = _repository(settings)
-    saved_id, _, _, _ = _record_success(
-        repository, "saved-first", "ACDC", "stock", NOW
-    )
+    saved_id, _, _, _ = _record_success(repository, "saved-first", "ACDC", "stock", NOW)
     repeated_id, _, repeated, reused = _record_success(
         repository, "saved-repeat", "ACDC", "stock", NOW + timedelta(minutes=1)
     )
@@ -251,17 +277,20 @@ def test_exact_event_export_preserves_repeat_saved_and_fresh_semantics(settings)
     )
     for event_id, semantics, expected in cases:
         exported = repository.history_export(
-            generated_at=NOW, event_id=event_id, semantics=semantics
+            owner_user_id=OWNER_USER_ID, generated_at=NOW, event_id=event_id, semantics=semantics
         )
         assert exported["total_events"] == expected
         assert exported["counts"]["events"] == expected
         assert exported["truncated"] is False
         if expected:
-            assert next(
-                record["event_id"]
-                for record in exported["records"]
-                if record["record_type"] == "event"
-            ) == event_id
+            assert (
+                next(
+                    record["event_id"]
+                    for record in exported["records"]
+                    if record["record_type"] == "event"
+                )
+                == event_id
+            )
 
 
 def test_property_style_filter_intersections_match_audit_rows(settings):
@@ -275,6 +304,7 @@ def test_property_style_filter_intersections_match_audit_rows(settings):
         asset_type = generator.choice(("stock", "etf"))
         submitted = NOW + timedelta(minutes=index)
         repository.record_failure(
+            owner_user_id=OWNER_USER_ID,
             request_id=f"property-{index}",
             submitted_symbol=symbol,
             normalized_symbol=symbol,
@@ -284,7 +314,7 @@ def test_property_style_filter_intersections_match_audit_rows(settings):
             submitted_at=submitted,
             completed_at=submitted + timedelta(seconds=1),
         )
-    baseline = repository.history(page_size=100)["items"]
+    baseline = repository.history(owner_user_id=OWNER_USER_ID, page_size=100)["items"]
 
     for _ in range(40):
         asset = generator.choice((None, "stock", "etf"))
@@ -301,6 +331,7 @@ def test_property_style_filter_intersections_match_audit_rows(settings):
             and date_from <= datetime.fromisoformat(item["submitted_at"]) <= date_to
         ]
         actual = repository.history(
+            owner_user_id=OWNER_USER_ID,
             asset_type=asset,
             semantics="repeat" if repeat_only else "failure",
             date_from=date_from,
@@ -314,7 +345,7 @@ def test_property_style_filter_intersections_match_audit_rows(settings):
 def test_restart_saved_detail_series_export_and_outcomes_are_faithful(settings):
     repository = _repository(settings)
     service = ForecastService(repository, FixtureProvider(), lambda: NOW)
-    created = service.search("ACDC", "stock")
+    created = service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
     result_id = created["results"][0]["id"]
     outcome = service.append_outcome(
         result_id,
@@ -322,9 +353,11 @@ def test_restart_saved_detail_series_export_and_outcomes_are_faithful(settings):
         datetime(2025, 1, 13, 21, 1, tzinfo=UTC),
         "observed",
         "official close",
+        owner_user_id=OWNER_USER_ID,
     )
     assert outcome is not None
     repository.record_failure(
+        owner_user_id=OWNER_USER_ID,
         request_id="formula-source",
         submitted_symbol="=DANGEROUS()",
         normalized_symbol=None,
@@ -342,12 +375,16 @@ def test_restart_saved_detail_series_export_and_outcomes_are_faithful(settings):
     restarted_repository = Repository(settings.database_path)
     restarted_repository.migrate()
     restarted = ForecastService(restarted_repository, ProviderMustNotRun(), lambda: NOW)
-    saved = restarted.saved_forecast(created["event"]["id"])
-    detail = restarted.history_detail(created["event"]["id"])
-    series = restarted.historical_series(created["event"]["id"], limit=7)
-    exported = restarted.history_export()
-    selected_export = restarted.history_export(event_id=created["event"]["id"])
-    outcomes = restarted_repository.outcome_history(result_id, page_size=1)
+    saved = restarted.saved_forecast(created["event"]["id"], owner_user_id=OWNER_USER_ID)
+    detail = restarted.history_detail(created["event"]["id"], owner_user_id=OWNER_USER_ID)
+    series = restarted.historical_series(
+        created["event"]["id"], owner_user_id=OWNER_USER_ID, limit=7
+    )
+    exported = restarted.history_export(owner_user_id=OWNER_USER_ID)
+    selected_export = restarted.history_export(
+        owner_user_id=OWNER_USER_ID, event_id=created["event"]["id"]
+    )
+    outcomes = restarted_repository.outcome_history(OWNER_USER_ID, result_id, page_size=1)
 
     assert saved is not None and detail is not None and series is not None
     assert saved["immutable"] is True and saved["recalculated"] is False
@@ -380,6 +417,7 @@ def test_bulk_export_query_count_is_constant_and_memory_is_capped(settings, monk
         unique_snapshot["content_fingerprint"] = fingerprint
         unique_snapshot["provenance"]["content_fingerprint"] = fingerprint
         event_id, _, _, _ = repository.record_success(
+            owner_user_id=OWNER_USER_ID,
             request_id=f"unique-{index}",
             submitted_symbol="ACDC",
             asset_type="stock",
@@ -388,9 +426,10 @@ def test_bulk_export_query_count_is_constant_and_memory_is_capped(settings, monk
             submitted_at=NOW + timedelta(seconds=index),
             completed_at=NOW + timedelta(seconds=index + 1),
         )
-        detail = repository.reconstruction(event_id)
+        detail = repository.reconstruction(OWNER_USER_ID, event_id)
         assert detail is not None
         repository.append_outcome(
+            OWNER_USER_ID,
             detail["results"][0]["id"],
             24.0,
             0.01,
@@ -411,7 +450,7 @@ def test_bulk_export_query_count_is_constant_and_memory_is_capped(settings, monk
             yield connection
 
     monkeypatch.setattr(repository, "connect", traced_connect)
-    exported = repository.history_export(generated_at=NOW)
+    exported = repository.history_export(owner_user_id=OWNER_USER_ID, generated_at=NOW)
     reads = [
         statement
         for statement in statements
@@ -419,7 +458,8 @@ def test_bulk_export_query_count_is_constant_and_memory_is_capped(settings, monk
     ]
 
     assert exported["counts"] == {"events": 20, "runs": 20, "results": 40}
-    assert len(reads) == 5
+    # Owner validation adds one principal lookup before the five bulk export reads.
+    assert len(reads) == 6
     assert exported["exported_events"] <= HISTORY_EXPORT_LIMIT
     assert sum(record["record_type"] == "event" for record in exported["records"]) <= 100
 
@@ -432,6 +472,7 @@ def test_concurrent_audit_writes_and_bounded_reads_remain_complete(settings):
         return (
             index,
             repository.record_failure(
+                owner_user_id=OWNER_USER_ID,
                 request_id=f"concurrent-{index}",
                 submitted_symbol=symbol,
                 normalized_symbol=symbol,
@@ -445,19 +486,22 @@ def test_concurrent_audit_writes_and_bounded_reads_remain_complete(settings):
 
     with ThreadPoolExecutor(max_workers=8) as workers:
         writes = [workers.submit(write, index) for index in range(100)]
-        reads = [workers.submit(repository.history, page_size=7) for _ in range(20)]
+        reads = [
+            workers.submit(repository.history, owner_user_id=OWNER_USER_ID, page_size=7)
+            for _ in range(20)
+        ]
         indexed_event_ids = [future.result(timeout=10) for future in writes]
         for read in reads:
             payload = read.result(timeout=10)
             assert len(payload["items"]) <= 7
 
-    first = repository.history(page=1, page_size=50)
-    second = repository.history(page=2, page_size=50)
+    first = repository.history(owner_user_id=OWNER_USER_ID, page=1, page_size=50)
+    second = repository.history(owner_user_id=OWNER_USER_ID, page=2, page_size=50)
     assert first["total"] == second["total"] == 100
     assert len({event_id for _, event_id in indexed_event_ids}) == 100
     expected = [event_id for _, event_id in sorted(indexed_event_ids, reverse=True)]
     assert [item["id"] for item in first["items"] + second["items"]] == expected
-    assert repository.history(semantics="repeat")["total"] == 95
+    assert repository.history(owner_user_id=OWNER_USER_ID, semantics="repeat")["total"] == 95
 
 
 @pytest.mark.parametrize("starting_version", [1, 2, 3])
@@ -487,8 +531,7 @@ def test_migration_004_preserves_exact_legacy_microseconds_and_canonical_rows(
     )
     with sqlite3.connect(settings.database_path) as connection:
         connection.execute(
-            "CREATE TABLE schema_migrations "
-            "(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
         )
         migrations = (
             (1, "001_initial.sql"),
@@ -573,7 +616,10 @@ def test_migration_004_preserves_exact_legacy_microseconds_and_canonical_rows(
     clean = Repository(tmp_path / f"clean-v{starting_version}.sqlite3")
     clean.migrate()
     result = repository.history(
-        company="SPDR S&P 500", model_version="empirical-ewma-v2", include_facets=True
+        owner_user_id=OWNER_USER_ID,
+        company="SPDR S&P 500",
+        model_version="empirical-ewma-v2",
+        include_facets=True,
     )
     assert result["total"] == 1
     assert result["items"][0]["company_name"] == "SPDR S&P 500 ETF Trust"
@@ -605,9 +651,9 @@ def test_migration_004_preserves_exact_legacy_microseconds_and_canonical_rows(
             ).fetchall(),
             "outcomes": connection.execute("SELECT * FROM outcomes ORDER BY id").fetchall(),
         }
-        assert {
-            table: [tuple(row) for row in rows] for table, rows in canonical_after.items()
-        } == {table: [tuple(row) for row in rows] for table, rows in canonical_before.items()}
+        assert {table: [tuple(row) for row in rows] for table, rows in canonical_after.items()} == {
+            table: [tuple(row) for row in rows] for table, rows in canonical_before.items()
+        }
         schema_sql = connection.execute(
             "SELECT type, name, tbl_name, sql FROM sqlite_master "
             "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
@@ -629,10 +675,13 @@ def test_migration_004_preserves_exact_legacy_microseconds_and_canonical_rows(
         reverse=True,
     )
     assert [
-        item["request_id"] for item in repository.history(page_size=100)["items"]
+        item["request_id"]
+        for item in repository.history(owner_user_id=OWNER_USER_ID, page_size=100)["items"]
     ] == expected_order
     exact = datetime(2025, 1, 10, 17, 3, 0, 123456, tzinfo=UTC)
-    exact_matches = repository.history(date_from=exact, date_to=exact, page_size=100)["items"]
+    exact_matches = repository.history(
+        owner_user_id=OWNER_USER_ID, date_from=exact, date_to=exact, page_size=100
+    )["items"]
     assert [item["request_id"] for item in exact_matches] == [
         "equal-instant-offset",
         "legacy-spy",
@@ -680,10 +729,16 @@ def test_indexed_one_hundred_thousand_event_history_query_is_bounded(settings):
                 for index in range(100_000)
             ),
         )
+        connection.execute(
+            """INSERT INTO search_event_owners(event_id, owner_user_id, assigned_at)
+            SELECT id, ?, submitted_at FROM search_events""",
+            (OWNER_USER_ID,),
+        )
         connection.commit()
 
     started = time.perf_counter()
     result = repository.history(
+        owner_user_id=OWNER_USER_ID,
         company="Needle",
         model="scale-model",
         model_version="v1",
@@ -694,6 +749,7 @@ def test_indexed_one_hundred_thousand_event_history_query_is_bounded(settings):
     elapsed = time.perf_counter() - started
     export_started = time.perf_counter()
     exact_export = repository.history_export(
+        owner_user_id=OWNER_USER_ID,
         generated_at=NOW,
         event_id=1,
         request_id="scale-0",

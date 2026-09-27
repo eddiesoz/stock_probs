@@ -1,6 +1,6 @@
 # Exact direct versions plus the checked-in transitive lock make ARM64 setup reproducible.
 [build-system]
-requires = ["setuptools==80.9.0"]
+requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,8 +10,15 @@ description = "Auditable local stock probability forecasts"
 # The executable bootstrap pins the one supported minor instead of falling through to host 3.14.
 requires-python = ">=3.11,<3.12"
 dependencies = [
-  "fastapi==0.116.1",
+  "cbor2==6.1.2",
+  "cryptography==50.0.1",
+  "fastapi==0.141.1",
+  "httpx==0.28.1",
+  "pyOpenSSL==26.4.0",
+  "pyasn1==0.6.4",
+  "pyasn1-modules==0.4.2",
   "uvicorn==0.35.0",
+  "webauthn==3.0.1",
   "yfinance==1.7.0",
 ]
 
@@ -19,7 +26,7 @@ dependencies = [
 dev = [
   "httpx==0.28.1",
   "mypy==1.17.1",
-  "pytest==8.4.1",
+  "pytest==9.1.1",
   "pytest-cov==6.2.1",
   "ruff==0.12.9",
 ]

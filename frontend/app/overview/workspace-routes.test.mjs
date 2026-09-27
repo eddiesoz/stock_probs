@@ -71,7 +71,8 @@ test("portfolio mutation sends only the fixed-list request contract", () => {
 test("overview uses only the final local lists contract", async () => {
   const source = await readFile(new URL("portfolio-workspace.tsx", import.meta.url), "utf8");
   assert.match(source, /fetch\("\/api\/v1\/lists\?kind=portfolio"/);
-  assert.match(source, /fetch\("\/api\/v1\/lists"/);
+  assert.match(source, /import \{ apiFetch \} from "\.\.\/\.\.\/components\/auth-client"/);
+  assert.match(source, /apiFetch\("\/api\/v1\/lists"/);
   assert.doesNotMatch(source, /\/portfolios|localStorage/);
 });
 
