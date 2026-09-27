@@ -1,0 +1,24 @@
+# Repository-level Codex settings. Codex loads this file for trusted projects.
+# The root AGENTS.md is larger than Codex's default instruction byte limit.
+project_doc_max_bytes = 131072
+
+[agents]
+enabled = true
+
+[mcp_servers.playwright]
+command = "./scripts/playwright-mcp.sh"
+args = [
+  "--headless",
+  "--isolated",
+  "--browser", "chromium",
+  "--allowed-hosts", "127.0.0.1,localhost,[::1]",
+  "--allowed-origins", "http://127.0.0.1:*;http://localhost:*;http://[::1]:8000;http://[::1]:8765",
+  "--block-service-workers",
+  "--image-responses", "omit",
+  "--output-dir", ".playwright-mcp",
+  "--output-max-size", "10485760",
+  "--timeout-action", "10000",
+  "--timeout-navigation", "30000",
+]
+startup_timeout_sec = 30
+tool_timeout_sec = 30

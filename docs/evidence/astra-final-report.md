@@ -5,6 +5,10 @@ description: "Four-lane ASTRA-FINAL re-evaluation, repair, row-level evidence, a
 
 # ASTRA-FINAL evaluation report
 
+Ponytail references in this preserved report are historical overengineering-only evidence. The
+Ponytail adapter/package/plugin is retired and is not part of the current workflow or any current
+acceptance gate.
+
 ## Result
 
 The supplied final re-evaluation resolved the previously reported product, presentation, and

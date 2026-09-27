@@ -14,13 +14,12 @@ comment_audit = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(comment_audit)
 
 
-def test_ponytail_vendor_tree_is_excluded_but_local_smoke_is_authored():
+def test_removed_ponytail_tree_is_absent_from_the_inventory():
     checked = {path.relative_to(ROOT) for path in comment_audit.checked_paths(ROOT)}
 
-    assert comment_audit.PONYTAIL_LOCAL_SMOKE in checked
-    assert comment_audit.PONYTAIL / ".opencode/plugins/ponytail.mjs" not in checked
-    assert comment_audit.PONYTAIL / "LICENSE" not in checked
-    assert comment_audit.PONYTAIL / "PROVENANCE.md" not in checked
+    assert not any(path.parts[:2] == ("tools", "ponytail") for path in checked)
+    assert not hasattr(comment_audit, "PONYTAIL")
+    assert not hasattr(comment_audit, "PONYTAIL_LOCAL_SMOKE")
 
 
 def test_declarative_json_exclusions_are_path_specific():
@@ -31,11 +30,9 @@ def test_declarative_json_exclusions_are_path_specific():
         Path(".opencode/package.json"),
         Path(".opencode/package-lock.json"),
         Path("tools/browser/performance-budgets.json"),
-        Path("tools/ponytail/package.json"),
     } == comment_audit.DECLARATIVE_JSON
     assert not comment_audit.DECLARATIVE_JSON.intersection(checked)
     assert Path("tools/browser/tests/performance.spec.js") in checked
-    assert Path("tools/ponytail/smoke.mjs") in checked
     assert Path("scripts/performance_harness.py") in checked
 
 

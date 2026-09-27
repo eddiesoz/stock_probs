@@ -17,7 +17,7 @@ live in `references/`.
   operations, API behavior, security, or dashboard usage.
 - Reconcile root documentation with facts already established by an evidence record.
 - Audit frontmatter, index coverage, relative links, or credential-like content; report project-skill
-  metadata drift to `SOL HIGH build`.
+  metadata drift to native `luna-build`.
 
 ## Hard rules
 
@@ -38,9 +38,9 @@ index rules.
 ### Preserve skill and Git ownership
 
 Project-local skill trees, their validator catalog, `.opencode/SKILL-INDEX.md`, and
-`.opencode/skills/learnings.md` are `SOL HIGH build` changes, not `LUNA MAX docs` changes. Route
-skill findings to that owner. The coordinator alone owns the Git index, commits, exports, and
-remote operations.
+`.opencode/skill-history/learnings.md` is a native `luna-build` change, not a `luna-docs` change. Route
+skill findings to `luna-build`; `luna-docs` owns authored documentation. The coordinator alone
+owns the Git index, commits, exports, and remote operations.
 
 ### Report status from evidence only
 

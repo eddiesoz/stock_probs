@@ -14,7 +14,8 @@ the detailed checklists live in `references/`.
 - Audit an admitted project skill after its behavior, paths, or trigger description changes.
 - Evaluate a demonstrated recurring workflow as a possible project skill.
 - Add, rename, or retire a skill after the repository contract explicitly approves that change.
-- Regenerate the project skill index at `.opencode/SKILL-INDEX.md` and verify OpenCode discovery.
+- Regenerate the project skill index at `.opencode/SKILL-INDEX.md` and verify project governance
+  invariants.
 
 ## Hard boundaries
 
@@ -23,8 +24,8 @@ the detailed checklists live in `references/`.
 - Detection produces a proposal, not an autonomous edit. Create or retire only within explicit
   task ownership and preserve the fixed nine-category authored-documentation taxonomy.
 - Project skill trees, the validator catalog, `.opencode/SKILL-INDEX.md`, and
-  `.opencode/skills/learnings.md` are `SOL HIGH build` changes. `LUNA MAX docs` reports findings
-  in them to that owner rather than editing them.
+  `.opencode/skill-history/learnings.md` is a native `luna-build` change. `luna-docs` reports findings in
+  them to that owner rather than editing them.
 - Never stage files in the Git index, commit, amend, push, export a session, or alter Git history,
   branches, tags, or remotes. The project skill index is a normal build-owned file; the Git index
   and coordinator-owned `EXP-*` commit/export gates remain separate and authoritative.
@@ -32,8 +33,8 @@ the detailed checklists live in `references/`.
   background synthesis, or state services. Repository files and local checks are sufficient.
 - Keep each `SKILL.md` at 500 lines or fewer, use quoted `name` and `description` frontmatter,
   match the lowercase-hyphenated directory exactly, and place detail in linked references.
-- A changed skill is not live-process evidence. Require a fresh parent OpenCode process and an
-  independent discovery check before it can affect a gate.
+- Static skill files, metadata, and indexes are not live-process evidence. This workflow performs
+  repository validation only and never claims native runtime discovery.
 
 ## Workflow
 

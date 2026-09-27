@@ -1,12 +1,14 @@
 ---
-title: "Ponytail reviews"
-description: "Summary of retained Ponytail boundary findings, repairs, verification, and scope limits."
+title: "Historical Ponytail reviews"
+description: "Historical summary of retained Ponytail boundary findings, repairs, verification, and scope limits."
 ---
 
-# Ponytail reviews
+# Historical Ponytail reviews
 
-Ponytail reviews only overengineering. These receipts do not verify correctness, security,
-accessibility, or performance and do not accept M05, M06, or `EXP-M06`.
+Ponytail is retired from the current tree and workflow. This page preserves historical
+overengineering-only receipts; it is not a current package, plugin, command, review, or
+acceptance gate. These receipts do not verify correctness, security, accessibility, or performance
+and do not accept M05, M06, or `EXP-M06`.
 
 ## Retained boundaries
 

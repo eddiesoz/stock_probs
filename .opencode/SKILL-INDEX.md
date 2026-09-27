@@ -1,7 +1,7 @@
 # Project skill index
 
 Project-local OpenCode skills used by Stock Probability. This index is maintained with skill
-changes and currently contains **8 skills**.
+changes and currently contains **7 skills**.
 
 ## Documentation skills
 
@@ -27,7 +27,6 @@ changes and currently contains **8 skills**.
 | --- | --- | --- |
 | `local-gate-evidence` | [`skills/local-gate-evidence/SKILL.md`](skills/local-gate-evidence/SKILL.md) | Run and audit Stock Probability local gates with fail-closed receipts, structured performance rows, honest architecture labels, and separate export checkpoints. Use when executing, repairing, or reviewing local-gate, performance, ARM64, package, release, or checkpoint evidence. |
 | `browser-qa` | [`skills/browser-qa/SKILL.md`](skills/browser-qa/SKILL.md) | Build and audit deterministic Stock Probability browser QA for accessibility, responsive themes, race handling, and complete news states. Use when adding or reviewing Playwright fixtures, dashboard regressions, walkthrough captures, axe or contrast checks, no-flash behavior, or request supersession. |
-| `ponytail-boundary-review` | [`skills/ponytail-boundary-review/SKILL.md`](skills/ponytail-boundary-review/SKILL.md) | Run the read-only Stock Probability Ponytail boundary workflow and preserve overengineering-only findings through minimal repair and independent retest. Use after an implementation or configuration boundary and before independent QA, or when auditing a retained Ponytail receipt. |
 
 ## Persistence and security skills
 
@@ -43,6 +42,5 @@ changes and currently contains **8 skills**.
 3. [`stock-probability-skill-maintenance`](skills/stock-probability-skill-maintenance/SKILL.md)
 4. [`local-gate-evidence`](skills/local-gate-evidence/SKILL.md)
 5. [`browser-qa`](skills/browser-qa/SKILL.md)
-6. [`ponytail-boundary-review`](skills/ponytail-boundary-review/SKILL.md)
-7. [`database-conventions`](skills/database-conventions/SKILL.md)
-8. [`security-audit`](skills/security-audit/SKILL.md)
+6. [`database-conventions`](skills/database-conventions/SKILL.md)
+7. [`security-audit`](skills/security-audit/SKILL.md)

@@ -22,14 +22,11 @@ DECLARATIVE_JSON = {
     Path(".opencode/package.json"),
     Path(".opencode/package-lock.json"),
     Path("tools/browser/performance-budgets.json"),
-    Path("tools/ponytail/package.json"),
 }
 GENERATED_METADATA = {
     Path(".opencode/.gitignore"),
     Path("frontend/next-env.d.ts"),
 }
-PONYTAIL = Path("tools/ponytail")
-PONYTAIL_LOCAL_SMOKE = PONYTAIL / "smoke.mjs"
 
 
 def has_comment(path: Path) -> bool:
@@ -69,7 +66,6 @@ def checked_paths(root: Path) -> list[Path]:
         if (
             EXCLUDED_PARTS.intersection(relative.parts)
             or relative.is_relative_to(Path("src/stock_probs/static/next"))
-            or (PONYTAIL in relative.parents and relative != PONYTAIL_LOCAL_SMOKE)
             or relative in GENERATED_METADATA
             or path.suffix in {".lock", ".png", ".pyc"}
         ):

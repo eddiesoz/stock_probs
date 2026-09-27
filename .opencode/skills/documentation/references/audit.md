@@ -34,7 +34,8 @@ Then manually check what syntax cannot prove:
    coordinator creates and verifies it.
 
 If the audit finds a project-skill, validator-catalog, `.opencode/SKILL-INDEX.md`,
-`.opencode/skills/learnings.md`, or agent-profile change, route it to `SOL HIGH build`; do not edit
-it as `LUNA MAX docs`. Do not call an unavailable MCP service or fabricate an observation receipt.
+`.opencode/skill-history/learnings.md`, or agent-profile change, route the implementation, configuration,
+skill, or test repair to native `luna-build`; `luna-docs` owns authored documentation only. Do not
+call an unavailable MCP service or fabricate an observation receipt.
 Because skills load at process start, require a parent restart and independent post-restart
 discovery check before claiming the live OpenCode process uses a changed skill.

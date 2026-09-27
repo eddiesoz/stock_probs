@@ -5,6 +5,83 @@ description: "Local developer checks for Python, API, persistence, theme/news pr
 
 # Testing
 
+## Current OpenCode V2 QA contract
+
+Use native OpenCode V2 `build`/`plan` entry points and the Luna profiles: `luna-build` may
+implement, `luna-qa` verifies read-only, and `luna-docs` records only the owned documentation.
+QA result labels are exactly **Pass**, **Fail**, **Skipped**, and **Unavailable**. A builder
+report, implementation presence, generated artifact, skipped check, provider error, or missing
+hardware is not acceptance. Native x86_64, emulated ARM64, and physical ARM64/mobile/
+screen-reader/true-zoom evidence must remain separately labelled.
+
+After changing project configuration, profiles, commands, plugins, or `.opencode` dependencies,
+restart the parent before discovery or runtime acceptance. With `OPENCODE_DISABLE_PROJECT_CONFIG=1`,
+project-profile discovery is **Pending**/**Unavailable**. The real V2 provider probe emitted an
+error event without a report and is therefore **Unavailable**, not a provider acceptance result.
+
+Native V2 automatically discovers project skills from directory-based
+`.opencode/skills/<id>/SKILL.md` definitions; the `skills` configuration array is for additional
+later-precedence sources, so an explicit `.opencode/skills` entry is not expected in
+`opencode.json`. The seven approved definitions, `metadata.json`, `alwaysApply: false`,
+`.opencode/SKILL-INDEX.md`, the
+validator allow-list, and `.opencode/skill-history/learnings.md` are static governance/history
+artifacts, not native loader proof. Runtime skill discovery is **Unavailable** here because
+`OPENCODE_DISABLE_PROJECT_CONFIG=1`; no runtime loader result is inferred. The active history path
+is `.opencode/skill-history/learnings.md`; the former flat
+`.opencode/skills/learnings.md` path is retired.
+
+The coordinator's exact CLI rerun returned `opencode v2.0.7` from both `opencode --version` and
+`/home/james/.local/opt/opencode-v2/opencode --version`; `/home/james/.local/opt/opencode-v2/opencode debug --help`
+listed only `agents`, `config`, and `paths`; and
+`printenv OPENCODE_DISABLE_PROJECT_CONFIG` returned `1`. These version/help facts do not establish
+skill discovery.
+
+Loader-boundary evidence is separated. Supplied builder static evidence recorded config/docs tests
+`73/73`, comment tests `5/5`, validator `9` categories/`13` topics/`7` governance entries,
+documentation self-test `26/26`, completeness `111` mapped files, and dirty-tree coverage `154`
+inputs/`0` violations, with Ruff/security/comment audit `203` files plus JSON/frontmatter,
+shell-syntax, and diff checks **Pass**. Independent Luna QA passed the static loader-boundary
+scope on native x86_64 at dirty revision `09ba8b8dd285bd64c34241069051936c82c6390b`: exactly seven
+directory `SKILL.md` files, no flat skill files, history-path migration, no explicit skills config,
+retired Ponytail absence, and docs/map semantics **Pass**. This is independent static QA, not
+native runtime discovery, provider runtime, release, or clean-scope acceptance; clean-scope proof
+remains **Unavailable** because of the broad pre-existing dirty worktree, and no provider runtime
+or service restart was invoked.
+
+Ponytail is retired from the current tree and workflow. No package, plugin, dependency pin,
+command, boundary review, or smoke check is current. The retained Ponytail reports are historical
+overengineering-only evidence and cannot substitute for correctness, security, accessibility,
+performance, or release evidence.
+
+The documentation gate is separate and fail-closed. Run the validator, completeness checker,
+change-aware checker, isolated self-test, and scoped `git diff --check` as applicable; do not
+install hooks or treat the hook's presence as a check result.
+
+The approved project governance set has seven directory-based definitions and no Ponytail skill.
+This static count is not native loader/discovery acceptance. The provider/model runtime probe
+remains **Unavailable** when it reports `provider.quota`, `Insufficient Balance`, and HTTP `402`;
+no runtime, loader, or provider acceptance is claimed from that failure.
+
+## Current research-workspace QA (`R-ASTRA-98`)
+
+The post-reconciliation aggregate command was
+`TMPDIR=/home/james/.cache/stock-probs-gate-tmp TASK_ID=R-ASTRA-98 ./scripts/local-gate.sh check`.
+Its native-x86_64 receipt at dirty revision `09ba8b8dd285bd64c34241069051936c82c6390b` ran
+`2026-09-18T15:47:01Z`–`2026-09-18T15:53:58Z`, **Passed** with exit `0`, and recorded `545`
+Python tests passed, `4` deselected, no skipped test reported, and `90.38%` coverage. Frontend
+checks passed `17/17`, including typecheck and the Next production build; static routes include
+`/`, `/api-docs`, `/overview`, `/research`, `/tools`, `/tools/forecast`, `/tools/live-trading`,
+and `/tools/markets`. Completed checks were `documentation-completeness`,
+`frontend-npm-ci-typecheck-build-test-stage`, and `python-checks`. The tracked receipt is
+`test-results/local-gates/R-ASTRA-98-20260918T154701Z/evidence.json`.
+
+Separate supplied backend QA passed `240` tests. Browser QA passed `4/4` desktop/mobile-emulated
+cases with axe `0/0`; live Yahoo checks covered `ACDC`, `SPY`, `SHOP.TO`, `VFV.TO`, and `PNG.V`.
+The browser artifact is temporary: `/tmp/opencode/r-astra-98-browser-final-pass`. Native ARM64,
+physical mobile, true browser zoom, and actual screen-reader acceptance remain **Unavailable**.
+The recorded aggregate is scoped dirty-worktree evidence; it does not itself establish
+release/export/commit/push acceptance.
+
 Bootstrap the pinned Python 3.11.15 environment before running checks:
 
 ```bash
@@ -61,6 +138,10 @@ provider feasibility evidence and opt-in ACDC/SPY live news probes remain separa
 deterministic suite: record their command, environment, UTC, revision, result, and provider
 availability, and never convert an unavailable live run into a pass.
 
+## Historical application gate receipt (preserved)
+
+Any Ponytail wording in this receipt is historical and does not describe a current check.
+
 The latest post-ASTRA M09 gate artifact is `test-results/local-gates/M09-20260914T032442Z/`:
 **Pass**, exit `0`, dirty `HEAD`
 `5633f87f8cff04b5b33640f6633ff31c667c0435`, native x86_64, `2026-09-14T03:24:42Z`–
@@ -104,11 +185,3 @@ for the full reconciliation and limitations.
 ARM64 checks must identify whether execution is native or QEMU/OCI-emulated. Emulation can
 exercise package, runtime, functional, build, and tool behavior; it cannot prove native
 resource performance. See the [MVP plan](../../MVP-PLAN.md) for current gate requirements.
-
-## Frontend gate receipt label
-
-The local-gate receipt label `frontend-npm-ci-typecheck-build-test-stage` matches the actual
-order in `scripts/build-frontend.sh`: `npm ci`, frontend typecheck, production build, frontend
-tests, and static staging. It identifies the completed frontend subcheck in a gate receipt; it
-is not independent acceptance by itself and must be read with the exact command, exit status,
-evidence, and independent QA result.

@@ -14,12 +14,12 @@ Choose the source by claim type before writing.
 | Product requirement or acceptance row | `MVP-PLAN.md` | `AGENTS.md` invariants |
 | Milestone order or status summary | `MVP-ROADMAP.md` | exact plan ledger |
 | Ownership or evidence protocol | `AGENTS.md` | plan workflow |
-| Current route/schema behavior | `src/stock_probs/api.py` and `schemas.py` | API tests and live OpenAPI from the same revision |
+| Current route/schema behavior | `src/stock_probs/api.py` and `src/stock_probs/schemas.py` | API tests and live OpenAPI from the same revision |
 | Forecast calculation | `src/stock_probs/domain.py` | domain tests |
 | Provider behavior and archive bounds | `src/stock_probs/provider.py` | provider tests |
-| Persistence and migration behavior | `repository.py` plus packaged migrations | repository/migration tests |
-| Backup and restore behavior | `backup.py` and `cli.py` | backup/CLI tests |
-| Dashboard controls and states | static HTML/JS/CSS | checked-in browser tests |
+| Persistence and migration behavior | `src/stock_probs/repository.py` plus packaged migrations in `src/stock_probs/migrations/*.sql` | repository/migration tests |
+| Backup and restore behavior | `src/stock_probs/backup.py` and `src/stock_probs/cli.py` | backup/CLI tests |
+| Dashboard controls and states | `frontend/**` source and packaged static frontend in `src/stock_probs/static/**` | checked-in browser tests |
 | User/developer explanation | relevant `docs/` topic | link back to authority when status-sensitive |
 
 `SESSION-EXPORT.md` is a generated full-session checkpoint artifact. It may be linked as an

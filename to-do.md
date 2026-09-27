@@ -14,3 +14,9 @@ Intention/Goal for context:  Currently we have built a stock prediction tool tha
 
 4. Make another tab called "Markets" add a User watchlist for specific stocks with all the data live being able to click through each saved stock and seing all the data. Taking heavy influence from "scotia itrade". Ensure you inclide live graphs and filters.Please see screenshots of scotia itrade.
 
+## Accepted clarifications (R-ASTRA-98)
+
+- Support US and Canadian stocks and ETFs, including Yahoo Finance TSX (`.TO`) and TSXV (`.V`) symbol conventions.
+- Use free data only. Label the provider, as-of time, delay, simulated data, and unavailable data honestly; never represent data as real-time or TotalView depth when it is not.
+- Do not execute orders. Replace Buy/Sell actions with **Forecast this stock** and **Add to watchlist**.
+- The custom portfolio supports manually entered holding quantities, not order execution; the watchlist remains symbol-focused.

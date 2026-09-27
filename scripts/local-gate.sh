@@ -9,8 +9,8 @@ if (( $# > 1 )) || [[ ! "$PROFILE" =~ ^(m01|m02|m03|m04|m06|m09|check|release)$ 
   printf 'Usage: %s [m01|m02|m03|m04|m06|m09|check|release]\n' "${0##*/}" >&2
   exit 2
 fi
-if [[ ! "$TASK_ID" =~ ^(M0[0-9]|R-M0[0-9]-[1-9][0-9]*)$ ]]; then
-  printf 'TASK_ID must be an M00-M09 or R-M##-<n> identifier.\n' >&2
+if [[ ! "$TASK_ID" =~ ^(M0[0-9]|EXP-M0[0-9]|ASTRA-FINAL|EXP-FINAL|R-M0[0-9]-[1-9][0-9]*|R-ASTRA-[0-9]+)$ ]]; then
+  printf 'TASK_ID must be an M00-M09, EXP-M00-EXP-M09, R-M##-<n>, R-ASTRA-<n>, ASTRA-FINAL, or EXP-FINAL identifier.\n' >&2
   exit 2
 fi
 
@@ -34,6 +34,7 @@ export STOCK_PROBS_BROWSER_RUNTIME="$RUN_DIR/browser-runtime"
 export STOCK_PROBS_TASK_ID="$TASK_ID"
 PYTHON="$ROOT/.dev-venv/bin/python"
 NODE_BIN="$ROOT/.tools/node/bin"
+DOC_GATE_TIMEOUT_SECONDS="${DOC_GATE_TIMEOUT_SECONDS:-30}"
 COMPLETED_CHECKS=()
 
 write_record() {
@@ -109,6 +110,30 @@ run_check() {
   "$PYTHON" -m pytest tests/test_repository_backup.py tests/test_backup_cli.py -q
 }
 
+run_documentation_completeness() {
+  if [[ ! -d "$ROOT/docs" ]]; then
+    printf 'Documentation completeness: skipped (docs directory is absent).\n'
+    COMPLETED_CHECKS+=("documentation-completeness-skipped-no-docs")
+    return 0
+  fi
+  if [[ ! -f "$ROOT/documentation-map.json" || ! -f "$ROOT/scripts/check-doc-coverage.py" ]]; then
+    printf 'Documentation completeness: checker or map is missing.\n' >&2
+    return 1
+  fi
+  if ! [[ "$DOC_GATE_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]] || (( DOC_GATE_TIMEOUT_SECONDS > 300 )); then
+    printf 'DOC_GATE_TIMEOUT_SECONDS must be an integer from 1 to 300.\n' >&2
+    return 2
+  fi
+  command -v timeout >/dev/null 2>&1 || {
+    printf 'Documentation completeness: timeout is unavailable.\n' >&2
+    return 1
+  }
+  timeout --foreground --kill-after=5s "${DOC_GATE_TIMEOUT_SECONDS}s" \
+    "$PYTHON" "$ROOT/scripts/check-doc-coverage.py" \
+    --root "$ROOT" --map "$ROOT/documentation-map.json"
+  COMPLETED_CHECKS+=("documentation-completeness")
+}
+
 run_package() {
   "$PYTHON" scripts/package_smoke.py
 }
@@ -125,16 +150,6 @@ run_browser() {
 
 run_mcp() {
   PATH="$NODE_BIN:$PATH" "$NODE_BIN/node" "$ROOT/tools/browser/mcp-smoke.js"
-}
-
-run_ponytail_precondition() {
-  # A gate verifies the pinned review interface once without self-performing the independent review.
-  command -v opencode >/dev/null
-  command -v timeout >/dev/null
-  [[ -x "$ROOT/scripts/ponytail-review.sh" ]]
-  [[ -f "$ROOT/tools/ponytail/PROVENANCE.md" ]]
-  [[ "$(opencode --version)" == "1.18.30" ]]
-  PATH="$NODE_BIN:$PATH" "$NODE_BIN/node" "$ROOT/tools/ponytail/smoke.mjs"
 }
 
 run_arm64() {
@@ -169,6 +184,7 @@ printf 'task=%s revision=%s dirty=%s native_arch=%s profile=%s\n' \
 printf 'Local scripts are authoritative only with independent review; no external pipeline is used.\n'
 "$ROOT/scripts/bootstrap.sh"
 cd "$ROOT"
+run_documentation_completeness
 if [[ -f "$ROOT/frontend/package-lock.json" ]]; then
   "$ROOT/scripts/build-frontend.sh"
   COMPLETED_CHECKS+=("frontend-npm-ci-typecheck-build-test-stage")
@@ -221,8 +237,6 @@ case "$PROFILE" in
     ;;
   m06)
     require_performance_acceptance
-    run_ponytail_precondition
-    COMPLETED_CHECKS+=("ponytail-review-interface-available-not-invoked")
     run_package
     COMPLETED_CHECKS+=("native-package")
     run_check
@@ -238,8 +252,6 @@ case "$PROFILE" in
     ;;
   m09)
     require_performance_acceptance
-    run_ponytail_precondition
-    COMPLETED_CHECKS+=("ponytail-review-interface-available-not-invoked")
     run_package
     COMPLETED_CHECKS+=("native-package")
     run_check
@@ -255,8 +267,6 @@ case "$PROFILE" in
     ;;
   release)
     require_performance_acceptance
-    run_ponytail_precondition
-    COMPLETED_CHECKS+=("ponytail-review-interface-available-not-invoked")
     run_package
     COMPLETED_CHECKS+=("package")
     run_check

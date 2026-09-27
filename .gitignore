@@ -17,6 +17,7 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .coverage
+.coverage.*
 htmlcov/
 .hypothesis/
 *.prof

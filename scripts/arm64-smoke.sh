@@ -6,8 +6,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOST_ARCH="$(uname -m)"
 REVISION="$(git -C "$ROOT" rev-parse --verify HEAD)"
 TASK_ID="${STOCK_PROBS_TASK_ID:-M01}"
-if [[ ! "$TASK_ID" =~ ^(M0[0-9]|EXP-M09|R-M0[0-9]-[1-9][0-9]*)$ ]]; then
-  printf 'STOCK_PROBS_TASK_ID must be an M00-M09, EXP-M09, or R-M##-<n> identifier.\n' >&2
+if [[ ! "$TASK_ID" =~ ^(M0[0-9]|EXP-M0[0-9]|ASTRA-FINAL|EXP-FINAL|R-M0[0-9]-[1-9][0-9]*|R-ASTRA-[0-9]+)$ ]]; then
+  printf 'STOCK_PROBS_TASK_ID must be an M00-M09, EXP-M00-EXP-M09, R-M##-<n>, R-ASTRA-<n>, ASTRA-FINAL, or EXP-FINAL identifier.\n' >&2
   exit 2
 fi
 TASK_SLUG="$(printf '%s' "$TASK_ID" | tr '[:upper:]' '[:lower:]')"

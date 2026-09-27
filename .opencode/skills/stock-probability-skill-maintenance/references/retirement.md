@@ -14,7 +14,7 @@ that its workflow is obsolete or fully covered elsewhere.
    documentation for the exact name and path.
 2. Identify any current instruction that must move to an already admitted skill; do not create a
    replacement merely for symmetry.
-3. As `SOL HIGH build`, remove the skill directory, its `APPROVED_SKILL_CATALOG` entry, and both
+3. As native `luna-build`, remove the skill directory, its `APPROVED_SKILL_CATALOG` entry, and both
    exact project skill index entries; add an evidence-backed retirement learning without rewriting
    earlier records.
 4. Run the complete validation workflow and report references outside the task boundary to their

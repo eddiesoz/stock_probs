@@ -21,14 +21,12 @@
 | `m02` | `m01`, browser regressions, MCP smoke |
 | `m03` | `m02`, ARM64 functional/package/runtime smoke |
 | `m04` | native package, `check`, responsive browser/visual/accessibility, MCP, ARM64 smoke |
-| `m06` | reviewer and Ponytail-interface preconditions, then the `m04` stack and native x86 performance |
-| `m09` | reviewer and Ponytail-interface preconditions, native package, `check`, theme/news browser, MCP, ARM64 smoke, M09 native x86 performance |
-| `release` | reviewer, clean tree, Ponytail-interface preconditions, package, `check`, browser, MCP, migrate/backup CLI, M09 native x86 performance rows; no ARM64 smoke |
+| `m06` | reviewer precondition, then the `m04` stack and native x86 performance |
+| `m09` | reviewer precondition, native package, `check`, theme/news browser, MCP, ARM64 smoke, M09 native x86 performance |
+| `release` | reviewer, clean tree, package, `check`, browser, MCP, migrate/backup CLI, M09 native x86 performance rows; no ARM64 smoke |
 
-The Ponytail precondition checks only interface availability and does not perform the required
-boundary review. Only `release` rejects a dirty tree in the script. Other profiles record dirtiness
-and continue; an external clean-revision acceptance requirement still remains unsatisfied by a dirty
-pass.
+Only `release` rejects a dirty tree in the script. Other profiles record dirtiness and continue; an
+external clean-revision acceptance requirement still remains unsatisfied by a dirty pass.
 
 ## During execution
 

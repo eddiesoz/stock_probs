@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "name": "documentation-gate",
+      "match": [
+        "documentation-map.json",
+        "scripts/check-doc-coverage.py",
+        "scripts/check-doc-coverage-self-test.py",
+        "scripts/setup-git-hooks.sh",
+        ".githooks/**"
+      ],
+      "docs": ["docs/develop/documentation.md"]
+    },
+    {
+      "name": "local-gate",
+      "match": ["scripts/local-gate.sh"],
+      "docs": ["docs/develop/testing.md"]
+    },
+    {
+      "name": "opencode-workflow",
+      "match": [
+        "opencode.json",
+        ".opencode/.gitignore",
+        ".opencode/agents/*.md",
+        ".opencode/skills/**",
+        ".opencode/skill-history/**",
+        ".opencode/plugins/**",
+        ".opencode/package.json",
+        ".opencode/package-lock.json"
+      ],
+      "docs": ["docs/develop/documentation.md"]
+    },
+    {
+      "name": "codex-workflow",
+      "match": [
+        ".codex/**",
+        ".agents/skills/**"
+      ],
+      "docs": ["docs/develop/documentation.md"]
+    },
+    {
+      "name": "project-commands",
+      "match": [".opencode/commands/*.md"],
+      "docs": ["docs/develop/documentation.md"]
+    }
+  ],
+  "additional": [
+    {
+      "name": "workflow-policy",
+      "match": [
+        "documentation-map.json",
+        "scripts/check-doc-coverage.py",
+        "scripts/check-doc-coverage-self-test.py",
+        "scripts/setup-git-hooks.sh",
+        ".githooks/**",
+        "scripts/local-gate.sh",
+        "opencode.json",
+        ".opencode/.gitignore",
+        ".opencode/agents/*.md",
+        ".opencode/skills/**",
+        ".opencode/skill-history/**",
+        ".opencode/plugins/**",
+        ".opencode/package.json",
+        ".opencode/package-lock.json",
+        ".opencode/commands/*.md",
+        ".codex/**",
+        ".agents/skills/**"
+      ],
+      "docs": ["AGENTS.md"]
+    }
+  ]
+}

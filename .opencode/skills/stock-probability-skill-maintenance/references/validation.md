@@ -1,8 +1,8 @@
 ---
 title: "Skill maintenance validation"
 impact: HIGH
-impactDescription: "Verifies catalog admission, metadata, references, links, discovery, and repository hygiene without self-acceptance."
-tags: [skills, validation, discovery, checks]
+impactDescription: "Verifies project skill governance, metadata, references, links, and repository hygiene without self-acceptance."
+tags: [skills, validation, governance, checks]
 ---
 
 ## Skill maintenance validation
@@ -12,20 +12,16 @@ From the repository root, run the narrow checks first and preserve the first fai
 ```bash
 .dev-venv/bin/python scripts/validate_docs.py
 .dev-venv/bin/python -m pytest tests/test_docs_validation.py
-opencode debug skill
 .dev-venv/bin/python scripts/comment_audit.py
 .dev-venv/bin/python -m ruff check scripts/validate_docs.py tests/test_docs_validation.py
 git diff --check
 ```
 
-Use a fresh isolated OpenCode process for discovery after changing a skill. Read every admitted
-name from `APPROVED_SKILL_CATALOG`; require every canonical name and description, and require each
-discovered source to resolve to the exact project path
-`<repository>/.opencode/skills/<name>/SKILL.md`. A same-named global or configured extension skill
-does not satisfy project discovery: in particular, the global `skill-maintenance` skill cannot
-satisfy `stock-probability-skill-maintenance`. Unrelated skills do not become project-catalog
-entries. A parent-process restart and independent post-restart check remain required before
-discovery can satisfy a gate.
+The commands above are deterministic static catalog, metadata, link, comment, and hygiene checks.
+Static repository validation only: the project catalog, metadata, `SKILL-INDEX.md`, and archived
+ledger are explicit repository-governance contracts. They are not runtime evidence and do not prove
+that native V2 has discovered or loaded a skill. Do not report runtime discovery from static files,
+generated indexes, configuration parsing, or agent inspection.
 
 The documentation validator must continue to fail closed for the fixed authored-documentation
 taxonomy, canonical skill descriptions, catalog membership, quoted frontmatter, name/directory

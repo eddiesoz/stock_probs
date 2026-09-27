@@ -16,7 +16,7 @@ For each catalog entry, copy the exact name, path, and canonical description int
 count to the number of admitted entries. Each `skills/<name>/SKILL.md` link therefore appears
 exactly twice.
 
-As `SOL HIGH build`, run `scripts/validate_docs.py` rather than maintaining a generator or adding
+As native `luna-build`, run `scripts/validate_docs.py` rather than maintaining a generator or adding
 a dependency. The validator rejects missing or unexpected skill directories, stale counts,
 non-canonical rows, missing listings, and extra skill links. Project skill index regeneration
 changes a repository file only; it neither stages the Git index nor updates remote services,

@@ -4,7 +4,7 @@
 
 1. Trace every affected repository caller and transaction.
 2. Read all packaged migrations in order and identify clean-create and upgrade behavior.
-3. Confirm whether the change can remain in `repository.py` without a schema change.
+3. Confirm whether the change can remain in `src/stock_probs/repository.py` without a schema change.
 
 ## Migration and query checks
 

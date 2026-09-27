@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail closed when the authored documentation or project skill drifts."""
+"""Fail closed when authored documentation or project skill governance drifts."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ class SkillDefinition:
     references: tuple[str, ...]
 
 
+# Explicit repository-governance allowlist; it is not evidence of native V2 discovery.
 APPROVED_SKILL_CATALOG = {
     "documentation": SkillDefinition(
         description=(
@@ -170,16 +171,6 @@ APPROVED_SKILL_CATALOG = {
             "fixtures-and-network.md",
             "states-and-races.md",
         ),
-    ),
-    "ponytail-boundary-review": SkillDefinition(
-        description=(
-            "Run the read-only Stock Probability Ponytail boundary workflow and preserve "
-            "overengineering-only findings through minimal repair and independent retest. Use "
-            "after an implementation or configuration boundary and before independent QA, or "
-            "when auditing a retained Ponytail receipt."
-        ),
-        tags=("ponytail", "review", "overengineering", "boundary", "stock-probability"),
-        references=("receipt-and-repair.md", "workflow.md"),
     ),
     "database-conventions": SkillDefinition(
         description=(
@@ -376,15 +367,22 @@ def _validate_taxonomy(root: Path) -> tuple[list[str], dict[Path, str]]:
     return issues, documents
 
 
-def _validate_skills(root: Path) -> tuple[list[str], list[Path]]:
+def _validate_project_skill_governance(root: Path) -> tuple[list[str], list[Path]]:
     skills_root = root / ".opencode" / "skills"
     index_path = root / ".opencode" / "SKILL-INDEX.md"
-    learnings_path = skills_root / "learnings.md"
+    history_path = root / ".opencode" / "skill-history" / "learnings.md"
     issues: list[str] = []
-    skill_files = [path for path in (index_path, learnings_path) if path.is_file()]
-    for path in (index_path, learnings_path):
+    governance_files = [path for path in (index_path, history_path) if path.is_file()]
+    for path in (index_path, history_path):
         if not path.is_file():
-            issues.append(f"missing skill artifact: {path}")
+            issues.append(f"missing project skill governance artifact: {path}")
+
+    flat_skill_files = sorted(path for path in skills_root.glob("*.md") if path.is_file())
+    issues.extend(
+        f"{path}: root-level .opencode/skills/*.md is reserved as a native V2 flat skill; "
+        "project governance files must remain outside the skill root"
+        for path in flat_skill_files
+    )
 
     actual_names = (
         {path.name for path in skills_root.iterdir() if path.is_dir()}
@@ -393,11 +391,12 @@ def _validate_skills(root: Path) -> tuple[list[str], list[Path]]:
     )
     approved_names = set(APPROVED_SKILL_CATALOG)
     issues.extend(
-        f"missing admitted project skill: {name}"
+        f"missing approved project skill governance directory: {name}"
         for name in sorted(approved_names - actual_names)
     )
     issues.extend(
-        f"unexpected project skill: {name}" for name in sorted(actual_names - approved_names)
+        f"unexpected project skill governance directory: {name}"
+        for name in sorted(actual_names - approved_names)
     )
 
     for name, definition in APPROVED_SKILL_CATALOG.items():
@@ -406,15 +405,15 @@ def _validate_skills(root: Path) -> tuple[list[str], list[Path]]:
         metadata_path = skill_root / "metadata.json"
         for path in (skill_path, metadata_path):
             if not path.is_file():
-                issues.append(f"missing skill artifact: {path}")
+                issues.append(f"missing project skill governance artifact: {path}")
         if not skill_path.is_file():
             continue
 
-        skill_files.append(skill_path)
+        governance_files.append(skill_path)
         line_count = len(skill_path.read_text(encoding="utf-8").splitlines())
         if line_count > SKILL_MAX_LINES:
             issues.append(
-                f"{skill_path}: active project SKILL.md must not exceed "
+                f"{skill_path}: project governance SKILL.md must not exceed "
                 f"{SKILL_MAX_LINES} lines (found {line_count})"
             )
 
@@ -431,7 +430,7 @@ def _validate_skills(root: Path) -> tuple[list[str], list[Path]]:
 
         metadata: dict[str, object] = {}
         if metadata_path.is_file():
-            skill_files.append(metadata_path)
+            governance_files.append(metadata_path)
             try:
                 loaded_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError as exc:
@@ -444,19 +443,28 @@ def _validate_skills(root: Path) -> tuple[list[str], list[Path]]:
         expected_metadata_keys = {"_comment", "name", "description", "tags", "alwaysApply"}
         if set(metadata) != expected_metadata_keys:
             issues.append(
-                f"{metadata_path}: metadata fields must match the supported project catalog"
+                f"{metadata_path}: metadata fields must match the project governance catalog"
             )
         if metadata.get("name") != name:
             issues.append(f"{metadata_path}: metadata name must match {name}")
         if metadata.get("description") != frontmatter.get("description"):
-            issues.append(f"{metadata_path}: metadata description must match SKILL.md frontmatter")
+            issues.append(
+                f"{metadata_path}: project governance metadata description must match "
+                "SKILL.md frontmatter"
+            )
         if metadata.get("tags") != list(definition.tags):
-            issues.append(f"{metadata_path}: metadata tags must match the canonical ordered tags")
+            issues.append(
+                f"{metadata_path}: metadata tags must match the project governance catalog"
+            )
         if metadata.get("alwaysApply") is not False:
-            issues.append(f"{metadata_path}: {name} must remain opt-in with alwaysApply false")
+            issues.append(
+                f"{metadata_path}: {name} must remain opt-in in the project governance contract"
+            )
         comment = metadata.get("_comment")
         if not isinstance(comment, str) or "SKILL.md frontmatter" not in comment:
-            issues.append(f"{metadata_path}: _comment must explain the stock loader boundary")
+            issues.append(
+                f"{metadata_path}: _comment must explain the project governance boundary"
+            )
 
         references_root = skill_root / "references"
         expected_references = {references_root / reference for reference in definition.references}
@@ -479,13 +487,13 @@ def _validate_skills(root: Path) -> tuple[list[str], list[Path]]:
             target = f"references/{reference}"
             if target not in linked_targets:
                 issues.append(f"{skill_path}: missing reference link: {target}")
-        skill_files.extend(sorted(actual_references))
+        governance_files.extend(sorted(actual_references))
 
     if index_path.is_file():
         index = index_path.read_text(encoding="utf-8")
         count = len(APPROVED_SKILL_CATALOG)
         if f"**{count} skills**" not in index:
-            issues.append(f"{index_path}: skill count must be exactly {count}")
+            issues.append(f"{index_path}: project governance skill count must be exactly {count}")
         expected_links: list[str] = []
         for position, (name, definition) in enumerate(APPROVED_SKILL_CATALOG.items(), start=1):
             expected_link = f"skills/{name}/SKILL.md"
@@ -495,21 +503,26 @@ def _validate_skills(root: Path) -> tuple[list[str], list[Path]]:
             )
             if index.count(expected_row) != 1:
                 issues.append(
-                    f"{index_path}: skill row must match SKILL.md frontmatter name and description"
+                    f"{index_path}: project governance row must match SKILL.md frontmatter "
+                    "name and description"
                 )
             expected_listing = f"{position}. [`{name}`]({expected_link})"
             if index.count(expected_listing) != 1:
                 issues.append(
-                    f"{index_path}: directory listing must match the canonical name and path"
+                    f"{index_path}: project governance directory listing must match the "
+                    "canonical name and path"
                 )
         indexed_links = re.findall(r"\]\((skills/[^)]+/SKILL\.md)\)", index)
         if sorted(indexed_links) != sorted(expected_links):
-            issues.append(f"{index_path}: skill links must exactly match the approved catalog")
+            issues.append(
+                f"{index_path}: project governance skill links must exactly match the approved "
+                "catalog"
+            )
 
-    for path in skill_files:
+    for path in governance_files:
         if path.suffix.lower() == ".md":
             issues.extend(_validate_links(path, path.read_text(encoding="utf-8"), root))
-    return issues, skill_files
+    return issues, governance_files
 
 
 def _validate_secrets(paths: list[Path]) -> list[str]:
@@ -526,9 +539,9 @@ def validate_repository(root: Path = ROOT) -> list[str]:
     """Return stable sorted validation issues; an empty list is a pass."""
 
     taxonomy_issues, documents = _validate_taxonomy(root)
-    skill_issues, skill_files = _validate_skills(root)
-    secret_paths = [*documents, *skill_files]
-    return sorted({*taxonomy_issues, *skill_issues, *_validate_secrets(secret_paths)})
+    governance_issues, governance_files = _validate_project_skill_governance(root)
+    secret_paths = [*documents, *governance_files]
+    return sorted({*taxonomy_issues, *governance_issues, *_validate_secrets(secret_paths)})
 
 
 def main() -> int:
@@ -541,7 +554,7 @@ def main() -> int:
     topic_count = sum(len(topics) for topics in CATEGORIES.values())
     print(
         f"Documentation validation passed: {len(CATEGORIES)} categories, "
-        f"{topic_count} topics, {len(APPROVED_SKILL_CATALOG)} project skills."
+        f"{topic_count} topics, {len(APPROVED_SKILL_CATALOG)} project skill governance entries."
     )
     return 0
 

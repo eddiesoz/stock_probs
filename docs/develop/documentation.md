@@ -5,6 +5,106 @@ description: "Repository rules for authored pages, authoritative root records, g
 
 # Documentation
 
+## Codex project configuration
+
+Codex loads repository policy from root `AGENTS.md` and trusted-project settings from
+`.codex/config.toml`. The Codex configuration mirrors the local Playwright MCP command and
+loopback flags in `opencode.json` and raises the instruction byte limit so the full root
+policy can load. The project-scoped `luna-build`, `luna-qa`, and `luna-docs` TOML files in
+`.codex/agents/` mirror the current ownership split. Their instructions guide task ownership;
+the active Codex permission mode governs actual filesystem access.
+
+Codex discovers repository skills in `.agents/skills/`. Seven relative symlinks point to the
+maintained OpenCode skill directories, preserving one source for their instructions and
+references. When an approved skill is added or retired, update the corresponding Codex
+symlink and this mapping. The documentation gate covers `.codex/**` and `.agents/skills/**`.
+`$project-handoff`, `$project-qa`, and `$project-resume` are
+Codex skill entry points for the three OpenCode command workflows. OpenCode-specific
+runtime statements inside shared skills apply only to OpenCode; use the Codex agent roles
+and this section for Codex discovery and ownership.
+
+Config parsing and filesystem presence are static checks. A fresh Codex task in a trusted
+project is needed to observe agent, skill, and MCP discovery after a configuration change.
+This Codex setup does not alter prior OpenCode receipts or establish provider, project-profile,
+release, export, or remote acceptance.
+
+## Current native OpenCode V2 documentation workflow
+
+Native OpenCode V2 is the current operational workflow. The builtin `build` and `plan` entry
+points are configured in `opencode.json`; `.opencode/agents/luna-docs.md` owns only
+`AGENTS.md`, `README.md`, `MVP-PLAN.md`, `MVP-ROADMAP.md`, and authored `docs/**/*.md`.
+`.opencode/agents/luna-build.md` owns implementation/tests and `.opencode/agents/luna-qa.md`
+performs read-only independent verification. Legacy V1/Astra/SOL/Orchestrator references in
+the evidence ledgers are preserved historical receipts, not current documentation ownership.
+
+OpenCode project configuration is loaded by the parent process. Restart after changing
+`opencode.json`, a profile, command, plugin, or `.opencode` dependency; file presence does not
+prove discovery. With `OPENCODE_DISABLE_PROJECT_CONFIG=1`, project-profile discovery and runtime
+acceptance are **Pending**/**Unavailable**. The real V2 provider probe emitted an error event
+without a report, so it is **Unavailable** evidence and must not be described as provider or
+project-profile acceptance.
+
+### Project skill loader boundary
+
+Native V2 automatically discovers project skills from directory-based
+`.opencode/skills/<id>/SKILL.md` definitions. The `skills` configuration array supplies additional
+later-precedence sources, so an explicit `.opencode/skills` entry is not expected in
+`opencode.json`. The seven approved directory-based definitions are governance entries only. Their
+`metadata.json` files,
+`alwaysApply: false`, `.opencode/SKILL-INDEX.md`, the allow-list in `scripts/validate_docs.py`,
+and `.opencode/skill-history/learnings.md` support static consistency and history; none is native
+loader/discovery proof. Native runtime skill discovery is **Unavailable** in this harness because
+`OPENCODE_DISABLE_PROJECT_CONFIG=1`; no runtime loader result is inferred. The active history path
+is `.opencode/skill-history/learnings.md`; the old flat
+`.opencode/skills/learnings.md` path is retired.
+
+The coordinator's exact CLI rerun returned `opencode v2.0.7` from both `opencode --version` and
+`/home/james/.local/opt/opencode-v2/opencode --version`; `/home/james/.local/opt/opencode-v2/opencode debug --help`
+listed only `agents`, `config`, and `paths`; and
+`printenv OPENCODE_DISABLE_PROJECT_CONFIG` returned `1`. These version/help facts do not establish
+skill discovery.
+
+Loader-boundary evidence is separated. Supplied builder static evidence recorded config/docs tests
+`73/73`, comment tests `5/5`, validator `9` categories/`13` topics/`7` governance entries,
+documentation self-test `26/26`, completeness `111` mapped files, and dirty-tree coverage `154`
+inputs/`0` violations, with Ruff/security/comment audit `203` files plus JSON/frontmatter,
+shell-syntax, and diff checks **Pass**. Independent Luna QA passed the static loader-boundary
+scope on native x86_64 at dirty revision `09ba8b8dd285bd64c34241069051936c82c6390b`: exactly seven
+directory `SKILL.md` files, no flat skill files, history-path migration, no explicit skills config,
+retired Ponytail absence, and docs/map semantics **Pass**. This is independent static QA, not
+native runtime discovery, provider runtime, release, or clean-scope acceptance; clean-scope proof
+remains **Unavailable** because of the broad pre-existing dirty worktree, and no provider runtime
+or service restart was invoked.
+
+Ponytail is retired from the current tree and workflow. No local package, plugin, dependency pin,
+command, boundary review, or acceptance gate is current. The retained Ponytail receipts in the
+evidence taxonomy are historical overengineering-only records and are not documentation-gate
+inputs for the current workflow.
+
+## Documentation gate
+
+`documentation-map.json` maps OpenCode and Codex configuration, profiles, skills, commands,
+and the documentation gate to this page. Its additional workflow-policy rule also requires
+`AGENTS.md`. `.githooks/pre-push` runs `scripts/check-doc-coverage.py` and fails closed when
+the checker or map is missing, Python is unavailable, completeness fails, or a mapped change
+lacks a documentation update. Use these read-only checks directly when the hook is not installed:
+
+```bash
+python3 scripts/check-doc-coverage.py --root . --map documentation-map.json
+python3 scripts/check-doc-coverage-self-test.py
+```
+
+The change-aware checker and self-test do not install hooks or mutate Git. A deliberate exception
+is explicit (`Doc-Gate: exempt`), not inferred from a builder report or an unavailable check.
+
+The approved project governance set contains seven directory-based skill definitions:
+`documentation`, `development-conventions`, `stock-probability-skill-maintenance`,
+`local-gate-evidence`, `browser-qa`, `database-conventions`, and `security-audit`. This static
+definition count is not native loader or runtime discovery acceptance. The current `R-ASTRA-98`
+product evidence and its limitations are documented in the root records and [dashboard
+usage](../usage/dashboard.md); no retired Ponytail check is required for documentation
+completeness or acceptance.
+
 Authored guides live under `docs/` in task-oriented categories. Every page has `title` and
 `description` frontmatter, one primary topic, a lowercase hyphenated filename, and relative
 links. Category `index.md` pages provide navigation rather than duplicating topic prose.
@@ -35,6 +135,11 @@ The project `documentation` skill contains the agent-facing version of this work
 or configuration-time changes require an OpenCode restart before discovery can be validated;
 the editing session itself is not proof that the restarted process loaded them.
 
+## Historical application receipts (preserved)
+
+All Ponytail references in the receipts below are historical, overengineering-only evidence. The
+retired adapter/package/plugin is not a current workflow dependency or gate.
+
 `R-ASTRA-70` is **Completed** for its declared documentation-only portable-link repair: eight
 ignored-artifact links were changed to inline code. The current `R-ASTRA-71` documentation
 reconciliation records the named initial ASTRA failure, the `R-ASTRA-66`–`R-ASTRA-69` repair
@@ -52,20 +157,17 @@ restart. Independent post-restart QA passed the declared rename/restart-validati
 evidence and limitations are recorded in [`docs/evidence/astra-final-report.md`](../evidence/astra-final-report.md).
 No release, export, commit, push, or remote result is implied.
 
-The existing `development-conventions` skill is explicitly admitted as the eighth opt-in project
-skill, and fresh discovery is recorded as **Pass**. Skill/profile activation still requires a
-parent OpenCode restart and independent post-restart discovery; implementation presence does not
-create that gate effect.
+The earlier `R-ASTRA-64` receipt described `development-conventions` as the eighth opt-in project
+skill in that historical catalog, and fresh discovery was recorded as **Pass**. The current
+reconciliation records seven approved directory-based skill definitions/governance entries after
+Ponytail retirement; this static governance wording does not establish native loader/discovery
+acceptance. Skill/profile activation still requires a parent OpenCode restart and independent
+post-restart discovery; implementation presence does not create that gate effect.
 
 The validator checks heading anchors, high-confidence credential patterns, duplicate taxonomy
 links, exact description parity between the skill frontmatter, project catalog metadata, and
 skill index, and the active skill's 500-line limit. Prose duplication is a manual review rather
-than a validator heuristic. The catalog keeps the skill opt-in; OpenCode discovery uses the
-`SKILL.md` frontmatter rather than catalog metadata.
-
-## Commit command
-
-`/commit` is a convenience command that stages all current changes and pushes them to the
-configured remote. Review the complete diff, secret-bearing data, and intended scope before using
-it; the command is not an acceptance, QA, or export gate and does not replace their required
-evidence or review.
+than a validator heuristic. These are static governance checks; metadata, the index, the
+allow-list, and `SKILL.md` frontmatter do not establish that a native loader discovered a skill.
+Native V2's directory-based auto-discovery is the loader boundary, and runtime discovery remains
+**Unavailable** in this harness.

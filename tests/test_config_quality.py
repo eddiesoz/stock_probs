@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import re
+import shutil
 import stat
+import subprocess
 import sys
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pytest
@@ -15,6 +19,82 @@ from stock_probs.cli import main
 from stock_probs.config import Settings
 
 ROOT = Path(__file__).parents[1]
+
+SENSITIVE_READ_PATTERNS = (
+    ".env",
+    ".env.*",
+    "**/.env",
+    "**/.env.*",
+    "*.env",
+    "**/*.env",
+    "*.env.*",
+    "**/*.env.*",
+    ".env.example",
+    "**/.env.example",
+    "*.env.example",
+    "**/*.env.example",
+    "*credential*",
+    "**/*credential*",
+    "*secret*",
+    "**/*secret*",
+    "*token*",
+    "**/*token*",
+    "*.pem",
+    "**/*.pem",
+    "*.key",
+    "**/*.key",
+    "*.p12",
+    "**/*.p12",
+    "*.pfx",
+    "**/*.pfx",
+    "*private*key*",
+    "**/*private*key*",
+)
+SENSITIVE_READ_PATHS = (
+    ".env",
+    ".env.local",
+    ".env.example",
+    "nested/.env",
+    "nested/.env.production",
+    "config/credentials.json",
+    "secrets/api-token.txt",
+    "certs/private-key.pem",
+    "certs/server.key",
+    "certs/archive.p12",
+)
+
+
+def _frontmatter_read_rules(text: str) -> list[tuple[str, str]]:
+    matches = re.findall(
+        r"^  - action: read\n    resource: (.+)\n    effect: (.+)$",
+        text,
+        re.MULTILINE,
+    )
+    return [(resource.strip('"'), effect) for resource, effect in matches]
+
+
+def _assert_sensitive_reads_are_terminally_denied(
+    rules: list[tuple[str, str]],
+) -> None:
+    broad_allow = max(
+        index
+        for index, (resource, effect) in enumerate(rules)
+        if resource == "*" and effect == "allow"
+    )
+    assert all((pattern, "deny") in rules for pattern in SENSITIVE_READ_PATTERNS)
+    for path in SENSITIVE_READ_PATHS:
+        matches = [
+            (index, effect)
+            for index, (pattern, effect) in enumerate(rules)
+            if fnmatchcase(path, pattern)
+        ]
+        assert matches, path
+        assert matches[-1][1] == "deny", path
+        assert matches[-1][0] > broad_allow, path
+    general_matches = [
+        effect for pattern, effect in rules if fnmatchcase("src/module.py", pattern)
+    ]
+    assert general_matches[-1] == "allow"
 
 
 def test_settings_reject_unbounded_or_ambiguous_environment(monkeypatch):
@@ -114,57 +194,134 @@ def test_official_playwright_mcp_is_pinned_headless_and_isolated():
     package = json.loads((ROOT / "tools/browser/package.json").read_text())
     config = json.loads((ROOT / "opencode.json").read_text())
     launcher = (ROOT / "scripts/playwright-mcp.sh").read_text()
-    command = config["mcp"]["playwright"]["command"]
+    server = config["mcp"]["servers"]["playwright"]
+    command = server["command"]
 
     assert package["devDependencies"]["@playwright/mcp"] == "0.0.80"
-    assert set(config["mcp"]) == {"playwright"}
-    assert command[0] == "./scripts/playwright-mcp.sh"
-    assert command[1:6] == ["--headless", "--isolated", "--browser", "chromium", "--allowed-hosts"]
-    assert command[command.index("--allowed-hosts") + 1] == "127.0.0.1,localhost,[::1]"
-    assert command[command.index("--allowed-origins") + 1] == (
-        "http://127.0.0.1:*;http://localhost:*;http://[::1]:8000;http://[::1]:8765"
-    )
-    assert "--output-max-size" in command and "--timeout-navigation" in command
+    assert set(config["mcp"]) == {"servers"}
+    assert set(config["mcp"]["servers"]) == {"playwright"}
+    assert command == [
+        "./scripts/playwright-mcp.sh",
+        "--headless",
+        "--isolated",
+        "--browser",
+        "chromium",
+        "--allowed-hosts",
+        "127.0.0.1,localhost,[::1]",
+        "--allowed-origins",
+        "http://127.0.0.1:*;http://localhost:*;http://[::1]:8000;http://[::1]:8765",
+        "--block-service-workers",
+        "--image-responses",
+        "omit",
+        "--output-dir",
+        ".playwright-mcp",
+        "--output-max-size",
+        "10485760",
+        "--timeout-action",
+        "10000",
+        "--timeout-navigation",
+        "30000",
+    ]
+    assert server["disabled"] is False
+    assert server["timeout"] == {"catalog": 30000, "execution": 30000}
+    assert "./tools/ponytail/skills" not in json.dumps(config)
+    assert "plugins" not in config
+    assert "plugin" not in config
+    assert not (ROOT / ".opencode/plugins").exists()
+    assert "instructions" not in config
     assert config["tool_output"]["max_bytes"] == 32768
     assert "playwright-mcp" in launcher
 
 
-def test_agent_profiles_preserve_models_and_ownership_boundaries():
-    expected = {
-        "sol-build.md": ("openai/gpt-5.6-sol", "high"),
-        "luna-qa.md": ("openai/gpt-5.6-luna", "max"),
-        "luna-docs.md": ("openai/gpt-5.6-luna", "max"),
-        "astra.md": ("openai/gpt-6-astra", "max"),
+def test_native_skill_source_is_automatic_without_duplicate_or_flat_skill_sources():
+    config = json.loads((ROOT / "opencode.json").read_text())
+
+    assert "skills" not in config
+    assert "./.opencode/skills" not in json.dumps(config)
+    assert not list((ROOT / ".opencode/skills").glob("*.md"))
+    assert (ROOT / ".opencode/skill-history/learnings.md").is_file()
+
+
+def test_native_agents_keep_builtins_for_sol_and_luna_for_custom_subagents():
+    config = json.loads((ROOT / "opencode.json").read_text())
+    legacy = ROOT / ".opencode/agent"
+    agents = ROOT / ".opencode/agents"
+    profiles = {path.stem: path.read_text() for path in agents.glob("*.md")}
+
+    assert not any(legacy.glob("*.md"))
+    assert set(profiles) == {"luna-build", "luna-qa", "luna-docs"}
+    assert set(path.stem for path in agents.glob("*.md")) == set(profiles)
+    assert set(config["agents"]) == {"build", "plan"}
+    builtin_agents = config["agents"]
+    for agent in builtin_agents.values():
+        assert "permissions" in agent
+        assert "permission" not in agent
+        assert all(
+            set(rule) == {"action", "resource", "effect"}
+            for rule in agent["permissions"]
+        )
+    assert all(
+        builtin_agents[agent]["model"] == "openai/gpt-5.6-sol#medium"
+        for agent in ("build", "plan")
+    )
+    build_permissions = builtin_agents["build"]["permissions"]
+    assert {"action": "edit", "resource": "*", "effect": "deny"} in build_permissions
+    assert {"action": "subagent", "resource": "*", "effect": "deny"} in build_permissions
+    assert {"action": "subagent", "resource": "luna-*", "effect": "allow"} in build_permissions
+    assert "Orchestrator" not in config["agents"]
+    assert "orchestrator" not in config["agents"]
+
+    for profile in profiles.values():
+        assert "mode: subagent" in profile
+        assert "model: openai/gpt-5.6-luna#max" in profile
+        assert "permissions:\n" in profile
+        assert not re.search(r"^(?:name|variant|permission|bash|task):", profile, re.MULTILINE)
+
+    build = profiles["luna-build"]
+    qa = profiles["luna-qa"]
+    docs = profiles["luna-docs"]
+    assert '- action: edit\n    resource: "*"\n    effect: allow' in build
+    assert 'resource: "AGENTS.md"\n    effect: deny' in build
+    assert 'resource: ".git/**"\n    effect: deny' in build
+    assert 'resource: "**/node_modules/**"\n    effect: deny' in build
+    assert 'resource: "**/test-results/**"\n    effect: deny' in build
+    assert 'action: subagent\n    resource: "*"\n    effect: deny' in build
+    assert 'action: shell\n    resource: "git *"\n    effect: deny' in build
+    assert 'action: playwright_*\n    resource: "*"\n    effect: allow' in qa
+    assert 'action: edit\n    resource: "*"\n    effect: deny' in qa
+    assert 'action: subagent\n    resource: "*"\n    effect: deny' in qa
+    assert 'resource: "MVP-PLAN.md"\n    effect: allow' in docs
+    assert 'resource: "docs/**/*.md"\n    effect: allow' in docs
+    assert 'action: subagent\n    resource: "*"\n    effect: deny' in docs
+    assert 'action: shell\n    resource: "git *"\n    effect: deny' in docs
+    assert all("ponytail" not in profile.lower() for profile in profiles.values())
+
+    commands = ROOT / ".opencode/commands"
+    assert {"qa.md", "handoff.md", "resume.md"} <= {
+        path.name for path in commands.glob("*.md")
     }
-    profiles = {path.name: path.read_text() for path in (ROOT / ".opencode/agent").glob("*.md")}
+    assert "agent: luna-qa" in (commands / "qa.md").read_text()
+    assert "agent: build" in (commands / "handoff.md").read_text()
+    assert "agent: build" in (commands / "resume.md").read_text()
+    assert not any(commands.glob("ponytail*.md"))
+    qa_command = (commands / "qa.md").read_text().lower()
+    assert "agent: luna-qa" in qa_command
+    assert "ponytail" not in qa_command
 
-    assert set(profiles) == set(expected)
-    for name, (model, variant) in expected.items():
-        assert f"model: {model}" in profiles[name]
-        if variant:
-            assert f"variant: {variant}" in profiles[name]
 
-    sol = profiles["sol-build.md"]
-    qa = profiles["luna-qa.md"]
-    docs = profiles["luna-docs.md"]
-    astra = profiles["astra.md"]
-    assert "# SOL HIGH build" in sol and "# LUNA MAX QA" in qa and "# LUNA MAX docs" in docs
-    assert '"tests/**": allow' in qa
-    assert '"MVP-PLAN.md": allow' in docs
-    assert "burry_env/**\": deny" in sol
-    assert re.findall(r"^mode: (.+)$", astra, re.MULTILINE) == ["subagent"]
-    assert 'permission:\n  "*": deny\n  "playwright_*": allow\n  read: allow' in astra
-    assert sum('"playwright_*": allow' in profile for profile in profiles.values()) == 1
-    assert astra.split("  edit:\n", 1)[1].split("  bash:\n", 1)[0] == '    "*": deny\n'
-    assert astra.split("  bash:\n", 1)[1].split("  task:\n", 1)[0] == """    "*": deny
-    "git diff*": allow
-    "git log*": allow
-    "git ls-files*": allow
-    "git rev-parse*": allow
-    "git show*": allow
-    "git status*": allow
-"""
-    assert astra.split("  task:\n", 1)[1].split("---", 1)[0] == '    "*": deny\n'
+def test_sensitive_read_rules_are_final_and_fail_closed_for_build_and_luna():
+    config = json.loads((ROOT / "opencode.json").read_text())
+    build_rules = [
+        (rule["resource"], rule["effect"])
+        for rule in config["agents"]["build"]["permissions"]
+        if rule["action"] == "read"
+    ]
+    _assert_sensitive_reads_are_terminally_denied(build_rules)
+
+    for path in sorted((ROOT / ".opencode/agents").glob("*.md")):
+        _assert_sensitive_reads_are_terminally_denied(
+            _frontmatter_read_rules(path.read_text())
+        )
 
 
 def test_local_gate_and_frontend_fail_closed_on_required_boundaries():
@@ -180,40 +337,84 @@ def test_local_gate_and_frontend_fail_closed_on_required_boundaries():
     assert "sqlite" not in javascript and "yahoo.com" not in javascript
 
 
-def test_m09_is_accepted_by_review_and_local_gate_task_validators():
-    launcher = (ROOT / "scripts/ponytail-review.sh").read_text()
+def test_local_gate_accepts_canonical_task_ids():
     local_gate = (ROOT / "scripts/local-gate.sh").read_text()
     makefile = (ROOT / "Makefile").read_text()
-    launcher_match = re.search(r'"\$boundary" =~ (\^\S+\$)', launcher)
     local_gate_match = re.search(r'"\$TASK_ID" =~ (\^\S+\$)', local_gate)
 
-    assert launcher_match and local_gate_match
-    launcher_pattern = launcher_match.group(1)
+    assert local_gate_match
     local_gate_pattern = local_gate_match.group(1)
-    assert all(
-        re.fullmatch(launcher_pattern, task)
-        for milestone in range(10)
-        for task in (f"M{milestone:02}", f"EXP-M{milestone:02}", f"R-M{milestone:02}-1")
-    )
-    assert re.fullmatch(launcher_pattern, "M10") is None
     assert re.fullmatch(local_gate_pattern, "M09")
     assert all(
         re.fullmatch(local_gate_pattern, task)
-        for milestone in range(9)
-        for task in (f"M{milestone:02}", f"R-M{milestone:02}-1")
+        for milestone in range(10)
+        for task in (
+            f"M{milestone:02}",
+            f"EXP-M{milestone:02}",
+            f"R-M{milestone:02}-1",
+            f"R-ASTRA-{milestone + 1}",
+        )
+    )
+    assert re.fullmatch(local_gate_pattern, "ASTRA-FINAL")
+    assert re.fullmatch(local_gate_pattern, "EXP-FINAL")
+    assert all(
+        re.fullmatch(local_gate_pattern, task) is None
+        for task in ("M10", "EXP-M10", "NOTIFY-FINAL", "R-M00-0", "R-ASTRA-1-extra")
     )
     assert "  m09)" in local_gate
     assert "TASK_ID=M09 ./scripts/local-gate.sh m09" in makefile
 
 
-def test_arm64_smoke_accepts_m09_task_ids_and_rejects_invalid_id():
+def test_arm64_smoke_accepts_canonical_task_ids_and_rejects_suffixes():
     arm64_smoke = (ROOT / "scripts/arm64-smoke.sh").read_text()
     match = re.search(r'"\$TASK_ID" =~ (\^\S+\$)', arm64_smoke)
 
     assert match
     pattern = match.group(1)
-    assert all(re.fullmatch(pattern, task) for task in ("M09", "EXP-M09", "R-M09-1"))
-    assert re.fullmatch(pattern, "M10") is None
+    accepted = ["ASTRA-FINAL", "EXP-FINAL", "R-ASTRA-0", "R-ASTRA-106"]
+    accepted += [f"M{milestone:02}" for milestone in range(10)]
+    accepted += [f"EXP-M{milestone:02}" for milestone in range(10)]
+    accepted += [f"R-M{milestone:02}-1" for milestone in range(10)]
+    assert all(re.fullmatch(pattern, task) for task in accepted)
+    assert all(
+        re.fullmatch(pattern, task) is None
+        for task in (
+            "M10",
+            "EXP-M10",
+            "NOTIFY-FINAL",
+            "R-M00-0",
+            "R-ASTRA-106-extra",
+            "R-ASTRA-106.1",
+        )
+    )
+
+
+def test_local_gate_and_arm64_smoke_preflight_reject_non_canonical_task_ids():
+    """Bounded preflight only: an invalid TASK_ID exits 2 before any gate work starts."""
+
+    cases = (
+        ("scripts/local-gate.sh", ["m01"], "TASK_ID", "NOTIFY-FINAL"),
+        ("scripts/local-gate.sh", ["m01"], "TASK_ID", "EXP-M10"),
+        ("scripts/arm64-smoke.sh", [], "STOCK_PROBS_TASK_ID", "NOTIFY-FINAL"),
+        ("scripts/arm64-smoke.sh", [], "STOCK_PROBS_TASK_ID", "R-M00-0"),
+    )
+    for script, args, variable, task in cases:
+        environment = {**os.environ, variable: task}
+        bash = shutil.which("bash")
+        assert bash is not None
+        # The interpreter is trusted via PATH resolution; argv is fixed and shell mode is disabled.
+        completed = subprocess.run(  # noqa: S603
+            [bash, str((ROOT / script).resolve()), *args],
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert completed.returncode == 2, (script, task, completed.stderr)
+        assert f"{variable} must be" in completed.stderr
+        assert "ASTRA-FINAL" in completed.stderr and "EXP-FINAL" in completed.stderr
 
 
 def test_reproducible_arm64_toolchains_are_pinned_and_generated_files_ignored():

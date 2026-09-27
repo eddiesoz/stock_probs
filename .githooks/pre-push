@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Fail-closed repository-local documentation gate.
+#
+# The comparison is the branch delta from origin/main when that ref is
+# available, or the previous commit when working without a remote-tracking ref.
+# Completeness is still checked when neither comparison base exists.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+CHECK="$ROOT/scripts/check-doc-coverage.py"
+MAP="$ROOT/documentation-map.json"
+
+if [[ ! -f "$CHECK" ]]; then
+  printf 'doc-gate: checker missing at %s; blocking push.\n' "$CHECK" >&2
+  exit 1
+fi
+if [[ ! -f "$MAP" ]]; then
+  printf 'doc-gate: documentation map missing at %s; blocking push.\n' "$MAP" >&2
+  exit 1
+fi
+if ! command -v python3 >/dev/null 2>&1; then
+  printf 'doc-gate: python3 is unavailable; blocking push.\n' >&2
+  exit 1
+fi
+
+base=""
+if git -C "$ROOT" rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1; then
+  base="origin/main"
+elif git -C "$ROOT" rev-parse --verify --quiet HEAD~1 >/dev/null 2>&1; then
+  base="HEAD~1"
+fi
+
+set +e
+if [[ -n "$base" ]]; then
+  python3 "$CHECK" --root "$ROOT" --map "$MAP" --base "$base" --head HEAD
+else
+  printf 'doc-gate: no comparison base found; running completeness only.\n' >&2
+  python3 "$CHECK" --root "$ROOT" --map "$MAP"
+fi
+status=$?
+set -e
+
+if (( status == 1 )); then
+  printf '\ndoc-gate: push blocked. Update or create the mapped documentation, or\n' >&2
+  printf "add a 'Doc-Gate: exempt' line to a commit message for a deliberate exception.\n" >&2
+elif (( status != 0 )); then
+  printf 'doc-gate: checker could not complete; blocking push.\n' >&2
+fi
+exit "$status"

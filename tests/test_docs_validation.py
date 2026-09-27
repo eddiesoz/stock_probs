@@ -1,6 +1,7 @@
 import json
 import re
 import shutil
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pytest
@@ -24,7 +25,12 @@ def documentation_repository(tmp_path: Path) -> Path:
     skill_parent.mkdir(parents=True)
     for name in APPROVED_SKILL_CATALOG:
         shutil.copytree(ROOT / ".opencode" / "skills" / name, skill_parent / name)
-    shutil.copy2(ROOT / ".opencode" / "skills" / "learnings.md", skill_parent / "learnings.md")
+    history_parent = tmp_path / ".opencode" / "skill-history"
+    history_parent.mkdir(parents=True)
+    shutil.copy2(
+        ROOT / ".opencode" / "skill-history" / "learnings.md",
+        history_parent / "learnings.md",
+    )
     shutil.copy2(ROOT / ".opencode" / "SKILL-INDEX.md", tmp_path / ".opencode" / "SKILL-INDEX.md")
     for name in ("README.md", "AGENTS.md", "MVP-PLAN.md", "MVP-ROADMAP.md", "SESSION-EXPORT.md"):
         (tmp_path / name).write_text(f"# {name}\n", encoding="utf-8")
@@ -40,65 +46,177 @@ def test_repository_documentation_contract_passes() -> None:
     assert validate_repository(ROOT) == []
 
 
+def test_skill_history_is_governance_archive_not_a_flat_skill() -> None:
+    history = ROOT / ".opencode/skill-history/learnings.md"
+    assert history.is_file()
+    assert not list((ROOT / ".opencode/skills").glob("*.md"))
+
+
+def test_missing_skill_history_governance_artifact_fails(documentation_repository: Path) -> None:
+    history = documentation_repository / ".opencode/skill-history/learnings.md"
+    history.unlink()
+
+    assert any(
+        "missing project skill governance artifact" in issue
+        for issue in validate_repository(documentation_repository)
+    )
+
+
+def test_root_level_skill_markdown_mutation_fails(documentation_repository: Path) -> None:
+    accidental = documentation_repository / ".opencode/skills/accidental-flat.md"
+    accidental.write_text("# Accidental flat skill\n", encoding="utf-8")
+
+    issues = validate_repository(documentation_repository)
+
+    assert any("native V2 flat skill" in issue for issue in issues)
+
+
 def test_documentation_taxonomy_has_expected_size() -> None:
     assert len(CATEGORIES) == 9
     assert sum(map(len, CATEGORIES.values())) == 13
 
 
-def test_project_skill_catalog_has_expected_entries() -> None:
+def test_project_skill_governance_catalog_has_expected_entries() -> None:
+    assert len(APPROVED_SKILL_CATALOG) == 7
     assert tuple(APPROVED_SKILL_CATALOG) == (
         "documentation",
         "development-conventions",
         "stock-probability-skill-maintenance",
         "local-gate-evidence",
         "browser-qa",
-        "ponytail-boundary-review",
         "database-conventions",
         "security-audit",
     )
+    assert all("ponytail" not in name.casefold() for name in APPROVED_SKILL_CATALOG)
+    assert all(
+        "ponytail"
+        not in " ".join(
+            (definition.description, *definition.tags, *definition.references)
+        ).casefold()
+        for definition in APPROVED_SKILL_CATALOG.values()
+    )
+    for name in APPROVED_SKILL_CATALOG:
+        for path in (ROOT / ".opencode/skills" / name).rglob("*"):
+            if path.is_file() and path.suffix.lower() in {".md", ".json"}:
+                assert "ponytail" not in path.read_text(encoding="utf-8").casefold(), path
 
 
 def test_agent_profile_skill_grants_are_narrow() -> None:
     expected = {
-        "sol-build.md": (
-            '"*": deny',
-            "browser-qa: allow",
-            "database-conventions: allow",
-            "development-conventions: allow",
-            "local-gate-evidence: allow",
-            "ponytail: allow",
-            "ponytail-review: allow",
-            "security-audit: allow",
-            "stock-probability-skill-maintenance: allow",
+        "luna-build.md": (
+            ("*", "deny"),
+            ("browser-qa", "allow"),
+            ("database-conventions", "allow"),
+            ("development-conventions", "allow"),
+            ("local-gate-evidence", "allow"),
+            ("security-audit", "allow"),
+            ("stock-probability-skill-maintenance", "allow"),
         ),
         "luna-qa.md": (
-            '"*": deny',
-            "browser-qa: allow",
-            "development-conventions: allow",
-            "local-gate-evidence: allow",
-            "ponytail-review: allow",
-            "ponytail-boundary-review: allow",
-            "security-audit: allow",
+            ("*", "deny"),
+            ("browser-qa", "allow"),
+            ("development-conventions", "allow"),
+            ("local-gate-evidence", "allow"),
+            ("security-audit", "allow"),
         ),
         "luna-docs.md": (
-            '"*": deny',
-            "development-conventions: allow",
-            "documentation: allow",
-        ),
-        "astra.md": (
-            '"*": deny',
-            "browser-qa: allow",
-            "development-conventions: allow",
+            ("*", "deny"),
+            ("development-conventions", "allow"),
+            ("documentation", "allow"),
         ),
     }
-    for name, grants in expected.items():
-        text = (ROOT / ".opencode/agent" / name).read_text(encoding="utf-8")
-        block = re.search(r"^  skill:\n((?:    .*\n)+)", text, re.MULTILINE)
-        assert block
-        assert tuple(line.strip() for line in block.group(1).splitlines()) == grants
+    legacy = ROOT / ".opencode/agent"
+    agents = ROOT / ".opencode/agents"
+    profiles = {path.name: path.read_text(encoding="utf-8") for path in agents.glob("*.md")}
 
-    docs = (ROOT / ".opencode/agent/luna-docs.md").read_text(encoding="utf-8")
-    assert '    ".dev-venv/bin/python scripts/validate_docs.py": allow' in docs
+    assert not any(legacy.glob("*.md"))
+    assert set(profiles) == set(expected)
+    for name, grants in expected.items():
+        text = profiles[name]
+        assert "mode: subagent" in text
+        assert "model: openai/gpt-5.6-luna#max" in text
+        assert not re.search(r"^(?:name|variant|permission|bash|task):", text, re.MULTILINE)
+        matches = re.findall(
+            r"^  - action: skill\n    resource: (.+)\n    effect: (.+)$",
+            text,
+            re.MULTILINE,
+        )
+        parsed = tuple((resource.strip('"'), effect) for resource, effect in matches)
+        assert parsed == grants
+        assert all("ponytail" not in resource.casefold() for resource, _ in parsed)
+
+    docs = profiles["luna-docs.md"]
+    assert (
+        '  - action: shell\n    resource: ".dev-venv/bin/python scripts/validate_docs.py"\n'
+        "    effect: allow"
+    ) in docs
+
+
+def test_native_agent_profiles_fail_closed_on_sensitive_reads() -> None:
+    resources = (
+        ".env",
+        ".env.*",
+        "**/.env",
+        "**/.env.*",
+        "*.env",
+        "**/*.env",
+        "*.env.*",
+        "**/*.env.*",
+        ".env.example",
+        "**/.env.example",
+        "*.env.example",
+        "**/*.env.example",
+        "*credential*",
+        "**/*credential*",
+        "*secret*",
+        "**/*secret*",
+        "*token*",
+        "**/*token*",
+        "*.pem",
+        "**/*.pem",
+        "*.key",
+        "**/*.key",
+        "*.p12",
+        "**/*.p12",
+        "*.pfx",
+        "**/*.pfx",
+        "*private*key*",
+        "**/*private*key*",
+    )
+    paths = (
+        ".env",
+        ".env.example",
+        "nested/.env.production",
+        "config/credentials.json",
+        "secrets/api-token.txt",
+        "certs/private-key.pem",
+        "certs/server.key",
+    )
+    for path in (ROOT / ".opencode/agents").glob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        read_rules = [
+            (resource.strip('"'), effect)
+            for resource, effect in re.findall(
+                r"^  - action: read\n    resource: (.+)\n    effect: (.+)$",
+                text,
+                re.MULTILINE,
+            )
+        ]
+        broad_allow = max(
+            index
+            for index, rule in enumerate(read_rules)
+            if rule == ("*", "allow")
+        )
+        assert all((resource, "deny") in read_rules for resource in resources)
+        for sensitive_path in paths:
+            matches = [
+                (index, effect)
+                for index, (resource, effect) in enumerate(read_rules)
+                if fnmatchcase(sensitive_path, resource)
+            ]
+            assert matches, (path, sensitive_path)
+            assert matches[-1][1] == "deny", (path, sensitive_path)
+            assert matches[-1][0] > broad_allow, (path, sensitive_path)
 
 
 def test_astra_matrix_has_214_unique_inventory_rows_and_dimension_keys() -> None:
@@ -154,7 +272,9 @@ def test_astra_evidence_index_link_mutation_fails(
     assert any(f"must link {topic} exactly once" in issue for issue in issues)
 
 
-def test_unexpected_skill_catalog_mutation_fails(documentation_repository: Path) -> None:
+def test_unexpected_skill_governance_directory_mutation_fails(
+    documentation_repository: Path,
+) -> None:
     unexpected = documentation_repository / ".opencode/skills/unapproved"
     unexpected.mkdir()
     (unexpected / "SKILL.md").write_text(
@@ -163,32 +283,32 @@ def test_unexpected_skill_catalog_mutation_fails(documentation_repository: Path)
     )
 
     assert any(
-        "unexpected project skill: unapproved" in issue
+        "unexpected project skill governance directory: unapproved" in issue
         for issue in validate_repository(documentation_repository)
     )
 
 
-def test_skill_index_count_mutation_fails(documentation_repository: Path) -> None:
+def test_project_governance_index_count_mutation_fails(documentation_repository: Path) -> None:
     index = documentation_repository / ".opencode/SKILL-INDEX.md"
     index.write_text(
-        index.read_text(encoding="utf-8").replace("**8 skills**", "**0 skills**"),
+        index.read_text(encoding="utf-8").replace("**7 skills**", "**0 skills**"),
         encoding="utf-8",
     )
 
     assert any(
-        "skill count must be exactly 8" in issue
+        "project governance skill count must be exactly 7" in issue
         for issue in validate_repository(documentation_repository)
     )
 
 
 @pytest.mark.parametrize("name", APPROVED_SKILL_CATALOG)
-def test_missing_admitted_skill_catalog_mutation_fails(
+def test_missing_approved_project_skill_governance_mutation_fails(
     documentation_repository: Path, name: str
 ) -> None:
     shutil.rmtree(documentation_repository / f".opencode/skills/{name}")
 
     assert any(
-        f"missing admitted project skill: {name}" in issue
+        f"missing approved project skill governance directory: {name}" in issue
         for issue in validate_repository(documentation_repository)
     )
 
@@ -219,19 +339,19 @@ def test_frontmatter_parser_rejects_unquoted_values(tmp_path: Path) -> None:
     [
         (
             ".opencode/skills/documentation/SKILL.md",
-            "metadata description must match SKILL.md frontmatter",
+            "project governance metadata description must match SKILL.md frontmatter",
         ),
         (
             ".opencode/skills/documentation/metadata.json",
-            "metadata description must match SKILL.md frontmatter",
+            "project governance metadata description must match SKILL.md frontmatter",
         ),
         (
             ".opencode/SKILL-INDEX.md",
-            "skill row must match SKILL.md frontmatter name and description",
+            "project governance row must match SKILL.md frontmatter name and description",
         ),
     ],
 )
-def test_skill_description_parity_mutations_fail(
+def test_project_skill_governance_description_parity_mutations_fail(
     documentation_repository: Path, relative_path: str, expected_issue: str
 ) -> None:
     path = documentation_repository / relative_path
@@ -261,7 +381,7 @@ def test_skill_description_parity_mutations_fail(
         ("_comment", "An unexplained catalog entry."),
     ],
 )
-def test_metadata_policy_mutations_fail(
+def test_project_skill_governance_metadata_policy_mutations_fail(
     documentation_repository: Path, field: str, value: object
 ) -> None:
     path = documentation_repository / ".opencode/skills/documentation/metadata.json"
@@ -333,7 +453,9 @@ def test_duplicate_taxonomy_link_mutation_fails(
     assert any(f"must link {category}/index.md exactly once" in issue for issue in issues)
 
 
-def test_missing_skill_reference_link_mutation_fails(documentation_repository: Path) -> None:
+def test_missing_project_skill_governance_reference_link_mutation_fails(
+    documentation_repository: Path,
+) -> None:
     skill = documentation_repository / ".opencode/skills/documentation/SKILL.md"
     skill.write_text(
         skill.read_text(encoding="utf-8").replace(
@@ -348,7 +470,7 @@ def test_missing_skill_reference_link_mutation_fails(documentation_repository: P
 
 
 @pytest.mark.parametrize("name", APPROVED_SKILL_CATALOG)
-def test_skill_name_catalog_mutation_fails(
+def test_project_skill_governance_name_catalog_mutation_fails(
     documentation_repository: Path, name: str
 ) -> None:
     skill = documentation_repository / f".opencode/skills/{name}/SKILL.md"
@@ -365,7 +487,7 @@ def test_skill_name_catalog_mutation_fails(
 
 
 @pytest.mark.parametrize(("line_count", "fails"), [(500, False), (501, True)])
-def test_active_skill_500_line_boundary(
+def test_project_skill_governance_500_line_boundary(
     documentation_repository: Path, line_count: int, fails: bool
 ) -> None:
     skill = documentation_repository / ".opencode/skills/documentation/SKILL.md"
@@ -380,7 +502,7 @@ def test_active_skill_500_line_boundary(
 
 
 @pytest.mark.parametrize("name", APPROVED_SKILL_CATALOG)
-def test_indexed_skill_path_mutation_fails(
+def test_project_skill_governance_indexed_path_mutation_fails(
     documentation_repository: Path, name: str
 ) -> None:
     index = documentation_repository / ".opencode/SKILL-INDEX.md"
@@ -393,4 +515,114 @@ def test_indexed_skill_path_mutation_fails(
 
     issues = validate_repository(documentation_repository)
 
-    assert any("SKILL.md frontmatter name and description" in issue for issue in issues)
+    assert any(
+        "project governance row must match SKILL.md frontmatter" in issue for issue in issues
+    )
+
+
+def test_skill_validation_reference_is_static_and_does_not_claim_runtime_discovery() -> None:
+    text = (
+        ROOT / ".opencode/skills/stock-probability-skill-maintenance/references/validation.md"
+    ).read_text(encoding="utf-8")
+
+    assert "opencode debug skill" not in text
+    assert "debug agents" not in text
+    assert ".dev-venv/bin/python scripts/validate_docs.py" in text
+    assert ".dev-venv/bin/python -m pytest tests/test_docs_validation.py" in text
+    assert "Static repository validation only" in text
+    assert "native skill discovery" not in text
+    assert "provider/session discovery" not in text
+    assert "actual named skill load" not in text
+
+
+def test_project_skill_references_use_current_docs_and_authority_paths() -> None:
+    guide = (
+        ROOT / ".opencode/skills/development-conventions/references/write-docs/guide.md"
+    ).read_text(encoding="utf-8")
+    sources = (
+        ROOT / ".opencode/skills/documentation/references/repository-sources.md"
+    ).read_text(encoding="utf-8")
+    checklist = (
+        ROOT / ".opencode/skills/database-conventions/references/sqlite-change-checklist.md"
+    ).read_text(encoding="utf-8")
+
+    for path in (
+        "docs/configure/local-configuration.md",
+        "AGENTS.md",
+        "docs/develop/documentation.md",
+        "docs/develop/testing.md",
+        "docs/concepts/architecture.md",
+        "documentation-map.json",
+    ):
+        assert path in guide
+    for stale_path in (
+        "docs/develop/variables.md",
+        "docs/adr/",
+        "docs/concepts/skill-system.md",
+        "docs/configure/agents.md",
+        "docs/concepts/tech-stack.md",
+        "docs/concepts/self-learning.md",
+        ".opencode/skills/self-learning/SKILL.md",
+    ):
+        assert stale_path not in guide
+
+    for path in (
+        "src/stock_probs/api.py",
+        "src/stock_probs/schemas.py",
+        "src/stock_probs/repository.py",
+        "src/stock_probs/migrations/*.sql",
+        "src/stock_probs/backup.py",
+        "src/stock_probs/cli.py",
+        "frontend/**",
+        "src/stock_probs/static/**",
+    ):
+        assert path in sources
+    assert "and `schemas.py`" not in sources
+    assert "`repository.py` plus packaged migrations" not in sources
+    assert "`backup.py` and `cli.py`" not in sources
+    assert "| Dashboard controls and states | static HTML/JS/CSS" not in sources
+    assert "`src/stock_probs/repository.py`" in checklist
+    assert "`repository.py` without" not in checklist
+
+
+def test_active_skill_instructions_use_native_role_ids() -> None:
+    skill_root = ROOT / ".opencode/skills"
+    active_files = {
+        path: path.read_text(encoding="utf-8")
+        for path in skill_root.rglob("*.md")
+    }
+
+    for path, text in active_files.items():
+        assert not re.search(r"\bSOL HIGH\b", text, re.IGNORECASE), path
+        assert "LUNA MAX docs" not in text, path
+        assert "@ingenium-qa" not in text, path
+        assert not re.search(r"\borchestrator\b", text, re.IGNORECASE), path
+
+    expected_roles = {
+        "development-conventions/references/sources/visual-standards-conventions/source-index.md": (
+            "luna-qa",
+            "self-repair",
+            "delegate",
+        ),
+        "documentation/references/audit.md": ("luna-build", "luna-docs"),
+        "stock-probability-skill-maintenance/references/creation.md": (
+            "luna-build",
+            "luna-docs",
+        ),
+    }
+    for relative_path, roles in expected_roles.items():
+        text = (skill_root / relative_path).read_text(encoding="utf-8")
+        assert all(role in text for role in roles), relative_path
+
+
+def test_retired_ponytail_is_absent_from_index_and_current_status_is_superseding() -> None:
+    index = (ROOT / ".opencode/SKILL-INDEX.md").read_text(encoding="utf-8")
+    learnings = (ROOT / ".opencode/skill-history/learnings.md").read_text(encoding="utf-8")
+    current_status = learnings.split("## 2026-09-11", maxsplit=1)[0]
+
+    assert "**7 skills**" in index
+    assert "ponytail-boundary-review" not in index
+    assert "ponytail-boundary-review" in current_status
+    assert "retired" in current_status.casefold()
+    assert "Do not invoke, require, or recommend" in current_status
+    assert "historical records only" in current_status
