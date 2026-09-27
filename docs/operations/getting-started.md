@@ -71,9 +71,9 @@ evidence are unavailable in the current post-final QA record; emulated ARM64 cov
 package, and runtime behavior only, not ARM64 performance.
 
 This Compose path is local development and validation. The invite-only GitHub OAuth/passkey
-deployment, local GHCR publication, restricted Linode host, and disabled-until-canary Cloudflare
-Tunnel use the production procedure below. Do not copy development bootstrap credentials into a
-production environment.
+deployment, local GitHub Release publication (with GHCR as an explicit compatibility transport),
+Terraform-managed Linode host, and closed-until-canary Cloudflare Tunnel use the production
+procedure below. Do not copy development bootstrap credentials into a production environment.
 
 ## Invite-only production deployment
 
@@ -84,40 +84,81 @@ GitHub's authorization-code flow with state and PKCE, the numeric GitHub account
 identity, and a required user-verifying passkey after an administrator-issued, expiring, single-use
 invitation.
 
+Terraform's Linode configuration keeps the requested low-resource shape: Ubuntu 24.04,
+`g6-nanode-1` (1 GB RAM/25 GB disk), `us-east`, VM Backups, disk encryption, and the existing
+firewall imported as `177236117`. Its inbound policy is default-deny with only operator SSH from
+the configured `/32`; application ports are not opened, and the Linode and firewall have
+`prevent_destroy`. The fixed external source gate runs during plan and again during apply and
+requires a clean checkout, exact `origin/main`, the reviewed revision, and checksums for the
+bootstrap files. Terraform apply remains pending.
+
+Cloudflare Terraform defaults to `exposure_mode=closed`: the managed tunnel has a terminal 404
+ingress and no DNS record. Canary mode adds only `ledger.jtmb.cc`, routes to `http://127.0.0.1:8000`,
+keeps a single owner email behind Cloudflare Access, and installs a cache-settings rule that
+bypasses shared and browser caching for the exact hostname. Provider token/UI creation and the
+actual apply remain pending.
+
 ### Build and publish locally
 
 The VM never builds source. A reviewed clean checkout whose `origin/main` matches the exact `HEAD`
-builds and publishes the fixed package `ghcr.io/jtmb/signal-ledger`:
+builds and publishes the default GitHub Release transport:
 
 ```bash
 ./scripts/publish-production-image.sh
 ```
 
-The script labels the image with the reviewed revision, pushes it, and verifies the returned
-immutable manifest digest. The Linode helper pulls only
-`ghcr.io/jtmb/signal-ledger@sha256:<digest>` and verifies the registry digest, revision label,
-and schema. It does not accept mutable tags, arbitrary image names, remote builds, shell commands,
-paths, URLs, Compose edits, or Docker-socket operations.
+The script builds a Linux `amd64` image, creates the revision-named local tag
+`signal-ledger-<reviewed-sha>` and release asset `signal-ledger-image-<reviewed-sha>.tar.gz`, scans
+the archive for credential-like material, publishes through `gh release create`, then downloads
+the asset again and verifies its archive SHA-256, Docker image ID, revision label, platform, and
+size. The script treats the revision-named asset as immutable during this workflow, but GitHub
+does not enforce asset immutability. Set `SIGNAL_LEDGER_IMAGE_PUBLISH_MODE=ghcr` only for the
+explicit compatibility transport; GHCR is not the default. Release publication is pending. The
+Linode helper derives the fixed GitHub URL from the reviewed revision and accepts only the verified
+archive hash and full image ID. It does not accept mutable tags, arbitrary image names, remote
+builds, shell commands, paths, URLs, Compose edits, or Docker-socket operations.
 
 ### Prepare the host
 
-Create the replacement Ubuntu 24.04 Linode with the planned low-resource size, encrypted disk,
-Signal Ledger firewall, VM Backups, and no public application port. Keep inbound SSH restricted to
-the operator route and default-deny unsolicited inbound traffic. Do not remove the existing VM or
-change the current local app during preparation.
-
-Install Docker, Git, Python 3, `curl`, and the official `cloudflared` binary. Run the reviewed host
-setup as root with one operator-supplied public SSH key; the private key stays with the operator:
+From a clean reviewed checkout, run the static validation and plan the two Terraform roots. Supply
+the operator IPv4 `/32`, separate operator/deployment public-key paths, and reviewed commit SHA as
+variables; the private keys and provider credentials stay outside the repository. The plan must
+show the existing firewall import and the requested `g6-nanode-1` replacement without opening
+application ports. Do not remove the existing VM or change the current local app during
+preparation. Run Terraform from an operator-owned private working directory with mode `0700`, and
+set `umask 077` before creating `.terraform`, local state, saved plans, or backups:
 
 ```bash
-SIGNAL_LEDGER_DEPLOY_PUBLIC_KEY_FILE=/path/to/operator-deploy-key.pub \
-  ./scripts/setup-production-host.sh
+umask 077
+chmod 700 /path/to/private-deployment-workdir
+cd /path/to/private-deployment-workdir
 ```
 
-The setup creates a forced-command `signal-ledger-deploy` account, least-privilege helper, private
-state/audit directories, and a disabled `signal-ledger-cloudflared.service`. Install the remotely
-managed tunnel token at `/etc/cloudflared/tunnel.token` with mode `0600`. Store production values
-in `/etc/signal-ledger/app.env` with mode `0600`: `STOCK_PROBS_ENV=production`,
+Before using any existing state, backup, or saved-plan file, verify that it is operator-owned and
+mode `0600`; correct each retained file with `chmod 600 /path/to/file` before continuing. This
+procedure does not claim that existing state or credential permissions have been checked. Do not
+store Terraform state, saved plans, backups, provider credentials, or private keys in a shared or
+world-readable directory.
+
+```bash
+./infra/linode/validate.sh
+terraform -chdir=infra/linode init -backend=false
+terraform -chdir=infra/linode plan \
+  -var='operator_ipv4_cidr=OPERATOR_IPV4/32' \
+  -var='reviewed_revision=REVIEWED_MAIN_SHA'
+terraform -chdir=infra/cloudflare init -backend=false
+terraform -chdir=infra/cloudflare plan -var='exposure_mode=closed'
+```
+
+The first-boot bootstrap installs Docker, Compose, `cloudflared`, the restricted host boundary, and
+a disabled `signal-ledger-cloudflared.service`. The later configuration helper writes each file
+atomically under its own lock; the app environment and tunnel token are separate writes, so the
+operation is not an all-or-nothing pair. Luna ops QA passed 17 focused local tests plus Bash
+syntax, Ruff, ShellCheck, and diff checks, with local fixtures for full `deploy.lock` contention,
+failed verify/retry, no-clobber, and strict SSH. A real host was unavailable, so remote execution
+remains pending. When the provider steps are complete, install the remotely managed tunnel token at
+`/etc/cloudflared/tunnel.token` with mode `0600`. Store production values in
+`/etc/signal-ledger/app.env` with mode `0600`: `STOCK_PROBS_ENV=production`,
 `STOCK_PROBS_AUTH_MODE=github`, exact `STOCK_PROBS_PUBLIC_ORIGIN`, unique
 `STOCK_PROBS_AUTH_SESSION_SECRET`, `STOCK_PROBS_GITHUB_CLIENT_ID`,
 `STOCK_PROBS_GITHUB_CLIENT_SECRET`, `STOCK_PROBS_GITHUB_REDIRECT_URI`, and
@@ -132,12 +173,14 @@ SSH route into the private target volume. Preserve mode `0600`; do not copy a li
 edit tables, or generate a replacement trust key. Keep the public Tunnel disabled while loading and
 verifying the private volume.
 
-The deployment helper reads the existing schema, verifies a pre-deploy backup, creates and verifies
-the pre-migration backup when the imported database advances schema, runs the checksum-pinned
-migrations, verifies a current-schema backup, and requires readiness with the image's schema. The
-reserved legacy owner claim remains the owner of legacy events/results; every new request derives
-ownership from the session, so changing an ID cannot expose another user's history, exports,
-holdings, watchlists, outcomes, or reconstructions.
+The deployment helper is designed to read the existing schema, verify a pre-deploy backup, create
+and verify the pre-migration backup when the imported database advances schema, run the
+checksum-pinned migrations, verify a current-schema backup, and require readiness with the image's
+schema. Luna's ops QA covered the local fixture paths; a real host was unavailable, so remote
+transfer and migration remain pending. The reserved legacy owner claim remains the owner of legacy
+events/results; every new request derives ownership from the session, so
+changing an ID cannot expose another user's history, exports, holdings, watchlists, outcomes, or
+reconstructions.
 
 The local rehearsal used the verified read-only `pre-production-20260927.spbackup` schema-6
 database hash `2533d3bf96db79610b4616531e047df434ed54b1b2e1243c8a65b4e8401adcfd`. A separate
@@ -149,27 +192,33 @@ records. This is local evidence; take the live snapshot again if data changes be
 ### Use the deployment MCP
 
 Run `./scripts/deploy-mcp.sh` locally. Its separate stdio server exposes exactly five typed tools:
-`inspect`, `plan_deploy`, `deploy`, `status`, and `rollback`. The controller uses the restricted
-SSH helper and records only revisions, digests, schema versions, backups, and safe result codes.
+`inspect`, `plan_deploy`, `deploy`, `status`, and `rollback`. The default release transport carries
+the reviewed revision, archive SHA-256, and full Docker image ID; the optional GHCR compatibility
+shape carries its immutable digest. The controller uses the restricted SSH helper and records only
+revisions, image identities, schema versions, backups, and safe result codes.
 The normal sequence is:
 
 ```text
-inspect → plan_deploy(main revision, GHCR digest) → deploy(plan) → status
+inspect → plan_deploy(main revision, release archive SHA, image ID) → deploy(plan) → status
 ```
 
 Each promotion is serialized under a lock, starts with a verified application backup, runs
 readiness checks, and attempts code-only rollback only when the database schema remains compatible.
 If a migration has advanced the schema and the candidate fails, the helper stops the service and
-records the failure for operator recovery.
+records the failure for operator recovery. Luna's ops QA passed the focused local fixture sequence;
+a real host was unavailable, so actual remote promotion is still pending before treating the
+sequence as deployment acceptance.
 
 ### Tunnel canary and recovery
 
-Create a remotely managed Cloudflare Tunnel for the exact HTTPS hostname and route it to
-`http://127.0.0.1:8000`. Keep the connector disabled until the private checks pass, then run an
-owner-only canary: GitHub state/PKCE and callback checks, passkey enrollment, invitation redemption,
-session revocation, two-user ownership isolation, and administrator fresh-passkey backup/restore.
-Confirm spoofed Host/Origin/proxy headers fail closed and HTML/authenticated API responses bypass
-shared caching before widening access beyond the owner.
+After the provider token/UI setup and closed Terraform apply, move Cloudflare to `exposure_mode=canary`
+only for the owner. The exact hostname is `ledger.jtmb.cc`; the tunnel routes to
+`http://127.0.0.1:8000`, Cloudflare Access allows one owner email, and the cache-settings rule
+bypasses shared/browser caching. Keep the connector disabled until the private checks pass, then run
+an owner-only canary: GitHub state/PKCE and callback checks, passkey enrollment, invitation
+redemption, session revocation, two-user ownership isolation, and administrator fresh-passkey
+backup/restore. Confirm spoofed Host/Origin/proxy headers fail closed before any public route is
+considered. The canary and public route remain pending.
 
 Application backups remain signed and verified. Enable Linode VM Backups and rehearse recovery
 before exposure. This release has no independent encrypted off-server backup; Linode's configured
@@ -177,5 +226,11 @@ VM Backup retention is the external recovery boundary and must be recorded as a 
 
 Current local evidence includes schema-8 readiness, authentication status `200`, private history
 `401` without a session, frontend `27` tests, focused API/auth `151` tests, and helper/MCP `31`
-tests. The remote GHCR push, replacement Linode, GitHub OAuth credentials, Tunnel canary, and VM
-Backup rehearsal remain pending; the old VM and current local application are untouched.
+tests. Astra's final source review reported no remaining source launch blocker after the lock,
+upload, staged-database, source-gate, and cache-ordering fixes. Luna ops QA reported 17 focused
+tests passed plus Bash syntax/Ruff/ShellCheck/diff checks and local deployment fixtures; real-host
+evidence remains unavailable. The latest local `R-ASTRA-101` gate then passed; coordinator stdout
+reported Python `644` and `4` live deselected at `85.36%` coverage plus frontend `27` tests. The
+earlier `13:39` startup-timeout failure remains historical. Provider token/UI creation, Terraform apply, GitHub Release
+publication, GitHub OAuth credentials, owner canary, VM Backup rehearsal, and retirement of
+legacy Linode `97934478` remain pending; the old VM and current local application are untouched.

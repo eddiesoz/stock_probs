@@ -11,6 +11,7 @@ import threading
 import time
 from datetime import UTC, datetime, timedelta
 from importlib.resources import files
+from multiprocessing.synchronize import Event
 
 import pytest
 
@@ -21,6 +22,39 @@ from stock_probs.config import Settings
 from stock_probs.repository import SCHEMA_VERSION, Repository
 
 OWNER_USER_ID = 1
+PROCESS_START_TIMEOUT_SECONDS = 30
+PROCESS_JOIN_TIMEOUT_SECONDS = 30
+
+
+def _wait_for_process_event(process: multiprocessing.Process, event: Event, label: str) -> None:
+    """Wait for a spawn child to signal, reporting early child exits clearly."""
+
+    deadline = time.monotonic() + PROCESS_START_TIMEOUT_SECONDS
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            pytest.fail(
+                f"{label} did not signal within {PROCESS_START_TIMEOUT_SECONDS}s "
+                f"(alive={process.is_alive()}, exitcode={process.exitcode})"
+            )
+        if event.wait(timeout=min(0.25, remaining)):
+            return
+        if not process.is_alive():
+            process.join(timeout=0)
+            pytest.fail(f"{label} child exited before signalling (exitcode={process.exitcode})")
+
+
+def _join_or_terminate(process: multiprocessing.Process) -> None:
+    """Join a started child, terminating it only after the bounded join expires."""
+
+    if process.pid is None:
+        return
+    process.join(timeout=PROCESS_JOIN_TIMEOUT_SECONDS)
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=2)
+    if process.is_alive():
+        pytest.fail(f"child process {process.pid} remained alive after termination")
 
 
 def _record_failure(repository: Repository, request_id: str) -> None:
@@ -529,18 +563,17 @@ def test_every_backup_mutation_serializes_on_the_shared_cross_process_lock(
         ),
     )
 
-    with manager._trust_lifecycle_lock():
-        worker.start()
-        assert started.wait(timeout=10)
-        # A separate lock, a narrower lock scope, or a window before lock acquisition would
-        # let the worker reach its inner method while this process still holds the lock.
-        assert not critical.wait(timeout=1)
-        assert not finished.wait(timeout=1)
+    try:
+        with manager._trust_lifecycle_lock():
+            worker.start()
+            _wait_for_process_event(worker, started, "locked-operation startup")
+            # A separate lock, a narrower lock scope, or a window before lock acquisition would
+            # let the worker reach its inner method while this process still holds the lock.
+            assert not critical.wait(timeout=1)
+            assert not finished.wait(timeout=1)
+    finally:
+        _join_or_terminate(worker)
 
-    worker.join(timeout=10)
-    if worker.is_alive():
-        worker.terminate()
-        worker.join(timeout=2)
     assert worker.exitcode == 0
     assert critical.is_set()
     assert finished.is_set()
@@ -583,24 +616,23 @@ def test_create_holds_the_lock_through_its_critical_section(settings, operation)
             lifecycle_output,
         ),
     )
+    started_processes = []
 
-    creator.start()
-    assert entered.wait(timeout=10)
-    lifecycle.start()
-    assert started.wait(timeout=10)
     try:
+        creator.start()
+        started_processes.append(creator)
+        _wait_for_process_event(creator, entered, "paused-create startup")
+        lifecycle.start()
+        started_processes.append(lifecycle)
+        _wait_for_process_event(lifecycle, started, "lifecycle startup")
         # The creator holds the flock while paused inside its critical section, so the
         # lifecycle cannot enter its own critical section or complete until release.
         assert not critical.wait(timeout=1)
         assert not finished.wait(timeout=1)
     finally:
         release.set()
-        creator.join(timeout=10)
-        lifecycle.join(timeout=10)
-        for process in (creator, lifecycle):
-            if process.is_alive():
-                process.terminate()
-                process.join(timeout=2)
+        for process in started_processes:
+            _join_or_terminate(process)
 
     assert creator.exitcode == lifecycle.exitcode == 0
     assert create_output.get(timeout=5)[0] == "ok"

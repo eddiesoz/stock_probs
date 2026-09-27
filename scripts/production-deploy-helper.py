@@ -31,6 +31,7 @@ RESPONSE_LIMIT = 65_536
 REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 PLAN_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+IMAGE_ID_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 BACKUP_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,126}\.spbackup$")
 
 # These paths are deliberately constants.  A tool request can select a release, but cannot
@@ -53,6 +54,14 @@ PROJECT_NAME = "signal-ledger"
 # reviewed commit and digest, but cannot redirect the host to another registry or image.
 IMAGE_REPOSITORY = "ghcr.io/jtmb/signal-ledger"
 IMAGE_DIGEST_PREFIX = f"{IMAGE_REPOSITORY}@sha256:"
+GITHUB_RELEASE_REPOSITORY = "eddiesoz/stock_probs"
+GITHUB_RELEASE_TAG_PREFIX = "signal-ledger-"
+GITHUB_RELEASE_ARCHIVE_PREFIX = "signal-ledger-image-"
+GITHUB_RELEASE_ARCHIVE_SUFFIX = ".tar.gz"
+GITHUB_RELEASE_TRANSPORT = "github_release"
+LOCAL_IMAGE_REPOSITORY = "signal-ledger"
+MAX_RELEASE_ARCHIVE_BYTES = 512 * 1024 * 1024
+RELEASE_DOWNLOAD_TIMEOUT_SECONDS = 600
 HEALTH_URL = "http://127.0.0.1:8000/api/v1/readiness"
 HEALTH_ATTEMPTS = 30
 HEALTH_DELAY_SECONDS = 1.0
@@ -61,6 +70,15 @@ _ALLOWED_OPERATIONS = frozenset({"inspect", "plan_deploy", "deploy", "status", "
 _EXPECTED_PAYLOAD_KEYS = {
     "inspect": frozenset(),
     "status": frozenset(),
+    "plan_deploy": frozenset({"revision", "archive_sha256", "image_id"}),
+    "deploy": frozenset({"plan_id", "revision", "archive_sha256", "image_id"}),
+    "rollback": frozenset({"revision", "image_id"}),
+}
+
+# The old GHCR shape remains accepted by the forced command for already prepared hosts.  The
+# MCP exposes the release archive shape above; retaining this exact legacy form lets an operator
+# finish a previously staged GHCR plan without turning arbitrary registry input into a command.
+_LEGACY_PAYLOAD_KEYS = {
     "plan_deploy": frozenset({"revision", "expected_image_digest"}),
     "deploy": frozenset({"plan_id", "revision", "image_digest"}),
     "rollback": frozenset({"revision"}),
@@ -95,6 +113,34 @@ def _validate_digest(value: object) -> str:
     if not isinstance(value, str) or DIGEST_PATTERN.fullmatch(value) is None:
         raise HostError("image_digest_invalid")
     return value
+
+
+def _validate_image_id(value: object) -> str:
+    if not isinstance(value, str) or IMAGE_ID_PATTERN.fullmatch(value) is None:
+        raise HostError("image_id_invalid")
+    return value
+
+
+def _release_archive_url(revision: str) -> str:
+    """Build the only permitted image archive URL from the reviewed revision."""
+
+    _validate_revision(revision)
+    tag = f"{GITHUB_RELEASE_TAG_PREFIX}{revision}"
+    return f"https://github.com/{GITHUB_RELEASE_REPOSITORY}/releases/download/{tag}/{_release_archive_name(revision)}"
+
+
+def _release_archive_name(revision: str) -> str:
+    """Return the immutable asset filename derived from a reviewed revision."""
+
+    _validate_revision(revision)
+    return f"{GITHUB_RELEASE_ARCHIVE_PREFIX}{revision}{GITHUB_RELEASE_ARCHIVE_SUFFIX}"
+
+
+def _local_image_ref(revision: str) -> str:
+    """Return the deterministic local tag used after an archive is verified and loaded."""
+
+    _validate_revision(revision)
+    return f"{LOCAL_IMAGE_REPOSITORY}:sha-{revision}"
 
 
 def _safe_mode(path: Path, mode: int) -> None:
@@ -505,6 +551,138 @@ def _image_revision(image_ref: str) -> str:
     return revision
 
 
+def _image_id(image_ref: str) -> str:
+    """Read the immutable Docker image ID for an already loaded local image."""
+
+    image_id = _run(
+        ["docker", "image", "inspect", "--format", "{{.Id}}", image_ref],
+        timeout=30,
+    ).stdout.strip()
+    if IMAGE_ID_PATTERN.fullmatch(image_id) is None:
+        raise HostError("image_id_unavailable")
+    return image_id
+
+
+def _image_platform(image_ref: str) -> str:
+    """Require the published archive to contain the production Linux amd64 image."""
+
+    platform = _run(
+        ["docker", "image", "inspect", "--format", "{{.Os}}/{{.Architecture}}", image_ref],
+        timeout=30,
+    ).stdout.strip()
+    if platform != "linux/amd64":
+        raise HostError("image_platform_mismatch")
+    return platform
+
+
+def _archive_sha256(path: Path) -> tuple[str, int]:
+    """Hash a bounded archive without loading it into memory."""
+
+    try:
+        metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise HostError("release_archive_unsafe")
+        if metadata.st_size <= 0 or metadata.st_size > MAX_RELEASE_ARCHIVE_BYTES:
+            raise HostError("release_archive_too_large")
+        digest = hashlib.sha256()
+        size = 0
+        with path.open("rb") as archive:
+            while True:
+                chunk = archive.read(1024 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_RELEASE_ARCHIVE_BYTES:
+                    raise HostError("release_archive_too_large")
+                digest.update(chunk)
+    except HostError:
+        raise
+    except OSError as exc:
+        raise HostError("release_archive_unavailable") from exc
+    return digest.hexdigest(), size
+
+
+def _download_release_archive(revision: str) -> Path:
+    """Download the fixed GitHub asset into a private, temporary release directory."""
+
+    _safe_mode(RELEASE_ROOT, 0o750)
+    temporary = RELEASE_ROOT / f".image-{revision}-{secrets.token_hex(8)}.tar.gz"
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+        )
+        os.close(descriptor)
+        _run(
+            [
+                "curl",
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--location",
+                "--proto",
+                "=https",
+                "--proto-redir",
+                "=https",
+                "--max-redirs",
+                "3",
+                "--connect-timeout",
+                "10",
+                "--max-time",
+                str(RELEASE_DOWNLOAD_TIMEOUT_SECONDS),
+                "--max-filesize",
+                str(MAX_RELEASE_ARCHIVE_BYTES),
+                "--output",
+                str(temporary),
+                _release_archive_url(revision),
+            ],
+            timeout=RELEASE_DOWNLOAD_TIMEOUT_SECONDS + 30,
+        )
+        metadata = temporary.lstat()
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise HostError("release_archive_unsafe")
+        if metadata.st_size <= 0 or metadata.st_size > MAX_RELEASE_ARCHIVE_BYTES:
+            raise HostError("release_archive_too_large")
+        return temporary
+    except HostError:
+        temporary.unlink(missing_ok=True)
+        raise
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise HostError("release_archive_unavailable") from exc
+
+
+def _load_release_archive(
+    revision: str, expected_archive_sha256: str, expected_image_id: str
+) -> tuple[str, str, str, str, int, int]:
+    """Download, hash, load, and inspect a locally published GitHub image archive."""
+
+    _validate_revision(revision)
+    _validate_digest(expected_archive_sha256)
+    _validate_image_id(expected_image_id)
+    archive = _download_release_archive(revision)
+    try:
+        archive_sha256, archive_size = _archive_sha256(archive)
+        if archive_sha256 != expected_archive_sha256:
+            raise HostError("archive_digest_mismatch")
+        _run(["docker", "load", "--input", str(archive)], timeout=300)
+        loaded_image_id = _image_id(expected_image_id)
+        if loaded_image_id != expected_image_id:
+            raise HostError("image_id_mismatch")
+        if _image_revision(expected_image_id) != revision:
+            raise HostError("image_revision_mismatch")
+        platform = _image_platform(expected_image_id)
+        image_ref = _local_image_ref(revision)
+        _run(["docker", "tag", expected_image_id, image_ref], timeout=30)
+        if _image_id(image_ref) != expected_image_id:
+            raise HostError("image_id_mismatch")
+        schema_version = _image_schema(image_ref)
+        return image_ref, archive_sha256, expected_image_id, platform, schema_version, archive_size
+    finally:
+        archive.unlink(missing_ok=True)
+
+
 def _image_schema(image_ref: str) -> int:
     value = _run(
         [
@@ -617,6 +795,60 @@ def _compose_optional(*arguments: str, timeout: float = 300.0) -> bool:
     return True
 
 
+def _compose_up(record: dict[str, Any], *, timeout: float = 180.0) -> str:
+    """Start a verified image without allowing Compose to pull a mutable fallback tag."""
+
+    arguments = ["up", "--detach", "--no-build"]
+    if _is_release_record(record):
+        arguments.extend(("--pull", "never"))
+    arguments.append("app")
+    return _compose(*arguments, timeout=timeout)
+
+
+def _is_release_record(record: dict[str, Any]) -> bool:
+    return record.get("transport") == GITHUB_RELEASE_TRANSPORT
+
+
+def _assert_image_record(record: dict[str, Any]) -> None:
+    """Validate the immutable image identity stored in a plan or release record."""
+
+    revision = record.get("revision")
+    image_digest = record.get("image_digest")
+    image_ref = record.get("image_ref")
+    if not isinstance(revision, str) or REVISION_PATTERN.fullmatch(revision) is None:
+        raise HostError("release_invalid")
+    if not isinstance(image_digest, str) or DIGEST_PATTERN.fullmatch(image_digest) is None:
+        raise HostError("release_invalid")
+    if _is_release_record(record):
+        if (
+            record.get("archive_sha256") != image_digest
+            or not isinstance(record.get("image_id"), str)
+            or IMAGE_ID_PATTERN.fullmatch(record["image_id"]) is None
+            or image_ref != _local_image_ref(revision)
+            or record.get("platform") != "linux/amd64"
+            or type(record.get("archive_size")) is not int
+            or not 1 <= record["archive_size"] <= MAX_RELEASE_ARCHIVE_BYTES
+        ):
+            raise HostError("release_invalid")
+        return
+    if image_ref != _image_ref(revision, image_digest):
+        raise HostError("release_invalid")
+
+
+def _assert_loaded_image(record: dict[str, Any]) -> None:
+    """Bind Compose to the image identity that was verified during planning."""
+
+    if _is_release_record(record):
+        if _image_id(record["image_ref"]) != record["image_id"]:
+            raise HostError("image_id_mismatch")
+        if _image_revision(record["image_ref"]) != record["revision"]:
+            raise HostError("image_revision_mismatch")
+        _image_platform(record["image_ref"])
+        return
+    if _image_digest(record["image_ref"]) != record["image_digest"]:
+        raise HostError("image_digest_mismatch")
+
+
 def _health_check() -> dict[str, Any]:
     for _ in range(HEALTH_ATTEMPTS):
         try:
@@ -646,14 +878,16 @@ def _load_plan(plan_id: str) -> dict[str, Any]:
         or REVISION_PATTERN.fullmatch(record["revision"]) is None
         or not isinstance(record.get("image_digest"), str)
         or DIGEST_PATTERN.fullmatch(record["image_digest"]) is None
-        or record.get("image_ref")
-        != _image_ref(record["revision"], record["image_digest"])
         or type(record.get("schema_version")) is not int
         or not 1 <= record["schema_version"] <= 100
         or not isinstance(record.get("compose_digest"), str)
         or DIGEST_PATTERN.fullmatch(record["compose_digest"]) is None
     ):
         raise HostError("plan_invalid")
+    try:
+        _assert_image_record(record)
+    except HostError as exc:
+        raise HostError("plan_invalid") from exc
     return record
 
 
@@ -686,7 +920,9 @@ def _inspect() -> dict[str, Any]:
     }
 
 
-def _plan_deploy(revision: str, expected_image_digest: str) -> dict[str, Any]:
+def _plan_deploy(
+    revision: str, expected_image_digest: str, expected_image_id: str | None = None
+) -> dict[str, Any]:
     with _exclusive_lock():
         _ensure_layout()
         _ensure_source()
@@ -694,7 +930,25 @@ def _plan_deploy(revision: str, expected_image_digest: str) -> dict[str, Any]:
         _checkout_revision(revision)
         _assert_compose_revision()
         compose_digest = _compose_digest()
-        image_ref, image_digest, schema_version = _pull_image(revision, expected_image_digest)
+        if expected_image_id is None:
+            image_ref, image_digest, schema_version = _pull_image(revision, expected_image_digest)
+            image_record: dict[str, Any] = {}
+        else:
+            (
+                image_ref,
+                image_digest,
+                image_id,
+                platform,
+                schema_version,
+                archive_size,
+            ) = _load_release_archive(revision, expected_image_digest, expected_image_id)
+            image_record = {
+                "transport": GITHUB_RELEASE_TRANSPORT,
+                "archive_sha256": image_digest,
+                "image_id": image_id,
+                "platform": platform,
+                "archive_size": archive_size,
+            }
         plan_id = secrets.token_hex(16)
         record = {
             "plan_id": plan_id,
@@ -706,6 +960,7 @@ def _plan_deploy(revision: str, expected_image_digest: str) -> dict[str, Any]:
             "created_at": _utc_now(),
             "status": "prepared",
         }
+        record.update(image_record)
         _write_json(PLAN_ROOT / f"{plan_id}.json", record)
         _audit(
             "plan_deploy",
@@ -716,7 +971,7 @@ def _plan_deploy(revision: str, expected_image_digest: str) -> dict[str, Any]:
             compose_digest=compose_digest,
             schema_version=schema_version,
         )
-        return {
+        response = {
             "status": "ok",
             "plan_id": plan_id,
             "revision": revision,
@@ -724,6 +979,9 @@ def _plan_deploy(revision: str, expected_image_digest: str) -> dict[str, Any]:
             "image_digest": image_digest,
             "compose_digest": compose_digest,
         }
+        if image_record:
+            response.update(image_record)
+        return response
 
 
 def _backup_name(revision: str) -> str:
@@ -906,6 +1164,9 @@ def _write_failed_record(
         "rollback_succeeded": rollback_succeeded,
         "failed_at": _utc_now(),
     }
+    for key in ("transport", "archive_sha256", "image_id", "platform", "archive_size"):
+        if key in record:
+            failed[key] = record[key]
     if previous is not None:
         failed["previous_revision"] = previous.get("revision")
         failed["previous_schema_version"] = previous.get("schema_version")
@@ -925,16 +1186,20 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
     image_digest = record["image_digest"]
     schema_version = record["schema_version"]
     current = _read_json(CURRENT_RECORD)
+    _assert_loaded_image(record)
     if (
         current is not None
         and current.get("revision") == revision
         and current.get("image_digest") == image_digest
     ):
         return {"status": "ok", "result": "already_applied", "revision": revision}
-    if _image_digest(image_ref) != image_digest:
-        raise HostError("image_digest_mismatch")
     previous = current
     if current is not None:
+        # Validate the persisted active image before probing its schema.  A local release tag can
+        # drift after an image load; schema or Compose work must never run against that tag until
+        # its recorded immutable image identity has been re-established.
+        _assert_image_record(current)
+        _assert_loaded_image(current)
         try:
             active_health = _health_check()
         except HostError as exc:
@@ -965,7 +1230,7 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
         if current is not None:
             _compose("stop", "app", timeout=60)
         _compose("run", "--rm", "--no-deps", "-T", "app", "stock-probs", "migrate", timeout=300)
-        _compose("up", "--detach", "--no-build", "app", timeout=180)
+        _compose_up(record, timeout=180)
         health = _health_check()
         if health.get("schema_version") != schema_version:
             raise HostError("readiness_schema_mismatch")
@@ -996,8 +1261,12 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
                 rollback_attempted = True
                 try:
                     _runtime_file(previous["image_ref"])
-                    if _image_digest(previous["image_ref"]) == previous["image_digest"]:
-                        _compose("up", "--detach", "--no-build", "app", timeout=180)
+                    try:
+                        _assert_loaded_image(previous)
+                    except HostError:
+                        pass
+                    else:
+                        _compose_up(previous, timeout=180)
                         rollback_health = _health_check()
                         rollback_succeeded = rollback_health.get("schema_version") == previous.get(
                             "schema_version"
@@ -1023,6 +1292,9 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
         "backup_name": backup["name"],
         "deployed_at": _utc_now(),
     }
+    for key in ("transport", "archive_sha256", "image_id", "platform", "archive_size"):
+        if key in record:
+            applied[key] = record[key]
     if isinstance(record.get("compose_digest"), str):
         applied["compose_digest"] = record["compose_digest"]
     _write_json(CURRENT_RECORD, applied)
@@ -1039,11 +1311,17 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
     return {"status": "ok", "result": "deployed", "revision": revision, "health": health}
 
 
-def _deploy(plan_id: str, revision: str, image_digest: str) -> dict[str, Any]:
+def _deploy(
+    plan_id: str, revision: str, image_digest: str, image_id: str | None = None
+) -> dict[str, Any]:
     with _exclusive_lock():
         _ensure_layout()
         plan = _load_plan(plan_id)
-        if plan["revision"] != revision or plan["image_digest"] != image_digest:
+        if (
+            plan["revision"] != revision
+            or plan["image_digest"] != image_digest
+            or (_is_release_record(plan) and plan.get("image_id") != image_id)
+        ):
             raise HostError("plan_mismatch")
         # Bind promotion to the exact Compose bytes reviewed during planning.  SOURCE_ROOT may
         # have been checked out for another plan since then; it is not the deploy authority.
@@ -1058,10 +1336,20 @@ def _deploy(plan_id: str, revision: str, image_digest: str) -> dict[str, Any]:
                 "schema_version": plan["schema_version"],
             }
         )
+        if _is_release_record(plan):
+            result.update(
+                {
+                    "transport": GITHUB_RELEASE_TRANSPORT,
+                    "archive_sha256": plan["archive_sha256"],
+                    "image_id": plan["image_id"],
+                    "platform": plan["platform"],
+                    "archive_size": plan["archive_size"],
+                }
+            )
         return result
 
 
-def _rollback(revision: str) -> dict[str, Any]:
+def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
     with _exclusive_lock():
         _ensure_layout()
         record = _read_json(RELEASE_ROOT / f"{revision}.json")
@@ -1069,23 +1357,27 @@ def _rollback(revision: str) -> dict[str, Any]:
             raise HostError("release_not_found")
         if (
             record.get("revision") != revision
-            or not isinstance(record.get("image_digest"), str)
-            or DIGEST_PATTERN.fullmatch(record["image_digest"]) is None
-            or record.get("image_ref") != _image_ref(revision, record["image_digest"])
             or type(record.get("schema_version")) is not int
             or not 1 <= record["schema_version"] <= 100
             or not isinstance(record.get("compose_digest"), str)
             or DIGEST_PATTERN.fullmatch(record["compose_digest"]) is None
         ):
             raise HostError("release_invalid")
+        _assert_image_record(record)
+        if _is_release_record(record):
+            if image_id != record["image_id"]:
+                raise HostError("rollback_identity_mismatch")
+        elif image_id is not None:
+            raise HostError("rollback_identity_invalid")
         _assert_record_compose_digest(record)
+        # Check the immutable image identity before opening the database or starting Compose.  The
+        # local release tag is only a convenience alias and may have been replaced since staging.
+        _assert_loaded_image(record)
         actual_schema = _database_schema(record["image_ref"])
         if actual_schema != record.get("schema_version"):
             raise HostError("rollback_schema_incompatible")
-        if _image_digest(record["image_ref"]) != record.get("image_digest"):
-            raise HostError("image_digest_mismatch")
         _runtime_file(record["image_ref"])
-        _compose("up", "--detach", "--no-build", "app", timeout=180)
+        _compose_up(record, timeout=180)
         health = _health_check()
         if health.get("schema_version") != actual_schema:
             _compose_optional("stop", "app", timeout=60)
@@ -1099,7 +1391,7 @@ def _rollback(revision: str) -> dict[str, Any]:
             compose_digest=record["compose_digest"],
             schema_version=record.get("schema_version"),
         )
-        return {
+        response = {
             "status": "ok",
             "result": "rolled_back",
             "revision": revision,
@@ -1107,6 +1399,17 @@ def _rollback(revision: str) -> dict[str, Any]:
             "schema_version": record["schema_version"],
             "health": health,
         }
+        if _is_release_record(record):
+            response.update(
+                {
+                    "transport": GITHUB_RELEASE_TRANSPORT,
+                    "archive_sha256": record["archive_sha256"],
+                    "image_id": record["image_id"],
+                    "platform": record["platform"],
+                    "archive_size": record["archive_size"],
+                }
+            )
+        return response
 
 
 def _parse_request(raw: bytes) -> tuple[str, dict[str, object]]:
@@ -1122,7 +1425,12 @@ def _parse_request(raw: bytes) -> tuple[str, dict[str, object]]:
     payload = request["payload"]
     if not isinstance(operation, str) or operation not in _ALLOWED_OPERATIONS:
         raise HostError("operation_invalid")
-    if not isinstance(payload, dict) or set(payload) != _EXPECTED_PAYLOAD_KEYS[operation]:
+    if not isinstance(payload, dict):
+        raise HostError("payload_invalid")
+    allowed_keys = {_EXPECTED_PAYLOAD_KEYS[operation]}
+    if operation in _LEGACY_PAYLOAD_KEYS:
+        allowed_keys.add(_LEGACY_PAYLOAD_KEYS[operation])
+    if frozenset(payload) not in allowed_keys:
         raise HostError("payload_invalid")
     return operation, payload
 
@@ -1134,15 +1442,33 @@ def _dispatch(operation: str, payload: dict[str, object]) -> dict[str, Any]:
         _ensure_layout()
         return _state_summary()
     if operation == "plan_deploy":
+        if "archive_sha256" in payload:
+            return _plan_deploy(
+                _validate_revision(payload["revision"]),
+                _validate_digest(payload["archive_sha256"]),
+                _validate_image_id(payload["image_id"]),
+            )
         return _plan_deploy(
             _validate_revision(payload["revision"]),
             _validate_digest(payload["expected_image_digest"]),
         )
     if operation == "deploy":
+        if "archive_sha256" in payload:
+            return _deploy(
+                _validate_plan_id(payload["plan_id"]),
+                _validate_revision(payload["revision"]),
+                _validate_digest(payload["archive_sha256"]),
+                _validate_image_id(payload["image_id"]),
+            )
         return _deploy(
             _validate_plan_id(payload["plan_id"]),
             _validate_revision(payload["revision"]),
             _validate_digest(payload["image_digest"]),
+        )
+    if "image_id" in payload:
+        return _rollback(
+            _validate_revision(payload["revision"]),
+            _validate_image_id(payload["image_id"]),
         )
     return _rollback(_validate_revision(payload["revision"]))
 

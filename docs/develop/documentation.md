@@ -38,14 +38,17 @@ configuration contract. It does not prove that a running parent loaded the serve
 target is configured.
 
 The server exposes only five typed tools: `inspect`, `plan_deploy`, `deploy`, `status`, and
-`rollback`. The controller reads one fixed target and SSH identity from its process environment,
-then sends bounded JSON through `ssh -T` to the fixed remote command
+`rollback`. The default release shape accepts a 40-character reviewed commit, a 64-hex archive
+SHA-256, and a full `sha256:<64-hex>` Docker image ID; the publisher derives the GitHub Release
+tag and asset URL from that commit. The controller reads one fixed target and SSH identity from
+its process environment, then sends bounded JSON through `ssh -T` to the fixed remote command
 `signal-ledger-deploy-helper`. Tool requests cannot provide shell text, arbitrary host or
 filesystem paths, URLs, Compose edits, registry names, mutable tags, or Docker-socket operations.
-Deployment revisions must be 40-character reviewed commit IDs; image identity is the fixed
-`ghcr.io/jtmb/signal-ledger@sha256:<64-hex-digest>` form. The host helper verifies the reviewed
-revision, registry digest, Compose bytes, schema, backup, and readiness, and only performs a
-schema-compatible rollback. Responses are bounded and credential-free.
+The helper verifies the fixed release asset bytes before loading the image, then checks image ID,
+platform, revision, Compose bytes, schema, backup, and readiness before promotion. An explicit
+`SIGNAL_LEDGER_IMAGE_PUBLISH_MODE=ghcr` remains a compatibility transport for already staged
+GHCR plans; it is not the default. Rollback is schema-compatible and responses are bounded and
+credential-free.
 
 After changing either MCP configuration, `scripts/deploy-mcp.sh`, `tools/deploy_mcp/**`, or its
 lock, restart the parent process and open a fresh Codex/OpenCode task to verify that the server

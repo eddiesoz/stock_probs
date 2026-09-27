@@ -197,15 +197,24 @@ Build and publish the reviewed image locally:
 ./scripts/publish-production-image.sh
 ```
 
-The script publishes `ghcr.io/jtmb/signal-ledger`, verifies the exact `main` revision, and
-returns an immutable image digest. The Linode pulls that digest through the local stdio deployment
-MCP; the VM does not build source. The five deployment operations are `inspect`, `plan_deploy`,
-`deploy`, `status`, and `rollback`. See [Getting started](docs/operations/getting-started.md)
-for the restricted host setup, owner migration, tunnel canary, and recovery procedure.
+The default transport builds a Linux `amd64` image locally, scans the bounded archive for
+credential material, and publishes a revision-named GitHub Release asset from the exact reviewed
+`main` revision. The script treats that revision-named asset as immutable during its workflow,
+then re-downloads it and verifies its archive SHA-256, image ID, revision, and platform before
+returning the receipt; GitHub does not enforce asset immutability. Set
+`SIGNAL_LEDGER_IMAGE_PUBLISH_MODE=ghcr` only when using the explicit GHCR compatibility transport;
+GHCR is not the default. The Linode pulls the reviewed release asset through the local stdio
+deployment MCP; the VM does not build source. The five deployment operations are `inspect`,
+`plan_deploy`, `deploy`, `status`, and `rollback`. See
+[Getting started](docs/operations/getting-started.md) for the Terraform host setup, owner data
+migration, tunnel canary, and recovery procedure.
 
-The public canary, replacement Linode, GitHub OAuth credentials, GHCR publication, and VM backup
-rehearsal are operational deployment steps. They are not included in the local development quick
-start, and the current local application remains independent of that private deployment.
+Terraform keeps the Linode firewall and application ports closed to the public, and Cloudflare
+starts in a terminal-404 closed mode before an owner-only canary. Provider token/UI creation,
+Terraform apply, GitHub Release publication, OAuth credentials, canary, VM Backup rehearsal, and
+retirement of the legacy Linode remain operational steps. They are not included in the local
+development quick start, and the current local application remains independent of that private
+deployment.
 
 ## Development
 

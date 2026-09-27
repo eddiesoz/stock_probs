@@ -68,6 +68,108 @@ def test_ssh_command_is_fixed_and_payload_is_structured(tmp_path: Path) -> None:
         assert result["plan_id"] == "b" * 32
 
 
+def test_release_plan_sends_only_archive_hash_and_image_id(tmp_path: Path) -> None:
+    controller = _controller(tmp_path)
+    revision = "a" * 40
+    archive_sha256 = "c" * 64
+    image_id = "sha256:" + "d" * 64
+    response = {
+        "status": "ok",
+        "transport": "github_release",
+        "revision": revision,
+        "plan_id": "b" * 32,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "image_ref": f"signal-ledger:sha-{revision}",
+        "platform": "linux/amd64",
+        "archive_size": 1234,
+    }
+    expected_payload = {
+        "revision": revision,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+    }
+    child = (
+        "import json,sys; request=json.load(sys.stdin); "
+        "assert request['operation']=='plan_deploy'; "
+        f"assert request['payload']=={json.dumps(expected_payload)}; "
+        f"sys.stdout.write({json.dumps(json.dumps(response))})"
+    )
+    real_popen = subprocess.Popen
+
+    def fake_popen(_command: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        return real_popen([sys.executable, "-c", child], **kwargs)
+
+    with patch("controller.subprocess.Popen", side_effect=fake_popen):
+        result = controller.plan_deploy(revision, archive_sha256, image_id)
+    assert result["image_id"] == image_id
+
+
+def test_release_deploy_requires_matching_archive_and_image_id(tmp_path: Path) -> None:
+    controller = _controller(tmp_path)
+    revision = "a" * 40
+    archive_sha256 = "c" * 64
+    image_id = "sha256:" + "d" * 64
+    response = {
+        "status": "ok",
+        "transport": "github_release",
+        "result": "deployed",
+        "plan_id": "b" * 32,
+        "revision": revision,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+    }
+    expected_payload = {
+        "plan_id": "b" * 32,
+        "revision": revision,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+    }
+    child = (
+        "import json,sys; request=json.load(sys.stdin); "
+        "assert request['operation']=='deploy'; "
+        f"assert request['payload']=={json.dumps(expected_payload)}; "
+        f"sys.stdout.write({json.dumps(json.dumps(response))})"
+    )
+    real_popen = subprocess.Popen
+
+    def fake_popen(_command: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        return real_popen([sys.executable, "-c", child], **kwargs)
+
+    with patch("controller.subprocess.Popen", side_effect=fake_popen):
+        result = controller.deploy("b" * 32, revision, archive_sha256, image_id)
+    assert result["image_id"] == image_id
+
+
+def test_release_rollback_sends_full_image_id(tmp_path: Path) -> None:
+    controller = _controller(tmp_path)
+    revision = "a" * 40
+    image_id = "sha256:" + "d" * 64
+    response = {
+        "status": "ok",
+        "transport": "github_release",
+        "result": "rolled_back",
+        "revision": revision,
+        "image_digest": "c" * 64,
+        "image_id": image_id,
+    }
+    expected_payload = {"revision": revision, "image_id": image_id}
+    child = (
+        "import json,sys; request=json.load(sys.stdin); "
+        "assert request['operation']=='rollback'; "
+        f"assert request['payload']=={json.dumps(expected_payload)}; "
+        f"sys.stdout.write({json.dumps(json.dumps(response))})"
+    )
+    real_popen = subprocess.Popen
+
+    def fake_popen(_command: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        return real_popen([sys.executable, "-c", child], **kwargs)
+
+    with patch("controller.subprocess.Popen", side_effect=fake_popen):
+        result = controller.rollback(revision, image_id)
+    assert result["image_id"] == image_id
+
+
 def test_missing_config_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in (
         "SIGNAL_LEDGER_DEPLOY_HOST",

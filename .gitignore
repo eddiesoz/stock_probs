@@ -37,3 +37,16 @@ dist/
 
 # IDE CONFIG
 .vscode
+
+# Terraform local state, plans, and provider cache. Keep the dependency lockfile tracked.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+**/crash.log

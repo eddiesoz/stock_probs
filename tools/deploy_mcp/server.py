@@ -29,21 +29,28 @@ def inspect() -> dict[str, Any]:
 
 
 @server.tool()
-def plan_deploy(revision: str, expected_image_digest: str) -> dict[str, Any]:
-    """Pull and stage a published digest for an exact main revision."""
+def plan_deploy(revision: str, archive_sha256: str, image_id: str) -> dict[str, Any]:
+    """Stage a locally published GitHub Release archive for an exact main revision."""
 
     return _call(
         "plan_deploy",
         revision=revision,
-        expected_image_digest=expected_image_digest,
+        expected_archive_sha256=archive_sha256,
+        expected_image_id=image_id,
     )
 
 
 @server.tool()
-def deploy(plan_id: str, revision: str, image_digest: str) -> dict[str, Any]:
+def deploy(plan_id: str, revision: str, archive_sha256: str, image_id: str) -> dict[str, Any]:
     """Promote one prepared release after backup and readiness checks."""
 
-    return _call("deploy", plan_id=plan_id, revision=revision, image_digest=image_digest)
+    return _call(
+        "deploy",
+        plan_id=plan_id,
+        revision=revision,
+        archive_sha256=archive_sha256,
+        image_id=image_id,
+    )
 
 
 @server.tool()
@@ -54,10 +61,10 @@ def status() -> dict[str, Any]:
 
 
 @server.tool()
-def rollback(revision: str) -> dict[str, Any]:
-    """Roll back to a recorded release only when the database schema is compatible."""
+def rollback(revision: str, image_id: str) -> dict[str, Any]:
+    """Roll back to a recorded release bound to its full image ID and compatible schema."""
 
-    return _call("rollback", revision=revision)
+    return _call("rollback", revision=revision, image_id=image_id)
 
 
 if __name__ == "__main__":

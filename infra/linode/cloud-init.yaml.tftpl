@@ -1,0 +1,29 @@
+#cloud-config
+write_files:
+  - path: /var/lib/signal-ledger/operator.pub
+    owner: root:root
+    permissions: '0644'
+    content: |
+      ${operator_public_key}
+  - path: /var/lib/signal-ledger/deploy.pub
+    owner: root:root
+    permissions: '0644'
+    content: |
+      ${deploy_public_key}
+  - path: /usr/local/sbin/signal-ledger-bootstrap
+    owner: root:root
+    permissions: '0750'
+    encoding: b64
+    content: ${bootstrap_script_b64}
+runcmd:
+  - >-
+      env
+      SIGNAL_LEDGER_SOURCE_ROOT=/var/lib/signal-ledger/bootstrap-source
+      SIGNAL_LEDGER_SOURCE_BASE_URL=${source_base_url}
+      SIGNAL_LEDGER_REVIEWED_REVISION=${reviewed_revision}
+      SIGNAL_LEDGER_OPERATOR_PUBLIC_KEY_FILE=/var/lib/signal-ledger/operator.pub
+      SIGNAL_LEDGER_DEPLOY_PUBLIC_KEY_FILE=/var/lib/signal-ledger/deploy.pub
+      SIGNAL_LEDGER_SETUP_SHA256=${setup_sha256}
+      SIGNAL_LEDGER_COMPOSE_SHA256=${compose_sha256}
+      SIGNAL_LEDGER_HELPER_SHA256=${helper_sha256}
+      /usr/local/sbin/signal-ledger-bootstrap

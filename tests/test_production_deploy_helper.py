@@ -61,6 +61,206 @@ def test_request_parser_rejects_oversized_input_and_untrusted_revision() -> None
         helper._validate_revision("main;touch /tmp/pwned")
 
 
+def test_request_parser_accepts_release_archive_identity_without_url_or_path() -> None:
+    helper = _helper()
+    operation, payload = helper._parse_request(
+        json.dumps(
+            {
+                "operation": "plan_deploy",
+                "payload": {
+                    "revision": "a" * 40,
+                    "archive_sha256": "b" * 64,
+                    "image_id": "sha256:" + "c" * 64,
+                },
+            }
+        ).encode()
+    )
+    assert operation == "plan_deploy"
+    assert payload["archive_sha256"] == "b" * 64
+    assert payload["image_id"] == "sha256:" + "c" * 64
+    with pytest.raises(helper.HostError, match="payload_invalid"):
+        helper._parse_request(
+            json.dumps(
+                {
+                    "operation": "plan_deploy",
+                    "payload": {
+                        "revision": "a" * 40,
+                        "archive_sha256": "b" * 64,
+                        "image_id": "sha256:" + "c" * 64,
+                        "url": "https://attacker.invalid/image.tar.gz",
+                    },
+                }
+            ).encode()
+        )
+
+
+def test_release_asset_location_is_derived_from_revision() -> None:
+    helper = _helper()
+    revision = "a" * 40
+    assert helper._release_archive_url(revision) == (
+        "https://github.com/eddiesoz/stock_probs/releases/download/"
+        f"signal-ledger-{revision}/signal-ledger-image-{revision}.tar.gz"
+    )
+    with pytest.raises(helper.HostError, match="revision_invalid"):
+        helper._release_archive_url("main")
+
+
+def test_release_archive_hashes_before_loading_and_records_image_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    revision = "a" * 40
+    image_id = "sha256:" + "c" * 64
+    archive = tmp_path / "image.tar.gz"
+    archive.write_bytes(b"verified archive bytes")
+    archive_digest = helper._archive_sha256(archive)[0]
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(helper, "_download_release_archive", lambda _: archive)
+
+    def fake_run(command: list[str], **_: object) -> SimpleNamespace:
+        commands.append(command)
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(helper, "_run", fake_run)
+    monkeypatch.setattr(helper, "_image_id", lambda _: image_id)
+    monkeypatch.setattr(helper, "_image_revision", lambda _: revision)
+    monkeypatch.setattr(helper, "_image_platform", lambda _: "linux/amd64")
+    monkeypatch.setattr(helper, "_image_schema", lambda _: 8)
+
+    result = helper._load_release_archive(revision, archive_digest, image_id)
+
+    assert result == (
+        helper._local_image_ref(revision),
+        archive_digest,
+        image_id,
+        "linux/amd64",
+        8,
+        len(b"verified archive bytes"),
+    )
+    assert commands == [
+        ["docker", "load", "--input", str(archive)],
+        ["docker", "tag", image_id, helper._local_image_ref(revision)],
+    ]
+    assert not archive.exists()
+
+
+def test_release_archive_digest_mismatch_never_loads_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    archive = tmp_path / "image.tar.gz"
+    archive.write_bytes(b"tampered archive")
+    commands: list[list[str]] = []
+    monkeypatch.setattr(helper, "_download_release_archive", lambda _: archive)
+    monkeypatch.setattr(
+        helper,
+        "_run",
+        lambda command, **_: commands.append(command) or SimpleNamespace(stdout=""),
+    )
+    with pytest.raises(helper.HostError, match="archive_digest_mismatch"):
+        helper._load_release_archive("a" * 40, "b" * 64, "sha256:" + "c" * 64)
+    assert commands == []
+    assert not archive.exists()
+
+
+def test_release_download_is_fixed_https_bounded_and_timed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    commands: list[list[str]] = []
+    monkeypatch.setattr(helper, "RELEASE_ROOT", tmp_path)
+    monkeypatch.setattr(helper.secrets, "token_hex", lambda _: "fixed")
+
+    def fake_run(command: list[str], **_: object) -> SimpleNamespace:
+        commands.append(command)
+        Path(command[command.index("--output") + 1]).write_bytes(b"archive")
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(helper, "_run", fake_run)
+    revision = "a" * 40
+    archive = helper._download_release_archive(revision)
+    try:
+        assert archive.read_bytes() == b"archive"
+        assert commands == [
+            [
+                "curl",
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--location",
+                "--proto",
+                "=https",
+                "--proto-redir",
+                "=https",
+                "--max-redirs",
+                "3",
+                "--connect-timeout",
+                "10",
+                "--max-time",
+                "600",
+                "--max-filesize",
+                str(helper.MAX_RELEASE_ARCHIVE_BYTES),
+                "--output",
+                str(archive),
+                helper._release_archive_url(revision),
+            ]
+        ]
+    finally:
+        archive.unlink(missing_ok=True)
+
+
+def test_release_plan_record_requires_image_id_platform_and_archive_size() -> None:
+    helper = _helper()
+    revision = "a" * 40
+    archive_digest = "b" * 64
+    record = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_digest,
+        "archive_sha256": archive_digest,
+        "image_id": "sha256:" + "c" * 64,
+        "platform": "linux/amd64",
+        "archive_size": 1234,
+    }
+    helper._assert_image_record(record)
+    record["image_ref"] = "signal-ledger:latest"
+    with pytest.raises(helper.HostError, match="release_invalid"):
+        helper._assert_image_record(record)
+
+
+def test_release_start_disables_compose_pull_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    helper = _helper()
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(
+        helper,
+        "_compose",
+        lambda *arguments, **_: calls.append(arguments) or "",
+    )
+    helper._compose_up(
+        {"transport": helper.GITHUB_RELEASE_TRANSPORT},
+    )
+    assert calls == [("up", "--detach", "--no-build", "--pull", "never", "app")]
+
+
+def test_release_rollback_request_requires_full_image_id() -> None:
+    helper = _helper()
+    operation, payload = helper._parse_request(
+        json.dumps(
+            {
+                "operation": "rollback",
+                "payload": {
+                    "revision": "a" * 40,
+                    "image_id": "sha256:" + "c" * 64,
+                },
+            }
+        ).encode()
+    )
+    assert operation == "rollback"
+    assert payload["image_id"] == "sha256:" + "c" * 64
+
+
 def test_schema_probe_runs_pulled_image_with_bounded_permissions(monkeypatch) -> None:
     helper = _helper()
     commands: list[list[str]] = []
@@ -296,6 +496,31 @@ def test_setup_script_uses_forced_command_and_no_public_app_port() -> None:
     assert "docker.sock" not in script
 
 
+def test_local_release_publisher_uses_revision_bound_archive_and_digest() -> None:
+    script = (ROOT / "scripts/publish-production-image.sh").read_text()
+    assert 'PUBLISH_MODE="${SIGNAL_LEDGER_IMAGE_PUBLISH_MODE:-release}"' in script
+    assert 'RELEASE_REPOSITORY="eddiesoz/stock_probs"' in script
+    assert 'RELEASE_TAG_PREFIX="signal-ledger-"' in script
+    assert 'RELEASE_ARCHIVE_PREFIX="signal-ledger-image-"' in script
+    assert 'docker save "$IMAGE_TAG" | gzip -n -9' in script
+    assert 'sha256sum "$ARCHIVE_PATH"' in script
+    assert 'gh release create "$RELEASE_TAG" "$ARCHIVE_PATH"' in script
+    assert 'gh release download "$RELEASE_TAG"' in script
+    assert 'docker load --input "$DOWNLOADED_ARCHIVE"' in script
+    assert 'DOWNLOADED_IMAGE_ID' in script
+    assert '--target "$REVISION"' in script
+    assert 'manifest.json' in script
+    assert 'tarfile.open(layer_path, mode="r:*")' in script
+    assert 'SIGNAL_LEDGER_IMAGE_PUBLISH_MODE must be release or ghcr.' in script
+
+
+def test_local_release_publisher_allows_public_ca_bundle_but_scans_private_keys() -> None:
+    script = (ROOT / "scripts/publish-production-image.sh").read_text()
+    assert ".*\\.pem$" not in script
+    assert "id_(rsa|dsa|ecdsa|ed25519)" in script
+    assert "PRIVATE KEY" in script
+
+
 def test_existing_release_is_backed_up_with_old_image_before_migration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -363,6 +588,69 @@ def test_existing_release_is_backed_up_with_old_image_before_migration(
         if event[0] == "compose" and "migrate" in event[1]
     )
     assert backup_index < new_runtime_index < stop_index < migrate_index
+
+
+def test_apply_release_rejects_drifted_active_image_before_schema_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    old_revision = "a" * 40
+    new_revision = "b" * 40
+    old_archive = "1" * 64
+    new_archive = "2" * 64
+    old_image_id = "sha256:" + "3" * 64
+    new_image_id = "sha256:" + "4" * 64
+    old_image = helper._local_image_ref(old_revision)
+    new_image = helper._local_image_ref(new_revision)
+    current = {
+        "revision": old_revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "image_ref": old_image,
+        "image_digest": old_archive,
+        "archive_sha256": old_archive,
+        "image_id": old_image_id,
+        "platform": "linux/amd64",
+        "archive_size": 1234,
+        "schema_version": 8,
+    }
+    target = {
+        "revision": new_revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "image_ref": new_image,
+        "image_digest": new_archive,
+        "archive_sha256": new_archive,
+        "image_id": new_image_id,
+        "platform": "linux/amd64",
+        "archive_size": 1234,
+        "schema_version": 8,
+    }
+    schema_calls: list[str] = []
+    health_calls: list[object] = []
+
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: current if path == helper.CURRENT_RECORD else None,
+    )
+    monkeypatch.setattr(
+        helper,
+        "_image_id",
+        lambda image: new_image_id if image == new_image else "sha256:" + "5" * 64,
+    )
+    monkeypatch.setattr(helper, "_image_revision", lambda image: target["revision"])
+    monkeypatch.setattr(helper, "_image_platform", lambda _: "linux/amd64")
+    monkeypatch.setattr(helper, "_health_check", lambda: health_calls.append(True))
+    monkeypatch.setattr(
+        helper,
+        "_image_schema",
+        lambda image: schema_calls.append(image) or 8,
+    )
+
+    with pytest.raises(helper.HostError, match="image_id_mismatch"):
+        helper._apply_release(target)
+
+    assert schema_calls == []
+    assert health_calls == []
 
 
 def test_migration_success_readiness_failure_stops_candidate_and_records_schema(
@@ -569,6 +857,45 @@ def test_rollback_rejects_compose_drift_before_schema_probe(
 
     assert schema_calls == []
     assert compose_calls == []
+
+
+def test_rollback_rejects_loaded_image_before_schema_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    revision = "a" * 40
+    archive_digest = "1" * 64
+    expected_image_id = "sha256:" + "2" * 64
+    release = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_digest,
+        "archive_sha256": archive_digest,
+        "image_id": expected_image_id,
+        "platform": "linux/amd64",
+        "archive_size": 1234,
+        "schema_version": 8,
+        "compose_digest": "c" * 64,
+    }
+    schema_calls: list[str] = []
+
+    monkeypatch.setattr(helper, "RELEASE_ROOT", tmp_path)
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_read_json", lambda _: release)
+    monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _: None)
+    monkeypatch.setattr(helper, "_image_id", lambda _: "sha256:" + "3" * 64)
+    monkeypatch.setattr(
+        helper,
+        "_database_schema",
+        lambda image: schema_calls.append(image) or 8,
+    )
+
+    with pytest.raises(helper.HostError, match="image_id_mismatch"):
+        helper._rollback(revision, expected_image_id)
+
+    assert schema_calls == []
 
 
 @pytest.mark.parametrize("compose_digest_match", [True, False])

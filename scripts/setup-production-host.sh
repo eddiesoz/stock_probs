@@ -133,6 +133,7 @@ EOF
 visudo -cf "$SUDOERS" >/dev/null
 
 install -o root -g root -m 0644 /dev/stdin "$SSH_DROPIN" <<EOF
+PermitUserEnvironment no
 Match User $DEPLOY_USER
     ForceCommand $WRAPPER
     AuthorizedKeysFile $AUTHORIZED_KEYS
@@ -145,7 +146,6 @@ Match User $DEPLOY_USER
     X11Forwarding no
     PermitTunnel no
     PermitTTY no
-    PermitUserEnvironment no
     PermitUserRC no
 EOF
 sshd -t

@@ -125,11 +125,14 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 `R-ASTRA-101` is the current in-progress authentication and private deployment follow-on.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
-for their declared scopes. The current follow-on is not complete: GHCR publication, replacement
-Linode creation, GitHub OAuth credentials, the Cloudflare Tunnel owner-only canary, and VM Backup
-recovery rehearsal remain pending external operations. No public route or production release is
-claimed. Unavailable evidence categories—actual screen reader, physical mobile, true browser zoom,
-native ARM64 performance, provider runtime, CUA, and project-profile/skill runtime discovery—remain
+for their declared scopes. The current follow-on is not complete: provider token/UI creation,
+Terraform apply, GitHub Release publication (with GHCR optional), replacement Linode creation,
+GitHub OAuth credentials, the Cloudflare Tunnel owner-only canary, VM Backup recovery rehearsal,
+and retirement of legacy Linode `97934478` remain pending external operations. Luna's independent
+ops QA passed its local fixture scope; real-host evidence is unavailable. No public route or
+production release is claimed.
+Unavailable evidence categories—actual screen reader, physical mobile, true browser zoom, native
+ARM64 performance, provider runtime, CUA, and project-profile/skill runtime discovery—remain
 separate limitations.
 
 `M09-E13` is a frozen historical constraint for the M09 contract, not a current absence-audit
@@ -159,10 +162,19 @@ open.
   publishes only `127.0.0.1:8000`; a host-managed Cloudflare Tunnel is the only intended ingress
   and stays disabled until the owner-only canary passes. HTML and authenticated API responses must
   bypass shared caching, and proxy information is trusted only from the local connector.
+- Terraform's Linode definition keeps the same `g6-nanode-1` (1 GB/25 GB) Ubuntu 24.04 host in
+  `us-east`, imports firewall `177236117`, enables VM Backups and disk encryption, permits only
+  operator SSH from the configured `/32`, and prevents destruction. Its fixed source gate checks a
+  clean checkout, exact `origin/main`, reviewed revision, and source checksums during both plan and
+  apply. Cloudflare starts in `closed` terminal-404 mode; the canary mode routes only
+  `ledger.jtmb.cc` through loopback, keeps an owner-only Access policy, and bypasses shared/browser
+  caching for the exact host. Provider token/UI creation and Terraform apply remain pending.
 - The local stdio deployment MCP exposes only typed `inspect`, `plan_deploy`, `deploy`, `status`,
-  and `rollback` tools. Its fixed forced-command helper accepts a reviewed `main` revision and
-  immutable GHCR digest only; it cannot receive arbitrary shell commands, paths, URLs, Compose
-  files, registry names, tags, or Docker-socket requests. The VM never builds source.
+  and `rollback` tools. The default transport carries a reviewed `main` revision, release archive
+  SHA-256, and full Docker image ID; the fixed helper derives the GitHub Release URL and verifies
+  archive bytes, image identity, platform, schema, backup, and readiness before promotion. GHCR is
+  an explicit compatibility mode only. The MCP cannot receive arbitrary shell commands, paths,
+  URLs, Compose files, registry names, tags, or Docker-socket requests; the VM never builds source.
 - Current evidence is bounded: native x86_64 dependency audits for the application and MCP both
   reported zero advisories; frontend tests reported `27` passed; focused API/auth checks reported
   `151` passed; production-helper/MCP checks reported `31` passed; and the isolated production-
@@ -170,13 +182,20 @@ open.
   redirects, private-history denial, Host/Origin spoof rejection, 104 loopback-only requests,
   focus, and 44px targets. CUA, full axe, physical mobile, actual screen reader, and true zoom
   evidence remain **Unavailable**.
-- The completed local `R-ASTRA-101` gate passed at dirty `HEAD`
-  `893a146dcb0cf3ba03b435307dec1fb138941cd0` from `2026-09-27T10:59:03Z` to
-  `2026-09-27T11:11:45Z`: Python `612` passed/`4` live deselected with `85.36%` coverage,
-  frontend typecheck/build plus `27` tests passed, documentation coverage checked `133` files,
-  and comment audit covered `229` files. The receipt is
-  `test-results/local-gates/R-ASTRA-101-20260927T105903Z/evidence.json`; this is local dirty-tree
-  evidence and does not claim GHCR, a remote image, Linode deployment, public exposure, or release.
+- The latest completed local `R-ASTRA-101` gate passed at dirty `HEAD`
+  `585a5c2e28aef66d3100df91063dc9ee64b81cac` from `2026-09-27T14:14:22Z` to
+  `2026-09-27T14:30:02Z`: the coordinator command stdout reported Python `644` passed/`4` live
+  deselected with `85.36%` coverage and frontend `27` tests; the completed checks were
+  `documentation-completeness`, `frontend-npm-ci-typecheck-build-test-stage`, and
+  `python-checks`. The receipt is
+  `test-results/local-gates/R-ASTRA-101-20260927T141422Z/evidence.json`; this is local
+  dirty-tree evidence and does not claim GHCR, a remote image, Linode deployment, public
+  exposure, or release; the retained receipt does not independently reconstruct the stdout-only
+  coverage or frontend counts. The earlier `2026-09-27T13:39` gate failure remains visible: five fixed
+  10-second child-startup waits under 4 GB full swap reached `185` tests and exited `2`, while a
+  parent rerun saw one equivalent timeout; the test-only harness repair added bounded 30-second
+  waits and cleanup, and Luna's independent six-target-twice plus full-backup-file check passed
+  `24` cases with source unchanged.
 - The local schema-6 snapshot and verified signed backup share database SHA-256
   `2533d3bf96db79610b4616531e047df434ed54b1b2e1243c8a65b4e8401adcfd`; integrity is `ok`, with
   13 events, 13 runs, 20 results, 6 portfolio holdings, and 3 watchlist items. Disposable
@@ -184,12 +203,18 @@ open.
   Re-take the live snapshot at cutover if data changes.
 - Astra's initial medium source review found Host path poisoning and a Starlette range denial-of-
   service advisory; the targeted repairs were rechecked with no remaining source blocker reported.
+  Astra's final source review reported no remaining source launch blocker after the lock, upload,
+  staged-database, source-gate, and cache-ordering fixes.
   The historical `R-ASTRA-100` run remains **Unavailable** as one green aggregate (`603` pass,
   `5` fail, `4` deselected); four stale schema expectations and one timing race have a targeted
   `33`-pass repair run. The completed `R-ASTRA-101` local gate is recorded separately above.
-- The replacement Linode, GHCR push, GitHub OAuth application credentials, Cloudflare Tunnel
-  canary, and VM Backup recovery rehearsal remain pending. The old VM and current local app are
-  untouched. This evidence does not authorize public exposure or claim a release checkpoint.
+- Provider token/UI creation, Terraform apply, GitHub Release publication (with GHCR remaining
+  optional), GitHub OAuth application credentials, Cloudflare Tunnel canary, VM Backup recovery
+  rehearsal, and retirement of legacy Linode `97934478` remain pending. Luna ops QA reported 17
+  focused tests passed plus Bash syntax/Ruff/ShellCheck/diff checks and local fixtures for lock
+  contention, failed verify/retry, no-clobber, and strict SSH; real-host evidence is unavailable.
+  The old VM and current local app are untouched; this evidence does not authorize public exposure
+  or claim a release checkpoint.
 
 ## Repository truth
 

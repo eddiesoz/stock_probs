@@ -15,13 +15,17 @@ from pathlib import Path
 from typing import Any
 
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+IMAGE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 REVISION = re.compile(r"^[0-9a-f]{40}$")
 PLAN_ID = re.compile(r"^[0-9a-f]{32}$")
 IMAGE_REPOSITORY = "ghcr.io/jtmb/signal-ledger"
+RELEASE_TRANSPORT = "github_release"
+LOCAL_IMAGE_REPOSITORY = "signal-ledger"
 HOST = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
 USER = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 MAX_RESPONSE_BYTES = 65_536
 STREAM_CHUNK_BYTES = 4_096
+MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 
 
 class DeployError(Exception):
@@ -128,53 +132,128 @@ class DeployController:
 
         return self._invoke("inspect", {}, timeout=180)
 
-    def plan_deploy(self, revision: str, expected_image_digest: str) -> dict[str, Any]:
-        """Stage a reviewed main commit against the publisher's immutable image digest."""
+    def plan_deploy(
+        self,
+        revision: str,
+        expected_archive_sha256: str | None = None,
+        expected_image_id: str | None = None,
+        *,
+        expected_image_digest: str | None = None,
+    ) -> dict[str, Any]:
+        """Stage a reviewed revision from a locally published GitHub Release archive.
+
+        The optional two-argument form is retained only for an already staged GHCR deployment;
+        the MCP server exposes the archive form with both the archive hash and image ID required.
+        """
 
         if not REVISION.fullmatch(revision):
             raise DeployError("revision_invalid")
-        if not SHA256.fullmatch(expected_image_digest):
-            raise DeployError("image_digest_invalid")
+        legacy = expected_image_digest is not None
+        if legacy:
+            if expected_archive_sha256 is not None or expected_image_id is not None:
+                raise DeployError("image_identity_invalid")
+            expected_archive_sha256 = expected_image_digest
+        if expected_archive_sha256 is None or not SHA256.fullmatch(expected_archive_sha256):
+            raise DeployError("archive_digest_invalid" if not legacy else "image_digest_invalid")
+        if expected_image_id is not None and not IMAGE_ID.fullmatch(expected_image_id):
+            raise DeployError("image_id_invalid")
         # A cold clone, fetch, checkout, registry pull, and schema probe are serialized on
         # the host.  The SSH deadline must exceed their combined fixed command budgets.
+        payload: dict[str, object]
+        if expected_image_id is None:
+            payload = {
+                "revision": revision,
+                "expected_image_digest": expected_archive_sha256,
+            }
+        else:
+            payload = {
+                "revision": revision,
+                "archive_sha256": expected_archive_sha256,
+                "image_id": expected_image_id,
+            }
         response = self._invoke(
             "plan_deploy",
-            {"revision": revision, "expected_image_digest": expected_image_digest},
+            payload,
             timeout=3_600,
         )
-        image_digest = response.get("image_digest")
-        if (
-            response.get("revision") != revision
-            or not isinstance(response.get("plan_id"), str)
-            or not PLAN_ID.fullmatch(response["plan_id"])
-            or not isinstance(image_digest, str)
-            or not SHA256.fullmatch(image_digest)
-            or image_digest != expected_image_digest
-            or response.get("image_ref")
-            != f"{IMAGE_REPOSITORY}@sha256:{image_digest}"
+        valid_common = (
+            response.get("revision") == revision
+            and isinstance(response.get("plan_id"), str)
+            and PLAN_ID.fullmatch(response["plan_id"]) is not None
+        )
+        if not valid_common:
+            raise DeployError("remote_response_invalid")
+        if expected_image_id is None:
+            image_digest = response.get("image_digest")
+            if (
+                not isinstance(image_digest, str)
+                or not SHA256.fullmatch(image_digest)
+                or image_digest != expected_archive_sha256
+                or response.get("image_ref")
+                != f"{IMAGE_REPOSITORY}@sha256:{image_digest}"
+            ):
+                raise DeployError("remote_response_invalid")
+        elif (
+            response.get("transport") != RELEASE_TRANSPORT
+            or response.get("archive_sha256") != expected_archive_sha256
+            or response.get("image_id") != expected_image_id
+            or response.get("image_ref") != f"{LOCAL_IMAGE_REPOSITORY}:sha-{revision}"
+            or response.get("platform") != "linux/amd64"
+            or type(response.get("archive_size")) is not int
+            or not 1 <= response["archive_size"] <= MAX_ARCHIVE_BYTES
         ):
             raise DeployError("remote_response_invalid")
         return response
 
-    def deploy(self, plan_id: str, revision: str, image_digest: str) -> dict[str, Any]:
+    def deploy(
+        self,
+        plan_id: str,
+        revision: str,
+        archive_sha256: str | None = None,
+        image_id: str | None = None,
+        *,
+        image_digest: str | None = None,
+    ) -> dict[str, Any]:
         """Promote exactly the previously prepared revision and image digest."""
 
         if not PLAN_ID.fullmatch(plan_id):
             raise DeployError("plan_id_invalid")
         if not REVISION.fullmatch(revision):
             raise DeployError("revision_invalid")
-        if not SHA256.fullmatch(image_digest):
-            raise DeployError("image_digest_invalid")
+        legacy = image_digest is not None
+        if legacy:
+            if archive_sha256 is not None or image_id is not None:
+                raise DeployError("image_identity_invalid")
+            archive_sha256 = image_digest
+        if archive_sha256 is None or not SHA256.fullmatch(archive_sha256):
+            raise DeployError("archive_digest_invalid" if not legacy else "image_digest_invalid")
+        if image_id is not None and not IMAGE_ID.fullmatch(image_id):
+            raise DeployError("image_id_invalid")
+        payload: dict[str, object] = {
+            "plan_id": plan_id,
+            "revision": revision,
+        }
+        if image_id is None:
+            payload["image_digest"] = archive_sha256
+        else:
+            payload["archive_sha256"] = archive_sha256
+            payload["image_id"] = image_id
         response = self._invoke(
             "deploy",
-            {"plan_id": plan_id, "revision": revision, "image_digest": image_digest},
+            payload,
             timeout=1_800,
         )
-        if (
-            response.get("plan_id") != plan_id
-            or response.get("revision") != revision
-            or response.get("image_digest") != image_digest
-            or response.get("result") not in {"deployed", "already_applied"}
+        if response.get("plan_id") != plan_id or response.get("revision") != revision:
+            raise DeployError("remote_response_invalid")
+        if response.get("result") not in {"deployed", "already_applied"}:
+            raise DeployError("remote_response_invalid")
+        if image_id is None:
+            if response.get("image_digest") != archive_sha256:
+                raise DeployError("remote_response_invalid")
+        elif (
+            response.get("transport") != RELEASE_TRANSPORT
+            or response.get("archive_sha256") != archive_sha256
+            or response.get("image_id") != image_id
         ):
             raise DeployError("remote_response_invalid")
         return response
@@ -184,17 +263,27 @@ class DeployController:
 
         return self._invoke("status", {}, timeout=60)
 
-    def rollback(self, revision: str) -> dict[str, Any]:
-        """Request a rollback to a locally recorded release, subject to schema checks."""
+    def rollback(self, revision: str, image_id: str | None = None) -> dict[str, Any]:
+        """Roll back to a recorded release bound to its full image ID."""
 
         if not REVISION.fullmatch(revision):
             raise DeployError("revision_invalid")
-        response = self._invoke("rollback", {"revision": revision}, timeout=900)
+        if image_id is not None and not IMAGE_ID.fullmatch(image_id):
+            raise DeployError("image_id_invalid")
+        payload: dict[str, object] = {"revision": revision}
+        if image_id is not None:
+            payload["image_id"] = image_id
+        response = self._invoke("rollback", payload, timeout=900)
         if (
             response.get("revision") != revision
             or response.get("result") != "rolled_back"
             or not isinstance(response.get("image_digest"), str)
             or not SHA256.fullmatch(response["image_digest"])
+        ):
+            raise DeployError("remote_response_invalid")
+        if image_id is not None and (
+            response.get("transport") != RELEASE_TRANSPORT
+            or response.get("image_id") != image_id
         ):
             raise DeployError("remote_response_invalid")
         return response
