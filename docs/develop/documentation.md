@@ -62,3 +62,10 @@ links, exact description parity between the skill frontmatter, project catalog m
 skill index, and the active skill's 500-line limit. Prose duplication is a manual review rather
 than a validator heuristic. The catalog keeps the skill opt-in; OpenCode discovery uses the
 `SKILL.md` frontmatter rather than catalog metadata.
+
+## Commit command
+
+`/commit` is a convenience command that stages all current changes and pushes them to the
+configured remote. Review the complete diff, secret-bearing data, and intended scope before using
+it; the command is not an acceptance, QA, or export gate and does not replace their required
+evidence or review.
