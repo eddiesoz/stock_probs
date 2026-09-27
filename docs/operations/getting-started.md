@@ -113,10 +113,15 @@ the archive for credential-like material, publishes through `gh release create`,
 the asset again and verifies its archive SHA-256, Docker image ID, revision label, platform, and
 size. The script treats the revision-named asset as immutable during this workflow, but GitHub
 does not enforce asset immutability. Set `SIGNAL_LEDGER_IMAGE_PUBLISH_MODE=ghcr` only for the
-explicit compatibility transport; GHCR is not the default. Release publication is pending. The
-Linode helper derives the fixed GitHub URL from the reviewed revision and accepts only the verified
-archive hash and full image ID. It does not accept mutable tags, arbitrary image names, remote
-builds, shell commands, paths, URLs, Compose edits, or Docker-socket operations.
+explicit compatibility transport; GHCR is not the default. Local-to-GitHub publication is
+completed for reviewed revision `3bc85ed6c6b8b56386da32e532e4a79c5f74b6dd`; the verified asset is
+`103,116,996` bytes with SHA-256
+`586ef74929dd3542930f37f46f9081f56a2c3bdf7a43b5aec32450be69d9ecce` at
+`https://github.com/eddiesoz/stock_probs/releases/tag/signal-ledger-3bc85ed6c6b8b56386da32e532e4a79c5f74b6dd`.
+Remote Linode pull/deploy remains pending. The Linode helper derives the fixed GitHub URL from the
+reviewed revision and accepts only the verified archive hash and full image ID. It does not accept
+mutable tags, arbitrary image names, remote builds, shell commands, paths, URLs, Compose edits, or
+Docker-socket operations.
 
 ### Prepare the host
 
@@ -226,11 +231,13 @@ VM Backup retention is the external recovery boundary and must be recorded as a 
 
 Current local evidence includes schema-8 readiness, authentication status `200`, private history
 `401` without a session, frontend `27` tests, focused API/auth `151` tests, and helper/MCP `31`
-tests. Astra's final source review reported no remaining source launch blocker after the lock,
+tests. The local-to-GitHub image transport is recorded as Pass for the reviewed revision; remote
+Linode image pull/deploy remains pending. Astra's final source review reported no remaining source
+launch blocker after the lock,
 upload, staged-database, source-gate, and cache-ordering fixes. Luna ops QA reported 17 focused
 tests passed plus Bash syntax/Ruff/ShellCheck/diff checks and local deployment fixtures; real-host
 evidence remains unavailable. The latest local `R-ASTRA-101` gate then passed; coordinator stdout
 reported Python `644` and `4` live deselected at `85.36%` coverage plus frontend `27` tests. The
-earlier `13:39` startup-timeout failure remains historical. Provider token/UI creation, Terraform apply, GitHub Release
-publication, GitHub OAuth credentials, owner canary, VM Backup rehearsal, and retirement of
+earlier `13:39` startup-timeout failure remains historical. Provider token/UI creation, Terraform apply, remote image
+deployment, GitHub OAuth credentials, owner canary, VM Backup rehearsal, and retirement of
 legacy Linode `97934478` remain pending; the old VM and current local application are untouched.

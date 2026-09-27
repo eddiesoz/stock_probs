@@ -210,8 +210,9 @@ deployment MCP; the VM does not build source. The five deployment operations are
 migration, tunnel canary, and recovery procedure.
 
 Terraform keeps the Linode firewall and application ports closed to the public, and Cloudflare
-starts in a terminal-404 closed mode before an owner-only canary. Provider token/UI creation,
-Terraform apply, GitHub Release publication, OAuth credentials, canary, VM Backup rehearsal, and
+starts in a terminal-404 closed mode before an owner-only canary. The reviewed image archive was
+published to GitHub Release for the local-to-GitHub transport scope; provider token/UI creation,
+Terraform apply, remote image deployment, OAuth credentials, canary, VM Backup rehearsal, and
 retirement of the legacy Linode remain operational steps. They are not included in the local
 development quick start, and the current local application remains independent of that private
 deployment.

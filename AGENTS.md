@@ -126,11 +126,12 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The current follow-on is not complete: provider token/UI creation,
-Terraform apply, GitHub Release publication (with GHCR optional), replacement Linode creation,
-GitHub OAuth credentials, the Cloudflare Tunnel owner-only canary, VM Backup recovery rehearsal,
-and retirement of legacy Linode `97934478` remain pending external operations. Luna's independent
-ops QA passed its local fixture scope; real-host evidence is unavailable. No public route or
-production release is claimed.
+Terraform apply, replacement Linode creation, GitHub OAuth credentials, the Cloudflare Tunnel
+owner-only canary, VM Backup recovery rehearsal, and retirement of legacy Linode `97934478` remain
+pending external operations. The reviewed image archive was published to GitHub Release for the
+local-to-GitHub transport scope; remote VM deployment remains pending. Luna's independent ops QA
+passed its local fixture scope; real-host evidence is unavailable. No public route or production
+release is claimed.
 Unavailable evidence categories—actual screen reader, physical mobile, true browser zoom, native
 ARM64 performance, provider runtime, CUA, and project-profile/skill runtime discovery—remain
 separate limitations.
@@ -189,7 +190,7 @@ open.
   `documentation-completeness`, `frontend-npm-ci-typecheck-build-test-stage`, and
   `python-checks`. The receipt is
   `test-results/local-gates/R-ASTRA-101-20260927T141422Z/evidence.json`; this is local
-  dirty-tree evidence and does not claim GHCR, a remote image, Linode deployment, public
+  dirty-tree evidence and does not claim GHCR, an image deployed on the remote VM, Linode deployment, public
   exposure, or release; the retained receipt does not independently reconstruct the stdout-only
   coverage or frontend counts. The earlier `2026-09-27T13:39` gate failure remains visible: five fixed
   10-second child-startup waits under 4 GB full swap reached `185` tests and exited `2`, while a
@@ -209,9 +210,10 @@ open.
   The historical `R-ASTRA-100` run remains **Unavailable** as one green aggregate (`603` pass,
   `5` fail, `4` deselected); four stale schema expectations and one timing race have a targeted
   `33`-pass repair run. The completed `R-ASTRA-101` local gate is recorded separately above.
-- Provider token/UI creation, Terraform apply, GitHub Release publication (with GHCR remaining
-  optional), GitHub OAuth application credentials, Cloudflare Tunnel canary, VM Backup recovery
-  rehearsal, and retirement of legacy Linode `97934478` remain pending. Luna ops QA reported 17
+- Provider token/UI creation, Terraform apply, GitHub OAuth application credentials, Cloudflare
+  Tunnel canary, VM Backup recovery rehearsal, and retirement of legacy Linode `97934478` remain
+  pending. The local-to-GitHub image transport is recorded as Pass in `R-ASTRA-101-E21`; remote VM
+  deployment remains pending. Luna ops QA reported 17
   focused tests passed plus Bash syntax/Ruff/ShellCheck/diff checks and local fixtures for lock
   contention, failed verify/retry, no-clobber, and strict SSH; real-host evidence is unavailable.
   The old VM and current local app are untouched; this evidence does not authorize public exposure
