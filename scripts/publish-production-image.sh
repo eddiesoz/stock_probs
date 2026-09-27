@@ -85,6 +85,9 @@ fi
   # Require key payload bytes after a PEM marker. Public crypto libraries may contain marker
   # constants in source code; a marker followed by base64 key material remains a secret.
   SECRET_BYTES_PATTERN='-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\t\n\r ]*[A-Za-z0-9+/=]{32,}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AWS_SECRET_ACCESS_KEY=|SIGNAL_LEDGER_.*SECRET='
+  # Runtime state belongs on the persistent data volume. Reject database, backup, and SQLite
+  # sidecar names in every layer so a local data tree cannot be published accidentally.
+  DATA_PATH_PATTERN='(^|/)[^/]*\.(?:db|sqlite3?|spbackup)(?:-(?:wal|shm|journal))?(?:/|$)'
   mapfile -t LAYER_MEMBERS < <(tar -tzf "$ARCHIVE_PATH" | awk '$0 ~ /(^|\/)layer\.tar$/ { print }')
   if (( ${#LAYER_MEMBERS[@]} == 0 )); then
     # Modern Docker/containerd image stores emit an OCI archive whose manifest names compressed
@@ -145,17 +148,20 @@ PY
     fi
     # Scan the tar member itself and each uncompressed file stream. This catches private-key
     # markers inside OCI gzip-compressed layers, while bounding all reads to fixed-size chunks.
-    if python3 - "$LAYER_BYTES" "$SECRET_PATH_PATTERN" "$SECRET_BYTES_PATTERN" <<'PY'
+    if python3 - "$LAYER_BYTES" "$SECRET_PATH_PATTERN" "$SECRET_BYTES_PATTERN" "$DATA_PATH_PATTERN" <<'PY'
 import re
 import sys
 import tarfile
 
-layer_path, path_expression, bytes_expression = sys.argv[1:]
+layer_path, path_expression, bytes_expression, data_path_expression = sys.argv[1:]
 try:
     path_pattern = re.compile(path_expression)
     bytes_pattern = re.compile(bytes_expression.encode())
+    data_path_pattern = re.compile(data_path_expression, re.IGNORECASE)
     with tarfile.open(layer_path, mode="r:*") as layer:
         for member in layer:
+            if data_path_pattern.search(member.name):
+                raise SystemExit(13)
             if path_pattern.search(member.name):
                 raise SystemExit(10)
             if not member.isreg():
@@ -180,6 +186,7 @@ PY
     else
       SCAN_STATUS=$?
       case "$SCAN_STATUS" in
+        13) printf 'The image archive contains a database or backup path.\n' >&2 ;;
         10) printf 'The image archive contains a credential-like path.\n' >&2 ;;
         11) printf 'The image archive contains credential-like bytes.\n' >&2 ;;
         *) printf 'The image archive contained an unreadable Docker layer.\n' >&2 ;;

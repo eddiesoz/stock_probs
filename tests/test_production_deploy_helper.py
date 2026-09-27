@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import stat
 import sys
 import time
@@ -519,6 +520,33 @@ def test_local_release_publisher_allows_public_ca_bundle_but_scans_private_keys(
     assert ".*\\.pem$" not in script
     assert "id_(rsa|dsa|ecdsa|ed25519)" in script
     assert "PRIVATE KEY" in script
+
+
+def test_local_release_publisher_rejects_database_backup_and_sqlite_sidecar_paths() -> None:
+    script = (ROOT / "scripts/publish-production-image.sh").read_text()
+    pattern_match = re.search(r"DATA_PATH_PATTERN='([^']+)'", script)
+    assert pattern_match is not None
+    data_path_pattern = re.compile(pattern_match.group(1), re.IGNORECASE)
+
+    for path in (
+        "var/lib/signal-ledger/stock_probs.sqlite3",
+        "var/lib/signal-ledger/stock_probs.sqlite3-wal",
+        "var/lib/signal-ledger/stock_probs.sqlite3-shm",
+        "var/lib/signal-ledger/stock_probs.sqlite3-journal",
+        "var/lib/signal-ledger/legacy.spbackup",
+        "tmp/cache.db/metadata.json",
+    ):
+        assert data_path_pattern.search(path), path
+
+    for path in (
+        "usr/lib/python3.12/sqlite3/__init__.py",
+        "usr/share/ca-certificates/mozilla/ISRG_Root_X1.crt",
+        "app/src/stock_probs/static/dashboard.js",
+    ):
+        assert not data_path_pattern.search(path), path
+
+    assert "data_path_pattern = re.compile(data_path_expression, re.IGNORECASE)" in script
+    assert "13) printf 'The image archive contains a database or backup path." in script
 
 
 def test_existing_release_is_backed_up_with_old_image_before_migration(

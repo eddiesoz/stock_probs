@@ -1,9 +1,29 @@
 # Version control and local tooling are never image inputs.
 .git/
 .gitignore
+.agents/
+.codex/
 .opencode/
 .vscode/
 .tools/
+
+# Infrastructure source, provider caches, and Terraform state never enter image builds.
+infra/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+tfplan
+*.tfplan
+*.plan
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+**/*.tfvars.json
+**/tfplan
+**/*.tfplan
+**/*.plan
 
 # Install dependencies inside the builder instead of copying host environments.
 .dev-venv/
@@ -27,6 +47,16 @@ backups/
 *.sqlite3
 *.sqlite3-*
 *.spbackup
+**/data/
+**/backups/
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.sqlite3-*
+**/*.spbackup
+**/*.spbackup-*
 
 # Exports, tests, documentation, and generated evidence are not runtime package inputs.
 SESSION-EXPORT.md
@@ -54,6 +84,19 @@ scripts/
 *.key
 *.pem
 *.p12
+**/.env
+**/.env.*
+**/*.key
+**/*.pem
+**/*.p12
+id_rsa*
+id_dsa*
+id_ecdsa*
+id_ed25519*
+**/id_rsa*
+**/id_dsa*
+**/id_ecdsa*
+**/id_ed25519*
 .aws/
 .ssh/
 secrets/
@@ -62,6 +105,14 @@ credentials.json
 auth.json
 .npmrc
 .pypirc
+**/.aws/
+**/.ssh/
+**/secrets/
+**/credentials/
+**/credentials.json
+**/auth.json
+**/.npmrc
+**/.pypirc
 
 Dockerfile*
 compose*.yaml

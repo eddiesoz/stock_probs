@@ -204,7 +204,8 @@ open.
 - Astra's initial medium source review found Host path poisoning and a Starlette range denial-of-
   service advisory; the targeted repairs were rechecked with no remaining source blocker reported.
   Astra's final source review reported no remaining source launch blocker after the lock, upload,
-  staged-database, source-gate, and cache-ordering fixes.
+  staged-database, source-gate, cache-ordering, recursive database/backup/sidecar exclusion, and
+  per-layer publisher-path fixes; the final recheck reported no P1/P2 finding.
   The historical `R-ASTRA-100` run remains **Unavailable** as one green aggregate (`603` pass,
   `5` fail, `4` deselected); four stale schema expectations and one timing race have a targeted
   `33`-pass repair run. The completed `R-ASTRA-101` local gate is recorded separately above.
