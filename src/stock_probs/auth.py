@@ -532,11 +532,12 @@ class AuthStoreAdapter:
     def auth_get_passkeys(self, user_id: int) -> list[Mapping[str, object]]:
         method = self._method("auth_get_passkeys", "get_passkeys", "list_user_passkeys")
         result = method(user_id)
-        return (
+        records = (
             [item for item in result if isinstance(item, Mapping)]
             if isinstance(result, list)
             else []
         )
+        return [item for item in records if item.get("revoked_at") is None]
 
     def auth_get_passkey(
         self, credential_id: str, *, user_id: int | None = None
@@ -545,7 +546,9 @@ class AuthStoreAdapter:
         if user_id is None:
             raise AuthUnavailable("Passkey lookup requires an account binding.")
         result = method(credential_id, user_id=user_id)
-        return result if isinstance(result, Mapping) else None
+        if not isinstance(result, Mapping) or result.get("revoked_at") is not None:
+            return None
+        return result
 
     def auth_update_passkey(
         self, credential_id: str, fields: Mapping[str, object]
@@ -563,9 +566,7 @@ class AuthStoreAdapter:
                 ),
             },
         )
-        if isinstance(result, Mapping):
-            return result
-        return {"credential_id": credential_id, **fields}
+        return result if isinstance(result, Mapping) else None
 
     def auth_list_sessions(self, user_id: int) -> list[Mapping[str, object]]:
         method = getattr(self.inner, "auth_list_sessions", None) or getattr(
@@ -811,6 +812,19 @@ def _passkey_response_payload(response: Mapping[str, object]) -> dict[str, objec
         raise PasskeyRejected()
     payload["response"] = dict(nested)
     return payload
+
+
+def _stored_passkey_transports(value: object) -> tuple[str, ...]:
+    """Decode the repository's JSON transport representation for WebAuthn."""
+
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError):
+            return ()
+    if isinstance(value, list | tuple):
+        return tuple(item for item in value if isinstance(item, str))
+    return ()
 
 
 class WebAuthnPasskeyBackend:
@@ -1567,10 +1581,10 @@ class AuthManager:
             {
                 "type": "public-key",
                 "id": item["credential_id"],
-                "transports": item.get("transports", []),
+                "transports": list(_stored_passkey_transports(item.get("transports", []))),
             }
             for item in credentials
-            if isinstance(item.get("credential_id"), str)
+            if item.get("revoked_at") is None and isinstance(item.get("credential_id"), str)
         ]
         return {
             "publicKey": {
@@ -1597,27 +1611,12 @@ class AuthManager:
         if not isinstance(credential_id, str) or len(credential_id) > 512:
             raise PasskeyRejected()
         record = self.store.auth_get_passkey(credential_id, user_id=user.id)
-        if record is None:
+        if record is None or record.get("revoked_at") is not None:
             raise PasskeyRejected()
         stored_user_id = record.get("user_id")
-        if stored_user_id != user.id:
+        if stored_user_id != user.id or record.get("credential_id") != credential_id:
             raise PasskeyRejected()
-        raw_transports = record.get("transports", [])
-        transports: tuple[str, ...]
-        if isinstance(raw_transports, str):
-            try:
-                decoded = json.loads(raw_transports)
-            except ValueError:
-                decoded = []
-            transports = (
-                tuple(item for item in decoded if isinstance(item, str))
-                if isinstance(decoded, list)
-                else ()
-            )
-        elif isinstance(raw_transports, list):
-            transports = tuple(item for item in raw_transports if isinstance(item, str))
-        else:
-            transports = ()
+        transports = _stored_passkey_transports(record.get("transports", []))
         public_key = record.get("public_key")
         sign_count = record.get("sign_count", 0)
         if not isinstance(public_key, str) or type(sign_count) is not int or sign_count < 0:
@@ -1628,7 +1627,17 @@ class AuthManager:
         )
         if type(new_count) is not int or new_count < sign_count:
             raise PasskeyRejected()
-        self.store.auth_update_passkey(credential_id, {"sign_count": new_count})
+        updated = self.store.auth_update_passkey(credential_id, {"sign_count": new_count})
+        updated_count = updated.get("sign_count") if isinstance(updated, Mapping) else None
+        if (
+            not isinstance(updated, Mapping)
+            or updated.get("credential_id") != credential_id
+            or updated.get("user_id") != user.id
+            or updated.get("revoked_at") is not None
+            or type(updated_count) is not int
+            or updated_count < new_count
+        ):
+            raise PasskeyRejected()
         return self.issue_session(user, now, "passkey")
 
     def _consume_challenge(
@@ -1780,13 +1789,23 @@ class MemoryAuthStore:
         return record
 
     def auth_get_passkeys(self, user_id: int) -> list[Mapping[str, object]]:
-        return [item for item in self.passkeys.values() if item.get("user_id") == user_id]
+        return [
+            item
+            for item in self.passkeys.values()
+            if item.get("user_id") == user_id and item.get("revoked_at") is None
+        ]
 
     def auth_get_passkey(
         self, credential_id: str, *, user_id: int | None = None
     ) -> Mapping[str, object] | None:
+        if user_id is None:
+            return None
         record = self.passkeys.get(credential_id)
-        if record is not None and user_id is not None and record.get("user_id") != user_id:
+        if (
+            record is None
+            or record.get("user_id") != user_id
+            or record.get("revoked_at") is not None
+        ):
             return None
         return record
 
@@ -1794,7 +1813,15 @@ class MemoryAuthStore:
         self, credential_id: str, fields: Mapping[str, object]
     ) -> Mapping[str, object] | None:
         record = self.passkeys.get(credential_id)
-        if record is None:
+        if record is None or record.get("revoked_at") is not None:
+            return None
+        current_count = record.get("sign_count", 0)
+        new_count = fields.get("sign_count")
+        if (
+            type(current_count) is not int
+            or type(new_count) is not int
+            or new_count < current_count
+        ):
             return None
         record.update(fields)
         return record

@@ -37,7 +37,11 @@ test("auth routes cover invited sign-in, passkey, account, and admin recovery co
   ]);
   assert.match(signIn, /github\/start/);
   assert.match(signIn, /Checking sign-in options/);
-  assert.match(signIn, /window\.location\.assign\("\/api\/v1\/auth\/github\/start"\)/);
+  assert.match(signIn, /const GITHUB_START_PATH = "\/api\/v1\/auth\/github\/start";/);
+  assert.match(signIn, /window\.location\.assign\(GITHUB_START_PATH\)/);
+  assert.match(signIn, /GITHUB_NAVIGATION_TIMEOUT_MS\s*=\s*8_000/);
+  assert.match(signIn, /setGithubNavigationStalled\(true\)/);
+  assert.match(signIn, /<a href=\{GITHUB_START_PATH\}>Try GitHub again<\/a>/);
   assert.match(signIn, /Sign-in options could not load/);
   assert.match(signIn, /local\/login/);
   assert.match(invite, /invites\/redeem/);

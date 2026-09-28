@@ -158,6 +158,14 @@ def test_auth_rows_are_single_use_bound_and_revocable(tmp_path):
     assert not repository.update_passkey_sign_count(
         credential_id, sign_count=0, used_at=NOW + timedelta(minutes=3)
     )
+    assert repository.revoke_passkey(
+        credential_id, revoked_at=NOW + timedelta(minutes=4)
+    )
+    assert repository.get_passkey(credential_id, user_id=user["id"]) is None
+    assert repository.auth_get_passkeys(user["id"]) == []
+    assert not repository.update_passkey_sign_count(
+        credential_id, sign_count=2, used_at=NOW + timedelta(minutes=5)
+    )
 
     state_hash = _digest("oauth-state")
     repository.auth_store_oauth_state(

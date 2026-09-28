@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import threading
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
@@ -54,6 +55,16 @@ class _FakePasskeyBackend:
     def verify_assertion(self, response, challenge, credential, rp_id, origin):
         assert isinstance(response["response"]["clientDataJSON"], str)
         return credential.sign_count + 1
+
+
+class _RejectingCounterStore(MemoryAuthStore):
+    """Simulate durable counter persistence rejecting an otherwise valid assertion."""
+
+    def auth_update_passkey(
+        self, credential_id: str, fields: Mapping[str, object]
+    ) -> Mapping[str, object] | None:
+        del credential_id, fields
+        return None
 
 
 def _encoded_client_data(challenge: str) -> str:
@@ -375,6 +386,116 @@ def test_browser_passkey_shape_consumes_encoded_challenge_once() -> None:
         user, assertion, "testserver", "http://testserver", NOW
     )
     assert issue.context.auth_method == "passkey"
+
+
+def test_passkey_assertion_options_decode_transports_and_exclude_revoked() -> None:
+    """Assertion options contain browser-ready transports for active credentials only."""
+
+    manager, store = _manager()
+    account = manager.ensure_local_bootstrap(
+        "member", "development-password-123", NOW, role="member"
+    )
+    user = UserRecord.from_record(account)
+    store.auth_create_passkey(
+        {
+            "credential_id": "active-credential-123456",
+            "user_id": user.id,
+            "public_key": "public-key-material-123456",
+            "sign_count": 0,
+            "transports": '["internal", "hybrid"]',
+            "created_at": NOW.isoformat(),
+        }
+    )
+    store.passkeys["revoked-credential-123456"] = {
+        "credential_id": "revoked-credential-123456",
+        "user_id": user.id,
+        "public_key": "public-key-material-123456",
+        "sign_count": 0,
+        "transports": '["internal"]',
+        "created_at": NOW.isoformat(),
+        "revoked_at": NOW.isoformat(),
+    }
+
+    allow_credentials = manager.begin_passkey_assertion(user, "testserver")["publicKey"][
+        "allowCredentials"
+    ]
+
+    assert allow_credentials == [
+        {
+            "type": "public-key",
+            "id": "active-credential-123456",
+            "transports": ["internal", "hybrid"],
+        }
+    ]
+
+
+def test_revoked_passkey_assertion_cannot_issue_session() -> None:
+    """A revoked credential is rejected before assertion verification can create a session."""
+
+    store = MemoryAuthStore()
+    manager = AuthManager(
+        store,
+        AuthSettings(mode="local", session_secret="d" * 48, public_origin="http://testserver"),
+        passkey_backend=_FakePasskeyBackend(),
+    )
+    account = manager.ensure_local_bootstrap(
+        "member", "development-password-123", NOW, role="member"
+    )
+    user = UserRecord.from_record(account)
+    store.auth_create_passkey(
+        {
+            "credential_id": "revoked-credential-123456",
+            "user_id": user.id,
+            "public_key": "public-key-material-123456",
+            "sign_count": 0,
+            "transports": "[]",
+            "created_at": NOW.isoformat(),
+            "revoked_at": NOW.isoformat(),
+        }
+    )
+    options = manager.begin_passkey_assertion(user, "testserver")
+    challenge = options["publicKey"]["challenge"]
+    response = {
+        "id": "revoked-credential-123456",
+        "response": {"clientDataJSON": _encoded_client_data(challenge)},
+    }
+
+    with pytest.raises(PasskeyRejected):
+        manager.finish_passkey_assertion(user, response, "testserver", "http://testserver", NOW)
+    assert store.sessions == {}
+
+
+def test_failed_passkey_counter_persistence_cannot_issue_session() -> None:
+    """A successful cryptographic check is insufficient when the counter cannot be stored."""
+
+    store = _RejectingCounterStore()
+    manager = AuthManager(
+        store,
+        AuthSettings(mode="local", session_secret="d" * 48, public_origin="http://testserver"),
+        passkey_backend=_FakePasskeyBackend(),
+    )
+    account = manager.ensure_local_bootstrap(
+        "member", "development-password-123", NOW, role="member"
+    )
+    user = UserRecord.from_record(account)
+    store.passkeys["credential-id-123456"] = {
+        "credential_id": "credential-id-123456",
+        "user_id": user.id,
+        "public_key": "public-key-material-123456",
+        "sign_count": 0,
+        "transports": "[]",
+        "created_at": NOW.isoformat(),
+    }
+    options = manager.begin_passkey_assertion(user, "testserver")
+    challenge = options["publicKey"]["challenge"]
+    response = {
+        "id": "credential-id-123456",
+        "response": {"clientDataJSON": _encoded_client_data(challenge)},
+    }
+
+    with pytest.raises(PasskeyRejected):
+        manager.finish_passkey_assertion(user, response, "testserver", "http://testserver", NOW)
+    assert store.sessions == {}
 
 
 def test_repository_backed_local_login_scopes_history_and_exports_to_each_user(tmp_path) -> None:

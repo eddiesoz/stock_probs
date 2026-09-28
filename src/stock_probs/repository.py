@@ -1288,7 +1288,7 @@ class Repository:
             row = connection.execute(
                 """SELECT id, user_id, credential_id, public_key, sign_count, transports,
                 created_at, last_used_at, revoked_at FROM passkeys
-                WHERE credential_id = ? AND user_id = ?""",
+                WHERE credential_id = ? AND user_id = ? AND revoked_at IS NULL""",
                 (credential_id, user_id),
             ).fetchone()
         return dict(row) if row is not None else None
@@ -1362,7 +1362,11 @@ class Repository:
     def auth_get_passkeys(self, user_id: int) -> list[dict[str, Any]]:
         """List passkeys in the shape required by WebAuthn assertion options."""
 
-        return self.list_user_passkeys(user_id)
+        return [
+            record
+            for record in self.list_user_passkeys(user_id)
+            if record.get("revoked_at") is None
+        ]
 
     def auth_get_passkey(
         self, credential_id: str, *, user_id: int | None = None
@@ -1390,7 +1394,7 @@ class Repository:
             row = connection.execute(
                 """SELECT id, user_id, credential_id, public_key, sign_count,
                 transports, created_at, last_used_at, revoked_at
-                FROM passkeys WHERE credential_id = ?""",
+                FROM passkeys WHERE credential_id = ? AND revoked_at IS NULL""",
                 (credential_id,),
             ).fetchone()
         return dict(row) if row is not None else None
