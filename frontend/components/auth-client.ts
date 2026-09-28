@@ -147,6 +147,7 @@ export function authErrorMessage(error: unknown): string {
     if (error.code === "invitation_rejected") {
       return error.message || "That invitation is invalid, expired, revoked, or already used. Ask the administrator for a new invitation.";
     }
+    if (error.code === "passkey_already_registered") return error.message;
     if (error.status === 401) return "Your session has ended. Sign in again to continue.";
     if (error.status === 403) return "Your account is not allowed to perform that action.";
     if (error.status === 409) return "That request conflicts with the current account state.";
@@ -240,9 +241,33 @@ export async function runPasskeyCeremony(
   }
   const options = await authRequest<{ public_key: Record<string, unknown>; options?: Record<string, unknown> }>(path, { method: "POST", body: "{}" });
   const publicKey = publicKeyValue(options.public_key ?? options.options ?? options);
-  const credential = kind === "create"
-    ? await navigator.credentials.create({ publicKey: publicKey as PublicKeyCredentialCreationOptions })
-    : await navigator.credentials.get({ publicKey: publicKey as PublicKeyCredentialRequestOptions });
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 65_000);
+  let credential: Credential | null;
+  try {
+    credential = kind === "create"
+      ? await navigator.credentials.create({ publicKey: publicKey as PublicKeyCredentialCreationOptions, signal: controller.signal })
+      : await navigator.credentials.get({ publicKey: publicKey as PublicKeyCredentialRequestOptions, signal: controller.signal });
+  } catch (error) {
+    throw passkeyBrowserError(error, controller.signal.aborted);
+  } finally {
+    window.clearTimeout(timer);
+  }
   if (!credential || !(credential instanceof PublicKeyCredential)) throw new AuthRequestError("The passkey ceremony was cancelled.", 499, "passkey_cancelled");
   return authRequest<Record<string, unknown>>(completionPath, { method: "POST", body: JSON.stringify(credentialPayload(credential)) });
+}
+
+export function passkeyBrowserError(error: unknown, timedOut = false): AuthRequestError {
+  if (timedOut) return new AuthRequestError("No passkey prompt completed within a minute. Try a regular browser with a passkey manager or a security key.", 408, "passkey_timeout");
+  const name = error instanceof Error ? error.name : "";
+  if (name === "NotAllowedError" || name === "AbortError") {
+    return new AuthRequestError("Passkey setup was cancelled or this browser could not use an authenticator. Try this device, a security key, or a regular browser. A phone option may ask for Bluetooth.", 422, "passkey_browser_cancelled");
+  }
+  if (name === "SecurityError" || name === "NotSupportedError") {
+    return new AuthRequestError("This browser cannot create a passkey for this site. Open the HTTPS site in a browser with passkey support.", 422, "passkey_browser_unsupported");
+  }
+  if (name === "InvalidStateError") {
+    return new AuthRequestError("This passkey may already be registered. Choose another authenticator or open Account to manage your passkeys.", 409, "passkey_already_registered");
+  }
+  return new AuthRequestError("The browser could not create a passkey. Try a regular browser with a passkey manager or a security key.", 422, "passkey_browser_error");
 }

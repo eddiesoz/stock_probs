@@ -36,10 +36,15 @@ test("auth routes cover invited sign-in, passkey, account, and admin recovery co
     source("app/admin/page.tsx"),
   ]);
   assert.match(signIn, /github\/start/);
+  assert.match(signIn, /Checking sign-in options/);
+  assert.match(signIn, /window\.location\.assign\("\/api\/v1\/auth\/github\/start"\)/);
+  assert.match(signIn, /Sign-in options could not load/);
   assert.match(signIn, /local\/login/);
   assert.match(invite, /invites\/redeem/);
   assert.match(passkey, /passkeys\/register\/options/);
   assert.match(passkey, /passkeys\/authenticate\/options/);
+  assert.match(passkey, /Bluetooth/);
+  assert.match(passkey, /cannot provide a downloadable key file/);
   assert.match(account, /auth\/sessions/);
   assert.match(account, /Revoke/);
   assert.match(admin, /auth\/invites/);
@@ -47,6 +52,22 @@ test("auth routes cover invited sign-in, passkey, account, and admin recovery co
   assert.match(admin, /operations\/restores/);
   assert.match(admin, /Fresh passkey verification complete/);
   assert.match(admin, /disabled={!freshVerified/);
+});
+
+test("passkey browser errors give an actionable recovery path", async () => {
+  const { passkeyBrowserError, authErrorMessage } = await import("../components/auth-client.ts");
+  const cancelled = new Error("Browser-specific message");
+  cancelled.name = "NotAllowedError";
+  const blocked = new Error("Browser-specific message");
+  blocked.name = "SecurityError";
+  assert.match(passkeyBrowserError(cancelled).message, /regular browser/);
+  assert.match(passkeyBrowserError(cancelled).message, /Bluetooth/);
+  assert.match(passkeyBrowserError(blocked).message, /browser with passkey support/);
+  assert.match(passkeyBrowserError(cancelled, true).message, /within a minute/);
+  const alreadyRegistered = new Error("Browser-specific message");
+  alreadyRegistered.name = "InvalidStateError";
+  assert.match(authErrorMessage(passkeyBrowserError(alreadyRegistered)), /already be registered/);
+  assert.doesNotMatch(passkeyBrowserError(cancelled).message, /Browser-specific message/);
 });
 
 test("workspace navigation exposes account controls without replacing the primary landmarks", async () => {

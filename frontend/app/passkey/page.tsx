@@ -57,6 +57,7 @@ export default function PasskeyPage() {
         {session === null ? <div className={styles.deniedState}><h2>Sign in first</h2><p>A passkey ceremony can only be attached to an active invitation or account session.</p><div className={styles.authLinks}><a href="/sign-in">Open sign in</a></div></div> : null}
         {session?.authenticated ? <>
           <div className={styles.permissionBox}><div><strong>{mode === "enroll" ? "One device, one strong key" : "Fresh verification"}</strong><p>{mode === "enroll" ? "Use your device unlock, security key, or platform authenticator. You can add another passkey later from Account." : "Your browser will return to the workspace after the check succeeds."}</p></div></div>
+          {mode === "enroll" ? <p className={styles.securityNote}>If your browser asks for Bluetooth, it is offering to use a nearby phone. Choose this device or a security key if available. Passkeys stay with your device or passkey manager; Signal Ledger cannot provide a downloadable key file.</p> : null}
           <button className="primary" type="button" onClick={runCeremony} disabled={busy}>{busy ? "Waiting for passkey…" : mode === "enroll" ? "Create passkey" : "Verify with passkey"}</button>
           {message ? <p className={styles.authMessage} data-tone={message.tone} role={message.tone === "error" ? "alert" : "status"}>{message.text}</p> : null}
           <div className={styles.authLinks}><a href="/account">Manage account</a><a href={nextPath}>Return to workspace</a></div>
