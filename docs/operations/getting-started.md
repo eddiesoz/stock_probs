@@ -223,11 +223,16 @@ Each promotion is serialized under a lock, starts with a verified application ba
 readiness checks, and attempts code-only rollback only when the database schema remains compatible.
 If a migration has advanced the schema and the candidate fails, the helper stops the service and
 records the failure for operator recovery. The fixed helper completed a private deployment plan
-(`65d8355aef719983cb989a2dd8056522`) and the remote app is healthy. Static MCP discovery passed in
-a fresh CLI task. An official Python SDK stdio smoke also listed exactly the five typed tools and
-completed read-only `inspect` successfully without printing credential bytes. A separate fresh
-Codex client invocation remains unavailable under host approval policy `never`; deploy and rollback
-are not accepted by the read-only smoke.
+(`65d8355aef719983cb989a2dd8056522`) and the remote app is healthy. The current private image is
+reviewed commit `39bd185150cd3df70395e6c000f568dfd20831ac`, with release archive SHA-256
+`930d6d5b5d054908a25825c980584b620817bfa7ab212a62abd63f65c72f6f3f` and image ID
+`sha256:23ef16e4e5ee28db378c76bbcd9182345584bbffda55bd5313141fd0847fe31b`; publisher
+re-download verification passed. The official Python SDK MCP plan `a07bb7ba2716899bef956269495f0a47`
+and deploy passed to the replacement Linode; status is healthy, schema `8`, loopback-only, and a
+pre-deploy backup was present. Static MCP discovery passed in a fresh CLI task. The earlier
+read-only stdio smoke listed exactly the five typed tools and completed `inspect` successfully
+without printing credential bytes. A separate fresh Codex client invocation remains unavailable
+under host approval policy `never`; rollback is not accepted by the read-only smoke.
 
 ### Tunnel canary and recovery
 
@@ -235,10 +240,13 @@ The recovery rehearsal passed before the restricted canary. Cloudflare is now in
 `exposure_mode=canary` only for the configured owner. The exact hostname is `ledger.jtmb.cc`; the
 tunnel routes to `http://127.0.0.1:8000`, Cloudflare Access protects the route, and the
 cache-settings rule bypasses shared/browser caching. The GitHub OAuth application authorization and
-Cloudflare one-time-code flow completed in the browser, but callback-code handoff could not be
-completed by the browser client. Owner passkey enrollment and the owner saved-data check therefore
-remain **Unavailable/Pending**. Invitation redemption, two-user ownership isolation, and
-administrator fresh-passkey backup/restore remain pending before invited-user exposure.
+Cloudflare one-time-code flow completed successfully; the owner page shows signed in as `jtmb`.
+The owner-only canary served the new passkey text and Cloudflare unauthenticated traffic returned
+`302`. Owner passkey enrollment and the owner saved-data check therefore remain
+**Unavailable/Pending** because the browser requested a nearby phone/Bluetooth credential and no
+completed credential was observed. The earlier callback-blocked observation is retained as
+historical evidence in E38. Invitation redemption, two-user ownership isolation, and administrator
+fresh-passkey backup/restore remain pending before invited-user exposure.
 
 Application backups remain signed and verified. Linode VM Backups are enabled, and successful
 snapshot `385239936` is available. The first disposable restore attempt **Failed**: clone
@@ -250,21 +258,24 @@ visible in the root evidence ledger. This release has no independent encrypted o
 Linode's configured VM Backup retention is the external recovery boundary and remains a limitation.
 
 Current local evidence includes schema-8 readiness, authentication status `200`, private history
-`401` without a session, frontend `27` tests, focused API/auth `151` tests, helper/MCP `31` tests,
-and a private remote deployment with migrated data counts preserved. An earlier Astra source review
-reported no remaining P1/P2 finding for the deployment-hardening boundary; a later privacy review
+`401` without a session, frontend build/typecheck with `28` tests, pinned Playwright desktop/mobile
+`2/2`, Luna auth contract `9/9`, click `2/2`, and simulated passkey-cancellation checks on desktop
+and mobile. Astra's source review reported no P1/P2 after its `409` guidance finding was repaired.
+Focused API/auth `151` tests, helper/MCP `31` tests, and a private remote deployment with migrated
+data counts are also recorded. An earlier Astra source review reported no remaining P1/P2 finding
+for the deployment-hardening boundary; a later privacy review
 found a P2 because the configured owner email reached an embedded Python process argv. The private
 owner-email-file repair is complete, the tracked tree has no literal personal email, `14` canary
 fixture tests passed, and the live canary script reran exit `0` with the tunnel active. Luna's final
 scoped QA passed the focused checks and Astra's final P1/P2 re-review reported no remaining finding
-for this boundary. This does not complete the owner callback/passkey/data checks or invited-user
-release gate.
+for this boundary. The owner callback is now complete; the page shows signed in as `jtmb`. This
+does not complete the owner passkey/data checks or invited-user release gate.
 Independent Luna QA passed Terraform format/validate, `31` scoped infrastructure tests, and
 `git diff --check` at the dirty reviewed revision. The earlier review recorded an import-order
 finding in the Terraform test; final scoped QA passed all four Ruff checks, so that finding is
 historical. The full Linode validator exits `2` on a deliberately dirty worktree. The earlier
 Cloudflare token verification `401` and documentation-coverage **Fail** remain historical evidence. The OAuth
-authorization and Access code steps completed, while callback-code handoff, owner passkey, and
-owner saved-data checks remain **Unavailable/Pending**. The owner-only canary is active, but the
+authorization and Access code steps completed; the owner page shows signed in as `jtmb`, while
+owner passkey and owner saved-data checks remain **Unavailable/Pending**. The owner-only canary is active, but the
 invited-user route and retirement of legacy Linode `97934478` remain pending; the old VM and current
 local application are untouched.

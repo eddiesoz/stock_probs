@@ -149,10 +149,15 @@ guard, and scoped infrastructure tests in the root ledgers. The `documentation-m
 continue to cover workflow/configuration changes; this page and the operations guide provide the
 authored coverage for the deployment scripts and tests.
 
-The current deployment reconciliation records the owner-only canary and recovery pass, while the
-latest privacy repair has passed its scoped fixture and live-canary checks. Astra's final P1/P2
-re-review reported no remaining finding for this boundary, so documentation validation is not a
-release or security acceptance.
+The current deployment reconciliation records the owner-only canary, recovery pass, and private
+deployment of reviewed commit `39bd185150cd3df70395e6c000f568dfd20831ac`. The release archive
+and image identity were re-verified, and the typed MCP plan/deploy reached a healthy schema-8
+loopback-only host. The auth UI repair and independent browser/auth checks passed, and the owner
+page shows signed in as `jtmb`. Owner passkey enrollment and saved-data verification remain
+unavailable because the browser requested a nearby phone/Bluetooth credential without observing a
+completed credential. Astra's final source
+review reported no remaining P1/P2 after repairing its `409` guidance finding. Documentation
+validation remains a documentation gate, not a release or security acceptance.
 
 Authored guides live under `docs/` in task-oriented categories. Every page has `title` and
 `description` frontmatter, one primary topic, a lowercase hyphenated filename, and relative

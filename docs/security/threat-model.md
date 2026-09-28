@@ -11,9 +11,15 @@ production image binds the app to the host loopback interface, uses GitHub's aut
 flow plus a passkey, and keeps SQLite on a private persistent volume. The recovery rehearsal has
 passed for its declared scope, and the restricted owner-only canary is active behind Cloudflare
 Access; invited-user exposure remains closed until owner passkey and saved-data checks and the
-remaining security gates are complete. A later privacy review found a P2 caused by the configured
-owner email reaching an embedded process argument. The private-file repair is complete, scoped QA
-passed, and Astra's final P1/P2 re-review reported no remaining finding for this boundary.
+remaining security gates are complete. The current private image is reviewed commit
+`39bd185150cd3df70395e6c000f568dfd20831ac`, deployed through the typed MCP with a verified
+release archive and image identity; status is healthy, schema `8`, and loopback-only. A later
+privacy review found a P2 caused by the configured owner email reaching an embedded process
+argument. The private-file repair is complete, scoped QA passed, and Astra's final source review
+reported no P1/P2 after its `409` guidance finding was repaired. The owner page shows signed in as
+`jtmb`. Owner passkey enrollment remains unavailable because the browser requested a nearby
+phone/Bluetooth credential without observing a completed credential; the earlier callback-blocked
+observation is historical.
 
 The model protects account identity, owner-scoped research history, forecast provenance, local
 filesystem locations, backup authenticity, and process availability from accidental corruption and

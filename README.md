@@ -213,12 +213,21 @@ Terraform keeps the Linode firewall and application ports closed to the public, 
 starts in a terminal-404 closed mode before the owner-only canary. The replacement host and
 reviewed image are deployed privately, and the canary hostname is routed through the active
 tunnel behind the configured owner Access policy with cache bypass. Direct port `8000` remains
-unreachable. GitHub OAuth application authorization and the Access one-time-code flow completed,
-but callback-code handoff, owner passkey enrollment, and owner saved-data verification remain
-pending. The privacy review P2 has been repaired with a private owner-email file, `14` canary
-fixture tests, and a successful live canary rerun; final scoped QA passed and Astra's final P1/P2
-review reported no remaining finding for that boundary. The invited-user route and retirement of
-the legacy Linode remain pending, so this is not a production release claim. See
+unreachable. The current private image is reviewed commit
+`39bd185150cd3df70395e6c000f568dfd20831ac`, with release archive SHA-256
+`930d6d5b5d054908a25825c980584b620817bfa7ab212a62abd63f65c72f6f3f` and image ID
+`sha256:23ef16e4e5ee28db378c76bbcd9182345584bbffda55bd5313141fd0847fe31b`; publisher
+re-download verification passed, and the typed MCP plan/deploy reached a healthy schema-8
+loopback-only Linode with a pre-deploy backup. The auth UI repair passed frontend build/typecheck,
+`28` tests, pinned Playwright desktop/mobile `2/2`, and independent Luna auth/passkey-cancellation
+checks; Astra reported no remaining P1/P2 after its `409` guidance repair. GitHub OAuth application
+authorization and the Access one-time-code flow completed, and the owner-only canary served the
+new passkey text with Cloudflare unauthenticated traffic returning `302`. The owner page now shows
+signed in as `jtmb`. Owner passkey enrollment and owner saved-data verification remain pending
+because the browser requested a nearby phone/Bluetooth credential and no completed credential was
+observed. The
+invited-user route and retirement of the legacy Linode remain pending, so this is not a production
+release claim. See
 [Getting started](docs/operations/getting-started.md)
 for the current Terraform, recovery, and canary boundaries.
 

@@ -183,11 +183,14 @@ open.
   `.codex/config.toml` supplies only fixed, nonsecret target metadata and operator-owned key paths.
   Fresh CLI static discovery passed. An official Python SDK stdio client initialized the fixed-target
   server, listed exactly the five typed tools, and completed read-only `inspect` with
-  `is_error=False`; no credential bytes were printed. A fresh Codex client invocation remains
-  **Unavailable** because the current host approval policy is `never`; this does not establish
-  deploy or rollback acceptance.
+  `is_error=False`; no credential bytes were printed. A later official Python SDK plan
+  `a07bb7ba2716899bef956269495f0a47` and deploy passed to the replacement Linode, whose status was
+  healthy, schema `8`, and loopback-only with a pre-deploy backup. A fresh Codex client invocation
+  remains **Unavailable** because the current host approval policy is `never`; rollback is not
+  accepted by the read-only smoke.
 - Current evidence is bounded: native x86_64 dependency audits for the application and MCP both
-  reported zero advisories; frontend tests reported `27` passed; focused API/auth checks reported
+  reported zero advisories; the current frontend build/typecheck/test run reported `28` passed;
+  focused API/auth checks reported
   `151` passed; production-helper/MCP checks reported `31` passed; and the isolated production-
   shaped browser review passed sign-in Light/Dark at `1280x720` and `390x844`, protected-route
   redirects, private-history denial, Host/Origin spoof rejection, 104 loopback-only requests,
@@ -220,9 +223,9 @@ open.
   The historical `R-ASTRA-100` run remains **Unavailable** as one green aggregate (`603` pass,
   `5` fail, `4` deselected); four stale schema expectations and one timing race have a targeted
   `33`-pass repair run. The completed `R-ASTRA-101` local gate is recorded separately above.
-- The private remote deployment completed for reviewed revision
-  `f329a4c99bf75d9ff2d365473051580f8eda7f58`; the verified release archive SHA-256 is recorded in
-  the root plan and the deployed image is schema `8`. The remote app is healthy, preserves the
+- The earlier private remote deployment completed for reviewed revision
+  `f329a4c99bf75d9ff2d365473051580f8eda7f58`; its verified release archive and image details
+  remain historical in the root plan. That deployed image was schema `8`, healthy, and preserves the
   migrated schema-8 data counts, and is loopback-only. A successful Linode snapshot is recorded as
   `385239936`. The first disposable recovery rehearsal **Failed**: clone `106821372` reached
   offline boot, but a concurrent in-place Bash edit corrupted the running process and it exited
@@ -247,16 +250,34 @@ open.
   requires a live Terraform refresh guard before the canary. Independent Luna QA on native x86_64
   at dirty revision `f329a4c99bf75d9ff2d365473051580f8eda7f58` from
   `2026-09-28T01:18:00Z`–`2026-09-28T01:25:00Z` passed Terraform format/validate, `31` scoped
-  infrastructure tests, and `git diff --check`. Ruff reported an import-order finding in
-  `tests/test_linode_terraform.py` that remains in repair; ShellCheck warnings were recorded as
-  informational, while the full `infra/linode/validate.sh` exits `2` on the intentionally dirty
-  worktree. These checks are scoped QA, not a clean release or production acceptance result.
+  infrastructure tests, and `git diff --check`. That earlier review recorded an import-order
+  finding in `tests/test_linode_terraform.py`; later current-revision QA passed all four Ruff
+  checks. ShellCheck warnings were recorded as informational, while the full
+  `infra/linode/validate.sh` exits `2` on the intentionally dirty worktree. These checks are
+  scoped historical QA, not a clean release or production acceptance result; the later
+  current-revision QA is recorded below.
+- The current private auth-UI repair and deployment use reviewed commit
+  `39bd185150cd3df70395e6c000f568dfd20831ac`. Frontend build, typecheck, and `28` tests passed;
+  pinned Playwright desktop/mobile checks passed `2/2`; independent Luna QA passed `9/9` auth
+  contract checks, `2/2` click checks, and simulated passkey-cancellation checks on desktop and
+  mobile. Astra's source review reported no P1/P2 after its `409` guidance finding was repaired.
+  The locally published GitHub Release archive has SHA-256
+  `930d6d5b5d054908a25825c980584b620817bfa7ab212a62abd63f65c72f6f3f`, image ID
+  `sha256:23ef16e4e5ee28db378c76bbcd9182345584bbffda55bd5313141fd0847fe31b`, and a verified
+  publisher re-download. Official Python SDK MCP plan `a07bb7ba2716899bef956269495f0a47` and
+  deploy passed to the replacement Linode; status is healthy, schema `8`, loopback-only, with a
+  pre-deploy backup present. The owner-only canary served the new passkey text and Cloudflare
+  unauthenticated traffic returned `302`. Owner passkey enrollment and saved-data verification
+  remain **Unavailable/Pending** because the browser requested a nearby phone/Bluetooth credential
+  and no completed credential was observed. No invited-user route or production release is claimed.
 - The owner-only Cloudflare canary is applied for `ledger.jtmb.cc`, and the tunnel is healthy and
   active. The GitHub OAuth application authorization and Cloudflare Access one-time code flow
-  completed in the browser, but the browser client could not navigate the callback-code handoff.
-  Owner passkey enrollment and the owner saved-data check are therefore **Unavailable/Pending**;
-  public invited-user mode and retirement of legacy Linode `97934478` remain pending. No public
-  invited-user route or production release is claimed.
+  completed successfully; the owner page shows signed in as `jtmb`. Owner passkey enrollment and
+  the owner saved-data check remain **Unavailable/Pending** because the browser requested a nearby
+  phone/Bluetooth credential and no completed credential was observed. The earlier callback-blocked
+  observation is retained as historical evidence in E38. Public invited-user mode and retirement of
+  legacy Linode `97934478` remain pending. No public invited-user route or production release is
+  claimed.
 
 ## Repository truth
 
