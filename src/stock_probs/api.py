@@ -1474,12 +1474,28 @@ class _RestoreRequestGate:
 
 RESTORE_DRAIN_TIMEOUT_SECONDS = 5.0
 
+WORKSPACE_PAGE_ROUTES = (
+    "/api-docs",
+    "/overview",
+    "/research",
+    "/tools",
+    "/tools/forecast",
+    "/tools/live-trading",
+    "/tools/markets",
+    "/sign-in",
+    "/invite",
+    "/passkey",
+    "/account",
+    "/admin",
+)
+
 
 class LocalSecurityMiddleware(BaseHTTPMiddleware):
     """Defend the configured origin and attach one policy to every response type."""
 
     allowed_hosts = {"127.0.0.1", "localhost", "::1", "testserver"}
     browser_hosts = {"127.0.0.1", "localhost", "::1"}
+    html_navigation_paths = frozenset({"/", "/api/v1/docs", *WORKSPACE_PAGE_ROUTES})
 
     @staticmethod
     def _host_authority(raw: str) -> ParseResult | None:
@@ -1910,10 +1926,22 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
                 else:
                     auth_response = self._authenticate_request(request)
                     response = auth_response or await self._bounded_request(request, call_next)
-            elif request.headers.get("sec-fetch-site", "").lower() == "cross-site" and not (
-                request.method == "GET" and request.scope["path"] == "/api/v1/auth/github/callback"
+            elif (
+                request.headers.get("sec-fetch-site", "").lower() == "cross-site"
+                and not (
+                    request.method == "GET"
+                    and request.scope["path"] == "/api/v1/auth/github/callback"
+                )
+                and not (
+                    request.method == "GET"
+                    and request.scope["path"] in self.html_navigation_paths
+                    and request.headers.get("sec-fetch-mode", "").lower() == "navigate"
+                    and request.headers.get("sec-fetch-dest", "").lower() == "document"
+                )
             ):
                 # Modern browsers provide this header even on requests where Origin is omitted.
+                # A top-level navigation to an HTML page may come from an email or another
+                # site. Keep the exception confined to named pages; authentication still runs.
                 response = JSONResponse(
                     status_code=403,
                     content=_error(
@@ -4587,20 +4615,7 @@ def create_app(
             raise HTTPException(status_code=404)
         return FileResponse(page)
 
-    for route in (
-        "/api-docs",
-        "/overview",
-        "/research",
-        "/tools",
-        "/tools/forecast",
-        "/tools/live-trading",
-        "/tools/markets",
-        "/sign-in",
-        "/invite",
-        "/passkey",
-        "/account",
-        "/admin",
-    ):
+    for route in WORKSPACE_PAGE_ROUTES:
         app.add_api_route(
             route,
             partial(workspace_page, route),

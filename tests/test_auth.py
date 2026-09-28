@@ -211,9 +211,7 @@ def test_production_host_requires_the_configured_public_authority(tmp_path) -> N
     app = create_app(settings, FixtureProvider(), lambda: NOW, auth_store=MemoryAuthStore())
     with TestClient(app) as client:
         assert client.get("/api/v1/health", headers={"host": "ledger.example"}).status_code == 200
-        unexpected_port = client.get(
-            "/api/v1/health", headers={"host": "ledger.example:8443"}
-        )
+        unexpected_port = client.get("/api/v1/health", headers={"host": "ledger.example:8443"})
         assert unexpected_port.status_code == 400
         assert unexpected_port.json()["error"]["code"] == "host_rejected"
 
@@ -562,9 +560,7 @@ def test_github_callback_sets_provisional_cookie_and_consumes_invitation_once(tm
     )
     with TestClient(application) as client:
         application.state.auth.http_client = oauth_client
-        malformed = client.post(
-            "/api/v1/auth/invites/redeem", json={"code": "invalid-qa-code"}
-        )
+        malformed = client.post("/api/v1/auth/invites/redeem", json={"code": "invalid-qa-code"})
         assert malformed.status_code == 403, malformed.text
         assert malformed.json()["error"]["code"] == "invitation_rejected"
         store.auth_create_user(
@@ -717,6 +713,14 @@ def test_github_session_requires_passkey_even_for_the_admin_owner(tmp_path) -> N
     store = MemoryAuthStore()
     application = create_app(settings, FixtureProvider(), lambda: NOW, auth_store=store)
     with TestClient(application) as client:
+        navigation = {
+            "Sec-Fetch-Site": "cross-site",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Dest": "document",
+        }
+        anonymous_page = client.get("/overview", headers=navigation, follow_redirects=False)
+        assert anonymous_page.status_code == 303
+        assert anonymous_page.headers["location"].startswith("/sign-in")
         record = store.auth_create_user(
             {
                 "github_id": 24680,
@@ -734,6 +738,14 @@ def test_github_session_requires_passkey_even_for_the_admin_owner(tmp_path) -> N
         response = client.get("/api/v1/history", cookies={SESSION_COOKIE_NAME: issue.session_token})
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "passkey_required"
+        provisional_page = client.get(
+            "/overview",
+            headers=navigation,
+            cookies={SESSION_COOKIE_NAME: issue.session_token},
+            follow_redirects=False,
+        )
+        assert provisional_page.status_code == 303
+        assert provisional_page.headers["location"].startswith("/passkey?mode=verify")
 
 
 def test_provisional_github_session_cannot_register_second_passkey(tmp_path) -> None:

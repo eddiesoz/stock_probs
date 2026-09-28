@@ -2276,6 +2276,28 @@ def test_loopback_origin_and_host_are_enforced(client):
     assert same_origin.status_code == 403
 
 
+def test_cross_site_document_navigation_keeps_api_origin_boundary(client):
+    navigation = {
+        "Sec-Fetch-Site": "cross-site",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Dest": "document",
+    }
+    for page in ("/", "/passkey", "/overview", "/api-docs", "/api/v1/docs"):
+        response = client.get(page, headers=navigation)
+        assert response.status_code == 200, (page, response.text)
+        assert response.headers["content-type"].startswith("text/html")
+
+    for method, path, headers in (
+        ("GET", "/api/v1/auth/session", navigation),
+        ("GET", "/passkey", {"Sec-Fetch-Site": "cross-site"}),
+        ("POST", "/api/v1/auth/passkeys/register/options", navigation),
+        ("GET", "/passkey", {**navigation, "Origin": "https://attacker.example"}),
+    ):
+        response = client.request(method, path, headers=headers)
+        assert response.status_code == 403, (method, path, response.text)
+        assert response.json()["error"]["code"] == "origin_rejected"
+
+
 def test_frontend_assets_use_only_versioned_api_for_application_data(client):
     html = client.get("/").text
     javascript = client.get("/assets/app.js").text
