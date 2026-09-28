@@ -4,7 +4,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
-import { authErrorMessage, authRequest, formatAuthDate, getAuthSession, runPasskeyCeremony, type AuthSession } from "../../components/auth-client";
+import { AuthRequestError, authErrorMessage, authRequest, formatAuthDate, getAuthSession, type AuthSession, type TotpStatus } from "../../components/auth-client";
 import { WorkspaceNav } from "../../components/workspace-nav";
 import styles from "../auth.module.css";
 
@@ -17,9 +17,27 @@ export default function AdminPage() {
   const [githubLogin, setGithubLogin] = useState("");
   const [backupName, setBackupName] = useState("");
   const [restoreName, setRestoreName] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [totpStatus, setTotpStatus] = useState<TotpStatus | null>(null);
   const [freshVerified, setFreshVerified] = useState(false);
+  const [freshVerifiedUntil, setFreshVerifiedUntil] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
+
+  const clearFreshVerification = () => {
+    setFreshVerified(false);
+    setFreshVerifiedUntil(null);
+  };
+
+  useEffect(() => {
+    if (freshVerifiedUntil === null) return;
+    const remaining = Math.max(0, freshVerifiedUntil - Date.now());
+    const timeout = window.setTimeout(() => {
+      clearFreshVerification();
+      setMessage({ tone: "error", text: "Fresh authenticator verification expired. Verify again before a backup or restore." });
+    }, remaining);
+    return () => window.clearTimeout(timeout);
+  }, [freshVerifiedUntil]);
 
   useEffect(() => { document.title = "Administration | Signal Ledger"; }, []);
 
@@ -27,8 +45,12 @@ export default function AdminPage() {
     const auth = await getAuthSession();
     setSession(auth);
     if (auth?.authenticated && auth.user?.role === "admin") {
-      const response = await authRequest<{ invitations?: Invitation[] }>("/api/v1/auth/invites", { cache: "no-store" });
+      const [response, factorStatus] = await Promise.all([
+        authRequest<{ invitations?: Invitation[] }>("/api/v1/auth/invites", { cache: "no-store" }),
+        authRequest<TotpStatus>("/api/v1/auth/totp/status", { cache: "no-store" }),
+      ]);
       setInvitations(response.invitations || []);
+      setTotpStatus(factorStatus);
     }
   }
 
@@ -49,22 +71,34 @@ export default function AdminPage() {
     setBusy("backup"); setMessage(null);
     try {
       const response = await authRequest<{ name?: string }>("/api/v1/operations/backups", { method: "POST", body: JSON.stringify({ name: backupName.trim() || undefined }) });
-      setMessage({ tone: "success", text: `Verified backup ${response.name || backupName || "created"}.` }); setBackupName(""); setFreshVerified(false);
-    } catch (error) { setMessage({ tone: "error", text: authErrorMessage(error) }); }
+      setMessage({ tone: "success", text: `Verified backup ${response.name || backupName || "created"}.` }); setBackupName(""); clearFreshVerification();
+    } catch (error) {
+      if (error instanceof AuthRequestError && error.status === 403) clearFreshVerification();
+      setMessage({ tone: "error", text: authErrorMessage(error) });
+    }
     finally { setBusy(null); }
   }
 
-  async function verifyPasskey() {
+  async function verifyTotp() {
     setBusy("verify"); setMessage(null);
-    try { await runPasskeyCeremony("/api/v1/auth/passkeys/authenticate/options", "/api/v1/auth/passkeys/authenticate", "get"); setFreshVerified(true); setMessage({ tone: "success", text: "Fresh passkey verification complete for this session." }); }
+    try {
+      await authRequest("/api/v1/auth/totp/step-up", { method: "POST", body: JSON.stringify({ code: totpCode.trim() }) });
+      setTotpCode("");
+      setFreshVerified(true);
+      setFreshVerifiedUntil(Date.now() + 5 * 60 * 1000);
+      setMessage({ tone: "success", text: "Fresh authenticator verification complete for this session." });
+    }
     catch (error) { setMessage({ tone: "error", text: authErrorMessage(error) }); }
     finally { setBusy(null); }
   }
 
   async function restoreBackup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy("restore"); setMessage(null);
-    try { await authRequest("/api/v1/operations/restores", { method: "POST", body: JSON.stringify({ name: restoreName.trim(), promote: true }) }); setMessage({ tone: "success", text: "Restore promoted. All sessions were revoked; sign in again before continuing." }); setRestoreName(""); setFreshVerified(false); }
-    catch (error) { setMessage({ tone: "error", text: authErrorMessage(error) }); }
+    try { await authRequest("/api/v1/operations/restores", { method: "POST", body: JSON.stringify({ name: restoreName.trim(), promote: true }) }); setMessage({ tone: "success", text: "Restore promoted. All sessions were revoked; sign in again before continuing." }); setRestoreName(""); clearFreshVerification(); }
+    catch (error) {
+      if (error instanceof AuthRequestError && error.status === 403) clearFreshVerification();
+      setMessage({ tone: "error", text: authErrorMessage(error) });
+    }
     finally { setBusy(null); }
   }
 
@@ -80,10 +114,11 @@ export default function AdminPage() {
           <div className={styles.sectionRule}><h2 id="invite-heading">Invite a GitHub account</h2><p>Invitation codes are single-use and expire. Resolve the identity before sharing the code.</p></div>
           <form className={styles.formGrid} onSubmit={createInvitation} noValidate><label htmlFor="github-id">GitHub account ID<input id="github-id" name="github_id" inputMode="numeric" pattern="[0-9]+" value={githubId} onChange={(event) => setGithubId(event.target.value.replace(/\D/g, ""))} placeholder="1234567" autoComplete="off" required /></label><label htmlFor="github-login">GitHub username (optional)<input id="github-login" name="github_login" value={githubLogin} onChange={(event) => setGithubLogin(event.target.value)} placeholder="octocat" autoComplete="off" /></label><button className="primary full" type="submit" disabled={busy === "invite" || !githubId.trim()}>{busy === "invite" ? "Creating invitation…" : "Create invitation"}</button></form>
           {invitations.length ? <ul className={styles.dataList}>{invitations.map((invite) => <li className={styles.dataRow} key={invite.id}><div><strong>{invite.github_login || `GitHub account ${invite.github_id || ""}`}</strong><small>{invite.redeemed_at ? `Redeemed ${formatAuthDate(invite.redeemed_at)}` : `Expires ${formatAuthDate(invite.expires_at)}`} {invite.code ? `· Code ${invite.code}` : ""}</small></div><span className="badge neutral">{invite.redeemed_at ? "Used" : "Open"}</span></li>)}</ul> : <p className={styles.loadingState}>No invitations created in this session.</p>}
-          <div className={styles.sectionRule}><h2>Verified backups</h2><p>Backups are created and verified on the server. Verify your passkey below before creating one.</p></div>
+          <div className={styles.sectionRule}><h2>Verified backups</h2><p>Backups are created and verified on the server. Enter a current authenticator code below before creating one.</p></div>
           <div className={styles.formGrid}><label className={styles.full} htmlFor="backup-name">Backup label (optional)<input id="backup-name" value={backupName} onChange={(event) => setBackupName(event.target.value)} placeholder="before-auth-migration" /></label><button className="secondary full" type="button" disabled={!freshVerified || busy === "backup"} onClick={createBackup}>{busy === "backup" ? "Creating verified backup…" : "Create verified backup"}</button></div>
-          <div className={styles.sectionRule}><h2>Promote a restore</h2><p>Use only after reviewing the artifact. A promoted restore requires a fresh passkey check and revokes other sessions.</p></div>
-          <div className={styles.permissionBox}><div><strong>{freshVerified ? "Fresh passkey verified" : "Passkey verification required"}</strong><p>{freshVerified ? "Complete the operation now; the server also checks that verification is recent." : "Complete the check immediately before a backup or promoted restore."}</p></div><button className="secondary" type="button" disabled={busy === "verify"} onClick={verifyPasskey}>{busy === "verify" ? "Verifying…" : freshVerified ? "Verify again" : "Verify with passkey"}</button></div>
+          <div className={styles.sectionRule}><h2>Promote a restore</h2><p>Use only after reviewing the artifact. A promoted restore requires a fresh authenticator check and revokes other sessions.</p></div>
+          <div className={styles.permissionBox}><div><strong>{freshVerified ? "Fresh authenticator verified" : "Authenticator verification required"}</strong><p>{freshVerified ? "Complete the operation now; the server also checks that verification is recent." : totpStatus?.enrolled ? "Enter the newest code immediately before a backup or promoted restore." : "Set up an authenticator before using backup controls."}</p></div></div>
+          <div className={styles.formGrid}><label className={styles.full} htmlFor="admin-totp-code">Current authenticator code<input id="admin-totp-code" name="totp_code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={totpCode} onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" /></label><button className="secondary full" type="button" disabled={busy === "verify" || totpCode.length !== 6 || !totpStatus?.enrolled} onClick={verifyTotp}>{busy === "verify" ? "Verifying…" : freshVerified ? "Verify again" : "Verify authenticator"}</button></div>
           <form className={styles.formGrid} onSubmit={restoreBackup} noValidate><label className={styles.full} htmlFor="restore-name">Verified backup name<input id="restore-name" value={restoreName} onChange={(event) => setRestoreName(event.target.value)} placeholder="backup-2026-09-27" required /></label><button className="secondary full" type="submit" disabled={!freshVerified || busy === "restore" || !restoreName.trim()}>{busy === "restore" ? "Promoting restore…" : "Promote restore"}</button></form>
           {message ? <p className={styles.authMessage} data-tone={message.tone} role={message.tone === "error" ? "alert" : "status"}>{message.text}</p> : null}
         </section>

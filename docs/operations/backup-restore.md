@@ -114,9 +114,17 @@ The HTTP operations in the [API reference](../reference/api.md) accept managed n
 storage-neutral results/status; neither CLI nor browser receives an arbitrary restore destination.
 
 In production, backup status and creation are administrator operations, and restore promotion also
-requires a fresh passkey check, a verified pre-restore backup, matching account-security state,
-maintenance serialization, and revocation of all sessions. The deployment helper performs a
+requires a fresh six-digit authenticator-app code, a verified pre-restore backup, matching
+account-security state, maintenance serialization, and revocation of all sessions. The deployment
+helper performs a
 pre-deploy backup before promotion and a pre-migration backup when an imported database advances
 schema. Linode VM Backups are an additional host recovery layer; this release has no independent
 encrypted off-server backup, so the configured Linode retention and a recorded recovery rehearsal
 remain launch prerequisites. See [getting started](getting-started.md).
+
+An administrator enters the current TOTP code immediately before a backup or promoted restore;
+the server records a short-lived step-up for that operation. A legacy passkey is not an ongoing
+restore factor. It is retained only for the one-time migration of an account that has not yet
+enrolled an authenticator app. If the authenticator is lost, consume one single-use recovery code
+to enter the factor-replacement flow, enroll a new authenticator, and save the newly issued recovery
+codes before resuming administration.

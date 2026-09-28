@@ -185,8 +185,32 @@ keeps application data in a named volume.
 
 ## Private production deployment
 
-The production path is invite-only GitHub OAuth plus a required passkey, with each user's
-holdings, watchlists, forecasts, exports, outcomes, and reconstructions scoped to that account.
+The current authentication design is invite-only GitHub OAuth plus a six-digit code from an
+authenticator app. Each user's holdings, watchlists, forecasts, exports, outcomes, and
+reconstructions are scoped to that account. The authenticator code is the sole ongoing application
+second factor, so signing in from a new phone or computer does not depend on Bluetooth or a
+passkey manager. Existing passkeys are retained only for a one-time migration of legacy accounts;
+Signal Ledger does not create new passkeys in this mode.
+
+The R-ASTRA-102 implementation and its scoped QA are in the local worktree. The current local gate
+passed: receipt `test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json` reports `704`
+Python tests passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28`
+frontend tests, and documentation coverage. Image publication and schema-9 production deployment
+remain pending. The schema-8 passkey deployment receipts below remain historical evidence and are
+not current TOTP deployment evidence.
+
+### Authenticator setup and recovery
+
+After GitHub sign-in and invitation validation, open the authenticator setup page and add the
+displayed secret to an authenticator app. The page offers a manual key and an `otpauth://` link so
+setup works on devices without a camera or passkey support. Confirm the current six-digit code to
+activate the factor. Recovery codes are shown once, are single-use, and should be stored offline.
+
+If the authenticator is lost, use one unused recovery code to enter the restricted recovery flow,
+then enroll a replacement authenticator. Recovery does not grant a normal workspace session until
+the replacement factor is confirmed. An administrator must enter a fresh authenticator code before
+creating a backup or promoting a restore; restore also revokes other sessions.
+
 The app runs on one Linode with SQLite on a persistent private volume and is published only
 through a Cloudflare Tunnel. The application port stays on `127.0.0.1`; the deployment helper
 does not expose a public Docker port.
@@ -208,6 +232,9 @@ deployment MCP; the VM does not build source. The five deployment operations are
 `plan_deploy`, `deploy`, `status`, and `rollback`. See
 [Getting started](docs/operations/getting-started.md) for the Terraform host setup, owner data
 migration, tunnel canary, and recovery procedure.
+
+The following deployment receipts preserve the prior schema-8 passkey rollout for traceability;
+they are historical and do not establish a schema-9 TOTP deployment.
 
 Terraform keeps the Linode firewall and application ports closed to the public, and Cloudflare
 starts in a terminal-404 closed mode before the owner-only canary. E58 records the later

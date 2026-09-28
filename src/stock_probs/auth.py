@@ -14,13 +14,24 @@ import json
 import re
 import secrets
 import threading
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from inspect import Parameter, signature
 from typing import Literal, Protocol, cast
 
 import httpx
+
+from stock_probs.totp import (
+    RECOVERY_CODE_COUNT,
+    decrypt_secret,
+    encrypt_secret,
+    generate_recovery_codes,
+    generate_secret,
+    hash_recovery_code,
+    matching_step,
+    otpauth_uri,
+)
 
 AuthMode = Literal["disabled", "local", "github"]
 UserRole = Literal["admin", "member"]
@@ -110,6 +121,30 @@ class PasskeyRejected(AuthError):
     message = "The passkey response could not be verified."
 
 
+class TotpRejected(AuthError):
+    """Raised when an authenticator code or recovery code is invalid or replayed."""
+
+    code = "totp_rejected"
+    status_code = 403
+    message = "The authenticator code could not be verified."
+
+
+class TotpRequired(AuthError):
+    """Raised when a production session has not completed authenticator verification."""
+
+    code = "totp_required"
+    status_code = 403
+    message = "Verify your authenticator code before using this application."
+
+
+class TotpThrottled(AuthError):
+    """Raised after bounded account-scoped authenticator failures."""
+
+    code = "totp_rate_limited"
+    status_code = 429
+    message = "Too many authenticator attempts. Try again later."
+
+
 class AuthStore(Protocol):
     """Persistence contract required by :class:`AuthManager`.
 
@@ -170,6 +205,75 @@ class AuthStore(Protocol):
     def auth_update_passkey(
         self, credential_id: str, fields: Mapping[str, object]
     ) -> Mapping[str, object] | None: ...
+
+    def auth_begin_totp_enrollment(
+        self,
+        user_id: int,
+        secret_ciphertext: str,
+        created_at: str,
+        expires_at: str,
+        expected_factor_id: int | None,
+        origin_token_hash: str,
+    ) -> Mapping[str, object] | None: ...
+
+    def auth_get_totp_enrollment(
+        self, user_id: int, now: str | None = None
+    ) -> Mapping[str, object] | None: ...
+
+    def auth_confirm_totp_enrollment(
+        self,
+        user_id: int,
+        confirmed_at: str,
+        expected_secret_ciphertext: str,
+        accepted_step: int,
+        recovery_code_hashes: Sequence[str],
+        revoked_at: str,
+        expected_factor_id: int | None,
+        origin_token_hash: str,
+    ) -> Mapping[str, object] | None: ...
+
+    def auth_get_totp_factor(self, user_id: int) -> Mapping[str, object] | None: ...
+
+    def auth_accept_totp_step(
+        self, user_id: int, expected_factor_id: int, step: int, accepted_at: str
+    ) -> bool: ...
+
+    def auth_reserve_totp_attempt(
+        self, user_id: int, attempted_at: str, expected_factor_id: int | None = None
+    ) -> bool: ...
+
+    def auth_check_totp_attempt(
+        self, user_id: int, attempted_at: str
+    ) -> Mapping[str, object]: ...
+
+    def auth_record_totp_attempt(
+        self,
+        user_id: int,
+        attempted_at: str,
+        window_seconds: int = 300,
+        max_attempts: int = 5,
+        lockout_seconds: int = 900,
+        successful: bool = False,
+    ) -> Mapping[str, object]: ...
+
+    def auth_create_recovery_codes(
+        self,
+        user_id: int,
+        expected_factor_id: int,
+        code_hashes: Sequence[str],
+        created_at: str,
+        origin_token_hash: str,
+    ) -> bool: ...
+
+    def auth_consume_recovery_code(
+        self, user_id: int, expected_factor_id: int, code_hash: str, consumed_at: str
+    ) -> bool: ...
+
+    def auth_get_recovery_code_status(self, user_id: int) -> Mapping[str, object]: ...
+
+    def auth_set_session_mfa(
+        self, token_hash: str, method: str, verified_at: str, expected_factor_id: int
+    ) -> bool: ...
 
     def auth_list_sessions(self, user_id: int) -> list[Mapping[str, object]]: ...
 
@@ -568,6 +672,241 @@ class AuthStoreAdapter:
         )
         return result if isinstance(result, Mapping) else None
 
+    def auth_begin_totp_enrollment(
+        self,
+        user_id: int,
+        secret_ciphertext: str,
+        created_at: str,
+        expires_at: str,
+        expected_factor_id: int | None,
+        origin_token_hash: str,
+    ) -> Mapping[str, object] | None:
+        """Persist one encrypted, expiring TOTP enrollment secret."""
+
+        method = self._method("auth_begin_totp_enrollment", "begin_totp_enrollment")
+        result = self._invoke(
+            method,
+            {
+                "user_id": user_id,
+                "secret_ciphertext": secret_ciphertext,
+                "created_at": created_at,
+                "expires_at": expires_at,
+                "expected_factor_id": expected_factor_id,
+                "origin_token_hash": origin_token_hash,
+            },
+        )
+        return result if isinstance(result, Mapping) else None
+
+    def auth_get_totp_enrollment(
+        self, user_id: int, now: str | None = None
+    ) -> Mapping[str, object] | None:
+        """Load an unexpired TOTP enrollment without exposing its secret."""
+
+        method = self._method("auth_get_totp_enrollment", "get_totp_enrollment")
+        values: dict[str, object] = {"user_id": user_id}
+        if now is not None:
+            values["now"] = now
+        try:
+            result = self._invoke(method, values)
+        except TypeError:
+            result = method(user_id)
+        return result if isinstance(result, Mapping) else None
+
+    def auth_confirm_totp_enrollment(
+        self,
+        user_id: int,
+        confirmed_at: str,
+        expected_secret_ciphertext: str,
+        accepted_step: int,
+        recovery_code_hashes: Sequence[str],
+        revoked_at: str,
+        expected_factor_id: int | None,
+        origin_token_hash: str,
+    ) -> Mapping[str, object] | None:
+        """Atomically promote the pending TOTP enrollment to an active factor."""
+
+        method = self._method("auth_confirm_totp_enrollment", "confirm_totp_enrollment")
+        result = self._invoke(
+            method,
+            {
+                "user_id": user_id,
+                "confirmed_at": confirmed_at,
+                "expected_secret_ciphertext": expected_secret_ciphertext,
+                "accepted_step": accepted_step,
+                "recovery_code_hashes": recovery_code_hashes,
+                "revoked_at": revoked_at,
+                "expected_factor_id": expected_factor_id,
+                "origin_token_hash": origin_token_hash,
+            },
+        )
+        return result if isinstance(result, Mapping) else None
+
+    def auth_get_totp_factor(self, user_id: int) -> Mapping[str, object] | None:
+        """Return metadata and encrypted material for one account's active factor."""
+
+        result = self._method("auth_get_totp_factor", "get_totp_factor")(user_id)
+        return result if isinstance(result, Mapping) else None
+
+    def auth_accept_totp_step(
+        self, user_id: int, expected_factor_id: int, step: int, accepted_at: str
+    ) -> bool:
+        """Atomically accept one time step and reject a replayed code."""
+
+        method = self._method("auth_accept_totp_step", "accept_totp_step")
+        result = self._invoke(
+            method,
+            {
+                "user_id": user_id,
+                "expected_factor_id": expected_factor_id,
+                "step": step,
+                "accepted_at": accepted_at,
+            },
+        )
+        return result is True
+
+    def auth_reserve_totp_attempt(
+        self, user_id: int, attempted_at: str, expected_factor_id: int | None = None
+    ) -> bool:
+        """Reserve one durable throttle slot before doing attacker-controlled crypto."""
+
+        method = self._method("auth_reserve_totp_attempt", "reserve_totp_attempt")
+        result = self._invoke(
+            method,
+            {
+                "user_id": user_id,
+                "attempted_at": attempted_at,
+                "expected_factor_id": expected_factor_id,
+            },
+        )
+        return result is True
+
+    def auth_check_totp_attempt(
+        self, user_id: int, attempted_at: str
+    ) -> Mapping[str, object]:
+        """Read the durable account lock gate before performing TOTP crypto."""
+
+        method = self._method("auth_check_totp_attempt", "check_totp_attempt")
+        result = self._invoke(
+            method,
+            {"user_id": user_id, "attempted_at": attempted_at},
+        )
+        if not isinstance(result, Mapping):
+            raise AuthUnavailable("Authenticator attempt persistence returned an invalid record.")
+        return result
+
+    def auth_record_totp_attempt(
+        self,
+        user_id: int,
+        attempted_at: str,
+        window_seconds: int = 300,
+        max_attempts: int = 5,
+        lockout_seconds: int = 900,
+        successful: bool = False,
+    ) -> Mapping[str, object]:
+        """Record a bounded account-scoped attempt and return the lockout decision."""
+
+        method = getattr(self.inner, "auth_record_totp_attempt", None) or getattr(
+            self.inner, "auth_totp_attempt", None
+        )
+        if not callable(method):
+            raise AuthUnavailable("Authenticator attempt persistence is not configured.")
+        result = self._invoke(
+            method,
+            {
+                "user_id": user_id,
+                "attempted_at": attempted_at,
+                "window_seconds": window_seconds,
+                "max_attempts": max_attempts,
+                "lockout_seconds": lockout_seconds,
+                "successful": successful,
+            },
+        )
+        if not isinstance(result, Mapping):
+            raise AuthUnavailable("Authenticator attempt persistence returned an invalid record.")
+        return result
+
+    def auth_create_recovery_codes(
+        self,
+        user_id: int,
+        expected_factor_id: int,
+        code_hashes: Sequence[str],
+        created_at: str,
+        origin_token_hash: str,
+    ) -> bool:
+        """Replace an account's recovery codes and return the durable count."""
+
+        method = self._method("auth_create_recovery_codes", "create_recovery_codes")
+        result = self._invoke(
+            method,
+            {
+                "user_id": user_id,
+                "expected_factor_id": expected_factor_id,
+                "code_hashes": code_hashes,
+                "created_at": created_at,
+                "origin_token_hash": origin_token_hash,
+            },
+        )
+        return result is True
+
+    def auth_consume_recovery_code(
+        self, user_id: int, expected_factor_id: int, code_hash: str, consumed_at: str
+    ) -> bool:
+        """Consume exactly one recovery code atomically."""
+
+        method = self._method("auth_consume_recovery_code", "consume_recovery_code")
+        result = self._invoke(
+            method,
+            {
+                "user_id": user_id,
+                "expected_factor_id": expected_factor_id,
+                "code_hash": code_hash,
+                "consumed_at": consumed_at,
+            },
+        )
+        return result is True
+
+    def auth_get_recovery_code_status(self, user_id: int) -> Mapping[str, object]:
+        """Return bounded recovery-code counts without exposing code material."""
+
+        method = self._method(
+            "auth_get_recovery_code_status",
+            "get_recovery_code_status",
+            "auth_list_recovery_code_status",
+            "list_recovery_code_status",
+        )
+        result = method(user_id)
+        if isinstance(result, Mapping):
+            return result
+        if isinstance(result, list):
+            available = sum(
+                1
+                for item in result
+                if isinstance(item, Mapping)
+                and item.get("consumed_at") is None
+                and item.get("revoked_at") is None
+            )
+            return {"available_count": available, "total_count": len(result)}
+        raise AuthUnavailable("Recovery code persistence returned an invalid record.")
+
+    def auth_set_session_mfa(
+        self, token_hash: str, method: str, verified_at: str, expected_factor_id: int
+    ) -> bool:
+        """Persist a fresh factor marker on one existing opaque session."""
+
+        setter = self._method("auth_set_session_mfa", "set_session_mfa")
+        result = self._invoke(
+            setter,
+            {
+                "token_hash": token_hash,
+                "method": method,
+                "mfa_method": method,
+                "verified_at": verified_at,
+                "mfa_verified_at": verified_at,
+                "expected_factor_id": expected_factor_id,
+            },
+        )
+        return result is True
+
     def auth_list_sessions(self, user_id: int) -> list[Mapping[str, object]]:
         method = getattr(self.inner, "auth_list_sessions", None) or getattr(
             self.inner, "list_sessions", None
@@ -611,6 +950,8 @@ class AuthSettings:
     owner_github_id: int | None = None
     bootstrap_username: str | None = None
     bootstrap_password: str | None = None
+    totp_issuer: str = "Signal Ledger"
+    totp_enrollment_ttl_seconds: int = 600
 
     def validate(self) -> None:
         """Reject unsafe production combinations before the application starts."""
@@ -625,6 +966,10 @@ class AuthSettings:
             raise ValueError("invitation expiry must be between 60 seconds and 7 days")
         if not 60 <= self.oauth_state_ttl_seconds <= int(MAX_OAUTH_STATE_TTL.total_seconds()):
             raise ValueError("OAuth state expiry must be between 60 and 600 seconds")
+        if not 60 <= self.totp_enrollment_ttl_seconds <= 900:
+            raise ValueError("TOTP enrollment expiry must be between 60 and 900 seconds")
+        if not isinstance(self.totp_issuer, str) or not 1 <= len(self.totp_issuer.strip()) <= 64:
+            raise ValueError("TOTP issuer must be between 1 and 64 characters")
         if self.mode == "disabled":
             return
         if not self.session_secret or len(self.session_secret.encode()) < 32:
@@ -658,6 +1003,7 @@ class UserRecord:
     active: bool
     passkey_enrolled: bool
     passkey_required: bool
+    totp_enrolled: bool = False
 
     @classmethod
     def from_record(cls, value: Mapping[str, object]) -> UserRecord:
@@ -681,6 +1027,7 @@ class UserRecord:
             active=bool(value.get("active", True)),
             passkey_enrolled=bool(value.get("passkey_enrolled", False)),
             passkey_required=bool(value.get("passkey_required", True)),
+            totp_enrolled=bool(value.get("totp_enrolled", value.get("has_totp", False))),
         )
 
     def public_dict(self) -> dict[str, object]:
@@ -698,6 +1045,7 @@ class UserRecord:
             "passkey_enrolled": self.passkey_enrolled,
             "passkey_required": self.passkey_required,
             "passkey_registered": self.passkey_enrolled,
+            "totp_enrolled": self.totp_enrolled,
         }
 
 
@@ -710,6 +1058,9 @@ class AuthContext:
     token_hash: str
     csrf_token_hash: str
     auth_method: Literal["local", "github", "passkey"]
+    mfa_method: Literal["none", "totp", "passkey", "recovery"] = "none"
+    mfa_verified_at: datetime | None = None
+    mfa_factor_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -1032,7 +1383,7 @@ def _safe_github_id(value: object) -> int:
 
 
 class AuthManager:
-    """Coordinate account, session, invitation, OAuth, and passkey state."""
+    """Coordinate account, session, invitation, OAuth, and account-factor state."""
 
     def __init__(
         self,
@@ -1053,9 +1404,8 @@ class AuthManager:
         self._challenges: dict[str, tuple[ChallengeKind, int, datetime]] = {}
         self._oauth_start_lock = threading.Lock()
         self._oauth_start_times: list[datetime] = []
-        # The persistence schema intentionally stores only opaque sessions and revocation state.
-        # Keep the short-lived step-up marker process-local so a passkey response cannot be
-        # replayed or promoted into a durable credential/session attribute.
+        # The marker is retained only for compatibility with the legacy passkey migration path;
+        # production workspace access is decided by the durable TOTP session fields below.
         self._step_up_sessions: dict[str, tuple[int, datetime]] = {}
 
     @property
@@ -1068,10 +1418,8 @@ class AuthManager:
         """Apply the deployment authentication policy to a persisted account row."""
 
         user = UserRecord.from_record(value)
-        if self.settings.mode == "github" and not user.passkey_required:
-            # Repository role metadata intentionally stays provider-neutral. Production GitHub
-            # sessions always complete a UV passkey ceremony, including the designated owner.
-            user = replace(user, passkey_required=True)
+        if not user.totp_enrolled and self.has_totp_factor(user.id):
+            user = replace(user, totp_enrolled=True, passkey_required=False)
         return user
 
     def local_login(self, username: str, password: str, now: datetime) -> SessionIssue:
@@ -1168,11 +1516,27 @@ class AuthManager:
         user: UserRecord,
         now: datetime,
         auth_method: Literal["local", "github", "passkey"],
+        *,
+        mfa_method: Literal["none", "totp", "passkey", "recovery"] = "none",
+        mfa_verified_at: datetime | None = None,
+        expected_factor_id: int | None = None,
+        origin_token_hash: str | None = None,
+        revoke_other_sessions: bool = False,
     ) -> SessionIssue:
         """Create one server-side session while returning raw tokens only once."""
 
         if not user.active:
             raise AuthenticationRequired()
+        if mfa_method not in {"none", "totp", "passkey", "recovery"}:
+            raise AuthUnavailable("Account security state is invalid.")
+        if mfa_method in {"totp", "recovery"} and type(expected_factor_id) is not int:
+            raise AuthUnavailable("Account security state is invalid.")
+        if mfa_method not in {"totp", "recovery"} and expected_factor_id is not None:
+            raise AuthUnavailable("Account security state is invalid.")
+        if origin_token_hash is not None and not re_full_hex(origin_token_hash):
+            raise AuthUnavailable("Account security state is invalid.")
+        if revoke_other_sessions and origin_token_hash is None:
+            raise AuthUnavailable("Account security state is invalid.")
         session_token = secrets.token_urlsafe(MAX_SESSION_TOKEN_BYTES)
         csrf_token = secrets.token_urlsafe(32)
         token_hash = _hash_secret(session_token)
@@ -1181,6 +1545,7 @@ class AuthManager:
         expires = created + timedelta(seconds=self.settings.session_max_seconds)
         idle = created + timedelta(seconds=self.settings.session_idle_seconds)
         session_id = secrets.token_hex(16)
+        verified_at = (mfa_verified_at or created).astimezone(UTC) if mfa_method != "none" else None
         stored = self.store.auth_create_session(
             {
                 "session_id": session_id,
@@ -1193,15 +1558,40 @@ class AuthManager:
                 "idle_expires_at": _iso(idle),
                 "expires_at": _iso(expires),
                 "last_passkey_at": _iso(created) if auth_method == "passkey" else None,
+                # Schema v9 reserves the durable MFA column for an assured TOTP or recovery
+                # session. Legacy/passkey migration state remains represented by auth_method.
+                "mfa_method": mfa_method if mfa_method in {"totp", "recovery"} else None,
+                "mfa_verified_at": _iso(verified_at)
+                if verified_at is not None and mfa_method in {"totp", "recovery"}
+                else None,
+                "mfa_factor_id": expected_factor_id,
+                "expected_factor_id": expected_factor_id,
+                "origin_token_hash": origin_token_hash,
+                "revoke_other_sessions": revoke_other_sessions,
             }
         )
+        if (mfa_method in {"totp", "recovery"} or origin_token_hash is not None) and not isinstance(
+            stored, Mapping
+        ):
+            # A generation/live-origin guarded insert must fail closed.  A legacy store that
+            # silently drops those guards must never be allowed to mint an assured session.
+            raise TotpRejected("The authenticator state changed. Try the current code again.")
         if isinstance(stored, Mapping):
             stored_id = stored.get("session_id", stored.get("id"))
             if isinstance(stored_id, str | int):
                 session_id = str(stored_id)
-        if auth_method == "passkey":
+        if auth_method == "passkey" or mfa_method == "passkey":
             self._step_up_sessions[token_hash] = (user.id, created)
-        context = AuthContext(user, session_id, token_hash, csrf_hash, auth_method)
+        context = AuthContext(
+            user,
+            session_id,
+            token_hash,
+            csrf_hash,
+            auth_method,
+            mfa_method,
+            verified_at,
+            expected_factor_id,
+        )
         return SessionIssue(session_token, csrf_token, context, expires)
 
     def authenticate(self, session_token: str | None, now: datetime) -> AuthContext:
@@ -1235,22 +1625,47 @@ class AuthManager:
         raw_session_id = record.get("session_id")
         csrf_hash = record.get("csrf_token_hash")
         auth_method = record.get("auth_method", "local")
-        step_up = self._step_up_sessions.get(token_hash)
-        if step_up is not None:
-            if step_up[0] != user.id or current - step_up[1] > timedelta(seconds=300):
-                self._step_up_sessions.pop(token_hash, None)
-            else:
-                auth_method = "passkey"
+        if auth_method == "passkey" and self.settings.mode == "github":
+            # Sessions created by the previous passkey-only release are migration sessions. They
+            # may reach factor enrollment, but their old method must never become workspace auth.
+            auth_method = "github"
+        mfa_method = record.get("mfa_method") or "none"
+        if mfa_method == "none" and record.get("auth_method") == "passkey":
+            mfa_method = "passkey"
+        if auth_method == "passkey" and self.settings.mode == "local":
+            # Development passkey sessions retain the legacy local step-up behavior. Production
+            # always normalizes this method to GitHub plus the migration-only MFA marker above.
+            auth_method = "local"
+        mfa_verified_at_value = record.get("mfa_verified_at")
+        mfa_verified_at = (
+            _utc(mfa_verified_at_value) if mfa_verified_at_value is not None else None
+        )
         if not isinstance(raw_session_id, str) or not isinstance(csrf_hash, str):
             raise AuthUnavailable("Account security state is invalid.")
-        if auth_method not in {"local", "github", "passkey"}:
+        if auth_method not in {"local", "github"}:
             raise AuthUnavailable("Account security state is invalid.")
+        if mfa_method not in {"none", "totp", "passkey", "recovery"}:
+            raise AuthUnavailable("Account security state is invalid.")
+        mfa_factor_id: int | None = None
+        if mfa_method in {"totp", "recovery"}:
+            factor = self.store.auth_get_totp_factor(user.id)
+            mfa_factor_id = self._factor_id(factor)
+            stored_factor_id = record.get("mfa_factor_id")
+            if mfa_factor_id is None or stored_factor_id != mfa_factor_id:
+                # A factor replacement revokes old sessions, but this second check protects
+                # stores that return a row during the replacement race from treating an old
+                # factor marker as an assured session.
+                self.store.auth_revoke_session(token_hash, _iso(current))
+                raise AuthenticationRequired()
         return AuthContext(
             user,
             raw_session_id,
             token_hash,
             csrf_hash,
-            cast(Literal["local", "github", "passkey"], auth_method),
+            cast(Literal["local", "github"], auth_method),
+            cast(Literal["none", "totp", "passkey", "recovery"], mfa_method),
+            mfa_verified_at,
+            mfa_factor_id,
         )
 
     def require_csrf(self, context: AuthContext, csrf_token: str | None) -> None:
@@ -1282,16 +1697,43 @@ class AuthManager:
                 del self._step_up_sessions[token_hash]
 
     def has_recent_step_up(self, context: AuthContext, now: datetime, max_age: int = 300) -> bool:
-        """Return true only for a session authenticated by a recent passkey assertion."""
+        """Return true only for a session with a recent TOTP verification."""
 
-        entry = self._step_up_sessions.get(context.token_hash)
-        if entry is None or entry[0] != context.user.id:
+        if self.settings.mode == "local" and context.mfa_method == "passkey":
+            marker = self._step_up_sessions.get(context.token_hash)
+            if marker is None or marker[0] != context.user.id:
+                return False
+            return now.astimezone(UTC) - marker[1] <= timedelta(seconds=max_age)
+        if context.mfa_method != "totp" or context.mfa_verified_at is None:
             return False
-        age = now.astimezone(UTC) - entry[1]
-        if age < timedelta(0) or age > timedelta(seconds=max_age):
-            self._step_up_sessions.pop(context.token_hash, None)
+        age = now.astimezone(UTC) - context.mfa_verified_at
+        return not (age < timedelta(0) or age > timedelta(seconds=max_age))
+
+    def has_totp_factor(self, user_id: int) -> bool:
+        """Return whether an account has an active authenticator factor."""
+
+        factor = self.store.auth_get_totp_factor(user_id)
+        return isinstance(factor, Mapping) and factor.get("revoked_at") is None
+
+    def can_enroll_totp(self, context: AuthContext, now: datetime | None = None) -> bool:
+        """Return whether this session may begin or complete factor enrollment."""
+
+        if not context.user.active:
             return False
-        return True
+        has_factor = self.has_totp_factor(context.user.id)
+        if has_factor:
+            if context.mfa_method == "recovery":
+                return True
+            return context.mfa_method == "totp" and self.has_recent_step_up(
+                context, now or datetime.now(UTC)
+            )
+        if context.mfa_method == "recovery":
+            return True
+        if context.user.passkey_enrolled:
+            return context.mfa_method == "passkey"
+        if context.mfa_method == "passkey":
+            return False
+        return context.auth_method in {"github", "local"}
 
     def create_invitation(
         self, github_id: int, invited_by: int, now: datetime, *, github_login: str | None = None
@@ -1510,6 +1952,310 @@ class AuthManager:
             _optional_text(state_record.get("invitation_code_hash")),
         )
 
+    def totp_status(
+        self, context_or_user: AuthContext | UserRecord, now: datetime
+    ) -> dict[str, object]:
+        """Return factor capability metadata without exposing secrets or recovery material."""
+
+        context = (
+            context_or_user
+            if isinstance(context_or_user, AuthContext)
+            else AuthContext(context_or_user, "status", "status", "status", "github")
+        )
+        user = context.user
+        factor = self.store.auth_get_totp_factor(user.id)
+        pending = self.store.auth_get_totp_enrollment(user.id, _iso(now.astimezone(UTC)))
+        status = self.store.auth_get_recovery_code_status(user.id)
+        remaining = int(status.get("available_count", 0) or 0)
+        enrolled = isinstance(factor, Mapping) and factor.get("revoked_at") is None
+        return {
+            "enrolled": enrolled,
+            "enrollment_pending": isinstance(pending, Mapping),
+            "recovery_codes_remaining": remaining,
+            "requires_totp": self.settings.mode == "github",
+            "legacy_passkey_migration": bool(user.passkey_enrolled and not enrolled),
+            "can_enroll": self.can_enroll_totp(context),
+        }
+
+    def begin_totp_enrollment(self, context: AuthContext, now: datetime) -> dict[str, object]:
+        """Create a short-lived encrypted enrollment secret for the current account."""
+
+        issued = now.astimezone(UTC)
+        if not self.can_enroll_totp(context, issued):
+            raise AuthorizationDenied("Complete the current authenticator check before enrolling.")
+        if self.has_totp_factor(context.user.id) and context.mfa_method not in {"totp", "recovery"}:
+            raise AuthorizationDenied(
+                "A fresh authenticator check is required before replacing it."
+            )
+        expires = issued + timedelta(seconds=self.settings.totp_enrollment_ttl_seconds)
+        secret = generate_secret()
+        ciphertext = encrypt_secret(secret, self.settings.session_secret, user_id=context.user.id)
+        current_factor = self.store.auth_get_totp_factor(context.user.id)
+        expected_factor_id = self._factor_id(current_factor)
+        begun = self.store.auth_begin_totp_enrollment(
+            context.user.id,
+            ciphertext,
+            _iso(issued),
+            _iso(expires),
+            expected_factor_id,
+            context.token_hash,
+        )
+        if not isinstance(begun, Mapping):
+            raise TotpRejected("The authenticator state changed. Start again.")
+        account = context.user.github_login or context.user.username or str(context.user.id)
+        return {
+            "enrollment": True,
+            "secret": secret,
+            "otpauth_uri": otpauth_uri(secret, account, self.settings.totp_issuer),
+            "expires_at": expires,
+        }
+
+    def finish_totp_enrollment(
+        self, context: AuthContext, code: str, now: datetime
+    ) -> tuple[SessionIssue, list[str]]:
+        """Verify a pending code, activate TOTP, rotate sessions, and issue recovery codes."""
+
+        current = now.astimezone(UTC)
+        if not self.can_enroll_totp(context, current):
+            raise AuthorizationDenied("Complete the current authenticator check before enrolling.")
+        pending = self.store.auth_get_totp_enrollment(context.user.id, _iso(current))
+        if not isinstance(pending, Mapping):
+            raise TotpRejected("The authenticator enrollment has expired. Start again.")
+        secret = self._pending_secret(context.user.id, pending)
+        accepted_step = self._match_pending_totp(
+            context.user.id,
+            secret,
+            code,
+            current,
+            pending.get("expected_factor_id"),
+        )
+        expected_ciphertext = pending.get("secret_ciphertext", pending.get("ciphertext"))
+        if not isinstance(expected_ciphertext, str):
+            raise AuthUnavailable("Authenticator enrollment state is invalid.")
+        if "expected_factor_id" not in pending or "origin_token_hash" not in pending:
+            raise AuthUnavailable("Authenticator enrollment state is invalid.")
+        recovery_codes = generate_recovery_codes(RECOVERY_CODE_COUNT)
+        pending_factor_id = pending.get("expected_factor_id")
+        if pending_factor_id is not None and type(pending_factor_id) is not int:
+            raise AuthUnavailable("Authenticator enrollment state is invalid.")
+        confirmed = self.store.auth_confirm_totp_enrollment(
+            context.user.id,
+            _iso(current),
+            expected_ciphertext,
+            accepted_step,
+            [hash_recovery_code(code_value) for code_value in recovery_codes],
+            _iso(current),
+            pending_factor_id,
+            context.token_hash,
+        )
+        if confirmed is None:
+            raise TotpRejected("The authenticator enrollment changed. Start again.")
+        factor_id = self._factor_id(confirmed)
+        if factor_id is None:
+            raise AuthUnavailable("Authenticator factor state is invalid.")
+        self.store.auth_record_totp_attempt(context.user.id, _iso(current), successful=True)
+        user = replace(context.user, totp_enrolled=True, passkey_required=False)
+        issue = self.issue_session(
+            user,
+            current,
+            "github",
+            mfa_method="totp",
+            expected_factor_id=factor_id,
+            origin_token_hash=context.token_hash,
+        )
+        return issue, recovery_codes
+
+    def verify_totp(self, context: AuthContext, code: str, now: datetime) -> SessionIssue:
+        """Verify an active authenticator code and issue a fresh TOTP-assured session."""
+
+        if not self.has_totp_factor(context.user.id):
+            raise TotpRequired("Enroll an authenticator before verifying a code.")
+        current = now.astimezone(UTC)
+        factor, secret, factor_id = self._factor_snapshot(context.user.id)
+        del factor
+        self._verify_totp_secret(context.user.id, secret, code, current, factor_id)
+        # A normal sign-in upgrades only the provisional browser session. Other verified devices
+        # remain active so authenticator login works across multiple devices.
+        user = replace(context.user, totp_enrolled=True, passkey_required=False)
+        issue = self.issue_session(
+            user,
+            current,
+            "github",
+            mfa_method="totp",
+            expected_factor_id=factor_id,
+            origin_token_hash=context.token_hash,
+        )
+        # The repository's guarded insert checked that this origin was live. Revoke it only
+        # after the new assured session exists; factor replacement still revokes both atomically.
+        self.store.auth_revoke_session(context.token_hash, _iso(current))
+        self._step_up_sessions.pop(context.token_hash, None)
+        return issue
+
+    def step_up_totp(self, context: AuthContext, code: str, now: datetime) -> datetime:
+        """Verify a fresh code and bind its five-minute proof to the current session."""
+
+        if context.mfa_method != "totp" or not self.has_totp_factor(context.user.id):
+            raise TotpRequired()
+        current = now.astimezone(UTC)
+        factor, secret, factor_id = self._factor_snapshot(context.user.id)
+        del factor
+        self._verify_totp_secret(context.user.id, secret, code, current, factor_id)
+        if not self.store.auth_set_session_mfa(
+            context.token_hash, "totp", _iso(current), factor_id
+        ):
+            raise AuthUnavailable("The authenticator proof could not be recorded.")
+        return current
+
+    def recover_with_code(self, context: AuthContext, code: str, now: datetime) -> SessionIssue:
+        """Consume one recovery code and issue a factor-replacement-only session."""
+
+        if not self.has_totp_factor(context.user.id):
+            raise TotpRequired("No active authenticator is available for recovery.")
+        current = now.astimezone(UTC)
+        try:
+            code_hash = hash_recovery_code(code)
+        except ValueError:
+            raise TotpRejected() from None
+        factor = self.store.auth_get_totp_factor(context.user.id)
+        factor_id = self._factor_id(factor)
+        if factor_id is None:
+            raise TotpRequired("No active authenticator is available for recovery.")
+        if not self._reserve_totp_attempt(context.user.id, current, factor_id):
+            raise TotpThrottled()
+        consumed = self.store.auth_consume_recovery_code(
+            context.user.id, factor_id, code_hash, _iso(current)
+        )
+        if not consumed:
+            raise TotpRejected()
+        user = replace(context.user, totp_enrolled=True, passkey_required=False)
+        issue = self.issue_session(
+            user,
+            current,
+            "github",
+            mfa_method="recovery",
+            expected_factor_id=factor_id,
+            origin_token_hash=context.token_hash,
+            revoke_other_sessions=True,
+        )
+        self.store.auth_record_totp_attempt(context.user.id, _iso(current), successful=True)
+        return issue
+
+    def rotate_recovery_codes(
+        self, context: AuthContext, code: str, now: datetime
+    ) -> list[str]:
+        """Replace recovery codes after a fresh authenticator verification."""
+
+        if context.mfa_method != "totp" or not self.has_totp_factor(context.user.id):
+            raise TotpRequired()
+        current = now.astimezone(UTC)
+        factor, secret, factor_id = self._factor_snapshot(context.user.id)
+        del factor
+        self._verify_totp_secret(context.user.id, secret, code, current, factor_id)
+        recovery_codes = generate_recovery_codes(RECOVERY_CODE_COUNT)
+        if not self.store.auth_create_recovery_codes(
+            context.user.id,
+            factor_id,
+            [hash_recovery_code(code_value) for code_value in recovery_codes],
+            _iso(current),
+            context.token_hash,
+        ):
+            raise TotpRejected("The authenticator state changed. Try the current code again.")
+        return recovery_codes
+
+    def _pending_secret(self, user_id: int, record: Mapping[str, object]) -> str:
+        """Decrypt one pending enrollment record, failing closed on key or row corruption."""
+
+        ciphertext = record.get("secret_ciphertext", record.get("ciphertext"))
+        if not isinstance(ciphertext, str):
+            raise AuthUnavailable("Authenticator enrollment state is invalid.")
+        try:
+            return decrypt_secret(ciphertext, self.settings.session_secret, user_id=user_id)
+        except ValueError as exc:
+            raise AuthUnavailable("Authenticator enrollment state is invalid.") from exc
+
+    @staticmethod
+    def _factor_id(factor: Mapping[str, object] | None) -> int | None:
+        """Read the durable factor generation used to bind every proof to one factor."""
+
+        if not isinstance(factor, Mapping) or factor.get("revoked_at") is not None:
+            return None
+        value = factor.get("id", factor.get("factor_id", factor.get("generation")))
+        return value if type(value) is int and value > 0 else None
+
+    def _factor_snapshot(self, user_id: int) -> tuple[Mapping[str, object], str, int]:
+        """Read and decrypt one factor together with its immutable generation marker."""
+
+        factor = self.store.auth_get_totp_factor(user_id)
+        factor_id = self._factor_id(factor)
+        if factor_id is None or not isinstance(factor, Mapping):
+            raise TotpRequired()
+        return factor, self._pending_secret(user_id, factor), factor_id
+
+    def _factor_secret(self, user_id: int) -> str:
+        """Decrypt an active factor without returning its stored ciphertext."""
+
+        _factor, secret, _factor_id = self._factor_snapshot(user_id)
+        return secret
+
+    def _verify_totp_secret(
+        self,
+        user_id: int,
+        secret: str,
+        code: str,
+        now: datetime,
+        expected_factor_id: int,
+    ) -> int:
+        """Apply durable throttling, skewed RFC 6238 validation, and replay prevention."""
+
+        if not self._reserve_totp_attempt(user_id, now, expected_factor_id):
+            raise TotpThrottled()
+        step = matching_step(secret, code, now)
+        if step is None:
+            raise TotpRejected()
+        if not self.store.auth_accept_totp_step(
+            user_id, expected_factor_id, step, _iso(now)
+        ):
+            raise TotpRejected("The authenticator state changed. Try the current code again.")
+        self.store.auth_record_totp_attempt(user_id, _iso(now), successful=True)
+        return step
+
+    def _match_pending_totp(
+        self,
+        user_id: int,
+        secret: str,
+        code: str,
+        now: datetime,
+        expected_factor_id: int | None = None,
+    ) -> int:
+        """Validate a pending code before the repository atomically promotes its row."""
+
+        if not self._reserve_totp_attempt(user_id, now, expected_factor_id):
+            raise TotpThrottled()
+        step = matching_step(secret, code, now)
+        if step is None:
+            raise TotpRejected()
+        return step
+
+    def _reserve_totp_attempt(
+        self, user_id: int, now: datetime, expected_factor_id: int | None = None
+    ) -> bool:
+        """Atomically reserve a throttle slot before running TOTP verification crypto."""
+
+        return self.store.auth_reserve_totp_attempt(
+            user_id, _iso(now.astimezone(UTC)), expected_factor_id
+        )
+
+    def _totp_attempt_gate(self, user_id: int, now: datetime) -> Mapping[str, object]:
+        """Read the durable lock state before parsing or verifying an attacker-controlled code."""
+
+        return self.store.auth_check_totp_attempt(user_id, _iso(now.astimezone(UTC)))
+
+    @staticmethod
+    def _attempt_allowed(record: Mapping[str, object]) -> bool:
+        """Accept only explicit allow values from the persistence throttle boundary."""
+
+        return not (record.get("allowed") is False or record.get("locked") is True)
+
     def begin_passkey_registration(
         self, user: UserRecord, rp_id: str, origin: str
     ) -> dict[str, object]:
@@ -1517,6 +2263,10 @@ class AuthManager:
 
         if not user.active:
             raise AuthenticationRequired()
+        if self.settings.mode == "github":
+            raise AuthorizationDenied(
+                "Passkeys are retained only to migrate legacy accounts to an authenticator."
+            )
         challenge = _b64(secrets.token_bytes(32))
         now = datetime.now(UTC)
         with self._challenge_lock:
@@ -1571,6 +2321,8 @@ class AuthManager:
     def begin_passkey_assertion(self, user: UserRecord, rp_id: str) -> dict[str, object]:
         """Return assertion options for every enrolled credential on an account."""
 
+        if self.settings.mode == "github" and self.has_totp_factor(user.id):
+            raise AuthorizationDenied("Use your authenticator code for this account.")
         credentials = self.store.auth_get_passkeys(user.id)
         challenge = _b64(secrets.token_bytes(32))
         now = datetime.now(UTC)
@@ -1604,7 +2356,10 @@ class AuthManager:
         origin: str,
         now: datetime,
     ) -> SessionIssue:
-        """Verify an assertion, update its counter, and issue a passkey session."""
+        """Verify a legacy assertion and issue only a factor-migration session."""
+
+        if self.settings.mode == "github" and self.has_totp_factor(user.id):
+            raise AuthorizationDenied("Use your authenticator code for this account.")
 
         challenge = self._consume_challenge("assertion", user.id, response)
         credential_id = response.get("id")
@@ -1638,7 +2393,7 @@ class AuthManager:
             or updated_count < new_count
         ):
             raise PasskeyRejected()
-        return self.issue_session(user, now, "passkey")
+        return self.issue_session(user, now, "passkey", mfa_method="passkey")
 
     def _consume_challenge(
         self, kind: ChallengeKind, user_id: int, response: Mapping[str, object]
@@ -1698,6 +2453,12 @@ class MemoryAuthStore:
         self.invitations: dict[str, dict[str, object]] = {}
         self.oauth_states: dict[str, dict[str, object]] = {}
         self.passkeys: dict[str, dict[str, object]] = {}
+        self.totp_enrollments: dict[int, dict[str, object]] = {}
+        self.totp_factors: dict[int, dict[str, object]] = {}
+        self.recovery_codes: dict[int, list[dict[str, object]]] = {}
+        self.totp_attempts: dict[int, dict[str, object]] = {}
+        self._totp_lock = threading.RLock()
+        self._next_factor_id = 1
         self._next_user_id = 1
 
     def auth_get_user_by_id(self, user_id: int) -> Mapping[str, object] | None:
@@ -1728,8 +2489,47 @@ class MemoryAuthStore:
         user.update(fields)
         return user
 
-    def auth_create_session(self, fields: Mapping[str, object]) -> None:
-        self.sessions[str(fields["token_hash"])] = dict(fields)
+    def auth_create_session(self, fields: Mapping[str, object]) -> Mapping[str, object] | None:
+        """Create a session only while its factor and live origin still match."""
+
+        with self._totp_lock:
+            user_id = fields.get("user_id")
+            token_hash = str(fields["token_hash"])
+            expected_factor_id = fields.get("expected_factor_id")
+            if expected_factor_id is not None:
+                factor = self.totp_factors.get(user_id) if type(user_id) is int else None
+                if self._factor_id(factor) != expected_factor_id:
+                    return None
+            origin_token_hash = fields.get("origin_token_hash")
+            if origin_token_hash is not None:
+                origin = self.sessions.get(origin_token_hash)
+                if (
+                    not isinstance(origin, Mapping)
+                    or origin.get("user_id") != user_id
+                    or origin.get("revoked_at") is not None
+                ):
+                    return None
+            if fields.get("revoke_other_sessions") is True:
+                if origin_token_hash is None:
+                    return None
+                for session in self.sessions.values():
+                    if (
+                        session.get("user_id") == user_id
+                        and session.get("token_hash") != token_hash
+                        and session.get("revoked_at") is None
+                    ):
+                        session["revoked_at"] = fields.get("created_at")
+                        session["revocation_reason"] = "security-change"
+            record = dict(fields)
+            if expected_factor_id is not None:
+                record["mfa_factor_id"] = expected_factor_id
+            self.sessions[token_hash] = record
+            if origin_token_hash is not None and fields.get("revoke_other_sessions") is not True:
+                origin = self.sessions.get(origin_token_hash)
+                if origin is not None and origin.get("revoked_at") is None:
+                    origin["revoked_at"] = fields.get("created_at")
+                    origin["revocation_reason"] = "mfa-upgrade"
+            return record
 
     def auth_get_session(self, token_hash: str) -> Mapping[str, object] | None:
         return self.sessions.get(token_hash)
@@ -1739,13 +2539,15 @@ class MemoryAuthStore:
             self.sessions[token_hash].update(fields)
 
     def auth_revoke_session(self, token_hash: str, revoked_at: str) -> None:
-        if token_hash in self.sessions:
-            self.sessions[token_hash]["revoked_at"] = revoked_at
+        with self._totp_lock:
+            if token_hash in self.sessions:
+                self.sessions[token_hash]["revoked_at"] = revoked_at
 
     def auth_revoke_all_sessions(self, user_id: int, revoked_at: str) -> None:
-        for session in self.sessions.values():
-            if session.get("user_id") == user_id:
-                session["revoked_at"] = revoked_at
+        with self._totp_lock:
+            for session in self.sessions.values():
+                if session.get("user_id") == user_id:
+                    session["revoked_at"] = revoked_at
 
     def auth_create_invitation(self, fields: Mapping[str, object]) -> Mapping[str, object]:
         record = dict(fields)
@@ -1825,6 +2627,271 @@ class MemoryAuthStore:
             return None
         record.update(fields)
         return record
+
+    def auth_begin_totp_enrollment(
+        self,
+        user_id: int,
+        secret_ciphertext: str,
+        created_at: str,
+        expires_at: str,
+        expected_factor_id: int | None,
+        origin_token_hash: str,
+    ) -> Mapping[str, object] | None:
+        with self._totp_lock:
+            factor = self.totp_factors.get(user_id)
+            if self._factor_id(factor) != expected_factor_id:
+                return None
+            origin = self.sessions.get(origin_token_hash)
+            if (
+                not isinstance(origin, Mapping)
+                or origin.get("user_id") != user_id
+                or origin.get("revoked_at") is not None
+            ):
+                return None
+        record = {
+            "user_id": user_id,
+            "secret_ciphertext": secret_ciphertext,
+            "created_at": created_at,
+            "expires_at": expires_at,
+            "expected_factor_id": expected_factor_id,
+            "origin_token_hash": origin_token_hash,
+        }
+        with self._totp_lock:
+            self.totp_enrollments[user_id] = record
+        return record
+
+    def auth_get_totp_enrollment(
+        self, user_id: int, now: str | None = None
+    ) -> Mapping[str, object] | None:
+        record = self.totp_enrollments.get(user_id)
+        if record is None:
+            return None
+        if now is not None and _utc(record["expires_at"]) <= _utc(now):
+            self.totp_enrollments.pop(user_id, None)
+            return None
+        return record
+
+    def auth_confirm_totp_enrollment(
+        self,
+        user_id: int,
+        confirmed_at: str,
+        expected_secret_ciphertext: str,
+        accepted_step: int,
+        recovery_code_hashes: Sequence[str],
+        revoked_at: str,
+        expected_factor_id: int | None,
+        origin_token_hash: str,
+    ) -> Mapping[str, object] | None:
+        with self._totp_lock:
+            pending = self.totp_enrollments.get(user_id)
+            current_factor_id = self._factor_id(self.totp_factors.get(user_id))
+            origin = self.sessions.get(origin_token_hash)
+            pending_factor_id = pending.get("expected_factor_id") if pending else None
+        if (
+            pending is None
+            or pending.get("secret_ciphertext") != expected_secret_ciphertext
+            or pending_factor_id != expected_factor_id
+            or current_factor_id != expected_factor_id
+            or not isinstance(origin, Mapping)
+            or origin.get("user_id") != user_id
+            or origin.get("revoked_at") is not None
+            or type(accepted_step) is not int
+            or accepted_step < 0
+            or _utc(pending["expires_at"]) <= _utc(confirmed_at)
+        ):
+            return None
+        with self._totp_lock:
+            self.totp_enrollments.pop(user_id, None)
+            factor = {
+                "id": self._next_factor_id,
+                "user_id": user_id,
+                "secret_ciphertext": pending["secret_ciphertext"],
+                "enrolled_at": confirmed_at,
+                "last_totp_step": accepted_step,
+                "revoked_at": None,
+            }
+            self._next_factor_id += 1
+            self.totp_factors[user_id] = factor
+            self.recovery_codes[user_id] = [
+                {"code_hash": code_hash, "created_at": confirmed_at, "consumed_at": None}
+                for code_hash in recovery_code_hashes
+            ]
+            enrolled_origin = pending.get("origin_token_hash")
+            for session in self.sessions.values():
+                if (
+                    session.get("user_id") == user_id
+                    and session.get("token_hash") != enrolled_origin
+                    and session.get("revoked_at") is None
+                ):
+                    session["revoked_at"] = revoked_at
+                    session["revocation_reason"] = "security-change"
+            user = self.users.get(user_id)
+            if user is not None:
+                user["totp_enrolled"] = True
+                user["passkey_required"] = False
+        return factor
+
+    def auth_get_totp_factor(self, user_id: int) -> Mapping[str, object] | None:
+        factor = self.totp_factors.get(user_id)
+        if factor is None or factor.get("revoked_at") is not None:
+            return None
+        return factor
+
+    def auth_accept_totp_step(
+        self, user_id: int, expected_factor_id: int, step: int, accepted_at: str
+    ) -> bool:
+        with self._totp_lock:
+            factor = self.auth_get_totp_factor(user_id)
+            if self._factor_id(factor) != expected_factor_id:
+                return False
+            previous = factor.get("last_totp_step", -1) if factor else -1
+            if type(previous) is not int or type(step) is not int or step <= previous:
+                return False
+            factor["last_totp_step"] = step
+            factor["last_used_at"] = accepted_at
+            return True
+
+    @staticmethod
+    def _factor_id(factor: Mapping[str, object] | None) -> int | None:
+        if not isinstance(factor, Mapping):
+            return None
+        value = factor.get("id", factor.get("factor_id", factor.get("generation")))
+        return value if type(value) is int and value > 0 else None
+
+    def auth_check_totp_attempt(
+        self, user_id: int, attempted_at: str
+    ) -> Mapping[str, object]:
+        record = self.totp_attempts.get(user_id)
+        if record is None:
+            return {"allowed": True, "failures": 0}
+        locked_until = record.get("locked_until")
+        if isinstance(locked_until, str) and _utc(locked_until) > _utc(attempted_at):
+            return {"allowed": False, "locked": True, "locked_until": locked_until}
+        return {"allowed": True, "failures": int(record.get("failures", 0))}
+
+    def auth_record_totp_attempt(
+        self,
+        user_id: int,
+        attempted_at: str,
+        window_seconds: int = 300,
+        max_attempts: int = 5,
+        lockout_seconds: int = 900,
+        successful: bool = False,
+    ) -> Mapping[str, object]:
+        current = _utc(attempted_at)
+        if successful:
+            self.totp_attempts.pop(user_id, None)
+            return {"allowed": True, "failures": 0}
+        record = self.totp_attempts.get(user_id)
+        if record is None or _utc(str(record["window_start"])) + timedelta(
+            seconds=window_seconds
+        ) <= current:
+            record = {"window_start": attempted_at, "failures": 0, "locked_until": None}
+            self.totp_attempts[user_id] = record
+        record["failures"] = int(record.get("failures", 0)) + 1
+        if int(record["failures"]) >= max_attempts:
+            locked_until = current + timedelta(seconds=lockout_seconds)
+            record["locked_until"] = _iso(locked_until)
+            return {"allowed": False, "locked": True, "locked_until": _iso(locked_until)}
+        return {"allowed": True, "failures": record["failures"]}
+
+    def auth_reserve_totp_attempt(
+        self, user_id: int, attempted_at: str, expected_factor_id: int | None = None
+    ) -> bool:
+        """Atomically reserve one bounded attempt before TOTP cryptographic verification."""
+
+        current = _utc(attempted_at)
+        with self._totp_lock:
+            if expected_factor_id is not None and self._factor_id(
+                self.totp_factors.get(user_id)
+            ) != expected_factor_id:
+                return False
+            record = self.totp_attempts.get(user_id)
+            if record is not None:
+                locked_until = record.get("locked_until")
+                if isinstance(locked_until, str) and _utc(locked_until) > current:
+                    return False
+                if _utc(str(record["window_start"])) + timedelta(seconds=300) <= current:
+                    record = None
+            if record is None:
+                record = {"window_start": attempted_at, "failures": 0, "locked_until": None}
+                self.totp_attempts[user_id] = record
+            failures = int(record.get("failures", 0)) + 1
+            record["failures"] = failures
+            if failures >= 5:
+                record["locked_until"] = _iso(current + timedelta(seconds=900))
+            return True
+
+    def auth_create_recovery_codes(
+        self,
+        user_id: int,
+        expected_factor_id: int,
+        code_hashes: Sequence[str],
+        created_at: str,
+        origin_token_hash: str,
+    ) -> bool:
+        with self._totp_lock:
+            if self._factor_id(self.totp_factors.get(user_id)) != expected_factor_id:
+                return False
+            origin = self.sessions.get(origin_token_hash)
+            if (
+                not isinstance(origin, Mapping)
+                or origin.get("user_id") != user_id
+                or origin.get("revoked_at") is not None
+            ):
+                return False
+            self.recovery_codes[user_id] = [
+                {"code_hash": code_hash, "created_at": created_at, "consumed_at": None}
+                for code_hash in code_hashes
+            ]
+            return True
+
+    def auth_consume_recovery_code(
+        self, user_id: int, expected_factor_id: int, code_hash: str, consumed_at: str
+    ) -> bool:
+        with self._totp_lock:
+            if self._factor_id(self.totp_factors.get(user_id)) != expected_factor_id:
+                return False
+            for record in self.recovery_codes.get(user_id, []):
+                if record["code_hash"] == code_hash and record.get("consumed_at") is None:
+                    record["consumed_at"] = consumed_at
+                    return True
+            return False
+
+    def auth_get_recovery_code_status(self, user_id: int) -> Mapping[str, object]:
+        records = self.recovery_codes.get(user_id, [])
+        return {
+            "user_id": user_id,
+            "total_count": len(records),
+            "available_count": sum(
+                1
+                for record in records
+                if record.get("consumed_at") is None and record.get("revoked_at") is None
+            ),
+            "consumed_count": sum(1 for record in records if record.get("consumed_at") is not None),
+            "revoked_count": sum(1 for record in records if record.get("revoked_at") is not None),
+        }
+
+    def auth_list_recovery_code_status(self, user_id: int) -> list[Mapping[str, object]]:
+        """Retain the old inspection helper for compatibility with existing tests."""
+
+        return [dict(record) for record in self.recovery_codes.get(user_id, [])]
+
+    def auth_set_session_mfa(
+        self, token_hash: str, method: str, verified_at: str, expected_factor_id: int
+    ) -> bool:
+        with self._totp_lock:
+            session = self.sessions.get(token_hash)
+            if session is None or session.get("revoked_at") is not None:
+                return False
+            if method not in {"totp", "recovery"}:
+                return False
+            if self._factor_id(self.totp_factors.get(session.get("user_id"))) != expected_factor_id:
+                return False
+            session["mfa_method"] = method
+            session["mfa_verified_at"] = verified_at
+            session["mfa_factor_id"] = expected_factor_id
+            return True
 
     def auth_list_sessions(self, user_id: int) -> list[Mapping[str, object]]:
         return [item for item in self.sessions.values() if item.get("user_id") == user_id]

@@ -45,7 +45,7 @@ export default function InvitePage() {
     <AuthShell showAccount={false} eyebrow="Invitation only" title="Join the workspace" description="An invitation connects one GitHub identity to a private Signal Ledger account. It can be redeemed once and expires automatically.">
       <section className={styles.authPanel} aria-labelledby="invite-heading">
         <h2 id="invite-heading">Redeem invitation</h2>
-        <p className={styles.panelLead}>Paste the single-use code from your administrator. You will set up a passkey after the code is accepted.</p>
+        <p className={styles.panelLead}>Paste the single-use code from your administrator. After GitHub confirms your identity, you will connect an authenticator app.</p>
         <form className={styles.authForm} onSubmit={redeem} noValidate>
           <label htmlFor="invite-code">Invitation code
             <input id="invite-code" name="code" type="text" autoComplete="one-time-code" spellCheck={false} value={code} onChange={(event) => setCode(event.target.value)} placeholder="Paste your code" required />

@@ -8,9 +8,9 @@ import math
 import re
 import secrets
 import sqlite3
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, nullcontext, suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from importlib.resources import files
 from pathlib import Path
 from threading import Lock, RLock
@@ -19,7 +19,7 @@ from typing import Any, Final, TypedDict, TypeGuard, cast
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, HistoryFilters
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 OUTCOME_RECONSTRUCTION_LIMIT = 100
 HISTORY_EXPORT_LIMIT = 100
 INSTRUMENT_LIST_ITEM_LIMIT = 100
@@ -37,6 +37,7 @@ MIGRATION_SHA256 = {
     6: "1218aa2c8b762f441feebcd870053f374af326a4b852bd4789e66e3c5f824e69",
     7: "770484cb124161d2da58aefea5dc6376a8dbc35624e552019c2111e8b0246e05",
     8: "e79a6e6a5510b826ef98430b334199b12353a672eaf38ea4b49c6c8a72ca8fae",
+    9: "bca47a59aef43ce4c4750c2a11f822903cb3e6a599d50e8eaff4690dc4ba9c6c",
 }
 
 
@@ -76,6 +77,10 @@ def _is_representative_storage_counts(value: object) -> TypeGuard[_Representativ
 _DATABASE_LOCKS: dict[Path, RLock] = {}
 _DATABASE_LOCKS_GUARD = Lock()
 MAX_PENDING_OAUTH_STATES: Final = 128
+MAX_TOTP_RECOVERY_CODES: Final = 32
+MAX_TOTP_SECRET_CIPHERTEXT_LENGTH: Final = 16_384
+MAX_TOTP_ATTEMPTS_PER_WINDOW: Final = 100
+_UNSET: Final = object()
 
 
 class RepositoryError(sqlite3.Error):
@@ -341,6 +346,71 @@ class Repository:
         ):
             raise ValueError(f"{field} must be a lowercase SHA-256 digest")
         return value
+
+    @staticmethod
+    def _require_factor_id(value: object, field: str = "expected_factor_id") -> int:
+        """Validate the immutable TOTP factor id used as the generation fence."""
+
+        if type(value) is not int or value < 1:
+            raise ValueError(f"{field} must be a positive integer")
+        return value
+
+    @classmethod
+    def _optional_factor_id(cls, value: object, field: str = "expected_factor_id") -> int | None:
+        """Validate an optional generation fence while preserving first-enrollment state."""
+
+        if value is None:
+            return None
+        return cls._require_factor_id(value, field)
+
+    @staticmethod
+    def _require_totp_secret_ciphertext(value: str) -> str:
+        """Validate encrypted TOTP material without accepting an empty database value."""
+
+        if (
+            not isinstance(value, str)
+            or not 16 <= len(value.strip()) <= MAX_TOTP_SECRET_CIPHERTEXT_LENGTH
+        ):
+            raise ValueError("secret_ciphertext length is invalid")
+        return value.strip()
+
+    @staticmethod
+    def _require_totp_step(value: int) -> int:
+        """Validate a non-negative RFC 6238 time-step before the replay CAS."""
+
+        if type(value) is not int or value < 0:
+            raise ValueError("TOTP step must be a non-negative integer")
+        return value
+
+    @staticmethod
+    def _require_totp_attempt_limits(
+        window_seconds: int, max_attempts: int, lockout_seconds: int
+    ) -> tuple[int, int, int]:
+        """Keep the durable throttle bounded even when called by an untrusted adapter."""
+
+        if type(window_seconds) is not int or not 1 <= window_seconds <= 86_400:
+            raise ValueError("TOTP attempt window must be 1-86400 seconds")
+        if type(max_attempts) is not int or not 1 <= max_attempts <= MAX_TOTP_ATTEMPTS_PER_WINDOW:
+            raise ValueError("TOTP attempt limit must be 1-100")
+        if type(lockout_seconds) is not int or not 1 <= lockout_seconds <= 86_400:
+            raise ValueError("TOTP lockout must be 1-86400 seconds")
+        return window_seconds, max_attempts, lockout_seconds
+
+    @classmethod
+    def _normalize_recovery_code_hashes(cls, code_hashes: Sequence[str]) -> list[str]:
+        """Validate the bounded recovery set before any factor transaction can mutate state."""
+
+        if isinstance(code_hashes, str | bytes) or not isinstance(code_hashes, Sequence):
+            raise ValueError("code_hashes must be a sequence")
+        if not 1 <= len(code_hashes) <= MAX_TOTP_RECOVERY_CODES:
+            raise ValueError("recovery code count must be 1-32")
+        normalized: list[str] = []
+        for code_hash in code_hashes:
+            value = cls._require_token_hash(code_hash, "code_hash")
+            if value in normalized:
+                raise ValueError("recovery code hashes must be unique")
+            normalized.append(value)
+        return normalized
 
     @staticmethod
     def _ensure_user_exists(connection: sqlite3.Connection, user_id: int) -> None:
@@ -981,6 +1051,9 @@ class Repository:
         session_id: str | None = None,
         auth_method: str = "local",
         last_passkey_at: datetime | None = None,
+        mfa_method: str | None = None,
+        mfa_verified_at: datetime | None = None,
+        mfa_factor_id: int | None = None,
     ) -> dict[str, Any]:
         """Persist an opaque server-side session and its CSRF digest."""
 
@@ -1003,14 +1076,41 @@ class Repository:
             if last_passkey_at is not None
             else None
         )
+        if mfa_method not in {None, "totp", "recovery"}:
+            raise ValueError("mfa_method is not supported")
+        if mfa_verified_at is not None and mfa_method is None:
+            raise ValueError("mfa_verified_at requires mfa_method")
+        if mfa_method is not None and mfa_verified_at is None:
+            raise ValueError("mfa_method requires mfa_verified_at")
+        if mfa_method is not None and mfa_factor_id is None:
+            raise ValueError("MFA sessions require a current factor generation")
+        if mfa_method is None and mfa_factor_id is not None:
+            raise ValueError("factor generation requires an MFA method")
+        factor_id = (
+            self._require_factor_id(mfa_factor_id)
+            if mfa_factor_id is not None
+            else None
+        )
+        mfa_verified = (
+            self._iso_datetime(mfa_verified_at, "mfa_verified_at")
+            if mfa_verified_at is not None
+            else None
+        )
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._ensure_user_exists(connection, user_id)
+            if factor_id is not None and connection.execute(
+                "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
+                (factor_id, user_id),
+            ).fetchone() is None:
+                connection.rollback()
+                raise ValueError("factor generation is not current for this user")
             cursor = connection.execute(
                 """INSERT INTO sessions
                 (user_id, session_id, token_hash, csrf_token_hash, issued_at, last_seen_at,
-                 idle_expires_at, absolute_expires_at, auth_method, last_passkey_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 idle_expires_at, absolute_expires_at, auth_method, last_passkey_at,
+                 mfa_method, mfa_verified_at, mfa_factor_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     user_id,
                     session_id,
@@ -1022,6 +1122,9 @@ class Repository:
                     absolute_expires,
                     auth_method,
                     last_passkey,
+                    mfa_method,
+                    mfa_verified,
+                    factor_id,
                 ),
             )
             row_id = self._insert_id(cursor)
@@ -1029,7 +1132,8 @@ class Repository:
             row = connection.execute(
                 """SELECT id, session_id, user_id, token_hash, csrf_token_hash, issued_at,
                 last_seen_at, idle_expires_at, absolute_expires_at, auth_method,
-                last_passkey_at, revoked_at, revocation_reason
+                last_passkey_at, mfa_method, mfa_verified_at, mfa_factor_id,
+                revoked_at, revocation_reason
                 FROM sessions WHERE id = ?""",
                 (row_id,),
             ).fetchone()
@@ -1050,12 +1154,18 @@ class Repository:
                 """SELECT session.id, session.session_id, session.user_id,
                 session.csrf_token_hash, session.issued_at, session.last_seen_at,
                 session.idle_expires_at, session.absolute_expires_at, session.auth_method,
-                session.last_passkey_at, session.revoked_at, session.revocation_reason,
+                session.last_passkey_at, session.mfa_method, session.mfa_verified_at,
+                session.mfa_factor_id,
+                session.revoked_at, session.revocation_reason,
                 user.github_user_id, user.login, user.email, user.display_name,
                 user.role, user.status
                 FROM sessions AS session JOIN users AS user ON user.id = session.user_id
                 WHERE session.token_hash = ? AND session.revoked_at IS NULL
                   AND session.idle_expires_at > ? AND session.absolute_expires_at > ?
+                  AND (session.mfa_method IS NULL OR EXISTS (
+                      SELECT 1 FROM totp_factors AS factor
+                      WHERE factor.id = session.mfa_factor_id AND factor.user_id = session.user_id
+                  ))
                   AND user.status = 'active'""",
                 (token_hash, now_text, now_text),
             ).fetchone()
@@ -1072,7 +1182,7 @@ class Repository:
             connection.commit()
         return result
 
-    def auth_create_session(self, fields: Mapping[str, object]) -> dict[str, Any]:
+    def auth_create_session(self, fields: Mapping[str, object]) -> dict[str, Any] | None:
         """Persist the auth manager's opaque session fields in the durable session table."""
 
         user_id = fields.get("user_id")
@@ -1082,6 +1192,8 @@ class Repository:
         csrf_hash = fields.get("csrf_token_hash")
         if not isinstance(token_hash, str) or not isinstance(csrf_hash, str):
             raise ValueError("session token hashes are required")
+        token_hash = self._require_token_hash(token_hash, "token_hash")
+        csrf_hash = self._require_token_hash(csrf_hash, "csrf_token_hash")
         issued_at = self._parse_iso_datetime(
             fields.get("issued_at", fields.get("created_at")), "created_at"
         )
@@ -1092,8 +1204,14 @@ class Repository:
         )
         session_id_value = fields.get("session_id")
         session_id = session_id_value if isinstance(session_id_value, str) else None
+        if session_id is None:
+            session_id = secrets.token_hex(16)
+        if not 16 <= len(session_id) <= 128:
+            raise ValueError("session_id length is invalid")
         auth_method_value = fields.get("auth_method", "local")
         if not isinstance(auth_method_value, str):
+            raise ValueError("auth_method is not supported")
+        if auth_method_value not in {"local", "github", "passkey"}:
             raise ValueError("auth_method is not supported")
         last_passkey_value = fields.get("last_passkey_at")
         last_passkey_at = (
@@ -1101,7 +1219,38 @@ class Repository:
             if last_passkey_value is not None
             else None
         )
-        return self.create_session(
+        mfa_method_value = fields.get("mfa_method")
+        mfa_method = mfa_method_value if isinstance(mfa_method_value, str) else None
+        if mfa_method not in {None, "totp", "recovery"}:
+            raise ValueError("mfa_method is not supported")
+        mfa_verified_value = fields.get("mfa_verified_at")
+        mfa_verified_at = (
+            self._parse_iso_datetime(mfa_verified_value, "mfa_verified_at")
+            if mfa_verified_value is not None
+            else None
+        )
+        mfa_factor_value = fields.get("mfa_factor_id", fields.get("expected_factor_id"))
+        mfa_factor_id = self._optional_factor_id(mfa_factor_value)
+        origin_value = fields.get("origin_token_hash")
+        origin_token_hash = (
+            self._require_token_hash(origin_value, "origin_token_hash")
+            if origin_value is not None
+            else None
+        )
+        revoke_other_sessions = fields.get("revoke_other_sessions", False)
+        if type(revoke_other_sessions) is not bool:
+            raise ValueError("revoke_other_sessions must be a boolean")
+        # Every factor-bound session must be issued from the live provisional session captured
+        # by the proof transaction, including the first enrollment session.
+        if mfa_method in {"totp", "recovery"} and mfa_factor_id is None:
+            raise ValueError("MFA sessions require expected_factor_id")
+        if mfa_method in {"totp", "recovery"} and mfa_verified_at is None:
+            raise ValueError("MFA sessions require mfa_verified_at")
+        if mfa_method in {"totp", "recovery"} and origin_token_hash is None:
+            return None
+        if origin_token_hash == token_hash:
+            return None
+        return self._create_auth_session_transaction(
             user_id=user_id,
             token_hash=token_hash,
             csrf_token_hash=csrf_hash,
@@ -1112,7 +1261,132 @@ class Repository:
             session_id=session_id,
             auth_method=auth_method_value,
             last_passkey_at=last_passkey_at,
+            mfa_method=mfa_method,
+            mfa_verified_at=mfa_verified_at,
+            mfa_factor_id=mfa_factor_id,
+            origin_token_hash=origin_token_hash,
+            revoke_other_sessions=revoke_other_sessions,
         )
+
+    def _create_auth_session_transaction(
+        self,
+        *,
+        user_id: int,
+        token_hash: str,
+        csrf_token_hash: str,
+        issued_at: datetime,
+        last_seen_at: datetime,
+        idle_expires_at: datetime,
+        absolute_expires_at: datetime,
+        session_id: str | None,
+        auth_method: str,
+        last_passkey_at: datetime | None,
+        mfa_method: str | None,
+        mfa_verified_at: datetime | None,
+        mfa_factor_id: int | None,
+        origin_token_hash: str | None,
+        revoke_other_sessions: bool,
+    ) -> dict[str, Any] | None:
+        """Insert an MFA session only after an atomic generation and origin check.
+
+        The caller has already validated the opaque fields.  Keeping the generation check,
+        live-origin lookup, insert, and revocation in this one write transaction closes the
+        window in which a factor replacement could otherwise mint a session from an old proof.
+        """
+
+        issued = self._iso_datetime(issued_at, "issued_at")
+        last_seen = self._iso_datetime(last_seen_at, "last_seen_at")
+        idle_expires = self._iso_datetime(idle_expires_at, "idle_expires_at")
+        absolute_expires = self._iso_datetime(absolute_expires_at, "absolute_expires_at")
+        if not issued <= last_seen <= idle_expires <= absolute_expires:
+            raise ValueError("session timestamps are not ordered")
+        last_passkey = (
+            self._iso_datetime(last_passkey_at, "last_passkey_at")
+            if last_passkey_at is not None
+            else None
+        )
+        mfa_verified = (
+            self._iso_datetime(mfa_verified_at, "mfa_verified_at")
+            if mfa_verified_at is not None
+            else None
+        )
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._ensure_user_exists(connection, user_id)
+            if mfa_method in {"totp", "recovery"}:
+                if mfa_factor_id is None:
+                    connection.rollback()
+                    return None
+                if connection.execute(
+                    "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
+                    (mfa_factor_id, user_id),
+                ).fetchone() is None:
+                    connection.rollback()
+                    return None
+                if origin_token_hash is None:
+                    connection.rollback()
+                    return None
+                if origin_token_hash is not None:
+                    origin = connection.execute(
+                        """SELECT id FROM sessions
+                        WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL
+                          AND idle_expires_at > ? AND absolute_expires_at > ?""",
+                        (origin_token_hash, user_id, issued, issued),
+                    ).fetchone()
+                    if origin is None:
+                        connection.rollback()
+                        return None
+            elif origin_token_hash is not None or mfa_factor_id is not None:
+                connection.rollback()
+                return None
+            cursor = connection.execute(
+                """INSERT INTO sessions
+                (user_id, session_id, token_hash, csrf_token_hash, issued_at, last_seen_at,
+                 idle_expires_at, absolute_expires_at, auth_method, last_passkey_at,
+                 mfa_method, mfa_verified_at, mfa_factor_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    user_id,
+                    session_id,
+                    token_hash,
+                    csrf_token_hash,
+                    issued,
+                    last_seen,
+                    idle_expires,
+                    absolute_expires,
+                    auth_method,
+                    last_passkey,
+                    mfa_method,
+                    mfa_verified,
+                    mfa_factor_id,
+                ),
+            )
+            row_id = self._insert_id(cursor)
+            if origin_token_hash is not None:
+                if revoke_other_sessions:
+                    connection.execute(
+                        """UPDATE sessions SET revoked_at = ?, revocation_reason =
+                        'security-change' WHERE user_id = ? AND token_hash != ?
+                        AND revoked_at IS NULL""",
+                        (issued, user_id, token_hash),
+                    )
+                else:
+                    connection.execute(
+                        """UPDATE sessions SET revoked_at = ?, revocation_reason =
+                        'mfa-upgrade' WHERE token_hash = ? AND revoked_at IS NULL""",
+                        (issued, origin_token_hash),
+                    )
+            connection.commit()
+            row = connection.execute(
+                """SELECT id, session_id, user_id, token_hash, csrf_token_hash, issued_at,
+                last_seen_at, idle_expires_at, absolute_expires_at, auth_method,
+                last_passkey_at, mfa_method, mfa_verified_at, mfa_factor_id,
+                revoked_at, revocation_reason FROM sessions WHERE id = ?""",
+                (row_id,),
+            ).fetchone()
+        if row is None:
+            raise RepositoryDatabaseError("created auth session could not be read")
+        return dict(row)
 
     def auth_get_session(self, token_hash: str) -> dict[str, Any] | None:
         """Return raw session lifecycle state for AuthManager's bounded expiry checks."""
@@ -1124,8 +1398,15 @@ class Repository:
                 session.token_hash, session.csrf_token_hash, session.auth_method,
                 session.issued_at AS created_at, session.last_seen_at,
                 session.idle_expires_at, session.absolute_expires_at AS expires_at,
-                session.last_passkey_at, session.revoked_at, session.revocation_reason
-                FROM sessions AS session WHERE session.token_hash = ?""",
+                session.last_passkey_at, session.mfa_method, session.mfa_verified_at,
+                session.mfa_factor_id,
+                session.revoked_at, session.revocation_reason
+                FROM sessions AS session
+                WHERE session.token_hash = ?
+                  AND (session.mfa_method IS NULL OR EXISTS (
+                      SELECT 1 FROM totp_factors AS factor
+                      WHERE factor.id = session.mfa_factor_id AND factor.user_id = session.user_id
+                  ))""",
                 (token_hash,),
             ).fetchone()
         return dict(row) if row is not None else None
@@ -1177,6 +1458,39 @@ class Repository:
             revoked_at=self._parse_iso_datetime(revoked_at, "revoked_at"),
         )
 
+    def auth_set_session_mfa(
+        self, token_hash: str, method: str, verified_at: str, expected_factor_id: int
+    ) -> bool:
+        """Bind one proof to a live session and the factor generation it verified."""
+
+        token_hash = self._require_token_hash(token_hash, "token_hash")
+        if method not in {"totp", "recovery"}:
+            raise ValueError("mfa method is not supported")
+        factor_id = self._require_factor_id(expected_factor_id)
+        verified = self._parse_iso_datetime(verified_at, "verified_at")
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """UPDATE sessions SET mfa_method = ?, mfa_verified_at = ?, mfa_factor_id = ?
+                WHERE token_hash = ? AND revoked_at IS NULL
+                  AND idle_expires_at > ? AND absolute_expires_at > ?
+                  AND EXISTS (
+                      SELECT 1 FROM totp_factors AS factor
+                      WHERE factor.id = ? AND factor.user_id = sessions.user_id
+                  )""",
+                (
+                    method,
+                    verified.isoformat(),
+                    factor_id,
+                    token_hash,
+                    verified.isoformat(),
+                    verified.isoformat(),
+                    factor_id,
+                ),
+            )
+            connection.commit()
+        return bool(cursor.rowcount)
+
     def auth_list_sessions(self, user_id: int) -> list[dict[str, Any]]:
         """List bounded session metadata for account security screens."""
 
@@ -1186,7 +1500,8 @@ class Repository:
             rows = connection.execute(
                 """SELECT id, session_id, user_id, auth_method, issued_at AS created_at,
                 last_seen_at, idle_expires_at, absolute_expires_at AS expires_at,
-                last_passkey_at, revoked_at, revocation_reason
+                last_passkey_at, mfa_method, mfa_verified_at, mfa_factor_id,
+                revoked_at, revocation_reason
                 FROM sessions WHERE user_id = ? ORDER BY id DESC LIMIT 100""",
                 (user_id,),
             ).fetchall()
@@ -1237,6 +1552,600 @@ class Repository:
             )
             connection.commit()
         return int(cursor.rowcount)
+
+    def auth_begin_totp_enrollment(
+        self,
+        user_id: int,
+        secret_ciphertext: str,
+        created_at: str,
+        expires_at: str,
+        expected_factor_id: int | None = None,
+        origin_token_hash: str | None = None,
+    ) -> dict[str, Any]:
+        """Store an enrollment bound to the current factor generation and live origin."""
+
+        if type(user_id) is not int or user_id < 1:
+            raise ValueError("user_id must be a positive integer")
+        secret = self._require_totp_secret_ciphertext(secret_ciphertext)
+        created = self._parse_iso_datetime(created_at, "created_at")
+        expires = self._parse_iso_datetime(expires_at, "expires_at")
+        lifetime = expires - created
+        if lifetime <= timedelta(0) or lifetime > timedelta(minutes=10):
+            raise ValueError("TOTP enrollment must expire within 10 minutes")
+        expected_factor = self._optional_factor_id(expected_factor_id)
+        if origin_token_hash is None:
+            raise ValueError("TOTP enrollment requires an originating session")
+        origin_token_hash = self._require_token_hash(origin_token_hash, "origin_token_hash")
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._ensure_user_exists(connection, user_id)
+            current_factor = connection.execute(
+                "SELECT id FROM totp_factors WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            current_factor_id = int(current_factor["id"]) if current_factor is not None else None
+            if current_factor_id != expected_factor:
+                connection.rollback()
+                return None
+            origin = connection.execute(
+                """SELECT id FROM sessions
+                WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL
+                  AND idle_expires_at > ? AND absolute_expires_at > ?""",
+                (origin_token_hash, user_id, created.isoformat(), created.isoformat()),
+            ).fetchone()
+            if origin is None:
+                connection.rollback()
+                return None
+            connection.execute(
+                """INSERT INTO totp_enrollments
+                (user_id, secret_ciphertext, created_at, expires_at,
+                 expected_factor_id, origin_token_hash)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    secret_ciphertext = excluded.secret_ciphertext,
+                    created_at = excluded.created_at,
+                    expires_at = excluded.expires_at,
+                    expected_factor_id = excluded.expected_factor_id,
+                    origin_token_hash = excluded.origin_token_hash""",
+                (
+                    user_id,
+                    secret,
+                    created.isoformat(),
+                    expires.isoformat(),
+                    expected_factor,
+                    origin_token_hash,
+                ),
+            )
+            row = connection.execute(
+                """SELECT id, user_id, secret_ciphertext, created_at, expires_at,
+                expected_factor_id, origin_token_hash
+                FROM totp_enrollments WHERE user_id = ?""",
+                (user_id,),
+            ).fetchone()
+            connection.commit()
+        if row is None:
+            raise RepositoryDatabaseError("TOTP enrollment could not be read")
+        return dict(row)
+
+    def auth_get_totp_enrollment(
+        self, user_id: int, now: str | None = None
+    ) -> dict[str, Any] | None:
+        """Return a pending enrollment only while its ten-minute window remains open."""
+
+        if type(user_id) is not int or user_id < 1:
+            return None
+        current = self._parse_iso_datetime(now, "now") if now is not None else datetime.now(UTC)
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT id, user_id, secret_ciphertext, created_at, expires_at,
+                expected_factor_id, origin_token_hash
+                FROM totp_enrollments WHERE user_id = ? AND expires_at > ?""",
+                (user_id, current.isoformat()),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def auth_confirm_totp_enrollment(
+        self,
+        user_id: int,
+        confirmed_at: str,
+        expected_secret_ciphertext: str,
+        accepted_step: int,
+        recovery_code_hashes: Sequence[str],
+        revoked_at: str,
+        expected_factor_id: int | None | object = _UNSET,
+        origin_token_hash: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Promote a pending factor only when its generation and live origin still match."""
+
+        if type(user_id) is not int or user_id < 1:
+            return None
+        expected_secret = self._require_totp_secret_ciphertext(expected_secret_ciphertext)
+        confirmed_step = self._require_totp_step(accepted_step)
+        normalized_recovery_hashes = self._normalize_recovery_code_hashes(recovery_code_hashes)
+        confirmed = self._parse_iso_datetime(confirmed_at, "confirmed_at")
+        confirmed_text = confirmed.isoformat()
+        revoked = self._parse_iso_datetime(revoked_at, "revoked_at")
+        revoked_text = revoked.isoformat()
+        if expected_factor_id is _UNSET or origin_token_hash is None:
+            return None
+        supplied_expected_factor = self._optional_factor_id(expected_factor_id)
+        supplied_origin = (
+            self._require_token_hash(origin_token_hash, "origin_token_hash")
+            if origin_token_hash is not None
+            else None
+        )
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT secret_ciphertext, created_at, expires_at,
+                expected_factor_id, origin_token_hash
+                FROM totp_enrollments
+                WHERE user_id = ? AND secret_ciphertext = ? AND expires_at > ?""",
+                (user_id, expected_secret, confirmed_text),
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                return None
+            self._ensure_user_exists(connection, user_id)
+            enrolled_expected_factor = self._optional_factor_id(row["expected_factor_id"])
+            enrolled_origin = row["origin_token_hash"]
+            if not isinstance(enrolled_origin, str):
+                connection.rollback()
+                return None
+            if (
+                supplied_expected_factor != enrolled_expected_factor
+                or supplied_origin != enrolled_origin
+            ):
+                connection.rollback()
+                return None
+            current_factor = connection.execute(
+                "SELECT id FROM totp_factors WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            current_factor_id = int(current_factor["id"]) if current_factor is not None else None
+            if current_factor_id != enrolled_expected_factor:
+                connection.rollback()
+                return None
+            origin = connection.execute(
+                """SELECT id FROM sessions
+                WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL
+                  AND idle_expires_at > ? AND absolute_expires_at > ?""",
+                (enrolled_origin, user_id, confirmed_text, confirmed_text),
+            ).fetchone()
+            if origin is None:
+                connection.rollback()
+                return None
+            # Revoke every other active session while retaining the live origin for the
+            # conditional post-confirmation session insert.  The origin is revoked by that
+            # insert after the new generation has been checked.
+            connection.execute(
+                """UPDATE sessions SET revoked_at = ?, revocation_reason = 'security-change'
+                WHERE user_id = ? AND token_hash != ? AND revoked_at IS NULL""",
+                (revoked_text, user_id, enrolled_origin),
+            )
+            # Do not UPDATE the factor in place: its autoincrement id is the generation fence.
+            connection.execute("DELETE FROM totp_factors WHERE user_id = ?", (user_id,))
+            connection.execute(
+                """INSERT INTO totp_factors
+                (user_id, secret_ciphertext, created_at, confirmed_at,
+                 last_accepted_step, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    user_id,
+                    row["secret_ciphertext"],
+                    row["created_at"],
+                    confirmed_text,
+                    confirmed_step,
+                    confirmed_text,
+                ),
+            )
+            connection.execute(
+                """UPDATE recovery_codes SET revoked_at = ?
+                WHERE user_id = ? AND consumed_at IS NULL AND revoked_at IS NULL""",
+                (revoked_text, user_id),
+            )
+            connection.executemany(
+                """INSERT INTO recovery_codes(user_id, code_hash, created_at)
+                VALUES (?, ?, ?)""",
+                [(user_id, code_hash, confirmed_text) for code_hash in normalized_recovery_hashes],
+            )
+            connection.execute("DELETE FROM totp_attempt_throttles WHERE user_id = ?", (user_id,))
+            connection.execute("DELETE FROM totp_enrollments WHERE user_id = ?", (user_id,))
+            factor = connection.execute(
+                """SELECT id, user_id, secret_ciphertext, created_at, confirmed_at,
+                last_accepted_step, updated_at FROM totp_factors WHERE user_id = ?""",
+                (user_id,),
+            ).fetchone()
+            connection.commit()
+        return dict(factor) if factor is not None else None
+
+    def auth_get_totp_factor(self, user_id: int) -> dict[str, Any] | None:
+        """Return the active factor for one account, including only encrypted secret material."""
+
+        if type(user_id) is not int or user_id < 1:
+            return None
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT id, user_id, secret_ciphertext, created_at, confirmed_at,
+                last_accepted_step, updated_at FROM totp_factors WHERE user_id = ?""",
+                (user_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["encrypted_secret"] = result["secret_ciphertext"]
+        # ``id`` is the immutable generation fence; aliases keep the repository contract
+        # explicit for callers that should never infer generation from timestamps.
+        result["factor_id"] = result["id"]
+        result["generation"] = result["id"]
+        return result
+
+    def auth_accept_totp_step(
+        self, user_id: int, expected_factor_id: int, step: int, accepted_at: str
+    ) -> bool:
+        """Accept a TOTP time-step once per account through an atomic monotonic CAS."""
+
+        if type(user_id) is not int or user_id < 1:
+            return False
+        factor_id = self._require_factor_id(expected_factor_id)
+        accepted_step = self._require_totp_step(step)
+        accepted = self._parse_iso_datetime(accepted_at, "accepted_at")
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """UPDATE totp_factors SET last_accepted_step = ?, updated_at = ?
+                WHERE id = ? AND user_id = ? AND last_accepted_step < ?""",
+                (accepted_step, accepted.isoformat(), factor_id, user_id, accepted_step),
+            )
+            connection.commit()
+        return bool(cursor.rowcount)
+
+    def auth_check_totp_attempt(self, user_id: int, attempted_at: str) -> dict[str, Any]:
+        """Read the durable per-user throttle state without incrementing a failure."""
+
+        if type(user_id) is not int or user_id < 1:
+            raise ValueError("user_id must be a positive integer")
+        attempted = self._parse_iso_datetime(attempted_at, "attempted_at")
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT user_id, window_started_at, attempt_count,
+                last_attempt_at, locked_until FROM totp_attempt_throttles
+                WHERE user_id = ?""",
+                (user_id,),
+            ).fetchone()
+        if row is None:
+            return {
+                "user_id": user_id,
+                "window_started_at": attempted.isoformat(),
+                "attempt_count": 0,
+                "last_attempt_at": attempted.isoformat(),
+                "locked_until": None,
+                "allowed": True,
+            }
+        locked_until = row["locked_until"]
+        allowed = locked_until is None or attempted.isoformat() >= locked_until
+        return dict(row) | {"allowed": allowed}
+
+    def auth_reserve_totp_attempt(
+        self,
+        user_id: int,
+        attempted_at: str,
+        expected_factor_id: int | None = None,
+        window_seconds: int = 300,
+        max_attempts: int = 5,
+        lockout_seconds: int = 900,
+    ) -> bool:
+        """Reserve one authenticator attempt before crypto, under the SQLite write lock.
+
+        A reservation is counted before the caller compares a code.  Concurrent callers
+        therefore cannot all observe the same pre-limit count and proceed past verification.
+        The fifth reservation is admitted and closes the window; a successful caller clears
+        it through ``auth_record_totp_attempt(..., successful=True)``.
+        """
+
+        if type(user_id) is not int or user_id < 1:
+            raise ValueError("user_id must be a positive integer")
+        window_seconds, max_attempts, lockout_seconds = self._require_totp_attempt_limits(
+            window_seconds, max_attempts, lockout_seconds
+        )
+        attempted = self._parse_iso_datetime(attempted_at, "attempted_at")
+        expected_factor = self._optional_factor_id(expected_factor_id)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._ensure_user_exists(connection, user_id)
+            if expected_factor is not None and connection.execute(
+                "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
+                (expected_factor, user_id),
+            ).fetchone() is None:
+                connection.rollback()
+                return False
+            row = connection.execute(
+                """SELECT window_started_at, attempt_count, last_attempt_at, locked_until
+                FROM totp_attempt_throttles WHERE user_id = ?""",
+                (user_id,),
+            ).fetchone()
+            if row is None:
+                window_started = attempted
+                attempt_count = 0
+                locked_until: datetime | None = None
+            else:
+                window_started = self._parse_iso_datetime(
+                    row["window_started_at"], "window_started_at"
+                )
+                last_attempt = self._parse_iso_datetime(row["last_attempt_at"], "last_attempt_at")
+                # Requests may capture their timestamp before waiting on BEGIN IMMEDIATE.
+                # Clamp that normal scheduling skew instead of turning a valid concurrent
+                # guess into a server error.
+                if attempted < last_attempt:
+                    attempted = last_attempt
+                locked_until = (
+                    self._parse_iso_datetime(row["locked_until"], "locked_until")
+                    if row["locked_until"] is not None
+                    else None
+                )
+                attempt_count = int(row["attempt_count"])
+                if locked_until is not None and attempted < locked_until:
+                    connection.rollback()
+                    return False
+                if attempted >= window_started + timedelta(seconds=window_seconds):
+                    window_started = attempted
+                    attempt_count = 0
+                    locked_until = None
+                elif locked_until is not None:
+                    # A lock that reached its expiry starts a fresh bounded window.
+                    window_started = attempted
+                    attempt_count = 0
+                    locked_until = None
+            attempted_text = attempted.isoformat()
+            if attempt_count >= max_attempts:
+                connection.rollback()
+                return False
+            attempt_count += 1
+            locked_until = (
+                attempted + timedelta(seconds=lockout_seconds)
+                if attempt_count >= max_attempts
+                else None
+            )
+            connection.execute(
+                """INSERT INTO totp_attempt_throttles
+                (user_id, window_started_at, attempt_count, last_attempt_at, locked_until)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    window_started_at = excluded.window_started_at,
+                    attempt_count = excluded.attempt_count,
+                    last_attempt_at = excluded.last_attempt_at,
+                    locked_until = excluded.locked_until""",
+                (
+                    user_id,
+                    window_started.isoformat(),
+                    attempt_count,
+                    attempted_text,
+                    locked_until.isoformat() if locked_until is not None else None,
+                ),
+            )
+            connection.commit()
+        return True
+
+    def auth_record_totp_attempt(
+        self,
+        user_id: int,
+        attempted_at: str,
+        window_seconds: int = 300,
+        max_attempts: int = 5,
+        lockout_seconds: int = 900,
+        successful: bool = False,
+    ) -> dict[str, Any]:
+        """Record a TOTP success/failure with a bounded, durable per-user throttle."""
+
+        if type(user_id) is not int or user_id < 1:
+            raise ValueError("user_id must be a positive integer")
+        window_seconds, max_attempts, lockout_seconds = self._require_totp_attempt_limits(
+            window_seconds, max_attempts, lockout_seconds
+        )
+        if type(successful) is not bool:
+            raise ValueError("successful must be a boolean")
+        attempted = self._parse_iso_datetime(attempted_at, "attempted_at")
+        attempted_text = attempted.isoformat()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._ensure_user_exists(connection, user_id)
+            row = connection.execute(
+                """SELECT window_started_at, attempt_count, last_attempt_at, locked_until
+                FROM totp_attempt_throttles WHERE user_id = ?""",
+                (user_id,),
+            ).fetchone()
+            if row is None:
+                window_started = attempted
+                attempt_count = 0
+                locked_until: datetime | None = None
+            else:
+                window_started = self._parse_iso_datetime(
+                    row["window_started_at"], "window_started_at"
+                )
+                last_attempt = self._parse_iso_datetime(row["last_attempt_at"], "last_attempt_at")
+                if attempted < last_attempt:
+                    connection.rollback()
+                    raise ValueError("attempted_at cannot precede the last TOTP attempt")
+                locked_until = (
+                    self._parse_iso_datetime(row["locked_until"], "locked_until")
+                    if row["locked_until"] is not None
+                    else None
+                )
+                attempt_count = int(row["attempt_count"])
+                if not successful and last_attempt == attempted:
+                    # The pre-verification reservation already counted this exact attempt.
+                    # Keep compatibility callers from double-incrementing a failed guess.
+                    connection.rollback()
+                    return dict(row) | {
+                        "user_id": user_id,
+                        "allowed": locked_until is None or attempted >= locked_until,
+                    }
+                if not successful and locked_until is not None and attempted < locked_until:
+                    connection.rollback()
+                    return dict(row) | {
+                        "user_id": user_id,
+                        "allowed": False,
+                    }
+                if (
+                    attempted >= window_started + timedelta(seconds=window_seconds)
+                    or locked_until is not None
+                ):
+                    window_started = attempted
+                    attempt_count = 0
+                    locked_until = None
+            if successful:
+                attempt_count = 0
+                window_started = attempted
+                locked_until = None
+                allowed = True
+            else:
+                attempt_count = min(attempt_count + 1, MAX_TOTP_ATTEMPTS_PER_WINDOW)
+                allowed = attempt_count < max_attempts
+                locked_until = (
+                    attempted + timedelta(seconds=lockout_seconds) if not allowed else None
+                )
+            connection.execute(
+                """INSERT INTO totp_attempt_throttles
+                (user_id, window_started_at, attempt_count, last_attempt_at, locked_until)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    window_started_at = excluded.window_started_at,
+                    attempt_count = excluded.attempt_count,
+                    last_attempt_at = excluded.last_attempt_at,
+                    locked_until = excluded.locked_until""",
+                (
+                    user_id,
+                    window_started.isoformat(),
+                    attempt_count,
+                    attempted_text,
+                    locked_until.isoformat() if locked_until is not None else None,
+                ),
+            )
+            connection.commit()
+        return {
+            "user_id": user_id,
+            "window_started_at": window_started.isoformat(),
+            "attempt_count": attempt_count,
+            "last_attempt_at": attempted_text,
+            "locked_until": locked_until.isoformat() if locked_until is not None else None,
+            "allowed": allowed,
+        }
+
+    def auth_create_recovery_codes(
+        self,
+        user_id: int,
+        expected_factor_id: int,
+        code_hashes: Sequence[str],
+        created_at: str,
+        origin_token_hash: str,
+    ) -> bool:
+        """Rotate recovery codes only for the current generation and a live origin."""
+
+        if type(user_id) is not int or user_id < 1:
+            raise ValueError("user_id must be a positive integer")
+        factor_id = self._require_factor_id(expected_factor_id)
+        if not isinstance(code_hashes, Sequence) or isinstance(code_hashes, str | bytes):
+            raise ValueError("code_hashes must be a sequence")
+        source_token = self._require_token_hash(origin_token_hash, "origin_token_hash")
+        normalized = self._normalize_recovery_code_hashes(code_hashes)
+        created = self._parse_iso_datetime(created_at, "created_at")
+        created_text = created.isoformat()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._ensure_user_exists(connection, user_id)
+            if connection.execute(
+                "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
+                (factor_id, user_id),
+            ).fetchone() is None:
+                connection.rollback()
+                return False
+            if connection.execute(
+                """SELECT 1 FROM sessions
+                WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL
+                  AND idle_expires_at > ? AND absolute_expires_at > ?""",
+                (source_token, user_id, created_text, created_text),
+            ).fetchone() is None:
+                connection.rollback()
+                return False
+            connection.execute(
+                """UPDATE recovery_codes SET revoked_at = ?
+                WHERE user_id = ? AND consumed_at IS NULL AND revoked_at IS NULL""",
+                (created_text, user_id),
+            )
+            connection.executemany(
+                """INSERT INTO recovery_codes(user_id, code_hash, created_at)
+                VALUES (?, ?, ?)""",
+                [(user_id, code_hash, created_text) for code_hash in normalized],
+            )
+            connection.commit()
+        return True
+
+    def auth_consume_recovery_code(
+        self,
+        user_id: int,
+        expected_factor_id: int,
+        code_hash: str,
+        consumed_at: str,
+    ) -> bool:
+        """Consume one code while fencing the current factor generation."""
+
+        if type(user_id) is not int or user_id < 1:
+            return False
+        factor_id = self._require_factor_id(expected_factor_id)
+        normalized = self._require_token_hash(code_hash, "code_hash")
+        consumed = self._parse_iso_datetime(consumed_at, "consumed_at")
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if connection.execute(
+                "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
+                (factor_id, user_id),
+            ).fetchone() is None:
+                connection.rollback()
+                return False
+            cursor = connection.execute(
+                """UPDATE recovery_codes SET consumed_at = ?
+                WHERE user_id = ? AND code_hash = ?
+                  AND consumed_at IS NULL AND revoked_at IS NULL""",
+                (consumed.isoformat(), user_id, normalized),
+            )
+            connection.commit()
+        return bool(cursor.rowcount)
+
+    def auth_get_recovery_code_status(self, user_id: int) -> dict[str, Any]:
+        """Return recovery-code counts without exposing hashes or code material."""
+
+        if type(user_id) is not int or user_id < 1:
+            raise ValueError("user_id must be a positive integer")
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT
+                    COUNT(*) AS total_count,
+                    SUM(CASE WHEN consumed_at IS NULL AND revoked_at IS NULL THEN 1 ELSE 0 END)
+                        AS available_count,
+                    SUM(CASE WHEN consumed_at IS NOT NULL THEN 1 ELSE 0 END) AS consumed_count,
+                    SUM(CASE WHEN revoked_at IS NOT NULL THEN 1 ELSE 0 END) AS revoked_count
+                FROM recovery_codes WHERE user_id = ?""",
+                (user_id,),
+            ).fetchone()
+        values = dict(row) if row is not None else {}
+        return {
+            "user_id": user_id,
+            "total_count": int(values.get("total_count") or 0),
+            "available_count": int(values.get("available_count") or 0),
+            "consumed_count": int(values.get("consumed_count") or 0),
+            "revoked_count": int(values.get("revoked_count") or 0),
+        }
+
+    def auth_list_recovery_code_status(self, user_id: int) -> list[dict[str, Any]]:
+        """Return current recovery-code usage rows without exposing code hashes."""
+
+        if type(user_id) is not int or user_id < 1:
+            raise ValueError("user_id must be a positive integer")
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT id, user_id, created_at, consumed_at, revoked_at
+                FROM recovery_codes WHERE user_id = ? AND revoked_at IS NULL ORDER BY id""",
+                (user_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def register_passkey(
         self,

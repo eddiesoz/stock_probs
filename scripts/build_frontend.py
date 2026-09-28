@@ -21,6 +21,7 @@ PAGES = (
     "sign-in.html",
     "invite.html",
     "passkey.html",
+    "authenticator.html",
     "account.html",
     "admin.html",
 )

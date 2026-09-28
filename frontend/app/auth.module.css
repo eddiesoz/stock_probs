@@ -48,6 +48,35 @@
 .deniedState{padding:1.25rem;border:1px solid var(--bad);border-radius:var(--radius);background:var(--bad-soft)}
 .deniedState h1,.deniedState h2{margin:0;font-size:1.1rem}
 .deniedState p{margin:.45rem 0 0;color:var(--muted);font-size:.8rem;line-height:1.5}
+.factorPanel{display:grid;gap:1rem}
+.panelHeaderRow{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}
+.factorBadge{display:inline-flex;align-items:center;min-height:28px;padding:.2rem .55rem;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:.67rem;font-weight:780;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+.factorBadgeGood{border-color:color-mix(in srgb,var(--good) 55%,var(--border));background:var(--good-soft);color:var(--good)}
+.factorIntro{display:grid;gap:.75rem}
+.stepCard{display:flex;align-items:flex-start;gap:.7rem;padding:.8rem;border:1px solid var(--border);border-radius:9px;background:var(--panel)}
+.stepCard strong{font-size:.82rem}
+.stepCard p{margin:.18rem 0 0;color:var(--muted);font-size:.75rem;line-height:1.45}
+.stepNumber{display:inline-flex;flex:0 0 1.55rem;align-items:center;justify-content:center;width:1.55rem;height:1.55rem;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:.72rem;font-weight:820}
+.enrollmentBox,.recoveryBox{display:grid;gap:.9rem}
+.stepLabel{display:flex;align-items:center;gap:.55rem;color:var(--text);font-size:.82rem;font-weight:760}
+.secretCard{display:grid;gap:.35rem;padding:1rem;border:1px solid var(--edge);border-radius:9px;background:var(--panel-muted)}
+.secretLabel{color:var(--muted);font-size:.67rem;font-weight:780;letter-spacing:.08em;text-transform:uppercase}
+.secretCard code{overflow-wrap:anywhere;color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:clamp(1rem,3vw,1.25rem);font-weight:760;letter-spacing:.09em;line-height:1.35}
+.secretCard p{margin:0;color:var(--muted);font-size:.73rem;line-height:1.45}
+.codeForm{display:grid;gap:.65rem}
+.codeForm label{display:grid;gap:.4rem;color:var(--muted);font-size:.76rem;font-weight:760}
+.codeInput{min-height:52px!important;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.35rem!important;font-weight:780;letter-spacing:.2em}
+.fieldHelp{margin:0;color:var(--muted);font-size:.72rem;line-height:1.45}
+.recoveryNotice{padding:.8rem;border:1px solid color-mix(in srgb,var(--good) 45%,var(--border));border-left:4px solid var(--good);border-radius:8px;background:var(--good-soft)}
+.recoveryNotice strong{font-size:.85rem}
+.recoveryNotice p{margin:.25rem 0 0;color:var(--muted);font-size:.74rem;line-height:1.45}
+.recoveryGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem;padding:.75rem;border:1px dashed var(--edge);border-radius:8px;background:var(--panel-muted)}
+.recoveryGrid code{padding:.45rem .5rem;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;letter-spacing:.04em;text-align:center}
+.recoveryActions{display:flex;flex-wrap:wrap;gap:.6rem}
+.recoveryActions button{flex:1 1 10rem}
+.factorLinks{display:flex;flex-wrap:wrap;gap:.7rem 1.1rem;padding-top:.1rem;font-size:.76rem}
+.factorLinks a{min-height:36px;display:inline-flex;align-items:center;font-weight:730}
+@media(max-width:520px){.panelHeaderRow{display:grid;gap:.5rem}.factorBadge{width:max-content}.recoveryGrid{grid-template-columns:1fr}.recoveryActions{display:grid}.recoveryActions button{width:100%}}
 @media(max-width:800px){.authMain{grid-template-columns:1fr;gap:1.5rem;padding-top:2.3rem}.authIntro{padding-top:0}.authIntro h1{font-size:clamp(2.7rem,12vw,4.2rem)}.widePanel{grid-column:auto}}
 @media(max-width:520px){.authHeader{min-height:66px}.headerNote{display:none}.authMain{padding-top:1.8rem}.authPanel{padding:1rem}.formGrid,.statGrid{grid-template-columns:1fr}.formGrid .full{grid-column:auto}.dataRow{align-items:flex-start;flex-direction:column}.dataRow button{width:100%}.authFooter{display:grid;gap:.25rem;margin-top:2.5rem}}
 @media(forced-colors:active){.authPanel,.dataRow,.stat,.permissionBox{border:2px solid CanvasText;background:Canvas;box-shadow:none}.authMessage,.deniedState{border:2px solid CanvasText;background:Canvas;color:CanvasText}.securityNote::before{background:CanvasText}}

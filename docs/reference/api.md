@@ -34,11 +34,34 @@ dependency-free local pointer is `/api/v1/docs`.
 | `POST` | `/api/v1/operations/backups` | Create a verified managed backup with an optional managed name. |
 | `GET` | `/api/v1/operations/backups/status` | Report bounded backup capability without filesystem paths. |
 | `POST` | `/api/v1/operations/restores` | Verify a managed backup, and promote only when `promote` is explicitly true. |
+| `GET` | `/api/v1/auth/totp/status` | Report authenticator enrollment and recovery-code state without returning secrets. |
+| `POST` | `/api/v1/auth/totp/enroll/start` | Start a short-lived authenticator enrollment transaction. |
+| `POST` | `/api/v1/auth/totp/enroll/finish` | Confirm the six-digit code, activate TOTP, and return one-time recovery codes. |
+| `POST` | `/api/v1/auth/totp/verify` | Verify the authenticator code after GitHub OAuth and issue a workspace session. |
+| `POST` | `/api/v1/auth/totp/step-up` | Record fresh TOTP proof for an administrator operation. |
+| `POST` | `/api/v1/auth/totp/recover` | Consume one recovery code and issue a factor-replacement-only session. |
+| `POST` | `/api/v1/auth/totp/recovery-codes/rotate` | Replace recovery codes after a fresh TOTP verification. |
 
 There is no `/api/v1/market-depth` endpoint and no `MarketDepthResponse` schema. The Live Trading
 workspace may disclose that free data has no exchange-depth entitlement, but it does not fabricate
 bid/ask rows or claim Nasdaq TotalView, exchange depth, order execution, brokerage connectivity, or
 real-time delivery.
+
+## Authentication contract
+
+Production uses GitHub's authorization-code flow with state and PKCE to establish the stable
+numeric GitHub identity. An invitation is resolved, expiring, and single-use. After OAuth, a user
+must enroll or verify a six-digit TOTP code from an authenticator app before private workspace
+routes are available. This TOTP code is the sole ongoing application second factor; ordinary sign-in
+does not require Bluetooth, a nearby phone, or browser passkey support.
+
+`/api/v1/auth/totp/enroll/start` returns setup material only for the short-lived enrollment
+transaction. Add the secret to an authenticator app using the manual key or the `otpauth://` link,
+then submit the current code to `/enroll/finish`. The response returns recovery codes exactly once.
+Recovery codes are single-use and must be kept offline. `/recover` accepts one unused code and
+returns a restricted session that can replace the factor; it does not grant a normal workspace
+session. `/step-up` records fresh proof for an administrator backup or restore. Passkey routes are
+legacy migration endpoints only and do not create new production passkeys.
 
 ## Research-workspace contracts
 

@@ -122,14 +122,19 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 
 ### Current approval status
 
-`R-ASTRA-101` is the current in-progress authentication and production deployment follow-on.
+`R-ASTRA-102` is the current in-progress authenticator-only authentication and production deployment
+follow-on. `R-ASTRA-101` remains the historical passkey deployment record and is not current auth
+guidance. The local implementation has schema 9, and the current local gate passed for its declared
+scope. Image publication, schema-9 deployment, live TOTP sign-in, and physical authenticator-device
+verification remain pending or **Unavailable** until their evidence is recorded.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The three provider access items were created privately, Terraform
 applied the replacement Linode and imported firewall, the reviewed image was deployed privately,
 the VM-backup recovery rehearsal passed for its declared scope, and the Cloudflare owner-only
-canary was active before the public boundary. Operator read-only evidence now confirms the owner passkey enrollment and a
-completed passkey verification with persisted owner mappings. E55's later server-observed access logs
+canary was active before the public boundary. Those schema-8 passkey deployment receipts are
+historical. Operator read-only evidence confirms the owner passkey enrollment and a
+completed passkey verification with persisted owner mappings for that prior release. E55's later server-observed access logs
 confirm authenticated owner API retrieval and saved-forecast access; browser-rendered content remains
 **Unavailable**. E56 passes the four two-client isolation scenarios locally, and E57's rerun of the
 full local gate passes after its initial comment-audit failure. Remote two-user behavior and browser
@@ -157,7 +162,37 @@ declared M09 scope by `M09-E18`; no current repair or Ponytail action follows fr
 integrated scope by `M07-E20`; no current M07 repair, Ponytail availability review, or retest is
 open.
 
-### Current secure production follow-on (`R-ASTRA-101`)
+### Current authenticator-only follow-on (`R-ASTRA-102`)
+
+- Production retains invite-only GitHub OAuth and the numeric GitHub account ID as the stable
+  identity. The sole ongoing application second factor is a six-digit TOTP code from an
+  authenticator app. New passkeys are not enrolled; a legacy passkey is accepted only once to
+  migrate an existing account to TOTP.
+- Enrollment is short-lived and origin-bound. The setup page provides a manual secret and an
+  `otpauth://` link, then returns recovery codes exactly once after a valid code. Recovery codes are
+  hashed, high-entropy, and single-use. Losing an authenticator enters a factor-replacement-only
+  recovery session; it does not grant a normal workspace session.
+- Sessions remain opaque server-side records with hashed tokens, idle and absolute expiry,
+  revocation, host-only `Secure`/`HttpOnly` cookies, exact-origin/Host checks, and CSRF protection.
+  Factor generation, replay, and attempt throttling are checked under the SQLite write boundary.
+  Every private query and ID lookup continues to derive ownership from the session.
+- Backup status/creation and restore promotion are administrator operations. Restore promotion
+  requires fresh TOTP proof, a verified pre-restore backup, matching account-security state,
+  serialized maintenance, and session revocation.
+- Scoped independent QA passed 19 authentication checks, 8 repository checks, 6 API checks, 65
+  backup/container checks, 10 desktop/mobile-emulated browser cases, 28 frontend checks, 4
+  account/admin smoke checks, two-user isolation, and a disposable schema-9 backup/restore
+  rehearsal. Packaging and security lint passed. Astra's independent security re-review reported
+  no P1/P2 finding after the generation, replay, and throttle repairs.
+- The current local `R-ASTRA-102` gate **Passed** for its declared scope. Receipt:
+  `test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json`. It reports `704` Python
+  tests passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28`
+  frontend tests, and documentation coverage. The earlier aggregate failure remains visible as
+  historical evidence: four legacy schema expectations still expected versions 1 through 8 and
+  coverage was 84.88%. This local receipt does not establish image publication, schema-9 remote
+  deployment, live TOTP sign-in, or physical authenticator-device verification.
+
+### Historical secure production follow-on (`R-ASTRA-101`)
 
 - Production is invite-only GitHub OAuth plus a required user-verifying passkey. GitHub's numeric
   account ID is the stable identity; invitations are resolved, expiring, and single-use. Local

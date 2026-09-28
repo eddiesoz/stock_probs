@@ -149,7 +149,7 @@ guard, and scoped infrastructure tests in the root ledgers. The `documentation-m
 continue to cover workflow/configuration changes; this page and the operations guide provide the
 authored coverage for the deployment scripts and tests.
 
-The current deployment reconciliation records the owner-only canary, recovery pass, and private
+The historical schema-8 passkey deployment reconciliation records the owner-only canary, recovery pass, and private
 deployment of the final clean-main image at revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`.
 Its archive SHA-256 is `b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, image
 ID is `sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`, and the fixed
@@ -163,8 +163,19 @@ remain historical scoped evidence. A live expired-session reload showed `Sign in
 No passkey ceremony or saved-data check was completed. The source-reviewed session-recovery fix at
 `a1d868287a729c75d9b8628f612a856db132374a` is included in the final image; its local build/typecheck,
 `28` frontend tests, and browser `4/4` had passed. Owner passkey enrollment and saved-data
-verification remain pending. Documentation validation remains a documentation gate, not a release or
-security acceptance.
+verification remain pending. This is historical passkey evidence, not TOTP acceptance evidence.
+
+The current `R-ASTRA-102` documentation boundary covers the authenticator-only release: GitHub
+OAuth plus a six-digit TOTP authenticator code, one-time legacy-passkey migration, hashed single-use
+recovery codes, and fresh TOTP step-up for administrator backup/restore. Independent scoped QA and
+Astra's security re-review are recorded in the root plan. The current local gate **Passed** for its
+declared scope: receipt `test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json` reports
+`704` Python tests passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and
+`28` frontend tests, and documentation coverage. The earlier aggregate failure remains visible as
+historical evidence: four stale schema expectations and 84.88% coverage. No image publication,
+live schema-9 TOTP deploy, physical authenticator-device check, or browser-rendered owner acceptance
+is claimed. Documentation validation remains a documentation gate, not a release or security
+acceptance.
 
 Authored guides live under `docs/` in task-oriented categories. Every page has `title` and
 `description` frontmatter, one primary topic, a lowercase hyphenated filename, and relative

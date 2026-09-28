@@ -4,6 +4,28 @@
 
 ### Current approval status
 
+`R-ASTRA-102` is the current in-progress authenticator-only authentication and production
+deployment follow-on. Invite-only GitHub OAuth remains the identity boundary, while a six-digit
+TOTP code from an authenticator app is the sole ongoing application second factor. New passkeys are
+not enrolled; legacy passkeys are retained only for one-time migration. Recovery codes are hashed
+and single-use, and administrator backup/restore actions require fresh TOTP proof.
+
+Scoped independent QA passed 19 authentication checks, 8 repository checks, 6 API checks, 65
+backup/container checks, 10 desktop/mobile-emulated browser cases, 28 frontend checks, 4
+account/admin smoke checks, two-user ownership isolation, and a disposable schema-9 backup/restore
+rehearsal. Packaging and security lint passed. Astra's independent security re-review reported no
+P1/P2 finding after generation, replay, and throttle repairs. The current local `R-ASTRA-102` gate
+**Passed** for its declared scope. Receipt:
+`test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json`; it reports `704` Python
+tests passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28`
+frontend tests, and documentation coverage. The earlier aggregate failure remains visible as
+historical evidence: four legacy schema expectations still expected versions 1 through 8 and
+coverage was 84.88%. Image publication, schema-9 deployment, live TOTP sign-in, and physical
+authenticator-device evidence remain pending or unavailable.
+
+`R-ASTRA-101` remains the historical schema-8 passkey deployment record; its passkey and live-host
+receipts must not be used as acceptance evidence for this TOTP release.
+
 `EXP-M09` remains the current approval-gated export item. `R-ASTRA-100` is **Completed for its
 declared UI scope** with the evidence recorded below; this does not create a broader release or
 export checkpoint. `M09-E18`, `M07-E20`, and `R-ASTRA-98` remain recorded for their declared scopes.
@@ -227,7 +249,7 @@ No historical acceptance record is changed. Provider capacity failures, unavaila
 mobile, true browser zoom, actual screen-reader, native/physical ARM64 performance, and
 project-profile runtime discovery remain separate evidence categories.
 
-## Current authentication and production deployment follow-on (`R-ASTRA-101`)
+## Historical authentication and production deployment follow-on (`R-ASTRA-101`)
 
 `R-ASTRA-101` is the next dependency-ordered item after the Signal Ledger UI follow-ons. It adds
 the invite-only multi-user boundary before public exposure: GitHub authorization-code OAuth with

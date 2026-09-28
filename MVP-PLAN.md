@@ -223,7 +223,48 @@ No historical acceptance record is changed by this follow-on. Provider capacity 
 hardware, physical mobile, true browser zoom, actual screen-reader, native/physical ARM64
 performance, and project-profile runtime discovery remain separate evidence categories.
 
-## Current authentication and production deployment follow-on (`R-ASTRA-101`)
+## Current authenticator-only follow-on (`R-ASTRA-102`)
+
+`R-ASTRA-102` changes the ongoing second factor from a browser passkey to a six-digit TOTP code
+from an authenticator app. Production remains invite-only GitHub OAuth: the numeric GitHub account ID
+is the stable identity, invitations are resolved/expiring/single-use, and development bootstrap
+credentials remain rejected in production. New passkeys are not enrolled. A legacy passkey is
+retained only for one-time migration of an existing account to TOTP.
+
+Enrollment is short-lived and origin-bound. The setup page provides a manual secret and an
+`otpauth://` link, then returns recovery codes exactly once after a valid code. Recovery codes are
+hashed and single-use. A lost authenticator enters a factor-replacement-only recovery session until
+a new authenticator is confirmed. Backup creation and restore promotion require a fresh TOTP
+step-up, a verified backup, matching account-security state, maintenance serialization, and session
+revocation. Ownership and opaque-session controls remain unchanged.
+
+The additive migration is schema 9 and preserves the prior owner-scoped research data. The local
+implementation and scoped QA are recorded here while deployment remains pending.
+
+- **Status:** **In progress**. No live schema-9 deployment, live TOTP sign-in, or physical
+  authenticator-device verification is claimed.
+- **Owner/phase:** implementation/security repair; independent `LUNA MAX QA`; `ASTRA` medium
+  security review; `LUNA MAX docs` reconciliation; coordinator release and deployment follow-up.
+- **Scoped QA evidence:** independent QA passed 19 authentication checks, 8 repository checks, 6
+  API checks, 65 backup/container checks, 10 desktop/mobile-emulated browser cases, 28 frontend
+  checks, 4 account/admin smoke checks, two-user ownership isolation, and a disposable schema-9
+  backup/restore rehearsal. Packaging and security lint passed. Astra's independent security
+  re-review reported no P1/P2 finding after the generation, replay, and throttle fixes.
+- **Local gate:** the current `R-ASTRA-102` receipt
+  `test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json` **Passed** for its
+  declared scope: `704` Python tests passed, `4` live tests were deselected, coverage was `85.10%`,
+  frontend typecheck/build and `28` frontend tests passed, and documentation coverage passed. The
+  earlier aggregate failure remains visible as historical evidence: four legacy schema expectations
+  still expected versions 1 through 8 and coverage was 84.88%. This local receipt does not establish
+  image publication, schema-9 remote deployment, live TOTP sign-in, or physical
+  authenticator-device verification.
+- **Deployment boundary:** the existing schema-8 passkey deployment is historical. Complete the
+  final local gate, clean reviewed-main release publication, schema-9 pre-migration/current backups,
+  typed-MCP deploy and readiness checks, and live boundary verification before changing the public
+  route. Preserve the owner data and leave physical-device and browser-rendered acceptance as
+  **Unavailable** until directly observed.
+
+## Historical authentication and production deployment follow-on (`R-ASTRA-101`)
 
 `R-ASTRA-101` carries the invite-only multi-user boundary and the private Linode deployment
 forward from the completed UI follow-ons. Production uses GitHub's authorization-code flow with

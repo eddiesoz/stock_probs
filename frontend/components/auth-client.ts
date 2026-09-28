@@ -1,6 +1,7 @@
 "use client";
 
 export type AuthRole = "admin" | "member";
+export type AuthenticatorMode = "enroll" | "verify" | "recover" | "step-up";
 
 export interface AuthUser {
   id: number | string;
@@ -13,6 +14,7 @@ export interface AuthUser {
   passkey_registered?: boolean;
   passkey_enrolled?: boolean;
   passkey_required?: boolean;
+  totp_enrolled?: boolean;
 }
 
 export interface AuthSession {
@@ -22,8 +24,32 @@ export interface AuthSession {
   local_login_enabled?: boolean;
   passkey_required?: boolean;
   requires_passkey?: boolean;
+  requires_totp?: boolean;
+  totp_required?: boolean;
+  totp_enrolled?: boolean;
+  mfa_method?: "none" | "totp" | "passkey" | "recovery";
   csrf_token?: string;
   message?: string;
+}
+
+export interface TotpStatus {
+  enrolled: boolean;
+  enrollment_pending: boolean;
+  recovery_codes_remaining: number;
+  requires_totp: boolean;
+  legacy_passkey_migration: boolean;
+  can_enroll: boolean;
+}
+
+export interface TotpEnrollment {
+  enrollment: true;
+  secret: string;
+  otpauth_uri: string;
+  expires_at: string;
+}
+
+export interface TotpRecoveryCodes {
+  recovery_codes: string[];
 }
 
 export interface SessionRecord {
@@ -148,6 +174,9 @@ export function authErrorMessage(error: unknown): string {
       return error.message || "That invitation is invalid, expired, revoked, or already used. Ask the administrator for a new invitation.";
     }
     if (error.code === "passkey_already_registered") return error.message;
+    if (error.code === "totp_rate_limited") return "Too many authenticator attempts. Wait a few minutes, then try again.";
+    if (error.code === "totp_rejected") return "That authenticator code was not accepted. Wait for the next code and try again.";
+    if (error.code === "totp_required") return "Complete authenticator setup or verification before continuing.";
     if (error.status === 401) return "Your session has ended. Sign in again to continue.";
     if (error.status === 403) return "Your account is not allowed to perform that action.";
     if (error.status === 409) return "That request conflicts with the current account state.";

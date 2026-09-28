@@ -55,9 +55,18 @@ export default function SignInPage() {
     return () => { active = false; };
   }, []);
 
+  const requiresAuthenticator = Boolean(session?.authenticated && (session.requires_totp || session.totp_required || session.requires_passkey || session.passkey_required));
+  const authenticatorPath = `/authenticator?mode=${session?.totp_enrolled ? "verify" : "enroll"}&next=${encodeURIComponent(nextPath)}`;
+
   useEffect(() => {
-    if (session?.authenticated) setMessage({ tone: "success", text: "You are already signed in. Open the workspace when you are ready." });
-  }, [session]);
+    if (!session?.authenticated) return;
+    setMessage({
+      tone: "success",
+      text: requiresAuthenticator
+        ? "Your identity is signed in. Complete authenticator setup or verification to continue."
+        : "You are already signed in. Open the workspace when you are ready.",
+    });
+  }, [requiresAuthenticator, session]);
 
   useEffect(() => {
     function recoverFromPageShow() {
@@ -84,12 +93,12 @@ export default function SignInPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const response = await authRequest<{ requires_passkey?: boolean; passkey_required?: boolean; user?: unknown }>("/api/v1/auth/local/login", {
+      const response = await authRequest<{ requires_passkey?: boolean; requires_totp?: boolean; passkey_required?: boolean; user?: unknown }>("/api/v1/auth/local/login", {
         method: "POST",
         body: JSON.stringify({ username: login.trim(), password }),
       });
-      if (response.requires_passkey || response.passkey_required) {
-        window.location.assign(`/passkey?mode=enroll&next=${encodeURIComponent(nextPath)}`);
+      if (response.requires_passkey || response.passkey_required || response.requires_totp) {
+        window.location.assign(`/authenticator?mode=enroll&next=${encodeURIComponent(nextPath)}`);
       } else {
         window.location.assign(nextPath);
       }
@@ -122,7 +131,7 @@ export default function SignInPage() {
     <AuthShell showAccount={false} eyebrow="Secure access" title="Return to the ledger" description="Signal Ledger keeps research private, attributable, and easy to audit. Sign in to continue to your instrument workspace.">
       <section className={styles.authPanel} aria-labelledby="sign-in-heading">
         <h2 id="sign-in-heading">Sign in</h2>
-        <p className={styles.panelLead}>{!statusLoaded ? "Checking sign-in options…" : githubEnabled ? "Use your invited GitHub account. A passkey is required after the first successful sign-in." : localEnabled ? "Sign in with your development account to continue." : "Sign-in options are unavailable."}</p>
+        <p className={styles.panelLead}>{!statusLoaded ? "Checking sign-in options…" : githubEnabled ? "Use your invited GitHub account. An authenticator app code is required after the first successful sign-in." : localEnabled ? "Sign in with your development account to continue." : "Sign-in options are unavailable."}</p>
         {githubEnabled ? <a className="primary buttonIcon" href={GITHUB_START_PATH} data-testid="github-sign-in" onClick={startGithub} aria-disabled={busy}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.3a9.7 9.7 0 0 0-3.07 18.9c.49.09.67-.21.67-.47v-1.65c-2.73.59-3.31-1.16-3.31-1.16-.45-1.13-1.1-1.43-1.1-1.43-.89-.61.07-.6.07-.6.98.07 1.5 1 1.5 1 .88 1.5 2.3 1.06 2.86.81.09-.63.34-1.06.62-1.3-2.18-.25-4.47-1.09-4.47-4.84 0-1.07.38-1.94 1-2.62-.1-.25-.43-1.25.1-2.59 0 0 .82-.26 2.67 1a9.25 9.25 0 0 1 4.86 0c1.85-1.26 2.67-1 2.67-1 .53 1.34.2 2.34.1 2.59.62.68 1 1.55 1 2.62 0 3.76-2.29 4.59-4.48 4.83.35.3.66.88.66 1.78v2.65c0 .26.18.57.68.47A9.7 9.7 0 0 0 12 2.3Z" /></svg>
           {busy ? "Opening GitHub…" : "Continue with GitHub"}
@@ -141,6 +150,7 @@ export default function SignInPage() {
           </form>
         </> : null}
         {message ? <p className={styles.authMessage} data-tone={message.tone} role={message.tone === "error" ? "alert" : "status"}>{message.text}</p> : null}
+        {requiresAuthenticator ? <div className={styles.authLinks}><a href={authenticatorPath}>Complete authenticator {session?.totp_enrolled ? "verification" : "setup"}</a></div> : null}
         <p className={styles.securityNote}>Sessions use an HttpOnly cookie and expire automatically. Credentials never live in browser storage.</p>
         <div className={styles.authLinks}>
           <a href="/invite">Have an invitation?</a>

@@ -1,0 +1,282 @@
+"use client";
+
+// Authenticator codes are verified by the server; this page never persists a secret or code.
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+
+import {
+  authErrorMessage,
+  authRequest,
+  getAuthSession,
+  safeLocalNext,
+  type AuthenticatorMode,
+  type AuthSession,
+  type TotpEnrollment,
+  type TotpStatus,
+} from "../../components/auth-client";
+import { AuthShell } from "../../components/auth-shell";
+import styles from "../auth.module.css";
+
+interface TotpResponse {
+  authenticated?: boolean;
+  csrf_token?: string;
+  recovery_codes?: string[];
+  restricted?: boolean;
+  verified?: boolean;
+  verified_at?: string;
+}
+
+const CODE_LENGTH = 6;
+
+function modeFromQuery(value: string | null): AuthenticatorMode {
+  if (value === "enroll" || value === "recover" || value === "step-up") return value;
+  return "verify";
+}
+
+function modeCopy(mode: AuthenticatorMode, hasRecoveryCodes: boolean) {
+  if (hasRecoveryCodes) {
+    return {
+      eyebrow: "Account recovery",
+      title: "Save your recovery codes",
+      description: "These one-time codes are the fallback for a lost authenticator. Store them in a private password manager before returning to the ledger.",
+    };
+  }
+  if (mode === "enroll") {
+    return {
+      eyebrow: "Authenticator setup",
+      title: "Protect your account",
+      description: "Use an authenticator app on each device you trust. Signal Ledger keeps the enrollment secret server-side and never stores your codes in the browser.",
+    };
+  }
+  if (mode === "recover") {
+    return {
+      eyebrow: "Account recovery",
+      title: "Use a recovery code",
+      description: "A recovery code can restore access long enough to replace a lost authenticator. Each code works once and then expires permanently.",
+    };
+  }
+  if (mode === "step-up") {
+    return {
+      eyebrow: "Fresh account proof",
+      title: "Confirm it’s you",
+      description: "This sensitive action needs a fresh authenticator code. Your code is checked by the local service and never stored in page state.",
+    };
+  }
+  return {
+    eyebrow: "Secure access",
+    title: "Enter your authenticator code",
+    description: "Open your authenticator app and enter the current six-digit code to continue to your private workspace.",
+  };
+}
+
+export default function AuthenticatorPage() {
+  const [session, setSession] = useState<AuthSession | null | undefined>(undefined);
+  const [status, setStatus] = useState<TotpStatus | null | undefined>(undefined);
+  const [mode, setMode] = useState<AuthenticatorMode>("verify");
+  const [nextPath, setNextPath] = useState("/overview");
+  const [enrollment, setEnrollment] = useState<TotpEnrollment | null>(null);
+  const [code, setCode] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
+
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    setMode(modeFromQuery(query.get("mode")));
+    setNextPath(safeLocalNext(query.get("next")));
+    let active = true;
+    getAuthSession()
+      .then(async (value) => {
+        if (!active) return;
+        setSession(value);
+        if (!value?.authenticated) {
+          setStatus(null);
+          return;
+        }
+        try {
+          const factorStatus = await authRequest<TotpStatus>("/api/v1/auth/totp/status", {
+            cache: "no-store",
+          });
+          if (active) setStatus(factorStatus);
+        } catch (error) {
+          if (active) {
+            setStatus(null);
+            setMessage({ tone: "error", text: authErrorMessage(error) });
+          }
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setSession(null);
+          setStatus(null);
+          setMessage({ tone: "error", text: authErrorMessage(error) });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const copy = modeCopy(mode, Boolean(recoveryCodes));
+  const isEnrolled = Boolean(status?.enrolled || session?.user?.totp_enrolled);
+  const codeReady = code.trim().length === CODE_LENGTH;
+  const shouldShowCodeForm = mode !== "enroll" || Boolean(enrollment);
+  const enrollmentPath = `/authenticator?mode=enroll&next=${encodeURIComponent(nextPath)}`;
+  const freshEnrollmentPath = `/authenticator?mode=step-up&next=${encodeURIComponent(enrollmentPath)}`;
+
+  const recoveryText = useMemo(() => recoveryCodes?.join("\n") ?? "", [recoveryCodes]);
+
+  async function startEnrollment() {
+    setBusy("start");
+    setMessage(null);
+    setCopied(false);
+    try {
+      const response = await authRequest<TotpEnrollment>("/api/v1/auth/totp/enroll/start", {
+        method: "POST",
+        body: "{}",
+      });
+      setEnrollment(response);
+      setCode("");
+      setMessage({ tone: "success", text: "Setup key created. Add it to your authenticator, then enter the current code below." });
+    } catch (error) {
+      setMessage({ tone: "error", text: authErrorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function copyRecoveryCodes() {
+    if (!recoveryText || !navigator.clipboard) {
+      setMessage({ tone: "error", text: "Copy is unavailable here. Select the codes and save them in a private place." });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(recoveryText);
+      setCopied(true);
+      setMessage({ tone: "success", text: "Recovery codes copied. Keep them private; each code works once." });
+    } catch {
+      setMessage({ tone: "error", text: "Copy was blocked. Select the codes and save them in a private place." });
+    }
+  }
+
+  async function finishOrVerify(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (mode === "recover" ? !code.trim() : !codeReady) return;
+    setBusy("code");
+    setMessage(null);
+    try {
+      const path = mode === "enroll"
+        ? "/api/v1/auth/totp/enroll/finish"
+        : mode === "recover"
+          ? "/api/v1/auth/totp/recover"
+          : mode === "step-up"
+            ? "/api/v1/auth/totp/step-up"
+            : "/api/v1/auth/totp/verify";
+      const response = await authRequest<TotpResponse>(path, {
+        method: "POST",
+        body: JSON.stringify({ code: code.trim() }),
+      });
+      setCode("");
+      if (mode === "enroll" && response.recovery_codes?.length) {
+        setRecoveryCodes(response.recovery_codes);
+        setStatus((current) => current ? { ...current, enrolled: true, enrollment_pending: false } : current);
+        setMessage({ tone: "success", text: "Authenticator enabled. Save these recovery codes before continuing." });
+      } else if (mode === "recover") {
+        setMessage({ tone: "success", text: "Recovery accepted. Replace the lost authenticator now." });
+        window.setTimeout(() => window.location.assign(enrollmentPath), 350);
+      } else if (mode === "step-up") {
+        setMessage({ tone: "success", text: "Fresh authenticator verification complete." });
+        window.setTimeout(() => window.location.assign(nextPath), 350);
+      } else {
+        setMessage({ tone: "success", text: "Authenticator verification complete." });
+        window.setTimeout(() => window.location.assign(nextPath), 350);
+      }
+    } catch (error) {
+      setMessage({ tone: "error", text: authErrorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function continueAfterRecoveryCodes() {
+    if (!recoveryCodes) return;
+    window.location.assign(nextPath);
+  }
+
+  if (session === undefined || status === undefined) {
+    return (
+      <AuthShell eyebrow="Account security" title="Checking your authenticator" description="Loading the server-confirmed account security state.">
+        <section className={styles.authPanel} aria-labelledby="authenticator-loading-heading">
+          <h2 id="authenticator-loading-heading">Loading security state</h2>
+          <p className={styles.loadingState} role="status">Checking your session and authenticator…</p>
+        </section>
+      </AuthShell>
+    );
+  }
+
+  if (!session?.authenticated || !session.user) {
+    return (
+      <AuthShell eyebrow="Account security" title="Sign in first" description="Your authenticator is connected to your invited account. Sign in before continuing.">
+        <section className={styles.authPanel} aria-labelledby="authenticator-denied-heading">
+          <h2 id="authenticator-denied-heading">Authentication required</h2>
+          <p className={styles.panelLead}>The session may have expired or been revoked.</p>
+          <div className={styles.deniedState}><p>Return to sign in, then follow the authenticator setup or verification step.</p><div className={styles.authLinks}><a href={`/sign-in?next=${encodeURIComponent(nextPath)}`}>Open sign in</a></div></div>
+        </section>
+      </AuthShell>
+    );
+  }
+
+  return (
+    <AuthShell eyebrow={copy.eyebrow} title={copy.title} description={copy.description}>
+      <section className={`${styles.authPanel} ${styles.factorPanel}`} aria-labelledby="authenticator-heading">
+        <div className={styles.panelHeaderRow}>
+          <div>
+            <p className="panel-kicker">{mode === "step-up" ? "Administrator check" : "Authenticator app"}</p>
+            <h2 id="authenticator-heading">{copy.title}</h2>
+          </div>
+          <span className={`${styles.factorBadge} ${isEnrolled ? styles.factorBadgeGood : ""}`}>{isEnrolled ? "Enabled" : "Setup needed"}</span>
+        </div>
+        <p className={styles.panelLead}>Signed in as {session.user.name || session.user.login || "your account"}.</p>
+
+        {mode === "enroll" && !enrollment && !recoveryCodes ? <div className={styles.factorIntro}>
+          <div className={styles.stepCard}><span className={styles.stepNumber}>1</span><div><strong>Add Signal Ledger to your app</strong><p>Generate a setup key, then add it to 1Password, Authenticator, Aegis, or another trusted authenticator.</p></div></div>
+          <div className={styles.stepCard}><span className={styles.stepNumber}>2</span><div><strong>Confirm one current code</strong><p>The setup window expires in ten minutes. A code from the app proves the key was entered correctly.</p></div></div>
+          <button className="primary full" type="button" onClick={startEnrollment} disabled={busy === "start" || status?.can_enroll === false}>{busy === "start" ? "Creating setup key…" : "Generate setup key"}</button>
+          {status?.can_enroll === false ? <p className={styles.securityNote}>Complete a fresh check before replacing an existing authenticator. <a href={freshEnrollmentPath}>Verify current authenticator</a></p> : null}
+        </div> : null}
+
+        {mode === "enroll" && enrollment && !recoveryCodes ? <div className={styles.enrollmentBox}>
+          <div className={styles.stepLabel}><span className={styles.stepNumber}>1</span><span>Add this key to your authenticator</span></div>
+          <div className={styles.secretCard}><span className={styles.secretLabel}>Manual setup key</span><code>{enrollment.secret}</code><p>Enter the key exactly as shown. Keep it private while setup is in progress.</p></div>
+          <a className="secondary" href={enrollment.otpauth_uri}>Open in authenticator app</a>
+          <form className={styles.codeForm} onSubmit={finishOrVerify} noValidate>
+            <div className={styles.stepLabel}><span className={styles.stepNumber}>2</span><label htmlFor="totp-code">Enter the current six-digit code</label></div>
+            <input className={styles.codeInput} id="totp-code" name="code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={CODE_LENGTH} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, CODE_LENGTH))} aria-describedby="totp-code-help" autoFocus required />
+            <p id="totp-code-help" className={styles.fieldHelp}>Use the newest code. Codes are valid briefly and cannot be reused for the same time window.</p>
+            <button className="primary full" type="submit" disabled={busy === "code" || !codeReady}>{busy === "code" ? "Confirming authenticator…" : "Enable authenticator"}</button>
+          </form>
+        </div> : null}
+
+        {recoveryCodes ? <div className={styles.recoveryBox}>
+          <div className={styles.recoveryNotice}><strong>Save these codes now</strong><p>They are shown once. Anyone with a code can recover this account, so store them in a private password manager.</p></div>
+          <div className={styles.recoveryGrid} aria-label="One-time recovery codes">{recoveryCodes.map((item) => <code key={item}>{item}</code>)}</div>
+          <div className={styles.recoveryActions}><button className="secondary" type="button" onClick={copyRecoveryCodes}>{copied ? "Copied" : "Copy codes"}</button><button className="primary" type="button" onClick={continueAfterRecoveryCodes}>I saved the codes</button></div>
+        </div> : null}
+
+        {shouldShowCodeForm && !enrollment && !recoveryCodes ? <form className={styles.codeForm} onSubmit={finishOrVerify} noValidate>
+          <label htmlFor="totp-code">{mode === "recover" ? "Recovery code" : "Current authenticator code"}
+            <input className={styles.codeInput} id="totp-code" name="code" type="text" inputMode={mode === "recover" ? "text" : "numeric"} autoComplete="one-time-code" pattern={mode === "recover" ? undefined : "[0-9]{6}"} maxLength={39} value={code} onChange={(event) => setCode(event.target.value.trimStart())} aria-describedby="totp-code-help" autoFocus required />
+          </label>
+          <p id="totp-code-help" className={styles.fieldHelp}>{mode === "step-up" ? "If the code just changed, wait for the next code before retrying. A code is accepted once per time window." : mode === "recover" ? "Use one of the single-use codes you saved during setup." : "Use the newest six-digit code. A code is accepted once per time window."}</p>
+          <button className="primary full" type="submit" disabled={busy === "code" || (mode !== "recover" && !codeReady) || (mode === "recover" && !code.trim())}>{busy === "code" ? "Checking code…" : mode === "recover" ? "Recover account" : mode === "step-up" ? "Verify authenticator" : "Continue"}</button>
+        </form> : null}
+
+        {mode === "verify" && !isEnrolled ? <div className={styles.deniedState}><p>No active authenticator is enrolled yet. Set one up before trying to verify a code.</p><div className={styles.authLinks}><a href={enrollmentPath}>Set up authenticator</a></div></div> : null}
+        {mode === "verify" || mode === "step-up" ? <div className={styles.factorLinks}><a href={`/authenticator?mode=recover&next=${encodeURIComponent(nextPath)}`}>Use a recovery code</a>{mode === "verify" ? <a href={freshEnrollmentPath}>Replace authenticator</a> : null}</div> : null}
+        {message ? <p className={styles.authMessage} data-tone={message.tone} role={message.tone === "error" ? "alert" : "status"}>{message.text}</p> : null}
+        <div className={styles.authLinks}><a href={nextPath}>Return to workspace</a><a href="/account">Manage account</a></div>
+      </section>
+    </AuthShell>
+  );
+}

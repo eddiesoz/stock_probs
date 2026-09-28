@@ -61,7 +61,9 @@ def test_every_shipped_legacy_schema_upgrades_to_fixed_lists(settings, legacy_ve
             "SELECT name FROM sqlite_master "
             "WHERE type = 'trigger' AND tbl_name = 'instrument_list_items'"
         ).fetchall()
-    assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8]
+    # Every historical fixture must upgrade through the current contiguous schema, including
+    # schema 9's generation-bound authenticator tables and session metadata.
+    assert [row[0] for row in versions] == list(range(1, 10))
     assert {row[1] for row in columns} == {
         "kind",
         "provider",

@@ -21,6 +21,7 @@ from stock_probs.auth import (
     SESSION_COOKIE_NAME,
     AuthenticationRequired,
     AuthManager,
+    AuthorizationDenied,
     AuthSettings,
     AuthUnavailable,
     CsrfRejected,
@@ -29,12 +30,15 @@ from stock_probs.auth import (
     OAuthRejected,
     PasskeyCredential,
     PasskeyRejected,
+    TotpRejected,
+    TotpThrottled,
     UserRecord,
     hash_password,
     verify_password,
 )
 from stock_probs.config import Settings
 from stock_probs.provider import FixtureProvider
+from stock_probs.totp import code_for_step, time_step
 
 NOW = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
 
@@ -83,6 +87,323 @@ def _manager(store: MemoryAuthStore | None = None) -> tuple[AuthManager, MemoryA
         ),
     )
     return manager, selected
+
+
+def _github_totp_manager(
+    store: MemoryAuthStore | None = None,
+) -> tuple[AuthManager, MemoryAuthStore, UserRecord]:
+    selected = store or MemoryAuthStore()
+    manager = AuthManager(
+        selected,
+        AuthSettings(
+            mode="github",
+            session_secret="t" * 48,
+            public_origin="https://ledger.example",
+            github_client_id="client",
+            github_client_secret="secret",  # noqa: S106
+            github_redirect_uri="https://ledger.example/api/v1/auth/github/callback",
+        ),
+    )
+    record = selected.auth_create_user(
+        {
+            "github_id": 123456,
+            "github_login": "totp-user",
+            "role": "admin",
+            "status": "active",
+            "passkey_enrolled": False,
+            "passkey_required": False,
+        }
+    )
+    return manager, selected, manager.user_from_record(record)
+
+
+def _enroll_totp(
+    manager: AuthManager, user: UserRecord, now: datetime = NOW
+) -> tuple[object, str, list[str]]:
+    provisional = manager.issue_session(user, now, "github")
+    setup = manager.begin_totp_enrollment(provisional.context, now)
+    secret = setup["secret"]
+    assert isinstance(secret, str)
+    code = code_for_step(secret, time_step(now))
+    issue, recovery_codes = manager.finish_totp_enrollment(provisional.context, code, now)
+    return issue, secret, recovery_codes
+
+
+def test_totp_enrollment_is_atomic_and_returns_one_time_recovery_codes() -> None:
+    manager, store, user = _github_totp_manager()
+
+    issue, secret, recovery_codes = _enroll_totp(manager, user)
+
+    assert issue.context.mfa_method == "totp"
+    assert store.auth_get_totp_factor(user.id) is not None
+    assert store.auth_get_recovery_code_status(user.id)["available_count"] == len(recovery_codes)
+    assert len(recovery_codes) == 10
+    assert all(len(code.replace("-", "")) == 16 for code in recovery_codes)
+    assert store.totp_enrollments == {}
+    assert secret not in str(store.totp_factors)
+
+
+def test_existing_passkey_user_must_migrate_with_passkey_before_totp_enrollment() -> None:
+    manager, _store, user = _github_totp_manager()
+    legacy_user = UserRecord(
+        id=user.id,
+        role=user.role,
+        username=user.username,
+        github_id=user.github_id,
+        github_login=user.github_login,
+        display_name=user.display_name,
+        email=user.email,
+        active=user.active,
+        passkey_enrolled=True,
+        passkey_required=False,
+    )
+    github_session = manager.issue_session(legacy_user, NOW, "github")
+    with pytest.raises(AuthorizationDenied):
+        manager.begin_totp_enrollment(github_session.context, NOW)
+
+    passkey_session = manager.issue_session(legacy_user, NOW, "passkey", mfa_method="passkey")
+    setup = manager.begin_totp_enrollment(passkey_session.context, NOW)
+    assert setup["enrollment"] is True
+
+
+def test_totp_replay_is_rejected_but_existing_verified_device_survives_new_login() -> None:
+    manager, store, user = _github_totp_manager()
+    first, secret, _ = _enroll_totp(manager, user)
+    code = code_for_step(secret, time_step(NOW) + 1)
+    provisional = manager.issue_session(user, NOW + timedelta(seconds=30), "github")
+    second = manager.verify_totp(provisional.context, code, NOW + timedelta(seconds=30))
+    assert (
+        manager.authenticate(first.session_token, NOW + timedelta(seconds=31)).mfa_method == "totp"
+    )
+    assert (
+        manager.authenticate(second.session_token, NOW + timedelta(seconds=31)).mfa_method == "totp"
+    )
+
+    replay = manager.issue_session(user, NOW + timedelta(seconds=60), "github")
+    with pytest.raises(TotpRejected):
+        manager.verify_totp(replay.context, code, NOW + timedelta(seconds=60))
+    assert (
+        store.sessions[hashlib.sha256(first.session_token.encode()).hexdigest()].get("revoked_at")
+        is None
+    )
+
+
+def test_totp_failed_attempts_are_account_throttled_and_recovery_codes_are_single_use() -> None:
+    manager, _store, user = _github_totp_manager()
+    _issue, secret, recovery_codes = _enroll_totp(manager, user)
+    for attempt in range(5):
+        provisional = manager.issue_session(user, NOW + timedelta(minutes=attempt + 1), "github")
+        with pytest.raises(TotpRejected):
+            manager.verify_totp(provisional.context, "000000", NOW + timedelta(minutes=attempt + 1))
+    locked = manager.issue_session(user, NOW + timedelta(minutes=6), "github")
+    with pytest.raises(TotpThrottled):
+        manager.verify_totp(locked.context, "000000", NOW + timedelta(minutes=6))
+
+    # Recovery consumes one code atomically; the same code cannot create a second session.
+    recovery_context = manager.issue_session(user, NOW + timedelta(minutes=25), "github").context
+    recovered = manager.recover_with_code(
+        recovery_context, recovery_codes[0], NOW + timedelta(minutes=25)
+    )
+    assert recovered.context.mfa_method == "recovery"
+    with pytest.raises(TotpRejected):
+        manager.recover_with_code(
+            recovery_context,
+            recovery_codes[0],
+            NOW + timedelta(minutes=25, seconds=1),
+        )
+
+
+def test_old_factor_cannot_issue_a_session_after_replacement_race() -> None:
+    """A proof completed against an old factor must fail the generation-bound insert."""
+
+    manager, store, user = _github_totp_manager()
+    assured, secret, _ = _enroll_totp(manager, user)
+    provisional = manager.issue_session(user, NOW + timedelta(seconds=31), "github")
+    entered = threading.Event()
+    release = threading.Event()
+    original_issue = manager.issue_session
+    result: list[object] = []
+
+    def delayed_issue(issue_user, issued_at, auth_method, **kwargs):
+        if kwargs.get("origin_token_hash") == provisional.context.token_hash:
+            entered.set()
+            assert release.wait(timeout=10)
+        return original_issue(issue_user, issued_at, auth_method, **kwargs)
+
+    manager.issue_session = delayed_issue  # type: ignore[method-assign]
+
+    def verify() -> None:
+        try:
+            result.append(
+                manager.verify_totp(
+                    provisional.context,
+                    code_for_step(secret, time_step(NOW) + 1),
+                    NOW + timedelta(seconds=31),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - assert the guarded failure below
+            result.append(exc)
+
+    worker = threading.Thread(target=verify)
+    worker.start()
+    assert entered.wait(timeout=10)
+    factor = store.totp_factors[user.id]
+    factor["id"] = int(factor["id"]) + 1
+    release.set()
+    worker.join(timeout=10)
+    assert not worker.is_alive()
+
+    assert len(result) == 1
+    assert isinstance(result[0], TotpRejected)
+    assert not any(
+        session.get("mfa_method") == "totp"
+        and session.get("user_id") == user.id
+        and session.get("token_hash")
+        not in {provisional.context.token_hash, assured.context.token_hash}
+        for session in store.sessions.values()
+    )
+
+
+def test_old_recovery_code_cannot_issue_a_replacement_session_after_factor_race() -> None:
+    """A recovery code consumed before replacement cannot mint a stale recovery session."""
+
+    manager, store, user = _github_totp_manager()
+    _assured, _secret, recovery_codes = _enroll_totp(manager, user)
+    provisional = manager.issue_session(user, NOW + timedelta(minutes=1), "github")
+    entered = threading.Event()
+    release = threading.Event()
+    original_issue = manager.issue_session
+    result: list[object] = []
+
+    def delayed_issue(issue_user, issued_at, auth_method, **kwargs):
+        if kwargs.get("mfa_method") == "recovery":
+            entered.set()
+            assert release.wait(timeout=10)
+        return original_issue(issue_user, issued_at, auth_method, **kwargs)
+
+    manager.issue_session = delayed_issue  # type: ignore[method-assign]
+
+    def recover() -> None:
+        try:
+            result.append(
+                manager.recover_with_code(
+                    provisional.context, recovery_codes[0], NOW + timedelta(minutes=1)
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - assert the guarded failure below
+            result.append(exc)
+
+    worker = threading.Thread(target=recover)
+    worker.start()
+    assert entered.wait(timeout=10)
+    factor = store.totp_factors[user.id]
+    factor["id"] = int(factor["id"]) + 1
+    release.set()
+    worker.join(timeout=10)
+    assert not worker.is_alive()
+
+    assert len(result) == 1
+    assert isinstance(result[0], TotpRejected)
+    assert not any(
+        session.get("mfa_method") == "recovery" and session.get("user_id") == user.id
+        for session in store.sessions.values()
+    )
+
+
+def test_old_factor_cannot_rotate_recovery_codes_after_replacement_race() -> None:
+    """A late rotation cannot overwrite recovery material for a newer factor."""
+
+    manager, store, user = _github_totp_manager()
+    assured, secret, recovery_codes = _enroll_totp(manager, user)
+    original_recovery_hashes = [item["code_hash"] for item in store.recovery_codes[user.id]]
+    entered = threading.Event()
+    release = threading.Event()
+    inner = store
+    original_create = inner.auth_create_recovery_codes
+    result: list[object] = []
+
+    def delayed_create(user_id, expected_factor_id, code_hashes, created_at, origin_token_hash):
+        entered.set()
+        assert release.wait(timeout=10)
+        return original_create(
+            user_id, expected_factor_id, code_hashes, created_at, origin_token_hash
+        )
+
+    inner.auth_create_recovery_codes = delayed_create  # type: ignore[method-assign]
+
+    def rotate() -> None:
+        try:
+            result.append(
+                manager.rotate_recovery_codes(
+                    assured.context,
+                    code_for_step(secret, time_step(NOW) + 1),
+                    NOW + timedelta(seconds=31),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - assert the guarded failure below
+            result.append(exc)
+
+    worker = threading.Thread(target=rotate)
+    worker.start()
+    assert entered.wait(timeout=10)
+    factor = store.totp_factors[user.id]
+    factor["id"] = int(factor["id"]) + 1
+    release.set()
+    worker.join(timeout=10)
+    assert not worker.is_alive()
+
+    assert len(result) == 1
+    assert isinstance(result[0], TotpRejected)
+    assert store.auth_get_recovery_code_status(user.id)["available_count"] == len(recovery_codes)
+    assert [item["code_hash"] for item in store.recovery_codes[user.id]] == original_recovery_hashes
+
+
+def test_concurrent_totp_reservations_bound_crypto_attempts() -> None:
+    """The durable reservation gate limits concurrent guesses before matching_step runs."""
+
+    manager, store, user = _github_totp_manager()
+    _assured, secret, _ = _enroll_totp(manager, user)
+    sessions = [
+        manager.issue_session(user, NOW + timedelta(minutes=2, seconds=index), "github")
+        for index in range(8)
+    ]
+    barrier = threading.Barrier(len(sessions))
+    count_lock = threading.Lock()
+    crypto_calls = 0
+    import stock_probs.auth as auth_module
+
+    original_matching_step = auth_module.matching_step
+
+    def counted_matching_step(totp_secret, code, current):
+        nonlocal crypto_calls
+        with count_lock:
+            crypto_calls += 1
+        return original_matching_step(totp_secret, code, current)
+
+    # Keep this test deterministic without adding a production hook: all callers rendezvous
+    # before attempting the same account-scoped reservation.
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(auth_module, "matching_step", counted_matching_step)
+    errors: list[Exception] = []
+
+    def guess(issue) -> None:
+        try:
+            barrier.wait(timeout=10)
+            manager.verify_totp(issue.context, "000000", NOW + timedelta(minutes=2))
+        except Exception as exc:  # noqa: BLE001 - classify bounded outcomes below
+            errors.append(exc)
+
+    workers = [threading.Thread(target=guess, args=(issue,)) for issue in sessions]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=15)
+        assert not worker.is_alive()
+    monkeypatch.undo()
+
+    assert len(errors) == len(sessions)
+    assert crypto_calls <= 5
+    assert sum(isinstance(error, TotpThrottled) for error in errors) >= 3
 
 
 def test_password_hash_is_salted_and_rejects_malformed_values() -> None:
@@ -268,6 +589,48 @@ def test_local_api_requires_cookie_and_accepts_valid_credentials(tmp_path) -> No
         assert logout.status_code == 204, logout.text
         assert "Max-Age=0" in logout.headers.get("set-cookie", "")
         assert client.get("/api/v1/auth/session").json()["authenticated"] is False
+
+
+def test_authenticator_api_enrollment_returns_secret_once_and_assures_session(tmp_path) -> None:
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "stock_probs.sqlite3",
+        backup_dir=tmp_path / "backups",
+        provider="fixture",
+        auth_mode="local",
+        auth_session_secret="u" * 48,
+        auth_public_origin="http://testserver",
+        bootstrap_username="admin",
+        bootstrap_password="development-password-123",  # noqa: S106
+    )
+    application = create_app(settings, FixtureProvider(), lambda: NOW)
+    with TestClient(application) as client:
+        login = client.post(
+            "/api/v1/auth/local/login",
+            json={"username": "admin", "password": "development-password-123"},
+        )
+        assert login.status_code == 200, login.text
+        csrf_token = login.json()["csrf_token"]
+        headers = {"x-csrf-token": csrf_token}
+
+        status = client.get("/api/v1/auth/totp/status")
+        assert status.status_code == 200, status.text
+        assert status.json()["enrolled"] is False
+        started = client.post("/api/v1/auth/totp/enroll/start", headers=headers)
+        assert started.status_code == 200, started.text
+        assert started.headers["cache-control"] == "no-store"
+        enrollment = started.json()
+        assert set(enrollment) == {"enrollment", "secret", "otpauth_uri", "expires_at"}
+
+        finished = client.post(
+            "/api/v1/auth/totp/enroll/finish",
+            json={"code": code_for_step(enrollment["secret"], time_step())},
+            headers=headers,
+        )
+        assert finished.status_code == 200, finished.text
+        assert finished.json()["mfa_method"] == "totp"
+        assert len(finished.json()["recovery_codes"]) == 10
+        assert client.get("/api/v1/auth/totp/status").json()["enrolled"] is True
 
 
 @pytest.mark.parametrize(
@@ -1153,7 +1516,7 @@ def test_github_start_has_bounded_process_admission(monkeypatch) -> None:
 
 
 def test_github_callback_sets_provisional_cookie_and_consumes_invitation_once(tmp_path) -> None:
-    """The browser receives a passkey handoff, never an OAuth token or reusable code."""
+    """The browser receives an authenticator handoff, never an OAuth token or reusable code."""
 
     settings = Settings(
         data_dir=tmp_path,
@@ -1211,7 +1574,7 @@ def test_github_callback_sets_provisional_cookie_and_consumes_invitation_once(tm
             follow_redirects=False,
         )
         assert callback.status_code == 303, callback.text
-        assert callback.headers["location"].startswith("/passkey?mode=enroll")
+        assert callback.headers["location"].startswith("/authenticator?mode=enroll")
         assert "access_token" not in callback.headers.get("location", "")
         assert SESSION_COOKIE_NAME in callback.headers["set-cookie"]
         assert f"{OAUTH_TRANSACTION_COOKIE_NAME}=" in callback.headers["set-cookie"]
@@ -1315,7 +1678,7 @@ def test_github_callback_requires_the_initiating_browser_transaction(tmp_path) -
     oauth_client.close()
 
 
-def test_github_session_requires_passkey_even_for_the_admin_owner(tmp_path) -> None:
+def test_github_session_requires_totp_even_for_the_admin_owner(tmp_path) -> None:
     """A provisional cookie cannot reach private data but can revoke itself."""
 
     settings = Settings(
@@ -1359,7 +1722,7 @@ def test_github_session_requires_passkey_even_for_the_admin_owner(tmp_path) -> N
         )
         response = client.get("/api/v1/history", cookies={SESSION_COOKIE_NAME: issue.session_token})
         assert response.status_code == 403
-        assert response.json()["error"]["code"] == "passkey_required"
+        assert response.json()["error"]["code"] == "totp_required"
         provisional_page = client.get(
             "/overview",
             headers=navigation,

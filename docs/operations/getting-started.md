@@ -70,7 +70,7 @@ coverage, or true browser-zoom evidence. Physical mobile, actual screen-reader, 
 evidence are unavailable in the current post-final QA record; emulated ARM64 covers functional,
 package, and runtime behavior only, not ARM64 performance.
 
-This Compose path is local development and validation. The invite-only GitHub OAuth/passkey
+This Compose path is local development and validation. The invite-only GitHub OAuth/authenticator-app
 deployment, local GitHub Release publication (with GHCR as an explicit compatibility transport),
 Terraform-managed Linode host, and closed-until-canary Cloudflare Tunnel use the production
 procedure below. Do not copy development bootstrap credentials into a production environment.
@@ -81,8 +81,24 @@ Production is one FastAPI app with SQLite on a persistent Linode volume, publish
 Cloudflare Tunnel. Docker binds the app to `127.0.0.1:8000`; there is no public application port,
 order routing, brokerage session, real-time claim, or fabricated market depth. Production uses
 GitHub's authorization-code flow with state and PKCE, the numeric GitHub account ID as the stable
-identity, and a required user-verifying passkey after an administrator-issued, expiring, single-use
-invitation.
+identity, and a six-digit TOTP authenticator-app code after an administrator-issued, expiring,
+single-use invitation. The authenticator code is the sole ongoing application second factor. New
+passkeys are not enrolled; a legacy passkey is accepted only once to migrate an existing account
+to TOTP.
+
+### Authenticator enrollment and recovery
+
+After GitHub sign-in and invitation validation, open `/authenticator?mode=enroll`. Add the displayed
+secret to an authenticator app using the manual key or the `otpauth://` link, then enter the current
+six-digit code. The server activates the factor only after the code is verified and returns recovery
+codes once. Store each recovery code offline; each can be consumed only once.
+
+If an authenticator is lost, use one unused recovery code at `/authenticator?mode=recover`. That
+session is limited to replacing the factor. Enroll the replacement app and save the newly issued
+recovery codes before returning to the workspace. A normal sign-in from another device uses only
+GitHub plus the six-digit authenticator code; it does not require Bluetooth, a nearby phone, or
+browser passkey support. Legacy accounts may use `/passkey?mode=verify` exactly once as a migration
+step, after which the authenticator page completes the transition.
 
 Terraform's Linode configuration keeps the requested low-resource shape: Ubuntu 24.04,
 `g6-nanode-1` (1 GB RAM/25 GB disk), `us-east`, VM Backups, disk encryption, and the existing
@@ -196,8 +212,10 @@ verifying the private volume.
 The deployment helper is designed to read the existing schema, verify a pre-deploy backup, create
 and verify the pre-migration backup when the imported database advances schema, run the
 checksum-pinned migrations, verify a current-schema backup, and require readiness with the image's
-schema. Luna's ops QA covered the local fixture paths; the private host run also verified schema-8
-readiness and preserved the migrated counts. The repaired recovery rehearsal passed its declared
+schema. The R-ASTRA-102 candidate advances the additive auth schema to schema 9. Luna's ops QA
+covered the local fixture paths; the prior private host run verified schema-8 readiness and
+preserved the migrated counts. No schema-9 TOTP image has been deployed or live-verified yet. The
+repaired recovery rehearsal passed its declared
 scope after restoring a disposable clone, checking the app, database, firewall, SSH, loopback, and
 tunnel-disabled boundaries, then deleting the clone and confirming that its API lookup returned
 `404`.
@@ -260,7 +278,7 @@ deployment: main revision `27e0d2f5916d4297e10d259aa4776055a78faeaa`, Linux/amd6
 backup `pre-deploy-27e0d2f5916d4297-39376b8d.spbackup`. The publisher exited `0`; public
 health/auth/sign-in probes returned `200`/`200`/`401`/`303` with `no-store`/`DYNAMIC`.
 
-### Tunnel canary and recovery
+### Historical schema-8 passkey canary and recovery receipt
 
 The recovery rehearsal passed before the restricted canary. Cloudflare is now in
 `exposure_mode=public_invited` after E58's provider-refreshed plan and apply. The exact hostname is
@@ -296,6 +314,25 @@ in E52/E55 remain valid. Administrator
 fresh-passkey backup/restore, rendered owner workspace, live second-user onboarding, and functional
 invited-user acceptance remain pending or **Unavailable**. E64's Astra live read-only review found no
 P1/P2; its Terraform/image, IPv6, and old-VM rechecks remain **Unavailable**.
+
+### R-ASTRA-102 authenticator release status
+
+The current follow-on replaces the ongoing passkey requirement with the authenticator flow
+described above. Scoped independent QA passed 19 authentication checks, 8 repository checks, 6 API
+checks, 65 backup/container checks, 10 desktop/mobile-emulated browser cases, 28 frontend checks,
+4 account/admin smoke checks, two-user ownership isolation, and a disposable schema-9 backup/restore
+rehearsal. Packaging and security lint also passed. Astra's independent security re-review reported
+no P1/P2 finding after the generation, replay, and throttle repairs.
+
+The current local `R-ASTRA-102` gate **Passed** for its declared scope. Receipt
+`test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json` reports `704` Python tests
+passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28` frontend
+tests, and documentation coverage. The earlier aggregate failure remains visible as historical
+evidence: four legacy schema expectation tests still expected versions 1 through 8 and coverage was
+84.88%. No image publication, live schema-9 deployment, live TOTP sign-in, or physical
+authenticator-device verification is claimed yet. Keep the Cloudflare public route on the existing
+deployment until release publication, migration backup, typed-MCP deploy, readiness check, and live
+boundary verification are complete.
 
 Application backups remain signed and verified. Linode VM Backups are enabled, and successful
 snapshot `385239936` is available. The first disposable restore attempt **Failed**: clone

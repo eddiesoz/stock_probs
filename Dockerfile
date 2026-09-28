@@ -13,7 +13,7 @@ COPY src/stock_probs/static/app.js src/stock_probs/static/theme.js /build/src/st
 RUN npm run typecheck && npm run build && npm run test -- --test-concurrency=1
 RUN mkdir -p /static-next/tools \
     && cp out/index.html out/api-docs.html out/overview.html out/research.html out/tools.html \
-       out/sign-in.html out/invite.html out/passkey.html out/account.html out/admin.html /static-next/ \
+       out/sign-in.html out/invite.html out/passkey.html out/authenticator.html out/account.html out/admin.html /static-next/ \
     && cp out/tools/forecast.html out/tools/live-trading.html out/tools/markets.html /static-next/tools/ \
     && cp -R out/_next /static-next/
 

@@ -25,6 +25,21 @@ user, and image healthcheck are operational containment; they do not turn the ap
 or multi-service deployment. Native development remains the `.dev-venv/` plus local CLI path in
 [getting started](../operations/getting-started.md).
 
+## Authentication boundary
+
+Production keeps GitHub OAuth as the first factor and uses a six-digit TOTP code from an
+authenticator app as the sole ongoing application second factor. Invitations are resolved to a
+numeric GitHub account ID, expire, and can be redeemed once. Authenticator enrollment returns the
+manual secret and `otpauth://` link only during the short setup transaction; the encrypted secret
+is never returned after activation. Recovery codes are displayed once, stored as hashes, and each is
+consumed at most once. A lost authenticator enters a factor-replacement-only session until a new
+authenticator is confirmed.
+
+Passkeys remain in the data model only to migrate legacy accounts once. New passkey enrollment is
+disabled in production, and ordinary sign-in on another device does not require Bluetooth or a
+nearby phone. Administrator backup and restore operations require a fresh TOTP step-up, while all
+private research queries continue to derive ownership from the authenticated session.
+
 ```text
 Browser presentation
         │ local workspace HTML/assets and HTTP /api/v1

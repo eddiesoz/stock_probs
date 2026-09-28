@@ -13,6 +13,7 @@ test("authentication surfaces use same-origin API paths and keep credentials out
     source("app/sign-in/page.tsx"),
     source("app/invite/page.tsx"),
     source("app/passkey/page.tsx"),
+    source("app/authenticator/page.tsx"),
     source("app/account/page.tsx"),
     source("app/admin/page.tsx"),
     source("components/auth-client.ts"),
@@ -27,11 +28,12 @@ test("authentication surfaces use same-origin API paths and keep credentials out
   assert.match(joined, /HttpOnly cookie/);
 });
 
-test("auth routes cover invited sign-in, passkey, account, and admin recovery controls", async () => {
-  const [signIn, invite, passkey, account, admin] = await Promise.all([
+test("auth routes cover invited sign-in, authenticator setup, legacy migration, account, and admin controls", async () => {
+  const [signIn, invite, passkey, authenticator, account, admin] = await Promise.all([
     source("app/sign-in/page.tsx"),
     source("app/invite/page.tsx"),
     source("app/passkey/page.tsx"),
+    source("app/authenticator/page.tsx"),
     source("app/account/page.tsx"),
     source("app/admin/page.tsx"),
   ]);
@@ -44,17 +46,33 @@ test("auth routes cover invited sign-in, passkey, account, and admin recovery co
   assert.match(signIn, /<a href=\{GITHUB_START_PATH\}>Try GitHub again<\/a>/);
   assert.match(signIn, /Sign-in options could not load/);
   assert.match(signIn, /local\/login/);
+  assert.match(signIn, /Complete authenticator setup or verification/);
+  assert.match(signIn, /authenticatorPath/);
   assert.match(invite, /invites\/redeem/);
-  assert.match(passkey, /passkeys\/register\/options/);
+  assert.doesNotMatch(passkey, /passkeys\/register\/options/);
   assert.match(passkey, /passkeys\/authenticate\/options/);
-  assert.match(passkey, /Bluetooth/);
-  assert.match(passkey, /cannot provide a downloadable key file/);
+  assert.match(passkey, /one-time transition/);
+  assert.match(passkey, /does not create or export new passkeys/);
+  assert.match(authenticator, /auth\/totp\/enroll\/start/);
+  assert.match(authenticator, /auth\/totp\/enroll\/finish/);
+  assert.match(authenticator, /auth\/totp\/verify/);
+  assert.match(authenticator, /auth\/totp\/step-up/);
+  assert.match(authenticator, /auth\/totp\/recover/);
+  assert.match(authenticator, /Manual setup key/);
+  assert.match(authenticator, /otpauth_uri/);
+  assert.match(authenticator, /recovery codes/i);
+  assert.doesNotMatch(authenticator, /qr-code|external QR/i);
   assert.match(account, /auth\/sessions/);
+  assert.match(account, /auth\/totp\/status/);
+  assert.match(account, /Authenticator protected/);
+  assert.match(account, /!totpStatus\?\.enrolled/);
   assert.match(account, /Revoke/);
   assert.match(admin, /auth\/invites/);
   assert.match(admin, /operations\/backups/);
   assert.match(admin, /operations\/restores/);
-  assert.match(admin, /Fresh passkey verification complete/);
+  assert.match(admin, /auth\/totp\/step-up/);
+  assert.match(admin, /Fresh authenticator verification complete/);
+  assert.doesNotMatch(admin, /runPasskeyCeremony/);
   assert.match(admin, /disabled={!freshVerified/);
 });
 
@@ -113,8 +131,10 @@ test("invitation rejection keeps its precise recovery message", async () => {
   const { AuthRequestError, authErrorMessage } = await import("../components/auth-client.ts");
   const invitation = new AuthRequestError("The invitation is invalid or has expired.", 403, "invitation_rejected");
   const session = new AuthRequestError("Authentication required.", 401, "authentication_required");
+  const rejectedTotp = new AuthRequestError("The authenticator code was not accepted.", 403, "totp_rejected");
   assert.equal(authErrorMessage(invitation), "The invitation is invalid or has expired.");
   assert.equal(authErrorMessage(session), "Your session has ended. Sign in again to continue.");
+  assert.equal(authErrorMessage(rejectedTotp), "That authenticator code was not accepted. Wait for the next code and try again.");
 });
 
 test("auth redirects stay local and WebAuthn keeps the relying party hostname as text", async () => {

@@ -8,7 +8,9 @@ description: "Threats and controls for loopback HTTP, untrusted requests, Yahoo 
 Signal Ledger has two supported security modes. Development may use a local bootstrap account on
 loopback; production is an invite-only multi-user deployment behind a Cloudflare Tunnel. The
 production image binds the app to the host loopback interface, uses GitHub's authorization-code
-flow plus a passkey, and keeps SQLite on a private persistent volume. The recovery rehearsal has
+flow plus a six-digit TOTP authenticator app, and keeps SQLite on a private persistent volume. The
+authenticator code is the sole ongoing application second factor. Legacy passkeys are retained only
+for one-time migration and are not newly enrolled. The recovery rehearsal has
 passed for its declared scope, and E58 has applied the provider-refreshed `public_invited` boundary
 through the Cloudflare Tunnel after deleting the owner-canary Access app and updating the exposure
 guard. Authenticated owner API and saved-forecast retrieval are evidenced by read-only server logs,
@@ -19,8 +21,8 @@ legacy host; functional owner/invited-user acceptance remains pending. E60 recor
 current-machine browser passkey/sign-out limitation; E61 records the locally accepted logout and
 mode-aware passkey repair with independent QA, and E62 records the passing full local gate. E63
 records the current image deployment and public probes; E64 records Astra's no-P1/P2 live read-only
-review. Independently completed passkey, browser-rendered owner workspace, live second-user
-onboarding, and hardware passkey evidence remain **Unavailable**.
+review. Independently completed TOTP deployment, browser-rendered owner workspace, live second-user
+onboarding, and physical authenticator-device evidence remain **Unavailable** for R-ASTRA-102.
 The earlier private
 clean-main image is revision
 `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
@@ -71,6 +73,25 @@ plan passed, status is schema `8`, `failed: null`, loopback-only, and the pre-de
 results, 6 holdings, 3 watchlist items, 1 passkey, and 1 user. The IAB passkey remained unavailable;
 corrected sign-out returned `/sign-in` with no account controls twice.
 
+## R-ASTRA-102 boundary status
+
+The authenticator-only implementation adds schema 9 tables for encrypted TOTP factors, short-lived
+enrollment, single-use recovery codes, and bounded attempt throttling. Scoped independent QA passed
+19 authentication checks, 8 repository checks, 6 API checks, 65 backup/container checks, 10
+desktop/mobile-emulated browser cases, 28 frontend checks, 4 account/admin smoke checks, two-user
+ownership isolation, and a disposable schema-9 backup/restore rehearsal. Packaging and security lint
+passed, and Astra's independent re-review reported no P1/P2 finding after the generation, replay,
+and throttle fixes.
+
+The current local `R-ASTRA-102` gate **Passed** for its declared scope. Receipt
+`test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json` reports `704` Python tests
+passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28` frontend
+tests, and documentation coverage. The earlier aggregate failure remains visible as historical
+evidence: four legacy schema expectation tests still expected versions 1 through 8 and aggregate
+coverage was 84.88%. No image publication, live schema-9 deployment, live TOTP sign-in, or physical
+authenticator-device verification is claimed. The existing schema-8 passkey deployment evidence
+above is historical and must not be used as TOTP acceptance evidence.
+
 The model protects account identity, owner-scoped research history, forecast provenance, local
 filesystem locations, backup authenticity, and process availability from accidental corruption and
 untrusted browser, provider, request, and deployment input. A Cloudflare Tunnel supplies ingress;
@@ -84,10 +105,11 @@ service.
 | Remote access or browser cross-origin traffic | Loopback-only environment configuration, explicit warning flag for unsupported broader CLI binds, host/origin checks, strict response headers, and no permissive cross-origin API policy. |
 | Forged Host, forwarded-host, or path authority | Production requires one exact HTTPS public origin. Host parsing rejects URL syntax, duplicate or non-ASCII authorities, and unexpected ports; forwarded headers are accepted only from the local trusted proxy. Path decisions use the ASGI scope rather than an attacker-controlled URL reconstruction. |
 | OAuth callback substitution or login CSRF | GitHub numeric account IDs are the stable identity; the authorization-code flow uses a short-lived server-side state value and PKCE, checks the exact callback/origin, and never accepts a client-supplied identity. |
-| Invitation theft or account takeover | Invitations resolve a GitHub account, expire, are single-use, and are redeemed before passkey enrollment. Production rejects development bootstrap credentials. Every invited account must complete a user-verifying passkey ceremony. |
-| Session theft, fixation, or replay | Sessions are opaque server-side records addressed by hashed tokens, with idle and absolute expiry, revocation, host-only `Secure`/`HttpOnly` cookies, CSRF tokens for mutations, and no browser storage for credentials. Passkey step-up markers are short-lived and process-local. |
+| Invitation theft or account takeover | Invitations resolve a GitHub account, expire, are single-use, and are redeemed before authenticator enrollment. Production rejects development bootstrap credentials. Every invited account must confirm a six-digit TOTP code from an authenticator app. A legacy passkey can authorize only its one-time migration to TOTP. |
+| Authenticator theft, replay, or brute force | TOTP secrets are encrypted at rest, enrollment is short-lived and origin-bound, accepted time steps are monotonic, attempts are reserved under the SQLite write lock before verification, and failed attempts are throttled. Recovery codes are high-entropy, hashed, single-use, and reveal no replacement session beyond factor replacement. |
+| Session theft, fixation, or replay | Sessions are opaque server-side records addressed by hashed tokens, with idle and absolute expiry, revocation, host-only `Secure`/`HttpOnly` cookies, CSRF tokens for mutations, and no browser storage for credentials. TOTP verification is bound to the active factor generation and fresh step-up markers are short-lived. |
 | Cross-user IDOR or legacy-data disclosure | Forecasts, events, results, outcomes, reconstructions, exports, holdings, watchlists, and account operations derive the owner from the session. Legacy rows attach to one reserved owner claim; a new user cannot claim or query them by changing an ID. |
-| Privileged backup or restore abuse | Backup status and creation require an administrator. Restore promotion requires an administrator, a fresh passkey check, a verified pre-restore backup, matching account-security state, maintenance-mode serialization, and revocation of all sessions. |
+| Privileged backup or restore abuse | Backup status and creation require an administrator. Restore promotion requires an administrator, a fresh TOTP authenticator check, a verified pre-restore backup, matching account-security state, maintenance-mode serialization, and revocation of all sessions. |
 | Deployment MCP command injection or supply-chain substitution | The local stdio MCP exposes only `inspect`, `plan_deploy`, `deploy`, `status`, and `rollback`. The fixed SSH helper accepts a reviewed `main` revision, a release archive SHA-256, and a full image ID; it rejects arbitrary commands, paths, URLs, Compose edits, registry names, tags, and Docker-socket access. GHCR is an explicit compatibility transport, not the default. |
 | Mutable image or remote-build drift | The local publisher builds a Linux `amd64` image, scans and publishes a revision-named GitHub Release asset derived from the reviewed revision, treats that asset as immutable during its workflow, and verifies the downloaded archive SHA-256, image ID, platform, and revision. GitHub does not enforce asset immutability. The Linode loads only that verified asset and never builds source on the VM; optional GHCR plans remain digest-pinned. |
 | Terraform source or infrastructure drift | The Linode plan and apply both use a fixed external source gate that requires a clean checkout, exact `origin/main`, the reviewed revision, fixed repository, and checksums for the host files. The imported firewall has `prevent_destroy`; no application port is opened by Terraform. |

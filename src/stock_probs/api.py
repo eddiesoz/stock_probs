@@ -61,7 +61,6 @@ from stock_probs.schemas import (
     AuthInvitationResponse,
     AuthLoginResponse,
     AuthSessionResponse,
-    AuthStatusResponse,
     BackupRequest,
     ChartRange,
     CorrectionRequest,
@@ -130,6 +129,72 @@ class ErrorDetail(ApiResponse):
 
 class ErrorEnvelope(ApiResponse):
     error: ErrorDetail
+
+
+class TotpCodeRequest(ApiResponse):
+    """Bounded authenticator input; recovery-code routes apply their own format check."""
+
+    code: str = Field(min_length=6, max_length=39)
+
+
+class TotpStatusApiResponse(ApiResponse):
+    """Public factor state with no secret or recovery-code material."""
+
+    enrolled: bool
+    enrollment_pending: bool
+    recovery_codes_remaining: int = Field(ge=0, le=20)
+    requires_totp: bool
+    legacy_passkey_migration: bool
+    can_enroll: bool
+
+
+class TotpEnrollmentStartApiResponse(ApiResponse):
+    """Short-lived TOTP enrollment material returned exactly during setup."""
+
+    enrollment: Literal[True]
+    secret: str = Field(min_length=16, max_length=64)
+    otpauth_uri: str = Field(min_length=32, max_length=512)
+    expires_at: AwareDatetime
+
+
+class TotpLoginApiResponse(ApiResponse):
+    """Session response after an authenticator verification."""
+
+    authenticated: Literal[True]
+    user: dict[str, object]
+    csrf_token: str = Field(min_length=20, max_length=256)
+    expires_at: AwareDatetime
+    mfa_method: Literal["totp"]
+
+
+class TotpEnrollmentFinishApiResponse(TotpLoginApiResponse):
+    """One-time recovery material returned after first-factor enrollment."""
+
+    recovery_codes: list[str] = Field(min_length=1, max_length=20)
+
+
+class TotpStepUpApiResponse(ApiResponse):
+    """Fresh administrator proof timestamp."""
+
+    verified: Literal[True]
+    verified_at: AwareDatetime
+
+
+class TotpRecoveryApiResponse(ApiResponse):
+    """Restricted recovery session that can only replace the factor."""
+
+    authenticated: Literal[True]
+    user: dict[str, object]
+    csrf_token: str = Field(min_length=20, max_length=256)
+    expires_at: AwareDatetime
+    mfa_method: Literal["recovery"]
+    restricted: Literal[True]
+
+
+class TotpRecoveryCodesApiResponse(ApiResponse):
+    """New single-use recovery codes returned once after rotation."""
+
+    recovery_codes: list[str] = Field(min_length=1, max_length=20)
 
 
 class HealthResponse(ApiResponse):
@@ -1407,6 +1472,7 @@ def _documented_errors(*status_codes: int) -> dict[int | str, dict[str, Any]]:
         411: "A bounded Content-Length header is required.",
         413: "The request body exceeds the local API limit.",
         422: "The request or domain input is invalid.",
+        429: "Too many authenticator attempts were made; try again later.",
         500: "The local service could not complete the request.",
         502: "The market-data provider did not return usable data.",
         503: "A required local service or bounded provider slot is unavailable.",
@@ -1485,6 +1551,7 @@ WORKSPACE_PAGE_ROUTES = (
     "/sign-in",
     "/invite",
     "/passkey",
+    "/authenticator",
     "/account",
     "/admin",
 )
@@ -1612,7 +1679,7 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/invites/redeem",
         }:
             return False
-        if path.startswith("/api/v1/auth/passkeys/"):
+        if path.startswith("/api/v1/auth/passkeys/") or path.startswith("/api/v1/auth/totp/"):
             return False
         return path.startswith("/api/v1/") or path in {
             "/",
@@ -1647,42 +1714,39 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
             context = self.auth_manager.authenticate(
                 request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC)
             )
-            # A provisional GitHub session must be able to revoke itself before passkey step-up;
-            # the logout handler still requires this session's CSRF token and same-origin request.
+            # Factor pages and endpoints must remain reachable by the provisional session so the
+            # browser can complete enrollment before the workspace gate is applied.
             is_logout = request.scope["path"] == "/api/v1/auth/logout"
+            factor_path = request.scope["path"].startswith(
+                ("/api/v1/auth/passkeys/", "/api/v1/auth/totp/")
+            ) or request.scope["path"] in {"/passkey", "/authenticator"}
             if (
                 not is_logout
+                and not factor_path
                 and self.auth_manager.settings.mode == "github"
-                and context.user.passkey_required
-                and not context.user.passkey_enrolled
+                and context.mfa_method != "totp"
             ):
                 if not request.scope["path"].startswith("/api/v1/"):
+                    if context.user.passkey_enrolled and not context.user.totp_enrolled:
+                        migration_next = "/authenticator?mode=enroll&next=" + quote(
+                            request.scope["path"], safe="/"
+                        )
+                        return RedirectResponse(
+                            "/passkey?mode=verify&next=" + quote(migration_next, safe=""),
+                            status_code=303,
+                        )
                     return RedirectResponse(
-                        "/passkey?mode=enroll&next=" + quote(request.scope["path"], safe="/"),
+                        "/authenticator?mode="
+                        + ("enroll" if not context.user.totp_enrolled else "verify")
+                        + "&next="
+                        + quote(request.scope["path"], safe="/"),
                         status_code=303,
                     )
                 return JSONResponse(
                     status_code=403,
                     content=_error(
-                        "passkey_required",
-                        "A passkey must be enrolled before using this application.",
-                    ),
-                )
-            if (
-                not is_logout
-                and self.auth_manager.settings.mode == "github"
-                and context.auth_method != "passkey"
-            ):
-                if not request.scope["path"].startswith("/api/v1/"):
-                    return RedirectResponse(
-                        "/passkey?mode=verify&next=" + quote(request.scope["path"], safe="/"),
-                        status_code=303,
-                    )
-                return JSONResponse(
-                    status_code=403,
-                    content=_error(
-                        "passkey_required",
-                        "Verify your passkey before using this application.",
+                        "totp_required",
+                        "Verify your authenticator code before using this application.",
                     ),
                 )
             request.state.auth_context = context
@@ -2160,6 +2224,51 @@ _RESTORE_SECURITY_TABLES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "consumed_at",
         ),
     ),
+    (
+        "totp_factors",
+        (
+            "id",
+            "user_id",
+            "secret_ciphertext",
+            "created_at",
+            "confirmed_at",
+            "last_accepted_step",
+            "updated_at",
+        ),
+    ),
+    (
+        "totp_enrollments",
+        (
+            "id",
+            "user_id",
+            "secret_ciphertext",
+            "created_at",
+            "expires_at",
+            "expected_factor_id",
+            "origin_token_hash",
+        ),
+    ),
+    (
+        "recovery_codes",
+        (
+            "id",
+            "user_id",
+            "code_hash",
+            "created_at",
+            "consumed_at",
+            "revoked_at",
+        ),
+    ),
+    (
+        "totp_attempt_throttles",
+        (
+            "user_id",
+            "window_started_at",
+            "attempt_count",
+            "last_attempt_at",
+            "locked_until",
+        ),
+    ),
 )
 
 
@@ -2174,8 +2283,9 @@ def _restore_security_digest(path: Path) -> str:
             state: list[tuple[str, list[tuple[object, ...]]]] = []
             for table, columns in _RESTORE_SECURITY_TABLES:
                 quoted_columns = ", ".join(columns)
+                order_column = "user_id" if table == "totp_attempt_throttles" else "id"
                 rows = connection.execute(
-                    f"SELECT {quoted_columns} FROM {table} ORDER BY id"  # noqa: S608
+                    f"SELECT {quoted_columns} FROM {table} ORDER BY {order_column}"  # noqa: S608
                 ).fetchall()
                 state.append((table, [tuple(row[column] for column in columns) for row in rows]))
         finally:
@@ -2808,6 +2918,7 @@ def create_app(
         "/sign-in": next_dir / "sign-in.html",
         "/invite": next_dir / "invite.html",
         "/passkey": next_dir / "passkey.html",
+        "/authenticator": next_dir / "authenticator.html",
         "/account": next_dir / "account.html",
         "/admin": next_dir / "admin.html",
     }
@@ -2832,7 +2943,14 @@ def create_app(
     # bootstraps on every public document.
     auth_content_security_policies = {
         route: _static_script_csp(workspace_pages[route])
-        for route in ("/sign-in", "/invite", "/passkey", "/account", "/admin")
+        for route in (
+            "/sign-in",
+            "/invite",
+            "/passkey",
+            "/authenticator",
+            "/account",
+            "/admin",
+        )
         if workspace_pages[route].is_file()
     }
     restore_lock = threading.Lock()
@@ -2899,7 +3017,11 @@ def create_app(
     def _public_user(user: UserRecord) -> dict[str, object]:
         """Serialize account identity without password, token, or provider secrets."""
 
-        return user.public_dict()
+        # The legacy login/session response model predates the authenticator capability field;
+        # setup state is exposed by /api/v1/auth/totp/status instead.
+        result = user.public_dict()
+        result.pop("totp_enrolled", None)
+        return result
 
     def _auth_context(
         request: Request, *, role: str | None = None, step_up: bool = False
@@ -2918,7 +3040,7 @@ def create_app(
         if role == "admin":
             auth_manager.require_role(context, "admin")
         if step_up and not auth_manager.has_recent_step_up(context, datetime.now(UTC)):
-            raise AuthorizationDenied("A fresh passkey check is required for this operation.")
+            raise AuthorizationDenied("A fresh authenticator code is required for this operation.")
         return context
 
     def _owner_user_id(request: Request) -> int | None:
@@ -3231,7 +3353,7 @@ def create_app(
 
     @app.get(
         "/api/v1/auth/status",
-        response_model=AuthStatusResponse,
+        response_model=None,
         responses=_documented_errors(400, 403, 405, 500),
     )
     def auth_status() -> dict[str, object]:
@@ -3240,12 +3362,13 @@ def create_app(
         return {
             "status": auth_manager.settings.mode,
             "public_origin": config.auth_public_origin,
-            "passkey_required": auth_manager.settings.mode == "github",
+            "passkey_required": False,
+            "totp_required": auth_manager.settings.mode == "github",
         }
 
     @app.get(
         "/api/v1/auth/session",
-        response_model=AuthSessionResponse,
+        response_model=None,
         responses=_documented_errors(400, 403, 405, 500, 503),
     )
     def auth_session(request: Request) -> dict[str, object]:
@@ -3261,19 +3384,143 @@ def create_app(
             return {"authenticated": False, "user": None, "requires_passkey": False}
         record = auth_manager.store.auth_get_session(context.token_hash)
         expires_at = record.get("expires_at") if record else None
-        requires_passkey = context.user.passkey_required and (
-            not context.user.passkey_enrolled
-            or (auth_manager.settings.mode == "github" and context.auth_method != "passkey")
-        )
+        requires_totp = auth_manager.settings.mode == "github" and context.mfa_method != "totp"
         return {
             "authenticated": True,
             "user": _public_user(context.user),
             "csrf_token": request.cookies.get(CSRF_COOKIE_NAME),
-            "requires_passkey": requires_passkey,
+            "requires_passkey": False,
+            "requires_totp": requires_totp,
+            "mfa_method": context.mfa_method,
             "expires_at": expires_at,
             "role": context.user.role,
             "local_login_enabled": auth_manager.settings.mode == "local",
         }
+
+    @app.get(
+        "/api/v1/auth/totp/status",
+        response_model=TotpStatusApiResponse,
+        responses=_documented_errors(400, 403, 405, 500, 503),
+    )
+    def totp_status(request: Request) -> dict[str, object]:
+        """Return authenticator setup state without returning factor secrets."""
+
+        context = _auth_context(request)
+        return auth_manager.totp_status(context, datetime.now(UTC))
+
+    @app.post(
+        "/api/v1/auth/totp/enroll/start",
+        response_model=TotpEnrollmentStartApiResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 429, 500, 503),
+    )
+    def totp_enrollment_start(
+        request: Request, response: Response
+    ) -> dict[str, object]:
+        """Start one short-lived authenticator enrollment transaction."""
+
+        context = _auth_context(request)
+        result = auth_manager.begin_totp_enrollment(context, datetime.now(UTC))
+        response.headers["Cache-Control"] = "no-store"
+        return result
+
+    @app.post(
+        "/api/v1/auth/totp/enroll/finish",
+        response_model=TotpEnrollmentFinishApiResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 429, 500, 503),
+    )
+    def totp_enrollment_finish(
+        request: Request, payload: TotpCodeRequest, response: Response
+    ) -> dict[str, object]:
+        """Confirm a code, activate TOTP, and rotate the account's sessions."""
+
+        context = _auth_context(request)
+        issue, recovery_codes = auth_manager.finish_totp_enrollment(
+            context, payload.code, datetime.now(UTC)
+        )
+        _set_auth_cookies(response, issue.session_token, issue.csrf_token, issue.expires_at)
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "authenticated": True,
+            "user": _public_user(issue.context.user),
+            "csrf_token": issue.csrf_token,
+            "expires_at": issue.expires_at,
+            "mfa_method": "totp",
+            "recovery_codes": recovery_codes,
+        }
+
+    @app.post(
+        "/api/v1/auth/totp/verify",
+        response_model=TotpLoginApiResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 429, 500, 503),
+    )
+    def totp_verify(
+        request: Request, payload: TotpCodeRequest, response: Response
+    ) -> dict[str, object]:
+        """Verify an authenticator code after GitHub sign-in and issue a workspace session."""
+
+        context = _auth_context(request)
+        issue = auth_manager.verify_totp(context, payload.code, datetime.now(UTC))
+        _set_auth_cookies(response, issue.session_token, issue.csrf_token, issue.expires_at)
+        return {
+            "authenticated": True,
+            "user": _public_user(issue.context.user),
+            "csrf_token": issue.csrf_token,
+            "expires_at": issue.expires_at,
+            "mfa_method": "totp",
+        }
+
+    @app.post(
+        "/api/v1/auth/totp/step-up",
+        response_model=TotpStepUpApiResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 429, 500, 503),
+    )
+    def totp_step_up(
+        request: Request, payload: TotpCodeRequest
+    ) -> dict[str, object]:
+        """Record fresh five-minute TOTP proof for an administrator operation."""
+
+        context = _auth_context(request)
+        verified_at = auth_manager.step_up_totp(context, payload.code, datetime.now(UTC))
+        return {"verified": True, "verified_at": verified_at}
+
+    @app.post(
+        "/api/v1/auth/totp/recover",
+        response_model=TotpRecoveryApiResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 429, 500, 503),
+    )
+    def totp_recover(
+        request: Request, payload: TotpCodeRequest, response: Response
+    ) -> dict[str, object]:
+        """Consume one recovery code and issue a factor-replacement-only session."""
+
+        context = _auth_context(request)
+        issue = auth_manager.recover_with_code(context, payload.code, datetime.now(UTC))
+        _set_auth_cookies(response, issue.session_token, issue.csrf_token, issue.expires_at)
+        return {
+            "authenticated": True,
+            "user": _public_user(issue.context.user),
+            "csrf_token": issue.csrf_token,
+            "expires_at": issue.expires_at,
+            "mfa_method": "recovery",
+            "restricted": True,
+        }
+
+    @app.post(
+        "/api/v1/auth/totp/recovery-codes/rotate",
+        response_model=TotpRecoveryCodesApiResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 429, 500, 503),
+    )
+    def totp_recovery_codes_rotate(
+        request: Request, payload: TotpCodeRequest, response: Response
+    ) -> dict[str, object]:
+        """Replace recovery codes after a fresh TOTP verification."""
+
+        context = _auth_context(request)
+        recovery_codes = auth_manager.rotate_recovery_codes(
+            context, payload.code, datetime.now(UTC)
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return {"recovery_codes": recovery_codes}
 
     @app.get(
         "/api/v1/auth/sessions",
@@ -3433,11 +3680,13 @@ def create_app(
                 )
             user = auth_manager.user_from_record(user_record)
             issue = auth_manager.issue_session(user, datetime.now(UTC), "github")
-            target = (
-                "/passkey?mode=enroll&next=/overview"
-                if not issue.context.user.passkey_enrolled
-                else "/passkey?mode=verify&next=/overview"
-            )
+            if auth_manager.has_totp_factor(user.id):
+                target = "/authenticator?mode=verify&next=/overview"
+            elif user.passkey_enrolled:
+                migration_next = "/authenticator?mode=enroll&next=/overview"
+                target = "/passkey?mode=verify&next=" + quote(migration_next, safe="")
+            else:
+                target = "/authenticator?mode=enroll&next=/overview"
             redirect = RedirectResponse(target, status_code=303)
             _set_auth_cookies(redirect, issue.session_token, issue.csrf_token, issue.expires_at)
             _clear_oauth_transaction_cookie(redirect)
@@ -3548,19 +3797,12 @@ def create_app(
         responses=_documented_errors(400, 403, 405, 500, 503),
     )
     def passkey_registration_options(request: Request) -> dict[str, object]:
-        """Begin passkey enrollment for the authenticated account."""
+        """Reject new passkey enrollment; legacy assertions only authorize TOTP migration."""
 
         context = _auth_context(request)
-        if (
-            auth_manager.settings.mode == "github"
-            and context.user.passkey_enrolled
-            and (
-                context.auth_method != "passkey"
-                or not auth_manager.has_recent_step_up(context, datetime.now(UTC))
-            )
-        ):
+        if auth_manager.settings.mode == "github":
             raise AuthorizationDenied(
-                "A fresh passkey check is required before adding another passkey."
+                "Passkeys are retained only to migrate legacy accounts to an authenticator."
             )
         rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
         options = auth_manager.begin_passkey_registration(
@@ -3584,16 +3826,9 @@ def create_app(
         """Complete passkey enrollment using the one-time server challenge."""
 
         context = _auth_context(request)
-        if (
-            auth_manager.settings.mode == "github"
-            and context.user.passkey_enrolled
-            and (
-                context.auth_method != "passkey"
-                or not auth_manager.has_recent_step_up(context, datetime.now(UTC))
-            )
-        ):
+        if auth_manager.settings.mode == "github":
             raise AuthorizationDenied(
-                "A fresh passkey check is required before adding another passkey."
+                "Passkeys are retained only to migrate legacy accounts to an authenticator."
             )
         rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
         auth_manager.finish_passkey_registration(
@@ -3611,7 +3846,12 @@ def create_app(
         if updated is None:
             raise AuthUnavailable("Account security state is invalid.")
         user = auth_manager.user_from_record(updated)
-        issue = auth_manager.issue_session(user, datetime.now(UTC), "passkey")
+        auth_method: Literal["local", "github"] = (
+            "github" if auth_manager.settings.mode == "github" else "local"
+        )
+        issue = auth_manager.issue_session(
+            user, datetime.now(UTC), auth_method, mfa_method="passkey"
+        )
         _set_auth_cookies(response, issue.session_token, issue.csrf_token, issue.expires_at)
         return {
             "authenticated": True,
@@ -3641,12 +3881,12 @@ def create_app(
 
     @app.post(
         "/api/v1/auth/passkeys/assertion/finish",
-        response_model=AuthLoginResponse,
+        response_model=None,
         include_in_schema=False,
     )
     @app.post(
         "/api/v1/auth/passkeys/authenticate",
-        response_model=AuthLoginResponse,
+        response_model=None,
         responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
     )
     def passkey_assertion_finish(
@@ -3673,7 +3913,9 @@ def create_app(
             "authenticated": True,
             "user": _public_user(issue.context.user),
             "csrf_token": issue.csrf_token,
-            "requires_passkey": False,
+            "requires_passkey": True,
+            "requires_totp": True,
+            "mfa_method": issue.context.mfa_method,
             "expires_at": issue.expires_at,
         }
 
