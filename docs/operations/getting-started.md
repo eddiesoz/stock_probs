@@ -239,7 +239,7 @@ re-download verification passed. The prior origin-navigation image was reviewed 
 `fad471b19db6ff4f9b4dc154055f0d2437128e49878e72a286b697f17e8a3f48`, image ID
 `sha256:26df706f6a2b4e76ee51bb014f94d39eb66bc7644a2c7a56eb3d012f41684d60`, and MCP plan
 `530c1c65a7b4563e9c7f1cdbf5a47a3d`; deploy reported ready schema `8`, no failure, and loopback-only
-with pre-deploy backup `pre-deploy-11faaf702129d0c1-d1c03381.spbackup`. The final clean-main image
+with pre-deploy backup `pre-deploy-11faaf702129d0c1-d1c03381.spbackup`. The earlier final clean-main image
 uses revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
 `b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, and image ID
 `sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`. Its first MCP plan
@@ -252,7 +252,13 @@ and deploy passed to the replacement Linode; status is healthy, schema `8`, loop
 pre-deploy backup was present. Static MCP discovery passed in a fresh CLI task. The earlier
 read-only stdio smoke listed exactly the five typed tools and completed `inspect` successfully
 without printing credential bytes. A separate fresh Codex client invocation remains unavailable
-under host approval policy `never`; rollback is not accepted by the read-only smoke.
+under host approval policy `never`; rollback is not accepted by the read-only smoke. E63 is the current
+deployment: main revision `27e0d2f5916d4297e10d259aa4776055a78faeaa`, Linux/amd64 image ID
+`sha256:ecd41e1b65eb76b424cff830a6150db2282d326cfb18b3b6eaa37b07f83c4bc0`, archive SHA-256
+`78f2e44ecfbe2021a61a0ecd71414065024c246eb46ca9506b33c20f13b07ad1`, retry plan
+`21ca962a39d261282610568bc1e21219`, schema `8`, `failed: null`, loopback-only, and pre-deploy
+backup `pre-deploy-27e0d2f5916d4297-39376b8d.spbackup`. The publisher exited `0`; public
+health/auth/sign-in probes returned `200`/`200`/`401`/`303` with `no-store`/`DYNAMIC`.
 
 ### Tunnel canary and recovery
 
@@ -282,11 +288,14 @@ boundary live, but the live IAB had no owner UI session. E59 records legacy-host
 records the historical current-machine GitHub OAuth provisional session at `/passkey?mode=verify`,
 the browser error `The browser could not create a passkey` after Verify with passkey, a `403`/denied
 sign-out response, and the generic verify-mode error using `create`. E61 records the locally accepted
-logout and mode-aware passkey repair with independent QA, and E62 records the passing full local gate;
-the remote image still needs the repair. The server-observed owner-verified session on another computer and saved API retrieval
+logout and mode-aware passkey repair with independent QA, and E62 records the passing full local gate.
+E63 records the current deployment and a post-deploy read-only SQLite check with `quick_check=ok`,
+zero foreign-key violations, 13 search events, 13 forecast runs, 20 forecast results, 6 holdings,
+3 watchlist items, 1 passkey, and 1 user. The server-observed owner-verified session on another computer and saved API retrieval
 in E52/E55 remain valid. Administrator
-fresh-passkey backup/restore, Astra final gate review, and functional invited-user acceptance remain
-pending.
+fresh-passkey backup/restore, rendered owner workspace, live second-user onboarding, and functional
+invited-user acceptance remain pending or **Unavailable**. E64's Astra live read-only review found no
+P1/P2; its Terraform/image, IPv6, and old-VM rechecks remain **Unavailable**.
 
 Application backups remain signed and verified. Linode VM Backups are enabled, and successful
 snapshot `385239936` is available. The first disposable restore attempt **Failed**: clone
@@ -328,6 +337,7 @@ authenticated owner API and saved-forecast retrieval, while browser-rendered con
 **Unavailable**. E56 passes the local four-scenario two-client QA, and E57 records the passing full
 local gate after its initial comment-audit failure. E58 records the public-invited boundary and its
 live unauthenticated probes. E59 records retirement of legacy Linode `97934478`; E60 records the
-current-machine browser limitation; E61-E62 record the locally accepted repair and gate, while the
-remote image still needs the repair. Remote two-user/browser verification, Astra final gate review,
-and functional invited-user acceptance remain pending; the current local application is untouched.
+current-machine browser limitation; E61-E62 record the locally accepted repair and gate; E63 records
+the current deployment; and E64 records Astra's no-P1/P2 live read-only review. Remote two-user/browser
+verification, rendered owner workspace, and functional invited-user acceptance remain pending or
+**Unavailable**; the current local application is untouched.

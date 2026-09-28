@@ -268,10 +268,12 @@ registry, tag, or Docker-socket input.
   deleted, the exposure guard was updated, and the route is reachable through the tunnel while the
   direct application port remains unreachable. The live IAB showed the unauthenticated sign-in page
   but no owner UI session. E59 records the legacy-host retirement pass; functional owner/invited-user
-  browser acceptance and Astra final gate review remain pending. E60 records the historical
-  current-machine browser passkey failure and sign-out limitation; E61 records the locally accepted
-  logout and mode-aware passkey repair, and E62 records the passing full local gate. The remote image
-  still needs the repair. An earlier Luna report records Cloudflare token-verification `401` and
+  browser acceptance remains pending. E60 records the historical current-machine browser passkey
+  failure and sign-out limitation; E61 records the locally accepted logout and mode-aware passkey
+  repair, E62 records the passing full local gate, E63 records the current image publication and
+  deployment, and E64 records Astra's no-P1/P2 live read-only review. Browser-rendered owner content,
+  live second-user onboarding, and hardware passkey evidence remain **Unavailable**. An earlier Luna
+  report records Cloudflare token-verification `401` and
   documentation-coverage **Fail**; those limitations remain visible.
 - **Owner/phase:** implementation and security repair; independent `LUNA MAX QA` browser and
   deployment checks; `ASTRA` medium security review; `LUNA MAX docs` evidence reconciliation.
@@ -295,8 +297,13 @@ registry, tag, or Docker-socket input.
   The server-observed verified session on another computer and saved API retrieval in E52/E55 remain
   valid. The source-reviewed
   session-recovery fix at `a1d868287a729c75d9b8628f612a856db132374a` passed local build/typecheck,
-  `28` frontend tests, and browser `4/4`, and is included in the final clean-main image. This
-  follow-on does not claim authenticated browser acceptance or a production release checkpoint.
+  `28` frontend tests, and browser `4/4`. E63 then published and deployed main revision
+  `27e0d2f5916d4297e10d259aa4776055a78faeaa` with image `sha256:ecd41e1b65eb76b424cff830a6150db2282d326cfb18b3b6eaa37b07f83c4bc0`; status is schema `8`,
+  `failed: null`, and loopback-only, with pre-deploy backup
+  `pre-deploy-27e0d2f5916d4297-39376b8d.spbackup`. Public health/auth/sign-in probes passed with
+  `no-store`/`DYNAMIC`; the IAB still could not complete a passkey, while corrected sign-out returned
+  to sign-in twice. E64 found no P1/P2 for its live read-only scope. This does not claim
+  independently completed passkey, owner-workspace, or second-user acceptance.
 
 | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
 | --- | --- | --- | --- |
@@ -362,20 +369,23 @@ registry, tag, or Docker-socket input.
 | `R-ASTRA-101-E60` | Current-machine owner passkey browser limitation after public exposure. | In-app browser on the current machine; exact UTC and artifact were not supplied; GitHub OAuth returned a provisional `jtmb` session at `/passkey?mode=verify`. | **Unavailable** for browser passkey verification: clicking Verify with passkey produced `The browser could not create a passkey`; signing out of the failed provisional session returned `403`/denied text; and verify mode exposed a generic error using `create`. No successful passkey UI result was observed. This is historical browser evidence pending the source repair; it does not invalidate the server-observed owner-verified session on another computer or saved API retrieval recorded in E52/E55. Reviewer metadata was not supplied. |
 | `R-ASTRA-101-E61` | Provisional-session logout and mode-aware passkey verification repair with independent QA. | Native x86_64; source paths `src/stock_probs/api.py` and `frontend/components/auth-client.ts`; focused provisional test `2026-09-28T15:47:44Z`–`15:47:47Z`, full auth-file run `15:48:01Z`–`15:48:13Z`, `tests/test_api.py` `15:50:29Z`–`15:51:44Z`, and desktop/emulated Pixel 7 browser auth-flow `15:52:19Z`–`15:52:30Z`; exact commands, artifacts, and source revision were not supplied. | **Pass** for the local repair and QA scope: the narrow logout middleware exception permits signing out only the current user's provisional session; CSRF and origin checks remain, and private passkey gates remain. Mode-aware passkey verification wording is covered by the frontend repair. Focused provisional, full auth, API, frontend typecheck/`28` tests, browser auth-flow `4/4` desktop plus emulated Pixel 7, and security Ruff passed. Astra reported no P1/P2. Real passkey/hardware evidence is **Unavailable**, and the unenrolled provisional state was not directly combined in the independent test. No live deployment or remote image result is claimed; reviewer `LUNA MAX QA` / `ASTRA`. |
 | `R-ASTRA-101-E62` | Full local R-ASTRA-101 gate after the E60 auth-flow repair. | Native x86_64; command `TMPDIR=/home/james/.cache/stock-probs-gate-tmp OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 TASK_ID=R-ASTRA-101 ./scripts/local-gate.sh check`; `2026-09-28T15:48:22Z`–`2026-09-28T15:56:15Z`; dirty revision `77123186bbb7af71d401defec0e8f99c7bb42cc0`; receipt `test-results/local-gates/R-ASTRA-101-20260928T154822Z/evidence.json`. | **Pass**, exit `0`: `683` Python tests passed, `4` live tests were deselected, coverage was `85.71%`, frontend build/typecheck/`28` tests passed, and documentation completeness plus comment audit passed. This is local dirty-tree gate evidence only; the remote image update/deploy and live owner passkey acceptance remain pending. Reviewer metadata was not supplied. |
+| `R-ASTRA-101-E63` | Final main image publication, typed-MCP deployment, public boundary probes, and live sign-in/passkey repair check. | Native x86_64; pushed main revision `27e0d2f5916d4297e10d259aa4776055a78faeaa` (commit/push preceded this docs update); `./scripts/publish-production-image.sh` exit `0`; GitHub Release tag `signal-ledger-27e0d2f5916d4297e10d259aa4776055a78faeaa`; release re-download verification passed; archive SHA-256 `78f2e44ecfbe2021a61a0ecd71414065024c246eb46ca9506b33c20f13b07ad1`; Linux/amd64 image ID `sha256:ecd41e1b65eb76b424cff830a6150db2282d326cfb18b3b6eaa37b07f83c4bc0`; archive size `103119161` bytes; first MCP plan returned `remote_operation_failed`, retry plan `21ca962a39d261282610568bc1e21219` passed; exact UTC was not supplied. | **Pass** for the declared publication/deployment scope: a fresh official Python SDK stdio client listed exactly five typed tools; pre-deploy inspect reported the prior revision `2de5e9f` ready; MCP deploy returned `deployed` schema `8`; status reported revision `27e0d2f`, `failed: null`, `loopback_only: true`, and pre-deploy backup `pre-deploy-27e0d2f5916d4297-39376b8d.spbackup`. Public probes returned `/api/v1/health` `200`, `/api/v1/auth/status` `200`, `/api/v1/history` `401`, and `/overview` `303` to local sign-in, all `no-store`/`DYNAMIC`. Live IAB OAuth produced a provisional `jtmb` `/passkey?mode=verify` session; passkey remained unavailable there, the corrected error was `The browser could not verify a passkey`, and signing out returned `/sign-in` with no account controls twice. A post-deploy read-only SQLite check reported `quick_check=ok`, zero foreign-key violations, 13 search events, 13 forecast runs, 20 forecast results, 6 holdings, 3 watchlist items, 1 passkey, and 1 user, matching the preserved owner data. Owner full-session evidence remains limited to the other-computer E52/E55 record; independently completed passkey, browser-rendered owner workspace, and live second-user onboarding remain **Unavailable**. Reviewer metadata and exact UTC were not supplied. |
+| `R-ASTRA-101-E64` | Astra final live read-only review of the deployed public boundary and source security controls. | Live read-only production review; `2026-09-28T16:16:44Z`–`16:16:50Z`; exact command, environment, revision, and artifact were not supplied. | **Pass** for the declared review scope with no P1/P2: sign-in/auth returned `200`, overview returned `303` to local sign-in, history/portfolio/JSON export/backup returned `401`, responses were `no-store`/`DYNAMIC`, direct IPv4 port `8000` timed out, and source retained passkey, CSRF, and own-session logout controls. Independently completed passkey, rendered owner workspace, live second-user onboarding, Terraform/image recheck by Astra, IPv6, and old-VM recheck remain **Unavailable**; no full production acceptance claim is made. Reviewer `ASTRA`. |
 
 The local source and completed gate provide implementation and bounded security evidence. External
 execution has created the provider access items, applied the replacement infrastructure, published
 and re-verified the current release archive, deployed the reviewed image privately through the
-typed MCP, completed the declared recovery rehearsal, and activated the owner-only canary. The
-current auth-UI repair, privacy P2 repair, final scoped QA, and Astra reviews are complete for
-their declared scopes. The previous owner callback observation showed the page signed in as `jtmb`,
-but that tab may be stale after the current deployment; the new session auth result is unverified.
-`R-ASTRA-101` remains **In progress** because browser-rendered owner content and remote two-user
-behavior remain **Unavailable**. E58 records the public-invited Terraform boundary and live
-unauthenticated sign-in boundary; functional owner/invited-user browser acceptance and Astra final gate
-  review remain pending. E59 records the legacy-host retirement pass, E60 records the historical
-  current-machine browser passkey failure, E61 records the locally accepted source repair and QA,
-  and E62 records the passing full local gate. The remote image still needs the repair. Authenticated owner API retrieval and saved-forecast
+typed MCP, completed the declared recovery rehearsal, activated the owner-only canary, and deployed
+the current main image in E63. The current auth-UI repair, privacy P2 repair, final scoped QA, and
+Astra reviews are complete for their declared scopes. The previous owner callback observation showed
+the page signed in as `jtmb`, but that tab may be stale; E63's IAB session still could not complete a
+passkey, while corrected sign-out returned to sign-in twice. `R-ASTRA-101` remains **In progress**
+because browser-rendered owner content and remote two-user behavior remain **Unavailable**. E58 records
+the public-invited Terraform boundary and live unauthenticated sign-in boundary; functional
+owner/invited-user browser acceptance remains pending. E59 records the legacy-host retirement pass,
+E60 records the historical current-machine browser passkey failure, E61 records the locally accepted
+source repair and QA, E62 records the passing full local gate, E63 records the current deployment, and
+E64 records Astra's no-P1/P2 live read-only review. Authenticated owner API retrieval and saved-forecast
 access are evidenced by server-observed logs, and E56 passes the four two-client isolation scenarios
 locally.
 The historical R-ASTRA-100 aggregate remains separately recorded and is not relabelled by E12.
@@ -390,13 +400,15 @@ the live public boundary without asserting authenticated browser access or full 
 No GitHub OAuth credential, tunnel token, production secret, owner email, or private key belongs in
 this plan or any tracked documentation. The earlier Cloudflare token-verification `401`, earlier
 documentation-coverage failure, historical callback-code/browser limitation, fresh-IAB Access-login
-limitation, browser-rendered UI unavailability, remote two-user unavailability, pending Astra final
-gate review and fresh Codex-client approval-policy limitation remain visible; E59 records the legacy-host
-  retirement pass, E60 records the historical current-machine browser passkey limitation, and E61-E62
-  record the locally accepted repair and gate; the remote image still needs the repair;
+  limitation, browser-rendered UI unavailability, remote two-user unavailability, E64's declared-scope
+  Astra review limitations, and fresh Codex-client approval-policy limitation remain visible; E59 records the legacy-host
+  retirement pass, E60 records the historical current-machine browser passkey limitation, E61-E62
+  record the local repair and gate, E63 records the current image deployment, and E64 records Astra's
+  no-P1/P2 live read-only review;
 the origin-navigation repair is recorded in E49, the source/UI repair in E50, the final deployment in
 E51, operator/MCP/QA/documentation/retrieval/local-gate evidence in E52-E57, the public boundary in
-E58, the legacy-host retirement in E59, and the current-machine browser limitation in E60.
+E58, the legacy-host retirement in E59, the current-machine browser limitation in E60, the local
+repair/gate in E61-E62, and the current deployment/review in E63-E64.
 
 ### Current approval status
 

@@ -136,9 +136,10 @@ full local gate passes after its initial comment-audit failure. Remote two-user 
 UI remain **Unavailable**. E58 records the provider-refreshed `public_invited` Terraform apply and
 live public boundary; the live IAB showed the unauthenticated sign-in page but no owner UI session.
 E59 records the retirement of legacy Linode `97934478`; functional owner/invited-user browser
-acceptance and Astra final gate review remain pending. E60 records the current-machine browser
-passkey limitation; E61-E62 record the locally accepted repair and gate, while the remote image
-still needs the repair. The Cloudflare token verification
+acceptance remains pending. E60 records the current-machine browser passkey limitation; E61-E62
+record the locally accepted repair and gate, E63 records the current image deployment, and E64 records
+Astra's no-P1/P2 live read-only review. Browser-rendered owner content, live second-user onboarding,
+and hardware passkey evidence remain **Unavailable**. The Cloudflare token verification
 check returned HTTP `401` in an earlier Luna report despite functional provider API/Terraform
 operations; this discrepancy remains visible. No full public production acceptance claim is made.
 Unavailable evidence categories—actual screen reader, physical mobile, true browser zoom, native
@@ -186,9 +187,9 @@ open.
   `303` to local sign-in, `/api/v1/history` returned `401`, and `/api/v1/auth/status` returned `200`,
   all with `no-store`/`DYNAMIC`; the host's direct port `8000` remains unreachable. The live IAB
   showed the unauthenticated sign-in page but no owner UI session. E59 records retirement of legacy
-  Linode `97934478`; E60 records the current-machine browser passkey limitation, and E61-E62 record
-  the locally accepted repair and gate while the remote image still needs the repair. Functional
-  invited-user acceptance remains pending.
+  Linode `97934478`; E60 records the current-machine browser passkey limitation, E61-E62 record
+  the locally accepted repair and gate, E63 records the current deployment, and E64 records Astra's
+  no-P1/P2 live read-only review. Functional invited-user acceptance remains pending.
 - The local stdio deployment MCP exposes only typed `inspect`, `plan_deploy`, `deploy`, `status`,
   and `rollback` tools. The default transport carries a reviewed `main` revision, release archive
   SHA-256, and full Docker image ID; the fixed helper derives the GitHub Release URL and verifies
@@ -319,7 +320,7 @@ open.
   at `Checking your session` by presenting sign-in recovery. Build/typecheck and `28` frontend
   tests passed, and the desktop/mobile browser checks passed `4/4`; the fix is source-reviewed and
   locally tested and is included in the final clean-main image below.
-- The final private clean-main deployment uses revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`,
+- The earlier private clean-main deployment used revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`,
   archive SHA-256 `b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, and image ID
   `sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`. The first MCP plan
   failed transiently with `remote_operation_failed` while the canary remained healthy; fixed typed
@@ -342,10 +343,22 @@ open.
   `public_invited` boundary: the owner-canary Access app was deleted and the exposure guard updated;
   the live IAB showed the unauthenticated sign-in page but no owner UI session. E55 records its
   point-in-time gap status; E56 and E57 record the local QA and gate results. Functional
-  owner/invited-user acceptance and Astra final gate review remain pending; E59 records the completed
-  legacy-host retirement and E60 records the current-machine browser passkey limitation; E61-E62 record
-  the locally accepted repair and gate while the remote image still needs the repair. This is not a
-  full production acceptance claim.
+  owner/invited-user acceptance remains pending; E59 records the completed legacy-host retirement and
+  E60 records the current-machine browser passkey limitation; E61-E62 record the locally accepted
+  repair and gate, E63 records the current deployment, and E64 records Astra's no-P1/P2 live read-only
+  review. Independently completed passkey, browser-rendered owner workspace, and live second-user
+  onboarding remain **Unavailable**. This is not a full production acceptance claim.
+- E63 is the current deployment record: main revision `27e0d2f5916d4297e10d259aa4776055a78faeaa`,
+  release archive SHA-256 `78f2e44ecfbe2021a61a0ecd71414065024c246eb46ca9506b33c20f13b07ad1`, image
+  ID `sha256:ecd41e1b65eb76b424cff830a6150db2282d326cfb18b3b6eaa37b07f83c4bc0`, retry MCP plan
+  `21ca962a39d261282610568bc1e21219`, schema `8`, `failed: null`, loopback-only, and pre-deploy
+  backup `pre-deploy-27e0d2f5916d4297-39376b8d.spbackup`. Public health/auth/sign-in probes returned
+  `200`/`200`/`401`/`303` with `no-store`/`DYNAMIC`; the IAB passkey remained unavailable, while
+  corrected sign-out returned `/sign-in` with no account controls twice. A post-deploy read-only
+  SQLite check reported `quick_check=ok`, zero foreign-key violations, 13 search events, 13 forecast
+  runs, 20 forecast results, 6 holdings, 3 watchlist items, 1 passkey, and 1 user. E64's Astra live
+  read-only review found no P1/P2 for its declared scope, with the remaining browser, second-user,
+  hardware passkey, Terraform/image, IPv6, and old-VM rechecks **Unavailable**.
 
 ## Repository truth
 

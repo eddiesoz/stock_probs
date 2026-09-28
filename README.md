@@ -240,7 +240,7 @@ current authentication, passkey enrollment, or saved-data access. A subsequent s
 commit `a1d868287a729c75d9b8628f612a856db132374a` handles stale/expired provisional sessions that
 returned `authenticated:false` and left the passkey page at `Checking your session`; build/typecheck,
 `28` frontend tests, and browser `4/4` passed. It is source-reviewed and locally tested and is
-included in the final clean-main image below. The final private clean-main deployment uses revision
+included in the final clean-main image below. The earlier private clean-main deployment used revision
 `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
 `b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, and image ID
 `sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`. The first MCP plan
@@ -250,7 +250,20 @@ Status reported the current revision, `failed: null`, `loopback_only: true`, and
 `pre-deploy-2de5e9f199cd1457-751c7459.spbackup`. A live in-app-browser reload with an expired
 session showed `Sign in first` and `Open sign in` and hid `Create passkey`; opening sign-in and
 continuing with GitHub returned to `/passkey?mode=enroll&next=/overview`, showed `Signed in as jtmb`,
-and showed `Create passkey`. No ceremony was completed in this browser tab. A read-only operator
+and showed `Create passkey`. No ceremony was completed in this browser tab. E63 supersedes that image
+with the published and deployed main revision `27e0d2f5916d4297e10d259aa4776055a78faeaa`, archive
+SHA-256 `78f2e44ecfbe2021a61a0ecd71414065024c246eb46ca9506b33c20f13b07ad1`, and image ID
+`sha256:ecd41e1b65eb76b424cff830a6150db2282d326cfb18b3b6eaa37b07f83c4bc0`; the publisher exited `0`,
+and GitHub Release re-download verification passed; the retry MCP plan passed, and status is schema
+`8`, `failed: null`, and loopback-only with
+pre-deploy backup `pre-deploy-27e0d2f5916d4297-39376b8d.spbackup`. Public health/auth/sign-in probes
+returned `200`/`200`/`401`/`303` with `no-store`/`DYNAMIC`. A post-deploy read-only SQLite check
+reported `quick_check=ok`, zero foreign-key violations, 13 search events, 13 forecast runs, 20
+forecast results, 6 holdings, 3 watchlist items, 1 passkey, and 1 user. The IAB passkey remained
+unavailable with corrected error `The browser could not verify a passkey`; sign-out returned to
+`/sign-in` with no account controls twice. E64's Astra live read-only review found no P1/P2, while
+independently completed passkey, browser-rendered owner workspace, and live second-user onboarding
+remain **Unavailable**. A read-only operator
 SQLite check on `2026-09-28` (exact query UTC not captured) found `quick_check` `ok`, zero foreign-
 key violations, owner id `1` claimed to the configured GitHub account as active admin, one
 nonrevoked passkey, one current passkey-verified session, and owner mappings of 13 events, 13 runs,
@@ -266,10 +279,14 @@ reuse/identity binding. E57's rerun of the full local gate also passed after its
 failure. E58 makes the public-invited infrastructure boundary live. E59 retires the legacy Linode
 and confirms the replacement is running. E60 records the historical current-machine browser passkey
 and sign-out limitation; E61 records the locally accepted logout and mode-aware passkey repair with
-independent QA, and E62 records the passing full local gate. The remote image still needs the repair.
-Remote two-user behavior, browser-rendered owner content, and functional invited-user acceptance
-remain **Unavailable**. Astra final gate review remains pending, so this is not a full production
-acceptance claim. Server-observed owner verification and saved API retrieval remain recorded in E52/E55.
+independent QA, and E62 records the passing full local gate. E63 publishes and deploys the current
+main image, verifies public health/auth/sign-in probes, and records a post-deploy read-only SQLite
+check matching the preserved owner data. The IAB passkey remains unavailable, while corrected sign-out
+returns to sign-in twice. E64 records Astra's live read-only review with no P1/P2. Browser-rendered
+owner content, live second-user onboarding, and hardware passkey evidence remain **Unavailable**.
+Remote two-user behavior and functional invited-user acceptance remain **Unavailable**; this is not a
+full production acceptance claim. Server-observed owner verification and saved API retrieval remain
+recorded in E52/E55.
 See
 [Getting started](docs/operations/getting-started.md)
 for the current Terraform, recovery, and canary boundaries.

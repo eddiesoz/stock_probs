@@ -15,12 +15,13 @@ guard. Authenticated owner API and saved-forecast retrieval are evidenced by rea
 while browser-rendered owner content remains **Unavailable**. E56 passes the four two-client
 isolation scenarios locally, but remote two-user behavior and browser UI remain **Unavailable**.
 The live IAB showed the unauthenticated sign-in page but no owner UI session. E59 retired the
-legacy host; functional owner/invited-user acceptance and Astra's final gate review remain pending.
-E60 records the historical current-machine browser passkey/sign-out limitation; E61 records the
-locally accepted logout and mode-aware passkey repair with independent QA, and E62 records the passing
-full local gate. The remote image still needs the repair; real passkey/hardware evidence remains
-**Unavailable**.
-The final private
+legacy host; functional owner/invited-user acceptance remains pending. E60 records the historical
+current-machine browser passkey/sign-out limitation; E61 records the locally accepted logout and
+mode-aware passkey repair with independent QA, and E62 records the passing full local gate. E63
+records the current image deployment and public probes; E64 records Astra's no-P1/P2 live read-only
+review. Independently completed passkey, browser-rendered owner workspace, live second-user
+onboarding, and hardware passkey evidence remain **Unavailable**.
+The earlier private
 clean-main image is revision
 `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
 `b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, and image ID
@@ -55,9 +56,20 @@ confirmed by E55. Browser-rendered content remains **Unavailable**. E56 passes t
 two-client isolation scenarios; remote two-user behavior remains **Unavailable**, and E57 records the
 passing full local gate after its initial comment-audit failure. E58 records the live public boundary
 and unauthenticated sign-in probes; E59 records legacy-host retirement, E60 records the current-
-machine browser passkey limitation, and E61-E62 record the locally accepted repair and gate. The
-remote image still needs the repair. Astra final gate review and functional invited-user acceptance
-remain pending.
+machine browser passkey limitation, E61-E62 record the locally accepted repair and gate, E63 records
+the current deployment, and E64 records Astra's no-P1/P2 live read-only review. Functional
+invited-user acceptance remains pending; Terraform/image, IPv6, old-VM, browser owner-workspace,
+live second-user, and independently completed passkey checks remain **Unavailable**.
+
+E63's current image is main revision `27e0d2f5916d4297e10d259aa4776055a78faeaa`, archive SHA-256
+`78f2e44ecfbe2021a61a0ecd71414065024c246eb46ca9506b33c20f13b07ad1`, and image ID
+`sha256:ecd41e1b65eb76b424cff830a6150db2282d326cfb18b3b6eaa37b07f83c4bc0`; the typed-MCP retry
+plan passed, status is schema `8`, `failed: null`, loopback-only, and the pre-deploy backup is
+`pre-deploy-27e0d2f5916d4297-39376b8d.spbackup`. Public health/auth/sign-in probes returned
+`200`/`200`/`401`/`303` with `no-store`/`DYNAMIC`. A post-deploy read-only SQLite check reported
+`quick_check=ok`, zero foreign-key violations, 13 search events, 13 forecast runs, 20 forecast
+results, 6 holdings, 3 watchlist items, 1 passkey, and 1 user. The IAB passkey remained unavailable;
+corrected sign-out returned `/sign-in` with no account controls twice.
 
 The model protects account identity, owner-scoped research history, forecast provenance, local
 filesystem locations, backup authenticity, and process availability from accidental corruption and
