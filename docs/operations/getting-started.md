@@ -90,16 +90,23 @@ firewall imported as `177236117`. Its inbound policy is default-deny with only o
 the configured `/32`; application ports are not opened, and the Linode and firewall have
 `prevent_destroy`. The fixed external source gate runs during plan and again during apply and
 requires a clean checkout, exact `origin/main`, the reviewed revision, and checksums for the
-bootstrap files. This has been applied to replacement Linode `106817202`; the old instance remains
-untouched. The firewall is attached only to the replacement host, and the application remains
-loopback-only.
+bootstrap files. This has been applied to replacement Linode `106817202`; E59 retired legacy Linode
+`97934478` after validation-only checks and a guarded execute run. The old instance was labeled
+`cardventory` with backups disabled; the replacement is labeled `signal-ledger` with backups enabled
+and the same shape/location. The retirement workflow used the local Signal Ledger app as its data
+source; no Cardventory-data preservation claim is made. The firewall is attached only to the
+replacement host, and the application remains loopback-only.
 
 Cloudflare Terraform defaults to `exposure_mode=closed`: the managed tunnel has a terminal 404
-ingress and no DNS record. The applied canary adds only `ledger.jtmb.cc`, routes to
-`http://127.0.0.1:8000`, keeps the configured owner behind Cloudflare Access, and installs a
-cache-settings rule that bypasses shared and browser caching for the exact hostname. The
-connector is healthy and active for this restricted canary. Unauthenticated requests receive the
-Access redirect and private responses use `no-store`; direct port `8000` remains unreachable.
+ingress and no DNS record. E58 records the provider-refreshed `public_invited` apply for
+`ledger.jtmb.cc`: the owner-canary Access app was deleted and the exposure guard updated, while
+the tunnel, DNS record, and cache-settings rule remain managed. The route still targets
+`http://127.0.0.1:8000`, the connector is active, and direct port `8000` remains unreachable.
+The live boundary returned `303` to local sign-in for `/overview`, `401` for `/api/v1/history`, and
+`200` for `/api/v1/auth/status`; each response was `no-store`/`DYNAMIC`. The live IAB showed the
+unauthenticated sign-in page but no owner UI session. E59's post-delete probes returned health and
+auth `200`, history `401`, and overview `303` to sign-in, with `no-store`/`DYNAMIC`. Functional
+owner/invited-user acceptance remains pending.
 The earlier provider verification reported Cloudflare HTTP `401` despite functional API/Terraform
 operations, so that discrepancy remains an open limitation.
 
@@ -250,9 +257,9 @@ under host approval policy `never`; rollback is not accepted by the read-only sm
 ### Tunnel canary and recovery
 
 The recovery rehearsal passed before the restricted canary. Cloudflare is now in
-`exposure_mode=canary` only for the configured owner. The exact hostname is `ledger.jtmb.cc`; the
-tunnel routes to `http://127.0.0.1:8000`, Cloudflare Access protects the route, and the
-cache-settings rule bypasses shared/browser caching. The GitHub OAuth application authorization and
+`exposure_mode=public_invited` after E58's provider-refreshed plan and apply. The exact hostname is
+`ledger.jtmb.cc`; the tunnel routes to `http://127.0.0.1:8000`, and the cache-settings rule bypasses
+shared/browser caching. The owner-canary Access app was deleted as part of the apply. The GitHub OAuth application authorization and
 Cloudflare one-time-code flow completed successfully in the earlier browser session. The final live
 in-app-browser reload with an expired session showed `Sign in first` and `Open sign in` and hid
 `Create passkey`; opening sign-in and continuing with GitHub returned to
@@ -270,8 +277,16 @@ callback-blocked observation is retained as historical evidence in E38, and E49 
 origin-navigation record. Browser-rendered owner content remains **Unavailable**. E56 independently
 passes the four two-client isolation scenarios locally—cross-watchlist deletion, member `promote=true`
 restore denial, nested outcome export, and two-account invitation reuse/identity binding—while remote
-two-user behavior and browser UI remain **Unavailable**. Administrator fresh-passkey backup/restore,
-Astra final gate review, and invited-user exposure remain pending.
+two-user behavior and browser UI remain **Unavailable**. E58 makes the public-invited infrastructure
+boundary live, but the live IAB had no owner UI session. E59 records legacy-host retirement. E60
+records the historical current-machine GitHub OAuth provisional session at `/passkey?mode=verify`,
+the browser error `The browser could not create a passkey` after Verify with passkey, a `403`/denied
+sign-out response, and the generic verify-mode error using `create`. E61 records the locally accepted
+logout and mode-aware passkey repair with independent QA, and E62 records the passing full local gate;
+the remote image still needs the repair. The server-observed owner-verified session on another computer and saved API retrieval
+in E52/E55 remain valid. Administrator
+fresh-passkey backup/restore, Astra final gate review, and functional invited-user acceptance remain
+pending.
 
 Application backups remain signed and verified. Linode VM Backups are enabled, and successful
 snapshot `385239936` is available. The first disposable restore attempt **Failed**: clone
@@ -311,6 +326,8 @@ live session returned to the signed-in passkey-enrollment page, but no ceremony 
 browser tab; owner passkey enrollment is operator-verified. E55 records server-observed
 authenticated owner API and saved-forecast retrieval, while browser-rendered content remains
 **Unavailable**. E56 passes the local four-scenario two-client QA, and E57 records the passing full
-local gate after its initial comment-audit failure. Remote two-user/browser verification, Astra final
-gate review, invited-user route, and retirement of legacy Linode `97934478` remain pending; the old
-VM and current local application are untouched.
+local gate after its initial comment-audit failure. E58 records the public-invited boundary and its
+live unauthenticated probes. E59 records retirement of legacy Linode `97934478`; E60 records the
+current-machine browser limitation; E61-E62 record the locally accepted repair and gate, while the
+remote image still needs the repair. Remote two-user/browser verification, Astra final gate review,
+and functional invited-user acceptance remain pending; the current local application is untouched.

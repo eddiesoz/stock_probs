@@ -1647,8 +1647,12 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
             context = self.auth_manager.authenticate(
                 request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC)
             )
+            # A provisional GitHub session must be able to revoke itself before passkey step-up;
+            # the logout handler still requires this session's CSRF token and same-origin request.
+            is_logout = request.scope["path"] == "/api/v1/auth/logout"
             if (
-                self.auth_manager.settings.mode == "github"
+                not is_logout
+                and self.auth_manager.settings.mode == "github"
                 and context.user.passkey_required
                 and not context.user.passkey_enrolled
             ):
@@ -1664,7 +1668,11 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
                         "A passkey must be enrolled before using this application.",
                     ),
                 )
-            if self.auth_manager.settings.mode == "github" and context.auth_method != "passkey":
+            if (
+                not is_logout
+                and self.auth_manager.settings.mode == "github"
+                and context.auth_method != "passkey"
+            ):
                 if not request.scope["path"].startswith("/api/v1/"):
                     return RedirectResponse(
                         "/passkey?mode=verify&next=" + quote(request.scope["path"], safe="/"),

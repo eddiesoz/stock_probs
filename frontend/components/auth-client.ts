@@ -249,7 +249,7 @@ export async function runPasskeyCeremony(
       ? await navigator.credentials.create({ publicKey: publicKey as PublicKeyCredentialCreationOptions, signal: controller.signal })
       : await navigator.credentials.get({ publicKey: publicKey as PublicKeyCredentialRequestOptions, signal: controller.signal });
   } catch (error) {
-    throw passkeyBrowserError(error, controller.signal.aborted);
+    throw passkeyBrowserError(error, controller.signal.aborted, kind);
   } finally {
     window.clearTimeout(timer);
   }
@@ -257,17 +257,19 @@ export async function runPasskeyCeremony(
   return authRequest<Record<string, unknown>>(completionPath, { method: "POST", body: JSON.stringify(credentialPayload(credential)) });
 }
 
-export function passkeyBrowserError(error: unknown, timedOut = false): AuthRequestError {
-  if (timedOut) return new AuthRequestError("No passkey prompt completed within a minute. Try a regular browser with a passkey manager or a security key.", 408, "passkey_timeout");
+export function passkeyBrowserError(error: unknown, timedOut = false, kind: "create" | "get" = "create"): AuthRequestError {
+  const action = kind === "get" ? "verify a passkey" : "create a passkey";
+  const actionNoun = kind === "get" ? "passkey verification" : "passkey setup";
+  if (timedOut) return new AuthRequestError(`No ${actionNoun} prompt completed within a minute. Try a regular browser with a passkey manager or a security key.`, 408, "passkey_timeout");
   const name = error instanceof Error ? error.name : "";
   if (name === "NotAllowedError" || name === "AbortError") {
-    return new AuthRequestError("Passkey setup was cancelled or this browser could not use an authenticator. Try this device, a security key, or a regular browser. A phone option may ask for Bluetooth.", 422, "passkey_browser_cancelled");
+    return new AuthRequestError(`${actionNoun[0].toUpperCase()}${actionNoun.slice(1)} was cancelled or this browser could not use an authenticator. Try this device, a security key, or a regular browser. A phone option may ask for Bluetooth.`, 422, "passkey_browser_cancelled");
   }
   if (name === "SecurityError" || name === "NotSupportedError") {
-    return new AuthRequestError("This browser cannot create a passkey for this site. Open the HTTPS site in a browser with passkey support.", 422, "passkey_browser_unsupported");
+    return new AuthRequestError(`This browser cannot ${action} for this site. Open the HTTPS site in a browser with passkey support.`, 422, "passkey_browser_unsupported");
   }
   if (name === "InvalidStateError") {
     return new AuthRequestError("This passkey may already be registered. Choose another authenticator or open Account to manage your passkeys.", 409, "passkey_already_registered");
   }
-  return new AuthRequestError("The browser could not create a passkey. Try a regular browser with a passkey manager or a security key.", 422, "passkey_browser_error");
+  return new AuthRequestError(`The browser could not ${action}. Try a regular browser with a passkey manager or a security key.`, 422, "passkey_browser_error");
 }

@@ -210,10 +210,13 @@ deployment MCP; the VM does not build source. The five deployment operations are
 migration, tunnel canary, and recovery procedure.
 
 Terraform keeps the Linode firewall and application ports closed to the public, and Cloudflare
-starts in a terminal-404 closed mode before the owner-only canary. The replacement host and
-reviewed image are deployed privately, and the canary hostname is routed through the active
-tunnel behind the configured owner Access policy with cache bypass. Direct port `8000` remains
-unreachable. The prior private image was reviewed commit
+starts in a terminal-404 closed mode before the owner-only canary. E58 records the later
+provider-refreshed `public_invited` boundary: the owner-canary Access app was deleted and the
+exposure guard updated, while the tunnel, DNS, and cache bypass remained managed. The reviewed
+image stays on the loopback-only replacement host, and direct port `8000` remains unreachable.
+The live boundary returned `303` to local sign-in for `/overview`, `401` for `/api/v1/history`, and
+`200` for `/api/v1/auth/status`; each was `no-store`/`DYNAMIC`. The live IAB showed the
+unauthenticated sign-in page but no owner UI session. The prior private image was reviewed commit
 `39bd185150cd3df70395e6c000f568dfd20831ac`, with release archive SHA-256
 `930d6d5b5d054908a25825c980584b620817bfa7ab212a62abd63f65c72f6f3f` and image ID
 `sha256:23ef16e4e5ee28db378c76bbcd9182345584bbffda55bd5313141fd0847fe31b`; publisher
@@ -260,9 +263,14 @@ history, and saved-forecast requests returned `200`. Browser-rendered content re
 E56 independently passes the four two-client isolation scenarios locally, including cross-watchlist
 deletion, member `promote=true` restore denial, nested outcome export, and two-account invitation
 reuse/identity binding. E57's rerun of the full local gate also passed after its initial comment-audit
-failure. Remote two-user behavior and browser UI remain **Unavailable**. Astra final gate review, the
-invited-user route, and retirement of the legacy Linode remain pending, so this is not a production
-release claim. See
+failure. E58 makes the public-invited infrastructure boundary live. E59 retires the legacy Linode
+and confirms the replacement is running. E60 records the historical current-machine browser passkey
+and sign-out limitation; E61 records the locally accepted logout and mode-aware passkey repair with
+independent QA, and E62 records the passing full local gate. The remote image still needs the repair.
+Remote two-user behavior, browser-rendered owner content, and functional invited-user acceptance
+remain **Unavailable**. Astra final gate review remains pending, so this is not a full production
+acceptance claim. Server-observed owner verification and saved API retrieval remain recorded in E52/E55.
+See
 [Getting started](docs/operations/getting-started.md)
 for the current Terraform, recovery, and canary boundaries.
 

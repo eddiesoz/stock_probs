@@ -62,12 +62,17 @@ test("passkey browser errors give an actionable recovery path", async () => {
   blocked.name = "SecurityError";
   assert.match(passkeyBrowserError(cancelled).message, /regular browser/);
   assert.match(passkeyBrowserError(cancelled).message, /Bluetooth/);
+  assert.match(passkeyBrowserError(cancelled, false, "get").message, /verification was cancelled/);
+  assert.doesNotMatch(passkeyBrowserError(cancelled, false, "get").message, /setup/);
   assert.match(passkeyBrowserError(blocked).message, /browser with passkey support/);
+  assert.match(passkeyBrowserError(blocked, false, "get").message, /cannot verify a passkey/);
   assert.match(passkeyBrowserError(cancelled, true).message, /within a minute/);
+  assert.match(passkeyBrowserError(cancelled, true, "get").message, /verification prompt/);
   const alreadyRegistered = new Error("Browser-specific message");
   alreadyRegistered.name = "InvalidStateError";
   assert.match(authErrorMessage(passkeyBrowserError(alreadyRegistered)), /already be registered/);
   assert.doesNotMatch(passkeyBrowserError(cancelled).message, /Browser-specific message/);
+  assert.match(passkeyBrowserError(new Error("Browser-specific message"), false, "get").message, /could not verify a passkey/);
 });
 
 test("workspace navigation exposes account controls without replacing the primary landmarks", async () => {

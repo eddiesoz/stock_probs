@@ -122,22 +122,25 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 
 ### Current approval status
 
-`R-ASTRA-101` is the current in-progress authentication and private deployment follow-on.
+`R-ASTRA-101` is the current in-progress authentication and production deployment follow-on.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The three provider access items were created privately, Terraform
 applied the replacement Linode and imported firewall, the reviewed image was deployed privately,
 the VM-backup recovery rehearsal passed for its declared scope, and the Cloudflare owner-only
-canary is active. Operator read-only evidence now confirms the owner passkey enrollment and a
+canary was active before the public boundary. Operator read-only evidence now confirms the owner passkey enrollment and a
 completed passkey verification with persisted owner mappings. E55's later server-observed access logs
 confirm authenticated owner API retrieval and saved-forecast access; browser-rendered content remains
 **Unavailable**. E56 passes the four two-client isolation scenarios locally, and E57's rerun of the
 full local gate passes after its initial comment-audit failure. Remote two-user behavior and browser
-UI remain **Unavailable**. Invited-user exposure and retirement of legacy Linode `97934478` remain
-pending Astra final gate review. The Cloudflare token verification
+UI remain **Unavailable**. E58 records the provider-refreshed `public_invited` Terraform apply and
+live public boundary; the live IAB showed the unauthenticated sign-in page but no owner UI session.
+E59 records the retirement of legacy Linode `97934478`; functional owner/invited-user browser
+acceptance and Astra final gate review remain pending. E60 records the current-machine browser
+passkey limitation; E61-E62 record the locally accepted repair and gate, while the remote image
+still needs the repair. The Cloudflare token verification
 check returned HTTP `401` in an earlier Luna report despite functional provider API/Terraform
-operations; this discrepancy remains visible. No public invited-user route or production release
-is claimed.
+operations; this discrepancy remains visible. No full public production acceptance claim is made.
 Unavailable evidence categories—actual screen reader, physical mobile, true browser zoom, native
 ARM64 performance, provider runtime, CUA, and project-profile/skill runtime discovery—remain
 separate limitations.
@@ -166,19 +169,26 @@ open.
   requires recent passkey proof, a verified pre-restore backup, matching account-security state,
   serialized maintenance, and revocation of all sessions.
 - The production app remains one FastAPI process with SQLite on a persistent Linode volume. Docker
-  publishes only `127.0.0.1:8000`; a host-managed Cloudflare Tunnel is the only intended ingress
-  and stays disabled until the owner-only canary passes. HTML and authenticated API responses must
+  publishes only `127.0.0.1:8000`; a host-managed Cloudflare Tunnel is the only intended ingress.
+  HTML and authenticated API responses must
   bypass shared caching, and proxy information is trusted only from the local connector.
 - Terraform's Linode definition keeps the same `g6-nanode-1` (1 GB/25 GB) Ubuntu 24.04 host in
   `us-east`, imports firewall `177236117`, enables VM Backups and disk encryption, permits only
   operator SSH from the configured `/32`, and prevents destruction. Its fixed source gate checks a
   clean checkout, exact `origin/main`, reviewed revision, and source checksums during both plan and
   apply. The applied host is Linode `106817202`; only that replacement is attached to firewall
-  `177236117`, and the legacy host remains untouched. Cloudflare is applied in `closed`
-  terminal-404 mode; the applied canary routes only `ledger.jtmb.cc` through loopback, keeps an
-  owner-only Access policy, and bypasses shared/browser caching for the exact host. The connector
-  is active for that restricted canary. Unauthenticated requests receive the Access redirect and
-  private no-store response behavior; the host's direct port `8000` remains unreachable.
+  `177236117`; E59 retired the legacy host after validation-only and guarded execute checks.
+  Cloudflare was initially applied in `closed`
+  terminal-404 mode; E58 then applied the provider-refreshed `public_invited` boundary by deleting
+  the owner-canary Access app and updating the exposure guard. The resulting state has `0` Access
+  apps, `1` tunnel, `1` DNS record, and `1` cache ruleset. The connector routes `ledger.jtmb.cc`
+  through loopback and bypasses shared/browser caching for the exact host. `/overview` returned
+  `303` to local sign-in, `/api/v1/history` returned `401`, and `/api/v1/auth/status` returned `200`,
+  all with `no-store`/`DYNAMIC`; the host's direct port `8000` remains unreachable. The live IAB
+  showed the unauthenticated sign-in page but no owner UI session. E59 records retirement of legacy
+  Linode `97934478`; E60 records the current-machine browser passkey limitation, and E61-E62 record
+  the locally accepted repair and gate while the remote image still needs the repair. Functional
+  invited-user acceptance remains pending.
 - The local stdio deployment MCP exposes only typed `inspect`, `plan_deploy`, `deploy`, `status`,
   and `rollback` tools. The default transport carries a reviewed `main` revision, release archive
   SHA-256, and full Docker image ID; the fixed helper derives the GitHub Release URL and verifies
@@ -328,10 +338,14 @@ open.
   production tab hit Cloudflare Access login and had no transferable session. Later read-only Docker
   access logs recorded authenticated owner API retrieval and saved-forecast access; browser-rendered
   content remains **Unavailable**. E56 passes the four two-client isolation scenarios locally, but
-  remote two-user behavior and browser UI remain **Unavailable**. This is private canary evidence and
-  does not authorize invited-user exposure or claim a public release. E55 records its point-in-time
-  gap status; E56 and E57 record the local QA and gate results. Astra final gate review and legacy-host
-  retirement remain pending.
+  remote two-user behavior and browser UI remain **Unavailable**. E58 records the provider-refreshed
+  `public_invited` boundary: the owner-canary Access app was deleted and the exposure guard updated;
+  the live IAB showed the unauthenticated sign-in page but no owner UI session. E55 records its
+  point-in-time gap status; E56 and E57 record the local QA and gate results. Functional
+  owner/invited-user acceptance and Astra final gate review remain pending; E59 records the completed
+  legacy-host retirement and E60 records the current-machine browser passkey limitation; E61-E62 record
+  the locally accepted repair and gate while the remote image still needs the repair. This is not a
+  full production acceptance claim.
 
 ## Repository truth
 

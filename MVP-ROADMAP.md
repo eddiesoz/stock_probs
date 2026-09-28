@@ -241,8 +241,8 @@ defines the same Ubuntu 24.04 `g6-nanode-1` (1 GB/25 GB) host in `us-east`, impo
 `177236117`, permits only operator SSH from the configured `/32`, enables VM Backups and disk
 encryption, and prevents destruction. Its fixed clean reviewed-main source gate runs during both
 plan and apply. Docker binds the app only to loopback, and a host-managed Cloudflare Tunnel
-starts closed with a terminal `404`; the exact `ledger.jtmb.cc` owner canary and cache bypass are
-separate steps. The local stdio deployment MCP exposes only `inspect`, `plan_deploy`, `deploy`,
+starts closed with a terminal `404`; the exact `ledger.jtmb.cc` owner canary and cache bypass were
+the preceding private step. E58 records the later `public_invited` boundary. The local stdio deployment MCP exposes only `inspect`, `plan_deploy`, `deploy`,
 `status`, and `rollback`. The default image transport is a locally built Linux amd64 GitHub
 Release archive derived from the reviewed revision; GHCR is an explicit compatibility mode. The
 VM does not build source.
@@ -260,14 +260,20 @@ VM does not build source.
   retrieval and saved-forecast access; browser-rendered content remains **Unavailable**. E56 passes
   the four two-client isolation scenarios locally, and E57's full local gate rerun passes after its
   initial comment-audit failure; remote two-user behavior and browser UI remain **Unavailable**.
-  Invited-user exposure and legacy host retirement remain pending Astra final gate review.
+  E58 records the provider-refreshed `public_invited` Terraform apply and live unauthenticated
+  sign-in boundary. E59 records the legacy-host retirement pass. Functional owner/invited-user
+  browser acceptance and Astra final gate review remain pending; E60 records the historical
+  current-machine browser passkey failure and sign-out limitation, while E61 records the locally
+  accepted repair and E62 records the passing full local gate. The remote image still needs the
+  repair.
 - **Owner/phase:** implementation/security repair, `ASTRA` medium review, independent
   `LUNA MAX QA` browser/deployment checks, and `LUNA MAX docs` reconciliation.
 - **Dependencies:** `R-ASTRA-100` is complete for its declared UI scope; current source schema is
-  8; the old VM and current local app remain untouched.
+  8; the current local app remains untouched and E59 confirms the old VM is retired.
 - **Pending external steps:** browser-rendered owner UI verification, remote two-user/browser
-  verification, invited-user exposure, Astra final gate review, and retirement of legacy Linode
-  `97934478`. The four local isolation scenarios pass in E56. The three provider access items were created privately;
+  verification, functional owner/invited-user acceptance, and Astra final gate review. E59 retires
+  legacy Linode `97934478`; the public-invited infrastructure boundary is applied in E58, but no
+  owner UI session was observed. E60 records the current-machine passkey browser limitation. The four local isolation scenarios pass in E56. The three provider access items were created privately;
   Terraform applied replacement Linode `106817202` and the imported firewall; the reviewed image
   was deployed privately with the app loopback-only; the VM Backup recovery rehearsal passed for
   its declared scope; and the restricted Cloudflare canary is active. It served the new passkey
@@ -277,7 +283,9 @@ VM does not build source.
   session-recovery fix at `a1d868287a729c75d9b8628f612a856db132374a` passed local build/typecheck,
   `28` frontend tests, and browser `4/4`, and is included in the final clean-main image. Earlier
   Luna evidence records Cloudflare token verification HTTP `401` and documentation-coverage **Fail**.
-  No public invited-user route or production release checkpoint is claimed.
+  E58's boundary probes returned the expected sign-in/auth responses with `no-store`/`DYNAMIC`,
+  and direct port `8000` remained unreachable. E59's post-delete probes returned health/auth `200`,
+  history `401`, and overview `303` to sign-in. No full production acceptance checkpoint is claimed.
 
 | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
 | --- | --- | --- | --- |
@@ -338,27 +346,39 @@ VM does not build source.
 | `R-ASTRA-101-E55` | Authenticated owner API and saved-forecast retrieval observed after passkey verification, plus post-build security and isolation status. | Native x86_64; operator read-only Docker access logs covering since `2026-09-28T00:00Z`, observed `2026-09-28T14:50:04.643439Z`; owner passkey session `last_passkey_at 06:05:08.385559Z`; source checkpoint and exact log artifact were not supplied. | **Pass** for authenticated owner API retrieval and saved-forecast access: after the passkey session, `GET /overview` returned `200` at `06:05:08.804Z`; portfolio list returned `200` with count `3`; watchlist list returned `200` with count `2`; history list returned `200` with count `3`; and `saved-forecasts/{id}` returned `200` with count `21`. Read-only database evidence showed one active owner and zero other active users, with 6 owner holdings, 3 watchlist items, and 20 results. Source review confirmed protected API middleware requires passkey authentication and handlers derive ownership from the request. Astra judged this sufficient for authenticated owner API retrieval and saved-forecast access; browser-rendered content remains **Unavailable**. Independent Luna QA ran `.dev-venv/bin/python -m pytest tests/test_auth.py tests/test_auth_repository.py tests/test_api.py -q` from `2026-09-28T14:44:13Z`–`14:45:34Z` with `153` passed; security Ruff and diff checks passed. Comprehensive two-client isolation covers forged IDs, repeated forecasts, exports, holdings/watchlists, and member backup denial, but four gaps remain pending builder repair and independent post-build QA: cross-watchlist deletion, member `promote=true` restore denial, nested outcome export, and two-account invitation reuse/identity binding. This does not authorize invited-user exposure or legacy-host retirement; reviewer `ASTRA` / `LUNA MAX QA`. |
 | `R-ASTRA-101-E56` | Independent final local two-user and invitation-boundary QA. | Native x86_64; Python `3.11.15`; dirty `HEAD` `8be7933`; `.dev-venv/bin/python -m pytest tests/test_auth.py tests/test_auth_repository.py tests/test_api.py -q -rA`; `2026-09-28T15:03:40Z`–`15:04:56Z`; exact artifact not supplied. | **Pass** for the local scope: `154` passed, `0` failed, and `0` skipped; focused two checks passed; security Ruff and diff checks passed. QA verified cross-watchlist deletion in both directions with post-state checks, member `promote=true` restore denial, nested observed/corrected outcome JSON export isolation, and two-browser GitHub callback invitation binding/reuse/mismatch using `httpx.MockTransport`, local `TestClient`, temporary migrated SQLite, and `MemoryAuthStore`. Remote two-user behavior and browser UI remain **Unavailable**; no deployment mutation occurred. Reviewer `LUNA MAX QA`. |
 | `R-ASTRA-101-E57` | Final local R-ASTRA-101 gate after the new auth-flow comment-audit repair. | Native x86_64; dirty `HEAD` `8be7933`; first attempt `2026-09-28T15:08:28Z`–`15:08:52Z`; rerun `TMPDIR=/home/james/.cache/stock-probs-gate-tmp OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 TASK_ID=R-ASTRA-101 ./scripts/local-gate.sh check` at `2026-09-28T15:09:49Z`–`15:17:13Z`; receipt `test-results/local-gates/R-ASTRA-101-20260928T150949Z/evidence.json`. | **Fail** for the first attempt at the pre-existing new `auth-flow.spec.js` comment-audit check; frontend build and `28` frontend tests passed. One intent comment was added, `python3 scripts/comment_audit.py` then passed across `237` files, and diff-check passed. The rerun **Passed** with exit `0`: `683` Python tests passed, `4` live tests were deselected, coverage was `85.63%`, and frontend build/typecheck/`28` tests, documentation completeness, and comment audit passed. This local gate does not establish remote two-user/browser UI evidence or authorize invited-user exposure; Astra final gate review remains pending, as does legacy-host retirement. No deployment mutation occurred. Reviewer metadata was not supplied. |
+| `R-ASTRA-101-E58` | Provider-refreshed `public_invited` Terraform apply and live public boundary. | Native x86_64; observed around `2026-09-28T15:20Z` (exact UTC and artifact were not supplied); provider-refreshed saved plan SHA-256 `6bc28c80c84da1b08e0b58bc8be941b0d117b45a90cc0db0c1349f3ea0b29f7e`; source docs/test commit `7712318`; deployed image remained revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`. | **Pass** for the declared infrastructure/boundary scope: apply exited `0` and changed only the owner-canary Access app (deleted) and the exposure guard; the refresh plan with `-detailed-exitcode` exited `0`; state showed `0` Access apps, `1` tunnel, `1` DNS record, and `1` cache ruleset. `/overview` returned `303` to local sign-in, `/api/v1/history` returned `401`, and `/api/v1/auth/status` returned `200`; each was `no-store`/`DYNAMIC`, and direct IP port `8000` was unreachable. Live IAB showed the unauthenticated sign-in page but no owner UI session. This does not prove browser-rendered owner content, remote two-user behavior, functional invited-user acceptance, Astra final gate completion, or legacy-host retirement; no image mutation was performed. Reviewer metadata was not supplied. |
+| `R-ASTRA-101-E59` | Legacy Linode retirement and post-delete public boundary. | Native x86_64; observed around `2026-09-28T15:37Z` (exact UTC and artifacts were not supplied); `infra/linode/retire-legacy-linode.sh` validation-only mode passed on three distinct mode-`0600` private operator receipts; the `--execute` run exited `0`. | **Pass** for the declared retirement and boundary scope: the workflow accepted deletion of legacy Linode `97934478`; Linode API then returned `404` for the legacy ID and `200` with `running` for replacement `106817202`. The old instance was labeled `cardventory`, `g6-nanode-1`, Ubuntu 24.04, `us-east`, with backups disabled; the replacement is labeled `signal-ledger`, has the same shape and location, and has backups enabled. The data source was the local Signal Ledger app; no Cardventory-data preservation claim is made. Post-delete public probes returned `/api/v1/health` `200`, `/api/v1/auth/status` `200`, `/api/v1/history` `401`, and `/overview` `303` to sign-in, with `no-store`/`DYNAMIC`. Astra judged the evidence truthful and sufficient for this scope. Reviewer `ASTRA`; no production release claim is inferred. |
+| `R-ASTRA-101-E60` | Current-machine owner passkey browser limitation after public exposure. | In-app browser on the current machine; exact UTC and artifact were not supplied; GitHub OAuth returned a provisional `jtmb` session at `/passkey?mode=verify`. | **Unavailable** for browser passkey verification: clicking Verify with passkey produced `The browser could not create a passkey`; signing out of the failed provisional session returned `403`/denied text; and verify mode exposed a generic error using `create`. No successful passkey UI result was observed. This is historical browser evidence pending the source repair; it does not invalidate the server-observed owner-verified session on another computer or saved API retrieval recorded in E52/E55. Reviewer metadata was not supplied. |
+| `R-ASTRA-101-E61` | Provisional-session logout and mode-aware passkey verification repair with independent QA. | Native x86_64; source paths `src/stock_probs/api.py` and `frontend/components/auth-client.ts`; focused provisional test `2026-09-28T15:47:44Z`–`15:47:47Z`, full auth-file run `15:48:01Z`–`15:48:13Z`, `tests/test_api.py` `15:50:29Z`–`15:51:44Z`, and desktop/emulated Pixel 7 browser auth-flow `15:52:19Z`–`15:52:30Z`; exact commands, artifacts, and source revision were not supplied. | **Pass** for the local repair and QA scope: the narrow logout middleware exception permits signing out only the current user's provisional session; CSRF and origin checks remain, and private passkey gates remain. Mode-aware passkey verification wording is covered by the frontend repair. Focused provisional, full auth, API, frontend typecheck/`28` tests, browser auth-flow `4/4` desktop plus emulated Pixel 7, and security Ruff passed. Astra reported no P1/P2. Real passkey/hardware evidence is **Unavailable**, and the unenrolled provisional state was not directly combined in the independent test. No live deployment or remote image result is claimed; reviewer `LUNA MAX QA` / `ASTRA`. |
+| `R-ASTRA-101-E62` | Full local R-ASTRA-101 gate after the E60 auth-flow repair. | Native x86_64; command `TMPDIR=/home/james/.cache/stock-probs-gate-tmp OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 TASK_ID=R-ASTRA-101 ./scripts/local-gate.sh check`; `2026-09-28T15:48:22Z`–`2026-09-28T15:56:15Z`; dirty revision `77123186bbb7af71d401defec0e8f99c7bb42cc0`; receipt `test-results/local-gates/R-ASTRA-101-20260928T154822Z/evidence.json`. | **Pass**, exit `0`: `683` Python tests passed, `4` live tests were deselected, coverage was `85.71%`, frontend build/typecheck/`28` tests passed, and documentation completeness plus comment audit passed. This is local dirty-tree gate evidence only; the remote image update/deploy and live owner passkey acceptance remain pending. Reviewer metadata was not supplied. |
 
 
 `R-ASTRA-101` remains **In progress**. The external steps have created the provider access items,
 applied the replacement infrastructure, published and re-verified the current release archive,
 deployed the reviewed image privately through the typed MCP, completed the declared recovery
-rehearsal, and activated the restricted owner-only canary. The current auth-UI repair, privacy P2
-repair, final scoped QA, and Astra reviews are complete for their declared scopes. E49 and E50
+rehearsal, applied the E58 `public_invited` boundary, and retired the legacy Linode in E59. The
+current auth-UI repair, privacy P2 repair, final scoped QA, and Astra reviews are complete for their declared scopes. E49 and E50
 remain historical scoped records; E51 records the final deployment and live sign-in recovery, E52
 records operator-side owner enrollment/passkey verification and persisted mappings, E53 records
 the baseline test pass, E54 records the final documentation checks, E55 records authenticated
-owner API/saved-forecast retrieval, E56 records the local two-user QA pass, and E57 records the
-passing rerun of the full local gate after its initial comment-audit failure. Browser-rendered owner
-content and remote two-user behavior remain **Unavailable**; invited-user exposure, Astra final gate
-review, and legacy-host retirement remain pending. The historical
+owner API/saved-forecast retrieval, E56 records the local two-user QA pass, E57 records the
+passing rerun of the full local gate after its initial comment-audit failure, and E58 records the
+live public boundary. Browser-rendered owner content and remote two-user behavior remain
+**Unavailable**; functional owner/invited-user acceptance and Astra final gate review remain pending.
+  E60 records the historical current-machine browser passkey limitation; E61 records the locally
+  accepted repair and QA, and E62 records the passing full local gate. The remote image still needs
+  the repair. Server-observed owner verification and
+saved API retrieval remain recorded in E52/E55. The historical
 R-ASTRA-100 aggregate remains separately recorded and is not relabeled by E12. The Cloudflare
 token-verification `401`, earlier documentation-coverage failure, historical callback-code/browser
 limitation, fresh-IAB Access-login limitation, browser-rendered UI unavailability, remote two-user
 unavailability, initial comment-audit failure, and fresh Codex-client approval-policy limitation remain
 visible; the
 origin-navigation repair is recorded in E49, the source/UI repair in E50, the final deployment in
-E51, and operator/MCP/QA/documentation/retrieval/local-gate evidence in E52-E57. No secret, token, key, owner
+E51, operator/MCP/QA/documentation/retrieval/local-gate evidence in E52-E57, the public boundary in
+  E58, the legacy-host retirement in E59, the current-machine browser limitation in E60, and the local
+  repair/gate in E61-E62. No secret,
+token, key, owner
 email, private path, or public hostname belongs in
 tracked roadmap prose.
 

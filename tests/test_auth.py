@@ -1195,7 +1195,7 @@ def test_github_callback_requires_the_initiating_browser_transaction(tmp_path) -
 
 
 def test_github_session_requires_passkey_even_for_the_admin_owner(tmp_path) -> None:
-    """A GitHub-only provisional cookie cannot reach a private route."""
+    """A provisional cookie cannot reach private data but can revoke itself."""
 
     settings = Settings(
         data_dir=tmp_path,
@@ -1247,6 +1247,46 @@ def test_github_session_requires_passkey_even_for_the_admin_owner(tmp_path) -> N
         )
         assert provisional_page.status_code == 303
         assert provisional_page.headers["location"].startswith("/passkey?mode=verify")
+
+        missing_csrf = client.post(
+            "/api/v1/auth/logout",
+            headers={"Origin": "http://testserver"},
+            cookies={SESSION_COOKIE_NAME: issue.session_token},
+        )
+        assert missing_csrf.status_code == 403
+        assert missing_csrf.json()["error"]["code"] == "csrf_rejected"
+
+        cross_origin = client.post(
+            "/api/v1/auth/logout",
+            headers={
+                "Origin": "https://attacker.example",
+                "x-csrf-token": issue.csrf_token,
+            },
+            cookies={
+                SESSION_COOKIE_NAME: issue.session_token,
+                CSRF_COOKIE_NAME: issue.csrf_token,
+            },
+        )
+        assert cross_origin.status_code == 403
+        assert cross_origin.json()["error"]["code"] == "origin_rejected"
+
+        logout = client.post(
+            "/api/v1/auth/logout",
+            headers={
+                "Origin": "http://testserver",
+                "x-csrf-token": issue.csrf_token,
+            },
+            cookies={
+                SESSION_COOKIE_NAME: issue.session_token,
+                CSRF_COOKIE_NAME: issue.csrf_token,
+            },
+        )
+        assert logout.status_code == 204, logout.text
+        assert "Max-Age=0" in logout.headers.get("set-cookie", "")
+        assert client.get(
+            "/api/v1/auth/session",
+            cookies={SESSION_COOKIE_NAME: issue.session_token},
+        ).json()["authenticated"] is False
 
 
 def test_provisional_github_session_cannot_register_second_passkey(tmp_path) -> None:

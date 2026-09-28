@@ -9,12 +9,18 @@ Signal Ledger has two supported security modes. Development may use a local boot
 loopback; production is an invite-only multi-user deployment behind a Cloudflare Tunnel. The
 production image binds the app to the host loopback interface, uses GitHub's authorization-code
 flow plus a passkey, and keeps SQLite on a private persistent volume. The recovery rehearsal has
-passed for its declared scope, and the restricted owner-only canary is active behind Cloudflare
-Access; authenticated owner API and saved-forecast retrieval are now evidenced by read-only server
-logs, while browser-rendered owner content remains **Unavailable**. E56 passes the four two-client
+passed for its declared scope, and E58 has applied the provider-refreshed `public_invited` boundary
+through the Cloudflare Tunnel after deleting the owner-canary Access app and updating the exposure
+guard. Authenticated owner API and saved-forecast retrieval are evidenced by read-only server logs,
+while browser-rendered owner content remains **Unavailable**. E56 passes the four two-client
 isolation scenarios locally, but remote two-user behavior and browser UI remain **Unavailable**.
-Invited-user exposure remains closed until Astra's final gate review and the remaining security gates
-are complete. The final private
+The live IAB showed the unauthenticated sign-in page but no owner UI session. E59 retired the
+legacy host; functional owner/invited-user acceptance and Astra's final gate review remain pending.
+E60 records the historical current-machine browser passkey/sign-out limitation; E61 records the
+locally accepted logout and mode-aware passkey repair with independent QA, and E62 records the passing
+full local gate. The remote image still needs the repair; real passkey/hardware evidence remains
+**Unavailable**.
+The final private
 clean-main image is revision
 `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
 `b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, and image ID
@@ -47,8 +53,11 @@ build/typecheck, `28` frontend tests, and browser `4/4` passed, and the fix is i
 image. Owner enrollment is operator-verified and authenticated owner API/saved-forecast retrieval is
 confirmed by E55. Browser-rendered content remains **Unavailable**. E56 passes the four local
 two-client isolation scenarios; remote two-user behavior remains **Unavailable**, and E57 records the
-passing full local gate after its initial comment-audit failure. Astra final gate review remains
-pending.
+passing full local gate after its initial comment-audit failure. E58 records the live public boundary
+and unauthenticated sign-in probes; E59 records legacy-host retirement, E60 records the current-
+machine browser passkey limitation, and E61-E62 record the locally accepted repair and gate. The
+remote image still needs the repair. Astra final gate review and functional invited-user acceptance
+remain pending.
 
 The model protects account identity, owner-scoped research history, forecast provenance, local
 filesystem locations, backup authenticity, and process availability from accidental corruption and
@@ -70,7 +79,7 @@ service.
 | Deployment MCP command injection or supply-chain substitution | The local stdio MCP exposes only `inspect`, `plan_deploy`, `deploy`, `status`, and `rollback`. The fixed SSH helper accepts a reviewed `main` revision, a release archive SHA-256, and a full image ID; it rejects arbitrary commands, paths, URLs, Compose edits, registry names, tags, and Docker-socket access. GHCR is an explicit compatibility transport, not the default. |
 | Mutable image or remote-build drift | The local publisher builds a Linux `amd64` image, scans and publishes a revision-named GitHub Release asset derived from the reviewed revision, treats that asset as immutable during its workflow, and verifies the downloaded archive SHA-256, image ID, platform, and revision. GitHub does not enforce asset immutability. The Linode loads only that verified asset and never builds source on the VM; optional GHCR plans remain digest-pinned. |
 | Terraform source or infrastructure drift | The Linode plan and apply both use a fixed external source gate that requires a clean checkout, exact `origin/main`, the reviewed revision, fixed repository, and checksums for the host files. The imported firewall has `prevent_destroy`; no application port is opened by Terraform. |
-| Public-ingress or cache bypass | The app port is published only on `127.0.0.1`; Cloudflare starts closed with a terminal `404`, then routes only the exact owner-canary hostname behind Access. The managed cache-settings ruleset bypasses shared and browser caching for that host. The connector is active for the restricted canary, while the invited-user route remains closed; proxy trust is local-only. |
+| Public-ingress or cache bypass | The app port is published only on `127.0.0.1`; Cloudflare starts closed with a terminal `404`, then E58 applies the `public_invited` boundary for the exact hostname after deleting the owner-canary Access app and updating the exposure guard. The managed cache-settings ruleset bypasses shared and browser caching. `/overview` returned `303` to local sign-in, `/api/v1/history` returned `401`, and `/api/v1/auth/status` returned `200`; each was `no-store`/`DYNAMIC`, and direct port `8000` was unreachable. The live IAB showed sign-in with no owner UI session; proxy trust is local-only. |
 | Host compromise or lost recovery channel | Use a restricted deployment account with a forced command, public-key-only SSH, no forwarding or TTY, least-privilege sudo, private state directories, and an operator-managed tunnel token. Linode VM Backups are enabled and the repaired disposable recovery rehearsal passed its declared scope; this release has no independent encrypted off-server backup. |
 | Oversized, malformed, or slow request bodies | Bounded framing/body checks, bounded server concurrency/backlog/keep-alive, typed validation, and sanitized error envelopes. |
 | Provider delay or malformed Yahoo market data | Explicit 1–20 second configured timeout, bounded lookup/history calls, provider concurrency of two, normalized identity/bar contracts, and no provider objects exposed by transport. |
