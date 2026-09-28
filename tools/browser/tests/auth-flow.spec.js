@@ -1,5 +1,6 @@
 const { test, expect } = require("./fixtures");
 
+// Keep the browser boundary explicit: GitHub mode must reach the same-origin OAuth start without falling back to local bootstrap.
 test("GitHub sign-in opens the fixed same-origin OAuth start after status loads", async ({ page }) => {
   await page.route("**/api/v1/auth/session", (route) => route.fulfill({
     status: 200,

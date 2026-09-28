@@ -247,9 +247,21 @@ Status reported the current revision, `failed: null`, `loopback_only: true`, and
 `pre-deploy-2de5e9f199cd1457-751c7459.spbackup`. A live in-app-browser reload with an expired
 session showed `Sign in first` and `Open sign in` and hid `Create passkey`; opening sign-in and
 continuing with GitHub returned to `/passkey?mode=enroll&next=/overview`, showed `Signed in as jtmb`,
-and showed `Create passkey`. No passkey ceremony was completed; owner passkey enrollment and
-saved-data verification remain pending. The
-invited-user route and retirement of the legacy Linode remain pending, so this is not a production
+and showed `Create passkey`. No ceremony was completed in this browser tab. A read-only operator
+SQLite check on `2026-09-28` (exact query UTC not captured) found `quick_check` `ok`, zero foreign-
+key violations, owner id `1` claimed to the configured GitHub account as active admin, one
+nonrevoked passkey, one current passkey-verified session, and owner mappings of 13 events, 13 runs,
+20 results, 0 outcomes, 6 holdings, and 3 watchlist items. This proves enrollment, a completed
+passkey verification on another computer, and persisted owner mappings; it does not prove
+authenticated browser-rendered UI retrieval. A fresh production tab hit Cloudflare Access login with
+no transferable browser session. E55's later read-only Docker access logs observed authenticated owner API
+retrieval and saved-forecast access after the passkey session; `/overview`, portfolio, watchlist,
+history, and saved-forecast requests returned `200`. Browser-rendered content remains **Unavailable**.
+E56 independently passes the four two-client isolation scenarios locally, including cross-watchlist
+deletion, member `promote=true` restore denial, nested outcome export, and two-account invitation
+reuse/identity binding. E57's rerun of the full local gate also passed after its initial comment-audit
+failure. Remote two-user behavior and browser UI remain **Unavailable**. Astra final gate review, the
+invited-user route, and retirement of the legacy Linode remain pending, so this is not a production
 release claim. See
 [Getting started](docs/operations/getting-started.md)
 for the current Terraform, recovery, and canary boundaries.

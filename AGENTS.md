@@ -128,8 +128,13 @@ completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` recei
 for their declared scopes. The three provider access items were created privately, Terraform
 applied the replacement Linode and imported firewall, the reviewed image was deployed privately,
 the VM-backup recovery rehearsal passed for its declared scope, and the Cloudflare owner-only
-canary is active. The owner passkey enrollment and saved-data check remain pending, as do the
-invited-user route and retirement of legacy Linode `97934478`. The Cloudflare token verification
+canary is active. Operator read-only evidence now confirms the owner passkey enrollment and a
+completed passkey verification with persisted owner mappings. E55's later server-observed access logs
+confirm authenticated owner API retrieval and saved-forecast access; browser-rendered content remains
+**Unavailable**. E56 passes the four two-client isolation scenarios locally, and E57's rerun of the
+full local gate passes after its initial comment-audit failure. Remote two-user behavior and browser
+UI remain **Unavailable**. Invited-user exposure and retirement of legacy Linode `97934478` remain
+pending Astra final gate review. The Cloudflare token verification
 check returned HTTP `401` in an earlier Luna report despite functional provider API/Terraform
 operations; this discrepancy remains visible. No public invited-user route or production release
 is claimed.
@@ -185,9 +190,16 @@ open.
   server, listed exactly the five typed tools, and completed read-only `inspect` with
   `is_error=False`; no credential bytes were printed. A later official Python SDK plan
   `a07bb7ba2716899bef956269495f0a47` and deploy passed to the replacement Linode, whose status was
-  healthy, schema `8`, and loopback-only with a pre-deploy backup. A fresh Codex client invocation
-  remains **Unavailable** because the current host approval policy is `never`; rollback is not
-  accepted by the read-only smoke.
+  healthy, schema `8`, and loopback-only with a pre-deploy backup. A fresh official Python SDK
+  stdio client with explicit fixed nonsecret target metadata listed exactly the five typed tools;
+  read-only `inspect` and `status` passed, and the inspect receipt at
+  `2026-09-28T14:30:59.523209+00:00` reported revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`,
+  image `sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`, schema `8`,
+  health `ready`, `loopback_only: true`, and `failed: null`. The in-task MCP tool returned
+  `deploy_target_unconfigured` because this task runtime lacked its target environment; that is
+  scoped **Unavailable** evidence, not a deploy result. A fresh Codex client invocation remains
+  **Unavailable** because the current host approval policy is `never`; rollback is not accepted
+  by the read-only smoke.
 - Current evidence is bounded: native x86_64 dependency audits for the application and MCP both
   reported zero advisories; the current frontend build/typecheck/test run reported `28` passed;
   focused API/auth checks reported
@@ -306,9 +318,20 @@ open.
   pre-deploy backup `pre-deploy-2de5e9f199cd1457-751c7459.spbackup`. A live in-app-browser reload
   with an expired session showed `Sign in first` and `Open sign in` and hid `Create passkey`; after
   opening sign-in and continuing with GitHub, it returned to `/passkey?mode=enroll&next=/overview`,
-  showed `Signed in as jtmb`, and showed `Create passkey`. No passkey ceremony was completed, so
-  owner passkey enrollment and saved-data verification remain **Unavailable/Pending**. This is
-  private canary evidence and does not authorize invited-user exposure or claim a public release.
+  showed `Signed in as jtmb`, and showed `Create passkey`. No ceremony was completed in this
+  browser tab. Separate operator read-only SQLite evidence on `2026-09-28` (exact query UTC not
+  captured) found `quick_check` `ok`, zero foreign-key violations, owner id `1` claimed to the
+  configured GitHub account as active admin, one nonrevoked passkey, one current passkey-verified
+  session, and owner mappings of 13 events, 13 runs, 20 results, 0 outcomes, 6 holdings, and 3
+  watchlist items. This proves enrollment, a completed passkey verification on another computer,
+  and persisted owner mappings; it does not prove browser-rendered UI retrieval. A fresh IAB
+  production tab hit Cloudflare Access login and had no transferable session. Later read-only Docker
+  access logs recorded authenticated owner API retrieval and saved-forecast access; browser-rendered
+  content remains **Unavailable**. E56 passes the four two-client isolation scenarios locally, but
+  remote two-user behavior and browser UI remain **Unavailable**. This is private canary evidence and
+  does not authorize invited-user exposure or claim a public release. E55 records its point-in-time
+  gap status; E56 and E57 record the local QA and gate results. Astra final gate review and legacy-host
+  retirement remain pending.
 
 ## Repository truth
 

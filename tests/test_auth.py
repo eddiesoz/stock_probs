@@ -126,6 +126,100 @@ def test_invitation_is_single_use() -> None:
         manager.consume_invitation(code, NOW + timedelta(seconds=2))
 
 
+def test_github_invitation_binds_identity_and_cannot_be_reused(tmp_path) -> None:
+    """An invitation remains bound to one GitHub ID across browsers and retries."""
+
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "stock_probs.sqlite3",
+        backup_dir=tmp_path / "backups",
+        provider="fixture",
+        environment="test",
+        auth_mode="github",
+        auth_session_secret="i" * 48,
+        auth_public_origin="http://testserver",
+        github_client_id="client-id",
+        github_client_secret="client-secret",  # noqa: S106
+        github_redirect_uri="http://testserver/api/v1/auth/github/callback",
+        owner_github_id=99999,
+    )
+    store = MemoryAuthStore()
+    store.auth_create_user(
+        {
+            "username": "owner",
+            "github_id": 99999,
+            "github_login": "owner",
+            "role": "admin",
+            "status": "active",
+            "passkey_required": True,
+            "passkey_enrolled": False,
+        }
+    )
+    application = create_app(settings, FixtureProvider(), lambda: NOW, auth_store=store)
+    identity_id = 123
+
+    def github_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "github.com" and request.url.path.endswith("/access_token"):
+            return httpx.Response(200, json={"access_token": "test-access-token"})
+        if request.url.host == "api.github.com" and request.url.path == "/user":
+            return httpx.Response(
+                200,
+                json={"id": identity_id, "login": f"github-{identity_id}"},
+            )
+        return httpx.Response(404)
+
+    oauth_client = httpx.Client(transport=httpx.MockTransport(github_handler))
+
+    def finish(client: TestClient, code: str) -> httpx.Response:
+        started = client.get(
+            "/api/v1/auth/github/start",
+            params={"invite": code},
+            follow_redirects=False,
+        )
+        assert started.status_code == 302, started.text
+        state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+        return client.get(
+            "/api/v1/auth/github/callback",
+            params={"code": "oauth-code", "state": state},
+            headers={"Sec-Fetch-Site": "cross-site"},
+            follow_redirects=False,
+        )
+
+    with TestClient(application) as first_client, TestClient(application) as second_client:
+        application.state.auth.http_client = oauth_client
+        first_code, _ = application.state.auth.create_invitation(
+            123, 1, datetime.now(UTC), github_login="github-123"
+        )
+        first = finish(first_client, first_code)
+        assert first.status_code == 303, first.text
+        assert store.auth_get_user_by_github_id(123) is not None
+
+        identity_id = 456
+        reused = finish(second_client, first_code)
+        assert reused.status_code == 403, reused.text
+        assert reused.json()["error"]["code"] == "invitation_rejected"
+        assert store.auth_get_user_by_github_id(456) is None
+
+        second_code, _ = application.state.auth.create_invitation(
+            456, 1, datetime.now(UTC), github_login="github-456"
+        )
+        identity_id = 789
+        mismatch = finish(second_client, second_code)
+        assert mismatch.status_code == 403, mismatch.text
+        assert mismatch.json()["error"]["code"] == "invitation_rejected"
+        assert store.auth_get_user_by_github_id(789) is None
+        assert (
+            application.state.auth.inspect_invitation(second_code, datetime.now(UTC))["github_id"]
+            == 456
+        )
+
+        identity_id = 456
+        accepted = finish(second_client, second_code)
+        assert accepted.status_code == 303, accepted.text
+        assert store.auth_get_user_by_github_id(456) is not None
+    oauth_client.close()
+
+
 def test_local_api_requires_cookie_and_accepts_valid_credentials(tmp_path) -> None:
     settings = Settings(
         data_dir=tmp_path,
@@ -291,6 +385,7 @@ def test_repository_backed_local_login_scopes_history_and_exports_to_each_user(t
         database_path=tmp_path / "stock_probs.sqlite3",
         backup_dir=tmp_path / "backups",
         provider="fixture",
+        environment="test",
         auth_mode="local",
         auth_session_secret="e" * 48,
         auth_public_origin="http://testserver",
@@ -300,46 +395,452 @@ def test_repository_backed_local_login_scopes_history_and_exports_to_each_user(t
         bootstrap_member_password="development-member-password-123",  # noqa: S106
     )
     application = create_app(settings, FixtureProvider(), lambda: NOW)
-    with TestClient(application) as client:
-        admin_login = client.post(
-            "/api/v1/auth/local/login",
-            json={"username": "admin", "password": "development-admin-password-123"},
+    with TestClient(application) as owner_client, TestClient(application) as member_client:
+
+        def login(client: TestClient, username: str, password: str) -> tuple[dict[str, str], str]:
+            response = client.post(
+                "/api/v1/auth/local/login",
+                json={"username": username, "password": password},
+            )
+            assert response.status_code == 200, response.text
+            csrf_token = response.json()["csrf_token"]
+            session_cookie = client.cookies.get(SESSION_COOKIE_NAME)
+            csrf_cookie = client.cookies.get(CSRF_COOKIE_NAME)
+            assert isinstance(session_cookie, str)
+            assert isinstance(csrf_cookie, str)
+            assert csrf_cookie == csrf_token
+            return {
+                SESSION_COOKIE_NAME: session_cookie,
+                CSRF_COOKIE_NAME: csrf_cookie,
+            }, csrf_token
+
+        owner_cookies, owner_csrf = login(owner_client, "admin", "development-admin-password-123")
+        member_cookies, member_csrf = login(
+            member_client, "member", "development-member-password-123"
         )
-        assert admin_login.status_code == 200, admin_login.text
-        admin_csrf = admin_login.json()["csrf_token"]
-        admin_cookie = client.cookies.get(SESSION_COOKIE_NAME)
-        admin_sessions = client.get("/api/v1/auth/sessions")
-        assert admin_sessions.status_code == 200, admin_sessions.text
-        assert len(admin_sessions.json()["sessions"]) == 1
-        assert admin_sessions.json()["sessions"][0]["current"] is True
-        created = client.post(
+
+        for client, cookies in (
+            (owner_client, owner_cookies),
+            (member_client, member_cookies),
+        ):
+            sessions = client.get("/api/v1/auth/sessions", cookies=cookies)
+            assert sessions.status_code == 200, sessions.text
+            assert len(sessions.json()["sessions"]) == 1
+            assert sessions.json()["sessions"][0]["current"] is True
+            history = client.get("/api/v1/history", cookies=cookies)
+            assert history.status_code == 200, history.text
+            assert history.json()["items"] == []
+            export = client.get("/api/v1/history-export.json", cookies=cookies)
+            assert export.status_code == 200, export.text
+            assert export.json()["counts"] == {"events": 0, "runs": 0, "results": 0}
+
+        owner_created_response = owner_client.post(
             "/api/v1/forecasts",
             json={"symbol": "ACDC", "asset_type": "stock"},
-            headers={"x-csrf-token": admin_csrf},
+            headers={"x-csrf-token": owner_csrf},
+            cookies=owner_cookies,
         )
-        assert created.status_code == 201, created.text
-        event_id = created.json()["event"]["id"]
-
-        member_login = client.post(
-            "/api/v1/auth/local/login",
-            json={"username": "member", "password": "development-member-password-123"},
+        member_created_response = member_client.post(
+            "/api/v1/forecasts",
+            json={"symbol": "SPY", "asset_type": "etf"},
+            headers={"x-csrf-token": member_csrf},
+            cookies=member_cookies,
         )
-        assert member_login.status_code == 200, member_login.text
-        member_history = client.get("/api/v1/history")
-        assert member_history.status_code == 200, member_history.text
-        assert member_history.json()["items"] == []
-        member_export = client.get("/api/v1/history-export.json")
-        assert member_export.status_code == 200, member_export.text
-        assert member_export.json()["counts"]["events"] == 0
-        assert client.get(f"/api/v1/history/{event_id}").status_code == 404
+        assert owner_created_response.status_code == 201, owner_created_response.text
+        assert member_created_response.status_code == 201, member_created_response.text
+        owner_created = owner_created_response.json()
+        member_created = member_created_response.json()
+        owner_event_id = owner_created["event"]["id"]
+        member_event_id = member_created["event"]["id"]
+        owner_result_id = owner_created["results"][0]["id"]
+        member_result_id = member_created["results"][0]["id"]
+        assert owner_event_id != member_event_id
+        assert owner_result_id != member_result_id
 
-        # Restore the first account's cookie only to prove the record remains available to its
-        # owner after a second account has authenticated in the same browser client.
-        assert isinstance(admin_cookie, str)
-        client.cookies.clear()
-        client.cookies.set(SESSION_COOKIE_NAME, admin_cookie, path="/")
-        assert client.get("/api/v1/auth/session").json()["authenticated"] is True
-        assert client.get(f"/api/v1/history/{event_id}").status_code == 200
+        owner_repeat_response = owner_client.post(
+            "/api/v1/forecasts",
+            json={"symbol": "ACDC", "asset_type": "stock"},
+            headers={"x-csrf-token": owner_csrf},
+            cookies=owner_cookies,
+        )
+        member_repeat_response = member_client.post(
+            "/api/v1/forecasts",
+            json={"symbol": "SPY", "asset_type": "etf"},
+            headers={"x-csrf-token": member_csrf},
+            cookies=member_cookies,
+        )
+        assert owner_repeat_response.status_code == 201, owner_repeat_response.text
+        assert member_repeat_response.status_code == 201, member_repeat_response.text
+        owner_repeat = owner_repeat_response.json()
+        member_repeat = member_repeat_response.json()
+        assert owner_repeat["event"]["status"] == "repeated"
+        assert owner_repeat["event"]["is_repeat"] is True
+        assert member_repeat["event"]["status"] == "repeated"
+        assert member_repeat["event"]["is_repeat"] is True
+        assert owner_repeat["event"]["id"] != owner_event_id
+        assert member_repeat["event"]["id"] != member_event_id
+        assert owner_repeat["results"][0]["id"] == owner_result_id
+        assert member_repeat["results"][0]["id"] == member_result_id
+
+        for client, cookies, foreign_event_id, foreign_result_id in (
+            (owner_client, owner_cookies, member_event_id, member_result_id),
+            (member_client, member_cookies, owner_event_id, owner_result_id),
+        ):
+            assert (
+                client.get(f"/api/v1/history/{foreign_event_id}", cookies=cookies).status_code
+                == 404
+            )
+            assert (
+                client.get(
+                    f"/api/v1/saved-forecasts/{foreign_event_id}", cookies=cookies
+                ).status_code
+                == 404
+            )
+            assert (
+                client.get(f"/api/v1/forecasts/{foreign_result_id}", cookies=cookies).status_code
+                == 404
+            )
+            assert (
+                client.get(
+                    f"/api/v1/history/{foreign_event_id}/prices", cookies=cookies
+                ).status_code
+                == 404
+            )
+            filtered = client.get(
+                "/api/v1/history",
+                params={"event_id": foreign_event_id},
+                cookies=cookies,
+            )
+            assert filtered.status_code == 200, filtered.text
+            assert filtered.json()["total"] == 0
+
+        owner_fresh_response = owner_client.post(
+            f"/api/v1/history/{owner_event_id}/reconstructions",
+            json={
+                "analysis_kind": "fresh_historical_reconstruction",
+                "cutoff": "2025-01-10T16:55:00Z",
+            },
+            headers={"x-csrf-token": owner_csrf},
+            cookies=owner_cookies,
+        )
+        member_fresh_response = member_client.post(
+            f"/api/v1/history/{member_event_id}/reconstructions",
+            json={
+                "analysis_kind": "fresh_historical_reconstruction",
+                "cutoff": "2025-01-10T16:55:00Z",
+            },
+            headers={"x-csrf-token": member_csrf},
+            cookies=member_cookies,
+        )
+        assert owner_fresh_response.status_code == 201, owner_fresh_response.text
+        assert member_fresh_response.status_code == 201, member_fresh_response.text
+        owner_fresh = owner_fresh_response.json()
+        member_fresh = member_fresh_response.json()
+        assert owner_fresh["source_event_id"] == owner_event_id
+        assert member_fresh["source_event_id"] == member_event_id
+        assert owner_fresh["event"]["id"] != owner_event_id
+        assert member_fresh["event"]["id"] != member_event_id
+
+        member_foreign_reconstruction = member_client.post(
+            f"/api/v1/history/{owner_event_id}/reconstructions",
+            json={"cutoff": "2025-01-10T16:55:00Z"},
+            headers={"x-csrf-token": member_csrf},
+            cookies=member_cookies,
+        )
+        owner_foreign_reconstruction = owner_client.post(
+            f"/api/v1/history/{member_event_id}/reconstructions",
+            json={"cutoff": "2025-01-10T16:55:00Z"},
+            headers={"x-csrf-token": owner_csrf},
+            cookies=owner_cookies,
+        )
+        assert member_foreign_reconstruction.status_code == 404
+        assert owner_foreign_reconstruction.status_code == 404
+        assert (
+            member_foreign_reconstruction.json()["error"]["code"] == "historical_source_unavailable"
+        )
+        assert (
+            owner_foreign_reconstruction.json()["error"]["code"] == "historical_source_unavailable"
+        )
+        assert "ACDC" not in member_foreign_reconstruction.text
+        assert "SPY" not in owner_foreign_reconstruction.text
+
+        owner_outcome_response = owner_client.post(
+            f"/api/v1/forecasts/{owner_result_id}/outcomes",
+            json={
+                "observed_close": 24.0,
+                "observed_at": "2025-01-13T16:01:00-05:00",
+                "state": "observed",
+                "note": "owner observation",
+            },
+            headers={"x-csrf-token": owner_csrf},
+            cookies=owner_cookies,
+        )
+        member_outcome_response = member_client.post(
+            f"/api/v1/forecasts/{member_result_id}/outcomes",
+            json={
+                "observed_close": 24.0,
+                "observed_at": "2025-01-13T16:01:00-05:00",
+                "state": "observed",
+                "note": "member observation",
+            },
+            headers={"x-csrf-token": member_csrf},
+            cookies=member_cookies,
+        )
+        assert owner_outcome_response.status_code == 201, owner_outcome_response.text
+        assert member_outcome_response.status_code == 201, member_outcome_response.text
+        owner_correction_response = owner_client.post(
+            f"/api/v1/forecasts/{owner_result_id}/corrections",
+            json={
+                "observed_close": 24.2,
+                "observed_at": "2025-01-13T16:02:00-05:00",
+                "note": "owner correction",
+            },
+            headers={"x-csrf-token": owner_csrf},
+            cookies=owner_cookies,
+        )
+        member_correction_response = member_client.post(
+            f"/api/v1/forecasts/{member_result_id}/corrections",
+            json={
+                "observed_close": 24.2,
+                "observed_at": "2025-01-13T16:02:00-05:00",
+                "note": "member correction",
+            },
+            headers={"x-csrf-token": member_csrf},
+            cookies=member_cookies,
+        )
+        assert owner_correction_response.status_code == 201, owner_correction_response.text
+        assert member_correction_response.status_code == 201, member_correction_response.text
+        for client, cookies, csrf_token, foreign_result_id in (
+            (owner_client, owner_cookies, owner_csrf, member_result_id),
+            (member_client, member_cookies, member_csrf, owner_result_id),
+        ):
+            rejected = client.post(
+                f"/api/v1/forecasts/{foreign_result_id}/outcomes",
+                json={
+                    "observed_close": 24.1,
+                    "observed_at": "2025-01-13T16:02:00-05:00",
+                    "state": "observed",
+                    "note": "forged owner outcome",
+                },
+                headers={"x-csrf-token": csrf_token},
+                cookies=cookies,
+            )
+            assert rejected.status_code == 404
+            rejected_correction = client.post(
+                f"/api/v1/forecasts/{foreign_result_id}/corrections",
+                json={
+                    "observed_close": 24.1,
+                    "observed_at": "2025-01-13T16:02:00-05:00",
+                    "note": "forged owner correction",
+                },
+                headers={"x-csrf-token": csrf_token},
+                cookies=cookies,
+            )
+            assert rejected_correction.status_code == 404
+
+        owner_detail = owner_client.get(f"/api/v1/history/{owner_event_id}", cookies=owner_cookies)
+        member_detail = member_client.get(
+            f"/api/v1/history/{member_event_id}", cookies=member_cookies
+        )
+        assert owner_detail.status_code == 200, owner_detail.text
+        assert member_detail.status_code == 200, member_detail.text
+        assert [item["note"] for item in owner_detail.json()["results"][0]["outcomes"]] == [
+            "owner observation",
+            "owner correction",
+        ]
+        assert [item["note"] for item in member_detail.json()["results"][0]["outcomes"]] == [
+            "member observation",
+            "member correction",
+        ]
+
+        owner_list_items = owner_client.post(
+            "/api/v1/lists",
+            json={
+                "kind": "portfolio",
+                "item": {"symbol": "SPY", "asset_type": "etf", "quantity": 2.5},
+            },
+            headers={"x-csrf-token": owner_csrf},
+            cookies=owner_cookies,
+        )
+        owner_watchlist = owner_client.post(
+            "/api/v1/lists",
+            json={"kind": "watchlist", "item": {"symbol": "ACDC", "asset_type": "stock"}},
+            headers={"x-csrf-token": owner_csrf},
+            cookies=owner_cookies,
+        )
+        member_list_items = member_client.post(
+            "/api/v1/lists",
+            json={
+                "kind": "portfolio",
+                "item": {"symbol": "ACDC", "asset_type": "stock", "quantity": 7.0},
+            },
+            headers={"x-csrf-token": member_csrf},
+            cookies=member_cookies,
+        )
+        member_watchlist = member_client.post(
+            "/api/v1/lists",
+            json={"kind": "watchlist", "item": {"symbol": "SPY", "asset_type": "etf"}},
+            headers={"x-csrf-token": member_csrf},
+            cookies=member_cookies,
+        )
+        assert owner_list_items.status_code == 201, owner_list_items.text
+        assert owner_watchlist.status_code == 201, owner_watchlist.text
+        assert member_list_items.status_code == 201, member_list_items.text
+        assert member_watchlist.status_code == 201, member_watchlist.text
+        assert [
+            item["symbol"]
+            for item in owner_client.get(
+                "/api/v1/lists", params={"kind": "portfolio"}, cookies=owner_cookies
+            ).json()["items"]
+        ] == ["SPY"]
+        assert [
+            item["symbol"]
+            for item in owner_client.get(
+                "/api/v1/lists", params={"kind": "watchlist"}, cookies=owner_cookies
+            ).json()["items"]
+        ] == ["ACDC"]
+        assert [
+            item["symbol"]
+            for item in member_client.get(
+                "/api/v1/lists", params={"kind": "portfolio"}, cookies=member_cookies
+            ).json()["items"]
+        ] == ["ACDC"]
+        assert [
+            item["symbol"]
+            for item in member_client.get(
+                "/api/v1/lists", params={"kind": "watchlist"}, cookies=member_cookies
+            ).json()["items"]
+        ] == ["SPY"]
+        for (
+            client,
+            cookies,
+            csrf_token,
+            foreign_portfolio_symbol,
+            foreign_watchlist_symbol,
+            own_watchlist_symbol,
+        ) in (
+            (owner_client, owner_cookies, owner_csrf, "ACDC", "SPY", "ACDC"),
+            (member_client, member_cookies, member_csrf, "SPY", "ACDC", "SPY"),
+        ):
+            for kind, symbol in (
+                ("portfolio", foreign_portfolio_symbol),
+                ("watchlist", foreign_watchlist_symbol),
+            ):
+                rejected_delete = client.delete(
+                    "/api/v1/lists",
+                    params={"kind": kind, "symbol": symbol},
+                    headers={"x-csrf-token": csrf_token},
+                    cookies=cookies,
+                )
+                assert rejected_delete.status_code == 404
+            own_watchlist = client.get(
+                "/api/v1/lists", params={"kind": "watchlist"}, cookies=cookies
+            )
+            assert own_watchlist.status_code == 200, own_watchlist.text
+            assert [item["symbol"] for item in own_watchlist.json()["items"]] == [
+                own_watchlist_symbol
+            ]
+
+        for operation in (
+            member_client.post(
+                "/api/v1/operations/backups",
+                json={"name": "member-must-not-backup.spbackup"},
+                headers={"x-csrf-token": member_csrf},
+                cookies=member_cookies,
+            ),
+            member_client.get("/api/v1/operations/backups/status", cookies=member_cookies),
+            member_client.post(
+                "/api/v1/operations/restores",
+                json={"name": "member-must-not-restore.spbackup", "promote": False},
+                headers={"x-csrf-token": member_csrf},
+                cookies=member_cookies,
+            ),
+            member_client.post(
+                "/api/v1/operations/restores",
+                json={"name": "member-must-not-promote.spbackup", "promote": True},
+                headers={"x-csrf-token": member_csrf},
+                cookies=member_cookies,
+            ),
+        ):
+            assert operation.status_code == 403, operation.text
+            assert operation.json()["error"]["code"] == "authorization_denied"
+
+        owner_history = owner_client.get("/api/v1/history", cookies=owner_cookies).json()
+        member_history = member_client.get("/api/v1/history", cookies=member_cookies).json()
+        owner_fresh_event_id = owner_fresh["event"]["id"]
+        member_fresh_event_id = member_fresh["event"]["id"]
+        owner_failed_item = next(
+            item
+            for item in owner_history["items"]
+            if item["requested_source_event_id"] == member_event_id
+        )
+        member_failed_item = next(
+            item
+            for item in member_history["items"]
+            if item["requested_source_event_id"] == owner_event_id
+        )
+        assert owner_failed_item["source_event_id"] is None
+        assert owner_failed_item["status"] == "failed"
+        assert owner_failed_item["forecast_available"] is False
+        assert member_failed_item["source_event_id"] is None
+        assert member_failed_item["status"] == "failed"
+        assert member_failed_item["forecast_available"] is False
+        owner_failed_event_id = owner_failed_item["id"]
+        member_failed_event_id = member_failed_item["id"]
+        owner_event_ids = {
+            owner_event_id,
+            owner_repeat["event"]["id"],
+            owner_fresh_event_id,
+            owner_failed_event_id,
+        }
+        member_event_ids = {
+            member_event_id,
+            member_repeat["event"]["id"],
+            member_fresh_event_id,
+            member_failed_event_id,
+        }
+        assert {item["id"] for item in owner_history["items"]} == owner_event_ids
+        assert {item["id"] for item in member_history["items"]} == member_event_ids
+        assert owner_event_ids.isdisjoint(member_event_ids)
+        assert owner_history["total"] == member_history["total"] == 4
+        export_payloads: dict[str, dict] = {}
+        for label, client, cookies, expected_ids, included_symbol, excluded_symbol in (
+            ("owner", owner_client, owner_cookies, owner_event_ids, "ACDC", "SPY"),
+            ("member", member_client, member_cookies, member_event_ids, "SPY", "ACDC"),
+        ):
+            exported = client.get("/api/v1/history-export.json", cookies=cookies)
+            assert exported.status_code == 200, exported.text
+            payload = exported.json()
+            export_payloads[label] = payload
+            assert payload["counts"] == {"events": 4, "runs": 2, "results": 4}
+            assert {
+                record["event_id"]
+                for record in payload["records"]
+                if record["record_type"] == "event"
+            } == expected_ids
+            assert included_symbol in exported.text
+            assert excluded_symbol not in exported.text
+            csv_export = client.get("/api/v1/history-export.csv", cookies=cookies)
+            assert csv_export.status_code == 200, csv_export.text
+            assert included_symbol in csv_export.text
+            assert excluded_symbol not in csv_export.text
+
+        def outcome_notes(payload: dict) -> set[str]:
+            return {
+                outcome["note"]
+                for record in payload["records"]
+                if record["record_type"] == "result"
+                for outcome in record["data"].get("outcomes", [])
+            }
+
+        assert outcome_notes(export_payloads["owner"]) == {
+            "owner observation",
+            "owner correction",
+        }
+        assert outcome_notes(export_payloads["member"]) == {
+            "member observation",
+            "member correction",
+        }
 
 
 def test_authenticated_promoted_restore_verifies_security_state_and_revokes_sessions(

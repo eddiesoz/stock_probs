@@ -257,11 +257,21 @@ Cloudflare one-time-code flow completed successfully in the earlier browser sess
 in-app-browser reload with an expired session showed `Sign in first` and `Open sign in` and hid
 `Create passkey`; opening sign-in and continuing with GitHub returned to
 `/passkey?mode=enroll&next=/overview`, showed `Signed in as jtmb`, and showed `Create passkey`.
-No passkey ceremony or saved-data check was completed, so owner passkey enrollment and the owner
-saved-data check remain **Unavailable/Pending**. The earlier callback-blocked observation is retained
-as historical evidence in E38, and E49 remains the prior origin-navigation record. Invitation
-redemption, two-user ownership isolation, and administrator fresh-passkey backup/restore remain
-pending before invited-user exposure.
+No ceremony was completed in this browser tab. A read-only operator SQLite check on `2026-09-28`
+(exact query UTC not captured) found `quick_check` `ok`, zero foreign-key violations, owner id `1`
+claimed to the configured GitHub account as active admin, one nonrevoked passkey, one current
+passkey-verified session, and owner mappings of 13 events, 13 runs, 20 results, 0 outcomes, 6
+holdings, and 3 watchlist items. This proves enrollment, a completed passkey verification on another
+computer, and persisted owner mappings, but not browser-rendered UI retrieval. A fresh production
+tab hit Cloudflare Access login with no transferable session. Later read-only Docker access logs
+observed authenticated owner API retrieval and saved-forecast access after the passkey session;
+`/overview`, portfolio, watchlist, history, and saved-forecast requests returned `200`. The earlier
+callback-blocked observation is retained as historical evidence in E38, and E49 remains the prior
+origin-navigation record. Browser-rendered owner content remains **Unavailable**. E56 independently
+passes the four two-client isolation scenarios locally—cross-watchlist deletion, member `promote=true`
+restore denial, nested outcome export, and two-account invitation reuse/identity binding—while remote
+two-user behavior and browser UI remain **Unavailable**. Administrator fresh-passkey backup/restore,
+Astra final gate review, and invited-user exposure remain pending.
 
 Application backups remain signed and verified. Linode VM Backups are enabled, and successful
 snapshot `385239936` is available. The first disposable restore attempt **Failed**: clone
@@ -284,7 +294,8 @@ owner-email-file repair is complete, the tracked tree has no literal personal em
 fixture tests passed, and the live canary script reran exit `0` with the tunnel active. Luna's final
 scoped QA passed the focused checks and Astra's final P1/P2 re-review reported no remaining finding
 for this boundary. The earlier owner callback observation is historical; E51 records the final live
-sign-in recovery. This does not complete the owner passkey/data checks or invited-user release gate.
+sign-in recovery. E52 records operator-side owner enrollment, passkey verification, and persisted
+mappings, but does not complete authenticated app retrieval or the invited-user release gate.
 A subsequent source fix at
 commit `a1d868287a729c75d9b8628f612a856db132374a` handles a stale/expired provisional session that
 returned `authenticated:false` and left the passkey page at `Checking your session`; build/typecheck,
@@ -294,9 +305,12 @@ Independent Luna QA passed Terraform format/validate, `31` scoped infrastructure
 `git diff --check` at the dirty reviewed revision. The earlier review recorded an import-order
 finding in the Terraform test; final scoped QA passed all four Ruff checks, so that finding is
 historical. The full Linode validator exits `2` on a deliberately dirty worktree. The earlier
-Cloudflare token verification `401` and documentation-coverage **Fail** remain historical evidence. The OAuth
-authorization and Access code steps completed in the earlier browser session. The final live session
-returned to the signed-in passkey-enrollment page, but no ceremony completed; owner passkey and
-owner saved-data checks remain **Unavailable/Pending**. The owner-only canary is active, but the
-invited-user route and retirement of legacy Linode `97934478` remain pending; the old VM and current
-local application are untouched.
+Cloudflare token verification `401` and documentation-coverage **Fail** remain historical evidence.
+The OAuth authorization and Access code steps completed in the earlier browser session. The final
+live session returned to the signed-in passkey-enrollment page, but no ceremony completed in that
+browser tab; owner passkey enrollment is operator-verified. E55 records server-observed
+authenticated owner API and saved-forecast retrieval, while browser-rendered content remains
+**Unavailable**. E56 passes the local four-scenario two-client QA, and E57 records the passing full
+local gate after its initial comment-audit failure. Remote two-user/browser verification, Astra final
+gate review, invited-user route, and retirement of legacy Linode `97934478` remain pending; the old
+VM and current local application are untouched.

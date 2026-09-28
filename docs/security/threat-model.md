@@ -10,8 +10,12 @@ loopback; production is an invite-only multi-user deployment behind a Cloudflare
 production image binds the app to the host loopback interface, uses GitHub's authorization-code
 flow plus a passkey, and keeps SQLite on a private persistent volume. The recovery rehearsal has
 passed for its declared scope, and the restricted owner-only canary is active behind Cloudflare
-Access; invited-user exposure remains closed until owner passkey and saved-data checks and the
-remaining security gates are complete. The final private clean-main image is revision
+Access; authenticated owner API and saved-forecast retrieval are now evidenced by read-only server
+logs, while browser-rendered owner content remains **Unavailable**. E56 passes the four two-client
+isolation scenarios locally, but remote two-user behavior and browser UI remain **Unavailable**.
+Invited-user exposure remains closed until Astra's final gate review and the remaining security gates
+are complete. The final private
+clean-main image is revision
 `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
 `b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, and image ID
 `sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`; a fixed typed-MCP
@@ -26,13 +30,25 @@ as `jtmb` before the prior deployment, but that observation is historical. The f
 in-app-browser reload with an expired session showed `Sign in first` and `Open sign in` and hid
 `Create passkey`; opening sign-in and continuing with GitHub returned to
 `/passkey?mode=enroll&next=/overview`, showed `Signed in as jtmb`, and showed `Create passkey`.
-No passkey ceremony or saved-data check was completed. The prior origin-navigation repair loaded the
+No ceremony was completed in this browser tab. Operator read-only SQLite evidence on `2026-09-28`
+(exact query UTC not captured) found `quick_check` `ok`, zero foreign-key violations, owner id `1`
+claimed to the configured GitHub account as active admin, one nonrevoked passkey, one current
+passkey-verified session, and mappings of 13 events, 13 runs, 20 results, 0 outcomes, 6 holdings,
+and 3 watchlist items. This proves enrollment, a completed passkey verification on another computer,
+and persisted owner mappings, but not browser-rendered UI retrieval. A fresh production tab hit
+Cloudflare Access login with no transferable session. Later read-only Docker access logs observed
+authenticated owner API retrieval and saved-forecast access after the passkey session; `/overview`,
+portfolio, watchlist, history, and saved-forecast requests returned `200`. The prior origin-navigation repair loaded the
 canary HTML page instead of the prior `origin_rejected` JSON response; that E49 result does not
 establish current authentication or saved-data access. A subsequent source-reviewed fix at
 commit `a1d868287a729c75d9b8628f612a856db132374a` handles stale/expired provisional sessions that
 returned `authenticated:false` and left the passkey page at `Checking your session`; local
 build/typecheck, `28` frontend tests, and browser `4/4` passed, and the fix is included in the final
-image. Owner passkey enrollment and saved-data verification remain pending.
+image. Owner enrollment is operator-verified and authenticated owner API/saved-forecast retrieval is
+confirmed by E55. Browser-rendered content remains **Unavailable**. E56 passes the four local
+two-client isolation scenarios; remote two-user behavior remains **Unavailable**, and E57 records the
+passing full local gate after its initial comment-audit failure. Astra final gate review remains
+pending.
 
 The model protects account identity, owner-scoped research history, forecast provenance, local
 filesystem locations, backup authenticity, and process availability from accidental corruption and
