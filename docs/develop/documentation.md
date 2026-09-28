@@ -180,7 +180,11 @@ verification passed. The Linux/amd64 image is `103146866` bytes with ID
 `sha256:76283822fb01ba19ead18037d3396b81db5c804e41d0203dfbaae04c3c3abb8f`; restricted MCP plan
 `5b757cb6e2cb2b8d97b85613a4b5504b` deployed it, with inspect/status schema `9`, `ready`,
 `loopback_only: true`, and verified pre-deploy backup
-`pre-deploy-403cd79b08f90b49-3055603f.spbackup`. Live Cloudflare probes returned the recorded
+`pre-deploy-403cd79b08f90b49-3055603f.spbackup`. Before that successful retry, the first official
+MCP `plan_deploy` call for the same revision/archive/image returned bounded
+`remote_operation_failed`; the remote remained on its prior healthy schema-8 image. The cause was
+not established. Fixed structured-helper plan `5b757cb6e2cb2b8d97b85613a4b5504b` then succeeded and
+the subsequent official MCP deploy passed. Live Cloudflare probes returned the recorded
 health/auth/authenticator `200`, sign-in redirect `303`, and private-history `401` responses with
 `no-store`/`DYNAMIC`. The IAB reached the one-time legacy-passkey migration route; its button
 remained `Waiting for passkey…`, reloading cancelled it, and sign-out returned to `/sign-in`.

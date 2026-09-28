@@ -266,8 +266,12 @@ remains pending.
   `5b757cb6e2cb2b8d97b85613a4b5504b` deployed it; inspect/status reported schema `9`, `ready`,
   `loopback_only: true`, verified pre-deploy backup
   `pre-deploy-403cd79b08f90b49-3055603f.spbackup`, deployment
-  `2026-09-28T20:28:26.839271+00:00`, and no failed release. Live Cloudflare HTTP at `20:29:04Z`
-  returned health `200`, auth status `200`, `/authenticator` `200`, `/overview` `303` to sign-in,
+  `2026-09-28T20:28:26.839271+00:00`, and no failed release was reported after the successful deploy.
+  Before that successful retry, the first official MCP `plan_deploy` call for the same
+  revision/archive/image returned bounded `remote_operation_failed`; the remote remained on its
+  prior healthy schema-8 image. The cause was not established. Fixed structured-helper plan
+  `5b757cb6e2cb2b8d97b85613a4b5504b` then succeeded and the subsequent official MCP deploy passed.
+  Live Cloudflare HTTP at `20:29:04Z` returned health `200`, auth status `200`, `/authenticator` `200`, `/overview` `303` to sign-in,
   and `/api/v1/history` `401`, all `no-store`/`DYNAMIC`. The live IAB reached the one-time
   legacy-passkey migration route for owner `jtmb`; the button remained `Waiting for passkey…`,
   reloading cancelled it, and sign-out returned to `/sign-in`. Owner TOTP enrollment, live mobile
