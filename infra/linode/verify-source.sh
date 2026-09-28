@@ -95,7 +95,8 @@ remote_main="$(
 setup_path="$ROOT/scripts/setup-production-host.sh"
 compose_path="$ROOT/compose.production.yaml"
 helper_path="$ROOT/scripts/production-deploy-helper.py"
-for source_path in "$setup_path" "$compose_path" "$helper_path"; do
+unit_path="$ROOT/infra/cloudflare/signal-ledger-cloudflared.service"
+for source_path in "$setup_path" "$compose_path" "$helper_path" "$unit_path"; do
   [[ -f "$source_path" && ! -L "$source_path" ]] \
     || fail "reviewed source files must be regular files"
 done
@@ -103,12 +104,13 @@ done
 setup_sha256="$(sha256sum "$setup_path" | awk '{ print $1 }')"
 compose_sha256="$(sha256sum "$compose_path" | awk '{ print $1 }')"
 helper_sha256="$(sha256sum "$helper_path" | awk '{ print $1 }')"
-for source_sha256 in "$setup_sha256" "$compose_sha256" "$helper_sha256"; do
+unit_sha256="$(sha256sum "$unit_path" | awk '{ print $1 }')"
+for source_sha256 in "$setup_sha256" "$compose_sha256" "$helper_sha256" "$unit_sha256"; do
   [[ "$source_sha256" =~ ^[0-9a-f]{64}$ ]] \
     || fail "could not compute a source SHA-256"
 done
 
-python3 - "$reviewed_revision" "$remote_main" "$setup_sha256" "$compose_sha256" "$helper_sha256" <<'PY'
+python3 - "$reviewed_revision" "$remote_main" "$setup_sha256" "$compose_sha256" "$helper_sha256" "$unit_sha256" <<'PY'
 import json
 import sys
 
@@ -120,6 +122,7 @@ print(
             "source_setup_sha256": sys.argv[3],
             "source_compose_sha256": sys.argv[4],
             "source_helper_sha256": sys.argv[5],
+            "source_unit_sha256": sys.argv[6],
         },
         sort_keys=True,
     )

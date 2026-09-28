@@ -44,11 +44,16 @@ resource "linode_instance" "signal_ledger" {
       setup_sha256         = local.reviewed_source_files["scripts/setup-production-host.sh"]
       compose_sha256       = local.reviewed_source_files["compose.production.yaml"]
       helper_sha256        = local.reviewed_source_files["scripts/production-deploy-helper.py"]
+      unit_sha256          = local.reviewed_source_files["infra/cloudflare/signal-ledger-cloudflared.service"]
     }))
   }
 
   lifecycle {
     prevent_destroy = true
+
+    # cloud-init is a first-boot input; subsequent reviewed releases use the fixed
+    # deployment helper and must not replace the stateful host just to refresh it.
+    ignore_changes = [metadata[0].user_data]
 
     precondition {
       condition     = local.operator_public_key != local.deploy_public_key

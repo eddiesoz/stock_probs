@@ -27,3 +27,17 @@ tool_timeout_sec = 30
 command = "./scripts/deploy-mcp.sh"
 startup_timeout_sec = 30
 tool_timeout_sec = 1800
+default_tools_approval_mode = "prompt"
+
+[mcp_servers.signal_ledger_deploy.tools.inspect]
+approval_mode = "auto"
+
+[mcp_servers.signal_ledger_deploy.tools.status]
+approval_mode = "auto"
+
+# Fixed, nonsecret target metadata. SSH private key bytes stay outside the repo.
+[mcp_servers.signal_ledger_deploy.env]
+SIGNAL_LEDGER_DEPLOY_HOST = "45.79.180.32"
+SIGNAL_LEDGER_DEPLOY_USER = "signal-ledger-deploy"
+SIGNAL_LEDGER_DEPLOY_IDENTITY_FILE = "/home/james/.ssh/signal-ledger-deploy-2026"
+SIGNAL_LEDGER_DEPLOY_KNOWN_HOSTS_FILE = "/home/james/.config/signal-ledger/credentials/linode-known-hosts"

@@ -90,13 +90,18 @@ firewall imported as `177236117`. Its inbound policy is default-deny with only o
 the configured `/32`; application ports are not opened, and the Linode and firewall have
 `prevent_destroy`. The fixed external source gate runs during plan and again during apply and
 requires a clean checkout, exact `origin/main`, the reviewed revision, and checksums for the
-bootstrap files. Terraform apply remains pending.
+bootstrap files. This has been applied to replacement Linode `106817202`; the old instance remains
+untouched. The firewall is attached only to the replacement host, and the application remains
+loopback-only.
 
 Cloudflare Terraform defaults to `exposure_mode=closed`: the managed tunnel has a terminal 404
-ingress and no DNS record. Canary mode adds only `ledger.jtmb.cc`, routes to `http://127.0.0.1:8000`,
-keeps a single owner email behind Cloudflare Access, and installs a cache-settings rule that
-bypasses shared and browser caching for the exact hostname. Provider token/UI creation and the
-actual apply remain pending.
+ingress and no DNS record. The applied canary adds only `ledger.jtmb.cc`, routes to
+`http://127.0.0.1:8000`, keeps the configured owner behind Cloudflare Access, and installs a
+cache-settings rule that bypasses shared and browser caching for the exact hostname. The
+connector is healthy and active for this restricted canary. Unauthenticated requests receive the
+Access redirect and private responses use `no-store`; direct port `8000` remains unreachable.
+The earlier provider verification reported Cloudflare HTTP `401` despite functional API/Terraform
+operations, so that discrepancy remains an open limitation.
 
 ### Build and publish locally
 
@@ -118,10 +123,13 @@ completed for reviewed revision `3bc85ed6c6b8b56386da32e532e4a79c5f74b6dd`; the 
 `103,116,996` bytes with SHA-256
 `586ef74929dd3542930f37f46f9081f56a2c3bdf7a43b5aec32450be69d9ecce` at
 `https://github.com/eddiesoz/stock_probs/releases/tag/signal-ledger-3bc85ed6c6b8b56386da32e532e4a79c5f74b6dd`.
-Remote Linode pull/deploy remains pending. The Linode helper derives the fixed GitHub URL from the
-reviewed revision and accepts only the verified archive hash and full image ID. It does not accept
-mutable tags, arbitrary image names, remote builds, shell commands, paths, URLs, Compose edits, or
-Docker-socket operations.
+That transport receipt remains historical. The current private deployment uses reviewed revision
+`f329a4c99bf75d9ff2d365473051580f8eda7f58`, archive SHA-256
+`79f4ac15491ccb7d70ab28b0ed44f441f18f0212c54c3a1487dde6a3a267f9a1`, and image ID
+`sha256:b324a8f288307ff864b26d4792c54271cfee963cf077d31b16c1fac951f87eca`; remote readiness is
+schema `8`. The Linode helper derives the fixed GitHub URL from the reviewed revision and accepts
+only the verified archive hash and full image ID. It does not accept mutable tags, arbitrary image
+names, remote builds, shell commands, paths, URLs, Compose edits, or Docker-socket operations.
 
 ### Prepare the host
 
@@ -156,12 +164,12 @@ terraform -chdir=infra/cloudflare plan -var='exposure_mode=closed'
 ```
 
 The first-boot bootstrap installs Docker, Compose, `cloudflared`, the restricted host boundary, and
-a disabled `signal-ledger-cloudflared.service`. The later configuration helper writes each file
-atomically under its own lock; the app environment and tunnel token are separate writes, so the
-operation is not an all-or-nothing pair. Luna ops QA passed 17 focused local tests plus Bash
-syntax, Ruff, ShellCheck, and diff checks, with local fixtures for full `deploy.lock` contention,
-failed verify/retry, no-clobber, and strict SSH. A real host was unavailable, so remote execution
-remains pending. When the provider steps are complete, install the remotely managed tunnel token at
+a disabled `signal-ledger-cloudflared.service`. The service command and host-unit update path are
+code-managed, and the fresh bootstrap remains source-gated. The later configuration helper writes
+each file atomically under its own lock; the app environment and tunnel token are separate writes,
+so the operation is not an all-or-nothing pair. The private replacement host has completed the
+scoped bootstrap, configure, seed, and image deployment checks; the recovery rehearsal is recorded
+separately below. When the provider steps are complete, install the remotely managed tunnel token at
 `/etc/cloudflared/tunnel.token` with mode `0600`. Store production values in
 `/etc/signal-ledger/app.env` with mode `0600`: `STOCK_PROBS_ENV=production`,
 `STOCK_PROBS_AUTH_MODE=github`, exact `STOCK_PROBS_PUBLIC_ORIGIN`, unique
@@ -181,8 +189,12 @@ verifying the private volume.
 The deployment helper is designed to read the existing schema, verify a pre-deploy backup, create
 and verify the pre-migration backup when the imported database advances schema, run the
 checksum-pinned migrations, verify a current-schema backup, and require readiness with the image's
-schema. Luna's ops QA covered the local fixture paths; a real host was unavailable, so remote
-transfer and migration remain pending. The reserved legacy owner claim remains the owner of legacy
+schema. Luna's ops QA covered the local fixture paths; the private host run also verified schema-8
+readiness and preserved the migrated counts. The repaired recovery rehearsal passed its declared
+scope after restoring a disposable clone, checking the app, database, firewall, SSH, loopback, and
+tunnel-disabled boundaries, then deleting the clone and confirming that its API lookup returned
+`404`.
+reserved legacy owner claim remains the owner of legacy
 events/results; every new request derives ownership from the session, so
 changing an ID cannot expose another user's history, exports, holdings, watchlists, outcomes, or
 reconstructions.
@@ -210,34 +222,49 @@ inspect → plan_deploy(main revision, release archive SHA, image ID) → deploy
 Each promotion is serialized under a lock, starts with a verified application backup, runs
 readiness checks, and attempts code-only rollback only when the database schema remains compatible.
 If a migration has advanced the schema and the candidate fails, the helper stops the service and
-records the failure for operator recovery. Luna's ops QA passed the focused local fixture sequence;
-a real host was unavailable, so actual remote promotion is still pending before treating the
-sequence as deployment acceptance.
+records the failure for operator recovery. The fixed helper completed a private deployment plan
+(`65d8355aef719983cb989a2dd8056522`) and the remote app is healthy. Static MCP discovery passed in
+a fresh CLI task. An official Python SDK stdio smoke also listed exactly the five typed tools and
+completed read-only `inspect` successfully without printing credential bytes. A separate fresh
+Codex client invocation remains unavailable under host approval policy `never`; deploy and rollback
+are not accepted by the read-only smoke.
 
 ### Tunnel canary and recovery
 
-After the provider token/UI setup and closed Terraform apply, move Cloudflare to `exposure_mode=canary`
-only for the owner. The exact hostname is `ledger.jtmb.cc`; the tunnel routes to
-`http://127.0.0.1:8000`, Cloudflare Access allows one owner email, and the cache-settings rule
-bypasses shared/browser caching. Keep the connector disabled until the private checks pass, then run
-an owner-only canary: GitHub state/PKCE and callback checks, passkey enrollment, invitation
-redemption, session revocation, two-user ownership isolation, and administrator fresh-passkey
-backup/restore. Confirm spoofed Host/Origin/proxy headers fail closed before any public route is
-considered. The canary and public route remain pending.
+The recovery rehearsal passed before the restricted canary. Cloudflare is now in
+`exposure_mode=canary` only for the configured owner. The exact hostname is `ledger.jtmb.cc`; the
+tunnel routes to `http://127.0.0.1:8000`, Cloudflare Access protects the route, and the
+cache-settings rule bypasses shared/browser caching. The GitHub OAuth application authorization and
+Cloudflare one-time-code flow completed in the browser, but callback-code handoff could not be
+completed by the browser client. Owner passkey enrollment and the owner saved-data check therefore
+remain **Unavailable/Pending**. Invitation redemption, two-user ownership isolation, and
+administrator fresh-passkey backup/restore remain pending before invited-user exposure.
 
-Application backups remain signed and verified. Enable Linode VM Backups and rehearse recovery
-before exposure. This release has no independent encrypted off-server backup; Linode's configured
-VM Backup retention is the external recovery boundary and must be recorded as a limitation.
+Application backups remain signed and verified. Linode VM Backups are enabled, and successful
+snapshot `385239936` is available. The first disposable restore attempt **Failed**: clone
+`106821372` reached offline boot, but a concurrent in-place Bash edit corrupted the running process
+and it exited `127` before verification; that guarded clone was deleted and its API lookup returned
+`404`. The repaired rehearsal then **Passed**: clone `106825234` was restored, verified against the
+declared boundaries, deleted, and confirmed `404`. The failed attempt and the repair findings stay
+visible in the root evidence ledger. This release has no independent encrypted off-server backup;
+Linode's configured VM Backup retention is the external recovery boundary and remains a limitation.
 
 Current local evidence includes schema-8 readiness, authentication status `200`, private history
-`401` without a session, frontend `27` tests, focused API/auth `151` tests, and helper/MCP `31`
-tests. The local-to-GitHub image transport is recorded as Pass for the reviewed revision; remote
-Linode image pull/deploy remains pending. Astra's final source review reported no remaining source
-launch blocker after the lock,
-upload, staged-database, source-gate, and cache-ordering fixes. Luna ops QA reported 17 focused
-tests passed plus Bash syntax/Ruff/ShellCheck/diff checks and local deployment fixtures; real-host
-evidence remains unavailable. The latest local `R-ASTRA-101` gate then passed; coordinator stdout
-reported Python `644` and `4` live deselected at `85.36%` coverage plus frontend `27` tests. The
-earlier `13:39` startup-timeout failure remains historical. Provider token/UI creation, Terraform apply, remote image
-deployment, GitHub OAuth credentials, owner canary, VM Backup rehearsal, and retirement of
-legacy Linode `97934478` remain pending; the old VM and current local application are untouched.
+`401` without a session, frontend `27` tests, focused API/auth `151` tests, helper/MCP `31` tests,
+and a private remote deployment with migrated data counts preserved. An earlier Astra source review
+reported no remaining P1/P2 finding for the deployment-hardening boundary; a later privacy review
+found a P2 because the configured owner email reached an embedded Python process argv. The private
+owner-email-file repair is complete, the tracked tree has no literal personal email, `14` canary
+fixture tests passed, and the live canary script reran exit `0` with the tunnel active. Luna's final
+scoped QA passed the focused checks and Astra's final P1/P2 re-review reported no remaining finding
+for this boundary. This does not complete the owner callback/passkey/data checks or invited-user
+release gate.
+Independent Luna QA passed Terraform format/validate, `31` scoped infrastructure tests, and
+`git diff --check` at the dirty reviewed revision. The earlier review recorded an import-order
+finding in the Terraform test; final scoped QA passed all four Ruff checks, so that finding is
+historical. The full Linode validator exits `2` on a deliberately dirty worktree. The earlier
+Cloudflare token verification `401` and documentation-coverage **Fail** remain historical evidence. The OAuth
+authorization and Access code steps completed, while callback-code handoff, owner passkey, and
+owner saved-data checks remain **Unavailable/Pending**. The owner-only canary is active, but the
+invited-user route and retirement of legacy Linode `97934478` remain pending; the old VM and current
+local application are untouched.

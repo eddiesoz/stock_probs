@@ -15,6 +15,7 @@ fi
 : "${SIGNAL_LEDGER_SETUP_SHA256:?}"
 : "${SIGNAL_LEDGER_COMPOSE_SHA256:?}"
 : "${SIGNAL_LEDGER_HELPER_SHA256:?}"
+: "${SIGNAL_LEDGER_UNIT_SHA256:?}"
 
 SOURCE_ROOT="${SIGNAL_LEDGER_SOURCE_ROOT}"
 SOURCE_BASE_URL="${SIGNAL_LEDGER_SOURCE_BASE_URL}"
@@ -82,7 +83,7 @@ if [[ ! -e /etc/cloudflared/tunnel.token ]]; then
   install -o root -g root -m 0600 /dev/null /etc/cloudflared/tunnel.token
 fi
 
-install -d -m 0750 "$SOURCE_ROOT/scripts"
+install -d -m 0750 "$SOURCE_ROOT/scripts" "$SOURCE_ROOT/infra/cloudflare"
 download_verified() {
   local relative_path="$1"
   local expected_sha256="$2"
@@ -101,6 +102,7 @@ download_verified() {
 download_verified scripts/setup-production-host.sh "$SIGNAL_LEDGER_SETUP_SHA256"
 download_verified compose.production.yaml "$SIGNAL_LEDGER_COMPOSE_SHA256"
 download_verified scripts/production-deploy-helper.py "$SIGNAL_LEDGER_HELPER_SHA256"
+download_verified infra/cloudflare/signal-ledger-cloudflared.service "$SIGNAL_LEDGER_UNIT_SHA256"
 chmod 0750 "$SOURCE_ROOT/scripts/setup-production-host.sh"
 
 if ! id signalops >/dev/null 2>&1; then
@@ -125,6 +127,8 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PubkeyAuthentication yes
 EOF
+# Cloud-init can reach this check before the SSH service creates its runtime directory.
+install -d -o root -g root -m 0755 /run/sshd
 sshd -t
 if ! systemctl reload ssh; then
   systemctl reload sshd

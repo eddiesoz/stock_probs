@@ -489,7 +489,21 @@ def test_setup_script_uses_forced_command_and_no_public_app_port() -> None:
     assert "NOPASSWD:" in script
     assert "signal-ledger-deploy-helper" in script
     assert "cloudflared tunnel" in script
-    assert "--token-file /etc/cloudflared/tunnel.token" in script
+    assert "/usr/bin/cloudflared tunnel --no-autoupdate run --help" in script
+    assert "cloudflared tunnel run --no-autoupdate" not in script
+    unit_path = ROOT / "infra" / "cloudflare" / "signal-ledger-cloudflared.service"
+    unit = unit_path.read_text()
+    assert (
+        'SYSTEMD_UNIT_SOURCE="$ROOT/infra/cloudflare/signal-ledger-cloudflared.service"'
+        in script
+    )
+    assert 'install -o root -g root -m 0644 "$SYSTEMD_UNIT_SOURCE" "$SYSTEMD_UNIT"' in script
+    assert (
+        "ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate run "
+        "--token-file /etc/cloudflared/tunnel.token"
+    ) in unit
+    assert "cloudflared tunnel run --no-autoupdate" not in unit
+    assert "systemctl daemon-reload" in script
     assert "systemctl disable --now signal-ledger-cloudflared.service" in script
     assert "--shell /bin/sh" in script
     assert "systemctl reload ssh" in script

@@ -8,8 +8,12 @@ description: "Threats and controls for loopback HTTP, untrusted requests, Yahoo 
 Signal Ledger has two supported security modes. Development may use a local bootstrap account on
 loopback; production is an invite-only multi-user deployment behind a Cloudflare Tunnel. The
 production image binds the app to the host loopback interface, uses GitHub's authorization-code
-flow plus a passkey, and keeps SQLite on a private persistent volume. The public route remains
-closed until the owner-only canary, recovery rehearsal, and security gates pass.
+flow plus a passkey, and keeps SQLite on a private persistent volume. The recovery rehearsal has
+passed for its declared scope, and the restricted owner-only canary is active behind Cloudflare
+Access; invited-user exposure remains closed until owner passkey and saved-data checks and the
+remaining security gates are complete. A later privacy review found a P2 caused by the configured
+owner email reaching an embedded process argument. The private-file repair is complete, scoped QA
+passed, and Astra's final P1/P2 re-review reported no remaining finding for this boundary.
 
 The model protects account identity, owner-scoped research history, forecast provenance, local
 filesystem locations, backup authenticity, and process availability from accidental corruption and
@@ -31,8 +35,8 @@ service.
 | Deployment MCP command injection or supply-chain substitution | The local stdio MCP exposes only `inspect`, `plan_deploy`, `deploy`, `status`, and `rollback`. The fixed SSH helper accepts a reviewed `main` revision, a release archive SHA-256, and a full image ID; it rejects arbitrary commands, paths, URLs, Compose edits, registry names, tags, and Docker-socket access. GHCR is an explicit compatibility transport, not the default. |
 | Mutable image or remote-build drift | The local publisher builds a Linux `amd64` image, scans and publishes a revision-named GitHub Release asset derived from the reviewed revision, treats that asset as immutable during its workflow, and verifies the downloaded archive SHA-256, image ID, platform, and revision. GitHub does not enforce asset immutability. The Linode loads only that verified asset and never builds source on the VM; optional GHCR plans remain digest-pinned. |
 | Terraform source or infrastructure drift | The Linode plan and apply both use a fixed external source gate that requires a clean checkout, exact `origin/main`, the reviewed revision, fixed repository, and checksums for the host files. The imported firewall has `prevent_destroy`; no application port is opened by Terraform. |
-| Public-ingress or cache bypass | The app port is published only on `127.0.0.1`; Cloudflare starts closed with a terminal `404`, then exposes only the exact owner-canary hostname behind Access. The managed cache-settings ruleset bypasses shared and browser caching for that host. `cloudflared` remains disabled until the canary passes, and proxy trust is local-only. |
-| Host compromise or lost recovery channel | Use a restricted deployment account with a forced command, public-key-only SSH, no forwarding or TTY, least-privilege sudo, private state directories, and an operator-managed tunnel token. Enable Linode VM Backups and rehearse recovery; this release has no independent encrypted off-server backup. |
+| Public-ingress or cache bypass | The app port is published only on `127.0.0.1`; Cloudflare starts closed with a terminal `404`, then routes only the exact owner-canary hostname behind Access. The managed cache-settings ruleset bypasses shared and browser caching for that host. The connector is active for the restricted canary, while the invited-user route remains closed; proxy trust is local-only. |
+| Host compromise or lost recovery channel | Use a restricted deployment account with a forced command, public-key-only SSH, no forwarding or TTY, least-privilege sudo, private state directories, and an operator-managed tunnel token. Linode VM Backups are enabled and the repaired disposable recovery rehearsal passed its declared scope; this release has no independent encrypted off-server backup. |
 | Oversized, malformed, or slow request bodies | Bounded framing/body checks, bounded server concurrency/backlog/keep-alive, typed validation, and sanitized error envelopes. |
 | Provider delay or malformed Yahoo market data | Explicit 1–20 second configured timeout, bounded lookup/history calls, provider concurrency of two, normalized identity/bar contracts, and no provider objects exposed by transport. |
 | Untrusted headline text or article destinations | Headline fields reject controls and enforce length/type bounds; presentation inserts them as text, not HTML. Links must be public HTTPS destinations without credentials, local/private hosts, or non-HTTPS ports; invalid links are not made operable. |

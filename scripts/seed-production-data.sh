@@ -223,6 +223,7 @@ SEED_FINAL = "/var/lib/signal-ledger/seed/legacy.sqlite3"
 SEED_STAGE = "/var/lib/signal-ledger/seed/.legacy.sqlite3.staged"
 MAX_SNAPSHOT_BYTES = 512 * 1024 * 1024
 owned_paths = []
+phase = "start"
 
 VERIFY_CODE = r'''
 import hashlib
@@ -234,7 +235,9 @@ stream = open(path, "rb")
 for block in iter(lambda: stream.read(1024 * 1024), b""):
     digest.update(block)
 stream.close()
-database = sqlite3.connect("file:" + path + "?mode=ro", uri=True)
+# The mounted snapshot is immutable and its container directory is read-only;
+# immutable=1 prevents SQLite from requiring WAL sidecar writes for verification.
+database = sqlite3.connect("file:" + path + "?mode=ro&immutable=1", uri=True)
 integrity = database.execute("PRAGMA integrity_check").fetchone()[0]
 foreign_key = database.execute("PRAGMA foreign_key_check").fetchone()
 if foreign_key is not None:
@@ -491,6 +494,8 @@ def cleanup_volume_staging(image_id):
 
 
 def operation(revision, image_id, expected):
+    global phase
+    phase = "validate"
     parts = expected.split("|")
     if len(parts) != 10 or parts[1] != "ok":
         fail("expected_metadata_invalid")
@@ -504,6 +509,7 @@ def operation(revision, image_id, expected):
     ])
     if image_record != image_id + "|" + revision:
         fail("image_identity_mismatch")
+    phase = "container_state"
     running = capture([
         "/usr/bin/docker",
         "ps",
@@ -516,19 +522,26 @@ def operation(revision, image_id, expected):
     ])
     if running:
         fail("production_app_running")
+    phase = "volume"
     if status(["/usr/bin/docker", "volume", "inspect", VOLUME]) != 0:
         run(["/usr/bin/docker", "volume", "create", VOLUME])
+    phase = "target"
     require_target_absent(image_id)
     require_seed_dir()
     require_seed_paths_absent()
+    phase = "upload"
     stream_snapshot(SEED_STAGE)
+    phase = "verify_upload"
     verify_stage(image_id, expected)
     volume_staging_created = True
     try:
+        phase = "copy"
         copy_to_volume(image_id)
+        phase = "verify_volume"
         verify_volume_staging(image_id, expected)
         os.unlink(SEED_STAGE)
         owned_paths.remove(SEED_STAGE)
+        phase = "publish"
         publish_volume(image_id)
         volume_staging_created = False
     finally:
@@ -556,7 +569,7 @@ def main():
     except SystemExit:
         raise
     except Exception as exc:
-        raise SystemExit("remote_seed_transaction_failed") from exc
+        raise SystemExit(f"remote_seed_transaction_failed:{phase}") from exc
     finally:
         for path in reversed(owned_paths):
             try:

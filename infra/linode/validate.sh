@@ -27,6 +27,12 @@ if grep -Eq 'ports[[:space:]]*=[[:space:]]*"(80|443|8000)"' main.tf; then
   exit 1
 fi
 grep -Fq 'prevent_destroy = true' main.tf
+grep -Fq 'user_data = base64encode(templatefile' main.tf
+grep -Fq 'ignore_changes = [metadata[0].user_data]' main.tf
+if grep -Fq 'ignore_changes = [metadata]' main.tf; then
+  printf 'Only first-boot metadata.user_data may be ignored after instance creation.\n' >&2
+  exit 1
+fi
 grep -Fq 'authorized_keys = [local.operator_public_key]' main.tf
 grep -Fq 'deploy_public_key_path' variables.tf
 grep -Fq 'local.operator_public_key != local.deploy_public_key' main.tf
@@ -44,6 +50,7 @@ if grep -Fq 'variable "public_repository"' variables.tf; then
   exit 1
 fi
 grep -Fq 'SIGNAL_LEDGER_DEPLOY_PUBLIC_KEY_FILE=/var/lib/signal-ledger/deploy.pub' cloud-init.yaml.tftpl
+grep -Fq 'SIGNAL_LEDGER_UNIT_SHA256=${unit_sha256}' cloud-init.yaml.tftpl
 grep -Fq 'The operator and deployment SSH public keys must be different.' bootstrap-production-host.sh
 if grep -Fq 'root_pass' main.tf; then
   printf 'The instance must not use a root password.\n' >&2
@@ -61,6 +68,9 @@ if [[ -f "$operator_key_path" && -f "$deploy_key_path" ]]; then
   fi
 fi
 grep -Fq 'cloudflared' bootstrap-production-host.sh
+grep -Fq 'SIGNAL_LEDGER_UNIT_SHA256' bootstrap-production-host.sh
+grep -Fq 'download_verified infra/cloudflare/signal-ledger-cloudflared.service "$SIGNAL_LEDGER_UNIT_SHA256"' bootstrap-production-host.sh
+grep -Fq '"infra/cloudflare/signal-ledger-cloudflared.service"' locals.tf
 grep -Fq 'systemctl disable --now signal-ledger-cloudflared.service' bootstrap-production-host.sh
 grep -Fq 'PermitRootLogin no' bootstrap-production-host.sh
 grep -Fq 'PasswordAuthentication no' bootstrap-production-host.sh
@@ -83,6 +93,7 @@ grep -Fq 'ls-remote --exit-code --refs "$EXPECTED_REPOSITORY" refs/heads/main' v
 grep -Fq 'reviewed_revision" == "$head_revision"' verify-source.sh
 grep -Fq 'query must contain reviewed_revision and optional apply_nonce' verify-source.sh
 grep -Fq 'apply_nonce must be an RFC3339 timestamp' verify-source.sh
+grep -Fq 'source_unit_sha256' verify-source.sh
 
 head_revision="$(git -C "$ROOT" rev-parse --verify HEAD)"
 if [[ -n "$(git -C "$ROOT" status --porcelain --untracked-files=normal)" ]]; then
@@ -99,7 +110,7 @@ if [[ ! "$reviewed_revision" =~ ^[0-9a-f]{40}$ || "$reviewed_revision" != "$head
   printf 'Set SIGNAL_LEDGER_REVIEWED_REVISION to the clean HEAD SHA before apply.\n' >&2
   exit 2
 fi
-for relative_path in scripts/setup-production-host.sh compose.production.yaml scripts/production-deploy-helper.py; do
+for relative_path in scripts/setup-production-host.sh compose.production.yaml scripts/production-deploy-helper.py infra/cloudflare/signal-ledger-cloudflared.service; do
   source_path="$ROOT/$relative_path"
   [[ -f "$source_path" && ! -L "$source_path" ]]
   source_sha256="$(sha256sum "$source_path" | awk '{print $1}')"

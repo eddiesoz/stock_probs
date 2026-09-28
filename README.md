@@ -210,12 +210,17 @@ deployment MCP; the VM does not build source. The five deployment operations are
 migration, tunnel canary, and recovery procedure.
 
 Terraform keeps the Linode firewall and application ports closed to the public, and Cloudflare
-starts in a terminal-404 closed mode before an owner-only canary. The reviewed image archive was
-published to GitHub Release for the local-to-GitHub transport scope; provider token/UI creation,
-Terraform apply, remote image deployment, OAuth credentials, canary, VM Backup rehearsal, and
-retirement of the legacy Linode remain operational steps. They are not included in the local
-development quick start, and the current local application remains independent of that private
-deployment.
+starts in a terminal-404 closed mode before the owner-only canary. The replacement host and
+reviewed image are deployed privately, and the canary hostname is routed through the active
+tunnel behind the configured owner Access policy with cache bypass. Direct port `8000` remains
+unreachable. GitHub OAuth application authorization and the Access one-time-code flow completed,
+but callback-code handoff, owner passkey enrollment, and owner saved-data verification remain
+pending. The privacy review P2 has been repaired with a private owner-email file, `14` canary
+fixture tests, and a successful live canary rerun; final scoped QA passed and Astra's final P1/P2
+review reported no remaining finding for that boundary. The invited-user route and retirement of
+the legacy Linode remain pending, so this is not a production release claim. See
+[Getting started](docs/operations/getting-started.md)
+for the current Terraform, recovery, and canary boundaries.
 
 ## Development
 

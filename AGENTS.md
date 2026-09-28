@@ -125,13 +125,14 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 `R-ASTRA-101` is the current in-progress authentication and private deployment follow-on.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
-for their declared scopes. The current follow-on is not complete: provider token/UI creation,
-Terraform apply, replacement Linode creation, GitHub OAuth credentials, the Cloudflare Tunnel
-owner-only canary, VM Backup recovery rehearsal, and retirement of legacy Linode `97934478` remain
-pending external operations. The reviewed image archive was published to GitHub Release for the
-local-to-GitHub transport scope; remote VM deployment remains pending. Luna's independent ops QA
-passed its local fixture scope; real-host evidence is unavailable. No public route or production
-release is claimed.
+for their declared scopes. The three provider access items were created privately, Terraform
+applied the replacement Linode and imported firewall, the reviewed image was deployed privately,
+the VM-backup recovery rehearsal passed for its declared scope, and the Cloudflare owner-only
+canary is active. The owner passkey enrollment and saved-data check remain pending, as do the
+invited-user route and retirement of legacy Linode `97934478`. The Cloudflare token verification
+check returned HTTP `401` in an earlier Luna report despite functional provider API/Terraform
+operations; this discrepancy remains visible. No public invited-user route or production release
+is claimed.
 Unavailable evidence categories—actual screen reader, physical mobile, true browser zoom, native
 ARM64 performance, provider runtime, CUA, and project-profile/skill runtime discovery—remain
 separate limitations.
@@ -167,15 +168,24 @@ open.
   `us-east`, imports firewall `177236117`, enables VM Backups and disk encryption, permits only
   operator SSH from the configured `/32`, and prevents destruction. Its fixed source gate checks a
   clean checkout, exact `origin/main`, reviewed revision, and source checksums during both plan and
-  apply. Cloudflare starts in `closed` terminal-404 mode; the canary mode routes only
-  `ledger.jtmb.cc` through loopback, keeps an owner-only Access policy, and bypasses shared/browser
-  caching for the exact host. Provider token/UI creation and Terraform apply remain pending.
+  apply. The applied host is Linode `106817202`; only that replacement is attached to firewall
+  `177236117`, and the legacy host remains untouched. Cloudflare is applied in `closed`
+  terminal-404 mode; the applied canary routes only `ledger.jtmb.cc` through loopback, keeps an
+  owner-only Access policy, and bypasses shared/browser caching for the exact host. The connector
+  is active for that restricted canary. Unauthenticated requests receive the Access redirect and
+  private no-store response behavior; the host's direct port `8000` remains unreachable.
 - The local stdio deployment MCP exposes only typed `inspect`, `plan_deploy`, `deploy`, `status`,
   and `rollback` tools. The default transport carries a reviewed `main` revision, release archive
   SHA-256, and full Docker image ID; the fixed helper derives the GitHub Release URL and verifies
   archive bytes, image identity, platform, schema, backup, and readiness before promotion. GHCR is
   an explicit compatibility mode only. The MCP cannot receive arbitrary shell commands, paths,
   URLs, Compose files, registry names, tags, or Docker-socket requests; the VM never builds source.
+  `.codex/config.toml` supplies only fixed, nonsecret target metadata and operator-owned key paths.
+  Fresh CLI static discovery passed. An official Python SDK stdio client initialized the fixed-target
+  server, listed exactly the five typed tools, and completed read-only `inspect` with
+  `is_error=False`; no credential bytes were printed. A fresh Codex client invocation remains
+  **Unavailable** because the current host approval policy is `never`; this does not establish
+  deploy or rollback acceptance.
 - Current evidence is bounded: native x86_64 dependency audits for the application and MCP both
   reported zero advisories; frontend tests reported `27` passed; focused API/auth checks reported
   `151` passed; production-helper/MCP checks reported `31` passed; and the isolated production-
@@ -210,14 +220,43 @@ open.
   The historical `R-ASTRA-100` run remains **Unavailable** as one green aggregate (`603` pass,
   `5` fail, `4` deselected); four stale schema expectations and one timing race have a targeted
   `33`-pass repair run. The completed `R-ASTRA-101` local gate is recorded separately above.
-- Provider token/UI creation, Terraform apply, GitHub OAuth application credentials, Cloudflare
-  Tunnel canary, VM Backup recovery rehearsal, and retirement of legacy Linode `97934478` remain
-  pending. The local-to-GitHub image transport is recorded as Pass in `R-ASTRA-101-E21`; remote VM
-  deployment remains pending. Luna ops QA reported 17
-  focused tests passed plus Bash syntax/Ruff/ShellCheck/diff checks and local fixtures for lock
-  contention, failed verify/retry, no-clobber, and strict SSH; real-host evidence is unavailable.
-  The old VM and current local app are untouched; this evidence does not authorize public exposure
-  or claim a release checkpoint.
+- The private remote deployment completed for reviewed revision
+  `f329a4c99bf75d9ff2d365473051580f8eda7f58`; the verified release archive SHA-256 is recorded in
+  the root plan and the deployed image is schema `8`. The remote app is healthy, preserves the
+  migrated schema-8 data counts, and is loopback-only. A successful Linode snapshot is recorded as
+  `385239936`. The first disposable recovery rehearsal **Failed**: clone `106821372` reached
+  offline boot, but a concurrent in-place Bash edit corrupted the running process and it exited
+  `127` before verification; only that guarded clone was deleted and its API lookup returned
+  `404`. The repaired rehearsal then **Passed** for its declared recovery scope: disposable clone
+  `106825234` was restored from the snapshot, verified against the firewall, SSH, loopback app,
+  schema, data, backups, and disabled tunnel boundary, then deleted and confirmed `404`. The
+  repair retained nested firewall response handling, WAL-aware logical hashing, offline-boot
+  resume, and a source-preserving SSH-host-key check. An earlier Astra re-review reported no P1/P2
+  finding for that repair boundary, but a later privacy re-review found a P2 because the configured
+  owner email reached an embedded Python process argv. The private-file repair is now complete:
+  the value is scoped to the validator environment rather than process argv, the tracked tree has
+  no literal personal email, `14` canary fixture tests passed, and the live canary script reran
+  exit `0` with the tunnel active. Final Luna scoped QA passed Ruff across all four tests, `38`
+  focused pytest cases, Bash syntax, warning-level ShellCheck, the tracked-email scan, canary
+  privacy, and diff checks at `2026-09-28T01:38:08Z`–`2026-09-28T01:38:27Z`; Astra's final review
+  reported no remaining P1/P2. The earlier Ruff import-order finding remains historical and is
+  superseded by that repaired result. The old VM and current local app are untouched. This evidence
+  does not authorize the invited-user route or claim a production release checkpoint.
+- The final infrastructure repair set keeps the cloudflared service command code-managed, adds a
+  code-managed host-unit update path, preserves the source-gated fresh-bootstrap delivery, and
+  requires a live Terraform refresh guard before the canary. Independent Luna QA on native x86_64
+  at dirty revision `f329a4c99bf75d9ff2d365473051580f8eda7f58` from
+  `2026-09-28T01:18:00Z`–`2026-09-28T01:25:00Z` passed Terraform format/validate, `31` scoped
+  infrastructure tests, and `git diff --check`. Ruff reported an import-order finding in
+  `tests/test_linode_terraform.py` that remains in repair; ShellCheck warnings were recorded as
+  informational, while the full `infra/linode/validate.sh` exits `2` on the intentionally dirty
+  worktree. These checks are scoped QA, not a clean release or production acceptance result.
+- The owner-only Cloudflare canary is applied for `ledger.jtmb.cc`, and the tunnel is healthy and
+  active. The GitHub OAuth application authorization and Cloudflare Access one-time code flow
+  completed in the browser, but the browser client could not navigate the callback-code handoff.
+  Owner passkey enrollment and the owner saved-data check are therefore **Unavailable/Pending**;
+  public invited-user mode and retirement of legacy Linode `97934478` remain pending. No public
+  invited-user route or production release is claimed.
 
 ## Repository truth
 

@@ -23,6 +23,7 @@ HELPER="/usr/local/libexec/signal-ledger-deploy-helper"
 WRAPPER="/usr/local/bin/signal-ledger-deploy-helper"
 SUDOERS="/etc/sudoers.d/signal-ledger-deploy"
 SYSTEMD_UNIT="/etc/systemd/system/signal-ledger-cloudflared.service"
+SYSTEMD_UNIT_SOURCE="$ROOT/infra/cloudflare/signal-ledger-cloudflared.service"
 
 for command in docker git python3 curl install systemctl visudo sshd ssh-keygen getent awk wc grep; do
   command -v "$command" >/dev/null || {
@@ -68,7 +69,7 @@ if [[ ! -x /usr/bin/cloudflared ]]; then
   printf 'Install the official cloudflared binary at /usr/bin/cloudflared before setup.\n' >&2
   exit 3
 fi
-if ! /usr/bin/cloudflared tunnel run --help 2>&1 | grep -q -- '--token-file'; then
+if ! /usr/bin/cloudflared tunnel --no-autoupdate run --help 2>&1 | grep -q -- '--token-file'; then
   printf 'cloudflared must support remotely managed tunnel token files.\n' >&2
   exit 3
 fi
@@ -148,6 +149,8 @@ Match User $DEPLOY_USER
     PermitTTY no
     PermitUserRC no
 EOF
+# Fresh Ubuntu images may not create this runtime directory until ssh.service starts.
+install -d -o root -g root -m 0755 /run/sshd
 sshd -t
 # On a new host this is the first key publication, and it is already restricted even if reload
 # fails. The daemon configuration is syntax-checked before the key is made available to sshd.
@@ -181,30 +184,11 @@ if [[ -e /etc/cloudflared/tunnel.token ]]; then
   chmod 0600 /etc/cloudflared/tunnel.token
 fi
 
-install -o root -g root -m 0644 /dev/stdin "$SYSTEMD_UNIT" <<'EOF'
-[Unit]
-Description=Signal Ledger Cloudflare Tunnel
-After=network-online.target docker.service
-Wants=network-online.target
-Requires=docker.service
-
-[Service]
-Type=simple
-User=cloudflared
-ExecStart=/usr/bin/cloudflared tunnel run --no-autoupdate --token-file /etc/cloudflared/tunnel.token
-Restart=on-failure
-RestartSec=5s
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/lib/cloudflared
-CapabilityBoundingSet=
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-
-[Install]
-WantedBy=multi-user.target
-EOF
+if [[ -L "$SYSTEMD_UNIT_SOURCE" || ! -f "$SYSTEMD_UNIT_SOURCE" ]]; then
+  printf 'The reviewed Cloudflare Tunnel unit artifact is unavailable.\n' >&2
+  exit 3
+fi
+install -o root -g root -m 0644 "$SYSTEMD_UNIT_SOURCE" "$SYSTEMD_UNIT"
 systemctl daemon-reload
 # Keep the public hostname closed until the application and security gates are accepted.
 systemctl disable --now signal-ledger-cloudflared.service >/dev/null 2>&1 || true

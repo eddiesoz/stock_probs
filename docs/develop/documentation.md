@@ -50,6 +50,17 @@ platform, revision, Compose bytes, schema, backup, and readiness before promotio
 GHCR plans; it is not the default. Rollback is schema-compatible and responses are bounded and
 credential-free.
 
+The current `.codex/config.toml` supplies the fixed target through a nonsecret `env` table:
+the host, restricted deployment user, and operator-owned paths for the SSH identity and known-host
+file. The key and known-host bytes remain outside the repository; no credential value belongs in
+the configuration or authored documentation. Static discovery in a fresh CLI task found the
+server and its typed tools (the task ID was not supplied). An official Python SDK stdio client
+also initialized the fixed-target server, listed exactly the five typed tools, and completed
+read-only `inspect` with `is_error=False` and bounded text content; credential bytes were not
+printed. A fresh Codex client invocation remains **Unavailable** because the current host approval
+policy is `never`, so that client result does not replace the protocol-client pass or establish
+deploy/rollback acceptance.
+
 After changing either MCP configuration, `scripts/deploy-mcp.sh`, `tools/deploy_mcp/**`, or its
 lock, restart the parent process and open a fresh Codex/OpenCode task to verify that the server
 appears in the tool catalog and that its typed tools are discoverable. A configuration parse,
@@ -132,7 +143,16 @@ The approved project governance set contains seven directory-based skill definit
 definition count is not native loader or runtime discovery acceptance. The current `R-ASTRA-98`
 product evidence and its limitations are documented in the root records and [dashboard
 usage](../usage/dashboard.md); no retired Ponytail check is required for documentation
-completeness or acceptance.
+completeness or acceptance. The current private deployment reconciliation covers the Terraform
+roots, cloudflared host-unit and update path, source-gated bootstrap, recovery rehearsal, canary
+guard, and scoped infrastructure tests in the root ledgers. The `documentation-map.json` rules
+continue to cover workflow/configuration changes; this page and the operations guide provide the
+authored coverage for the deployment scripts and tests.
+
+The current deployment reconciliation records the owner-only canary and recovery pass, while the
+latest privacy repair has passed its scoped fixture and live-canary checks. Astra's final P1/P2
+re-review reported no remaining finding for this boundary, so documentation validation is not a
+release or security acceptance.
 
 Authored guides live under `docs/` in task-oriented categories. Every page has `title` and
 `description` frontmatter, one primary topic, a lowercase hyphenated filename, and relative
