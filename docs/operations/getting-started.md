@@ -227,12 +227,19 @@ records the failure for operator recovery. The fixed helper completed a private 
 reviewed commit `39bd185150cd3df70395e6c000f568dfd20831ac`, with release archive SHA-256
 `930d6d5b5d054908a25825c980584b620817bfa7ab212a62abd63f65c72f6f3f` and image ID
 `sha256:23ef16e4e5ee28db378c76bbcd9182345584bbffda55bd5313141fd0847fe31b`; publisher
-re-download verification passed. The current origin-navigation image is reviewed commit
+re-download verification passed. The prior origin-navigation image was reviewed commit
 `11faaf702129d0c1485a8683711d88340f623a71`, with publisher SHA-256
 `fad471b19db6ff4f9b4dc154055f0d2437128e49878e72a286b697f17e8a3f48`, image ID
 `sha256:26df706f6a2b4e76ee51bb014f94d39eb66bc7644a2c7a56eb3d012f41684d60`, and MCP plan
 `530c1c65a7b4563e9c7f1cdbf5a47a3d`; deploy reported ready schema `8`, no failure, and loopback-only
-with pre-deploy backup `pre-deploy-11faaf702129d0c1-d1c03381.spbackup`. The official Python SDK MCP plan
+with pre-deploy backup `pre-deploy-11faaf702129d0c1-d1c03381.spbackup`. The final clean-main image
+uses revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
+`b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, and image ID
+`sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`. Its first MCP plan
+failed transiently with `remote_operation_failed`; retry plan
+`2d8b0fe91ed01b55f1625c27edcc620b` passed, and deploy returned deployed/readiness schema `8` with
+status reporting the current revision, `failed: null`, `loopback_only: true`, and pre-deploy backup
+`pre-deploy-2de5e9f199cd1457-751c7459.spbackup`. The official Python SDK MCP plan
 `a07bb7ba2716899bef956269495f0a47`
 and deploy passed to the replacement Linode; status is healthy, schema `8`, loopback-only, and a
 pre-deploy backup was present. Static MCP discovery passed in a fresh CLI task. The earlier
@@ -246,16 +253,15 @@ The recovery rehearsal passed before the restricted canary. Cloudflare is now in
 `exposure_mode=canary` only for the configured owner. The exact hostname is `ledger.jtmb.cc`; the
 tunnel routes to `http://127.0.0.1:8000`, Cloudflare Access protects the route, and the
 cache-settings rule bypasses shared/browser caching. The GitHub OAuth application authorization and
-Cloudflare one-time-code flow completed successfully in the earlier browser session; tab 13 showed
-signed in as `jtmb` before the current deployment, but may be stale. The new in-app-browser auth
-result is unverified. The owner-only canary served the new passkey text and Cloudflare
-unauthenticated traffic returned `302`. Owner passkey enrollment and the owner saved-data check
-therefore remain **Unavailable/Pending** because the browser requested a nearby phone/Bluetooth
-credential and no completed credential was observed. The earlier callback-blocked observation is
-retained as historical evidence in E38. The current origin-navigation repair loaded the canary
-HTML page instead of the prior `origin_rejected` JSON response; it does not establish current
-authentication or saved-data access. Invitation redemption, two-user ownership isolation, and
-administrator fresh-passkey backup/restore remain pending before invited-user exposure.
+Cloudflare one-time-code flow completed successfully in the earlier browser session. The final live
+in-app-browser reload with an expired session showed `Sign in first` and `Open sign in` and hid
+`Create passkey`; opening sign-in and continuing with GitHub returned to
+`/passkey?mode=enroll&next=/overview`, showed `Signed in as jtmb`, and showed `Create passkey`.
+No passkey ceremony or saved-data check was completed, so owner passkey enrollment and the owner
+saved-data check remain **Unavailable/Pending**. The earlier callback-blocked observation is retained
+as historical evidence in E38, and E49 remains the prior origin-navigation record. Invitation
+redemption, two-user ownership isolation, and administrator fresh-passkey backup/restore remain
+pending before invited-user exposure.
 
 Application backups remain signed and verified. Linode VM Backups are enabled, and successful
 snapshot `385239936` is available. The first disposable restore attempt **Failed**: clone
@@ -277,20 +283,20 @@ found a P2 because the configured owner email reached an embedded Python process
 owner-email-file repair is complete, the tracked tree has no literal personal email, `14` canary
 fixture tests passed, and the live canary script reran exit `0` with the tunnel active. Luna's final
 scoped QA passed the focused checks and Astra's final P1/P2 re-review reported no remaining finding
-for this boundary. The earlier owner callback observation showed signed in as `jtmb`, but may be
-stale after the current deployment; the new session auth result is unverified. This does not
-complete the owner passkey/data checks or invited-user release gate. A subsequent source fix at
+for this boundary. The earlier owner callback observation is historical; E51 records the final live
+sign-in recovery. This does not complete the owner passkey/data checks or invited-user release gate.
+A subsequent source fix at
 commit `a1d868287a729c75d9b8628f612a856db132374a` handles a stale/expired provisional session that
 returned `authenticated:false` and left the passkey page at `Checking your session`; build/typecheck,
-`28` frontend tests, and browser `4/4` passed locally. The fix is source-reviewed but not deployed
-yet; the deployed revision remains the 11fa origin-repair image.
+`28` frontend tests, and browser `4/4` passed locally. The fix is source-reviewed and included in
+the final clean-main image.
 Independent Luna QA passed Terraform format/validate, `31` scoped infrastructure tests, and
 `git diff --check` at the dirty reviewed revision. The earlier review recorded an import-order
 finding in the Terraform test; final scoped QA passed all four Ruff checks, so that finding is
 historical. The full Linode validator exits `2` on a deliberately dirty worktree. The earlier
 Cloudflare token verification `401` and documentation-coverage **Fail** remain historical evidence. The OAuth
-authorization and Access code steps completed in the earlier browser session; tab 13 showed signed
-in as `jtmb`, but may be stale. The new session auth result is unverified, while owner passkey and
+authorization and Access code steps completed in the earlier browser session. The final live session
+returned to the signed-in passkey-enrollment page, but no ceremony completed; owner passkey and
 owner saved-data checks remain **Unavailable/Pending**. The owner-only canary is active, but the
 invited-user route and retirement of legacy Linode `97934478` remain pending; the old VM and current
 local application are untouched.

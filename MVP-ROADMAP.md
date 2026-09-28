@@ -249,12 +249,13 @@ VM does not build source.
 
 - **Status:** **In progress**; implementation, private infrastructure apply, the auth-UI repair,
   remote image deployment, the declared recovery rehearsal, and the restricted owner-only canary
-  are recorded. The current deployed origin-navigation image is reviewed commit
-  `11faaf702129d0c1485a8683711d88340f623a71`; the release archive and image identity were
+  are recorded. The final clean-main image is revision
+  `2de5e9f199cd145707f95e81d389c40b2ab3c32a`; the release archive and image identity were
   re-verified, and the remote status is healthy, schema `8`, and loopback-only with a pre-deploy
-  backup. The earlier tab 13 showed signed in as `jtmb` before this deployment, but may be stale;
-  the new in-app-browser auth result is unverified. Owner passkey and saved-data checks, invited-user
-  exposure, and legacy host retirement remain pending.
+  backup. An expired-session reload showed `Sign in first` and `Open sign in` and hid `Create
+  passkey`; continuing with GitHub returned to `/passkey?mode=enroll&next=/overview` showing
+  `Signed in as jtmb` and `Create passkey`, but no passkey ceremony was completed. Owner passkey and
+  saved-data checks, invited-user exposure, and legacy host retirement remain pending.
 - **Owner/phase:** implementation/security repair, `ASTRA` medium review, independent
   `LUNA MAX QA` browser/deployment checks, and `LUNA MAX docs` reconciliation.
 - **Dependencies:** `R-ASTRA-100` is complete for its declared UI scope; current source schema is
@@ -265,11 +266,11 @@ VM does not build source.
   was deployed privately with the app loopback-only; the VM Backup recovery rehearsal passed for
   its declared scope; and the restricted Cloudflare canary is active. It served the new passkey
   text and unauthenticated Cloudflare traffic returned `302`, but the browser requested a nearby
-  phone/Bluetooth credential and no completed credential was observed. A source-reviewed
+  phone/Bluetooth credential and no completed credential was observed. The source-reviewed
   session-recovery fix at `a1d868287a729c75d9b8628f612a856db132374a` passed local build/typecheck,
-  `28` frontend tests, and browser `4/4`, but is not deployed yet. Earlier Luna evidence
-  records Cloudflare token verification HTTP `401` and documentation-coverage **Fail**. No public
-  invited-user route or production release checkpoint is claimed.
+  `28` frontend tests, and browser `4/4`, and is included in the final clean-main image. Earlier
+  Luna evidence records Cloudflare token verification HTTP `401` and documentation-coverage **Fail**.
+  No public invited-user route or production release checkpoint is claimed.
 
 | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
 | --- | --- | --- | --- |
@@ -323,21 +324,23 @@ VM does not build source.
 | `R-ASTRA-101-E48` | Current-status callback reconciliation and final authored-documentation checks before the later origin-navigation deployment. | Native x86_64 Linux; observed `2026-09-28T04:10:35Z`; dirty `HEAD` `39bd185150cd3df70395e6c000f568dfd20831ac`; same validator, coverage, self-test, scoped diff-check, and tracked-email scan commands as E47. | **Pass** for that documentation checkpoint: documentation validation reported 9 categories, 13 topics, and 7 project skill governance entries; coverage checked 133 mapped files; self-test passed 26 cases; scoped diff-check exited 0; and no tracked owner-email literal was found. The then-current browser session showed the owner callback and signed-in page; E38 remained historical and passkey/data checks remained pending. The later deployment supersedes that session observation; see E49. Reviewer `LUNA MAX docs`. |
 | `R-ASTRA-101-E49` | Scoped origin-navigation repair, private image deployment, and fresh browser boundary check. | Native x86_64; reviewed commit `11faaf702129d0c1485a8683711d88340f623a71`; publisher SHA-256 `fad471b19db6ff4f9b4dc154055f0d2437128e49878e72a286b697f17e8a3f48`; image ID `sha256:26df706f6a2b4e76ee51bb014f94d39eb66bc7644a2c7a56eb3d012f41684d60`; MCP plan `530c1c65a7b4563e9c7f1cdbf5a47a3d`; pre-deploy backup `pre-deploy-11faaf702129d0c1-d1c03381.spbackup`; exact UTC and artifacts were not supplied. | **Pass** for the scoped repair/deployment checks: `tests/test_api.py`, `tests/test_auth.py`, focused tests, Ruff, security checks, and format checks passed; Astra reported no P1/P2; the MCP deploy reported ready schema `8`, no failure, and loopback-only. An external hyperlink from localhost:8765 to `https://ledger.jtmb.cc/passkey` loaded the HTML page instead of the prior `origin_rejected` JSON response. The new IAB tab's auth result was not verified, and tab 13's prior signed-in state may be stale; no current passkey or saved-data access is claimed. |
 | `R-ASTRA-101-E50` | Stale-session passkey recovery repair in the source tree. | Native x86_64; source commit `a1d868287a729c75d9b8628f612a856db132374a`; exact UTC and artifacts were not supplied. | **Pass** for local source/UI scope: a stale or expired provisional session returned `authenticated:false` and left the passkey page at `Checking your session`; the repair presents sign-in recovery. Build/typecheck and `28` frontend tests passed, and desktop/mobile browser checks passed `4/4`. The fix is source-reviewed and locally tested but **not deployed**; no new remote auth, passkey, or saved-data result is claimed. |
+| `R-ASTRA-101-E51` | Final clean-main private image deployment and live expired-session sign-in recovery. | Native x86_64; clean-main revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`; archive SHA-256 `b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`; image ID `sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`; retry MCP plan `2d8b0fe91ed01b55f1625c27edcc620b`; first plan failed transiently as `remote_operation_failed`; exact UTC/artifacts were not supplied. | **Pass** for private deployment and recovery navigation: retry plan passed, deploy returned deployed/readiness schema `8`, and status reported the current revision, `failed: null`, `loopback_only: true`, with pre-deploy backup `pre-deploy-2de5e9f199cd1457-751c7459.spbackup`. Live IAB reload showed `Sign in first`/`Open sign in` and hid `Create passkey`; opening sign-in and continuing with GitHub returned to `/passkey?mode=enroll&next=/overview`, showed `Signed in as jtmb`, and showed `Create passkey`. No passkey ceremony or saved-data check was completed; owner passkey enrollment and saved-data verification remain pending. |
 
 `R-ASTRA-101` remains **In progress**. The external steps have created the provider access items,
 applied the replacement infrastructure, published and re-verified the current release archive,
 deployed the reviewed image privately through the typed MCP, completed the declared recovery
 rehearsal, and activated the restricted owner-only canary. The current auth-UI repair, privacy P2
-repair, final scoped QA, and Astra reviews are complete for their declared scopes. The previous
-owner callback observation showed the page signed in as `jtmb`, but that tab may be stale after the
-current deployment; the new session auth result is unverified. Owner passkey and saved-data checks,
-invited-user exposure, and legacy-host retirement remain pending. The historical
+repair, final scoped QA, and Astra reviews are complete for their declared scopes. E49 and E50
+remain historical scoped records; E51 records the final deployment and live sign-in recovery. The
+session returned to the signed-in passkey-enrollment page, but no passkey ceremony or saved-data
+check was completed. Owner passkey and saved-data checks, invited-user exposure, and legacy-host
+retirement remain pending. The historical
 R-ASTRA-100 aggregate remains separately recorded and is not relabeled by E12. The Cloudflare
 token-verification `401`, earlier documentation-coverage failure, historical callback-code/browser
 limitation, current-session auth unavailability, owner passkey/data-check unavailability, and fresh
-Codex-client approval-policy limitation remain visible; the origin-navigation repair and official
-SDK plan/deploy pass are recorded in E49 and E45. The not-yet-deployed session-recovery source fix
-is recorded in E50. No secret, token, key, owner email, private path, or public hostname belongs in
+Codex-client approval-policy limitation remain visible; the origin-navigation repair is recorded
+in E49, the source/UI repair in E50, and the final deployment in E51. No secret, token, key, owner
+email, private path, or public hostname belongs in
 tracked roadmap prose.
 
 All Ponytail references in the status and receipt sections below are historical, overengineering-

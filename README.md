@@ -226,7 +226,7 @@ new passkey text with Cloudflare unauthenticated traffic returning `302`. The ea
 signed in as `jtmb` before this deployment, but may be stale; the new in-app-browser auth result was
 not verified. Owner passkey enrollment and owner saved-data verification remain pending because the
 browser requested a nearby phone/Bluetooth credential and no completed credential was observed. The
-current origin-navigation repair is reviewed at commit
+prior origin-navigation repair was reviewed at commit
 `11faaf702129d0c1485a8683711d88340f623a71`; its release publisher SHA-256 is
 `fad471b19db6ff4f9b4dc154055f0d2437128e49878e72a286b697f17e8a3f48` and image ID is
 `sha256:26df706f6a2b4e76ee51bb014f94d39eb66bc7644a2c7a56eb3d012f41684d60`. MCP plan
@@ -236,8 +236,19 @@ instead of the prior `origin_rejected` JSON. This verifies navigation only; it d
 current authentication, passkey enrollment, or saved-data access. A subsequent source fix at
 commit `a1d868287a729c75d9b8628f612a856db132374a` handles stale/expired provisional sessions that
 returned `authenticated:false` and left the passkey page at `Checking your session`; build/typecheck,
-`28` frontend tests, and browser `4/4` passed. It is source-reviewed and locally tested but not
-deployed yet. The
+`28` frontend tests, and browser `4/4` passed. It is source-reviewed and locally tested and is
+included in the final clean-main image below. The final private clean-main deployment uses revision
+`2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
+`b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, and image ID
+`sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`. The first MCP plan
+failed transiently with `remote_operation_failed` while the canary remained healthy; retry plan
+`2d8b0fe91ed01b55f1625c27edcc620b` passed, and MCP deploy returned deployed/readiness schema `8`.
+Status reported the current revision, `failed: null`, `loopback_only: true`, and pre-deploy backup
+`pre-deploy-2de5e9f199cd1457-751c7459.spbackup`. A live in-app-browser reload with an expired
+session showed `Sign in first` and `Open sign in` and hid `Create passkey`; opening sign-in and
+continuing with GitHub returned to `/passkey?mode=enroll&next=/overview`, showed `Signed in as jtmb`,
+and showed `Create passkey`. No passkey ceremony was completed; owner passkey enrollment and
+saved-data verification remain pending. The
 invited-user route and retirement of the legacy Linode remain pending, so this is not a production
 release claim. See
 [Getting started](docs/operations/getting-started.md)

@@ -11,20 +11,28 @@ production image binds the app to the host loopback interface, uses GitHub's aut
 flow plus a passkey, and keeps SQLite on a private persistent volume. The recovery rehearsal has
 passed for its declared scope, and the restricted owner-only canary is active behind Cloudflare
 Access; invited-user exposure remains closed until owner passkey and saved-data checks and the
-remaining security gates are complete. The current private image is reviewed commit
-`11faaf702129d0c1485a8683711d88340f623a71`, deployed through the typed MCP with a verified
-release archive and image identity; status is healthy, schema `8`, and loopback-only. A later
+remaining security gates are complete. The final private clean-main image is revision
+`2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
+`b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, and image ID
+`sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`; a fixed typed-MCP
+retry plan `2d8b0fe91ed01b55f1625c27edcc620b` passed after the first plan failed transiently with
+`remote_operation_failed`. Deploy returned deployed/readiness schema `8`; status reported the
+current revision, `failed: null`, `loopback_only: true`, and pre-deploy backup
+`pre-deploy-2de5e9f199cd1457-751c7459.spbackup`. A later
 privacy review found a P2 caused by the configured owner email reaching an embedded process
 argument. The private-file repair is complete, scoped QA passed, and Astra's final source review
 reported no P1/P2 after its `409` guidance finding was repaired. An earlier tab 13 showed signed in
-as `jtmb` before the current deployment, but may be stale; the new in-app-browser auth result is
-unverified. Owner passkey enrollment remains unavailable because the browser requested a nearby
-phone/Bluetooth credential without observing a completed credential. The current origin-navigation
-repair loaded the canary HTML page instead of the prior `origin_rejected` JSON response; it does
-not establish current authentication or saved-data access. A subsequent source-reviewed fix at
+as `jtmb` before the prior deployment, but that observation is historical. The final live
+in-app-browser reload with an expired session showed `Sign in first` and `Open sign in` and hid
+`Create passkey`; opening sign-in and continuing with GitHub returned to
+`/passkey?mode=enroll&next=/overview`, showed `Signed in as jtmb`, and showed `Create passkey`.
+No passkey ceremony or saved-data check was completed. The prior origin-navigation repair loaded the
+canary HTML page instead of the prior `origin_rejected` JSON response; that E49 result does not
+establish current authentication or saved-data access. A subsequent source-reviewed fix at
 commit `a1d868287a729c75d9b8628f612a856db132374a` handles stale/expired provisional sessions that
 returned `authenticated:false` and left the passkey page at `Checking your session`; local
-build/typecheck, `28` frontend tests, and browser `4/4` passed, but the fix is not deployed yet.
+build/typecheck, `28` frontend tests, and browser `4/4` passed, and the fix is included in the final
+image. Owner passkey enrollment and saved-data verification remain pending.
 
 The model protects account identity, owner-scoped research history, forecast provenance, local
 filesystem locations, backup authenticity, and process availability from accidental corruption and

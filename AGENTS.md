@@ -281,7 +281,7 @@ open.
   observed. The earlier callback-blocked observation is retained as historical evidence in E38.
   Public invited-user mode and retirement of legacy Linode `97934478` remain pending. No public
   invited-user route or production release is claimed.
-- The current scoped origin-navigation repair is reviewed at commit
+- The prior scoped origin-navigation repair was reviewed at commit
   `11faaf702129d0c1485a8683711d88340f623a71`. The publisher SHA-256 is
   `fad471b19db6ff4f9b4dc154055f0d2437128e49878e72a286b697f17e8a3f48`, image ID is
   `sha256:26df706f6a2b4e76ee51bb014f94d39eb66bc7644a2c7a56eb3d012f41684d60`, and official MCP
@@ -296,8 +296,19 @@ open.
   stale/expired provisional session that returned `authenticated:false` and left the passkey page
   at `Checking your session` by presenting sign-in recovery. Build/typecheck and `28` frontend
   tests passed, and the desktop/mobile browser checks passed `4/4`; the fix is source-reviewed and
-  locally tested but is **not deployed yet**. The deployed revision remains the 11fa origin-repair
-  image until the documentation checkpoint is committed and published.
+  locally tested and is included in the final clean-main image below.
+- The final private clean-main deployment uses revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`,
+  archive SHA-256 `b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, and image ID
+  `sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`. The first MCP plan
+  failed transiently with `remote_operation_failed` while the canary remained healthy; fixed typed
+  helper retry plan `2d8b0fe91ed01b55f1625c27edcc620b` passed. MCP deploy returned deployed/readiness
+  schema `8`; status reported the current revision, `failed: null`, `loopback_only: true`, and
+  pre-deploy backup `pre-deploy-2de5e9f199cd1457-751c7459.spbackup`. A live in-app-browser reload
+  with an expired session showed `Sign in first` and `Open sign in` and hid `Create passkey`; after
+  opening sign-in and continuing with GitHub, it returned to `/passkey?mode=enroll&next=/overview`,
+  showed `Signed in as jtmb`, and showed `Create passkey`. No passkey ceremony was completed, so
+  owner passkey enrollment and saved-data verification remain **Unavailable/Pending**. This is
+  private canary evidence and does not authorize invited-user exposure or claim a public release.
 
 ## Repository truth
 
