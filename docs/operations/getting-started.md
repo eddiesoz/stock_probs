@@ -214,7 +214,9 @@ and verify the pre-migration backup when the imported database advances schema, 
 checksum-pinned migrations, verify a current-schema backup, and require readiness with the image's
 schema. The R-ASTRA-102 candidate advances the additive auth schema to schema 9. Luna's ops QA
 covered the local fixture paths; the prior private host run verified schema-8 readiness and
-preserved the migrated counts. No schema-9 TOTP image has been deployed or live-verified yet. The
+preserved the migrated counts. The reviewed schema-9 image is now deployed and live-verified at the
+Cloudflare boundary, while owner TOTP enrollment and authenticated-browser data access remain
+unavailable. The
 repaired recovery rehearsal passed its declared
 scope after restoring a disposable clone, checking the app, database, firewall, SSH, loopback, and
 tunnel-disabled boundaries, then deleting the clone and confirming that its API lookup returned
@@ -329,10 +331,21 @@ The current local `R-ASTRA-102` gate **Passed** for its declared scope. Receipt
 passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28` frontend
 tests, and documentation coverage. The earlier aggregate failure remains visible as historical
 evidence: four legacy schema expectation tests still expected versions 1 through 8 and coverage was
-84.88%. No image publication, live schema-9 deployment, live TOTP sign-in, or physical
-authenticator-device verification is claimed yet. Keep the Cloudflare public route on the existing
-deployment until release publication, migration backup, typed-MCP deploy, readiness check, and live
-boundary verification are complete.
+84.88%. Post-deploy evidence records reviewed revision
+`403cd79b08f90b49603cec3152b4f1e07b91d730` pushed with exact `origin/main` matching, release archive
+SHA-256 `811229e8355679f08d1a0857426cbec3526cee492417e50a5f9fe760e98894f4`, and a verified publisher
+re-download. The Linux/amd64 image is `103146866` bytes with ID
+`sha256:76283822fb01ba19ead18037d3396b81db5c804e41d0203dfbaae04c3c3abb8f`. Restricted MCP plan
+`5b757cb6e2cb2b8d97b85613a4b5504b` deployed it; inspect/status reported schema `9`, `ready`,
+`loopback_only: true`, verified pre-deploy backup
+`pre-deploy-403cd79b08f90b49-3055603f.spbackup`, deployment
+`2026-09-28T20:28:26.839271+00:00`, and no failed release. Live Cloudflare HTTP at `20:29:04Z`
+returned health `200`, auth status `200`, `/authenticator` `200`, `/overview` `303`, and
+`/api/v1/history` `401`, all `no-store`/`DYNAMIC`. The IAB reached the one-time legacy-passkey
+migration route for owner `jtmb`; the button remained `Waiting for passkey…`, reloading cancelled
+it, and sign-out returned to `/sign-in`. Owner TOTP enrollment, live mobile sign-in, and
+authenticated-browser saved-data access remain **Unavailable**. Keep the route under the existing
+invite-only boundary until those owner checks are directly observed.
 
 Application backups remain signed and verified. Linode VM Backups are enabled, and successful
 snapshot `385239936` is available. The first disposable restore attempt **Failed**: clone

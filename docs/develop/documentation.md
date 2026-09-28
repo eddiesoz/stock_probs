@@ -172,9 +172,20 @@ Astra's security re-review are recorded in the root plan. The current local gate
 declared scope: receipt `test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json` reports
 `704` Python tests passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and
 `28` frontend tests, and documentation coverage. The earlier aggregate failure remains visible as
-historical evidence: four stale schema expectations and 84.88% coverage. No image publication,
-live schema-9 TOTP deploy, physical authenticator-device check, or browser-rendered owner acceptance
-is claimed. Documentation validation remains a documentation gate, not a release or security
+historical evidence: four stale schema expectations and 84.88% coverage. The reviewed app revision
+`403cd79b08f90b49603cec3152b4f1e07b91d730` was committed and pushed with exact `origin/main`
+matching. Its GitHub Release archive SHA-256 is
+`811229e8355679f08d1a0857426cbec3526cee492417e50a5f9fe760e98894f4`, and publisher re-download
+verification passed. The Linux/amd64 image is `103146866` bytes with ID
+`sha256:76283822fb01ba19ead18037d3396b81db5c804e41d0203dfbaae04c3c3abb8f`; restricted MCP plan
+`5b757cb6e2cb2b8d97b85613a4b5504b` deployed it, with inspect/status schema `9`, `ready`,
+`loopback_only: true`, and verified pre-deploy backup
+`pre-deploy-403cd79b08f90b49-3055603f.spbackup`. Live Cloudflare probes returned the recorded
+health/auth/authenticator `200`, sign-in redirect `303`, and private-history `401` responses with
+`no-store`/`DYNAMIC`. The IAB reached the one-time legacy-passkey migration route; its button
+remained `Waiting for passkey…`, reloading cancelled it, and sign-out returned to `/sign-in`.
+Owner TOTP enrollment, live mobile sign-in, and browser-rendered saved-data access remain
+**Unavailable**. Documentation validation remains a documentation gate, not a release or security
 acceptance.
 
 Authored guides live under `docs/` in task-oriented categories. Every page has `title` and

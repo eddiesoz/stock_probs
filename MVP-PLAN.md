@@ -239,10 +239,12 @@ step-up, a verified backup, matching account-security state, maintenance seriali
 revocation. Ownership and opaque-session controls remain unchanged.
 
 The additive migration is schema 9 and preserves the prior owner-scoped research data. The local
-implementation and scoped QA are recorded here while deployment remains pending.
+implementation, scoped QA, and post-deploy receipt are recorded here. Live owner TOTP completion
+remains pending.
 
-- **Status:** **In progress**. No live schema-9 deployment, live TOTP sign-in, or physical
-  authenticator-device verification is claimed.
+- **Status:** **In progress**. The reviewed schema-9 image is deployed and the live Cloudflare
+  boundary is responding, but owner TOTP enrollment/sign-in, authenticated browser access to saved
+  owner data, and physical authenticator-device verification remain **Unavailable**.
 - **Owner/phase:** implementation/security repair; independent `LUNA MAX QA`; `ASTRA` medium
   security review; `LUNA MAX docs` reconciliation; coordinator release and deployment follow-up.
 - **Scoped QA evidence:** independent QA passed 19 authentication checks, 8 repository checks, 6
@@ -255,14 +257,21 @@ implementation and scoped QA are recorded here while deployment remains pending.
   declared scope: `704` Python tests passed, `4` live tests were deselected, coverage was `85.10%`,
   frontend typecheck/build and `28` frontend tests passed, and documentation coverage passed. The
   earlier aggregate failure remains visible as historical evidence: four legacy schema expectations
-  still expected versions 1 through 8 and coverage was 84.88%. This local receipt does not establish
-  image publication, schema-9 remote deployment, live TOTP sign-in, or physical
-  authenticator-device verification.
-- **Deployment boundary:** the existing schema-8 passkey deployment is historical. Complete the
-  final local gate, clean reviewed-main release publication, schema-9 pre-migration/current backups,
-  typed-MCP deploy and readiness checks, and live boundary verification before changing the public
-  route. Preserve the owner data and leave physical-device and browser-rendered acceptance as
-  **Unavailable** until directly observed.
+  still expected versions 1 through 8 and coverage was 84.88%.
+- **Post-deploy receipt:** reviewed app revision `403cd79b08f90b49603cec3152b4f1e07b91d730` was
+  committed and pushed with exact `origin/main` matching. The GitHub Release archive SHA-256 is
+  `811229e8355679f08d1a0857426cbec3526cee492417e50a5f9fe760e98894f4`; publisher re-download was
+  verified. The Linux/amd64 image is `103146866` bytes with ID
+  `sha256:76283822fb01ba19ead18037d3396b81db5c804e41d0203dfbaae04c3c3abb8f`. Restricted MCP plan
+  `5b757cb6e2cb2b8d97b85613a4b5504b` deployed it; inspect/status reported schema `9`, `ready`,
+  `loopback_only: true`, verified pre-deploy backup
+  `pre-deploy-403cd79b08f90b49-3055603f.spbackup`, deployment
+  `2026-09-28T20:28:26.839271+00:00`, and no failed release. Live Cloudflare HTTP at `20:29:04Z`
+  returned health `200`, auth status `200`, `/authenticator` `200`, `/overview` `303` to sign-in,
+  and `/api/v1/history` `401`, all `no-store`/`DYNAMIC`. The live IAB reached the one-time
+  legacy-passkey migration route for owner `jtmb`; the button remained `Waiting for passkey…`,
+  reloading cancelled it, and sign-out returned to `/sign-in`. Owner TOTP enrollment, live mobile
+  sign-in, and authenticated-browser saved-data access remain **Unavailable**.
 
 ## Historical authentication and production deployment follow-on (`R-ASTRA-101`)
 

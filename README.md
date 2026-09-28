@@ -195,9 +195,22 @@ Signal Ledger does not create new passkeys in this mode.
 The R-ASTRA-102 implementation and its scoped QA are in the local worktree. The current local gate
 passed: receipt `test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json` reports `704`
 Python tests passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28`
-frontend tests, and documentation coverage. Image publication and schema-9 production deployment
-remain pending. The schema-8 passkey deployment receipts below remain historical evidence and are
-not current TOTP deployment evidence.
+frontend tests, and documentation coverage. The reviewed app revision
+`403cd79b08f90b49603cec3152b4f1e07b91d730` was committed and pushed with exact `origin/main`
+matching at release time. Its GitHub Release archive SHA-256 is
+`811229e8355679f08d1a0857426cbec3526cee492417e50a5f9fe760e98894f4`; publisher re-download
+verification passed. The Linux/amd64 image is `103146866` bytes with ID
+`sha256:76283822fb01ba19ead18037d3396b81db5c804e41d0203dfbaae04c3c3abb8f`. Restricted MCP plan
+`5b757cb6e2cb2b8d97b85613a4b5504b` deployed it, and inspect/status reported schema `9`, `ready`,
+`loopback_only: true`, and verified pre-deploy backup
+`pre-deploy-403cd79b08f90b49-3055603f.spbackup` at
+`2026-09-28T20:28:26.839271+00:00`, with no failed release. Live Cloudflare probes at `20:29:04Z`
+returned health `200`, auth status `200`, `/authenticator` `200`, `/overview` `303`, and
+`/api/v1/history` `401`, all `no-store`/`DYNAMIC`. The live IAB reached the one-time legacy-passkey
+migration route for owner `jtmb`; the button remained `Waiting for passkey…`, reloading cancelled
+it, and sign-out returned to `/sign-in`. Owner TOTP enrollment, live mobile sign-in, and
+authenticated-browser saved-data access remain **Unavailable**. The schema-8 passkey deployment
+receipts below remain historical evidence and are not current TOTP deployment evidence.
 
 ### Authenticator setup and recovery
 

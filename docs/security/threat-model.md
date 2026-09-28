@@ -21,8 +21,10 @@ legacy host; functional owner/invited-user acceptance remains pending. E60 recor
 current-machine browser passkey/sign-out limitation; E61 records the locally accepted logout and
 mode-aware passkey repair with independent QA, and E62 records the passing full local gate. E63
 records the current image deployment and public probes; E64 records Astra's no-P1/P2 live read-only
-review. Independently completed TOTP deployment, browser-rendered owner workspace, live second-user
-onboarding, and physical authenticator-device evidence remain **Unavailable** for R-ASTRA-102.
+review. R-ASTRA-102's reviewed schema-9 image is now deployed through the restricted MCP and the
+Cloudflare boundary probes pass, but browser-rendered owner workspace, completed owner TOTP
+enrollment/sign-in, live second-user onboarding, authenticated-browser saved-data access, and
+physical authenticator-device evidence remain **Unavailable**.
 The earlier private
 clean-main image is revision
 `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
@@ -88,9 +90,21 @@ The current local `R-ASTRA-102` gate **Passed** for its declared scope. Receipt
 passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28` frontend
 tests, and documentation coverage. The earlier aggregate failure remains visible as historical
 evidence: four legacy schema expectation tests still expected versions 1 through 8 and aggregate
-coverage was 84.88%. No image publication, live schema-9 deployment, live TOTP sign-in, or physical
-authenticator-device verification is claimed. The existing schema-8 passkey deployment evidence
-above is historical and must not be used as TOTP acceptance evidence.
+coverage was 84.88%. Post-deploy evidence records revision
+`403cd79b08f90b49603cec3152b4f1e07b91d730` pushed with exact `origin/main` matching, release archive
+SHA-256 `811229e8355679f08d1a0857426cbec3526cee492417e50a5f9fe760e98894f4`, verified publisher
+re-download, and Linux/amd64 image ID
+`sha256:76283822fb01ba19ead18037d3396b81db5c804e41d0203dfbaae04c3c3abb8f` (`103146866` bytes).
+Restricted MCP plan `5b757cb6e2cb2b8d97b85613a4b5504b` deployed it; inspect/status reported schema
+`9`, `ready`, `loopback_only: true`, verified pre-deploy backup
+`pre-deploy-403cd79b08f90b49-3055603f.spbackup`, and no failed release. Live Cloudflare HTTP at
+`20:29:04Z` returned health `200`, auth status `200`, `/authenticator` `200`, `/overview` `303`,
+and `/api/v1/history` `401`, all `no-store`/`DYNAMIC`. The IAB reached the one-time legacy-passkey
+migration route for owner `jtmb`; the button remained `Waiting for passkey…`, reloading cancelled
+it, and sign-out returned to `/sign-in`. Owner TOTP enrollment, live mobile sign-in, authenticated-
+browser saved-data access, and physical authenticator-device verification remain **Unavailable**.
+The existing schema-8 passkey deployment evidence above is historical and must not be used as TOTP
+acceptance evidence.
 
 The model protects account identity, owner-scoped research history, forecast provenance, local
 filesystem locations, backup authenticity, and process availability from accidental corruption and

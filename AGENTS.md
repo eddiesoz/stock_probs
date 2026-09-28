@@ -125,8 +125,9 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 `R-ASTRA-102` is the current in-progress authenticator-only authentication and production deployment
 follow-on. `R-ASTRA-101` remains the historical passkey deployment record and is not current auth
 guidance. The local implementation has schema 9, and the current local gate passed for its declared
-scope. Image publication, schema-9 deployment, live TOTP sign-in, and physical authenticator-device
-verification remain pending or **Unavailable** until their evidence is recorded.
+scope. The reviewed image is now published and deployed with the post-deploy receipt below. Live
+TOTP enrollment/sign-in, authenticated browser access to owner data, and physical
+authenticator-device verification remain **Unavailable**.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The three provider access items were created privately, Terraform
@@ -189,8 +190,24 @@ open.
   tests passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28`
   frontend tests, and documentation coverage. The earlier aggregate failure remains visible as
   historical evidence: four legacy schema expectations still expected versions 1 through 8 and
-  coverage was 84.88%. This local receipt does not establish image publication, schema-9 remote
-  deployment, live TOTP sign-in, or physical authenticator-device verification.
+  coverage was 84.88%.
+- Post-deploy receipt: reviewed app revision `403cd79b08f90b49603cec3152b4f1e07b91d730` was
+  committed and pushed, with exact `origin/main` matching at the time of release. The GitHub Release
+  archive SHA-256 is `811229e8355679f08d1a0857426cbec3526cee492417e50a5f9fe760e98894f4`; its
+  publisher re-download was verified. The Linux/amd64 image is `103146866` bytes with ID
+  `sha256:76283822fb01ba19ead18037d3396b81db5c804e41d0203dfbaae04c3c3abb8f`. Restricted MCP plan
+  `5b757cb6e2cb2b8d97b85613a4b5504b` then deployed it; inspect/status reported schema `9`, `ready`,
+  `loopback_only: true`, verified pre-deploy backup
+  `pre-deploy-403cd79b08f90b49-3055603f.spbackup`, deployment
+  `2026-09-28T20:28:26.839271+00:00`, and no failed release.
+- Live Cloudflare HTTP at `20:29:04Z` returned health `200`, auth status `200`,
+  `/authenticator` `200`, `/overview` `303` to sign-in, and `/api/v1/history` `401`; responses were
+  `no-store`/`DYNAMIC`. The live IAB displayed `authenticator app code required`; after Continue
+  with GitHub, owner `jtmb` reached a provisional session at
+  `/passkey?mode=verify&next=/authenticator?mode=enroll...`, the one-time legacy-passkey migration
+  route. The button remained `Waiting for passkey…`; reloading cancelled it and sign-out returned
+  to `/sign-in`. Passkey verification remained **Unavailable**. Owner TOTP enrollment, live mobile
+  sign-in, and saved owner data through an authenticated browser remain **Unavailable**.
 
 ### Historical secure production follow-on (`R-ASTRA-101`)
 
