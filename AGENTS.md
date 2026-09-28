@@ -256,7 +256,7 @@ open.
   `infra/linode/validate.sh` exits `2` on the intentionally dirty worktree. These checks are
   scoped historical QA, not a clean release or production acceptance result; the later
   current-revision QA is recorded below.
-- The current private auth-UI repair and deployment use reviewed commit
+- The earlier private auth-UI repair and deployment used reviewed commit
   `39bd185150cd3df70395e6c000f568dfd20831ac`. Frontend build, typecheck, and `28` tests passed;
   pinned Playwright desktop/mobile checks passed `2/2`; independent Luna QA passed `9/9` auth
   contract checks, `2/2` click checks, and simulated passkey-cancellation checks on desktop and
@@ -267,17 +267,37 @@ open.
   publisher re-download. Official Python SDK MCP plan `a07bb7ba2716899bef956269495f0a47` and
   deploy passed to the replacement Linode; status is healthy, schema `8`, loopback-only, with a
   pre-deploy backup present. The owner-only canary served the new passkey text and Cloudflare
-  unauthenticated traffic returned `302`. Owner passkey enrollment and saved-data verification
-  remain **Unavailable/Pending** because the browser requested a nearby phone/Bluetooth credential
-  and no completed credential was observed. No invited-user route or production release is claimed.
+  unauthenticated traffic returned `302`. The earlier tab 13 showed signed in as `jtmb` before this
+  deployment, but may be stale. A fresh in-app-browser session did not produce a verified auth
+  result. Owner passkey enrollment and saved-data verification remain **Unavailable/Pending**;
+  the browser requested a nearby phone/Bluetooth credential and no completed credential was
+  observed. No invited-user route or production release is claimed.
 - The owner-only Cloudflare canary is applied for `ledger.jtmb.cc`, and the tunnel is healthy and
   active. The GitHub OAuth application authorization and Cloudflare Access one-time code flow
-  completed successfully; the owner page shows signed in as `jtmb`. Owner passkey enrollment and
-  the owner saved-data check remain **Unavailable/Pending** because the browser requested a nearby
-  phone/Bluetooth credential and no completed credential was observed. The earlier callback-blocked
-  observation is retained as historical evidence in E38. Public invited-user mode and retirement of
-  legacy Linode `97934478` remain pending. No public invited-user route or production release is
-  claimed.
+  completed successfully in the earlier browser session; tab 13 showed signed in as `jtmb` before
+  this deployment, but may be stale. The new in-app-browser session did not produce a verified auth
+  result. Owner passkey enrollment and the owner saved-data check remain **Unavailable/Pending**;
+  the browser requested a nearby phone/Bluetooth credential and no completed credential was
+  observed. The earlier callback-blocked observation is retained as historical evidence in E38.
+  Public invited-user mode and retirement of legacy Linode `97934478` remain pending. No public
+  invited-user route or production release is claimed.
+- The current scoped origin-navigation repair is reviewed at commit
+  `11faaf702129d0c1485a8683711d88340f623a71`. The publisher SHA-256 is
+  `fad471b19db6ff4f9b4dc154055f0d2437128e49878e72a286b697f17e8a3f48`, image ID is
+  `sha256:26df706f6a2b4e76ee51bb014f94d39eb66bc7644a2c7a56eb3d012f41684d60`, and official MCP
+  plan `530c1c65a7b4563e9c7f1cdbf5a47a3d` deployed a ready schema-8, loopback-only image with
+  pre-deploy backup `pre-deploy-11faaf702129d0c1-d1c03381.spbackup`; status reported no failure.
+  `tests/test_api.py` and `tests/test_auth.py`, focused tests, Ruff, security checks, and format
+  checks passed, and Astra reported no P1/P2. An external hyperlink from localhost:8765 to
+  `https://ledger.jtmb.cc/passkey` loaded the HTML page instead of the prior `origin_rejected`
+  JSON response. This verifies the navigation repair only; the new tab's auth result is unverified
+  and does not establish passkey enrollment or saved-data access.
+- A subsequent source fix at commit `a1d868287a729c75d9b8628f612a856db132374a` handles a
+  stale/expired provisional session that returned `authenticated:false` and left the passkey page
+  at `Checking your session` by presenting sign-in recovery. Build/typecheck and `28` frontend
+  tests passed, and the desktop/mobile browser checks passed `4/4`; the fix is source-reviewed and
+  locally tested but is **not deployed yet**. The deployed revision remains the 11fa origin-repair
+  image until the documentation checkpoint is committed and published.
 
 ## Repository truth
 

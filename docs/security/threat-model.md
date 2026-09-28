@@ -12,14 +12,19 @@ flow plus a passkey, and keeps SQLite on a private persistent volume. The recove
 passed for its declared scope, and the restricted owner-only canary is active behind Cloudflare
 Access; invited-user exposure remains closed until owner passkey and saved-data checks and the
 remaining security gates are complete. The current private image is reviewed commit
-`39bd185150cd3df70395e6c000f568dfd20831ac`, deployed through the typed MCP with a verified
+`11faaf702129d0c1485a8683711d88340f623a71`, deployed through the typed MCP with a verified
 release archive and image identity; status is healthy, schema `8`, and loopback-only. A later
 privacy review found a P2 caused by the configured owner email reaching an embedded process
 argument. The private-file repair is complete, scoped QA passed, and Astra's final source review
-reported no P1/P2 after its `409` guidance finding was repaired. The owner page shows signed in as
-`jtmb`. Owner passkey enrollment remains unavailable because the browser requested a nearby
-phone/Bluetooth credential without observing a completed credential; the earlier callback-blocked
-observation is historical.
+reported no P1/P2 after its `409` guidance finding was repaired. An earlier tab 13 showed signed in
+as `jtmb` before the current deployment, but may be stale; the new in-app-browser auth result is
+unverified. Owner passkey enrollment remains unavailable because the browser requested a nearby
+phone/Bluetooth credential without observing a completed credential. The current origin-navigation
+repair loaded the canary HTML page instead of the prior `origin_rejected` JSON response; it does
+not establish current authentication or saved-data access. A subsequent source-reviewed fix at
+commit `a1d868287a729c75d9b8628f612a856db132374a` handles stale/expired provisional sessions that
+returned `authenticated:false` and left the passkey page at `Checking your session`; local
+build/typecheck, `28` frontend tests, and browser `4/4` passed, but the fix is not deployed yet.
 
 The model protects account identity, owner-scoped research history, forecast provenance, local
 filesystem locations, backup authenticity, and process availability from accidental corruption and

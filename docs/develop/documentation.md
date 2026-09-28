@@ -150,13 +150,21 @@ continue to cover workflow/configuration changes; this page and the operations g
 authored coverage for the deployment scripts and tests.
 
 The current deployment reconciliation records the owner-only canary, recovery pass, and private
-deployment of reviewed commit `39bd185150cd3df70395e6c000f568dfd20831ac`. The release archive
-and image identity were re-verified, and the typed MCP plan/deploy reached a healthy schema-8
-loopback-only host. The auth UI repair and independent browser/auth checks passed, and the owner
-page shows signed in as `jtmb`. Owner passkey enrollment and saved-data verification remain
-unavailable because the browser requested a nearby phone/Bluetooth credential without observing a
-completed credential. Astra's final source
-review reported no remaining P1/P2 after repairing its `409` guidance finding. Documentation
+deployment of the prior auth-UI image at commit `39bd185150cd3df70395e6c000f568dfd20831ac`.
+The current origin-navigation image is reviewed commit `11faaf702129d0c1485a8683711d88340f623a71`;
+its release archive and image identity were re-verified, and the typed MCP plan/deploy reached a
+healthy schema-8 loopback-only host. The auth UI repair and independent browser/auth checks passed. The earlier tab
+13 showed signed in as `jtmb` before the current deployment, but may be stale; the new
+in-app-browser auth result is unverified. Owner passkey enrollment and saved-data verification
+remain unavailable because the browser requested a nearby phone/Bluetooth credential without
+observing a completed credential. The current origin-navigation repair loaded the canary HTML page
+instead of the prior `origin_rejected` JSON response; it does not establish current authentication
+or saved-data access. Astra's final source
+review reported no remaining P1/P2 after repairing its `409` guidance finding. A subsequent
+source-reviewed fix at commit `a1d868287a729c75d9b8628f612a856db132374a` handles stale/expired
+provisional sessions that returned `authenticated:false` and left the passkey page at `Checking
+your session`; build/typecheck, `28` frontend tests, and browser `4/4` passed locally. That fix is
+not deployed yet. Documentation
 validation remains a documentation gate, not a release or security acceptance.
 
 Authored guides live under `docs/` in task-oriented categories. Every page has `title` and

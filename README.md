@@ -213,7 +213,7 @@ Terraform keeps the Linode firewall and application ports closed to the public, 
 starts in a terminal-404 closed mode before the owner-only canary. The replacement host and
 reviewed image are deployed privately, and the canary hostname is routed through the active
 tunnel behind the configured owner Access policy with cache bypass. Direct port `8000` remains
-unreachable. The current private image is reviewed commit
+unreachable. The prior private image was reviewed commit
 `39bd185150cd3df70395e6c000f568dfd20831ac`, with release archive SHA-256
 `930d6d5b5d054908a25825c980584b620817bfa7ab212a62abd63f65c72f6f3f` and image ID
 `sha256:23ef16e4e5ee28db378c76bbcd9182345584bbffda55bd5313141fd0847fe31b`; publisher
@@ -222,10 +222,22 @@ loopback-only Linode with a pre-deploy backup. The auth UI repair passed fronten
 `28` tests, pinned Playwright desktop/mobile `2/2`, and independent Luna auth/passkey-cancellation
 checks; Astra reported no remaining P1/P2 after its `409` guidance repair. GitHub OAuth application
 authorization and the Access one-time-code flow completed, and the owner-only canary served the
-new passkey text with Cloudflare unauthenticated traffic returning `302`. The owner page now shows
-signed in as `jtmb`. Owner passkey enrollment and owner saved-data verification remain pending
-because the browser requested a nearby phone/Bluetooth credential and no completed credential was
-observed. The
+new passkey text with Cloudflare unauthenticated traffic returning `302`. The earlier tab 13 showed
+signed in as `jtmb` before this deployment, but may be stale; the new in-app-browser auth result was
+not verified. Owner passkey enrollment and owner saved-data verification remain pending because the
+browser requested a nearby phone/Bluetooth credential and no completed credential was observed. The
+current origin-navigation repair is reviewed at commit
+`11faaf702129d0c1485a8683711d88340f623a71`; its release publisher SHA-256 is
+`fad471b19db6ff4f9b4dc154055f0d2437128e49878e72a286b697f17e8a3f48` and image ID is
+`sha256:26df706f6a2b4e76ee51bb014f94d39eb66bc7644a2c7a56eb3d012f41684d60`. MCP plan
+`530c1c65a7b4563e9c7f1cdbf5a47a3d` deployed the ready schema-8 loopback-only image with a
+pre-deploy backup; an external link from localhost:8765 to the canary passkey path loaded HTML
+instead of the prior `origin_rejected` JSON. This verifies navigation only; it does not establish
+current authentication, passkey enrollment, or saved-data access. A subsequent source fix at
+commit `a1d868287a729c75d9b8628f612a856db132374a` handles stale/expired provisional sessions that
+returned `authenticated:false` and left the passkey page at `Checking your session`; build/typecheck,
+`28` frontend tests, and browser `4/4` passed. It is source-reviewed and locally tested but not
+deployed yet. The
 invited-user route and retirement of the legacy Linode remain pending, so this is not a production
 release claim. See
 [Getting started](docs/operations/getting-started.md)
