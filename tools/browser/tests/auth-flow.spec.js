@@ -25,3 +25,17 @@ test("GitHub sign-in opens the fixed same-origin OAuth start after status loads"
   await expect(page).toHaveURL(/\/api\/v1\/auth\/github\/start$/);
   expect(starts).toBe(1);
 });
+
+test("passkey enrollment offers sign-in when the session has expired", async ({ page }) => {
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ authenticated: false }),
+  }));
+
+  await page.goto("/passkey?mode=enroll&next=/overview");
+  await expect(page.getByRole("heading", { name: "Sign in first" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open sign in" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create passkey" })).toHaveCount(0);
+  await expect(page.getByText("Checking your session…")).toHaveCount(0);
+});

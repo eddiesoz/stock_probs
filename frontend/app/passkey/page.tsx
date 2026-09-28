@@ -22,7 +22,12 @@ export default function PasskeyPage() {
     setMode(query.get("mode") === "verify" ? "verify" : "enroll");
     setNextPath(safeLocalNext(query.get("next")));
     let active = true;
-    getAuthSession().then((value) => { if (active) setSession(value); }).catch((error) => { if (active) setMessage({ tone: "error", text: authErrorMessage(error) }); });
+    getAuthSession().then((value) => { if (active) setSession(value); }).catch((error) => {
+      if (active) {
+        setSession(null);
+        setMessage({ tone: "error", text: authErrorMessage(error) });
+      }
+    });
     return () => { active = false; };
   }, []);
 
@@ -52,16 +57,16 @@ export default function PasskeyPage() {
     <AuthShell eyebrow="Account security" title={title} description={description}>
       <section className={styles.authPanel} aria-labelledby="passkey-heading">
         <h2 id="passkey-heading">{mode === "enroll" ? "Protect this account" : "Confirm it’s you"}</h2>
-        <p className={styles.panelLead}>{session?.user ? `Signed in as ${session.user.name || session.user.login || "your account"}.` : "Checking your session…"}</p>
+        <p className={styles.panelLead}>{session?.authenticated && session.user ? `Signed in as ${session.user.name || session.user.login || "your account"}.` : session === undefined ? "Checking your session…" : "Sign in again to continue passkey setup."}</p>
         {session === undefined ? <p className={styles.loadingState} role="status">Checking account security…</p> : null}
-        {session === null ? <div className={styles.deniedState}><h2>Sign in first</h2><p>A passkey ceremony can only be attached to an active invitation or account session.</p><div className={styles.authLinks}><a href="/sign-in">Open sign in</a></div></div> : null}
-        {session?.authenticated ? <>
+        {session !== undefined && (!session?.authenticated || !session.user) ? <div className={styles.deniedState}><h2>Sign in first</h2><p>Your session may have ended. Sign in again, then create your passkey.</p><div className={styles.authLinks}><a href="/sign-in">Open sign in</a></div></div> : null}
+        {session?.authenticated && session.user ? <>
           <div className={styles.permissionBox}><div><strong>{mode === "enroll" ? "One device, one strong key" : "Fresh verification"}</strong><p>{mode === "enroll" ? "Use your device unlock, security key, or platform authenticator. You can add another passkey later from Account." : "Your browser will return to the workspace after the check succeeds."}</p></div></div>
           {mode === "enroll" ? <p className={styles.securityNote}>If your browser asks for Bluetooth, it is offering to use a nearby phone. Choose this device or a security key if available. Passkeys stay with your device or passkey manager; Signal Ledger cannot provide a downloadable key file.</p> : null}
           <button className="primary" type="button" onClick={runCeremony} disabled={busy}>{busy ? "Waiting for passkey…" : mode === "enroll" ? "Create passkey" : "Verify with passkey"}</button>
-          {message ? <p className={styles.authMessage} data-tone={message.tone} role={message.tone === "error" ? "alert" : "status"}>{message.text}</p> : null}
           <div className={styles.authLinks}><a href="/account">Manage account</a><a href={nextPath}>Return to workspace</a></div>
         </> : null}
+        {message ? <p className={styles.authMessage} data-tone={message.tone} role={message.tone === "error" ? "alert" : "status"}>{message.text}</p> : null}
       </section>
     </AuthShell>
   );
