@@ -61,7 +61,9 @@ test("auth routes cover invited sign-in, authenticator setup, retired passkey li
   assert.match(authenticator, /Manual setup key/);
   assert.match(authenticator, /otpauth_uri/);
   assert.match(authenticator, /recovery codes/i);
-  assert.doesNotMatch(authenticator, /qr-code|external QR/i);
+  assert.match(authenticator, /QRCode\.toDataURL\(enrollment\.otpauth_uri/);
+  assert.match(authenticator, /Scan with your authenticator app/);
+  assert.doesNotMatch(authenticator, /api\.qrserver|chart\.googleapis|external QR/i);
   assert.match(account, /auth\/sessions/);
   assert.match(account, /auth\/totp\/status/);
   assert.match(account, /Authenticator protected/);

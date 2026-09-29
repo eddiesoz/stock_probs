@@ -59,6 +59,10 @@
 .stepNumber{display:inline-flex;flex:0 0 1.55rem;align-items:center;justify-content:center;width:1.55rem;height:1.55rem;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:.72rem;font-weight:820}
 .enrollmentBox,.recoveryBox{display:grid;gap:.9rem}
 .stepLabel{display:flex;align-items:center;gap:.55rem;color:var(--text);font-size:.82rem;font-weight:760}
+.qrCard{display:grid;justify-items:center;gap:.7rem;padding:1rem;border:1px solid var(--edge);border-radius:9px;background:var(--panel-muted);text-align:center}
+.qrImage{display:block;width:min(240px,100%);height:auto;aspect-ratio:1;background:#fff;border:8px solid #fff;border-radius:5px;image-rendering:pixelated}
+.qrPlaceholder{display:grid;place-items:center;width:min(240px,100%);min-height:240px;border:1px dashed var(--edge);border-radius:5px;color:var(--muted);font-size:.76rem}
+.qrCard p{margin:0;color:var(--muted);font-size:.73rem;line-height:1.45}
 .secretCard{display:grid;gap:.35rem;padding:1rem;border:1px solid var(--edge);border-radius:9px;background:var(--panel-muted)}
 .secretLabel{color:var(--muted);font-size:.67rem;font-weight:780;letter-spacing:.08em;text-transform:uppercase}
 .secretCard code{overflow-wrap:anywhere;color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:clamp(1rem,3vw,1.25rem);font-weight:760;letter-spacing:.09em;line-height:1.35}
@@ -80,4 +84,4 @@
 @media(max-width:800px){.authMain{grid-template-columns:1fr;gap:1.5rem;padding-top:2.3rem}.authIntro{padding-top:0}.authIntro h1{font-size:clamp(2.7rem,12vw,4.2rem)}.widePanel{grid-column:auto}}
 @media(max-width:520px){.authHeader{min-height:66px}.headerNote{display:none}.authMain{padding-top:1.8rem}.authPanel{padding:1rem}.formGrid,.statGrid{grid-template-columns:1fr}.formGrid .full{grid-column:auto}.dataRow{align-items:flex-start;flex-direction:column}.dataRow button{width:100%}.authFooter{display:grid;gap:.25rem;margin-top:2.5rem}}
 @media(forced-colors:active){.authPanel,.dataRow,.stat,.permissionBox{border:2px solid CanvasText;background:Canvas;box-shadow:none}.authMessage,.deniedState{border:2px solid CanvasText;background:Canvas;color:CanvasText}.securityNote::before{background:CanvasText}}
-@media print{.authHeader{width:100%;padding:0}.authMain{display:block;width:100%;padding-top:1rem}.authIntro h1{font-size:2.5rem}.authPanel{margin-top:1rem;box-shadow:none}.authFooter{width:100%;margin-top:1rem}.authPanel button,.authLinks{display:none}}
+@media print{.authHeader{width:100%;padding:0}.authMain{display:block;width:100%;padding-top:1rem}.authIntro h1{font-size:2.5rem}.authPanel{margin-top:1rem;box-shadow:none}.qrCard,.secretCard{display:none}.authFooter{width:100%;margin-top:1rem}.authPanel button,.authLinks{display:none}}

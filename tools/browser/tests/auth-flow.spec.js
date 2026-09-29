@@ -146,11 +146,13 @@ test("provisional authenticator setup and verification use the local TOTP contra
   await page.goto("/authenticator?mode=enroll&next=/overview");
   await page.getByRole("button", { name: "Generate setup key" }).click();
   await expect(page.getByText("Manual setup key")).toBeVisible();
+  await expect(page.getByRole("img", { name: "QR code for adding Signal Ledger to an authenticator app" })).toHaveAttribute("src", /^data:image\/png;base64,/);
   await expect(page.getByText("JBSWY3DPEHPK3PXP", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open in authenticator app" })).toHaveAttribute("href", /^otpauth:\/\//);
   await page.getByLabel("Enter the current six-digit code").fill("123456");
   await page.getByRole("button", { name: "Enable authenticator" }).click();
   await expect(page.getByText("Save these codes now")).toBeVisible();
+  await expect(page.getByRole("img", { name: "QR code for adding Signal Ledger to an authenticator app" })).toHaveCount(0);
   expect(startPayload).toEqual({});
   expect(finishPayload).toEqual({ code: "123456" });
   await expect(page.getByText("ABCD-EFGH", { exact: true })).toBeVisible();

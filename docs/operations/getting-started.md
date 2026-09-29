@@ -89,9 +89,12 @@ or accept WebAuthn credentials.
 ### Authenticator enrollment and recovery
 
 After GitHub sign-in and invitation validation, open `/authenticator?mode=enroll`. Add the displayed
-secret to an authenticator app using the manual key or the `otpauth://` link, then enter the current
-six-digit code. The server activates the factor only after the code is verified and returns recovery
-codes once. Store each recovery code offline; each can be consumed only once.
+secret to an authenticator app by scanning the QR code shown on the page. The QR code is generated
+locally in the browser from the short-lived `otpauth://` setup URI; no external QR service receives
+the setup secret. If the authenticator is on the same phone, use the app link below the QR code or
+enter the manual key instead. Then enter the current six-digit code. The server activates the factor
+only after the code is verified and returns recovery codes once. Store each recovery code offline;
+each can be consumed only once.
 
 If an authenticator is lost, use one unused recovery code at `/authenticator?mode=recover`. That
 session is limited to replacing the factor. Enroll the replacement app and save the newly issued

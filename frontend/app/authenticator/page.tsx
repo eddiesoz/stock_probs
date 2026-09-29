@@ -3,6 +3,7 @@
 // Authenticator codes are verified by the server; this page never persists a secret or code.
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 
 import {
   authErrorMessage,
@@ -45,7 +46,7 @@ function modeCopy(mode: AuthenticatorMode, hasRecoveryCodes: boolean) {
     return {
       eyebrow: "Authenticator setup",
       title: "Protect your account",
-      description: "Use an authenticator app on each device you trust. Signal Ledger keeps the enrollment secret server-side and never stores your codes in the browser.",
+      description: "Use an authenticator app on each device you trust. Your setup key appears only during enrollment and is never saved in browser storage.",
     };
   }
   if (mode === "recover") {
@@ -75,6 +76,8 @@ export default function AuthenticatorPage() {
   const [mode, setMode] = useState<AuthenticatorMode>("verify");
   const [nextPath, setNextPath] = useState("/overview");
   const [enrollment, setEnrollment] = useState<TotpEnrollment | null>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [qrUnavailable, setQrUnavailable] = useState(false);
   const [code, setCode] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [copied, setCopied] = useState(false);
@@ -117,6 +120,29 @@ export default function AuthenticatorPage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    setQrCodeUrl(null);
+    setQrUnavailable(false);
+    if (!enrollment) return;
+    if (!enrollment.otpauth_uri.startsWith("otpauth://totp/")) {
+      setQrUnavailable(true);
+      return;
+    }
+    let active = true;
+    // Render locally: the one-time setup URI must never be sent to a QR service.
+    QRCode.toDataURL(enrollment.otpauth_uri, {
+      errorCorrectionLevel: "M",
+      margin: 4,
+      width: 240,
+      color: { dark: "#111827", light: "#FFFFFFFF" },
+    }).then((url) => {
+      if (active) setQrCodeUrl(url);
+    }).catch(() => {
+      if (active) setQrUnavailable(true);
+    });
+    return () => { active = false; };
+  }, [enrollment]);
 
   const copy = modeCopy(mode, Boolean(recoveryCodes));
   const isEnrolled = Boolean(status?.enrolled || session?.user?.totp_enrolled);
@@ -179,6 +205,7 @@ export default function AuthenticatorPage() {
       });
       setCode("");
       if (mode === "enroll" && response.recovery_codes?.length) {
+        setEnrollment(null);
         setRecoveryCodes(response.recovery_codes);
         setStatus((current) => current ? { ...current, enrolled: true, enrollment_pending: false } : current);
         setMessage({ tone: "success", text: "Authenticator enabled. Save these recovery codes before continuing." });
@@ -247,7 +274,12 @@ export default function AuthenticatorPage() {
         </div> : null}
 
         {mode === "enroll" && enrollment && !recoveryCodes ? <div className={styles.enrollmentBox}>
-          <div className={styles.stepLabel}><span className={styles.stepNumber}>1</span><span>Add this key to your authenticator</span></div>
+          <div className={styles.stepLabel}><span className={styles.stepNumber}>1</span><span>Add Signal Ledger to your authenticator</span></div>
+          <div className={styles.qrCard}>
+            <span className={styles.secretLabel}>Scan with your authenticator app</span>
+            {qrCodeUrl ? <img className={styles.qrImage} src={qrCodeUrl} width="240" height="240" alt="QR code for adding Signal Ledger to an authenticator app" /> : <div className={styles.qrPlaceholder} role="status">{qrUnavailable ? "QR code unavailable. Use the manual key below." : "Creating QR code…"}</div>}
+            <p>Using this phone? Open the app link below or enter the manual key.</p>
+          </div>
           <div className={styles.secretCard}><span className={styles.secretLabel}>Manual setup key</span><code>{enrollment.secret}</code><p>Enter the key exactly as shown. Keep it private while setup is in progress.</p></div>
           <a className="secondary" href={enrollment.otpauth_uri}>Open in authenticator app</a>
           <form className={styles.codeForm} onSubmit={finishOrVerify} noValidate>

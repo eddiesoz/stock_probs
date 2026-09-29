@@ -219,10 +219,11 @@ holdings, physical mobile, and second-user acceptance remain unavailable.
 ### Authenticator setup and recovery
 
 After GitHub sign-in and invitation validation, an account without a TOTP factor goes directly to
-`/authenticator?mode=enroll`. Add the displayed secret to an authenticator app. The page offers a
-manual key and an `otpauth://` link so setup works on devices without a camera or passkey support.
-Confirm the current six-digit code to activate the factor. Recovery codes are shown once, are
-single-use, and should be stored offline.
+`/authenticator?mode=enroll`. The page generates a scannable QR code locally in the browser from
+the short-lived `otpauth://` setup URI; the setup secret is not sent to an external QR service.
+Scan the QR code from another screen, or on the same phone use the authenticator-app link or the
+displayed manual key. Confirm the current six-digit code to activate the factor. Recovery codes
+are shown once, are single-use, and should be stored offline.
 
 If the authenticator is lost, use one unused recovery code to enter the restricted recovery flow,
 then enroll a replacement authenticator. Recovery does not grant a normal workspace session until
