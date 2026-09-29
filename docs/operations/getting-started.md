@@ -82,9 +82,9 @@ Cloudflare Tunnel. Docker binds the app to `127.0.0.1:8000`; there is no public 
 order routing, brokerage session, real-time claim, or fabricated market depth. Production uses
 GitHub's authorization-code flow with state and PKCE, the numeric GitHub account ID as the stable
 identity, and a six-digit TOTP authenticator-app code after an administrator-issued, expiring,
-single-use invitation. The authenticator code is the sole application second factor. When the pending
-schema-10 deployment is applied, it revokes stored passkeys and old passkey sessions; the application
-does not create or accept WebAuthn credentials.
+single-use invitation. The authenticator code is the sole application second factor. The deployed
+schema-10 migration revokes stored passkeys and old passkey sessions; the application does not create
+or accept WebAuthn credentials.
 
 ### Authenticator enrollment and recovery
 
@@ -214,9 +214,9 @@ The deployment helper is designed to read the existing schema, verify a pre-depl
 and verify the pre-migration backup when the imported database advances schema, run the
 checksum-pinned migrations, verify a current-schema backup, and require readiness with the image's
 schema. The historical R-ASTRA-102 candidate advanced the additive auth schema to schema 9. The
-current R-ASTRA-103 implementation advances it to schema 10 and, when deployed, revokes stored
-passkeys and old passkey sessions. Luna's QA covered the local fixture paths; current deployment and
-owner TOTP enrollment remain pending. The
+current R-ASTRA-103 implementation advances it to schema 10 and revokes stored passkeys and old
+passkey sessions. Luna's QA covered the local fixture paths; owner TOTP enrollment remains pending.
+The
 repaired recovery rehearsal passed its declared
 scope after restoring a disposable clone, checking the app, database, firewall, SSH, loopback, and
 tunnel-disabled boundaries, then deleting the clone and confirming that its API lookup returned
@@ -309,7 +309,7 @@ records the historical current-machine GitHub OAuth provisional session at `/pas
 the browser error `The browser could not create a passkey` after Verify with passkey, a `403`/denied
 sign-out response, and the generic verify-mode error using `create`. E61 records the locally accepted
 logout and mode-aware passkey repair with independent QA, and E62 records the passing full local gate.
-E63 records the current deployment and a post-deploy read-only SQLite check with `quick_check=ok`,
+E63 records the historical schema-8 deployment and a post-deploy read-only SQLite check with `quick_check=ok`,
 zero foreign-key violations, 13 search events, 13 forecast runs, 20 forecast results, 6 holdings,
 3 watchlist items, 1 passkey, and 1 user. The server-observed owner-verified session on another computer and saved API retrieval
 in E52/E55 remain valid. Administrator
@@ -319,7 +319,7 @@ P1/P2; its Terraform/image, IPv6, and old-VM rechecks remain **Unavailable**.
 
 ### R-ASTRA-103 authenticator release status
 
-The current follow-on retires the ongoing passkey requirement. When deployed, schema 10 revokes
+The current follow-on retires the ongoing passkey requirement. The deployed schema 10 migration revokes
 stored passkeys and old passkey sessions; the application does not create or accept WebAuthn
 credentials. After a
 fresh GitHub OAuth sign-in, an account without a TOTP factor goes directly to
@@ -339,10 +339,23 @@ finding.
 The current local `R-ASTRA-103` gate **Passed** for its declared scope. Receipt
 `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` reports `707` Python tests
 passed, `4` live tests deselected, `85.25%` coverage, frontend build/typecheck and `27` frontend
-tests, and documentation coverage. The current deployment and owner TOTP enrollment remain pending;
-physical mobile and hardware authenticator-device evidence are **Unavailable**. The older schema-9
-backup is an offline recovery artifact only. Keep the route under the existing invite-only boundary
-until deployment and owner checks are directly observed.
+tests, and documentation coverage. The older schema-9 backup is an offline recovery artifact only.
+The reviewed schema-10 image is now deployed. Owner TOTP enrollment, authenticated workspace
+retrieval, physical mobile, and second-user acceptance remain **Unavailable**.
+
+The exact remote `main` revision `9cc0751da459e911d285b14e0d57a29320a9f366` matched before
+publication. GitHub Release `signal-ledger-9cc0751da459e911d285b14e0d57a29320a9f366` has archive
+SHA-256 `d60da545be26a050e305e13d2e8db219a253a0668b32f13f532148069bde188e`; publisher re-download
+passed. The Linux/amd64 image is `103143811` bytes with ID
+`sha256:3e5f242573044114797b66447e3a8139ed35ca7decc387e6f1ab3ef62db486ff`. Restricted MCP plan
+`16c6655376c3b80569694ce400a2381c` passed; deploy returned readiness schema `10`, and status
+reported backup `pre-deploy-9cc0751da459e911-20833573.spbackup`,
+`deployed_at=2026-09-29T00:21:06.828904+00:00`, `failed: null`, and `loopback_only: true`.
+At `2026-09-29T00:22:18Z`–`00:22:19Z`, live HTTPS returned health `200`, anonymous history `401`,
+overview `303` to sign-in, and `no-store`/`DYNAMIC` responses. `/passkey?mode=verify` returned
+`303` to `/authenticator?mode=enroll&next=%2Foverview`. The IAB showed `Sign in first` for the
+revoked old session; fresh GitHub sign-in as `jtmb` rendered `Protect your account`, `Setup needed`,
+and `Generate setup key` without a WebAuthn prompt.
 
 Application backups remain signed and verified. Linode VM Backups are enabled, and successful
 snapshot `385239936` is available. The first disposable restore attempt **Failed**: clone

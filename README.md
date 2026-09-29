@@ -189,16 +189,32 @@ The current authentication design is invite-only GitHub OAuth plus a six-digit c
 authenticator app. Each user's holdings, watchlists, forecasts, exports, outcomes, and
 reconstructions are scoped to that account. The authenticator code is the sole application second
 factor, so signing in from a new phone or computer does not depend on Bluetooth or a passkey
-manager. When the pending schema-10 deployment is applied, it revokes stored passkeys and old
-passkey sessions; Signal Ledger does not create or accept WebAuthn credentials.
+manager. The deployed schema-10 migration revokes stored passkeys and old passkey sessions; Signal
+Ledger does not create or accept WebAuthn credentials.
 
 The R-ASTRA-103 implementation and its scoped QA are in the local worktree. The current local gate
 passed: receipt `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` reports `707`
 Python tests passed, `4` live tests deselected, `85.25%` coverage, frontend build/typecheck and
 `27` frontend tests, and documentation coverage. Independent QA passed the authentication,
 repository/list, API, backup/CLI, desktop/mobile-emulated auth-flow, frontend, migration, and
-backup/restore checks; Astra's medium source security review reported no P1/P2 finding. The current
-deployment and owner TOTP enrollment remain pending, and physical mobile evidence is unavailable.
+fresh schema-10 creation checks; Astra's medium source security review reported no P1/P2 finding.
+The schema-9 predeploy backup remains an offline recovery artifact only.
+
+The reviewed revision `9cc0751da459e911d285b14e0d57a29320a9f366` is now deployed. GitHub Release
+`signal-ledger-9cc0751da459e911d285b14e0d57a29320a9f366` has archive SHA-256
+`d60da545be26a050e305e13d2e8db219a253a0668b32f13f532148069bde188e`; publisher re-download passed.
+The Linux/amd64 image is `103143811` bytes with ID
+`sha256:3e5f242573044114797b66447e3a8139ed35ca7decc387e6f1ab3ef62db486ff`. Restricted MCP plan
+`16c6655376c3b80569694ce400a2381c` passed and deployed readiness schema `10`; status reported
+backup `pre-deploy-9cc0751da459e911-20833573.spbackup`, `deployed_at=2026-09-29T00:21:06.828904+00:00`,
+`failed: null`, and `loopback_only: true`.
+
+Live HTTPS at `00:22:18Z`–`00:22:19Z` returned health `200`, anonymous history `401`, overview
+`303` to sign-in, and `no-store`/`DYNAMIC` responses. `/passkey?mode=verify` redirected `303` to
+`/authenticator?mode=enroll&next=%2Foverview`. The IAB showed the revoked old session's `Sign in
+first` state; fresh GitHub sign-in as `jtmb` rendered `Protect your account`, `Setup needed`, and
+`Generate setup key` without a WebAuthn prompt. Owner TOTP enrollment, workspace content, saved
+holdings, physical mobile, and second-user acceptance remain unavailable.
 
 ### Authenticator setup and recovery
 

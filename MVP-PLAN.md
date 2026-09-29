@@ -227,9 +227,9 @@ performance, and project-profile runtime discovery remain separate evidence cate
 
 `R-ASTRA-103` retires the browser passkey requirement. Production remains invite-only GitHub OAuth:
 the numeric GitHub account ID is the stable identity, invitations are resolved/expiring/single-use,
-and development bootstrap credentials remain rejected in production. When deployed, schema 10
-revokes stored passkeys and old passkey sessions; the application does not create or accept WebAuthn
-credentials.
+and development bootstrap credentials remain rejected in production. The deployed schema 10
+migration revokes stored passkeys and old passkey sessions; the application does not create or accept
+WebAuthn credentials.
 
 After a fresh GitHub OAuth sign-in, an account without a TOTP factor goes directly to
 `/authenticator?mode=enroll`. The old `/passkey` route redirects to authenticator enrollment. An
@@ -241,12 +241,13 @@ require a fresh TOTP step-up, a verified backup, matching account-security state
 serialization, and session revocation. Ownership and opaque-session controls remain unchanged.
 
 The schema-9-to-10 migration preserves prior owner-scoped research data while revoking passkeys and
-their sessions. The local implementation and independent review are recorded here. Current
-deployment and owner TOTP enrollment remain pending.
+their sessions. The local implementation and independent review are recorded here. The reviewed
+schema-10 image is now deployed; owner TOTP enrollment and authenticated workspace retrieval remain
+unavailable.
 
-- **Status:** **In progress**. The local schema-10 implementation and gate passed; deployment and
-  owner enrollment remain pending. Physical mobile and hardware authenticator-device evidence are
-  **Unavailable**.
+- **Status:** **In progress**. The local schema-10 implementation and gate passed, and the reviewed
+  image is deployed. Owner enrollment and authenticated workspace retrieval remain unavailable.
+  Physical mobile and hardware authenticator-device evidence are **Unavailable**.
 - **Owner/phase:** implementation/security repair; independent `LUNA MAX QA`; `ASTRA` medium
   security review; `LUNA MAX docs` reconciliation; coordinator deployment follow-up.
 - **Scoped QA evidence:** independent QA passed `64` authentication/repository/list checks, `123`
@@ -261,9 +262,23 @@ deployment and owner TOTP enrollment remain pending.
   `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` **Passed** for its
   declared scope: `707` Python tests passed, `4` live tests were deselected, coverage was `85.25%`,
   frontend build/typecheck and `27` frontend tests passed, and documentation coverage passed.
-- **Limitations:** the older schema-9 backup is an offline recovery artifact only. No deployment,
-  live owner TOTP enrollment, authenticated owner browser flow, or public production acceptance is
-  claimed here. `R-ASTRA-102` and `R-ASTRA-101` remain historical deployment records.
+- **Post-deploy receipt:** exact remote `main` revision
+  `9cc0751da459e911d285b14e0d57a29320a9f366` matched before publication. GitHub Release
+  `signal-ledger-9cc0751da459e911d285b14e0d57a29320a9f366` has archive SHA-256
+  `d60da545be26a050e305e13d2e8db219a253a0668b32f13f532148069bde188e`; publisher re-download
+  passed. The Linux/amd64 image is `103143811` bytes with ID
+  `sha256:3e5f242573044114797b66447e3a8139ed35ca7decc387e6f1ab3ef62db486ff`.
+  Restricted MCP plan `16c6655376c3b80569694ce400a2381c` passed; deploy returned readiness schema
+  `10`, and status reported backup `pre-deploy-9cc0751da459e911-20833573.spbackup`,
+  `deployed_at=2026-09-29T00:21:06.828904+00:00`, `failed: null`, and `loopback_only: true`.
+- **Live boundary:** at `2026-09-29T00:22:18Z`–`00:22:19Z`, health returned `200`, anonymous
+  history `401`, overview `303` to sign-in, and responses were `no-store`/`DYNAMIC`.
+  `/passkey?mode=verify` returned `303` to `/authenticator?mode=enroll&next=%2Foverview`. The IAB
+  showed `Sign in first` for the revoked old session; fresh GitHub sign-in as `jtmb` rendered
+  `Protect your account`, `Setup needed`, and `Generate setup key` without a WebAuthn prompt.
+- **Limitations:** the older schema-9 backup is an offline recovery artifact only. Owner TOTP
+  enrollment, workspace content, saved holdings, physical mobile, and second-user acceptance remain
+  **Unavailable**. `R-ASTRA-102` and `R-ASTRA-101` remain historical deployment records.
 
 ## Historical authentication and production deployment follow-on (`R-ASTRA-101`)
 
@@ -454,10 +469,10 @@ repair/gate in E61-E62, and the current deployment/review in E63-E64.
 
 ### Current approval status
 
-`R-ASTRA-103` is the current in-progress authenticator-only authentication follow-on; the
-schema-10 implementation and local gate passed, while deployment and owner TOTP enrollment remain
-pending. `R-ASTRA-102` and `R-ASTRA-101` are historical deployment records, not current auth
-guidance.
+`R-ASTRA-103` is the current in-progress authenticator-only authentication follow-on; the schema-10
+implementation and local gate passed, and the reviewed image is deployed. Owner TOTP enrollment and
+authenticated workspace retrieval remain unavailable. `R-ASTRA-102` and `R-ASTRA-101` are historical
+deployment records, not current auth guidance.
 `EXP-M09` remains a separate historical export action and is not a production deployment gate.
 `R-ASTRA-100` is **Completed for its declared UI scope** with the evidence recorded above; this
 does not create a broader release or export checkpoint. `M09-E18`, `M07-E20`, and `R-ASTRA-98`

@@ -6,8 +6,8 @@
 
 `R-ASTRA-103` is the current authenticator-only authentication follow-on. Invite-only GitHub OAuth
 remains the identity boundary, while a six-digit TOTP code from an authenticator app is the sole
-application second factor. When the pending schema-10 deployment is applied, it revokes stored
-credentials and old passkey sessions; the application does not create or accept WebAuthn credentials.
+application second factor. The deployed schema-10 migration revokes stored credentials and old
+passkey sessions; the application does not create or accept WebAuthn credentials.
 Recovery codes are
 hashed and single-use, and administrator backup/restore actions require fresh TOTP proof.
 
@@ -23,9 +23,24 @@ finding.
 The current local `R-ASTRA-103` gate **Passed** for its declared scope. Receipt:
 `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json`; it reports `707` Python
 tests passed, `4` live tests deselected, `85.25%` coverage, frontend build/typecheck and `27`
-frontend tests, and documentation coverage. The current deployment and owner TOTP enrollment remain
-pending. Physical mobile and hardware authenticator-device evidence remain unavailable. `R-ASTRA-102`
-and `R-ASTRA-101` remain historical deployment records and are not current auth guidance.
+frontend tests, and documentation coverage. The schema-9 predeploy backup remains an offline
+recovery artifact only. `R-ASTRA-102` and `R-ASTRA-101` remain historical deployment records and
+are not current auth guidance.
+
+The reviewed exact remote `main` revision `9cc0751da459e911d285b14e0d57a29320a9f366` was published
+as GitHub Release `signal-ledger-9cc0751da459e911d285b14e0d57a29320a9f366`; archive SHA-256
+`d60da545be26a050e305e13d2e8db219a253a0668b32f13f532148069bde188e`, Linux/amd64 image ID
+`sha256:3e5f242573044114797b66447e3a8139ed35ca7decc387e6f1ab3ef62db486ff`, and size
+`103143811` bytes. Publisher re-download verification passed. Restricted MCP plan
+`16c6655376c3b80569694ce400a2381c` passed; deploy returned readiness schema `10`, and status
+reported the exact revision, backup `pre-deploy-9cc0751da459e911-20833573.spbackup`,
+`deployed_at=2026-09-29T00:21:06.828904+00:00`, `failed: null`, and `loopback_only: true`.
+Live HTTPS at `00:22:18Z`–`00:22:19Z` returned health `200`, anonymous history `401`, and overview
+`303` to sign-in with `no-store`/`DYNAMIC`; `/passkey?mode=verify` returned `303` to
+`/authenticator?mode=enroll&next=%2Foverview`. The IAB showed the revoked old session's
+`Sign in first` state; fresh GitHub sign-in as `jtmb` rendered the authenticator setup page without
+a WebAuthn prompt. Owner TOTP enrollment, workspace content, saved holdings, physical mobile, and
+second-user acceptance remain unavailable.
 
 `R-ASTRA-101` remains the historical schema-8 passkey deployment record; its passkey and live-host
 receipts must not be used as acceptance evidence for this TOTP release.
