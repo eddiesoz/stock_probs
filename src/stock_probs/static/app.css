@@ -56,7 +56,7 @@ strong,.comparison-stat,.probability-bar,.forecast-meta,.details-table,.history-
 .header-controls .settings-trigger:hover{background:transparent;color:var(--text)}
 .auth-controls{display:flex;align-items:center;justify-content:flex-end;gap:.45rem;min-width:0}
 .auth-user-label{max-width:9rem;overflow:hidden;color:var(--text);font-size:.74rem;font-weight:760;text-overflow:ellipsis;white-space:nowrap}
-.auth-link,.auth-signout{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:.4rem .55rem;border:1px solid transparent;border-radius:7px;color:var(--muted);font-size:.75rem;font-weight:720;text-decoration:none;white-space:nowrap}
+.auth-link,.auth-signout{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:.4rem .55rem;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--muted);font-size:.75rem;font-weight:720;text-decoration:none;white-space:nowrap}
 .auth-link:hover,.auth-signout:hover{border-color:var(--border);background:var(--accent-soft);color:var(--text)}
 .auth-signout{font-family:inherit;cursor:pointer}
 .auth-signout:disabled{cursor:wait;opacity:.55}
