@@ -187,46 +187,32 @@ keeps application data in a named volume.
 
 The current authentication design is invite-only GitHub OAuth plus a six-digit code from an
 authenticator app. Each user's holdings, watchlists, forecasts, exports, outcomes, and
-reconstructions are scoped to that account. The authenticator code is the sole ongoing application
-second factor, so signing in from a new phone or computer does not depend on Bluetooth or a
-passkey manager. Existing passkeys are retained only for a one-time migration of legacy accounts;
-Signal Ledger does not create new passkeys in this mode.
+reconstructions are scoped to that account. The authenticator code is the sole application second
+factor, so signing in from a new phone or computer does not depend on Bluetooth or a passkey
+manager. When the pending schema-10 deployment is applied, it revokes stored passkeys and old
+passkey sessions; Signal Ledger does not create or accept WebAuthn credentials.
 
-The R-ASTRA-102 implementation and its scoped QA are in the local worktree. The current local gate
-passed: receipt `test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json` reports `704`
-Python tests passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28`
-frontend tests, and documentation coverage. The reviewed app revision
-`403cd79b08f90b49603cec3152b4f1e07b91d730` was committed and pushed with exact `origin/main`
-matching at release time. Its GitHub Release archive SHA-256 is
-`811229e8355679f08d1a0857426cbec3526cee492417e50a5f9fe760e98894f4`; publisher re-download
-verification passed. The Linux/amd64 image is `103146866` bytes with ID
-`sha256:76283822fb01ba19ead18037d3396b81db5c804e41d0203dfbaae04c3c3abb8f`. Restricted MCP plan
-`5b757cb6e2cb2b8d97b85613a4b5504b` deployed it, and inspect/status reported schema `9`, `ready`,
-`loopback_only: true`, and verified pre-deploy backup
-`pre-deploy-403cd79b08f90b49-3055603f.spbackup` at
-`2026-09-28T20:28:26.839271+00:00`, with no failed release reported after the successful deploy.
-Before that successful retry, the first official MCP `plan_deploy` call for the same
-revision/archive/image returned bounded `remote_operation_failed`; the remote remained on its
-prior healthy schema-8 image. The cause was not established. Fixed structured-helper plan
-`5b757cb6e2cb2b8d97b85613a4b5504b` then succeeded and the subsequent official MCP deploy passed.
-Live Cloudflare probes at `20:29:04Z` returned health `200`, auth status `200`, `/authenticator` `200`, `/overview` `303`, and
-`/api/v1/history` `401`, all `no-store`/`DYNAMIC`. The live IAB reached the one-time legacy-passkey
-migration route for owner `jtmb`; the button remained `Waiting for passkey…`, reloading cancelled
-it, and sign-out returned to `/sign-in`. Owner TOTP enrollment, live mobile sign-in, and
-authenticated-browser saved-data access remain **Unavailable**. The schema-8 passkey deployment
-receipts below remain historical evidence and are not current TOTP deployment evidence.
+The R-ASTRA-103 implementation and its scoped QA are in the local worktree. The current local gate
+passed: receipt `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` reports `707`
+Python tests passed, `4` live tests deselected, `85.25%` coverage, frontend build/typecheck and
+`27` frontend tests, and documentation coverage. Independent QA passed the authentication,
+repository/list, API, backup/CLI, desktop/mobile-emulated auth-flow, frontend, migration, and
+backup/restore checks; Astra's medium source security review reported no P1/P2 finding. The current
+deployment and owner TOTP enrollment remain pending, and physical mobile evidence is unavailable.
 
 ### Authenticator setup and recovery
 
-After GitHub sign-in and invitation validation, open the authenticator setup page and add the
-displayed secret to an authenticator app. The page offers a manual key and an `otpauth://` link so
-setup works on devices without a camera or passkey support. Confirm the current six-digit code to
-activate the factor. Recovery codes are shown once, are single-use, and should be stored offline.
+After GitHub sign-in and invitation validation, an account without a TOTP factor goes directly to
+`/authenticator?mode=enroll`. Add the displayed secret to an authenticator app. The page offers a
+manual key and an `otpauth://` link so setup works on devices without a camera or passkey support.
+Confirm the current six-digit code to activate the factor. Recovery codes are shown once, are
+single-use, and should be stored offline.
 
 If the authenticator is lost, use one unused recovery code to enter the restricted recovery flow,
 then enroll a replacement authenticator. Recovery does not grant a normal workspace session until
 the replacement factor is confirmed. An administrator must enter a fresh authenticator code before
-creating a backup or promoting a restore; restore also revokes other sessions.
+creating a backup or promoting a restore; restore also revokes other sessions. The retired
+`/passkey` route redirects to authenticator enrollment and cannot create or verify a passkey.
 
 The app runs on one Linode with SQLite on a persistent private volume and is published only
 through a Cloudflare Tunnel. The application port stays on `127.0.0.1`; the deployment helper

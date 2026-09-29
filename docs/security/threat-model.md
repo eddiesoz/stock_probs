@@ -9,8 +9,9 @@ Signal Ledger has two supported security modes. Development may use a local boot
 loopback; production is an invite-only multi-user deployment behind a Cloudflare Tunnel. The
 production image binds the app to the host loopback interface, uses GitHub's authorization-code
 flow plus a six-digit TOTP authenticator app, and keeps SQLite on a private persistent volume. The
-authenticator code is the sole ongoing application second factor. Legacy passkeys are retained only
-for one-time migration and are not newly enrolled. The recovery rehearsal has
+authenticator code is the sole application second factor. When the pending schema-10 deployment is
+applied, it revokes stored passkeys and old passkey sessions; the application does not create or
+accept WebAuthn credentials. The recovery rehearsal has
 passed for its declared scope, and E58 has applied the provider-refreshed `public_invited` boundary
 through the Cloudflare Tunnel after deleting the owner-canary Access app and updating the exposure
 guard. Authenticated owner API and saved-forecast retrieval are evidenced by read-only server logs,
@@ -21,10 +22,9 @@ legacy host; functional owner/invited-user acceptance remains pending. E60 recor
 current-machine browser passkey/sign-out limitation; E61 records the locally accepted logout and
 mode-aware passkey repair with independent QA, and E62 records the passing full local gate. E63
 records the current image deployment and public probes; E64 records Astra's no-P1/P2 live read-only
-review. R-ASTRA-102's reviewed schema-9 image is now deployed through the restricted MCP and the
-Cloudflare boundary probes pass, but browser-rendered owner workspace, completed owner TOTP
-enrollment/sign-in, live second-user onboarding, authenticated-browser saved-data access, and
-physical authenticator-device evidence remain **Unavailable**.
+review. R-ASTRA-103's schema-10 implementation and local gate pass for their declared scopes, while
+current deployment and owner TOTP enrollment remain pending. Physical mobile and hardware
+authenticator-device evidence remain **Unavailable**.
 The earlier private
 clean-main image is revision
 `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
@@ -75,22 +75,36 @@ plan passed, status is schema `8`, `failed: null`, loopback-only, and the pre-de
 results, 6 holdings, 3 watchlist items, 1 passkey, and 1 user. The IAB passkey remained unavailable;
 corrected sign-out returned `/sign-in` with no account controls twice.
 
-## R-ASTRA-102 boundary status
+## R-ASTRA-103 boundary status
 
-The authenticator-only implementation adds schema 9 tables for encrypted TOTP factors, short-lived
-enrollment, single-use recovery codes, and bounded attempt throttling. Scoped independent QA passed
-19 authentication checks, 8 repository checks, 6 API checks, 65 backup/container checks, 10
-desktop/mobile-emulated browser cases, 28 frontend checks, 4 account/admin smoke checks, two-user
-ownership isolation, and a disposable schema-9 backup/restore rehearsal. Packaging and security lint
-passed, and Astra's independent re-review reported no P1/P2 finding after the generation, replay,
-and throttle fixes.
+The authenticator-only implementation advances the additive auth schema to schema 10 and retires
+passkeys. When deployed, the migration revokes stored passkeys and old passkey sessions, and the
+application does not create or accept WebAuthn credentials. After fresh GitHub OAuth, an account without a TOTP factor
+goes directly to `/authenticator?mode=enroll`; `/passkey` redirects to that flow. Existing TOTP
+accounts remain protected by their current TOTP or recovery-code replacement flow. Enrollment is
+short-lived and origin-bound, recovery codes are hashed and single-use, and backup/restore promotion
+requires fresh TOTP proof, a verified backup, matching account-security state, maintenance
+serialization, and session revocation.
 
-The current local `R-ASTRA-102` gate **Passed** for its declared scope. Receipt
-`test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json` reports `704` Python tests
-passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28` frontend
-tests, and documentation coverage. The earlier aggregate failure remains visible as historical
-evidence: four legacy schema expectation tests still expected versions 1 through 8 and aggregate
-coverage was 84.88%. Post-deploy evidence records revision
+Independent QA passed `64` authentication/repository/list checks, `123` API checks, `61` backup/CLI
+checks, `10` desktop/mobile-emulated auth-flow cases, `27` frontend checks, Ruff, and diff checks.
+Fresh schema-10 creation and schema-9-to-10 migration checks passed; the `61` backup/CLI check set
+passed. No schema-10 backup/restore rehearsal is claimed. The owner API flow
+returned `303` to `/authenticator?mode=enroll`, required TOTP for protected access, denied private
+history without a session, and returned `403` for WebAuthn. Existing TOTP factor replacement remained
+guarded. Astra's independent medium source security review reported no P1/P2 finding.
+
+The current local `R-ASTRA-103` gate **Passed** for its declared scope. Receipt
+`test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` reports `707` Python tests
+passed, `4` live tests deselected, `85.25%` coverage, frontend build/typecheck and `27` frontend
+tests, and documentation coverage. The current deployment and owner TOTP enrollment remain pending;
+physical mobile and hardware authenticator-device evidence are **Unavailable**. The older schema-9
+backup remains an offline recovery artifact only.
+
+### Historical R-ASTRA-102 deployment evidence
+
+The following deployment details are historical R-ASTRA-102 evidence and are not current deployment
+or auth acceptance. Post-deploy evidence records revision
 `403cd79b08f90b49603cec3152b4f1e07b91d730` pushed with exact `origin/main` matching, release archive
 SHA-256 `811229e8355679f08d1a0857426cbec3526cee492417e50a5f9fe760e98894f4`, verified publisher
 re-download, and Linux/amd64 image ID
@@ -123,7 +137,7 @@ service.
 | Remote access or browser cross-origin traffic | Loopback-only environment configuration, explicit warning flag for unsupported broader CLI binds, host/origin checks, strict response headers, and no permissive cross-origin API policy. |
 | Forged Host, forwarded-host, or path authority | Production requires one exact HTTPS public origin. Host parsing rejects URL syntax, duplicate or non-ASCII authorities, and unexpected ports; forwarded headers are accepted only from the local trusted proxy. Path decisions use the ASGI scope rather than an attacker-controlled URL reconstruction. |
 | OAuth callback substitution or login CSRF | GitHub numeric account IDs are the stable identity; the authorization-code flow uses a short-lived server-side state value and PKCE, checks the exact callback/origin, and never accepts a client-supplied identity. |
-| Invitation theft or account takeover | Invitations resolve a GitHub account, expire, are single-use, and are redeemed before authenticator enrollment. Production rejects development bootstrap credentials. Every invited account must confirm a six-digit TOTP code from an authenticator app. A legacy passkey can authorize only its one-time migration to TOTP. |
+| Invitation theft or account takeover | Invitations resolve a GitHub account, expire, are single-use, and are redeemed before authenticator enrollment. Production rejects development bootstrap credentials. Every invited account must confirm a six-digit TOTP code from an authenticator app. The pending schema-10 deployment revokes passkeys; they cannot authorize enrollment or sign-in after that migration. |
 | Authenticator theft, replay, or brute force | TOTP secrets are encrypted at rest, enrollment is short-lived and origin-bound, accepted time steps are monotonic, attempts are reserved under the SQLite write lock before verification, and failed attempts are throttled. Recovery codes are high-entropy, hashed, single-use, and reveal no replacement session beyond factor replacement. |
 | Session theft, fixation, or replay | Sessions are opaque server-side records addressed by hashed tokens, with idle and absolute expiry, revocation, host-only `Secure`/`HttpOnly` cookies, CSRF tokens for mutations, and no browser storage for credentials. TOTP verification is bound to the active factor generation and fresh step-up markers are short-lived. |
 | Cross-user IDOR or legacy-data disclosure | Forecasts, events, results, outcomes, reconstructions, exports, holdings, watchlists, and account operations derive the owner from the session. Legacy rows attach to one reserved owner claim; a new user cannot claim or query them by changing an ID. |

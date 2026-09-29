@@ -62,8 +62,8 @@ def test_every_shipped_legacy_schema_upgrades_to_fixed_lists(settings, legacy_ve
             "WHERE type = 'trigger' AND tbl_name = 'instrument_list_items'"
         ).fetchall()
     # Every historical fixture must upgrade through the current contiguous schema, including
-    # schema 9's generation-bound authenticator tables and session metadata.
-    assert [row[0] for row in versions] == list(range(1, 10))
+    # schema 10's passkey retirement and authenticator tables.
+    assert [row[0] for row in versions] == list(range(1, 11))
     assert {row[1] for row in columns} == {
         "kind",
         "provider",

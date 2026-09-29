@@ -114,6 +114,21 @@ SortDirectionParameter = Annotated[SortDirection, Query()]
 ForecastIntervalParameter = Annotated[ForecastInterval | None, Query()]
 
 
+def _safe_local_next(value: str | None, default: str = "/overview") -> str:
+    """Keep redirects on this origin while preserving a valid local route."""
+
+    if not isinstance(value, str) or not value or len(value) > 1024:
+        return default
+    if not value.startswith("/") or value.startswith("//"):
+        return default
+    if any(ord(character) < 0x20 or character in "\\\r\n" for character in value):
+        return default
+    parsed = urlparse(value)
+    if parsed.scheme or parsed.netloc or parsed.path.startswith("//"):
+        return default
+    return value
+
+
 class ValidationIssue(ApiResponse):
     location: list[str | int]
     message: str
@@ -144,7 +159,6 @@ class TotpStatusApiResponse(ApiResponse):
     enrollment_pending: bool
     recovery_codes_remaining: int = Field(ge=0, le=20)
     requires_totp: bool
-    legacy_passkey_migration: bool
     can_enroll: bool
 
 
@@ -1727,14 +1741,6 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
                 and context.mfa_method != "totp"
             ):
                 if not request.scope["path"].startswith("/api/v1/"):
-                    if context.user.passkey_enrolled and not context.user.totp_enrolled:
-                        migration_next = "/authenticator?mode=enroll&next=" + quote(
-                            request.scope["path"], safe="/"
-                        )
-                        return RedirectResponse(
-                            "/passkey?mode=verify&next=" + quote(migration_next, safe=""),
-                            status_code=303,
-                        )
                     return RedirectResponse(
                         "/authenticator?mode="
                         + ("enroll" if not context.user.totp_enrolled else "verify")
@@ -3673,7 +3679,9 @@ def create_app(
                         "email": identity.email,
                         "role": "member",
                         "status": "active",
-                        "passkey_required": True,
+                        # Production sign-in uses GitHub plus an authenticator app. Keep the
+                        # legacy columns false so old clients cannot advertise a passkey step.
+                        "passkey_required": False,
                         "passkey_enrolled": False,
                         "created_at": datetime.now(UTC).isoformat(),
                     }
@@ -3682,9 +3690,6 @@ def create_app(
             issue = auth_manager.issue_session(user, datetime.now(UTC), "github")
             if auth_manager.has_totp_factor(user.id):
                 target = "/authenticator?mode=verify&next=/overview"
-            elif user.passkey_enrolled:
-                migration_next = "/authenticator?mode=enroll&next=/overview"
-                target = "/passkey?mode=verify&next=" + quote(migration_next, safe="")
             else:
                 target = "/authenticator?mode=enroll&next=/overview"
             redirect = RedirectResponse(target, status_code=303)
@@ -3775,7 +3780,7 @@ def create_app(
         return {
             "authenticated": False,
             "user": None,
-            "requires_passkey": True,
+            "requires_passkey": False,
             "role": None,
             "local_login_enabled": False,
             "invitation_github_id": invitation.get("github_id", invitation.get("github_user_id")),
@@ -3797,12 +3802,12 @@ def create_app(
         responses=_documented_errors(400, 403, 405, 500, 503),
     )
     def passkey_registration_options(request: Request) -> dict[str, object]:
-        """Reject new passkey enrollment; legacy assertions only authorize TOTP migration."""
+        """Reject WebAuthn enrollment after the authenticator-only production cutover."""
 
         context = _auth_context(request)
         if auth_manager.settings.mode == "github":
             raise AuthorizationDenied(
-                "Passkeys are retained only to migrate legacy accounts to an authenticator."
+                "Passkeys are retired; use your authenticator code."
             )
         rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
         options = auth_manager.begin_passkey_registration(
@@ -3823,12 +3828,12 @@ def create_app(
     def passkey_registration_finish(
         request: Request, payload: PasskeyResponseRequest, response: Response
     ) -> dict[str, object]:
-        """Complete passkey enrollment using the one-time server challenge."""
+        """Reject the retired WebAuthn enrollment ceremony in production."""
 
         context = _auth_context(request)
         if auth_manager.settings.mode == "github":
             raise AuthorizationDenied(
-                "Passkeys are retained only to migrate legacy accounts to an authenticator."
+                "Passkeys are retired; use your authenticator code."
             )
         rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
         auth_manager.finish_passkey_registration(
@@ -3872,7 +3877,7 @@ def create_app(
         responses=_documented_errors(400, 403, 405, 500, 503),
     )
     def passkey_assertion_options(request: Request) -> dict[str, object]:
-        """Begin a passkey assertion for the provisional or current account."""
+        """Reject the retired WebAuthn assertion ceremony in production."""
 
         context = _auth_context(request)
         rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
@@ -3892,7 +3897,7 @@ def create_app(
     def passkey_assertion_finish(
         request: Request, payload: PasskeyResponseRequest, response: Response
     ) -> dict[str, object]:
-        """Verify a passkey assertion and rotate into a step-up session."""
+        """Reject the retired WebAuthn assertion ceremony in production."""
 
         context = _auth_context(request)
         rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
@@ -3913,7 +3918,9 @@ def create_app(
             "authenticated": True,
             "user": _public_user(issue.context.user),
             "csrf_token": issue.csrf_token,
-            "requires_passkey": True,
+            # This endpoint is retained only for local compatibility; production rejects the
+            # assertion before reaching this response after the authenticator-only cutover.
+            "requires_passkey": False,
             "requires_totp": True,
             "mfa_method": issue.context.mfa_method,
             "expires_at": issue.expires_at,
@@ -4859,7 +4866,15 @@ def create_app(
     def dashboard() -> FileResponse:
         return FileResponse(workspace_pages["/"])
 
-    def workspace_page(route: str) -> FileResponse:
+    def workspace_page(route: str, request: Request) -> Response:
+        if route == "/passkey":
+            # Keep old bookmarks useful while ensuring the retired WebAuthn ceremony is never
+            # rendered. Only a same-origin absolute path may survive the redirect.
+            next_path = _safe_local_next(request.query_params.get("next"))
+            return RedirectResponse(
+                "/authenticator?mode=enroll&next=" + quote(next_path, safe=""),
+                status_code=303,
+            )
         page = workspace_pages[route]
         if not page.is_file():
             raise HTTPException(status_code=404)

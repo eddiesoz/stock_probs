@@ -28,7 +28,7 @@ test("authentication surfaces use same-origin API paths and keep credentials out
   assert.match(joined, /HttpOnly cookie/);
 });
 
-test("auth routes cover invited sign-in, authenticator setup, legacy migration, account, and admin controls", async () => {
+test("auth routes cover invited sign-in, authenticator setup, retired passkey links, account, and admin controls", async () => {
   const [signIn, invite, passkey, authenticator, account, admin] = await Promise.all([
     source("app/sign-in/page.tsx"),
     source("app/invite/page.tsx"),
@@ -49,10 +49,10 @@ test("auth routes cover invited sign-in, authenticator setup, legacy migration, 
   assert.match(signIn, /Complete authenticator setup or verification/);
   assert.match(signIn, /authenticatorPath/);
   assert.match(invite, /invites\/redeem/);
-  assert.doesNotMatch(passkey, /passkeys\/register\/options/);
-  assert.match(passkey, /passkeys\/authenticate\/options/);
-  assert.match(passkey, /one-time transition/);
-  assert.match(passkey, /does not create or export new passkeys/);
+  assert.match(passkey, /Passkeys have been retired/);
+  assert.match(passkey, /authenticator\?mode=enroll/);
+  assert.doesNotMatch(passkey, /runPasskeyCeremony|Verify legacy passkey/);
+  assert.doesNotMatch(account, /Verify legacy passkey|\/passkey\?mode/);
   assert.match(authenticator, /auth\/totp\/enroll\/start/);
   assert.match(authenticator, /auth\/totp\/enroll\/finish/);
   assert.match(authenticator, /auth\/totp\/verify/);
@@ -65,7 +65,8 @@ test("auth routes cover invited sign-in, authenticator setup, legacy migration, 
   assert.match(account, /auth\/sessions/);
   assert.match(account, /auth\/totp\/status/);
   assert.match(account, /Authenticator protected/);
-  assert.match(account, /!totpStatus\?\.enrolled/);
+  assert.match(account, /totpStatus\?\.enrolled/);
+  assert.match(account, /Set up authenticator/);
   assert.match(account, /Revoke/);
   assert.match(admin, /auth\/invites/);
   assert.match(admin, /operations\/backups/);
@@ -74,27 +75,6 @@ test("auth routes cover invited sign-in, authenticator setup, legacy migration, 
   assert.match(admin, /Fresh authenticator verification complete/);
   assert.doesNotMatch(admin, /runPasskeyCeremony/);
   assert.match(admin, /disabled={!freshVerified/);
-});
-
-test("passkey browser errors give an actionable recovery path", async () => {
-  const { passkeyBrowserError, authErrorMessage } = await import("../components/auth-client.ts");
-  const cancelled = new Error("Browser-specific message");
-  cancelled.name = "NotAllowedError";
-  const blocked = new Error("Browser-specific message");
-  blocked.name = "SecurityError";
-  assert.match(passkeyBrowserError(cancelled).message, /regular browser/);
-  assert.match(passkeyBrowserError(cancelled).message, /Bluetooth/);
-  assert.match(passkeyBrowserError(cancelled, false, "get").message, /verification was cancelled/);
-  assert.doesNotMatch(passkeyBrowserError(cancelled, false, "get").message, /setup/);
-  assert.match(passkeyBrowserError(blocked).message, /browser with passkey support/);
-  assert.match(passkeyBrowserError(blocked, false, "get").message, /cannot verify a passkey/);
-  assert.match(passkeyBrowserError(cancelled, true).message, /within a minute/);
-  assert.match(passkeyBrowserError(cancelled, true, "get").message, /verification prompt/);
-  const alreadyRegistered = new Error("Browser-specific message");
-  alreadyRegistered.name = "InvalidStateError";
-  assert.match(authErrorMessage(passkeyBrowserError(alreadyRegistered)), /already be registered/);
-  assert.doesNotMatch(passkeyBrowserError(cancelled).message, /Browser-specific message/);
-  assert.match(passkeyBrowserError(new Error("Browser-specific message"), false, "get").message, /could not verify a passkey/);
 });
 
 test("workspace navigation exposes account controls without replacing the primary landmarks", async () => {
@@ -137,25 +117,15 @@ test("invitation rejection keeps its precise recovery message", async () => {
   assert.equal(authErrorMessage(rejectedTotp), "That authenticator code was not accepted. Wait for the next code and try again.");
 });
 
-test("auth redirects stay local and WebAuthn keeps the relying party hostname as text", async () => {
+test("auth redirects stay on the configured origin", async () => {
   const previousWindow = globalThis.window;
-  globalThis.window = { location: { origin: "https://ledger.jtmb.cc" }, atob: globalThis.atob };
+  globalThis.window = { location: { origin: "https://ledger.jtmb.cc" } };
   try {
-    const { publicKeyValue, safeLocalNext } = await import("../components/auth-client.ts");
+    const { safeLocalNext } = await import("../components/auth-client.ts");
     assert.equal(safeLocalNext("/overview?symbol=ACDC"), "/overview?symbol=ACDC");
     assert.equal(safeLocalNext("//example.com"), "/overview");
     assert.equal(safeLocalNext("/\\example.com"), "/overview");
     assert.equal(safeLocalNext("https://example.com"), "/overview");
-    const options = publicKeyValue({
-      challenge: "AQID",
-      rp: { id: "ledger.jtmb.cc" },
-      user: { id: "BAUG" },
-      allowCredentials: [{ id: "BwgJ" }],
-    });
-    assert.equal(options.rp.id, "ledger.jtmb.cc");
-    assert.deepEqual([...new Uint8Array(options.challenge)], [1, 2, 3]);
-    assert.deepEqual([...new Uint8Array(options.user.id)], [4, 5, 6]);
-    assert.deepEqual([...new Uint8Array(options.allowCredentials[0].id)], [7, 8, 9]);
   } finally {
     globalThis.window = previousWindow;
   }
@@ -172,7 +142,7 @@ test("shared API mutations obtain a session CSRF token without breaking auth-dis
     if (url === "/api/v1/auth/session") {
       sessionCalls += 1;
       const body = sessionCalls === 1
-        ? { authenticated: false, requires_passkey: false }
+        ? { authenticated: false, requires_totp: false }
         : { authenticated: true, csrf_token: "csrf-test-token" };
       return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
     }

@@ -19,7 +19,7 @@ from typing import Any, Final, TypedDict, TypeGuard, cast
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, HistoryFilters
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 OUTCOME_RECONSTRUCTION_LIMIT = 100
 HISTORY_EXPORT_LIMIT = 100
 INSTRUMENT_LIST_ITEM_LIMIT = 100
@@ -38,6 +38,7 @@ MIGRATION_SHA256 = {
     7: "770484cb124161d2da58aefea5dc6376a8dbc35624e552019c2111e8b0246e05",
     8: "e79a6e6a5510b826ef98430b334199b12353a672eaf38ea4b49c6c8a72ca8fae",
     9: "bca47a59aef43ce4c4750c2a11f822903cb3e6a599d50e8eaff4690dc4ba9c6c",
+    10: "e961d81cc560407596a3653c2ba4ff1d622ba02de20078d1066db76a8c891922",
 }
 
 

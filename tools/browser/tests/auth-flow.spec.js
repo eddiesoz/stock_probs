@@ -27,18 +27,12 @@ test("GitHub sign-in opens the fixed same-origin OAuth start after status loads"
   expect(starts).toBe(1);
 });
 
-test("legacy passkey migration offers sign-in when the session has expired", async ({ page }) => {
-  await page.route("**/api/v1/auth/session", (route) => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ authenticated: false }),
-  }));
-
+test("old passkey bookmarks redirect to the authenticator flow without a ceremony", async ({ page }) => {
   await page.goto("/passkey?mode=verify&next=/authenticator%3Fmode%3Denroll%26next%3D%252Foverview");
+  await expect(page).toHaveURL(/\/authenticator\?mode=enroll/);
   await expect(page.getByRole("heading", { name: "Sign in first" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open sign in" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Verify legacy passkey" })).toHaveCount(0);
-  await expect(page.getByText("Checking your session…")).toHaveCount(0);
 });
 
 test("authenticator loading settles deterministically on desktop and mobile", async ({ page }) => {

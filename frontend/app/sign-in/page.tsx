@@ -55,7 +55,7 @@ export default function SignInPage() {
     return () => { active = false; };
   }, []);
 
-  const requiresAuthenticator = Boolean(session?.authenticated && (session.requires_totp || session.totp_required || session.requires_passkey || session.passkey_required));
+  const requiresAuthenticator = Boolean(session?.authenticated && (session.requires_totp || session.totp_required));
   const authenticatorPath = `/authenticator?mode=${session?.totp_enrolled ? "verify" : "enroll"}&next=${encodeURIComponent(nextPath)}`;
 
   useEffect(() => {
@@ -93,11 +93,11 @@ export default function SignInPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const response = await authRequest<{ requires_passkey?: boolean; requires_totp?: boolean; passkey_required?: boolean; user?: unknown }>("/api/v1/auth/local/login", {
+      const response = await authRequest<{ requires_totp?: boolean; user?: unknown }>("/api/v1/auth/local/login", {
         method: "POST",
         body: JSON.stringify({ username: login.trim(), password }),
       });
-      if (response.requires_passkey || response.passkey_required || response.requires_totp) {
+      if (response.requires_totp) {
         window.location.assign(`/authenticator?mode=enroll&next=${encodeURIComponent(nextPath)}`);
       } else {
         window.location.assign(nextPath);

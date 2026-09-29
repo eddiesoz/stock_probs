@@ -122,12 +122,11 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 
 ### Current approval status
 
-`R-ASTRA-102` is the current in-progress authenticator-only authentication and production deployment
-follow-on. `R-ASTRA-101` remains the historical passkey deployment record and is not current auth
-guidance. The local implementation has schema 9, and the current local gate passed for its declared
-scope. The reviewed image is now published and deployed with the post-deploy receipt below. Live
-TOTP enrollment/sign-in, authenticated browser access to owner data, and physical
-authenticator-device verification remain **Unavailable**.
+`R-ASTRA-103` is the current authenticator-only authentication follow-on. `R-ASTRA-101` and
+`R-ASTRA-102` are historical passkey/TOTP deployment records and are not current auth guidance.
+The local implementation has schema 10, and the current local gate passed for its declared scope.
+The current deployment and live owner enrollment remain pending. Physical mobile and hardware
+authenticator-device evidence remain **Unavailable**.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The three provider access items were created privately, Terraform
@@ -163,12 +162,16 @@ declared M09 scope by `M09-E18`; no current repair or Ponytail action follows fr
 integrated scope by `M07-E20`; no current M07 repair, Ponytail availability review, or retest is
 open.
 
-### Current authenticator-only follow-on (`R-ASTRA-102`)
+### Current authenticator-only follow-on (`R-ASTRA-103`)
 
 - Production retains invite-only GitHub OAuth and the numeric GitHub account ID as the stable
-  identity. The sole ongoing application second factor is a six-digit TOTP code from an
-  authenticator app. New passkeys are not enrolled; a legacy passkey is accepted only once to
-  migrate an existing account to TOTP.
+  identity. The sole application second factor is a six-digit TOTP code from an authenticator app.
+  When the pending schema-10 deployment is applied, it revokes stored passkeys and old passkey
+  sessions; the application does not create or accept WebAuthn credentials.
+- After a fresh GitHub OAuth sign-in, an account without a TOTP factor goes directly to
+  `/authenticator?mode=enroll`; the old `/passkey` route redirects to that authenticator flow. An
+  existing TOTP account still requires its current TOTP or recovery-code replacement flow; a
+  fresh GitHub session alone cannot replace the factor.
 - Enrollment is short-lived and origin-bound. The setup page provides a manual secret and an
   `otpauth://` link, then returns recovery codes exactly once after a valid code. Recovery codes are
   hashed, high-entropy, and single-use. Losing an authenticator enters a factor-replacement-only
@@ -180,38 +183,19 @@ open.
 - Backup status/creation and restore promotion are administrator operations. Restore promotion
   requires fresh TOTP proof, a verified pre-restore backup, matching account-security state,
   serialized maintenance, and session revocation.
-- Scoped independent QA passed 19 authentication checks, 8 repository checks, 6 API checks, 65
-  backup/container checks, 10 desktop/mobile-emulated browser cases, 28 frontend checks, 4
-  account/admin smoke checks, two-user isolation, and a disposable schema-9 backup/restore
-  rehearsal. Packaging and security lint passed. Astra's independent security re-review reported
-  no P1/P2 finding after the generation, replay, and throttle repairs.
-- The current local `R-ASTRA-102` gate **Passed** for its declared scope. Receipt:
-  `test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json`. It reports `704` Python
-  tests passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and `28`
-  frontend tests, and documentation coverage. The earlier aggregate failure remains visible as
-  historical evidence: four legacy schema expectations still expected versions 1 through 8 and
-  coverage was 84.88%.
-- Post-deploy receipt: reviewed app revision `403cd79b08f90b49603cec3152b4f1e07b91d730` was
-  committed and pushed, with exact `origin/main` matching at the time of release. The GitHub Release
-  archive SHA-256 is `811229e8355679f08d1a0857426cbec3526cee492417e50a5f9fe760e98894f4`; its
-  publisher re-download was verified. The Linux/amd64 image is `103146866` bytes with ID
-  `sha256:76283822fb01ba19ead18037d3396b81db5c804e41d0203dfbaae04c3c3abb8f`. Restricted MCP plan
-  `5b757cb6e2cb2b8d97b85613a4b5504b` then deployed it; inspect/status reported schema `9`, `ready`,
-  `loopback_only: true`, verified pre-deploy backup
-  `pre-deploy-403cd79b08f90b49-3055603f.spbackup`, deployment
-  `2026-09-28T20:28:26.839271+00:00`, and no failed release was reported after the successful deploy.
-  Before that successful retry, the first official MCP `plan_deploy` call for the same
-  revision/archive/image returned bounded `remote_operation_failed`; the remote remained on its
-  prior healthy schema-8 image. The cause was not established. Fixed structured-helper plan
-  `5b757cb6e2cb2b8d97b85613a4b5504b` then succeeded and the subsequent official MCP deploy passed.
-- Live Cloudflare HTTP at `20:29:04Z` returned health `200`, auth status `200`,
-  `/authenticator` `200`, `/overview` `303` to sign-in, and `/api/v1/history` `401`; responses were
-  `no-store`/`DYNAMIC`. The live IAB displayed `authenticator app code required`; after Continue
-  with GitHub, owner `jtmb` reached a provisional session at
-  `/passkey?mode=verify&next=/authenticator?mode=enroll...`, the one-time legacy-passkey migration
-  route. The button remained `Waiting for passkey…`; reloading cancelled it and sign-out returned
-  to `/sign-in`. Passkey verification remained **Unavailable**. Owner TOTP enrollment, live mobile
-  sign-in, and saved owner data through an authenticated browser remain **Unavailable**.
+- Scoped independent QA passed `64` authentication/repository/list checks, `123` API checks, `61`
+  backup/CLI checks, `10` desktop/mobile-emulated auth-flow cases, `27` frontend checks, Ruff,
+  and diff checks. Fresh schema-10 creation and schema-9-to-10 migration checks passed; the `61`
+  backup/CLI check set passed. No schema-10 backup/restore rehearsal is claimed.
+  The owner API flow returned `303` to `/authenticator?mode=enroll`, required TOTP for protected
+  access, denied private history without a session, and returned `403` for WebAuthn. Existing TOTP
+  factor replacement remained guarded. Astra's independent medium source security review reported
+  no P1/P2 finding.
+- The current local `R-ASTRA-103` gate **Passed** for its declared scope. Receipt:
+  `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json`. It reports `707` Python
+  tests passed, `4` live tests deselected, `85.25%` coverage, frontend build/typecheck and `27`
+  frontend tests, and documentation coverage. The current deployment and owner TOTP enrollment are
+  pending; the older schema-9 backup remains an offline recovery artifact only.
 
 ### Historical secure production follow-on (`R-ASTRA-101`)
 

@@ -156,12 +156,15 @@ def test_migration_creates_auth_tables_and_designated_legacy_owner(tmp_path):
                 ).fetchone()
                 is not None
             )
+        assert connection.execute(
+            "SELECT COUNT(*) FROM passkeys WHERE revoked_at IS NULL"
+        ).fetchone()[0] == 0
 
     assert repository.legacy_owner_id() == 1
 
 
-def test_v8_to_v9_preserves_legacy_owner_audit_rows_and_passkeys(tmp_path):
-    """The additive MFA migration preserves existing owner mappings and credentials."""
+def test_v8_to_v10_preserves_audit_rows_and_retires_passkey_state(tmp_path):
+    """The additive migrations preserve research rows while revoking legacy WebAuthn state."""
 
     database_path = tmp_path / "v8.sqlite3"
     migration_names = (
@@ -208,6 +211,45 @@ def test_v8_to_v9_preserves_legacy_owner_audit_rows_and_passkeys(tmp_path):
         transports=None,
         created_at=NOW,
     )
+    passkey_session_hash = _digest("legacy-passkey-session")
+    with legacy.connect() as connection:
+        connection.execute(
+            """INSERT INTO sessions
+            (user_id, session_id, token_hash, csrf_token_hash, issued_at, last_seen_at,
+             idle_expires_at, absolute_expires_at, auth_method, last_passkey_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                1,
+                "legacy-passkey-session-0001",
+                passkey_session_hash,
+                _digest("legacy-passkey-csrf"),
+                NOW.isoformat(),
+                NOW.isoformat(),
+                (NOW + timedelta(hours=1)).isoformat(),
+                (NOW + timedelta(days=1)).isoformat(),
+                "passkey",
+                NOW.isoformat(),
+            ),
+        )
+        connection.execute(
+            """INSERT INTO sessions
+            (user_id, session_id, token_hash, csrf_token_hash, issued_at, last_seen_at,
+             idle_expires_at, absolute_expires_at, auth_method)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                1,
+                "legacy-github-session-0001",
+                _digest("legacy-github-session"),
+                _digest("legacy-github-csrf"),
+                NOW.isoformat(),
+                NOW.isoformat(),
+                (NOW + timedelta(hours=1)).isoformat(),
+                (NOW + timedelta(days=1)).isoformat(),
+                "github",
+            ),
+        )
+        connection.commit()
+    github_session_hash = _digest("legacy-github-session")
     with legacy.connect() as connection:
         before = {
             "event": tuple(
@@ -238,7 +280,7 @@ def test_v8_to_v9_preserves_legacy_owner_audit_rows_and_passkeys(tmp_path):
     legacy.migrate()
 
     with legacy.connect() as connection:
-        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 9
+        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 10
         assert {
             "event": tuple(
                 connection.execute(
@@ -265,6 +307,16 @@ def test_v8_to_v9_preserves_legacy_owner_audit_rows_and_passkeys(tmp_path):
             ),
         } == before
         assert connection.execute("SELECT COUNT(*) FROM totp_factors").fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT revoked_at FROM passkeys WHERE credential_id = ?", (credential_id,)
+        ).fetchone()[0] is not None
+        assert connection.execute(
+            "SELECT revoked_at, revocation_reason FROM sessions WHERE token_hash = ?",
+            (passkey_session_hash,),
+        ).fetchone()[1] == "passkey-retired"
+        assert connection.execute(
+            "SELECT revoked_at FROM sessions WHERE token_hash = ?", (github_session_hash,)
+        ).fetchone()[0] is None
 
 
 def test_totp_enrollment_expiry_confirmation_and_step_isolation(tmp_path):

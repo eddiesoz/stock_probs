@@ -7,6 +7,7 @@ import hashlib
 import json
 import threading
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
@@ -143,7 +144,7 @@ def test_totp_enrollment_is_atomic_and_returns_one_time_recovery_codes() -> None
     assert secret not in str(store.totp_factors)
 
 
-def test_existing_passkey_user_must_migrate_with_passkey_before_totp_enrollment() -> None:
+def test_existing_passkey_user_enrolls_totp_from_fresh_github_session() -> None:
     manager, _store, user = _github_totp_manager()
     legacy_user = UserRecord(
         id=user.id,
@@ -158,12 +159,23 @@ def test_existing_passkey_user_must_migrate_with_passkey_before_totp_enrollment(
         passkey_required=False,
     )
     github_session = manager.issue_session(legacy_user, NOW, "github")
-    with pytest.raises(AuthorizationDenied):
-        manager.begin_totp_enrollment(github_session.context, NOW)
-
-    passkey_session = manager.issue_session(legacy_user, NOW, "passkey", mfa_method="passkey")
-    setup = manager.begin_totp_enrollment(passkey_session.context, NOW)
+    setup = manager.begin_totp_enrollment(github_session.context, NOW)
     assert setup["enrollment"] is True
+    with pytest.raises(AuthorizationDenied):
+        manager.issue_session(legacy_user, NOW, "passkey", mfa_method="passkey")
+
+
+def test_github_user_shape_never_advertises_a_passkey_requirement() -> None:
+    manager, _store, user = _github_totp_manager()
+    legacy_shape = replace(
+        user,
+        role="member",
+        passkey_enrolled=False,
+        passkey_required=True,
+    )
+    normalized = manager.user_from_record(legacy_shape.public_dict())
+    assert normalized.passkey_enrolled is False
+    assert normalized.passkey_required is False
 
 
 def test_totp_replay_is_rejected_but_existing_verified_device_survives_new_login() -> None:
@@ -1730,7 +1742,7 @@ def test_github_session_requires_totp_even_for_the_admin_owner(tmp_path) -> None
             follow_redirects=False,
         )
         assert provisional_page.status_code == 303
-        assert provisional_page.headers["location"].startswith("/passkey?mode=verify")
+        assert provisional_page.headers["location"].startswith("/authenticator?mode=enroll")
 
         missing_csrf = client.post(
             "/api/v1/auth/logout",
@@ -1774,7 +1786,7 @@ def test_github_session_requires_totp_even_for_the_admin_owner(tmp_path) -> None
 
 
 def test_provisional_github_session_cannot_register_second_passkey(tmp_path) -> None:
-    """Adding a credential requires an existing passkey step-up after enrollment."""
+    """Production rejects both new WebAuthn credentials and legacy assertion ceremonies."""
 
     settings = Settings(
         data_dir=tmp_path,
@@ -1817,3 +1829,112 @@ def test_provisional_github_session_cannot_register_second_passkey(tmp_path) -> 
         )
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "authorization_denied"
+        assertion = client.post(
+            "/api/v1/auth/passkeys/authenticate/options",
+            headers={"x-csrf-token": issue.csrf_token},
+            cookies={
+                SESSION_COOKIE_NAME: issue.session_token,
+                CSRF_COOKIE_NAME: issue.csrf_token,
+            },
+        )
+        assert assertion.status_code == 403
+        assert assertion.json()["error"]["code"] == "authorization_denied"
+        registration_finish = client.post(
+            "/api/v1/auth/passkeys/register",
+            json={"response": {}, "id": "retired-credential", "raw_id": "retired-raw-id"},
+            headers={"x-csrf-token": issue.csrf_token},
+            cookies={
+                SESSION_COOKIE_NAME: issue.session_token,
+                CSRF_COOKIE_NAME: issue.csrf_token,
+            },
+        )
+        assert registration_finish.status_code == 403
+        assert registration_finish.json()["error"]["code"] == "authorization_denied"
+        assertion_finish = client.post(
+            "/api/v1/auth/passkeys/authenticate",
+            json={"response": {}, "id": "retired-credential", "raw_id": "retired-raw-id"},
+            headers={"x-csrf-token": issue.csrf_token},
+            cookies={
+                SESSION_COOKIE_NAME: issue.session_token,
+                CSRF_COOKIE_NAME: issue.csrf_token,
+            },
+        )
+        assert assertion_finish.status_code == 403
+        assert assertion_finish.json()["error"]["code"] == "authorization_denied"
+
+
+def test_retired_passkey_session_is_rejected_in_production() -> None:
+    """An old passkey-issued cookie cannot bootstrap authenticator enrollment."""
+
+    manager, store, user = _github_totp_manager()
+    session_value = "retired-passkey-session-token"
+    token_hash = hashlib.sha256(session_value.encode()).hexdigest()
+    store.auth_create_session(
+        {
+            "session_id": "retired-passkey-session-0001",
+            "user_id": user.id,
+            "token_hash": token_hash,
+            "csrf_token_hash": hashlib.sha256(b"retired-passkey-csrf").hexdigest(),
+            "auth_method": "passkey",
+            "created_at": NOW.isoformat(),
+            "last_seen_at": NOW.isoformat(),
+            "idle_expires_at": (NOW + timedelta(hours=1)).isoformat(),
+            "expires_at": (NOW + timedelta(days=1)).isoformat(),
+        }
+    )
+    with pytest.raises(AuthenticationRequired):
+        manager.authenticate(session_value, NOW + timedelta(seconds=1))
+    assert store.sessions[token_hash]["revoked_at"] is not None
+
+    mfa_session_value = "retired-passkey-mfa-session-token"
+    mfa_token_hash = hashlib.sha256(mfa_session_value.encode()).hexdigest()
+    store.auth_create_session(
+        {
+            "session_id": "retired-passkey-mfa-session-0001",
+            "user_id": user.id,
+            "token_hash": mfa_token_hash,
+            "csrf_token_hash": hashlib.sha256(b"retired-passkey-mfa-csrf").hexdigest(),
+            "auth_method": "github",
+            "mfa_method": "passkey",
+            "created_at": NOW.isoformat(),
+            "last_seen_at": NOW.isoformat(),
+            "idle_expires_at": (NOW + timedelta(hours=1)).isoformat(),
+            "expires_at": (NOW + timedelta(days=1)).isoformat(),
+        }
+    )
+    with pytest.raises(AuthenticationRequired):
+        manager.authenticate(mfa_session_value, NOW + timedelta(seconds=1))
+    assert store.sessions[mfa_token_hash]["revoked_at"] is not None
+
+
+def test_passkey_deep_link_redirects_to_authenticator_and_rejects_external_next(tmp_path) -> None:
+    """Legacy bookmarks reach the authenticator route without accepting an open redirect."""
+
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "stock_probs.sqlite3",
+        backup_dir=tmp_path / "backups",
+        provider="fixture",
+        environment="test",
+        auth_mode="github",
+        auth_session_secret="p" * 48,
+        auth_public_origin="http://testserver",
+        github_client_id="client-id",
+        github_client_secret="client-secret",  # noqa: S106
+        github_redirect_uri="http://testserver/api/v1/auth/github/callback",
+        owner_github_id=24680,
+    )
+    application = create_app(settings, FixtureProvider(), lambda: NOW, auth_store=MemoryAuthStore())
+    with TestClient(application) as client:
+        local = client.get(
+            "/passkey?mode=verify&next=%2Ftools%2Fmarkets",
+            follow_redirects=False,
+        )
+        assert local.status_code == 303
+        assert local.headers["location"] == "/authenticator?mode=enroll&next=%2Ftools%2Fmarkets"
+        external = client.get(
+            "/passkey?next=https%3A%2F%2Fevil.example%2Fsteal",
+            follow_redirects=False,
+        )
+        assert external.status_code == 303
+        assert external.headers["location"] == "/authenticator?mode=enroll&next=%2Foverview"

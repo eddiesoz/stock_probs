@@ -49,7 +49,6 @@ export default function AccountPage() {
   const authenticatorManagePath = totpStatus?.enrolled
     ? `/authenticator?mode=step-up&next=${encodeURIComponent(authenticatorSetupPath)}`
     : authenticatorSetupPath;
-  const legacyMigrationPath = `/authenticator?mode=enroll&next=${encodeURIComponent("/account")}`;
 
   return (
     <>
@@ -60,7 +59,6 @@ export default function AccountPage() {
           <div className={styles.sectionRule}><h2 id="identity-heading">Identity</h2><p>Your account identity determines which saved records you can access.</p></div>
           <div className={styles.statGrid}><div className={styles.stat}><strong>{session.user.name || session.user.login || "Member"}</strong><span>Display name</span></div><div className={styles.stat}><strong>{session.user.login ? `@${session.user.login}` : session.user.email || "Invited account"}</strong><span>{session.local_login_enabled ? "Development account" : "GitHub identity"}</span></div><div className={styles.stat}><strong>{session.user.role === "admin" ? "Administrator" : "Member"}</strong><span>Role</span></div></div>
           <div className={styles.permissionBox}><div><strong>{totpStatus?.enrolled ? "Authenticator protected" : "Authenticator setup required"}</strong><p>{totpStatus?.enrolled ? `${totpStatus.recovery_codes_remaining} recovery codes remain. Sensitive actions require a fresh code when needed.` : "Connect an authenticator app before using protected operations."}</p></div><a className="secondary" href={authenticatorManagePath}>{totpStatus?.enrolled ? "Manage authenticator" : "Set up authenticator"}</a></div>
-          {!totpStatus?.enrolled && (session.user.passkey_enrolled || session.user.passkey_registered) ? <p className={styles.securityNote}>A legacy passkey is retained for one-time migration only. <a href={`/passkey?mode=verify&next=${encodeURIComponent(legacyMigrationPath)}`}>Verify legacy passkey</a></p> : null}
           <div className={styles.sectionRule}><h2>Active sessions</h2><p>Revoke sessions you do not recognize. The current session is marked for clarity.</p></div>
           {sessions.length ? <ul className={styles.dataList}>{sessions.map((item) => <li className={styles.dataRow} key={item.id}><div><strong>{item.current ? "This browser" : item.user_agent || "Signed-in session"}</strong><small>Last seen {formatAuthDate(item.last_seen_at)} · Expires {formatAuthDate(item.expires_at)}</small></div><button className="secondary" type="button" disabled={Boolean(item.current) || busy === item.id} onClick={() => revoke(item.id)}>{busy === item.id ? "Revoking…" : item.current ? "Current" : "Revoke"}</button></li>)}</ul> : <p className={styles.loadingState}>No session details are available yet.</p>}
           {message ? <p className={styles.authMessage} data-tone={message.tone} role={message.tone === "error" ? "alert" : "status"}>{message.text}</p> : null}

@@ -1404,8 +1404,8 @@ class AuthManager:
         self._challenges: dict[str, tuple[ChallengeKind, int, datetime]] = {}
         self._oauth_start_lock = threading.Lock()
         self._oauth_start_times: list[datetime] = []
-        # The marker is retained only for compatibility with the legacy passkey migration path;
-        # production workspace access is decided by the durable TOTP session fields below.
+        # Keep a short-lived local-only marker for development backup step-up checks. Production
+        # workspace access is decided by the durable TOTP session fields below.
         self._step_up_sessions: dict[str, tuple[int, datetime]] = {}
 
     @property
@@ -1418,6 +1418,11 @@ class AuthManager:
         """Apply the deployment authentication policy to a persisted account row."""
 
         user = UserRecord.from_record(value)
+        if self.settings.mode == "github":
+            # WebAuthn credentials are historical audit rows after the authenticator-only
+            # cutover. Stale denormalized flags must never make a GitHub account advertise or
+            # enter the retired ceremony, whether or not a factor row is still present.
+            user = replace(user, passkey_enrolled=False, passkey_required=False)
         if not user.totp_enrolled and self.has_totp_factor(user.id):
             user = replace(user, totp_enrolled=True, passkey_required=False)
         return user
@@ -1529,6 +1534,10 @@ class AuthManager:
             raise AuthenticationRequired()
         if mfa_method not in {"none", "totp", "passkey", "recovery"}:
             raise AuthUnavailable("Account security state is invalid.")
+        if self.settings.mode == "github" and (
+            auth_method == "passkey" or mfa_method == "passkey"
+        ):
+            raise AuthorizationDenied("Passkeys are no longer accepted; use an authenticator code.")
         if mfa_method in {"totp", "recovery"} and type(expected_factor_id) is not int:
             raise AuthUnavailable("Account security state is invalid.")
         if mfa_method not in {"totp", "recovery"} and expected_factor_id is not None:
@@ -1558,8 +1567,8 @@ class AuthManager:
                 "idle_expires_at": _iso(idle),
                 "expires_at": _iso(expires),
                 "last_passkey_at": _iso(created) if auth_method == "passkey" else None,
-                # Schema v9 reserves the durable MFA column for an assured TOTP or recovery
-                # session. Legacy/passkey migration state remains represented by auth_method.
+                # Schema v9 stores only assured TOTP or recovery sessions in the durable MFA
+                # columns. Local development may still issue a passkey step-up session.
                 "mfa_method": mfa_method if mfa_method in {"totp", "recovery"} else None,
                 "mfa_verified_at": _iso(verified_at)
                 if verified_at is not None and mfa_method in {"totp", "recovery"}
@@ -1615,6 +1624,16 @@ class AuthManager:
         user_record = self.store.auth_get_user_by_id(int(record["user_id"]))
         if user_record is None:
             raise AuthenticationRequired()
+        if self.settings.mode == "github" and (
+            record.get("auth_method") == "passkey"
+            or record.get("mfa_method") == "passkey"
+            or record.get("last_passkey_at") is not None
+        ):
+            # Migration v10 revokes these rows durably. Keep the request boundary fail-closed
+            # for either legacy marker if an old session reaches a process before migration or
+            # during a restart race.
+            self.store.auth_revoke_session(token_hash, _iso(current))
+            raise AuthenticationRequired()
         user = self.user_from_record(user_record)
         if not user.active:
             raise AuthenticationRequired()
@@ -1625,16 +1644,12 @@ class AuthManager:
         raw_session_id = record.get("session_id")
         csrf_hash = record.get("csrf_token_hash")
         auth_method = record.get("auth_method", "local")
-        if auth_method == "passkey" and self.settings.mode == "github":
-            # Sessions created by the previous passkey-only release are migration sessions. They
-            # may reach factor enrollment, but their old method must never become workspace auth.
-            auth_method = "github"
         mfa_method = record.get("mfa_method") or "none"
         if mfa_method == "none" and record.get("auth_method") == "passkey":
             mfa_method = "passkey"
         if auth_method == "passkey" and self.settings.mode == "local":
-            # Development passkey sessions retain the legacy local step-up behavior. Production
-            # always normalizes this method to GitHub plus the migration-only MFA marker above.
+            # Development passkey sessions retain the local step-up behavior; production legacy
+            # passkey sessions are rejected by the fail-closed guard above.
             auth_method = "local"
         mfa_verified_at_value = record.get("mfa_verified_at")
         mfa_verified_at = (
@@ -1729,6 +1744,10 @@ class AuthManager:
             )
         if context.mfa_method == "recovery":
             return True
+        if self.settings.mode == "github":
+            # GitHub identity proof is the only bootstrap for a new authenticator. A legacy
+            # passkey flag is deliberately ignored after the v10 retirement migration.
+            return context.auth_method == "github" and context.mfa_method == "none"
         if context.user.passkey_enrolled:
             return context.mfa_method == "passkey"
         if context.mfa_method == "passkey":
@@ -1973,7 +1992,6 @@ class AuthManager:
             "enrollment_pending": isinstance(pending, Mapping),
             "recovery_codes_remaining": remaining,
             "requires_totp": self.settings.mode == "github",
-            "legacy_passkey_migration": bool(user.passkey_enrolled and not enrolled),
             "can_enroll": self.can_enroll_totp(context),
         }
 
@@ -2265,7 +2283,7 @@ class AuthManager:
             raise AuthenticationRequired()
         if self.settings.mode == "github":
             raise AuthorizationDenied(
-                "Passkeys are retained only to migrate legacy accounts to an authenticator."
+                "Passkeys are retired; use your authenticator code."
             )
         challenge = _b64(secrets.token_bytes(32))
         now = datetime.now(UTC)
@@ -2297,7 +2315,10 @@ class AuthManager:
     def finish_passkey_registration(
         self, user: UserRecord, response: Mapping[str, object], rp_id: str, origin: str
     ) -> PasskeyCredential:
-        """Verify and persist one passkey credential for an account."""
+        """Verify and persist one local-development passkey credential for an account."""
+
+        if self.settings.mode == "github":
+            raise AuthorizationDenied("Passkeys are retired; use your authenticator code.")
 
         challenge = self._consume_challenge("registration", user.id, response)
         credential = self.passkey_backend.verify_registration(
@@ -2321,8 +2342,8 @@ class AuthManager:
     def begin_passkey_assertion(self, user: UserRecord, rp_id: str) -> dict[str, object]:
         """Return assertion options for every enrolled credential on an account."""
 
-        if self.settings.mode == "github" and self.has_totp_factor(user.id):
-            raise AuthorizationDenied("Use your authenticator code for this account.")
+        if self.settings.mode == "github":
+            raise AuthorizationDenied("Passkeys are retired; use your authenticator code.")
         credentials = self.store.auth_get_passkeys(user.id)
         challenge = _b64(secrets.token_bytes(32))
         now = datetime.now(UTC)
@@ -2358,8 +2379,8 @@ class AuthManager:
     ) -> SessionIssue:
         """Verify a legacy assertion and issue only a factor-migration session."""
 
-        if self.settings.mode == "github" and self.has_totp_factor(user.id):
-            raise AuthorizationDenied("Use your authenticator code for this account.")
+        if self.settings.mode == "github":
+            raise AuthorizationDenied("Passkeys are retired; use your authenticator code.")
 
         challenge = self._consume_challenge("assertion", user.id, response)
         credential_id = response.get("id")

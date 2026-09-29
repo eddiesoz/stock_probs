@@ -11,9 +11,6 @@ export interface AuthUser {
   avatar_url?: string;
   role: AuthRole;
   username?: string;
-  passkey_registered?: boolean;
-  passkey_enrolled?: boolean;
-  passkey_required?: boolean;
   totp_enrolled?: boolean;
 }
 
@@ -22,8 +19,6 @@ export interface AuthSession {
   user?: AuthUser | null;
   role?: AuthRole | null;
   local_login_enabled?: boolean;
-  passkey_required?: boolean;
-  requires_passkey?: boolean;
   requires_totp?: boolean;
   totp_required?: boolean;
   totp_enrolled?: boolean;
@@ -37,7 +32,6 @@ export interface TotpStatus {
   enrollment_pending: boolean;
   recovery_codes_remaining: number;
   requires_totp: boolean;
-  legacy_passkey_migration: boolean;
   can_enroll: boolean;
 }
 
@@ -173,7 +167,6 @@ export function authErrorMessage(error: unknown): string {
     if (error.code === "invitation_rejected") {
       return error.message || "That invitation is invalid, expired, revoked, or already used. Ask the administrator for a new invitation.";
     }
-    if (error.code === "passkey_already_registered") return error.message;
     if (error.code === "totp_rate_limited") return "Too many authenticator attempts. Wait a few minutes, then try again.";
     if (error.code === "totp_rejected") return "That authenticator code was not accepted. Wait for the next code and try again.";
     if (error.code === "totp_required") return "Complete authenticator setup or verification before continuing.";
@@ -202,103 +195,4 @@ export function safeLocalNext(value: string | null, fallback = "/overview"): str
   } catch {
     return fallback;
   }
-}
-
-function decodeBase64Url(value: string): ArrayBuffer {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
-  const binary = window.atob(padded);
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  return bytes.buffer;
-}
-
-function encodeBase64Url(value: ArrayBuffer | ArrayBufferView): string {
-  const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-export function publicKeyValue(value: unknown, keyPath = ""): unknown {
-  if (Array.isArray(value)) return value.map((item, index) => publicKeyValue(item, `${keyPath}.${index}`));
-  if (!value || typeof value !== "object") return value;
-  const result: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    const path = keyPath ? `${keyPath}.${key}` : key;
-    // WebAuthn descriptor and user IDs are bytes; rp.id is a hostname and must stay text.
-    const binaryField = path === "challenge" || path === "user.id"
-      || (key === "id" && /^(allowCredentials|excludeCredentials)\.\d+\.id$/.test(path));
-    result[key] = typeof item === "string" && binaryField
-      ? decodeBase64Url(item)
-      : publicKeyValue(item, path);
-  }
-  return result;
-}
-
-function credentialPayload(credential: PublicKeyCredential): Record<string, unknown> {
-  const response = credential.response;
-  const payload: Record<string, unknown> = {
-    id: credential.id,
-    raw_id: encodeBase64Url(credential.rawId),
-    type: credential.type,
-  };
-  if ("attestationObject" in response) {
-    const attestation = response as AuthenticatorAttestationResponse;
-    payload.response = {
-      clientDataJSON: encodeBase64Url(attestation.clientDataJSON),
-      attestationObject: encodeBase64Url(attestation.attestationObject),
-      transports: attestation.getTransports?.() ?? [],
-    };
-  } else if ("authenticatorData" in response) {
-    const assertion = response as AuthenticatorAssertionResponse;
-    payload.response = {
-      clientDataJSON: encodeBase64Url(assertion.clientDataJSON),
-      authenticatorData: encodeBase64Url(assertion.authenticatorData),
-      signature: encodeBase64Url(assertion.signature),
-      userHandle: assertion.userHandle ? encodeBase64Url(assertion.userHandle) : null,
-    };
-  }
-  return payload;
-}
-
-export async function runPasskeyCeremony(
-  path: string,
-  completionPath: string,
-  kind: "create" | "get",
-): Promise<Record<string, unknown>> {
-  if (!window.PublicKeyCredential || !navigator.credentials) {
-    throw new AuthRequestError("This browser does not support passkeys. Use a modern browser or contact an administrator.", 422, "passkey_unsupported");
-  }
-  const options = await authRequest<{ public_key: Record<string, unknown>; options?: Record<string, unknown> }>(path, { method: "POST", body: "{}" });
-  const publicKey = publicKeyValue(options.public_key ?? options.options ?? options);
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 65_000);
-  let credential: Credential | null;
-  try {
-    credential = kind === "create"
-      ? await navigator.credentials.create({ publicKey: publicKey as PublicKeyCredentialCreationOptions, signal: controller.signal })
-      : await navigator.credentials.get({ publicKey: publicKey as PublicKeyCredentialRequestOptions, signal: controller.signal });
-  } catch (error) {
-    throw passkeyBrowserError(error, controller.signal.aborted, kind);
-  } finally {
-    window.clearTimeout(timer);
-  }
-  if (!credential || !(credential instanceof PublicKeyCredential)) throw new AuthRequestError("The passkey ceremony was cancelled.", 499, "passkey_cancelled");
-  return authRequest<Record<string, unknown>>(completionPath, { method: "POST", body: JSON.stringify(credentialPayload(credential)) });
-}
-
-export function passkeyBrowserError(error: unknown, timedOut = false, kind: "create" | "get" = "create"): AuthRequestError {
-  const action = kind === "get" ? "verify a passkey" : "create a passkey";
-  const actionNoun = kind === "get" ? "passkey verification" : "passkey setup";
-  if (timedOut) return new AuthRequestError(`No ${actionNoun} prompt completed within a minute. Try a regular browser with a passkey manager or a security key.`, 408, "passkey_timeout");
-  const name = error instanceof Error ? error.name : "";
-  if (name === "NotAllowedError" || name === "AbortError") {
-    return new AuthRequestError(`${actionNoun[0].toUpperCase()}${actionNoun.slice(1)} was cancelled or this browser could not use an authenticator. Try this device, a security key, or a regular browser. A phone option may ask for Bluetooth.`, 422, "passkey_browser_cancelled");
-  }
-  if (name === "SecurityError" || name === "NotSupportedError") {
-    return new AuthRequestError(`This browser cannot ${action} for this site. Open the HTTPS site in a browser with passkey support.`, 422, "passkey_browser_unsupported");
-  }
-  if (name === "InvalidStateError") {
-    return new AuthRequestError("This passkey may already be registered. Choose another authenticator or open Account to manage your passkeys.", 409, "passkey_already_registered");
-  }
-  return new AuthRequestError(`The browser could not ${action}. Try a regular browser with a passkey manager or a security key.`, 422, "passkey_browser_error");
 }
