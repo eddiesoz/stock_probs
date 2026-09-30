@@ -88,13 +88,17 @@ or accept WebAuthn credentials.
 
 ### Authenticator enrollment and recovery
 
-After GitHub sign-in and invitation validation, open `/authenticator?mode=enroll`. Add the displayed
-secret to an authenticator app by scanning the QR code shown on the page. The QR code is generated
-locally in the browser from the short-lived `otpauth://` setup URI; no external QR service receives
-the setup secret. If the authenticator is on the same phone, use the app link below the QR code or
-enter the manual key instead. Then enter the current six-digit code. The server activates the factor
-only after the code is verified and returns recovery codes once. Store each recovery code offline;
-each can be consumed only once.
+After GitHub sign-in and invitation validation, open `/authenticator?mode=enroll`. Generate a setup
+key, then use the in-page authenticator selector to choose Apple Passwords, Google Authenticator,
+1Password, or another app and show its setup instructions. This selector guides setup; it does not
+launch the selected app. On the same iPhone, copy the displayed manual setup key and paste it into
+the chosen app. Tapping the optional `otpauth://` link invokes iOS's default handler, which may open
+Apple Passwords; the page cannot choose or change iOS link routing. To use a QR code, display the
+page on one device and scan it from the authenticator on another. The QR code is generated locally
+in the browser from the short-lived setup URI; no external QR service receives the setup secret.
+Then enter the current six-digit code. The server activates the factor only after the code is
+verified and returns recovery codes once. Store each recovery code offline; each can be consumed
+only once.
 
 If an authenticator is lost, use one unused recovery code at `/authenticator?mode=recover`. That
 session is limited to replacing the factor. Enroll the replacement app and save the newly issued

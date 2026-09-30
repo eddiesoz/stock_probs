@@ -60,7 +60,14 @@ test("auth routes cover invited sign-in, authenticator setup, retired passkey li
   assert.match(authenticator, /otpauth_uri/);
   assert.match(authenticator, /recovery codes/i);
   assert.match(authenticator, /QRCode\.toDataURL\(enrollment\.otpauth_uri/);
-  assert.match(authenticator, /Scan with your authenticator app/);
+  assert.match(authenticator, /Which authenticator do you want to use/);
+  assert.match(authenticator, /Apple Passwords/);
+  assert.match(authenticator, /Google Authenticator/);
+  assert.match(authenticator, /1Password/);
+  assert.match(authenticator, /navigator\.clipboard\.writeText\(enrollment\.secret\)/);
+  assert.match(authenticator, /Try device’s default otpauth handler/);
+  assert.match(authenticator, /iOS chooses which app opens an otpauth link/);
+  assert.doesNotMatch(authenticator, /Open in authenticator app/);
   assert.doesNotMatch(authenticator, /api\.qrserver|chart\.googleapis|external QR/i);
   assert.match(account, /auth\/sessions/);
   assert.match(account, /auth\/totp\/status/);

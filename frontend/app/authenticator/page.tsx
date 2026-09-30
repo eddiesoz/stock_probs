@@ -28,6 +28,22 @@ interface TotpResponse {
 }
 
 const CODE_LENGTH = 6;
+type SetupApp = "" | "apple-passwords" | "google-authenticator" | "1password" | "other";
+
+function setupInstructions(app: SetupApp) {
+  switch (app) {
+    case "apple-passwords":
+      return "Open Passwords and select the Signal Ledger login (create it first if needed). Tap Edit, then Set Up Code, enter this setup key, and tap Use Setup Key.";
+    case "google-authenticator":
+      return "Open Google Authenticator, tap +, then Enter a setup key. Name it Signal Ledger, paste the key, choose Time based if asked, and add it.";
+    case "1password":
+      return "Open and unlock 1Password. Open or create the Signal Ledger Login item, tap Edit, then Add More > One-Time Password. On this iPhone, paste the copied setup key into the field; from another screen, you can scan this page’s QR code instead. Save the item.";
+    case "other":
+      return "In your chosen app, add an account using Enter setup key or manual entry. Name it Signal Ledger, paste this key, and choose time-based (TOTP) if asked.";
+    default:
+      return "Choose your authenticator to see its setup steps. The manual key is available above for apps that support entering a setup key.";
+  }
+}
 
 function modeFromQuery(value: string | null): AuthenticatorMode {
   if (value === "enroll" || value === "recover" || value === "step-up") return value;
@@ -81,6 +97,8 @@ export default function AuthenticatorPage() {
   const [code, setCode] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [copied, setCopied] = useState(false);
+  const [setupKeyCopied, setSetupKeyCopied] = useState(false);
+  const [setupApp, setSetupApp] = useState<SetupApp>("");
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
 
@@ -157,6 +175,7 @@ export default function AuthenticatorPage() {
     setBusy("start");
     setMessage(null);
     setCopied(false);
+    setSetupKeyCopied(false);
     try {
       const response = await authRequest<TotpEnrollment>("/api/v1/auth/totp/enroll/start", {
         method: "POST",
@@ -169,6 +188,21 @@ export default function AuthenticatorPage() {
       setMessage({ tone: "error", text: authErrorMessage(error) });
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function copySetupKey() {
+    if (!enrollment?.secret || !navigator.clipboard) {
+      setMessage({ tone: "error", text: "Copy is unavailable here. Select the setup key above and choose Copy." });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(enrollment.secret);
+      setSetupKeyCopied(true);
+      setMessage({ tone: "success", text: "Setup key copied. Paste it only into your chosen authenticator app." });
+    } catch {
+      setSetupKeyCopied(false);
+      setMessage({ tone: "error", text: "Copy was blocked. Select the setup key above and choose Copy." });
     }
   }
 
@@ -275,16 +309,35 @@ export default function AuthenticatorPage() {
 
         {mode === "enroll" && enrollment && !recoveryCodes ? <div className={styles.enrollmentBox}>
           <div className={styles.stepLabel}><span className={styles.stepNumber}>1</span><span>Add Signal Ledger to your authenticator</span></div>
-          <div className={styles.qrCard}>
-            <span className={styles.secretLabel}>Scan with your authenticator app</span>
-            {qrCodeUrl ? <img className={styles.qrImage} src={qrCodeUrl} width="240" height="240" alt="QR code for adding Signal Ledger to an authenticator app" /> : <div className={styles.qrPlaceholder} role="status">{qrUnavailable ? "QR code unavailable. Use the manual key below." : "Creating QR code…"}</div>}
-            <p>Using this phone? Open the app link below or enter the manual key.</p>
+          <label className={styles.setupChoice} htmlFor="totp-app-choice">
+            Which authenticator do you want to use?
+            <select id="totp-app-choice" value={setupApp} onChange={(event) => setSetupApp(event.target.value as SetupApp)} aria-describedby="totp-app-guidance" autoFocus>
+              <option value="">Choose an app</option>
+              <option value="apple-passwords">Apple Passwords</option>
+              <option value="google-authenticator">Google Authenticator</option>
+              <option value="1password">1Password</option>
+              <option value="other">Other authenticator app</option>
+            </select>
+          </label>
+          <p className={styles.appGuidance} id="totp-app-guidance" aria-live="polite">{setupInstructions(setupApp)}</p>
+          <div className={styles.secretCard}>
+            <span className={styles.secretLabel}>Manual setup key</span>
+            <code className={styles.setupKey} data-testid="totp-setup-key">{enrollment.secret}</code>
+            <p>On this iPhone, copy this key and add it inside the app you chose above. iOS chooses which app opens an otpauth link and may open Apple Passwords instead.</p>
+            <button className="secondary" type="button" onClick={copySetupKey}>{setupKeyCopied ? "Copied setup key" : "Copy setup key"}</button>
           </div>
-          <div className={styles.secretCard}><span className={styles.secretLabel}>Manual setup key</span><code>{enrollment.secret}</code><p>Enter the key exactly as shown. Keep it private while setup is in progress.</p></div>
-          <a className="secondary" href={enrollment.otpauth_uri}>Open in authenticator app</a>
+          <div className={styles.qrCard}>
+            <span className={styles.secretLabel}>QR setup with another device</span>
+            {qrCodeUrl ? <img className={styles.qrImage} src={qrCodeUrl} width="240" height="240" alt="QR code for adding Signal Ledger to an authenticator app" /> : <div className={styles.qrPlaceholder} role="status">{qrUnavailable ? "QR code unavailable. Use the manual key above." : "Creating QR code…"}</div>}
+            <p>Display this QR code on one device, then scan it from your chosen authenticator on the other.</p>
+          </div>
+          <div className={styles.handlerAction}>
+            <p>Trying this link asks your device’s default otpauth handler to open. The app choice above cannot change iOS routing.</p>
+            <a className="secondary" href={enrollment.otpauth_uri}>Try device’s default otpauth handler</a>
+          </div>
           <form className={styles.codeForm} onSubmit={finishOrVerify} noValidate>
             <div className={styles.stepLabel}><span className={styles.stepNumber}>2</span><label htmlFor="totp-code">Enter the current six-digit code</label></div>
-            <input className={styles.codeInput} id="totp-code" name="code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={CODE_LENGTH} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, CODE_LENGTH))} aria-describedby="totp-code-help" autoFocus required />
+            <input className={styles.codeInput} id="totp-code" name="code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={CODE_LENGTH} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, CODE_LENGTH))} aria-describedby="totp-code-help" required />
             <p id="totp-code-help" className={styles.fieldHelp}>Use the newest code. Codes are valid briefly and cannot be reused for the same time window.</p>
             <button className="primary full" type="submit" disabled={busy === "code" || !codeReady}>{busy === "code" ? "Confirming authenticator…" : "Enable authenticator"}</button>
           </form>
