@@ -145,9 +145,15 @@ product evidence and its limitations are documented in the root records and [das
 usage](../usage/dashboard.md); no retired Ponytail check is required for documentation
 completeness or acceptance. The current private deployment reconciliation covers the Terraform
 roots, cloudflared host-unit and update path, source-gated bootstrap, recovery rehearsal, canary
-guard, and scoped infrastructure tests in the root ledgers. The `documentation-map.json` rules
-continue to cover workflow/configuration changes; this page and the operations guide provide the
-authored coverage for the deployment scripts and tests.
+guard, and scoped infrastructure tests in the root ledgers. `R-ASTRA-104` adds optional invitation
+SMTP pass-through in `compose.production.yaml` and the fixed host updater
+`infra/linode/update-host-compose.sh`. The SMTP variables are documented in
+[local configuration](../configure/local-configuration.md), the operator/admin behavior and fixed
+updater in [getting started](../operations/getting-started.md#invitation-email-and-host-compose-update),
+and this page records their coverage rule.
+Keep this page and AGENTS policy coverage current whenever those production settings or updater
+invariants change. The updater only installs the checksum-verified Compose file; deployment and
+live delivery are separate evidence.
 
 The historical schema-8 passkey deployment reconciliation records the owner-only canary, recovery pass, and private
 deployment of the final clean-main image at revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`.

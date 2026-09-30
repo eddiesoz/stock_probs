@@ -108,6 +108,57 @@ browser passkey support. The retired `/passkey` route redirects to authenticator
 cannot create or verify a passkey. An existing TOTP account still requires its current TOTP or
 recovery-code replacement flow; a fresh GitHub session alone cannot replace the factor.
 
+### Invitation email and host Compose update
+
+An administrator can invite a resolved GitHub account from `/admin`. Enter its numeric GitHub ID;
+the optional username is only a display hint. The code remains single-use, expires, and is bound to
+that numeric ID. The recipient must sign in through GitHub as that account. An email address is
+only a delivery destination and does not establish identity.
+
+Manual **Create invitation** remains available without a mail provider; share the resulting code
+through a private channel. **Send invitation by email** submits the same kind of code to the
+provided mailbox when the optional SMTP settings are fully configured. The six production
+variables and accepted values are listed in [local configuration](../configure/local-configuration.md#production-invitation-email).
+Keep SMTP credentials in the operator-controlled production secret path outside the repository.
+The client validates the SMTP server certificate and uses `implicit_tls` on port `465` or
+`starttls` on port `587`, with a 10-second socket timeout applied to each socket operation. This
+is not a total deadline for the entire submission.
+
+A successful email response means only that the configured SMTP server accepted the message for
+processing. The returned local submission ID is not a provider receipt and does not confirm
+mailbox delivery or reading. SMTP failures do not prove that no message was accepted. Since the
+invitation is created before submission, inspect the invitation list before retrying; an unused
+code may remain valid until it expires. The `R-ASTRA-104` scoped QA did not exercise a live SMTP
+provider, mailbox delivery, or production deployment; see the [MVP plan](../../MVP-PLAN.md) for
+the current evidence record.
+
+To install a reviewed change to the host's production Compose file, run the fixed updater from a
+clean checkout of the exact reviewed `main` revision. It verifies that local `HEAD` equals the
+supplied SHA, the worktree is clean, public `origin/main` has the same revision, and the tracked
+Compose file matches the supplied SHA-256. The repository, host, operator account, SSH target, and
+remote destination are fixed in the script.
+
+From the repository root, calculate the hash and invoke the updater, replacing the placeholder
+with the reviewed 40-character commit SHA:
+
+```bash
+reviewed_sha="<reviewed-main-commit-sha>"
+compose_sha="$(sha256sum compose.production.yaml | awk '{print $1}')"
+./infra/linode/update-host-compose.sh \
+  --reviewed-revision "$reviewed_sha" \
+  --compose-sha256 "$compose_sha"
+```
+
+The operator SSH identity and pinned known-hosts file must exist at the script's local defaults,
+or their locations may be supplied through `SIGNAL_LEDGER_OPERATOR_IDENTITY_FILE` and
+`SIGNAL_LEDGER_KNOWN_HOSTS_FILE`. They must be regular, private files, and the known-hosts file
+must be scoped to the fixed host. Never copy private key contents into the repository.
+
+The updater transfers only the verified Compose bytes and atomically replaces the fixed host file
+under the deployment lock. It does not restart the app or tunnel, publish an image, validate a live
+SMTP account, or prove email delivery. Production deployment and live mail acceptance are separate
+checks.
+
 Terraform's Linode configuration keeps the requested low-resource shape: Ubuntu 24.04,
 `g6-nanode-1` (1 GB RAM/25 GB disk), `us-east`, VM Backups, disk encryption, and the existing
 firewall imported as `177236117`. Its inbound policy is default-deny with only operator SSH from

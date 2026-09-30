@@ -216,6 +216,19 @@ first` state; fresh GitHub sign-in as `jtmb` rendered `Protect your account`, `S
 `Generate setup key` without a WebAuthn prompt. Owner TOTP enrollment, workspace content, saved
 holdings, physical mobile, and second-user acceptance remain unavailable.
 
+### Email invitations
+
+Administrators can continue creating single-use invitation codes for private sharing or use the
+optional SMTP email action when all six mail settings are configured. Every invite remains bound to
+the numeric GitHub account ID; the recipient address is only for delivery. An SMTP-accepted
+response does not confirm delivery. `R-ASTRA-104` scoped local QA and source review are recorded in
+the [MVP plan](MVP-PLAN.md#current-email-invitation-follow-on-r-astra-104). Its local gate rerun
+passed for the declared scope: `731` Python tests, `4` deselected, `85.48%` coverage, and frontend
+build/typecheck with `27/27` tests. The initial failed gate is retained in the plan and superseded
+by that rerun. Live email delivery and production deployment have not been verified. See
+[getting started](docs/operations/getting-started.md#invitation-email-and-host-compose-update) for
+configuration and the fixed reviewed-Compose update procedure.
+
 ### Authenticator setup and recovery
 
 After GitHub sign-in and invitation validation, an account without a TOTP factor goes directly to

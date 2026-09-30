@@ -5,12 +5,13 @@ from __future__ import annotations
 import math
 import os
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 from stock_probs.auth import AuthSettings
+from stock_probs.invitation_mail import InvitationMailSettings
 
 PRIVATE_DIRECTORY_MODE = 0o700
 PRIVATE_FILE_MODE = 0o600
@@ -118,6 +119,7 @@ class Settings:
     github_client_secret: str | None = None
     github_redirect_uri: str | None = None
     owner_github_id: int | None = None
+    invitation_mail: InvitationMailSettings | None = field(default=None, repr=False)
     bootstrap_username: str | None = None
     bootstrap_password: str | None = None
     bootstrap_member_username: str | None = None
@@ -239,12 +241,19 @@ class Settings:
             github_client_secret=github_client_secret,
             github_redirect_uri=github_redirect_uri,
             owner_github_id=owner_github_id,
+            invitation_mail=InvitationMailSettings.from_env(),
             bootstrap_username=bootstrap_username,
             bootstrap_password=bootstrap_password,
             bootstrap_member_username=bootstrap_member_username,
             bootstrap_member_password=bootstrap_member_password,
             trusted_proxy_hosts=trusted_proxy_hosts,
         )
+
+    @property
+    def email_invites_enabled(self) -> bool:
+        """Report whether a complete SMTP invitation configuration is available."""
+
+        return self.invitation_mail is not None
 
     def auth_settings(self) -> AuthSettings:
         """Return validated auth settings without exposing secrets in logs or responses."""

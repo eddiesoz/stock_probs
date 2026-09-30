@@ -76,6 +76,15 @@ test("auth routes cover invited sign-in, authenticator setup, retired passkey li
   assert.match(account, /Set up authenticator/);
   assert.match(account, /Revoke/);
   assert.match(admin, /auth\/invites/);
+  assert.match(admin, /email_invites_enabled/);
+  assert.match(admin, /auth\/invites\/email/);
+  assert.match(admin, /type="email"/);
+  assert.match(admin, /Send invitation email/);
+  assert.match(admin, /disabled={emailInvitesEnabled !== true/);
+  assert.match(admin, /email: inviteEmail\.trim\(\)/);
+  assert.match(admin, /reportValidity\(\)/);
+  assert.match(admin, /Invitation submitted to mail server\. Delivery is not confirmed\./);
+  assert.match(admin, /mail configuration/);
   assert.match(admin, /operations\/backups/);
   assert.match(admin, /operations\/restores/);
   assert.match(admin, /auth\/totp\/step-up/);

@@ -17,6 +17,7 @@ from pydantic import (
 )
 
 from stock_probs.domain import DomainError, normalize_symbol
+from stock_probs.invitation_mail import validate_email_address
 
 ForecastHorizon: TypeAlias = Literal[
     "close_to_close",
@@ -305,6 +306,45 @@ class AuthInvitationResponse(StrictModel):
     github_id: int = Field(ge=1, le=2_147_483_647)
     github_login: str | None = Field(default=None, max_length=100)
     expires_at: AwareDatetime
+
+
+class AuthEmailInvitationRequest(StrictModel):
+    """Request a single-use GitHub invitation to be submitted through SMTP."""
+
+    github_id: int = Field(ge=1, le=2_147_483_647)
+    github_login: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=39,
+        pattern=r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$",
+    )
+    email: str = Field(min_length=3, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def valid_recipient(cls, value: str) -> str:
+        """Reject malformed or header-injection mailbox input before auth persistence."""
+
+        return validate_email_address(value)
+
+
+class AuthEmailInvitationResponse(StrictModel):
+    """Non-secret metadata confirming SMTP accepted a one-time invitation message."""
+
+    submission_status: Literal["smtp_accepted"] = Field(
+        description="SMTP accepted the message for processing; mailbox delivery is not confirmed."
+    )
+    submission_id: str = Field(
+        min_length=32,
+        max_length=32,
+        pattern=r"^[0-9a-f]{32}$",
+        description="Random local receipt ID, not a provider or mailbox delivery receipt.",
+    )
+    submitted_at: AwareDatetime
+    github_id: int = Field(ge=1, le=2_147_483_647)
+    github_login: str | None = Field(default=None, max_length=100)
+    expires_at: AwareDatetime
+    invite_url: str = Field(min_length=1, max_length=512)
 
 
 class AuthInvitationRedeemRequest(StrictModel):

@@ -312,12 +312,26 @@ def test_run_applies_deadline_after_child_closes_both_pipes() -> None:
 def test_compose_and_source_paths_are_fixed_and_loopback(tmp_path: Path) -> None:
     helper = _helper()
     compose = (ROOT / "compose.production.yaml").read_text()
+    optional_invite_settings = (
+        "STOCK_PROBS_INVITE_SMTP_HOST",
+        "STOCK_PROBS_INVITE_SMTP_PORT",
+        "STOCK_PROBS_INVITE_SMTP_USERNAME",
+        "STOCK_PROBS_INVITE_SMTP_PASSWORD",
+        "STOCK_PROBS_INVITE_SMTP_SECURITY",
+        "STOCK_PROBS_INVITE_EMAIL_FROM",
+    )
     assert '"127.0.0.1:8000:8000"' in compose
     assert "STOCK_PROBS_HOST: 127.0.0.1" in compose
     assert "signal-ledger-data:/data" in compose
     assert "STOCK_PROBS_AUTH_MODE: github" in compose
     assert "STOCK_PROBS_AUTH_SESSION_SECRET" in compose
     assert "STOCK_PROBS_GITHUB_CLIENT_SECRET" in compose
+    for setting in optional_invite_settings:
+        assert f'{setting}: "${{{setting}:-}}"' in compose
+
+    compose_arguments = helper._compose_prefix()
+    app_env_option = compose_arguments.index("--env-file")
+    assert compose_arguments[app_env_option + 1] == str(helper.APP_ENV_FILE)
     assert "cap_drop:" in compose and "no-new-privileges:true" in compose
     assert helper.REPOSITORY_URL == "https://github.com/eddiesoz/stock_probs.git"
     assert helper.MAIN_BRANCH == "main"

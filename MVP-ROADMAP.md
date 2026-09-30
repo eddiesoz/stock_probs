@@ -268,6 +268,37 @@ No historical acceptance record is changed. Provider capacity failures, unavaila
 mobile, true browser zoom, actual screen-reader, native/physical ARM64 performance, and
 project-profile runtime discovery remain separate evidence categories.
 
+## Current Signal Ledger email-invitation follow-on (`R-ASTRA-104`)
+
+**Status: In progress.** Independent scoped QA passed backend invitation/mail and UI checks,
+frontend build/typecheck and `27` tests, npm audit with zero advisories, package smoke, and focused
+browser `6/6` desktop/emulated-mobile cases. The broader browser attempt is **Unavailable** as a
+full aggregate after `44` passed, `61` unrun, and one interrupted case. Astra's medium source-only
+review at `2026-09-30T22:14:20Z` on dirty `HEAD`
+`010ecab30fc3180751cc74e3737e42675bf6462a` reported no P1/P2. Exact QA commands, artifact paths,
+and named QA reviewer were not supplied; no separate overall gate or acceptance receipt is
+claimed. Authored documentation validation, change-aware coverage, and scoped diff check passed
+at `2026-09-30T22:19:59Z`–`22:20:00Z` on the same dirty revision.
+
+Email is optional and supplements manual single-use invitations. Each invite remains bound to the
+numeric GitHub account ID, while the email address is used only for delivery. SMTP acceptance does
+not confirm mailbox delivery. `docs/configure/local-configuration.md` documents the six production
+SMTP variables; `docs/operations/getting-started.md` documents the operator flow and code-gated
+`infra/linode/update-host-compose.sh` procedure; `docs/develop/documentation.md` and `AGENTS.md`
+record the documentation coverage boundary. The host updater requires a clean checkout matching
+the reviewed SHA and public `origin/main`, verifies the Compose checksum, and replaces the fixed
+host file without restarting services.
+
+The initial full local gate **Failed** with `686` passed, `4` deselected, and `45` setup errors
+attributed to the documentation fixture's stubbed plan page lacking the linked heading anchor; its
+receipt is `test-results/local-gates/R-ASTRA-104-20260930T222152Z/`. After the docs-only link repair,
+the full rerun **Passed** for its declared local scope: `731` Python tests passed, `4` deselected,
+`85.48%` coverage, frontend build/typecheck and `27/27` tests, documentation coverage, and backup
+follow-on checks. Receipt: `test-results/local-gates/R-ASTRA-104-20260930T223407Z/evidence.json`.
+The rerun supersedes the initial failure for that scope. Live SMTP/mailbox delivery, production
+Compose update/deployment, and the complete browser suite remain **Pending/Unavailable**. No
+production delivery or release acceptance is inferred.
+
 ## Historical authentication and production deployment follow-on (`R-ASTRA-101`)
 
 `R-ASTRA-101` is the next dependency-ordered item after the Signal Ledger UI follow-ons. It adds

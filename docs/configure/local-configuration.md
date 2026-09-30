@@ -1,6 +1,6 @@
 ---
 title: "Local configuration"
-description: "Supported Stock Probability environment variables for local storage, providers, backup scheduling, timeouts, listener settings, and fixtures."
+description: "Supported Stock Probability environment variables for local runtime settings, production invitation email, storage, providers, timeouts, and fixtures."
 ---
 
 # Local configuration
@@ -17,6 +17,29 @@ of tracked files and shell history when they could expose private locations.
 | `STOCK_PROBS_HOST` | `127.0.0.1` | Environment values are restricted to `127.0.0.1`, `localhost`, or `::1`. |
 | `STOCK_PROBS_PORT` | `8000` | Integer from 1 through 65535. |
 | `STOCK_PROBS_FIXTURE_NOW` | unset | Timezone-aware ISO-8601 clock used with fixture-driven runs. |
+
+## Production invitation email
+
+The production Compose service accepts optional SMTP settings for administrator-sent email
+invitations. Leave all six variables unset or empty to keep email disabled; the administrator can
+still create a single-use invitation code and share it privately. Set all six together to enable
+mail. A partial or invalid configuration fails closed during application startup. See the
+[invitation email and host Compose update](../operations/getting-started.md#invitation-email-and-host-compose-update)
+section for identity, TLS, and delivery behavior.
+
+| Variable | Constraint |
+| --- | --- |
+| `STOCK_PROBS_INVITE_SMTP_HOST` | Hostname or IP literal; do not include a URL scheme or path. |
+| `STOCK_PROBS_INVITE_SMTP_PORT` | `465` with `implicit_tls`, or `587` with `starttls`. |
+| `STOCK_PROBS_INVITE_SMTP_USERNAME` | Required non-empty ASCII value, at most 320 characters. |
+| `STOCK_PROBS_INVITE_SMTP_PASSWORD` | Required non-empty ASCII value, at most 2048 characters; treat as a secret. |
+| `STOCK_PROBS_INVITE_SMTP_SECURITY` | `implicit_tls` with port `465`, or `starttls` with port `587`. |
+| `STOCK_PROBS_INVITE_EMAIL_FROM` | Valid ASCII sender mailbox address. |
+
+Supply credentials through the operator-controlled production environment outside the repository.
+Do not put SMTP values in tracked files, command arguments, logs, or documentation. The client
+validates the SMTP server certificate and uses a 10-second socket timeout for each socket
+operation; this is not a total deadline for the entire submission.
 
 For a reproducible local dashboard:
 

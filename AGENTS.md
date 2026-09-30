@@ -163,6 +163,45 @@ declared M09 scope by `M09-E18`; no current repair or Ponytail action follows fr
 integrated scope by `M07-E20`; no current M07 repair, Ponytail availability review, or retest is
 open.
 
+### Current email-invitation follow-on (`R-ASTRA-104`)
+
+- Email invitations are an optional administrator convenience over the existing single-use,
+  expiring invitation flow. The numeric GitHub account ID remains the identity binding; an email
+  address is only a delivery destination. Manual code creation and private sharing remain available
+  without SMTP.
+- SMTP configuration is all-or-none and is passed through the production Compose service. Keep
+  credentials in the operator-controlled secret path outside the repository. The documented
+  contract is `implicit_tls` on port `465` or `starttls` on port `587`; SMTP acceptance is not
+  mailbox-delivery evidence.
+- The fixed `infra/linode/update-host-compose.sh` updater requires a clean worktree whose local
+  `HEAD` matches both the supplied reviewed SHA and public `origin/main`; it also verifies the
+  tracked Compose checksum. It only installs the reviewed file and does not restart services.
+  Coverage belongs in `docs/develop/documentation.md`,
+  `docs/configure/local-configuration.md`, and the production section of
+  `docs/operations/getting-started.md`.
+- **Status:** **In progress**. Independent scoped QA passed backend invitation/mail and UI checks,
+  frontend build/typecheck and `27` tests, npm audit with zero advisories, package smoke, and a
+  focused browser run of `6/6` desktop/emulated-mobile cases. The broader browser attempt is
+  **Unavailable** as an aggregate after `44` passed, `61` unrun, and one interrupted case. Astra's
+  source-only medium review at `2026-09-30T22:14:20Z` on dirty `HEAD`
+  `010ecab30fc3180751cc74e3737e42675bf6462a` found no P1/P2. No live SMTP delivery, production
+  Compose update/deployment, full browser result, or release acceptance is claimed. Exact QA
+  commands, artifacts, and named reviewer were not supplied.
+- The authored documentation gate passed on native x86_64 at the same dirty revision: validator
+  reported `9` categories, `13` topics, and `7` governance entries; coverage checked `133` mapped
+  files; `tests/test_docs_validation.py` passed `57` tests with one warning; and scoped
+  `git diff --check` exited `0` at `2026-09-30T22:31:51Z`–`22:32:10Z`. The initial validator
+  rejection of a new unadmitted topic was repaired by folding the guide into the existing
+  getting-started page; no validator or map configuration was changed. The initial full local gate
+  **Failed** with `686` passed, `4` deselected, and `45` documentation-fixture setup errors; its
+  receipt is `test-results/local-gates/R-ASTRA-104-20260930T222152Z/`. The docs-only link repair was
+  followed by a passing full local gate for its declared scope: receipt
+  `test-results/local-gates/R-ASTRA-104-20260930T223407Z/evidence.json` records `731` Python tests
+  passed, `4` deselected, `85.48%` coverage, frontend build/typecheck and `27/27` tests, plus
+  documentation coverage and backup follow-on checks. This rerun supersedes the initial failure for
+  that scope. The broader browser aggregate remains **Unavailable**, and live SMTP delivery and
+  production deployment remain unverified.
+
 ### Current authenticator-only follow-on (`R-ASTRA-103`)
 
 - Production retains invite-only GitHub OAuth and the numeric GitHub account ID as the stable

@@ -2,7 +2,7 @@
 
 // UI gating is for clarity; the API independently authorizes every admin action.
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { AuthRequestError, authErrorMessage, authRequest, formatAuthDate, getAuthSession, type AuthSession, type TotpStatus } from "../../components/auth-client";
 import { WorkspaceNav } from "../../components/workspace-nav";
@@ -15,6 +15,9 @@ export default function AdminPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [githubId, setGithubId] = useState("");
   const [githubLogin, setGithubLogin] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [emailInvitesEnabled, setEmailInvitesEnabled] = useState<boolean | null>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
   const [backupName, setBackupName] = useState("");
   const [restoreName, setRestoreName] = useState("");
   const [totpCode, setTotpCode] = useState("");
@@ -46,10 +49,11 @@ export default function AdminPage() {
     setSession(auth);
     if (auth?.authenticated && auth.user?.role === "admin") {
       const [response, factorStatus] = await Promise.all([
-        authRequest<{ invitations?: Invitation[] }>("/api/v1/auth/invites", { cache: "no-store" }),
+        authRequest<{ invitations?: Invitation[]; email_invites_enabled?: boolean }>("/api/v1/auth/invites", { cache: "no-store" }),
         authRequest<TotpStatus>("/api/v1/auth/totp/status", { cache: "no-store" }),
       ]);
       setInvitations(response.invitations || []);
+      setEmailInvitesEnabled(response.email_invites_enabled === true);
       setTotpStatus(factorStatus);
     }
   }
@@ -64,6 +68,42 @@ export default function AdminPage() {
       else setInvitations((items) => [{ id: crypto.randomUUID(), code: response.code, github_id: response.github_id, github_login: response.github_login, expires_at: response.expires_at }, ...items]);
       setGithubId(""); setGithubLogin(""); setMessage({ tone: "success", text: "Invitation created. Copy the single-use code through a private channel." });
     } catch (error) { setMessage({ tone: "error", text: authErrorMessage(error) }); }
+    finally { setBusy(null); }
+  }
+
+  async function sendInvitationEmail() {
+    if (emailInvitesEnabled !== true || !emailInputRef.current?.reportValidity()) return;
+    setBusy("invite-email"); setMessage(null);
+    try {
+      await authRequest("/api/v1/auth/invites/email", {
+        method: "POST",
+        body: JSON.stringify({
+          github_id: Number(githubId),
+          github_login: githubLogin.trim() || undefined,
+          email: inviteEmail.trim(),
+        }),
+      });
+      setInviteEmail("");
+      let refreshed = true;
+      try {
+        const response = await authRequest<{ invitations?: Invitation[]; email_invites_enabled?: boolean }>("/api/v1/auth/invites", { cache: "no-store" });
+        setInvitations(response.invitations || []);
+        setEmailInvitesEnabled(response.email_invites_enabled === true);
+      } catch {
+        refreshed = false;
+      }
+      setMessage({
+        tone: "success",
+        text: refreshed
+          ? "Invitation submitted to mail server. Delivery is not confirmed."
+          : "Invitation submitted to mail server. Delivery is not confirmed. The invitation list could not be refreshed.",
+      });
+    } catch (error) {
+      const text = error instanceof AuthRequestError && [401, 403].includes(error.status)
+        ? authErrorMessage(error)
+        : "Invitation email could not be submitted. Check the recipient address and mail configuration, then try again.";
+      setMessage({ tone: "error", text });
+    }
     finally { setBusy(null); }
   }
 
@@ -112,7 +152,22 @@ export default function AdminPage() {
         <div className={styles.authIntro}><p className="panel-kicker">Workspace / Administration</p><h1>Keep access deliberate</h1><p>Invite the people you trust and manage verified recovery operations without exposing database controls to the browser.</p></div>
         <section className={`${styles.authPanel} ${styles.widePanel}`} aria-labelledby="invite-heading">
           <div className={styles.sectionRule}><h2 id="invite-heading">Invite a GitHub account</h2><p>Invitation codes are single-use and expire. Resolve the identity before sharing the code.</p></div>
-          <form className={styles.formGrid} onSubmit={createInvitation} noValidate><label htmlFor="github-id">GitHub account ID<input id="github-id" name="github_id" inputMode="numeric" pattern="[0-9]+" value={githubId} onChange={(event) => setGithubId(event.target.value.replace(/\D/g, ""))} placeholder="1234567" autoComplete="off" required /></label><label htmlFor="github-login">GitHub username (optional)<input id="github-login" name="github_login" value={githubLogin} onChange={(event) => setGithubLogin(event.target.value)} placeholder="octocat" autoComplete="off" /></label><button className="primary full" type="submit" disabled={busy === "invite" || !githubId.trim()}>{busy === "invite" ? "Creating invitation…" : "Create invitation"}</button></form>
+          <form className={styles.formGrid} onSubmit={createInvitation} noValidate><label htmlFor="github-id">GitHub account ID<input id="github-id" name="github_id" inputMode="numeric" pattern="[0-9]+" value={githubId} onChange={(event) => setGithubId(event.target.value.replace(/\D/g, ""))} placeholder="1234567" autoComplete="off" required /></label><label htmlFor="github-login">GitHub username (optional)<input id="github-login" name="github_login" value={githubLogin} onChange={(event) => setGithubLogin(event.target.value)} placeholder="octocat" autoComplete="off" /></label><button className="primary full" type="submit" disabled={busy === "invite" || busy === "invite-email" || !githubId.trim()}>{busy === "invite" ? "Creating invitation…" : "Create invitation"}</button></form>
+          <div className={styles.sectionRule}><h2 id="email-invite-heading">Send invitation by email</h2><p>Use the same GitHub identity above and enter the address that should receive its invitation.</p></div>
+          <div className={styles.permissionBox}>
+            <div>
+              <strong>{emailInvitesEnabled === true ? "Email invitations are enabled" : emailInvitesEnabled === false ? "Email invitations are not configured" : "Checking email invitation settings"}</strong>
+              <p id="email-invites-help">{emailInvitesEnabled === true
+                ? "A successful response confirms that the mail server accepted the message; it does not confirm delivery."
+                : emailInvitesEnabled === false
+                  ? "Mail sending is not configured on this server. You can still create a single-use code and share it through a private channel."
+                  : "Email sending stays disabled until the server confirms that mail is configured."}</p>
+            </div>
+          </div>
+          <div className={styles.formGrid}>
+            <label className={styles.full} htmlFor="invite-email">Recipient email address<input ref={emailInputRef} id="invite-email" name="email" type="email" inputMode="email" autoComplete="email" maxLength={254} value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="person@example.com" aria-describedby="email-invites-help" required /></label>
+            <button className="secondary full" type="button" aria-describedby="email-invites-help" disabled={emailInvitesEnabled !== true || busy === "invite-email" || busy === "invite" || !githubId.trim() || !inviteEmail.trim()} onClick={sendInvitationEmail}>{busy === "invite-email" ? "Submitting invitation email…" : "Send invitation email"}</button>
+          </div>
           {invitations.length ? <ul className={styles.dataList}>{invitations.map((invite) => <li className={styles.dataRow} key={invite.id}><div><strong>{invite.github_login || `GitHub account ${invite.github_id || ""}`}</strong><small>{invite.redeemed_at ? `Redeemed ${formatAuthDate(invite.redeemed_at)}` : `Expires ${formatAuthDate(invite.expires_at)}`} {invite.code ? `· Code ${invite.code}` : ""}</small></div><span className="badge neutral">{invite.redeemed_at ? "Used" : "Open"}</span></li>)}</ul> : <p className={styles.loadingState}>No invitations created in this session.</p>}
           <div className={styles.sectionRule}><h2>Verified backups</h2><p>Backups are created and verified on the server. Enter a current authenticator code below before creating one.</p></div>
           <div className={styles.formGrid}><label className={styles.full} htmlFor="backup-name">Backup label (optional)<input id="backup-name" value={backupName} onChange={(event) => setBackupName(event.target.value)} placeholder="before-auth-migration" /></label><button className="secondary full" type="button" disabled={!freshVerified || busy === "backup"} onClick={createBackup}>{busy === "backup" ? "Creating verified backup…" : "Create verified backup"}</button></div>

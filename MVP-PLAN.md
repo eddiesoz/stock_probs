@@ -223,6 +223,49 @@ No historical acceptance record is changed by this follow-on. Provider capacity 
 hardware, physical mobile, true browser zoom, actual screen-reader, native/physical ARM64
 performance, and project-profile runtime discovery remain separate evidence categories.
 
+## Current email-invitation follow-on (`R-ASTRA-104`)
+
+`R-ASTRA-104` adds administrator email submission to the existing GitHub-ID-bound invitation
+flow and adds a fixed, reviewed-main-gated host Compose updater for the production SMTP environment
+pass-through. SMTP remains optional: manual single-use invitation creation and private code sharing
+continue to work without mail. The delivery address does not establish identity; redemption still
+requires the numeric GitHub account bound to the invitation. `smtp_accepted` means the configured
+SMTP server accepted a message for processing, not that a mailbox received it.
+
+- **Status:** **In progress**. The full local gate rerun **Passed** for its declared scope. The broad
+  browser attempt is **Unavailable** as one aggregate after `44` passed, `61` unrun, and one
+  interrupted case. Live SMTP/mailbox delivery, production Compose rollout, and release acceptance
+  remain **Pending/Unavailable**.
+- **Owner/phase:** implementation; independent QA; Astra medium source security review; authored
+  documentation; coordinator release follow-up.
+- **Scope:** optional six-field SMTP configuration with certificate-validated TLS and a 10-second
+  per-socket-operation timeout (not a total submission deadline); administrator UI/API submission;
+  manual invitation fallback; documented fixed host
+  Compose updater that verifies the reviewed SHA, clean worktree, exact public `origin/main`, and
+  Compose checksum before atomically installing the file without restarting services.
+- **Independent scoped QA:** backend invitation/mail and UI checks passed; frontend build,
+  typecheck, and `27` tests passed; npm audit reported zero advisories; package smoke passed; and
+  focused browser checks passed `6/6` across desktop and emulated mobile. The broader browser run
+  stopped after `44` passed, `61` were unrun, and one case was interrupted; no full-suite pass is
+  inferred. Exact QA commands, artifact paths, and named reviewer were not supplied.
+- **Security review:** Astra's medium source-only review at `2026-09-30T22:14:20Z` on dirty `HEAD`
+  `010ecab30fc3180751cc74e3737e42675bf6462a` reported no P1/P2. It did not test live SMTP,
+  mailbox delivery, or production deployment.
+- **Limitations:** no independent acceptance receipt, live provider/mailbox result, production
+  update/deployment result, or complete browser aggregate was supplied. No release, export,
+  commit, push, exact remote result, or production email-delivery claim is made.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `R-ASTRA-104-E1` | Independent scoped invitation/mail and UI QA, frontend, audit, package, and focused-browser checks. | QA window `2026-09-30T21:58:41Z`–`22:10:11Z`; dirty `HEAD` `010ecab30fc3180751cc74e3737e42675bf6462a`; environment, commands, artifact, and named reviewer not supplied. | **Pass** for the reported scope: backend invitation/mail and UI checks; frontend build/typecheck/`27` tests; npm audit with zero advisories; package smoke; focused browser `6/6` desktop/emulated mobile. No overall local gate, live SMTP, or production result is inferred. |
+| `R-ASTRA-104-E2` | Broader browser suite. | Same QA window and dirty revision as E1; one interrupted case; exact command/artifact not supplied. | **Unavailable** as a full aggregate: `44` passed, `61` unrun, and one interrupted. The focused `6/6` pass remains separate. |
+| `R-ASTRA-104-E3` | Astra medium source security review. | Source-only review at `2026-09-30T22:14:20Z`; dirty `HEAD` `010ecab30fc3180751cc74e3737e42675bf6462a`; exact command/artifact not supplied. | **Pass** for the source-only review with no P1/P2; no live SMTP, mailbox, or production deployment was exercised. Reviewer `ASTRA`. |
+| `R-ASTRA-104-E4` | Initial docs validation attempt for the authored invitation guide. | Native x86_64; dirty `HEAD` `010ecab30fc3180751cc74e3737e42675bf6462a`; exact UTC was not captured; command `python3 scripts/validate_docs.py`. | **Fail** because `docs/operations/invitations.md` was not in the validator's admitted topic list. Repaired by moving its content into the existing `docs/operations/getting-started.md` topic and removing the new page; no validator/config change was made. |
+| `R-ASTRA-104-E5` | Final authored documentation validation, change-aware map coverage, and scoped diff check. | Native x86_64; dirty `HEAD` `010ecab30fc3180751cc74e3737e42675bf6462a`; `2026-09-30T22:19:59Z`–`22:20:00Z`; commands `python3 scripts/validate_docs.py`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; coverage checked `133` mapped files; diff check exited `0`. Reviewer `LUNA MAX docs`; docs checks do not establish SMTP delivery or production deployment. |
+| `R-ASTRA-104-E6` | Initial full local gate after invitation-mail and Compose-updater changes. | Artifact `test-results/local-gates/R-ASTRA-104-20260930T222152Z/`; exact command, environment, and revision were not supplied in the handoff. | **Fail**: `686` passed, `4` deselected, and `45` setup errors, all caused by the documentation test fixture stubbing `MVP-PLAN.md` without the linked heading anchor. The docs-only repair removes that fragment. This remains the initial failure record and is superseded for the declared local scope by E8. |
+| `R-ASTRA-104-E7` | Documentation validation, fixture test, change-aware map coverage, and scoped diff check after the anchor and timeout wording repairs. | Native x86_64; dirty `HEAD` `010ecab30fc3180751cc74e3737e42675bf6462a`; `2026-09-30T22:31:51Z`–`22:32:10Z`; commands `./.dev-venv/bin/python -m pytest tests/test_docs_validation.py`, `python3 scripts/validate_docs.py`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`. | **Pass**: documentation tests `57` passed with one warning; validator reported `9` categories, `13` topics, and `7` governance entries; coverage checked `133` mapped files; diff check exited `0`. Reviewer `LUNA MAX docs`. The later E8 rerun supersedes E6 for the declared local gate scope. |
+| `R-ASTRA-104-E8` | Full local gate rerun after the documentation fixture link repair. | Environment, revision, and reviewer not supplied in the handoff; command `TMPDIR=/home/james/.cache/stock-probs-gate-tmp COVERAGE_FILE=/tmp/stock-probs-r-astra-104-coverage TASK_ID=R-ASTRA-104 ./scripts/local-gate.sh check`; artifact `test-results/local-gates/R-ASTRA-104-20260930T223407Z/evidence.json`. | **Pass**, exit `0`: `731` Python tests passed, `4` deselected, `85.48%` coverage; frontend build/typecheck and `27/27` tests passed; documentation coverage and backup follow-on checks passed. This supersedes E6 for the declared local gate scope only. Live SMTP delivery, production Compose deployment, and the full browser aggregate remain **Unavailable/Pending**. |
+
 ## Current authenticator-only follow-on (`R-ASTRA-103`)
 
 `R-ASTRA-103` retires the browser passkey requirement. Production remains invite-only GitHub OAuth:

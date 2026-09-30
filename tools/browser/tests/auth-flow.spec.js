@@ -1,5 +1,33 @@
 const { test, expect } = require("./fixtures");
 
+async function installAdminSession(page, emailInvitesEnabled) {
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      authenticated: true,
+      csrf_token: "browser-test-csrf",
+      user: { id: 1, login: "fixture-owner", role: "admin" },
+    }),
+  }));
+  await page.route("**/api/v1/auth/invites", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ invitations: [], email_invites_enabled: emailInvitesEnabled }),
+  }));
+  await page.route("**/api/v1/auth/totp/status", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      enrolled: true,
+      enrollment_pending: false,
+      recovery_codes_remaining: 8,
+      requires_totp: true,
+      can_enroll: false,
+    }),
+  }));
+}
+
 // Keep the browser boundary explicit: GitHub mode must reach the same-origin OAuth start without falling back to local bootstrap.
 test("GitHub sign-in opens the fixed same-origin OAuth start after status loads", async ({ page }) => {
   await page.route("**/api/v1/auth/session", (route) => route.fulfill({
@@ -214,4 +242,114 @@ test("provisional authenticator setup and verification use the local TOTP contra
   await expect(page.getByText("Authenticator verification complete.")).toBeVisible();
   await expect(page).toHaveURL(/\/overview$/);
   expect(verifyPayload).toEqual({ code: "654321" });
+});
+
+test("admin keeps manual invitations available when mail is unconfigured", async ({ page }) => {
+  await installAdminSession(page, false);
+  let manualPayload;
+  await page.route("**/api/v1/auth/invites", async (route) => {
+    if (route.request().method() === "POST") {
+      manualPayload = route.request().postDataJSON();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ code: "manual-code-fixture", github_id: 24680, expires_at: "2026-10-01T00:00:00Z" }),
+      });
+    }
+    return route.fallback();
+  });
+
+  await page.goto("/admin");
+  await page.getByLabel("GitHub account ID").fill("24680");
+  await page.getByLabel("Recipient email address").fill("person@example.com");
+  await expect(page.getByRole("button", { name: "Send invitation email" })).toBeDisabled();
+  await expect(page.getByText("Mail sending is not configured on this server.")).toBeVisible();
+  await page.getByRole("button", { name: "Create invitation" }).click();
+  await expect(page.getByText("Invitation created. Copy the single-use code through a private channel.")).toBeVisible();
+  expect(manualPayload).toEqual({ github_id: 24680 });
+  await expect(page.getByText("Code manual-code-fixture")).toBeVisible();
+});
+
+test("configured admin email invitation submits by keyboard and reports mail-server acceptance", async ({ page }) => {
+  await installAdminSession(page, true);
+  let emailPayload;
+  let csrfHeader;
+  let inviteReads = 0;
+  let releaseEmail;
+  const emailResponse = new Promise((resolve) => { releaseEmail = resolve; });
+  await page.route("**/api/v1/auth/invites", (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    inviteReads += 1;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        email_invites_enabled: true,
+        invitations: inviteReads === 1 ? [] : [{
+          id: "mail-invite-1",
+          github_id: 24680,
+          github_login: "fixture-member",
+          expires_at: "2026-10-01T00:00:00Z",
+        }],
+      }),
+    });
+  });
+  await page.route("**/api/v1/auth/invites/email", async (route) => {
+    emailPayload = route.request().postDataJSON();
+    csrfHeader = route.request().headers()["x-csrf-token"];
+    return emailResponse.then(() => route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ invitation_id: "mail-invite-1", accepted_at: "2026-09-30T12:00:00Z" }),
+    }));
+  });
+
+  await page.goto("/admin");
+  await page.getByLabel("GitHub account ID").fill("24680");
+  await page.getByLabel("GitHub username (optional)").fill("fixture-member");
+  await page.getByLabel("Recipient email address").fill("person@example.com");
+  const send = page.getByRole("button", { name: /Send invitation email|Submitting invitation email/ });
+  await expect(send).toBeEnabled();
+  await send.focus();
+  await expect(send).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(send).toHaveText("Submitting invitation email…");
+  await expect(page.getByRole("button", { name: "Create invitation" })).toBeDisabled();
+  releaseEmail();
+
+  await expect(page.getByRole("status")).toHaveText("Invitation submitted to mail server. Delivery is not confirmed.");
+  expect(emailPayload).toEqual({ github_id: 24680, github_login: "fixture-member", email: "person@example.com" });
+  expect(csrfHeader).toBe("browser-test-csrf");
+  expect(inviteReads).toBe(2);
+  await expect(page.getByText("fixture-member", { exact: true })).toBeVisible();
+  await expect(page.getByText("Open", { exact: true })).toBeVisible();
+  expect(page.url()).not.toContain("manual-code-fixture");
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain("mail-invite-1");
+  const layout = await page.evaluate(() => ({
+    viewportWidth: document.documentElement.clientWidth,
+    contentWidth: document.documentElement.scrollWidth,
+    button: document.querySelector('button[aria-describedby="email-invites-help"]')?.getBoundingClientRect().toJSON(),
+  }));
+  expect(layout.contentWidth).toBeLessThanOrEqual(layout.viewportWidth + 1);
+  expect(layout.button.width).toBeGreaterThan(0);
+  expect(layout.button.height).toBeGreaterThanOrEqual(44);
+  expect(layout.button.right).toBeLessThanOrEqual(layout.viewportWidth + 1);
+});
+
+test("admin email submission shows a safe failure without SMTP details", async ({ page, browserDiagnostics }) => {
+  await installAdminSession(page, true);
+  browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/auth/invites/email", status: 502 });
+  await page.route("**/api/v1/auth/invites/email", (route) => route.fulfill({
+    status: 502,
+    contentType: "application/json",
+    body: JSON.stringify({ error: { code: "mail_submission_failed", message: "SMTP credential smtp-private-value rejected" } }),
+  }));
+
+  await page.goto("/admin");
+  await page.getByLabel("GitHub account ID").fill("24680");
+  await page.getByLabel("Recipient email address").fill("person@example.com");
+  await page.getByRole("button", { name: "Send invitation email" }).click();
+  const errorMessage = page.locator('[data-tone="error"]');
+  await expect(errorMessage).toHaveText("Invitation email could not be submitted. Check the recipient address and mail configuration, then try again.");
+  await expect(errorMessage).not.toContainText("smtp-private-value");
 });

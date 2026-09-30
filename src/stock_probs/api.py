@@ -53,9 +53,12 @@ from stock_probs.auth import (
 from stock_probs.backup import MAX_BACKUP_BYTES, BackupError, BackupManager
 from stock_probs.config import Settings
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, DomainError, normalize_symbol
+from stock_probs.invitation_mail import send_invitation_email
 from stock_probs.provider import FixtureProvider, MarketDataProvider, YahooProvider
 from stock_probs.repository import SCHEMA_VERSION, Repository, RepositoryError
 from stock_probs.schemas import (
+    AuthEmailInvitationRequest,
+    AuthEmailInvitationResponse,
     AuthInvitationRedeemRequest,
     AuthInvitationRequest,
     AuthInvitationResponse,
@@ -3419,9 +3422,7 @@ def create_app(
         response_model=TotpEnrollmentStartApiResponse,
         responses=_documented_errors(400, 403, 405, 411, 413, 422, 429, 500, 503),
     )
-    def totp_enrollment_start(
-        request: Request, response: Response
-    ) -> dict[str, object]:
+    def totp_enrollment_start(request: Request, response: Response) -> dict[str, object]:
         """Start one short-lived authenticator enrollment transaction."""
 
         context = _auth_context(request)
@@ -3480,9 +3481,7 @@ def create_app(
         response_model=TotpStepUpApiResponse,
         responses=_documented_errors(400, 403, 405, 411, 413, 422, 429, 500, 503),
     )
-    def totp_step_up(
-        request: Request, payload: TotpCodeRequest
-    ) -> dict[str, object]:
+    def totp_step_up(request: Request, payload: TotpCodeRequest) -> dict[str, object]:
         """Record fresh five-minute TOTP proof for an administrator operation."""
 
         context = _auth_context(request)
@@ -3746,6 +3745,61 @@ def create_app(
             "expires_at": result["expires_at"],
         }
 
+    @app.post(
+        "/api/v1/auth/invites/email",
+        status_code=201,
+        response_model=AuthEmailInvitationResponse,
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 502, 503),
+    )
+    def create_email_invitation(
+        request: Request, payload: AuthEmailInvitationRequest, response: Response
+    ) -> dict[str, object]:
+        """Create a GitHub-bound invite and submit it to the configured SMTP server."""
+
+        context = _auth_context(request, role="admin")
+        mail_settings = config.invitation_mail
+        if mail_settings is None or config.auth_public_origin is None:
+            raise AuthUnavailable("Email invitations are not configured.")
+        code, result = auth_manager.create_invitation(
+            payload.github_id,
+            context.user.id,
+            datetime.now(UTC),
+            github_login=payload.github_login,
+        )
+        raw_expires_at = result.get("expires_at")
+        expires_at: datetime | None
+        if isinstance(raw_expires_at, datetime):
+            expires_at = raw_expires_at
+        elif isinstance(raw_expires_at, str):
+            try:
+                expires_at = datetime.fromisoformat(raw_expires_at.replace("Z", "+00:00"))
+            except ValueError:
+                expires_at = None
+        else:
+            expires_at = None
+        if expires_at is None or expires_at.tzinfo is None:
+            raise AuthUnavailable()
+        expires_at = expires_at.astimezone(UTC)
+        submission = send_invitation_email(
+            mail_settings,
+            public_origin=config.auth_public_origin,
+            recipient=payload.email,
+            github_id=payload.github_id,
+            github_login=payload.github_login,
+            code=code,
+            expires_at=expires_at,
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "submission_status": "smtp_accepted",
+            "submission_id": submission.submission_id,
+            "submitted_at": submission.submitted_at,
+            "github_id": payload.github_id,
+            "github_login": payload.github_login,
+            "expires_at": expires_at,
+            "invite_url": f"{config.auth_public_origin.rstrip('/')}/invite",
+        }
+
     @app.get(
         "/api/v1/auth/invites",
         responses=_documented_errors(400, 403, 405, 500, 503),
@@ -3758,7 +3812,10 @@ def create_app(
         if not callable(method):
             method = getattr(repository, "list_invitations", None)
         records = method() if callable(method) else []
-        return {"invitations": [dict(item) for item in records if isinstance(item, Mapping)]}
+        return {
+            "invitations": [dict(item) for item in records if isinstance(item, Mapping)],
+            "email_invites_enabled": config.email_invites_enabled,
+        }
 
     @app.post(
         "/api/v1/auth/invites/redeem",
@@ -3806,9 +3863,7 @@ def create_app(
 
         context = _auth_context(request)
         if auth_manager.settings.mode == "github":
-            raise AuthorizationDenied(
-                "Passkeys are retired; use your authenticator code."
-            )
+            raise AuthorizationDenied("Passkeys are retired; use your authenticator code.")
         rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
         options = auth_manager.begin_passkey_registration(
             context.user, rp_id, config.auth_public_origin or "http://127.0.0.1"
@@ -3832,9 +3887,7 @@ def create_app(
 
         context = _auth_context(request)
         if auth_manager.settings.mode == "github":
-            raise AuthorizationDenied(
-                "Passkeys are retired; use your authenticator code."
-            )
+            raise AuthorizationDenied("Passkeys are retired; use your authenticator code.")
         rp_id = urlparse(config.auth_public_origin or "http://127.0.0.1").hostname or "127.0.0.1"
         auth_manager.finish_passkey_registration(
             context.user,
