@@ -15,15 +15,16 @@ test("GitHub sign-in opens the fixed same-origin OAuth start after status loads"
   let starts = 0;
   await page.route("**/api/v1/auth/github/start", (route) => {
     starts += 1;
-    return route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>OAuth started</title>" });
+    return route.fulfill({ status: 302, headers: { Location: "/sign-in?oauth_fixture=1" }, body: "" });
   });
 
   await page.goto("/sign-in");
   await expect(page.getByText("Sign in with your development account to continue.")).toHaveCount(0);
   const signIn = page.getByRole("link", { name: "Continue with GitHub" });
   await expect(signIn).toBeVisible();
+  await expect(signIn).toHaveAttribute("href", "/api/v1/auth/github/start");
   await signIn.click();
-  await expect(page).toHaveURL(/\/api\/v1\/auth\/github\/start$/);
+  await expect(page).toHaveURL(/\/sign-in\?oauth_fixture=1$/);
   expect(starts).toBe(1);
 });
 

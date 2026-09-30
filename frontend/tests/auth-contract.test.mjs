@@ -40,10 +40,8 @@ test("auth routes cover invited sign-in, authenticator setup, retired passkey li
   assert.match(signIn, /github\/start/);
   assert.match(signIn, /Checking sign-in options/);
   assert.match(signIn, /const GITHUB_START_PATH = "\/api\/v1\/auth\/github\/start";/);
-  assert.match(signIn, /window\.location\.assign\(GITHUB_START_PATH\)/);
-  assert.match(signIn, /GITHUB_NAVIGATION_TIMEOUT_MS\s*=\s*8_000/);
-  assert.match(signIn, /setGithubNavigationStalled\(true\)/);
-  assert.match(signIn, /<a href=\{GITHUB_START_PATH\}>Try GitHub again<\/a>/);
+  assert.match(signIn, /href=\{GITHUB_START_PATH\} data-testid="github-sign-in"/);
+  assert.doesNotMatch(signIn, /startGithub|onClick=\{startGithub\}|window\.location\.assign\(GITHUB_START_PATH\)|GITHUB_NAVIGATION_TIMEOUT_MS/);
   assert.match(signIn, /Sign-in options could not load/);
   assert.match(signIn, /local\/login/);
   assert.match(signIn, /Complete authenticator setup or verification/);

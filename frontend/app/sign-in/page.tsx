@@ -2,13 +2,12 @@
 
 // The server's auth status decides which sign-in path is offered in this environment.
 
-import { FormEvent, MouseEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import { authErrorMessage, authRequest, getAuthSession, safeLocalNext, type AuthSession } from "../../components/auth-client";
 import { AuthShell } from "../../components/auth-shell";
 import styles from "../auth.module.css";
 
-const GITHUB_NAVIGATION_TIMEOUT_MS = 8_000;
 const GITHUB_START_PATH = "/api/v1/auth/github/start";
 
 export default function SignInPage() {
@@ -20,15 +19,7 @@ export default function SignInPage() {
   const [password, setPassword] = useState("");
   const [nextPath, setNextPath] = useState("/overview");
   const [busy, setBusy] = useState(false);
-  const [githubNavigationStalled, setGithubNavigationStalled] = useState(false);
   const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
-  const githubNavigationTimer = useRef<number | null>(null);
-
-  function clearGithubNavigationTimer() {
-    if (githubNavigationTimer.current === null) return;
-    window.clearTimeout(githubNavigationTimer.current);
-    githubNavigationTimer.current = null;
-  }
 
   useEffect(() => {
     let active = true;
@@ -68,26 +59,6 @@ export default function SignInPage() {
     });
   }, [requiresAuthenticator, session]);
 
-  useEffect(() => {
-    function recoverFromPageShow() {
-      clearGithubNavigationTimer();
-      setBusy(false);
-      setGithubNavigationStalled(false);
-    }
-
-    function clearNavigationTimer() {
-      clearGithubNavigationTimer();
-    }
-
-    window.addEventListener("pageshow", recoverFromPageShow);
-    window.addEventListener("pagehide", clearNavigationTimer);
-    return () => {
-      clearGithubNavigationTimer();
-      window.removeEventListener("pageshow", recoverFromPageShow);
-      window.removeEventListener("pagehide", clearNavigationTimer);
-    };
-  }, []);
-
   async function submitLocal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -108,35 +79,15 @@ export default function SignInPage() {
     }
   }
 
-  function startGithub(event: MouseEvent<HTMLAnchorElement>) {
-    // Explicit navigation keeps OAuth working in embedded browsers that swallow a
-    // plain anchor click before following the same-origin redirect to GitHub.
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    if (busy) return;
-    clearGithubNavigationTimer();
-    setBusy(true);
-    setGithubNavigationStalled(false);
-    setMessage(null);
-    githubNavigationTimer.current = window.setTimeout(() => {
-      githubNavigationTimer.current = null;
-      setBusy(false);
-      setGithubNavigationStalled(true);
-      setMessage({ tone: "error", text: "GitHub sign-in did not open. Try again below." });
-    }, GITHUB_NAVIGATION_TIMEOUT_MS);
-    window.location.assign(GITHUB_START_PATH);
-  }
-
   return (
     <AuthShell showAccount={false} eyebrow="Secure access" title="Return to the ledger" description="Signal Ledger keeps research private, attributable, and easy to audit. Sign in to continue to your instrument workspace.">
       <section className={styles.authPanel} aria-labelledby="sign-in-heading">
         <h2 id="sign-in-heading">Sign in</h2>
         <p className={styles.panelLead}>{!statusLoaded ? "Checking sign-in options…" : githubEnabled ? "Use your invited GitHub account. An authenticator app code is required after the first successful sign-in." : localEnabled ? "Sign in with your development account to continue." : "Sign-in options are unavailable."}</p>
-        {githubEnabled ? <a className="primary buttonIcon" href={GITHUB_START_PATH} data-testid="github-sign-in" onClick={startGithub} aria-disabled={busy}>
+        {githubEnabled ? <a className="primary buttonIcon" href={GITHUB_START_PATH} data-testid="github-sign-in">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.3a9.7 9.7 0 0 0-3.07 18.9c.49.09.67-.21.67-.47v-1.65c-2.73.59-3.31-1.16-3.31-1.16-.45-1.13-1.1-1.43-1.1-1.43-.89-.61.07-.6.07-.6.98.07 1.5 1 1.5 1 .88 1.5 2.3 1.06 2.86.81.09-.63.34-1.06.62-1.3-2.18-.25-4.47-1.09-4.47-4.84 0-1.07.38-1.94 1-2.62-.1-.25-.43-1.25.1-2.59 0 0 .82-.26 2.67 1a9.25 9.25 0 0 1 4.86 0c1.85-1.26 2.67-1 2.67-1 .53 1.34.2 2.34.1 2.59.62.68 1 1.55 1 2.62 0 3.76-2.29 4.59-4.48 4.83.35.3.66.88.66 1.78v2.65c0 .26.18.57.68.47A9.7 9.7 0 0 0 12 2.3Z" /></svg>
-          {busy ? "Opening GitHub…" : "Continue with GitHub"}
+          Continue with GitHub
         </a> : null}
-        {githubNavigationStalled ? <div className={styles.authLinks}><a href={GITHUB_START_PATH}>Try GitHub again</a></div> : null}
         {localEnabled ? <>
           <div className={styles.divider}><span>Development only</span></div>
           <form className={styles.authForm} onSubmit={submitLocal} noValidate>
