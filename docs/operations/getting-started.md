@@ -313,7 +313,9 @@ inspect → plan_deploy(main revision, release archive SHA, image ID) → deploy
 canonical IPv4 `/32` and constrains Terraform to the fixed `linode_firewall.signal_ledger` resource
 (firewall ID `177236117`) and its `ssh-operator` TCP port-22 rule, using the fixed external private
 state and the reviewed clean-tree/source gate. It does not accept a caller-supplied Terraform path,
-state, command, or credential. No live refresh has been observed for the current worktree.
+state, command, or credential. R-ASTRA-106 records a live refresh result with `50.21.67.178/32`
+applied to firewall `177236117`; the Linode console login uses Google SSO and SSH material remains
+separate.
 
 Each promotion is serialized under a lock, starts with a verified application backup, runs
 readiness checks, and attempts code-only rollback only when the database schema remains compatible.
@@ -349,6 +351,25 @@ historical deployment: main revision `27e0d2f5916d4297e10d259aa4776055a78faeaa`,
 `21ca962a39d261282610568bc1e21219`, schema `8`, `failed: null`, loopback-only, and pre-deploy
 backup `pre-deploy-27e0d2f5916d4297-39376b8d.spbackup`. The publisher exited `0`; public
 health/auth/sign-in probes returned `200`/`200`/`401`/`303` with `no-store`/`DYNAMIC`.
+
+### R-ASTRA-106 operator-access and deployment receipt
+
+The pushed reviewed `main` revision is
+`de9f45f2d5c562c34e004c658e7cee118af6ef58`. The fixed host helper's direct plan passed with ID
+`475203e37dd969d84e10e7a0839f1a28`; two official-client plan attempts returned the generic
+`remote_operation_failed` error and remain a limitation. The installed production Compose file
+matched SHA-256 `35b4f09c0696a4873302f1127eeeb2d1468f77ce8c9c25d989e8f30af156f14b`. The immutable
+GitHub Release archive SHA-256 is
+`0e81c7c227ffe15094c5f7557b024e445e3fe61d72138bb57bacc6f6f99f47a0`, and the image ID is
+`sha256:bbb6a35143cda6d38883a8294710b2ee143f383077f4e27d6fad0c746ec5a6f1`.
+
+The fixed MCP deploy passed at `2026-10-01T00:20:13Z`. Status reported the pre-deploy backup
+`pre-deploy-de9f45f2d5c562c3-497734d9.spbackup`, schema `10` ready,
+`loopback_only: true`, and `failed: null`. HTTPS probes returned health `200` and private history
+`401`, with `no-store`/`DYNAMIC` responses. This receipt covers the declared operator-access and
+deployment scope. No SMTP provider or mailbox delivery was available for verification; owner TOTP
+enrollment, authenticated workspace retrieval, physical-mobile/hardware-authenticator evidence,
+and full production acceptance remain **Unavailable**.
 
 ### Historical schema-8 passkey canary and recovery receipt
 

@@ -228,8 +228,10 @@ operator-access follow-on is recorded at
 [`R-ASTRA-106`](MVP-PLAN.md#current-deployment-access-and-invitation-transport-follow-on-r-astra-106).
 Its local gate rerun passed for the declared scope: `731` Python tests, `4` deselected, `85.48%`
 coverage, and frontend build/typecheck with `27/27` tests. The initial failed gate is retained in
-the plan and superseded by that rerun. Live email delivery, firewall refresh, and production
-deployment of the current worktree have not been verified. See
+the plan and superseded by that rerun. The later R-ASTRA-106 record covers the applied operator
+firewall refresh and schema-10 production deployment. No SMTP provider or mailbox delivery is
+verified; owner TOTP enrollment, authenticated workspace retrieval, physical-mobile evidence, and
+full production acceptance remain unavailable. See
 [getting started](docs/operations/getting-started.md#invitation-email-and-host-compose-update) for
 configuration and the fixed reviewed-Compose update procedure.
 

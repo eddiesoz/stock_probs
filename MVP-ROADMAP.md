@@ -301,22 +301,26 @@ production delivery or release acceptance is inferred.
 
 ## Current deployment-access and invitation-transport follow-on (`R-ASTRA-106`)
 
-**Status: In progress.** The current dirty checkout is
-`db0372891ea00a0228f2c04f785a34519cb6c21b`. The private stdio deployment MCP now has six typed
-tools, adding `refresh_operator_access(operator_ipv4_cidr)`. It accepts one canonical IPv4 `/32`
-and constrains Terraform to the imported `linode_firewall.signal_ledger` resource (ID `177236117`)
-and its `ssh-operator` TCP port-22 rule through fixed external private state and the clean-tree,
-exact-`origin/main`, reviewed-revision source gate. SMTP accepts `implicit_tls` on `465` or `2465`,
-or `starttls` on `587`. The operator's Linode console login uses Google SSO; SSH material remains
-separate. The MCP accepts no arbitrary command, path, state, or credential argument.
+**Status: In progress.** Reviewed `main` revision
+`de9f45f2d5c562c34e004c658e7cee118af6ef58` was pushed. The private stdio deployment MCP now has
+six typed tools, adding `refresh_operator_access(operator_ipv4_cidr)`. It accepts one canonical
+IPv4 `/32` and constrains Terraform to the imported `linode_firewall.signal_ledger` resource (ID
+`177236117`) and its `ssh-operator` TCP port-22 rule through fixed external private state and the
+clean-tree, exact-`origin/main`, reviewed-revision source gate. SMTP accepts `implicit_tls` on `465`
+or `2465`, or `starttls` on `587`. The operator's Linode console login uses Google SSO; SSH material
+remains separate. The MCP accepts no arbitrary command, path, state, or credential argument.
 
 Independent Luna QA passed `37` focused tests, Ruff/security/compilation, locked MCP stdio six-tool
-discovery, and invalid-CIDR behavior for the declared local scope. The initial semantic documentation
-audit failed on stale five-tool/port wording and is repaired by this documentation update. Terraform
-stages passed in `./infra/linode/validate.sh`, but its required dirty-tree gate exited `2`; live
-operations remain **Unavailable**. SOL's source review passed with no P1/P2 after the prior firewall-ID
-issue was repaired and re-reviewed. Production remains on the previously deployed image; no live
-firewall refresh, image deployment, production Compose update, or SMTP/mailbox delivery is claimed.
+discovery, and invalid-CIDR behavior for the declared local scope. A later local gate on revision
+`411c146` reported `741` Python and `27` frontend checks passed. A separate focused repaired-guard
+run on pushed revision `de9f45f2d5c562c34e004c658e7cee118af6ef58` reported `19` passes. The initial
+semantic documentation audit failed on stale five-tool/port wording and is repaired by this
+documentation update. Terraform stages passed in `./infra/linode/validate.sh`,
+but its required dirty-tree gate exited `2`; that aggregate remains **Fail**. The later operator
+refresh and deployment receipts below are separate live evidence. No SMTP provider or mailbox
+delivery was available for verification; owner TOTP enrollment, authenticated workspace retrieval,
+physical-mobile/hardware-authenticator evidence, and full production acceptance remain
+**Unavailable**.
 
 | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
 | --- | --- | --- | --- |
@@ -325,6 +329,12 @@ firewall refresh, image deployment, production Compose update, or SMTP/mailbox d
 | `R-ASTRA-106-E3` | Terraform/infrastructure validation. | Native x86_64; command `./infra/linode/validate.sh`; exact UTC, revision, and artifact not supplied. | **Fail** for the aggregate: Terraform stages passed, then the required dirty-tree gate exited `2`. No live apply or firewall refresh was observed. |
 | `R-ASTRA-106-E4` | SOL source review after the firewall-ID repair. | Environment, command, UTC, artifact, and source-review revision not supplied. | **Pass** with no P1/P2 reported after repair and re-review; reviewer `SOL`. |
 | `R-ASTRA-106-E5` | Final authored-documentation validator, tests, map coverage, self-test, and scoped diff check. | Native x86_64; dirty `HEAD` `db0372891ea00a0228f2c04f785a34519cb6c21b`; `2026-09-30T23:52:55Z`–`23:53:57Z`; commands `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -o addopts='' tests/test_docs_validation.py -ra`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; documentation tests passed `57` with one warning; coverage checked `133` files; self-test passed `26` cases; diff check exited `0`. Reviewer `LUNA MAX docs`; no deployment or delivery acceptance is inferred. |
+| `R-ASTRA-106-E6` | Full local gate for the follow-on. | Native x86_64; revision `411c146`; command `TASK_ID=R-ASTRA-106 ./scripts/local-gate.sh check`; artifact `test-results/local-gates/R-ASTRA-106-20260930T235707Z/evidence.json`; exact UTC window and reviewer were not supplied. | **Pass** as reported: `741` Python checks and `27` frontend checks passed. This is local evidence only; no deployment or mail acceptance is inferred. |
+| `R-ASTRA-106-E7` | Focused repaired operator-access guard. | Native x86_64; pushed reviewed `main` revision `de9f45f2d5c562c34e004c658e7cee118af6ef58`; exact command, UTC window, artifact, and reviewer were not supplied. | **Pass** as reported: `19` focused guard checks passed. This is local evidence only; no deployment or mail acceptance is inferred. |
+| `R-ASTRA-106-E8` | Constrained operator firewall refresh. | Linode/Terraform MCP; pushed reviewed `main` revision `de9f45f2d5c562c34e004c658e7cee118af6ef58`; exact command, UTC window, artifact, and reviewer were not supplied. | **Pass**: `refresh_operator_access` returned firewall `177236117` with operator CIDR `50.21.67.178/32` applied to the fixed SSH rule. The Linode console login uses Google SSO; SSH material remains a separate operator-controlled boundary. |
+| `R-ASTRA-106-E9` | Official-client deployment-plan attempts and fixed-helper fallback. | Native x86_64; pushed reviewed `main` revision `de9f45f2d5c562c34e004c658e7cee118af6ef58`; exact UTC window and artifact were not supplied. | **Fail** for two official-client plan attempts: both returned generic `remote_operation_failed`. The separate fixed host-helper direct plan **Passed** with plan ID `475203e37dd969d84e10e7a0839f1a28`; the failed official-client attempts remain a deployment limitation. |
+| `R-ASTRA-106-E10` | Reviewed Compose installation, immutable release transport, schema-10 deployment, and HTTPS boundary. | Native x86_64/operator host and production Linode; pushed reviewed `main` revision `de9f45f2d5c562c34e004c658e7cee118af6ef58`; MCP deploy `2026-10-01T00:20:13Z`; refresh and HTTPS probe UTC/artifact/reviewer metadata were not supplied. | **Pass** for the declared scope: Compose checksum `35b4f09c0696a4873302f1127eeeb2d1468f77ce8c9c25d989e8f30af156f14b` was installed; the GitHub Release archive SHA-256 was `0e81c7c227ffe15094c5f7557b024e445e3fe61d72138bb57bacc6f6f99f47a0`; image ID was `sha256:bbb6a35143cda6d38883a8294710b2ee143f383077f4e27d6fad0c746ec5a6f1`; fixed helper plan ID was `475203e37dd969d84e10e7a0839f1a28`; deploy returned backup `pre-deploy-de9f45f2d5c562c3-497734d9.spbackup`, schema `10` ready, `loopback_only: true`, and `failed: null`; HTTPS health returned `200`, private history `401`, and responses carried `no-store`/`DYNAMIC`. No SMTP delivery, owner TOTP enrollment, authenticated workspace retrieval, physical-mobile evidence, or broader production acceptance is inferred. |
+| `R-ASTRA-106-E11` | Final authored-documentation validator, tests, map coverage, self-test, and scoped diff check after this deployment reconciliation. | Native x86_64; dirty `HEAD` `de9f45f2d5c562c34e004c658e7cee118af6ef58`; `2026-10-01T00:33:23Z`–`00:33:52Z`; commands `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -o addopts='' tests/test_docs_validation.py -ra`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`; no artifact. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; documentation tests passed `57` with one warning; coverage checked `133` files; self-test passed `26` cases; scoped diff check exited `0`. Reviewer `LUNA MAX docs`; no deployment or delivery acceptance is inferred. |
 
 ## Historical authentication and production deployment follow-on (`R-ASTRA-101`)
 
