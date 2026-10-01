@@ -132,6 +132,35 @@ code may remain valid until it expires. The `R-ASTRA-104` scoped QA did not exer
 provider, mailbox delivery, or production deployment; see the [MVP plan](../../MVP-PLAN.md) for
 the current evidence record.
 
+### Resend sending domain and credential workflow
+
+The Resend free account was created with Google SSO, and `mail.jtmb.cc` was reported verified at
+approximately `2026-10-01T14:04Z`. Cloudflare Terraform manages three DNS-only sending records in
+`infra/cloudflare/main.tf`; commit `90ad506dc7c39e145734f295f41ac2a4358b7a14` was pushed. Terraform
+format/validate, the exact three-record create apply, public DNS resolution, and the post-apply
+no-change plan were reported **Pass** for the DNS scope. This does not verify an API key, SMTP
+authentication, message acceptance, or mailbox delivery.
+
+The fixed typed controller refreshed the Linode operator SSH rule to `142.198.155.54/32`.
+From Linode, `smtp.resend.com:2465` reached the endpoint over TCP and negotiated TLS 1.3. These
+are transport checks only; they do not prove that a Resend key exists or that a message can be sent.
+
+The intended credential workflow is the fixed local entry point
+`infra/linode/install-resend-smtp-key.sh --api-key-file FILE`, which accepts one private, one-line
+Resend API-key file and uses fixed host, Compose, and readiness boundaries. The companion remote
+helper sets the fixed Resend SMTP values and recreates the current production app without building
+or pulling a new image. The script and helper are committed locally at
+`42cf0f40c98404d55585745b10311354661a5195`, but that revision is not pushed. Builder
+self-validation reported `11` focused tests, Ruff check/format, `bash -n`, and ShellCheck **Pass**;
+initial independent QA found a P1 remote-shell quoting blocker and a P2 incomplete-read rollback
+blocker; the repaired QA recheck passed `13` tests, including command parse/probe and incomplete-read
+rollback, for its declared local scope. This does not establish production acceptance or authorize
+a live key install.
+
+Restricted Resend API-key creation still awaits browser action-time confirmation. No API key exists,
+no host installation has been observed, and no live invitation send or mailbox delivery has been
+verified.
+
 To install a reviewed change to the host's production Compose file, run the fixed updater from a
 clean checkout of the exact reviewed `main` revision. It verifies that local `HEAD` equals the
 supplied SHA, the worktree is clean, public `origin/main` has the same revision, and the tracked

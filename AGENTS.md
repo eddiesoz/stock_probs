@@ -154,10 +154,10 @@ separate limitations.
 
 ### Current deployment-access and invitation-transport follow-on (`R-ASTRA-106`)
 
-- **Status:** **In progress**. The current dirty checkout is
-  `db0372891ea00a0228f2c04f785a34519cb6c21b`. The implementation adds the typed MCP operation
-  `refresh_operator_access(operator_ipv4_cidr)` and extends invitation SMTP compatibility to
-  `implicit_tls` on ports `465` or `2465`, or `starttls` on port `587`.
+- **Status:** **In progress**. Reviewed `main` revision
+  `de9f45f2d5c562c34e004c658e7cee118af6ef58` was pushed. The implementation adds the typed MCP
+  operation `refresh_operator_access(operator_ipv4_cidr)` and extends invitation SMTP compatibility
+  to `implicit_tls` on ports `465` or `2465`, or `starttls` on port `587`.
 - `refresh_operator_access` accepts one canonical IPv4 `/32` and plans/applies only the fixed
   `linode_firewall.signal_ledger` resource (firewall ID `177236117`), changing the `ssh-operator`
   TCP port-22 rule. It uses the fixed external private Terraform state and the existing clean-tree,
@@ -183,9 +183,48 @@ separate limitations.
   Commands were the validator, `tests/test_docs_validation.py`, both documentation-coverage checks,
   and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`; reviewer
   `LUNA MAX docs`.
-- Production remains on the previously deployed image. No live firewall refresh, image deployment,
-  production Compose update, or SMTP/mailbox delivery has been observed, and no release acceptance
-  claim is made.
+- `R-ASTRA-106-E6` records the full local gate on revision `411c146`: command
+  `TASK_ID=R-ASTRA-106 ./scripts/local-gate.sh check`, receipt
+  `test-results/local-gates/R-ASTRA-106-20260930T235707Z/evidence.json`, `741` Python and `27`
+  frontend checks passed. `R-ASTRA-106-E7` records a separate `19`-pass focused repaired guard on
+  pushed revision `de9f45f2d5c562c34e004c658e7cee118af6ef58`.
+- `R-ASTRA-106-E8` records the earlier live operator refresh to `50.21.67.178/32` through the
+  fixed typed controller; `R-ASTRA-106-E9` records the two failed official-client plan attempts
+  plus the fixed-helper fallback. `R-ASTRA-106-E10` records the declared-scope schema-10
+  deployment and HTTPS boundary; `R-ASTRA-106-E11` records the authored documentation checks.
+  These do not claim SMTP authentication, sending, mailbox delivery, owner TOTP enrollment, or
+  full production acceptance.
+- `R-ASTRA-106-E12` records the Resend follow-on, which is **In progress**. A free account was
+  created through Google SSO and
+  `mail.jtmb.cc` was reported verified at approximately `2026-10-01T14:04Z`. Three DNS-only
+  records were committed and pushed in Cloudflare Terraform at
+  `90ad506dc7c39e145734f295f41ac2a4358b7a14`; Terraform format/validate, the exact three-record
+  create apply, public DNS resolution, and the post-apply no-change plan passed for the DNS scope.
+  `R-ASTRA-106-E13` records the Linode TCP and TLS 1.3 checks to `smtp.resend.com:2465` after the
+  fixed controller applied operator SSH `142.198.155.54/32`. No API key exists, no host installation
+  has been observed, and no live send or mailbox delivery is verified.
+- `R-ASTRA-106-E14` records the local commit
+  `42cf0f40c98404d55585745b10311354661a5195` (not pushed) containing
+  `infra/linode/install-resend-smtp-key.sh`, `infra/linode/smtp-credential-installer.py`, and
+  `tests/test_linode_smtp_credentials.py`; builder checks reported `11` focused tests, Ruff
+  check/format, `bash -n`, and ShellCheck **Pass** as self-validation. `R-ASTRA-106-E15` retains
+  the initial independent QA P1 remote-shell quoting blocker and P2 incomplete-read rollback
+  blocker. `R-ASTRA-106-E16` records the repaired independent QA recheck: `13` tests passed,
+  including command parse/probe and incomplete-read rollback, for its declared local scope. No API
+  key, host installation, live send, mailbox delivery, or production acceptance is evidenced.
+- `R-ASTRA-106-E17` records the final authored-documentation checks **Pass** on native x86_64 at
+  `2026-10-01T14:55:29Z`–`14:56:27Z`, dirty `HEAD`
+  `42cf0f40c98404d55585745b10311354661a5195`: `.dev-venv/bin/python scripts/validate_docs.py`
+  reported `9` categories, `13` topics, and `7` governance entries; documentation tests passed
+  `57` with one warning; coverage checked `133` mapped files; the coverage self-test passed `26`
+  cases; and scoped `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`
+  exited `0`. Reviewer `LUNA MAX docs`; these checks do not establish installer, host, SMTP,
+  mailbox, or production acceptance.
+- The intended Resend installer accepts only one operator-owned private, one-line API-key file
+  through `infra/linode/install-resend-smtp-key.sh --api-key-file FILE`; host, SSH account, remote
+  paths, Compose file, image behavior, and readiness URL remain fixed. The API key must stay outside
+  the repository, logs, exports, and evidence. Browser action-time confirmation is still required
+  to create the key; no credential-bearing run is authorized or evidenced by this follow-on.
 
 `M09-E13` is a frozen historical constraint for the M09 contract, not a current absence-audit
 task. Its original rejected M09 scope remains intact. Later `R-ASTRA-98` separately

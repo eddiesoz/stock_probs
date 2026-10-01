@@ -36,10 +36,27 @@ section for identity, TLS, and delivery behavior.
 | `STOCK_PROBS_INVITE_SMTP_SECURITY` | `implicit_tls` with port `465` or `2465`, or `starttls` with port `587`. |
 | `STOCK_PROBS_INVITE_EMAIL_FROM` | Valid ASCII sender mailbox address. |
 
+The reviewed Resend sending-domain setup uses `mail.jtmb.cc`, with the fixed production values
+`smtp.resend.com`, port `2465`, username `resend`, `implicit_tls`, and the sender mailbox
+`invites@mail.jtmb.cc`. Three DNS-only records for that domain are managed in Cloudflare
+Terraform. The domain was reported verified through a Resend free account created with Google SSO
+at approximately `2026-10-01T14:04Z`; public DNS resolution and the post-apply no-change plan were
+also reported. These checks establish domain and DNS preparation only.
+
 Supply credentials through the operator-controlled production environment outside the repository.
 Do not put SMTP values in tracked files, command arguments, logs, or documentation. The client
 validates the SMTP server certificate and uses a 10-second socket timeout for each socket
 operation; this is not a total deadline for the entire submission.
+
+The pending operator workflow accepts one private, one-line Resend API-key file through the fixed
+`infra/linode/install-resend-smtp-key.sh --api-key-file FILE` entry point. It is intended to set the
+fixed Resend SMTP values, recreate the fixed production Compose app without building or pulling a
+new image, and require readiness. The script and remote helper are committed locally at
+`42cf0f40c98404d55585745b10311354661a5195`, but that revision is not pushed. Initial independent
+QA found a P1 remote-shell quoting blocker and a P2 incomplete-read rollback blocker; the repaired
+QA recheck passed `13` tests, including command parse/probe and incomplete-read rollback, for its
+declared local scope. This remains installer QA only. No API key currently exists, no host
+installation has been observed, and no live send or mailbox delivery has been verified.
 
 For a reproducible local dashboard:
 

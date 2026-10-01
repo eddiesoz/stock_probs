@@ -156,12 +156,24 @@ SMTP pass-through in `compose.production.yaml` and the fixed host updater
 `infra/linode/update-host-compose.sh`. The SMTP variables are documented in
 [local configuration](../configure/local-configuration.md), the operator/admin behavior and fixed
 updater in [getting started](../operations/getting-started.md#invitation-email-and-host-compose-update),
-and this page records their coverage rule. `R-ASTRA-106` extends the accepted SMTP ports to
-implicit TLS on `465` or `2465`, retains STARTTLS on `587`, and adds the constrained operator-access
-MCP operation; no live refresh or delivery result is implied.
-Keep this page and AGENTS policy coverage current whenever those production settings or updater
-invariants change. The updater only installs the checksum-verified Compose file; deployment and
-live delivery are separate evidence.
+and this page records their coverage rule. `R-ASTRA-106` extends the accepted SMTP ports to implicit
+TLS on `465` or `2465`, retains STARTTLS on `587`, and adds the constrained operator-access MCP
+operation. Its Resend follow-on also covers the `mail.jtmb.cc` sending-domain records in
+`infra/cloudflare/main.tf`, the fixed typed-controller operator refresh, the
+`smtp.resend.com:2465` transport check, and the constrained credential-installer workflow. Coverage
+for those changes belongs in `AGENTS.md`, this page, the root plan and roadmap,
+[`local configuration`](../configure/local-configuration.md), and the production section of
+[`getting started`](../operations/getting-started.md#resend-sending-domain-and-credential-workflow).
+The domain/DNS/TLS checks do not establish API-key creation, host installation, SMTP acceptance,
+live sending, mailbox delivery, or production email acceptance. The installer is committed locally
+at `42cf0f40c98404d55585745b10311354661a5195`, but that revision is not pushed. The initial
+independent QA P1/P2 findings remain recorded as failure evidence; the repaired QA recheck passed
+`13` tests, including command parse/probe and incomplete-read rollback, for its declared local
+scope. This does not establish a pushed revision, host installation, SMTP send, mailbox delivery,
+or production acceptance.
+Keep this page and AGENTS policy coverage current whenever those production settings, DNS records,
+or updater/installer invariants change. The updater only installs the checksum-verified Compose
+file; deployment and live delivery are separate evidence.
 
 The historical schema-8 passkey deployment reconciliation records the owner-only canary, recovery pass, and private
 deployment of the final clean-main image at revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`.
