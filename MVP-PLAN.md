@@ -392,6 +392,69 @@ an explicit replacement action after a cross-session conflict.
 | `R-ASTRA-107-E10` | Release publication, operator-access refresh, and production deployment. | Pushed `main` revision `a2247cce6e9f55fc81f96da3698f424ae2a2dc20`; Linux/amd64; archive SHA-256 `85c53648c8c1810bfc37153c404d4064ee468c81ce78caaf0666e71bb5221106`; image `sha256:b4249173085ef5b7b6c0df8741aa34d99e6b1d488ab9bfc829010398a422d2a1`; size `103160002` bytes; exact command/UTC/reviewer not supplied. | **Pass** for the declared deployment scope: publisher re-download passed; Terraform MCP applied `50.21.67.178/32` to firewall `177236117`; two MCP plans returned `remote_operation_failed`; fixed host-helper plan `105579dd822e69b03360201df2276bc3` succeeded; MCP deploy reached readiness schema `10`; status reported revision `a2247cc`, `failed: null`, `loopback_only: true`, backup `pre-deploy-a2247cce6e9f55fc-6ef1c2e6.spbackup`, and `deployed_at=2026-10-01T19:58:26.230020Z`. The transient plan failures remain visible. |
 | `R-ASTRA-107-E11` | Public boundary and live setup/reuse check. | Production HTTPS and IAB; exact probe/browser UTC, command, artifact, and reviewer were not supplied; no QR or secret was recorded. | **Pass** for the bounded boundary/UI scope: health `200`, auth status `200`, anonymous history `401`, overview `303` to sign-in, all `no-store`/`DYNAMIC`; GitHub sign-in as `jtmb` reached setup; repeated default starts across reload returned the same pending key when compared locally without exposing it, with expiry and explicit rotation controls visible. No TOTP code was entered; owner enrollment, workspace access, and physical iPhone code validation remain **Unavailable**. |
 
+## Current authenticator-app chooser refinement (`R-ASTRA-108`)
+
+**Status: In progress** for complete authentication acceptance. This follow-on refines the deployed
+schema-10 enrollment flow: the user must select an authenticator app before generating a setup key;
+the choice is retained across starting setup and explicit key rotation; the generic `otpauth://`
+handler link is removed; and the page provides a manual key and selected-app in-app QR-scanner
+guidance. The change and getting-started guide were pushed together at exact `main` revision
+`d5d2cbf0314091977358c3d3a90bfab096286bd4`, which matched `origin/main`; the tree was clean at that
+checkpoint. The
+`docs/operations/getting-started.md` guide records the user steps.
+
+R-ASTRA-107 remains the preceding key-reuse repair and remains incomplete for owner authentication.
+No TOTP code has been entered for the owner; authenticated workspace retrieval, physical iPhone
+validation, and VoiceOver evidence remain **Unavailable**. The post-deployment read-only database
+query found zero owner factors and zero active pending enrollments.
+
+Independent Luna xhigh QA found two small issues and recorded their repair. The final source review
+reported no code blocker. The authentication-contract check passed `9/9`; typecheck, the docs
+validator, and diff check passed. Focused browser QA passed `8/8` before the final copy change, so it
+does not represent final-copy browser evidence. The final exact-tree browser rerun passed `14/14`
+desktop and emulated Pixel 7 cases after `./scripts/build-frontend.sh`; that build, frontend tests
+(`28`), and typecheck passed. An earlier concurrent browser run used a stale export and **Failed**.
+The initial full gate `R-ASTRA-108-20261001T204919Z` was interrupted by the coordinator after the
+final copy change and exited `1`; it is retained as a non-acceptance attempt.
+
+The final local gate command was `TASK_ID=R-ASTRA-108 ./scripts/local-gate.sh check`. It **Passed**
+with exit `0` on native x86_64 from `2026-10-01T20:52:50Z` to `2026-10-01T21:00:17Z`. Receipt:
+`test-results/local-gates/R-ASTRA-108-20261001T205250Z/evidence.json`; it records dirty base
+revision `da2ab8e22a1efe0bc57c903cd17a4bd9c3da4013`, `763` Python tests passed, `4` deselected,
+`85.47%` coverage, and completed checks `documentation-completeness`,
+`frontend-npm-ci-typecheck-build-test-stage`, and `python-checks`. Frontend build, typecheck,
+documentation checks, and `28` frontend checks passed.
+
+The release is `signal-ledger-d5d2cbf0314091977358c3d3a90bfab096286bd4`, published from the exact
+pushed revision. Its archive SHA-256 is
+`4c57f78084e4c27dc5a666c2fc8f080b5ef9b02c83b7a0ea33ae4ac7761c8129`; its Linux/amd64 image ID is
+`sha256:151ba3169c65cd6cb410cb19b6102e67a61289fd58fb74384c9bc953150e1e85`, size `103157662`
+bytes. The first MCP `plan_deploy` returned `remote_operation_failed`; the direct fixed restricted
+host-helper plan then passed with ID `93852f0183b35d024f6bbe27b3388784`, followed by a successful
+MCP deploy. Status reported the exact revision, schema `10` ready, backup
+`pre-deploy-d5d2cbf031409197-d1b7d25e.spbackup`, `failed: null`, `loopback_only: true`, and
+`deployed_at=2026-10-01T21:06:23.524988Z`.
+
+The public HTTPS boundary returned health `200`, auth status `200`, anonymous history `401`, and
+`/overview` `303` to sign-in, all with `no-store`/`DYNAMIC`. In the production IAB after GitHub
+sign-in as `jtmb`, the chooser appeared before key generation; the generate button was disabled until
+an app was selected; choosing Google Authenticator displayed its instructions and enabled the
+button; resetting the choice disabled it again. No key was generated and no code was entered. These
+observations do not establish owner factor enrollment or authenticated workspace access.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `R-ASTRA-108-E1` | Authenticator chooser behavior, user guide update, and pushed implementation checkpoint. | Pushed `main` revision `d5d2cbf0314091977358c3d3a90bfab096286bd4`; clean at checkpoint; exact command, UTC window, artifact, and reviewer not supplied. | **Pass** for the declared UI/guide scope: selection is required before setup-key generation, persists across setup/rotation, generic `otpauth://` handling is removed, and manual-key plus selected-app QR-scanner guidance is present. This is not owner authentication acceptance. |
+| `R-ASTRA-108-E2` | Independent source and auth-contract QA. | Native x86_64; Luna xhigh QA; exact revision, command, UTC, artifact, and reviewer metadata not supplied. | **Pass** after two small issues were repaired: final source review reported no code blocker; auth-contract checks passed `9/9`, with typecheck, docs validator, and diff check passing. |
+| `R-ASTRA-108-E3` | Focused browser QA before final copy adjustment. | Desktop and emulated mobile; exact revision, UTC, command, artifact, and reviewer metadata not supplied. | **Pass** for the earlier copy: `8/8`. It predates the final copy change and is not the final browser result. |
+| `R-ASTRA-108-E4` | Initial concurrent browser attempt against a stale frontend export. | Exact command, environment, UTC, revision, artifact, and reviewer not supplied. | **Fail** for that attempt due to stale export; retained as historical and superseded for final browser scope by E5. |
+| `R-ASTRA-108-E5` | Final exact-tree browser run after the last frontend build. | Desktop and emulated Pixel 7; after `./scripts/build-frontend.sh`; exact UTC, revision, artifact, and reviewer not supplied. | **Pass**: `14/14`. The chooser remained disabled without a selection, showed Google Authenticator guidance after selection, and returned to disabled after reset. Physical iPhone and VoiceOver remain **Unavailable**. |
+| `R-ASTRA-108-E6` | Initial full local gate before final copy adjustment. | Native x86_64; artifact `test-results/local-gates/R-ASTRA-108-20261001T204919Z/`; exact base revision and UTC not supplied. | **Fail for that invocation**: coordinator interrupted it after the final copy change; it exited `1` and is not acceptance evidence. E7 is the final gate. |
+| `R-ASTRA-108-E7` | Final full local gate. | Native x86_64; dirty precommit base `da2ab8e22a1efe0bc57c903cd17a4bd9c3da4013`; `2026-10-01T20:52:50Z`–`21:00:17Z`; receipt `test-results/local-gates/R-ASTRA-108-20261001T205250Z/evidence.json`. | **Pass**, exit `0`: `763` Python tests passed, `4` deselected, `85.47%` coverage; frontend `28`, build, typecheck, and documentation checks passed. Command `TASK_ID=R-ASTRA-108 ./scripts/local-gate.sh check`. |
+| `R-ASTRA-108-E8` | Release publication and production deployment. | Pushed exact `main` revision `d5d2cbf0314091977358c3d3a90bfab096286bd4`; GitHub Release archive SHA-256 `4c57f78084e4c27dc5a666c2fc8f080b5ef9b02c83b7a0ea33ae4ac7761c8129`; Linux/amd64 image `sha256:151ba3169c65cd6cb410cb19b6102e67a61289fd58fb74384c9bc953150e1e85`, `103157662` bytes; deploy `2026-10-01T21:06:23.524988Z`. | **Pass** for deployment scope: first MCP plan returned `remote_operation_failed`; fixed restricted helper plan `93852f0183b35d024f6bbe27b3388784` passed; MCP deploy succeeded. Status reported schema `10` ready, backup `pre-deploy-d5d2cbf031409197-d1b7d25e.spbackup`, exact revision, `failed: null`, and `loopback_only: true`. The initial plan failure remains visible. |
+| `R-ASTRA-108-E9` | Production HTTPS boundary, chooser behavior, and read-only owner enrollment state. | Production HTTPS/IAB/operator read-only DB; exact probe/query/browser UTC, command, artifact, and reviewer not supplied; no key, code, or QR was generated or recorded. | **Pass** for the declared bounded scope: health/auth status `200`, anonymous history `401`, `/overview` `303`, responses `no-store`/`DYNAMIC`; app choice gated key generation and reset cleared the choice. DB query found zero owner factors and zero active pending enrollments. Owner code acceptance, authenticated workspace access, iPhone, and VoiceOver remain **Unavailable**. |
+| `R-ASTRA-108-E10` | Final authored-documentation validator, documentation tests, map coverage, self-test, and scoped diff check for this reconciliation. | Native x86_64; dirty `HEAD` `d5d2cbf0314091977358c3d3a90bfab096286bd4`; run date `2026-10-01`, exact UTC window not captured; commands `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -o addopts='' tests/test_docs_validation.py -ra`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`; no separate artifact. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; documentation tests passed `57` with one warning; coverage checked `133` mapped files; self-test passed `26` cases; scoped diff check exited `0`. Reviewer `LUNA MAX docs`; checkpoint verification is recorded separately. |
+
 ## Deployed authenticator-only baseline (`R-ASTRA-103`)
 
 `R-ASTRA-103` retired the browser passkey requirement. Production remains invite-only GitHub OAuth:
@@ -638,11 +701,13 @@ repair/gate in E61-E62, and the current deployment/review in E63-E64.
 
 ### Current approval status
 
-`R-ASTRA-107` is the current in-progress TOTP enrollment key-reuse repair; `R-ASTRA-103` is the
-deployed authenticator-only baseline. The repaired image is deployed at the reviewed pushed
-revision, and the final-tree local gate passed for its declared scope. No TOTP code was entered in
-the live setup check, so owner enrollment and authenticated workspace retrieval remain unavailable;
-physical iOS code validation is also unavailable. `R-ASTRA-102` and `R-ASTRA-101` are historical
+`R-ASTRA-108` is the current authenticator-app chooser refinement; `R-ASTRA-107` is the preceding
+deployed key-reuse repair, and `R-ASTRA-103` is the deployed authenticator-only baseline. R-ASTRA-108
+is deployed and its final local gate and exact-tree browser run passed for their declared scopes.
+No setup key or TOTP code was generated or entered in the live check, and the read-only database
+query found zero owner factors and zero active pending enrollments. Owner enrollment, authenticated
+workspace retrieval, physical iPhone, and VoiceOver evidence remain **Unavailable**. R-ASTRA-107
+also remains incomplete for owner TOTP acceptance. `R-ASTRA-102` and `R-ASTRA-101` are historical
 deployment records, not current auth guidance.
 `EXP-M09` remains a separate historical export action and is not a production deployment gate.
 `R-ASTRA-100` is **Completed for its declared UI scope** with the evidence recorded above; this

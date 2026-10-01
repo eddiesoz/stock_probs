@@ -122,14 +122,15 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 
 ### Current approval status
 
-`R-ASTRA-107` is the current TOTP enrollment key-reuse repair follow-on. `R-ASTRA-103` is the
-deployed authenticator-only baseline; `R-ASTRA-101` and `R-ASTRA-102` are historical
-passkey/TOTP deployment records and are not current auth guidance.
-The local implementation has schema 10, and the deployed baseline local gate passed for its declared scope.
-The reviewed schema-10 image and the repaired R-ASTRA-107 image are deployed; the live passkey
-retirement redirect and public HTTPS boundary are verified. Owner TOTP enrollment and authenticated
-workspace retrieval remain **Unavailable** because no code was entered in the deployment check;
-physical mobile and hardware authenticator-device evidence remain **Unavailable**.
+`R-ASTRA-108` is the current authenticator-app chooser refinement. The deployed flow requires an
+app choice before key generation, retains that choice through setup and rotation, and provides
+manual-key and selected-app QR-scanner guidance without a generic `otpauth://` handler link.
+`R-ASTRA-107` is the preceding deployed key-reuse repair, and `R-ASTRA-103` is the deployed
+authenticator-only baseline; `R-ASTRA-101` and `R-ASTRA-102` are historical passkey/TOTP deployment
+records. The live passkey retirement redirect and public HTTPS boundary are verified. No owner TOTP
+code has been entered: owner enrollment and authenticated workspace retrieval remain
+**Unavailable**, and the post-deployment read-only query found zero owner factors and zero active
+pending enrollments. Physical iPhone and VoiceOver evidence also remain **Unavailable**.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The three provider access items were created privately, Terraform
@@ -282,7 +283,7 @@ open.
   that scope. The broader browser aggregate remains **Unavailable**, and live SMTP delivery and
   production deployment remain unverified.
 
-### Current TOTP enrollment key-reuse repair (`R-ASTRA-107`)
+### Historical TOTP enrollment key-reuse repair (`R-ASTRA-107`)
 
 - **Status:** **In progress**. A default enrollment start reuses the active pending setup only for
   the same session, factor generation, and origin, preserving its original expiry. An explicit
@@ -317,10 +318,48 @@ open.
   No TOTP code was entered, so owner enrollment and authenticated workspace retrieval remain
   **Unavailable**; physical iPhone code validation is **Unavailable**. R-ASTRA-107 remains **In progress**
   for complete auth acceptance, not deployment.
+
 - **Key exposure guidance:** a QR code or setup key visible in a photo or screenshot must be treated
-  as exposed.
-  Use **Start over with new key** to rotate it, replace the old Signal Ledger entry in Apple Passwords
-  with the new key before entering its code, and do not use the captured QR or old key.
+  as exposed. Use **Start over with new key** to rotate it, replace the old Signal Ledger entry in
+  Apple Passwords with the new key before entering its code, and do not use the captured QR or old
+  key.
+
+### Current authenticator-app chooser refinement (`R-ASTRA-108`)
+
+- **Status:** **In progress** for complete authentication acceptance. The app chooser refinement is
+  deployed at pushed revision `d5d2cbf0314091977358c3d3a90bfab096286bd4`; it does not close the
+  outstanding owner TOTP enrollment requirement from R-ASTRA-107.
+- The setup page requires the user to choose an authenticator before generating a key, retains the
+  choice across setup and explicit rotation, removes the generic `otpauth://` handler link, and
+  provides a manual key plus guidance to scan with the selected app's in-app QR reader.
+- Independent Luna xhigh QA found two small issues, which were repaired; final source review reported
+  no code blocker and the auth-contract check passed `9/9`. Focused browser QA passed `8/8` before
+  the final copy change. After the final frontend build, the exact-tree desktop/emulated Pixel 7
+  browser rerun passed `14/14`. The earlier concurrent browser attempt against a stale export failed
+  and remains historical. The first full gate was interrupted after the final copy change and exited
+  `1`; it is not acceptance evidence.
+- **Final local gate:** `TASK_ID=R-ASTRA-108 ./scripts/local-gate.sh check` passed with exit `0` on
+  native x86_64 from `2026-10-01T20:52:50Z` to `21:00:17Z`; receipt
+  `test-results/local-gates/R-ASTRA-108-20261001T205250Z/evidence.json` records dirty base
+  revision `da2ab8e22a1efe0bc57c903cd17a4bd9c3da4013`, `763` Python tests passed, `4` deselected,
+  `85.47%` coverage, and frontend `28`, build, typecheck, and documentation checks passed.
+- **Release and deployment:** GitHub Release
+  `signal-ledger-d5d2cbf0314091977358c3d3a90bfab096286bd4` has archive SHA-256
+  `4c57f78084e4c27dc5a666c2fc8f080b5ef9b02c83b7a0ea33ae4ac7761c8129` and Linux/amd64 image
+  `sha256:151ba3169c65cd6cb410cb19b6102e67a61289fd58fb74384c9bc953150e1e85`, size `103157662`
+  bytes. The first MCP plan returned `remote_operation_failed`; the fixed restricted host-helper plan
+  passed with ID `93852f0183b35d024f6bbe27b3388784`, then MCP deploy succeeded. Status reported exact
+  revision `d5d2cbf0314091977358c3d3a90bfab096286bd4`, schema `10` ready, backup
+  `pre-deploy-d5d2cbf031409197-d1b7d25e.spbackup`, `failed: null`, `loopback_only: true`, and
+  deployment time `2026-10-01T21:06:23.524988Z`.
+- **Live boundary and limits:** health and auth status returned `200`, anonymous history returned
+  `401`, and `/overview` redirected `303` to sign-in, with `no-store`/`DYNAMIC` responses. After
+  GitHub sign-in as `jtmb`, the chooser appeared before key generation; the button was disabled with
+  no choice, selecting Google Authenticator displayed its instructions and enabled the button, and
+  resetting the choice disabled it again. No key was generated and no TOTP code was entered. The
+  operator's read-only database query found zero owner factors and zero active pending enrollments.
+  Owner code acceptance, authenticated workspace retrieval, physical iPhone, and VoiceOver evidence
+  remain **Unavailable**; R-ASTRA-108 remains **In progress**.
 
 ### Deployed authenticator-only baseline (`R-ASTRA-103`)
 
