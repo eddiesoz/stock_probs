@@ -173,12 +173,17 @@ test("provisional authenticator setup and verification use the local TOTP contra
   });
 
   await page.goto("/authenticator?mode=enroll&next=/overview");
-  await page.getByRole("button", { name: "Generate setup key" }).click();
+  const appChoice = page.getByLabel("Which authenticator do you want to use?");
+  const generateKey = page.getByRole("button", { name: "Generate setup key" });
+  await expect(appChoice).toBeFocused();
+  await expect(generateKey).toBeDisabled();
+  await appChoice.selectOption("apple-passwords");
+  await expect(generateKey).toBeEnabled();
+  await generateKey.click();
   await expect(page.getByText("Manual setup key")).toBeVisible();
   await expect(page.getByTestId("totp-enrollment-expiry")).toContainText("Setup key expires in");
   await expect(page.getByRole("img", { name: "QR code for adding Signal Ledger to an authenticator app" })).toHaveAttribute("src", /^data:image\/png;base64,/);
   await expect(page.getByText("JBSWY3DPEHPK3PXP", { exact: true })).toBeVisible();
-  const appChoice = page.getByLabel("Which authenticator do you want to use?");
   await expect(appChoice).toBeFocused();
   await expect(page.getByLabel("Enter the current six-digit code")).not.toBeFocused();
   await appChoice.selectOption("apple-passwords");
@@ -189,9 +194,12 @@ test("provisional authenticator setup and verification use the local TOTP contra
   await expect(page.getByText(/One-Time Password\. On this iPhone, paste the copied setup key/)).toBeVisible();
   await appChoice.selectOption("other");
   await expect(page.getByText(/choose time-based \(TOTP\)/)).toBeVisible();
-  const handlerLink = page.getByRole("link", { name: "Try device’s default otpauth handler" });
-  await expect(handlerLink).toHaveAttribute("href", /^otpauth:\/\//);
-  await expect(page.getByText(/iOS chooses which app opens an otpauth link/)).toBeVisible();
+  await appChoice.selectOption("");
+  await expect(page.getByRole("button", { name: "Start over with new key" })).toBeDisabled();
+  await appChoice.selectOption("other");
+  await expect(page.getByRole("link", { name: "Try device’s default otpauth handler" })).toHaveCount(0);
+  await expect(page.getByText(/A generic setup link can open a different app on iOS/)).toBeVisible();
+  await expect(page.getByText(/use its in-app QR scanner/)).toBeVisible();
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.getByRole("button", { name: "Copy setup key" }).click();
   await expect(page.getByRole("button", { name: "Copied setup key" })).toBeVisible();
@@ -300,6 +308,7 @@ test("authenticator rotation clears stale setup data and explains rejected stale
   }));
 
   await page.goto("/authenticator?mode=enroll&next=/overview");
+  await page.getByLabel("Which authenticator do you want to use?").selectOption("other");
   await page.getByRole("button", { name: "Generate setup key" }).click();
   await expect(page.getByTestId("totp-setup-key")).toHaveText("OLDOSECRETVALUE");
   await expect(page.getByRole("img", { name: "QR code for adding Signal Ledger to an authenticator app" })).toBeVisible();
@@ -363,6 +372,7 @@ test("authenticator start conflict offers an explicit replacement action", async
   });
 
   await page.goto("/authenticator?mode=enroll&next=/overview");
+  await page.getByLabel("Which authenticator do you want to use?").selectOption("other");
   await page.getByRole("button", { name: "Generate setup key" }).click();
   await expect(page.locator('[data-tone="error"]')).toContainText("A pending setup already exists in another session");
   await expect(page.getByText(/invalidates the other session’s pending QR and setup key/)).toBeVisible();
@@ -402,12 +412,14 @@ test("expired authenticator setup disables QR and code submission", async ({ pag
   }));
 
   await page.goto("/authenticator?mode=enroll&next=/overview");
+  await page.getByLabel("Which authenticator do you want to use?").selectOption("other");
   await page.getByRole("button", { name: "Generate setup key" }).click();
   await expect(page.getByTestId("totp-enrollment-expiry")).toHaveAttribute("data-state", "expired");
   await expect(page.getByText("It cannot be scanned or used.")).toBeVisible();
   await expect(page.getByTestId("totp-setup-key")).toHaveCount(0);
   await expect(page.getByRole("img", { name: "QR code for adding Signal Ledger to an authenticator app" })).toHaveCount(0);
   await expect(page.getByLabel("Enter the current six-digit code")).toHaveCount(0);
+  await expect(page.getByLabel("Which authenticator do you want to use?")).toBeVisible();
   await expect(page.getByRole("button", { name: "Start over with new key" })).toBeVisible();
 });
 

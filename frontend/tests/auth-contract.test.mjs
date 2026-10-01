@@ -65,8 +65,9 @@ test("auth routes cover invited sign-in, authenticator setup, retired passkey li
   assert.match(authenticator, /Google Authenticator/);
   assert.match(authenticator, /1Password/);
   assert.match(authenticator, /navigator\.clipboard\.writeText\(enrollment\.secret\)/);
-  assert.match(authenticator, /Try device’s default otpauth handler/);
-  assert.match(authenticator, /iOS chooses which app opens an otpauth link/);
+  assert.match(authenticator, /disabled={busy !== null \|\| status\?\.can_enroll === false \|\| !setupApp}/);
+  assert.doesNotMatch(authenticator, /Try device’s default otpauth handler/);
+  assert.match(authenticator, /A generic setup link can open a different app on iOS/);
   assert.doesNotMatch(authenticator, /Open in authenticator app/);
   assert.doesNotMatch(authenticator, /api\.qrserver|chart\.googleapis|external QR/i);
   assert.match(account, /auth\/sessions/);

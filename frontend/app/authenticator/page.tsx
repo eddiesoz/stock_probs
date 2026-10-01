@@ -75,7 +75,7 @@ function setupInstructions(app: SetupApp) {
     case "other":
       return "In your chosen app, add an account using Enter setup key or manual entry. Name it Signal Ledger, paste this key, and choose time-based (TOTP) if asked.";
     default:
-      return "Choose your authenticator to see its setup steps. The manual key is available above for apps that support entering a setup key.";
+      return "Choose your authenticator first. After you generate a setup key, this page will show how to add it to that app.";
   }
 }
 
@@ -241,16 +241,28 @@ export default function AuthenticatorPage() {
   const freshEnrollmentPath = `/authenticator?mode=step-up&next=${encodeURIComponent(enrollmentPath)}`;
 
   const recoveryText = useMemo(() => recoveryCodes?.join("\n") ?? "", [recoveryCodes]);
+  const appSelector = <>
+    <label className={styles.setupChoice} htmlFor="totp-app-choice">
+      Which authenticator do you want to use?
+      <select id="totp-app-choice" value={setupApp} onChange={(event) => setSetupApp(event.target.value as SetupApp)} aria-describedby="totp-app-guidance" autoFocus>
+        <option value="">Choose an app</option>
+        <option value="apple-passwords">Apple Passwords</option>
+        <option value="google-authenticator">Google Authenticator</option>
+        <option value="1password">1Password</option>
+        <option value="other">Other authenticator app</option>
+      </select>
+    </label>
+    <p className={styles.appGuidance} id="totp-app-guidance" aria-live="polite">{setupInstructions(setupApp)}</p>
+  </>;
 
   async function startEnrollment(replace = false) {
-    if (busy !== null) return;
+    if (busy !== null || !setupApp) return;
     const preserveConflictOnFailure = replace && pendingSetupConflict;
     // Remove the previous QR/key before rotating so an in-flight request cannot leave stale setup data actionable.
     setEnrollment(null);
     setQrCodeUrl(null);
     setQrUnavailable(false);
     setCode("");
-    setSetupApp("");
     setSetupKeyCopied(false);
     setRotatedEnrollment(false);
     setBusy(replace ? "replace" : "start");
@@ -400,11 +412,12 @@ export default function AuthenticatorPage() {
         {mode === "enroll" && !enrollment && !recoveryCodes ? <div className={styles.factorIntro}>
           <div className={styles.stepCard}><span className={styles.stepNumber}>1</span><div><strong>Add Signal Ledger to your app</strong><p>Generate a setup key, then add it to 1Password, Authenticator, Aegis, or another trusted authenticator.</p></div></div>
           <div className={styles.stepCard}><span className={styles.stepNumber}>2</span><div><strong>Confirm one current code</strong><p>The setup window expires in ten minutes. A code from the app proves the key was entered correctly.</p></div></div>
+          {appSelector}
           {pendingSetupConflict ? <div className={styles.deniedState} role="alert" aria-labelledby="totp-pending-setup-heading" aria-describedby="totp-pending-setup-warning">
             <strong id="totp-pending-setup-heading">A pending setup is active in another session</strong>
             <p id="totp-pending-setup-warning">Continue with that session if possible. Starting over invalidates the other session’s pending QR and setup key.</p>
-            <button className="secondary full" type="button" onClick={() => startEnrollment(true)} disabled={busy !== null || status?.can_enroll === false}>{busy === "replace" ? "Starting over…" : "Start over with new key"}</button>
-          </div> : <button className="primary full" type="button" onClick={() => startEnrollment()} disabled={busy !== null || status?.can_enroll === false}>{busy === "replace" ? "Starting over…" : busy === "start" ? "Creating setup key…" : "Generate setup key"}</button>}
+            <button className="secondary full" type="button" onClick={() => startEnrollment(true)} disabled={busy !== null || status?.can_enroll === false || !setupApp}>{busy === "replace" ? "Starting over…" : "Start over with new key"}</button>
+          </div> : <button className="primary full" type="button" onClick={() => startEnrollment()} disabled={busy !== null || status?.can_enroll === false || !setupApp}>{busy === "replace" ? "Starting over…" : busy === "start" ? "Creating setup key…" : "Generate setup key"}</button>}
           {status?.can_enroll === false ? <p className={styles.securityNote}>Complete a fresh check before replacing an existing authenticator. <a href={freshEnrollmentPath}>Verify current authenticator</a></p> : null}
         </div> : null}
 
@@ -425,33 +438,20 @@ export default function AuthenticatorPage() {
           {enrollmentExpired ? <div className={styles.deniedState}>
             <strong>Start a fresh setup</strong>
             <p>The QR code and code entry are disabled until you create a new setup key.</p>
-            <button className="secondary" type="button" onClick={() => startEnrollment(true)} disabled={busy !== null || status?.can_enroll === false}>{busy === "replace" ? "Starting over…" : "Start over with new key"}</button>
+            {appSelector}
+            <button className="secondary" type="button" onClick={() => startEnrollment(true)} disabled={busy !== null || status?.can_enroll === false || !setupApp}>{busy === "replace" ? "Starting over…" : "Start over with new key"}</button>
           </div> : <>
-            <label className={styles.setupChoice} htmlFor="totp-app-choice">
-              Which authenticator do you want to use?
-              <select id="totp-app-choice" value={setupApp} onChange={(event) => setSetupApp(event.target.value as SetupApp)} aria-describedby="totp-app-guidance" autoFocus>
-                <option value="">Choose an app</option>
-                <option value="apple-passwords">Apple Passwords</option>
-                <option value="google-authenticator">Google Authenticator</option>
-                <option value="1password">1Password</option>
-                <option value="other">Other authenticator app</option>
-              </select>
-            </label>
-            <p className={styles.appGuidance} id="totp-app-guidance" aria-live="polite">{setupInstructions(setupApp)}</p>
+            {appSelector}
             <div className={styles.secretCard}>
               <span className={styles.secretLabel}>Manual setup key</span>
               <code className={styles.setupKey} data-testid="totp-setup-key">{enrollment.secret}</code>
-              <p>On this iPhone, copy this key and add it inside the app you chose above. iOS chooses which app opens an otpauth link and may open Apple Passwords instead.</p>
+              <p>On this iPhone, copy this key and add it inside the app you chose above. A generic setup link can open a different app on iOS.</p>
               <button className="secondary" type="button" onClick={copySetupKey}>{setupKeyCopied ? "Copied setup key" : "Copy setup key"}</button>
             </div>
             <div className={styles.qrCard}>
               <span className={styles.secretLabel}>QR setup with another device</span>
               {qrCodeUrl ? <img className={styles.qrImage} src={qrCodeUrl} width="240" height="240" alt="QR code for adding Signal Ledger to an authenticator app" /> : <div className={styles.qrPlaceholder} role="status">{qrUnavailable ? "QR code unavailable. Use the manual key above." : "Creating QR code…"}</div>}
-              <p>Display this QR code on one device, then scan it from your chosen authenticator on the other.</p>
-            </div>
-            <div className={styles.handlerAction}>
-              <p>Trying this link asks your device’s default otpauth handler to open. The app choice above cannot change iOS routing.</p>
-              <a className="secondary" href={enrollment.otpauth_uri}>Try device’s default otpauth handler</a>
+              <p>Display this QR code on another screen. Open your chosen authenticator on this iPhone and use its in-app QR scanner. The iPhone Camera may send the code to Apple Passwords instead.</p>
             </div>
             {rotatedEnrollment ? <p className={styles.securityNote} id="totp-rotation-warning">This new key replaces the pending setup. Replace the old Signal Ledger entry in your authenticator before entering a code.</p> : null}
             <form className={styles.codeForm} onSubmit={finishOrVerify} noValidate>
@@ -460,7 +460,7 @@ export default function AuthenticatorPage() {
               <p id="totp-code-help" className={styles.fieldHelp}>Use the newest code. Codes are valid briefly and cannot be reused for the same time window.</p>
               <button className="primary full" type="submit" disabled={busy === "code" || !codeReady}>{busy === "code" ? "Confirming authenticator…" : "Enable authenticator"}</button>
             </form>
-            <button className="secondary full" type="button" onClick={() => startEnrollment(true)} disabled={busy !== null || status?.can_enroll === false}>{busy === "replace" ? "Starting over…" : "Start over with new key"}</button>
+            <button className="secondary full" type="button" onClick={() => startEnrollment(true)} disabled={busy !== null || status?.can_enroll === false || !setupApp}>{busy === "replace" ? "Starting over…" : "Start over with new key"}</button>
           </>}
         </div> : null}
 
