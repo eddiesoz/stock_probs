@@ -185,3 +185,32 @@ resource "cloudflare_dns_record" "canary" {
     cloudflare_zero_trust_tunnel_cloudflared_config.signal_ledger,
   ]
 }
+
+# Resend outbound sending-domain records use automatic TTL and DNS-only mode.
+# No inbound mail records are managed here.
+resource "cloudflare_dns_record" "resend_dkim" {
+  zone_id = var.zone_id
+  name    = "resend._domainkey.mail.jtmb.cc"
+  type    = "TXT"
+  ttl     = 1
+  content = "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCqC7+bnHbClSkSEa0aQHOCFiq36lBMxzF8mheD9T7hDhEJ7AyWrTQ95NIysLGxOepwWPpAMnb4xXQ+XDvM4A4Kz0C0jxYJ2dd9Rhw3C4aavfsFnDJHjg8U6jM0lasnkPdo9rbYTzrPG/Qt9UZ3qRgICJkQxWnr/1zyoikHuDg3aQIDAQAB"
+  proxied = false
+}
+
+resource "cloudflare_dns_record" "resend_return_path" {
+  zone_id = var.zone_id
+  name    = "rsend.mail.jtmb.cc"
+  type    = "CNAME"
+  ttl     = 1
+  content = "rsend.forge.rmta.net"
+  proxied = false
+}
+
+resource "cloudflare_dns_record" "resend_tracking" {
+  zone_id = var.zone_id
+  name    = "send.mail.jtmb.cc"
+  type    = "CNAME"
+  ttl     = 1
+  content = "send.forge.rmta.net"
+  proxied = false
+}
