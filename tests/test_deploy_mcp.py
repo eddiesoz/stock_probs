@@ -409,6 +409,64 @@ def test_firewall_plan_rejects_changes_outside_operator_cidr() -> None:
         _validate_firewall_plan(plan, "203.0.113.44/32")
 
 
+def test_firewall_plan_allows_provider_computed_metadata_and_empty_ipv6_null() -> None:
+    plan = _firewall_plan("198.51.100.7/32", "203.0.113.44/32")
+    resource = plan["resource_changes"][0]
+    assert isinstance(resource, dict)
+    detail = resource["change"]
+    assert isinstance(detail, dict)
+    for state_key, fingerprint, updated, version in (
+        ("before", "old-fingerprint", "old-updated", 1),
+        ("after", "new-fingerprint", "new-updated", 2),
+    ):
+        state = detail[state_key]
+        assert isinstance(state, dict)
+        state["fingerprint"] = fingerprint
+        state["updated"] = updated
+        state["version"] = version
+        inbound = state["inbound"]
+        assert isinstance(inbound, list)
+        rule = inbound[0]
+        assert isinstance(rule, dict)
+        rule["ipv6"] = None
+
+    assert _validate_firewall_plan(plan, "203.0.113.44/32") == ["update"]
+
+
+def test_firewall_plan_rejects_ipv6_operator_rule() -> None:
+    plan = _firewall_plan("198.51.100.7/32", "203.0.113.44/32")
+    resource = plan["resource_changes"][0]
+    assert isinstance(resource, dict)
+    detail = resource["change"]
+    assert isinstance(detail, dict)
+    after = detail["after"]
+    assert isinstance(after, dict)
+    inbound = after["inbound"]
+    assert isinstance(inbound, list)
+    rule = inbound[0]
+    assert isinstance(rule, dict)
+    rule["ipv6"] = ["2001:db8::/128"]
+
+    with pytest.raises(DeployError, match="terraform_scope_violation"):
+        _validate_firewall_plan(plan, "203.0.113.44/32")
+
+
+def test_firewall_plan_rejects_non_cidr_computed_metadata_drift() -> None:
+    plan = _firewall_plan("198.51.100.7/32", "203.0.113.44/32")
+    resource = plan["resource_changes"][0]
+    assert isinstance(resource, dict)
+    detail = resource["change"]
+    assert isinstance(detail, dict)
+    before = detail["before"]
+    after = detail["after"]
+    assert isinstance(before, dict) and isinstance(after, dict)
+    before["status"] = "enabled"
+    after["status"] = "disabled"
+
+    with pytest.raises(DeployError, match="terraform_scope_violation"):
+        _validate_firewall_plan(plan, "203.0.113.44/32")
+
+
 @pytest.mark.parametrize("state_key", ["before", "after"])
 def test_firewall_plan_requires_fixed_firewall_id(state_key: str) -> None:
     plan = _firewall_plan("198.51.100.7/32", "203.0.113.44/32")

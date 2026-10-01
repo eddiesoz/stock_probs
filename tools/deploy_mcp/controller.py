@@ -192,11 +192,13 @@ def _run_quiet_command(command: list[str], *, environment: dict[str, str], timeo
 
 
 def _firewall_without_operator_cidr(value: object) -> object:
-    """Normalize only the expected firewall CIDR before comparing planned values."""
+    """Normalize only provider metadata and the expected operator CIDR before comparing."""
 
     if not isinstance(value, dict):
         return value
     normalized = copy.deepcopy(value)
+    for field in ("fingerprint", "updated", "version"):
+        normalized.pop(field, None)
     inbound = normalized.get("inbound")
     if isinstance(inbound, list):
         for rule in inbound:
@@ -226,7 +228,7 @@ def _validate_firewall_state(value: object, cidr: str) -> None:
         or rule.get("protocol") != "TCP"
         or rule.get("ports") != "22"
         or rule.get("ipv4") != [cidr]
-        or rule.get("ipv6", []) != []
+        or rule.get("ipv6", []) not in (None, [])
     ):
         raise DeployError("terraform_scope_violation")
 
