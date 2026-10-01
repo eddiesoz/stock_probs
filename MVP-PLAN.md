@@ -344,11 +344,12 @@ request rotates the pending key and invalidates the old QR/setup material. A dif
 silently overwrite the pending row. The UI shows the expiry, disables expired QR/code use, and offers
 an explicit replacement action after a cross-session conflict.
 
-- **Status:** **In progress**. The source repair and final scoped browser QA are recorded, but the
-  repaired image has not been deployed to production. Physical iOS evidence remains **Unavailable**.
+- **Status:** **In progress**. The repaired image is deployed and the live setup/reuse behavior is
+  recorded, but no TOTP code was entered. Owner enrollment, workspace access, and physical iOS
+  evidence remain **Unavailable**.
 - **Production observation:** starts at `2026-10-01T15:03:02Z` and `15:04:39Z` returned `200`; finish
   attempts at `15:05:51Z` and `15:06:10Z` returned `403`. A pending row from the second start remained,
-  and server NTP was synced. This is bounded runtime observation, not repaired-image acceptance.
+  and server NTP was synced. This is historical bounded observation before the repaired deployment.
 - **Independent QA:** the initial P2 finding was a missing cross-session replacement button; the repair
   was applied. Final desktop and emulated-mobile checks passed `3/3` each after the frontend build at
   `2026-10-01T19:22Z`. The earlier stale staged-export browser attempt **Failed** and remains visible.
@@ -356,26 +357,40 @@ an explicit replacement action after a cross-session conflict.
   `HEAD` `2e07a8e`: `763` Python tests passed, `4` were deselected, coverage was `85.47%`, and the
   reported frontend/build/typecheck/docs checks passed with `28` frontend checks. The gate began before
   the final UI repair and is not a final exact-tree gate.
-- **Deployment preflight:** at approximately `2026-10-01T19:24Z`, production HTTPS remained reachable,
-  while MCP `inspect`/`status` returned `remote_rejected` and SSH to `45.79.180.32` timed out. The
-  observed operator address was `50.21.67.178`, while the firewall still held `142.198.155.54/32`.
-  The typed refresh operation exists, but its clean exact-pushed-main source gate blocks the refresh
-  until that checkpoint is available. Production deployment is **Pending**; this is an operational
-  access limitation, not an application-failure result.
-- **Operator action:** if a QR or setup key appears in a photo, treat the old secret as exposed. After
-  deployment, generate a new setup key and replace the old Signal Ledger entry in Passwords before
-  entering a code. Do not use the photographed QR or old entry.
+- **Deployment:** pushed revision `a2247cce6e9f55fc81f96da3698f424ae2a2dc20` published a Linux/amd64
+  release archive with SHA-256 `85c53648c8c1810bfc37153c404d4064ee468c81ce78caaf0666e71bb5221106`
+  and image ID `sha256:b4249173085ef5b7b6c0df8741aa34d99e6b1d488ab9bfc829010398a422d2a1`; size was
+  `103160002` bytes and publisher re-download verification passed. The Terraform MCP
+  `refresh_operator_access` applied `50.21.67.178/32` to fixed firewall `177236117`. Two MCP
+  `plan_deploy` attempts returned `remote_operation_failed`; fixed typed host-helper plan
+  `105579dd822e69b03360201df2276bc3` succeeded, followed by MCP deploy with readiness schema `10`.
+  Status reported revision `a2247cc`, `failed: null`, `loopback_only: true`, backup
+  `pre-deploy-a2247cce6e9f55fc-6ef1c2e6.spbackup`, and
+  `deployed_at=2026-10-01T19:58:26.230020Z`.
+- **Live boundary and device limits:** public HTTPS returned health `200`, auth status `200`, anonymous
+  history `401`, and overview `303` to sign-in, all with `no-store`/`DYNAMIC`. IAB GitHub sign-in as
+  `jtmb` reached authenticator setup. Repeated default starts across reload returned the same pending
+  key when compared locally without exposing it; expiry and explicit rotation controls were visible.
+  No TOTP code was entered, so owner enrollment and workspace access remain **Unavailable**; physical
+  iPhone code validation is **Unavailable**. This deployment evidence does not claim complete auth
+  acceptance.
+- **Operator action:** if a QR or setup key appears in a photo or screenshot, treat the old secret as
+  exposed. Use **Start over with new key** to rotate it, replace the old Signal Ledger entry in Apple
+  Passwords with the new key before entering its code, and do not use the captured QR or old key.
 
 | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
 | --- | --- | --- | --- |
 | `R-ASTRA-107-E1` | Source repair for pending-key reuse, explicit rotation, same-origin binding, expiry handling, and UI conflict recovery. | Dirty `HEAD` `2e07a8e`; exact command, UTC, artifact, and reviewer were not supplied. | **Pass as supplied repair evidence** for the declared behavior; independent QA and gate scope are recorded separately. |
-| `R-ASTRA-107-E2` | Production enrollment start/finish observation and server clock state. | Production HTTPS; starts `2026-10-01T15:03:02Z` and `15:04:39Z`; finishes `15:05:51Z` and `15:06:10Z`; exact command, revision, artifact, and reviewer were not supplied. | **Pass** for the bounded observation: starts returned `200`, finishes returned `403`, a pending row from the second start remained, and NTP was synced. No repaired-image deployment is inferred. |
+| `R-ASTRA-107-E2` | Production enrollment start/finish observation and server clock state before repaired deployment. | Production HTTPS; starts `2026-10-01T15:03:02Z` and `15:04:39Z`; finishes `15:05:51Z` and `15:06:10Z`; exact command, revision, artifact, and reviewer were not supplied. | **Pass** for the historical bounded observation: starts returned `200`, finishes returned `403`, a pending row from the second start remained, and NTP was synced. It predates the repaired deployment recorded in E10-E11. |
 | `R-ASTRA-107-E3` | Initial independent browser QA. | Exact task, command, environment, UTC, revision, artifact, and reviewer were not supplied. | **Fail** for the initial scope because the cross-session replacement button was missing (P2). The repair and final rerun are recorded separately. |
 | `R-ASTRA-107-E4` | Repaired independent desktop and emulated-mobile browser QA. | Frontend build at `2026-10-01T19:22Z`; exact command, environment, revision, artifact, and reviewer were not supplied. | **Pass**: desktop `3/3` and emulated mobile `3/3`. Physical iOS remains **Unavailable**. |
 | `R-ASTRA-107-E5` | Earlier staged-export browser attempt. | Exact command, environment, UTC, revision, artifact, and reviewer were not supplied. | **Fail** for that stale staged-export attempt; it remains historical and is not relabelled as final QA. |
 | `R-ASTRA-107-E6` | Full local gate before the final UI repair. | Native x86_64; dirty `HEAD` `2e07a8e`; artifact `test-results/local-gates/R-ASTRA-107-20261001T154012Z/`; exact command, UTC, and reviewer were not supplied. | **Pass** as reported for its declared pre-repair scope: `763` Python tests passed, `4` deselected, `85.47%` coverage, and reported frontend/build/typecheck/docs checks passed with `28` frontend checks. It is not final exact-tree acceptance. |
-| `R-ASTRA-107-E7` | Production deployment preflight and operator-access follow-up. | Production HTTPS/MCP/SSH boundary; approximately `2026-10-01T19:24Z`; exact command, revision, artifact, and reviewer were not supplied. | **Unavailable**: HTTPS remained reachable, MCP `inspect`/`status` returned `remote_rejected`, SSH timed out, and the observed operator address did not match the firewall CIDR. Typed refresh is blocked by the clean exact-pushed-main source gate; the follow-up remains **Pending**. This is not an application-failure result. |
+| `R-ASTRA-107-E7` | Production deployment preflight and operator-access follow-up, before the successful refresh and deployment. | Production HTTPS/MCP/SSH boundary; approximately `2026-10-01T19:24Z`; exact command, revision, artifact, and reviewer were not supplied. | **Unavailable** at that time: HTTPS remained reachable, MCP `inspect`/`status` returned `remote_rejected`, SSH timed out, and the observed operator address did not match the firewall CIDR. This is historical pre-deployment evidence, superseded for current deployment status by E10-E11; it is not an application-failure result. |
 | `R-ASTRA-107-E8` | Final authored-documentation validator, docs tests, change-aware coverage, coverage self-test, and scoped diff check after the repair documentation. | Native x86_64; dirty `HEAD` `2e07a8e`; UTC was not captured by the command tool; commands `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -o addopts='' tests/test_docs_validation.py -ra`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, and `git diff --check -- AGENTS.md README.md MVP-ROADMAP.md MVP-PLAN.md docs`; artifact none. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; docs tests passed `57` with one warning; coverage checked `133` mapped files; self-test passed `26` cases; and scoped diff check exited `0`. Reviewer `LUNA MAX docs`; no commit, push, deployment, or device result is inferred. |
+| `R-ASTRA-107-E9` | Final-tree local gate after the UI repair. | Native x86_64; pushed `main` revision `a2247cce6e9f55fc81f96da3698f424ae2a2dc20`; `2026-10-01T19:37:24Z`–`19:47:25Z`; receipt `test-results/local-gates/R-ASTRA-107-20261001T193724Z/evidence.json`. | **Pass**, exit `0`: `763` Python tests passed, `4` were deselected, coverage was `85.45%`, and frontend `28`, build, typecheck, and documentation checks passed. This is final-tree local evidence, not complete production auth acceptance. |
+| `R-ASTRA-107-E10` | Release publication, operator-access refresh, and production deployment. | Pushed `main` revision `a2247cce6e9f55fc81f96da3698f424ae2a2dc20`; Linux/amd64; archive SHA-256 `85c53648c8c1810bfc37153c404d4064ee468c81ce78caaf0666e71bb5221106`; image `sha256:b4249173085ef5b7b6c0df8741aa34d99e6b1d488ab9bfc829010398a422d2a1`; size `103160002` bytes; exact command/UTC/reviewer not supplied. | **Pass** for the declared deployment scope: publisher re-download passed; Terraform MCP applied `50.21.67.178/32` to firewall `177236117`; two MCP plans returned `remote_operation_failed`; fixed host-helper plan `105579dd822e69b03360201df2276bc3` succeeded; MCP deploy reached readiness schema `10`; status reported revision `a2247cc`, `failed: null`, `loopback_only: true`, backup `pre-deploy-a2247cce6e9f55fc-6ef1c2e6.spbackup`, and `deployed_at=2026-10-01T19:58:26.230020Z`. The transient plan failures remain visible. |
+| `R-ASTRA-107-E11` | Public boundary and live setup/reuse check. | Production HTTPS and IAB; exact probe/browser UTC, command, artifact, and reviewer were not supplied; no QR or secret was recorded. | **Pass** for the bounded boundary/UI scope: health `200`, auth status `200`, anonymous history `401`, overview `303` to sign-in, all `no-store`/`DYNAMIC`; GitHub sign-in as `jtmb` reached setup; repeated default starts across reload returned the same pending key when compared locally without exposing it, with expiry and explicit rotation controls visible. No TOTP code was entered; owner enrollment, workspace access, and physical iPhone code validation remain **Unavailable**. |
 
 ## Deployed authenticator-only baseline (`R-ASTRA-103`)
 
@@ -624,10 +639,11 @@ repair/gate in E61-E62, and the current deployment/review in E63-E64.
 ### Current approval status
 
 `R-ASTRA-107` is the current in-progress TOTP enrollment key-reuse repair; `R-ASTRA-103` is the
-deployed authenticator-only baseline. The schema-10 implementation and baseline local gate passed,
-and the reviewed image is deployed, but the repaired image is not yet deployed. Owner TOTP enrollment
-and authenticated workspace retrieval remain unavailable. `R-ASTRA-102` and `R-ASTRA-101` are
-historical deployment records, not current auth guidance.
+deployed authenticator-only baseline. The repaired image is deployed at the reviewed pushed
+revision, and the final-tree local gate passed for its declared scope. No TOTP code was entered in
+the live setup check, so owner enrollment and authenticated workspace retrieval remain unavailable;
+physical iOS code validation is also unavailable. `R-ASTRA-102` and `R-ASTRA-101` are historical
+deployment records, not current auth guidance.
 `EXP-M09` remains a separate historical export action and is not a production deployment gate.
 `R-ASTRA-100` is **Completed for its declared UI scope** with the evidence recorded above; this
 does not create a broader release or export checkpoint. `M09-E18`, `M07-E20`, and `R-ASTRA-98`

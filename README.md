@@ -192,16 +192,37 @@ factor, so signing in from a new phone or computer does not depend on Bluetooth 
 manager. The deployed schema-10 migration revokes stored passkeys and old passkey sessions; Signal
 Ledger does not create or accept WebAuthn credentials.
 
-The R-ASTRA-103 implementation is the deployed authenticator-only baseline. The current R-ASTRA-107
-enrollment repair and its scoped QA are in the local worktree. The current local gate
-passed: receipt `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` reports `707`
+The R-ASTRA-103 implementation is the deployed authenticator-only baseline. R-ASTRA-107 is the
+deployed enrollment key-reuse repair, while complete owner authentication remains pending. The
+R-ASTRA-103 local gate passed: receipt `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` reports `707`
 Python tests passed, `4` live tests deselected, `85.25%` coverage, frontend build/typecheck and
 `27` frontend tests, and documentation coverage. Independent QA passed the authentication,
 repository/list, API, backup/CLI, desktop/mobile-emulated auth-flow, frontend, migration, and
 fresh schema-10 creation checks; Astra's medium source security review reported no P1/P2 finding.
 The schema-9 predeploy backup remains an offline recovery artifact only.
 
-The reviewed revision `9cc0751da459e911d285b14e0d57a29320a9f366` is now deployed. GitHub Release
+The final-tree R-ASTRA-107 gate passed at pushed revision
+`a2247cce6e9f55fc81f96da3698f424ae2a2dc20`: receipt
+`test-results/local-gates/R-ASTRA-107-20261001T193724Z/evidence.json` records `763` Python tests,
+`4` deselected, `85.45%` coverage, and frontend `28`, build, typecheck, and documentation checks
+passing from `2026-10-01T19:37:24Z` to `19:47:25Z`. The release archive SHA-256 is
+`85c53648c8c1810bfc37153c404d4064ee468c81ce78caaf0666e71bb5221106`; the Linux/amd64 image is
+`sha256:b4249173085ef5b7b6c0df8741aa34d99e6b1d488ab9bfc829010398a422d2a1`, size `103160002` bytes,
+and publisher re-download verification passed. Two MCP deployment plans returned
+`remote_operation_failed`; fixed host-helper plan `105579dd822e69b03360201df2276bc3` then succeeded
+and MCP deploy reached readiness schema `10`. Status reported revision `a2247cc`, `failed: null`,
+`loopback_only: true`, backup `pre-deploy-a2247cce6e9f55fc-6ef1c2e6.spbackup`, and
+`deployed_at=2026-10-01T19:58:26.230020Z`. The Terraform MCP applied operator CIDR
+`50.21.67.178/32` to fixed firewall `177236117`.
+
+Public HTTPS returned health `200`, auth status `200`, anonymous history `401`, and overview `303`
+to sign-in, all with `no-store`/`DYNAMIC`. In the IAB, GitHub sign-in as `jtmb` reached authenticator
+setup; repeated default starts across reload returned the same pending key when compared locally
+without exposing it, and expiry plus explicit rotation controls were visible. No TOTP code was
+entered, so owner enrollment and authenticated workspace retrieval remain **Unavailable**; physical
+iPhone code validation is **Unavailable**. This is deployment evidence, not complete auth acceptance.
+
+The earlier deployment used reviewed revision `9cc0751da459e911d285b14e0d57a29320a9f366`. GitHub Release
 `signal-ledger-9cc0751da459e911d285b14e0d57a29320a9f366` has archive SHA-256
 `d60da545be26a050e305e13d2e8db219a253a0668b32f13f532148069bde188e`; publisher re-download passed.
 The Linux/amd64 image is `103143811` bytes with ID
@@ -254,9 +275,10 @@ creating a backup or promoting a restore; restore also revokes other sessions. T
 
 The `R-ASTRA-107` repair reuses an unexpired setup key only in the same session and origin,
 preserving its expiry; **Start over with new key** explicitly rotates it and invalidates the old QR.
-If a QR or setup key appears in a photo, treat it as exposed: after deployment, generate a fresh key
-and replace the old Signal Ledger entry in Passwords before entering a code. Production deployment and
-physical iOS verification remain pending or **Unavailable**.
+If a QR or setup key appears in a photo or screenshot, treat it as exposed: use **Start over with new
+key** to rotate it, replace the old Signal Ledger entry in Apple Passwords with the new key before
+entering its code, and do not use the captured QR or old key. Physical iOS verification remains **Unavailable**, and no TOTP code was entered in the deployment
+check.
 
 The app runs on one Linode with SQLite on a persistent private volume and is published only
 through a Cloudflare Tunnel. The application port stays on `127.0.0.1`; the deployment helper

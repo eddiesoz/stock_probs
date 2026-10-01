@@ -104,9 +104,10 @@ An unexpired setup key is reused when the request comes from the same enrollment
 so reopening setup does not silently invalidate the QR or shorten its expiry. If another session owns
 the pending setup, the page reports the conflict. Use **Start over with new key** only when you intend
 to rotate it; that explicit action invalidates the previous QR and setup key. The page shows the expiry
-and disables QR/code use after it expires. If a QR or setup key appears in a photo, treat it as exposed.
-After the repaired deployment, generate a fresh key and replace the old Signal Ledger entry in
-Passwords before entering a code.
+and disables QR/code use after it expires. If a QR or setup key appears in a photo or screenshot, treat
+it as exposed.
+Use **Start over with new key** to rotate it, replace the old Signal Ledger entry in Apple Passwords
+with the new key before entering its code, and do not use the captured QR or old key.
 
 If an authenticator is lost, use one unused recovery code at `/authenticator?mode=recover`. That
 session is limited to replacing the factor. Enroll the replacement app and save the newly issued
@@ -489,25 +490,18 @@ and `Generate setup key` without a WebAuthn prompt.
 
 ### R-ASTRA-107 TOTP enrollment key-reuse repair
 
-`R-ASTRA-107` is **In progress**. The source repair reuses an unexpired pending setup only for the
-same session, factor generation, and origin, preserving its expiry; explicit replacement rotates the
-key and prevents another origin from silently overwriting it. The UI exposes expiry, disables expired
-QR/code use, and offers cross-session conflict recovery.
+`R-ASTRA-107` remains **In progress** for complete authentication acceptance. The repaired image is
+deployed. Enrollment reuses an unexpired pending setup only for the same session, factor generation,
+and origin; **Start over with new key** rotates it, and the UI shows expiry and disables expired QR
+and code use.
 
-Production starts at `2026-10-01T15:03:02Z` and `15:04:39Z` returned `200`; finish attempts at
-`15:05:51Z` and `15:06:10Z` returned `403`. A pending row from the second start remained and server
-NTP was synced. This is bounded observation, not repaired-image acceptance. Independent QA repaired an
-initial P2 missing cross-session replacement button; final desktop and emulated-mobile checks passed
-`3/3` each after the `2026-10-01T19:22Z` build. An earlier stale staged-export browser attempt failed
-and remains historical.
-
-The full local gate receipt `test-results/local-gates/R-ASTRA-107-20261001T154012Z/` reported
-`763` Python tests passed, `4` deselected, `85.47%` coverage, and reported frontend/build/typecheck/docs
-checks passing with `28` frontend checks on dirty `HEAD` `2e07a8e`. It began before the final UI repair,
-so it is not a final exact-tree gate. Production deployment remains **Pending** and physical iOS
-evidence remains **Unavailable**. At approximately `19:24Z`, HTTPS remained reachable, while MCP
-`inspect`/`status` returned `remote_rejected` and SSH timed out; the typed refresh is pending its clean
-exact-pushed-main source gate. This is an operational access limitation, not an application failure.
+In the production in-app browser, repeated starts across reload reused the same pending setup, with
+expiry and rotation controls visible. Public health and auth status returned `200`, anonymous history
+returned `401`, and `/overview` redirected to sign-in; responses were `no-store`/`DYNAMIC`. No TOTP
+code was entered, so owner enrollment and authenticated workspace access remain **Unavailable**.
+Physical iPhone code validation is also **Unavailable**. See the [MVP plan](../../MVP-PLAN.md) for the
+final-tree gate, release identity, deployment receipt, and historical attempts. This evidence
+does not claim complete auth acceptance.
 
 Application backups remain signed and verified. Linode VM Backups are enabled, and successful
 snapshot `385239936` is available. The first disposable restore attempt **Failed**: clone

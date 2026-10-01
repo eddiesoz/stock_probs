@@ -126,10 +126,10 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 deployed authenticator-only baseline; `R-ASTRA-101` and `R-ASTRA-102` are historical
 passkey/TOTP deployment records and are not current auth guidance.
 The local implementation has schema 10, and the deployed baseline local gate passed for its declared scope.
-The reviewed schema-10 image is now deployed and the live passkey retirement redirect is verified;
-the R-ASTRA-107 repair is not yet deployed. Owner TOTP enrollment and authenticated workspace
-retrieval remain **Unavailable**; physical mobile and hardware authenticator-device evidence remain
-**Unavailable**.
+The reviewed schema-10 image and the repaired R-ASTRA-107 image are deployed; the live passkey
+retirement redirect and public HTTPS boundary are verified. Owner TOTP enrollment and authenticated
+workspace retrieval remain **Unavailable** because no code was entered in the deployment check;
+physical mobile and hardware authenticator-device evidence remain **Unavailable**.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The three provider access items were created privately, Terraform
@@ -290,8 +290,8 @@ open.
   shows expiry, disables expired QR/code use, and offers recovery from a cross-session conflict.
 - **Production observation:** starts at `2026-10-01T15:03:02Z` and `15:04:39Z` returned `200`;
   finish attempts at `15:05:51Z` and `15:06:10Z` returned `403`. A pending row from the second
-  start remained, and server NTP was synced. These observations do not prove the repaired image is
-  deployed.
+  start remained, and server NTP was synced. These are historical bounded observations before the
+  repaired deployment.
 - **Independent QA:** the initial review recorded a P2 because the cross-session replacement button
   was missing; that repair was applied. Final desktop and emulated-mobile checks passed `3/3` each
   after the frontend build at `2026-10-01T19:22Z`. An earlier stale staged-export browser attempt
@@ -300,15 +300,27 @@ open.
   **Pass** on dirty `HEAD` `2e07a8e`: `763` Python tests passed, `4` were deselected, coverage was
   `85.47%`, and the reported frontend/build/typecheck/docs checks passed with `28` frontend checks.
   The gate began before the final UI repair, so it is not a final exact-tree gate.
-- **Deployment and device limits:** at approximately `19:24Z`, production HTTPS remained reachable,
-  while MCP `inspect`/`status` returned `remote_rejected` and SSH to `45.79.180.32` timed out. The
-  current operator address was `50.21.67.178` while the firewall still held `142.198.155.54/32`.
-  The typed refresh operation exists, but its clean exact-pushed-main source gate blocks the refresh
-  until that checkpoint is available. Production deployment is **Pending** and physical iOS evidence
-  is **Unavailable**; neither is an application-failure result.
-- **Key exposure guidance:** a QR code or setup key visible in a photo must be treated as exposed.
-  After the repaired image is deployed, generate a fresh setup key and replace the old Signal Ledger
-  entry in Passwords before entering a code. Do not use the photographed QR or old entry.
+- **Deployment:** pushed revision `a2247cce6e9f55fc81f96da3698f424ae2a2dc20` published a Linux/amd64
+  release archive with SHA-256 `85c53648c8c1810bfc37153c404d4064ee468c81ce78caaf0666e71bb5221106`
+  and image ID `sha256:b4249173085ef5b7b6c0df8741aa34d99e6b1d488ab9bfc829010398a422d2a1`;
+  size was `103160002` bytes and publisher re-download verification passed. The Terraform MCP
+  refresh applied `50.21.67.178/32` to fixed firewall `177236117`. Two MCP `plan_deploy` attempts
+  returned `remote_operation_failed`; fixed typed host-helper plan `105579dd822e69b03360201df2276bc3`
+  succeeded, followed by MCP deploy with readiness schema `10`. Status reported revision `a2247cc`,
+  `failed: null`, `loopback_only: true`, backup
+  `pre-deploy-a2247cce6e9f55fc-6ef1c2e6.spbackup`, and
+  `deployed_at=2026-10-01T19:58:26.230020Z`.
+- **Live boundary and device limits:** public HTTPS returned health `200`, auth status `200`, anonymous
+  history `401`, and overview `303` to sign-in, all with `no-store`/`DYNAMIC`. IAB GitHub sign-in as
+  `jtmb` reached authenticator setup; repeated default starts across reload returned the same pending
+  key when compared locally without exposing it, and expiry plus explicit rotation controls were visible.
+  No TOTP code was entered, so owner enrollment and authenticated workspace retrieval remain
+  **Unavailable**; physical iPhone code validation is **Unavailable**. R-ASTRA-107 remains **In progress**
+  for complete auth acceptance, not deployment.
+- **Key exposure guidance:** a QR code or setup key visible in a photo or screenshot must be treated
+  as exposed.
+  Use **Start over with new key** to rotate it, replace the old Signal Ledger entry in Apple Passwords
+  with the new key before entering its code, and do not use the captured QR or old key.
 
 ### Deployed authenticator-only baseline (`R-ASTRA-103`)
 
