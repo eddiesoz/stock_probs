@@ -221,11 +221,15 @@ holdings, physical mobile, and second-user acceptance remain unavailable.
 Administrators can continue creating single-use invitation codes for private sharing or use the
 optional SMTP email action when all six mail settings are configured. Every invite remains bound to
 the numeric GitHub account ID; the recipient address is only for delivery. An SMTP-accepted
-response does not confirm delivery. `R-ASTRA-104` scoped local QA and source review are recorded in
-the [MVP plan](MVP-PLAN.md#current-email-invitation-follow-on-r-astra-104). Its local gate rerun
-passed for the declared scope: `731` Python tests, `4` deselected, `85.48%` coverage, and frontend
-build/typecheck with `27/27` tests. The initial failed gate is retained in the plan and superseded
-by that rerun. Live email delivery and production deployment have not been verified. See
+response does not confirm delivery. The current SMTP contract is implicit TLS on port `465` or
+`2465`, or STARTTLS on port `587`. `R-ASTRA-104` scoped local QA and source review are recorded in
+the [MVP plan](MVP-PLAN.md#current-email-invitation-follow-on-r-astra-104), while the transport and
+operator-access follow-on is recorded at
+[`R-ASTRA-106`](MVP-PLAN.md#current-deployment-access-and-invitation-transport-follow-on-r-astra-106).
+Its local gate rerun passed for the declared scope: `731` Python tests, `4` deselected, `85.48%`
+coverage, and frontend build/typecheck with `27/27` tests. The initial failed gate is retained in
+the plan and superseded by that rerun. Live email delivery, firewall refresh, and production
+deployment of the current worktree have not been verified. See
 [getting started](docs/operations/getting-started.md#invitation-email-and-host-compose-update) for
 configuration and the fixed reviewed-Compose update procedure.
 
@@ -261,8 +265,10 @@ then re-downloads it and verifies its archive SHA-256, image ID, revision, and p
 returning the receipt; GitHub does not enforce asset immutability. Set
 `SIGNAL_LEDGER_IMAGE_PUBLISH_MODE=ghcr` only when using the explicit GHCR compatibility transport;
 GHCR is not the default. The Linode pulls the reviewed release asset through the local stdio
-deployment MCP; the VM does not build source. The five deployment operations are `inspect`,
-`plan_deploy`, `deploy`, `status`, and `rollback`. See
+deployment MCP; the VM does not build source. The six typed operations are `inspect`,
+`plan_deploy`, `deploy`, `status`, `rollback`, and `refresh_operator_access(operator_ipv4_cidr)`.
+The last operation accepts one canonical IPv4 `/32` and is constrained to the fixed operator SSH
+firewall rule through the reviewed Terraform source gate. See
 [Getting started](docs/operations/getting-started.md) for the Terraform host setup, owner data
 migration, tunnel canary, and recovery procedure.
 

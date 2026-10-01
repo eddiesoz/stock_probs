@@ -37,8 +37,8 @@ tool deadline, while OpenCode declares the same catalog and execution limits. Th
 configuration contract. It does not prove that a running parent loaded the server or that an SSH
 target is configured.
 
-The server exposes only five typed tools: `inspect`, `plan_deploy`, `deploy`, `status`, and
-`rollback`. The default release shape accepts a 40-character reviewed commit, a 64-hex archive
+The server exposes six typed tools: `inspect`, `plan_deploy`, `deploy`, `status`, `rollback`, and
+`refresh_operator_access(operator_ipv4_cidr)`. The default release shape accepts a 40-character reviewed commit, a 64-hex archive
 SHA-256, and a full `sha256:<64-hex>` Docker image ID; the publisher derives the GitHub Release
 tag and asset URL from that commit. The controller reads one fixed target and SSH identity from
 its process environment, then sends bounded JSON through `ssh -T` to the fixed remote command
@@ -50,14 +50,20 @@ platform, revision, Compose bytes, schema, backup, and readiness before promotio
 GHCR plans; it is not the default. Rollback is schema-compatible and responses are bounded and
 credential-free.
 
+The `refresh_operator_access(operator_ipv4_cidr)` operation is constrained to one canonical IPv4
+`/32` and the fixed `linode_firewall.signal_ledger` operator SSH rule. It uses the fixed external
+private Terraform state and the existing clean-tree, exact-`origin/main`, reviewed-revision source
+gate; it accepts no caller-supplied command, path, state, or credential. A successful local QA
+discovery of six tools does not establish a live firewall refresh or deployment.
+
 The current `.codex/config.toml` supplies the fixed target through a nonsecret `env` table:
 the host, restricted deployment user, and operator-owned paths for the SSH identity and known-host
 file. The key and known-host bytes remain outside the repository; no credential value belongs in
 the configuration or authored documentation. Static discovery in a fresh CLI task found the
-server and its typed tools (the task ID was not supplied). An official Python SDK stdio client
-also initialized the fixed-target server, listed exactly the five typed tools, and completed
-read-only `inspect` with `is_error=False` and bounded text content; credential bytes were not
-printed. A fresh Codex client invocation remains **Unavailable** because the current host approval
+server and its typed tools (the task ID was not supplied). The locked stdio discovery check
+initialized the fixed-target server, listed exactly six typed tools, and completed read-only
+`inspect` with `is_error=False` and bounded text content; credential bytes were not printed. A fresh
+Codex client invocation remains **Unavailable** because the current host approval
 policy is `never`, so that client result does not replace the protocol-client pass or establish
 deploy/rollback acceptance.
 
@@ -150,7 +156,9 @@ SMTP pass-through in `compose.production.yaml` and the fixed host updater
 `infra/linode/update-host-compose.sh`. The SMTP variables are documented in
 [local configuration](../configure/local-configuration.md), the operator/admin behavior and fixed
 updater in [getting started](../operations/getting-started.md#invitation-email-and-host-compose-update),
-and this page records their coverage rule.
+and this page records their coverage rule. `R-ASTRA-106` extends the accepted SMTP ports to
+implicit TLS on `465` or `2465`, retains STARTTLS on `587`, and adds the constrained operator-access
+MCP operation; no live refresh or delivery result is implied.
 Keep this page and AGENTS policy coverage current whenever those production settings or updater
 invariants change. The updater only installs the checksum-verified Compose file; deployment and
 live delivery are separate evidence.

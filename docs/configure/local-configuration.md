@@ -30,10 +30,10 @@ section for identity, TLS, and delivery behavior.
 | Variable | Constraint |
 | --- | --- |
 | `STOCK_PROBS_INVITE_SMTP_HOST` | Hostname or IP literal; do not include a URL scheme or path. |
-| `STOCK_PROBS_INVITE_SMTP_PORT` | `465` with `implicit_tls`, or `587` with `starttls`. |
+| `STOCK_PROBS_INVITE_SMTP_PORT` | `465` or `2465` with `implicit_tls`, or `587` with `starttls`. |
 | `STOCK_PROBS_INVITE_SMTP_USERNAME` | Required non-empty ASCII value, at most 320 characters. |
 | `STOCK_PROBS_INVITE_SMTP_PASSWORD` | Required non-empty ASCII value, at most 2048 characters; treat as a secret. |
-| `STOCK_PROBS_INVITE_SMTP_SECURITY` | `implicit_tls` with port `465`, or `starttls` with port `587`. |
+| `STOCK_PROBS_INVITE_SMTP_SECURITY` | `implicit_tls` with port `465` or `2465`, or `starttls` with port `587`. |
 | `STOCK_PROBS_INVITE_EMAIL_FROM` | Valid ASCII sender mailbox address. |
 
 Supply credentials through the operator-controlled production environment outside the repository.

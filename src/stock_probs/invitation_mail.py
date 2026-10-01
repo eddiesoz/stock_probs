@@ -17,6 +17,11 @@ from uuid import uuid4
 from stock_probs.auth import AuthError
 
 SMTP_TIMEOUT_SECONDS = 10.0
+_SUPPORTED_SMTP_SECURITY_PORTS = {
+    ("implicit_tls", 465),
+    ("implicit_tls", 2465),
+    ("starttls", 587),
+}
 _DOMAIN_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 _LOCAL_PART = re.compile(r"^[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+$")
 
@@ -65,9 +70,11 @@ class InvitationMailSettings:
 
         validate_smtp_host(self.host)
         if type(self.port) is not int:
-            raise ValueError("STOCK_PROBS_INVITE_SMTP_PORT must be 465 or 587")
-        if (self.security, self.port) not in {("implicit_tls", 465), ("starttls", 587)}:
-            raise ValueError("SMTP security must be implicit_tls on 465 or starttls on 587")
+            raise ValueError("STOCK_PROBS_INVITE_SMTP_PORT must be 465, 2465, or 587")
+        if (self.security, self.port) not in _SUPPORTED_SMTP_SECURITY_PORTS:
+            raise ValueError(
+                "SMTP security must be implicit_tls on 465 or 2465, or starttls on 587"
+            )
         for name, value, limit in (
             ("STOCK_PROBS_INVITE_SMTP_USERNAME", self.username, 320),
             ("STOCK_PROBS_INVITE_SMTP_PASSWORD", self.password, 2048),
@@ -104,7 +111,7 @@ class InvitationMailSettings:
             raise ValueError("invitation SMTP configuration must set all six required values")
         raw_port = configured["STOCK_PROBS_INVITE_SMTP_PORT"]
         if not raw_port.isascii() or not raw_port.isdecimal() or len(raw_port) > 5:
-            raise ValueError("STOCK_PROBS_INVITE_SMTP_PORT must be 465 or 587")
+            raise ValueError("STOCK_PROBS_INVITE_SMTP_PORT must be 465, 2465, or 587")
         port = int(raw_port)
         security = configured["STOCK_PROBS_INVITE_SMTP_SECURITY"].strip().lower()
         if security not in {"implicit_tls", "starttls"}:

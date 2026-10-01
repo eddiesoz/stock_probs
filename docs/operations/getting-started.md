@@ -120,8 +120,8 @@ through a private channel. **Send invitation by email** submits the same kind of
 provided mailbox when the optional SMTP settings are fully configured. The six production
 variables and accepted values are listed in [local configuration](../configure/local-configuration.md#production-invitation-email).
 Keep SMTP credentials in the operator-controlled production secret path outside the repository.
-The client validates the SMTP server certificate and uses `implicit_tls` on port `465` or
-`starttls` on port `587`, with a 10-second socket timeout applied to each socket operation. This
+The client validates the SMTP server certificate and uses `implicit_tls` on port `465` or `2465`,
+or `starttls` on port `587`, with a 10-second socket timeout applied to each socket operation. This
 is not a total deadline for the entire submission.
 
 A successful email response means only that the configured SMTP server accepted the message for
@@ -215,6 +215,10 @@ names, remote builds, shell commands, paths, URLs, Compose edits, or Docker-sock
 
 ### Prepare the host
 
+The operator's Linode console login uses Google SSO. This web-console identity is separate from
+the pinned SSH identity and Terraform/provider credentials; keep those operator-controlled files
+outside the repository.
+
 From a clean reviewed checkout, run the static validation and plan the two Terraform roots. Supply
 the operator IPv4 `/32`, separate operator/deployment public-key paths, and reviewed commit SHA as
 variables; the private keys and provider credentials stay outside the repository. The plan must
@@ -293,8 +297,9 @@ records. This is local evidence; take the live snapshot again if data changes be
 
 ### Use the deployment MCP
 
-Run `./scripts/deploy-mcp.sh` locally. Its separate stdio server exposes exactly five typed tools:
-`inspect`, `plan_deploy`, `deploy`, `status`, and `rollback`. The default release transport carries
+Run `./scripts/deploy-mcp.sh` locally. Its separate stdio server exposes six typed tools:
+`inspect`, `plan_deploy`, `deploy`, `status`, `rollback`, and `refresh_operator_access(operator_ipv4_cidr)`.
+The default release transport carries
 the reviewed revision, archive SHA-256, and full Docker image ID; the optional GHCR compatibility
 shape carries its immutable digest. The controller uses the restricted SSH helper and records only
 revisions, image identities, schema versions, backups, and safe result codes.
@@ -303,6 +308,12 @@ The normal sequence is:
 ```text
 inspect → plan_deploy(main revision, release archive SHA, image ID) → deploy(plan) → status
 ```
+
+`refresh_operator_access(operator_ipv4_cidr)` is a separate maintenance action. It accepts one
+canonical IPv4 `/32` and constrains Terraform to the fixed `linode_firewall.signal_ledger` resource
+(firewall ID `177236117`) and its `ssh-operator` TCP port-22 rule, using the fixed external private
+state and the reviewed clean-tree/source gate. It does not accept a caller-supplied Terraform path,
+state, command, or credential. No live refresh has been observed for the current worktree.
 
 Each promotion is serialized under a lock, starts with a verified application backup, runs
 readiness checks, and attempts code-only rollback only when the database schema remains compatible.
@@ -328,7 +339,8 @@ status reporting the current revision, `failed: null`, `loopback_only: true`, an
 `a07bb7ba2716899bef956269495f0a47`
 and deploy passed to the replacement Linode; status is healthy, schema `8`, loopback-only, and a
 pre-deploy backup was present. Static MCP discovery passed in a fresh CLI task. The earlier
-read-only stdio smoke listed exactly the five typed tools and completed `inspect` successfully
+read-only stdio smoke listed the five release/deployment tools available at that historical revision
+and completed `inspect` successfully
 without printing credential bytes. A separate fresh Codex client invocation remains unavailable
 under host approval policy `never`; rollback is not accepted by the read-only smoke. E63 records a
 historical deployment: main revision `27e0d2f5916d4297e10d259aa4776055a78faeaa`, Linux/amd64 image ID

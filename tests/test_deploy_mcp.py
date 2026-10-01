@@ -13,11 +13,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools" / "deploy_mcp"))
 
 from controller import (  # noqa: E402
+    FIREWALL_RESOURCE,
     MAX_RESPONSE_BYTES,
     DeployConfig,
     DeployController,
     DeployError,
     _run_bounded_ssh,
+    _validate_firewall_plan,
 )
 
 
@@ -242,3 +244,196 @@ def test_remote_timeout_kills_child_and_returns_safe_error() -> None:
         _run_bounded_ssh(["ssh"], b"{}", timeout=0.05)
 
     assert processes and processes[0].poll() is not None
+
+
+def _terraform_controller(
+    tmp_path: Path, plan_document: dict[str, object]
+) -> tuple[DeployController, Path, Path]:
+    """Build a controller with a fake Terraform binary that never exposes its token."""
+
+    identity = tmp_path / "identity"
+    known_hosts = tmp_path / "known_hosts"
+    token_file = tmp_path / "linode-token"
+    terraform = tmp_path / "terraform"
+    state_file = tmp_path / "terraform.tfstate"
+    command_log = tmp_path / "terraform-commands.jsonl"
+    identity.write_text("dummy")
+    known_hosts.write_text("dummy")
+    token_file.write_text("fixture-token\n")
+    state_file.write_bytes(b"fixture state metadata only")
+    identity.chmod(0o600)
+    known_hosts.chmod(0o600)
+    token_file.chmod(0o600)
+    state_file.chmod(0o600)
+    terraform.write_text(
+        "#!"
+        + sys.executable
+        + "\n"
+        + "import json, os, sys\n"
+        + f"log = {str(command_log)!r}\n"
+        + f"plan = {json.dumps(plan_document)!r}\n"
+        + "if os.environ.get('LINODE_TOKEN') != 'fixture-token': sys.exit(9)\n"
+        + "args = sys.argv[1:]\n"
+        + "command = next(value for value in args if value in {'init', 'plan', 'show', 'apply'})\n"
+        + "with open(log, 'a', encoding='utf-8') as output:\n"
+        + "    output.write(json.dumps(args) + '\\n')\n"
+        + "if command == 'show': print(plan)\n"
+    )
+    terraform.chmod(0o700)
+    return (
+        DeployController(
+            DeployConfig(
+                "example.com",
+                "deploy",
+                identity,
+                known_hosts,
+                terraform,
+                token_file,
+                "a" * 40,
+            )
+        ),
+        command_log,
+        state_file,
+    )
+
+
+def _firewall_plan(before_cidr: str, after_cidr: str) -> dict[str, object]:
+    """Return a minimal Terraform plan fixture for the fixed firewall resource."""
+
+    def state(cidr: str) -> dict[str, object]:
+        return {
+            "id": "177236117",
+            "label": "signal-ledger-fw",
+            "inbound_policy": "DROP",
+            "outbound_policy": "ACCEPT",
+            "inbound": [
+                {
+                    "label": "ssh-operator",
+                    "action": "ACCEPT",
+                    "protocol": "TCP",
+                    "ports": "22",
+                    "ipv4": [cidr],
+                }
+            ],
+        }
+
+    return {
+        "resource_changes": [
+            {
+                "address": FIREWALL_RESOURCE,
+                "mode": "managed",
+                "change": {
+                    "actions": ["update"],
+                    "before": state(before_cidr),
+                    "after": state(after_cidr),
+                },
+            }
+        ]
+    }
+
+
+def test_refresh_operator_access_applies_only_scoped_firewall_plan(tmp_path: Path) -> None:
+    controller, command_log, state_file = _terraform_controller(
+        tmp_path,
+        _firewall_plan("198.51.100.7/32", "203.0.113.44/32"),
+    )
+
+    with patch("controller.TERRAFORM_STATE_PATH", state_file):
+        result = controller.refresh_operator_access("203.0.113.44/32")
+
+    assert result["status"] == "ok"
+    assert result["result"] == "applied"
+    assert result["resource"] == FIREWALL_RESOURCE
+    assert result["operator_ipv4_cidr"] == "203.0.113.44/32"
+    assert result["plan_actions"] == ["update"]
+    assert "fixture-token" not in json.dumps(result)
+    commands = [json.loads(line) for line in command_log.read_text().splitlines()]
+    command_names = [
+        next(value for value in command if value in {"init", "plan", "show", "apply"})
+        for command in commands
+    ]
+    assert command_names == [
+        "init",
+        "plan",
+        "show",
+        "apply",
+    ]
+    plan_command = commands[1]
+    assert f"-target={FIREWALL_RESOURCE}" in plan_command
+    assert f"-state={state_file}" in plan_command
+    assert "-var=firewall_id=177236117" in plan_command
+    assert "-var=firewall_label=signal-ledger-fw" in plan_command
+    assert f"-state={state_file}" in commands[3]
+    assert f"-state={state_file}" not in commands[0]
+    assert all("fixture-token" not in line for line in command_log.read_text().splitlines())
+
+
+def test_refresh_operator_access_rejects_non_private_state_metadata(
+    tmp_path: Path,
+) -> None:
+    controller, command_log, state_file = _terraform_controller(
+        tmp_path,
+        _firewall_plan("198.51.100.7/32", "203.0.113.44/32"),
+    )
+    state_file.chmod(0o640)
+
+    with (
+        patch("controller.TERRAFORM_STATE_PATH", state_file),
+        pytest.raises(DeployError, match="terraform_state_permissions"),
+    ):
+        controller.refresh_operator_access("203.0.113.44/32")
+
+    assert not command_log.exists()
+
+
+def test_refresh_operator_access_rejects_non_network_input_before_credentials(
+    tmp_path: Path,
+) -> None:
+    controller = _controller(tmp_path)
+
+    with pytest.raises(DeployError, match="operator_ipv4_cidr_invalid"):
+        controller.refresh_operator_access("203.0.113.44/24")
+
+
+def test_firewall_plan_rejects_changes_outside_operator_cidr() -> None:
+    plan = _firewall_plan("198.51.100.7/32", "203.0.113.44/32")
+    resource = plan["resource_changes"][0]
+    assert isinstance(resource, dict)
+    detail = resource["change"]
+    assert isinstance(detail, dict)
+    after = detail["after"]
+    assert isinstance(after, dict)
+    after["outbound_policy"] = "DROP"
+
+    with pytest.raises(DeployError, match="terraform_scope_violation"):
+        _validate_firewall_plan(plan, "203.0.113.44/32")
+
+
+@pytest.mark.parametrize("state_key", ["before", "after"])
+def test_firewall_plan_requires_fixed_firewall_id(state_key: str) -> None:
+    plan = _firewall_plan("198.51.100.7/32", "203.0.113.44/32")
+    resource = plan["resource_changes"][0]
+    assert isinstance(resource, dict)
+    detail = resource["change"]
+    assert isinstance(detail, dict)
+    state = detail[state_key]
+    assert isinstance(state, dict)
+    state["id"] = "99887766"
+
+    with pytest.raises(DeployError, match="terraform_scope_violation"):
+        _validate_firewall_plan(plan, "203.0.113.44/32")
+
+
+def test_noop_firewall_plan_requires_fixed_firewall_id() -> None:
+    plan = _firewall_plan("198.51.100.7/32", "203.0.113.44/32")
+    resource = plan["resource_changes"][0]
+    assert isinstance(resource, dict)
+    detail = resource["change"]
+    assert isinstance(detail, dict)
+    detail["actions"] = ["no-op"]
+    after = detail["after"]
+    assert isinstance(after, dict)
+    after["id"] = "99887766"
+
+    with pytest.raises(DeployError, match="terraform_scope_violation"):
+        _validate_firewall_plan(plan, "203.0.113.44/32")

@@ -67,5 +67,12 @@ def rollback(revision: str, image_id: str) -> dict[str, Any]:
     return _call("rollback", revision=revision, image_id=image_id)
 
 
+@server.tool()
+def refresh_operator_access(operator_ipv4_cidr: str) -> dict[str, Any]:
+    """Refresh only the fixed Signal Ledger operator SSH `/32` through Terraform."""
+
+    return _call("refresh_operator_access", operator_ipv4_cidr=operator_ipv4_cidr)
+
+
 if __name__ == "__main__":
     server.run(transport="stdio")

@@ -54,7 +54,9 @@ def _mail_settings(security: str = "implicit_tls", port: int = 465) -> Invitatio
     )
 
 
-@pytest.mark.parametrize("security,port", [("implicit_tls", 465), ("starttls", 587)])
+@pytest.mark.parametrize(
+    "security,port", [("implicit_tls", 465), ("implicit_tls", 2465), ("starttls", 587)]
+)
 def test_invitation_smtp_uses_verified_tls_and_returns_only_submission_metadata(
     monkeypatch: pytest.MonkeyPatch, security: str, port: int
 ) -> None:
@@ -249,9 +251,22 @@ def test_smtp_environment_validates_mode_port_and_hides_credentials(
     assert SMTP_ENV["STOCK_PROBS_INVITE_SMTP_PASSWORD"] not in repr(settings)
     assert SMTP_ENV["STOCK_PROBS_INVITE_SMTP_USERNAME"] not in repr(settings)
 
+    monkeypatch.setenv("STOCK_PROBS_INVITE_SMTP_PORT", "2465")
+    alternate_port_settings = Settings.from_env()
+    assert alternate_port_settings.invitation_mail is not None
+    assert alternate_port_settings.invitation_mail.port == 2465
+
     monkeypatch.setenv("STOCK_PROBS_INVITE_SMTP_SECURITY", "starttls")
-    with pytest.raises(ValueError, match="465 or starttls on 587"):
+    with pytest.raises(ValueError, match="implicit_tls on 465 or 2465"):
         Settings.from_env()
+
+
+@pytest.mark.parametrize("security,port", [("implicit_tls", 587), ("starttls", 2465)])
+def test_smtp_rejects_mismatched_security_and_port(security: str, port: int) -> None:
+    """Only the configured TLS mode may use each supported SMTP submission port."""
+
+    with pytest.raises(ValueError, match="implicit_tls on 465 or 2465"):
+        _mail_settings(security, port)
 
 
 def _github_admin_app(tmp_path, *, mail_settings: InvitationMailSettings | None):

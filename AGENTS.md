@@ -152,6 +152,41 @@ Unavailable evidence categories—actual screen reader, physical mobile, true br
 ARM64 performance, provider runtime, CUA, and project-profile/skill runtime discovery—remain
 separate limitations.
 
+### Current deployment-access and invitation-transport follow-on (`R-ASTRA-106`)
+
+- **Status:** **In progress**. The current dirty checkout is
+  `db0372891ea00a0228f2c04f785a34519cb6c21b`. The implementation adds the typed MCP operation
+  `refresh_operator_access(operator_ipv4_cidr)` and extends invitation SMTP compatibility to
+  `implicit_tls` on ports `465` or `2465`, or `starttls` on port `587`.
+- `refresh_operator_access` accepts one canonical IPv4 `/32` and plans/applies only the fixed
+  `linode_firewall.signal_ledger` resource (firewall ID `177236117`), changing the `ssh-operator`
+  TCP port-22 rule. It uses the fixed external private Terraform state and the existing clean-tree,
+  exact-`origin/main`, reviewed-revision source gate. The MCP accepts no arbitrary command, path,
+  state, or credential argument. The operator's Linode console login uses Google SSO; SSH material
+  remains a separate operator-controlled boundary.
+- `R-ASTRA-106-E1` records independent Luna QA: `37` focused tests, Ruff/security/compilation,
+  locked MCP stdio six-tool discovery, and invalid-CIDR behavior all **Pass** for the declared local
+  scope. Exact command, UTC window, and artifact were not supplied; reviewer `LUNA MAX QA`.
+- `R-ASTRA-106-E2` records the initial documentation semantic audit **Fail** for stale five-tool and
+  SMTP-port wording. The authored-documentation repair is recorded by the follow-up checks below;
+  no runtime or deployment result is inferred.
+- `R-ASTRA-106-E3` records `./infra/linode/validate.sh`: Terraform checks passed, then the required
+  dirty-tree gate exited `2`. The aggregate is **Fail** for that command, with no live Terraform
+  apply or firewall refresh observed.
+- `R-ASTRA-106-E4` records the SOL source review **Pass** with no P1/P2 after the prior firewall-ID
+  issue was repaired and re-reviewed. Exact review command, UTC, artifact, and source-review
+  revision were not supplied.
+- `R-ASTRA-106-E5` records the final authored-documentation checks **Pass** on native x86_64 at
+  `2026-09-30T23:52:55Z`–`23:53:57Z`: the validator reported `9` categories, `13` topics, and
+  `7` governance entries; documentation tests passed `57` with one warning; map coverage checked
+  `133` files; the coverage self-test passed `26` cases; and the scoped diff check exited `0`.
+  Commands were the validator, `tests/test_docs_validation.py`, both documentation-coverage checks,
+  and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`; reviewer
+  `LUNA MAX docs`.
+- Production remains on the previously deployed image. No live firewall refresh, image deployment,
+  production Compose update, or SMTP/mailbox delivery has been observed, and no release acceptance
+  claim is made.
+
 `M09-E13` is a frozen historical constraint for the M09 contract, not a current absence-audit
 task. Its original rejected M09 scope remains intact. Later `R-ASTRA-98` separately
 approved/evidenced bounded watchlists, forecast/model expansion, and provider-labelled
@@ -171,7 +206,7 @@ open.
   without SMTP.
 - SMTP configuration is all-or-none and is passed through the production Compose service. Keep
   credentials in the operator-controlled secret path outside the repository. The documented
-  contract is `implicit_tls` on port `465` or `starttls` on port `587`; SMTP acceptance is not
+  contract is `implicit_tls` on port `465` or `2465`, or `starttls` on port `587`; SMTP acceptance is not
   mailbox-delivery evidence.
 - The fixed `infra/linode/update-host-compose.sh` updater requires a clean worktree whose local
   `HEAD` matches both the supplied reviewed SHA and public `origin/main`; it also verifies the
@@ -285,19 +320,19 @@ open.
   Linode `97934478`; E60 records the current-machine browser passkey limitation, E61-E62 record
   the locally accepted repair and gate, E63 records the current deployment, and E64 records Astra's
   no-P1/P2 live read-only review. Functional invited-user acceptance remains pending.
-- The local stdio deployment MCP exposes only typed `inspect`, `plan_deploy`, `deploy`, `status`,
-  and `rollback` tools. The default transport carries a reviewed `main` revision, release archive
+- The local stdio deployment MCP exposes six typed tools: `inspect`, `plan_deploy`, `deploy`,
+  `status`, `rollback`, and `refresh_operator_access(operator_ipv4_cidr)`. The default transport carries a reviewed `main` revision, release archive
   SHA-256, and full Docker image ID; the fixed helper derives the GitHub Release URL and verifies
   archive bytes, image identity, platform, schema, backup, and readiness before promotion. GHCR is
   an explicit compatibility mode only. The MCP cannot receive arbitrary shell commands, paths,
   URLs, Compose files, registry names, tags, or Docker-socket requests; the VM never builds source.
   `.codex/config.toml` supplies only fixed, nonsecret target metadata and operator-owned key paths.
   Fresh CLI static discovery passed. An official Python SDK stdio client initialized the fixed-target
-  server, listed exactly the five typed tools, and completed read-only `inspect` with
+  server, listed exactly the five historical release/deployment tools available at that revision, and completed read-only `inspect` with
   `is_error=False`; no credential bytes were printed. A later official Python SDK plan
   `a07bb7ba2716899bef956269495f0a47` and deploy passed to the replacement Linode, whose status was
   healthy, schema `8`, and loopback-only with a pre-deploy backup. A fresh official Python SDK
-  stdio client with explicit fixed nonsecret target metadata listed exactly the five typed tools;
+  stdio client with explicit fixed nonsecret target metadata listed exactly the five historical release/deployment tools;
   read-only `inspect` and `status` passed, and the inspect receipt at
   `2026-09-28T14:30:59.523209+00:00` reported revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`,
   image `sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`, schema `8`,
