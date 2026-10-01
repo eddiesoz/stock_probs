@@ -192,7 +192,8 @@ factor, so signing in from a new phone or computer does not depend on Bluetooth 
 manager. The deployed schema-10 migration revokes stored passkeys and old passkey sessions; Signal
 Ledger does not create or accept WebAuthn credentials.
 
-The R-ASTRA-103 implementation and its scoped QA are in the local worktree. The current local gate
+The R-ASTRA-103 implementation is the deployed authenticator-only baseline. The current R-ASTRA-107
+enrollment repair and its scoped QA are in the local worktree. The current local gate
 passed: receipt `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` reports `707`
 Python tests passed, `4` live tests deselected, `85.25%` coverage, frontend build/typecheck and
 `27` frontend tests, and documentation coverage. Independent QA passed the authentication,
@@ -250,6 +251,12 @@ then enroll a replacement authenticator. Recovery does not grant a normal worksp
 the replacement factor is confirmed. An administrator must enter a fresh authenticator code before
 creating a backup or promoting a restore; restore also revokes other sessions. The retired
 `/passkey` route redirects to authenticator enrollment and cannot create or verify a passkey.
+
+The `R-ASTRA-107` repair reuses an unexpired setup key only in the same session and origin,
+preserving its expiry; **Start over with new key** explicitly rotates it and invalidates the old QR.
+If a QR or setup key appears in a photo, treat it as exposed: after deployment, generate a fresh key
+and replace the old Signal Ledger entry in Passwords before entering a code. Production deployment and
+physical iOS verification remain pending or **Unavailable**.
 
 The app runs on one Linode with SQLite on a persistent private volume and is published only
 through a Cloudflare Tunnel. The application port stays on `127.0.0.1`; the deployment helper

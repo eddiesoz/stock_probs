@@ -1562,11 +1562,14 @@ class Repository:
         expires_at: str,
         expected_factor_id: int | None = None,
         origin_token_hash: str | None = None,
+        replace: bool = False,
     ) -> dict[str, Any]:
         """Store an enrollment bound to the current factor generation and live origin."""
 
         if type(user_id) is not int or user_id < 1:
             raise ValueError("user_id must be a positive integer")
+        if type(replace) is not bool:
+            raise ValueError("replace must be a boolean")
         secret = self._require_totp_secret_ciphertext(secret_ciphertext)
         created = self._parse_iso_datetime(created_at, "created_at")
         expires = self._parse_iso_datetime(expires_at, "expires_at")
@@ -1596,6 +1599,26 @@ class Repository:
             if origin is None:
                 connection.rollback()
                 return None
+            existing = connection.execute(
+                """SELECT id, user_id, secret_ciphertext, created_at, expires_at,
+                expected_factor_id, origin_token_hash
+                FROM totp_enrollments WHERE user_id = ?""",
+                (user_id,),
+            ).fetchone()
+            if existing is not None:
+                existing_expires = self._parse_iso_datetime(
+                    existing["expires_at"], "expires_at"
+                )
+                if existing_expires > created and not replace:
+                    same_binding = (
+                        existing["expected_factor_id"] == expected_factor
+                        and existing["origin_token_hash"] == origin_token_hash
+                    )
+                    if not same_binding:
+                        connection.rollback()
+                        return None
+                    connection.commit()
+                    return dict(existing)
             connection.execute(
                 """INSERT INTO totp_enrollments
                 (user_id, secret_ciphertext, created_at, expires_at,

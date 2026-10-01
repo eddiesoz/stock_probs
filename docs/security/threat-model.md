@@ -23,7 +23,8 @@ current-machine browser passkey/sign-out limitation; E61 records the locally acc
 mode-aware passkey repair with independent QA, and E62 records the passing full local gate. E63
 records the current image deployment and public probes; E64 records Astra's no-P1/P2 live read-only
 review. R-ASTRA-103's schema-10 implementation and local gate pass for their declared scopes, and the
-reviewed schema-10 image is deployed. Owner TOTP enrollment, authenticated workspace retrieval,
+reviewed schema-10 image is deployed. `R-ASTRA-107` is the current TOTP enrollment key-reuse repair;
+its repaired image is not yet deployed. Owner TOTP enrollment, authenticated workspace retrieval,
 physical mobile, and second-user acceptance remain **Unavailable**.
 The earlier private
 clean-main image is revision
@@ -115,6 +116,21 @@ overview `303` to sign-in, and `no-store`/`DYNAMIC` responses. `/passkey?mode=ve
 revoked old session; fresh GitHub sign-in as `jtmb` rendered the authenticator setup page without
 a WebAuthn prompt. Owner TOTP enrollment and workspace content remain **Unavailable**.
 
+## R-ASTRA-107 enrollment-key lifecycle
+
+The current repair keeps an unexpired pending enrollment bound to the same session, factor generation,
+and origin. A repeated default start returns that pending setup with its original expiry; it does not
+silently mint a new QR. `{"replace": true}` is the explicit rotation path and invalidates the previous
+pending setup. A different origin cannot overwrite the row, and concurrent starts leave at most one
+origin-bound pending row. The UI displays the expiry, disables expired QR/code use, and offers an
+explicit replacement action after a cross-session conflict.
+
+Production observation at `2026-10-01T15:03:02Z` and `15:04:39Z` returned `200` for starts and `403`
+at `15:05:51Z` and `15:06:10Z` for finishes; a pending row from the second start remained and server
+NTP was synced. This does not prove the repair is deployed. If a QR or setup key appears in a photo,
+treat it as exposed and rotate after deployment by generating a fresh key and replacing the old Signal
+Ledger entry in Passwords. Physical iOS verification remains **Unavailable**.
+
 ### Historical R-ASTRA-102 deployment evidence
 
 The following deployment details are historical R-ASTRA-102 evidence and are not current deployment
@@ -153,6 +169,7 @@ service.
 | OAuth callback substitution or login CSRF | GitHub numeric account IDs are the stable identity; the authorization-code flow uses a short-lived server-side state value and PKCE, checks the exact callback/origin, and never accepts a client-supplied identity. |
 | Invitation theft or account takeover | Invitations resolve a GitHub account, expire, are single-use, and are redeemed before authenticator enrollment. Production rejects development bootstrap credentials. Every invited account must confirm a six-digit TOTP code from an authenticator app. The deployed schema-10 migration revokes passkeys; they cannot authorize enrollment or sign-in after that migration. |
 | Authenticator theft, replay, or brute force | TOTP secrets are encrypted at rest, enrollment is short-lived and origin-bound, accepted time steps are monotonic, attempts are reserved under the SQLite write lock before verification, and failed attempts are throttled. Recovery codes are high-entropy, hashed, single-use, and reveal no replacement session beyond factor replacement. |
+| Pending setup overwrite or exposed enrollment QR | Pending setup material is encrypted at rest, expires after the bounded enrollment window, and is bound to the current factor generation and originating session. Default starts reuse the same-origin pending row and expiry; explicit replacement rotates it, while a different origin fails closed. The UI shows expiry and removes expired QR/code actions. A QR or setup key visible in a photo must be treated as exposed and replaced after deployment. |
 | Session theft, fixation, or replay | Sessions are opaque server-side records addressed by hashed tokens, with idle and absolute expiry, revocation, host-only `Secure`/`HttpOnly` cookies, CSRF tokens for mutations, and no browser storage for credentials. TOTP verification is bound to the active factor generation and fresh step-up markers are short-lived. |
 | Cross-user IDOR or legacy-data disclosure | Forecasts, events, results, outcomes, reconstructions, exports, holdings, watchlists, and account operations derive the owner from the session. Legacy rows attach to one reserved owner claim; a new user cannot claim or query them by changing an ID. |
 | Privileged backup or restore abuse | Backup status and creation require an administrator. Restore promotion requires an administrator, a fresh TOTP authenticator check, a verified pre-restore backup, matching account-security state, maintenance-mode serialization, and revocation of all sessions. |

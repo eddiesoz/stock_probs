@@ -153,7 +153,7 @@ test("provisional authenticator setup and verification use the local TOTP contra
         enrollment: true,
         secret: "JBSWY3DPEHPK3PXP",
         otpauth_uri: "otpauth://totp/Signal%20Ledger:fixture-owner?secret=JBSWY3DPEHPK3PXP&issuer=Signal%20Ledger",
-        expires_at: "2025-01-10T17:13:00Z",
+        expires_at: "2099-01-10T17:13:00Z",
       }),
     });
   });
@@ -175,6 +175,7 @@ test("provisional authenticator setup and verification use the local TOTP contra
   await page.goto("/authenticator?mode=enroll&next=/overview");
   await page.getByRole("button", { name: "Generate setup key" }).click();
   await expect(page.getByText("Manual setup key")).toBeVisible();
+  await expect(page.getByTestId("totp-enrollment-expiry")).toContainText("Setup key expires in");
   await expect(page.getByRole("img", { name: "QR code for adding Signal Ledger to an authenticator app" })).toHaveAttribute("src", /^data:image\/png;base64,/);
   await expect(page.getByText("JBSWY3DPEHPK3PXP", { exact: true })).toBeVisible();
   const appChoice = page.getByLabel("Which authenticator do you want to use?");
@@ -242,6 +243,172 @@ test("provisional authenticator setup and verification use the local TOTP contra
   await expect(page.getByText("Authenticator verification complete.")).toBeVisible();
   await expect(page).toHaveURL(/\/overview$/);
   expect(verifyPayload).toEqual({ code: "654321" });
+});
+
+test("authenticator rotation clears stale setup data and explains rejected stale QR codes", async ({ page, browserDiagnostics }) => {
+  const session = {
+    authenticated: true,
+    csrf_token: "browser-test-csrf",
+    requires_totp: true,
+    user: { id: 1, login: "fixture-owner", role: "admin" },
+  };
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(session),
+  }));
+  await page.route("**/api/v1/auth/totp/status", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      enrolled: false,
+      enrollment_pending: false,
+      recovery_codes_remaining: 0,
+      requires_totp: true,
+      can_enroll: true,
+    }),
+  }));
+  const startPayloads = [];
+  let startCount = 0;
+  let releaseReplacement;
+  const replacement = new Promise((resolve) => { releaseReplacement = resolve; });
+  await page.route("**/api/v1/auth/totp/enroll/start", (route) => {
+    startPayloads.push(route.request().postDataJSON());
+    startCount += 1;
+    const setup = startCount === 1
+      ? {
+        secret: "OLDOSECRETVALUE",
+        otpauth_uri: "otpauth://totp/Signal%20Ledger:fixture-owner?secret=OLDOSECRETVALUE&issuer=Signal%20Ledger",
+      }
+      : {
+        secret: "NEWSECRETREPLACEMENT",
+        otpauth_uri: "otpauth://totp/Signal%20Ledger:fixture-owner?secret=NEWSECRETREPLACEMENT&issuer=Signal%20Ledger",
+      };
+    const response = {
+      enrollment: true,
+      ...setup,
+      expires_at: "2099-01-10T17:13:00Z",
+    };
+    if (startCount === 1) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
+    return replacement.then(() => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) }));
+  });
+  browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/auth/totp/enroll/finish", status: 403 });
+  await page.route("**/api/v1/auth/totp/enroll/finish", (route) => route.fulfill({
+    status: 403,
+    contentType: "application/json",
+    body: JSON.stringify({ error: { code: "totp_rejected", message: "Rejected setup secret NEWSECRETREPLACEMENT" } }),
+  }));
+
+  await page.goto("/authenticator?mode=enroll&next=/overview");
+  await page.getByRole("button", { name: "Generate setup key" }).click();
+  await expect(page.getByTestId("totp-setup-key")).toHaveText("OLDOSECRETVALUE");
+  await expect(page.getByRole("img", { name: "QR code for adding Signal Ledger to an authenticator app" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Start over with new key" }).click();
+  await expect(page.getByTestId("totp-setup-key")).toHaveCount(0);
+  await expect(page.getByRole("img", { name: "QR code for adding Signal Ledger to an authenticator app" })).toHaveCount(0);
+  await expect(page.getByLabel("Enter the current six-digit code")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Starting over…" })).toBeDisabled();
+  expect(startPayloads).toEqual([{}, { replace: true }]);
+
+  releaseReplacement();
+  await expect(page.getByTestId("totp-setup-key")).toHaveText("NEWSECRETREPLACEMENT");
+  await expect(page.getByText(/Replace the old Signal Ledger entry/)).toBeVisible();
+  await page.getByLabel("Enter the current six-digit code").fill("123456");
+  await page.getByRole("button", { name: "Enable authenticator" }).click();
+  const errorMessage = page.locator('[data-tone="error"]');
+  await expect(errorMessage).toContainText("previously scanned QR code may be stale");
+  await expect(errorMessage).toContainText("Start over with new key");
+  await expect(errorMessage).not.toContainText("NEWSECRETREPLACEMENT");
+});
+
+test("authenticator start conflict offers an explicit replacement action", async ({ page, browserDiagnostics }) => {
+  const session = {
+    authenticated: true,
+    csrf_token: "browser-test-csrf",
+    requires_totp: true,
+    user: { id: 1, login: "fixture-owner", role: "admin" },
+  };
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(session),
+  }));
+  await page.route("**/api/v1/auth/totp/status", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ enrolled: false, enrollment_pending: false, recovery_codes_remaining: 0, requires_totp: true, can_enroll: true }),
+  }));
+  browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/auth/totp/enroll/start", status: 403 });
+  const startPayloads = [];
+  await page.route("**/api/v1/auth/totp/enroll/start", (route) => {
+    startPayloads.push(route.request().postDataJSON());
+    if (startPayloads.length === 1) {
+      return route.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({ error: { code: "totp_rejected", message: "A pending setup belongs to another session." } }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        enrollment: true,
+        secret: "REPLACEMENTSECRET",
+        otpauth_uri: "otpauth://totp/Signal%20Ledger:fixture-owner?secret=REPLACEMENTSECRET&issuer=Signal%20Ledger",
+        expires_at: "2099-01-10T17:13:00Z",
+      }),
+    });
+  });
+
+  await page.goto("/authenticator?mode=enroll&next=/overview");
+  await page.getByRole("button", { name: "Generate setup key" }).click();
+  await expect(page.locator('[data-tone="error"]')).toContainText("A pending setup already exists in another session");
+  await expect(page.getByText(/invalidates the other session’s pending QR and setup key/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start over with new key" })).toBeEnabled();
+
+  await page.getByRole("button", { name: "Start over with new key" }).click();
+  await expect(page.getByTestId("totp-setup-key")).toHaveText("REPLACEMENTSECRET");
+  expect(startPayloads).toEqual([{}, { replace: true }]);
+});
+
+test("expired authenticator setup disables QR and code submission", async ({ page }) => {
+  const session = {
+    authenticated: true,
+    csrf_token: "browser-test-csrf",
+    requires_totp: true,
+    user: { id: 1, login: "fixture-owner", role: "admin" },
+  };
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(session),
+  }));
+  await page.route("**/api/v1/auth/totp/status", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ enrolled: false, enrollment_pending: false, recovery_codes_remaining: 0, requires_totp: true, can_enroll: true }),
+  }));
+  await page.route("**/api/v1/auth/totp/enroll/start", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      enrollment: true,
+      secret: "EXPIREDSECRET",
+      otpauth_uri: "otpauth://totp/Signal%20Ledger:fixture-owner?secret=EXPIREDSECRET&issuer=Signal%20Ledger",
+      expires_at: "2020-01-10T17:13:00Z",
+    }),
+  }));
+
+  await page.goto("/authenticator?mode=enroll&next=/overview");
+  await page.getByRole("button", { name: "Generate setup key" }).click();
+  await expect(page.getByTestId("totp-enrollment-expiry")).toHaveAttribute("data-state", "expired");
+  await expect(page.getByText("It cannot be scanned or used.")).toBeVisible();
+  await expect(page.getByTestId("totp-setup-key")).toHaveCount(0);
+  await expect(page.getByRole("img", { name: "QR code for adding Signal Ledger to an authenticator app" })).toHaveCount(0);
+  await expect(page.getByLabel("Enter the current six-digit code")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Start over with new key" })).toBeVisible();
 });
 
 test("admin keeps manual invitations available when mail is unconfigured", async ({ page }) => {

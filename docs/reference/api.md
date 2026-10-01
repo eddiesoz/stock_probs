@@ -56,8 +56,12 @@ routes are available. This TOTP code is the sole ongoing application second fact
 does not require Bluetooth, a nearby phone, or browser passkey support.
 
 `/api/v1/auth/totp/enroll/start` returns setup material only for the short-lived enrollment
-transaction. Add the secret to an authenticator app using the manual key or the `otpauth://` link,
-then submit the current code to `/enroll/finish`. The response returns recovery codes exactly once.
+transaction. By default, an unexpired transaction is reused only when the session, factor generation,
+and origin match, preserving its original expiry. A different origin cannot silently replace it. Send
+`{"replace": true}` only when an explicit rotation is intended; that invalidates the previous pending
+QR/setup key and returns new setup material. Add the current key to an authenticator app using the
+manual key or the `otpauth://` link, then submit its current code to `/enroll/finish`. The response
+returns recovery codes exactly once.
 Recovery codes are single-use and must be kept offline. `/recover` accepts one unused code and
 returns a restricted session that can replace the factor; it does not grant a normal workspace
 session. `/step-up` records fresh proof for an administrator backup or restore. Passkey routes are

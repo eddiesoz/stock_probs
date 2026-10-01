@@ -122,12 +122,14 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 
 ### Current approval status
 
-`R-ASTRA-103` is the current authenticator-only authentication follow-on. `R-ASTRA-101` and
-`R-ASTRA-102` are historical passkey/TOTP deployment records and are not current auth guidance.
-The local implementation has schema 10, and the current local gate passed for its declared scope.
+`R-ASTRA-107` is the current TOTP enrollment key-reuse repair follow-on. `R-ASTRA-103` is the
+deployed authenticator-only baseline; `R-ASTRA-101` and `R-ASTRA-102` are historical
+passkey/TOTP deployment records and are not current auth guidance.
+The local implementation has schema 10, and the deployed baseline local gate passed for its declared scope.
 The reviewed schema-10 image is now deployed and the live passkey retirement redirect is verified;
-owner TOTP enrollment and authenticated workspace retrieval remain **Unavailable**. Physical mobile
-and hardware authenticator-device evidence remain **Unavailable**.
+the R-ASTRA-107 repair is not yet deployed. Owner TOTP enrollment and authenticated workspace
+retrieval remain **Unavailable**; physical mobile and hardware authenticator-device evidence remain
+**Unavailable**.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The three provider access items were created privately, Terraform
@@ -280,7 +282,35 @@ open.
   that scope. The broader browser aggregate remains **Unavailable**, and live SMTP delivery and
   production deployment remain unverified.
 
-### Current authenticator-only follow-on (`R-ASTRA-103`)
+### Current TOTP enrollment key-reuse repair (`R-ASTRA-107`)
+
+- **Status:** **In progress**. A default enrollment start reuses the active pending setup only for
+  the same session, factor generation, and origin, preserving its original expiry. An explicit
+  `replace` request rotates the pending key; a different origin cannot silently overwrite it. The UI
+  shows expiry, disables expired QR/code use, and offers recovery from a cross-session conflict.
+- **Production observation:** starts at `2026-10-01T15:03:02Z` and `15:04:39Z` returned `200`;
+  finish attempts at `15:05:51Z` and `15:06:10Z` returned `403`. A pending row from the second
+  start remained, and server NTP was synced. These observations do not prove the repaired image is
+  deployed.
+- **Independent QA:** the initial review recorded a P2 because the cross-session replacement button
+  was missing; that repair was applied. Final desktop and emulated-mobile checks passed `3/3` each
+  after the frontend build at `2026-10-01T19:22Z`. An earlier stale staged-export browser attempt
+  **Failed** and remains historical.
+- **Local gate:** receipt `test-results/local-gates/R-ASTRA-107-20261001T154012Z/` reported
+  **Pass** on dirty `HEAD` `2e07a8e`: `763` Python tests passed, `4` were deselected, coverage was
+  `85.47%`, and the reported frontend/build/typecheck/docs checks passed with `28` frontend checks.
+  The gate began before the final UI repair, so it is not a final exact-tree gate.
+- **Deployment and device limits:** at approximately `19:24Z`, production HTTPS remained reachable,
+  while MCP `inspect`/`status` returned `remote_rejected` and SSH to `45.79.180.32` timed out. The
+  current operator address was `50.21.67.178` while the firewall still held `142.198.155.54/32`.
+  The typed refresh operation exists, but its clean exact-pushed-main source gate blocks the refresh
+  until that checkpoint is available. Production deployment is **Pending** and physical iOS evidence
+  is **Unavailable**; neither is an application-failure result.
+- **Key exposure guidance:** a QR code or setup key visible in a photo must be treated as exposed.
+  After the repaired image is deployed, generate a fresh setup key and replace the old Signal Ledger
+  entry in Passwords before entering a code. Do not use the photographed QR or old entry.
+
+### Deployed authenticator-only baseline (`R-ASTRA-103`)
 
 - Production retains invite-only GitHub OAuth and the numeric GitHub account ID as the stable
   identity. The sole application second factor is a six-digit TOTP code from an authenticator app.

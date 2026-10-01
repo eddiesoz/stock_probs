@@ -100,6 +100,14 @@ Then enter the current six-digit code. The server activates the factor only afte
 verified and returns recovery codes once. Store each recovery code offline; each can be consumed
 only once.
 
+An unexpired setup key is reused when the request comes from the same enrollment session and origin,
+so reopening setup does not silently invalidate the QR or shorten its expiry. If another session owns
+the pending setup, the page reports the conflict. Use **Start over with new key** only when you intend
+to rotate it; that explicit action invalidates the previous QR and setup key. The page shows the expiry
+and disables QR/code use after it expires. If a QR or setup key appears in a photo, treat it as exposed.
+After the repaired deployment, generate a fresh key and replace the old Signal Ledger entry in
+Passwords before entering a code.
+
 If an authenticator is lost, use one unused recovery code at `/authenticator?mode=recover`. That
 session is limited to replacing the factor. Enroll the replacement app and save the newly issued
 recovery codes before returning to the workspace. A normal sign-in from another device uses only
@@ -307,7 +315,7 @@ The deployment helper is designed to read the existing schema, verify a pre-depl
 and verify the pre-migration backup when the imported database advances schema, run the
 checksum-pinned migrations, verify a current-schema backup, and require readiness with the image's
 schema. The historical R-ASTRA-102 candidate advanced the additive auth schema to schema 9. The
-current R-ASTRA-103 implementation advances it to schema 10 and revokes stored passkeys and old
+deployed R-ASTRA-103 baseline advances it to schema 10 and revokes stored passkeys and old
 passkey sessions. Luna's QA covered the local fixture paths; owner TOTP enrollment remains pending.
 The
 repaired recovery rehearsal passed its declared
@@ -478,6 +486,28 @@ overview `303` to sign-in, and `no-store`/`DYNAMIC` responses. `/passkey?mode=ve
 `303` to `/authenticator?mode=enroll&next=%2Foverview`. The IAB showed `Sign in first` for the
 revoked old session; fresh GitHub sign-in as `jtmb` rendered `Protect your account`, `Setup needed`,
 and `Generate setup key` without a WebAuthn prompt.
+
+### R-ASTRA-107 TOTP enrollment key-reuse repair
+
+`R-ASTRA-107` is **In progress**. The source repair reuses an unexpired pending setup only for the
+same session, factor generation, and origin, preserving its expiry; explicit replacement rotates the
+key and prevents another origin from silently overwriting it. The UI exposes expiry, disables expired
+QR/code use, and offers cross-session conflict recovery.
+
+Production starts at `2026-10-01T15:03:02Z` and `15:04:39Z` returned `200`; finish attempts at
+`15:05:51Z` and `15:06:10Z` returned `403`. A pending row from the second start remained and server
+NTP was synced. This is bounded observation, not repaired-image acceptance. Independent QA repaired an
+initial P2 missing cross-session replacement button; final desktop and emulated-mobile checks passed
+`3/3` each after the `2026-10-01T19:22Z` build. An earlier stale staged-export browser attempt failed
+and remains historical.
+
+The full local gate receipt `test-results/local-gates/R-ASTRA-107-20261001T154012Z/` reported
+`763` Python tests passed, `4` deselected, `85.47%` coverage, and reported frontend/build/typecheck/docs
+checks passing with `28` frontend checks on dirty `HEAD` `2e07a8e`. It began before the final UI repair,
+so it is not a final exact-tree gate. Production deployment remains **Pending** and physical iOS
+evidence remains **Unavailable**. At approximately `19:24Z`, HTTPS remained reachable, while MCP
+`inspect`/`status` returned `remote_rejected` and SSH timed out; the typed refresh is pending its clean
+exact-pushed-main source gate. This is an operational access limitation, not an application failure.
 
 Application backups remain signed and verified. Linode VM Backups are enabled, and successful
 snapshot `385239936` is available. The first disposable restore attempt **Failed**: clone

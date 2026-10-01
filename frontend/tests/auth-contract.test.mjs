@@ -93,6 +93,23 @@ test("auth routes cover invited sign-in, authenticator setup, retired passkey li
   assert.match(admin, /disabled={!freshVerified/);
 });
 
+test("authenticator enrollment keeps setup rotation and expiry client guarded", async () => {
+  const authenticator = await source("app/authenticator/page.tsx");
+  assert.match(authenticator, /body: replace \? JSON\.stringify\(\{ replace: true \}\) : "\{\}"/);
+  assert.match(authenticator, /Start over with new key/);
+  assert.match(authenticator, /setEnrollment\(null\);[\s\S]*setQrCodeUrl\(null\);[\s\S]*setCode\(""\);/);
+  assert.match(authenticator, /data-testid="totp-enrollment-expiry"/);
+  assert.match(authenticator, /formatEnrollmentCountdown\(enrollment\.expires_at, enrollmentClock\)/);
+  assert.match(authenticator, /This setup key expired at/);
+  assert.match(authenticator, /phase === "start"/);
+  assert.match(authenticator, /A pending setup already exists in another session/);
+  assert.match(authenticator, /pendingSetupConflict/);
+  assert.match(authenticator, /invalidates the other session’s pending QR and setup key/);
+  assert.match(authenticator, /previously scanned QR code may be stale/);
+  assert.match(authenticator, /Replace the old Signal Ledger entry/);
+  assert.doesNotMatch(authenticator, /console\.(log|error)\([^\n]*secret/);
+});
+
 test("workspace navigation exposes account controls without replacing the primary landmarks", async () => {
   const navigation = await source("components/workspace-nav.tsx");
   const controls = await source("components/auth-controls.tsx");

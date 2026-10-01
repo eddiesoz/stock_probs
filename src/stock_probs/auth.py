@@ -214,6 +214,7 @@ class AuthStore(Protocol):
         expires_at: str,
         expected_factor_id: int | None,
         origin_token_hash: str,
+        replace: bool = False,
     ) -> Mapping[str, object] | None: ...
 
     def auth_get_totp_enrollment(
@@ -680,6 +681,7 @@ class AuthStoreAdapter:
         expires_at: str,
         expected_factor_id: int | None,
         origin_token_hash: str,
+        replace: bool = False,
     ) -> Mapping[str, object] | None:
         """Persist one encrypted, expiring TOTP enrollment secret."""
 
@@ -693,6 +695,7 @@ class AuthStoreAdapter:
                 "expires_at": expires_at,
                 "expected_factor_id": expected_factor_id,
                 "origin_token_hash": origin_token_hash,
+                "replace": replace,
             },
         )
         return result if isinstance(result, Mapping) else None
@@ -1995,10 +1998,14 @@ class AuthManager:
             "can_enroll": self.can_enroll_totp(context),
         }
 
-    def begin_totp_enrollment(self, context: AuthContext, now: datetime) -> dict[str, object]:
-        """Create a short-lived encrypted enrollment secret for the current account."""
+    def begin_totp_enrollment(
+        self, context: AuthContext, now: datetime, *, replace: bool = False
+    ) -> dict[str, object]:
+        """Create or reuse a short-lived encrypted enrollment secret for the current account."""
 
         issued = now.astimezone(UTC)
+        if type(replace) is not bool:
+            raise ValueError("replace must be a boolean")
         if not self.can_enroll_totp(context, issued):
             raise AuthorizationDenied("Complete the current authenticator check before enrolling.")
         if self.has_totp_factor(context.user.id) and context.mfa_method not in {"totp", "recovery"}:
@@ -2017,15 +2024,29 @@ class AuthManager:
             _iso(expires),
             expected_factor_id,
             context.token_hash,
+            replace,
         )
         if not isinstance(begun, Mapping):
             raise TotpRejected("The authenticator state changed. Start again.")
+        if (
+            begun.get("user_id") != context.user.id
+            or begun.get("expected_factor_id") != expected_factor_id
+            or begun.get("origin_token_hash") != context.token_hash
+        ):
+            raise TotpRejected("The authenticator state changed. Start again.")
+        secret = self._pending_secret(context.user.id, begun)
+        try:
+            pending_expires = _utc(begun.get("expires_at"))
+        except AuthUnavailable:
+            raise AuthUnavailable("Authenticator enrollment state is invalid.") from None
+        if pending_expires <= issued:
+            raise TotpRejected("The authenticator enrollment has expired. Start again.")
         account = context.user.github_login or context.user.username or str(context.user.id)
         return {
             "enrollment": True,
             "secret": secret,
             "otpauth_uri": otpauth_uri(secret, account, self.settings.totp_issuer),
-            "expires_at": expires,
+            "expires_at": pending_expires,
         }
 
     def finish_totp_enrollment(
@@ -2657,7 +2678,14 @@ class MemoryAuthStore:
         expires_at: str,
         expected_factor_id: int | None,
         origin_token_hash: str,
+        replace: bool = False,
     ) -> Mapping[str, object] | None:
+        if type(replace) is not bool:
+            raise ValueError("replace must be a boolean")
+        created = _utc(created_at)
+        expires = _utc(expires_at)
+        if expires <= created or expires - created > timedelta(minutes=10):
+            raise ValueError("TOTP enrollment must expire within 10 minutes")
         with self._totp_lock:
             factor = self.totp_factors.get(user_id)
             if self._factor_id(factor) != expected_factor_id:
@@ -2667,19 +2695,32 @@ class MemoryAuthStore:
                 not isinstance(origin, Mapping)
                 or origin.get("user_id") != user_id
                 or origin.get("revoked_at") is not None
+                or not isinstance(origin.get("idle_expires_at"), str | datetime)
+                or not isinstance(origin.get("expires_at"), str | datetime)
+                or _utc(origin["idle_expires_at"]) <= created
+                or _utc(origin["expires_at"]) <= created
             ):
                 return None
-        record = {
-            "user_id": user_id,
-            "secret_ciphertext": secret_ciphertext,
-            "created_at": created_at,
-            "expires_at": expires_at,
-            "expected_factor_id": expected_factor_id,
-            "origin_token_hash": origin_token_hash,
-        }
-        with self._totp_lock:
+            pending = self.totp_enrollments.get(user_id)
+            if pending is not None and _utc(str(pending["expires_at"])) > created:
+                same_binding = (
+                    pending.get("expected_factor_id") == expected_factor_id
+                    and pending.get("origin_token_hash") == origin_token_hash
+                )
+                if not replace:
+                    if not same_binding:
+                        return None
+                    return pending
+            record = {
+                "user_id": user_id,
+                "secret_ciphertext": secret_ciphertext,
+                "created_at": created_at,
+                "expires_at": expires_at,
+                "expected_factor_id": expected_factor_id,
+                "origin_token_hash": origin_token_hash,
+            }
             self.totp_enrollments[user_id] = record
-        return record
+            return record
 
     def auth_get_totp_enrollment(
         self, user_id: int, now: str | None = None

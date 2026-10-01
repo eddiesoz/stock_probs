@@ -4,10 +4,11 @@
 
 ### Current approval status
 
-`R-ASTRA-103` is the current authenticator-only authentication follow-on. Invite-only GitHub OAuth
-remains the identity boundary, while a six-digit TOTP code from an authenticator app is the sole
-application second factor. The deployed schema-10 migration revokes stored credentials and old
-passkey sessions; the application does not create or accept WebAuthn credentials.
+`R-ASTRA-107` is the current TOTP enrollment key-reuse repair follow-on. `R-ASTRA-103` is the
+deployed authenticator-only baseline. Invite-only GitHub OAuth remains the identity boundary, while
+a six-digit TOTP code from an authenticator app is the sole application second factor. The deployed
+schema-10 migration revokes stored credentials and old passkey sessions; the application does not
+create or accept WebAuthn credentials.
 Recovery codes are
 hashed and single-use, and administrator backup/restore actions require fresh TOTP proof.
 
@@ -20,7 +21,7 @@ denied private history without a session, and returned `403` for WebAuthn. Exist
 replacement remained guarded. Astra's independent medium source security review reported no P1/P2
 finding.
 
-The current local `R-ASTRA-103` gate **Passed** for its declared scope. Receipt:
+The deployed baseline `R-ASTRA-103` local gate **Passed** for its declared scope. Receipt:
 `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json`; it reports `707` Python
 tests passed, `4` live tests deselected, `85.25%` coverage, frontend build/typecheck and `27`
 frontend tests, and documentation coverage. The schema-9 predeploy backup remains an offline
@@ -45,7 +46,8 @@ second-user acceptance remain unavailable.
 `R-ASTRA-101` remains the historical schema-8 passkey deployment record; its passkey and live-host
 receipts must not be used as acceptance evidence for this TOTP release.
 
-`EXP-M09` remains the current approval-gated export item. `R-ASTRA-100` is **Completed for its
+`EXP-M09` remains the current approval-gated export item. `R-ASTRA-107` remains **In progress** for
+the enrollment repair and deployment follow-up. `R-ASTRA-100` is **Completed for its
 declared UI scope** with the evidence recorded below; this does not create a broader release or
 export checkpoint. `M09-E18`, `M07-E20`, and `R-ASTRA-98` remain recorded for their declared scopes.
 The remaining M09 action is `EXP-M09`: full-session export, secret review, local commit, push,
@@ -359,6 +361,44 @@ installation has not been observed, and no live send or mailbox delivery is veri
 | `R-ASTRA-106-E15` | Initial independent QA of the Resend credential installer. | Exact QA task, command, UTC, environment, artifact, and reviewer were not supplied. | **Fail** for the declared installer scope: QA found a P1 remote Python shell quoting blocker and a P2 incomplete-read rollback blocker. The failure remains visible; the repaired rerun is recorded separately in E16. No host installation, live send, or mailbox result is inferred. |
 | `R-ASTRA-106-E16` | Repaired independent QA of the Resend credential installer. | Native x86_64; installer QA revision `42cf0f40c98404d55585745b10311354661a5195`; included in pushed `main` checkpoint `329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the tree was clean at push; exact command, UTC window, artifact, and reviewer were not supplied. | **Pass** for the declared local installer scope: `13` tests passed, including command parse/probe and incomplete-read rollback. This does not establish API-key creation, host installation, live sending, mailbox delivery, or production acceptance. |
 | `R-ASTRA-106-E17` | Final authored-documentation validator, tests, map coverage, self-test, and scoped diff check after the Resend reconciliation. | Native x86_64; dirty `HEAD` `42cf0f40c98404d55585745b10311354661a5195`; `2026-10-01T14:55:29Z`–`14:56:27Z`; commands `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -o addopts='' tests/test_docs_validation.py -ra`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`; no artifact. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; documentation tests passed `57` with one warning; coverage checked `133` files; self-test passed `26` cases; scoped diff check exited `0`. Subsequent docs-only checkpoint `329fdc595483fa3b112b98c7788d808348638faa` was pushed; pre-push documentation coverage reported `133` mapped files/`10` changed passed, and `git ls-remote origin refs/heads/main` exactly matched; the tree was clean at push. Reviewer `LUNA MAX docs`; no installer, host, SMTP, mailbox, or production acceptance is inferred. |
+
+## Current TOTP enrollment key-reuse repair (`R-ASTRA-107`)
+
+**Status: In progress.** The repair reuses an unexpired pending setup only for the same session,
+factor generation, and origin, preserving its expiry. Explicit `{"replace": true}` rotates the key;
+a different origin cannot silently overwrite it. The UI shows expiry, disables expired QR/code use,
+and offers an explicit replacement action after a cross-session conflict.
+
+Production starts at `2026-10-01T15:03:02Z` and `15:04:39Z` returned `200`; finish attempts at
+`15:05:51Z` and `15:06:10Z` returned `403`. A pending row from the second start remained and server
+NTP was synced. This observation does not prove that the repaired image is deployed.
+
+Independent QA repaired an initial P2 missing cross-session replacement button; final desktop and
+emulated-mobile checks passed `3/3` each after the `2026-10-01T19:22Z` build. The earlier stale
+staged-export browser attempt **Failed** and remains historical. The full local gate receipt
+`test-results/local-gates/R-ASTRA-107-20261001T154012Z/` **Passed** on dirty `HEAD` `2e07a8e`
+with `763` Python tests passed, `4` deselected, `85.47%` coverage, and reported frontend/build/typecheck/docs
+checks passing with `28` frontend checks; it began before the final UI repair and is not a final
+exact-tree gate. Production deployment is **Pending**, and physical iOS evidence is **Unavailable**.
+
+At approximately `19:24Z`, production HTTPS remained reachable, while MCP `inspect`/`status` returned
+`remote_rejected` and SSH to `45.79.180.32` timed out. The observed operator address was
+`50.21.67.178`, while the firewall still held `142.198.155.54/32`; the typed refresh operation is
+blocked by its clean exact-pushed-main source gate. This is an operational access limitation, not an
+application-failure result. If a QR or setup key appears in a photo, treat it as exposed: after
+deployment, generate a fresh setup key and replace the old Signal Ledger entry in Passwords before
+entering a code.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `R-ASTRA-107-E1` | Source repair for pending-key reuse, explicit rotation, same-origin binding, expiry handling, and UI conflict recovery. | Dirty `HEAD` `2e07a8e`; exact command, UTC, artifact, and reviewer were not supplied. | **Pass as supplied repair evidence**; independent QA and local-gate limitations remain below. |
+| `R-ASTRA-107-E2` | Production enrollment start/finish observation and server clock state. | Production HTTPS; start times `15:03:02Z` and `15:04:39Z`; finish times `15:05:51Z` and `15:06:10Z`; exact command, revision, artifact, and reviewer were not supplied. | **Pass** for the bounded observation: starts `200`, finishes `403`, pending row from the second start remained, and NTP was synced. Repaired-image deployment is not inferred. |
+| `R-ASTRA-107-E3` | Initial independent browser QA. | Exact task, command, environment, UTC, revision, artifact, and reviewer were not supplied. | **Fail** for the initial scope because the cross-session replacement button was missing (P2); the repair and final rerun remain separate. |
+| `R-ASTRA-107-E4` | Repaired independent desktop and emulated-mobile browser QA. | Frontend build at `2026-10-01T19:22Z`; exact command, environment, revision, artifact, and reviewer were not supplied. | **Pass**: desktop `3/3` and emulated mobile `3/3`; physical iOS remains **Unavailable**. |
+| `R-ASTRA-107-E5` | Earlier staged-export browser attempt. | Exact command, environment, UTC, revision, artifact, and reviewer were not supplied. | **Fail** for that stale staged-export attempt; it remains historical and is not relabelled as final QA. |
+| `R-ASTRA-107-E6` | Full local gate before the final UI repair. | Native x86_64; dirty `HEAD` `2e07a8e`; artifact `test-results/local-gates/R-ASTRA-107-20261001T154012Z/`; exact command, UTC, and reviewer were not supplied. | **Pass** as reported for its declared pre-repair scope: `763` Python tests passed, `4` deselected, `85.47%` coverage, and reported frontend/build/typecheck/docs checks passed with `28` frontend checks. It is not final exact-tree acceptance. |
+| `R-ASTRA-107-E7` | Production deployment preflight and operator-access follow-up. | Production HTTPS/MCP/SSH boundary; approximately `2026-10-01T19:24Z`; exact command, revision, artifact, and reviewer were not supplied. | **Unavailable**: HTTPS remained reachable, MCP `inspect`/`status` returned `remote_rejected`, SSH timed out, and the observed operator address did not match the firewall CIDR. Typed refresh is blocked by the clean exact-pushed-main source gate; the follow-up remains **Pending**. |
+| `R-ASTRA-107-E8` | Final authored-documentation validator, docs tests, change-aware coverage, coverage self-test, and scoped diff check after the repair documentation. | Native x86_64; dirty `HEAD` `2e07a8e`; UTC was not captured by the command tool; commands `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -o addopts='' tests/test_docs_validation.py -ra`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, and `git diff --check -- AGENTS.md README.md MVP-ROADMAP.md MVP-PLAN.md docs`; artifact none. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; docs tests passed `57` with one warning; coverage checked `133` mapped files; self-test passed `26` cases; and scoped diff check exited `0`. Reviewer `LUNA MAX docs`; no commit, push, deployment, or device result is inferred. |
 
 ## Historical authentication and production deployment follow-on (`R-ASTRA-101`)
 

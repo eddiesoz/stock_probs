@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 
 import {
+  AuthRequestError,
   authErrorMessage,
   authRequest,
   getAuthSession,
@@ -29,6 +30,39 @@ interface TotpResponse {
 
 const CODE_LENGTH = 6;
 type SetupApp = "" | "apple-passwords" | "google-authenticator" | "1password" | "other";
+
+function enrollmentExpiryMs(enrollment: TotpEnrollment | null): number {
+  return enrollment ? Date.parse(enrollment.expires_at) : Number.NaN;
+}
+
+function formatEnrollmentExpiry(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "an unknown time";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp));
+}
+
+function formatEnrollmentCountdown(expiresAt: string, nowMs: number): string {
+  const timestamp = Date.parse(expiresAt);
+  if (!Number.isFinite(timestamp) || nowMs <= 0) return "checking…";
+  const seconds = Math.max(0, Math.ceil((timestamp - nowMs) / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function enrollmentErrorMessage(error: unknown, phase: "start" | "finish"): string {
+  if (error instanceof AuthRequestError) {
+    if (error.code === "totp_rejected") {
+      return phase === "start"
+        ? "A pending setup already exists in another session. Continue with that session, or choose Start over with new key to replace it."
+        : "That authenticator code was not accepted. A previously scanned QR code may be stale; choose Start over with new key to replace it, then try the current code.";
+    }
+    if (error.code === "totp_rate_limited" || error.code === "totp_required" || [401, 403, 409].includes(error.status)) {
+      return authErrorMessage(error);
+    }
+  }
+  return phase === "start"
+    ? "A setup key could not be created. Try again."
+    : "That setup code could not be confirmed. Use the current code or start over with a new key.";
+}
 
 function setupInstructions(app: SetupApp) {
   switch (app) {
@@ -100,6 +134,9 @@ export default function AuthenticatorPage() {
   const [setupKeyCopied, setSetupKeyCopied] = useState(false);
   const [setupApp, setSetupApp] = useState<SetupApp>("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [enrollmentClock, setEnrollmentClock] = useState(0);
+  const [rotatedEnrollment, setRotatedEnrollment] = useState(false);
+  const [pendingSetupConflict, setPendingSetupConflict] = useState(false);
   const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
 
   useEffect(() => {
@@ -140,9 +177,43 @@ export default function AuthenticatorPage() {
   }, []);
 
   useEffect(() => {
+    if (!enrollment) {
+      setEnrollmentClock(0);
+      return;
+    }
+    let active = true;
+    const updateClock = () => {
+      if (active) setEnrollmentClock(Date.now());
+    };
+    updateClock();
+    const interval = window.setInterval(updateClock, 1000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [enrollment]);
+
+  const enrollmentExpiresAtMs = enrollmentExpiryMs(enrollment);
+  const enrollmentExpired = Boolean(
+    enrollment && (!Number.isFinite(enrollmentExpiresAtMs) || (enrollmentClock > 0 && enrollmentClock >= enrollmentExpiresAtMs)),
+  );
+
+  useEffect(() => {
+    if (!enrollmentExpired) return;
+    setQrCodeUrl(null);
+    setCode("");
+    setSetupKeyCopied(false);
+  }, [enrollmentExpired]);
+
+  useEffect(() => {
     setQrCodeUrl(null);
     setQrUnavailable(false);
     if (!enrollment) return;
+    const expiresAtMs = enrollmentExpiryMs(enrollment);
+    if (!Number.isFinite(expiresAtMs) || Date.now() >= expiresAtMs) {
+      setQrUnavailable(true);
+      return;
+    }
     if (!enrollment.otpauth_uri.startsWith("otpauth://totp/")) {
       setQrUnavailable(true);
       return;
@@ -165,33 +236,54 @@ export default function AuthenticatorPage() {
   const copy = modeCopy(mode, Boolean(recoveryCodes));
   const isEnrolled = Boolean(status?.enrolled || session?.user?.totp_enrolled);
   const codeReady = code.trim().length === CODE_LENGTH;
-  const shouldShowCodeForm = mode !== "enroll" || Boolean(enrollment);
+  const shouldShowCodeForm = mode !== "enroll" || Boolean(enrollment && !enrollmentExpired);
   const enrollmentPath = `/authenticator?mode=enroll&next=${encodeURIComponent(nextPath)}`;
   const freshEnrollmentPath = `/authenticator?mode=step-up&next=${encodeURIComponent(enrollmentPath)}`;
 
   const recoveryText = useMemo(() => recoveryCodes?.join("\n") ?? "", [recoveryCodes]);
 
-  async function startEnrollment() {
-    setBusy("start");
+  async function startEnrollment(replace = false) {
+    if (busy !== null) return;
+    const preserveConflictOnFailure = replace && pendingSetupConflict;
+    // Remove the previous QR/key before rotating so an in-flight request cannot leave stale setup data actionable.
+    setEnrollment(null);
+    setQrCodeUrl(null);
+    setQrUnavailable(false);
+    setCode("");
+    setSetupApp("");
+    setSetupKeyCopied(false);
+    setRotatedEnrollment(false);
+    setBusy(replace ? "replace" : "start");
     setMessage(null);
     setCopied(false);
-    setSetupKeyCopied(false);
     try {
       const response = await authRequest<TotpEnrollment>("/api/v1/auth/totp/enroll/start", {
         method: "POST",
-        body: "{}",
+        body: replace ? JSON.stringify({ replace: true }) : "{}",
       });
       setEnrollment(response);
-      setCode("");
-      setMessage({ tone: "success", text: "Setup key created. Add it to your authenticator, then enter the current code below." });
+      setRotatedEnrollment(replace);
+      setPendingSetupConflict(false);
+      setMessage({
+        tone: "success",
+        text: replace
+          ? "New setup key created. Replace the old authenticator entry before entering a code."
+          : "Setup key created. Add it to your authenticator, then enter the current code below.",
+      });
     } catch (error) {
-      setMessage({ tone: "error", text: authErrorMessage(error) });
+      const isPendingSetupConflict = error instanceof AuthRequestError && error.code === "totp_rejected";
+      setPendingSetupConflict(preserveConflictOnFailure || (!replace && isPendingSetupConflict));
+      setMessage({ tone: "error", text: enrollmentErrorMessage(error, "start") });
     } finally {
       setBusy(null);
     }
   }
 
   async function copySetupKey() {
+    if (enrollmentExpired) {
+      setMessage({ tone: "error", text: "This setup key has expired. Start over with a new key before copying it." });
+      return;
+    }
     if (!enrollment?.secret || !navigator.clipboard) {
       setMessage({ tone: "error", text: "Copy is unavailable here. Select the setup key above and choose Copy." });
       return;
@@ -223,6 +315,11 @@ export default function AuthenticatorPage() {
   async function finishOrVerify(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (mode === "recover" ? !code.trim() : !codeReady) return;
+    if (mode === "enroll" && enrollmentExpired) {
+      setCode("");
+      setMessage({ tone: "error", text: "This setup key has expired. Start over with a new key before entering a code." });
+      return;
+    }
     setBusy("code");
     setMessage(null);
     try {
@@ -254,7 +351,7 @@ export default function AuthenticatorPage() {
         window.setTimeout(() => window.location.assign(nextPath), 350);
       }
     } catch (error) {
-      setMessage({ tone: "error", text: authErrorMessage(error) });
+      setMessage({ tone: "error", text: mode === "enroll" ? enrollmentErrorMessage(error, "finish") : authErrorMessage(error) });
     } finally {
       setBusy(null);
     }
@@ -303,44 +400,68 @@ export default function AuthenticatorPage() {
         {mode === "enroll" && !enrollment && !recoveryCodes ? <div className={styles.factorIntro}>
           <div className={styles.stepCard}><span className={styles.stepNumber}>1</span><div><strong>Add Signal Ledger to your app</strong><p>Generate a setup key, then add it to 1Password, Authenticator, Aegis, or another trusted authenticator.</p></div></div>
           <div className={styles.stepCard}><span className={styles.stepNumber}>2</span><div><strong>Confirm one current code</strong><p>The setup window expires in ten minutes. A code from the app proves the key was entered correctly.</p></div></div>
-          <button className="primary full" type="button" onClick={startEnrollment} disabled={busy === "start" || status?.can_enroll === false}>{busy === "start" ? "Creating setup key…" : "Generate setup key"}</button>
+          {pendingSetupConflict ? <div className={styles.deniedState} role="alert" aria-labelledby="totp-pending-setup-heading" aria-describedby="totp-pending-setup-warning">
+            <strong id="totp-pending-setup-heading">A pending setup is active in another session</strong>
+            <p id="totp-pending-setup-warning">Continue with that session if possible. Starting over invalidates the other session’s pending QR and setup key.</p>
+            <button className="secondary full" type="button" onClick={() => startEnrollment(true)} disabled={busy !== null || status?.can_enroll === false}>{busy === "replace" ? "Starting over…" : "Start over with new key"}</button>
+          </div> : <button className="primary full" type="button" onClick={() => startEnrollment()} disabled={busy !== null || status?.can_enroll === false}>{busy === "replace" ? "Starting over…" : busy === "start" ? "Creating setup key…" : "Generate setup key"}</button>}
           {status?.can_enroll === false ? <p className={styles.securityNote}>Complete a fresh check before replacing an existing authenticator. <a href={freshEnrollmentPath}>Verify current authenticator</a></p> : null}
         </div> : null}
 
         {mode === "enroll" && enrollment && !recoveryCodes ? <div className={styles.enrollmentBox}>
           <div className={styles.stepLabel}><span className={styles.stepNumber}>1</span><span>Add Signal Ledger to your authenticator</span></div>
-          <label className={styles.setupChoice} htmlFor="totp-app-choice">
-            Which authenticator do you want to use?
-            <select id="totp-app-choice" value={setupApp} onChange={(event) => setSetupApp(event.target.value as SetupApp)} aria-describedby="totp-app-guidance" autoFocus>
-              <option value="">Choose an app</option>
-              <option value="apple-passwords">Apple Passwords</option>
-              <option value="google-authenticator">Google Authenticator</option>
-              <option value="1password">1Password</option>
-              <option value="other">Other authenticator app</option>
-            </select>
-          </label>
-          <p className={styles.appGuidance} id="totp-app-guidance" aria-live="polite">{setupInstructions(setupApp)}</p>
-          <div className={styles.secretCard}>
-            <span className={styles.secretLabel}>Manual setup key</span>
-            <code className={styles.setupKey} data-testid="totp-setup-key">{enrollment.secret}</code>
-            <p>On this iPhone, copy this key and add it inside the app you chose above. iOS chooses which app opens an otpauth link and may open Apple Passwords instead.</p>
-            <button className="secondary" type="button" onClick={copySetupKey}>{setupKeyCopied ? "Copied setup key" : "Copy setup key"}</button>
-          </div>
-          <div className={styles.qrCard}>
-            <span className={styles.secretLabel}>QR setup with another device</span>
-            {qrCodeUrl ? <img className={styles.qrImage} src={qrCodeUrl} width="240" height="240" alt="QR code for adding Signal Ledger to an authenticator app" /> : <div className={styles.qrPlaceholder} role="status">{qrUnavailable ? "QR code unavailable. Use the manual key above." : "Creating QR code…"}</div>}
-            <p>Display this QR code on one device, then scan it from your chosen authenticator on the other.</p>
-          </div>
-          <div className={styles.handlerAction}>
-            <p>Trying this link asks your device’s default otpauth handler to open. The app choice above cannot change iOS routing.</p>
-            <a className="secondary" href={enrollment.otpauth_uri}>Try device’s default otpauth handler</a>
-          </div>
-          <form className={styles.codeForm} onSubmit={finishOrVerify} noValidate>
-            <div className={styles.stepLabel}><span className={styles.stepNumber}>2</span><label htmlFor="totp-code">Enter the current six-digit code</label></div>
-            <input className={styles.codeInput} id="totp-code" name="code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={CODE_LENGTH} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, CODE_LENGTH))} aria-describedby="totp-code-help" required />
-            <p id="totp-code-help" className={styles.fieldHelp}>Use the newest code. Codes are valid briefly and cannot be reused for the same time window.</p>
-            <button className="primary full" type="submit" disabled={busy === "code" || !codeReady}>{busy === "code" ? "Confirming authenticator…" : "Enable authenticator"}</button>
-          </form>
+          <p
+            className={styles.securityNote}
+            data-testid="totp-enrollment-expiry"
+            data-state={enrollmentExpired ? "expired" : "active"}
+            role={enrollmentExpired ? "alert" : "timer"}
+            aria-live={enrollmentExpired ? "assertive" : "off"}
+            aria-atomic="true"
+          >
+            {enrollmentExpired
+              ? <>This setup key expired at <time dateTime={enrollment.expires_at}>{formatEnrollmentExpiry(enrollment.expires_at)}</time>. It cannot be scanned or used.</>
+              : <>Setup key expires in <strong>{formatEnrollmentCountdown(enrollment.expires_at, enrollmentClock)}</strong> at <time dateTime={enrollment.expires_at}>{formatEnrollmentExpiry(enrollment.expires_at)}</time>.</>}
+          </p>
+          {enrollmentExpired ? <div className={styles.deniedState}>
+            <strong>Start a fresh setup</strong>
+            <p>The QR code and code entry are disabled until you create a new setup key.</p>
+            <button className="secondary" type="button" onClick={() => startEnrollment(true)} disabled={busy !== null || status?.can_enroll === false}>{busy === "replace" ? "Starting over…" : "Start over with new key"}</button>
+          </div> : <>
+            <label className={styles.setupChoice} htmlFor="totp-app-choice">
+              Which authenticator do you want to use?
+              <select id="totp-app-choice" value={setupApp} onChange={(event) => setSetupApp(event.target.value as SetupApp)} aria-describedby="totp-app-guidance" autoFocus>
+                <option value="">Choose an app</option>
+                <option value="apple-passwords">Apple Passwords</option>
+                <option value="google-authenticator">Google Authenticator</option>
+                <option value="1password">1Password</option>
+                <option value="other">Other authenticator app</option>
+              </select>
+            </label>
+            <p className={styles.appGuidance} id="totp-app-guidance" aria-live="polite">{setupInstructions(setupApp)}</p>
+            <div className={styles.secretCard}>
+              <span className={styles.secretLabel}>Manual setup key</span>
+              <code className={styles.setupKey} data-testid="totp-setup-key">{enrollment.secret}</code>
+              <p>On this iPhone, copy this key and add it inside the app you chose above. iOS chooses which app opens an otpauth link and may open Apple Passwords instead.</p>
+              <button className="secondary" type="button" onClick={copySetupKey}>{setupKeyCopied ? "Copied setup key" : "Copy setup key"}</button>
+            </div>
+            <div className={styles.qrCard}>
+              <span className={styles.secretLabel}>QR setup with another device</span>
+              {qrCodeUrl ? <img className={styles.qrImage} src={qrCodeUrl} width="240" height="240" alt="QR code for adding Signal Ledger to an authenticator app" /> : <div className={styles.qrPlaceholder} role="status">{qrUnavailable ? "QR code unavailable. Use the manual key above." : "Creating QR code…"}</div>}
+              <p>Display this QR code on one device, then scan it from your chosen authenticator on the other.</p>
+            </div>
+            <div className={styles.handlerAction}>
+              <p>Trying this link asks your device’s default otpauth handler to open. The app choice above cannot change iOS routing.</p>
+              <a className="secondary" href={enrollment.otpauth_uri}>Try device’s default otpauth handler</a>
+            </div>
+            {rotatedEnrollment ? <p className={styles.securityNote} id="totp-rotation-warning">This new key replaces the pending setup. Replace the old Signal Ledger entry in your authenticator before entering a code.</p> : null}
+            <form className={styles.codeForm} onSubmit={finishOrVerify} noValidate>
+              <div className={styles.stepLabel}><span className={styles.stepNumber}>2</span><label htmlFor="totp-code">Enter the current six-digit code</label></div>
+              <input className={styles.codeInput} id="totp-code" name="code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={CODE_LENGTH} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, CODE_LENGTH))} aria-describedby="totp-code-help" required />
+              <p id="totp-code-help" className={styles.fieldHelp}>Use the newest code. Codes are valid briefly and cannot be reused for the same time window.</p>
+              <button className="primary full" type="submit" disabled={busy === "code" || !codeReady}>{busy === "code" ? "Confirming authenticator…" : "Enable authenticator"}</button>
+            </form>
+            <button className="secondary full" type="button" onClick={() => startEnrollment(true)} disabled={busy !== null || status?.can_enroll === false}>{busy === "replace" ? "Starting over…" : "Start over with new key"}</button>
+          </>}
         </div> : null}
 
         {recoveryCodes ? <div className={styles.recoveryBox}>

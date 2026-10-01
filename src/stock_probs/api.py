@@ -30,7 +30,7 @@ from fastapi import Path as PathParameter
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import ClientDisconnect
@@ -153,6 +153,12 @@ class TotpCodeRequest(ApiResponse):
     """Bounded authenticator input; recovery-code routes apply their own format check."""
 
     code: str = Field(min_length=6, max_length=39)
+
+
+class TotpEnrollmentStartRequest(ApiResponse):
+    """Optional explicit request to rotate an existing pending enrollment."""
+
+    replace: StrictBool = False
 
 
 class TotpStatusApiResponse(ApiResponse):
@@ -3422,11 +3428,17 @@ def create_app(
         response_model=TotpEnrollmentStartApiResponse,
         responses=_documented_errors(400, 403, 405, 411, 413, 422, 429, 500, 503),
     )
-    def totp_enrollment_start(request: Request, response: Response) -> dict[str, object]:
+    def totp_enrollment_start(
+        request: Request,
+        response: Response,
+        payload: TotpEnrollmentStartRequest | None = None,
+    ) -> dict[str, object]:
         """Start one short-lived authenticator enrollment transaction."""
 
         context = _auth_context(request)
-        result = auth_manager.begin_totp_enrollment(context, datetime.now(UTC))
+        result = auth_manager.begin_totp_enrollment(
+            context, datetime.now(UTC), replace=payload.replace if payload is not None else False
+        )
         response.headers["Cache-Control"] = "no-store"
         return result
 

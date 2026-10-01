@@ -165,6 +165,76 @@ def test_existing_passkey_user_enrolls_totp_from_fresh_github_session() -> None:
         manager.issue_session(legacy_user, NOW, "passkey", mfa_method="passkey")
 
 
+def test_totp_enrollment_reuses_pending_key_until_explicit_rotation() -> None:
+    manager, store, user = _github_totp_manager()
+    provisional = manager.issue_session(user, NOW, "github")
+
+    first = manager.begin_totp_enrollment(provisional.context, NOW)
+    repeated = manager.begin_totp_enrollment(
+        provisional.context, NOW + timedelta(seconds=97)
+    )
+    assert repeated["secret"] == first["secret"]
+    assert repeated["expires_at"] == first["expires_at"]
+
+    code = code_for_step(first["secret"], time_step(NOW + timedelta(seconds=97)))
+    issue, _recovery_codes = manager.finish_totp_enrollment(
+        provisional.context, code, NOW + timedelta(seconds=97)
+    )
+    assert issue.context.mfa_method == "totp"
+    assert store.auth_get_totp_factor(user.id) is not None
+
+
+def test_totp_enrollment_rotation_invalidates_only_the_old_key() -> None:
+    manager, _store, user = _github_totp_manager()
+    provisional = manager.issue_session(user, NOW, "github")
+
+    first = manager.begin_totp_enrollment(provisional.context, NOW)
+    rotated = manager.begin_totp_enrollment(
+        provisional.context, NOW + timedelta(seconds=1), replace=True
+    )
+    assert rotated["secret"] != first["secret"]
+    assert rotated["expires_at"] > first["expires_at"]
+
+    old_code = code_for_step(first["secret"], time_step(NOW + timedelta(seconds=1)))
+    with pytest.raises(TotpRejected):
+        manager.finish_totp_enrollment(
+            provisional.context, old_code, NOW + timedelta(seconds=1)
+        )
+
+    new_code = code_for_step(rotated["secret"], time_step(NOW + timedelta(seconds=2)))
+    issue, _recovery_codes = manager.finish_totp_enrollment(
+        provisional.context, new_code, NOW + timedelta(seconds=2)
+    )
+    assert issue.context.mfa_method == "totp"
+
+
+def test_totp_enrollment_origin_conflict_preserves_original_pending_key() -> None:
+    manager, _store, user = _github_totp_manager()
+    first_session = manager.issue_session(user, NOW, "github")
+    second_session = manager.issue_session(user, NOW + timedelta(seconds=1), "github")
+
+    first = manager.begin_totp_enrollment(first_session.context, NOW)
+    with pytest.raises(TotpRejected):
+        manager.begin_totp_enrollment(second_session.context, NOW + timedelta(seconds=1))
+
+    repeated = manager.begin_totp_enrollment(
+        first_session.context, NOW + timedelta(seconds=2)
+    )
+    assert repeated["secret"] == first["secret"]
+    assert repeated["expires_at"] == first["expires_at"]
+
+
+def test_totp_enrollment_expiry_allows_a_new_default_key() -> None:
+    manager, _store, user = _github_totp_manager()
+    provisional = manager.issue_session(user, NOW, "github")
+
+    first = manager.begin_totp_enrollment(provisional.context, NOW)
+    after_expiry = NOW + timedelta(seconds=601)
+    replacement = manager.begin_totp_enrollment(provisional.context, after_expiry)
+    assert replacement["secret"] != first["secret"]
+    assert replacement["expires_at"] == after_expiry + timedelta(minutes=10)
+
+
 def test_github_user_shape_never_advertises_a_passkey_requirement() -> None:
     manager, _store, user = _github_totp_manager()
     legacy_shape = replace(
@@ -634,9 +704,37 @@ def test_authenticator_api_enrollment_returns_secret_once_and_assures_session(tm
         enrollment = started.json()
         assert set(enrollment) == {"enrollment", "secret", "otpauth_uri", "expires_at"}
 
+        repeated = client.post("/api/v1/auth/totp/enroll/start", headers=headers)
+        assert repeated.status_code == 200, repeated.text
+        assert repeated.json()["secret"] == enrollment["secret"]
+        assert repeated.json()["expires_at"] == enrollment["expires_at"]
+
+        malformed_replace = client.post(
+            "/api/v1/auth/totp/enroll/start",
+            json={"replace": "true"},
+            headers=headers,
+        )
+        assert malformed_replace.status_code == 422
+
+        rotated = client.post(
+            "/api/v1/auth/totp/enroll/start",
+            json={"replace": True},
+            headers=headers,
+        )
+        assert rotated.status_code == 200, rotated.text
+        assert rotated.json()["secret"] != enrollment["secret"]
+        assert rotated.json()["expires_at"] != enrollment["expires_at"]
+
         finished = client.post(
             "/api/v1/auth/totp/enroll/finish",
             json={"code": code_for_step(enrollment["secret"], time_step())},
+            headers=headers,
+        )
+        assert finished.status_code == 403, finished.text
+
+        finished = client.post(
+            "/api/v1/auth/totp/enroll/finish",
+            json={"code": code_for_step(rotated.json()["secret"], time_step())},
             headers=headers,
         )
         assert finished.status_code == 200, finished.text

@@ -378,7 +378,13 @@ def test_totp_enrollment_expiry_confirmation_and_step_isolation(tmp_path):
         user1["id"], stale_secret, created.isoformat(), expiry.isoformat(), None, origin1
     )
     repository.auth_begin_totp_enrollment(
-        user1["id"], current_secret, created.isoformat(), expiry.isoformat(), None, origin1
+        user1["id"],
+        current_secret,
+        created.isoformat(),
+        expiry.isoformat(),
+        None,
+        origin1,
+        replace=True,
     )
     assert (
         repository.auth_confirm_totp_enrollment(
@@ -448,6 +454,111 @@ def test_totp_enrollment_expiry_confirmation_and_step_isolation(tmp_path):
     assert repository.auth_accept_totp_step(user1["id"], factor1, 101, accepted_at)
     assert repository.auth_get_totp_factor(user1["id"])["last_accepted_step"] == 101
     assert repository.auth_get_totp_factor(user2["id"])["last_accepted_step"] == 100
+
+
+def test_totp_enrollment_reuse_rotation_and_origin_conflict_are_atomic(tmp_path):
+    repository = _repository(tmp_path)
+    user = repository.create_user(
+        github_user_id=111,
+        login="totp-reuse",
+        display_name="TOTP Reuse",
+        password_hash=None,
+        created_at=NOW,
+    )
+    first_origin = _origin_session(repository, user["id"], "totp-reuse-first")
+    second_origin = _origin_session(repository, user["id"], "totp-reuse-second")
+    first_secret = "enc:v1:reuse-first:" + "x" * 32
+    first_expiry = NOW + timedelta(minutes=10)
+
+    first = repository.auth_begin_totp_enrollment(
+        user["id"],
+        first_secret,
+        NOW.isoformat(),
+        first_expiry.isoformat(),
+        None,
+        first_origin,
+    )
+    repeated = repository.auth_begin_totp_enrollment(
+        user["id"],
+        "enc:v1:discarded:" + "x" * 32,
+        (NOW + timedelta(seconds=97)).isoformat(),
+        (NOW + timedelta(minutes=10, seconds=97)).isoformat(),
+        None,
+        first_origin,
+    )
+    assert repeated == first
+
+    assert (
+        repository.auth_begin_totp_enrollment(
+            user["id"],
+            "enc:v1:other-origin:" + "x" * 32,
+            (NOW + timedelta(seconds=98)).isoformat(),
+            (NOW + timedelta(minutes=10, seconds=98)).isoformat(),
+            None,
+            second_origin,
+        )
+        is None
+    )
+    assert repository.auth_get_totp_enrollment(user["id"], NOW.isoformat()) == first
+
+    rotated = repository.auth_begin_totp_enrollment(
+        user["id"],
+        "enc:v1:rotated:" + "x" * 32,
+        (NOW + timedelta(seconds=99)).isoformat(),
+        (NOW + timedelta(minutes=10, seconds=99)).isoformat(),
+        None,
+        second_origin,
+        replace=True,
+    )
+    assert rotated["secret_ciphertext"] != first["secret_ciphertext"]
+    assert rotated["created_at"] != first["created_at"]
+    assert rotated["expires_at"] != first["expires_at"]
+    assert (
+        repository.auth_confirm_totp_enrollment(
+            user["id"],
+            (NOW + timedelta(seconds=100)).isoformat(),
+            first_secret,
+            1,
+            [_digest("old-reuse-code")],
+            (NOW + timedelta(seconds=100)).isoformat(),
+            None,
+            first_origin,
+        )
+        is None
+    )
+
+
+def test_concurrent_totp_enrollment_starts_keep_one_origin_bound_row(tmp_path):
+    repository = _repository(tmp_path)
+    user = repository.create_user(
+        github_user_id=112,
+        login="totp-concurrent",
+        display_name="TOTP Concurrent",
+        password_hash=None,
+        created_at=NOW,
+    )
+    origins = [
+        _origin_session(repository, user["id"], "totp-concurrent-first"),
+        _origin_session(repository, user["id"], "totp-concurrent-second"),
+    ]
+
+    def begin(origin: str) -> dict[str, object] | None:
+        return repository.auth_begin_totp_enrollment(
+            user["id"],
+            "enc:v1:concurrent:" + origin[:8] + "x" * 24,
+            NOW.isoformat(),
+            (NOW + timedelta(minutes=10)).isoformat(),
+            None,
+            origin,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(begin, origins))
+
+    assert sum(result is not None for result in results) == 1
+    pending = repository.auth_get_totp_enrollment(user["id"], NOW.isoformat())
+    assert pending is not None
+    assert pending["origin_token_hash"] in origins
 
 
 def test_totp_factor_replacement_rolls_back_all_security_state_on_failure(tmp_path):
