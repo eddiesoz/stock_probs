@@ -51,12 +51,14 @@ operation; this is not a total deadline for the entire submission.
 The pending operator workflow accepts one private, one-line Resend API-key file through the fixed
 `infra/linode/install-resend-smtp-key.sh --api-key-file FILE` entry point. It is intended to set the
 fixed Resend SMTP values, recreate the fixed production Compose app without building or pulling a
-new image, and require readiness. The script and remote helper are committed locally at
-`42cf0f40c98404d55585745b10311354661a5195`, but that revision is not pushed. Initial independent
-QA found a P1 remote-shell quoting blocker and a P2 incomplete-read rollback blocker; the repaired
-QA recheck passed `13` tests, including command parse/probe and incomplete-read rollback, for its
-declared local scope. This remains installer QA only. No API key currently exists, no host
-installation has been observed, and no live send or mailbox delivery has been verified.
+new image, and require readiness. The installer QA was observed against local revision
+`42cf0f40c98404d55585745b10311354661a5195`; that installer is included in pushed `main` checkpoint
+`329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the tree was clean
+at push.
+Initial independent QA found a P1 remote-shell quoting blocker and a P2 incomplete-read rollback
+blocker; the repaired QA recheck passed `13` tests, including command parse/probe and incomplete-read
+rollback, for its declared local scope. This remains installer QA only. No API key currently exists,
+no host installation has been observed, and no live send or mailbox delivery has been verified.
 
 For a reproducible local dashboard:
 

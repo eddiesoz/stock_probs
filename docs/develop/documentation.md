@@ -165,12 +165,15 @@ for those changes belongs in `AGENTS.md`, this page, the root plan and roadmap,
 [`local configuration`](../configure/local-configuration.md), and the production section of
 [`getting started`](../operations/getting-started.md#resend-sending-domain-and-credential-workflow).
 The domain/DNS/TLS checks do not establish API-key creation, host installation, SMTP acceptance,
-live sending, mailbox delivery, or production email acceptance. The installer is committed locally
-at `42cf0f40c98404d55585745b10311354661a5195`, but that revision is not pushed. The initial
-independent QA P1/P2 findings remain recorded as failure evidence; the repaired QA recheck passed
-`13` tests, including command parse/probe and incomplete-read rollback, for its declared local
-scope. This does not establish a pushed revision, host installation, SMTP send, mailbox delivery,
-or production acceptance.
+live sending, mailbox delivery, or production email acceptance. The initial builder and repaired
+installer QA were observed against local revision `42cf0f40c98404d55585745b10311354661a5195`;
+that installer is included in pushed `main` checkpoint
+`329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the tree was clean
+at push.
+The initial independent QA P1/P2 findings remain recorded as failure evidence; the repaired QA
+recheck passed `13` tests, including command parse/probe and incomplete-read rollback, for its
+declared local scope. This does not establish host installation, SMTP send, mailbox delivery, or
+production acceptance.
 Keep this page and AGENTS policy coverage current whenever those production settings, DNS records,
 or updater/installer invariants change. The updater only installs the checksum-verified Compose
 file; deployment and live delivery are separate evidence.

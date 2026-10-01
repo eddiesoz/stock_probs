@@ -149,13 +149,15 @@ The intended credential workflow is the fixed local entry point
 `infra/linode/install-resend-smtp-key.sh --api-key-file FILE`, which accepts one private, one-line
 Resend API-key file and uses fixed host, Compose, and readiness boundaries. The companion remote
 helper sets the fixed Resend SMTP values and recreates the current production app without building
-or pulling a new image. The script and helper are committed locally at
-`42cf0f40c98404d55585745b10311354661a5195`, but that revision is not pushed. Builder
-self-validation reported `11` focused tests, Ruff check/format, `bash -n`, and ShellCheck **Pass**;
-initial independent QA found a P1 remote-shell quoting blocker and a P2 incomplete-read rollback
-blocker; the repaired QA recheck passed `13` tests, including command parse/probe and incomplete-read
-rollback, for its declared local scope. This does not establish production acceptance or authorize
-a live key install.
+or pulling a new image. Builder and repaired installer QA were observed against local revision
+`42cf0f40c98404d55585745b10311354661a5195`; the installer is included in pushed `main` checkpoint
+`329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the tree was clean
+at push.
+Builder self-validation reported `11` focused tests, Ruff check/format, `bash -n`, and ShellCheck
+**Pass**; initial independent QA found a P1 remote-shell quoting blocker and a P2 incomplete-read
+rollback blocker; the repaired QA recheck passed `13` tests, including command parse/probe and
+incomplete-read rollback, for its declared local scope. This does not establish production
+acceptance or authorize a live key install.
 
 Restricted Resend API-key creation still awaits browser action-time confirmation. No API key exists,
 no host installation has been observed, and no live invitation send or mailbox delivery has been

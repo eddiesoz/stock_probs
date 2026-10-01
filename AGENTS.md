@@ -203,23 +203,27 @@ separate limitations.
   `R-ASTRA-106-E13` records the Linode TCP and TLS 1.3 checks to `smtp.resend.com:2465` after the
   fixed controller applied operator SSH `142.198.155.54/32`. No API key exists, no host installation
   has been observed, and no live send or mailbox delivery is verified.
-- `R-ASTRA-106-E14` records the local commit
-  `42cf0f40c98404d55585745b10311354661a5195` (not pushed) containing
-  `infra/linode/install-resend-smtp-key.sh`, `infra/linode/smtp-credential-installer.py`, and
-  `tests/test_linode_smtp_credentials.py`; builder checks reported `11` focused tests, Ruff
-  check/format, `bash -n`, and ShellCheck **Pass** as self-validation. `R-ASTRA-106-E15` retains
-  the initial independent QA P1 remote-shell quoting blocker and P2 incomplete-read rollback
-  blocker. `R-ASTRA-106-E16` records the repaired independent QA recheck: `13` tests passed,
-  including command parse/probe and incomplete-read rollback, for its declared local scope. No API
-  key, host installation, live send, mailbox delivery, or production acceptance is evidenced.
+- `R-ASTRA-106-E14` records installer QA against local revision
+  `42cf0f40c98404d55585745b10311354661a5195`; that installer is included in pushed `main`
+  checkpoint `329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the
+  tree was clean at push.
+  Builder checks reported `11` focused tests, Ruff check/format, `bash -n`, and ShellCheck **Pass**
+  as self-validation. `R-ASTRA-106-E15` retains the initial independent QA P1 remote-shell
+  quoting blocker and P2 incomplete-read rollback blocker. `R-ASTRA-106-E16` records the repaired
+  independent QA recheck: `13` tests passed, including command parse/probe and incomplete-read
+  rollback, for its declared local scope. No API key, host installation, live send, mailbox
+  delivery, or production acceptance is evidenced.
 - `R-ASTRA-106-E17` records the final authored-documentation checks **Pass** on native x86_64 at
   `2026-10-01T14:55:29Z`–`14:56:27Z`, dirty `HEAD`
   `42cf0f40c98404d55585745b10311354661a5195`: `.dev-venv/bin/python scripts/validate_docs.py`
   reported `9` categories, `13` topics, and `7` governance entries; documentation tests passed
   `57` with one warning; coverage checked `133` mapped files; the coverage self-test passed `26`
   cases; and scoped `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`
-  exited `0`. Reviewer `LUNA MAX docs`; these checks do not establish installer, host, SMTP,
-  mailbox, or production acceptance.
+  exited `0`. Subsequent docs-only checkpoint
+  `329fdc595483fa3b112b98c7788d808348638faa` was pushed; pre-push documentation coverage reported
+  `133` mapped files/`10` changed passed, and `git ls-remote origin refs/heads/main` exactly
+  matched; the tree was clean at push. Reviewer `LUNA MAX docs`; these checks do not establish installer,
+  host, SMTP, mailbox, or production acceptance.
 - The intended Resend installer accepts only one operator-owned private, one-line API-key file
   through `infra/linode/install-resend-smtp-key.sh --api-key-file FILE`; host, SSH account, remote
   paths, Compose file, image behavior, and readiness URL remain fixed. The API key must stay outside
