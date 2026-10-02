@@ -122,15 +122,15 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 
 ### Current approval status
 
-`R-ASTRA-108` is the current authenticator-app chooser refinement. The deployed flow requires an
-app choice before key generation, retains that choice through setup and rotation, and provides
-manual-key and selected-app QR-scanner guidance without a generic `otpauth://` handler link.
-`R-ASTRA-107` is the preceding deployed key-reuse repair, and `R-ASTRA-103` is the deployed
-authenticator-only baseline; `R-ASTRA-101` and `R-ASTRA-102` are historical passkey/TOTP deployment
-records. The live passkey retirement redirect and public HTTPS boundary are verified. No owner TOTP
-code has been entered: owner enrollment and authenticated workspace retrieval remain
-**Unavailable**, and the post-deployment read-only query found zero owner factors and zero active
-pending enrollments. Physical iPhone and VoiceOver evidence also remain **Unavailable**.
+`R-ASTRA-109` is the current Microsoft Authenticator dropdown follow-on, deployed at pushed
+revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`. The chooser includes Microsoft Authenticator
+and gives its selected-app setup instructions. `R-ASTRA-108` is the preceding chooser refinement;
+`R-ASTRA-107` is the key-reuse repair, and `R-ASTRA-103` is the deployed authenticator-only baseline.
+The live passkey retirement redirect and public HTTPS boundary are verified. No owner TOTP code has
+been entered: owner enrollment and authenticated workspace retrieval remain **Unavailable**. The
+post-deployment read-only query found zero owner factors and zero active pending enrollments.
+Physical iPhone code acceptance and actual Microsoft Authenticator interaction remain
+**Unavailable**.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The three provider access items were created privately, Terraform
@@ -324,7 +324,37 @@ open.
   Apple Passwords with the new key before entering its code, and do not use the captured QR or old
   key.
 
-### Current authenticator-app chooser refinement (`R-ASTRA-108`)
+### Microsoft Authenticator dropdown follow-on (`R-ASTRA-109`)
+
+- **Status:** **In progress** for complete owner authentication. The Microsoft Authenticator option
+  and its app-specific setup guidance are deployed at pushed `main` revision
+  `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`, which matched `origin/main` with a clean tree at the
+  checkpoint. Microsoft Support documents adding non-Microsoft accounts through **+** >
+  **Other account**, scanning the site's QR code, and manual-code entry in flows that provide it.
+- The focused authenticator browser run passed `14/14` on desktop Chromium and emulated Pixel 7.
+  Production GitHub sign-in showed the Microsoft option and its guidance; selection enabled setup-key
+  generation. No setup key or TOTP code was generated or entered.
+- **Final local gate:** `TASK_ID=R-ASTRA-109 ./scripts/local-gate.sh check` passed with exit `0` on
+  native x86_64 from `2026-10-02T00:30:17Z` to `00:37:23Z`; receipt
+  `test-results/local-gates/R-ASTRA-109-20261002T003017Z/evidence.json` records dirty base
+  revision `9f983a08bf5aeef5f1ace1bd61afee20228499d7`, `763` Python tests passed, `4` deselected,
+  `85.47%` coverage, and frontend `28`, build, typecheck, and documentation checks passed.
+- **Release and deployment:** GitHub Release
+  `signal-ledger-3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d` has archive SHA-256
+  `82acc1fcb52da66ee0ced78e8549780cd81ba31f73a657f761cdeb41284a0068` and Linux/amd64 image
+  `sha256:91253b9384318853c36b9949f091bab747b8d9dac930e002f0dc116aef05c8e8`, size `103157486`
+  bytes. The first MCP plan returned `remote_operation_failed`; fixed restricted helper plan
+  `5dc7eb3db7946693b2043895e8f50c4d` passed, then MCP deploy succeeded. Status reported schema `10`
+  ready, exact revision, backup `pre-deploy-3ec26d2826bf4acf-0f9c4edb.spbackup`, `failed: null`,
+  `loopback_only: true`, and deployment time `2026-10-02T00:42:50.439878Z`.
+- **Live boundary and limits:** health/auth status returned `200`, anonymous history `401`, and
+  `/overview` redirected `303` to sign-in, with `no-store`/`DYNAMIC` responses. The post-deployment
+  read-only query found zero owner factors and zero active pending enrollments; its latest attempt
+  was `2026-10-01T15:06:10.939538+00:00`. Owner code acceptance, authenticated workspace retrieval,
+  physical iPhone code acceptance, and actual Microsoft Authenticator interaction remain
+  **Unavailable**. This is not complete authentication acceptance.
+
+### Preceding authenticator-app chooser refinement (`R-ASTRA-108`)
 
 - **Status:** **In progress** for complete authentication acceptance. The app chooser refinement is
   deployed at pushed revision `d5d2cbf0314091977358c3d3a90bfab096286bd4`; it does not close the

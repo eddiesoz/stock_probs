@@ -193,7 +193,8 @@ manager. The deployed schema-10 migration revokes stored passkeys and old passke
 Ledger does not create or accept WebAuthn credentials.
 
 The R-ASTRA-103 implementation is the deployed authenticator-only baseline. R-ASTRA-107 is the
-deployed enrollment key-reuse repair, and R-ASTRA-108 adds an app chooser before setup-key generation.
+deployed enrollment key-reuse repair, R-ASTRA-108 introduced an app chooser before setup-key
+generation, and R-ASTRA-109 adds Microsoft Authenticator with app-specific setup guidance.
 Complete owner authentication remains pending. The
 R-ASTRA-103 local gate passed: receipt `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` reports `707`
 Python tests passed, `4` live tests deselected, `85.25%` coverage, frontend build/typecheck and
@@ -223,13 +224,14 @@ without exposing it, and expiry plus explicit rotation controls were visible. No
 entered, so owner enrollment and authenticated workspace retrieval remain **Unavailable**; physical
 iPhone code validation is **Unavailable**. This is deployment evidence, not complete auth acceptance.
 
-The current `R-ASTRA-108` chooser requires an app selection before key generation, keeps that choice
-through setup and rotation, and guides manual-key entry or scanning with the selected app's in-app QR
-reader. It removes the generic `otpauth://` handler link. The deployed production check showed the
-chooser before setup; no key was generated or code entered, and the read-only database check found
-zero owner factors and zero active pending enrollments. Owner code acceptance and authenticated
-workspace retrieval remain **Unavailable**. The exact gate, browser, release, and deployment record
-is in the [MVP plan](MVP-PLAN.md#current-authenticator-app-chooser-refinement-r-astra-108).
+The current `R-ASTRA-109` follow-on adds Microsoft Authenticator to the chooser and displays its
+setup guidance. The live selection flow passed, but no setup key or code was entered; the read-only
+database check found zero owner factors and zero active pending enrollments. Owner code acceptance,
+authenticated workspace retrieval, actual Microsoft Authenticator interaction, and physical iPhone
+code acceptance remain **Unavailable**. See the [MVP plan](MVP-PLAN.md#microsoft-authenticator-dropdown-follow-on-r-astra-109)
+for the evidence record. The preceding `R-ASTRA-108` chooser requires a selection before setup,
+retains it through rotation, and guides manual entry or scanning with the selected app's QR reader;
+it removes the generic `otpauth://` handler link.
 
 The earlier deployment used reviewed revision `9cc0751da459e911d285b14e0d57a29320a9f366`. GitHub Release
 `signal-ledger-9cc0751da459e911d285b14e0d57a29320a9f366` has archive SHA-256

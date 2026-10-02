@@ -392,7 +392,54 @@ an explicit replacement action after a cross-session conflict.
 | `R-ASTRA-107-E10` | Release publication, operator-access refresh, and production deployment. | Pushed `main` revision `a2247cce6e9f55fc81f96da3698f424ae2a2dc20`; Linux/amd64; archive SHA-256 `85c53648c8c1810bfc37153c404d4064ee468c81ce78caaf0666e71bb5221106`; image `sha256:b4249173085ef5b7b6c0df8741aa34d99e6b1d488ab9bfc829010398a422d2a1`; size `103160002` bytes; exact command/UTC/reviewer not supplied. | **Pass** for the declared deployment scope: publisher re-download passed; Terraform MCP applied `50.21.67.178/32` to firewall `177236117`; two MCP plans returned `remote_operation_failed`; fixed host-helper plan `105579dd822e69b03360201df2276bc3` succeeded; MCP deploy reached readiness schema `10`; status reported revision `a2247cc`, `failed: null`, `loopback_only: true`, backup `pre-deploy-a2247cce6e9f55fc-6ef1c2e6.spbackup`, and `deployed_at=2026-10-01T19:58:26.230020Z`. The transient plan failures remain visible. |
 | `R-ASTRA-107-E11` | Public boundary and live setup/reuse check. | Production HTTPS and IAB; exact probe/browser UTC, command, artifact, and reviewer were not supplied; no QR or secret was recorded. | **Pass** for the bounded boundary/UI scope: health `200`, auth status `200`, anonymous history `401`, overview `303` to sign-in, all `no-store`/`DYNAMIC`; GitHub sign-in as `jtmb` reached setup; repeated default starts across reload returned the same pending key when compared locally without exposing it, with expiry and explicit rotation controls visible. No TOTP code was entered; owner enrollment, workspace access, and physical iPhone code validation remain **Unavailable**. |
 
-## Current authenticator-app chooser refinement (`R-ASTRA-108`)
+## Microsoft Authenticator dropdown follow-on (`R-ASTRA-109`)
+
+**Status: In progress** for complete owner authentication. The authenticator selector now includes
+Microsoft Authenticator and displays app-specific setup guidance after selection. Microsoft Support
+documents adding non-Microsoft accounts through **+** > **Other account**, scanning the site's QR
+code, and entering a code manually where that option is available. The implementation and guide
+were pushed at exact `main` revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`; the tree was clean
+and matched `origin/main` at that checkpoint. `R-ASTRA-108` is the preceding chooser refinement.
+
+Focused authenticator browser QA passed `14/14` on desktop Chromium and emulated Pixel 7. The
+production IAB showed the Microsoft option and its setup instructions after GitHub sign-in as
+`jtmb`; selecting it enabled setup-key generation. No setup key or TOTP code was generated or
+entered. Post-deployment read-only database evidence found zero owner factors and zero active
+pending enrollments, with latest attempt `2026-10-01T15:06:10.939538+00:00`. Owner code acceptance
+and authenticated workspace retrieval therefore remain **Unavailable**; actual Microsoft app
+interaction and physical iPhone code acceptance also remain **Unavailable**.
+
+The final local gate command was `TASK_ID=R-ASTRA-109 ./scripts/local-gate.sh check`. It **Passed**
+with exit `0` on native x86_64 from `2026-10-02T00:30:17Z` to `00:37:23Z`. Receipt:
+`test-results/local-gates/R-ASTRA-109-20261002T003017Z/evidence.json`; it records dirty base
+revision `9f983a08bf5aeef5f1ace1bd61afee20228499d7`, `763` Python tests passed, `4` deselected,
+`85.47%` coverage, and completed checks `documentation-completeness`,
+`frontend-npm-ci-typecheck-build-test-stage`, and `python-checks`. Frontend build, typecheck,
+documentation checks, and `28` frontend checks passed.
+
+GitHub Release `signal-ledger-3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d` has archive SHA-256
+`82acc1fcb52da66ee0ced78e8549780cd81ba31f73a657f761cdeb41284a0068`, Linux/amd64 image ID
+`sha256:91253b9384318853c36b9949f091bab747b8d9dac930e002f0dc116aef05c8e8`, and size `103157486`
+bytes. The first MCP `plan_deploy` returned `remote_operation_failed`; fixed restricted helper plan
+`5dc7eb3db7946693b2043895e8f50c4d` passed, followed by successful MCP deployment. Status reported
+schema `10` ready, exact revision, backup
+`pre-deploy-3ec26d2826bf4acf-0f9c4edb.spbackup`, `failed: null`, `loopback_only: true`, and
+`deployed_at=2026-10-02T00:42:50.439878Z`.
+
+Public HTTPS returned health/auth status `200`, anonymous history `401`, and `/overview` `303` to
+sign-in, all with `no-store`/`DYNAMIC` responses. This deployment and dropdown observation do not
+establish owner TOTP enrollment or complete authentication acceptance.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `R-ASTRA-109-E1` | Microsoft Authenticator selector option and selected-app guidance, user guide, and implementation checkpoint. | Pushed `main` revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`; clean tree and exact `origin/main` match at checkpoint; exact command, UTC, artifact, and reviewer not supplied. | **Pass** for the declared chooser and guide scope. Microsoft Support confirms the **+** > **Other account** route for non-Microsoft QR enrollment and describes manual entry when scanning is unavailable. This does not prove an actual device pairing. |
+| `R-ASTRA-109-E2` | Focused authenticator browser run. | Desktop Chromium and emulated Pixel 7; exact command, UTC, revision, artifact, and reviewer not supplied. | **Pass**: `14/14` cases. The Microsoft Authenticator choice displayed its guidance and enabled setup-key generation. No key/code was generated or entered. |
+| `R-ASTRA-109-E3` | Final local gate. | Native x86_64; dirty base `9f983a08bf5aeef5f1ace1bd61afee20228499d7`; `2026-10-02T00:30:17Z`–`00:37:23Z`; receipt `test-results/local-gates/R-ASTRA-109-20261002T003017Z/evidence.json`. | **Pass**, exit `0`: `763` Python tests passed, `4` deselected, `85.47%` coverage; frontend `28`, build, typecheck, and documentation checks passed. Command `TASK_ID=R-ASTRA-109 ./scripts/local-gate.sh check`. |
+| `R-ASTRA-109-E4` | Release publication and production deployment. | Pushed exact `main` revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`; archive SHA-256 `82acc1fcb52da66ee0ced78e8549780cd81ba31f73a657f761cdeb41284a0068`; Linux/amd64 image `sha256:91253b9384318853c36b9949f091bab747b8d9dac930e002f0dc116aef05c8e8`, `103157486` bytes; deployed `2026-10-02T00:42:50.439878Z`. | **Pass** for deployment scope: first MCP plan returned `remote_operation_failed`; fixed restricted helper plan `5dc7eb3db7946693b2043895e8f50c4d` passed; MCP deploy succeeded. Status reported schema `10` ready, backup `pre-deploy-3ec26d2826bf4acf-0f9c4edb.spbackup`, exact revision, `failed: null`, and `loopback_only: true`. The initial plan failure remains visible. |
+| `R-ASTRA-109-E5` | Production HTTPS boundary, Microsoft selector behavior, and read-only owner enrollment state. | Production HTTPS/IAB/operator read-only DB; exact probe/query/browser UTC, command, artifact, and reviewer not supplied; no setup key or code generated/recorded. | **Pass** for bounded boundary/UI scope: health/auth status `200`, anonymous history `401`, `/overview` `303`, responses `no-store`/`DYNAMIC`; Microsoft Authenticator appeared and selection displayed guidance/enabled key generation. DB found zero owner factors and zero active pending enrollments; latest attempt `2026-10-01T15:06:10.939538+00:00`. Owner code acceptance, workspace retrieval, actual app interaction, and physical iPhone remain **Unavailable**. |
+| `R-ASTRA-109-E6` | Final authored-documentation validator, docs tests, map coverage, coverage self-test, and scoped diff check for this reconciliation. | Native x86_64; dirty `HEAD` `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`; run date `2026-10-02`, exact UTC window not captured; commands `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -o addopts='' tests/test_docs_validation.py -ra`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`; no separate artifact. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; docs tests passed `57` with one warning; coverage checked `133` mapped files; self-test passed `26` cases; scoped diff check exited `0`. Reviewer `LUNA MAX docs`; the post-change Git checkpoint remains with the coordinator. |
+
+## Preceding authenticator-app chooser refinement (`R-ASTRA-108`)
 
 **Status: In progress** for complete authentication acceptance. This follow-on refines the deployed
 schema-10 enrollment flow: the user must select an authenticator app before generating a setup key;

@@ -91,8 +91,10 @@ or accept WebAuthn credentials.
 After GitHub sign-in and invitation validation, open `/authenticator?mode=enroll`. First choose
 Apple Passwords, Google Authenticator, Microsoft Authenticator, 1Password, or another app in the
 in-page selector. For Microsoft Authenticator, choose **Other account** in that app and scan with
-its own QR reader, or use its manual-entry option on the same phone when available. The page
-then lets you generate a setup key and shows instructions for the selected app. The selector guides
+its own QR reader, or use its manual-entry option on the same phone when available. Microsoft's
+[instructions for adding non-Microsoft accounts](https://support.microsoft.com/en-us/authenticator/how-to-add-your-accounts-to-microsoft-authenticator)
+describe the QR flow and manual entry when scanning is unavailable. The page then lets you generate
+a setup key and shows instructions for the selected app. The selector guides
 setup; it cannot launch that app or change iOS link routing. On the same iPhone, copy the displayed
 manual setup key and paste it into the chosen app. The page does not offer a generic `otpauth://`
 link because iOS may open a different app from the one selected. To use a QR code, display the
