@@ -240,8 +240,13 @@ when the authenticator selection changes. SOL's scoped review and local enrollme
 Luna focused browser QA passed `22/22` on desktop and emulated Pixel 7 with no overflow at mobile
 `360px`. The earlier interrupted gates remain **Unavailable** as historical evidence, while the final
 `TASK_ID=R-ASTRA-110 ./scripts/local-gate.sh check` passed with `763` tests, `4` deselected,
-`85.47%` coverage, frontend `28`, and final backup `61` passed. Deployment, native Microsoft app
-interaction, and physical iPhone routing remain pending or **Unavailable**. See the [R-ASTRA-110
+`85.47%` coverage, frontend `28`, and final backup `61` passed. Native Microsoft app interaction
+and physical iPhone routing remain **Unavailable**. The declared deployment scope completed at pushed
+revision `566baab14c298fb52b5edb3138d64cd3e9123311`; its release archive
+and Linux/amd64 image were re-download verified, the native MCP deployment reached schema `10` ready,
+and public health/auth/history/overview probes returned `200`/`200`/`401`/`303` with `no-store`/`DYNAMIC`.
+The signed-in IAB showed the manual-key, in-app-scanner, and Camera/Photos warning guidance. No owner
+key or code was entered; broader authentication acceptance remains **Unavailable**. See the [R-ASTRA-110
 evidence record](MVP-PLAN.md#microsoft-authenticator-ios-setup-routing-follow-on-r-astra-110).
 
 The earlier deployment used reviewed revision `9cc0751da459e911d285b14e0d57a29320a9f366`. GitHub Release

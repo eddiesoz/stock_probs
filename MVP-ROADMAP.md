@@ -4,8 +4,8 @@
 
 ### Current approval status
 
-`R-ASTRA-110` is the current Microsoft Authenticator iOS setup-routing follow-on in the dirty
-working tree at `416b29b23f3e70af1635806a77164392de76d64b`. `R-ASTRA-109` is the preceding deployed
+`R-ASTRA-110` is the current Microsoft Authenticator iOS setup-routing follow-on, deployed at pushed
+clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311`. `R-ASTRA-109` is the preceding deployed
 Microsoft Authenticator dropdown follow-on, extending the chooser introduced by `R-ASTRA-108` after
 the deployed key-reuse repair in `R-ASTRA-107`; `R-ASTRA-103` is the deployed authenticator-only baseline.
 Invite-only GitHub OAuth remains the identity boundary, while a six-digit TOTP code from an
@@ -50,9 +50,9 @@ second-user acceptance remain unavailable.
 receipts must not be used as acceptance evidence for this TOTP release.
 
 `EXP-M09` remains the current approval-gated export item. `R-ASTRA-110` remains **In progress** for
-complete owner authentication; its focused local protocol and browser scope passed, while the
-incomplete full-gate aggregate, deployment, native Microsoft app interaction, and physical iPhone
-code acceptance remain **Unavailable** or pending. `R-ASTRA-109` remains the preceding deployed
+complete owner authentication but is **Completed** for its declared UI repair, local QA, deployment,
+and live-guidance scope; native Microsoft app interaction, owner enrollment, and physical iPhone code
+acceptance remain **Unavailable**. `R-ASTRA-109` remains the preceding deployed
 chooser record: its live selection flow displayed guidance, but no setup key or TOTP code was
 generated or entered, and the read-only database query found zero owner factors and zero active
 pending enrollments. `R-ASTRA-107` remains
@@ -426,7 +426,8 @@ deployment evidence does not claim complete auth acceptance.
 
 ## Microsoft Authenticator iOS setup-routing follow-on (`R-ASTRA-110`)
 
-**Status: In progress** for complete owner authentication. The dirty working-tree source at
+**Status: In progress** for complete owner authentication; **Completed** for the declared UI repair,
+local QA, deployment, and live-guidance scope. The dirty working-tree source at
 `416b29b23f3e70af1635806a77164392de76d64b` makes Microsoft Authenticator default to same-phone
 manual key entry, keeps its QR hidden until the user selects **Another screen: scan from inside
 Microsoft Authenticator**, warns against iPhone Camera or Photos, and resets the setup method to
@@ -457,9 +458,25 @@ only documentation and frontend checks, with Python completion missing, so that 
 `HEAD` `416b29b23f3e70af1635806a77164392de76d64b` from `2026-10-02T19:44:59Z` to `19:56:44Z`; receipt
 `test-results/local-gates/R-ASTRA-110-20261002T194459Z/evidence.json` records documentation, frontend,
 and Python checks, `763` tests with zero errors/failures/skips, `4` deselected, `85.47%` coverage,
-frontend `28`, and final backup `61` passed. Deployment and release remain pending. Owner TOTP
-acceptance, authenticated workspace retrieval, physical iPhone routing, and actual Microsoft
-Authenticator interaction remain **Unavailable**.
+frontend `28`, and final backup `61` passed.
+
+The declared release and deployment scope then completed. Pushed clean `main` revision
+`566baab14c298fb52b5edb3138d64cd3e9123311` was published by
+`./scripts/publish-production-image.sh` with exit `0`; GitHub Release
+`signal-ledger-566baab14c298fb52b5edb3138d64cd3e9123311` has archive SHA-256
+`6867ddc1a78a432d5e9c0a990089f746ad3257e9f26bdf38539054160e4cad73`, Linux/amd64 image
+`sha256:151c527557161917f7184f56563f29d29fadf7d1efac7d1a2051004d1e986252`, size `103163291`, and
+verified re-download. The fixed operator firewall refresh succeeded; the first MCP plan returned
+`remote_operation_failed`, fixed restricted helper plan `22b896023069ce3c5ac09efc5a2bd19a` succeeded,
+and native MCP deploy reached schema `10` ready. Status reported exact revision, `failed: null`,
+`loopback_only: true`, backup `pre-deploy-566baab14c298fb5-93cbdab4.spbackup`, and
+`deployed_at=2026-10-02T20:07:20.087209Z`. Public probes at `2026-10-02T20:07:33.739529Z` returned
+health `200`, auth status `200`, anonymous history `401`, and overview `303`, all `no-store`/`DYNAMIC`.
+The signed-in IAB showed the new Microsoft intro, manual-key and in-app-scanner guidance, and the
+explicit Camera/Photos Apple Passwords warning; temporary screenshot artifact
+`/tmp/signal-ledger-r110-release/production-microsoft-guidance.png`. No owner key was generated or
+code entered. Native iPhone/Microsoft Authenticator interaction, owner enrollment, authenticated
+workspace retrieval, and broader authentication acceptance remain **Unavailable**.
 See the [MVP plan](MVP-PLAN.md#microsoft-authenticator-ios-setup-routing-follow-on-r-astra-110)
 for the evidence ledger.
 

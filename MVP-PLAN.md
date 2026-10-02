@@ -448,7 +448,8 @@ establish owner TOTP enrollment or complete authentication acceptance.
 
 ## Microsoft Authenticator iOS setup-routing follow-on (`R-ASTRA-110`)
 
-**Status: In progress** for complete owner authentication. This source follow-on refines the
+**Status: In progress** for complete owner authentication; **Completed** for the declared UI repair,
+local QA, deployment, and live-guidance scope. This source follow-on refines the
 Microsoft Authenticator enrollment view for iOS: it defaults to **On this phone: copy the setup
 key**, hides the Microsoft QR until the user explicitly selects **Another screen: scan from inside
 Microsoft Authenticator**, and warns against iPhone Camera or Photos, which may route the QR to Apple
@@ -479,9 +480,27 @@ only documentation and frontend checks, with Python completion missing, so the a
 `HEAD` `416b29b23f3e70af1635806a77164392de76d64b` from `2026-10-02T19:44:59Z` to
 `19:56:44Z`; receipt `test-results/local-gates/R-ASTRA-110-20261002T194459Z/evidence.json` records
 documentation, frontend, and Python checks, `763` tests with zero errors/failures/skips, `4`
-deselected, `85.47%` coverage, frontend `28`, and final backup `61` passed. Deployment and release
-remain pending. Actual Microsoft app interaction, physical iPhone routing, owner TOTP acceptance,
-and authenticated workspace retrieval remain **Unavailable**.
+deselected, `85.47%` coverage, frontend `28`, and final backup `61` passed.
+
+The declared release and deployment scope then completed. Pushed clean `main` revision
+`566baab14c298fb52b5edb3138d64cd3e9123311` was published by
+`./scripts/publish-production-image.sh` with exit `0`; GitHub Release
+`signal-ledger-566baab14c298fb52b5edb3138d64cd3e9123311` has archive SHA-256
+`6867ddc1a78a432d5e9c0a990089f746ad3257e9f26bdf38539054160e4cad73`, Linux/amd64 image
+`sha256:151c527557161917f7184f56563f29d29fadf7d1efac7d1a2051004d1e986252`, size `103163291`, and
+verified publisher re-download. The fixed operator firewall refresh succeeded; the first MCP plan
+returned `remote_operation_failed`, fixed restricted helper plan
+`22b896023069ce3c5ac09efc5a2bd19a` succeeded, and native MCP deploy reached schema `10` ready.
+Status reported the exact revision, `failed: null`, `loopback_only: true`, backup
+`pre-deploy-566baab14c298fb5-93cbdab4.spbackup`, and
+`deployed_at=2026-10-02T20:07:20.087209Z`. Public probes at
+`2026-10-02T20:07:33.739529Z` returned health `200`, auth status `200`, anonymous history `401`, and
+overview `303`, all with `no-store`/`DYNAMIC`. The signed-in IAB showed the new Microsoft intro,
+manual-key and in-app-scanner guidance, and the explicit Camera/Photos Apple Passwords warning;
+temporary screenshot artifact `/tmp/signal-ledger-r110-release/production-microsoft-guidance.png`.
+No owner key was generated or code entered. Native iPhone/Microsoft Authenticator interaction,
+owner enrollment, authenticated workspace retrieval, and broader authentication acceptance remain
+**Unavailable**.
 
 | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
 | --- | --- | --- | --- |
@@ -490,7 +509,10 @@ and authenticated workspace retrieval remain **Unavailable**.
 | `R-ASTRA-110-E3` | Independent enrollment and TOTP end-to-end contract. | Native x86_64; dirty `HEAD` `416b29b23f3e70af1635806a77164392de76d64b`; disposable fixture FastAPI `TestClient`; `.dev-venv/bin/python - <<'PY'`; `2026-10-02T18:58:27.159923Z`–`18:58:31.766543Z`; no artifact saved. | **Pass** for the local contract scope: enrollment HTTP `200`, ten recovery codes, enrolled status, history HTTP `200`, matching parsed `otpauth` URI/manual key, and independent standard-library SHA-1/6-digit/30-second generation. No secret/code/recovery value was printed; temporary data was deleted. Reviewer `GPT-6.1 Sol`. |
 | `R-ASTRA-110-E4` | Earlier full local-gate attempt. | Artifact directory `test-results/local-gates/R-ASTRA-110-20261002T182918Z/`; current dirty working tree; exact command, UTC window, and reviewer were not supplied. | **Unavailable**: interrupted attempt left no final `evidence.json` and no running process. It is not acceptance evidence. |
 | `R-ASTRA-110-E5` | Focused browser QA and the interrupted full-gate session. | Native x86_64; desktop and emulated Pixel 7 browser cases plus mobile `360px` overflow check; full-gate session `81547` ended exit `143`; receipt `test-results/local-gates/R-ASTRA-110-20261002T185559Z/evidence.json`; dirty `HEAD` `416b29b23f3e70af1635806a77164392de76d64b`; exact browser command, UTC, and separate artifact were not supplied. | **Pass** for the focused browser scope: `22/22`, no mobile overflow, Microsoft default QR absent until scanner selection and scanner QR present. **Unavailable** for session `81547`: the receipt embeds Pass/0 fields but lists only documentation and frontend checks, with Python completion missing. Native iOS/Microsoft app interaction remains unavailable. Reviewer `Luna xhigh` for browser scope. |
-| `R-ASTRA-110-E6` | Final full local gate. | Native x86_64; dirty `HEAD` `416b29b23f3e70af1635806a77164392de76d64b`; `2026-10-02T19:44:59Z`–`19:56:44Z`; receipt `test-results/local-gates/R-ASTRA-110-20261002T194459Z/evidence.json`; command `TASK_ID=R-ASTRA-110 ./scripts/local-gate.sh check`. | **Pass**, exit `0`: documentation, frontend, and Python checks completed; JUnit/stdout reported `763` tests passed, `0` errors/failures/skips, `4` deselected, `85.47%` coverage, frontend `28`, and final backup `61` passed. Release, deployment, native iOS, and Microsoft Authenticator interaction remain pending or **Unavailable**. |
+| `R-ASTRA-110-E6` | Final full local gate. | Native x86_64; dirty `HEAD` `416b29b23f3e70af1635806a77164392de76d64b`; `2026-10-02T19:44:59Z`–`19:56:44Z`; receipt `test-results/local-gates/R-ASTRA-110-20261002T194459Z/evidence.json`; command `TASK_ID=R-ASTRA-110 ./scripts/local-gate.sh check`. | **Pass**, exit `0`: documentation, frontend, and Python checks completed; JUnit/stdout reported `763` tests passed, `0` errors/failures/skips, `4` deselected, `85.47%` coverage, frontend `28`, and final backup `61` passed. Release and deployment are recorded in E7-E8; native iOS and Microsoft Authenticator interaction remain **Unavailable**. |
+| `R-ASTRA-110-E7` | Release publication and immutable image verification. | Pushed clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311`; command `./scripts/publish-production-image.sh`; Linux/amd64; exact UTC not supplied; no separate artifact. | **Pass**, exit `0`: release `signal-ledger-566baab14c298fb52b5edb3138d64cd3e9123311`, archive SHA-256 `6867ddc1a78a432d5e9c0a990089f746ad3257e9f26bdf38539054160e4cad73`, image `sha256:151c527557161917f7184f56563f29d29fadf7d1efac7d1a2051004d1e986252`, size `103163291`, and publisher re-download verification passed. |
+| `R-ASTRA-110-E8` | Operator access refresh and production deployment. | Native MCP/fixed target; fixed firewall `177236117`; pushed revision `566baab14c298fb52b5edb3138d64cd3e9123311`; deployed `2026-10-02T20:07:20.087209Z`; coordinator `GPT-6.1 Sol`; tools `mcp__signal_ledger_deploy__refresh_operator_access`, `plan_deploy`, `deploy`, and `status`. | **Pass** for the declared deployment scope: operator refresh succeeded; first MCP plan returned `remote_operation_failed`; fixed restricted helper plan `22b896023069ce3c5ac09efc5a2bd19a` succeeded; native MCP deploy reached schema `10` ready; status reported exact revision, `failed: null`, `loopback_only: true`, backup `pre-deploy-566baab14c298fb5-93cbdab4.spbackup`. |
+| `R-ASTRA-110-E9` | Public boundary and signed-in Microsoft guidance observation. | Production HTTPS and live CUA IAB; probes `2026-10-02T20:07:33.739529Z`; CUA reloaded production and selected `microsoft-authenticator`; screenshot `/tmp/signal-ledger-r110-release/production-microsoft-guidance.png`; exact IAB UTC not supplied. | **Pass** for the bounded live scope: health `200`, auth status `200`, anonymous history `401`, `/overview` `303`, all `no-store`/`DYNAMIC`; signed-in `jtmb` IAB showed the new intro, manual-key and in-app-scanner guidance, explicit Camera/Photos Apple Passwords warning, and enabled generation. No owner key/code was generated or entered. Native iPhone/Microsoft Authenticator interaction and owner enrollment remain **Unavailable**. |
 
 ## Preceding authenticator-app chooser refinement (`R-ASTRA-108`)
 

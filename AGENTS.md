@@ -122,9 +122,9 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 
 ### Current approval status
 
-`R-ASTRA-110` is the current Microsoft Authenticator iOS setup-routing follow-on in the dirty
-working tree at `416b29b23f3e70af1635806a77164392de76d64b`; `R-ASTRA-109` is the preceding deployed
-dropdown follow-on at pushed revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`. The chooser includes
+`R-ASTRA-110` is the current Microsoft Authenticator iOS setup-routing follow-on, deployed at pushed
+clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311`; `R-ASTRA-109` is the preceding
+deployed dropdown follow-on at pushed revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`. The chooser includes
 Microsoft Authenticator and gives its selected-app setup instructions. `R-ASTRA-108` is the preceding chooser refinement;
 `R-ASTRA-107` is the key-reuse repair, and `R-ASTRA-103` is the deployed authenticator-only baseline.
 The live passkey retirement redirect and public HTTPS boundary are verified. No owner TOTP code has
@@ -362,7 +362,8 @@ open.
 
 ### Microsoft Authenticator iOS setup-routing follow-on (`R-ASTRA-110`)
 
-- **Status:** **In progress** for complete owner authentication. The dirty working-tree source at
+- **Status:** **In progress** for complete owner authentication; **Completed** for the declared UI
+  repair, local QA, deployment, and live-guidance scope. The dirty working-tree source at
   `416b29b23f3e70af1635806a77164392de76d64b` defaults Microsoft Authenticator to same-phone manual
   key entry, hides its QR until the user selects **Another screen: scan from inside Microsoft
   Authenticator**, warns against iPhone Camera or Photos, and resets the setup method to manual when
@@ -390,9 +391,23 @@ open.
   `HEAD` `416b29b23f3e70af1635806a77164392de76d64b` from `2026-10-02T19:44:59Z` to
   `19:56:44Z`; receipt `test-results/local-gates/R-ASTRA-110-20261002T194459Z/evidence.json`
   records documentation, frontend, and Python checks, `763` tests with `0` errors/failures and no
-  skips, `4` deselected, `85.47%` coverage, frontend `28`, and final backup `61` passed. Release and
-  deployment remain pending. Owner TOTP acceptance, authenticated workspace retrieval, physical
-  iPhone routing, and actual Microsoft Authenticator interaction remain **Unavailable**.
+  skips, `4` deselected, `85.47%` coverage, frontend `28`, and final backup `61` passed. The declared
+  release and deployment scope then completed. Publisher command `./scripts/publish-production-image.sh`
+  exited `0` for pushed clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311`; GitHub
+  Release `signal-ledger-566baab14c298fb52b5edb3138d64cd3e9123311` has archive SHA-256
+  `6867ddc1a78a432d5e9c0a990089f746ad3257e9f26bdf38539054160e4cad73`, Linux/amd64 image
+  `sha256:151c527557161917f7184f56563f29d29fadf7d1efac7d1a2051004d1e986252`, size `103163291`,
+  and verified re-download. The fixed operator firewall refresh succeeded; the first MCP plan
+  returned `remote_operation_failed`, fixed restricted helper plan `22b896023069ce3c5ac09efc5a2bd19a`
+  succeeded, and native MCP deploy reached schema `10` ready. Status reported the exact revision,
+  `failed: null`, `loopback_only: true`, backup `pre-deploy-566baab14c298fb5-93cbdab4.spbackup`,
+  and `deployed_at=2026-10-02T20:07:20.087209Z`. Public probes at `2026-10-02T20:07:33.739529Z`
+  returned health `200`, auth status `200`, anonymous history `401`, and overview `303`, all
+  `no-store`/`DYNAMIC`. The signed-in IAB showed the new Microsoft guidance describing manual-key and
+  in-app-scanner routes, and the explicit Camera/Photos Apple Passwords warning; screenshot artifact:
+  `/tmp/signal-ledger-r110-release/production-microsoft-guidance.png`. Owner TOTP acceptance,
+  authenticated workspace retrieval, physical iPhone routing, and actual Microsoft Authenticator
+  interaction remain **Unavailable**.
 
 ### Preceding authenticator-app chooser refinement (`R-ASTRA-108`)
 
