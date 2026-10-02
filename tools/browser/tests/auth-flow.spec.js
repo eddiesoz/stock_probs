@@ -190,6 +190,9 @@ test("provisional authenticator setup and verification use the local TOTP contra
   await expect(page.getByText(/Passwords and select the Signal Ledger login/)).toBeVisible();
   await appChoice.selectOption("google-authenticator");
   await expect(page.getByText(/Google Authenticator, tap \+, then Enter a setup key/)).toBeVisible();
+  await appChoice.selectOption("microsoft-authenticator");
+  await expect(page.getByText(/After generating a setup key, open Microsoft Authenticator, tap \+, then choose Other account/)).toBeVisible();
+  await expect(page.getByText(/Use the resulting six-digit code, not a Microsoft work or school approval prompt/)).toBeVisible();
   await appChoice.selectOption("1password");
   await expect(page.getByText(/One-Time Password\. On this iPhone, paste the copied setup key/)).toBeVisible();
   await appChoice.selectOption("other");

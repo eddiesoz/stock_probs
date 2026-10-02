@@ -29,7 +29,7 @@ interface TotpResponse {
 }
 
 const CODE_LENGTH = 6;
-type SetupApp = "" | "apple-passwords" | "google-authenticator" | "1password" | "other";
+type SetupApp = "" | "apple-passwords" | "google-authenticator" | "microsoft-authenticator" | "1password" | "other";
 
 function enrollmentExpiryMs(enrollment: TotpEnrollment | null): number {
   return enrollment ? Date.parse(enrollment.expires_at) : Number.NaN;
@@ -70,6 +70,8 @@ function setupInstructions(app: SetupApp) {
       return "Open Passwords and select the Signal Ledger login (create it first if needed). Tap Edit, then Set Up Code, enter this setup key, and tap Use Setup Key.";
     case "google-authenticator":
       return "Open Google Authenticator, tap +, then Enter a setup key. Name it Signal Ledger, paste the key, choose Time based if asked, and add it.";
+    case "microsoft-authenticator":
+      return "After generating a setup key, open Microsoft Authenticator, tap +, then choose Other account. Scan this page’s QR code using the app’s scanner from another screen. On this iPhone, choose manual entry in the app and paste the setup key if that option is available. Use the resulting six-digit code, not a Microsoft work or school approval prompt.";
     case "1password":
       return "Open and unlock 1Password. Open or create the Signal Ledger Login item, tap Edit, then Add More > One-Time Password. On this iPhone, paste the copied setup key into the field; from another screen, you can scan this page’s QR code instead. Save the item.";
     case "other":
@@ -248,6 +250,7 @@ export default function AuthenticatorPage() {
         <option value="">Choose an app</option>
         <option value="apple-passwords">Apple Passwords</option>
         <option value="google-authenticator">Google Authenticator</option>
+        <option value="microsoft-authenticator">Microsoft Authenticator</option>
         <option value="1password">1Password</option>
         <option value="other">Other authenticator app</option>
       </select>

@@ -63,6 +63,8 @@ test("auth routes cover invited sign-in, authenticator setup, retired passkey li
   assert.match(authenticator, /Which authenticator do you want to use/);
   assert.match(authenticator, /Apple Passwords/);
   assert.match(authenticator, /Google Authenticator/);
+  assert.match(authenticator, /Microsoft Authenticator/);
+  assert.match(authenticator, /Other account\. Scan this page’s QR code/);
   assert.match(authenticator, /1Password/);
   assert.match(authenticator, /navigator\.clipboard\.writeText\(enrollment\.secret\)/);
   assert.match(authenticator, /disabled={busy !== null \|\| status\?\.can_enroll === false \|\| !setupApp}/);

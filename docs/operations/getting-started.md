@@ -89,7 +89,9 @@ or accept WebAuthn credentials.
 ### Authenticator enrollment and recovery
 
 After GitHub sign-in and invitation validation, open `/authenticator?mode=enroll`. First choose
-Apple Passwords, Google Authenticator, 1Password, or another app in the in-page selector. The page
+Apple Passwords, Google Authenticator, Microsoft Authenticator, 1Password, or another app in the
+in-page selector. For Microsoft Authenticator, choose **Other account** in that app and scan with
+its own QR reader, or use its manual-entry option on the same phone when available. The page
 then lets you generate a setup key and shows instructions for the selected app. The selector guides
 setup; it cannot launch that app or change iOS link routing. On the same iPhone, copy the displayed
 manual setup key and paste it into the chosen app. The page does not offer a generic `otpauth://`
@@ -107,7 +109,7 @@ the pending setup, the page reports the conflict. Use **Start over with new key*
 to rotate it; that explicit action invalidates the previous QR and setup key. The page shows the expiry
 and disables QR/code use after it expires. If a QR or setup key appears in a photo or screenshot, treat
 it as exposed.
-Use **Start over with new key** to rotate it, replace the old Signal Ledger entry in Apple Passwords
+Use **Start over with new key** to rotate it, replace the old Signal Ledger entry in your authenticator
 with the new key before entering its code, and do not use the captured QR or old key.
 
 If an authenticator is lost, use one unused recovery code at `/authenticator?mode=recover`. That
