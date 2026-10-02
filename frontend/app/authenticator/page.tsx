@@ -30,6 +30,7 @@ interface TotpResponse {
 
 const CODE_LENGTH = 6;
 type SetupApp = "" | "apple-passwords" | "google-authenticator" | "microsoft-authenticator" | "1password" | "other";
+type MicrosoftSetupMethod = "manual" | "app-scanner";
 
 function enrollmentExpiryMs(enrollment: TotpEnrollment | null): number {
   return enrollment ? Date.parse(enrollment.expires_at) : Number.NaN;
@@ -71,7 +72,7 @@ function setupInstructions(app: SetupApp) {
     case "google-authenticator":
       return "Open Google Authenticator, tap +, then Enter a setup key. Name it Signal Ledger, paste the key, choose Time based if asked, and add it.";
     case "microsoft-authenticator":
-      return "After generating a setup key, open Microsoft Authenticator, tap +, then choose Other account. Scan this page’s QR code using the app’s scanner from another screen. On this iPhone, choose manual entry in the app and paste the setup key if that option is available. Use the resulting six-digit code, not a Microsoft work or school approval prompt.";
+      return "iPhone Camera and Photos can send a setup QR code to Apple Passwords. To add Signal Ledger to Microsoft Authenticator, open that app, tap +, then choose Other account. Use the manual key on this phone, or scan from another screen with Microsoft Authenticator’s own scanner. Use its six-digit code, not a work or school approval prompt.";
     case "1password":
       return "Open and unlock 1Password. Open or create the Signal Ledger Login item, tap Edit, then Add More > One-Time Password. On this iPhone, paste the copied setup key into the field; from another screen, you can scan this page’s QR code instead. Save the item.";
     case "other":
@@ -135,6 +136,7 @@ export default function AuthenticatorPage() {
   const [copied, setCopied] = useState(false);
   const [setupKeyCopied, setSetupKeyCopied] = useState(false);
   const [setupApp, setSetupApp] = useState<SetupApp>("");
+  const [microsoftSetupMethod, setMicrosoftSetupMethod] = useState<MicrosoftSetupMethod>("manual");
   const [busy, setBusy] = useState<string | null>(null);
   const [enrollmentClock, setEnrollmentClock] = useState(0);
   const [rotatedEnrollment, setRotatedEnrollment] = useState(false);
@@ -210,7 +212,8 @@ export default function AuthenticatorPage() {
   useEffect(() => {
     setQrCodeUrl(null);
     setQrUnavailable(false);
-    if (!enrollment) return;
+    // A standard TOTP QR cannot choose an iOS app; show it for Microsoft only after the user opts into its own scanner.
+    if (!enrollment || (setupApp === "microsoft-authenticator" && microsoftSetupMethod !== "app-scanner")) return;
     const expiresAtMs = enrollmentExpiryMs(enrollment);
     if (!Number.isFinite(expiresAtMs) || Date.now() >= expiresAtMs) {
       setQrUnavailable(true);
@@ -233,7 +236,7 @@ export default function AuthenticatorPage() {
       if (active) setQrUnavailable(true);
     });
     return () => { active = false; };
-  }, [enrollment]);
+  }, [enrollment, setupApp, microsoftSetupMethod]);
 
   const copy = modeCopy(mode, Boolean(recoveryCodes));
   const isEnrolled = Boolean(status?.enrolled || session?.user?.totp_enrolled);
@@ -246,7 +249,7 @@ export default function AuthenticatorPage() {
   const appSelector = <>
     <label className={styles.setupChoice} htmlFor="totp-app-choice">
       Which authenticator do you want to use?
-      <select id="totp-app-choice" value={setupApp} onChange={(event) => setSetupApp(event.target.value as SetupApp)} aria-describedby="totp-app-guidance" autoFocus>
+      <select id="totp-app-choice" value={setupApp} onChange={(event) => { setSetupApp(event.target.value as SetupApp); setMicrosoftSetupMethod("manual"); }} aria-describedby="totp-app-guidance" autoFocus>
         <option value="">Choose an app</option>
         <option value="apple-passwords">Apple Passwords</option>
         <option value="google-authenticator">Google Authenticator</option>
@@ -413,7 +416,7 @@ export default function AuthenticatorPage() {
         <p className={styles.panelLead}>Signed in as {session.user.name || session.user.login || "your account"}.</p>
 
         {mode === "enroll" && !enrollment && !recoveryCodes ? <div className={styles.factorIntro}>
-          <div className={styles.stepCard}><span className={styles.stepNumber}>1</span><div><strong>Add Signal Ledger to your app</strong><p>Generate a setup key, then add it to 1Password, Authenticator, Aegis, or another trusted authenticator.</p></div></div>
+          <div className={styles.stepCard}><span className={styles.stepNumber}>1</span><div><strong>Add Signal Ledger to your app</strong><p>Generate a setup key, then add it to the authenticator you choose below.</p></div></div>
           <div className={styles.stepCard}><span className={styles.stepNumber}>2</span><div><strong>Confirm one current code</strong><p>The setup window expires in ten minutes. A code from the app proves the key was entered correctly.</p></div></div>
           {appSelector}
           {pendingSetupConflict ? <div className={styles.deniedState} role="alert" aria-labelledby="totp-pending-setup-heading" aria-describedby="totp-pending-setup-warning">
@@ -445,17 +448,25 @@ export default function AuthenticatorPage() {
             <button className="secondary" type="button" onClick={() => startEnrollment(true)} disabled={busy !== null || status?.can_enroll === false || !setupApp}>{busy === "replace" ? "Starting over…" : "Start over with new key"}</button>
           </div> : <>
             {appSelector}
+            {setupApp === "microsoft-authenticator" ? <fieldset className={styles.setupMethod}>
+              <legend>How are you adding it to Microsoft Authenticator?</legend>
+              <label><input type="radio" name="microsoft-setup-method" value="manual" checked={microsoftSetupMethod === "manual"} onChange={() => setMicrosoftSetupMethod("manual")} /> On this phone: copy the setup key</label>
+              <label><input type="radio" name="microsoft-setup-method" value="app-scanner" checked={microsoftSetupMethod === "app-scanner"} onChange={() => setMicrosoftSetupMethod("app-scanner")} /> Another screen: scan from inside Microsoft Authenticator</label>
+            </fieldset> : null}
             <div className={styles.secretCard}>
               <span className={styles.secretLabel}>Manual setup key</span>
               <code className={styles.setupKey} data-testid="totp-setup-key">{enrollment.secret}</code>
-              <p>On this iPhone, copy this key and add it inside the app you chose above. A generic setup link can open a different app on iOS.</p>
+              <p>{setupApp === "microsoft-authenticator"
+                ? "On this phone, open Microsoft Authenticator, tap +, choose Other account, then Enter code manually if offered. Name the account Signal Ledger and paste this key. If manual entry is unavailable, choose the other-screen scanner option above. Return here with its six-digit code."
+                : "On this iPhone, copy this key and add it inside the app you chose above. A generic setup link can open a different app on iOS."}</p>
               <button className="secondary" type="button" onClick={copySetupKey}>{setupKeyCopied ? "Copied setup key" : "Copy setup key"}</button>
             </div>
-            <div className={styles.qrCard}>
+            {setupApp !== "microsoft-authenticator" || microsoftSetupMethod === "app-scanner" ? <div className={styles.qrCard}>
               <span className={styles.secretLabel}>QR setup with another device</span>
-              {qrCodeUrl ? <img className={styles.qrImage} src={qrCodeUrl} width="240" height="240" alt="QR code for adding Signal Ledger to an authenticator app" /> : <div className={styles.qrPlaceholder} role="status">{qrUnavailable ? "QR code unavailable. Use the manual key above." : "Creating QR code…"}</div>}
-              <p>Display this QR code on another screen. Open your chosen authenticator on this iPhone and use its in-app QR scanner. The iPhone Camera may send the code to Apple Passwords instead.</p>
-            </div>
+              {setupApp === "microsoft-authenticator" ? <p className={styles.qrWarning}>First open Microsoft Authenticator on your phone. Tap +, choose Other account, then use its Scan QR code camera. Do not use iPhone Camera or Photos; those open Apple Passwords.</p> : null}
+              {qrCodeUrl ? <img className={styles.qrImage} src={qrCodeUrl} width="240" height="240" alt={setupApp === "microsoft-authenticator" ? "Signal Ledger QR code to scan inside Microsoft Authenticator" : "QR code for adding Signal Ledger to an authenticator app"} /> : <div className={styles.qrPlaceholder} role="status">{qrUnavailable ? "QR code unavailable. Use the manual key above." : "Creating QR code…"}</div>}
+              {setupApp !== "microsoft-authenticator" ? <p>Display this QR code on another screen. Open your chosen authenticator on this iPhone and use its in-app QR scanner. The iPhone Camera may send the code to Apple Passwords instead.</p> : null}
+            </div> : null}
             {rotatedEnrollment ? <p className={styles.securityNote} id="totp-rotation-warning">This new key replaces the pending setup. Replace the old Signal Ledger entry in your authenticator before entering a code.</p> : null}
             <form className={styles.codeForm} onSubmit={finishOrVerify} noValidate>
               <div className={styles.stepLabel}><span className={styles.stepNumber}>2</span><label htmlFor="totp-code">Enter the current six-digit code</label></div>

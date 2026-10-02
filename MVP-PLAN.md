@@ -409,6 +409,13 @@ pending enrollments, with latest attempt `2026-10-01T15:06:10.939538+00:00`. Own
 and authenticated workspace retrieval therefore remain **Unavailable**; actual Microsoft app
 interaction and physical iPhone code acceptance also remain **Unavailable**.
 
+The current working-tree source follow-on refines this Microsoft flow for iOS routing. It defaults
+to **On this phone: copy the setup key**, hides the Microsoft QR until the user explicitly selects
+**Another screen: scan from inside Microsoft Authenticator**, and warns against iPhone Camera or
+Photos, which may route the QR to Apple Passwords. The page does not claim a documented way to force
+those iOS tools to open Microsoft Authenticator. This source draft has no deployment or final QA
+result; those release-record fields remain pending exact evidence.
+
 The final local gate command was `TASK_ID=R-ASTRA-109 ./scripts/local-gate.sh check`. It **Passed**
 with exit `0` on native x86_64 from `2026-10-02T00:30:17Z` to `00:37:23Z`. Receipt:
 `test-results/local-gates/R-ASTRA-109-20261002T003017Z/evidence.json`; it records dirty base
@@ -438,6 +445,52 @@ establish owner TOTP enrollment or complete authentication acceptance.
 | `R-ASTRA-109-E4` | Release publication and production deployment. | Pushed exact `main` revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`; archive SHA-256 `82acc1fcb52da66ee0ced78e8549780cd81ba31f73a657f761cdeb41284a0068`; Linux/amd64 image `sha256:91253b9384318853c36b9949f091bab747b8d9dac930e002f0dc116aef05c8e8`, `103157486` bytes; deployed `2026-10-02T00:42:50.439878Z`. | **Pass** for deployment scope: first MCP plan returned `remote_operation_failed`; fixed restricted helper plan `5dc7eb3db7946693b2043895e8f50c4d` passed; MCP deploy succeeded. Status reported schema `10` ready, backup `pre-deploy-3ec26d2826bf4acf-0f9c4edb.spbackup`, exact revision, `failed: null`, and `loopback_only: true`. The initial plan failure remains visible. |
 | `R-ASTRA-109-E5` | Production HTTPS boundary, Microsoft selector behavior, and read-only owner enrollment state. | Production HTTPS/IAB/operator read-only DB; exact probe/query/browser UTC, command, artifact, and reviewer not supplied; no setup key or code generated/recorded. | **Pass** for bounded boundary/UI scope: health/auth status `200`, anonymous history `401`, `/overview` `303`, responses `no-store`/`DYNAMIC`; Microsoft Authenticator appeared and selection displayed guidance/enabled key generation. DB found zero owner factors and zero active pending enrollments; latest attempt `2026-10-01T15:06:10.939538+00:00`. Owner code acceptance, workspace retrieval, actual app interaction, and physical iPhone remain **Unavailable**. |
 | `R-ASTRA-109-E6` | Final authored-documentation validator, docs tests, map coverage, coverage self-test, and scoped diff check for this reconciliation. | Native x86_64; dirty `HEAD` `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`; run date `2026-10-02`, exact UTC window not captured; commands `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -o addopts='' tests/test_docs_validation.py -ra`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`; no separate artifact. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; docs tests passed `57` with one warning; coverage checked `133` mapped files; self-test passed `26` cases; scoped diff check exited `0`. Reviewer `LUNA MAX docs`; the post-change Git checkpoint remains with the coordinator. |
+
+## Microsoft Authenticator iOS setup-routing follow-on (`R-ASTRA-110`)
+
+**Status: In progress** for complete owner authentication. This source follow-on refines the
+Microsoft Authenticator enrollment view for iOS: it defaults to **On this phone: copy the setup
+key**, hides the Microsoft QR until the user explicitly selects **Another screen: scan from inside
+Microsoft Authenticator**, and warns against iPhone Camera or Photos, which may route the QR to Apple
+Passwords. Changing the authenticator selection resets the Microsoft setup method to manual. The
+current dirty working-tree revision is `416b29b23f3e70af1635806a77164392de76d64b`.
+
+Independent SOL read-only review reported no findings. The focused Python command
+`.dev-venv/bin/python -m pytest tests/test_auth.py -q -k 'totp_enrollment or authenticator_api_enrollment or totp_replay or totp_failed_attempts'`
+passed `8` tests, and `node --test tests/auth-contract.test.mjs` from the `frontend` directory
+passed `9` tests at `2026-10-02T18:57:02Z`; no artifact was saved. A separate native-x86_64
+isolated end-to-end check passed from
+`2026-10-02T18:58:27.159923Z` to `18:58:31.766543Z` using a disposable FastAPI `TestClient`: the
+parsed `otpauth` URI matched the manual key, the independent standard-library generator covered
+SHA-1, six-digit, 30-second TOTP values, and enrollment returned HTTP `200`, ten recovery codes,
+an enrolled status, and history HTTP `200`. No secret, code, or recovery value was printed and
+temporary data was deleted. The protocol used `.dev-venv/bin/python - <<'PY'` and saved no artifact.
+
+The earlier local-gate attempt at `test-results/local-gates/R-ASTRA-110-20261002T182918Z/` was
+interrupted; no final `evidence.json` or process remained, so that aggregate is **Unavailable**.
+Luna focused browser QA passed `22/22` on desktop and emulated Pixel 7, with no overflow at mobile
+`360px`; the default Microsoft QR was absent until the scanner method was selected, and the scanner
+QR then appeared. Native iOS and Microsoft Authenticator interaction remain **Unavailable**. Full-gate
+session `81547` ended with exit `143`; receipt
+`test-results/local-gates/R-ASTRA-110-20261002T185559Z/evidence.json` embeds Pass/0 fields but lists
+only documentation and frontend checks, with Python completion missing, so the aggregate is
+**Unavailable**; this remains historical evidence. The final gate
+`TASK_ID=R-ASTRA-110 ./scripts/local-gate.sh check` passed with exit `0` on native x86_64 dirty
+`HEAD` `416b29b23f3e70af1635806a77164392de76d64b` from `2026-10-02T19:44:59Z` to
+`19:56:44Z`; receipt `test-results/local-gates/R-ASTRA-110-20261002T194459Z/evidence.json` records
+documentation, frontend, and Python checks, `763` tests with zero errors/failures/skips, `4`
+deselected, `85.47%` coverage, frontend `28`, and final backup `61` passed. Deployment and release
+remain pending. Actual Microsoft app interaction, physical iPhone routing, owner TOTP acceptance,
+and authenticated workspace retrieval remain **Unavailable**.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `R-ASTRA-110-E1` | Source behavior and scoped independent review of the iOS setup-routing repair. | Dirty working tree at `416b29b23f3e70af1635806a77164392de76d64b`; exact review command, environment, UTC window, and artifact were not supplied. | **Pass** for the declared source-review scope: GPT-6.1 Sol reported no findings. The repair defaults to manual entry, requires explicit selection before showing the Microsoft QR, warns about iPhone Camera/Photos routing, and resets the method when the app selection changes. This does not establish browser, device, deployment, or release acceptance. Reviewer `GPT-6.1 Sol`. |
+| `R-ASTRA-110-E2` | Focused authentication and frontend contract checks. | Native x86_64; `.dev-venv/bin/python -m pytest tests/test_auth.py -q -k 'totp_enrollment or authenticator_api_enrollment or totp_replay or totp_failed_attempts'`; `node --test tests/auth-contract.test.mjs` from `frontend`; `2026-10-02T18:57:02Z`; no artifact saved. | **Pass**: the Python command passed `8` tests and the frontend command passed `9` tests. Reviewer `GPT-6.1 Sol`; no device or deployment result is inferred. |
+| `R-ASTRA-110-E3` | Independent enrollment and TOTP end-to-end contract. | Native x86_64; dirty `HEAD` `416b29b23f3e70af1635806a77164392de76d64b`; disposable fixture FastAPI `TestClient`; `.dev-venv/bin/python - <<'PY'`; `2026-10-02T18:58:27.159923Z`–`18:58:31.766543Z`; no artifact saved. | **Pass** for the local contract scope: enrollment HTTP `200`, ten recovery codes, enrolled status, history HTTP `200`, matching parsed `otpauth` URI/manual key, and independent standard-library SHA-1/6-digit/30-second generation. No secret/code/recovery value was printed; temporary data was deleted. Reviewer `GPT-6.1 Sol`. |
+| `R-ASTRA-110-E4` | Earlier full local-gate attempt. | Artifact directory `test-results/local-gates/R-ASTRA-110-20261002T182918Z/`; current dirty working tree; exact command, UTC window, and reviewer were not supplied. | **Unavailable**: interrupted attempt left no final `evidence.json` and no running process. It is not acceptance evidence. |
+| `R-ASTRA-110-E5` | Focused browser QA and the interrupted full-gate session. | Native x86_64; desktop and emulated Pixel 7 browser cases plus mobile `360px` overflow check; full-gate session `81547` ended exit `143`; receipt `test-results/local-gates/R-ASTRA-110-20261002T185559Z/evidence.json`; dirty `HEAD` `416b29b23f3e70af1635806a77164392de76d64b`; exact browser command, UTC, and separate artifact were not supplied. | **Pass** for the focused browser scope: `22/22`, no mobile overflow, Microsoft default QR absent until scanner selection and scanner QR present. **Unavailable** for session `81547`: the receipt embeds Pass/0 fields but lists only documentation and frontend checks, with Python completion missing. Native iOS/Microsoft app interaction remains unavailable. Reviewer `Luna xhigh` for browser scope. |
+| `R-ASTRA-110-E6` | Final full local gate. | Native x86_64; dirty `HEAD` `416b29b23f3e70af1635806a77164392de76d64b`; `2026-10-02T19:44:59Z`–`19:56:44Z`; receipt `test-results/local-gates/R-ASTRA-110-20261002T194459Z/evidence.json`; command `TASK_ID=R-ASTRA-110 ./scripts/local-gate.sh check`. | **Pass**, exit `0`: documentation, frontend, and Python checks completed; JUnit/stdout reported `763` tests passed, `0` errors/failures/skips, `4` deselected, `85.47%` coverage, frontend `28`, and final backup `61` passed. Release, deployment, native iOS, and Microsoft Authenticator interaction remain pending or **Unavailable**. |
 
 ## Preceding authenticator-app chooser refinement (`R-ASTRA-108`)
 

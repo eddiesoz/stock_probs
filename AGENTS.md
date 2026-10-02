@@ -122,9 +122,10 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 
 ### Current approval status
 
-`R-ASTRA-109` is the current Microsoft Authenticator dropdown follow-on, deployed at pushed
-revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`. The chooser includes Microsoft Authenticator
-and gives its selected-app setup instructions. `R-ASTRA-108` is the preceding chooser refinement;
+`R-ASTRA-110` is the current Microsoft Authenticator iOS setup-routing follow-on in the dirty
+working tree at `416b29b23f3e70af1635806a77164392de76d64b`; `R-ASTRA-109` is the preceding deployed
+dropdown follow-on at pushed revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`. The chooser includes
+Microsoft Authenticator and gives its selected-app setup instructions. `R-ASTRA-108` is the preceding chooser refinement;
 `R-ASTRA-107` is the key-reuse repair, and `R-ASTRA-103` is the deployed authenticator-only baseline.
 The live passkey retirement redirect and public HTTPS boundary are verified. No owner TOTP code has
 been entered: owner enrollment and authenticated workspace retrieval remain **Unavailable**. The
@@ -334,6 +335,11 @@ open.
 - The focused authenticator browser run passed `14/14` on desktop Chromium and emulated Pixel 7.
   Production GitHub sign-in showed the Microsoft option and its guidance; selection enabled setup-key
   generation. No setup key or TOTP code was generated or entered.
+- The current working-tree source follow-on addresses iOS routing: Microsoft Authenticator defaults
+  to same-phone manual key entry, and its QR is hidden until the user explicitly selects **Another
+  screen: scan from inside Microsoft Authenticator**. The page warns against iPhone Camera or Photos,
+  which may route the QR to Apple Passwords; no documented way to force those iOS tools to open
+  Microsoft Authenticator is claimed. This source draft has no deployment or final QA result yet.
 - **Final local gate:** `TASK_ID=R-ASTRA-109 ./scripts/local-gate.sh check` passed with exit `0` on
   native x86_64 from `2026-10-02T00:30:17Z` to `00:37:23Z`; receipt
   `test-results/local-gates/R-ASTRA-109-20261002T003017Z/evidence.json` records dirty base
@@ -353,6 +359,40 @@ open.
   was `2026-10-01T15:06:10.939538+00:00`. Owner code acceptance, authenticated workspace retrieval,
   physical iPhone code acceptance, and actual Microsoft Authenticator interaction remain
   **Unavailable**. This is not complete authentication acceptance.
+
+### Microsoft Authenticator iOS setup-routing follow-on (`R-ASTRA-110`)
+
+- **Status:** **In progress** for complete owner authentication. The dirty working-tree source at
+  `416b29b23f3e70af1635806a77164392de76d64b` defaults Microsoft Authenticator to same-phone manual
+  key entry, hides its QR until the user selects **Another screen: scan from inside Microsoft
+  Authenticator**, warns against iPhone Camera or Photos, and resets the setup method to manual when
+  the authenticator selection changes. No documented way to force iOS Camera or Photos to open
+  Microsoft Authenticator is claimed.
+- **Independent checks:** GPT-6.1 Sol's read-only review reported no findings. The focused Python command
+  `.dev-venv/bin/python -m pytest tests/test_auth.py -q -k 'totp_enrollment or authenticator_api_enrollment or totp_replay or totp_failed_attempts'`
+  passed `8` tests, and `node --test tests/auth-contract.test.mjs` from the `frontend` directory
+  passed `9` tests at `2026-10-02T18:57:02Z`. A separate native-x86_64 disposable FastAPI
+  `TestClient` protocol passed from `2026-10-02T18:58:27.159923Z` to `18:58:31.766543Z` using the
+  `.dev-venv/bin/python - <<'PY'` stdin script: the parsed `otpauth` URI matched the manual key,
+  independent standard-library TOTP generation covered SHA-1, six digits, and 30 seconds, and
+  enrollment returned HTTP `200`, ten recovery codes, enrolled status, and history HTTP `200`. No
+  secret, code, or recovery value was printed; temporary data was deleted. No artifact was saved.
+- **Browser, gate, and device limits:** Luna focused browser QA passed `22/22` on desktop and
+  emulated Pixel 7, with the mobile `360px` check showing no overflow; the Microsoft default QR was
+  absent until the scanner method was selected, and the scanner QR then appeared. Native iOS and
+  Microsoft Authenticator interaction remain **Unavailable**. The earlier local-gate attempt at
+  `test-results/local-gates/R-ASTRA-110-20261002T182918Z/` was interrupted with no final
+  `evidence.json` or process and is **Unavailable**. A second full-gate session `81547` ended with
+  exit `143`; its receipt `test-results/local-gates/R-ASTRA-110-20261002T185559Z/evidence.json`
+  embeds Pass/0 fields but lists only documentation and frontend checks, with Python completion
+  missing, so that aggregate remains **Unavailable**. The final gate
+  `TASK_ID=R-ASTRA-110 ./scripts/local-gate.sh check` passed with exit `0` on native x86_64 dirty
+  `HEAD` `416b29b23f3e70af1635806a77164392de76d64b` from `2026-10-02T19:44:59Z` to
+  `19:56:44Z`; receipt `test-results/local-gates/R-ASTRA-110-20261002T194459Z/evidence.json`
+  records documentation, frontend, and Python checks, `763` tests with `0` errors/failures and no
+  skips, `4` deselected, `85.47%` coverage, frontend `28`, and final backup `61` passed. Release and
+  deployment remain pending. Owner TOTP acceptance, authenticated workspace retrieval, physical
+  iPhone routing, and actual Microsoft Authenticator interaction remain **Unavailable**.
 
 ### Preceding authenticator-app chooser refinement (`R-ASTRA-108`)
 

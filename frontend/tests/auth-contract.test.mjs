@@ -64,7 +64,10 @@ test("auth routes cover invited sign-in, authenticator setup, retired passkey li
   assert.match(authenticator, /Apple Passwords/);
   assert.match(authenticator, /Google Authenticator/);
   assert.match(authenticator, /Microsoft Authenticator/);
-  assert.match(authenticator, /Other account\. Scan this page’s QR code/);
+  assert.match(authenticator, /iPhone Camera and Photos can send a setup QR code to Apple Passwords/);
+  assert.match(authenticator, /microsoftSetupMethod !== "app-scanner"/);
+  assert.match(authenticator, /Another screen: scan from inside Microsoft Authenticator/);
+  assert.match(authenticator, /Do not use iPhone Camera or Photos/);
   assert.match(authenticator, /1Password/);
   assert.match(authenticator, /navigator\.clipboard\.writeText\(enrollment\.secret\)/);
   assert.match(authenticator, /disabled={busy !== null \|\| status\?\.can_enroll === false \|\| !setupApp}/);

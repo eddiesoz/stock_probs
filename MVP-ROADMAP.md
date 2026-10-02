@@ -4,9 +4,10 @@
 
 ### Current approval status
 
-`R-ASTRA-109` is the current Microsoft Authenticator dropdown follow-on, extending the chooser
-introduced by `R-ASTRA-108` after the deployed key-reuse repair in `R-ASTRA-107`; `R-ASTRA-103` is
-the deployed authenticator-only baseline.
+`R-ASTRA-110` is the current Microsoft Authenticator iOS setup-routing follow-on in the dirty
+working tree at `416b29b23f3e70af1635806a77164392de76d64b`. `R-ASTRA-109` is the preceding deployed
+Microsoft Authenticator dropdown follow-on, extending the chooser introduced by `R-ASTRA-108` after
+the deployed key-reuse repair in `R-ASTRA-107`; `R-ASTRA-103` is the deployed authenticator-only baseline.
 Invite-only GitHub OAuth remains the identity boundary, while a six-digit TOTP code from an
 authenticator app is the sole application second factor. The deployed schema-10 migration revokes
 stored credentials and old passkey sessions; the application does not create or accept WebAuthn
@@ -48,11 +49,13 @@ second-user acceptance remain unavailable.
 `R-ASTRA-101` remains the historical schema-8 passkey deployment record; its passkey and live-host
 receipts must not be used as acceptance evidence for this TOTP release.
 
-`EXP-M09` remains the current approval-gated export item. `R-ASTRA-109` remains **In progress** for
-complete owner authentication: the Microsoft Authenticator option is deployed and its live selection
-flow displayed guidance, but no setup key or TOTP code was generated or entered, and the read-only
-database query found zero owner factors and zero active pending enrollments. Actual Microsoft app
-interaction and physical iPhone code acceptance remain **Unavailable**. `R-ASTRA-107` remains
+`EXP-M09` remains the current approval-gated export item. `R-ASTRA-110` remains **In progress** for
+complete owner authentication; its focused local protocol and browser scope passed, while the
+incomplete full-gate aggregate, deployment, native Microsoft app interaction, and physical iPhone
+code acceptance remain **Unavailable** or pending. `R-ASTRA-109` remains the preceding deployed
+chooser record: its live selection flow displayed guidance, but no setup key or TOTP code was
+generated or entered, and the read-only database query found zero owner factors and zero active
+pending enrollments. `R-ASTRA-107` remains
 incomplete for owner TOTP acceptance. `R-ASTRA-100` is **Completed for its
 declared UI scope** with the evidence recorded below; this does not create a broader release or
 export checkpoint. `M09-E18`, `M07-E20`, and `R-ASTRA-98` remain recorded for their declared scopes.
@@ -421,6 +424,45 @@ deployment evidence does not claim complete auth acceptance.
 | `R-ASTRA-107-E10` | Release publication, operator-access refresh, and production deployment. | Pushed `main` revision `a2247cce6e9f55fc81f96da3698f424ae2a2dc20`; Linux/amd64; archive SHA-256 `85c53648c8c1810bfc37153c404d4064ee468c81ce78caaf0666e71bb5221106`; image `sha256:b4249173085ef5b7b6c0df8741aa34d99e6b1d488ab9bfc829010398a422d2a1`; size `103160002` bytes; exact command/UTC/reviewer not supplied. | **Pass** for the declared deployment scope: publisher re-download passed; Terraform MCP applied `50.21.67.178/32` to firewall `177236117`; two MCP plans returned `remote_operation_failed`; fixed host-helper plan `105579dd822e69b03360201df2276bc3` succeeded; MCP deploy reached readiness schema `10`; status reported revision `a2247cc`, `failed: null`, `loopback_only: true`, backup `pre-deploy-a2247cce6e9f55fc-6ef1c2e6.spbackup`, and `deployed_at=2026-10-01T19:58:26.230020Z`. The transient plan failures remain visible. |
 | `R-ASTRA-107-E11` | Public boundary and live setup/reuse check. | Production HTTPS and IAB; exact probe/browser UTC, command, artifact, and reviewer were not supplied; no QR or secret was recorded. | **Pass** for the bounded boundary/UI scope: health `200`, auth status `200`, anonymous history `401`, overview `303` to sign-in, all `no-store`/`DYNAMIC`; GitHub sign-in as `jtmb` reached setup; repeated default starts across reload returned the same pending key when compared locally without exposing it, with expiry and explicit rotation controls visible. No TOTP code was entered; owner enrollment, workspace access, and physical iPhone code validation remain **Unavailable**. |
 
+## Microsoft Authenticator iOS setup-routing follow-on (`R-ASTRA-110`)
+
+**Status: In progress** for complete owner authentication. The dirty working-tree source at
+`416b29b23f3e70af1635806a77164392de76d64b` makes Microsoft Authenticator default to same-phone
+manual key entry, keeps its QR hidden until the user selects **Another screen: scan from inside
+Microsoft Authenticator**, warns against iPhone Camera or Photos, and resets the setup method to
+manual when the authenticator selection changes. No documented way to force those iOS tools to open
+Microsoft Authenticator is claimed.
+
+GPT-6.1 Sol's independent read-only review reported no findings. The focused Python command
+`.dev-venv/bin/python -m pytest tests/test_auth.py -q -k 'totp_enrollment or authenticator_api_enrollment or totp_replay or totp_failed_attempts'`
+passed `8` tests, and `node --test tests/auth-contract.test.mjs` from the `frontend` directory
+passed `9` tests at `2026-10-02T18:57:02Z`; no artifact was saved. A separate native-x86_64
+disposable FastAPI `TestClient` protocol passed from
+`2026-10-02T18:58:27.159923Z` to `18:58:31.766543Z`, covering matching parsed `otpauth` and manual
+keys, independent standard-library SHA-1/6-digit/30-second TOTP generation, enrollment HTTP `200`,
+ten recovery codes, enrolled status, and history HTTP `200`. No secret, code, or recovery value was
+printed and temporary data was deleted; the protocol used `.dev-venv/bin/python - <<'PY'` and saved no
+artifact.
+
+The prior local-gate attempt at `test-results/local-gates/R-ASTRA-110-20261002T182918Z/` was
+interrupted with no final `evidence.json` or process, so that aggregate is **Unavailable**. Luna focused
+browser QA passed `22/22` on desktop and emulated Pixel 7, with no overflow at mobile `360px`; the
+default Microsoft QR was absent until the scanner method was selected, and the scanner QR then
+appeared. Native iOS and Microsoft Authenticator interaction remain **Unavailable**. Full-gate session
+`81547` ended with exit `143`; its receipt
+`test-results/local-gates/R-ASTRA-110-20261002T185559Z/evidence.json` embeds Pass/0 fields but lists
+only documentation and frontend checks, with Python completion missing, so that aggregate remains
+**Unavailable** as historical evidence. The final gate
+`TASK_ID=R-ASTRA-110 ./scripts/local-gate.sh check` passed with exit `0` on native x86_64 dirty
+`HEAD` `416b29b23f3e70af1635806a77164392de76d64b` from `2026-10-02T19:44:59Z` to `19:56:44Z`; receipt
+`test-results/local-gates/R-ASTRA-110-20261002T194459Z/evidence.json` records documentation, frontend,
+and Python checks, `763` tests with zero errors/failures/skips, `4` deselected, `85.47%` coverage,
+frontend `28`, and final backup `61` passed. Deployment and release remain pending. Owner TOTP
+acceptance, authenticated workspace retrieval, physical iPhone routing, and actual Microsoft
+Authenticator interaction remain **Unavailable**.
+See the [MVP plan](MVP-PLAN.md#microsoft-authenticator-ios-setup-routing-follow-on-r-astra-110)
+for the evidence ledger.
+
 ## Microsoft Authenticator dropdown follow-on (`R-ASTRA-109`)
 
 **Status: In progress** for complete owner authentication. The deployed chooser includes Microsoft
@@ -453,6 +495,13 @@ pending enrollments. Owner TOTP acceptance and authenticated workspace retrieval
 **Unavailable**, as do actual Microsoft Authenticator interaction and physical iPhone code
 acceptance. See the [MVP plan](MVP-PLAN.md#microsoft-authenticator-dropdown-follow-on-r-astra-109)
 for the evidence ledger.
+
+The current working-tree source follow-on addresses the iOS routing report. Microsoft Authenticator
+defaults to same-phone manual key entry; the QR remains hidden until the user selects **Another
+screen: scan from inside Microsoft Authenticator**. The page warns against iPhone Camera or Photos,
+which may route the QR to Apple Passwords, and documents no way to force those iOS tools to open
+Microsoft Authenticator. This source draft is awaiting exact QA and deployment evidence, so no new
+release or final-QA result is recorded here.
 
 ## Preceding authenticator-app chooser refinement (`R-ASTRA-108`)
 

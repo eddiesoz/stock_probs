@@ -233,6 +233,17 @@ for the evidence record. The preceding `R-ASTRA-108` chooser requires a selectio
 retains it through rotation, and guides manual entry or scanning with the selected app's QR reader;
 it removes the generic `otpauth://` handler link.
 
+The current `R-ASTRA-110` source follow-on refines the Microsoft Authenticator iOS route. It defaults
+to same-phone manual key entry, keeps the QR hidden until **Another screen: scan from inside Microsoft
+Authenticator** is selected, warns against iPhone Camera or Photos, and resets the method to manual
+when the authenticator selection changes. SOL's scoped review and local enrollment protocol passed;
+Luna focused browser QA passed `22/22` on desktop and emulated Pixel 7 with no overflow at mobile
+`360px`. The earlier interrupted gates remain **Unavailable** as historical evidence, while the final
+`TASK_ID=R-ASTRA-110 ./scripts/local-gate.sh check` passed with `763` tests, `4` deselected,
+`85.47%` coverage, frontend `28`, and final backup `61` passed. Deployment, native Microsoft app
+interaction, and physical iPhone routing remain pending or **Unavailable**. See the [R-ASTRA-110
+evidence record](MVP-PLAN.md#microsoft-authenticator-ios-setup-routing-follow-on-r-astra-110).
+
 The earlier deployment used reviewed revision `9cc0751da459e911d285b14e0d57a29320a9f366`. GitHub Release
 `signal-ledger-9cc0751da459e911d285b14e0d57a29320a9f366` has archive SHA-256
 `d60da545be26a050e305e13d2e8db219a253a0668b32f13f532148069bde188e`; publisher re-download passed.
@@ -272,11 +283,22 @@ configuration and the fixed reviewed-Compose update procedure.
 ### Authenticator setup and recovery
 
 After GitHub sign-in and invitation validation, an account without a TOTP factor goes directly to
-`/authenticator?mode=enroll`. The page generates a scannable QR code locally in the browser from
-the short-lived `otpauth://` setup URI; the setup secret is not sent to an external QR service.
-Scan the QR code from another screen, or on the same phone use the authenticator-app link or the
-displayed manual key. Confirm the current six-digit code to activate the factor. Recovery codes
-are shown once, are single-use, and should be stored offline.
+`/authenticator?mode=enroll`. Choose an authenticator before generating a setup key. For Microsoft
+Authenticator, the setup view defaults to **On this phone: copy the setup key**. In Microsoft
+Authenticator, tap **+**, choose **Other account**, and use **Enter code manually** if offered.
+Paste the key into that app and return to the page for its current six-digit code. If the page is
+visible on another screen, select **Another screen: scan from inside Microsoft Authenticator** to
+show a QR code for the app's own scanner. Do not use iPhone Camera or Photos: iOS may route the QR
+to Apple Passwords, and there is no documented way in this flow to force those tools to open
+Microsoft Authenticator. If you change the app selection and return to Microsoft Authenticator, the
+page resets to manual entry; select the other-screen option again to reveal the QR.
+
+For other selected apps, the QR code is generated locally in the browser from the short-lived
+`otpauth://` setup URI and can be scanned from another screen with that app's in-app scanner. The
+setup secret is not sent to an external QR service. The page does not offer a generic `otpauth://`
+handler link because iOS may open a different app from the one selected. Confirm the current
+six-digit code to activate the factor. Recovery codes are shown once, are single-use, and should be
+stored offline.
 
 If the authenticator is lost, use one unused recovery code to enter the restricted recovery flow,
 then enroll a replacement authenticator. Recovery does not grant a normal workspace session until

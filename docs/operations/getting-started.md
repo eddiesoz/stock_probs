@@ -90,17 +90,26 @@ or accept WebAuthn credentials.
 
 After GitHub sign-in and invitation validation, open `/authenticator?mode=enroll`. First choose
 Apple Passwords, Google Authenticator, Microsoft Authenticator, 1Password, or another app in the
-in-page selector. For Microsoft Authenticator, choose **Other account** in that app and scan with
-its own QR reader, or use its manual-entry option on the same phone when available. Microsoft's
-[instructions for adding non-Microsoft accounts](https://support.microsoft.com/en-us/authenticator/how-to-add-your-accounts-to-microsoft-authenticator)
-describe the QR flow and manual entry when scanning is unavailable. The page then lets you generate
-a setup key and shows instructions for the selected app. The selector guides
-setup; it cannot launch that app or change iOS link routing. On the same iPhone, copy the displayed
-manual setup key and paste it into the chosen app. The page does not offer a generic `otpauth://`
-link because iOS may open a different app from the one selected. To use a QR code, display the
-page on another screen and scan it with the chosen authenticator's in-app scanner, not the iPhone
-Camera, which may route to Apple Passwords. The QR code is generated locally
-in the browser from the short-lived setup URI; no external QR service receives the setup secret.
+in-page selector. The page then lets you generate a setup key and shows instructions for the
+selected app. The selector guides setup; it cannot launch that app or change iOS link routing.
+
+For Microsoft Authenticator, the enrollment view defaults to **On this phone: copy the setup key**.
+Open Microsoft Authenticator, tap **+**, choose **Other account**, and use **Enter code manually**
+if that option is offered. Copy the displayed key into the app and return to the page for its
+current six-digit code. Microsoft's [instructions for adding non-Microsoft accounts](https://support.microsoft.com/en-us/authenticator/how-to-add-your-accounts-to-microsoft-authenticator)
+describe the app's QR and manual-entry routes. If you have another screen, select **Another screen:
+scan from inside Microsoft Authenticator**; the page then displays a QR code for Microsoft
+Authenticator's own in-app scanner. Do not use iPhone Camera or Photos for this QR code: iOS may
+route it to Apple Passwords, and there is no documented way in this flow to force those iOS tools
+to open Microsoft Authenticator. If you change the app selection and return to Microsoft
+Authenticator, the page resets to manual entry; select the other-screen option again to reveal
+the QR.
+
+For other selected apps, copy the manual setup key on the same iPhone or display the page on another
+screen and scan it with the chosen authenticator's in-app scanner. The page does not offer a generic
+`otpauth://` link because iOS may open a different app from the one selected. QR codes are generated
+locally in the browser from the short-lived setup URI; no external QR service receives the setup
+secret.
 Then enter the current six-digit code. The server activates the factor only after the code is
 verified and returns recovery codes once. Store each recovery code offline; each can be consumed
 only once.
