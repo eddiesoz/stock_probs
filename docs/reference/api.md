@@ -34,6 +34,18 @@ dependency-free local pointer is `/api/v1/docs`.
 | `POST` | `/api/v1/operations/backups` | Create a verified managed backup with an optional managed name. |
 | `GET` | `/api/v1/operations/backups/status` | Report bounded backup capability without filesystem paths. |
 | `POST` | `/api/v1/operations/restores` | Verify a managed backup, and promote only when `promote` is explicitly true. |
+| `GET` | `/api/v1/auth/status` | Return the configured sign-in mode and public origin. |
+| `GET` | `/api/v1/auth/session` | Return the current session state, role, and CSRF token when signed in. |
+| `POST` | `/api/v1/auth/local/login` | Sign in with local credentials when local authentication is enabled. |
+| `GET` | `/api/v1/auth/github/start?invite=<code>` | Start the browser-bound GitHub authorization flow and redirect to GitHub. The `invite` query is optional. |
+| `GET` | `/api/v1/auth/github/callback` | Complete the OAuth exchange and issue a provisional session for authenticator enrollment or verification. |
+| `POST` | `/api/v1/auth/logout` | Revoke the current session and clear its cookies. Returns `204`. |
+| `POST` | `/api/v1/auth/invites` | Create a single-use, expiring GitHub invitation. Requires an administrator. |
+| `GET` | `/api/v1/auth/invites` | List bounded invitation metadata and report whether email invitations are configured. Requires an administrator. |
+| `POST` | `/api/v1/auth/invites/email` | Create an invitation and submit it to configured SMTP. Requires an administrator; SMTP acceptance is not mailbox delivery. |
+| `POST` | `/api/v1/auth/invites/redeem` | Validate an invitation and return the browser-bound GitHub authorization URL. No signed-in session is required. |
+| `GET` | `/api/v1/auth/sessions` | List safe metadata for the current user's active sessions. |
+| `DELETE` | `/api/v1/auth/sessions/{session_id}` | Revoke one session owned by the current user. Returns `204`. |
 | `GET` | `/api/v1/auth/totp/status` | Report authenticator enrollment and recovery-code state without returning secrets. |
 | `POST` | `/api/v1/auth/totp/enroll/start` | Start a short-lived authenticator enrollment transaction. |
 | `POST` | `/api/v1/auth/totp/enroll/finish` | Confirm the six-digit code, activate TOTP, and return one-time recovery codes. |
@@ -41,6 +53,26 @@ dependency-free local pointer is `/api/v1/docs`.
 | `POST` | `/api/v1/auth/totp/step-up` | Record fresh TOTP proof for an administrator operation. |
 | `POST` | `/api/v1/auth/totp/recover` | Consume one recovery code and issue a factor-replacement-only session. |
 | `POST` | `/api/v1/auth/totp/recovery-codes/rotate` | Replace recovery codes after a fresh TOTP verification. |
+
+Authenticated state-changing requests require the session's CSRF token in `X-CSRF-Token`. The
+OAuth start/callback and anonymous invitation-redemption routes use their browser-bound transaction
+flow. Invitation creation, listing, and email submission require an administrator; session listing
+and revocation are limited to the signed-in user's own sessions. The HTTP API has no invitation
+revocation route; invitations expire and can be redeemed once.
+
+`R-ASTRA-111` adds source-only admission bounds to GitHub OAuth start: 8 starts per effective caller
+and 64 per app process in a rolling minute, plus 8 outstanding transactions per caller and 128
+overall. The minute counters are process-local; outstanding transaction records are database-backed.
+Per-caller overflow returns `429` with `Retry-After`; global start or outstanding capacity can return
+`503`. The caller key is a keyed hash of the socket peer IP. A peer configured in
+`STOCK_PROBS_TRUSTED_PROXY_HOSTS` may supply `CF-Connecting-IP`; other forwarded-IP headers are not
+used. Shared NAT or proxy egress addresses share the per-caller limit. Production Compose ingress
+attribution and the reviewed host-Compose update path are part of the source change; the independent
+local Docker bridge regression passed. The schema-11 migration and limits are source-only and not
+deployed; production remains on schema 10.
+
+`POST /api/v1/auth/invites/email` returns `submission_status: "smtp_accepted"` when the configured
+SMTP server accepts the submission. That response does not prove mailbox delivery or reading.
 
 There is no `/api/v1/market-depth` endpoint and no `MarketDepthResponse` schema. The Live Trading
 workspace may disclose that free data has no exchange-depth entitlement, but it does not fabricate
@@ -59,13 +91,15 @@ does not require Bluetooth, a nearby phone, or browser passkey support.
 transaction. By default, an unexpired transaction is reused only when the session, factor generation,
 and origin match, preserving its original expiry. A different origin cannot silently replace it. Send
 `{"replace": true}` only when an explicit rotation is intended; that invalidates the previous pending
-QR/setup key and returns new setup material. Add the current key to an authenticator app using the
-manual key or the `otpauth://` link, then submit its current code to `/enroll/finish`. The response
-returns recovery codes exactly once.
-Recovery codes are single-use and must be kept offline. `/recover` accepts one unused code and
+QR/setup key and returns new setup material. The response includes an `otpauth_uri` value for the
+page to render a local QR code; the UI also offers manual-key entry and no generic URI-handler link.
+Submit the authenticator's current code to `/api/v1/auth/totp/enroll/finish`; the response returns
+recovery codes exactly once. Recovery codes are single-use and must be kept offline. `/recover`
+accepts one unused code and
 returns a restricted session that can replace the factor; it does not grant a normal workspace
-session. `/step-up` records fresh proof for an administrator backup or restore. Passkey routes are
-legacy migration endpoints only and do not create new production passkeys.
+session. `/step-up` records fresh proof for administrator backup and HTTP restore operations.
+Production GitHub-auth mode rejects WebAuthn registration; the one-time passkey migration route from
+an earlier release is historical and is not part of the current flow.
 
 ## Research-workspace contracts
 

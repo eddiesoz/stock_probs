@@ -32,6 +32,7 @@ def documentation_repository(tmp_path: Path) -> Path:
         history_parent / "learnings.md",
     )
     shutil.copy2(ROOT / ".opencode" / "SKILL-INDEX.md", tmp_path / ".opencode" / "SKILL-INDEX.md")
+    shutil.copy2(ROOT / "model-routing.json", tmp_path / "model-routing.json")
     for name in ("README.md", "AGENTS.md", "MVP-PLAN.md", "MVP-ROADMAP.md", "SESSION-EXPORT.md"):
         (tmp_path / name).write_text(f"# {name}\n", encoding="utf-8")
     assert validate_repository(tmp_path) == []
@@ -128,13 +129,16 @@ def test_agent_profile_skill_grants_are_narrow() -> None:
     legacy = ROOT / ".opencode/agent"
     agents = ROOT / ".opencode/agents"
     profiles = {path.name: path.read_text(encoding="utf-8") for path in agents.glob("*.md")}
+    routing = json.loads((ROOT / "model-routing.json").read_text(encoding="utf-8"))
 
     assert not any(legacy.glob("*.md"))
     assert set(profiles) == set(expected)
     for name, grants in expected.items():
         text = profiles[name]
         assert "mode: subagent" in text
-        assert "model: openai/gpt-5.6-luna#max" in text
+        role_name = routing["opencode"]["agents"][name.removesuffix(".md")]
+        role = routing["roles"][role_name]
+        assert f"model: openai/{role['model']}#{role['reasoning_effort']}" in text
         assert not re.search(r"^(?:name|variant|permission|bash|task):", text, re.MULTILINE)
         matches = re.findall(
             r"^  - action: skill\n    resource: (.+)\n    effect: (.+)$",

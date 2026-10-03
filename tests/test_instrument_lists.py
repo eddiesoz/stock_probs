@@ -11,7 +11,7 @@ import pytest
 
 from stock_probs.backup import BackupError, BackupManager
 from stock_probs.cli import _migrate_with_backup
-from stock_probs.repository import INSTRUMENT_LIST_ITEM_LIMIT, Repository
+from stock_probs.repository import INSTRUMENT_LIST_ITEM_LIMIT, SCHEMA_VERSION, Repository
 
 NOW = datetime(2026, 9, 15, 12, 0, tzinfo=UTC)
 OWNER_USER_ID = 1
@@ -61,9 +61,9 @@ def test_every_shipped_legacy_schema_upgrades_to_fixed_lists(settings, legacy_ve
             "SELECT name FROM sqlite_master "
             "WHERE type = 'trigger' AND tbl_name = 'instrument_list_items'"
         ).fetchall()
-    # Every historical fixture must upgrade through the current contiguous schema, including
-    # schema 10's passkey retirement and authenticator tables.
-    assert [row[0] for row in versions] == list(range(1, 11))
+    # Every historical fixture reaches the current contiguous schema, including schema 11's
+    # OAuth caller-admission migration, which clears legacy OAuth transaction rows.
+    assert [row[0] for row in versions] == list(range(1, SCHEMA_VERSION + 1))
     assert {row[1] for row in columns} == {
         "kind",
         "provider",

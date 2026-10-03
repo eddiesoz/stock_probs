@@ -29,6 +29,7 @@ from stock_probs.auth import (
     InvitationRejected,
     MemoryAuthStore,
     OAuthRejected,
+    OAuthStartLimited,
     PasskeyCredential,
     PasskeyRejected,
     TotpRejected,
@@ -1574,7 +1575,7 @@ def test_github_state_is_single_use_and_binds_pkce_verifier() -> None:
         ),
         http_client=client,
     )
-    authorization = manager.begin_github(NOW)
+    authorization = manager.begin_github(NOW, caller_identity="198.51.100.10")
     query = parse_qs(urlparse(authorization.url).query)
     assert query["code_challenge_method"] == ["S256"]
     expected_challenge = (
@@ -1605,9 +1606,10 @@ def test_github_state_is_single_use_and_binds_pkce_verifier() -> None:
 
 
 def test_github_start_has_bounded_process_admission(monkeypatch) -> None:
-    """Anonymous OAuth starts are bounded before they can create durable state rows."""
+    """Per-caller admission runs before the retained process-wide safety ceiling."""
 
-    monkeypatch.setattr("stock_probs.auth.MAX_OAUTH_STARTS_PER_WINDOW", 2)
+    monkeypatch.setattr("stock_probs.auth.MAX_OAUTH_STARTS_PER_WINDOW", 3)
+    monkeypatch.setattr("stock_probs.auth.MAX_OAUTH_STARTS_PER_CALLER_WINDOW", 2)
     manager = AuthManager(
         MemoryAuthStore(),
         AuthSettings(
@@ -1619,10 +1621,149 @@ def test_github_start_has_bounded_process_admission(monkeypatch) -> None:
             github_redirect_uri="https://ledger.example/api/v1/auth/github/callback",
         ),
     )
-    manager.begin_github(NOW)
-    manager.begin_github(NOW + timedelta(seconds=1))
+    caller = "198.51.100.10"
+    manager.begin_github(NOW, caller_identity=caller)
+    manager.begin_github(NOW + timedelta(seconds=1), caller_identity=caller)
+    with pytest.raises(OAuthStartLimited):
+        manager.begin_github(NOW + timedelta(seconds=2), caller_identity=caller)
+    manager.begin_github(NOW + timedelta(seconds=2), caller_identity="198.51.100.11")
     with pytest.raises(AuthUnavailable):
-        manager.begin_github(NOW + timedelta(seconds=2))
+        manager.begin_github(NOW + timedelta(seconds=3), caller_identity="198.51.100.12")
+    manager.begin_github(NOW + timedelta(seconds=62), caller_identity=caller)
+
+
+def test_github_start_isolates_trusted_cloudflare_callers_and_invitation_redeems(tmp_path) -> None:
+    """The trusted connector IP separates callers for both public OAuth entry points."""
+
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "stock_probs.sqlite3",
+        backup_dir=tmp_path / "backups",
+        provider="fixture",
+        environment="test",
+        auth_mode="github",
+        auth_session_secret="o" * 48,
+        auth_public_origin="http://testserver",
+        github_client_id="client-id",
+        github_client_secret="client-secret",  # noqa: S106
+        github_redirect_uri="http://testserver/api/v1/auth/github/callback",
+        owner_github_id=24680,
+    )
+    application = create_app(settings, FixtureProvider(), lambda: NOW)
+    with TestClient(application, client=("127.0.0.1", 51000)) as client:
+        for index in range(8):
+            response = client.get(
+                "/api/v1/auth/github/start",
+                headers={
+                    "CF-Connecting-IP": "198.51.100.10",
+                    "X-Forwarded-For": f"203.0.113.{index + 1}",
+                },
+                follow_redirects=False,
+            )
+            assert response.status_code == 302, response.text
+        limited = client.get(
+            "/api/v1/auth/github/start",
+            headers={
+                "CF-Connecting-IP": "198.51.100.10",
+                "X-Forwarded-For": "203.0.113.200",
+            },
+            follow_redirects=False,
+        )
+        assert limited.status_code == 429
+        assert limited.headers["retry-after"] == "60"
+        assert limited.json()["error"]["code"] == "oauth_start_limited"
+
+        other_caller = client.get(
+            "/api/v1/auth/github/start",
+            headers={"CF-Connecting-IP": "198.51.100.11"},
+            follow_redirects=False,
+        )
+        assert other_caller.status_code == 302, other_caller.text
+
+        invitation_code, _ = application.state.auth.create_invitation(
+            13579, 1, datetime.now(UTC), github_login="invited"
+        )
+        for _ in range(8):
+            redeemed = client.post(
+                "/api/v1/auth/invites/redeem",
+                json={"code": invitation_code},
+                headers={"CF-Connecting-IP": "198.51.100.12"},
+            )
+            assert redeemed.status_code == 200, redeemed.text
+        invitation_limited = client.post(
+            "/api/v1/auth/invites/redeem",
+            json={"code": invitation_code},
+            headers={"CF-Connecting-IP": "198.51.100.12"},
+        )
+        assert invitation_limited.status_code == 429
+        assert (
+            application.state.auth.inspect_invitation(invitation_code, datetime.now(UTC))[
+                "consumed_at"
+            ]
+            is None
+        )
+
+        with application.state.repository.connect() as connection:
+            caller_hashes = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT DISTINCT caller_key_hash FROM oauth_states"
+                ).fetchall()
+            }
+        assert len(caller_hashes) == 3
+        assert all(len(value) == 64 for value in caller_hashes)
+        assert "198.51.100.10" not in caller_hashes
+
+
+def test_github_start_ignores_forwarded_identity_from_untrusted_peer(tmp_path) -> None:
+    """A direct ASGI peer cannot vary its quota key with forwarded headers."""
+
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "stock_probs.sqlite3",
+        backup_dir=tmp_path / "backups",
+        provider="fixture",
+        environment="test",
+        auth_mode="github",
+        auth_session_secret="p" * 48,
+        auth_public_origin="http://testserver",
+        github_client_id="client-id",
+        github_client_secret="client-secret",  # noqa: S106
+        github_redirect_uri="http://testserver/api/v1/auth/github/callback",
+        owner_github_id=24680,
+    )
+    application = create_app(settings, FixtureProvider(), lambda: NOW)
+    with TestClient(application, client=("198.51.100.20", 52000)) as client:
+        for index in range(8):
+            response = client.get(
+                "/api/v1/auth/github/start",
+                headers={
+                    "CF-Connecting-IP": f"198.51.100.{index + 30}",
+                    "X-Forwarded-For": f"203.0.113.{index + 30}",
+                },
+                follow_redirects=False,
+            )
+            assert response.status_code == 302, response.text
+        forged = client.get(
+            "/api/v1/auth/github/start",
+            headers={
+                "CF-Connecting-IP": "198.51.100.99",
+                "X-Forwarded-For": "203.0.113.99",
+            },
+            follow_redirects=False,
+        )
+        assert forged.status_code == 429
+
+    with TestClient(application, client=("198.51.100.21", 52001)) as second_client:
+        independent = second_client.get(
+            "/api/v1/auth/github/start",
+            headers={
+                "CF-Connecting-IP": "198.51.100.99",
+                "X-Forwarded-For": "203.0.113.99",
+            },
+            follow_redirects=False,
+        )
+        assert independent.status_code == 302, independent.text
 
 
 def test_github_callback_sets_provisional_cookie_and_consumes_invitation_once(tmp_path) -> None:

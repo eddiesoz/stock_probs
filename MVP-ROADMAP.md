@@ -5,15 +5,25 @@
 ### Current approval status
 
 `R-ASTRA-110` is the current Microsoft Authenticator iOS setup-routing follow-on, deployed at pushed
-clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311`. `R-ASTRA-109` is the preceding deployed
-Microsoft Authenticator dropdown follow-on, extending the chooser introduced by `R-ASTRA-108` after
+clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311`. `R-ASTRA-109` is the historical
+pre-R110 deployed Microsoft Authenticator dropdown follow-on, extending the chooser introduced by `R-ASTRA-108` after
 the deployed key-reuse repair in `R-ASTRA-107`; `R-ASTRA-103` is the deployed authenticator-only baseline.
-Invite-only GitHub OAuth remains the identity boundary, while a six-digit TOTP code from an
-authenticator app is the sole application second factor. The deployed schema-10 migration revokes
+Invite-only GitHub OAuth remains the identity boundary, while production requires a six-digit TOTP
+code from an authenticator app as its second factor. The deployed schema-10 migration revokes
 stored credentials and old passkey sessions; the application does not create or accept WebAuthn
 credentials.
 Recovery codes are
-hashed and single-use, and administrator backup/restore actions require fresh TOTP proof.
+hashed and single-use. Production GitHub-auth backup/restore actions require fresh TOTP proof; local
+authentication can use fresh local-passkey proof for the same step-up window.
+
+`R-ASTRA-111` tracks source-only OAuth admission changes: schema 11 clears OAuth transaction rows
+while preserving users, sessions, and research records; the supported CLI verifies a
+schema-10 pre-migration backup. The scope also includes explicit production Compose ingress
+attribution installed through the existing reviewed host-Compose updater. The scoped Sol security
+review and independent Luna Docker bridge regression passed. The first full local gate failed on
+four stale schema-10 test expectations; the corrected full gate then passed, and parent integrated
+review found no blocker for the declared local scope. The deployed R-ASTRA-110 image remains schema
+10; no R-ASTRA-111 deployment or release is claimed.
 
 Scoped independent QA passed `64` authentication/repository/list checks, `123` API checks, `61`
 backup/CLI checks, `10` desktop/mobile-emulated auth-flow cases, `27` frontend checks, Ruff, and
@@ -52,11 +62,13 @@ receipts must not be used as acceptance evidence for this TOTP release.
 `EXP-M09` remains the current approval-gated export item. `R-ASTRA-110` remains **In progress** for
 complete owner authentication but is **Completed** for its declared UI repair, local QA, deployment,
 and live-guidance scope; native Microsoft app interaction, owner enrollment, and physical iPhone code
-acceptance remain **Unavailable**. `R-ASTRA-109` remains the preceding deployed
-chooser record: its live selection flow displayed guidance, but no setup key or TOTP code was
-generated or entered, and the read-only database query found zero owner factors and zero active
-pending enrollments. `R-ASTRA-107` remains
-incomplete for owner TOTP acceptance. `R-ASTRA-100` is **Completed for its
+acceptance remain **Unavailable**. `R-ASTRA-109` is the historical pre-R110 chooser record: its live
+selection flow displayed guidance, but no setup key or TOTP code was generated or entered, and the
+read-only database query at that checkpoint found zero owner factors and zero active pending
+enrollments. The user later reported successful Firefox sign-in; this is an attributed report that
+has not been independently verified and does not independently establish authenticated workspace
+retrieval. `R-ASTRA-107` is deployed
+through R110 but remains incomplete for owner TOTP acceptance. `R-ASTRA-100` is **Completed for its
 declared UI scope** with the evidence recorded below; this does not create a broader release or
 export checkpoint. `M09-E18`, `M07-E20`, and `R-ASTRA-98` remain recorded for their declared scopes.
 The remaining M09 action is `EXP-M09`: full-session export, secret review, local commit, push,
@@ -343,13 +355,17 @@ fixed controller applied operator SSH `142.198.155.54/32`, and Linode TCP plus T
 
 The Resend credential installer QA was observed against local revision
 `42cf0f40c98404d55585745b10311354661a5195`; those changes are included in pushed `main` checkpoint
-`329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the tree was clean
-at push.
+`329fdc595483fa3b112b98c7788d808348638faa`, reported as matching `origin/main` at that checkpoint;
+the tree was clean at push.
 Builder self-validation reported `11` focused tests, Ruff check/format, `bash -n`, and ShellCheck
 **Pass**. Initial independent QA found a P1 remote-shell quoting blocker and a P2 incomplete-read
 rollback blocker; the repaired independent QA recheck passed `13` tests, including command
-parse/probe and incomplete-read rollback, for its declared local scope. No API key exists, host
-installation has not been observed, and no live send or mailbox delivery is verified.
+parse/probe and incomplete-read rollback, for its declared local scope. At that checkpoint, no API
+key or host installation was observed; no live send or mailbox delivery was verified. This is
+historical point-in-time evidence. A later operator observation reported
+`email_invites_enabled=False` (timestamp not supplied), also as a point-in-time value. A later
+read-only SSH recheck timed out before returning a value, so the current setting is unavailable; 25
+local fake-SMTP tests and invitation-expiry checks pass, but live delivery remains unverified.
 
 | Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
 | --- | --- | --- | --- |
@@ -366,9 +382,9 @@ installation has not been observed, and no live send or mailbox delivery is veri
 | `R-ASTRA-106-E11` | Final authored-documentation validator, tests, map coverage, self-test, and scoped diff check after this deployment reconciliation. | Native x86_64; dirty `HEAD` `de9f45f2d5c562c34e004c658e7cee118af6ef58`; `2026-10-01T00:33:23Z`–`00:33:52Z`; commands `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -o addopts='' tests/test_docs_validation.py -ra`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`; no artifact. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; documentation tests passed `57` with one warning; coverage checked `133` files; self-test passed `26` cases; scoped diff check exited `0`. Reviewer `LUNA MAX docs`; no deployment or delivery acceptance is inferred. |
 | `R-ASTRA-106-E12` | Resend account, sending-domain verification, and Cloudflare DNS preparation. | Resend/Cloudflare provider boundary; reported verification at approximately `2026-10-01T14:04Z`; Terraform commit `90ad506dc7c39e145734f295f41ac2a4358b7a14`; exact commands, apply UTC, artifacts, and reviewer were not supplied. | **Pass** for the declared DNS scope: three DNS-only records were committed/pushed; Terraform format/validate, exact three-record create apply, public DNS resolution, and post-apply no-change plan were reported passed. No API key or mail delivery is inferred. |
 | `R-ASTRA-106-E13` | Operator SSH refresh and Resend SMTP endpoint transport checks. | Linode provider boundary; exact command, UTC, artifact, and reviewer were not supplied. | **Pass** for the declared transport scope: fixed typed controller applied `142.198.155.54/32`; from Linode, `smtp.resend.com:2465` passed TCP reachability and TLS 1.3 negotiation. This does not establish SMTP authentication, message acceptance, or mailbox delivery. |
-| `R-ASTRA-106-E14` | Builder self-validation for the fixed Resend credential installer. | Native x86_64; installer QA revision `42cf0f40c98404d55585745b10311354661a5195`; included in pushed `main` checkpoint `329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the tree was clean at push; paths `infra/linode/install-resend-smtp-key.sh`, `infra/linode/smtp-credential-installer.py`, and `tests/test_linode_smtp_credentials.py`; exact commands, UTC, artifact, and reviewer were not supplied. | **Pass as builder self-validation** for `11` focused tests, Ruff check/format, `bash -n`, and ShellCheck. This is not independent installer or production acceptance. |
+| `R-ASTRA-106-E14` | Builder self-validation for the fixed Resend credential installer. | Native x86_64; installer QA revision `42cf0f40c98404d55585745b10311354661a5195`; included in pushed `main` checkpoint `329fdc595483fa3b112b98c7788d808348638faa`, reported as matching `origin/main` at that checkpoint with a clean tree at push; paths `infra/linode/install-resend-smtp-key.sh`, `infra/linode/smtp-credential-installer.py`, and `tests/test_linode_smtp_credentials.py`; exact commands, UTC, artifact, and reviewer were not supplied. | **Pass as builder self-validation** for `11` focused tests, Ruff check/format, `bash -n`, and ShellCheck. This is not independent installer or production acceptance. |
 | `R-ASTRA-106-E15` | Initial independent QA of the Resend credential installer. | Exact QA task, command, UTC, environment, artifact, and reviewer were not supplied. | **Fail** for the declared installer scope: QA found a P1 remote Python shell quoting blocker and a P2 incomplete-read rollback blocker. The failure remains visible; the repaired rerun is recorded separately in E16. No host installation, live send, or mailbox result is inferred. |
-| `R-ASTRA-106-E16` | Repaired independent QA of the Resend credential installer. | Native x86_64; installer QA revision `42cf0f40c98404d55585745b10311354661a5195`; included in pushed `main` checkpoint `329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the tree was clean at push; exact command, UTC window, artifact, and reviewer were not supplied. | **Pass** for the declared local installer scope: `13` tests passed, including command parse/probe and incomplete-read rollback. This does not establish API-key creation, host installation, live sending, mailbox delivery, or production acceptance. |
+| `R-ASTRA-106-E16` | Repaired independent QA of the Resend credential installer. | Native x86_64; installer QA revision `42cf0f40c98404d55585745b10311354661a5195`; included in pushed `main` checkpoint `329fdc595483fa3b112b98c7788d808348638faa`, reported as matching `origin/main` at that checkpoint with the tree clean at push; exact command, UTC window, artifact, and reviewer were not supplied. | **Pass** for the declared local installer scope: `13` tests passed, including command parse/probe and incomplete-read rollback. This does not establish API-key creation, host installation, live sending, mailbox delivery, or production acceptance. |
 | `R-ASTRA-106-E17` | Final authored-documentation validator, tests, map coverage, self-test, and scoped diff check after the Resend reconciliation. | Native x86_64; dirty `HEAD` `42cf0f40c98404d55585745b10311354661a5195`; `2026-10-01T14:55:29Z`–`14:56:27Z`; commands `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -o addopts='' tests/test_docs_validation.py -ra`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, and `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs`; no artifact. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; documentation tests passed `57` with one warning; coverage checked `133` files; self-test passed `26` cases; scoped diff check exited `0`. Subsequent docs-only checkpoint `329fdc595483fa3b112b98c7788d808348638faa` was pushed; pre-push documentation coverage reported `133` mapped files/`10` changed passed, and `git ls-remote origin refs/heads/main` exactly matched; the tree was clean at push. Reviewer `LUNA MAX docs`; no installer, host, SMTP, mailbox, or production acceptance is inferred. |
 
 ## Current TOTP enrollment key-reuse repair (`R-ASTRA-107`)
@@ -420,7 +436,7 @@ deployment evidence does not claim complete auth acceptance.
 | `R-ASTRA-107-E6` | Full local gate before the final UI repair. | Native x86_64; dirty `HEAD` `2e07a8e`; artifact `test-results/local-gates/R-ASTRA-107-20261001T154012Z/`; exact command, UTC, and reviewer were not supplied. | **Pass** as reported for its declared pre-repair scope: `763` Python tests passed, `4` deselected, `85.47%` coverage, and reported frontend/build/typecheck/docs checks passed with `28` frontend checks. It is not final exact-tree acceptance. |
 | `R-ASTRA-107-E7` | Production deployment preflight and operator-access follow-up, before the successful refresh and deployment. | Production HTTPS/MCP/SSH boundary; approximately `2026-10-01T19:24Z`; exact command, revision, artifact, and reviewer were not supplied. | **Unavailable** at that time: HTTPS remained reachable, MCP `inspect`/`status` returned `remote_rejected`, SSH timed out, and the observed operator address did not match the firewall CIDR. This is historical pre-deployment evidence, superseded for current deployment status by E10-E11. |
 | `R-ASTRA-107-E8` | Final authored-documentation validator, docs tests, change-aware coverage, coverage self-test, and scoped diff check after the repair documentation. | Native x86_64; dirty `HEAD` `2e07a8e`; UTC was not captured by the command tool; commands `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -o addopts='' tests/test_docs_validation.py -ra`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, and `git diff --check -- AGENTS.md README.md MVP-ROADMAP.md MVP-PLAN.md docs`; artifact none. | **Pass**: validator reported `9` categories, `13` topics, and `7` governance entries; docs tests passed `57` with one warning; coverage checked `133` mapped files; self-test passed `26` cases; and scoped diff check exited `0`. Reviewer `LUNA MAX docs`; no commit, push, deployment, or device result is inferred. |
-| `R-ASTRA-107-E9` | Final-tree local gate after the UI repair. | Native x86_64; pushed `main` revision `a2247cce6e9f55fc81f96da3698f424ae2a2dc20`; `2026-10-01T19:37:24Z`–`19:47:25Z`; receipt `test-results/local-gates/R-ASTRA-107-20261001T193724Z/evidence.json`. | **Pass**, exit `0`: `763` Python tests passed, `4` were deselected, coverage was `85.45%`, and frontend `28`, build, typecheck, and documentation checks passed. This is final-tree local evidence, not complete production auth acceptance. |
+| `R-ASTRA-107-E9` | Final-tree local gate after the UI repair. | Native x86_64; dirty worktree at `HEAD` `2e07a8e9e2b15d80bc154182d0392977c60db53a`; `2026-10-01T19:37:24Z`–`19:47:25Z`; receipt `test-results/local-gates/R-ASTRA-107-20261001T193724Z/evidence.json`. | **Pass**, exit `0`: `763` Python tests passed, `4` were deselected, coverage was `85.45%`, and frontend `28`, build, typecheck, and documentation checks passed. This is dirty-worktree local evidence, not a pushed revision; the later push and deployment are separately recorded in E10. |
 | `R-ASTRA-107-E10` | Release publication, operator-access refresh, and production deployment. | Pushed `main` revision `a2247cce6e9f55fc81f96da3698f424ae2a2dc20`; Linux/amd64; archive SHA-256 `85c53648c8c1810bfc37153c404d4064ee468c81ce78caaf0666e71bb5221106`; image `sha256:b4249173085ef5b7b6c0df8741aa34d99e6b1d488ab9bfc829010398a422d2a1`; size `103160002` bytes; exact command/UTC/reviewer not supplied. | **Pass** for the declared deployment scope: publisher re-download passed; Terraform MCP applied `50.21.67.178/32` to firewall `177236117`; two MCP plans returned `remote_operation_failed`; fixed host-helper plan `105579dd822e69b03360201df2276bc3` succeeded; MCP deploy reached readiness schema `10`; status reported revision `a2247cc`, `failed: null`, `loopback_only: true`, backup `pre-deploy-a2247cce6e9f55fc-6ef1c2e6.spbackup`, and `deployed_at=2026-10-01T19:58:26.230020Z`. The transient plan failures remain visible. |
 | `R-ASTRA-107-E11` | Public boundary and live setup/reuse check. | Production HTTPS and IAB; exact probe/browser UTC, command, artifact, and reviewer were not supplied; no QR or secret was recorded. | **Pass** for the bounded boundary/UI scope: health `200`, auth status `200`, anonymous history `401`, overview `303` to sign-in, all `no-store`/`DYNAMIC`; GitHub sign-in as `jtmb` reached setup; repeated default starts across reload returned the same pending key when compared locally without exposing it, with expiry and explicit rotation controls visible. No TOTP code was entered; owner enrollment, workspace access, and physical iPhone code validation remain **Unavailable**. |
 
@@ -474,13 +490,14 @@ and native MCP deploy reached schema `10` ready. Status reported exact revision,
 health `200`, auth status `200`, anonymous history `401`, and overview `303`, all `no-store`/`DYNAMIC`.
 The signed-in IAB showed the new Microsoft intro, manual-key and in-app-scanner guidance, and the
 explicit Camera/Photos Apple Passwords warning; temporary screenshot artifact
-`/tmp/signal-ledger-r110-release/production-microsoft-guidance.png`. No owner key was generated or
-code entered. Native iPhone/Microsoft Authenticator interaction, owner enrollment, authenticated
-workspace retrieval, and broader authentication acceptance remain **Unavailable**.
+`/tmp/signal-ledger-r110-release/production-microsoft-guidance.png`. During the recorded agent-run
+live check, no owner key was generated or code entered. Native iPhone/Microsoft Authenticator
+interaction, owner enrollment, authenticated workspace retrieval, and broader authentication
+acceptance remain **Unavailable** in agent-observed evidence.
 See the [MVP plan](MVP-PLAN.md#microsoft-authenticator-ios-setup-routing-follow-on-r-astra-110)
 for the evidence ledger.
 
-## Microsoft Authenticator dropdown follow-on (`R-ASTRA-109`)
+## Historical Microsoft Authenticator dropdown follow-on (`R-ASTRA-109`)
 
 **Status: In progress** for complete owner authentication. The deployed chooser includes Microsoft
 Authenticator and shows app-specific setup guidance after selection. The implementation and
@@ -507,18 +524,18 @@ and `deployed_at=2026-10-02T00:42:50.439878Z`.
 Live HTTPS returned health/auth status `200`, anonymous history `401`, and `/overview` `303` to
 sign-in, all with `no-store`/`DYNAMIC`. In the production IAB after GitHub sign-in as `jtmb`, the
 Microsoft option and its guidance appeared and selecting it enabled setup-key generation. No key
-was generated or code entered; the read-only database query found zero owner factors and zero active
-pending enrollments. Owner TOTP acceptance and authenticated workspace retrieval remain
+was generated or code entered; the read-only database query at that checkpoint found zero owner
+factors and zero active pending enrollments. Owner TOTP acceptance and authenticated workspace retrieval remain
 **Unavailable**, as do actual Microsoft Authenticator interaction and physical iPhone code
-acceptance. See the [MVP plan](MVP-PLAN.md#microsoft-authenticator-dropdown-follow-on-r-astra-109)
+acceptance. See the [MVP plan](MVP-PLAN.md#historical-microsoft-authenticator-dropdown-follow-on-r-astra-109)
 for the evidence ledger.
 
-The current working-tree source follow-on addresses the iOS routing report. Microsoft Authenticator
-defaults to same-phone manual key entry; the QR remains hidden until the user selects **Another
+At the time of this R-ASTRA-109 draft, a working-tree source follow-on addressed the iOS routing
+report. Microsoft Authenticator defaults to same-phone manual key entry; the QR remains hidden until the user selects **Another
 screen: scan from inside Microsoft Authenticator**. The page warns against iPhone Camera or Photos,
 which may route the QR to Apple Passwords, and documents no way to force those iOS tools to open
-Microsoft Authenticator. This source draft is awaiting exact QA and deployment evidence, so no new
-release or final-QA result is recorded here.
+Microsoft Authenticator. This draft was superseded by the deployed and independently checked
+[R-ASTRA-110 follow-on](MVP-PLAN.md#microsoft-authenticator-ios-setup-routing-follow-on-r-astra-110).
 
 ## Preceding authenticator-app chooser refinement (`R-ASTRA-108`)
 
@@ -582,7 +599,7 @@ VM does not build source.
 
 - **Status:** **In progress**; implementation, private infrastructure apply, the auth-UI repair,
   remote image deployment, the declared recovery rehearsal, and the restricted owner-only canary
-  are recorded. E63 is the current deployment: main revision
+  are recorded. E63 records the then-current schema-8 deployment at that historical checkpoint: main revision
   `27e0d2f5916d4297e10d259aa4776055a78faeaa`, verified Linux/amd64 image, schema `8`, `failed: null`,
   and loopback-only with a pre-deploy backup. Public health/auth/sign-in probes passed with
   `no-store`/`DYNAMIC`. The IAB passkey remained unavailable and corrected sign-out returned to
@@ -596,18 +613,18 @@ VM does not build source.
   sign-in boundary. E59 records the legacy-host retirement pass. Functional owner/invited-user
   browser acceptance remains pending; E60 records the historical current-machine browser passkey
   failure and sign-out limitation, E61 records the locally accepted repair, E62 records the passing
-  full local gate, E63 records the current image publication/deployment, and E64 records Astra's
+  full local gate, E63 records the then-current schema-8 image publication/deployment, and E64 records Astra's
   no-P1/P2 live read-only review. Browser-rendered owner content, live second-user onboarding, and
   hardware passkey evidence remain **Unavailable**.
 - **Owner/phase:** implementation/security repair, `ASTRA` medium review, independent
   `LUNA MAX QA` browser/deployment checks, and `LUNA MAX docs` reconciliation.
-- **Dependencies:** `R-ASTRA-100` is complete for its declared UI scope; current source schema is
-  8; the current local app remains untouched and E59 confirms the old VM is retired.
+- **Dependencies:** `R-ASTRA-100` is complete for its declared UI scope; source schema was 8 at this
+  historical checkpoint; the local app remained untouched and E59 confirmed the old VM was retired.
 - **Pending external steps:** browser-rendered owner UI verification, remote two-user/browser
   verification, and functional owner/invited-user acceptance. E59 retires
   legacy Linode `97934478`; the public-invited infrastructure boundary is applied in E58, but no
   owner UI session was observed. E60 records the current-machine passkey browser limitation. E63
-  records the current deployed image and public probes; E64 records Astra's no-P1/P2 live read-only
+  records the then-current schema-8 image and public probes; E64 records Astra's no-P1/P2 live read-only
   review. The four local isolation scenarios pass in E56. The three provider access items were created privately;
   Terraform applied replacement Linode `106817202` and the imported firewall; the reviewed image
   was deployed privately with the app loopback-only; the VM Backup recovery rehearsal passed for
@@ -616,7 +633,7 @@ VM does not build source.
   phone/Bluetooth credential and no completed credential was observed in that earlier browser
   check. The source-reviewed
   session-recovery fix at `a1d868287a729c75d9b8628f612a856db132374a` passed local build/typecheck,
-  `28` frontend tests, and browser `4/4`. E63 published and deployed the current image. Earlier
+  `28` frontend tests, and browser `4/4`. E63 published and deployed the then-current schema-8 image. Earlier
   Luna evidence records Cloudflare token verification HTTP `401` and documentation-coverage **Fail**.
   E58's boundary probes returned the expected sign-in/auth responses with `no-store`/`DYNAMIC`,
   and direct port `8000` remained unreachable. E59's post-delete probes returned health/auth `200`,
@@ -707,7 +724,7 @@ passing rerun of the full local gate after its initial comment-audit failure, an
 live public boundary. Browser-rendered owner content and remote two-user behavior remain
 **Unavailable**; functional owner/invited-user acceptance remains pending. E60 records the historical
 current-machine browser passkey limitation; E61 records the locally accepted repair and QA, E62 records
-the passing full local gate, E63 records the current deployment, and E64 records Astra's no-P1/P2 live
+the passing full local gate, E63 records the then-current schema-8 deployment, and E64 records Astra's no-P1/P2 live
 read-only review. Server-observed owner verification and
 saved API retrieval remain recorded in E52/E55. The historical
 R-ASTRA-100 aggregate remains separately recorded and is not relabeled by E12. The Cloudflare
@@ -718,7 +735,7 @@ visible; the
   origin-navigation repair is recorded in E49, the source/UI repair in E50, the earlier deployment in
   E51, operator/MCP/QA/documentation/retrieval/local-gate evidence in E52-E57, the public boundary in
   E58, the legacy-host retirement in E59, the current-machine browser limitation in E60, the local
-  repair/gate in E61-E62, and the current deployment/review in E63-E64. No secret,
+  repair/gate in E61-E62, and the deployment/review recorded in E63-E64. No secret,
 token, key, owner
 email, private path, or public hostname belongs in
 tracked roadmap prose.

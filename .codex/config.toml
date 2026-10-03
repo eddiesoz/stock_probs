@@ -1,6 +1,8 @@
 # Repository-level Codex settings. Codex loads this file for trusted projects.
 # The root AGENTS.md is larger than Codex's default instruction byte limit.
 project_doc_max_bytes = 131072
+model = "gpt-6.1-sol"
+model_reasoning_effort = "medium"
 
 [agents]
 enabled = true

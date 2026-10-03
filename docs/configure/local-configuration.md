@@ -18,6 +18,51 @@ of tracked files and shell history when they could expose private locations.
 | `STOCK_PROBS_PORT` | `8000` | Integer from 1 through 65535. |
 | `STOCK_PROBS_FIXTURE_NOW` | unset | Timezone-aware ISO-8601 clock used with fixture-driven runs. |
 
+## Authentication settings
+
+Authentication is disabled by default for the local development path. Production requires GitHub
+authentication and fails startup unless the HTTPS origin, unique session secret, secure host-only
+cookies, owner account, and GitHub OAuth settings are valid. Keep credentials outside tracked
+files and command arguments.
+
+| Variable | Default | Constraint and effect |
+| --- | --- | --- |
+| `STOCK_PROBS_ENV` | `development` | One of `development`, `test`, or `production`. |
+| `STOCK_PROBS_AUTH_MODE` | `disabled` | One of `disabled`, `local`, or `github`; production requires `github`. |
+| `STOCK_PROBS_AUTH_SESSION_SECRET` | Development-only value | When authentication is enabled, use at least 32 bytes. Production rejects the development default. |
+| `STOCK_PROBS_AUTH_SESSION_IDLE_SECONDS` | `1800` | Idle expiry must be at least 300 seconds and no greater than the maximum session expiry. |
+| `STOCK_PROBS_AUTH_SESSION_MAX_SECONDS` | `86400` | Absolute expiry must be at least the idle expiry and no greater than 2678400 seconds. |
+| `STOCK_PROBS_AUTH_INVITATION_TTL_SECONDS` | `86400` | Invitation lifetime from 60 through 604800 seconds. |
+| `STOCK_PROBS_PUBLIC_ORIGIN` | unset | Required when authentication is enabled; production requires the exact public HTTPS origin. Local mode derives a loopback origin when omitted. |
+| `STOCK_PROBS_AUTH_COOKIE_SECURE` | `0` outside production; `1` in production | Production requires secure cookies. |
+| `STOCK_PROBS_AUTH_COOKIE_DOMAIN` | unset | Production cookies must remain host-only; do not set a parent domain. |
+| `STOCK_PROBS_GITHUB_CLIENT_ID` | unset | Required with `github` mode. |
+| `STOCK_PROBS_GITHUB_CLIENT_SECRET` | unset | Secret; required with `github` mode. |
+| `STOCK_PROBS_GITHUB_REDIRECT_URI` | unset | Required with `github` mode and must match the registered callback. |
+| `STOCK_PROBS_OWNER_GITHUB_ID` | unset | Positive numeric GitHub account ID; required in production. |
+| `STOCK_PROBS_TRUSTED_PROXY_HOSTS` | `127.0.0.1,::1,localhost` | Comma-separated proxy addresses trusted for forwarded request metadata. |
+| `STOCK_PROBS_BOOTSTRAP_USERNAME` / `STOCK_PROBS_BOOTSTRAP_PASSWORD` | unset | Optional development local-account credentials; forbidden in production. |
+| `STOCK_PROBS_BOOTSTRAP_MEMBER_USERNAME` / `STOCK_PROBS_BOOTSTRAP_MEMBER_PASSWORD` | unset | Optional development member credentials; forbidden in production. |
+
+Invitation expiry defaults to one day. The supported range is 60 seconds through seven days;
+`STOCK_PROBS_AUTH_INVITATION_TTL_SECONDS` changes that lifetime.
+
+`R-ASTRA-111` adds source-only GitHub OAuth admission limits: at most 8 starts per effective
+caller and 64 total starts per application process in a rolling minute, plus at most 8 outstanding
+transactions per caller and 128 total. Per-minute counters are process-local; outstanding
+transaction counts are stored with OAuth state. Callers sharing an effective source IP, such as
+behind a shared NAT, share the caller limit. The source uses the socket peer address and accepts
+`CF-Connecting-IP` only when that peer matches `STOCK_PROBS_TRUSTED_PROXY_HOSTS`; it does not use
+other forwarded-IP headers. The source change adds explicit production Compose ingress
+attribution; install its configuration through the existing reviewed host-Compose updater before
+image promotion. Independent Docker bridge QA passed for the local Compose path. The schema-11 change is not deployed;
+production remains on schema 10, and in-progress GitHub authorizations must restart after migration.
+
+Use the supported CLI to run the app: it disables Uvicorn proxy-header rewriting so the
+application can inspect the socket peer before applying the trusted-proxy rule. If launching
+Uvicorn directly, pass `--no-proxy-headers`; forwarded-header rewriting can replace the peer address
+used for caller admission.
+
 ## Production invitation email
 
 The production Compose service accepts optional SMTP settings for administrator-sent email
@@ -53,12 +98,17 @@ The pending operator workflow accepts one private, one-line Resend API-key file 
 fixed Resend SMTP values, recreate the fixed production Compose app without building or pulling a
 new image, and require readiness. The installer QA was observed against local revision
 `42cf0f40c98404d55585745b10311354661a5195`; that installer is included in pushed `main` checkpoint
-`329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the tree was clean
-at push.
+`329fdc595483fa3b112b98c7788d808348638faa`, reported as matching `origin/main` with a clean tree
+at that checkpoint.
 Initial independent QA found a P1 remote-shell quoting blocker and a P2 incomplete-read rollback
 blocker; the repaired QA recheck passed `13` tests, including command parse/probe and incomplete-read
-rollback, for its declared local scope. This remains installer QA only. No API key currently exists,
-no host installation has been observed, and no live send or mailbox delivery has been verified.
+rollback, for its declared local scope. At checkpoint `329fdc595483fa3b112b98c7788d808348638faa`,
+the report said it matched `origin/main`, the tree was clean, and no API key existed at that time.
+A later operator observation reported `email_invites_enabled=false` in production; its timestamp was
+not supplied. This is point-in-time evidence; a later read-only SSH recheck timed out before any
+value was returned, so the current setting is unavailable. Local QA reported 25 fake-SMTP cases plus
+invitation-expiry coverage. These results do not establish host installation, live sending, or
+mailbox delivery.
 
 For a reproducible local dashboard:
 

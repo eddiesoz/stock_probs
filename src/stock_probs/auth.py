@@ -47,6 +47,10 @@ MAX_OAUTH_STATE_TTL = timedelta(minutes=10)
 MAX_PASSKEY_CHALLENGE_TTL = timedelta(minutes=5)
 OAUTH_START_WINDOW = timedelta(minutes=1)
 MAX_OAUTH_STARTS_PER_WINDOW = 64
+MAX_OAUTH_STARTS_PER_CALLER_WINDOW = 8
+MAX_PENDING_OAUTH_STATES = 128
+MAX_PENDING_OAUTH_STATES_PER_CALLER = 8
+UNATTRIBUTED_OAUTH_CALLER_KEY_HASH = "0" * 64
 
 
 class AuthError(Exception):
@@ -95,6 +99,15 @@ class AuthUnavailable(AuthError):
     code = "authentication_unavailable"
     status_code = 503
     message = "Authentication is temporarily unavailable."
+
+
+class OAuthStartLimited(AuthError):
+    """Report an OAuth caller's bounded admission limit without exposing its identity."""
+
+    code = "oauth_start_limited"
+    status_code = 429
+    message = "GitHub sign-in was started too many times. Try again later."
+    retry_after_seconds = int(OAUTH_START_WINDOW.total_seconds())
 
 
 class OAuthRejected(AuthError):
@@ -188,7 +201,7 @@ class AuthStore(Protocol):
 
     def auth_get_invitation(self, code_hash: str) -> Mapping[str, object] | None: ...
 
-    def auth_store_oauth_state(self, fields: Mapping[str, object]) -> None: ...
+    def auth_store_oauth_state(self, fields: Mapping[str, object]) -> bool | None: ...
 
     def auth_consume_oauth_state(
         self, state_hash: str, consumed_at: str
@@ -600,9 +613,9 @@ class AuthStoreAdapter:
             result = method(token_hash=code_hash)
         return result if isinstance(result, Mapping) else None
 
-    def auth_store_oauth_state(self, fields: Mapping[str, object]) -> None:
+    def auth_store_oauth_state(self, fields: Mapping[str, object]) -> bool:
         method = self._method("auth_store_oauth_state", "store_oauth_state", "create_oauth_state")
-        self._invoke(
+        result = self._invoke(
             method,
             {
                 **fields,
@@ -610,6 +623,7 @@ class AuthStoreAdapter:
                 "expires_at": self._datetime(fields.get("expires_at"), "expires_at"),
             },
         )
+        return result is not False
 
     def auth_consume_oauth_state(
         self, state_hash: str, consumed_at: str
@@ -1406,7 +1420,7 @@ class AuthManager:
         self._challenge_lock = threading.Lock()
         self._challenges: dict[str, tuple[ChallengeKind, int, datetime]] = {}
         self._oauth_start_lock = threading.Lock()
-        self._oauth_start_times: list[datetime] = []
+        self._oauth_start_times: list[tuple[str, datetime]] = []
         # Keep a short-lived local-only marker for development backup step-up checks. Production
         # workspace access is decided by the durable TOTP session fields below.
         self._step_up_sessions: dict[str, tuple[int, datetime]] = {}
@@ -1841,42 +1855,65 @@ class AuthManager:
         return result
 
     def begin_github(
-        self, now: datetime, *, invitation_code: str | None = None
+        self,
+        now: datetime,
+        *,
+        caller_identity: str,
+        invitation_code: str | None = None,
     ) -> GithubAuthorization:
         """Generate OAuth state and PKCE verifier stored on the server."""
 
         if self.settings.mode != "github" or not self.settings.github_client_id:
             raise AuthUnavailable("GitHub sign-in is not configured.")
+        if not isinstance(caller_identity, str) or not 1 <= len(caller_identity) <= 253:
+            raise AuthUnavailable("GitHub sign-in is temporarily unavailable.")
         issued = now.astimezone(UTC)
+        caller_key_hash = hmac.new(
+            self.settings.session_secret.encode("utf-8"),
+            b"signal-ledger:github-oauth-caller:v1\0" + caller_identity.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
         with self._oauth_start_lock:
             cutoff = issued - OAUTH_START_WINDOW
             self._oauth_start_times = [
-                started for started in self._oauth_start_times if started > cutoff
+                (caller_hash, started)
+                for caller_hash, started in self._oauth_start_times
+                if started > cutoff
             ]
+            caller_starts = sum(
+                caller_hash == caller_key_hash for caller_hash, _ in self._oauth_start_times
+            )
+            if caller_starts >= MAX_OAUTH_STARTS_PER_CALLER_WINDOW:
+                raise OAuthStartLimited()
             if len(self._oauth_start_times) >= MAX_OAUTH_STARTS_PER_WINDOW:
                 raise AuthUnavailable("GitHub sign-in is temporarily unavailable.")
-            self._oauth_start_times.append(issued)
-        state = secrets.token_urlsafe(32)
-        verifier = secrets.token_urlsafe(48)
-        challenge = _b64(hashlib.sha256(verifier.encode("ascii")).digest())
-        expires = issued + timedelta(seconds=self.settings.oauth_state_ttl_seconds)
-        redirect = self.settings.github_redirect_uri
-        if not redirect:
-            raise AuthUnavailable("GitHub sign-in is not configured.")
-        self.store.auth_store_oauth_state(
-            {
-                "state_hash": _hash_secret(state),
-                "code_verifier": verifier,
-                "redirect_uri": redirect,
-                "invitation_code_hash": (
-                    _hash_secret(invitation_code)
-                    if invitation_code and 20 <= len(invitation_code) <= 128
-                    else None
-                ),
-                "created_at": _iso(issued),
-                "expires_at": _iso(expires),
-            }
-        )
+            state = secrets.token_urlsafe(32)
+            verifier = secrets.token_urlsafe(48)
+            challenge = _b64(hashlib.sha256(verifier.encode("ascii")).digest())
+            expires = issued + timedelta(seconds=self.settings.oauth_state_ttl_seconds)
+            redirect = self.settings.github_redirect_uri
+            if not redirect:
+                raise AuthUnavailable("GitHub sign-in is not configured.")
+            stored = self.store.auth_store_oauth_state(
+                {
+                    "state_hash": _hash_secret(state),
+                    "code_verifier": verifier,
+                    "redirect_uri": redirect,
+                    "invitation_code_hash": (
+                        _hash_secret(invitation_code)
+                        if invitation_code and 20 <= len(invitation_code) <= 128
+                        else None
+                    ),
+                    "caller_key_hash": caller_key_hash,
+                    "created_at": _iso(issued),
+                    "expires_at": _iso(expires),
+                }
+            )
+            # Persistence owns the cross-restart outstanding-state limit. A refusal still
+            # counts as a caller attempt so a client cannot turn rejected starts into a DB loop.
+            self._oauth_start_times.append((caller_key_hash, issued))
+            if not stored:
+                raise OAuthStartLimited()
         query = httpx.QueryParams(
             {
                 "client_id": self.settings.github_client_id,
@@ -2500,6 +2537,7 @@ class MemoryAuthStore:
         self.recovery_codes: dict[int, list[dict[str, object]]] = {}
         self.totp_attempts: dict[int, dict[str, object]] = {}
         self._totp_lock = threading.RLock()
+        self._oauth_lock = threading.RLock()
         self._next_factor_id = 1
         self._next_user_id = 1
 
@@ -2608,17 +2646,51 @@ class MemoryAuthStore:
     def auth_get_invitation(self, code_hash: str) -> Mapping[str, object] | None:
         return self.invitations.get(code_hash)
 
-    def auth_store_oauth_state(self, fields: Mapping[str, object]) -> None:
-        self.oauth_states[str(fields["state_hash"])] = dict(fields)
+    def auth_store_oauth_state(self, fields: Mapping[str, object]) -> bool:
+        """Apply the durable OAuth admission limits used by the SQLite implementation."""
+
+        try:
+            created_at = _utc(fields.get("created_at"))
+            expires_at = _utc(fields.get("expires_at"))
+        except AuthUnavailable:
+            raise
+        if expires_at <= created_at:
+            raise ValueError("OAuth state must expire after creation")
+        caller_key_hash = fields.get("caller_key_hash", UNATTRIBUTED_OAUTH_CALLER_KEY_HASH)
+        if not isinstance(caller_key_hash, str) or not re_full_hex(caller_key_hash):
+            raise ValueError("caller_key_hash is invalid")
+        with self._oauth_lock:
+            for state_hash, record in list(self.oauth_states.items()):
+                try:
+                    record_expiry = _utc(record.get("expires_at"))
+                except AuthUnavailable:
+                    del self.oauth_states[state_hash]
+                    continue
+                if record_expiry <= created_at or record.get("consumed_at") is not None:
+                    del self.oauth_states[state_hash]
+            pending = [
+                record
+                for record in self.oauth_states.values()
+                if record.get("consumed_at") is None
+                and record.get("caller_key_hash", UNATTRIBUTED_OAUTH_CALLER_KEY_HASH)
+                == caller_key_hash
+            ]
+            if len(pending) >= MAX_PENDING_OAUTH_STATES_PER_CALLER:
+                return False
+            if len(self.oauth_states) >= MAX_PENDING_OAUTH_STATES:
+                raise AuthUnavailable("GitHub sign-in capacity is temporarily full.")
+            self.oauth_states[str(fields["state_hash"])] = dict(fields)
+        return True
 
     def auth_consume_oauth_state(
         self, state_hash: str, consumed_at: str
     ) -> Mapping[str, object] | None:
-        record = self.oauth_states.get(state_hash)
-        if record is None or record.get("consumed_at") is not None:
-            return None
-        record["consumed_at"] = consumed_at
-        return record
+        with self._oauth_lock:
+            record = self.oauth_states.get(state_hash)
+            if record is None or record.get("consumed_at") is not None:
+                return None
+            record["consumed_at"] = consumed_at
+            return record
 
     def auth_create_passkey(self, fields: Mapping[str, object]) -> Mapping[str, object]:
         record = dict(fields)

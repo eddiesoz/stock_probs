@@ -5,40 +5,45 @@ description: "The single-process application architecture and its API, service, 
 
 # Architecture
 
-Stock Probability is a local Linux application built as one bounded Python process. FastAPI
+Stock Probability is a self-hosted Linux application built as one bounded Python process. FastAPI
 remains the sole production server: it serves `/`, `/api/v1/docs`, and the workspace routes
 `/overview`, `/research`, `/tools`, `/tools/forecast`, `/tools/live-trading`, and
 `/tools/markets`, plus the application API below `/api/v1`. The default listener is loopback;
-there is no hosted service, Node production server, or multi-service control plane.
+production deployment runs on an operator-managed host. Node is not a production server, and the
+application does not split into multiple runtime services.
 
-The presentation source is a Next.js `16.3.5` / React `19.3` App Router project, but it is a
+The presentation source is a Next.js `16.3.8` / React `19.3` App Router project, but it is a
 static build-time input rather than another runtime. Run `./scripts/build-frontend.sh` to create
 the static export and stage it for the Python package. The export has the stable build ID
 `stock-probs`; generated `frontend/.next/`, `frontend/out/`, and
-`src/stock_probs/static/next/` trees are ignored. The staged tree contains the 12 served Next
-files that are packaged into the wheel. The container uses Node only in its build stage; the
-runtime image contains the Python server and packaged static files.
+`src/stock_probs/static/next/` trees are ignored. The Python package includes the staged App Router
+pages and assets from `src/stock_probs/static/next/`. The container uses Node only in its build
+stage; the runtime image contains the Python server and packaged static files.
 
-The optional root `compose.yaml` wraps that same process as one local
-`app` service. Its loopback-only publication, `/data` volume, resource/log bounds, non-root image
-user, and image healthcheck are operational containment; they do not turn the app into a hosted
-or multi-service deployment. Native development remains the `.dev-venv/` plus local CLI path in
+The optional root `compose.yaml` wraps that same process as one local `app` service. Its
+loopback-only publication, `/data` volume, resource/log bounds, non-root image user, and image
+healthcheck are operational containment. Native development remains the `.dev-venv/` plus local CLI path in
 [getting started](../operations/getting-started.md).
 
 ## Authentication boundary
 
 Production keeps GitHub OAuth as the first factor and uses a six-digit TOTP code from an
 authenticator app as the sole ongoing application second factor. Invitations are resolved to a
-numeric GitHub account ID, expire, and can be redeemed once. Authenticator enrollment returns the
-manual secret and `otpauth://` link only during the short setup transaction; the encrypted secret
-is never returned after activation. Recovery codes are displayed once, stored as hashes, and each is
-consumed at most once. A lost authenticator enters a factor-replacement-only session until a new
-authenticator is confirmed.
+numeric GitHub account ID, expire, and can be redeemed once. The enrollment API returns the manual
+secret and an `otpauth://` URI only during the short setup transaction; the authenticator page uses
+that URI to render a local QR code and does not expose a generic URI-handler link. The encrypted
+secret is never returned after activation. Recovery codes are displayed once, stored as hashes,
+and each is consumed at most once. A lost authenticator enters a factor-replacement-only session
+until a new authenticator is confirmed.
 
-Passkeys remain in the data model only to migrate legacy accounts once. New passkey enrollment is
-disabled in production, and ordinary sign-in on another device does not require Bluetooth or a
-nearby phone. Administrator backup and restore operations require a fresh TOTP step-up, while all
-private research queries continue to derive ownership from the authenticated session.
+The deployed schema-10 migration revokes stored passkeys and old passkey sessions, and production
+GitHub-auth mode rejects WebAuthn registration. The one-time passkey migration screen belonged to
+an earlier release and is not current authentication guidance. Ordinary sign-in on another device
+does not require Bluetooth or a nearby phone. In production GitHub-auth mode, backup creation and
+every HTTP restore request require an administrator session and TOTP proof no older than five
+minutes. Local-auth mode can satisfy the same fresh step-up window with its local-passkey proof.
+Backup status is administrator-only without step-up. All private research queries derive ownership
+from the authenticated session.
 
 ```text
 Browser presentation

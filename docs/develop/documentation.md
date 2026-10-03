@@ -14,6 +14,16 @@ policy can load. The project-scoped `luna-build`, `luna-qa`, and `luna-docs` TOM
 `.codex/agents/` mirror the current ownership split. Their instructions guide task ownership;
 the active Codex permission mode governs actual filesystem access.
 
+[`model-routing.json`](../../model-routing.json) is the single maintained source for model,
+reasoning-effort, and role assignments. Codex and OpenCode model fields are synchronized
+projections; maintain the manifest, then run `python3 scripts/sync_model_routing.py --write` to
+update them or `python3 scripts/sync_model_routing.py --check` to detect drift. The synchronizer
+changes only designated model/effort fields and fails closed when the expected structure differs.
+Tests read the manifest instead of pinning model-version strings. Historical GPT-5.6 and Astra
+receipts remain unchanged and do not define current roles. User-authorized workflow exceptions
+must remain limited to the named task and be recorded in `AGENTS.md` when the correction changes
+durable repository policy.
+
 Codex discovers repository skills in `.agents/skills/`. Seven relative symlinks point to the
 maintained OpenCode skill directories, preserving one source for their instructions and
 references. When an approved skill is added or retired, update the corresponding Codex
@@ -88,7 +98,9 @@ OpenCode project configuration is loaded by the parent process. Restart after ch
 prove discovery. With `OPENCODE_DISABLE_PROJECT_CONFIG=1`, project-profile discovery and runtime
 acceptance are **Pending**/**Unavailable**. The real V2 provider probe emitted an error event
 without a report, so it is **Unavailable** evidence and must not be described as provider or
-project-profile acceptance.
+project-profile acceptance. After Codex project-configuration changes, open a fresh Codex task
+before checking discovery. A successful manifest check or synchronized file is static evidence;
+no runtime model/profile discovery pass is inferred from it.
 
 ### Project skill loader boundary
 
@@ -168,8 +180,8 @@ The domain/DNS/TLS checks do not establish API-key creation, host installation, 
 live sending, mailbox delivery, or production email acceptance. The initial builder and repaired
 installer QA were observed against local revision `42cf0f40c98404d55585745b10311354661a5195`;
 that installer is included in pushed `main` checkpoint
-`329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the tree was clean
-at push.
+`329fdc595483fa3b112b98c7788d808348638faa`, reported as matching `origin/main` with a clean tree
+at that checkpoint.
 The initial independent QA P1/P2 findings remain recorded as failure evidence; the repaired QA
 recheck passed `13` tests, including command parse/probe and incomplete-read rollback, for its
 declared local scope. This does not establish host installation, SMTP send, mailbox delivery, or
@@ -194,10 +206,21 @@ No passkey ceremony or saved-data check was completed. The source-reviewed sessi
 `28` frontend tests, and browser `4/4` had passed. Owner passkey enrollment and saved-data
 verification remain pending. This is historical passkey evidence, not TOTP acceptance evidence.
 
-The current `R-ASTRA-102` documentation boundary covers the authenticator-only release: GitHub
-OAuth plus a six-digit TOTP authenticator code, one-time legacy-passkey migration, hashed single-use
-recovery codes, and fresh TOTP step-up for administrator backup/restore. Independent scoped QA and
-Astra's security re-review are recorded in the root plan. The current local gate **Passed** for its
+The historical `R-ASTRA-102` documentation boundary covered the then-deployed schema-9 release:
+GitHub OAuth plus a six-digit TOTP authenticator code, its one-time legacy-passkey migration,
+hashed single-use recovery codes, and production GitHub-auth TOTP step-up for administrator backup/restore. The migration
+route is not the current setup flow. The current deployment is `R-ASTRA-110`, schema 10; the
+R-ASTRA-102 checks and release details below remain historical evidence. `R-ASTRA-111` tracks a
+source-only schema-11 OAuth admission change, including clearing OAuth transaction rows, a verified
+schema-10 pre-migration backup, and production Compose ingress attribution installed through the
+existing reviewed host-Compose updater. The scoped Sol security review and independent Luna Docker
+bridge regression passed. The first full local gate failed on four stale schema-10 test expectations;
+the corrected full gate passed, and parent integrated review found no blocker for the declared local
+scope. The change is not deployed; production remains schema 10.
+Backup/restore compatibility and caller limits are documented in the
+[backup guide](../operations/backup-restore.md) and [API reference](../reference/api.md).
+Independent scoped QA and Astra's security re-review are recorded in the root plan. Its local gate
+**Passed** for its
 declared scope: receipt `test-results/local-gates/R-ASTRA-102-20260928T201109Z/evidence.json` reports
 `704` Python tests passed, `4` live tests deselected, `85.10%` coverage, frontend typecheck/build and
 `28` frontend tests, and documentation coverage. The earlier aggregate failure remains visible as

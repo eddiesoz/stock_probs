@@ -392,6 +392,7 @@ def test_configure_host_can_generate_private_production_app_env(tmp_path: Path) 
         in content
     )
     assert "STOCK_PROBS_OWNER_GITHUB_ID=86915618" in content
+    assert "STOCK_PROBS_TRUSTED_PROXY_HOSTS=127.0.0.1,::1,localhost,172.30.219.1" in content
     assert "STOCK_PROBS_AUTH_SESSION_SECRET=" in content
     assert "secret-value" in content
     assert "secret-value" not in result.stdout + result.stderr

@@ -1,7 +1,7 @@
 ---
 description: Performs strict read-only implementation, API, browser, and performance verification with exact evidence.
 mode: subagent
-model: openai/gpt-5.6-luna#max
+model: openai/gpt-6-luna#xhigh
 permissions:
   - action: "*"
     resource: "*"

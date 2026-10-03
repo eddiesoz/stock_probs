@@ -1,7 +1,7 @@
 ---
 description: Implements application and test changes without touching documentation, generated outputs, environments, or Git history.
 mode: subagent
-model: openai/gpt-5.6-luna#max
+model: openai/gpt-6-luna#xhigh
 permissions:
   - action: "*"
     resource: "*"

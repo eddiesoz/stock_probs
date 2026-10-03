@@ -165,6 +165,10 @@ def main() -> None:
                 host=host,
                 port=port,
                 workers=1,
+                # LocalSecurityMiddleware needs the raw peer for its connector allowlist. The
+                # app reads approved forwarded origin metadata itself; Uvicorn's default XFF
+                # rewriting would replace that peer before the trust check.
+                proxy_headers=False,
                 limit_concurrency=32,
                 backlog=64,
                 timeout_keep_alive=5,

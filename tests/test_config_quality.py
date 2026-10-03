@@ -10,11 +10,13 @@ import shutil
 import stat
 import subprocess
 import sys
+import tomllib
 from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pytest
 
+from scripts.sync_model_routing import projected_files, sync_projection
 from stock_probs.cli import main
 from stock_probs.config import Settings
 
@@ -242,6 +244,9 @@ def test_native_skill_source_is_automatic_without_duplicate_or_flat_skill_source
 
 def test_native_agents_keep_builtins_for_sol_and_luna_for_custom_subagents():
     config = json.loads((ROOT / "opencode.json").read_text())
+    routing = json.loads((ROOT / "model-routing.json").read_text())
+    roles = routing["roles"]
+    opencode_routing = routing["opencode"]
     legacy = ROOT / ".opencode/agent"
     agents = ROOT / ".opencode/agents"
     profiles = {path.stem: path.read_text() for path in agents.glob("*.md")}
@@ -256,7 +261,15 @@ def test_native_agents_keep_builtins_for_sol_and_luna_for_custom_subagents():
         assert "permission" not in agent
         assert all(set(rule) == {"action", "resource", "effect"} for rule in agent["permissions"])
     assert all(
-        builtin_agents[agent]["model"] == "openai/gpt-5.6-sol#medium" for agent in ("build", "plan")
+        builtin_agents[agent]["model"]
+        == (
+            f"openai/{roles[opencode_routing['builtin_agents'][agent]]['model']}#"
+            f"{roles[opencode_routing['builtin_agents'][agent]]['reasoning_effort']}"
+        )
+        for agent in ("build", "plan")
+    )
+    assert all(
+        opencode_routing["builtin_agents"][agent] == "orchestrator" for agent in ("build", "plan")
     )
     build_permissions = builtin_agents["build"]["permissions"]
     assert {"action": "edit", "resource": "*", "effect": "deny"} in build_permissions
@@ -265,11 +278,15 @@ def test_native_agents_keep_builtins_for_sol_and_luna_for_custom_subagents():
     assert "Orchestrator" not in config["agents"]
     assert "orchestrator" not in config["agents"]
 
-    for profile in profiles.values():
+    for profile_name, profile in profiles.items():
         assert "mode: subagent" in profile
-        assert "model: openai/gpt-5.6-luna#max" in profile
+        assigned_role = roles[opencode_routing["agents"][profile_name]]
+        assert (
+            f"model: openai/{assigned_role['model']}#{assigned_role['reasoning_effort']}" in profile
+        )
         assert "permissions:\n" in profile
         assert not re.search(r"^(?:name|variant|permission|bash|task):", profile, re.MULTILINE)
+    assert all(role == "worker" for role in opencode_routing["agents"].values())
 
     build = profiles["luna-build"]
     qa = profiles["luna-qa"]
@@ -299,6 +316,57 @@ def test_native_agents_keep_builtins_for_sol_and_luna_for_custom_subagents():
     qa_command = (commands / "qa.md").read_text().lower()
     assert "agent: luna-qa" in qa_command
     assert "ponytail" not in qa_command
+
+
+def test_canonical_model_manifest_matches_codex_model_fields():
+    routing = json.loads((ROOT / "model-routing.json").read_text())
+    roles = routing["roles"]
+    codex_routing = routing["codex"]
+    default_role = roles[codex_routing["default_role"]]
+    project = tomllib.loads((ROOT / ".codex/config.toml").read_text())
+
+    assert project["model"] == default_role["model"]
+    assert project["model_reasoning_effort"] == default_role["reasoning_effort"]
+    assert codex_routing["default_role"] == "orchestrator"
+
+    for profile_name, role_name in codex_routing["agents"].items():
+        profile = tomllib.loads((ROOT / f".codex/agents/{profile_name}.toml").read_text())
+        assigned_role = roles[role_name]
+        assert profile["model"] == assigned_role["model"]
+        assert profile["model_reasoning_effort"] == assigned_role["reasoning_effort"]
+        assert role_name == "worker"
+
+
+def test_model_routing_sync_checks_drift_and_is_idempotent(tmp_path: Path):
+    routing_file = ROOT / "model-routing.json"
+    shutil.copy2(routing_file, tmp_path / routing_file.name)
+    for relative in (".codex/config.toml", "opencode.json"):
+        source = ROOT / relative
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    for relative_directory in (".codex/agents", ".opencode/agents"):
+        source_directory = ROOT / relative_directory
+        shutil.copytree(source_directory, tmp_path / relative_directory)
+
+    root_config = tmp_path / ".codex/config.toml"
+    before = root_config.read_text()
+    model = json.loads(routing_file.read_text())["roles"]["orchestrator"]["model"]
+    expected_line = f'model = "{model}"'
+    assert expected_line in before
+    root_config.write_text(before.replace(expected_line, 'model = "drift-marker"', 1))
+    drifted_bytes = root_config.read_bytes()
+
+    changed = sync_projection(tmp_path, write=False)
+    assert changed == [".codex/config.toml"]
+    assert root_config.read_bytes() == drifted_bytes
+    assert sync_projection(tmp_path, write=True) == [".codex/config.toml"]
+    assert sync_projection(tmp_path, write=False) == []
+
+    synchronized_files = projected_files(tmp_path)
+    synchronized_bytes = {path: path.read_bytes() for path in synchronized_files}
+    assert sync_projection(tmp_path, write=True) == []
+    assert {path: path.read_bytes() for path in synchronized_files} == synchronized_bytes
 
 
 def test_sensitive_read_rules_are_final_and_fail_closed_for_build_and_luna():

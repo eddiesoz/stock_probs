@@ -16,10 +16,15 @@ from pathlib import Path
 from threading import Lock, RLock
 from typing import Any, Final, TypedDict, TypeGuard, cast
 
+from stock_probs.auth import (
+    MAX_PENDING_OAUTH_STATES,
+    MAX_PENDING_OAUTH_STATES_PER_CALLER,
+    UNATTRIBUTED_OAUTH_CALLER_KEY_HASH,
+)
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, HistoryFilters
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 OUTCOME_RECONSTRUCTION_LIMIT = 100
 HISTORY_EXPORT_LIMIT = 100
 INSTRUMENT_LIST_ITEM_LIMIT = 100
@@ -39,6 +44,7 @@ MIGRATION_SHA256 = {
     8: "e79a6e6a5510b826ef98430b334199b12353a672eaf38ea4b49c6c8a72ca8fae",
     9: "bca47a59aef43ce4c4750c2a11f822903cb3e6a599d50e8eaff4690dc4ba9c6c",
     10: "e961d81cc560407596a3653c2ba4ff1d622ba02de20078d1066db76a8c891922",
+    11: "6100174cc8a6ead5a8deb2c4437889be2f2d1609c5ce1f0bcc1fa16ac11a0f7c",
 }
 
 
@@ -77,7 +83,6 @@ def _is_representative_storage_counts(value: object) -> TypeGuard[_Representativ
 # registry lock is held only while resolving an RLock, so unrelated databases never serialize.
 _DATABASE_LOCKS: dict[Path, RLock] = {}
 _DATABASE_LOCKS_GUARD = Lock()
-MAX_PENDING_OAUTH_STATES: Final = 128
 MAX_TOTP_RECOVERY_CODES: Final = 32
 MAX_TOTP_SECRET_CIPHERTEXT_LENGTH: Final = 16_384
 MAX_TOTP_ATTEMPTS_PER_WINDOW: Final = 100
@@ -965,8 +970,8 @@ class Repository:
 
         return self.list_invitations()
 
-    def auth_store_oauth_state(self, fields: Mapping[str, object]) -> None:
-        """Store a short-lived OAuth state and PKCE verifier as one server-side record."""
+    def auth_store_oauth_state(self, fields: Mapping[str, object]) -> bool:
+        """Store OAuth state after transactionally enforcing caller and global limits."""
 
         state_hash = fields.get("state_hash")
         verifier = fields.get("code_verifier")
@@ -974,9 +979,13 @@ class Repository:
         created_at = fields.get("created_at")
         expires_at = fields.get("expires_at")
         invitation_hash = fields.get("invitation_code_hash")
+        caller_key_hash = fields.get("caller_key_hash", UNATTRIBUTED_OAUTH_CALLER_KEY_HASH)
         if not isinstance(state_hash, str) or not isinstance(verifier, str):
             raise ValueError("OAuth state and verifier are required")
         state_hash = self._require_token_hash(state_hash, "state_hash")
+        if not isinstance(caller_key_hash, str):
+            raise ValueError("caller_key_hash is required")
+        caller_key_hash = self._require_token_hash(caller_key_hash, "caller_key_hash")
         if not isinstance(redirect_uri, str) or not 1 <= len(redirect_uri) <= 2048:
             raise ValueError("redirect_uri is invalid")
         if invitation_hash is not None:
@@ -993,13 +1002,21 @@ class Repository:
                 "DELETE FROM oauth_states WHERE expires_at <= ? OR consumed_at IS NOT NULL",
                 (created.isoformat(),),
             )
+            caller_pending = connection.execute(
+                "SELECT COUNT(*) FROM oauth_states WHERE caller_key_hash = ? "
+                "AND consumed_at IS NULL AND expires_at > ?",
+                (caller_key_hash, created.isoformat()),
+            ).fetchone()[0]
+            if caller_pending >= MAX_PENDING_OAUTH_STATES_PER_CALLER:
+                connection.rollback()
+                return False
             pending = connection.execute("SELECT COUNT(*) FROM oauth_states").fetchone()[0]
             if pending >= MAX_PENDING_OAUTH_STATES:
                 raise RepositoryError("OAuth sign-in capacity is temporarily full.")
             connection.execute(
                 """INSERT INTO oauth_states
                 (state_hash, code_verifier, redirect_uri, invitation_code_hash,
-                 created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)""",
+                 created_at, expires_at, caller_key_hash) VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
                     state_hash,
                     verifier,
@@ -1007,9 +1024,11 @@ class Repository:
                     invitation_hash,
                     created.isoformat(),
                     expires.isoformat(),
+                    caller_key_hash,
                 ),
             )
             connection.commit()
+        return True
 
     def auth_consume_oauth_state(self, state_hash: str, consumed_at: str) -> dict[str, Any] | None:
         """Consume OAuth state once; expired state is never accepted by the adapter."""

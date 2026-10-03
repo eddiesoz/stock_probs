@@ -86,6 +86,25 @@ single-use invitation. The authenticator code is the sole application second fac
 schema-10 migration revokes stored passkeys and old passkey sessions; the application does not create
 or accept WebAuthn credentials.
 
+`R-ASTRA-111` is a source-only schema-11 OAuth-admission follow-on; the production deployment remains
+R-ASTRA-110 on schema 10. The migration clears OAuth transaction rows before storing a hashed
+caller key, preserving user, session, and research rows; an in-progress GitHub authorization must
+restart after migration. The supported CLI verifies a pre-migration schema-10 backup, while direct
+schema-10 restore over schema 11 is unsupported; see the
+[backup and restore guidance](backup-restore.md#automatic-backups). The source limits OAuth starts
+to 8 per effective caller and 64 per process per minute, with 8 and 128 outstanding transactions
+respectively. Shared NAT/proxy egress addresses share a caller budget. The source repair adds
+explicit production Compose ingress attribution; install that configuration through the existing
+reviewed host-Compose updater before image promotion. The scoped Sol security review and independent
+Docker bridge regression passed. The first full local gate failed on four stale schema-10 test
+expectations; the corrected full gate passed, and parent integrated review found no blocker for the
+declared local scope. The production deployment remains schema 10; no R-ASTRA-111 promotion is
+claimed.
+The supported CLI disables Uvicorn proxy-header
+rewriting. Direct Uvicorn launches require `--no-proxy-headers` so caller attribution sees the raw
+socket peer. See [local configuration](../configure/local-configuration.md) and the
+[API reference](../reference/api.md) for the caller rules and limits.
+
 ### Authenticator enrollment and recovery
 
 After GitHub sign-in and invitation validation, open `/authenticator?mode=enroll`. First choose
@@ -174,17 +193,20 @@ Resend API-key file and uses fixed host, Compose, and readiness boundaries. The 
 helper sets the fixed Resend SMTP values and recreates the current production app without building
 or pulling a new image. Builder and repaired installer QA were observed against local revision
 `42cf0f40c98404d55585745b10311354661a5195`; the installer is included in pushed `main` checkpoint
-`329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the tree was clean
-at push.
+`329fdc595483fa3b112b98c7788d808348638faa`, reported as matching `origin/main` with a clean tree
+at that checkpoint.
 Builder self-validation reported `11` focused tests, Ruff check/format, `bash -n`, and ShellCheck
 **Pass**; initial independent QA found a P1 remote-shell quoting blocker and a P2 incomplete-read
 rollback blocker; the repaired QA recheck passed `13` tests, including command parse/probe and
 incomplete-read rollback, for its declared local scope. This does not establish production
 acceptance or authorize a live key install.
 
-Restricted Resend API-key creation still awaits browser action-time confirmation. No API key exists,
-no host installation has been observed, and no live invitation send or mailbox delivery has been
-verified.
+At installer checkpoint `329fdc595483fa3b112b98c7788d808348638faa`, the report said the tree was
+clean, matched `origin/main`, and no Resend API key existed at that time. A later operator-side production observation reported
+`email_invites_enabled=false`; no timestamp was supplied. This is a point-in-time report; a later
+read-only SSH recheck timed out before the query returned any value, so the current setting is
+unavailable. Local fake-SMTP QA reported 25 passing cases plus invitation-expiry coverage. No host
+installation, live invitation send, or mailbox delivery has been verified.
 
 To install a reviewed change to the host's production Compose file, run the fixed updater from a
 clean checkout of the exact reviewed `main` revision. It verifies that local `HEAD` equals the
@@ -504,8 +526,10 @@ and `Generate setup key` without a WebAuthn prompt.
 
 ### R-ASTRA-107 TOTP enrollment key-reuse repair
 
-`R-ASTRA-107` remains **In progress** for complete authentication acceptance. The repaired image is
-deployed. Enrollment reuses an unexpired pending setup only for the same session, factor generation,
+`R-ASTRA-107` remains **In progress** for complete authentication acceptance. Its key-reuse repair
+is included in the deployed `R-ASTRA-110` image at pushed clean `main` revision
+`566baab14c298fb52b5edb3138d64cd3e9123311`. Enrollment reuses an unexpired pending setup only for
+the same session, factor generation,
 and origin; **Start over with new key** rotates it, and the UI shows expiry and disables expired QR
 and code use.
 
@@ -526,8 +550,10 @@ declared boundaries, deleted, and confirmed `404`. The failed attempt and the re
 visible in the root evidence ledger. This release has no independent encrypted off-server backup;
 Linode's configured VM Backup retention is the external recovery boundary and remains a limitation.
 
-Current local evidence includes schema-8 readiness, authentication status `200`, private history
-`401` without a session, frontend build/typecheck with `28` tests, pinned Playwright desktop/mobile
+The following local QA counts and schema-8 readiness observation are historical pre-`R-ASTRA-110`
+evidence; the current deployed image is schema 10 at revision
+`566baab14c298fb52b5edb3138d64cd3e9123311`. The earlier local run included authentication status
+`200`, private history `401` without a session, frontend build/typecheck with `28` tests, pinned Playwright desktop/mobile
 `2/2`, Luna auth contract `9/9`, click `2/2`, and simulated passkey-cancellation checks on desktop
 and mobile. Astra's source review reported no P1/P2 after its `409` guidance finding was repaired.
 Focused API/auth `151` tests, helper/MCP `31` tests, and a private remote deployment with migrated

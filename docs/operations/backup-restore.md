@@ -113,18 +113,32 @@ or bounded-lock failure must be resolved rather than bypassed.
 The HTTP operations in the [API reference](../reference/api.md) accept managed names and expose
 storage-neutral results/status; neither CLI nor browser receives an arbitrary restore destination.
 
-In production, backup status and creation are administrator operations, and restore promotion also
-requires a fresh six-digit authenticator-app code, a verified pre-restore backup, matching
-account-security state, maintenance serialization, and revocation of all sessions. The deployment
-helper performs a
-pre-deploy backup before promotion and a pre-migration backup when an imported database advances
-schema. Linode VM Backups are an additional host recovery layer; this release has no independent
-encrypted off-server backup, so the configured Linode retention and a recorded recovery rehearsal
-remain launch prerequisites. See [getting started](getting-started.md).
+When authentication is enabled, backup status requires an administrator session. Backup creation
+requires an administrator session with fresh step-up proof. In production GitHub-auth mode that is
+TOTP proof from within the previous five minutes; local-auth mode can satisfy the same window with
+its local-passkey proof. Every HTTP restore request requires the same fresh administrator step-up,
+including verification-only requests with `promote` omitted or false. A promoted restore also
+requires a verified pre-restore backup, matching account-security state, maintenance serialization,
+and revocation of all sessions. Backup status remains administrator-only without step-up. The CLI
+uses its local operator boundary and does not use HTTP session authentication.
 
-An administrator enters the current TOTP code immediately before a backup or promoted restore;
-the server records a short-lived step-up for that operation. A legacy passkey is not an ongoing
-restore factor. It is retained only for the one-time migration of an account that has not yet
-enrolled an authenticator app. If the authenticator is lost, consume one single-use recovery code
-to enter the factor-replacement flow, enroll a new authenticator, and save the newly issued recovery
-codes before resuming administration.
+Production schema 10 revokes stored passkeys and old passkey sessions; GitHub-auth mode rejects
+WebAuthn registration. The one-time passkey migration UI from an earlier release is not part of the
+current restore or authenticator workflow. If the authenticator is lost, consume one single-use
+recovery code to enter the factor-replacement flow, enroll a new authenticator, and save the newly
+issued recovery codes before resuming administration.
+
+The deployment helper performs a pre-deploy backup before promotion and a pre-migration backup when
+an imported database advances schema. Linode VM Backups are an additional host recovery layer; this
+release has no independent encrypted off-server backup, so the configured Linode retention and a
+recorded recovery rehearsal remain launch prerequisites. See [getting started](getting-started.md).
+
+`R-ASTRA-111` adds a source-only schema-11 OAuth admission migration; it is not deployed, and the
+production image remains schema 10. The migration clears OAuth transaction rows because they cannot
+be bound to the new caller key, then adds a hashed caller-key column; in-progress GitHub
+authorizations must restart after migration. It does not
+change users, sessions, or research records. The supported CLI creates and verifies a pre-migration
+schema-10 backup before applying the migration. Restore requires the backup schema to match the
+active schema, so a schema-10 backup cannot be directly restored or promoted over schema 11. Use a
+schema-10-compatible offline restore and migrate a copy through the supported CLI; verify the copy
+before any promotion. A completed schema-10-to-11 backup/restore rehearsal is not claimed.

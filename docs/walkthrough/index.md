@@ -11,6 +11,10 @@ Generation revision: `cf099754a5c3e4a05f0e785c0d65ff06f96c4d63` (dirty working t
 Generated UTC: `2026-09-13T00:32:43.223Z`  
 Command: `./scripts/capture-walkthrough.sh`
 
+These captures are historical fixture images from the revision above; keep them as walkthrough
+evidence, not current authentication guidance. For the current authenticator setup flow, see
+[Getting started](../operations/getting-started.md).
+
 > Forecasts and news use deterministic walkthrough fixtures. Every news figure is a simulated production UI response at the fixture clock (10 Jan 2025, 17:03 UTC), not live Yahoo Finance evidence.
 
 ## 01. Confirm the local service and backup status
@@ -386,4 +390,3 @@ These states remain attached to step 20 rather than extending the 20-step journe
 - Saved-result reopen records and asserts a zero browser news-request delta. Backend provider-free behavior remains separate QA evidence.
 - Backup and restore are not exposed in the UI. Use the documented local CLI for those operations.
 - Static PNGs are authoritative. No GIF encoder or animation dependency is required.
-

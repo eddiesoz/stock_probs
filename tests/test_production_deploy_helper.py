@@ -322,7 +322,14 @@ def test_compose_and_source_paths_are_fixed_and_loopback(tmp_path: Path) -> None
     )
     assert '"127.0.0.1:8000:8000"' in compose
     assert "STOCK_PROBS_HOST: 127.0.0.1" in compose
+    assert (
+        'STOCK_PROBS_TRUSTED_PROXY_HOSTS: "127.0.0.1,::1,localhost,172.30.219.1"'
+        in compose
+    )
     assert "signal-ledger-data:/data" in compose
+    assert "name: signal-ledger-production-ingress" in compose
+    assert "subnet: 172.30.219.0/28" in compose
+    assert "gateway: 172.30.219.1" in compose
     assert "STOCK_PROBS_AUTH_MODE: github" in compose
     assert "STOCK_PROBS_AUTH_SESSION_SECRET" in compose
     assert "STOCK_PROBS_GITHUB_CLIENT_SECRET" in compose

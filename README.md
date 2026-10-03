@@ -194,7 +194,17 @@ Ledger does not create or accept WebAuthn credentials.
 
 The R-ASTRA-103 implementation is the deployed authenticator-only baseline. R-ASTRA-107 is the
 deployed enrollment key-reuse repair, R-ASTRA-108 introduced an app chooser before setup-key
-generation, and R-ASTRA-109 adds Microsoft Authenticator with app-specific setup guidance.
+generation, and the historical pre-R110 R-ASTRA-109 introduced Microsoft Authenticator guidance.
+R-ASTRA-110 is the current deployed iOS setup-routing follow-on.
+`R-ASTRA-111` tracks the source-only schema-11 OAuth admission change. Migration clears OAuth
+transaction rows while preserving users, sessions, and research data; the supported CLI verifies a
+schema-10 pre-migration backup. Production Compose caller attribution is part of the repair and is
+installed through the existing reviewed host-Compose updater. The scoped Sol security review and
+independent Docker bridge regression passed. The first full local gate failed on four stale
+schema-10 test expectations; the corrected full gate then passed, and parent integration review
+found no blocking issue for the declared local scope. Production remains on schema 10; no R-ASTRA-111
+deployment/release or live email delivery is claimed. See [OAuth API limits](docs/reference/api.md) and
+[backup migration guidance](docs/operations/backup-restore.md).
 Complete owner authentication remains pending. The
 R-ASTRA-103 local gate passed: receipt `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` reports `707`
 Python tests passed, `4` live tests deselected, `85.25%` coverage, frontend build/typecheck and
@@ -203,11 +213,12 @@ repository/list, API, backup/CLI, desktop/mobile-emulated auth-flow, frontend, m
 fresh schema-10 creation checks; Astra's medium source security review reported no P1/P2 finding.
 The schema-9 predeploy backup remains an offline recovery artifact only.
 
-The final-tree R-ASTRA-107 gate passed at pushed revision
-`a2247cce6e9f55fc81f96da3698f424ae2a2dc20`: receipt
-`test-results/local-gates/R-ASTRA-107-20261001T193724Z/evidence.json` records `763` Python tests,
-`4` deselected, `85.45%` coverage, and frontend `28`, build, typecheck, and documentation checks
-passing from `2026-10-01T19:37:24Z` to `19:47:25Z`. The release archive SHA-256 is
+The final-tree R-ASTRA-107 local gate passed on native x86_64 with a dirty worktree at revision
+`2e07a8e9e2b15d80bc154182d0392977c60db53a`; it was not the later pushed release revision.
+Receipt `test-results/local-gates/R-ASTRA-107-20261001T193724Z/evidence.json` records dirty state,
+`763` Python tests, `4` deselected, `85.45%` coverage, and frontend `28`, build, typecheck, and
+documentation checks passing from `2026-10-01T19:37:24Z` to `19:47:25Z`. The separate subsequent
+release and deployment used pushed revision `a2247cce6e9f55fc81f96da3698f424ae2a2dc20`. Its release archive SHA-256 is
 `85c53648c8c1810bfc37153c404d4064ee468c81ce78caaf0666e71bb5221106`; the Linux/amd64 image is
 `sha256:b4249173085ef5b7b6c0df8741aa34d99e6b1d488ab9bfc829010398a422d2a1`, size `103160002` bytes,
 and publisher re-download verification passed. Two MCP deployment plans returned
@@ -220,20 +231,24 @@ and MCP deploy reached readiness schema `10`. Status reported revision `a2247cc`
 Public HTTPS returned health `200`, auth status `200`, anonymous history `401`, and overview `303`
 to sign-in, all with `no-store`/`DYNAMIC`. In the IAB, GitHub sign-in as `jtmb` reached authenticator
 setup; repeated default starts across reload returned the same pending key when compared locally
-without exposing it, and expiry plus explicit rotation controls were visible. No TOTP code was
-entered, so owner enrollment and authenticated workspace retrieval remain **Unavailable**; physical
+without exposing it, and expiry plus explicit rotation controls were visible. During that recorded
+agent-run live check, no TOTP code was entered; owner enrollment and authenticated workspace
+retrieval remain **Unavailable** in agent-observed evidence. Physical
 iPhone code validation is **Unavailable**. This is deployment evidence, not complete auth acceptance.
 
-The current `R-ASTRA-109` follow-on adds Microsoft Authenticator to the chooser and displays its
-setup guidance. The live selection flow passed, but no setup key or code was entered; the read-only
-database check found zero owner factors and zero active pending enrollments. Owner code acceptance,
-authenticated workspace retrieval, actual Microsoft Authenticator interaction, and physical iPhone
-code acceptance remain **Unavailable**. See the [MVP plan](MVP-PLAN.md#microsoft-authenticator-dropdown-follow-on-r-astra-109)
-for the evidence record. The preceding `R-ASTRA-108` chooser requires a selection before setup,
+The pre-R110 `R-ASTRA-109` follow-on added Microsoft Authenticator to the chooser and displayed its
+setup guidance. Its production selection flow passed without generating a setup key or code. The
+read-only database query at that time found zero owner factors and zero active pending enrollments;
+this is point-in-time evidence, not a current enrollment check. The deployed `R-ASTRA-110` follow-on
+supersedes its iOS guidance; owner code acceptance, authenticated workspace retrieval, actual
+Microsoft Authenticator interaction, and physical iPhone code acceptance remain **Unavailable**.
+See the [R-ASTRA-109 record](MVP-PLAN.md#historical-microsoft-authenticator-dropdown-follow-on-r-astra-109)
+and [current R-ASTRA-110 record](MVP-PLAN.md#microsoft-authenticator-ios-setup-routing-follow-on-r-astra-110).
+The preceding `R-ASTRA-108` chooser requires a selection before setup,
 retains it through rotation, and guides manual entry or scanning with the selected app's QR reader;
 it removes the generic `otpauth://` handler link.
 
-The current `R-ASTRA-110` source follow-on refines the Microsoft Authenticator iOS route. It defaults
+The deployed `R-ASTRA-110` follow-on refines the Microsoft Authenticator iOS route. It defaults
 to same-phone manual key entry, keeps the QR hidden until **Another screen: scan from inside Microsoft
 Authenticator** is selected, warns against iPhone Camera or Photos, and resets the method to manual
 when the authenticator selection changes. SOL's scoped review and local enrollment protocol passed;
@@ -245,8 +260,11 @@ and physical iPhone routing remain **Unavailable**. The declared deployment scop
 revision `566baab14c298fb52b5edb3138d64cd3e9123311`; its release archive
 and Linux/amd64 image were re-download verified, the native MCP deployment reached schema `10` ready,
 and public health/auth/history/overview probes returned `200`/`200`/`401`/`303` with `no-store`/`DYNAMIC`.
-The signed-in IAB showed the manual-key, in-app-scanner, and Camera/Photos warning guidance. No owner
-key or code was entered; broader authentication acceptance remains **Unavailable**. See the [R-ASTRA-110
+The signed-in IAB showed the manual-key, in-app-scanner, and Camera/Photos warning guidance. During
+that recorded agent-run live check, no owner key or code was entered; broader authentication
+acceptance remains **Unavailable**. The user later reported that sign-in succeeded in Firefox; this
+report has not been independently verified and does not independently establish authenticated
+workspace retrieval. See the [R-ASTRA-110
 evidence record](MVP-PLAN.md#microsoft-authenticator-ios-setup-routing-follow-on-r-astra-110).
 
 The earlier deployment used reviewed revision `9cc0751da459e911d285b14e0d57a29320a9f366`. GitHub Release
@@ -415,9 +433,9 @@ reuse/identity binding. E57's rerun of the full local gate also passed after its
 failure. E58 makes the public-invited infrastructure boundary live. E59 retires the legacy Linode
 and confirms the replacement is running. E60 records the historical current-machine browser passkey
 and sign-out limitation; E61 records the locally accepted logout and mode-aware passkey repair with
-independent QA, and E62 records the passing full local gate. E63 publishes and deploys the current
-main image, verifies public health/auth/sign-in probes, and records a post-deploy read-only SQLite
-check matching the preserved owner data. The IAB passkey remains unavailable, while corrected sign-out
+independent QA, and E62 records the passing full local gate. E63 publishes and deploys the then-current
+schema-8 main image, verifies public health/auth/sign-in probes, and records a post-deploy read-only
+SQLite check matching the preserved owner data. R-ASTRA-110 later deployed schema 10. The IAB passkey remains unavailable, while corrected sign-out
 returns to sign-in twice. E64 records Astra's live read-only review with no P1/P2. Browser-rendered
 owner content, live second-user onboarding, and hardware passkey evidence remain **Unavailable**.
 Remote two-user behavior and functional invited-user acceptance remain **Unavailable**; this is not a

@@ -20,7 +20,9 @@ services:
       STOCK_PROBS_GITHUB_CLIENT_SECRET: "${STOCK_PROBS_GITHUB_CLIENT_SECRET:?set the GitHub OAuth client secret}"
       STOCK_PROBS_GITHUB_REDIRECT_URI: "${STOCK_PROBS_GITHUB_REDIRECT_URI:?set the exact GitHub OAuth callback}"
       STOCK_PROBS_OWNER_GITHUB_ID: "${STOCK_PROBS_OWNER_GITHUB_ID:?set the owner's numeric GitHub account ID}"
-      STOCK_PROBS_TRUSTED_PROXY_HOSTS: 127.0.0.1
+      # Docker source-NATs host-published loopback requests to this bridge gateway. Only this
+      # dedicated ingress gateway and direct loopback peers may supply connector identity headers.
+      STOCK_PROBS_TRUSTED_PROXY_HOSTS: "127.0.0.1,::1,localhost,172.30.219.1"
       STOCK_PROBS_INVITE_SMTP_HOST: "${STOCK_PROBS_INVITE_SMTP_HOST:-}"
       STOCK_PROBS_INVITE_SMTP_PORT: "${STOCK_PROBS_INVITE_SMTP_PORT:-}"
       STOCK_PROBS_INVITE_SMTP_USERNAME: "${STOCK_PROBS_INVITE_SMTP_USERNAME:-}"
@@ -56,6 +58,19 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+    networks:
+      - production_ingress
 
 volumes:
   signal-ledger-data:
+
+networks:
+  production_ingress:
+    # A fixed dedicated bridge makes the connector's source peer stable. Docker fails network
+    # creation on subnet overlap; do not replace this with an automatically selected subnet.
+    name: signal-ledger-production-ingress
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.219.0/28
+          gateway: 172.30.219.1

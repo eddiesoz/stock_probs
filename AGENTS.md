@@ -22,6 +22,33 @@ Open a new Codex task after changing project configuration or skills to check di
 OpenCode-specific loader, restart, and provider limitations below continue to describe
 OpenCode evidence only.
 
+### Current model routing
+
+Maintain model, effort, and role assignments only in `model-routing.json`. The model fields in
+`.codex/config.toml`, `.codex/agents/*.toml`, `opencode.json`, and `.opencode/agents/*.md` are
+projections; update them with `python3 scripts/sync_model_routing.py --write` and verify them
+with `python3 scripts/sync_model_routing.py --check`. Tests read the manifest rather than pinning
+model-version strings.
+
+Use the manifest's orchestrator role for coordination and review and its worker role for build,
+QA, and documentation subagents; GPT-6 Luna at `xhigh` is the maximum worker effort. Do not use
+GPT-5.6 subagents. Escalate an implementation task to a Sol build pass only after at least two
+consecutive Luna attempts fail on that same scoped task; record each result and the concrete
+reason for escalation. An explicit user request for Sol review does not require that threshold.
+When a user explicitly corrects a workflow, preserve the correction as a concise durable rule in
+this file and align active configuration as needed. Keep user-authorized exceptions scoped to the
+named task; preserve earlier model names in historical evidence without treating them as current
+assignments.
+After implementation and any requested Sol review, the parent/orchestrator personally reviews the
+integrated diff and evidence before claiming completion.
+
+For the current task only, the user explicitly authorized an Astra security audit and a Sol
+documentation audit. These reviewer assignments are task-scoped exceptions and do not change
+the default roles or authorize Astra subagents on other tasks. Start a fresh Codex task after
+Codex project-configuration changes and restart the OpenCode parent after OpenCode configuration
+or profile changes before checking discovery. File presence, synchronization, or parsing does not
+prove runtime loading; no runtime-discovery pass is inferred.
+
 ## Current operational baseline: native OpenCode V2
 
 For OpenCode, this section is the current workflow authority. The historical ledgers below preserve
@@ -123,15 +150,27 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 ### Current approval status
 
 `R-ASTRA-110` is the current Microsoft Authenticator iOS setup-routing follow-on, deployed at pushed
-clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311`; `R-ASTRA-109` is the preceding
-deployed dropdown follow-on at pushed revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`. The chooser includes
+clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311`; `R-ASTRA-109` is the historical
+pre-R110 deployed dropdown follow-on at pushed revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`. The chooser includes
 Microsoft Authenticator and gives its selected-app setup instructions. `R-ASTRA-108` is the preceding chooser refinement;
 `R-ASTRA-107` is the key-reuse repair, and `R-ASTRA-103` is the deployed authenticator-only baseline.
-The live passkey retirement redirect and public HTTPS boundary are verified. No owner TOTP code has
-been entered: owner enrollment and authenticated workspace retrieval remain **Unavailable**. The
-post-deployment read-only query found zero owner factors and zero active pending enrollments.
+The live passkey retirement redirect and public HTTPS boundary are verified. During those recorded
+live checks, no owner TOTP code was entered by the agents; owner enrollment and authenticated
+workspace retrieval remain **Unavailable** in agent-observed evidence. The
+post-deployment read-only query at that earlier checkpoint found zero owner factors and zero active
+pending enrollments. The user later reported successful Firefox sign-in; this is an attributed report
+without independent browser evidence; it does not independently establish authenticated workspace
+access.
 Physical iPhone code acceptance and actual Microsoft Authenticator interaction remain
 **Unavailable**.
+`R-ASTRA-111` is the source-only schema-11 OAuth admission follow-on. The scoped Sol security
+review and independent Luna Docker bridge and operations checks passed. The first full local gate
+failed on four stale schema-10 test expectations; the repaired full gate then passed, and parent
+integrated review found no blocking issue for the declared local scope. Production remains on
+deployed R-ASTRA-110 schema 10; R-ASTRA-111 deployment/release and current live email delivery are
+not claimed. The
+current runtime model/agent discovery status remains **Unavailable** until the required fresh
+Codex task and OpenCode restart.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The three provider access items were created privately, Terraform
@@ -205,12 +244,14 @@ separate limitations.
   `90ad506dc7c39e145734f295f41ac2a4358b7a14`; Terraform format/validate, the exact three-record
   create apply, public DNS resolution, and the post-apply no-change plan passed for the DNS scope.
   `R-ASTRA-106-E13` records the Linode TCP and TLS 1.3 checks to `smtp.resend.com:2465` after the
-  fixed controller applied operator SSH `142.198.155.54/32`. No API key exists, no host installation
-  has been observed, and no live send or mailbox delivery is verified.
+  fixed controller applied operator SSH `142.198.155.54/32`. At that checkpoint, no API key or host
+  installation was observed and no live send or mailbox delivery was verified. A later production
+  observation reported `email_invites_enabled=False` (timestamp not supplied); 25 fake-SMTP tests
+  plus invitation-expiry coverage pass, but live delivery remains unverified.
 - `R-ASTRA-106-E14` records installer QA against local revision
   `42cf0f40c98404d55585745b10311354661a5195`; that installer is included in pushed `main`
-  checkpoint `329fdc595483fa3b112b98c7788d808348638faa`, which exactly matches `origin/main`; the
-  tree was clean at push.
+  checkpoint `329fdc595483fa3b112b98c7788d808348638faa`, reported as matching `origin/main` at that
+  checkpoint, with the tree clean at push.
   Builder checks reported `11` focused tests, Ruff check/format, `bash -n`, and ShellCheck **Pass**
   as self-validation. `R-ASTRA-106-E15` retains the initial independent QA P1 remote-shell
   quoting blocker and P2 incomplete-read rollback blocker. `R-ASTRA-106-E16` records the repaired
@@ -286,7 +327,8 @@ open.
 
 ### Historical TOTP enrollment key-reuse repair (`R-ASTRA-107`)
 
-- **Status:** **In progress**. A default enrollment start reuses the active pending setup only for
+- **Status:** **In progress** for owner authentication; the repair is deployed through R-ASTRA-110.
+  A default enrollment start reuses the active pending setup only for
   the same session, factor generation, and origin, preserving its original expiry. An explicit
   `replace` request rotates the pending key; a different origin cannot silently overwrite it. The UI
   shows expiry, disables expired QR/code use, and offers recovery from a cross-session conflict.
@@ -302,6 +344,12 @@ open.
   **Pass** on dirty `HEAD` `2e07a8e`: `763` Python tests passed, `4` were deselected, coverage was
   `85.47%`, and the reported frontend/build/typecheck/docs checks passed with `28` frontend checks.
   The gate began before the final UI repair, so it is not a final exact-tree gate.
+- **Final-tree local gate:** receipt
+  `test-results/local-gates/R-ASTRA-107-20261001T193724Z/evidence.json` passed on native x86_64,
+  dirty `HEAD` `2e07a8e9e2b15d80bc154182d0392977c60db53a`, from `2026-10-01T19:37:24Z` to
+  `19:47:25Z`; it records `763` Python tests, `4` deselected, `85.45%` coverage, and frontend `28`,
+  build, typecheck, and documentation checks. This is local dirty-tree evidence. The later push and
+  deployment at `a2247cce6e9f55fc81f96da3698f424ae2a2dc20` are separate evidence below.
 - **Deployment:** pushed revision `a2247cce6e9f55fc81f96da3698f424ae2a2dc20` published a Linux/amd64
   release archive with SHA-256 `85c53648c8c1810bfc37153c404d4064ee468c81ce78caaf0666e71bb5221106`
   and image ID `sha256:b4249173085ef5b7b6c0df8741aa34d99e6b1d488ab9bfc829010398a422d2a1`;
@@ -325,7 +373,7 @@ open.
   Apple Passwords with the new key before entering its code, and do not use the captured QR or old
   key.
 
-### Microsoft Authenticator dropdown follow-on (`R-ASTRA-109`)
+### Historical Microsoft Authenticator dropdown follow-on (`R-ASTRA-109`)
 
 - **Status:** **In progress** for complete owner authentication. The Microsoft Authenticator option
   and its app-specific setup guidance are deployed at pushed `main` revision
@@ -335,11 +383,13 @@ open.
 - The focused authenticator browser run passed `14/14` on desktop Chromium and emulated Pixel 7.
   Production GitHub sign-in showed the Microsoft option and its guidance; selection enabled setup-key
   generation. No setup key or TOTP code was generated or entered.
-- The current working-tree source follow-on addresses iOS routing: Microsoft Authenticator defaults
+- This is the pre-R110 chooser record; its iOS-routing draft was superseded and deployed in
+  R-ASTRA-110 below. Microsoft Authenticator defaults
   to same-phone manual key entry, and its QR is hidden until the user explicitly selects **Another
   screen: scan from inside Microsoft Authenticator**. The page warns against iPhone Camera or Photos,
   which may route the QR to Apple Passwords; no documented way to force those iOS tools to open
-  Microsoft Authenticator is claimed. This source draft has no deployment or final QA result yet.
+  Microsoft Authenticator is claimed. At that source-draft checkpoint, deployment and final QA had
+  not yet completed; the result is recorded in R-ASTRA-110 below.
 - **Final local gate:** `TASK_ID=R-ASTRA-109 ./scripts/local-gate.sh check` passed with exit `0` on
   native x86_64 from `2026-10-02T00:30:17Z` to `00:37:23Z`; receipt
   `test-results/local-gates/R-ASTRA-109-20261002T003017Z/evidence.json` records dirty base
@@ -456,8 +506,9 @@ open.
   `/authenticator?mode=enroll`; the old `/passkey` route redirects to that authenticator flow. An
   existing TOTP account still requires its current TOTP or recovery-code replacement flow; a
   fresh GitHub session alone cannot replace the factor.
-- Enrollment is short-lived and origin-bound. The setup page provides a manual secret and an
-  `otpauth://` link, then returns recovery codes exactly once after a valid code. Recovery codes are
+- Enrollment is short-lived and origin-bound. The API returns an `otpauth_uri`; the page renders
+  its QR locally and offers manual-key entry without a generic URI-handler link. It then returns
+  recovery codes exactly once after a valid code. Recovery codes are
   hashed, high-entropy, and single-use. Losing an authenticator enters a factor-replacement-only
   recovery session; it does not grant a normal workspace session.
 - Sessions remain opaque server-side records with hashed tokens, idle and absolute expiry,

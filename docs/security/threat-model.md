@@ -21,11 +21,23 @@ The live IAB showed the unauthenticated sign-in page but no owner UI session. E5
 legacy host; functional owner/invited-user acceptance remains pending. E60 records the historical
 current-machine browser passkey/sign-out limitation; E61 records the locally accepted logout and
 mode-aware passkey repair with independent QA, and E62 records the passing full local gate. E63
-records the current image deployment and public probes; E64 records Astra's no-P1/P2 live read-only
-review. R-ASTRA-103's schema-10 implementation and local gate pass for their declared scopes, and the
-reviewed schema-10 image is deployed. `R-ASTRA-107` is the current TOTP enrollment key-reuse repair;
-its repaired image is not yet deployed. Owner TOTP enrollment, authenticated workspace retrieval,
-physical mobile, and second-user acceptance remain **Unavailable**.
+records its then-current schema-8 image deployment and public probes; E64 records Astra's no-P1/P2 live read-only
+review. R-ASTRA-103 established the deployed schema-10 authenticator-only baseline. The current
+deployment is R-ASTRA-110 at pushed revision
+`566baab14c298fb52b5edb3138d64cd3e9123311`, schema 10. The R-ASTRA-107 key-reuse repair is included
+in that deployment. Owner TOTP enrollment and authenticated workspace acceptance remain
+**Unavailable** in agent-observed evidence. The user later reported successful Firefox sign-in; this
+is an attributed report that has not been independently verified and does not independently
+establish authenticated workspace retrieval.
+`R-ASTRA-111` tracks a source-only OAuth admission change. Its migration advances the source schema
+to 11 and clears OAuth transaction rows before adding a caller-key hash; it does not
+rewrite user, session, or research records. The scope also includes explicit production Compose
+ingress attribution; install that configuration through the existing reviewed host-Compose updater
+before image promotion. The supported CLI migration path creates and verifies a schema-10
+pre-migration backup. The scoped Sol security review and independent Luna Docker bridge regression
+passed. The first full local gate failed on four stale schema-10 test expectations; the corrected
+full gate passed, and parent integrated review found no blocker for the declared local scope.
+Production remains on deployed R-ASTRA-110 schema 10; no R-ASTRA-111 deployment is claimed.
 The earlier private
 clean-main image is revision
 `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
@@ -62,11 +74,11 @@ two-client isolation scenarios; remote two-user behavior remains **Unavailable**
 passing full local gate after its initial comment-audit failure. E58 records the live public boundary
 and unauthenticated sign-in probes; E59 records legacy-host retirement, E60 records the current-
 machine browser passkey limitation, E61-E62 record the locally accepted repair and gate, E63 records
-the current deployment, and E64 records Astra's no-P1/P2 live read-only review. Functional
+the then-current schema-8 deployment, and E64 records Astra's no-P1/P2 live read-only review. Functional
 invited-user acceptance remains pending; Terraform/image, IPv6, old-VM, browser owner-workspace,
 live second-user, and independently completed passkey checks remain **Unavailable**.
 
-E63's current image is main revision `27e0d2f5916d4297e10d259aa4776055a78faeaa`, archive SHA-256
+At the time of E63, its image was main revision `27e0d2f5916d4297e10d259aa4776055a78faeaa`, archive SHA-256
 `78f2e44ecfbe2021a61a0ecd71414065024c246eb46ca9506b33c20f13b07ad1`, and image ID
 `sha256:ecd41e1b65eb76b424cff830a6150db2282d326cfb18b3b6eaa37b07f83c4bc0`; the typed-MCP retry
 plan passed, status is schema `8`, `failed: null`, loopback-only, and the pre-deploy backup is
@@ -116,7 +128,7 @@ overview `303` to sign-in, and `no-store`/`DYNAMIC` responses. `/passkey?mode=ve
 revoked old session; fresh GitHub sign-in as `jtmb` rendered the authenticator setup page without
 a WebAuthn prompt. Owner TOTP enrollment and workspace content remain **Unavailable**.
 
-## R-ASTRA-107 enrollment-key lifecycle
+## R-ASTRA-107 enrollment-key lifecycle (deployed through R-ASTRA-110)
 
 The current repair keeps an unexpired pending enrollment bound to the same session, factor generation,
 and origin. A repeated default start returns that pending setup with its original expiry; it does not
@@ -127,14 +139,16 @@ explicit replacement action after a cross-session conflict.
 
 Production observation at `2026-10-01T15:03:02Z` and `15:04:39Z` returned `200` for starts and `403`
 at `15:05:51Z` and `15:06:10Z` for finishes; a pending row from the second start remained and server
-NTP was synced. This does not prove the repair is deployed. If a QR or setup key appears in a photo,
+NTP was synced. These pre-deployment observations do not establish enrollment or code acceptance.
+If a QR or setup key appears in a photo,
 treat it as exposed and rotate after deployment by generating a fresh key and replacing the old Signal
 Ledger entry in Passwords. Physical iOS verification remains **Unavailable**.
 
 ### Historical R-ASTRA-102 deployment evidence
 
 The following deployment details are historical R-ASTRA-102 evidence and are not current deployment
-or auth acceptance. Post-deploy evidence records revision
+or auth acceptance. They describe the then-deployed schema-9 release; R-ASTRA-110 is the current
+schema-10 deployment. Post-deploy evidence records revision
 `403cd79b08f90b49603cec3152b4f1e07b91d730` pushed with exact `origin/main` matching, release archive
 SHA-256 `811229e8355679f08d1a0857426cbec3526cee492417e50a5f9fe760e98894f4`, verified publisher
 re-download, and Linux/amd64 image ID
@@ -172,7 +186,7 @@ service.
 | Pending setup overwrite or exposed enrollment QR | Pending setup material is encrypted at rest, expires after the bounded enrollment window, and is bound to the current factor generation and originating session. Default starts reuse the same-origin pending row and expiry; explicit replacement rotates it, while a different origin fails closed. The UI shows expiry and removes expired QR/code actions. A QR or setup key visible in a photo must be treated as exposed and replaced after deployment. |
 | Session theft, fixation, or replay | Sessions are opaque server-side records addressed by hashed tokens, with idle and absolute expiry, revocation, host-only `Secure`/`HttpOnly` cookies, CSRF tokens for mutations, and no browser storage for credentials. TOTP verification is bound to the active factor generation and fresh step-up markers are short-lived. |
 | Cross-user IDOR or legacy-data disclosure | Forecasts, events, results, outcomes, reconstructions, exports, holdings, watchlists, and account operations derive the owner from the session. Legacy rows attach to one reserved owner claim; a new user cannot claim or query them by changing an ID. |
-| Privileged backup or restore abuse | Backup status and creation require an administrator. Restore promotion requires an administrator, a fresh TOTP authenticator check, a verified pre-restore backup, matching account-security state, maintenance-mode serialization, and revocation of all sessions. |
+| Privileged backup or restore abuse | Backup status requires an administrator. Backup creation and every HTTP restore request, including verify-only, require an administrator and TOTP proof no older than 300 seconds. Restore promotion also requires a verified pre-restore backup, matching account-security state, maintenance-mode serialization, and revocation of all sessions. |
 | Deployment MCP command injection or supply-chain substitution | The local stdio MCP exposes six typed tools: `inspect`, `plan_deploy`, `deploy`, `status`, `rollback`, and `refresh_operator_access(operator_ipv4_cidr)`. The fixed SSH helper accepts a reviewed `main` revision, a release archive SHA-256, and a full image ID; it rejects arbitrary commands, paths, URLs, Compose edits, registry names, tags, and Docker-socket access. The access-refresh operation accepts only a canonical IPv4 `/32` and the fixed operator SSH firewall rule. GHCR is an explicit compatibility transport, not the default. |
 | Mutable image or remote-build drift | The local publisher builds a Linux `amd64` image, scans and publishes a revision-named GitHub Release asset derived from the reviewed revision, treats that asset as immutable during its workflow, and verifies the downloaded archive SHA-256, image ID, platform, and revision. GitHub does not enforce asset immutability. The Linode loads only that verified asset and never builds source on the VM; optional GHCR plans remain digest-pinned. |
 | Terraform source or infrastructure drift | The Linode plan and apply both use a fixed external source gate that requires a clean checkout, exact `origin/main`, the reviewed revision, fixed repository, and checksums for the host files. The operator-access refresh also uses fixed private external state and rejects any plan outside the imported firewall's `ssh-operator` TCP port-22 CIDR change. The imported firewall has `prevent_destroy`; no application port is opened by Terraform. |

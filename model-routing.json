@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "roles": {
+    "orchestrator": {
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "medium"
+    },
+    "worker": {
+      "model": "gpt-6-luna",
+      "reasoning_effort": "xhigh"
+    }
+  },
+  "codex": {
+    "default_role": "orchestrator",
+    "agents": {
+      "luna-build": "worker",
+      "luna-docs": "worker",
+      "luna-qa": "worker"
+    }
+  },
+  "opencode": {
+    "builtin_agents": {
+      "build": "orchestrator",
+      "plan": "orchestrator"
+    },
+    "agents": {
+      "luna-build": "worker",
+      "luna-docs": "worker",
+      "luna-qa": "worker"
+    }
+  }
+}

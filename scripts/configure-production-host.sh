@@ -209,7 +209,9 @@ content = (
     f"STOCK_PROBS_GITHUB_CLIENT_SECRET={client_secret}\n"
     f"STOCK_PROBS_GITHUB_REDIRECT_URI={redirect_uri}\n"
     f"STOCK_PROBS_OWNER_GITHUB_ID={owner_id}\n"
-    "STOCK_PROBS_TRUSTED_PROXY_HOSTS=127.0.0.1\n"
+    # Host-published requests arrive from the dedicated Compose bridge gateway. Keep the
+    # generated operator settings aligned with compose.production.yaml's fixed IPAM contract.
+    "STOCK_PROBS_TRUSTED_PROXY_HOSTS=127.0.0.1,::1,localhost,172.30.219.1\n"
 )
 destination_path = Path(destination)
 temporary = destination_path.with_name(f".{destination_path.name}.staging-{secrets.token_hex(8)}")

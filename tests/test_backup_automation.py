@@ -137,6 +137,60 @@ def _version_one_database(settings: Settings) -> None:
         )
 
 
+def _version_ten_database(settings: Settings) -> None:
+    """Build a schema-10 fixture with durable account/session data and pending OAuth state."""
+
+    with sqlite3.connect(settings.database_path) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute(
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
+        )
+        migrations = sorted(
+            item
+            for item in files("stock_probs.migrations").iterdir()
+            if item.name.endswith(".sql") and int(item.name[:3]) <= 10
+        )
+        for version, migration in enumerate(migrations, start=1):
+            script = migration.read_text()
+            Repository._execute_migration(connection, script)
+            connection.execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (version, datetime(2025, 1, 1, tzinfo=UTC).isoformat()),
+            )
+        stamp = datetime(2030, 1, 1, tzinfo=UTC).isoformat()
+        connection.execute(
+            "UPDATE users SET login = ?, display_name = ?, updated_at = ? WHERE id = 1",
+            ("preserved-owner", "Preserved owner", stamp),
+        )
+        connection.execute(
+            """INSERT INTO sessions
+            (user_id, session_id, token_hash, csrf_token_hash, issued_at, last_seen_at,
+             idle_expires_at, absolute_expires_at, auth_method)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, 'github')""",
+            (
+                "schema-ten-session-1",
+                "a" * 64,
+                "b" * 64,
+                stamp,
+                stamp,
+                "2030-01-01T01:00:00+00:00",
+                "2030-01-02T00:00:00+00:00",
+            ),
+        )
+        connection.execute(
+            """INSERT INTO oauth_states
+            (state_hash, code_verifier, redirect_uri, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?)""",
+            (
+                "c" * 64,
+                "v" * 43,
+                "https://ledger.example.test/api/v1/auth/github/callback",
+                stamp,
+                "2030-01-01T00:10:00+00:00",
+            ),
+        )
+
+
 def _cli_environment(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> None:
     monkeypatch.setenv("STOCK_PROBS_DATA_DIR", str(settings.data_dir))
     monkeypatch.setenv("STOCK_PROBS_PROVIDER", "fixture")
@@ -173,6 +227,45 @@ def test_migrate_cli_creates_and_reports_verified_pre_migration_backup(
             )
     finally:
         staging.cleanup()
+
+
+def test_schema_ten_upgrade_backs_up_before_expiring_only_oauth_transactions(settings):
+    """The schema-11 cutover backs up v10 and preserves durable account/session data."""
+
+    _version_ten_database(settings)
+    manager, receipt = cli._migration_operations(settings)
+    assert receipt is not None
+    assert receipt["verified"] is True
+    assert receipt["schema_version"] == 10
+
+    manifest, snapshot, staging = manager._verify_unlocked(
+        receipt["name"], require_active_schema=False
+    )
+    try:
+        assert manifest["schema_version"] == 10
+        with sqlite3.connect(snapshot) as connection:
+            assert connection.execute("SELECT login FROM users WHERE id = 1").fetchone()[0] == (
+                "preserved-owner"
+            )
+            assert (
+                connection.execute("SELECT session_id FROM sessions WHERE id = 1").fetchone()[0]
+                == "schema-ten-session-1"
+            )
+            assert connection.execute("SELECT COUNT(*) FROM oauth_states").fetchone()[0] == 1
+    finally:
+        staging.cleanup()
+
+    with manager.repository.connect() as connection:
+        assert connection.execute("SELECT login FROM users WHERE id = 1").fetchone()[0] == (
+            "preserved-owner"
+        )
+        assert (
+            connection.execute("SELECT session_id FROM sessions WHERE id = 1").fetchone()[0]
+            == "schema-ten-session-1"
+        )
+        assert connection.execute("SELECT COUNT(*) FROM oauth_states").fetchone()[0] == 0
+        assert connection.execute("SELECT caller_key_hash FROM oauth_states").fetchall() == []
+        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 11
 
 
 def test_failed_pre_migration_backup_blocks_every_pending_migration(settings, monkeypatch, capsys):

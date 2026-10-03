@@ -11,6 +11,7 @@ from importlib.resources import files
 import pytest
 
 from stock_probs import repository as repository_module
+from stock_probs.auth import AuthManager, AuthSettings, OAuthStartLimited
 from stock_probs.domain import calculate_forecasts
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import SCHEMA_VERSION, Repository, RepositoryError
@@ -120,8 +121,78 @@ def test_oauth_state_storage_prunes_and_caps_anonymous_starts(tmp_path, monkeypa
         assert connection.execute("SELECT COUNT(*) FROM oauth_states").fetchone()[0] == 1
 
 
+def test_oauth_caller_outstanding_limit_survives_manager_restart(tmp_path, monkeypatch):
+    """A new manager cannot reset durable outstanding-state admission for one caller."""
+
+    monkeypatch.setattr(repository_module, "MAX_PENDING_OAUTH_STATES_PER_CALLER", 2)
+    repository = Repository(tmp_path / "stock_probs.sqlite3")
+    repository.migrate()
+    auth_settings = AuthSettings(
+        mode="github",
+        session_secret="r" * 48,
+        public_origin="https://ledger.example.test",
+        github_client_id="client-id",
+        github_client_secret="client-secret",  # noqa: S106
+        github_redirect_uri="https://ledger.example.test/api/v1/auth/github/callback",
+    )
+    caller_identity = "198.51.100.31"
+    first_manager = AuthManager(repository, auth_settings)
+    for offset in range(2):
+        first_manager.begin_github(NOW + timedelta(seconds=offset), caller_identity=caller_identity)
+
+    restarted_manager = AuthManager(Repository(repository.database_path), auth_settings)
+    with pytest.raises(OAuthStartLimited):
+        restarted_manager.begin_github(NOW + timedelta(seconds=61), caller_identity=caller_identity)
+    with repository.connect() as connection:
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM oauth_states WHERE consumed_at IS NULL"
+            ).fetchone()[0]
+            == 2
+        )
+
+    # Consuming one valid state frees its caller slot even if it has not expired yet.
+    with repository.connect() as connection:
+        state_hash = connection.execute(
+            "SELECT state_hash FROM oauth_states ORDER BY id LIMIT 1"
+        ).fetchone()[0]
+    assert (
+        repository.auth_consume_oauth_state(state_hash, (NOW + timedelta(seconds=62)).isoformat())
+        is not None
+    )
+    restarted_manager.begin_github(NOW + timedelta(seconds=63), caller_identity=caller_identity)
+
+
+def test_oauth_caller_outstanding_limit_releases_expired_states(tmp_path, monkeypatch):
+    """An expired pending transaction stops consuming its caller's durable quota."""
+
+    monkeypatch.setattr(repository_module, "MAX_PENDING_OAUTH_STATES_PER_CALLER", 1)
+    repository = _repository(tmp_path)
+    manager = AuthManager(
+        repository,
+        AuthSettings(
+            mode="github",
+            session_secret="s" * 48,
+            public_origin="https://ledger.example.test",
+            github_client_id="client-id",
+            github_client_secret="client-secret",  # noqa: S106
+            github_redirect_uri="https://ledger.example.test/api/v1/auth/github/callback",
+        ),
+    )
+    caller_identity = "198.51.100.32"
+    manager.begin_github(NOW, caller_identity=caller_identity)
+    manager.begin_github(NOW + timedelta(minutes=11), caller_identity=caller_identity)
+
+    with repository.connect() as connection:
+        rows = connection.execute(
+            "SELECT created_at, caller_key_hash FROM oauth_states ORDER BY id"
+        ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["created_at"] == (NOW + timedelta(minutes=11)).isoformat()
+
+
 def test_migration_creates_auth_tables_and_designated_legacy_owner(tmp_path):
-    """Clean creation records schema 7 and a non-credential legacy import target."""
+    """Clean creation retains a non-credential legacy owner across the current schema."""
 
     repository = _repository(tmp_path)
 
@@ -280,7 +351,9 @@ def test_v8_to_v10_preserves_audit_rows_and_retires_passkey_state(tmp_path):
     legacy.migrate()
 
     with legacy.connect() as connection:
-        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 10
+        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == (
+            SCHEMA_VERSION
+        )
         assert {
             "event": tuple(
                 connection.execute(

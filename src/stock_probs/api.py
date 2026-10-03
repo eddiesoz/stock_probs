@@ -7,6 +7,7 @@ import csv
 import hashlib
 import hmac
 import io
+import ipaddress
 import json
 import logging
 import re
@@ -47,6 +48,7 @@ from stock_probs.auth import (
     AuthorizationDenied,
     AuthUnavailable,
     InvitationRejected,
+    OAuthStartLimited,
     PasskeyBackend,
     UserRecord,
 )
@@ -1495,7 +1497,7 @@ def _documented_errors(*status_codes: int) -> dict[int | str, dict[str, Any]]:
         411: "A bounded Content-Length header is required.",
         413: "The request body exceeds the local API limit.",
         422: "The request or domain input is invalid.",
-        429: "Too many authenticator attempts were made; try again later.",
+        429: "A bounded per-caller authentication attempt limit was reached.",
         500: "The local service could not complete the request.",
         502: "The market-data provider did not return usable data.",
         503: "A required local service or bounded provider slot is unavailable.",
@@ -1717,8 +1719,15 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
         }
 
     def _auth_rejection(self, error: AuthError) -> JSONResponse:
+        headers = (
+            {"Retry-After": str(error.retry_after_seconds)}
+            if isinstance(error, OAuthStartLimited)
+            else None
+        )
         return JSONResponse(
-            status_code=error.status_code, content=_error(error.code, error.public_message)
+            status_code=error.status_code,
+            content=_error(error.code, error.public_message),
+            headers=headers,
         )
 
     def _authenticate_request(self, request: Request) -> Response | None:
@@ -2158,6 +2167,33 @@ def _error(
     if details:
         payload["error"]["details"] = details
     return payload
+
+
+def _oauth_caller_identity(request: Request, trusted_proxy_hosts: tuple[str, ...]) -> str:
+    """Return the socket IP, using Cloudflare's client IP only from the trusted connector."""
+
+    client = request.client
+    if client is None or not isinstance(client.host, str) or not client.host:
+        raise AuthUnavailable("GitHub sign-in is temporarily unavailable.")
+    peer = client.host.strip()
+    if not peer or len(peer) > 253:
+        raise AuthUnavailable("GitHub sign-in is temporarily unavailable.")
+
+    if peer.lower() in {host.lower() for host in trusted_proxy_hosts}:
+        cloudflare_ip = request.headers.get("cf-connecting-ip", "").strip()
+        if 1 <= len(cloudflare_ip) <= 64:
+            try:
+                return str(ipaddress.ip_address(cloudflare_ip))
+            except ValueError:
+                # An invalid connector header falls back to the transport peer, never another
+                # forwarded header whose value may still be supplied by the remote browser.
+                pass
+    try:
+        return str(ipaddress.ip_address(peer))
+    except ValueError:
+        # In-process ASGI transports can use a named peer such as "testclient". Production
+        # Uvicorn peers are socket addresses, and the value remains bounded above.
+        return peer.lower()
 
 
 def _call_with_owner(
@@ -3187,8 +3223,15 @@ def create_app(
     async def auth_error(_: Request, exc: AuthError) -> JSONResponse:
         """Return stable auth errors without revealing account or provider internals."""
 
+        headers = (
+            {"Retry-After": str(exc.retry_after_seconds)}
+            if isinstance(exc, OAuthStartLimited)
+            else None
+        )
         return JSONResponse(
-            status_code=exc.status_code, content=_error(exc.code, exc.public_message)
+            status_code=exc.status_code,
+            content=_error(exc.code, exc.public_message),
+            headers=headers,
         )
 
     @app.exception_handler(DomainError)
@@ -3622,15 +3665,20 @@ def create_app(
         include_in_schema=False,
         responses={
             302: {"description": "Redirect to GitHub authorization."},
-            **_documented_errors(400, 403, 405, 503),
+            **_documented_errors(400, 403, 405, 429, 503),
         },
     )
     def github_start(
+        request: Request,
         invite: str | None = Query(default=None, min_length=20, max_length=128),
     ) -> RedirectResponse:
         """Start a server-side GitHub OAuth authorization-code transaction."""
 
-        authorization = auth_manager.begin_github(datetime.now(UTC), invitation_code=invite)
+        authorization = auth_manager.begin_github(
+            datetime.now(UTC),
+            caller_identity=_oauth_caller_identity(request, config.trusted_proxy_hosts),
+            invitation_code=invite,
+        )
         redirect = RedirectResponse(authorization.url, status_code=302)
         _set_oauth_transaction_cookie(redirect, authorization.state)
         return redirect
@@ -3832,17 +3880,21 @@ def create_app(
     @app.post(
         "/api/v1/auth/invites/redeem",
         response_model=AuthSessionResponse,
-        responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
+        responses=_documented_errors(400, 403, 405, 411, 413, 422, 429, 500, 503),
     )
     def redeem_invitation(
-        payload: AuthInvitationRedeemRequest, response: Response
+        request: Request, payload: AuthInvitationRedeemRequest, response: Response
     ) -> dict[str, object]:
         """Validate an invitation and return a server-bound GitHub OAuth URL."""
 
         if auth_manager.settings.mode != "github":
             raise AuthUnavailable("Invitation sign-in is not enabled.")
         invitation = auth_manager.inspect_invitation(payload.code, datetime.now(UTC))
-        authorization = auth_manager.begin_github(datetime.now(UTC), invitation_code=payload.code)
+        authorization = auth_manager.begin_github(
+            datetime.now(UTC),
+            caller_identity=_oauth_caller_identity(request, config.trusted_proxy_hosts),
+            invitation_code=payload.code,
+        )
         _set_oauth_transaction_cookie(response, authorization.state)
         # The raw code is never persisted in a cookie.  The client must continue through the
         # GitHub authorization route with this code so OAuth state can bind the invitation.

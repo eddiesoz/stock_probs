@@ -410,6 +410,7 @@ def test_cli_serve_passes_loopback_resource_and_timeout_bounds(monkeypatch):
         "host": "127.0.0.1",
         "port": 8000,
         "workers": 1,
+        "proxy_headers": False,
         "limit_concurrency": 32,
         "backlog": 64,
         "timeout_keep_alive": 5,
