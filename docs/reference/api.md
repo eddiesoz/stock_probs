@@ -40,9 +40,9 @@ dependency-free local pointer is `/api/v1/docs`.
 | `GET` | `/api/v1/auth/github/start?invite=<code>` | Start the browser-bound GitHub authorization flow and redirect to GitHub. The `invite` query is optional. |
 | `GET` | `/api/v1/auth/github/callback` | Complete the OAuth exchange and issue a provisional session for authenticator enrollment or verification. |
 | `POST` | `/api/v1/auth/logout` | Revoke the current session and clear its cookies. Returns `204`. |
-| `POST` | `/api/v1/auth/invites` | Create a single-use, expiring GitHub invitation. Requires an administrator. |
+| `POST` | `/api/v1/auth/invites` | Create a single-use, expiring invitation for a numeric GitHub ID; returns a code for private sharing. Requires an administrator. |
 | `GET` | `/api/v1/auth/invites` | List bounded invitation metadata and report whether email invitations are configured. Requires an administrator. |
-| `POST` | `/api/v1/auth/invites/email` | Create an invitation and submit it to configured SMTP. Requires an administrator; SMTP acceptance is not mailbox delivery. |
+| `POST` | `/api/v1/auth/invites/email` | Create an email-targeted invitation and submit its code to configured SMTP. Accepts an email without a GitHub ID or login; optional explicit identity fields are supported. Requires an administrator; SMTP acceptance is not mailbox delivery. |
 | `POST` | `/api/v1/auth/invites/redeem` | Validate an invitation and return the browser-bound GitHub authorization URL. No signed-in session is required. |
 | `GET` | `/api/v1/auth/sessions` | List safe metadata for the current user's active sessions. |
 | `DELETE` | `/api/v1/auth/sessions/{session_id}` | Revoke one session owned by the current user. Returns `204`. |
@@ -78,6 +78,52 @@ Production email invitations are currently enabled under R-ASTRA-112. Its operat
 delivery to Gmail, but the message landed in Spam, so inbox placement was not achieved for this
 test; the operator called the service functions used by this endpoint rather than exercising the authenticated HTTP route. See the
 [R-ASTRA-112 evidence](../../MVP-PLAN.md).
+
+## Email invitation contract
+
+`POST /api/v1/auth/invites/email` accepts an administrator-authenticated request with an email
+address. `github_id` is optional; an email-only invitation does not require the administrator to
+look up an account ID. Without `github_id`, the email supplies the identity binding for redemption.
+If a positive `github_id` is explicitly provided, the invitation stays bound to that numeric ID
+and the email is only the delivery destination; `github_login` may accompany that ID as an optional
+display hint. JSON accepts `github_id` only when omitted, null, or a positive integer; booleans,
+strings, floats, zero, negative values, and overflow are rejected. `github_login` requires an
+explicit ID.
+
+```json
+{"email":"invitee@example.com"}
+```
+
+For an email-only invitation, the address is the delivery destination and redemption match, not
+identity proof by itself. After the invitee signs in through GitHub, the app checks the
+authenticated account's email records and requires an exact match marked `verified`. GitHub's
+authenticated email-list endpoint returns verification status and requires the `user:email` OAuth
+scope for OAuth app tokens. If the address is absent or unverified, or the GitHub lookup fails, the
+email-only invitation is rejected. A public profile email or a matching GitHub username is not a
+substitute. An invitation created with an explicit `github_id` instead checks that numeric account
+ID at redemption; its delivery address is not an additional identity factor.
+
+Address comparison uses ASCII case-folding only. The app does not fold Gmail dots or plus tags, so
+provider-specific aliases do not create an invitation match. After a verified email-only match,
+the app binds the invitation to that OAuth account's numeric GitHub ID. The invitation remains
+single-use and expiring; ordinary TOTP enrollment or verification and the existing per-user
+ownership checks still apply. The generated code is sent by email and is never returned in this
+endpoint's response.
+The response's `submission_status: "smtp_accepted"` means only that SMTP accepted the message for
+processing; it is not proof of mailbox delivery or reading. The separate
+`POST /api/v1/auth/invites` endpoint continues to create a numeric-ID-bound code for private
+sharing.
+
+R-ASTRA-113 is **In progress** overall. The implementation and declared local QA scope passed,
+including schema-12 package smoke and the final local gate (`796` Python tests); the deployed
+service remains schema 11, so this contract is not yet live in production. No R-ASTRA-113
+invitation has been sent. The requested three sends and follow-up, authenticated production HTTP
+flow, verified-email redemption, and invitee TOTP/workspace acceptance remain pending or
+unavailable. R-ASTRA-112's separate test delivery to Gmail Spam is unchanged. See the
+[MVP plan](../../MVP-PLAN.md) for evidence and repair history.
+For the corresponding operator workflow, see [getting started](../operations/getting-started.md#invitation-email-and-host-compose-update).
+GitHub's [authenticated email-list endpoint](https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user)
+documents the `user:email` requirement and the returned `verified` flag.
 
 There is no `/api/v1/market-depth` endpoint and no `MarketDepthResponse` schema. The Live Trading
 workspace may disclose that free data has no exchange-depth entitlement, but it does not fabricate

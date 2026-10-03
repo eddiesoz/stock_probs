@@ -222,6 +222,21 @@ R-ASTRA-112 later enabled production SMTP and confirmed delivery of an owner-bou
 Gmail's Spam folder. This was an operator service-function test, not an authenticated HTTP/browser
 test; inbox placement was not achieved for this test, while new-user onboarding remains unverified. See the
 [R-ASTRA-112 evidence](../../MVP-PLAN.md).
+`R-ASTRA-113` extends this coverage to email-only invitation creation and GitHub-verified address
+binding at redemption. Keep the exact request and fail-closed matching rules in the
+[API reference](../reference/api.md#email-invitation-contract), the administrator procedure in
+[getting started](../operations/getting-started.md#invitation-email-and-host-compose-update), and
+the identity threats in the [threat model](../security/threat-model.md). Update `AGENTS.md`,
+`README.md`, the [MVP plan](../../MVP-PLAN.md), and the [roadmap](../../MVP-ROADMAP.md) with the
+same task ID and evidence-backed status. GitHub email verification uses the authenticated email
+list and the `user:email` scope; the official [GitHub endpoint reference](https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user)
+is the permission/response source. Keep email-only sends separate from the older numeric-ID code
+flow, and never infer deployment, mailbox placement, or invitation redemption from local QA or the
+R-ASTRA-112 service-function delivery check. For R-ASTRA-113, independent local QA and the final
+native-x86_64 gate passed (`796` Python tests; receipt and R114/R115/R116 repair history are in the
+[MVP plan](../../MVP-PLAN.md)). R-ASTRA-113 remains **In progress** overall until deployment, the
+requested three invitation sends and follow-up, and live invitee redemption/TOTP/workspace evidence
+are reported. R-ASTRA-112's Gmail Spam result remains separate.
 Backup/restore compatibility and caller limits are documented in the
 [backup guide](../operations/backup-restore.md) and [API reference](../reference/api.md).
 Independent scoped QA and Astra's security re-review are recorded in the root plan. Its local gate

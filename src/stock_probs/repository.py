@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import math
 import re
@@ -24,7 +25,7 @@ from stock_probs.auth import (
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, HistoryFilters
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 OUTCOME_RECONSTRUCTION_LIMIT = 100
 HISTORY_EXPORT_LIMIT = 100
 INSTRUMENT_LIST_ITEM_LIMIT = 100
@@ -45,6 +46,7 @@ MIGRATION_SHA256 = {
     9: "bca47a59aef43ce4c4750c2a11f822903cb3e6a599d50e8eaff4690dc4ba9c6c",
     10: "e961d81cc560407596a3653c2ba4ff1d622ba02de20078d1066db76a8c891922",
     11: "6100174cc8a6ead5a8deb2c4437889be2f2d1609c5ce1f0bcc1fa16ac11a0f7c",
+    12: "03bf4834c594e7e7704484e520202ff14a459d339397aefec2916b09a4fccd5c",
 }
 
 
@@ -831,17 +833,24 @@ class Repository:
     def create_invitation(
         self,
         *,
-        github_user_id: int,
+        github_user_id: int | None,
         token_hash: str,
         invited_by_user_id: int,
         expires_at: datetime,
         created_at: datetime,
         github_login: str | None = None,
+        email_hash: str | None = None,
     ) -> dict[str, Any]:
-        """Create one expiring, single-use invitation using only a token digest."""
+        """Create one expiring invite with a GitHub ID or private email digest binding."""
 
-        if type(github_user_id) is not int or github_user_id < 1:
+        if (github_user_id is None) == (email_hash is None):
+            raise ValueError("exactly one invitation identity binding is required")
+        if github_user_id is not None and (type(github_user_id) is not int or github_user_id < 1):
             raise ValueError("github_user_id must be a positive integer")
+        if github_login is not None and github_user_id is None:
+            raise ValueError("github_login requires a GitHub ID invitation")
+        if email_hash is not None:
+            self._require_token_hash(email_hash, "email_hash")
         token_hash = self._require_token_hash(token_hash, "token_hash")
         expires = self._iso_datetime(expires_at, "expires_at")
         created = self._iso_datetime(created_at, "created_at")
@@ -852,16 +861,24 @@ class Repository:
             self._ensure_user_exists(connection, invited_by_user_id)
             cursor = connection.execute(
                 """INSERT INTO invitations
-                (github_user_id, github_login, token_hash, invited_by_user_id,
+                (github_user_id, github_login, email_hash, token_hash, invited_by_user_id,
                  expires_at, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)""",
-                (github_user_id, github_login, token_hash, invited_by_user_id, expires, created),
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    github_user_id,
+                    github_login,
+                    email_hash,
+                    token_hash,
+                    invited_by_user_id,
+                    expires,
+                    created,
+                ),
             )
             invitation_id = self._insert_id(cursor)
             connection.commit()
             row = connection.execute(
-                """SELECT id, github_user_id, github_login, invited_by_user_id, expires_at,
-                used_at, created_at FROM invitations WHERE id = ?""",
+                """SELECT id, github_user_id, github_login, email_hash, invited_by_user_id,
+                expires_at, used_at, created_at FROM invitations WHERE id = ?""",
                 (invitation_id,),
             ).fetchone()
         if row is None:
@@ -878,7 +895,8 @@ class Repository:
             row = connection.execute(
                 """SELECT id, github_user_id, github_login, invited_by_user_id, expires_at,
                 used_at, created_at FROM invitations
-                WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?""",
+                WHERE token_hash = ? AND github_user_id IS NOT NULL
+                AND used_at IS NULL AND expires_at > ?""",
                 (token_hash, now_text),
             ).fetchone()
             if row is None:
@@ -894,6 +912,83 @@ class Repository:
             connection.commit()
         return dict(row) | {"used_at": now_text}
 
+    def redeem_invitation(
+        self,
+        *,
+        token_hash: str,
+        now: datetime,
+        github_id: int,
+        verified_email_hashes: Sequence[str],
+        github_login: str,
+    ) -> dict[str, Any] | None:
+        """Atomically compare the asserted identity, bind email invites, and consume once."""
+
+        token_hash = self._require_token_hash(token_hash, "token_hash")
+        if type(github_id) is not int or github_id < 1:
+            raise ValueError("github_id must be a positive integer")
+        if not isinstance(github_login, str) or not 1 <= len(github_login) <= 100:
+            raise ValueError("github_login must be a bounded string")
+        if (
+            isinstance(verified_email_hashes, str | bytes)
+            or not isinstance(verified_email_hashes, Sequence)
+            or len(verified_email_hashes) > 99
+        ):
+            raise ValueError("verified_email_hashes must be bounded")
+        email_hashes = tuple(
+            self._require_token_hash(value, "verified_email_hash")
+            for value in verified_email_hashes
+        )
+        now_text = self._iso_datetime(now, "now")
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT id, github_user_id, github_login, email_hash, invited_by_user_id,
+                expires_at, used_at, created_at FROM invitations
+                WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?""",
+                (token_hash, now_text),
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                return None
+            bound_id = row["github_user_id"]
+            bound_email_hash = row["email_hash"]
+            if bound_id is not None:
+                if int(bound_id) != github_id or bound_email_hash is not None:
+                    connection.rollback()
+                    return None
+            elif bound_email_hash is None or not any(
+                hmac.compare_digest(str(bound_email_hash), value) for value in email_hashes
+            ):
+                connection.rollback()
+                return None
+            cursor = connection.execute(
+                """UPDATE invitations
+                SET github_user_id = ?, github_login = COALESCE(github_login, ?), used_at = ?
+                WHERE id = ? AND used_at IS NULL AND expires_at > ?
+                AND ((github_user_id = ? AND email_hash IS NULL)
+                     OR (github_user_id IS NULL AND email_hash = ?))""",
+                (
+                    github_id,
+                    github_login,
+                    now_text,
+                    int(row["id"]),
+                    now_text,
+                    github_id,
+                    bound_email_hash,
+                ),
+            )
+            if cursor.rowcount != 1:
+                connection.rollback()
+                return None
+            connection.commit()
+        return dict(row) | {
+            "github_user_id": github_id,
+            "github_id": github_id,
+            "github_login": row["github_login"] or github_login,
+            "used_at": now_text,
+            "consumed_at": now_text,
+        }
+
     def auth_create_invitation(self, fields: Mapping[str, object]) -> dict[str, Any]:
         """Persist an auth invitation from the AuthManager's field vocabulary."""
 
@@ -901,7 +996,9 @@ class Repository:
         invited_by_value = fields.get("invited_by", fields.get("invited_by_user_id"))
         token_hash = fields.get("code_hash", fields.get("token_hash"))
         github_login = fields.get("github_login")
-        if type(github_value) is not int or type(invited_by_value) is not int:
+        if (github_value is not None and type(github_value) is not int) or type(
+            invited_by_value
+        ) is not int:
             raise ValueError("invitation identities must be positive integers")
         if not isinstance(token_hash, str):
             raise ValueError("invitation token hash is required")
@@ -910,6 +1007,9 @@ class Repository:
         result = self.create_invitation(
             github_user_id=github_value,
             github_login=github_login if isinstance(github_login, str) else None,
+            email_hash=(
+                fields.get("email_hash") if isinstance(fields.get("email_hash"), str) else None
+            ),
             token_hash=token_hash,
             invited_by_user_id=invited_by_value,
             expires_at=expires_at,
@@ -920,6 +1020,24 @@ class Repository:
             "invited_by": result["invited_by_user_id"],
             "code_hash": token_hash,
         }
+
+    def auth_redeem_invitation(
+        self,
+        code_hash: str,
+        redeemed_at: str,
+        github_id: int,
+        verified_email_hashes: Sequence[str],
+        github_login: str,
+    ) -> dict[str, Any] | None:
+        """Expose the atomic identity-bound redemption under the auth repository contract."""
+
+        return self.redeem_invitation(
+            token_hash=code_hash,
+            now=self._parse_iso_datetime(redeemed_at, "redeemed_at"),
+            github_id=github_id,
+            verified_email_hashes=verified_email_hashes,
+            github_login=github_login,
+        )
 
     def auth_consume_invitation(self, code_hash: str, consumed_at: str) -> dict[str, Any] | None:
         """Atomically consume one invitation and expose the auth protocol aliases."""
@@ -941,7 +1059,7 @@ class Repository:
         code_hash = self._require_token_hash(code_hash, "code_hash")
         with self.connect() as connection:
             row = connection.execute(
-                """SELECT id, github_user_id, github_login, invited_by_user_id,
+                """SELECT id, github_user_id, github_login, email_hash, invited_by_user_id,
                 expires_at, used_at, created_at FROM invitations WHERE token_hash = ?""",
                 (code_hash,),
             ).fetchone()
@@ -957,11 +1075,17 @@ class Repository:
 
         with self.connect() as connection:
             rows = connection.execute(
-                """SELECT id, github_user_id, github_login, invited_by_user_id,
+                """SELECT id, github_user_id, github_login,
+                (email_hash IS NOT NULL) AS email_bound, invited_by_user_id,
                 expires_at, used_at, created_at FROM invitations ORDER BY id DESC LIMIT 100"""
             ).fetchall()
         return [
-            dict(row) | {"github_id": row["github_user_id"], "consumed_at": row["used_at"]}
+            dict(row)
+            | {
+                "github_id": row["github_user_id"],
+                "consumed_at": row["used_at"],
+                "email_bound": bool(row["email_bound"]),
+            }
             for row in rows
         ]
 
@@ -1106,11 +1230,7 @@ class Repository:
             raise ValueError("MFA sessions require a current factor generation")
         if mfa_method is None and mfa_factor_id is not None:
             raise ValueError("factor generation requires an MFA method")
-        factor_id = (
-            self._require_factor_id(mfa_factor_id)
-            if mfa_factor_id is not None
-            else None
-        )
+        factor_id = self._require_factor_id(mfa_factor_id) if mfa_factor_id is not None else None
         mfa_verified = (
             self._iso_datetime(mfa_verified_at, "mfa_verified_at")
             if mfa_verified_at is not None
@@ -1119,10 +1239,14 @@ class Repository:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._ensure_user_exists(connection, user_id)
-            if factor_id is not None and connection.execute(
-                "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
-                (factor_id, user_id),
-            ).fetchone() is None:
+            if (
+                factor_id is not None
+                and connection.execute(
+                    "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
+                    (factor_id, user_id),
+                ).fetchone()
+                is None
+            ):
                 connection.rollback()
                 raise ValueError("factor generation is not current for this user")
             cursor = connection.execute(
@@ -1337,10 +1461,13 @@ class Repository:
                 if mfa_factor_id is None:
                     connection.rollback()
                     return None
-                if connection.execute(
-                    "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
-                    (mfa_factor_id, user_id),
-                ).fetchone() is None:
+                if (
+                    connection.execute(
+                        "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
+                        (mfa_factor_id, user_id),
+                    ).fetchone()
+                    is None
+                ):
                     connection.rollback()
                     return None
                 if origin_token_hash is None:
@@ -1625,9 +1752,7 @@ class Repository:
                 (user_id,),
             ).fetchone()
             if existing is not None:
-                existing_expires = self._parse_iso_datetime(
-                    existing["expires_at"], "expires_at"
-                )
+                existing_expires = self._parse_iso_datetime(existing["expires_at"], "expires_at")
                 if existing_expires > created and not replace:
                     same_binding = (
                         existing["expected_factor_id"] == expected_factor
@@ -1894,10 +2019,14 @@ class Repository:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._ensure_user_exists(connection, user_id)
-            if expected_factor is not None and connection.execute(
-                "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
-                (expected_factor, user_id),
-            ).fetchone() is None:
+            if (
+                expected_factor is not None
+                and connection.execute(
+                    "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
+                    (expected_factor, user_id),
+                ).fetchone()
+                is None
+            ):
                 connection.rollback()
                 return False
             row = connection.execute(
@@ -2094,18 +2223,24 @@ class Repository:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._ensure_user_exists(connection, user_id)
-            if connection.execute(
-                "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
-                (factor_id, user_id),
-            ).fetchone() is None:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
+                    (factor_id, user_id),
+                ).fetchone()
+                is None
+            ):
                 connection.rollback()
                 return False
-            if connection.execute(
-                """SELECT 1 FROM sessions
+            if (
+                connection.execute(
+                    """SELECT 1 FROM sessions
                 WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL
                   AND idle_expires_at > ? AND absolute_expires_at > ?""",
-                (source_token, user_id, created_text, created_text),
-            ).fetchone() is None:
+                    (source_token, user_id, created_text, created_text),
+                ).fetchone()
+                is None
+            ):
                 connection.rollback()
                 return False
             connection.execute(
@@ -2137,10 +2272,13 @@ class Repository:
         consumed = self._parse_iso_datetime(consumed_at, "consumed_at")
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            if connection.execute(
-                "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
-                (factor_id, user_id),
-            ).fetchone() is None:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM totp_factors WHERE id = ? AND user_id = ?",
+                    (factor_id, user_id),
+                ).fetchone()
+                is None
+            ):
                 connection.rollback()
                 return False
             cursor = connection.execute(

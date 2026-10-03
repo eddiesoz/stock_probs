@@ -42,6 +42,28 @@ by R-ASTRA-112, which enabled production SMTP and verified delivery of an owner-
 to Gmail's Spam folder; inbox placement was not achieved for this test. Authenticated
 email-endpoint/browser acceptance and new-user onboarding remain unverified. See the
 [R-ASTRA-112 evidence](../../MVP-PLAN.md).
+
+`R-ASTRA-113` is **In progress** overall for email-only invitation identity binding. In the local
+implementation, the recipient email is a delivery destination. For email-only invitations, it
+also supplies the redemption match: a public profile email or username is not proof of identity.
+During redemption, query the
+authenticated GitHub account's email list with the `user:email` scope and require an exact address
+marked verified. Compare using ASCII case-folding only, without provider-specific dot or plus-tag
+folding. Reject unverified or mismatched addresses and fail closed when GitHub's email lookup is
+unavailable. After a match, bind the invitation to the OAuth account's numeric GitHub ID. If an
+administrator explicitly supplies a positive `github_id`, the invitation stays ID-bound and email
+is only the delivery destination; `github_login` is an optional display hint for that ID-bound
+case. In both cases, preserve the existing TOTP and per-user ownership checks. The single-use code
+goes in the email and must not appear in the API response; the existing numeric-ID code-invitation
+flow remains available. See the
+[email invitation contract](../reference/api.md#email-invitation-contract) and the official
+[GitHub authenticated email-list endpoint](https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user).
+The implementation and declared local QA scope passed, including schema-12 package smoke and the
+final local gate (`796` Python tests). The deployed service remains schema 11; no R-ASTRA-113
+deployment or invitation send is evidenced. Requested sends and follow-up, live verified-email
+redemption, invitee TOTP, and workspace acceptance remain pending or unavailable. The separate
+R-ASTRA-112 SMTP service-function test remains the only recorded Gmail delivery and landed in Spam.
+
 The earlier private
 clean-main image is revision
 `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256

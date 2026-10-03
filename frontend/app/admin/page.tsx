@@ -8,13 +8,20 @@ import { AuthRequestError, authErrorMessage, authRequest, formatAuthDate, getAut
 import { WorkspaceNav } from "../../components/workspace-nav";
 import styles from "../auth.module.css";
 
-interface Invitation { id: string; github_id?: number; github_login?: string; code?: string; created_at?: string; expires_at?: string; redeemed_at?: string | null; }
+interface Invitation { id: string; github_id?: number | null; github_login?: string | null; email_bound?: boolean; code?: string; created_at?: string; expires_at?: string; redeemed_at?: string | null; consumed_at?: string | null; used_at?: string | null; }
+interface EmailInvitationSubmission { submission_status: string; submission_id: string; submitted_at: string; github_id: number | null; github_login: string | null; expires_at: string; invite_url: string; }
+
+function invitationConsumedAt(invite: Invitation) {
+  return invite.consumed_at ?? invite.used_at ?? invite.redeemed_at ?? null;
+}
 
 export default function AdminPage() {
   const [session, setSession] = useState<AuthSession | null | undefined>(undefined);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [githubId, setGithubId] = useState("");
   const [githubLogin, setGithubLogin] = useState("");
+  const [emailGithubId, setEmailGithubId] = useState("");
+  const [emailGithubLogin, setEmailGithubLogin] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [emailInvitesEnabled, setEmailInvitesEnabled] = useState<boolean | null>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
@@ -71,19 +78,38 @@ export default function AdminPage() {
     finally { setBusy(null); }
   }
 
-  async function sendInvitationEmail() {
+  async function sendInvitationEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (emailInvitesEnabled !== true || !emailInputRef.current?.reportValidity()) return;
+    const restrictionId = emailGithubId.trim();
+    const restrictionLogin = emailGithubLogin.trim();
+    if (restrictionLogin && !restrictionId) {
+      setMessage({ tone: "error", text: "Add the resolved GitHub account ID before using a username display hint." });
+      return;
+    }
+    if (restrictionId && (!/^\d+$/.test(restrictionId) || !Number.isSafeInteger(Number(restrictionId)) || Number(restrictionId) < 1)) {
+      setMessage({ tone: "error", text: "Enter a positive GitHub account ID for the optional restriction, or leave it blank." });
+      return;
+    }
     setBusy("invite-email"); setMessage(null);
     try {
-      await authRequest("/api/v1/auth/invites/email", {
+      const response = await authRequest<EmailInvitationSubmission>("/api/v1/auth/invites/email", {
         method: "POST",
         body: JSON.stringify({
-          github_id: Number(githubId),
-          github_login: githubLogin.trim() || undefined,
           email: inviteEmail.trim(),
+          ...(restrictionId ? { github_id: Number(restrictionId), ...(restrictionLogin ? { github_login: restrictionLogin } : {}) } : {}),
         }),
       });
+      if (response.submission_status !== "smtp_accepted") throw new Error("The invitation service did not confirm mail-server acceptance.");
       setInviteEmail("");
+      setEmailGithubId(""); setEmailGithubLogin("");
+      setInvitations((items) => [{
+        id: response.submission_id,
+        github_id: response.github_id,
+        github_login: response.github_login,
+        email_bound: response.github_id === null,
+        expires_at: response.expires_at,
+      }, ...items]);
       let refreshed = true;
       try {
         const response = await authRequest<{ invitations?: Invitation[]; email_invites_enabled?: boolean }>("/api/v1/auth/invites", { cache: "no-store" });
@@ -92,11 +118,14 @@ export default function AdminPage() {
       } catch {
         refreshed = false;
       }
+      const recipientGuidance = response.github_id === null
+        ? "The recipient must use a GitHub account with the invitation email marked verified."
+        : `The recipient must use GitHub account ${response.github_id}. The email is only the delivery destination.`;
       setMessage({
         tone: "success",
         text: refreshed
-          ? "Invitation submitted to mail server. Delivery is not confirmed."
-          : "Invitation submitted to mail server. Delivery is not confirmed. The invitation list could not be refreshed.",
+          ? `Mail server accepted the invitation. ${recipientGuidance} Delivery is not confirmed.`
+          : `Mail server accepted the invitation. ${recipientGuidance} Delivery is not confirmed. The invitation list could not be refreshed.`,
       });
     } catch (error) {
       const text = error instanceof AuthRequestError && [401, 403].includes(error.status)
@@ -151,9 +180,9 @@ export default function AdminPage() {
       <main id="main" tabIndex={-1} className={styles.authMain}>
         <div className={styles.authIntro}><p className="panel-kicker">Workspace / Administration</p><h1>Keep access deliberate</h1><p>Invite the people you trust and manage verified recovery operations without exposing database controls to the browser.</p></div>
         <section className={`${styles.authPanel} ${styles.widePanel}`} aria-labelledby="invite-heading">
-          <div className={styles.sectionRule}><h2 id="invite-heading">Invite a GitHub account</h2><p>Invitation codes are single-use and expire. Resolve the identity before sharing the code.</p></div>
+          <div className={styles.sectionRule}><h2 id="invite-heading">Create a GitHub account code</h2><p>Manual invitation codes are single-use and expire. Resolve the identity before sharing a code privately.</p></div>
           <form className={styles.formGrid} onSubmit={createInvitation} noValidate><label htmlFor="github-id">GitHub account ID<input id="github-id" name="github_id" inputMode="numeric" pattern="[0-9]+" value={githubId} onChange={(event) => setGithubId(event.target.value.replace(/\D/g, ""))} placeholder="1234567" autoComplete="off" required /></label><label htmlFor="github-login">GitHub username (optional)<input id="github-login" name="github_login" value={githubLogin} onChange={(event) => setGithubLogin(event.target.value)} placeholder="octocat" autoComplete="off" /></label><button className="primary full" type="submit" disabled={busy === "invite" || busy === "invite-email" || !githubId.trim()}>{busy === "invite" ? "Creating invitation…" : "Create invitation"}</button></form>
-          <div className={styles.sectionRule}><h2 id="email-invite-heading">Send invitation by email</h2><p>Use the same GitHub identity above and enter the address that should receive its invitation.</p></div>
+          <div className={styles.sectionRule}><h2 id="email-invite-heading">Send invitation by email</h2><p>Email-only invitations require a GitHub account with the invitation email marked verified. Adding a resolved GitHub account ID restricts redemption to that account; the address is then only the delivery destination.</p></div>
           <div className={styles.permissionBox}>
             <div>
               <strong>{emailInvitesEnabled === true ? "Email invitations are enabled" : emailInvitesEnabled === false ? "Email invitations are not configured" : "Checking email invitation settings"}</strong>
@@ -164,11 +193,25 @@ export default function AdminPage() {
                   : "Email sending stays disabled until the server confirms that mail is configured."}</p>
             </div>
           </div>
-          <div className={styles.formGrid}>
-            <label className={styles.full} htmlFor="invite-email">Recipient email address<input ref={emailInputRef} id="invite-email" name="email" type="email" inputMode="email" autoComplete="email" maxLength={254} value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="person@example.com" aria-describedby="email-invites-help" required /></label>
-            <button className="secondary full" type="button" aria-describedby="email-invites-help" disabled={emailInvitesEnabled !== true || busy === "invite-email" || busy === "invite" || !githubId.trim() || !inviteEmail.trim()} onClick={sendInvitationEmail}>{busy === "invite-email" ? "Submitting invitation email…" : "Send invitation email"}</button>
-          </div>
-          {invitations.length ? <ul className={styles.dataList}>{invitations.map((invite) => <li className={styles.dataRow} key={invite.id}><div><strong>{invite.github_login || `GitHub account ${invite.github_id || ""}`}</strong><small>{invite.redeemed_at ? `Redeemed ${formatAuthDate(invite.redeemed_at)}` : `Expires ${formatAuthDate(invite.expires_at)}`} {invite.code ? `· Code ${invite.code}` : ""}</small></div><span className="badge neutral">{invite.redeemed_at ? "Used" : "Open"}</span></li>)}</ul> : <p className={styles.loadingState}>No invitations created in this session.</p>}
+          <p id="invitation-email-verification" className={styles.fieldHelp}>{emailGithubId.trim()
+            ? `This invitation is restricted to GitHub account ID ${emailGithubId}; the address is only the delivery destination.`
+            : "For an email-only invitation, recipients must use a GitHub account with the invitation email marked verified."}</p>
+          <form className={styles.formGrid} onSubmit={sendInvitationEmail} noValidate>
+            <label className={styles.full} htmlFor="invite-email">Recipient email address<input ref={emailInputRef} id="invite-email" name="email" type="email" inputMode="email" autoComplete="email" maxLength={254} value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="person@example.com" aria-describedby="email-invites-help invitation-email-verification" required /></label>
+            <details className={styles.full}>
+              <summary>Optional resolved GitHub account restriction</summary>
+              <p className={styles.fieldHelp}>Leave these fields blank for an email-only invitation. To restrict it to a known account, enter its positive account ID; a username is an optional display hint.</p>
+              <div className={styles.formGrid}>
+                <label htmlFor="email-github-id">GitHub account ID (optional)<input id="email-github-id" name="email_github_id" inputMode="numeric" pattern="[0-9]+" value={emailGithubId} onChange={(event) => setEmailGithubId(event.target.value.replace(/\D/g, ""))} placeholder="1234567" autoComplete="off" /></label>
+                <label htmlFor="email-github-login">GitHub username display hint (optional)<input id="email-github-login" name="email_github_login" value={emailGithubLogin} onChange={(event) => setEmailGithubLogin(event.target.value)} placeholder="octocat" autoComplete="off" /></label>
+              </div>
+            </details>
+            <button className="secondary full" type="submit" aria-describedby="email-invites-help invitation-email-verification" disabled={emailInvitesEnabled !== true || busy === "invite-email" || busy === "invite" || !inviteEmail.trim()}>{busy === "invite-email" ? "Submitting invitation email…" : "Send invitation email"}</button>
+          </form>
+          {invitations.length ? <ul className={styles.dataList}>{invitations.map((invite) => {
+            const consumedAt = invitationConsumedAt(invite);
+            return <li className={styles.dataRow} key={invite.id}><div><strong>{invite.github_login || (invite.github_id !== undefined && invite.github_id !== null ? `GitHub account ${invite.github_id}` : "Email invitation · pending GitHub verification")}</strong><small>{consumedAt ? `Redeemed ${formatAuthDate(consumedAt)}` : `Expires ${formatAuthDate(invite.expires_at)}`} {invite.code ? `· Code ${invite.code}` : ""}</small></div><span className="badge neutral">{consumedAt ? "Used" : "Open"}</span></li>;
+          })}</ul> : <p className={styles.loadingState}>No invitations created in this session.</p>}
           <div className={styles.sectionRule}><h2>Verified backups</h2><p>Backups are created and verified on the server. Enter a current authenticator code below before creating one.</p></div>
           <div className={styles.formGrid}><label className={styles.full} htmlFor="backup-name">Backup label (optional)<input id="backup-name" value={backupName} onChange={(event) => setBackupName(event.target.value)} placeholder="before-auth-migration" /></label><button className="secondary full" type="button" disabled={!freshVerified || busy === "backup"} onClick={createBackup}>{busy === "backup" ? "Creating verified backup…" : "Create verified backup"}</button></div>
           <div className={styles.sectionRule}><h2>Promote a restore</h2><p>Use only after reviewing the artifact. A promoted restore requires a fresh authenticator check and revokes other sessions.</p></div>

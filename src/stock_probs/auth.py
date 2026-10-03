@@ -199,7 +199,18 @@ class AuthStore(Protocol):
         self, code_hash: str, consumed_at: str
     ) -> Mapping[str, object] | None: ...
 
+    def auth_redeem_invitation(
+        self,
+        code_hash: str,
+        redeemed_at: str,
+        github_id: int,
+        verified_email_hashes: Sequence[str],
+        github_login: str,
+    ) -> Mapping[str, object] | None: ...
+
     def auth_get_invitation(self, code_hash: str) -> Mapping[str, object] | None: ...
+
+    def auth_list_invitations(self) -> list[Mapping[str, object]]: ...
 
     def auth_store_oauth_state(self, fields: Mapping[str, object]) -> bool | None: ...
 
@@ -256,9 +267,7 @@ class AuthStore(Protocol):
         self, user_id: int, attempted_at: str, expected_factor_id: int | None = None
     ) -> bool: ...
 
-    def auth_check_totp_attempt(
-        self, user_id: int, attempted_at: str
-    ) -> Mapping[str, object]: ...
+    def auth_check_totp_attempt(self, user_id: int, attempted_at: str) -> Mapping[str, object]: ...
 
     def auth_record_totp_attempt(
         self,
@@ -601,6 +610,36 @@ class AuthStoreAdapter:
         )
         return result if isinstance(result, Mapping) else None
 
+    def auth_redeem_invitation(
+        self,
+        code_hash: str,
+        redeemed_at: str,
+        github_id: int,
+        verified_email_hashes: Sequence[str],
+        github_login: str,
+    ) -> Mapping[str, object] | None:
+        """Require the persistence adapter's atomic identity-check and consume operation."""
+
+        method = getattr(self.inner, "auth_redeem_invitation", None) or getattr(
+            self.inner, "redeem_invitation", None
+        )
+        if not callable(method):
+            raise AuthUnavailable("Invitation identity binding is not configured.")
+        result = self._invoke(
+            method,
+            {
+                "code_hash": code_hash,
+                "token_hash": code_hash,
+                "redeemed_at": redeemed_at,
+                "now": self._datetime(redeemed_at, "redeemed_at"),
+                "github_id": github_id,
+                "github_user_id": github_id,
+                "verified_email_hashes": tuple(verified_email_hashes),
+                "github_login": github_login,
+            },
+        )
+        return result if isinstance(result, Mapping) else None
+
     def auth_get_invitation(self, code_hash: str) -> Mapping[str, object] | None:
         method = getattr(self.inner, "auth_get_invitation", None) or getattr(
             self.inner, "get_invitation", None
@@ -612,6 +651,21 @@ class AuthStoreAdapter:
         except TypeError:
             result = method(token_hash=code_hash)
         return result if isinstance(result, Mapping) else None
+
+    def auth_list_invitations(self) -> list[Mapping[str, object]]:
+        """Return only sanitized invite metadata from the active persistence store."""
+
+        method = getattr(self.inner, "auth_list_invitations", None) or getattr(
+            self.inner, "list_invitations", None
+        )
+        if not callable(method):
+            return []
+        result = method()
+        return (
+            [item for item in result if isinstance(item, Mapping)]
+            if isinstance(result, list)
+            else []
+        )
 
     def auth_store_oauth_state(self, fields: Mapping[str, object]) -> bool:
         method = self._method("auth_store_oauth_state", "store_oauth_state", "create_oauth_state")
@@ -797,9 +851,7 @@ class AuthStoreAdapter:
         )
         return result is True
 
-    def auth_check_totp_attempt(
-        self, user_id: int, attempted_at: str
-    ) -> Mapping[str, object]:
+    def auth_check_totp_attempt(self, user_id: int, attempted_at: str) -> Mapping[str, object]:
         """Read the durable account lock gate before performing TOTP crypto."""
 
         method = self._method("auth_check_totp_attempt", "check_totp_attempt")
@@ -1098,6 +1150,7 @@ class GithubIdentity:
     login: str
     email: str | None
     invitation_code_hash: str | None = None
+    verified_email_hashes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1551,9 +1604,7 @@ class AuthManager:
             raise AuthenticationRequired()
         if mfa_method not in {"none", "totp", "passkey", "recovery"}:
             raise AuthUnavailable("Account security state is invalid.")
-        if self.settings.mode == "github" and (
-            auth_method == "passkey" or mfa_method == "passkey"
-        ):
+        if self.settings.mode == "github" and (auth_method == "passkey" or mfa_method == "passkey"):
             raise AuthorizationDenied("Passkeys are no longer accepted; use an authenticator code.")
         if mfa_method in {"totp", "recovery"} and type(expected_factor_id) is not int:
             raise AuthUnavailable("Account security state is invalid.")
@@ -1669,9 +1720,7 @@ class AuthManager:
             # passkey sessions are rejected by the fail-closed guard above.
             auth_method = "local"
         mfa_verified_at_value = record.get("mfa_verified_at")
-        mfa_verified_at = (
-            _utc(mfa_verified_at_value) if mfa_verified_at_value is not None else None
-        )
+        mfa_verified_at = _utc(mfa_verified_at_value) if mfa_verified_at_value is not None else None
         if not isinstance(raw_session_id, str) or not isinstance(csrf_hash, str):
             raise AuthUnavailable("Account security state is invalid.")
         if auth_method not in {"local", "github"}:
@@ -1771,14 +1820,37 @@ class AuthManager:
             return False
         return context.auth_method in {"github", "local"}
 
+    def _email_hash(self, email: str) -> str:
+        """HMAC a canonical mailbox with the stable auth key so storage hides recipients."""
+
+        from stock_probs.invitation_mail import validate_email_address
+
+        canonical = validate_email_address(email).lower()
+        return hmac.new(
+            self.settings.session_secret.encode("utf-8"),
+            b"signal-ledger:invitation-email:v1\0" + canonical.encode("ascii"),
+            hashlib.sha256,
+        ).hexdigest()
+
     def create_invitation(
-        self, github_id: int, invited_by: int, now: datetime, *, github_login: str | None = None
+        self,
+        github_id: int | None,
+        invited_by: int,
+        now: datetime,
+        *,
+        github_login: str | None = None,
+        email: str | None = None,
     ) -> tuple[str, Mapping[str, object]]:
-        """Create a single-use invitation and return its raw code exactly once."""
+        """Create a single-use GitHub-ID or verified-email invitation."""
 
         if self.settings.mode != "github":
             raise AuthUnavailable("GitHub invitations are not enabled.")
-        bounded_id = _safe_github_id(github_id)
+        if (github_id is None) == (email is None):
+            raise ValueError("exactly one invitation identity must be set")
+        bounded_id = _safe_github_id(github_id) if github_id is not None else None
+        if github_login is not None and bounded_id is None:
+            raise ValueError("github_login requires a GitHub ID invitation")
+        email_hash = self._email_hash(email) if email is not None else None
         code = secrets.token_urlsafe(32)
         issued = now.astimezone(UTC)
         expires = issued + timedelta(seconds=self.settings.invitation_ttl_seconds)
@@ -1787,6 +1859,7 @@ class AuthManager:
                 "code_hash": _hash_secret(code),
                 "github_id": bounded_id,
                 "github_login": github_login,
+                "email_hash": email_hash,
                 "invited_by": invited_by,
                 "created_at": _iso(issued),
                 "expires_at": _iso(expires),
@@ -1824,12 +1897,40 @@ class AuthManager:
             raise InvitationRejected()
         return result
 
-    def consume_invitation_hash(self, code_hash: str, now: datetime) -> Mapping[str, object]:
-        """Consume a state-bound invitation without ever recovering its raw browser code."""
+    def redeem_invitation_hash(
+        self,
+        code_hash: str,
+        now: datetime,
+        *,
+        github_id: int,
+        verified_email_hashes: Sequence[str],
+        github_login: str,
+    ) -> Mapping[str, object]:
+        """Bind and consume an invitation only after numeric-ID or verified-email proof."""
 
         if len(code_hash) != 64 or not re_full_hex(code_hash):
             raise InvitationRejected()
-        result = self.store.auth_consume_invitation(code_hash, _iso(now.astimezone(UTC)))
+        github_id = _safe_github_id(github_id)
+        if not isinstance(github_login, str) or not 1 <= len(github_login) <= 100:
+            raise InvitationRejected()
+        if (
+            isinstance(verified_email_hashes, str | bytes)
+            or not isinstance(verified_email_hashes, Sequence)
+            or len(verified_email_hashes) > 99
+        ):
+            raise InvitationRejected()
+        email_hashes: list[str] = []
+        for email_hash in verified_email_hashes:
+            if not isinstance(email_hash, str) or not re_full_hex(email_hash):
+                raise InvitationRejected()
+            email_hashes.append(email_hash)
+        result = self.store.auth_redeem_invitation(
+            code_hash,
+            _iso(now.astimezone(UTC)),
+            github_id,
+            tuple(email_hashes),
+            github_login,
+        )
         if result is None:
             raise InvitationRejected()
         expires = _utc(result.get("expires_at"))
@@ -1965,8 +2066,19 @@ class AuthManager:
         redirect = state_record.get("redirect_uri")
         if not isinstance(verifier, str) or not isinstance(redirect, str):
             raise OAuthRejected()
+        invitation_code_hash = _optional_text(state_record.get("invitation_code_hash"))
+        email_bound_invitation = False
+        if invitation_code_hash is not None:
+            invitation = self.inspect_invitation_hash(invitation_code_hash, now)
+            stored_email_hash = invitation.get("email_hash")
+            email_bound_invitation = stored_email_hash is not None
+            if email_bound_invitation and (
+                not isinstance(stored_email_hash, str) or not re_full_hex(stored_email_hash)
+            ):
+                raise InvitationRejected()
         client = self.http_client or httpx.Client(timeout=8.0, follow_redirects=False)
         close_client = self.http_client is None
+        verified_email_hashes: tuple[str, ...] = ()
         try:
             token_response = client.post(
                 "https://github.com/login/oauth/access_token",
@@ -1978,9 +2090,13 @@ class AuthManager:
                     "redirect_uri": redirect,
                     "code_verifier": verifier,
                 },
+                timeout=8.0,
+                follow_redirects=False,
             )
             token_response.raise_for_status()
             token_payload = token_response.json()
+            if not isinstance(token_payload, Mapping):
+                raise OAuthRejected()
             access_token = token_payload.get("access_token")
             if not isinstance(access_token, str) or not 1 <= len(access_token) <= 512:
                 raise OAuthRejected()
@@ -1991,10 +2107,50 @@ class AuthManager:
                     "Authorization": f"Bearer {access_token}",
                     "X-GitHub-Api-Version": "2022-11-28",
                 },
+                timeout=8.0,
+                follow_redirects=False,
             )
             profile.raise_for_status()
             value = profile.json()
-        except (httpx.HTTPError, ValueError, TypeError, OAuthRejected):
+            if not isinstance(value, Mapping):
+                raise OAuthRejected()
+            if email_bound_invitation:
+                email_response = client.get(
+                    "https://api.github.com/user/emails",
+                    headers={
+                        "Accept": "application/vnd.github+json",
+                        "Authorization": f"Bearer {access_token}",
+                        "X-GitHub-Api-Version": "2022-11-28",
+                    },
+                    params={"per_page": 100, "page": 1},
+                    timeout=8.0,
+                    follow_redirects=False,
+                )
+                email_response.raise_for_status()
+                if len(email_response.content) > 64 * 1024:
+                    raise OAuthRejected()
+                records = email_response.json()
+                if (
+                    not isinstance(records, list)
+                    or len(records) >= 100
+                    or "next" in email_response.headers.get("link", "").lower()
+                ):
+                    raise OAuthRejected()
+                verified_hashes: list[str] = []
+                from stock_probs.invitation_mail import validate_email_address
+
+                for record in records:
+                    if (
+                        not isinstance(record, Mapping)
+                        or not isinstance(record.get("email"), str)
+                        or type(record.get("verified")) is not bool
+                    ):
+                        raise OAuthRejected()
+                    canonical_email = validate_email_address(record["email"]).lower()
+                    if record["verified"] is True:
+                        verified_hashes.append(self._email_hash(canonical_email))
+                verified_email_hashes = tuple(verified_hashes)
+        except (httpx.HTTPError, ValueError, TypeError, AttributeError, OAuthRejected):
             raise OAuthRejected() from None
         finally:
             if close_client:
@@ -2008,7 +2164,8 @@ class AuthManager:
             _safe_github_id(github_id),
             login[:100],
             email if isinstance(email, str) else None,
-            _optional_text(state_record.get("invitation_code_hash")),
+            invitation_code_hash,
+            verified_email_hashes,
         )
 
     def totp_status(
@@ -2216,9 +2373,7 @@ class AuthManager:
         self.store.auth_record_totp_attempt(context.user.id, _iso(current), successful=True)
         return issue
 
-    def rotate_recovery_codes(
-        self, context: AuthContext, code: str, now: datetime
-    ) -> list[str]:
+    def rotate_recovery_codes(self, context: AuthContext, code: str, now: datetime) -> list[str]:
         """Replace recovery codes after a fresh authenticator verification."""
 
         if context.mfa_method != "totp" or not self.has_totp_factor(context.user.id):
@@ -2288,9 +2443,7 @@ class AuthManager:
         step = matching_step(secret, code, now)
         if step is None:
             raise TotpRejected()
-        if not self.store.auth_accept_totp_step(
-            user_id, expected_factor_id, step, _iso(now)
-        ):
+        if not self.store.auth_accept_totp_step(user_id, expected_factor_id, step, _iso(now)):
             raise TotpRejected("The authenticator state changed. Try the current code again.")
         self.store.auth_record_totp_attempt(user_id, _iso(now), successful=True)
         return step
@@ -2340,9 +2493,7 @@ class AuthManager:
         if not user.active:
             raise AuthenticationRequired()
         if self.settings.mode == "github":
-            raise AuthorizationDenied(
-                "Passkeys are retired; use your authenticator code."
-            )
+            raise AuthorizationDenied("Passkeys are retired; use your authenticator code.")
         challenge = _b64(secrets.token_bytes(32))
         now = datetime.now(UTC)
         with self._challenge_lock:
@@ -2637,14 +2788,82 @@ class MemoryAuthStore:
     def auth_consume_invitation(
         self, code_hash: str, consumed_at: str
     ) -> Mapping[str, object] | None:
-        record = self.invitations.get(code_hash)
-        if record is None or record.get("consumed_at") is not None:
-            return None
-        record["consumed_at"] = consumed_at
-        return record
+        with self._oauth_lock:
+            record = self.invitations.get(code_hash)
+            if (
+                record is None
+                or record.get("consumed_at") is not None
+                or record.get("used_at") is not None
+                or record.get("github_id", record.get("github_user_id")) is None
+            ):
+                return None
+            record["consumed_at"] = consumed_at
+            record["used_at"] = consumed_at
+            return record
+
+    def auth_redeem_invitation(
+        self,
+        code_hash: str,
+        redeemed_at: str,
+        github_id: int,
+        verified_email_hashes: Sequence[str],
+        github_login: str,
+    ) -> Mapping[str, object] | None:
+        """Mirror the SQLite compare-bind-consume transaction for isolated auth tests."""
+
+        with self._oauth_lock:
+            record = self.invitations.get(code_hash)
+            if (
+                record is None
+                or record.get("consumed_at") is not None
+                or record.get("used_at") is not None
+            ):
+                return None
+            try:
+                if _utc(record.get("expires_at")) <= _utc(redeemed_at):
+                    return None
+            except AuthUnavailable:
+                return None
+            bound_id = record.get("github_id", record.get("github_user_id"))
+            email_hash = record.get("email_hash")
+            if bound_id is not None:
+                if bound_id != github_id or email_hash is not None:
+                    return None
+            elif not isinstance(email_hash, str) or not any(
+                hmac.compare_digest(email_hash, candidate) for candidate in verified_email_hashes
+            ):
+                return None
+            record["github_id"] = github_id
+            record["github_user_id"] = github_id
+            record["github_login"] = record.get("github_login") or github_login
+            record["consumed_at"] = redeemed_at
+            record["used_at"] = redeemed_at
+            return record
 
     def auth_get_invitation(self, code_hash: str) -> Mapping[str, object] | None:
         return self.invitations.get(code_hash)
+
+    def auth_list_invitations(self) -> list[Mapping[str, object]]:
+        """List invitation status without returning private email digests or bearer codes."""
+
+        with self._oauth_lock:
+            return [
+                {
+                    key: record.get(key)
+                    for key in (
+                        "id",
+                        "github_id",
+                        "github_login",
+                        "invited_by",
+                        "expires_at",
+                        "consumed_at",
+                        "used_at",
+                        "created_at",
+                    )
+                }
+                | {"email_bound": record.get("email_hash") is not None}
+                for record in list(self.invitations.values())[-100:][::-1]
+            ]
 
     def auth_store_oauth_state(self, fields: Mapping[str, object]) -> bool:
         """Apply the durable OAuth admission limits used by the SQLite implementation."""
@@ -2892,9 +3111,7 @@ class MemoryAuthStore:
         value = factor.get("id", factor.get("factor_id", factor.get("generation")))
         return value if type(value) is int and value > 0 else None
 
-    def auth_check_totp_attempt(
-        self, user_id: int, attempted_at: str
-    ) -> Mapping[str, object]:
+    def auth_check_totp_attempt(self, user_id: int, attempted_at: str) -> Mapping[str, object]:
         record = self.totp_attempts.get(user_id)
         if record is None:
             return {"allowed": True, "failures": 0}
@@ -2917,9 +3134,10 @@ class MemoryAuthStore:
             self.totp_attempts.pop(user_id, None)
             return {"allowed": True, "failures": 0}
         record = self.totp_attempts.get(user_id)
-        if record is None or _utc(str(record["window_start"])) + timedelta(
-            seconds=window_seconds
-        ) <= current:
+        if (
+            record is None
+            or _utc(str(record["window_start"])) + timedelta(seconds=window_seconds) <= current
+        ):
             record = {"window_start": attempted_at, "failures": 0, "locked_until": None}
             self.totp_attempts[user_id] = record
         record["failures"] = int(record.get("failures", 0)) + 1
@@ -2936,9 +3154,10 @@ class MemoryAuthStore:
 
         current = _utc(attempted_at)
         with self._totp_lock:
-            if expected_factor_id is not None and self._factor_id(
-                self.totp_factors.get(user_id)
-            ) != expected_factor_id:
+            if (
+                expected_factor_id is not None
+                and self._factor_id(self.totp_factors.get(user_id)) != expected_factor_id
+            ):
                 return False
             record = self.totp_attempts.get(user_id)
             if record is not None:

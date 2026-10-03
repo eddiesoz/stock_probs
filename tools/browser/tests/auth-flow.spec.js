@@ -1,4 +1,27 @@
+const fs = require("node:fs/promises");
+const path = require("node:path");
 const { test, expect } = require("./fixtures");
+
+const frontendExport = path.resolve(__dirname, "../../../frontend/out");
+
+async function installFreshAdminExport(page) {
+  await page.route("**/admin", async (route) => route.fulfill({
+    status: 200,
+    contentType: "text/html",
+    body: await fs.readFile(path.join(frontendExport, "admin.html")),
+  }));
+  await page.route("**/_next/**", async (route) => {
+    const requestPath = new URL(route.request().url()).pathname;
+    const assetPath = path.resolve(frontendExport, `.${requestPath}`);
+    if (!assetPath.startsWith(`${frontendExport}${path.sep}`)) return route.abort();
+    const extension = path.extname(assetPath);
+    const contentType = extension === ".js" ? "application/javascript"
+      : extension === ".css" ? "text/css"
+        : extension === ".woff2" ? "font/woff2"
+          : "application/octet-stream";
+    return route.fulfill({ status: 200, contentType, body: await fs.readFile(assetPath) });
+  });
+}
 
 async function installAdminSession(page, emailInvitesEnabled) {
   await page.route("**/api/v1/auth/session", (route) => route.fulfill({
@@ -450,8 +473,7 @@ test("admin keeps manual invitations available when mail is unconfigured", async
   });
 
   await page.goto("/admin");
-  await page.getByLabel("GitHub account ID").fill("24680");
-  await page.getByLabel("Recipient email address").fill("person@example.com");
+  await page.getByLabel("GitHub account ID", { exact: true }).fill("24680");
   await expect(page.getByRole("button", { name: "Send invitation email" })).toBeDisabled();
   await expect(page.getByText("Mail sending is not configured on this server.")).toBeVisible();
   await page.getByRole("button", { name: "Create invitation" }).click();
@@ -460,8 +482,10 @@ test("admin keeps manual invitations available when mail is unconfigured", async
   await expect(page.getByText("Code manual-code-fixture")).toBeVisible();
 });
 
-test("configured admin email invitation submits by keyboard and reports mail-server acceptance", async ({ page }) => {
+test("configured admin sends an email-only invitation by keyboard on mobile and shows pending identity", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
   await installAdminSession(page, true);
+  await installFreshAdminExport(page);
   let emailPayload;
   let csrfHeader;
   let inviteReads = 0;
@@ -475,12 +499,24 @@ test("configured admin email invitation submits by keyboard and reports mail-ser
       contentType: "application/json",
       body: JSON.stringify({
         email_invites_enabled: true,
-        invitations: inviteReads === 1 ? [] : [{
-          id: "mail-invite-1",
-          github_id: 24680,
-          github_login: "fixture-member",
-          expires_at: "2026-10-01T00:00:00Z",
-        }],
+        invitations: inviteReads === 1 ? [] : [
+          {
+            id: "mail-invite-1",
+            github_id: null,
+            github_login: null,
+            email_bound: true,
+            expires_at: "2026-10-01T00:00:00Z",
+          },
+          {
+            id: "used-mail-invite-1",
+            github_id: null,
+            github_login: null,
+            email_bound: true,
+            consumed_at: "2026-09-30T11:00:00Z",
+            used_at: "2026-09-30T11:00:00Z",
+            expires_at: "2026-10-01T00:00:00Z",
+          },
+        ],
       }),
     });
   });
@@ -490,13 +526,19 @@ test("configured admin email invitation submits by keyboard and reports mail-ser
     return emailResponse.then(() => route.fulfill({
       status: 201,
       contentType: "application/json",
-      body: JSON.stringify({ invitation_id: "mail-invite-1", accepted_at: "2026-09-30T12:00:00Z" }),
+      body: JSON.stringify({
+        submission_status: "smtp_accepted",
+        submission_id: "mail-invite-1",
+        submitted_at: "2026-09-30T12:00:00Z",
+        github_id: null,
+        github_login: null,
+        expires_at: "2026-10-01T00:00:00Z",
+        invite_url: "https://ledger.example.test/invite?code=fixture-bearer-code",
+      }),
     }));
   });
 
   await page.goto("/admin");
-  await page.getByLabel("GitHub account ID").fill("24680");
-  await page.getByLabel("GitHub username (optional)").fill("fixture-member");
   await page.getByLabel("Recipient email address").fill("person@example.com");
   const send = page.getByRole("button", { name: /Send invitation email|Submitting invitation email/ });
   await expect(send).toBeEnabled();
@@ -507,23 +549,59 @@ test("configured admin email invitation submits by keyboard and reports mail-ser
   await expect(page.getByRole("button", { name: "Create invitation" })).toBeDisabled();
   releaseEmail();
 
-  await expect(page.getByRole("status")).toHaveText("Invitation submitted to mail server. Delivery is not confirmed.");
-  expect(emailPayload).toEqual({ github_id: 24680, github_login: "fixture-member", email: "person@example.com" });
+  await expect(page.getByRole("status")).toHaveText("Mail server accepted the invitation. The recipient must use a GitHub account with the invitation email marked verified. Delivery is not confirmed.");
+  expect(emailPayload).toEqual({ email: "person@example.com" });
   expect(csrfHeader).toBe("browser-test-csrf");
   expect(inviteReads).toBe(2);
-  await expect(page.getByText("fixture-member", { exact: true })).toBeVisible();
+  const emailInvitationRows = page.locator("li").filter({ hasText: "Email invitation · pending GitHub verification" });
+  await expect(emailInvitationRows).toHaveCount(2);
+  await expect(emailInvitationRows.filter({ hasText: "Used" })).toHaveCount(1);
   await expect(page.getByText("Open", { exact: true })).toBeVisible();
-  expect(page.url()).not.toContain("manual-code-fixture");
+  await expect(page.getByText("person@example.com", { exact: true })).toHaveCount(0);
+  expect(page.url()).not.toContain("fixture-bearer-code");
   expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain("mail-invite-1");
   const layout = await page.evaluate(() => ({
     viewportWidth: document.documentElement.clientWidth,
     contentWidth: document.documentElement.scrollWidth,
-    button: document.querySelector('button[aria-describedby="email-invites-help"]')?.getBoundingClientRect().toJSON(),
+    button: document.querySelector('button[aria-describedby="email-invites-help invitation-email-verification"]')?.getBoundingClientRect().toJSON(),
   }));
   expect(layout.contentWidth).toBeLessThanOrEqual(layout.viewportWidth + 1);
   expect(layout.button.width).toBeGreaterThan(0);
   expect(layout.button.height).toBeGreaterThanOrEqual(44);
   expect(layout.button.right).toBeLessThanOrEqual(layout.viewportWidth + 1);
+});
+
+test("email invitation can optionally restrict a resolved account without making username required", async ({ page }) => {
+  await installAdminSession(page, true);
+  await installFreshAdminExport(page);
+  let emailPayload;
+  await page.route("**/api/v1/auth/invites/email", async (route) => {
+    emailPayload = route.request().postDataJSON();
+    return route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        submission_status: "smtp_accepted",
+        submission_id: "restricted-mail-invite",
+        submitted_at: "2026-09-30T12:00:00Z",
+        github_id: 24680,
+        github_login: null,
+        expires_at: "2026-10-01T00:00:00Z",
+        invite_url: "https://ledger.example.test/invite?code=fixture-restricted-code",
+      }),
+    });
+  });
+
+  await page.goto("/admin");
+  await page.getByLabel("Recipient email address").fill("person@example.com");
+  await page.getByText("Optional resolved GitHub account restriction").click();
+  await page.getByLabel("GitHub account ID (optional)", { exact: true }).fill("24680");
+  await expect(page.getByRole("button", { name: "Send invitation email" })).toBeEnabled();
+  await page.getByRole("button", { name: "Send invitation email" }).click();
+
+  await expect(page.getByRole("status")).toContainText("Mail server accepted the invitation.");
+  await expect(page.getByRole("status")).toContainText("The recipient must use GitHub account 24680.");
+  expect(emailPayload).toEqual({ email: "person@example.com", github_id: 24680 });
 });
 
 test("admin email submission shows a safe failure without SMTP details", async ({ page, browserDiagnostics }) => {
@@ -536,7 +614,6 @@ test("admin email submission shows a safe failure without SMTP details", async (
   }));
 
   await page.goto("/admin");
-  await page.getByLabel("GitHub account ID").fill("24680");
   await page.getByLabel("Recipient email address").fill("person@example.com");
   await page.getByRole("button", { name: "Send invitation email" }).click();
   const errorMessage = page.locator('[data-tone="error"]');

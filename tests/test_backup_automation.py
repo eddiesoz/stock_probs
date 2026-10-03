@@ -265,7 +265,78 @@ def test_schema_ten_upgrade_backs_up_before_expiring_only_oauth_transactions(set
         )
         assert connection.execute("SELECT COUNT(*) FROM oauth_states").fetchone()[0] == 0
         assert connection.execute("SELECT caller_key_hash FROM oauth_states").fetchall() == []
-        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 11
+        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == (
+            SCHEMA_VERSION
+        )
+
+
+def test_schema_eleven_upgrade_backs_up_invites_and_research_before_email_binding(settings):
+    """The v11 backup retains numeric invitations and research across the v12 rebuild."""
+
+    _version_ten_database(settings)
+    with sqlite3.connect(settings.database_path) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        Repository._execute_migration(
+            connection,
+            files("stock_probs.migrations").joinpath("011_oauth_caller_admission.sql").read_text(),
+        )
+        connection.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (11, ?)",
+            (datetime(2025, 1, 1, tzinfo=UTC).isoformat(),),
+        )
+
+    repository = Repository(settings.database_path)
+    _record_failure(repository, "preserved-v11-research")
+    with repository.connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            """INSERT INTO invitations
+            (github_user_id, github_login, token_hash, invited_by_user_id, expires_at, created_at)
+            VALUES (54321, 'existing-member', ?, 1, ?, ?)""",
+            (
+                "d" * 64,
+                "2030-01-02T00:00:00+00:00",
+                "2030-01-01T00:00:00+00:00",
+            ),
+        )
+        connection.commit()
+
+    manager, receipt = cli._migration_operations(settings)
+    assert receipt is not None
+    assert receipt["verified"] is True
+    assert receipt["schema_version"] == 11
+
+    manifest, snapshot, staging = manager._verify_unlocked(
+        receipt["name"], require_active_schema=False
+    )
+    try:
+        assert manifest["schema_version"] == 11
+        with sqlite3.connect(snapshot) as connection:
+            assert connection.execute(
+                "SELECT github_user_id, github_login, token_hash FROM invitations"
+            ).fetchone() == (54321, "existing-member", "d" * 64)
+            assert connection.execute(
+                "SELECT request_id FROM search_events WHERE request_id = ?",
+                ("preserved-v11-research",),
+            ).fetchone() == ("preserved-v11-research",)
+    finally:
+        staging.cleanup()
+
+    with manager.repository.connect() as connection:
+        preserved_invite = connection.execute(
+            "SELECT github_user_id, github_login, email_hash, token_hash FROM invitations"
+        ).fetchone()
+        assert preserved_invite is not None
+        assert tuple(preserved_invite) == (54321, "existing-member", None, "d" * 64)
+        preserved_research = connection.execute(
+            "SELECT request_id FROM search_events WHERE request_id = ?",
+            ("preserved-v11-research",),
+        ).fetchone()
+        assert preserved_research is not None
+        assert tuple(preserved_research) == ("preserved-v11-research",)
+        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == (
+            SCHEMA_VERSION
+        )
 
 
 def test_failed_pre_migration_backup_blocks_every_pending_migration(settings, monkeypatch, capsys):

@@ -153,14 +153,29 @@ recovery-code replacement flow; a fresh GitHub session alone cannot replace the 
 
 ### Invitation email and host Compose update
 
-An administrator can invite a resolved GitHub account from `/admin`. Enter its numeric GitHub ID;
-the optional username is only a display hint. The code remains single-use, expires, and is bound to
-that numeric ID. The recipient must sign in through GitHub as that account. An email address is
-only a delivery destination and does not establish identity.
+An administrator can create an invitation from `/admin` using only the recipient's email address;
+there is no need to look up a GitHub username or numeric ID first. The existing numeric-ID
+invitation-code flow remains available. Email invitations are single-use and expire. The recipient
+must continue through GitHub sign-in. For an email-only invitation, the app checks that the
+invited address is among the authenticated account's GitHub addresses marked verified before
+binding the invitation to that account's stable numeric GitHub ID. A public profile email or
+matching username does not prove identity. If an administrator explicitly supplies a positive
+GitHub ID, the invitation remains bound to that numeric ID and the email is only the delivery
+destination; an optional username is only a display hint for that ID-bound invitation. After
+redemption, the existing TOTP enrollment or verification and per-user workspace ownership checks
+still apply.
 
-Manual **Create invitation** remains available without a mail provider; share the resulting code
-through a private channel. **Send invitation by email** submits the same kind of code to the
-provided mailbox when the optional SMTP settings are fully configured. The six production
+The email-only GitHub OAuth check uses the least-privilege `user:email` scope and reads the
+authenticated account's email records and their `verified` flags. If GitHub does not provide a
+verified match, or the lookup fails, email-only redemption fails closed. Address comparison uses
+ASCII case-folding only; it does not fold Gmail dots or plus tags. The optional `github_id` and
+`github_login` request fields support an explicit ID-bound invitation; they are not required for
+an email-only invitation, and the login remains only a display hint. See the
+[API reference](../reference/api.md#email-invitation-contract) and GitHub's
+[authenticated email-list endpoint](https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user).
+
+Email delivery submits the generated invitation code to the supplied mailbox when the optional
+SMTP settings are fully configured; the code is not included in the HTTP response. The six production
 variables and accepted values are listed in [local configuration](../configure/local-configuration.md#production-invitation-email).
 Keep SMTP credentials in the operator-controlled production secret path outside the repository.
 The client validates the SMTP server certificate and uses `implicit_tls` on port `465` or `2465`,
@@ -172,8 +187,14 @@ processing. The returned local submission ID is not a provider receipt and does 
 mailbox delivery or reading. SMTP failures do not prove that no message was accepted. Since the
 invitation is created before submission, inspect the invitation list before retrying; an unused
 code may remain valid until it expires. The `R-ASTRA-104` scoped QA did not exercise a live SMTP
-provider, mailbox delivery, or production deployment; see the [MVP plan](../../MVP-PLAN.md) for
-the current evidence record.
+provider, mailbox delivery, or production deployment. R-ASTRA-112 later confirmed delivery of one
+operator test message to Gmail's Spam folder; that did not test authenticated HTTP invitation
+creation or new-user redemption. For R-ASTRA-113, the local implementation and declared QA scope
+passed, including the schema-12 package smoke and final local gate (`796` Python tests). The
+deployed service remains schema 11, and no new R-ASTRA-113 invitation has been sent. The requested
+three invitation sends and follow-up, production HTTP flow, verified-email redemption, and invitee
+TOTP/workspace acceptance remain pending or unavailable. See the
+[current evidence](../../MVP-PLAN.md).
 
 ### Resend sending domain and credential workflow
 

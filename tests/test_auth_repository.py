@@ -227,9 +227,12 @@ def test_migration_creates_auth_tables_and_designated_legacy_owner(tmp_path):
                 ).fetchone()
                 is not None
             )
-        assert connection.execute(
-            "SELECT COUNT(*) FROM passkeys WHERE revoked_at IS NULL"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute("SELECT COUNT(*) FROM passkeys WHERE revoked_at IS NULL").fetchone()[
+                0
+            ]
+            == 0
+        )
 
     assert repository.legacy_owner_id() == 1
 
@@ -380,16 +383,25 @@ def test_v8_to_v10_preserves_audit_rows_and_retires_passkey_state(tmp_path):
             ),
         } == before
         assert connection.execute("SELECT COUNT(*) FROM totp_factors").fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT revoked_at FROM passkeys WHERE credential_id = ?", (credential_id,)
-        ).fetchone()[0] is not None
-        assert connection.execute(
-            "SELECT revoked_at, revocation_reason FROM sessions WHERE token_hash = ?",
-            (passkey_session_hash,),
-        ).fetchone()[1] == "passkey-retired"
-        assert connection.execute(
-            "SELECT revoked_at FROM sessions WHERE token_hash = ?", (github_session_hash,)
-        ).fetchone()[0] is None
+        assert (
+            connection.execute(
+                "SELECT revoked_at FROM passkeys WHERE credential_id = ?", (credential_id,)
+            ).fetchone()[0]
+            is not None
+        )
+        assert (
+            connection.execute(
+                "SELECT revoked_at, revocation_reason FROM sessions WHERE token_hash = ?",
+                (passkey_session_hash,),
+            ).fetchone()[1]
+            == "passkey-retired"
+        )
+        assert (
+            connection.execute(
+                "SELECT revoked_at FROM sessions WHERE token_hash = ?", (github_session_hash,)
+            ).fetchone()[0]
+            is None
+        )
 
 
 def test_totp_enrollment_expiry_confirmation_and_step_isolation(tmp_path):
@@ -945,9 +957,7 @@ def test_totp_attempt_reservation_caps_concurrent_guesses(tmp_path):
     assert state["allowed"] is False
 
     # A successful verifier may clear the reservation even while the failure lock is active.
-    reset = repository.auth_record_totp_attempt(
-        user["id"], attempted_at, successful=True
-    )
+    reset = repository.auth_record_totp_attempt(user["id"], attempted_at, successful=True)
     assert reset["attempt_count"] == 0
     assert repository.auth_reserve_totp_attempt(user["id"], attempted_at)
 
@@ -992,9 +1002,7 @@ def test_recovery_codes_are_single_use_and_rotate_atomically(tmp_path):
         "code_hash" not in row for row in repository.auth_list_recovery_code_status(user1["id"])
     )
     consumed_at = (NOW + timedelta(seconds=1)).isoformat()
-    assert repository.auth_consume_recovery_code(
-        user1["id"], factor1_id, first_hash, consumed_at
-    )
+    assert repository.auth_consume_recovery_code(user1["id"], factor1_id, first_hash, consumed_at)
     assert not repository.auth_consume_recovery_code(
         user1["id"], factor1_id, first_hash, consumed_at
     )
@@ -1218,6 +1226,127 @@ def test_auth_rows_are_single_use_bound_and_revocable(tmp_path):
         }
     )
     assert repository.auth_get_session(session_hash)["last_seen_at"].startswith("2025-01-10T17:04")
+
+
+def test_email_invitation_redeem_is_atomic_expiring_and_fails_without_digest(tmp_path):
+    """Only a matching bounded digest can bind and consume an email invitation once."""
+
+    repository = _repository(tmp_path)
+    invited_by = repository.legacy_owner_id()
+    with pytest.raises(ValueError, match="exactly one"):
+        repository.create_invitation(
+            github_user_id=None,
+            email_hash=None,
+            token_hash=_digest("missing-binding-token"),
+            invited_by_user_id=invited_by,
+            expires_at=NOW + timedelta(days=1),
+            created_at=NOW,
+        )
+
+    email_hash = _digest("private-email-binding")
+    token_hash = _digest("email-invite-token")
+    repository.create_invitation(
+        github_user_id=None,
+        email_hash=email_hash,
+        token_hash=token_hash,
+        invited_by_user_id=invited_by,
+        expires_at=NOW + timedelta(days=1),
+        created_at=NOW,
+    )
+    assert repository.consume_invitation(token_hash=token_hash, now=NOW) is None
+    assert (
+        repository.redeem_invitation(
+            token_hash=token_hash,
+            now=NOW,
+            github_id=24680,
+            verified_email_hashes=(),
+            github_login="email-member",
+        )
+        is None
+    )
+    assert repository.auth_get_invitation(token_hash)["github_user_id"] is None
+
+    def redeem(_: int):
+        return repository.redeem_invitation(
+            token_hash=token_hash,
+            now=NOW + timedelta(seconds=1),
+            github_id=24680,
+            verified_email_hashes=(email_hash,),
+            github_login="email-member",
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(redeem, range(16)))
+    accepted = [result for result in results if result is not None]
+    assert len(accepted) == 1
+    assert accepted[0]["github_user_id"] == 24680
+    assert accepted[0]["email_hash"] == email_hash
+    stored = repository.auth_get_invitation(token_hash)
+    assert stored is not None
+    assert stored["github_user_id"] == 24680
+    assert stored["email_hash"] == email_hash
+    assert stored["used_at"] is not None
+    assert (
+        repository.redeem_invitation(
+            token_hash=token_hash,
+            now=NOW + timedelta(seconds=2),
+            github_id=24680,
+            verified_email_hashes=(email_hash,),
+            github_login="email-member",
+        )
+        is None
+    )
+    listing = next(item for item in repository.list_invitations() if item["email_bound"])
+    assert listing["github_id"] == 24680
+    assert listing["email_bound"] is True
+    assert "email_hash" not in listing
+
+    expired_hash = _digest("expired-email-invite")
+    repository.create_invitation(
+        github_user_id=None,
+        email_hash=email_hash,
+        token_hash=expired_hash,
+        invited_by_user_id=invited_by,
+        expires_at=NOW,
+        created_at=NOW - timedelta(seconds=1),
+    )
+    assert (
+        repository.redeem_invitation(
+            token_hash=expired_hash,
+            now=NOW,
+            github_id=13579,
+            verified_email_hashes=(email_hash,),
+            github_login="late-member",
+        )
+        is None
+    )
+
+
+def test_restore_security_snapshot_includes_private_email_invite_binding(tmp_path):
+    """Changing only an email invite binding changes the account-security snapshot."""
+
+    from stock_probs.api import _restore_security_digest
+
+    repository = _repository(tmp_path)
+    repository.create_invitation(
+        github_user_id=None,
+        email_hash=_digest("invitee-mailbox-binding"),
+        token_hash=_digest("invite-token"),
+        invited_by_user_id=repository.legacy_owner_id(),
+        expires_at=NOW + timedelta(days=1),
+        created_at=NOW,
+    )
+    snapshot = tmp_path / "security-snapshot.sqlite3"
+    snapshot.write_bytes(repository.database_path.read_bytes())
+    expected = _restore_security_digest(snapshot)
+
+    with sqlite3.connect(snapshot) as connection:
+        connection.execute(
+            "UPDATE invitations SET email_hash = ? WHERE token_hash = ?",
+            (_digest("different-mailbox-binding"), _digest("invite-token")),
+        )
+
+    assert _restore_security_digest(snapshot) != expected
 
 
 def test_legacy_owner_claim_is_one_time_and_preserves_sidecars(tmp_path):

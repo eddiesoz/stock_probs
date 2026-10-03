@@ -217,6 +217,38 @@ def test_email_invitation_login_label_rejects_non_github_or_bidirectional_text(
         )
 
 
+@pytest.mark.parametrize("github_id", [True, False, "24680", "1", 24680.0, 0, -1, 2_147_483_648])
+def test_email_invitation_github_id_is_strict_and_positive(github_id: object) -> None:
+    """Email invites reject coercible, boolean, and out-of-range GitHub IDs."""
+
+    with pytest.raises(ValidationError):
+        AuthEmailInvitationRequest.model_validate(
+            {"email": "member@example.test", "github_id": github_id}
+        )
+
+
+@pytest.mark.parametrize("field", [{}, {"github_id": None}, {"github_id": 24680}])
+def test_email_invitation_github_id_accepts_omitted_null_or_valid(field: dict[str, object]) -> None:
+    """Email-only and numeric-ID-bound invitations keep their explicit valid forms."""
+
+    payload = AuthEmailInvitationRequest.model_validate({"email": "member@example.test", **field})
+    assert payload.github_id == field.get("github_id")
+
+
+def test_email_invitation_login_hint_requires_numeric_id() -> None:
+    """A GitHub login remains only a display hint for an explicit numeric ID."""
+
+    with pytest.raises(ValidationError, match="github_login requires github_id"):
+        AuthEmailInvitationRequest.model_validate(
+            {"email": "member@example.test", "github_login": "member"}
+        )
+    payload = AuthEmailInvitationRequest.model_validate(
+        {"email": "member@example.test", "github_id": 24680, "github_login": "member"}
+    )
+    assert payload.github_id == 24680
+    assert payload.github_login == "member"
+
+
 def test_smtp_environment_is_disabled_when_blank_and_rejects_partial_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -375,6 +407,32 @@ def test_email_invitation_requires_admin_csrf_and_returns_no_bearer_code(
         assert consumed["github_id"] == 24680
         with pytest.raises(InvitationRejected):
             app.state.auth.consume_invitation(raw_code, invitation_now)
+
+        email_only = client.post(
+            "/api/v1/auth/invites/email",
+            json={"email": "new-member@example.test"},
+            headers={**headers, "x-csrf-token": issue.csrf_token},
+            cookies=cookies,
+        )
+        assert email_only.status_code == 201, email_only.text
+        email_only_body = email_only.json()
+        assert email_only_body["github_id"] is None
+        assert email_only_body["github_login"] is None
+        assert email_only_body["email_bound"] is True
+        assert "new-member@example.test" not in email_only.text
+        email_only_code = submissions[-1]["code"]
+        email_only_invite = app.state.auth.inspect_invitation(email_only_code, datetime.now(UTC))
+        assert email_only_invite["github_id"] is None
+        assert isinstance(email_only_invite["email_hash"], str)
+        assert "new-member@example.test" not in str(email_only_invite)
+        assert len(email_only_invite["email_hash"]) == 64
+        listed = client.get("/api/v1/auth/invites", cookies=cookies).json()["invitations"]
+        listed_email_invite = next(invite for invite in listed if invite.get("email_bound") is True)
+        assert listed_email_invite["github_id"] is None
+        assert listed_email_invite["github_login"] is None
+        assert listed_email_invite["consumed_at"] is None
+        assert listed_email_invite["used_at"] is None
+        assert "email" not in listed_email_invite and "email_hash" not in listed_email_invite
 
         reject_submission = True
         failed = client.post(

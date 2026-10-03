@@ -149,7 +149,7 @@ def _message(
     settings: InvitationMailSettings,
     public_origin: str,
     recipient: str,
-    github_id: int,
+    github_id: int | None,
     github_login: str | None,
     code: str,
     expires_at: datetime,
@@ -160,7 +160,43 @@ def _message(
     sender = validate_email_address(settings.from_address)
     invitation_url = f"{public_origin.rstrip('/')}/invite"
     expiry = expires_at.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    if github_id is None:
+        identity_text = (
+            "Sign in to GitHub with an account that has the invited email address marked as "
+            "verified. GitHub must confirm that address before the invitation can be used.\n"
+        )
+        html_identity = (
+            "Sign in to GitHub with an account that has the invited email address marked as "
+            "verified. GitHub must confirm that address before the invitation can be used."
+        )
+        identity_note = (
+            "The verified GitHub email establishes the invited identity; receiving this message "
+            "does not sign you in.\n"
+        )
+        html_identity_note = (
+            "The verified GitHub email establishes the invited identity; receiving this message "
+            "does not sign you in."
+        )
+    else:
+        identity_text = (
+            f"It is bound to GitHub account ID {github_id}; only that numeric "
+            "GitHub account can use it.\n"
+        )
+        html_identity = (
+            f"It is bound to GitHub account ID <strong>{github_id}</strong>; only that numeric "
+            "GitHub account can use it."
+        )
+        identity_note = (
+            "The recipient email is for delivery only and does not establish account identity.\n"
+        )
+        html_identity_note = (
+            "The recipient email address is for delivery only and "
+            "does not establish account identity."
+        )
     login_line = f"GitHub login shown for reference: {github_login}\n" if github_login else ""
+    html_login = (
+        f"GitHub login shown for reference: {html.escape(github_login)}. " if github_login else ""
+    )
     message = EmailMessage()
     message["Subject"] = "Your Signal Ledger invitation"
     message["From"] = formataddr(("Signal Ledger", sender))
@@ -171,22 +207,17 @@ def _message(
         "You have been invited to Signal Ledger.\n\n"
         f"Open {invitation_url} and enter this invitation code:\n{code}\n\n"
         f"This invitation expires at {expiry}.\n"
-        f"It is bound to GitHub account ID {github_id}; only that numeric "
-        f"GitHub account can use it.\n"
-        f"{login_line}The recipient email is for delivery only "
-        f"and does not establish account identity.\n"
+        f"{identity_text}"
+        f"{login_line}{identity_note}"
     )
-    escaped_login = html.escape(github_login or "Not provided")
     message.add_alternative(
         "<p>You have been invited to Signal Ledger.</p>"
         f'<p><a href="{html.escape(invitation_url, quote=True)}">Open your invitation</a> '
         "and enter this code:</p>"
         f"<p><code>{html.escape(code)}</code></p>"
         f"<p>This invitation expires at <time>{html.escape(expiry)}</time>.</p>"
-        f"<p>It is bound to GitHub account ID <strong>{github_id}</strong>; only that numeric "
-        "GitHub account can use it.</p>"
-        f"<p>GitHub login shown for reference: {escaped_login}. The recipient email address is "
-        "for delivery only and does not establish account identity.</p>",
+        f"<p>{html_identity}</p>"
+        f"<p>{html_login}{html_identity_note}</p>",
         subtype="html",
     )
     return message
@@ -197,7 +228,7 @@ def send_invitation_email(
     *,
     public_origin: str,
     recipient: str,
-    github_id: int,
+    github_id: int | None,
     github_login: str | None,
     code: str,
     expires_at: datetime,
@@ -208,7 +239,7 @@ def send_invitation_email(
         settings: Validated SMTP endpoint, credentials, security mode, and sender.
         public_origin: Exact configured public application origin.
         recipient: Validated delivery mailbox.
-        github_id: Stable numeric GitHub account identifier bound to the invitation.
+        github_id: Optional stable numeric ID; without it the invite is email-verified at OAuth.
         github_login: Optional login label shown only as a convenience.
         code: One-time bearer code; never returned by this function.
         expires_at: Invitation expiry from the auth manager.

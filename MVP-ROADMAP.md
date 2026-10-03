@@ -27,6 +27,15 @@ checks. R-ASTRA-112 later configured production email invitations and confirmed 
 owner-bound test message to Gmail's Spam folder; inbox placement was not achieved. Authenticated
 owner UI, new-user onboarding, and physical iPhone acceptance remain **Unavailable**.
 
+`R-ASTRA-113` is **In progress** overall. Its email-only invitation implementation and declared
+local QA scope passed, including schema-12 package smoke and the final native-x86_64 local gate
+(`796` Python tests; receipt and repair history are in the [MVP plan](MVP-PLAN.md)). Email-only
+redemption requires an exact verified GitHub email match before binding to the stable numeric
+account ID; explicitly supplied positive IDs retain ID-bound invitations, and the existing
+numeric-ID code flow remains. This change is not yet deployed. No new invitation has been sent;
+the requested three sends and follow-up, live redemption, and invitee TOTP/workspace acceptance
+remain pending or unavailable. R-ASTRA-112's separate Gmail Spam result is unchanged.
+
 Scoped independent QA passed `64` authentication/repository/list checks, `123` API checks, `61`
 backup/CLI checks, `10` desktop/mobile-emulated auth-flow cases, `27` frontend checks, Ruff, and
 diff checks. Fresh schema-10 creation and schema-9-to-10 migration checks passed; the `61` backup/CLI

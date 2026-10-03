@@ -2243,6 +2243,7 @@ _RESTORE_SECURITY_TABLES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "id",
             "github_user_id",
             "github_login",
+            "email_hash",
             "token_hash",
             "invited_by_user_id",
             "expires_at",
@@ -3704,14 +3705,12 @@ def create_app(
             )
             user_record = auth_manager.store.auth_get_user_by_github_id(identity.github_id)
             if identity.invitation_code_hash is not None:
-                invitation = auth_manager.inspect_invitation_hash(
-                    identity.invitation_code_hash, datetime.now(UTC)
-                )
-                invited_github_id = invitation.get("github_id", invitation.get("github_user_id"))
-                if invited_github_id != identity.github_id:
-                    raise InvitationRejected()
-                auth_manager.consume_invitation_hash(
-                    identity.invitation_code_hash, datetime.now(UTC)
+                auth_manager.redeem_invitation_hash(
+                    identity.invitation_code_hash,
+                    datetime.now(UTC),
+                    github_id=identity.github_id,
+                    verified_email_hashes=identity.verified_email_hashes,
+                    github_login=identity.login,
                 )
             elif user_record is None:
                 if auth_manager.settings.owner_github_id != identity.github_id:
@@ -3814,7 +3813,7 @@ def create_app(
     def create_email_invitation(
         request: Request, payload: AuthEmailInvitationRequest, response: Response
     ) -> dict[str, object]:
-        """Create a GitHub-bound invite and submit it to the configured SMTP server."""
+        """Email an invite bound to verified email or an optional numeric GitHub ID."""
 
         context = _auth_context(request, role="admin")
         mail_settings = config.invitation_mail
@@ -3825,6 +3824,7 @@ def create_app(
             context.user.id,
             datetime.now(UTC),
             github_login=payload.github_login,
+            email=payload.email if payload.github_id is None else None,
         )
         raw_expires_at = result.get("expires_at")
         expires_at: datetime | None
@@ -3856,6 +3856,7 @@ def create_app(
             "submitted_at": submission.submitted_at,
             "github_id": payload.github_id,
             "github_login": payload.github_login,
+            "email_bound": payload.github_id is None,
             "expires_at": expires_at,
             "invite_url": f"{config.auth_public_origin.rstrip('/')}/invite",
         }
@@ -3905,10 +3906,13 @@ def create_app(
             "role": None,
             "local_login_enabled": False,
             "invitation_github_id": invitation.get("github_id", invitation.get("github_user_id")),
+            "invitation_email_bound": invitation.get("email_hash") is not None,
             "github_required": True,
             "authorization_url": authorization.url,
             "message": (
-                "Invitation accepted. Continue with GitHub sign-in to prove the invited identity."
+                "Continue with GitHub sign-in using the invited email and verify it."
+                if invitation.get("email_hash") is not None
+                else "Continue with GitHub sign-in to prove the invited numeric account."
             ),
         }
 

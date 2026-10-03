@@ -289,11 +289,21 @@ holdings, physical mobile, and second-user acceptance remain unavailable.
 
 ### Email invitations
 
-Administrators can continue creating single-use invitation codes for private sharing or use the
-optional SMTP email action when all six mail settings are configured. Every invite remains bound to
-the numeric GitHub account ID; the recipient address is only for delivery. An SMTP-accepted
-response does not confirm delivery. The current SMTP contract is implicit TLS on port `465` or
-`2465`, or STARTTLS on port `587`. `R-ASTRA-104` scoped local QA and source review are recorded in
+Administrators can invite someone using only their email address; they do not need to look up a
+GitHub numeric ID or username. For an email-only invitation, the signed-in GitHub account must
+report that exact address as verified before the invitation binds to its stable numeric GitHub ID.
+Comparison uses ASCII case-folding only; it does not treat Gmail dot or plus aliases as the same
+address. TOTP and existing data-ownership checks still apply. The single-use invitation code is
+sent by email and is never returned by the API. The existing numeric-ID invitation-code flow
+remains available. If an administrator explicitly provides a GitHub account ID on the email form,
+the invitation stays bound to that ID and the email is only its delivery destination; a username
+is only an optional display hint for that ID-bound invitation.
+
+Email delivery uses the configured SMTP settings. An SMTP-accepted response does not confirm
+mailbox delivery. The current SMTP contract is implicit TLS on port `465` or `2465`, or STARTTLS on
+port `587`. GitHub's authenticated email-list API requires the `user:email` scope; see its
+[email endpoint documentation](https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user).
+`R-ASTRA-104` scoped local QA and source review are recorded in
 the [MVP plan](MVP-PLAN.md#current-email-invitation-follow-on-r-astra-104), while the transport and
 operator-access follow-on is recorded at
 [`R-ASTRA-106`](MVP-PLAN.md#current-deployment-access-and-invitation-transport-follow-on-r-astra-106).
@@ -302,9 +312,16 @@ coverage, and frontend build/typecheck with `27/27` tests. The initial failed ga
 the plan and superseded by that rerun. The later R-ASTRA-106 record covers the applied operator
 firewall refresh and schema-10 production deployment. Resend domain/DNS preparation and Linode
 TCP/TLS transport checks are recorded. API-key creation, host installation, and delivery were
-later completed for the limited R-ASTRA-112 operator-test scope. Inbox placement, owner-browser
-TOTP verification, authenticated workspace retrieval, physical-mobile evidence, and full production
-acceptance remain unavailable. See
+later completed for the limited R-ASTRA-112 operator-test scope; its Gmail test appeared in Spam,
+so inbox placement failed. `R-ASTRA-113` is **In progress** overall. Its email-only invitation
+implementation and declared local QA scope passed, including schema-12 package smoke and the final
+local gate (`796` Python tests; see the [MVP plan](MVP-PLAN.md)). R-ASTRA-114 through R-ASTRA-116
+record the repaired browser locator, documentation fixture links, and strict numeric-ID
+validation. The change is not yet deployed, and no new invitation has been sent. The requested
+three sends and follow-up, verified-email redemption, invitee TOTP/workspace acceptance, and full
+production acceptance remain pending or unavailable. R-ASTRA-112's separate Gmail Spam result is
+unchanged. Owner-browser TOTP verification, authenticated workspace retrieval, and physical-mobile
+evidence remain unavailable. See
 [getting started](docs/operations/getting-started.md#invitation-email-and-host-compose-update) for
 configuration and the fixed reviewed-Compose update procedure.
 

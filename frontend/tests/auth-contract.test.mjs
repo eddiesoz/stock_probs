@@ -86,10 +86,19 @@ test("auth routes cover invited sign-in, authenticator setup, retired passkey li
   assert.match(admin, /auth\/invites\/email/);
   assert.match(admin, /type="email"/);
   assert.match(admin, /Send invitation email/);
-  assert.match(admin, /disabled={emailInvitesEnabled !== true/);
-  assert.match(admin, /email: inviteEmail\.trim\(\)/);
+  assert.match(admin, /onSubmit={sendInvitationEmail}/);
+  assert.match(admin, /Optional resolved GitHub account restriction/);
+  assert.match(admin, /Leave these fields blank for an email-only invitation/);
+  assert.match(admin, /email: inviteEmail\.trim\(\),[\s\S]*restrictionId \? \{ github_id: Number\(restrictionId\)/);
+  assert.doesNotMatch(admin, /disabled=\{emailInvitesEnabled !== true[^}]*!githubId/);
+  assert.match(admin, /Email invitation · pending GitHub verification/);
+  assert.match(admin, /invite\.consumed_at \?\? invite\.used_at \?\? invite\.redeemed_at/);
+  assert.match(admin, /response\.submission_status/);
   assert.match(admin, /reportValidity\(\)/);
-  assert.match(admin, /Invitation submitted to mail server\. Delivery is not confirmed\./);
+  assert.match(admin, /Mail server accepted the invitation\./);
+  assert.match(admin, /The recipient must use a GitHub account with the invitation email marked verified/);
+  assert.match(admin, /The recipient must use GitHub account/);
+  assert.doesNotMatch(admin, /Invitation submitted to mail server/);
   assert.match(admin, /mail configuration/);
   assert.match(admin, /operations\/backups/);
   assert.match(admin, /operations\/restores/);
@@ -128,12 +137,13 @@ test("workspace navigation exposes account controls without replacing the primar
 });
 
 test("auth routes expose a real document title and preserve invitation errors", async () => {
-  const [layout, shell, client, account, admin] = await Promise.all([
+  const [layout, shell, client, account, admin, invite] = await Promise.all([
     source("app/layout.tsx"),
     source("components/auth-shell.tsx"),
     source("components/auth-client.ts"),
     source("app/account/page.tsx"),
     source("app/admin/page.tsx"),
+    source("app/invite/page.tsx"),
   ]);
   assert.match(layout, /<title>Signal Ledger<\/title>/);
   assert.match(shell, /document\.title = `\$\{title\} \| Signal Ledger`/);
@@ -144,6 +154,7 @@ test("auth routes expose a real document title and preserve invitation errors", 
   assert.doesNotMatch(admin, /<title>/);
   assert.match(client, /error\.code === "invitation_rejected"/);
   assert.match(client, /invalid, expired, revoked, or already used/);
+  assert.match(invite, /For an email-only invitation, continue with a GitHub account that has the invitation email marked verified/);
 });
 
 test("invitation rejection keeps its precise recovery message", async () => {

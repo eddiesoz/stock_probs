@@ -183,6 +183,29 @@ Gmail classified it as Spam, so inbox placement **Failed**. The invitation was c
 and only that test row was targeted; no row was deleted. The operator invoked the same service
 functions used by the email endpoint, not the authenticated browser/API flow. New-user onboarding
 and authenticated owner-browser acceptance remain **Unavailable**.
+
+`R-ASTRA-113` is **In progress** for email-only invitation and redemption identity binding. When a
+user provides invitee email addresses, support creating those invitations without requiring a
+guessed GitHub numeric ID or username. The email is a delivery target, not identity proof. On
+email-only redemption, require an exact match against an email GitHub marks verified for the
+authenticated account, using ASCII case-folding only and no Gmail dot/plus alias folding; bind the
+invitation to that OAuth account's numeric GitHub ID only after the match. A mismatch, unverified
+address, or GitHub email lookup failure must fail closed. If the administrator explicitly supplies
+a positive `github_id`, preserve the numeric-ID-bound invitation behavior and use the email only as
+the delivery destination; `github_login` is an optional display hint for that ID-bound case. In
+both cases, send the single-use invitation code by email and never return it in the API response,
+then retain the TOTP and per-user data ownership checks. Existing numeric-ID code invitations
+remain available. GitHub's authenticated email-list request needs the `user:email` scope. These are
+R-ASTRA-113 contract requirements. The local implementation and independent QA passed for their
+declared scope on native x86_64 at dirty revision `41d26991417a28ad99947d273a15800ad9320b87`;
+`TASK_ID=R-ASTRA-113 ./scripts/local-gate.sh check` passed with `796` Python tests, `4` deselected,
+`85.67%` coverage, and frontend `28`, typecheck, and build. The receipt is
+`test-results/local-gates/R-ASTRA-113-20261003T223554Z/evidence.json`; R-ASTRA-114 through
+R-ASTRA-116 record the separate browser-locator, documentation-link, and strict-ID repairs in the
+plan. R-ASTRA-113 remains **In progress**: deployment, the requested real invitation sends and
+follow-up, live GitHub email redemption, and invitee TOTP/workspace acceptance remain pending or
+**Unavailable**. R-ASTRA-112's Spam-placement result remains separate and unchanged.
+
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The three provider access items were created privately, Terraform

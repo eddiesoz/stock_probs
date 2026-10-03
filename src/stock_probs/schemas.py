@@ -278,6 +278,7 @@ class AuthSessionResponse(StrictModel):
     local_login_enabled: bool = False
     github_required: bool = False
     invitation_github_id: int | None = Field(default=None, ge=1)
+    invitation_email_bound: bool = False
     message: str | None = Field(default=None, max_length=300)
     authorization_url: str | None = Field(default=None, max_length=2048)
 
@@ -309,9 +310,9 @@ class AuthInvitationResponse(StrictModel):
 
 
 class AuthEmailInvitationRequest(StrictModel):
-    """Request a single-use GitHub invitation to be submitted through SMTP."""
+    """Request an email-bound or GitHub-ID-bound invitation through SMTP."""
 
-    github_id: int = Field(ge=1, le=2_147_483_647)
+    github_id: int | None = Field(default=None, strict=True, ge=1, le=2_147_483_647)
     github_login: str | None = Field(
         default=None,
         min_length=1,
@@ -327,6 +328,12 @@ class AuthEmailInvitationRequest(StrictModel):
 
         return validate_email_address(value)
 
+    @model_validator(mode="after")
+    def login_requires_numeric_identity(self) -> AuthEmailInvitationRequest:
+        if self.github_login is not None and self.github_id is None:
+            raise ValueError("github_login requires github_id")
+        return self
+
 
 class AuthEmailInvitationResponse(StrictModel):
     """Non-secret metadata confirming SMTP accepted a one-time invitation message."""
@@ -341,8 +348,11 @@ class AuthEmailInvitationResponse(StrictModel):
         description="Random local receipt ID, not a provider or mailbox delivery receipt.",
     )
     submitted_at: AwareDatetime
-    github_id: int = Field(ge=1, le=2_147_483_647)
+    github_id: int | None = Field(default=None, ge=1, le=2_147_483_647)
     github_login: str | None = Field(default=None, max_length=100)
+    email_bound: bool = Field(
+        description="Whether OAuth redemption requires this delivery address to be verified."
+    )
     expires_at: AwareDatetime
     invite_url: str = Field(min_length=1, max_length=512)
 

@@ -40,6 +40,7 @@ from stock_probs.auth import (
 )
 from stock_probs.config import Settings
 from stock_probs.provider import FixtureProvider
+from stock_probs.repository import Repository
 from stock_probs.totp import code_for_step, time_step
 
 NOW = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
@@ -171,9 +172,7 @@ def test_totp_enrollment_reuses_pending_key_until_explicit_rotation() -> None:
     provisional = manager.issue_session(user, NOW, "github")
 
     first = manager.begin_totp_enrollment(provisional.context, NOW)
-    repeated = manager.begin_totp_enrollment(
-        provisional.context, NOW + timedelta(seconds=97)
-    )
+    repeated = manager.begin_totp_enrollment(provisional.context, NOW + timedelta(seconds=97))
     assert repeated["secret"] == first["secret"]
     assert repeated["expires_at"] == first["expires_at"]
 
@@ -198,9 +197,7 @@ def test_totp_enrollment_rotation_invalidates_only_the_old_key() -> None:
 
     old_code = code_for_step(first["secret"], time_step(NOW + timedelta(seconds=1)))
     with pytest.raises(TotpRejected):
-        manager.finish_totp_enrollment(
-            provisional.context, old_code, NOW + timedelta(seconds=1)
-        )
+        manager.finish_totp_enrollment(provisional.context, old_code, NOW + timedelta(seconds=1))
 
     new_code = code_for_step(rotated["secret"], time_step(NOW + timedelta(seconds=2)))
     issue, _recovery_codes = manager.finish_totp_enrollment(
@@ -218,9 +215,7 @@ def test_totp_enrollment_origin_conflict_preserves_original_pending_key() -> Non
     with pytest.raises(TotpRejected):
         manager.begin_totp_enrollment(second_session.context, NOW + timedelta(seconds=1))
 
-    repeated = manager.begin_totp_enrollment(
-        first_session.context, NOW + timedelta(seconds=2)
-    )
+    repeated = manager.begin_totp_enrollment(first_session.context, NOW + timedelta(seconds=2))
     assert repeated["secret"] == first["secret"]
     assert repeated["expires_at"] == first["expires_at"]
 
@@ -632,6 +627,230 @@ def test_github_invitation_binds_identity_and_cannot_be_reused(tmp_path) -> None
         accepted = finish(second_client, second_code)
         assert accepted.status_code == 303, accepted.text
         assert store.auth_get_user_by_github_id(456) is not None
+    oauth_client.close()
+
+
+def _email_invitation_app(tmp_path, provider_emails, *, repository=None):
+    """Build an isolated email-bound OAuth app with a controllable GitHub response."""
+
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "stock_probs.sqlite3",
+        backup_dir=tmp_path / "backups",
+        provider="fixture",
+        environment="test",
+        auth_mode="github",
+        auth_session_secret="e" * 48,
+        auth_public_origin="http://testserver",
+        github_client_id="client-id",
+        github_client_secret="client-secret",  # noqa: S106
+        github_redirect_uri="http://testserver/api/v1/auth/github/callback",
+        owner_github_id=99999,
+    )
+    store = repository or MemoryAuthStore()
+    application = create_app(
+        settings, FixtureProvider(), lambda: datetime.now(UTC), auth_store=store
+    )
+    calls: list[httpx.Request] = []
+
+    def github_handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if request.url.host == "github.com" and request.url.path.endswith("/access_token"):
+            return httpx.Response(200, json={"access_token": "test-access-token"})
+        if request.url.host == "api.github.com" and request.url.path == "/user":
+            return httpx.Response(
+                200,
+                json=provider_emails.get(
+                    "profile",
+                    {
+                        "id": 24680,
+                        "login": "email-invite-member",
+                        "email": "unverified-profile@example.test",
+                    },
+                ),
+            )
+        if request.url.host == "api.github.com" and request.url.path == "/user/emails":
+            if provider_emails.get("timeout"):
+                raise httpx.TimeoutException("bounded fake timeout", request=request)
+            payload = provider_emails["value"]
+            if provider_emails.get("status") is not None:
+                return httpx.Response(provider_emails["status"], json=payload)
+            return httpx.Response(200, json=payload, headers=provider_emails.get("headers"))
+        return httpx.Response(404)
+
+    oauth_client = httpx.Client(transport=httpx.MockTransport(github_handler))
+    application.state.auth.http_client = oauth_client
+    code, _ = application.state.auth.create_invitation(
+        None,
+        1,
+        datetime.now(UTC),
+        email="Invitee+Research@example.test",
+    )
+    return application, store, code, calls, oauth_client
+
+
+def _redeem_email_invitation(client: TestClient, code: str) -> httpx.Response:
+    """Start the invitation transaction and complete its callback in the same browser."""
+
+    redeemed = client.post("/api/v1/auth/invites/redeem", json={"code": code})
+    authorization_url = redeemed.json().get("authorization_url")
+    if authorization_url is None:
+        return redeemed
+    state = parse_qs(urlparse(authorization_url).query)["state"][0]
+    return client.get(
+        "/api/v1/auth/github/callback",
+        params={"code": "oauth-code", "state": state},
+        headers={"Sec-Fetch-Site": "cross-site"},
+        follow_redirects=False,
+    )
+
+
+def test_email_invitation_requires_matching_verified_github_email_and_can_retry(tmp_path) -> None:
+    """Wrong/unverified mailboxes do not burn invites; profile.email is never proof."""
+
+    provider_emails = {"value": [{"email": "invitee+research@example.test", "verified": False}]}
+    application, store, code, calls, oauth_client = _email_invitation_app(tmp_path, provider_emails)
+    invite_hash = hashlib.sha256(code.encode()).hexdigest()
+    with TestClient(application) as client:
+        redeemed = client.post("/api/v1/auth/invites/redeem", json={"code": code})
+        assert redeemed.status_code == 200, redeemed.text
+        assert redeemed.json()["invitation_email_bound"] is True
+        assert redeemed.json()["invitation_github_id"] is None
+        state = parse_qs(urlparse(redeemed.json()["authorization_url"]).query)["state"][0]
+        unverified = client.get(
+            "/api/v1/auth/github/callback",
+            params={"code": "oauth-code", "state": state},
+            headers={"Sec-Fetch-Site": "cross-site"},
+            follow_redirects=False,
+        )
+        assert unverified.status_code == 403
+        assert unverified.json()["error"]["code"] == "invitation_rejected"
+        invitation = store.auth_get_invitation(invite_hash)
+        assert invitation is not None
+        assert invitation["github_id"] is None
+        assert invitation.get("used_at") is None
+
+        provider_emails["value"] = [{"email": "invitee.research@example.test", "verified": True}]
+        wrong_alias = _redeem_email_invitation(client, code)
+        assert wrong_alias.status_code == 403
+        assert wrong_alias.json()["error"]["code"] == "invitation_rejected"
+        invitation = store.auth_get_invitation(invite_hash)
+        assert invitation is not None and invitation["github_id"] is None
+        assert invitation.get("used_at") is None
+
+        provider_emails["value"] = [{"email": "INVITEE+RESEARCH@example.test", "verified": True}]
+        accepted = _redeem_email_invitation(client, code)
+        assert accepted.status_code == 303, accepted.text
+        assert accepted.headers["location"].startswith("/authenticator?mode=enroll")
+        private_history = client.get("/api/v1/history")
+        assert private_history.status_code == 403
+        assert private_history.json()["error"]["code"] == "totp_required"
+        member = store.auth_get_user_by_github_id(24680)
+        assert member is not None and member["role"] == "member"
+        consumed = store.auth_get_invitation(invite_hash)
+        assert consumed is not None
+        assert consumed["github_id"] == 24680
+        assert consumed["used_at"] is not None
+        email_requests = [call for call in calls if call.url.path == "/user/emails"]
+        assert len(email_requests) == 3
+        assert str(email_requests[-1].url.params) == "per_page=100&page=1"
+    oauth_client.close()
+
+
+@pytest.mark.parametrize(
+    "provider_response",
+    [
+        {"value": {"emails": []}},
+        {"value": [{"email": "invitee+research@example.test", "verified": 1}]},
+        {"value": [{"email": "invitee+research@example.test", "verified": True}] * 100},
+        {
+            "value": [{"email": "invitee+research@example.test", "verified": True}],
+            "headers": {"Link": '<https://api.github.com/user/emails?page=2>; rel="next"'},
+        },
+        {"value": [{"email": "invitee+research@example.test", "verified": True}], "status": 503},
+        {"value": [{"email": "invitee+research@example.test", "verified": True}], "timeout": True},
+        {"value": [{"email": "invitee+research@example.test", "verified": True}], "profile": []},
+    ],
+)
+def test_email_invitation_rejects_malformed_or_unavailable_github_email_lists(
+    tmp_path, provider_response
+) -> None:
+    """Malformed, truncated, and unavailable provider data cannot consume an invite."""
+
+    application, store, code, calls, oauth_client = _email_invitation_app(
+        tmp_path, provider_response
+    )
+    invite_hash = hashlib.sha256(code.encode()).hexdigest()
+    with TestClient(application) as client:
+        callback = _redeem_email_invitation(client, code)
+        assert callback.status_code in {400, 403}
+        invitation = store.auth_get_invitation(invite_hash)
+        assert invitation is not None
+        assert invitation["github_id"] is None
+        assert invitation.get("used_at") is None
+        assert store.auth_get_user_by_github_id(24680) is None
+        expected_email_calls = 0 if "profile" in provider_response else 1
+        assert sum(call.url.path == "/user/emails" for call in calls) == expected_email_calls
+    oauth_client.close()
+
+
+def test_existing_member_email_invite_preserves_role_and_totp_gate(tmp_path) -> None:
+    """Email acceptance for an enrolled member lands on verification without changing role."""
+
+    provider_emails = {"value": [{"email": "invitee+research@example.test", "verified": True}]}
+    application, store, code, _calls, oauth_client = _email_invitation_app(
+        tmp_path, provider_emails
+    )
+    member = store.auth_create_user(
+        {
+            "github_id": 24680,
+            "github_login": "email-invite-member",
+            "role": "member",
+            "status": "active",
+        }
+    )
+    store.totp_factors[int(member["id"])] = {"id": 7, "revoked_at": None}
+    with TestClient(application) as client:
+        accepted = _redeem_email_invitation(client, code)
+        assert accepted.status_code == 303, accepted.text
+        assert accepted.headers["location"].startswith("/authenticator?mode=verify")
+        private_history = client.get("/api/v1/history")
+        assert private_history.status_code == 403
+        assert private_history.json()["error"]["code"] == "totp_required"
+        current = store.auth_get_user_by_github_id(24680)
+        assert current is not None
+        assert current["role"] == "member"
+        assert current["status"] == "active"
+        assert store.totp_factors[int(member["id"])]["id"] == 7
+    oauth_client.close()
+
+
+def test_email_invitation_redemption_uses_migrated_sqlite_schema(tmp_path) -> None:
+    """A real schema-12 repository atomically preserves the private digest when binding ID."""
+
+    repository = Repository(tmp_path / "stock_probs.sqlite3")
+    repository.migrate()
+    provider_emails = {"value": [{"email": "invitee+research@example.test", "verified": True}]}
+    application, _store, code, _calls, oauth_client = _email_invitation_app(
+        tmp_path, provider_emails, repository=repository
+    )
+    invite_hash = hashlib.sha256(code.encode()).hexdigest()
+    with TestClient(application) as client:
+        accepted = _redeem_email_invitation(client, code)
+        assert accepted.status_code == 303, accepted.text
+        member = repository.auth_get_user_by_github_id(24680)
+        assert member is not None and member["role"] == "member"
+        invitation = repository.auth_get_invitation(invite_hash)
+        assert invitation is not None
+        assert invitation["github_id"] == 24680
+        assert invitation["email_hash"] == application.state.auth._email_hash(
+            "Invitee+Research@example.test"
+        )
+        assert invitation["used_at"] is not None
+        listed = repository.auth_list_invitations()[0]
+        assert listed["email_bound"] is True
+        assert "email_hash" not in listed
+        assert "invitee+research@example.test" not in str(listed)
     oauth_client.close()
 
 
@@ -2018,10 +2237,13 @@ def test_github_session_requires_totp_even_for_the_admin_owner(tmp_path) -> None
         )
         assert logout.status_code == 204, logout.text
         assert "Max-Age=0" in logout.headers.get("set-cookie", "")
-        assert client.get(
-            "/api/v1/auth/session",
-            cookies={SESSION_COOKIE_NAME: issue.session_token},
-        ).json()["authenticated"] is False
+        assert (
+            client.get(
+                "/api/v1/auth/session",
+                cookies={SESSION_COOKIE_NAME: issue.session_token},
+            ).json()["authenticated"]
+            is False
+        )
 
 
 def test_provisional_github_session_cannot_register_second_passkey(tmp_path) -> None:
