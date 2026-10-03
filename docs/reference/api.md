@@ -74,6 +74,10 @@ probes passed. See the [R-ASTRA-111 evidence](../../MVP-PLAN.md).
 
 `POST /api/v1/auth/invites/email` returns `submission_status: "smtp_accepted"` when the configured
 SMTP server accepts the submission. That response does not prove mailbox delivery or reading.
+Production email invitations are currently enabled under R-ASTRA-112. Its operator test confirmed
+delivery to Gmail, but the message landed in Spam, so inbox placement was not achieved for this
+test; the operator called the service functions used by this endpoint rather than exercising the authenticated HTTP route. See the
+[R-ASTRA-112 evidence](../../MVP-PLAN.md).
 
 There is no `/api/v1/market-depth` endpoint and no `MarketDepthResponse` schema. The Live Trading
 workspace may disclose that free data has no exchange-depth entitlement, but it does not fabricate

@@ -885,15 +885,46 @@ and deployment; production now runs R-ASTRA-111 schema 11.
 | `R-ASTRA-111-E24` | Native MCP deploy **Passed**. Status was healthy, schema `11`, `failed: null`, `loopback_only: true`; deployed `2026-10-03T01:36:16.724902Z`; pre-deploy backup `pre-deploy-82f2dfed76f6aee2-e2dee99a.spbackup`. | Production host; clean pushed revision above; exact MCP operation UTC beyond deployed timestamp not supplied. | Deployment only; it does not claim owner browser acceptance or email delivery. |
 | `R-ASTRA-111-E25` | Fixed-host read-only SQLite inspection before/after migration: integrity `ok`, schema `10` to `11`; users `1`, sessions `38`, search events `13`, forecast runs `13`, forecast results `20`, instrument-list items `9`, and TOTP factors `1` were unchanged. Post-migration foreign-key violations `0`. | Production host; before `2026-10-03T01:33:18Z`, after `01:36:39Z`; fixed-host Docker exec/read-only query; artifact none. | Database integrity/data preservation evidence; does not prove an authenticated browser session. |
 | `R-ASTRA-111-E26` | Initial Python-UA public probes received `403` Cloudflare `1010` at `01:36:39Z`. Browser-like UA rerun at `01:36:52Z`: readiness `200`/schema `11`, auth status `200`/GitHub/TOTP required/passkey false, anonymous history `401`, overview `303` to sign-in; all `no-store`/`DYNAMIC`. A bounded GitHub-start GET at `01:37:06Z` returned `302` to `github.com/login/oauth/authorize` in `0.058s`, also no-store/dynamic; no state or token was recorded. | Public HTTPS; `2026-10-03T01:36:39Z`–`01:37:06Z`; exact shell commands/artifact not supplied. | Bounded unauthenticated boundary smoke only; authenticated owner UI, physical iPhone, and OAuth completion remain **Unavailable**. |
-| `R-ASTRA-111-E27` | SMTP host environment was absent in both fixed-host checks. | Production host, pre/post migration checks at `01:33:18Z` and `01:36:39Z`. | Production email transport is unconfigured; no API-key creation, SMTP send, or mailbox delivery was performed or verified. |
+| `R-ASTRA-111-E27` | SMTP host environment was absent in both fixed-host checks. | Production host, pre/post migration checks at `01:33:18Z` and `01:36:39Z`. | R-ASTRA-111 point-in-time evidence: no API-key creation, SMTP send, or mailbox delivery had occurred then. Superseded as current SMTP status by R-ASTRA-112. |
 | `R-ASTRA-111-E28` | Final post-deployment authored-documentation checks passed: validator reported `9` categories/`13` topics/`7` governance entries; completeness checked `135` mapped files; documentation tests passed `57` with one warning; coverage self-test passed `26` cases; current dirty-tree change-aware coverage checked `135` files/`10` changed with `0` violations; scoped diff check exited `0`. The first validator attempt **Failed** on invalid links to the plan heading; the first docs-test attempt reported `1` failure and `45` fixture setup errors for unresolved links. Those link issues were corrected before the passing reruns. | Native x86_64 Linux; post-deployment documentation tree on pushed base `82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`; exact UTC not captured; reviewer `LUNA MAX docs`. | Docs-only status/evidence reconciliation. The initial link-check failures remain visible; no product gate was rerun. |
 | `R-ASTRA-111-E29` | Fixed-host read-only Docker inspection confirmed production ingress network `signal-ledger-production-ingress`, gateway `172.30.219.1/28`, and app port `8000` published only on `127.0.0.1`. | Production host; `2026-10-03T01:37:48Z`; read-only Docker inspection; artifact none. | Deployment network/binding inspection; no additional application or email-delivery claim. |
 
 In-progress GitHub authorization transactions must be restarted after the schema-11 migration.
-Production SMTP host configuration was absent in the R-ASTRA-111 deployment checks; no email was
-sent and mailbox delivery remains **Unavailable**. The local full gate, release publication,
+Production SMTP host configuration was absent in the R-ASTRA-111 deployment checks; that
+point-in-time observation is superseded by R-ASTRA-112 below. The local full gate, release publication,
 deployment, and parent integrated review passed for their declared scopes. Authenticated owner UI,
 physical iPhone acceptance, and runtime model/agent discovery remain **Unavailable**.
+
+#### R-ASTRA-112 production SMTP configuration and delivery evidence
+
+**Status:** **Completed for the declared operational configuration and invitation-delivery check.**
+R-ASTRA-112 enabled production Resend SMTP settings through the reviewed fixed installer without
+changing the deployed R-ASTRA-111 application image (`82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`,
+schema 11). A user-authorized sending-only API key was created through the Resend UI and installed
+directly from an external private file. No key material, invitation code, or recipient address is
+recorded here. Current nonsecret settings are `smtp.resend.com:2465`, `implicit_tls`, username
+`resend`, and sender `invites@mail.jtmb.cc`; read-only checks reported `email_invites_enabled=True`.
+
+The operator test used the production `AuthManager.create_invitation` and
+`send_invitation_email` functions, which the HTTP email endpoint also uses; it was not an
+authenticated browser or HTTP API acceptance test. The owner-bound invitation was accepted by
+Resend at `2026-10-03T02:39:11.449704Z`, with provider message ID
+`01a0ffa1-3a22-7759-a8f9-eba7eba17217`, and Resend reported **Delivered**. Gmail metadata confirmed
+delivery at `02:39:12Z`, subject `Your Signal Ledger invitation`, sender `SignalLedger
+<invites@mail.jtmb.cc>`, and passing SPF/DKIM. Gmail classified the message as Spam, unread, and
+Updates; delivery passed, inbox placement was not achieved for this test. The invitation was later confirmed expired at
+`2026-10-03T02:41:03.821625Z`; no invitation record was deleted. Production read-only checks
+reported database integrity `ok`, schema 11, and unchanged row counts; public readiness returned
+`200`/ready/schema 11 at `02:42:15.098965Z`. MCP status remained healthy on the existing image.
+
+| Evidence ID | Requirement/check | Environment, UTC time, commit | Result, artifact, reviewer, limitation |
+| --- | --- | --- | --- |
+| `R-ASTRA-112-E1` | User-authorized sending-only Resend key creation and `./infra/linode/install-resend-smtp-key.sh --api-key-file [external private key file]` passed with readiness. The external private file was used directly and not printed or stored in the repository. | Resend UI and production Linode; exact UTC and artifact were not supplied. | **Pass** for configuration/readiness; application image and database were preserved. No credential material is recorded. |
+| `R-ASTRA-112-E2` | Initial operator invitation test **Failed** before invitation creation because a query used nonexistent column `github_id`; the source column was corrected to `github_user_id`/login before the successful test. | Production host; exact time/command/artifact not supplied. | Failure retained; this attempt did not create or send an invitation and is not a product-code finding. |
+| `R-ASTRA-112-E3` | Corrected operator test created a GitHub-owner-bound invitation and called the same service functions used by the email endpoint. SMTP accepted the message at `2026-10-03T02:39:11.449704Z` (provider message ID `01a0ffa1-3a22-7759-a8f9-eba7eba17217`); Resend later showed **Delivered** and Gmail metadata confirmed receipt at `02:39:12Z`, subject/sender, and SPF/DKIM pass. | Production operator/container and Gmail/Resend; exact source revision/artifact not supplied. | Delivery **Pass**. Message appeared under Spam/Unread/Updates; inbox placement **Fail**. No authenticated browser or HTTP API/UI test is claimed; raw code, headers, and message snippet are not included in repository evidence. |
+| `R-ASTRA-112-E4` | Test invitation was confirmed expired at `2026-10-03T02:41:03.821625Z`; bounded SQL targeted only that created invitation and deleted no records. | Production database; exact query artifact not supplied. | **Pass** for expiry check; no other invitation or user data was deleted. |
+| `R-ASTRA-112-E5` | Read-only status showed `email_invites_enabled=True`, integrity `ok`, schema 11, and unchanged users `1`, sessions `38`, events `13`, runs `13`, results `20`, instrument-list items `9`, and TOTP factors `1` at `02:39:45.571650Z`. Public readiness returned `200`/ready/schema 11 at `02:42:15.098965Z`; MCP status remained healthy on the existing image `sha256:5fd0941220396188c2906c0591331b8ac9c0681694df13c5181154ebcfe8032a`. | Production host/public HTTPS; `2026-10-03T02:39:45.571650Z` and `02:42:15.098965Z`; exact commands/artifact not supplied. | **Pass** for bounded configuration/readiness observations; does not establish authenticated owner UI or new-user onboarding. |
+| `R-ASTRA-112-E6` | Final checks passed: `.dev-venv/bin/python scripts/validate_docs.py` (`9` categories/`13` topics/`7` governance entries); `.dev-venv/bin/python -m pytest -p no:cacheprovider -o addopts='' tests/test_docs_validation.py -q` (`57` passed/`1` warning); `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` (`135` files); `python3 scripts/check-doc-coverage-self-test.py` (`26` cases); dirty-tree change-aware coverage (`135` mapped/`9` changed/`0` violations) using the `git diff`/`git ls-files --others` inputs; and scoped `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs` exited `0`. | Native x86_64; base clean pushed revision `fe7266233ea978b6e35eee4694499109921b40d7`; exact UTC not captured. | **Pass** for documentation scope; no application-image change or full production acceptance is inferred. |
 
 `M09-E13` is a frozen historical constraint for the M09 contract, not a current absence-audit
 task. Its original rejected M09 scope remains intact. Later `R-ASTRA-98` separately

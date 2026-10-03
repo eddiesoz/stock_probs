@@ -22,8 +22,10 @@ while preserving users, sessions, and research records; the supported CLI verifi
 pre-migration backup. Production Compose ingress attribution was installed through the existing
 reviewed host-Compose updater. The first local gate failed on four stale schema-10 test expectations;
 the corrected gate and parent integrated review passed for their declared local scopes. Live probes
-confirmed the schema-11 auth boundary. SMTP was unconfigured during checks; authenticated owner UI,
-live email delivery, and physical iPhone acceptance remain **Unavailable**.
+confirmed the schema-11 auth boundary. SMTP was unconfigured during the R-ASTRA-111 deployment
+checks. R-ASTRA-112 later configured production email invitations and confirmed delivery of an
+owner-bound test message to Gmail's Spam folder; inbox placement was not achieved. Authenticated
+owner UI, new-user onboarding, and physical iPhone acceptance remain **Unavailable**.
 
 Scoped independent QA passed `64` authentication/repository/list checks, `123` API checks, `61`
 backup/CLI checks, `10` desktop/mobile-emulated auth-flow cases, `27` frontend checks, Ruff, and

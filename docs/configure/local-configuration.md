@@ -56,9 +56,10 @@ behind a shared NAT, share the caller limit. The source uses the socket peer add
 other forwarded-IP headers. The source change adds explicit production Compose ingress
 attribution, installed through the existing reviewed host-Compose updater. The current deployment
 is R-ASTRA-111 at schema 11; its migration cleared in-progress OAuth transactions, so any sign-in
-already underway must restart. Production SMTP variables were absent during deployment checks;
-email invitations remain unconfigured and no mail delivery was verified. See the
-[R-ASTRA-111 evidence](../../MVP-PLAN.md).
+already underway must restart. SMTP variables were absent at the R-ASTRA-111 deployment checkpoint.
+R-ASTRA-112 later configured and enabled production invitations with the fixed Resend settings
+below; its owner-bound test email was delivered to Gmail but landed in Spam. See the
+[R-ASTRA-111 and R-ASTRA-112 evidence](../../MVP-PLAN.md).
 
 Use the supported CLI to run the app: it disables Uvicorn proxy-header rewriting so the
 application can inspect the socket peer before applying the trusted-proxy rule. If launching
@@ -107,10 +108,17 @@ blocker; the repaired QA recheck passed `13` tests, including command parse/prob
 rollback, for its declared local scope. At checkpoint `329fdc595483fa3b112b98c7788d808348638faa`,
 the report said it matched `origin/main`, the tree was clean, and no API key existed at that time.
 A later operator observation reported `email_invites_enabled=false` in production; its timestamp was
-not supplied. This is point-in-time evidence; a later read-only SSH recheck timed out before any
-value was returned, so the current setting is unavailable. Local QA reported 25 fake-SMTP cases plus
-invitation-expiry coverage. These results do not establish host installation, live sending, or
-mailbox delivery.
+not supplied. This was point-in-time evidence; a later read-only SSH recheck timed out before any
+value was returned, so the setting remained unavailable at that checkpoint. Local QA reported 25
+fake-SMTP cases plus invitation-expiry coverage; those did not establish host installation or live
+sending.
+
+`R-ASTRA-112` later installed a user-authorized sending-only Resend key using the fixed installer.
+Production email invitations are now enabled with `smtp.resend.com`, port `2465`, `implicit_tls`,
+username `resend`, and sender `invites@mail.jtmb.cc`; the secret remains outside the repository.
+An operator-created owner-bound test invitation was delivered to Gmail, where SPF/DKIM passed but
+the message landed in Spam; inbox placement was not achieved for this test. This confirms delivery,
+not an authenticated browser/API email-submission flow. See the [R-ASTRA-112 evidence](../../MVP-PLAN.md).
 
 For a reproducible local dashboard:
 

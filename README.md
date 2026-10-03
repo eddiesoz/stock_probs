@@ -203,8 +203,10 @@ installed through the existing reviewed host-Compose updater. The scoped Sol sec
 independent Docker bridge regression passed. The first full local gate failed on four stale
 schema-10 test expectations; the corrected full gate and parent integrated review passed for their
 declared local scopes. Live probes confirmed schema 11 and the bounded anonymous/authentication
-boundary. SMTP was unconfigured during the read-only checks; live email delivery and authenticated
-owner UI acceptance remain unavailable. See [OAuth API limits](docs/reference/api.md) and
+boundary. SMTP was unconfigured during the R-ASTRA-111 deployment checks; R-ASTRA-112 later enabled
+production email invitations and verified delivery of an owner-bound test message to Gmail's Spam
+folder; inbox placement was not achieved. Authenticated owner UI acceptance and new-user onboarding
+remain unavailable. See [OAuth API limits](docs/reference/api.md) and
 [backup migration guidance](docs/operations/backup-restore.md).
 Complete owner authentication remains pending. The
 R-ASTRA-103 local gate passed: receipt `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` reports `707`
@@ -233,8 +235,9 @@ Public HTTPS returned health `200`, auth status `200`, anonymous history `401`, 
 to sign-in, all with `no-store`/`DYNAMIC`. In the IAB, GitHub sign-in as `jtmb` reached authenticator
 setup; repeated default starts across reload returned the same pending key when compared locally
 without exposing it, and expiry plus explicit rotation controls were visible. During that recorded
-agent-run live check, no TOTP code was entered; owner enrollment and authenticated workspace
-retrieval remain **Unavailable** in agent-observed evidence. Physical
+agent-run live check, no TOTP code was entered. A later R-ASTRA-112 read-only database inspection
+confirmed one enrolled TOTP factor; agent-observed owner-browser code verification and authenticated
+workspace retrieval remain **Unavailable**. Physical
 iPhone code validation is **Unavailable**. This is deployment evidence, not complete auth acceptance.
 
 The pre-R110 `R-ASTRA-109` follow-on added Microsoft Authenticator to the chooser and displayed its
@@ -298,9 +301,10 @@ Its local gate rerun passed for the declared scope: `731` Python tests, `4` dese
 coverage, and frontend build/typecheck with `27/27` tests. The initial failed gate is retained in
 the plan and superseded by that rerun. The later R-ASTRA-106 record covers the applied operator
 firewall refresh and schema-10 production deployment. Resend domain/DNS preparation and Linode
-TCP/TLS transport checks are recorded, but API-key creation, host installation, live sending,
-mailbox delivery, owner TOTP enrollment, authenticated workspace retrieval, physical-mobile
-evidence, and full production acceptance remain unavailable. See
+TCP/TLS transport checks are recorded. API-key creation, host installation, and delivery were
+later completed for the limited R-ASTRA-112 operator-test scope. Inbox placement, owner-browser
+TOTP verification, authenticated workspace retrieval, physical-mobile evidence, and full production
+acceptance remain unavailable. See
 [getting started](docs/operations/getting-started.md#invitation-email-and-host-compose-update) for
 configuration and the fixed reviewed-Compose update procedure.
 

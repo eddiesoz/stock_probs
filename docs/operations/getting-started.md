@@ -99,9 +99,11 @@ declared scopes; the initial stale-schema full-gate failure remains recorded. Se
 [R-ASTRA-111 evidence](../../MVP-PLAN.md).
 The supported CLI disables Uvicorn proxy-header
 rewriting. Direct Uvicorn launches require `--no-proxy-headers` so caller attribution sees the raw
-socket peer. SMTP host settings were absent at deployment checks, so email invitations are
-unconfigured and no email delivery is claimed. Authenticated owner-browser and physical iPhone
-acceptance remain unavailable. See [local configuration](../configure/local-configuration.md) and the
+socket peer. SMTP host settings were absent at the R-ASTRA-111 deployment checkpoint. R-ASTRA-112
+later enabled production email invitations and confirmed delivery of an owner-bound test message
+to Gmail's Spam folder; inbox placement was not achieved. The operator used the service functions
+behind the email endpoint, not an authenticated browser/API flow. Authenticated owner-browser and
+physical iPhone acceptance remain unavailable. See [local configuration](../configure/local-configuration.md) and the
 [API reference](../reference/api.md) for the caller rules and limits.
 
 ### Authenticator enrollment and recovery
@@ -201,11 +203,19 @@ incomplete-read rollback, for its declared local scope. This does not establish 
 acceptance or authorize a live key install.
 
 At installer checkpoint `329fdc595483fa3b112b98c7788d808348638faa`, the report said the tree was
-clean, matched `origin/main`, and no Resend API key existed at that time. A later operator-side production observation reported
-`email_invites_enabled=false`; no timestamp was supplied. This is a point-in-time report; a later
-read-only SSH recheck timed out before the query returned any value, so the current setting is
-unavailable. Local fake-SMTP QA reported 25 passing cases plus invitation-expiry coverage. No host
-installation, live invitation send, or mailbox delivery has been verified.
+clean, matched `origin/main`, and no Resend API key existed at that time. A later operator-side
+production observation reported `email_invites_enabled=false`; no timestamp was supplied. That
+point-in-time state was still unavailable after a read-only SSH timeout. Local fake-SMTP QA reported
+25 passing cases plus invitation-expiry coverage; those checks did not establish live delivery.
+
+R-ASTRA-112 supersedes that earlier production configuration status. The fixed installer enabled
+Resend SMTP on `smtp.resend.com:2465` with `implicit_tls`; the existing R-ASTRA-111 application
+image and database were preserved. A user-authorized sending-only key remained in the operator's
+external private-file path. The operator created an owner-bound invitation using the same service
+functions used by the email endpoint. Resend reported delivery and Gmail metadata confirmed
+receipt, SPF, and DKIM, but Gmail classified the message as Spam/Updates. The invitation was later
+confirmed expired, with no invitation rows deleted. This was not an authenticated browser or HTTP
+API test, and new-user onboarding remains unverified. See the [R-ASTRA-112 evidence](../../MVP-PLAN.md).
 
 To install a reviewed change to the host's production Compose file, run the fixed updater from a
 clean checkout of the exact reviewed `main` revision. It verifies that local `HEAD` equals the

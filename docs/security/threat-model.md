@@ -37,9 +37,11 @@ existing reviewed host-Compose updater. The local gate, scoped Sol security revi
 independent Luna Docker bridge regression, deployment, and bounded public boundary probes passed
 for their declared scopes; the initial local-gate failure on four stale schema-10 expectations
 remains historical. OAuth transactions already in progress had to be restarted after migration.
-Production SMTP configuration was absent during deployment checks, and no mail delivery or
-authenticated owner-browser acceptance is claimed. See the
-[R-ASTRA-111 evidence](../../MVP-PLAN.md).
+SMTP was absent during the R-ASTRA-111 deployment checks; that point-in-time state was superseded
+by R-ASTRA-112, which enabled production SMTP and verified delivery of an owner-bound invitation
+to Gmail's Spam folder; inbox placement was not achieved for this test. Authenticated
+email-endpoint/browser acceptance and new-user onboarding remain unverified. See the
+[R-ASTRA-112 evidence](../../MVP-PLAN.md).
 The earlier private
 clean-main image is revision
 `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256

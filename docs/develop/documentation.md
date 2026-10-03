@@ -217,9 +217,11 @@ backup and installed production Compose ingress attribution through the existing
 host-Compose updater. The
 corrected local gate, scoped Sol security review, independent Luna Docker bridge regression, and
 bounded public probes passed for their declared scopes; the earlier gate failure on stale schema-10
-expectations remains historical. SMTP was unconfigured during deployment checks, and no email
-delivery or authenticated owner-browser acceptance is claimed. See the
-[R-ASTRA-111 evidence](../../MVP-PLAN.md).
+expectations remains historical. SMTP was unconfigured during R-ASTRA-111 deployment checks;
+R-ASTRA-112 later enabled production SMTP and confirmed delivery of an owner-bound invitation to
+Gmail's Spam folder. This was an operator service-function test, not an authenticated HTTP/browser
+test; inbox placement was not achieved for this test, while new-user onboarding remains unverified. See the
+[R-ASTRA-112 evidence](../../MVP-PLAN.md).
 Backup/restore compatibility and caller limits are documented in the
 [backup guide](../operations/backup-restore.md) and [API reference](../reference/api.md).
 Independent scoped QA and Astra's security re-review are recorded in the root plan. Its local gate

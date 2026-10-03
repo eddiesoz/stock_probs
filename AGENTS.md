@@ -155,23 +155,34 @@ pre-R110 deployed dropdown follow-on at pushed revision `3ec26d2826bf4acfbe0b8af
 Microsoft Authenticator and gives its selected-app setup instructions. `R-ASTRA-108` is the preceding chooser refinement;
 `R-ASTRA-107` is the key-reuse repair, and `R-ASTRA-103` is the deployed authenticator-only baseline.
 The live passkey retirement redirect and public HTTPS boundary are verified. During those recorded
-live checks, no owner TOTP code was entered by the agents; owner enrollment and authenticated
-workspace retrieval remain **Unavailable** in agent-observed evidence. The
-post-deployment read-only query at that earlier checkpoint found zero owner factors and zero active
-pending enrollments. The user later reported successful Firefox sign-in; this is an attributed report
-without independent browser evidence; it does not independently establish authenticated workspace
-access.
+live checks, no owner TOTP code was entered by the agents; a read-only query at that earlier
+checkpoint found zero owner factors and zero active pending enrollments. A later R-ASTRA-112
+read-only query confirms one enrolled TOTP factor. The user reported successful Firefox sign-in;
+that attributed report and database count do not establish agent-observed owner-browser code
+verification or authenticated workspace retrieval, which remain **Unavailable**.
 Physical iPhone code acceptance and actual Microsoft Authenticator interaction remain
 **Unavailable**.
-`R-ASTRA-111` is current, deployed at pushed clean `main` revision
+`R-ASTRA-111` remains the current application image, deployed at pushed clean `main` revision
 `82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. Its first full local gate failed on four
 stale schema-10 expectations; the repaired full gate passed, and the parent integrated review found
 no blocker for the declared local scope. Post-deployment probes confirmed the health/auth/private
-route boundary and a bounded GitHub OAuth redirect; authenticated owner UI, actual email delivery,
-physical iPhone acceptance, and runtime model/agent discovery remain **Unavailable**. SMTP was
-unconfigured during the read-only checks. The
+route boundary and a bounded GitHub OAuth redirect. At that deployment checkpoint SMTP was
+unconfigured; the later `R-ASTRA-112` operator configuration and delivery check passed for its
+declared scope, with the test message delivered to Gmail's Spam folder; inbox placement **Failed**.
+Authenticated owner UI,
+physical iPhone acceptance, and runtime model/agent discovery remain **Unavailable**. The
 current runtime model/agent discovery status remains **Unavailable** until the required fresh
 Codex task and OpenCode restart.
+
+`R-ASTRA-112` completed the declared production SMTP configuration and operator delivery-check
+scope without changing the deployed application image. A user-authorized sending-only Resend key
+was installed from an external private file; no key material is retained in this repository or
+evidence. Production email invitations are enabled with the documented Resend TLS settings. A
+GitHub-owner-bound test invitation was accepted by Resend and delivered to the test Gmail mailbox;
+Gmail classified it as Spam, so inbox placement **Failed**. The invitation was confirmed expired
+and only that test row was targeted; no row was deleted. The operator invoked the same service
+functions used by the email endpoint, not the authenticated browser/API flow. New-user onboarding
+and authenticated owner-browser acceptance remain **Unavailable**.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded
 for their declared scopes. The three provider access items were created privately, Terraform
@@ -270,11 +281,11 @@ separate limitations.
   `133` mapped files/`10` changed passed, and `git ls-remote origin refs/heads/main` exactly
   matched; the tree was clean at push. Reviewer `LUNA MAX docs`; these checks do not establish installer,
   host, SMTP, mailbox, or production acceptance.
-- The intended Resend installer accepts only one operator-owned private, one-line API-key file
+- The fixed Resend installer accepts only one operator-owned private, one-line API-key file
   through `infra/linode/install-resend-smtp-key.sh --api-key-file FILE`; host, SSH account, remote
   paths, Compose file, image behavior, and readiness URL remain fixed. The API key must stay outside
-  the repository, logs, exports, and evidence. Browser action-time confirmation is still required
-  to create the key; no credential-bearing run is authorized or evidenced by this follow-on.
+  the repository, logs, exports, and evidence. The earlier pending-key state was superseded by the
+  user-authorized R-ASTRA-112 install and test; no credential-bearing values were recorded.
 
 `M09-E13` is a frozen historical constraint for the M09 contract, not a current absence-audit
 task. Its original rejected M09 scope remains intact. Later `R-ASTRA-98` separately
