@@ -210,7 +210,8 @@ The historical `R-ASTRA-102` documentation boundary covered the then-deployed sc
 GitHub OAuth plus a six-digit TOTP authenticator code, its one-time legacy-passkey migration,
 hashed single-use recovery codes, and production GitHub-auth TOTP step-up for administrator backup/restore. The migration
 route is not the current setup flow. `R-ASTRA-110` and the `R-ASTRA-102` checks and release details
-below remain historical evidence. The current deployment is `R-ASTRA-111` at pushed revision
+below remain historical evidence. The R-ASTRA-111 schema-11 baseline was deployed at pushed
+revision
 `82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. Its migration cleared OAuth transaction
 rows and preserved user/session/research rows; the deployment verified a schema-10 pre-migration
 backup and installed production Compose ingress attribution through the existing reviewed
@@ -231,12 +232,16 @@ the identity threats in the [threat model](../security/threat-model.md). Update 
 same task ID and evidence-backed status. GitHub email verification uses the authenticated email
 list and the `user:email` scope; the official [GitHub endpoint reference](https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user)
 is the permission/response source. Keep email-only sends separate from the older numeric-ID code
-flow, and never infer deployment, mailbox placement, or invitation redemption from local QA or the
-R-ASTRA-112 service-function delivery check. For R-ASTRA-113, independent local QA and the final
-native-x86_64 gate passed (`796` Python tests; receipt and R114/R115/R116 repair history are in the
-[MVP plan](../../MVP-PLAN.md)). R-ASTRA-113 remains **In progress** overall until deployment, the
-requested three invitation sends and follow-up, and live invitee redemption/TOTP/workspace evidence
-are reported. R-ASTRA-112's Gmail Spam result remains separate.
+flow, and never infer mailbox placement or invitation redemption from local QA or the R-ASTRA-112
+service-function delivery check. For R-ASTRA-113, independent local QA and the final native-x86_64
+gate passed (`796` Python tests), and the reviewed schema-12 release was deployed at pushed revision
+`4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were submitted through production
+service functions and Resend showed all three delivered; one follow-up was sent from the user's
+Gmail. This did not exercise the authenticated HTTP/browser send. One recipient mailbox classified
+its invitation as Spam; other mailbox placement/read status is unavailable. R-ASTRA-113 remains
+**In progress** because live invitee OAuth redemption, TOTP onboarding, and workspace UI remain
+**Unavailable**. The complete receipts and R114/R115/R116 repair history are in the
+[MVP plan](../../MVP-PLAN.md); R-ASTRA-112's Gmail Spam result remains separate.
 Backup/restore compatibility and caller limits are documented in the
 [backup guide](../operations/backup-restore.md) and [API reference](../reference/api.md).
 Independent scoped QA and Astra's security re-review are recorded in the root plan. Its local gate

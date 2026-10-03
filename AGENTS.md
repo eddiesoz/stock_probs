@@ -162,7 +162,8 @@ that attributed report and database count do not establish agent-observed owner-
 verification or authenticated workspace retrieval, which remain **Unavailable**.
 Physical iPhone code acceptance and actual Microsoft Authenticator interaction remain
 **Unavailable**.
-`R-ASTRA-111` remains the current application image, deployed at pushed clean `main` revision
+Before the R-ASTRA-113 image, `R-ASTRA-111` was deployed as the schema-11 baseline at pushed
+clean `main` revision
 `82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. Its first full local gate failed on four
 stale schema-10 expectations; the repaired full gate passed, and the parent integrated review found
 no blocker for the declared local scope. Post-deployment probes confirmed the health/auth/private
@@ -202,9 +203,14 @@ declared scope on native x86_64 at dirty revision `41d26991417a28ad99947d273a158
 `85.67%` coverage, and frontend `28`, typecheck, and build. The receipt is
 `test-results/local-gates/R-ASTRA-113-20261003T223554Z/evidence.json`; R-ASTRA-114 through
 R-ASTRA-116 record the separate browser-locator, documentation-link, and strict-ID repairs in the
-plan. R-ASTRA-113 remains **In progress**: deployment, the requested real invitation sends and
-follow-up, live GitHub email redemption, and invitee TOTP/workspace acceptance remain pending or
-**Unavailable**. R-ASTRA-112's Spam-placement result remains separate and unchanged.
+plan. The reviewed and pushed release at `4cc5c8502ec93c57947958ee07f891b45e98d870` is deployed
+at schema 12 and loopback-only. Three invitations were sent through production service functions;
+Resend showed all three delivered, and one follow-up was sent from the user's Gmail. This did not
+exercise the authenticated HTTP/browser invitation flow. One recipient mailbox put its invitation
+in Spam; placement/read status for the other mailboxes is **Unavailable**. R-ASTRA-113 remains
+**In progress** because live invitee OAuth redemption, TOTP onboarding, and workspace UI are
+**Unavailable**. R-ASTRA-112's separate Spam-placement result remains unchanged; deployment and
+mail receipts are in the [MVP plan](MVP-PLAN.md).
 
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded

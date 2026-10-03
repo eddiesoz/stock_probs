@@ -114,13 +114,14 @@ processing; it is not proof of mailbox delivery or reading. The separate
 `POST /api/v1/auth/invites` endpoint continues to create a numeric-ID-bound code for private
 sharing.
 
-R-ASTRA-113 is **In progress** overall. The implementation and declared local QA scope passed,
-including schema-12 package smoke and the final local gate (`796` Python tests); the deployed
-service remains schema 11, so this contract is not yet live in production. No R-ASTRA-113
-invitation has been sent. The requested three sends and follow-up, authenticated production HTTP
-flow, verified-email redemption, and invitee TOTP/workspace acceptance remain pending or
-unavailable. R-ASTRA-112's separate test delivery to Gmail Spam is unchanged. See the
-[MVP plan](../../MVP-PLAN.md) for evidence and repair history.
+R-ASTRA-113 is **In progress** overall. Its reviewed release is deployed at schema 12 on pushed
+revision `4cc5c8502ec93c57947958ee07f891b45e98d870`, following the local gate (`796` Python tests)
+and schema-12 package smoke. Three invitations were sent by invoking the production service
+functions over operator SSH; Resend reported all three delivered. One follow-up was sent from the
+user's Gmail. These operations did not exercise the authenticated HTTP/browser invitation route.
+One recipient mailbox classified its invitation as Spam; placement/read status for the other
+mailboxes is unavailable. Live invitee OAuth redemption, TOTP onboarding, and workspace UI remain
+**Unavailable**. See the [MVP plan](../../MVP-PLAN.md) for deployment and send evidence.
 For the corresponding operator workflow, see [getting started](../operations/getting-started.md#invitation-email-and-host-compose-update).
 GitHub's [authenticated email-list endpoint](https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user)
 documents the `user:email` requirement and the returned `verified` flag.

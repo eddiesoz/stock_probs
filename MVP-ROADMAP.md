@@ -16,7 +16,8 @@ Recovery codes are
 hashed and single-use. Production GitHub-auth backup/restore actions require fresh TOTP proof; local
 authentication can use fresh local-passkey proof for the same step-up window.
 
-`R-ASTRA-111` is deployed at pushed clean `main` revision
+Before R-ASTRA-113, `R-ASTRA-111` was the schema-11 baseline deployed at pushed clean `main`
+revision
 `82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. The migration cleared OAuth transaction rows
 while preserving users, sessions, and research records; the supported CLI verified a schema-10
 pre-migration backup. Production Compose ingress attribution was installed through the existing
@@ -32,9 +33,14 @@ local QA scope passed, including schema-12 package smoke and the final native-x8
 (`796` Python tests; receipt and repair history are in the [MVP plan](MVP-PLAN.md)). Email-only
 redemption requires an exact verified GitHub email match before binding to the stable numeric
 account ID; explicitly supplied positive IDs retain ID-bound invitations, and the existing
-numeric-ID code flow remains. This change is not yet deployed. No new invitation has been sent;
-the requested three sends and follow-up, live redemption, and invitee TOTP/workspace acceptance
-remain pending or unavailable. R-ASTRA-112's separate Gmail Spam result is unchanged.
+numeric-ID code flow remains. The reviewed release is deployed at schema 12 on pushed revision
+`4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were sent through production service
+functions and Resend reported all three delivered; a follow-up was sent from the user's Gmail.
+One recipient mailbox put its invitation in Spam; placement/read status for the other mailboxes is
+**Unavailable**. These were service-function sends, not an authenticated HTTP/browser flow.
+R-ASTRA-113 remains **In progress** because live invitee OAuth redemption, TOTP onboarding, and
+workspace UI remain **Unavailable**. R-ASTRA-112's separate Gmail Spam result is unchanged;
+detailed operational receipts are in the [MVP plan](MVP-PLAN.md).
 
 Scoped independent QA passed `64` authentication/repository/list checks, `123` API checks, `61`
 backup/CLI checks, `10` desktop/mobile-emulated auth-flow cases, `27` frontend checks, Ruff, and

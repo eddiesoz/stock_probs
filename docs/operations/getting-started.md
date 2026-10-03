@@ -189,12 +189,14 @@ invitation is created before submission, inspect the invitation list before retr
 code may remain valid until it expires. The `R-ASTRA-104` scoped QA did not exercise a live SMTP
 provider, mailbox delivery, or production deployment. R-ASTRA-112 later confirmed delivery of one
 operator test message to Gmail's Spam folder; that did not test authenticated HTTP invitation
-creation or new-user redemption. For R-ASTRA-113, the local implementation and declared QA scope
-passed, including the schema-12 package smoke and final local gate (`796` Python tests). The
-deployed service remains schema 11, and no new R-ASTRA-113 invitation has been sent. The requested
-three invitation sends and follow-up, production HTTP flow, verified-email redemption, and invitee
-TOTP/workspace acceptance remain pending or unavailable. See the
-[current evidence](../../MVP-PLAN.md).
+creation or new-user redemption. R-ASTRA-113 passed its local implementation/QA gate (`796` Python
+tests) and was deployed at schema 12 on pushed revision
+`4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were submitted using production
+service functions over operator SSH, and Resend reported all three delivered; the authenticated
+admin HTTP/browser flow was not used. One recipient mailbox classified its invitation as Spam;
+placement/read status for the other mailboxes is unavailable. A follow-up was sent from the user's
+Gmail. Live invitee OAuth redemption, TOTP onboarding, and workspace UI remain **Unavailable**.
+See the [current evidence](../../MVP-PLAN.md).
 
 ### Resend sending domain and credential workflow
 

@@ -195,7 +195,8 @@ Ledger does not create or accept WebAuthn credentials.
 The R-ASTRA-103 implementation is the deployed authenticator-only baseline. R-ASTRA-107 is the
 deployed enrollment key-reuse repair, R-ASTRA-108 introduced an app chooser before setup-key
 generation; R-ASTRA-109 and R-ASTRA-110 are historical deployed UI/authenticator setup follow-ons.
-R-ASTRA-111 is the current deployment at pushed clean `main` revision
+Before the R-ASTRA-113 image, R-ASTRA-111 was deployed as the schema-11 baseline at pushed clean
+`main` revision
 `82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. Its migration clears OAuth
 transaction rows while preserving users, sessions, and research data; the supported CLI verifies a
 schema-10 pre-migration backup. Production Compose caller attribution is part of the repair and is
@@ -317,11 +318,15 @@ so inbox placement failed. `R-ASTRA-113` is **In progress** overall. Its email-o
 implementation and declared local QA scope passed, including schema-12 package smoke and the final
 local gate (`796` Python tests; see the [MVP plan](MVP-PLAN.md)). R-ASTRA-114 through R-ASTRA-116
 record the repaired browser locator, documentation fixture links, and strict numeric-ID
-validation. The change is not yet deployed, and no new invitation has been sent. The requested
-three sends and follow-up, verified-email redemption, invitee TOTP/workspace acceptance, and full
-production acceptance remain pending or unavailable. R-ASTRA-112's separate Gmail Spam result is
-unchanged. Owner-browser TOTP verification, authenticated workspace retrieval, and physical-mobile
-evidence remain unavailable. See
+validation. The reviewed release is deployed at schema 12 on revision
+`4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were sent through production service
+functions and Resend reported all three delivered; one follow-up was sent from the user's Gmail.
+This did not exercise the authenticated HTTP/browser flow. One recipient mailbox classified its
+invitation as Spam; placement/read status for the other mailboxes is **Unavailable**. R-ASTRA-113
+remains **In progress** because live invitee OAuth redemption, TOTP onboarding, and workspace UI
+remain **Unavailable**. R-ASTRA-112's earlier Spam result remains separate. Owner-browser TOTP
+verification, authenticated workspace retrieval, and physical-mobile evidence also remain
+unavailable. See
 [getting started](docs/operations/getting-started.md#invitation-email-and-host-compose-update) for
 configuration and the fixed reviewed-Compose update procedure.
 

@@ -24,8 +24,9 @@ mode-aware passkey repair with independent QA, and E62 records the passing full 
 records its then-current schema-8 image deployment and public probes; E64 records Astra's no-P1/P2 live read-only
 review. R-ASTRA-103 established the deployed schema-10 authenticator-only baseline. R-ASTRA-110 at
 pushed revision `566baab14c298fb52b5edb3138d64cd3e9123311`, schema 10, is the historical deployment
-preceding R-ASTRA-111; it includes the R-ASTRA-107 key-reuse repair. The current deployment is
-R-ASTRA-111 at pushed revision `82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. The user
+preceding R-ASTRA-111; it includes the R-ASTRA-107 key-reuse repair. The R-ASTRA-111 schema-11
+baseline was at pushed revision `82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, before the later
+R-ASTRA-113 deployment. The user
 later reported successful Firefox sign-in,
 and production database inspection confirms one enrolled TOTP factor. The report is attributed;
 authenticated owner-browser code verification and workspace retrieval remain **Unavailable** in
@@ -59,10 +60,14 @@ flow remains available. See the
 [email invitation contract](../reference/api.md#email-invitation-contract) and the official
 [GitHub authenticated email-list endpoint](https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user).
 The implementation and declared local QA scope passed, including schema-12 package smoke and the
-final local gate (`796` Python tests). The deployed service remains schema 11; no R-ASTRA-113
-deployment or invitation send is evidenced. Requested sends and follow-up, live verified-email
-redemption, invitee TOTP, and workspace acceptance remain pending or unavailable. The separate
-R-ASTRA-112 SMTP service-function test remains the only recorded Gmail delivery and landed in Spam.
+final local gate (`796` Python tests). The reviewed release is deployed at schema 12 on pushed
+revision `4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were submitted by direct
+production service-function calls over operator SSH, and Resend showed all three delivered; a
+follow-up was sent from the user's Gmail. No authenticated HTTP/browser send was exercised. One
+recipient mailbox classified its invitation as Spam; other mailbox placement/read status is
+unavailable. Live OAuth redemption, verified-email acceptance, TOTP onboarding, and workspace UI
+remain **Unavailable**. The earlier R-ASTRA-112 Gmail Spam delivery remains a separate historical
+check.
 
 The earlier private
 clean-main image is revision
