@@ -209,14 +209,17 @@ verification remain pending. This is historical passkey evidence, not TOTP accep
 The historical `R-ASTRA-102` documentation boundary covered the then-deployed schema-9 release:
 GitHub OAuth plus a six-digit TOTP authenticator code, its one-time legacy-passkey migration,
 hashed single-use recovery codes, and production GitHub-auth TOTP step-up for administrator backup/restore. The migration
-route is not the current setup flow. The current deployment is `R-ASTRA-110`, schema 10; the
-R-ASTRA-102 checks and release details below remain historical evidence. `R-ASTRA-111` tracks a
-source-only schema-11 OAuth admission change, including clearing OAuth transaction rows, a verified
-schema-10 pre-migration backup, and production Compose ingress attribution installed through the
-existing reviewed host-Compose updater. The scoped Sol security review and independent Luna Docker
-bridge regression passed. The first full local gate failed on four stale schema-10 test expectations;
-the corrected full gate passed, and parent integrated review found no blocker for the declared local
-scope. The change is not deployed; production remains schema 10.
+route is not the current setup flow. `R-ASTRA-110` and the `R-ASTRA-102` checks and release details
+below remain historical evidence. The current deployment is `R-ASTRA-111` at pushed revision
+`82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. Its migration cleared OAuth transaction
+rows and preserved user/session/research rows; the deployment verified a schema-10 pre-migration
+backup and installed production Compose ingress attribution through the existing reviewed
+host-Compose updater. The
+corrected local gate, scoped Sol security review, independent Luna Docker bridge regression, and
+bounded public probes passed for their declared scopes; the earlier gate failure on stale schema-10
+expectations remains historical. SMTP was unconfigured during deployment checks, and no email
+delivery or authenticated owner-browser acceptance is claimed. See the
+[R-ASTRA-111 evidence](../../MVP-PLAN.md).
 Backup/restore compatibility and caller limits are documented in the
 [backup guide](../operations/backup-restore.md) and [API reference](../reference/api.md).
 Independent scoped QA and Astra's security re-review are recorded in the root plan. Its local gate

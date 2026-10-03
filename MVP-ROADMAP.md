@@ -4,8 +4,8 @@
 
 ### Current approval status
 
-`R-ASTRA-110` is the current Microsoft Authenticator iOS setup-routing follow-on, deployed at pushed
-clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311`. `R-ASTRA-109` is the historical
+`R-ASTRA-110` is the historical Microsoft Authenticator iOS setup-routing follow-on, deployed at
+pushed clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311`, schema 10. `R-ASTRA-109` is the historical
 pre-R110 deployed Microsoft Authenticator dropdown follow-on, extending the chooser introduced by `R-ASTRA-108` after
 the deployed key-reuse repair in `R-ASTRA-107`; `R-ASTRA-103` is the deployed authenticator-only baseline.
 Invite-only GitHub OAuth remains the identity boundary, while production requires a six-digit TOTP
@@ -16,14 +16,14 @@ Recovery codes are
 hashed and single-use. Production GitHub-auth backup/restore actions require fresh TOTP proof; local
 authentication can use fresh local-passkey proof for the same step-up window.
 
-`R-ASTRA-111` tracks source-only OAuth admission changes: schema 11 clears OAuth transaction rows
-while preserving users, sessions, and research records; the supported CLI verifies a
-schema-10 pre-migration backup. The scope also includes explicit production Compose ingress
-attribution installed through the existing reviewed host-Compose updater. The scoped Sol security
-review and independent Luna Docker bridge regression passed. The first full local gate failed on
-four stale schema-10 test expectations; the corrected full gate then passed, and parent integrated
-review found no blocker for the declared local scope. The deployed R-ASTRA-110 image remains schema
-10; no R-ASTRA-111 deployment or release is claimed.
+`R-ASTRA-111` is deployed at pushed clean `main` revision
+`82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. The migration cleared OAuth transaction rows
+while preserving users, sessions, and research records; the supported CLI verified a schema-10
+pre-migration backup. Production Compose ingress attribution was installed through the existing
+reviewed host-Compose updater. The first local gate failed on four stale schema-10 test expectations;
+the corrected gate and parent integrated review passed for their declared local scopes. Live probes
+confirmed the schema-11 auth boundary. SMTP was unconfigured during checks; authenticated owner UI,
+live email delivery, and physical iPhone acceptance remain **Unavailable**.
 
 Scoped independent QA passed `64` authentication/repository/list checks, `123` API checks, `61`
 backup/CLI checks, `10` desktop/mobile-emulated auth-flow cases, `27` frontend checks, Ruff, and

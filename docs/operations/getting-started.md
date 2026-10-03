@@ -86,23 +86,22 @@ single-use invitation. The authenticator code is the sole application second fac
 schema-10 migration revokes stored passkeys and old passkey sessions; the application does not create
 or accept WebAuthn credentials.
 
-`R-ASTRA-111` is a source-only schema-11 OAuth-admission follow-on; the production deployment remains
-R-ASTRA-110 on schema 10. The migration clears OAuth transaction rows before storing a hashed
-caller key, preserving user, session, and research rows; an in-progress GitHub authorization must
-restart after migration. The supported CLI verifies a pre-migration schema-10 backup, while direct
-schema-10 restore over schema 11 is unsupported; see the
-[backup and restore guidance](backup-restore.md#automatic-backups). The source limits OAuth starts
-to 8 per effective caller and 64 per process per minute, with 8 and 128 outstanding transactions
-respectively. Shared NAT/proxy egress addresses share a caller budget. The source repair adds
-explicit production Compose ingress attribution; install that configuration through the existing
-reviewed host-Compose updater before image promotion. The scoped Sol security review and independent
-Docker bridge regression passed. The first full local gate failed on four stale schema-10 test
-expectations; the corrected full gate passed, and parent integrated review found no blocker for the
-declared local scope. The production deployment remains schema 10; no R-ASTRA-111 promotion is
-claimed.
+`R-ASTRA-111` is deployed at pushed `main` revision
+`82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. Its migration clears in-progress OAuth
+transactions before storing a hashed caller key; users, sessions, and research records were
+preserved, and a verified schema-10 pre-migration backup is available. Sign-in flows already in
+progress must restart. OAuth admission is limited to 8 starts per effective caller and 64 per
+process per rolling minute, with 8 and 128 outstanding transactions respectively; callers sharing
+an effective NAT/proxy address share the caller budget. Production Compose ingress attribution is
+installed through the existing reviewed host-Compose updater. The corrected local gate, scoped
+security review, Docker bridge regression, deployment, and bounded public probes passed for their
+declared scopes; the initial stale-schema full-gate failure remains recorded. See the
+[R-ASTRA-111 evidence](../../MVP-PLAN.md).
 The supported CLI disables Uvicorn proxy-header
 rewriting. Direct Uvicorn launches require `--no-proxy-headers` so caller attribution sees the raw
-socket peer. See [local configuration](../configure/local-configuration.md) and the
+socket peer. SMTP host settings were absent at deployment checks, so email invitations are
+unconfigured and no email delivery is claimed. Authenticated owner-browser and physical iPhone
+acceptance remain unavailable. See [local configuration](../configure/local-configuration.md) and the
 [API reference](../reference/api.md) for the caller rules and limits.
 
 ### Authenticator enrollment and recovery

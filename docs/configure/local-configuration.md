@@ -47,16 +47,18 @@ files and command arguments.
 Invitation expiry defaults to one day. The supported range is 60 seconds through seven days;
 `STOCK_PROBS_AUTH_INVITATION_TTL_SECONDS` changes that lifetime.
 
-`R-ASTRA-111` adds source-only GitHub OAuth admission limits: at most 8 starts per effective
+`R-ASTRA-111` deploys GitHub OAuth admission limits: at most 8 starts per effective
 caller and 64 total starts per application process in a rolling minute, plus at most 8 outstanding
 transactions per caller and 128 total. Per-minute counters are process-local; outstanding
 transaction counts are stored with OAuth state. Callers sharing an effective source IP, such as
 behind a shared NAT, share the caller limit. The source uses the socket peer address and accepts
 `CF-Connecting-IP` only when that peer matches `STOCK_PROBS_TRUSTED_PROXY_HOSTS`; it does not use
 other forwarded-IP headers. The source change adds explicit production Compose ingress
-attribution; install its configuration through the existing reviewed host-Compose updater before
-image promotion. Independent Docker bridge QA passed for the local Compose path. The schema-11 change is not deployed;
-production remains on schema 10, and in-progress GitHub authorizations must restart after migration.
+attribution, installed through the existing reviewed host-Compose updater. The current deployment
+is R-ASTRA-111 at schema 11; its migration cleared in-progress OAuth transactions, so any sign-in
+already underway must restart. Production SMTP variables were absent during deployment checks;
+email invitations remain unconfigured and no mail delivery was verified. See the
+[R-ASTRA-111 evidence](../../MVP-PLAN.md).
 
 Use the supported CLI to run the app: it disables Uvicorn proxy-header rewriting so the
 application can inspect the socket peer before applying the trusted-proxy rule. If launching

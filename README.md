@@ -194,16 +194,17 @@ Ledger does not create or accept WebAuthn credentials.
 
 The R-ASTRA-103 implementation is the deployed authenticator-only baseline. R-ASTRA-107 is the
 deployed enrollment key-reuse repair, R-ASTRA-108 introduced an app chooser before setup-key
-generation, and the historical pre-R110 R-ASTRA-109 introduced Microsoft Authenticator guidance.
-R-ASTRA-110 is the current deployed iOS setup-routing follow-on.
-`R-ASTRA-111` tracks the source-only schema-11 OAuth admission change. Migration clears OAuth
+generation; R-ASTRA-109 and R-ASTRA-110 are historical deployed UI/authenticator setup follow-ons.
+R-ASTRA-111 is the current deployment at pushed clean `main` revision
+`82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. Its migration clears OAuth
 transaction rows while preserving users, sessions, and research data; the supported CLI verifies a
 schema-10 pre-migration backup. Production Compose caller attribution is part of the repair and is
 installed through the existing reviewed host-Compose updater. The scoped Sol security review and
 independent Docker bridge regression passed. The first full local gate failed on four stale
-schema-10 test expectations; the corrected full gate then passed, and parent integration review
-found no blocking issue for the declared local scope. Production remains on schema 10; no R-ASTRA-111
-deployment/release or live email delivery is claimed. See [OAuth API limits](docs/reference/api.md) and
+schema-10 test expectations; the corrected full gate and parent integrated review passed for their
+declared local scopes. Live probes confirmed schema 11 and the bounded anonymous/authentication
+boundary. SMTP was unconfigured during the read-only checks; live email delivery and authenticated
+owner UI acceptance remain unavailable. See [OAuth API limits](docs/reference/api.md) and
 [backup migration guidance](docs/operations/backup-restore.md).
 Complete owner authentication remains pending. The
 R-ASTRA-103 local gate passed: receipt `test-results/local-gates/R-ASTRA-103-20260928T235350Z/evidence.json` reports `707`

@@ -133,12 +133,11 @@ an imported database advances schema. Linode VM Backups are an additional host r
 release has no independent encrypted off-server backup, so the configured Linode retention and a
 recorded recovery rehearsal remain launch prerequisites. See [getting started](getting-started.md).
 
-`R-ASTRA-111` adds a source-only schema-11 OAuth admission migration; it is not deployed, and the
-production image remains schema 10. The migration clears OAuth transaction rows because they cannot
-be bound to the new caller key, then adds a hashed caller-key column; in-progress GitHub
-authorizations must restart after migration. It does not
-change users, sessions, or research records. The supported CLI creates and verifies a pre-migration
-schema-10 backup before applying the migration. Restore requires the backup schema to match the
-active schema, so a schema-10 backup cannot be directly restored or promoted over schema 11. Use a
-schema-10-compatible offline restore and migrate a copy through the supported CLI; verify the copy
-before any promotion. A completed schema-10-to-11 backup/restore rehearsal is not claimed.
+`R-ASTRA-111` is deployed on schema 11. Its migration clears OAuth transaction rows because they
+cannot be bound to the new caller key, then adds a hashed caller-key column; in-progress GitHub
+authorizations must restart after migration. The deployed migration preserved users, sessions, and
+research records, and the supported CLI verified a pre-migration schema-10 backup. Restore requires
+the backup schema to match the active schema, so a schema-10 backup cannot be directly restored or
+promoted over schema 11. Use a schema-10-compatible offline restore and migrate a copy through the
+supported CLI; verify the copy before any promotion. A completed schema-10-to-11 backup/restore
+rehearsal is not claimed. See the [R-ASTRA-111 evidence](../../MVP-PLAN.md).

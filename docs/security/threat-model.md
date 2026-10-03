@@ -22,22 +22,24 @@ legacy host; functional owner/invited-user acceptance remains pending. E60 recor
 current-machine browser passkey/sign-out limitation; E61 records the locally accepted logout and
 mode-aware passkey repair with independent QA, and E62 records the passing full local gate. E63
 records its then-current schema-8 image deployment and public probes; E64 records Astra's no-P1/P2 live read-only
-review. R-ASTRA-103 established the deployed schema-10 authenticator-only baseline. The current
-deployment is R-ASTRA-110 at pushed revision
-`566baab14c298fb52b5edb3138d64cd3e9123311`, schema 10. The R-ASTRA-107 key-reuse repair is included
-in that deployment. Owner TOTP enrollment and authenticated workspace acceptance remain
-**Unavailable** in agent-observed evidence. The user later reported successful Firefox sign-in; this
-is an attributed report that has not been independently verified and does not independently
-establish authenticated workspace retrieval.
-`R-ASTRA-111` tracks a source-only OAuth admission change. Its migration advances the source schema
-to 11 and clears OAuth transaction rows before adding a caller-key hash; it does not
-rewrite user, session, or research records. The scope also includes explicit production Compose
-ingress attribution; install that configuration through the existing reviewed host-Compose updater
-before image promotion. The supported CLI migration path creates and verifies a schema-10
-pre-migration backup. The scoped Sol security review and independent Luna Docker bridge regression
-passed. The first full local gate failed on four stale schema-10 test expectations; the corrected
-full gate passed, and parent integrated review found no blocker for the declared local scope.
-Production remains on deployed R-ASTRA-110 schema 10; no R-ASTRA-111 deployment is claimed.
+review. R-ASTRA-103 established the deployed schema-10 authenticator-only baseline. R-ASTRA-110 at
+pushed revision `566baab14c298fb52b5edb3138d64cd3e9123311`, schema 10, is the historical deployment
+preceding R-ASTRA-111; it includes the R-ASTRA-107 key-reuse repair. The current deployment is
+R-ASTRA-111 at pushed revision `82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. The user
+later reported successful Firefox sign-in,
+and production database inspection confirms one enrolled TOTP factor. The report is attributed;
+authenticated owner-browser code verification and workspace retrieval remain **Unavailable** in
+agent-observed evidence.
+`R-ASTRA-111` advances the deployed schema to 11 and clears OAuth transaction rows before adding a
+caller-key hash; it preserves user, session, and research records. The deployment verified a
+schema-10 pre-migration backup and installed production Compose ingress attribution through the
+existing reviewed host-Compose updater. The local gate, scoped Sol security review,
+independent Luna Docker bridge regression, deployment, and bounded public boundary probes passed
+for their declared scopes; the initial local-gate failure on four stale schema-10 expectations
+remains historical. OAuth transactions already in progress had to be restarted after migration.
+Production SMTP configuration was absent during deployment checks, and no mail delivery or
+authenticated owner-browser acceptance is claimed. See the
+[R-ASTRA-111 evidence](../../MVP-PLAN.md).
 The earlier private
 clean-main image is revision
 `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256

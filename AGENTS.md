@@ -149,8 +149,8 @@ dirty-worktree evidence; it does not itself establish release/export/commit/push
 
 ### Current approval status
 
-`R-ASTRA-110` is the current Microsoft Authenticator iOS setup-routing follow-on, deployed at pushed
-clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311`; `R-ASTRA-109` is the historical
+`R-ASTRA-110` is the historical Microsoft Authenticator iOS setup-routing follow-on, deployed at
+pushed clean `main` revision `566baab14c298fb52b5edb3138d64cd3e9123311` with schema 10; `R-ASTRA-109` is the historical
 pre-R110 deployed dropdown follow-on at pushed revision `3ec26d2826bf4acfbe0b8af8eaf2bb7b8ad54d5d`. The chooser includes
 Microsoft Authenticator and gives its selected-app setup instructions. `R-ASTRA-108` is the preceding chooser refinement;
 `R-ASTRA-107` is the key-reuse repair, and `R-ASTRA-103` is the deployed authenticator-only baseline.
@@ -163,12 +163,13 @@ without independent browser evidence; it does not independently establish authen
 access.
 Physical iPhone code acceptance and actual Microsoft Authenticator interaction remain
 **Unavailable**.
-`R-ASTRA-111` is the source-only schema-11 OAuth admission follow-on. The scoped Sol security
-review and independent Luna Docker bridge and operations checks passed. The first full local gate
-failed on four stale schema-10 test expectations; the repaired full gate then passed, and parent
-integrated review found no blocking issue for the declared local scope. Production remains on
-deployed R-ASTRA-110 schema 10; R-ASTRA-111 deployment/release and current live email delivery are
-not claimed. The
+`R-ASTRA-111` is current, deployed at pushed clean `main` revision
+`82f2dfed76f6aee2a1ef9c3decd675ed72d89fed`, schema 11. Its first full local gate failed on four
+stale schema-10 expectations; the repaired full gate passed, and the parent integrated review found
+no blocker for the declared local scope. Post-deployment probes confirmed the health/auth/private
+route boundary and a bounded GitHub OAuth redirect; authenticated owner UI, actual email delivery,
+physical iPhone acceptance, and runtime model/agent discovery remain **Unavailable**. SMTP was
+unconfigured during the read-only checks. The
 current runtime model/agent discovery status remains **Unavailable** until the required fresh
 Codex task and OpenCode restart.
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`

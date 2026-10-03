@@ -60,16 +60,17 @@ flow. Invitation creation, listing, and email submission require an administrato
 and revocation are limited to the signed-in user's own sessions. The HTTP API has no invitation
 revocation route; invitations expire and can be redeemed once.
 
-`R-ASTRA-111` adds source-only admission bounds to GitHub OAuth start: 8 starts per effective caller
+`R-ASTRA-111` applies admission bounds to GitHub OAuth start: 8 starts per effective caller
 and 64 per app process in a rolling minute, plus 8 outstanding transactions per caller and 128
 overall. The minute counters are process-local; outstanding transaction records are database-backed.
 Per-caller overflow returns `429` with `Retry-After`; global start or outstanding capacity can return
 `503`. The caller key is a keyed hash of the socket peer IP. A peer configured in
 `STOCK_PROBS_TRUSTED_PROXY_HOSTS` may supply `CF-Connecting-IP`; other forwarded-IP headers are not
 used. Shared NAT or proxy egress addresses share the per-caller limit. Production Compose ingress
-attribution and the reviewed host-Compose update path are part of the source change; the independent
-local Docker bridge regression passed. The schema-11 migration and limits are source-only and not
-deployed; production remains on schema 10.
+attribution is installed through the reviewed host-Compose update path. These limits are deployed
+with R-ASTRA-111 on schema 11; in-progress OAuth transactions were cleared during migration and
+must be restarted. The independent local Docker bridge regression and bounded public boundary
+probes passed. See the [R-ASTRA-111 evidence](../../MVP-PLAN.md).
 
 `POST /api/v1/auth/invites/email` returns `submission_status: "smtp_accepted"` when the configured
 SMTP server accepts the submission. That response does not prove mailbox delivery or reading.
