@@ -1177,8 +1177,11 @@ accessibility rules there.
   be live-verified, keep assistant generation disabled and report the blocker; do not substitute a
   paid route. Reject any model/provider whose terms prohibit production or confidential use,
   regardless of a user consent setting.
-- Use bounded TinyFish search/fetch only: fixed operation types, explicit destination/redirect
-  checks, response and item bounds, and a hard execution deadline. It must not become arbitrary
+- Use OpenCode V2's built-in search/fetch through the same-container harness, with fixed operation
+  types, explicit destination/redirect checks, response and item bounds, and a hard execution deadline.
+  The user's later correction excludes TinyFish, custom search replacements, and new mandatory
+  account-based services. Verify the allowed native configuration; unavailable search keeps its
+  required acceptance gate open. It must not become arbitrary
   open-web browsing or autonomous follow-up. Public-search citations show source and retrieval
   date. Before private context leaves the local service, show the user the exact context preview
   and require confirmation.
@@ -1206,7 +1209,7 @@ and make no model request.
 
 Rows must also cover desktop/mobile panel states; theme, focus, keyboard, screen reader,
 forced-colors and print behavior; model/provider availability and catalog terms/version; history
-CRUD, streaming, cancel and reconnect; every MCP/browser/TinyFish tool; public-search citations and
+CRUD, streaming, cancel and reconnect; every MCP/browser/native-search tool; public-search citations and
 private-query previews; action previews and replay; sensitive-admin TOTP; secret isolation;
 budget/storage limits; worker startup, failure, restart and kill-switch states; and migration and
 rollback branches. Negative cases cover stale route/context, role changes and session revocation,
@@ -1221,9 +1224,9 @@ resource behavior within the combined 1 GB limit as a hard acceptance row.
 | 1 | Pinned V2 runtime integration | Pin OpenCode V2.0.7; port the inspected supervisor/start, async prompt API, and catalog patterns to the same FastAPI image; run the worker under a separate least-privileged UID; keep app health separate from assistant readiness, restarts bounded, and one-shot commands isolated. | **In progress; authorized; implementation and acceptance evidence pending** |
 | 2 | Provider feasibility and administration | Pass a real credential-free free-Zen response and verify published no-training terms plus app-level consent enforcement; maintain the central model catalog separately from development routing and test fixtures. Verify masked private credentials, existing sensitive-admin fresh-TOTP safeguards, SSRF protections, no paid fallback, and disabled behavior on unavailable provider. | **Pending** |
 | 3 | Session, conversation, and storage service | Implement per-call active-session-owned MCP/browser bridge, normalized user-only stream events, conversations retained until deleted, owner SQLite, compact receipts, transient-cache cleanup and backup policy, history bounds, streaming, cancellation, reconnect, citations, and visible tool activity. | **Pending** |
-| 4 | Actions and bounded research tools | Add exact-context private-query preview, single-use exact-expiry confirmation, bounded TinyFish search/fetch, and retrieval-date public citations under fixed tool/time limits. Sensitive admin actions follow existing TOTP safeguards; no arbitrary code or autonomous jobs. | **Pending** |
+| 4 | Actions and bounded research tools | Add exact-context private-query preview, single-use exact-expiry confirmation, OpenCode V2 built-in search/fetch, and retrieval-date public citations under fixed tool/time limits. Exclude TinyFish, custom search replacements, and new mandatory account-based services. Sensitive admin actions follow existing TOTP safeguards; no arbitrary code or autonomous jobs. | **Pending** |
 | 5 | Full UI and product matrix | Implement the approved B panel across every listed route and existing domain, exercising actual controls and states, including provider-free saved-result reopen and real mobile keyboard/safe-area behavior. | **Pending** |
-| 6 | Required local/independent gates | Pass native model response, MCP, TinyFish websearch, security, every route/domain/control, mobile/accessibility, cross-user/session/stream/replay cases, DB/storage bounds, and combined 1 GB resource checks. Unavailable required checks block promotion. Luna xhigh build lanes report first, independent QA follows, and parent Sol performs integrated review. | **Pending** |
+| 6 | Required local/independent gates | Pass native model response, MCP, OpenCode V2 built-in websearch, security, every route/domain/control, mobile/accessibility, cross-user/session/stream/replay cases, DB/storage bounds, and combined 1 GB resource checks. Unavailable required checks block promotion. Luna xhigh build lanes report first, independent QA follows, and parent Sol performs integrated review. | **Pending** |
 | 7 | PR-bound recovery rehearsal | On the current Codex branch and required PR, bind the candidate to the last-known image/revision/schema/hash, verified backup, rollback trigger, and fixed MCP/Terraform commands. Before any migration, verify a backup and hold maintenance to prevent writes through candidate acceptance; rehearse schema-upgrade readiness failure and safe verified-backup recovery before writes resume. | **Pending** |
 | 8 | Merge and guarded deployment | Merge only after all gates and the tested PR-bound rollback pass. Publish/deploy one image through the existing publish/deploy MCP and Terraform workflow, initially with the assistant disabled; complete owner canary, then explicitly enable invited users. | **Pending** |
 | 9 | Post-release communication | Only after exact reviewed-revision deployment and service health are verified, use the existing authorized personal email thread for the three authorized beta recipients. Include screenshots and a beautiful, accessible illustrated HTML and PDF help guide; ask about the document, feature, and future features, and use the beta-support skill. | **Pending** |

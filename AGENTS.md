@@ -265,6 +265,15 @@ and a beautiful, accessible illustrated HTML and PDF help guide, and ask about t
 and future features. Missing or mismatched deployment/health evidence means hold the email; no
 recipient is added by this task-scoped exception.
 
+The user's subsequent `R-ASTRA-120` correction supersedes the earlier TinyFish search plan:
+use OpenCode V2's built-in search through the same-container harness. Do not use TinyFish,
+replace native search with a custom search adapter, or add a mandatory external service requiring
+a new account. The harness executes chat, model calls, and tool calls; application code enforces
+session ownership, permissions, exact confirmations, bounded operation, and event delivery.
+Verify native search availability with the allowed configuration. If it is unavailable, report
+that limitation and keep the required release gate open; do not silently substitute a service,
+create an account, or claim that an empty provider list proves universal lack of support.
+
 For this invitation-support thread only, the user authorized direct follow-up messages from their
 personal Gmail in the same invitation email thread, including requests for feedback. Read replies
 in that thread and correlate them with sanitized production evidence before asking the user to relay

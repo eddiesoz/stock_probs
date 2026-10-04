@@ -75,11 +75,13 @@ coverage checks **Passed** (9 categories, 14 topics, 8 skill-governance entries;
 change-aware coverage 10 changed files, zero violations). The documentation test suite was not run.
 Isolated
 V2.0.7 API discovery passed only for discovery: its provider catalog was empty and integration
-discovery returned 229 descriptors. Credential-free Zen, model response, MCP, TinyFish websearch,
+discovery returned 229 descriptors. Credential-free Zen, model response, MCP, native V2 websearch,
 published no-training terms/app consent enforcement, security, feature/mobile, accessibility, and
 combined 1 GB resource acceptance are not established. Native model, MCP, and websearch execution
 results are **Unavailable**; credential-free Zen remains **Pending**. No key/signup action occurred.
 Source implementation is authorized and in progress; required checks and release remain **Pending**.
+The user's subsequent correction requires the same-container harness and OpenCode V2's built-in
+search; TinyFish, custom search replacements, and new mandatory account-based services are excluded.
 All required checks must pass before merge and promotion; deploy disabled, then owner-canary, then invited-user enablement. A tested PR-bound
 rollback is mandatory, with no backup restore over post-release writes. No release readiness is
 inferred from design, images, files, or configuration.
