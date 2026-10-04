@@ -202,7 +202,7 @@ See the [current evidence](../../MVP-PLAN.md).
 
 ### Recovering an invitation email mismatch
 
-After R-ASTRA-118 is deployed, only an active, unused, unexpired email-only invitation can show a
+With deployed R-ASTRA-118, only an active, unused, unexpired email-only invitation can show a
 specific `invitation_email_mismatch` response. This preserves the existing atomic behavior that
 leaves the invitation valid after a mismatch. Have the
 invitee check or add the invited address under
@@ -210,8 +210,9 @@ invitee check or add the invited address under
 the same browser and enter the original invitation code again. Do not refresh a callback page.
 If the person already has an account, use normal sign-in instead. Used/expired invitations and
 numeric-ID invitations retain generic error handling. Focused independent backend/browser QA passed,
-but the full local gate and deployment remain pending; until deployed, use the current production
-flow and do not promise the new message.
+as did the full local gate and schema-12 deployment. Production probes and a dummy-callback browser
+check showed the recovery guidance; they do not confirm the remaining invitee's sign-in or verified
+email. See the [MVP plan](../../MVP-PLAN.md) for the exact evidence and limits.
 
 ### Resend sending domain and credential workflow
 

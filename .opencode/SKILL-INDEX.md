@@ -1,7 +1,7 @@
 # Project skill index
 
 Project-local OpenCode skills used by Stock Probability. This index is maintained with skill
-changes and currently contains **7 skills**.
+changes and currently contains **8 skills**.
 
 ## Documentation skills
 
@@ -28,6 +28,12 @@ changes and currently contains **7 skills**.
 | `local-gate-evidence` | [`skills/local-gate-evidence/SKILL.md`](skills/local-gate-evidence/SKILL.md) | Run and audit Stock Probability local gates with fail-closed receipts, structured performance rows, honest architecture labels, and separate export checkpoints. Use when executing, repairing, or reviewing local-gate, performance, ARM64, package, release, or checkpoint evidence. |
 | `browser-qa` | [`skills/browser-qa/SKILL.md`](skills/browser-qa/SKILL.md) | Build and audit deterministic Stock Probability browser QA for accessibility, responsive themes, race handling, and complete news states. Use when adding or reviewing Playwright fixtures, dashboard regressions, walkthrough captures, axe or contrast checks, no-flash behavior, or request supersession. |
 
+## Customer communication skills
+
+| Skill | Path | Description |
+| --- | --- | --- |
+| `beta-testing-email-workflow` | [`skills/beta-testing-email-workflow/SKILL.md`](skills/beta-testing-email-workflow/SKILL.md) | Coordinate beta release announcements and follow-up with authorized testers, and investigate existing-thread issue reports through verified fixes and retest requests. Use for beta release outreach or authorized beta-support follow-up. |
+
 ## Persistence and security skills
 
 | Skill | Path | Description |
@@ -42,5 +48,6 @@ changes and currently contains **7 skills**.
 3. [`stock-probability-skill-maintenance`](skills/stock-probability-skill-maintenance/SKILL.md)
 4. [`local-gate-evidence`](skills/local-gate-evidence/SKILL.md)
 5. [`browser-qa`](skills/browser-qa/SKILL.md)
-6. [`database-conventions`](skills/database-conventions/SKILL.md)
-7. [`security-audit`](skills/security-audit/SKILL.md)
+6. [`beta-testing-email-workflow`](skills/beta-testing-email-workflow/SKILL.md)
+7. [`database-conventions`](skills/database-conventions/SKILL.md)
+8. [`security-audit`](skills/security-audit/SKILL.md)

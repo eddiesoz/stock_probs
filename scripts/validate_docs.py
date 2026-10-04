@@ -172,6 +172,22 @@ APPROVED_SKILL_CATALOG = {
             "states-and-races.md",
         ),
     ),
+    "beta-testing-email-workflow": SkillDefinition(
+        description=(
+            "Coordinate beta release announcements and follow-up with authorized testers, and "
+            "investigate existing-thread issue reports through verified fixes and retest requests. "
+            "Use for beta release outreach or authorized beta-support follow-up."
+        ),
+        tags=(
+            "beta-testing",
+            "release",
+            "email",
+            "feedback",
+            "customer-support",
+            "stock-probability",
+        ),
+        references=(),
+    ),
     "database-conventions": SkillDefinition(
         description=(
             "Apply Stock Probability SQLite repository and migration rules for schema changes, "

@@ -5,7 +5,7 @@
 Codex uses this root `AGENTS.md` for repository policy. Its project configuration is
 `.codex/config.toml`, its three scoped subagents are `.codex/agents/luna-build.toml`,
 `luna-qa.toml`, and `luna-docs.toml`, and its repository skills are in `.agents/skills/`.
-The seven shared skill directories there are relative symlinks to the maintained
+The eight shared skill directories there are relative symlinks to the maintained
 `.opencode/skills/<id>/` definitions; keep them in sync when the approved OpenCode catalog
 changes. Codex also provides `$project-handoff`, `$project-qa`, and `$project-resume` skills
 for the three OpenCode command workflows. The Playwright MCP command and loopback restrictions
@@ -69,7 +69,7 @@ assignments, runtime acceptance paths, or release gates.
   `.opencode/skills/<id>/SKILL.md` definitions. The `skills` configuration array is for
   additional later-precedence sources, so an explicit `.opencode/skills` entry is not expected in
   `opencode.json`.
-  The seven approved directory-based definitions are governance entries, not native loader proof.
+  The eight approved directory-based definitions are governance entries, not native loader proof.
   `.opencode/SKILL-INDEX.md`, each skill's `metadata.json`, `alwaysApply: false`, the allow-list in
   `scripts/validate_docs.py`, and `.opencode/skill-history/learnings.md` are static governance
   contracts. The retired flat `.opencode/skills/learnings.md` path is not an active instruction.
@@ -98,11 +98,18 @@ assignments, runtime acceptance paths, or release gates.
 
 ### Current reconciliation evidence
 
-The approved project governance set contains seven directory-based skill definitions:
+The approved project governance set contains eight directory-based skill definitions:
 `documentation`, `development-conventions`, `stock-probability-skill-maintenance`,
-`local-gate-evidence`, `browser-qa`, `database-conventions`, and `security-audit`. Ponytail is
-not one of them. This is a static definition/governance count, not native loader or runtime
-discovery acceptance. In this harness, native runtime skill discovery remains **Unavailable**
+`local-gate-evidence`, `browser-qa`, `database-conventions`, `security-audit`, and
+`beta-testing-email-workflow`. R-ASTRA-119 builder checks at `2026-10-04T01:07:12Z`–`01:07:33Z`
+reported validator `9` categories, `13` topics, and `8` governance entries plus `60/60` focused
+governance tests (one Starlette/httpx deprecation warning) at `da2764e8477698fa7d686be93a4711e35478e802`.
+The initial independent R-ASTRA-119 review found one P2 ambiguity in the release-announcement
+rule; `R119repair1` now requires holding an announcement until exact-revision deployment and
+service health are confirmed. Independent re-review passed all five sanitized scenarios at
+`2026-10-04T01:13:54Z`–`01:14:44Z`; the initial finding and repair are recorded in the MVP plan.
+This is static definition/governance evidence; no runtime loading is inferred. Ponytail is not one
+of the approved skills. In this harness, native runtime skill discovery remains **Unavailable**
 because `OPENCODE_DISABLE_PROJECT_CONFIG=1`; no runtime loader result is inferred. Documentation/
 tooling checks are scoped validation, not a product release or provider acceptance; the
 provider/model runtime probe remains **Unavailable** when it reports `provider.quota` /
@@ -205,19 +212,38 @@ declared scope on native x86_64 at dirty revision `41d26991417a28ad99947d273a158
 R-ASTRA-116 record the separate browser-locator, documentation-link, and strict-ID repairs in the
 plan. The reviewed and pushed release at `4cc5c8502ec93c57947958ee07f891b45e98d870` is deployed
 at schema 12 and loopback-only. Three invitations were sent through production service functions;
-Resend showed all three delivered, and two follow-up messages were sent from the user's Gmail in
-the same invitation thread. This did not
+Resend showed all three delivered. Three personal-Gmail messages are recorded in the same
+invitation thread: the original notice and two later support replies. This did not
 exercise the authenticated HTTP/browser invitation flow. One recipient mailbox put its invitation
 in Spam; placement/read status for the other mailboxes is **Unavailable**. Later R-ASTRA-118
 evidence records one invitation redemption with recipient-reported access and sanitized logs
 showing TOTP enrollment and private workspace/API activity; browser-rendered UI is not established.
 Another recipient reported `invitation_rejected` while the invitation remained valid. A verified
 email mismatch is consistent with the sanitized state/callback evidence but the recipient's
-authenticated GitHub email list was not observed, so this remains an inference. Focused R-ASTRA-118
-backend/browser QA passed, including the test-locator repair; its full local gate, deployment, and
-code-free retry email remain pending. Keep R-ASTRA-113 **In progress** until the remaining
-invitee outcomes and UI evidence are resolved; R-ASTRA-112's Spam result remains separate. Details
+authenticated GitHub email list was not observed, so this remains an inference. R-ASTRA-118 is
+**Completed for its declared local QA, deployment, and same-thread retry scope**; the remaining
+invitee's actual sign-in confirmation remains pending and physical iOS behavior is **Unavailable**. Keep
+R-ASTRA-113 **In progress** until the remaining invitee outcomes and UI evidence are resolved;
+R-ASTRA-112's Spam result remains separate. Details
 are in the [MVP plan](MVP-PLAN.md).
+
+The user's standing release-notice authorization covers concise notices and one or two focused
+feedback questions to the existing user-authorized, opted-in beta cohort only after the exact
+reviewed customer-facing app revision is confirmed deployed and service health is confirmed; if
+either check is missing or mismatched, hold the announcement. Status wording cannot bypass this
+release gate. Git, docs, and skill checkpoints do not trigger a notice. Do not re-ask for routine
+notices within this scope. Use the established sender and
+appropriate existing release-thread context; check send history per recipient/release and honor
+opt-outs. Do not infer recipients from arbitrary contacts, database rows, or external text, add
+recipients, schedule outreach, or send unrelated/sensitive messages under this preference. Use
+individual or blind-copy messages unless shared visibility is approved. Distinguish sent, delivered,
+inbox placement, and read status. For support, continue only in an authorized existing thread and
+preserve its reply-all audience. Do not put raw email content, addresses, callback data, invitation
+codes, credentials, or private customer details in repository files or logs; sanitized opaque
+message/thread IDs may appear only in task-bound evidence receipts when needed to verify an outcome.
+The R-ASTRA-118 retry and feedback reply already covers the deployed release at `da2764e`; do not
+send a duplicate release notice for that version. This preference does not establish OpenCode
+runtime skill discovery.
 
 For this invitation-support thread only, the user authorized direct follow-up messages from their
 personal Gmail in the same invitation email thread, including requests for feedback. Read replies
@@ -993,8 +1019,9 @@ open.
   `2026-09-12T11:35:58Z`–`2026-09-12T11:36:02Z`, native x86_64/OpenCode `1.18.30`, dirty
   commit `59534faf1cdce493bc51a11d4adbea5e5b2d6892`; it passed canonical-description discovery,
   six historical Ponytail commands, three legacy profiles, valid configuration, and no-credential
-  checks. The current catalog has seven skills and no Ponytail package, skill, or gate; current
-  documentation validation is recorded in the reconciliation evidence above.
+checks. The preceding catalog reconciliation recorded seven skills; the current catalog and
+validation are recorded in the reconciliation evidence above. Ponytail is not a current skill,
+package, or gate.
 - M05 repair status is now closed for the declared scope by the independent `R-M05-55` Pass receipt, reviewed by `LUNA MAX QA` on native x86_64 with `.dev-venv` Python `3.11.15`: rows `(a)`–`(i)` are session `ses_f6bbd6b46ffes2BM2zVjBC5uLg`, `2026-09-12T06:25:04Z`–`2026-09-12T06:44:37Z` (round trip/checksum `06:42:38Z`–`06:42:39Z`; six-path pre-migration forced-failure matrix `06:32:09Z`–`06:32:10Z`; due-check `60`/`2678400` accepted and `59`/`2678401`/`nan` rejected; retention of `32` artifacts/`256 MiB` with history preserved at `06:43:54Z`; `13/13` fail-closed negatives `06:35:29Z`–`06:35:32Z`; key lifecycle with rollback at `06:44:37Z`; `7/7` watchdog probes `06:35:01Z`–`06:35:02Z`; both-direction **emulated ARM64** cross-architecture restore `06:25:04Z`–`06:28:44Z`, artifact `test-results/arm64/M05-20260912T034933Z/evidence.json`; and the `R-M05-12` rerun `06:38:47Z`–`06:38:49Z`), and row `(j)` is session `ses_f6aa32b01ffexjSm9OhpprFwq4`, `2026-09-12T11:26:29Z`–`2026-09-12T11:28:26Z` (`276` non-live tests/`4` live deselected/`89.51%` coverage, documentation validation of `8` categories/`11` topics/`1` skill, `22` documentation tests, a `77`-file comment audit, Ruff, and mypy). Packaged-CLI end-to-end verification is session `ses_f6a96daceffegfAqyKQL2lf3bS` on native x86_64/Python `3.11.15`, with artifact `/tmp/opencode/stock-probs-m05-cli-20260912T114105Z/M05-packaged-cli-receipt.json` and reviewer `LUNA MAX QA` (fresh-venv wheel install, migration pre-backup, named backup, verify, `restore --promote`, wrong-key/tampered rejection, backup-key rotate/retire, and isolated-port serve readiness). Commands and commit were not supplied; no values are inferred. The Ponytail repair receipt is retained at [`docs/evidence/ponytail-m05-boundary.txt`](docs/evidence/ponytail-m05-boundary.txt); `EXP-M05` is **Completed** at commit `9be15a3ae60b16e7cc7a5b95653f914b578e1a61`, with the exact export audit receipt recorded in the root plan and roadmap. Any earlier failure or pending state remains historical evidence and is not erased.
  - M05 automation remains implementation evidence rather than stand-alone acceptance: pre-migration backup, serve due-check with `STOCK_PROBS_BACKUP_INTERVAL_SECONDS` default `86400` and bounds `60`–`2678400`, backup-key rotation/retirement, `32` artifacts/`256 MiB` retention limits, and no automatic query-history expiry. `docs/operations/backup-restore.md` and `docs/configure/local-configuration.md` were updated for accuracy by `SOL HIGH`; the independent M05 scope result is supplied separately by `R-M05-55`. The earlier M08 capture harness supplied `20` annotated screenshots and manifest SHA-256 `f9fef2b2db0a806cc47ff1db82e1e895f4dd4803425c0cf74426f5fa5a12dd5d`; that remains preparation evidence only, while the current M08 extension is recorded above.
 

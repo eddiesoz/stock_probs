@@ -1,0 +1,7 @@
+{
+  "_comment": "OpenCode discovers this opt-in skill from SKILL.md frontmatter; this project catalog mirror is validated for exact parity.",
+  "name": "beta-testing-email-workflow",
+  "description": "Coordinate beta release announcements and follow-up with authorized testers, and investigate existing-thread issue reports through verified fixes and retest requests. Use for beta release outreach or authorized beta-support follow-up.",
+  "tags": ["beta-testing", "release", "email", "feedback", "customer-support", "stock-probability"],
+  "alwaysApply": false
+}

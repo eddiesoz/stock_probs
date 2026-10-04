@@ -78,13 +78,14 @@ def test_documentation_taxonomy_has_expected_size() -> None:
 
 
 def test_project_skill_governance_catalog_has_expected_entries() -> None:
-    assert len(APPROVED_SKILL_CATALOG) == 7
+    assert len(APPROVED_SKILL_CATALOG) == 8
     assert tuple(APPROVED_SKILL_CATALOG) == (
         "documentation",
         "development-conventions",
         "stock-probability-skill-maintenance",
         "local-gate-evidence",
         "browser-qa",
+        "beta-testing-email-workflow",
         "database-conventions",
         "security-audit",
     )
@@ -97,6 +98,9 @@ def test_project_skill_governance_catalog_has_expected_entries() -> None:
         for definition in APPROVED_SKILL_CATALOG.values()
     )
     for name in APPROVED_SKILL_CATALOG:
+        link = ROOT / ".agents/skills" / name
+        assert link.is_symlink()
+        assert link.readlink() == Path(f"../../.opencode/skills/{name}")
         for path in (ROOT / ".opencode/skills" / name).rglob("*"):
             if path.is_file() and path.suffix.lower() in {".md", ".json"}:
                 assert "ponytail" not in path.read_text(encoding="utf-8").casefold(), path
@@ -295,12 +299,12 @@ def test_unexpected_skill_governance_directory_mutation_fails(
 def test_project_governance_index_count_mutation_fails(documentation_repository: Path) -> None:
     index = documentation_repository / ".opencode/SKILL-INDEX.md"
     index.write_text(
-        index.read_text(encoding="utf-8").replace("**7 skills**", "**0 skills**"),
+        index.read_text(encoding="utf-8").replace("**8 skills**", "**0 skills**"),
         encoding="utf-8",
     )
 
     assert any(
-        "project governance skill count must be exactly 7" in issue
+        "project governance skill count must be exactly 8" in issue
         for issue in validate_repository(documentation_repository)
     )
 
@@ -624,7 +628,7 @@ def test_retired_ponytail_is_absent_from_index_and_current_status_is_superseding
     learnings = (ROOT / ".opencode/skill-history/learnings.md").read_text(encoding="utf-8")
     current_status = learnings.split("## 2026-09-11", maxsplit=1)[0]
 
-    assert "**7 skills**" in index
+    assert "**8 skills**" in index
     assert "ponytail-boundary-review" not in index
     assert "ponytail-boundary-review" in current_status
     assert "retired" in current_status.casefold()

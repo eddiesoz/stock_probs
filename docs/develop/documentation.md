@@ -107,11 +107,16 @@ no runtime model/profile discovery pass is inferred from it.
 Native V2 automatically discovers project skills from directory-based
 `.opencode/skills/<id>/SKILL.md` definitions. The `skills` configuration array supplies additional
 later-precedence sources, so an explicit `.opencode/skills` entry is not expected in
-`opencode.json`. The seven approved directory-based definitions are governance entries only. Their
+`opencode.json`. The eight approved directory-based definitions are governance entries only; the
+R-ASTRA-119 addition is `beta-testing-email-workflow`. Their
 `metadata.json` files,
 `alwaysApply: false`, `.opencode/SKILL-INDEX.md`, the allow-list in `scripts/validate_docs.py`,
 and `.opencode/skill-history/learnings.md` support static consistency and history; none is native
-loader/discovery proof. Native runtime skill discovery is **Unavailable** in this harness because
+loader/discovery proof. R-ASTRA-119 builder validation passed at `2026-10-04T01:07:12Z`–`01:07:33Z`
+with `9` categories, `13` topics, `8` governance entries, and `60/60` focused governance tests
+(one Starlette/httpx deprecation warning) at revision
+`da2764e8477698fa7d686be93a4711e35478e802`. This is static builder evidence, not independent skill
+QA. Native runtime skill discovery is **Unavailable** in this harness because
 `OPENCODE_DISABLE_PROJECT_CONFIG=1`; no runtime loader result is inferred. The active history path
 is `.opencode/skill-history/learnings.md`; the old flat
 `.opencode/skills/learnings.md` path is retired.
@@ -155,10 +160,12 @@ python3 scripts/check-doc-coverage-self-test.py
 The change-aware checker and self-test do not install hooks or mutate Git. A deliberate exception
 is explicit (`Doc-Gate: exempt`), not inferred from a builder report or an unavailable check.
 
-The approved project governance set contains seven directory-based skill definitions:
+The approved project governance set now contains eight directory-based skill definitions:
 `documentation`, `development-conventions`, `stock-probability-skill-maintenance`,
-`local-gate-evidence`, `browser-qa`, `database-conventions`, and `security-audit`. This static
-definition count is not native loader or runtime discovery acceptance. The current `R-ASTRA-98`
+`local-gate-evidence`, `browser-qa`, `database-conventions`, `security-audit`, and
+`beta-testing-email-workflow`. This static definition count is not native loader or runtime discovery
+acceptance. Earlier seven-entry counts and independent seven-skill checks remain historical receipts.
+The current `R-ASTRA-98`
 product evidence and its limitations are documented in the root records and [dashboard
 usage](../usage/dashboard.md); no retired Ponytail check is required for documentation
 completeness or acceptance. The current private deployment reconciliation covers the Terraform
@@ -236,19 +243,31 @@ flow, and never infer mailbox placement or invitation redemption from local QA o
 service-function delivery check. For R-ASTRA-113, independent local QA and the final native-x86_64
 gate passed (`796` Python tests), and the reviewed schema-12 release was deployed at pushed revision
 `4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were submitted through production
-service functions and Resend showed all three delivered; two follow-up messages were sent from the
-user's Gmail in the same invitation thread. This did not exercise the authenticated HTTP/browser send. One recipient mailbox classified
+service functions and Resend showed all three delivered. Three personal-Gmail messages are
+recorded in the same invitation thread: the original notice and two later support replies. This
+did not exercise the authenticated HTTP/browser send. One recipient mailbox classified
 its invitation as Spam; other mailbox placement/read status is unavailable. R-ASTRA-113 remains
 **In progress** overall: recipient feedback and sanitized logs support one invitee's redemption,
 TOTP enrollment, and private API access, but not browser-rendered UI. Another valid invitation was
 rejected; verified-email mismatch is an inference. The complete receipts and R114/R115/R116 repair history are in the
 [MVP plan](../../MVP-PLAN.md); R-ASTRA-112's Gmail Spam result remains separate.
-`R-ASTRA-118` documents the active email-bound invitation mismatch distinction while preserving
-the existing atomic no-consume behavior,
-fixed HTML error redirects, JSON compatibility, and UI guidance across this API, operator, and
-threat-model documentation. Focused independent backend/browser QA passed and found no source
-blocker; the initial browser locator failure and test-only repair remain in the plan. The full local
-gate and deployment are pending, so this contract is not production acceptance.
+`R-ASTRA-118` is **Completed for its declared local QA, deployment, and same-thread retry scope**.
+It documents the active email-bound invitation mismatch distinction while preserving the existing
+atomic no-consume behavior, fixed HTML error redirects, JSON compatibility, and UI guidance across
+the API, operator, and threat-model documentation. The full gate and deployment receipts are in the
+MVP plan. The remaining invitee's actual sign-in confirmation remains pending; physical iOS behavior
+is unavailable.
+
+`R-ASTRA-119` adds the approved `beta-testing-email-workflow` project skill and documents its
+authorization in `AGENTS.md`. Independent review found and repaired an ambiguous release-announcement
+rule; five sanitized scenarios passed. Hold release announcements until the exact reviewed revision
+is confirmed deployed and service health is confirmed; wording cannot bypass that gate. The standing
+notice applies to the existing opted-in beta cohort only, using the established sender and release
+context; docs/skill commits do not trigger notices. Check send history, honor opt-outs, avoid contact
+harvesting or new recipients, and distinguish sent/delivered/inbox/read status. The R-ASTRA-118
+support retry already covered its deployed version, so no duplicate release notice is due. Runtime
+skill discovery is **Unavailable** until directly checked in a fresh task; static admission does
+not prove loading. See the [MVP plan](../../MVP-PLAN.md) for the initial finding and repair receipt.
 Backup/restore compatibility and caller limits are documented in the
 [backup guide](../operations/backup-restore.md) and [API reference](../reference/api.md).
 Independent scoped QA and Astra's security re-review are recorded in the root plan. Its local gate
@@ -329,11 +348,12 @@ evidence and limitations are recorded in [`docs/evidence/astra-final-report.md`]
 No release, export, commit, push, or remote result is implied.
 
 The earlier `R-ASTRA-64` receipt described `development-conventions` as the eighth opt-in project
-skill in that historical catalog, and fresh discovery was recorded as **Pass**. The current
-reconciliation records seven approved directory-based skill definitions/governance entries after
-Ponytail retirement; this static governance wording does not establish native loader/discovery
-acceptance. Skill/profile activation still requires a parent OpenCode restart and independent
-post-restart discovery; implementation presence does not create that gate effect.
+skill in that historical catalog, and fresh discovery was recorded as **Pass**. The R-ASTRA-71
+reconciliation recorded seven approved directory-based skill definitions/governance entries after
+Ponytail retirement; this historical static count did not establish native loader/discovery
+acceptance. The current eight-entry catalog is recorded above. Skill/profile activation still
+requires a parent OpenCode restart and independent post-restart discovery; implementation presence
+does not create that gate effect.
 
 The validator checks heading anchors, high-confidence credential patterns, duplicate taxonomy
 links, exact description parity between the skill frontmatter, project catalog metadata, and

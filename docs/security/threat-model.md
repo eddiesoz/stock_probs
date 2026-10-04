@@ -71,17 +71,19 @@ enrollment, and private API activity, but not browser-rendered UI. Another valid
 rejected; verified-email mismatch remains an inference because the authenticated GitHub email list
 was not observed. The earlier R-ASTRA-112 Gmail Spam delivery remains a separate historical check.
 
-`R-ASTRA-118` adds a distinct mismatch result for an active, unused, unexpired email-bound
+`R-ASTRA-118` is deployed at schema 12 on revision `da2764e8477698fa7d686be93a4711e35478e802`.
+It adds a distinct mismatch result for an active, unused, unexpired email-bound
 invitation while preserving the repository's existing atomic no-consume behavior. No user/session
 is created for that mismatch; numeric-ID, used, and expired cases keep generic errors. HTML callback
 redirects require positive `text/html` acceptance and use fixed local destinations. JSON status/body
 behavior remains unchanged, including `422` for malformed callback query requests from JSON clients.
 Only the OAuth transaction cookie is cleared; active sessions are preserved. The UI exposes only
-whitelisted error codes and provides a verified-email retry route. Focused independent QA passed
-with no source blocker; the full local gate and deployment are pending, so no production acceptance
-is inferred. A reported rejection while an invitation
-remained valid is consistent with a verified-email mismatch, but the account's authenticated
-GitHub email list was not observed; the cause remains an inference.
+whitelisted error codes and provides a verified-email retry route. Focused independent QA and the
+full local gate passed; production probes and a dummy-callback browser check confirmed the recovery
+guidance. They do not verify a real invitee's authenticated GitHub email or sign-in. A reported
+rejection while an invitation remained valid is consistent with a verified-email mismatch, but the
+account's authenticated GitHub email list was not observed; the cause remains an inference. See the
+[MVP plan](../../MVP-PLAN.md) for the bounded deployment and mail receipts.
 
 The earlier private
 clean-main image is revision

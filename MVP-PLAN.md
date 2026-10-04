@@ -24,8 +24,8 @@ provider or project-profile acceptance.
 Native V2 automatically discovers project skills from directory-based
 `.opencode/skills/<id>/SKILL.md` definitions. The `skills` configuration array is an additional
 later-precedence source list, so no explicit `.opencode/skills` entry is expected in `opencode.json`.
-The seven
-approved directory-based definitions, per-skill `metadata.json`, `alwaysApply: false`,
+The eight approved directory-based definitions, including `beta-testing-email-workflow`, per-skill
+`metadata.json`, `alwaysApply: false`,
 `.opencode/SKILL-INDEX.md`, the validator allow-list, and
 `.opencode/skill-history/learnings.md` are static governance contracts, not native loader proof.
 In this harness native runtime skill discovery is **Unavailable** because
@@ -54,10 +54,13 @@ commit, push, or edit `SESSION-EXPORT.md`.
 
 ### Current V2/documentation reconciliation evidence
 
-The approved project governance set has seven directory-based skill definitions:
+The approved project governance set now has eight directory-based skill definitions:
 `documentation`, `development-conventions`, `stock-probability-skill-maintenance`,
-`local-gate-evidence`, `browser-qa`, `database-conventions`, and `security-audit`. No Ponytail
-skill or package pin is present. This static definition/governance count is not native loader or
+`local-gate-evidence`, `browser-qa`, `database-conventions`, `security-audit`, and
+`beta-testing-email-workflow`. R-ASTRA-119 builder checks reported `9` categories, `13` topics,
+`8` governance entries, and `60/60` focused governance tests at revision
+`da2764e8477698fa7d686be93a4711e35478e802`; independent skill QA is pending. No Ponytail skill or
+package pin is present. This static definition/governance count is not native loader or
 runtime discovery acceptance. The provider/model runtime probe is **Unavailable** when it reports
 `provider.quota`, `Insufficient Balance`, and HTTP `402`; no provider or project-profile
 acceptance is inferred.
@@ -988,9 +991,10 @@ R-ASTRA-113 remains **In progress** overall; its local implementation/QA, schema
 
 #### R-ASTRA-118 email-invitation mismatch recovery
 
-**Status:** **In progress**. Root-reviewed source and the test-locator repair passed independent QA
-for the declared focused scope. The full local gate has not yet completed. R-ASTRA-118 is not
-deployed and no code-free repair/retry email has been sent; production remains R-ASTRA-113, schema 12.
+**Status:** **Completed for its declared implementation, focused QA, full local gate, deployment,
+production recovery-page, and same-thread retry scope**. R-ASTRA-118 was pushed, published, and
+deployed as described below. R-ASTRA-113 remains **In progress** overall because the remaining
+invitee's real sign-in confirmation is pending; physical iOS behavior is **Unavailable**.
 
 For an active, unused, unexpired email-bound invitation, R-ASTRA-118 adds a distinct
 `invitation_email_mismatch` result when the verified GitHub email set does not contain the
@@ -1033,7 +1037,8 @@ At `2026-10-04T00:17:57Z`, a personal-Gmail investigating reply was sent in the 
 invitation thread to all three recipients, requesting feedback and excluding invitation codes.
 Gmail metadata verified `SENT`; message `1a104464884d6afa`, thread `1a10406fbbf4259f`. This is the
 user-authorized support follow-up recorded by the durable policy in `AGENTS.md`; it does not verify
-recipient delivery or reading. The code-free repair/retry message remains pending. Do not include
+recipient delivery or reading. At this checkpoint, the code-free repair/retry message was pending;
+the later send is recorded in E10 below. Do not include
 recipient addresses, codes, raw OAuth state, callback URLs, email hashes, or credentials here.
 
 | Evidence | Check and result | Environment, time, revision, artifact |
@@ -1041,13 +1046,47 @@ recipient addresses, codes, raw OAuth state, callback URLs, email hashes, or cre
 | `R-ASTRA-118-E1` | Independent backend/auth/API checks **Passed**: `.dev-venv/bin/python -m pytest tests/test_auth.py tests/test_api.py -q` collected and passed `190/190`; separate collect-only confirmed `190` in `0.12s`. | Native x86_64, Python `3.11.15`, dirty `HEAD` `b3a31028f5f6e240834c5c951a15aa2b74c3d928`; `2026-10-04T00:26:02Z`–`00:27:51Z`; JUnit artifact not supplied; reviewer `LUNA MAX QA`. |
 | `R-ASTRA-118-E2` | Initial independent browser run **Failed**: `24` passed, `6` failed, exit `1`. The three recovery cases on each project matched both the app alert paragraph and Next route announcer with a broad locator in strict mode. Expected recovery copy rendered; retry, overflow, and later-TOTP assertions were not reached. | Native x86_64; `2026-10-04T00:29:55Z`–`00:30:50Z`; command `node_modules/.bin/playwright test tests/auth-flow.spec.js --project=desktop-chromium --project=mobile-chromium` from `tools/browser`; artifact `/tmp/r-astra-118-auth-flow-20261004T0029Z/`; reviewer `LUNA MAX QA`. This locator failure is not a product failure. |
 | `R-ASTRA-118-E3` | Test-only `R118repair1` scoped the alert locator to `p[role=alert]`. Independent rerun **Passed** `30/30`, zero skips/exit `0`. Retry with the original code, exact GitHub email-settings link, hostile-query suppression, OAuth recovery, TOTP continuation, normal sign-in, and overflow checks passed. | Native x86_64; Node `22.22.2`, Playwright `1.63`, Chromium `153.0.8010.12`; desktop `1440x1000`, emulated Pixel 7 `360x800`; `2026-10-04T00:32:58Z`–`00:33:52Z`; command `STOCK_PROBS_TASK_ID=R-ASTRA-118 STOCK_PROBS_REVISION=b3a31028f5f6e240834c5c951a15aa2b74c3d928 STOCK_PROBS_BROWSER_ARTIFACT_DIR=/tmp/r-astra-118-auth-flow-repair1-20261004T0033Z node_modules/.bin/playwright test tests/auth-flow.spec.js --project=desktop-chromium --project=mobile-chromium` from `tools/browser`; artifact `/tmp/r-astra-118-auth-flow-repair1-20261004T0033Z`; reviewer `LUNA MAX QA`. |
-| `R-ASTRA-118-E4` | Optional isolated theme/viewport probe **Passed** `4/4` combinations: light/dark on mismatch and OAuth recovery at widths `360` and `1440`; no overflow. Observed canvas colors were light `#f5f7f8` and dark `#0d141a`. | Native x86_64; `2026-10-04T00:35:47Z`–`00:35:54Z`; temporary runtime `/tmp/r-astra-118-auth-theme-runtime-20261004T0034Z`; no saved probe script or artifact; runtime exited `0` after `SIGINT`; reviewer `LUNA MAX QA`. This is a focused visual probe, not full theme acceptance. |
+| `R-ASTRA-118-E4` | Optional isolated theme/viewport probe **Passed** `4/4` combinations: light/dark on mismatch and OAuth recovery at widths `360` and `1440`; no overflow. Observed canvas colors were light `#f5f7f8` and dark `#0d141a`. | Native x86_64; `2026-10-04T00:35:47Z`–`00:35:54Z`; temporary runtime `/tmp/r-astra-118-auth-theme-runtime-20261004T0034Z`; no saved probe script or artifact; runtime exited `0` after `SIGINT`; reviewer `LUNA MAX QA`. This is a focused visual probe, not full theme/first-paint acceptance. |
+| `R-ASTRA-118-E5` | Final local gate **Passed**, exit `0`: `TMPDIR=/home/james/.cache/stock-probs-gate-tmp TASK_ID=R-ASTRA-118 ./scripts/local-gate.sh check`; Python `809` passed, `4` live deselected, `85.78%` coverage; frontend `29` with build/typecheck; final backup checks `61`. Documentation, frontend, and Python stages completed. | Native x86_64; dirty base `b3a31028f5f6e240834c5c951a15aa2b74c3d928`; `2026-10-04T00:42:20Z`–`00:52:50Z`; receipt `test-results/local-gates/R-ASTRA-118-20261004T004220Z/evidence.json`; reviewer `root` (orchestrator). |
+| `R-ASTRA-118-E6` | Root-reviewed revision `da2764e8477698fa7d686be93a4711e35478e802` was pushed; exact remote `main` matched and the worktree was clean. `./scripts/publish-production-image.sh` exited `0` and verified re-download. Linux/amd64 release archive `103166094` bytes, SHA-256 `669f840a3141b0fb95ae248b5ea0799733b9e5b5b81e224d4637571c24d8f640`; image `sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1`. | Release `signal-ledger-da2764e8477698fa7d686be93a4711e35478e802`; native x86_64 publisher; command UTC not supplied; reviewer `root`. |
+| `R-ASTRA-118-E7` | Initial native MCP deploy plan returned `remote_operation_failed`. The fixed restricted helper retry plan `73eb65002b08064db11772da9a7d30d7` exited `0`; native MCP deploy/status **Passed**, schema `12` ready, `failed: null`, `loopback_only: true`, backup `pre-deploy-da2764e8477698fa-0a5ba1c9.spbackup`. | Production; `deployed_at=2026-10-04T01:00:13.924717Z`; deployed revision `da2764e8477698fa7d686be93a4711e35478e802`; initial failure preserved; exact artifact/command bounds not supplied. |
+| `R-ASTRA-118-E8` | Public no-redirect probes **Passed** at `2026-10-04T01:00:56.373660Z`–`01:00:57.021522Z`: health/readiness/auth-status `200`, history `401`, overview `303` to sign-in, invite `200`; all responses `no-store`/`DYNAMIC`. Dummy unknown callback: HTML `303` to fixed sign-in recovery; JSON `400 oauth_rejected`; missing JSON callback fields `422 validation_error`; OAuth transaction cookie cleared. CUA production tab showed the fixed recovery link, reached the invite page, and rendered the whitelisted mismatch guidance and exact GitHub email-settings link. | Production HTTPS / CUA; screenshot `/tmp/signal-ledger-r118-release/production-invitation-recovery.png`; no actual invitee OAuth mismatch or authenticated identity was tested. This verifies deployed page visibility only. |
+| `R-ASTRA-118-E9` | Read-only production SQLite observation **Passed** at `2026-10-04T01:01:00.378685Z`: integrity `ok`, foreign-key violations `0`, two users (owner admin and one active member), one TOTP factor each; invitation `2` consumed, `3` and `4` unused and unexpired; counts preserved at 14 events, 14 runs, 21 results, 11 list items. | Production host via read-only SSH; exact query/artifact not supplied. This does not establish the remaining invitee's actual sign-in. |
+| `R-ASTRA-118-E10` | An initial local message-preparation attempt ended in a syntax error before any mail action. The corrected connected-Gmail action sent the retry/feedback reply once at `2026-10-04T01:02:23Z` to the three existing recipients in the same support thread; Gmail metadata showed `SENT`. It gave verified-email, original-invitation, same-browser, and TOTP retry steps and asked for feedback; no code was included. This was the third personal-Gmail message in that thread; no duplicate retry was sent. | Connected personal Gmail; message `1a1046ef7767c399`, thread `1a10406fbbf4259f`; exact command/artifact not supplied. `SENT` confirms sending only, not recipient delivery or reading. |
 
 The initial browser failure and repaired rerun are preserved separately above. Luna QA found no
-source blocker for the declared focused scope. The full local gate, deployment, identity/provider
-observations for the reporting invitee, physical iOS behavior, and code-free repair/retry message
-remain pending or unavailable. The verified-email mismatch remains an inference, not a confirmed
-account-email fact.
+source blocker for the declared focused scope. The public probe/CUA session verified the deployed
+recovery UI using a dummy callback only. The remaining invitee's actual sign-in and verified-email
+identity are not confirmed; physical iOS behavior remains **Unavailable**. The suspected mismatch
+continues to be an inference, not an observed account-email fact.
+
+#### R-ASTRA-119 beta release/support email workflow
+
+**Status:** **Completed for its declared authored-document, static-skill governance, and
+independent-review scope**. The user's standing authorization covers
+concise release notices and focused feedback requests to the existing user-authorized, opted-in beta
+cohort, using the established sender and appropriate release context. Before announcing an app
+release, confirm that the exact reviewed revision is deployed and service health is confirmed. If
+either check is missing or mismatched, hold the announcement; status wording cannot bypass this
+gate. Git, documentation, and skill checkpoints do not trigger release notices. Check per-recipient
+send history, honor opt-outs, do not infer or add recipients, do not schedule outreach, and use
+individual or blind-copy messages unless shared visibility is approved. Distinguish sent, delivered,
+inbox placement, and read. Authorized account/support follow-ups stay in the existing thread and
+preserve its reply-all audience; this does not authorize unrelated or sensitive messages.
+
+The R-ASTRA-118 retry already covered its deployed app release, so no duplicate announcement was
+sent. Raw addresses and private email contents are omitted; opaque message/thread IDs in R-ASTRA-118
+are task-bound send evidence, not reusable authorization.
+
+| Evidence | Check and result | Environment, time, revision, artifact |
+| --- | --- | --- |
+| `R-ASTRA-119-E1` | Builder/static admission of `beta-testing-email-workflow`: validator `9` categories/`13` topics/`8` governance entries, focused governance tests `60/60` with one Starlette/httpx deprecation warning, Ruff, and scoped diff-check **Passed**. | Native x86_64; `2026-10-04T01:07:12Z`–`01:07:33Z`; revision `da2764e8477698fa7d686be93a4711e35478e802`; artifact not supplied; builder `beta_email_skill`. This is static builder evidence. |
+| `R-ASTRA-119-E2` | Initial independent QA **Failed** on one P2: the release rule's “hold the notice or label the status accurately” wording could permit a status announcement before release verification. Initial static checks in this QA window passed validator `9/13/8`, docs/governance tests `60` with one deprecation warning, Ruff, comment audit across `250` files, and system-Python quick validation; `.dev-venv` quick validation was **Unavailable** because PyYAML was absent. | Native Linux x86_64; dirty `HEAD` `da2764e8477698fa7d686be93a4711e35478e802`; QA checks `2026-10-04T01:07:57Z`–`01:10:51Z`; scenario artifact generated `2026-10-04T01:12:38.552389Z`, `/tmp/r-astra-119-initial-forward-review-wsr936f1.md`; reviewer `LUNA MAX QA`. No release message or runtime discovery was tested. |
+| `R-ASTRA-119-E3` | `R119repair1` requires holding a release announcement until the exact reviewed revision is deployed and service health is confirmed; wording cannot bypass that gate. Independent re-review passed all `5` sanitized scenarios. Validator `9/13/8`, focused docs/governance tests `60` (one deprecation warning), system-Python quick validation, Ruff, scoped diff, symlink, and whitespace checks **Passed**. | Native Linux x86_64; `2026-10-04T01:13:54Z`–`01:14:44Z`; revision `da2764e8477698fa7d686be93a4711e35478e802`; repair artifact `/tmp/r-astra-119-repair1-forward-review-x95qloqi.md`; reviewer `LUNA MAX QA`. `.dev-venv` quick validation was **Unavailable** because PyYAML was absent; system Python `3.14.4`/PyYAML `6.0.3` passed. Runtime skill discovery and mail send/delivery were not tested. |
+| `R-ASTRA-119-E4` | Final authored-document gate **Passed**: `.dev-venv/bin/python scripts/validate_docs.py` reported `9` categories/`13` topics/`8` governance entries; docs tests passed `60` with one Starlette/httpx deprecation warning; completeness and change-aware coverage checked `135` mapped files each with no violations; self-test passed `26`; scoped diff-check exited `0`. | Native x86_64; dirty `HEAD` `da2764e8477698fa7d686be93a4711e35478e802`; `2026-10-04T01:19:47Z`–`01:21:24Z`; commands: `.dev-venv/bin/python scripts/validate_docs.py`, `.dev-venv/bin/python -m pytest -p no:cacheprovider -o addopts='' tests/test_docs_validation.py -q`, `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json`, same coverage command with `--base HEAD`, `python3 scripts/check-doc-coverage-self-test.py`, and scoped `git diff --check`; no separate artifact; reviewer `LUNA MAX docs`. This is documentation/static governance evidence only. |
+
+Runtime skill discovery remains **Unavailable** until directly checked in a fresh task. No runtime
+loading or new release email is inferred.
 
 `M09-E13` is a frozen historical constraint for the M09 contract, not a current absence-audit
 task. Its original rejected M09 scope remains intact. Later `R-ASTRA-98` separately
@@ -2074,8 +2113,8 @@ the M08 section below.
 - **Build wave:** `SOL HIGH-A` local API gate integration; `SOL HIGH-B` deterministic fixtures/resource/restore gate integration; `SOL HIGH-C` Playwright MCP/browser/operations and local-gate integration. No shared paths during the wave.
 - **Gates:** wait for all builder reports, then independent `LUNA MAX QA` and `LUNA MAX docs`; export `EXP-M06` only after required gates pass or every limitation is explicitly recorded.
 - **Scope:** Configure the official `@playwright/mcp` headless tool for local agent QA, check in automated browser regressions, remove any remaining `.github/workflows/ci.yml`, and establish fail-closed local Make/scripts for static checks where adopted, unit/API tests, accessibility, security/export safety, resource limits, migration, and backup/restore. The retained historical configuration/documentation rows below do not define the current V2 workflow.
-- **Acceptance evidence:** [x] final clean-target `R-M06-55` records the official MCP application interaction, native package/runtime checks, browser regression gate, and explicitly labelled emulated-ARM64 package/runtime run; [x] `R-M06-4` independently retests CSV formula safety; [x] the required native-x86 performance/UI rows have structured results below; [x] physical/native ARM64 performance is explicitly `Unavailable`; [x] the current reconciliation records seven approved directory-based skill definitions/governance entries and no Ponytail package, skill, or gate; this static governance wording does not establish native loader/discovery acceptance; [ ] actual screen-reader/assistive-technology evidence remains `Unavailable` and is not substituted. Retained historical Ponytail and Ingenium rows remain visibly separate and do not define the current workflow.
-- **Verification:** `R-M06-55` ran `./scripts/local-gate.sh m06` on native x86_64 Linux and retained the package, browser, MCP, emulated-ARM64, Python, and performance artifacts. The independent scoped rows and their limitations are recorded in the register below. A historical post-restart receipt is session `ses_f6aa32d33ffeAvmiFK8K7Cd8EI`, `2026-09-12T11:35:58Z`–`2026-09-12T11:36:02Z`, native x86_64/OpenCode `1.18.30`, dirty commit `59534faf1cdce493bc51a11d4adbea5e5b2d6892`; it recorded six historical Ponytail commands and three legacy profiles, not current discovery. The current catalog has seven skills and no Ponytail package or skill. Command/artifact/reviewer fields not supplied for that historical receipt remain unavailable; a missing workspace credential, screen-reader run, or physical ARM64 performance result remains unavailable rather than inferred.
+- **Acceptance evidence:** [x] final clean-target `R-M06-55` records the official MCP application interaction, native package/runtime checks, browser regression gate, and explicitly labelled emulated-ARM64 package/runtime run; [x] `R-M06-4` independently retests CSV formula safety; [x] the required native-x86 performance/UI rows have structured results below; [x] physical/native ARM64 performance is explicitly `Unavailable`; [x] the earlier R-ASTRA-71 reconciliation recorded seven approved directory-based skill definitions/governance entries and no Ponytail package, skill, or gate; this historical static count does not establish native loader/discovery acceptance; [ ] actual screen-reader/assistive-technology evidence remains `Unavailable` and is not substituted. Retained historical Ponytail and Ingenium rows remain visibly separate and do not define the current workflow.
+- **Verification:** `R-M06-55` ran `./scripts/local-gate.sh m06` on native x86_64 Linux and retained the package, browser, MCP, emulated-ARM64, Python, and performance artifacts. The independent scoped rows and their limitations are recorded in the register below. A historical post-restart receipt is session `ses_f6aa32d33ffeAvmiFK8K7Cd8EI`, `2026-09-12T11:35:58Z`–`11:36:02Z`, native x86_64/OpenCode `1.18.30`, dirty commit `59534faf1cdce493bc51a11d4adbea5e5b2d6892`; it recorded six historical Ponytail commands and three legacy profiles, not current discovery. The preceding catalog reconciliation recorded seven skills; the current catalog and validation are recorded near the plan top. Command/artifact/reviewer fields not supplied for that historical receipt remain unavailable; a missing workspace credential, screen-reader run, or physical ARM64 performance result remains unavailable rather than inferred.
 - **Repair record:** Record each failed check as `R-M06-<n>` with failing evidence and rerun result.
 - **Post-milestone gate:** `EXP-M06` is completed below with the supplied local/export audit, secret-review result, checkpoint, exact remote-main match, and unavailable ARM64-performance field; no external pipeline is recorded.
 
@@ -3105,7 +3144,7 @@ The MVP is done only when all of the following are true:
 - The final learning synthesis deeply analyzes sanitized chat/run evidence, creates or changes only
   justified reusable Stock Probability skills through validated/indexed `skill-maintenance` work,
   and records observations before `EXP-FINAL`. The current approved governance set contains
-  seven directory-based definitions; validator, metadata, frontmatter, index, and coverage checks
+  eight directory-based definitions; validator, metadata, frontmatter, index, and coverage checks
   are separate static gates and do not establish native loader/discovery acceptance. Ponytail is
   not an active skill or dependency. Historical
   post-restart receipts remain below as evidence only and do not create a current profile,

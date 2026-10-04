@@ -35,8 +35,8 @@ redemption requires an exact verified GitHub email match before binding to the s
 account ID; explicitly supplied positive IDs retain ID-bound invitations, and the existing
 numeric-ID code flow remains. The reviewed release is deployed at schema 12 on pushed revision
 `4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were sent through production service
-functions and Resend reported all three delivered; two follow-up messages were sent from the user's
-Gmail in the same invitation thread.
+functions and Resend reported all three delivered. Three personal-Gmail messages are recorded in
+the same invitation thread: the original notice and two later support replies.
 One recipient mailbox put its invitation in Spam; placement/read status for the other mailboxes is
 **Unavailable**. These were service-function sends, not an authenticated HTTP/browser flow.
 R-ASTRA-113 remains **In progress**. For invitation 2, recipient feedback and sanitized server
@@ -46,13 +46,23 @@ email mismatch only inferred from the available evidence; invitation 4 remains u
 separate Gmail Spam result is unchanged; detailed operational receipts are in the
 [MVP plan](MVP-PLAN.md).
 
-`R-ASTRA-118` is **In progress**. It adds a distinct `invitation_email_mismatch` result for an
+`R-ASTRA-118` is **Completed for its declared local QA, deployment, release, and same-thread retry
+scope**. It adds a distinct `invitation_email_mismatch` result for an
 active email-bound invitation while preserving the repository's existing atomic no-consume
 behavior; numeric-ID and used/expired errors stay generic. Positive HTML callback errors use fixed
-`303` redirects, while JSON status and response shapes remain unchanged. Focused independent QA
-passed `190` backend tests and `30/30` desktop/emulated-mobile browser cases; the initial locator
-failure and test-only repair are preserved in the [MVP plan](MVP-PLAN.md). The full local gate,
-deployment, and code-free retry email remain pending.
+`303` redirects, while JSON status and response shapes remain unchanged. The full local gate passed
+`809` Python tests plus `29` frontend checks and `61` backup tests; deployed revision and a same-
+thread Gmail retry message are recorded in the [MVP plan](MVP-PLAN.md). The remaining invitee's
+actual sign-in confirmation remains pending and physical iOS behavior remains **Unavailable**; R-ASTRA-113 stays
+**In progress** overall.
+
+`R-ASTRA-119` is **In progress** pending the final authored-document gate; its independent static
+skill review passed after repairing one P2 release-rule ambiguity. Five sanitized scenarios passed;
+the rule now requires exact reviewed-revision deployment and confirmed service health before a
+release announcement, with no status-wording bypass. The current catalog has `8` governance entries
+and `60` focused tests, recorded in the [MVP plan](MVP-PLAN.md). Runtime skill discovery remains
+**Unavailable** until directly verified in a fresh task. The R-ASTRA-118 retry already covered its
+deployed release, so no duplicate announcement is due.
 
 Scoped independent QA passed `64` authentication/repository/list checks, `123` API checks, `61`
 backup/CLI checks, `10` desktop/mobile-emulated auth-flow cases, `27` frontend checks, Ruff, and
@@ -120,9 +130,10 @@ open.
 
 ### Current V2/documentation reconciliation evidence
 
-The approved project governance set has seven directory-based skill definitions:
+The approved project governance set now has eight directory-based skill definitions:
 `documentation`, `development-conventions`, `stock-probability-skill-maintenance`,
-`local-gate-evidence`, `browser-qa`, `database-conventions`, and `security-audit`. Ponytail is
+`local-gate-evidence`, `browser-qa`, `database-conventions`, `security-audit`, and
+`beta-testing-email-workflow`. Ponytail is
 retired: no local package, plugin, dependency pin, command, boundary review, or acceptance gate
 is current. This static definition/governance count is not native loader or runtime discovery
 acceptance. Historical Ponytail receipts remain below for traceability only. Native V2
@@ -1683,7 +1694,7 @@ Ingenium onboarding row remains blocked on its explicitly listed checks.
 | Task ID | Row status | Owner/phase | Verified dependencies and preconditions | Required check and current evidence result |
 | --- | --- | --- | --- | --- |
 | `M06` | **In progress** | `LUNA MAX docs` records the row; `SOL HIGH` owns any repair; `LUNA MAX QA` independently retests | **Historical receipt only:** a pinned Ponytail bundle/configuration was recorded at that checkpoint. The bundle is retired and absent from the current tree. Retained reports: [`docs/evidence/ponytail-r-m06-1.txt`](docs/evidence/ponytail-r-m06-1.txt) (six findings repaired), [`docs/evidence/ponytail-r-m06-15.txt`](docs/evidence/ponytail-r-m06-15.txt) (three repaired as `R-M06-19`), and [`docs/evidence/ponytail-m05-boundary.txt`](docs/evidence/ponytail-m05-boundary.txt) (two repaired as completed repair record `R-M05-12`, independently rerun `4/4` inside `R-M05-55 (i)`). | **Unavailable** for full M06 acceptance: `R-M06-19` is independently **Pass**, but the historical Ponytail review was overengineering-only and does not replace correctness, security, accessibility, or performance evidence. |
-| `M06` | **Completed** for the listed validation scope | `LUNA MAX docs` plus post-restart validation | The authored documentation taxonomy and project documentation skill are implemented under `docs/**` and `.opencode/skills/documentation`; fresh isolated discovery passed the validator, 20 tests, description parity, the 500-line limit, and required references. Receipt: session `ses_f6aa32d33ffeAvmiFK8K7Cd8EI`, `2026-09-12T11:35:58Z`–`2026-09-12T11:36:02Z`, native x86_64/OpenCode `1.18.30`, dirty commit `59534faf1cdce493bc51a11d4adbea5e5b2d6892`; canonical description, six historical Ponytail commands, three legacy profiles, valid configuration, and no credentials all passed. This historical receipt does not describe current discovery; the current catalog has seven skills and no Ponytail package or skill. |
+| `M06` | **Completed** for the listed validation scope | `LUNA MAX docs` plus post-restart validation | The authored documentation taxonomy and project documentation skill are implemented under `docs/**` and `.opencode/skills/documentation`; fresh isolated discovery passed the validator, 20 tests, description parity, the 500-line limit, and required references. Receipt: session `ses_f6aa32d33ffeAvmiFK8K7Cd8EI`, `2026-09-12T11:35:58Z`–`11:36:02Z`, native x86_64/OpenCode `1.18.30`, dirty commit `59534faf1cdce493bc51a11d4adbea5e5b2d6892`; canonical description, six historical Ponytail commands, three legacy profiles, valid configuration, and no credentials all passed. This historical receipt does not describe current discovery; the preceding catalog reconciliation recorded seven skills. The current catalog is recorded above; runtime discovery remains unavailable. |
 | `M06` | **Blocked** | `LUNA MAX docs` records credential-free onboarding; independent QA verifies the run | The restart precondition is satisfied. Remaining required checks are authorized workspace credentials, project registration, repository-sync dry-run/apply/no-drift, and credential-free evidence. | **Blocked** only on those remaining onboarding checks; no credential, endpoint, or token value is recorded, and no onboarding pass is claimed. |
 
 The rows require exact environment, UTC timestamp, commit, command result, artifact/link,
@@ -2535,7 +2546,8 @@ The roadmap is complete only when:
 - `EXP-M00` through `EXP-M09` and `EXP-FINAL` contain reviewed, secret-free full-session `SESSION-EXPORT.md` revisions with commit, push, exact Git remote revision verification, and no hidden failed, skipped, unavailable, or blocked field; the final learning synthesis is complete and recorded before `EXP-FINAL`.
 - The final deep chat/run learning synthesis is complete before `EXP-FINAL`; only justified reusable
   Stock Probability skills are created or changed, and they are validated and indexed. The current
-  approved governance set contains seven directory-based definitions, with no Ponytail skill or
+  approved governance set contains eight directory-based definitions, including
+  `beta-testing-email-workflow`, with no Ponytail skill or
   package pin. Documentation validation, metadata/index/frontmatter checks, and coverage checks
   are separate fail-closed static gates; none establishes native loader/discovery acceptance.
   Historical

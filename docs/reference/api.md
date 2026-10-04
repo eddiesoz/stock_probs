@@ -117,8 +117,9 @@ sharing.
 R-ASTRA-113 is **In progress** overall. Its reviewed release is deployed at schema 12 on pushed
 revision `4cc5c8502ec93c57947958ee07f891b45e98d870`, following the local gate (`796` Python tests)
 and schema-12 package smoke. Three invitations were sent by invoking the production service
-functions over operator SSH; Resend reported all three delivered. Two follow-up messages were sent
-from the user's Gmail in the same invitation thread. These operations did not exercise the
+functions over operator SSH; Resend reported all three delivered. Three personal-Gmail messages
+are recorded in the same invitation thread: the original notice and two later support replies.
+These operations did not exercise the
 authenticated HTTP/browser invitation route.
 One recipient mailbox classified its invitation as Spam; placement/read status for the other
 mailboxes is unavailable. Recipient feedback and sanitized logs support one invitee's OAuth
@@ -150,8 +151,10 @@ The UI shows only whitelisted error codes. For a mismatch, it links to the exact
 [GitHub email settings](https://github.com/settings/emails), lets the user enter the original
 invitation code again, and tells a user who just changed GitHub's verified email to retry in the
 same browser instead of refreshing the OAuth callback. Existing members can use normal sign-in.
-Focused independent backend/browser QA passed, but the full local gate and deployment are pending;
-this is not yet the production behavior.
+Focused independent backend/browser QA and the full local gate passed. The production release is
+deployed at schema 12 on revision `da2764e8477698fa7d686be93a4711e35478e802`. Public probes and a
+dummy-callback browser check confirmed the recovery-page behavior, not a real invitee's OAuth
+identity or sign-in. See the [MVP plan](../../MVP-PLAN.md) for receipts and limitations.
 
 There is no `/api/v1/market-depth` endpoint and no `MarketDepthResponse` schema. The Live Trading
 workspace may disclose that free data has no exchange-depth entitlement, but it does not fabricate

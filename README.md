@@ -320,8 +320,8 @@ local gate (`796` Python tests; see the [MVP plan](MVP-PLAN.md)). R-ASTRA-114 th
 record the repaired browser locator, documentation fixture links, and strict numeric-ID
 validation. The reviewed release is deployed at schema 12 on revision
 `4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were sent through production service
-functions and Resend reported all three delivered; two follow-up messages were sent from the user's
-Gmail in the same invitation thread.
+functions and Resend reported all three delivered. Three personal-Gmail messages are recorded in
+the same invitation thread: the original notice and two later support replies.
 This did not exercise the authenticated HTTP/browser flow. One recipient mailbox classified its
 invitation as Spam; placement/read status for the other mailboxes is **Unavailable**. The
 R-ASTRA-113 operational scope is complete, but overall status remains **In progress** pending
@@ -330,15 +330,20 @@ and unavailable physical-mobile evidence remain separate. See
 [getting started](docs/operations/getting-started.md#invitation-email-and-host-compose-update) for
 configuration and the fixed reviewed-Compose update procedure.
 
-`R-ASTRA-118` adds a specific mismatch response for active email-bound invitations while preserving
-the existing atomic no-consume behavior; numeric-ID and used/expired errors remain generic. HTML
-callback errors use fixed `303` redirects and JSON responses retain their current status and shape.
-One invitee's redemption/TOTP/private-API activity is supported by recipient feedback and sanitized
-logs; another reported rejection while the invitation remained valid, with email mismatch inferred
-but not confirmed. Focused independent QA passed `190` backend tests and `30/30` desktop/emulated-
-mobile browser cases; the initial locator failure and test-only repair remain in the plan. The
-authorized same-thread feedback follow-up is sent; the code-free retry message, full local gate, and
-deployment are pending. See the [MVP plan](MVP-PLAN.md).
+`R-ASTRA-118` is **Completed for its declared scope**: mismatch recovery passed focused independent
+QA and the full local gate, then was published and deployed at schema 12. Production probes and a
+dummy-callback browser check showed the recovery guidance; they did not verify the remaining
+invitee's identity or sign-in. A code-free retry and feedback reply was sent in the same Gmail
+thread. The remaining invitee's sign-in confirmation is pending, and physical iOS behavior is
+**Unavailable**. R-ASTRA-113 remains **In progress** overall. See the [MVP plan](MVP-PLAN.md).
+
+`R-ASTRA-119` is **In progress** for the final authored-document gate after independent review of
+the eighth static skill, `beta-testing-email-workflow`. Review found and repaired a release-rule
+ambiguity; five sanitized scenarios now pass. Release announcements must be held until the exact
+reviewed revision is confirmed deployed and service health is confirmed; status wording cannot
+bypass that gate. Docs and skill commits do not trigger notices. Runtime skill discovery is
+**Unavailable** until directly checked in a fresh task. The R-ASTRA-118 retry already covered its
+release, so no duplicate announcement is due; the [MVP plan](MVP-PLAN.md) records the history.
 
 ### Authenticator setup and recovery
 

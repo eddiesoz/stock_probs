@@ -84,3 +84,21 @@
 - **Boundary:** The four approved agent profiles receive only the explicit skill grant. No commit,
   export, root-document edit, or gate acceptance is claimed; a parent-process restart and
   independent post-restart discovery remain required before the profile edits affect later agents.
+
+## 2026-10-03 — beta release and support email workflow
+
+- **Approval:** R-ASTRA-119 adds a project skill for notifying existing beta testers about a new
+  release, requesting concise feedback, and handling an authorized issue in its existing support
+  thread through evidence-backed repair and retest.
+- **Release boundary:** The R-ASTRA-118 retry and feedback email already covers deployed app
+  revision `da2764e`; this skill/catalog checkpoint is not a new customer-facing app release and
+  did not trigger another announcement.
+- **Boundaries:** Notices require verified deployed revision and health, the existing user-authorized
+  beta cohort, established sender and release-thread context, opt-out and duplicate checks, and
+  truthful delivery status. Standing authorization covers routine release notices without asking
+  again; it does not create a scheduler or cover new recipients or unrelated messages. Personal
+  addresses, thread identifiers, codes, credentials, and customer details are not recorded here.
+  New release notices use individual or blind-copy delivery unless shared visibility is approved;
+  an authorized issue thread preserves its established reply-all audience.
+- **Validation limit:** The project skill and catalog are static governance only; this task does not
+  claim native runtime discovery or any email send, delivery, or customer verification.
