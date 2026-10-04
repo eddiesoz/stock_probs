@@ -117,14 +117,41 @@ sharing.
 R-ASTRA-113 is **In progress** overall. Its reviewed release is deployed at schema 12 on pushed
 revision `4cc5c8502ec93c57947958ee07f891b45e98d870`, following the local gate (`796` Python tests)
 and schema-12 package smoke. Three invitations were sent by invoking the production service
-functions over operator SSH; Resend reported all three delivered. One follow-up was sent from the
-user's Gmail. These operations did not exercise the authenticated HTTP/browser invitation route.
+functions over operator SSH; Resend reported all three delivered. Two follow-up messages were sent
+from the user's Gmail in the same invitation thread. These operations did not exercise the
+authenticated HTTP/browser invitation route.
 One recipient mailbox classified its invitation as Spam; placement/read status for the other
-mailboxes is unavailable. Live invitee OAuth redemption, TOTP onboarding, and workspace UI remain
-**Unavailable**. See the [MVP plan](../../MVP-PLAN.md) for deployment and send evidence.
+mailboxes is unavailable. Recipient feedback and sanitized logs support one invitee's OAuth
+redemption, TOTP enrollment, and private API activity, but not browser-rendered UI. Another
+invitation was rejected while still valid; verified-email mismatch is inferred, not confirmed.
+See the [MVP plan](../../MVP-PLAN.md) for deployment and send evidence.
 For the corresponding operator workflow, see [getting started](../operations/getting-started.md#invitation-email-and-host-compose-update).
 GitHub's [authenticated email-list endpoint](https://docs.github.com/en/rest/users/emails#list-email-addresses-for-the-authenticated-user)
 documents the `user:email` requirement and the returned `verified` flag.
+
+### R-ASTRA-118 mismatch recovery
+
+For an active, unused, unexpired email-bound invitation, R-ASTRA-118 adds the distinct
+`invitation_email_mismatch` result when the authenticated GitHub account's verified-email hashes
+do not contain the invitation's exact email hash. This preserves the repository's existing atomic
+behavior: the invitation remains unused, and the failed attempt creates no user or session.
+Numeric-ID invitations and used/expired invitation errors retain their existing generic responses.
+
+GitHub callback errors redirect with `303` only when the request positively accepts `text/html`.
+`invitation_email_mismatch` and `invitation_rejected` map to fixed
+`/invite?error=invitation_email_mismatch` and `/invite?error=invitation_rejected` destinations;
+`oauth_rejected` and `authentication_unavailable` map to
+`/sign-in?error=oauth_rejected` and `/sign-in?error=authentication_unavailable`. Only the OAuth
+transaction cookie is cleared; active sessions are preserved. JSON callers retain their existing
+error status and response shape; malformed callback query requests from JSON clients remain `422`.
+The required code/state fields and their OpenAPI length constraints are unchanged.
+
+The UI shows only whitelisted error codes. For a mismatch, it links to the exact
+[GitHub email settings](https://github.com/settings/emails), lets the user enter the original
+invitation code again, and tells a user who just changed GitHub's verified email to retry in the
+same browser instead of refreshing the OAuth callback. Existing members can use normal sign-in.
+Focused independent backend/browser QA passed, but the full local gate and deployment are pending;
+this is not yet the production behavior.
 
 There is no `/api/v1/market-depth` endpoint and no `MarketDepthResponse` schema. The Live Trading
 workspace may disclose that free data has no exchange-depth entitlement, but it does not fabricate

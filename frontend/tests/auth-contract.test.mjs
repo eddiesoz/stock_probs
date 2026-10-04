@@ -155,6 +155,23 @@ test("auth routes expose a real document title and preserve invitation errors", 
   assert.match(client, /error\.code === "invitation_rejected"/);
   assert.match(client, /invalid, expired, revoked, or already used/);
   assert.match(invite, /For an email-only invitation, continue with a GitHub account that has the invitation email marked verified/);
+  assert.match(invite, /value === "invitation_email_mismatch" \|\| value === "invitation_rejected"/);
+  assert.match(invite, /https:\/\/github\.com\/settings\/emails/);
+  assert.match(invite, /the exact invited address/);
+  assert.match(invite, /This invitation is still available/);
+  assert.match(invite, /If you have already joined, use normal/);
+  assert.match(invite, /ask your administrator for a fresh invitation/);
+  assert.match(invite, /role="alert"/);
+});
+
+test("sign-in recovery accepts only the fixed OAuth redirect codes and keeps invitation guidance local", async () => {
+  const signIn = await source("app/sign-in/page.tsx");
+  assert.match(signIn, /value === "oauth_rejected" \|\| value === "authentication_unavailable"/);
+  assert.match(signIn, /do not refresh the callback URL/);
+  assert.match(signIn, /in this same browser/);
+  assert.match(signIn, /href="\/invite"/);
+  assert.match(signIn, /original code from your invitation email/);
+  assert.doesNotMatch(signIn, /\{params\.get\("error"\)\}/);
 });
 
 test("invitation rejection keeps its precise recovery message", async () => {

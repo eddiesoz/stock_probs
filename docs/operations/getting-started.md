@@ -194,9 +194,24 @@ tests) and was deployed at schema 12 on pushed revision
 `4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were submitted using production
 service functions over operator SSH, and Resend reported all three delivered; the authenticated
 admin HTTP/browser flow was not used. One recipient mailbox classified its invitation as Spam;
-placement/read status for the other mailboxes is unavailable. A follow-up was sent from the user's
-Gmail. Live invitee OAuth redemption, TOTP onboarding, and workspace UI remain **Unavailable**.
+placement/read status for the other mailboxes is unavailable. Follow-ups were sent from personal
+Gmail in the same thread. One invitee reported access and sanitized logs support redemption, TOTP
+enrollment, and private API activity; browser-rendered UI is not established. Another invitee
+reported rejection while the invitation remained valid, with verified-email mismatch only inferred.
 See the [current evidence](../../MVP-PLAN.md).
+
+### Recovering an invitation email mismatch
+
+After R-ASTRA-118 is deployed, only an active, unused, unexpired email-only invitation can show a
+specific `invitation_email_mismatch` response. This preserves the existing atomic behavior that
+leaves the invitation valid after a mismatch. Have the
+invitee check or add the invited address under
+[GitHub email settings](https://github.com/settings/emails), complete verification, then return to
+the same browser and enter the original invitation code again. Do not refresh a callback page.
+If the person already has an account, use normal sign-in instead. Used/expired invitations and
+numeric-ID invitations retain generic error handling. Focused independent backend/browser QA passed,
+but the full local gate and deployment remain pending; until deployed, use the current production
+flow and do not promise the new message.
 
 ### Resend sending domain and credential workflow
 

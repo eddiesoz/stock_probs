@@ -35,12 +35,24 @@ redemption requires an exact verified GitHub email match before binding to the s
 account ID; explicitly supplied positive IDs retain ID-bound invitations, and the existing
 numeric-ID code flow remains. The reviewed release is deployed at schema 12 on pushed revision
 `4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were sent through production service
-functions and Resend reported all three delivered; a follow-up was sent from the user's Gmail.
+functions and Resend reported all three delivered; two follow-up messages were sent from the user's
+Gmail in the same invitation thread.
 One recipient mailbox put its invitation in Spam; placement/read status for the other mailboxes is
 **Unavailable**. These were service-function sends, not an authenticated HTTP/browser flow.
-R-ASTRA-113 remains **In progress** because live invitee OAuth redemption, TOTP onboarding, and
-workspace UI remain **Unavailable**. R-ASTRA-112's separate Gmail Spam result is unchanged;
-detailed operational receipts are in the [MVP plan](MVP-PLAN.md).
+R-ASTRA-113 remains **In progress**. For invitation 2, recipient feedback and sanitized server
+logs support OAuth redemption, TOTP enrollment, and private workspace/API/forecast access; they do
+not establish browser-rendered UI. Invitation 3 was rejected while still valid, with a verified-
+email mismatch only inferred from the available evidence; invitation 4 remains unused. R-ASTRA-112's
+separate Gmail Spam result is unchanged; detailed operational receipts are in the
+[MVP plan](MVP-PLAN.md).
+
+`R-ASTRA-118` is **In progress**. It adds a distinct `invitation_email_mismatch` result for an
+active email-bound invitation while preserving the repository's existing atomic no-consume
+behavior; numeric-ID and used/expired errors stay generic. Positive HTML callback errors use fixed
+`303` redirects, while JSON status and response shapes remain unchanged. Focused independent QA
+passed `190` backend tests and `30/30` desktop/emulated-mobile browser cases; the initial locator
+failure and test-only repair are preserved in the [MVP plan](MVP-PLAN.md). The full local gate,
+deployment, and code-free retry email remain pending.
 
 Scoped independent QA passed `64` authentication/repository/list checks, `123` API checks, `61`
 backup/CLI checks, `10` desktop/mobile-emulated auth-flow cases, `27` frontend checks, Ruff, and

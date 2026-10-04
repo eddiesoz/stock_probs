@@ -320,15 +320,25 @@ local gate (`796` Python tests; see the [MVP plan](MVP-PLAN.md)). R-ASTRA-114 th
 record the repaired browser locator, documentation fixture links, and strict numeric-ID
 validation. The reviewed release is deployed at schema 12 on revision
 `4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were sent through production service
-functions and Resend reported all three delivered; one follow-up was sent from the user's Gmail.
+functions and Resend reported all three delivered; two follow-up messages were sent from the user's
+Gmail in the same invitation thread.
 This did not exercise the authenticated HTTP/browser flow. One recipient mailbox classified its
-invitation as Spam; placement/read status for the other mailboxes is **Unavailable**. R-ASTRA-113
-remains **In progress** because live invitee OAuth redemption, TOTP onboarding, and workspace UI
-remain **Unavailable**. R-ASTRA-112's earlier Spam result remains separate. Owner-browser TOTP
-verification, authenticated workspace retrieval, and physical-mobile evidence also remain
-unavailable. See
+invitation as Spam; placement/read status for the other mailboxes is **Unavailable**. The
+R-ASTRA-113 operational scope is complete, but overall status remains **In progress** pending
+remaining invitee/UI evidence; see the [MVP plan](MVP-PLAN.md). R-ASTRA-112's earlier Spam result
+and unavailable physical-mobile evidence remain separate. See
 [getting started](docs/operations/getting-started.md#invitation-email-and-host-compose-update) for
 configuration and the fixed reviewed-Compose update procedure.
+
+`R-ASTRA-118` adds a specific mismatch response for active email-bound invitations while preserving
+the existing atomic no-consume behavior; numeric-ID and used/expired errors remain generic. HTML
+callback errors use fixed `303` redirects and JSON responses retain their current status and shape.
+One invitee's redemption/TOTP/private-API activity is supported by recipient feedback and sanitized
+logs; another reported rejection while the invitation remained valid, with email mismatch inferred
+but not confirmed. Focused independent QA passed `190` backend tests and `30/30` desktop/emulated-
+mobile browser cases; the initial locator failure and test-only repair remain in the plan. The
+authorized same-thread feedback follow-up is sent; the code-free retry message, full local gate, and
+deployment are pending. See the [MVP plan](MVP-PLAN.md).
 
 ### Authenticator setup and recovery
 

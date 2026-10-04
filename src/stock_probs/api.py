@@ -47,7 +47,9 @@ from stock_probs.auth import (
     AuthManager,
     AuthorizationDenied,
     AuthUnavailable,
+    InvitationEmailMismatch,
     InvitationRejected,
+    OAuthRejected,
     OAuthStartLimited,
     PasskeyBackend,
     UserRecord,
@@ -132,6 +134,31 @@ def _safe_local_next(value: str | None, default: str = "/overview") -> str:
     if parsed.scheme or parsed.netloc or parsed.path.startswith("//"):
         return default
     return value
+
+
+def _explicitly_accepts_html(request: Request) -> bool:
+    """Recognize an explicit positive text/html Accept range, never a wildcard."""
+
+    for media_range in request.headers.get("accept", "").split(","):
+        parts = [part.strip() for part in media_range.split(";")]
+        if not parts or parts[0].lower() != "text/html":
+            continue
+        quality_values: list[str] = []
+        for parameter in parts[1:]:
+            name, separator, value = parameter.partition("=")
+            if separator and name.strip().lower() == "q":
+                quality_values.append(value.strip())
+        if len(quality_values) > 1:
+            continue
+        if not quality_values:
+            return True
+        try:
+            quality = float(quality_values[0])
+        except ValueError:
+            continue
+        if 0.0 < quality <= 1.0:
+            return True
+    return False
 
 
 class ValidationIssue(ApiResponse):
@@ -3688,15 +3715,109 @@ def create_app(
         "/api/v1/auth/github/callback",
         response_model=AuthLoginResponse,
         responses=_documented_errors(400, 403, 405, 422, 500, 503),
+        openapi_extra={
+            "parameters": [
+                {
+                    "name": "code",
+                    "in": "query",
+                    "required": True,
+                    "schema": {"type": "string", "minLength": 8, "maxLength": 512},
+                },
+                {
+                    "name": "state",
+                    "in": "query",
+                    "required": True,
+                    "schema": {"type": "string", "minLength": 16, "maxLength": 256},
+                },
+            ]
+        },
     )
     def github_callback(
         request: Request,
-        code: str = Query(min_length=8, max_length=512),
-        state: str = Query(min_length=16, max_length=256),
     ) -> Response:
         """Finish browser-bound GitHub OAuth and issue a provisional session."""
 
+        def failure_response(
+            *,
+            status_code: int,
+            code: str,
+            message: str,
+            html_location: str,
+        ) -> Response:
+            if _explicitly_accepts_html(request):
+                rejected: Response = RedirectResponse(html_location, status_code=303)
+            else:
+                rejected = JSONResponse(
+                    status_code=status_code,
+                    content=_error(code, message),
+                )
+            _clear_oauth_transaction_cookie(rejected)
+            return rejected
+
+        def query_validation_failure(details: list[dict[str, object]]) -> Response:
+            if _explicitly_accepts_html(request):
+                return failure_response(
+                    status_code=400,
+                    code="oauth_rejected",
+                    message=OAuthRejected.message,
+                    html_location="/sign-in?error=oauth_rejected",
+                )
+            rejected = JSONResponse(
+                status_code=422,
+                content=_error("validation_error", "Request validation failed.", details=details),
+            )
+            _clear_oauth_transaction_cookie(rejected)
+            return rejected
+
         try:
+            # Read OAuth fields inside the route so every malformed callback also expires the
+            # browser transaction cookie; never reflect provider error or arbitrary query values.
+            query_fields = request.query_params
+            field_limits = {"code": (8, 512), "state": (16, 256)}
+            field_values: dict[str, str] = {}
+            validation_details: list[dict[str, object]] = []
+            for field, (minimum, maximum) in field_limits.items():
+                values = query_fields.getlist(field)
+                if not values:
+                    validation_details.append(
+                        {
+                            "location": ["query", field],
+                            "message": "Field required",
+                            "type": "missing",
+                        }
+                    )
+                elif len(values) != 1:
+                    validation_details.append(
+                        {
+                            "location": ["query", field],
+                            "message": "Expected a single value",
+                            "type": "value_error",
+                        }
+                    )
+                elif len(values[0]) < minimum:
+                    validation_details.append(
+                        {
+                            "location": ["query", field],
+                            "message": f"String should have at least {minimum} characters",
+                            "type": "string_too_short",
+                        }
+                    )
+                elif len(values[0]) > maximum:
+                    validation_details.append(
+                        {
+                            "location": ["query", field],
+                            "message": f"String should have at most {maximum} characters",
+                            "type": "string_too_long",
+                        }
+                    )
+                else:
+                    field_values[field] = values[0]
+            if validation_details:
+                return query_validation_failure(validation_details)
+            if query_fields.getlist("error"):
+                raise OAuthRejected()
+            code = field_values["code"]
+            state = field_values["state"]
             identity = auth_manager.finish_github(
                 code,
                 state,
@@ -3755,25 +3876,31 @@ def create_app(
             _clear_oauth_transaction_cookie(redirect)
             return redirect
         except AuthError as exc:
-            rejected = JSONResponse(
+            if isinstance(exc, InvitationEmailMismatch):
+                html_location = "/invite?error=invitation_email_mismatch"
+            elif isinstance(exc, InvitationRejected):
+                html_location = "/invite?error=invitation_rejected"
+            elif isinstance(exc, OAuthRejected):
+                html_location = "/sign-in?error=oauth_rejected"
+            else:
+                html_location = "/sign-in?error=authentication_unavailable"
+            return failure_response(
                 status_code=exc.status_code,
-                content=_error(exc.code, exc.public_message),
+                code=exc.code,
+                message=exc.public_message,
+                html_location=html_location,
             )
-            _clear_oauth_transaction_cookie(rejected)
-            return rejected
         except Exception as exc:
             logger.error(
                 "GitHub callback failed code=internal_error exception_type=%s",
                 type(exc).__name__,
             )
-            rejected = JSONResponse(
+            return failure_response(
                 status_code=500,
-                content=_error(
-                    "internal_error", "The local service could not complete the request."
-                ),
+                code="internal_error",
+                message="The local service could not complete the request.",
+                html_location="/sign-in?error=authentication_unavailable",
             )
-            _clear_oauth_transaction_cookie(rejected)
-            return rejected
 
     @app.post(
         "/api/v1/auth/invitations",

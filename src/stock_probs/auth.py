@@ -126,6 +126,13 @@ class InvitationRejected(AuthError):
     message = "The invitation is invalid or has expired."
 
 
+class InvitationEmailMismatch(InvitationRejected):
+    """Raised when an active email invitation does not match verified GitHub email."""
+
+    code = "invitation_email_mismatch"
+    message = "Sign in to GitHub with the verified email address that received this invitation."
+
+
 class PasskeyRejected(AuthError):
     """Raised when WebAuthn verification fails without exposing verifier details."""
 
@@ -1924,6 +1931,24 @@ class AuthManager:
             if not isinstance(email_hash, str) or not re_full_hex(email_hash):
                 raise InvitationRejected()
             email_hashes.append(email_hash)
+        # This read selects a recovery message only; the repository repeats the comparison and
+        # consumes under its write transaction, so a consume/expiry race stays generic rejection.
+        invitation = self.inspect_invitation_hash(code_hash, now)
+        stored_email_hash = invitation.get("email_hash")
+        bound_github_id = invitation.get("github_id", invitation.get("github_user_id"))
+        if stored_email_hash is not None:
+            if (
+                bound_github_id is not None
+                or not isinstance(stored_email_hash, str)
+                or not re_full_hex(stored_email_hash)
+            ):
+                raise InvitationRejected()
+            if not any(
+                hmac.compare_digest(stored_email_hash, candidate) for candidate in email_hashes
+            ):
+                raise InvitationEmailMismatch()
+        elif bound_github_id is None:
+            raise InvitationRejected()
         result = self.store.auth_redeem_invitation(
             code_hash,
             _iso(now.astimezone(UTC)),

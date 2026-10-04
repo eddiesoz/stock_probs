@@ -236,12 +236,19 @@ flow, and never infer mailbox placement or invitation redemption from local QA o
 service-function delivery check. For R-ASTRA-113, independent local QA and the final native-x86_64
 gate passed (`796` Python tests), and the reviewed schema-12 release was deployed at pushed revision
 `4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were submitted through production
-service functions and Resend showed all three delivered; one follow-up was sent from the user's
-Gmail. This did not exercise the authenticated HTTP/browser send. One recipient mailbox classified
+service functions and Resend showed all three delivered; two follow-up messages were sent from the
+user's Gmail in the same invitation thread. This did not exercise the authenticated HTTP/browser send. One recipient mailbox classified
 its invitation as Spam; other mailbox placement/read status is unavailable. R-ASTRA-113 remains
-**In progress** because live invitee OAuth redemption, TOTP onboarding, and workspace UI remain
-**Unavailable**. The complete receipts and R114/R115/R116 repair history are in the
+**In progress** overall: recipient feedback and sanitized logs support one invitee's redemption,
+TOTP enrollment, and private API access, but not browser-rendered UI. Another valid invitation was
+rejected; verified-email mismatch is an inference. The complete receipts and R114/R115/R116 repair history are in the
 [MVP plan](../../MVP-PLAN.md); R-ASTRA-112's Gmail Spam result remains separate.
+`R-ASTRA-118` documents the active email-bound invitation mismatch distinction while preserving
+the existing atomic no-consume behavior,
+fixed HTML error redirects, JSON compatibility, and UI guidance across this API, operator, and
+threat-model documentation. Focused independent backend/browser QA passed and found no source
+blocker; the initial browser locator failure and test-only repair remain in the plan. The full local
+gate and deployment are pending, so this contract is not production acceptance.
 Backup/restore compatibility and caller limits are documented in the
 [backup guide](../operations/backup-restore.md) and [API reference](../reference/api.md).
 Independent scoped QA and Astra's security re-review are recorded in the root plan. Its local gate

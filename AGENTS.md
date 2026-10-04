@@ -205,12 +205,25 @@ declared scope on native x86_64 at dirty revision `41d26991417a28ad99947d273a158
 R-ASTRA-116 record the separate browser-locator, documentation-link, and strict-ID repairs in the
 plan. The reviewed and pushed release at `4cc5c8502ec93c57947958ee07f891b45e98d870` is deployed
 at schema 12 and loopback-only. Three invitations were sent through production service functions;
-Resend showed all three delivered, and one follow-up was sent from the user's Gmail. This did not
+Resend showed all three delivered, and two follow-up messages were sent from the user's Gmail in
+the same invitation thread. This did not
 exercise the authenticated HTTP/browser invitation flow. One recipient mailbox put its invitation
-in Spam; placement/read status for the other mailboxes is **Unavailable**. R-ASTRA-113 remains
-**In progress** because live invitee OAuth redemption, TOTP onboarding, and workspace UI are
-**Unavailable**. R-ASTRA-112's separate Spam-placement result remains unchanged; deployment and
-mail receipts are in the [MVP plan](MVP-PLAN.md).
+in Spam; placement/read status for the other mailboxes is **Unavailable**. Later R-ASTRA-118
+evidence records one invitation redemption with recipient-reported access and sanitized logs
+showing TOTP enrollment and private workspace/API activity; browser-rendered UI is not established.
+Another recipient reported `invitation_rejected` while the invitation remained valid. A verified
+email mismatch is consistent with the sanitized state/callback evidence but the recipient's
+authenticated GitHub email list was not observed, so this remains an inference. Focused R-ASTRA-118
+backend/browser QA passed, including the test-locator repair; its full local gate, deployment, and
+code-free retry email remain pending. Keep R-ASTRA-113 **In progress** until the remaining
+invitee outcomes and UI evidence are resolved; R-ASTRA-112's Spam result remains separate. Details
+are in the [MVP plan](MVP-PLAN.md).
+
+For this invitation-support thread only, the user authorized direct follow-up messages from their
+personal Gmail in the same invitation email thread, including requests for feedback. Read replies
+in that thread and correlate them with sanitized production evidence before asking the user to relay
+recipient error text. This authorization does not cover unrelated email or new threads. Keep
+recipient addresses, invitation codes, and credentials out of repository files and evidence.
 
 `EXP-M09` remains a separate historical export action, not a public-hosting gate. `M09-E18`
 completed M09 for its declared scope, while `M07-E20` and the `R-ASTRA-98` receipt are recorded

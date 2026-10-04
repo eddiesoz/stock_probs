@@ -62,12 +62,26 @@ flow remains available. See the
 The implementation and declared local QA scope passed, including schema-12 package smoke and the
 final local gate (`796` Python tests). The reviewed release is deployed at schema 12 on pushed
 revision `4cc5c8502ec93c57947958ee07f891b45e98d870`. Three invitations were submitted by direct
-production service-function calls over operator SSH, and Resend showed all three delivered; a
-follow-up was sent from the user's Gmail. No authenticated HTTP/browser send was exercised. One
+production service-function calls over operator SSH, and Resend showed all three delivered; two
+follow-up messages were sent from the user's Gmail in the same invitation thread. No authenticated
+HTTP/browser send was exercised. One
 recipient mailbox classified its invitation as Spam; other mailbox placement/read status is
-unavailable. Live OAuth redemption, verified-email acceptance, TOTP onboarding, and workspace UI
-remain **Unavailable**. The earlier R-ASTRA-112 Gmail Spam delivery remains a separate historical
-check.
+unavailable. For one invitee, recipient feedback and sanitized logs support OAuth redemption, TOTP
+enrollment, and private API activity, but not browser-rendered UI. Another valid invitation was
+rejected; verified-email mismatch remains an inference because the authenticated GitHub email list
+was not observed. The earlier R-ASTRA-112 Gmail Spam delivery remains a separate historical check.
+
+`R-ASTRA-118` adds a distinct mismatch result for an active, unused, unexpired email-bound
+invitation while preserving the repository's existing atomic no-consume behavior. No user/session
+is created for that mismatch; numeric-ID, used, and expired cases keep generic errors. HTML callback
+redirects require positive `text/html` acceptance and use fixed local destinations. JSON status/body
+behavior remains unchanged, including `422` for malformed callback query requests from JSON clients.
+Only the OAuth transaction cookie is cleared; active sessions are preserved. The UI exposes only
+whitelisted error codes and provides a verified-email retry route. Focused independent QA passed
+with no source blocker; the full local gate and deployment are pending, so no production acceptance
+is inferred. A reported rejection while an invitation
+remained valid is consistent with a verified-email mismatch, but the account's authenticated
+GitHub email list was not observed; the cause remains an inference.
 
 The earlier private
 clean-main image is revision

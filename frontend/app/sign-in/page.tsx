@@ -9,6 +9,12 @@ import { AuthShell } from "../../components/auth-shell";
 import styles from "../auth.module.css";
 
 const GITHUB_START_PATH = "/api/v1/auth/github/start";
+type SignInRecoveryCode = "oauth_rejected" | "authentication_unavailable";
+
+function signInRecoveryCode(value: string | null): SignInRecoveryCode | null {
+  if (value === "oauth_rejected" || value === "authentication_unavailable") return value;
+  return null;
+}
 
 export default function SignInPage() {
   const [session, setSession] = useState<AuthSession | null | undefined>(undefined);
@@ -19,12 +25,14 @@ export default function SignInPage() {
   const [password, setPassword] = useState("");
   const [nextPath, setNextPath] = useState("/overview");
   const [busy, setBusy] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState<SignInRecoveryCode | null>(null);
   const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
 
   useEffect(() => {
     let active = true;
     const params = new URLSearchParams(window.location.search);
     setNextPath(safeLocalNext(params.get("next")));
+    setRecoveryCode(signInRecoveryCode(params.get("error")));
     Promise.all([
       getAuthSession(),
       authRequest<{ status?: string }>("/api/v1/auth/status", { cache: "no-store" }),
@@ -84,6 +92,12 @@ export default function SignInPage() {
       <section className={styles.authPanel} aria-labelledby="sign-in-heading">
         <h2 id="sign-in-heading">Sign in</h2>
         <p className={styles.panelLead}>{!statusLoaded ? "Checking sign-in options…" : githubEnabled ? "Use your invited GitHub account. An authenticator app code is required after the first successful sign-in." : localEnabled ? "Sign in with your development account to continue." : "Sign-in options are unavailable."}</p>
+        {recoveryCode === "oauth_rejected" ? <p className={styles.authMessage} data-tone="error" role="alert">
+          <strong>GitHub could not complete sign-in.</strong> Start again with <em>Continue with GitHub</em> in this same browser; do not refresh the callback URL. If you were invited, <a href="/invite">return to the invitation page</a> and reenter the original code from your invitation email.
+        </p> : null}
+        {recoveryCode === "authentication_unavailable" ? <p className={styles.authMessage} data-tone="error" role="alert">
+          <strong>Authentication is temporarily unavailable.</strong> Start a new sign-in with <em>Continue with GitHub</em> in this same browser. Do not refresh the callback URL.
+        </p> : null}
         {githubEnabled ? <a className="primary buttonIcon" href={GITHUB_START_PATH} data-testid="github-sign-in">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.3a9.7 9.7 0 0 0-3.07 18.9c.49.09.67-.21.67-.47v-1.65c-2.73.59-3.31-1.16-3.31-1.16-.45-1.13-1.1-1.43-1.1-1.43-.89-.61.07-.6.07-.6.98.07 1.5 1 1.5 1 .88 1.5 2.3 1.06 2.86.81.09-.63.34-1.06.62-1.3-2.18-.25-4.47-1.09-4.47-4.84 0-1.07.38-1.94 1-2.62-.1-.25-.43-1.25.1-2.59 0 0 .82-.26 2.67 1a9.25 9.25 0 0 1 4.86 0c1.85-1.26 2.67-1 2.67-1 .53 1.34.2 2.34.1 2.59.62.68 1 1.55 1 2.62 0 3.76-2.29 4.59-4.48 4.83.35.3.66.88.66 1.78v2.65c0 .26.18.57.68.47A9.7 9.7 0 0 0 12 2.3Z" /></svg>
           Continue with GitHub

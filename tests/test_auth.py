@@ -689,7 +689,48 @@ def _email_invitation_app(tmp_path, provider_emails, *, repository=None):
     return application, store, code, calls, oauth_client
 
 
-def _redeem_email_invitation(client: TestClient, code: str) -> httpx.Response:
+def _github_callback_app(tmp_path, *, profile=None):
+    """Build a minimal GitHub callback fixture without any email-bound invitation."""
+
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "stock_probs.sqlite3",
+        backup_dir=tmp_path / "backups",
+        provider="fixture",
+        environment="test",
+        auth_mode="github",
+        auth_session_secret="f" * 48,
+        auth_public_origin="http://testserver",
+        github_client_id="client-id",
+        github_client_secret="client-secret",  # noqa: S106
+        github_redirect_uri="http://testserver/api/v1/auth/github/callback",
+        owner_github_id=99999,
+    )
+    store = MemoryAuthStore()
+    application = create_app(
+        settings, FixtureProvider(), lambda: datetime.now(UTC), auth_store=store
+    )
+    calls: list[httpx.Request] = []
+
+    def github_handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if request.url.host == "github.com" and request.url.path.endswith("/access_token"):
+            return httpx.Response(200, json={"access_token": "test-access-token"})
+        if request.url.host == "api.github.com" and request.url.path == "/user":
+            return httpx.Response(
+                200,
+                json=profile or {"id": 24680, "login": "callback-member"},
+            )
+        return httpx.Response(404)
+
+    oauth_client = httpx.Client(transport=httpx.MockTransport(github_handler))
+    application.state.auth.http_client = oauth_client
+    return application, store, calls, oauth_client
+
+
+def _redeem_email_invitation(
+    client: TestClient, code: str, *, accept: str | None = None
+) -> httpx.Response:
     """Start the invitation transaction and complete its callback in the same browser."""
 
     redeemed = client.post("/api/v1/auth/invites/redeem", json={"code": code})
@@ -697,12 +738,26 @@ def _redeem_email_invitation(client: TestClient, code: str) -> httpx.Response:
     if authorization_url is None:
         return redeemed
     state = parse_qs(urlparse(authorization_url).query)["state"][0]
+    headers = {"Sec-Fetch-Site": "cross-site"}
+    if accept is not None:
+        headers["Accept"] = accept
     return client.get(
         "/api/v1/auth/github/callback",
         params={"code": "oauth-code", "state": state},
-        headers={"Sec-Fetch-Site": "cross-site"},
+        headers=headers,
         follow_redirects=False,
     )
+
+
+def _assert_oauth_transaction_cookie_cleared(response: httpx.Response) -> None:
+    """Every callback error expires only the one-time transaction cookie."""
+
+    cookies = response.headers.get_list("set-cookie")
+    assert any(
+        cookie.startswith(f"{OAUTH_TRANSACTION_COOKIE_NAME}=") and "Max-Age=0" in cookie
+        for cookie in cookies
+    )
+    assert not any(cookie.startswith(f"{SESSION_COOKIE_NAME}=") for cookie in cookies)
 
 
 def test_email_invitation_requires_matching_verified_github_email_and_can_retry(tmp_path) -> None:
@@ -724,7 +779,10 @@ def test_email_invitation_requires_matching_verified_github_email_and_can_retry(
             follow_redirects=False,
         )
         assert unverified.status_code == 403
-        assert unverified.json()["error"]["code"] == "invitation_rejected"
+        assert unverified.json()["error"]["code"] == "invitation_email_mismatch"
+        _assert_oauth_transaction_cookie_cleared(unverified)
+        assert store.auth_get_user_by_github_id(24680) is None
+        assert client.get("/api/v1/auth/session").json()["authenticated"] is False
         invitation = store.auth_get_invitation(invite_hash)
         assert invitation is not None
         assert invitation["github_id"] is None
@@ -733,7 +791,17 @@ def test_email_invitation_requires_matching_verified_github_email_and_can_retry(
         provider_emails["value"] = [{"email": "invitee.research@example.test", "verified": True}]
         wrong_alias = _redeem_email_invitation(client, code)
         assert wrong_alias.status_code == 403
-        assert wrong_alias.json()["error"]["code"] == "invitation_rejected"
+        assert wrong_alias.json()["error"]["code"] == "invitation_email_mismatch"
+        _assert_oauth_transaction_cookie_cleared(wrong_alias)
+        invitation = store.auth_get_invitation(invite_hash)
+        assert invitation is not None and invitation["github_id"] is None
+        assert invitation.get("used_at") is None
+
+        provider_emails["value"] = []
+        missing_email = _redeem_email_invitation(client, code)
+        assert missing_email.status_code == 403
+        assert missing_email.json()["error"]["code"] == "invitation_email_mismatch"
+        _assert_oauth_transaction_cookie_cleared(missing_email)
         invitation = store.auth_get_invitation(invite_hash)
         assert invitation is not None and invitation["github_id"] is None
         assert invitation.get("used_at") is None
@@ -752,8 +820,221 @@ def test_email_invitation_requires_matching_verified_github_email_and_can_retry(
         assert consumed["github_id"] == 24680
         assert consumed["used_at"] is not None
         email_requests = [call for call in calls if call.url.path == "/user/emails"]
-        assert len(email_requests) == 3
+        assert len(email_requests) == 4
         assert str(email_requests[-1].url.params) == "per_page=100&page=1"
+    oauth_client.close()
+
+
+def test_email_mismatch_html_recovery_preserves_invite_and_allows_retry(tmp_path) -> None:
+    """HTML mismatch gets a safe recovery route; the same invitation can be retried."""
+
+    provider_emails = {"value": [{"email": "other@example.test", "verified": True}]}
+    application, store, code, _calls, oauth_client = _email_invitation_app(
+        tmp_path, provider_emails
+    )
+    invite_hash = hashlib.sha256(code.encode()).hexdigest()
+    with TestClient(application) as client:
+        mismatch = _redeem_email_invitation(client, code, accept="text/html")
+        assert mismatch.status_code == 303
+        assert mismatch.headers["location"] == "/invite?error=invitation_email_mismatch"
+        _assert_oauth_transaction_cookie_cleared(mismatch)
+        assert "other@example.test" not in mismatch.headers["location"]
+        assert store.auth_get_user_by_github_id(24680) is None
+        assert client.get("/api/v1/auth/session").json()["authenticated"] is False
+        invitation = store.auth_get_invitation(invite_hash)
+        assert invitation is not None
+        assert invitation["github_id"] is None
+        assert invitation.get("used_at") is None
+
+        provider_emails["value"] = [{"email": "invitee+research@example.test", "verified": True}]
+        recovered = _redeem_email_invitation(client, code, accept="text/html")
+        assert recovered.status_code == 303
+        assert recovered.headers["location"].startswith("/authenticator?mode=enroll")
+        member = store.auth_get_user_by_github_id(24680)
+        assert member is not None and member["role"] == "member"
+        assert client.get("/api/v1/history").json()["error"]["code"] == "totp_required"
+    oauth_client.close()
+
+
+@pytest.mark.parametrize("accept", ["*/*", "text/htmlish", "text/html;q=0", "text/html;q=bad"])
+def test_oauth_error_query_uses_only_explicit_html_recovery(accept, tmp_path) -> None:
+    """OAuth query values and non-HTML Accept ranges cannot steer redirect locations."""
+
+    application, _store, _calls, oauth_client = _github_callback_app(tmp_path)
+    with TestClient(application) as client:
+        started = client.get("/api/v1/auth/github/start", follow_redirects=False)
+        state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+        callback = client.get(
+            "/api/v1/auth/github/callback",
+            params=[
+                ("code", "oauth-code"),
+                ("state", state),
+                ("error", "https://attacker.example/secret"),
+                ("error_description", "private-marker"),
+                ("next", "//attacker.example/path"),
+            ],
+            headers={"Accept": accept, "Sec-Fetch-Site": "cross-site"},
+            follow_redirects=False,
+        )
+        assert callback.status_code == 400
+        assert callback.json()["error"]["code"] == "oauth_rejected"
+        assert "Location" not in callback.headers
+        assert "private-marker" not in callback.text
+        assert "attacker.example" not in callback.text
+        _assert_oauth_transaction_cookie_cleared(callback)
+    oauth_client.close()
+
+
+def test_oauth_callback_html_error_query_uses_fixed_location(tmp_path) -> None:
+    """An explicit HTML client gets a fixed OAuth recovery route with no query reflection."""
+
+    application, _store, _calls, oauth_client = _github_callback_app(tmp_path)
+    with TestClient(application) as client:
+        started = client.get("/api/v1/auth/github/start", follow_redirects=False)
+        state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+        callback = client.get(
+            "/api/v1/auth/github/callback",
+            params=[
+                ("code", "oauth-code"),
+                ("state", state),
+                ("error", "https://attacker.example/secret"),
+                ("next", "//attacker.example/path"),
+            ],
+            headers={
+                "Accept": "application/json, text/html;q=0.8",
+                "Sec-Fetch-Site": "cross-site",
+            },
+            follow_redirects=False,
+        )
+        assert callback.status_code == 303
+        assert callback.headers["location"] == "/sign-in?error=oauth_rejected"
+        assert "attacker.example" not in callback.headers["location"]
+        _assert_oauth_transaction_cookie_cleared(callback)
+    oauth_client.close()
+
+
+def test_oauth_callback_validation_clears_cookie_and_preserves_openapi_contract(tmp_path) -> None:
+    """Manual failure handling retains required code/state query schemas and JSON 422."""
+
+    application, _store, _calls, oauth_client = _github_callback_app(tmp_path)
+    with TestClient(application) as client:
+        operation = client.get("/api/v1/openapi.json").json()["paths"][
+            "/api/v1/auth/github/callback"
+        ]["get"]
+        parameters = {parameter["name"]: parameter for parameter in operation["parameters"]}
+        assert parameters["code"]["required"] is True
+        assert parameters["code"]["schema"]["minLength"] == 8
+        assert parameters["code"]["schema"]["maxLength"] == 512
+        assert parameters["state"]["required"] is True
+        assert parameters["state"]["schema"]["minLength"] == 16
+        assert parameters["state"]["schema"]["maxLength"] == 256
+
+        started = client.get("/api/v1/auth/github/start", follow_redirects=False)
+        state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+        html_missing = client.get(
+            "/api/v1/auth/github/callback",
+            params={"state": state},
+            headers={"Accept": "text/html", "Sec-Fetch-Site": "cross-site"},
+            follow_redirects=False,
+        )
+        assert html_missing.status_code == 303
+        assert html_missing.headers["location"] == "/sign-in?error=oauth_rejected"
+        _assert_oauth_transaction_cookie_cleared(html_missing)
+
+        started = client.get("/api/v1/auth/github/start", follow_redirects=False)
+        state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+        json_invalid = client.get(
+            "/api/v1/auth/github/callback",
+            params={"code": "x" * 513, "state": state},
+            headers={"Accept": "application/json", "Sec-Fetch-Site": "cross-site"},
+            follow_redirects=False,
+        )
+        assert json_invalid.status_code == 422
+        assert json_invalid.json()["error"]["code"] == "validation_error"
+        _assert_oauth_transaction_cookie_cleared(json_invalid)
+    oauth_client.close()
+
+
+@pytest.mark.parametrize(
+    ("failure", "accept", "expected_status", "expected_code", "expected_location"),
+    [
+        ("unavailable", "text/html", 303, None, "/sign-in?error=authentication_unavailable"),
+        ("internal", "text/html", 303, None, "/sign-in?error=authentication_unavailable"),
+        ("unavailable", "application/json", 503, "authentication_unavailable", None),
+        ("internal", "application/json", 500, "internal_error", None),
+    ],
+)
+def test_oauth_callback_unavailable_and_internal_failures_are_sanitized(
+    failure, accept, expected_status, expected_code, expected_location, tmp_path, monkeypatch
+) -> None:
+    """Provider and internal failures clear browser state without leaking details."""
+
+    application, _store, _calls, oauth_client = _github_callback_app(tmp_path)
+
+    def fail(*_args, **_kwargs):
+        if failure == "unavailable":
+            raise AuthUnavailable()
+        raise RuntimeError("private-marker")
+
+    monkeypatch.setattr(application.state.auth, "finish_github", fail)
+    with TestClient(application) as client:
+        started = client.get("/api/v1/auth/github/start", follow_redirects=False)
+        state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+        callback = client.get(
+            "/api/v1/auth/github/callback",
+            params={"code": "oauth-code", "state": state},
+            headers={"Accept": accept, "Sec-Fetch-Site": "cross-site"},
+            follow_redirects=False,
+        )
+        assert callback.status_code == expected_status
+        if expected_location is not None:
+            assert callback.headers["location"] == expected_location
+        else:
+            assert callback.json()["error"]["code"] == expected_code
+        assert "private-marker" not in callback.text
+        _assert_oauth_transaction_cookie_cleared(callback)
+    oauth_client.close()
+
+
+def test_expired_used_and_wrong_id_invitations_keep_generic_html_recovery(tmp_path) -> None:
+    """Only an active email-bound mismatch gets the distinct email recovery message."""
+
+    application, store, _calls, oauth_client = _github_callback_app(tmp_path)
+    auth = application.state.auth
+    now = datetime.now(UTC)
+    wrong_id_code, _ = auth.create_invitation(13579, 1, now)
+    expired_code, _ = auth.create_invitation(24680, 1, now)
+    used_code, _ = auth.create_invitation(24680, 1, now)
+
+    with TestClient(application) as client:
+        for case, code in (
+            ("wrong_id", wrong_id_code),
+            ("expired", expired_code),
+            ("used", used_code),
+        ):
+            started = client.get(
+                "/api/v1/auth/github/start",
+                params={"invite": code},
+                follow_redirects=False,
+            )
+            state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+            if case in {"expired", "used"}:
+                record = store.invitations[hashlib.sha256(code.encode()).hexdigest()]
+                if case == "expired":
+                    record["expires_at"] = (now - timedelta(seconds=1)).isoformat()
+                else:
+                    record["used_at"] = now.isoformat()
+                    record["consumed_at"] = now.isoformat()
+            callback = client.get(
+                "/api/v1/auth/github/callback",
+                params={"code": "oauth-code", "state": state},
+                headers={"Accept": "text/html", "Sec-Fetch-Site": "cross-site"},
+                follow_redirects=False,
+            )
+            assert callback.status_code == 303
+            assert callback.headers["location"] == "/invite?error=invitation_rejected"
+            _assert_oauth_transaction_cookie_cleared(callback)
+        assert store.auth_get_user_by_github_id(24680) is None
     oauth_client.close()
 
 
@@ -784,6 +1065,8 @@ def test_email_invitation_rejects_malformed_or_unavailable_github_email_lists(
     with TestClient(application) as client:
         callback = _redeem_email_invitation(client, code)
         assert callback.status_code in {400, 403}
+        assert callback.json()["error"]["code"] == "oauth_rejected"
+        _assert_oauth_transaction_cookie_cleared(callback)
         invitation = store.auth_get_invitation(invite_hash)
         assert invitation is not None
         assert invitation["github_id"] is None
@@ -822,6 +1105,42 @@ def test_existing_member_email_invite_preserves_role_and_totp_gate(tmp_path) -> 
         assert current["role"] == "member"
         assert current["status"] == "active"
         assert store.totp_factors[int(member["id"])]["id"] == 7
+    oauth_client.close()
+
+
+def test_existing_member_normal_github_signin_skips_email_lookup_and_keeps_totp_gate(
+    tmp_path,
+) -> None:
+    """Ordinary GitHub sign-in remains provider-light and still requires TOTP."""
+
+    application, store, calls, oauth_client = _github_callback_app(tmp_path)
+    member = store.auth_create_user(
+        {
+            "github_id": 24680,
+            "github_login": "callback-member",
+            "role": "member",
+            "status": "active",
+        }
+    )
+    store.totp_factors[int(member["id"])] = {"id": 9, "revoked_at": None}
+    with TestClient(application) as client:
+        started = client.get("/api/v1/auth/github/start", follow_redirects=False)
+        state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+        callback = client.get(
+            "/api/v1/auth/github/callback",
+            params={"code": "oauth-code", "state": state},
+            headers={"Accept": "text/html", "Sec-Fetch-Site": "cross-site"},
+            follow_redirects=False,
+        )
+        assert callback.status_code == 303
+        assert callback.headers["location"].startswith("/authenticator?mode=verify")
+        assert client.get("/api/v1/history").status_code == 403
+        assert client.get("/api/v1/history").json()["error"]["code"] == "totp_required"
+        paths = [call.url.path for call in calls]
+        assert "/user" in paths
+        assert "/user/emails" not in paths
+        current = store.auth_get_user_by_github_id(24680)
+        assert current is not None and current["role"] == "member"
     oauth_client.close()
 
 

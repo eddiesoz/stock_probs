@@ -6,13 +6,23 @@ import { authErrorMessage, authRequest } from "../../components/auth-client";
 import { AuthShell } from "../../components/auth-shell";
 import styles from "../auth.module.css";
 
+type InvitationRecoveryCode = "invitation_email_mismatch" | "invitation_rejected";
+
+function invitationRecoveryCode(value: string | null): InvitationRecoveryCode | null {
+  if (value === "invitation_email_mismatch" || value === "invitation_rejected") return value;
+  return null;
+}
+
 export default function InvitePage() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState<InvitationRecoveryCode | null>(null);
   const [message, setMessage] = useState<{ tone: "error" | "success"; text: string } | null>(null);
 
   useEffect(() => {
-    const queryCode = new URLSearchParams(window.location.search).get("code");
+    const params = new URLSearchParams(window.location.search);
+    setRecoveryCode(invitationRecoveryCode(params.get("error")));
+    const queryCode = params.get("code");
     if (queryCode) {
       setCode(queryCode);
       const cleanUrl = new URL(window.location.href);
@@ -52,6 +62,12 @@ export default function InvitePage() {
           </label>
           <button className="primary" type="submit" disabled={busy || !code.trim()}>{busy ? "Checking invitation…" : "Continue"}</button>
         </form>
+        {recoveryCode === "invitation_email_mismatch" ? <p className={styles.authMessage} data-tone="error" role="alert">
+          <strong>GitHub could not verify the invited email address.</strong> This invitation is still available. Add and verify the exact invited address in <a href="https://github.com/settings/emails" target="_blank" rel="noopener noreferrer">GitHub email settings</a>, then return to the original invitation email, paste its code above, and continue with the GitHub account that has that exact address marked verified.
+        </p> : null}
+        {recoveryCode === "invitation_rejected" ? <p className={styles.authMessage} data-tone="error" role="alert">
+          <strong>This invitation code cannot be used.</strong> It may be invalid, expired, or already used. If you have already joined, use normal <a href="/sign-in">sign in</a>. If this is your first sign-in and the invitation expired, ask your administrator for a fresh invitation.
+        </p> : null}
         {message ? <p className={styles.authMessage} data-tone={message.tone} role="alert">{message.text}</p> : null}
         <p className={styles.securityNote}>The code is sent only to the local service over the current origin. Never share it in a public issue or chat.</p>
         <div className={styles.authLinks}><a href="/sign-in">Back to sign in</a></div>

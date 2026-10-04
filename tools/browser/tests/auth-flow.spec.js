@@ -4,6 +4,10 @@ const { test, expect } = require("./fixtures");
 
 const frontendExport = path.resolve(__dirname, "../../../frontend/out");
 
+function recoveryMessages(page, regionName) {
+  return page.getByRole("region", { name: regionName }).locator('p[role="alert"]');
+}
+
 async function installFreshAdminExport(page) {
   await page.route("**/admin", async (route) => route.fulfill({
     status: 200,
@@ -77,6 +81,108 @@ test("GitHub sign-in opens the fixed same-origin OAuth start after status loads"
   await signIn.click();
   await expect(page).toHaveURL(/\/sign-in\?oauth_fixture=1$/);
   expect(starts).toBe(1);
+});
+
+test("email mismatch recovery keeps the invite form usable and returns to normal sign-in", async ({ page, browserDiagnostics }) => {
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ authenticated: false }),
+  }));
+  await page.route("**/api/v1/auth/status", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ status: "github" }),
+  }));
+  await page.goto("/invite?error=invitation_email_mismatch");
+
+  const recovery = recoveryMessages(page, "Redeem invitation");
+  await expect(recovery).toContainText("This invitation is still available.");
+  await expect(recovery).toContainText("exact invited address");
+  await expect(recovery).toContainText("return to the original invitation email");
+  const emailSettings = page.getByRole("link", { name: "GitHub email settings" });
+  await expect(emailSettings).toHaveAttribute("href", "https://github.com/settings/emails");
+  await expect(emailSettings).toHaveAttribute("target", "_blank");
+  await expect(emailSettings).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(page.getByLabel("Invitation code")).toBeVisible();
+  const continueButton = page.getByRole("button", { name: "Continue" });
+  await expect(continueButton).toBeDisabled();
+  await page.getByLabel("Invitation code").fill("fixture-invitation-code");
+  await expect(continueButton).toBeEnabled();
+
+  browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/auth/invites/redeem", status: 403 });
+  await page.route("**/api/v1/auth/invites/redeem", (route) => route.fulfill({
+    status: 403,
+    contentType: "application/json",
+    body: JSON.stringify({ error: { code: "invitation_rejected", message: "That invitation cannot be used." } }),
+  }));
+  await continueButton.click();
+  await expect(continueButton).toBeEnabled();
+  await expect(page.getByLabel("Invitation code")).toHaveValue("fixture-invitation-code");
+
+  const dimensions = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport + 1);
+  await page.getByRole("link", { name: "Back to sign in" }).click();
+  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page.getByRole("link", { name: "Continue with GitHub" })).toBeVisible();
+});
+
+test("invitation rejection explains normal sign-in and does not reflect unknown error text", async ({ page }) => {
+  await page.goto("/invite?error=invitation_rejected");
+  const rejection = recoveryMessages(page, "Redeem invitation");
+  await expect(rejection).toContainText("invalid, expired, or already used");
+  await expect(rejection).toContainText("If you have already joined, use normal sign in.");
+  await expect(rejection).toContainText("ask your administrator for a fresh invitation");
+
+  const malicious = "<img src=x onerror=alert(1)>";
+  await page.goto(`/invite?error=${encodeURIComponent(malicious)}`);
+  await expect(recoveryMessages(page, "Redeem invitation")).toHaveCount(0);
+  await expect(page.getByText(malicious, { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Invitation code")).toBeVisible();
+});
+
+test("OAuth recovery is explicit, unknown errors are ignored, and authenticated TOTP continuation remains visible", async ({ page }) => {
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      authenticated: true,
+      csrf_token: "browser-test-csrf",
+      requires_totp: true,
+      totp_enrolled: false,
+      user: { id: 9, login: "fixture-member", role: "member" },
+    }),
+  }));
+  await page.route("**/api/v1/auth/status", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ status: "github" }),
+  }));
+
+  await page.goto("/sign-in?error=oauth_rejected");
+  const recovery = recoveryMessages(page, "Sign in");
+  await expect(recovery).toContainText("GitHub could not complete sign-in.");
+  await expect(recovery).toContainText("in this same browser");
+  await expect(recovery).toContainText("do not refresh the callback URL");
+  await expect(recovery.getByRole("link", { name: "return to the invitation page" })).toHaveAttribute("href", "/invite");
+  await expect(page.getByRole("link", { name: "Continue with GitHub" })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Your identity is signed in.");
+  await expect(page.getByRole("link", { name: "Complete authenticator setup" })).toBeVisible();
+
+  await page.goto("/sign-in?error=authentication_unavailable");
+  const unavailable = recoveryMessages(page, "Sign in");
+  await expect(unavailable).toContainText("Authentication is temporarily unavailable.");
+  await expect(unavailable).toContainText("Start a new sign-in");
+  await expect(page.getByRole("link", { name: "Continue with GitHub" })).toBeVisible();
+
+  const malicious = "<svg onload=alert(1)>";
+  await page.goto(`/sign-in?error=${encodeURIComponent(malicious)}`);
+  await expect(recoveryMessages(page, "Sign in")).toHaveCount(0);
+  await expect(page.getByText(malicious, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Continue with GitHub" })).toBeVisible();
 });
 
 test("old passkey bookmarks redirect to the authenticator flow without a ceremony", async ({ page }) => {

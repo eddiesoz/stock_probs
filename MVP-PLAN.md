@@ -946,13 +946,15 @@ email-list endpoint returns verification status and requires the `user:email` sc
 
 After identity binding, TOTP enrollment or verification and the existing per-user ownership checks
 remain required. The local implementation and independent QA, schema-12 deployment, three invitation
-sends, and one-time personal-Gmail follow-up are complete for their declared scope. The sends used
+sends, and personal-Gmail follow-ups are complete for their declared scope. The sends used
 production service functions rather than the authenticated HTTP/browser route; one invitation
-landed in Spam. Live invitee OAuth redemption, TOTP onboarding, and workspace UI remain
-**Unavailable**. R-ASTRA-112 remains a separate historical operational check: its service-function
-test delivered one owner-bound message to Gmail's Spam folder, did not test the authenticated HTTP
-route, and failed inbox placement. Keep recipient addresses, invitation codes, and credential
-material out of the plan.
+landed in Spam. For invitation 2, recipient feedback and sanitized server logs support OAuth
+redemption, TOTP enrollment, and private workspace/API/forecast access; browser-rendered UI is not
+established. Invitation 3 was rejected while still valid; a verified-email mismatch is an inference,
+not a directly observed account-email result. Invitation 4 remains unused. R-ASTRA-112 remains a
+separate historical operational check: its service-function test delivered one owner-bound message
+to Gmail's Spam folder, did not test the authenticated HTTP route, and failed inbox placement. Keep
+recipient addresses, invitation codes, and credential material out of the plan.
 
 | Evidence | Check and result | Environment, time, revision, artifact |
 | --- | --- | --- |
@@ -982,7 +984,70 @@ material out of the plan.
 - **`R-ASTRA-116` — strict optional GitHub-ID validation.** Independent QA found that JSON `github_id: true` could be coerced to integer `1`. The repair accepts omission, null, or a positive integer and rejects booleans, strings, floats, zero, negative values, and overflow; `github_login` still requires an explicit ID. Builder tests passed `33`, and independent tests plus the direct matrix passed in `R-ASTRA-113-E8`; the final full gate passed in `R-ASTRA-113-E10`.
 - **`R-ASTRA-117` — bounded operational retries.** For deployment, the first native MCP `plan_deploy` returned `remote_operation_failed`; the fixed restricted host-helper plan retry `8537ce0b4b6ba72dd45fbbf9042d218a` passed and native MCP deploy then passed (`R-ASTRA-113-E13`). Separately, the default Python-urllib user-agent probe returned health `403`; the named `SignalLedger-Deployment-Verification/1.0` probe passed the bounded public checks in `R-ASTRA-113-E14`. Preserve both initial results. No source repair was needed and no WAF or other cause is inferred.
 
-R-ASTRA-113 remains **In progress** overall; its local implementation/QA, schema-12 deployment, three invitation sends, and one-time personal-Gmail follow-up are completed for the declared scope. The three Resend submissions were accepted and all three showed **Delivered**, but the observed recipient Gmail mailbox placed its invite in Spam; the other two mailbox placement/read states remain **Unavailable**. The operator created invitations by calling the production service functions, not the authenticated API/browser route. Live invitee GitHub OAuth redemption, verified-email acceptance, TOTP onboarding, and workspace UI remain **Unavailable** and are not inferred from delivery or the public invite-page probe. The earlier R-ASTRA-112 Spam-placement result remains separate and unchanged. No recipient addresses, invitation codes, HMACs, or credential material belong in this record.
+R-ASTRA-113 remains **In progress** overall; its local implementation/QA, schema-12 deployment, three invitation sends, and personal-Gmail follow-ups are completed for the declared operational scope. The three Resend submissions were accepted and all three showed **Delivered**, but the observed recipient Gmail mailbox placed its invite in Spam; placement/read states for the other two remain **Unavailable**. The operator created invitations by calling production service functions, not the authenticated API/browser route. For invitation 2, recipient feedback and sanitized server logs support OAuth redemption, TOTP enrollment, and private workspace/API/forecast access; browser-rendered UI is not established. Invitation 3 was rejected while still valid; a verified-email mismatch is consistent with the evidence but not directly observed. Invitation 4 remains unused. The earlier R-ASTRA-112 Spam-placement result remains separate and unchanged. No recipient addresses, invitation codes, HMACs, or credential material belong in this record.
+
+#### R-ASTRA-118 email-invitation mismatch recovery
+
+**Status:** **In progress**. Root-reviewed source and the test-locator repair passed independent QA
+for the declared focused scope. The full local gate has not yet completed. R-ASTRA-118 is not
+deployed and no code-free repair/retry email has been sent; production remains R-ASTRA-113, schema 12.
+
+For an active, unused, unexpired email-bound invitation, R-ASTRA-118 adds a distinct
+`invitation_email_mismatch` result when the verified GitHub email set does not contain the
+invitation's exact email hash. The existing atomic redemption behavior continues to leave that
+invitation unconsumed and create no user or session. Numeric-ID invitations and used/expired
+invitations retain their existing generic errors; repository redemption behavior is unchanged.
+
+For positively accepted `text/html` GitHub callback requests, errors use fixed `303` redirects:
+`invitation_email_mismatch` maps to `/invite?error=invitation_email_mismatch`,
+`invitation_rejected` maps to `/invite?error=invitation_rejected`, `oauth_rejected` maps to
+`/sign-in?error=oauth_rejected`, and `authentication_unavailable` maps to
+`/sign-in?error=authentication_unavailable`. Only the OAuth transaction cookie is cleared; active
+sessions are preserved. JSON callers retain the existing error status and response shape;
+malformed callback query requests from JSON clients remain `422`. The required
+code/state fields and their OpenAPI length constraints are preserved. The UI displays only
+whitelisted errors, links mismatch guidance to `https://github.com/settings/emails`, allows entry
+of the original invitation code again, offers normal sign-in for an existing member, and tells a
+same-browser OAuth callback user to retry after updating GitHub's verified email instead of
+refreshing the callback.
+
+The following production context is operator-observed or recipient-reported; it is separate from
+the independent QA receipt. At `2026-10-04T00:11:18.509308Z`, read-only integrity was `ok`, foreign-key
+violations were `0`, and production had one active owner and one active member, each with one TOTP
+factor. Invitation `2` was redeemed at `2026-10-03T23:30:10Z`; invitations `3` and `4` were unused
+and unexpired until approximately `2026-10-04T23:08Z`. Counts were 14 events, 14 runs, 21 results,
+and 11 list items. The first two read-only query attempts used a wrong column/table and failed; the
+corrected read-only query supplied these observations, and no database mutation occurred.
+
+One invitee reply at `2026-10-03T23:41:55Z` reported access; sanitized production logs show TOTP
+enrollment and workspace/private API/forecast activity for the redeemed invitation. This does not
+establish browser-rendered UI. Another invitee reported `invitation_rejected` at
+`2026-10-03T23:58:30Z` while invitation `3` remained valid. A private in-process boolean check at
+`2026-10-04T00:04:34Z` confirmed the invitation's delivery binding matched the address used for
+delivery, not that the recipient's authenticated GitHub email was verified. An OAuth state row was
+consumed at `2026-10-03T23:55:12Z` and the callback returned `403`. A verified-email mismatch is
+consistent with these observations but is an inference; the authenticated account's email list was
+not observed. Invitation `4` remains unused. Do not describe the suspected mismatch as confirmed.
+
+At `2026-10-04T00:17:57Z`, a personal-Gmail investigating reply was sent in the same existing
+invitation thread to all three recipients, requesting feedback and excluding invitation codes.
+Gmail metadata verified `SENT`; message `1a104464884d6afa`, thread `1a10406fbbf4259f`. This is the
+user-authorized support follow-up recorded by the durable policy in `AGENTS.md`; it does not verify
+recipient delivery or reading. The code-free repair/retry message remains pending. Do not include
+recipient addresses, codes, raw OAuth state, callback URLs, email hashes, or credentials here.
+
+| Evidence | Check and result | Environment, time, revision, artifact |
+| --- | --- | --- |
+| `R-ASTRA-118-E1` | Independent backend/auth/API checks **Passed**: `.dev-venv/bin/python -m pytest tests/test_auth.py tests/test_api.py -q` collected and passed `190/190`; separate collect-only confirmed `190` in `0.12s`. | Native x86_64, Python `3.11.15`, dirty `HEAD` `b3a31028f5f6e240834c5c951a15aa2b74c3d928`; `2026-10-04T00:26:02Z`–`00:27:51Z`; JUnit artifact not supplied; reviewer `LUNA MAX QA`. |
+| `R-ASTRA-118-E2` | Initial independent browser run **Failed**: `24` passed, `6` failed, exit `1`. The three recovery cases on each project matched both the app alert paragraph and Next route announcer with a broad locator in strict mode. Expected recovery copy rendered; retry, overflow, and later-TOTP assertions were not reached. | Native x86_64; `2026-10-04T00:29:55Z`–`00:30:50Z`; command `node_modules/.bin/playwright test tests/auth-flow.spec.js --project=desktop-chromium --project=mobile-chromium` from `tools/browser`; artifact `/tmp/r-astra-118-auth-flow-20261004T0029Z/`; reviewer `LUNA MAX QA`. This locator failure is not a product failure. |
+| `R-ASTRA-118-E3` | Test-only `R118repair1` scoped the alert locator to `p[role=alert]`. Independent rerun **Passed** `30/30`, zero skips/exit `0`. Retry with the original code, exact GitHub email-settings link, hostile-query suppression, OAuth recovery, TOTP continuation, normal sign-in, and overflow checks passed. | Native x86_64; Node `22.22.2`, Playwright `1.63`, Chromium `153.0.8010.12`; desktop `1440x1000`, emulated Pixel 7 `360x800`; `2026-10-04T00:32:58Z`–`00:33:52Z`; command `STOCK_PROBS_TASK_ID=R-ASTRA-118 STOCK_PROBS_REVISION=b3a31028f5f6e240834c5c951a15aa2b74c3d928 STOCK_PROBS_BROWSER_ARTIFACT_DIR=/tmp/r-astra-118-auth-flow-repair1-20261004T0033Z node_modules/.bin/playwright test tests/auth-flow.spec.js --project=desktop-chromium --project=mobile-chromium` from `tools/browser`; artifact `/tmp/r-astra-118-auth-flow-repair1-20261004T0033Z`; reviewer `LUNA MAX QA`. |
+| `R-ASTRA-118-E4` | Optional isolated theme/viewport probe **Passed** `4/4` combinations: light/dark on mismatch and OAuth recovery at widths `360` and `1440`; no overflow. Observed canvas colors were light `#f5f7f8` and dark `#0d141a`. | Native x86_64; `2026-10-04T00:35:47Z`–`00:35:54Z`; temporary runtime `/tmp/r-astra-118-auth-theme-runtime-20261004T0034Z`; no saved probe script or artifact; runtime exited `0` after `SIGINT`; reviewer `LUNA MAX QA`. This is a focused visual probe, not full theme acceptance. |
+
+The initial browser failure and repaired rerun are preserved separately above. Luna QA found no
+source blocker for the declared focused scope. The full local gate, deployment, identity/provider
+observations for the reporting invitee, physical iOS behavior, and code-free repair/retry message
+remain pending or unavailable. The verified-email mismatch remains an inference, not a confirmed
+account-email fact.
 
 `M09-E13` is a frozen historical constraint for the M09 contract, not a current absence-audit
 task. Its original rejected M09 scope remains intact. Later `R-ASTRA-98` separately
