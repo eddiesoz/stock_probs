@@ -33,6 +33,19 @@ def documentation_repository(tmp_path: Path) -> Path:
     )
     shutil.copy2(ROOT / ".opencode" / "SKILL-INDEX.md", tmp_path / ".opencode" / "SKILL-INDEX.md")
     shutil.copy2(ROOT / "model-routing.json", tmp_path / "model-routing.json")
+    # The design guide links directly to these public first-party source files. Copy only
+    # those targets so the fixture still detects broken links without cloning the app tree.
+    for relative_path in (
+        "src/stock_probs/static/app.css",
+        "frontend/app/layout.tsx",
+        "frontend/components/workspace-nav.tsx",
+        "frontend/app/tools/layout.tsx",
+        "frontend/app/tools/page.tsx",
+    ):
+        source = ROOT / relative_path
+        target = tmp_path / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
     for name in ("README.md", "AGENTS.md", "MVP-PLAN.md", "MVP-ROADMAP.md", "SESSION-EXPORT.md"):
         (tmp_path / name).write_text(f"# {name}\n", encoding="utf-8")
     assert validate_repository(tmp_path) == []
@@ -74,7 +87,7 @@ def test_root_level_skill_markdown_mutation_fails(documentation_repository: Path
 
 def test_documentation_taxonomy_has_expected_size() -> None:
     assert len(CATEGORIES) == 9
-    assert sum(map(len, CATEGORIES.values())) == 13
+    assert sum(map(len, CATEGORIES.values())) == 14
 
 
 def test_project_skill_governance_catalog_has_expected_entries() -> None:

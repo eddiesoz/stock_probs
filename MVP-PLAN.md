@@ -1088,6 +1088,166 @@ are task-bound send evidence, not reusable authorization.
 Runtime skill discovery remains **Unavailable** until directly checked in a fresh task. No runtime
 loading or new release email is inferred.
 
+#### R-ASTRA-120 Signal Ledger assistant design-first follow-on
+
+**Status:** **In progress; implementation authorized**. The user approved concept B and has now
+resumed implementation after the approved plan and static documentation scope completed. Planning
+validation passed, while documentation tests were not run; no feature acceptance or release is
+inferred. The visual baseline and proposal are separate:
+[`docs/design/current-tools-reference.jpg`](docs/design/current-tools-reference.jpg)
+shows the current Tools page, while
+[`docs/design/assistant-concept-b.png`](docs/design/assistant-concept-b.png) is a proposal. Neither
+is product-runtime or acceptance evidence. The canonical visual contract is
+[`docs/develop/design-system.md`](docs/develop/design-system.md); follow the existing tokens and
+accessibility rules there.
+
+##### Approved product and interaction scope
+
+- The assistant is an explicit research companion inside the existing authenticated workspace.
+  It is closed on initial page load and starts work only after a user request; no scheduled,
+  background, or autonomous jobs are allowed. It must not imply that Signal Ledger places trades.
+- Preserve concept B: at widths `700px` and wider, an approximately `480px` bottom-right panel
+  with a viewport-bounded height, no dimming backdrop, and an explicit expand/collapse control. Below
+  `700px`, use a full-screen view that respects device safe areas and keeps the composer visible
+  above the on-screen keyboard. Reuse the current Light/Dark/System tokens. Keep 44px targets,
+  semantic labels, keyboard operation, visible focus, safe Escape behavior, reduced-motion,
+  forced-colors, and print behavior.
+- Show route and selected-instrument context only when available, with a user-visible way to remove
+  or change it. Support conversation history, streamed responses, cancellation, deletion, reconnect
+  after interrupted streams, a model picker, source/as-of citations, named tool activity and honest
+  loading/empty/failure/unavailable states.
+- Provide a preview before every action that could change state. Confirmation must be single-use,
+  bound to the exact user/session/action/arguments and expire at an exact recorded deadline. Any
+  sensitive administrator action follows the existing fresh-TOTP safeguards; do not widen the
+  application's authentication contract. A stale, replayed, cross-session, changed-argument, or
+  expired confirmation fails closed.
+
+##### Runtime, provider, data, and security boundaries
+
+- Run exact-pinned **native OpenCode V2.0.7 as a managed background process inside the same FastAPI
+  application container and image**. The inspected reference is `79bb34c0c6c4eb70a36e64711fd95738c33c9c03`
+  (supervisor/start-script, API async-prompt, and catalog patterns). The earlier OpenCode `1.18.9`
+  pin is V1-era input and must be ported to V2 semantics; it is not the runtime target. Do not add
+  a companion image/container or detour through OpenCode Console signup.
+- Run that worker under a dedicated unprivileged UID with only its own bounded writable runtime
+  state. It must not inherit access to application databases, backups, deployment state, or
+  operator credentials. Enforce per-user conversation ownership at the application session layer
+  as a separate boundary from this process UID.
+- Keep the API and assistant worker private and loopback-only. Worker startup, provider failure, or
+  a bounded restart must not take down normal FastAPI workspace service. Add separate assistant
+  readiness, bounded restart/backoff, and an emergency assistant kill switch that cancels in-flight
+  execution without hiding or deleting the workspace or saved data. Required runtime/resource
+  failures leave assistant features disabled. No accidental worker jobs may start during one-shot
+  CLI operations.
+- Preserve the existing one-shot `stock-probs backup`, `stock-probs restore`, and
+  `stock-probs migrate` operations and Python schema-check commands. The assistant supervisor must
+  not start for those commands.
+- Bind MCP access and the browser bridge to the authenticated application session and user-owned
+  data. Use a fail-closed tool allowlist; no arbitrary shell, filesystem, URL, MCP-server, adapter
+  code, or browser-navigation input. Deny access to another user's conversations or workspace.
+  The browser talks only to the application's own API. Derive and verify the active server-side
+  session on every tool call; caller-supplied metadata is correlation data only. Stream only the
+  current user's normalized app-API events; never proxy a global harness feed. Credentials,
+  TOTP/recovery codes, provider keys, and restore uploads use
+  existing secure forms outside chat and never enter prompts, citations, logs, or model context.
+  Provider settings follow existing sensitive-admin fresh-TOTP safeguards; credentials stay
+  private and masked after entry. Apply SSRF controls to every network-capable adapter and
+  redirect/resolution path. New executable adapters require code review and a reviewed release.
+- Persist canonical conversations and compact tool receipts in the owner-scoped application
+  SQLite store. Keep harness caches transient, bounded, and clearable on cancellation/deletion;
+  define their backup exclusion and cleanup policy. Retain canonical conversation history until
+  its owner deletes it, within the specified caps; do not automatically purge history. Canonical
+  chat follows the application's verified backup/restore retention and owner-deletion rules.
+  Conversation titles and compaction obey the same selected model's published privacy terms,
+  versioned app-level data-collection opt-in, and cost restrictions; no hidden secondary-provider
+  request is permitted.
+- Use only native installed provider adapters selected from a controlled catalog. OpenCode V2's
+  [provider documentation](https://opencode.ai/v2/docs/providers/) describes its provider map,
+  provider package/settings, model catalogs, credential connection, and native timeout/retry
+  controls. The initial product path is a free Zen model whose provider/model terms document
+  no-training; record the terms source and review/version date in the application's versioned
+  model catalog, centralized separately from development routing and test fixtures. Do not describe
+  no-training as an OpenCode toggle. For any model/provider that collects prompts, context, or tool
+  results, version the disclosure and consent message and require explicit opt-in before collection;
+  keep collection off by default. No paid fallback, top-ups, payment detour, or
+  auxiliary charge is allowed. A provider error must not silently select a billable model.
+- Prove a credential-free Zen live response before treating provider feasibility as accepted. An
+  empty isolated catalog does not establish that credentials are mandatory or that Zen is
+  unsupported. No provider key or account signup has been created for this plan. If free Zen cannot
+  be live-verified, keep assistant generation disabled and report the blocker; do not substitute a
+  paid route. Reject any model/provider whose terms prohibit production or confidential use,
+  regardless of a user consent setting.
+- Use bounded TinyFish search/fetch only: fixed operation types, explicit destination/redirect
+  checks, response and item bounds, and a hard execution deadline. It must not become arbitrary
+  open-web browsing or autonomous follow-up. Public-search citations show source and retrieval
+  date. Before private context leaves the local service, show the user the exact context preview
+  and require confirmation.
+- Limit execution to one active request per user and two globally; at most eight tool calls per
+  request and 120 seconds total per request. Bound assistant history to 2 MiB per user and 24 MiB
+  globally, with a 48 MiB database stop limit. Reaching a bound fails closed with a visible state
+  and stops new assistant-history writes; do not silently grow storage, prune user history, or
+  disable existing workspace reads.
+
+##### Required feature and route matrix
+
+Before acceptance, create and independently execute a separate matrix row for every existing route,
+assistant feature, control, state, data effect, tool, and deployment surface. At minimum cover `/`,
+`/overview`, `/research`, `/tools`, `/tools/forecast`, `/tools/live-trading`, `/tools/markets`,
+`/api-docs`, `/account`, `/admin`, `/sign-in`, `/invite`, `/authenticator`, and `/passkey`. For
+each route and signed-in role, record whether the assistant is available or intentionally absent,
+which context it receives, and whether navigation, data ownership, or permissions change. Cover the
+existing product domains too: manual holdings, watchlists, instrument quotes, bars and news with
+source/as-of/delay provenance; forecasts, immutable saved-result reopening, separately labelled
+fresh reconstruction, searchable history, CSV/JSON exports and append-only outcomes; users,
+sessions, admin invitations/email, and backup/restore. Include theme, notes, alerts, filters, and
+typed browser actions wherever they exist. Each matrix row must exercise a real control flow, not
+only route rendering. Saved-result reopening must pass with the assistant provider disconnected
+and make no model request.
+
+Rows must also cover desktop/mobile panel states; theme, focus, keyboard, screen reader,
+forced-colors and print behavior; model/provider availability and catalog terms/version; history
+CRUD, streaming, cancel and reconnect; every MCP/browser/TinyFish tool; public-search citations and
+private-query previews; action previews and replay; sensitive-admin TOTP; secret isolation;
+budget/storage limits; worker startup, failure, restart and kill-switch states; and migration and
+rollback branches. Negative cases cover stale route/context, role changes and session revocation,
+cross-user access, stream-event leakage, and approval replay. Include measured full-app-plus-worker
+resource behavior within the combined 1 GB limit as a hard acceptance row.
+
+##### Ordered implementation and acceptance plan
+
+| Order | Phase | Required result before advancing | Current status |
+| --- | --- | --- | --- |
+| 0 | Plan and design | Approve this same-container V2 architecture, security boundaries, feature matrix, visual guide, and rollout/rollback policy. | **Completed for approved plan and static documentation scope**; validator and coverage passed, documentation tests not run. |
+| 1 | Pinned V2 runtime integration | Pin OpenCode V2.0.7; port the inspected supervisor/start, async prompt API, and catalog patterns to the same FastAPI image; run the worker under a separate least-privileged UID; keep app health separate from assistant readiness, restarts bounded, and one-shot commands isolated. | **In progress; authorized; implementation and acceptance evidence pending** |
+| 2 | Provider feasibility and administration | Pass a real credential-free free-Zen response and verify published no-training terms plus app-level consent enforcement; maintain the central model catalog separately from development routing and test fixtures. Verify masked private credentials, existing sensitive-admin fresh-TOTP safeguards, SSRF protections, no paid fallback, and disabled behavior on unavailable provider. | **Pending** |
+| 3 | Session, conversation, and storage service | Implement per-call active-session-owned MCP/browser bridge, normalized user-only stream events, conversations retained until deleted, owner SQLite, compact receipts, transient-cache cleanup and backup policy, history bounds, streaming, cancellation, reconnect, citations, and visible tool activity. | **Pending** |
+| 4 | Actions and bounded research tools | Add exact-context private-query preview, single-use exact-expiry confirmation, bounded TinyFish search/fetch, and retrieval-date public citations under fixed tool/time limits. Sensitive admin actions follow existing TOTP safeguards; no arbitrary code or autonomous jobs. | **Pending** |
+| 5 | Full UI and product matrix | Implement the approved B panel across every listed route and existing domain, exercising actual controls and states, including provider-free saved-result reopen and real mobile keyboard/safe-area behavior. | **Pending** |
+| 6 | Required local/independent gates | Pass native model response, MCP, TinyFish websearch, security, every route/domain/control, mobile/accessibility, cross-user/session/stream/replay cases, DB/storage bounds, and combined 1 GB resource checks. Unavailable required checks block promotion. Luna xhigh build lanes report first, independent QA follows, and parent Sol performs integrated review. | **Pending** |
+| 7 | PR-bound recovery rehearsal | On the current Codex branch and required PR, bind the candidate to the last-known image/revision/schema/hash, verified backup, rollback trigger, and fixed MCP/Terraform commands. Before any migration, verify a backup and hold maintenance to prevent writes through candidate acceptance; rehearse schema-upgrade readiness failure and safe verified-backup recovery before writes resume. | **Pending** |
+| 8 | Merge and guarded deployment | Merge only after all gates and the tested PR-bound rollback pass. Publish/deploy one image through the existing publish/deploy MCP and Terraform workflow, initially with the assistant disabled; complete owner canary, then explicitly enable invited users. | **Pending** |
+| 9 | Post-release communication | Only after exact reviewed-revision deployment and service health are verified, use the existing authorized personal email thread for the three authorized beta recipients. Include screenshots and a beautiful, accessible illustrated HTML and PDF help guide; ask about the document, feature, and future features, and use the beta-support skill. | **Pending** |
+
+After user writes exist, do **not** restore an older backup over those writes. Recovery is an
+assistant kill switch that cancels execution while preserving the running workspace and its data,
+plus a tested same-schema recovery image or forward fix. A database restore is not the post-write
+rollback path. Required native model/MCP/websearch/security/full-feature/mobile checks and the
+combined 1 GB resource row must all be **Pass** before production. **Unavailable**, skipped, file
+presence, config parsing, or a screenshot cannot be promoted to Pass. No release is supported by
+documentation/configuration evidence alone.
+
+| Evidence | Check and result | Environment, time, revision, artifact |
+| --- | --- | --- |
+| `R-ASTRA-120-E1` | Initial documentation-only design inspection and draft from the documentation/development-conventions references, current `app.css`, frontend layout/nav/Tools route, and supplied concept/baseline. No implementation or acceptance is inferred. | Native Linux x86_64; `2026-10-04T02:31:46Z`; parent-supplied pre-change revision prefix `bcbb7ac` (full SHA not observed by this documentation lane); artifact `docs/develop/design-system.md`; independent QA **Pending**. No tests or runtime checks were run. |
+| `R-ASTRA-120-E2` | Coordinator copied the concept and baseline into `docs/design/`; read-only file-stat observed `1,142,856` and `42,876` bytes respectively. These images are design references only. | Native Linux x86_64; `2026-10-04T02:33:31Z`; command `stat -c '%n %s bytes' docs/design/assistant-concept-b.png docs/design/current-tools-reference.jpg`; artifacts: those two image files. |
+| `R-ASTRA-120-E3` | Static documentation-topic registration is present, and the validator now **Passed** with the authored design-system topic admitted. The documentation test suite was not run. The Develop index link is authored. | Validator result is recorded in E8; registration edits were made by the runtime owner, with no separate UTC or artifact supplied. |
+| `R-ASTRA-120-E4` | Isolated OpenCode V2.0.7 native API discovery **Passed only for discovery scope**: `/api/provider` returned an empty catalog and integration discovery exposed 229 descriptors. LLM/model response, MCP invocation, and websearch live execution are **Unavailable**; credential-free Zen response remains **Pending**. No key or signup was used. | Coordinator-supplied observation; exact task ID, command, UTC, and artifact not supplied. The empty catalog does not show that credentials are mandatory or that free Zen is unsupported. |
+| `R-ASTRA-120-E5` | Official OpenCode V2 provider documentation inspected. It describes the native provider/model configuration and credential-connection flow plus timeout/retry controls; these docs do not prove this host's live model availability. | Native x86_64; `2026-10-04T02:55:31Z`; [official provider docs](https://opencode.ai/v2/docs/providers/); artifact none. |
+| `R-ASTRA-120-E6` | Documentation validator and coverage checks **Passed** as recorded in E8/E9; documentation tests remain **Pending** and were not run. Source implementation is authorized and in progress; feature acceptance, full mobile matrix, required native integrations, security/resource gates, PR rollback rehearsal, merge, production promotion, and release email remain **Pending**. | This documentation lane ran no tests/builds/runtime/deployment/email. No feature or release acceptance is inferred. |
+| `R-ASTRA-120-E7` | Scoped `git diff --check` **Passed**, exit `0`, with no whitespace diagnostics. | Native Linux x86_64; `2026-10-04T02:58:59Z`; command `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs/develop/design-system.md`; no separate artifact. |
+| `R-ASTRA-120-E8` | `.dev-venv/bin/python scripts/validate_docs.py` **Passed**: 9 categories, 14 topics, 8 skill-governance entries. `.dev-venv/bin/python scripts/check-doc-coverage.py` **Passed**: 138 mapped files. Scoped `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs scripts/validate_docs.py tests/test_docs_validation.py` **Passed**. Documentation tests were not run. | Native x86_64; dirty `HEAD` `bcbb7ac855a2b87e8e5d27fa63f47d207465649f`; checks completed before `2026-10-04T03:05:42Z` (start times not captured); parent GPT-6.1 Sol; artifact: command output only. |
+| `R-ASTRA-120-E9` | Change-aware coverage command exited `0`; JSON reported `ok: true`, 138 mapped, 10 changed, `exempt: false`, and no violations. | Native x86_64; `2026-10-04T03:06:23Z`; dirty `HEAD` `bcbb7ac855a2b87e8e5d27fa63f47d207465649f`; command `.dev-venv/bin/python scripts/check-doc-coverage.py --changed-file AGENTS.md --changed-file MVP-PLAN.md --changed-file MVP-ROADMAP.md --changed-file docs/develop/documentation.md --changed-file docs/develop/index.md --changed-file scripts/validate_docs.py --changed-file tests/test_docs_validation.py --added-file docs/develop/design-system.md --added-file docs/design/assistant-concept-b.png --added-file docs/design/current-tools-reference.jpg --json`; reviewer parent GPT-6.1 Sol; artifact: tool output only, no retained file. |
+
 `M09-E13` is a frozen historical constraint for the M09 contract, not a current absence-audit
 task. Its original rejected M09 scope remains intact. Later `R-ASTRA-98` separately
 approved/evidenced bounded watchlists, forecast/model expansion, and provider-labelled

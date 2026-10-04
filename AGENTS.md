@@ -245,6 +245,26 @@ The R-ASTRA-118 retry and feedback reply already covers the deployed release at 
 send a duplicate release notice for that version. This preference does not establish OpenCode
 runtime skill discovery.
 
+For `R-ASTRA-120` only, the user selected assistant concept B and directed the work to the shared
+branch `codex/signal-ledger-assistant-r120` with a pull request required. The authorized phase is
+implementation; the approved plan and static documentation scope are complete, and source
+implementation is authorized and in progress. The runtime plan is one OpenCode V2.0.7 managed
+process inside the existing FastAPI application image, on private
+loopback and under a separate least-privileged UID; no companion image/container or Console signup
+detour. Preserve normal app service through worker/provider failure with separate assistant
+readiness, bounded restarts, and an assistant kill switch; authenticate each tool call from the
+active app session, and do not start autonomous jobs or the supervisor for one-shot CLI operations.
+Luna xhigh build lanes report before independent QA, then the parent performs Sol integrated review.
+All required native model, MCP, websearch, security, full-feature/mobile, accessibility, and
+combined 1 GB resource checks must Pass; an unavailable required check blocks promotion. Merge only
+after those gates and a tested PR-bound rollback. Deploy with assistant features disabled, complete
+the owner canary, then enable invited users. Never claim release readiness from files/configuration.
+The user authorized one email in the established personal thread to the three authorized beta
+recipients only after exact-revision deployment and service health are confirmed. Include screenshots
+and a beautiful, accessible illustrated HTML and PDF help guide, and ask about the document, feature,
+and future features. Missing or mismatched deployment/health evidence means hold the email; no
+recipient is added by this task-scoped exception.
+
 For this invitation-support thread only, the user authorized direct follow-up messages from their
 personal Gmail in the same invitation email thread, including requests for feedback. Read replies
 in that thread and correlate them with sanitized production evidence before asking the user to relay
@@ -1168,6 +1188,7 @@ package, or gate.
   frozen M09 row, reopen M09 implementation, or create a new current task.
 - The stock Playwright MCP entry in `opencode.json` is a hard invariant: retain `./scripts/playwright-mcp.sh` with `--headless`, `--isolated`, and loopback host/origin allowlists. Selective Ingenium pipeline adoption must never replace it with Ingenium browser automation.
 - Non-obvious implementation behavior and documentation snippets need useful intent or constraint comments.
+- Before future workspace UI work, inspect and follow [`docs/develop/design-system.md`](docs/develop/design-system.md). Keep approved concepts, current product screenshots, implementation, and acceptance evidence distinct; screenshots and mockups do not establish runtime behavior or QA.
 - The contract rejects overkill absent a demonstrated requirement: no added auth, MFA, gateway, multi-service split, dual-database restore, direct-route SQL, or replica rate limiting. A read-only integrity diagnostic is optional and must not become a new acceptance surface.
 
 ## Historical V1/V0 orchestration and ownership receipts

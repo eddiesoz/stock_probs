@@ -211,7 +211,7 @@ APPROVED_SKILL_CATALOG = {
 CATEGORIES: dict[str, tuple[str, ...]] = {
     "concepts": ("architecture.md", "forecast-model.md"),
     "configure": ("local-configuration.md",),
-    "develop": ("testing.md", "documentation.md"),
+    "develop": ("testing.md", "design-system.md", "documentation.md"),
     "evidence": ("astra-final-matrix.md", "astra-final-report.md", "ponytail-reviews.md"),
     "operations": ("getting-started.md", "backup-restore.md"),
     "reference": ("api.md",),

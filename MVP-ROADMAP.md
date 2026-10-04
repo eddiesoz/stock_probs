@@ -64,6 +64,26 @@ and `60` focused tests, recorded in the [MVP plan](MVP-PLAN.md). Runtime skill d
 **Unavailable** until directly verified in a fresh task. The R-ASTRA-118 retry already covered its
 deployed release, so no duplicate announcement is due.
 
+`R-ASTRA-120` is **In progress; implementation authorized**. Planning and the declared static
+documentation scope are complete; implementation has resumed, while feature acceptance and release
+remain pending. The ordered plan, limits, route/feature matrix,
+same-FastAPI-image native OpenCode V2 architecture, security controls, and pre-/post-write recovery
+paths are in the [MVP plan](MVP-PLAN.md). Concept B, the current Tools baseline, and the existing
+design tokens are documented separately in [`docs/develop/design-system.md`](docs/develop/design-system.md).
+The category index and reference images are present. Static validator registration and documentation
+coverage checks **Passed** (9 categories, 14 topics, 8 skill-governance entries; 138 mapped files;
+change-aware coverage 10 changed files, zero violations). The documentation test suite was not run.
+Isolated
+V2.0.7 API discovery passed only for discovery: its provider catalog was empty and integration
+discovery returned 229 descriptors. Credential-free Zen, model response, MCP, TinyFish websearch,
+published no-training terms/app consent enforcement, security, feature/mobile, accessibility, and
+combined 1 GB resource acceptance are not established. Native model, MCP, and websearch execution
+results are **Unavailable**; credential-free Zen remains **Pending**. No key/signup action occurred.
+Source implementation is authorized and in progress; required checks and release remain **Pending**.
+All required checks must pass before merge and promotion; deploy disabled, then owner-canary, then invited-user enablement. A tested PR-bound
+rollback is mandatory, with no backup restore over post-release writes. No release readiness is
+inferred from design, images, files, or configuration.
+
 Scoped independent QA passed `64` authentication/repository/list checks, `123` API checks, `61`
 backup/CLI checks, `10` desktop/mobile-emulated auth-flow cases, `27` frontend checks, Ruff, and
 diff checks. Fresh schema-10 creation and schema-9-to-10 migration checks passed; the `61` backup/CLI

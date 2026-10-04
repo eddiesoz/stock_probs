@@ -5,6 +5,12 @@ description: "Repository rules for authored pages, authoritative root records, g
 
 # Documentation
 
+For new or changed workspace UI, first inspect the current token and behavior sources and follow
+the [design system guide](design-system.md). That page separates the current product baseline from
+the approved Ledger assistant concept; neither a mockup nor a captured screenshot proves an
+implementation or acceptance result. Update the guide when the shared visual system intentionally
+changes, and document shipped behavior only after checking its source.
+
 ## Codex project configuration
 
 Codex loads repository policy from root `AGENTS.md` and trusted-project settings from
@@ -159,6 +165,13 @@ python3 scripts/check-doc-coverage-self-test.py
 
 The change-aware checker and self-test do not install hooks or mutate Git. A deliberate exception
 is explicit (`Doc-Gate: exempt`), not inferred from a builder report or an unavailable check.
+
+The documentation map currently covers workflow and configuration changes. If a UI change needs
+change-aware documentation coverage, the tooling owner must map the actual changed source paths to
+the relevant authored guide; keep any new rule narrow enough that unrelated interface edits do not
+require cosmetic edits to the map's target page. A new Develop topic also requires one category-index
+link and an entry in the validator's `CATEGORIES["develop"]` list. These taxonomy/configuration
+changes are owned by the tooling owner, not by the authored-documentation lane.
 
 The approved project governance set now contains eight directory-based skill definitions:
 `documentation`, `development-conventions`, `stock-probability-skill-maintenance`,
