@@ -28,6 +28,19 @@ async function installFreshAdminExport(page) {
 }
 
 async function installAdminSession(page, emailInvitesEnabled) {
+  await page.route("**/api/v1/assistant/**", (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const pathname = new URL(route.request().url()).pathname;
+    const payload = pathname === "/api/v1/assistant/models" ? { items: [] }
+      : pathname === "/api/v1/assistant/providers" ? { providers: [] }
+      : pathname === "/api/v1/assistant/providers/oauth/methods" ? { methods: [] }
+          : pathname === "/api/v1/assistant/providers/oauth/attempts" ? { attempts: [] }
+            : pathname === "/api/v1/assistant/providers/oauth/connections" ? { connections: [] }
+              : pathname === "/api/v1/assistant/providers/opencode/models" ? { models: [], unsupported_model_count: 0 }
+                : null;
+    if (payload === null) return route.fallback();
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
+  });
   await page.route("**/api/v1/auth/session", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -53,6 +66,49 @@ async function installAdminSession(page, emailInvitesEnabled) {
       can_enroll: false,
     }),
   }));
+  await page.route("**/api/v1/assistant/status", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      enabled: false,
+      available: false,
+      worker: { status: "disabled", reason: null },
+      authorization: { role: "admin", admitted: false },
+      limits: { active_per_user: 1, active_global: 2, tools_per_turn: 8, turn_seconds: 120 },
+      storage: null,
+    }),
+  }));
+}
+
+async function installAdminStepUp(page) {
+  const submissions = [];
+  await page.route("**/api/v1/auth/totp/step-up", async (route) => {
+    submissions.push({
+      body: route.request().postDataJSON(),
+      csrf: route.request().headers()["x-csrf-token"],
+    });
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ verified: true }),
+    });
+  });
+  return submissions;
+}
+
+async function verifyAdminAuthenticator(page, submissions, expectedCount = 1) {
+  await page.getByLabel("Current authenticator code").fill("123456");
+  const verify = page.getByRole("button", { name: "Verify authenticator" });
+  await expect(verify).toBeEnabled();
+  await verify.click();
+  const invitationStatus = page.getByRole("region", { name: "Create a GitHub account code" })
+    .getByRole("status")
+    .filter({ hasText: "Create or send an invitation now." });
+  await expect(invitationStatus.getByText("Fresh authenticator verified", { exact: true })).toBeVisible();
+  expect(submissions).toEqual(Array.from({ length: expectedCount }, () => ({
+    body: { code: "123456" },
+    csrf: "browser-test-csrf",
+  })));
 }
 
 // Keep the browser boundary explicit: GitHub mode must reach the same-origin OAuth start without falling back to local bootstrap.
@@ -565,14 +621,18 @@ test("expired authenticator setup disables QR and code submission", async ({ pag
 
 test("admin keeps manual invitations available when mail is unconfigured", async ({ page }) => {
   await installAdminSession(page, false);
-  let manualPayload;
+  await installFreshAdminExport(page);
+  const stepUpSubmissions = await installAdminStepUp(page);
+  const manualPayloads = [];
+  let manualPosts = 0;
   await page.route("**/api/v1/auth/invites", async (route) => {
     if (route.request().method() === "POST") {
-      manualPayload = route.request().postDataJSON();
+      manualPosts += 1;
+      manualPayloads.push(route.request().postDataJSON());
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ code: "manual-code-fixture", github_id: 24680, expires_at: "2026-10-01T00:00:00Z" }),
+        body: JSON.stringify({ code: `manual-code-fixture-${manualPosts}`, github_id: manualPayloads.at(-1).github_id, expires_at: "2026-10-01T00:00:00Z" }),
       });
     }
     return route.fallback();
@@ -580,18 +640,90 @@ test("admin keeps manual invitations available when mail is unconfigured", async
 
   await page.goto("/admin");
   await page.getByLabel("GitHub account ID", { exact: true }).fill("24680");
+  const create = page.getByRole("button", { name: "Create invitation" });
+  await expect(create).toBeDisabled();
   await expect(page.getByRole("button", { name: "Send invitation email" })).toBeDisabled();
+  expect(manualPosts).toBe(0);
+  expect(stepUpSubmissions).toEqual([]);
   await expect(page.getByText("Mail sending is not configured on this server.")).toBeVisible();
-  await page.getByRole("button", { name: "Create invitation" }).click();
+  await verifyAdminAuthenticator(page, stepUpSubmissions);
+  await expect(create).toBeEnabled();
+  await create.click();
   await expect(page.getByText("Invitation created. Copy the single-use code through a private channel.")).toBeVisible();
-  expect(manualPayload).toEqual({ github_id: 24680 });
-  await expect(page.getByText("Code manual-code-fixture")).toBeVisible();
+  expect(manualPosts).toBe(1);
+  expect(manualPayloads).toEqual([{ github_id: 24680 }]);
+  await expect(page.getByText("Code manual-code-fixture-1")).toBeVisible();
+
+  await page.getByLabel("GitHub account ID", { exact: true }).fill("13579");
+  await expect(create).toBeEnabled();
+  await create.click();
+  await expect(page.getByText("Invitation created. Copy the single-use code through a private channel.")).toBeVisible();
+  expect(manualPosts).toBe(2);
+  expect(manualPayloads).toEqual([{ github_id: 24680 }, { github_id: 13579 }]);
+  await expect(page.getByText("Code manual-code-fixture-2")).toBeVisible();
+});
+
+test("admin invitation denial expires the visible proof and requires a second verification", async ({ page, browserDiagnostics }, testInfo) => {
+  await installAdminSession(page, true);
+  await installFreshAdminExport(page);
+  const stepUpSubmissions = await installAdminStepUp(page);
+  const emailPayloads = [];
+  let emailPosts = 0;
+  browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/auth/invites/email", status: 403 });
+  await page.route("**/api/v1/auth/invites/email", async (route) => {
+    emailPosts += 1;
+    emailPayloads.push(route.request().postDataJSON());
+    return route.fulfill(emailPosts === 1 ? {
+      status: 403,
+      contentType: "application/json",
+      body: JSON.stringify({ error: { code: "authorization_denied", message: "Fresh verification expired." } }),
+    } : {
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        submission_status: "smtp_accepted",
+        submission_id: "fresh-proof-retry",
+        submitted_at: "2026-09-30T12:00:00Z",
+        github_id: null,
+        github_login: null,
+        expires_at: "2026-10-01T00:00:00Z",
+        invite_url: "https://ledger.example.test/invite?code=fixture-retry-code",
+      }),
+    });
+  });
+
+  await page.goto("/admin");
+  const email = page.getByLabel("Recipient email address");
+  await email.fill("person@example.com");
+  const send = page.getByRole("button", { name: "Send invitation email" });
+  await expect(send).toBeDisabled();
+  expect(emailPosts).toBe(0);
+  await verifyAdminAuthenticator(page, stepUpSubmissions);
+  await expect(send).toBeEnabled();
+  await send.click();
+
+  await expect(page.locator('[data-tone="error"][role="alert"]')).toHaveText("Your account is not allowed to perform that action.");
+  await expect(send).toBeDisabled();
+  await expect(page.getByLabel("Current authenticator code")).toBeFocused();
+  await expect(email).toHaveValue("person@example.com");
+  expect(emailPosts).toBe(1);
+  expect(emailPayloads).toEqual([{ email: "person@example.com" }]);
+
+  await verifyAdminAuthenticator(page, stepUpSubmissions, 2);
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(page.locator('[data-tone="success"][role="status"]')).toContainText("Mail server accepted the invitation.");
+  expect(emailPosts).toBe(2);
+  expect(emailPayloads).toEqual([{ email: "person@example.com" }, { email: "person@example.com" }]);
+  await expect(email).toHaveValue("");
+  await page.screenshot({ path: testInfo.outputPath("sanitized-invitation-retry.png"), fullPage: true });
 });
 
 test("configured admin sends an email-only invitation by keyboard on mobile and shows pending identity", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await installAdminSession(page, true);
   await installFreshAdminExport(page);
+  const stepUpSubmissions = await installAdminStepUp(page);
   let emailPayload;
   let csrfHeader;
   let inviteReads = 0;
@@ -647,6 +779,10 @@ test("configured admin sends an email-only invitation by keyboard on mobile and 
   await page.goto("/admin");
   await page.getByLabel("Recipient email address").fill("person@example.com");
   const send = page.getByRole("button", { name: /Send invitation email|Submitting invitation email/ });
+  await expect(send).toBeDisabled();
+  expect(emailPayload).toBeUndefined();
+  expect(stepUpSubmissions).toEqual([]);
+  await verifyAdminAuthenticator(page, stepUpSubmissions);
   await expect(send).toBeEnabled();
   await send.focus();
   await expect(send).toBeFocused();
@@ -655,7 +791,7 @@ test("configured admin sends an email-only invitation by keyboard on mobile and 
   await expect(page.getByRole("button", { name: "Create invitation" })).toBeDisabled();
   releaseEmail();
 
-  await expect(page.getByRole("status")).toHaveText("Mail server accepted the invitation. The recipient must use a GitHub account with the invitation email marked verified. Delivery is not confirmed.");
+  await expect(page.locator('[data-tone="success"][role="status"]')).toHaveText("Mail server accepted the invitation. The recipient must use a GitHub account with the invitation email marked verified. Delivery is not confirmed.");
   expect(emailPayload).toEqual({ email: "person@example.com" });
   expect(csrfHeader).toBe("browser-test-csrf");
   expect(inviteReads).toBe(2);
@@ -669,7 +805,7 @@ test("configured admin sends an email-only invitation by keyboard on mobile and 
   const layout = await page.evaluate(() => ({
     viewportWidth: document.documentElement.clientWidth,
     contentWidth: document.documentElement.scrollWidth,
-    button: document.querySelector('button[aria-describedby="email-invites-help invitation-email-verification"]')?.getBoundingClientRect().toJSON(),
+    button: document.querySelector('button[aria-describedby="email-invites-help invitation-email-verification invitation-step-up-help"]')?.getBoundingClientRect().toJSON(),
   }));
   expect(layout.contentWidth).toBeLessThanOrEqual(layout.viewportWidth + 1);
   expect(layout.button.width).toBeGreaterThan(0);
@@ -680,6 +816,7 @@ test("configured admin sends an email-only invitation by keyboard on mobile and 
 test("email invitation can optionally restrict a resolved account without making username required", async ({ page }) => {
   await installAdminSession(page, true);
   await installFreshAdminExport(page);
+  const stepUpSubmissions = await installAdminStepUp(page);
   let emailPayload;
   await page.route("**/api/v1/auth/invites/email", async (route) => {
     emailPayload = route.request().postDataJSON();
@@ -702,26 +839,44 @@ test("email invitation can optionally restrict a resolved account without making
   await page.getByLabel("Recipient email address").fill("person@example.com");
   await page.getByText("Optional resolved GitHub account restriction").click();
   await page.getByLabel("GitHub account ID (optional)", { exact: true }).fill("24680");
-  await expect(page.getByRole("button", { name: "Send invitation email" })).toBeEnabled();
-  await page.getByRole("button", { name: "Send invitation email" }).click();
+  const send = page.getByRole("button", { name: "Send invitation email" });
+  await expect(send).toBeDisabled();
+  expect(emailPayload).toBeUndefined();
+  expect(stepUpSubmissions).toEqual([]);
+  await verifyAdminAuthenticator(page, stepUpSubmissions);
+  await expect(send).toBeEnabled();
+  await send.click();
 
-  await expect(page.getByRole("status")).toContainText("Mail server accepted the invitation.");
-  await expect(page.getByRole("status")).toContainText("The recipient must use GitHub account 24680.");
+  const successMessage = page.locator('[data-tone="success"][role="status"]');
+  await expect(successMessage).toContainText("Mail server accepted the invitation.");
+  await expect(successMessage).toContainText("The recipient must use GitHub account 24680.");
   expect(emailPayload).toEqual({ email: "person@example.com", github_id: 24680 });
 });
 
 test("admin email submission shows a safe failure without SMTP details", async ({ page, browserDiagnostics }) => {
   await installAdminSession(page, true);
+  const stepUpSubmissions = await installAdminStepUp(page);
+  let emailPosts = 0;
   browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/auth/invites/email", status: 502 });
-  await page.route("**/api/v1/auth/invites/email", (route) => route.fulfill({
-    status: 502,
-    contentType: "application/json",
-    body: JSON.stringify({ error: { code: "mail_submission_failed", message: "SMTP credential smtp-private-value rejected" } }),
-  }));
+  await page.route("**/api/v1/auth/invites/email", (route) => {
+    emailPosts += 1;
+    return route.fulfill({
+      status: 502,
+      contentType: "application/json",
+      body: JSON.stringify({ error: { code: "mail_submission_failed", message: "SMTP credential smtp-private-value rejected" } }),
+    });
+  });
 
   await page.goto("/admin");
   await page.getByLabel("Recipient email address").fill("person@example.com");
-  await page.getByRole("button", { name: "Send invitation email" }).click();
+  const send = page.getByRole("button", { name: "Send invitation email" });
+  await expect(send).toBeDisabled();
+  expect(emailPosts).toBe(0);
+  expect(stepUpSubmissions).toEqual([]);
+  await verifyAdminAuthenticator(page, stepUpSubmissions);
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect.poll(() => emailPosts).toBe(1);
   const errorMessage = page.locator('[data-tone="error"]');
   await expect(errorMessage).toHaveText("Invitation email could not be submitted. Check the recipient address and mail configuration, then try again.");
   await expect(errorMessage).not.toContainText("smtp-private-value");

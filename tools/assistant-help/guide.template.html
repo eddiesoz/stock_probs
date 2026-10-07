@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Ledger assistant — a careful research companion</title>
+    <!-- render.mjs embeds stylesheet and verified captures so this HTML opens without sidecar files. -->
+    <style>{{guide_css}}</style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to the guide</a>
+    <header class="masthead">
+      <a class="brand" href="#top" aria-label="Signal Ledger assistant guide home">
+        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+          <rect x="2" y="2" width="44" height="44" rx="13" fill="currentColor" opacity=".12"></rect>
+          <path d="M12 31h5v7h-5zm9-13h5v20h-5zm9-7h5v27h-5z" fill="currentColor"></path>
+        </svg>
+        <span>Signal Ledger <span class="brand-divider">/</span> Assistant guide</span>
+      </a>
+      <p class="draft-label"><span class="draft-mark" aria-hidden="true"></span> Pre-release draft · synthetic examples</p>
+    </header>
+
+    <main id="main-content">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">A research companion with clear controls</p>
+          <h1 id="hero-title">Ask a better question.<br><span>Keep the decision yours.</span></h1>
+          <p class="hero-lede">The Ledger assistant can explain the workspace and help organize research. You choose what context to share, which approved model to use, and whether a proposed change may proceed.</p>
+          <p class="synthetic-note"><strong>Example data is synthetic.</strong> These screenshots show the running application with example accounts, conversations, forecasts, and sources. Mobile views use viewport emulation. The examples are not market research or recommendations.</p>
+        </div>
+        <figure class="hero-art">
+          <ol class="research-loop" aria-label="A four-step research loop">
+            <li><strong>Context</strong><small>Optional</small></li>
+            <li><strong>Evidence</strong><small>Attributed</small></li>
+            <li><strong>Review</strong><small>Explicit</small></li>
+            <li><strong>Receipt</strong><small>Saved</small></li>
+          </ol>
+          <figcaption>A non-market illustration: the dotted loop is not a price series or a recommendation.</figcaption>
+        </figure>
+      </section>
+
+      <div class="reader-tools">
+        <p class="reader-tools-label">Reading appearance</p>
+        <fieldset class="theme-picker">
+          <legend class="visually-hidden">Choose guide colors</legend>
+          <label><input id="theme-system" type="radio" name="reader-theme"> <span>System</span></label>
+          <label><input id="theme-light" type="radio" name="reader-theme" checked> <span>Light</span></label>
+          <label><input id="theme-dark" type="radio" name="reader-theme"> <span>Dark</span></label>
+        </fieldset>
+      </div>
+
+      <nav class="guide-nav" aria-label="Guide contents">
+        <a href="#open">Open the assistant</a>
+        <a href="#model">Model and privacy</a>
+        <a href="#context">Page context</a>
+        <a href="#answers">Answers and citations</a>
+        <a href="#actions">Tools and confirmations</a>
+        <a href="#search">Search approval</a>
+        <a href="#history">Conversation history</a>
+        <a href="#recovery">Cancel and recover</a>
+      </nav>
+
+      <section class="quick-map" aria-labelledby="quick-map-title">
+        <div>
+          <p class="eyebrow">A small, deliberate loop</p>
+          <h2 id="quick-map-title">You stay in control at every step.</h2>
+        </div>
+        <ol class="loop-steps">
+          <li><span>01</span><strong>Choose</strong><small>An approved model and optional context.</small></li>
+          <li><span>02</span><strong>Ask</strong><small>A specific, bounded research question.</small></li>
+          <li><span>03</span><strong>Review</strong><small>Tool steps, sources, and any exact preview.</small></li>
+          <li><span>04</span><strong>Decide</strong><small>Confirm only what you intended to change.</small></li>
+        </ol>
+      </section>
+
+      <div class="guide-sections">
+        <section class="guide-section" id="open" aria-labelledby="open-title">
+          <div class="section-index" aria-hidden="true">01</div>
+          <div class="section-body">
+            <p class="eyebrow">Start where you are</p>
+            <h2 id="open-title">Open, resize, and return to your work</h2>
+            <p>Use the named assistant launcher when you want help. On desktop, the panel stays alongside the workspace; use its expand, minimize, history, and close controls as needed. On a narrow screen it becomes a full-screen surface with safe-area spacing. The message area scrolls independently, and the composer stays available as the on-screen keyboard opens.</p>
+            <p>No request runs just because the panel opens. Choose a model, write a question, and send it when you are ready. Closing the panel returns you to the page.</p>
+            <p>On a phone, close the assistant to return to the same workspace, then use the assistant launcher to reopen it. The launcher regains focus so you can continue with the keyboard.</p>
+            <div class="callout"><strong>Research only.</strong> The assistant does not place trades or orders. Its answer can be wrong, so verify important figures against their cited records.</div>
+          </div>
+        </section>
+
+        <section class="guide-section" id="model" aria-labelledby="model-title">
+          <div class="section-index" aria-hidden="true">02</div>
+          <div class="section-body">
+            <p class="eyebrow">Know what is enabled</p>
+            <h2 id="model-title">Choose a model that has been reviewed</h2>
+            <p>The picker lists models that are available and enabled for this workspace. Check both the selected model and its availability label before sending. An administrator reviews the exact model’s privacy terms and billing information before enabling it; paid models need their own explicit cost acknowledgement and administrator approval.</p>
+            <div class="two-cards">
+              <article class="mini-card">
+                <h3>For an administrator</h3>
+                <p>Review the provider and exact model. The protected approval form requires a fresh authenticator check and version-specific privacy and billing acknowledgements.</p>
+              </article>
+              <article class="mini-card accent-card">
+                <h3>For a researcher</h3>
+                <p>Select one of the approved usable models. The assistant does not silently switch to a paid model, top up a balance, or retry through a different provider.</p>
+              </article>
+            </div>
+            <p class="quiet-note">Provider credentials and endpoint controls appear only where the reviewed provider capability supports them. Do not paste credentials, authenticator codes, recovery codes, or invitation codes into a prompt.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="context" aria-labelledby="context-title">
+          <div class="section-index" aria-hidden="true">03</div>
+          <div class="section-body">
+            <p class="eyebrow">Share only what helps</p>
+            <h2 id="context-title">Preview page context before you send</h2>
+            <p>The panel names the current workspace page and shows a sharing control for selected references. Open the context preview to inspect the exact route and reference summary before sending a question.</p>
+            <ul class="check-list">
+              <li>With sharing on, inspect the exact page and selected references in the preview before sending.</li>
+              <li>With sharing off, refresh and send keep route-only context; instrument and event references are omitted.</li>
+              <li>Remove or change shared context when it is not relevant to your next question.</li>
+              <li>The preview explains what is available. It does not grant access to another user’s data or hidden account details.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="guide-section" id="answers" aria-labelledby="answers-title">
+          <div class="section-index" aria-hidden="true">04</div>
+          <div class="section-body">
+            <p class="eyebrow">Separate evidence from explanation</p>
+            <h2 id="answers-title">Read the answer and its sources together</h2>
+            <p>Conversation answers are saved with their timestamps and the available context snapshot. Tool activity identifies retrieved workspace evidence; the assistant’s explanation remains a separate layer. Source cards show the title and retrieval time the application actually has.</p>
+            <div class="citation-example" role="group" aria-label="Illustrative citation labels">
+              <div class="citation-row"><span class="source-symbol" aria-hidden="true">↗</span><div><strong>First-party workspace source</strong><small>Retrieved record · source and retrieved-at date shown when available</small></div><span class="source-status verified">Source record</span></div>
+              <div class="citation-row unverified-row"><span class="source-symbol" aria-hidden="true">?</span><div><strong>Unverified search link</strong><small>Parsed from retrieved text · publisher and date are not treated as verified metadata.</small></div><span class="source-status">Check destination</span></div>
+              <p class="citation-note">Example labels only · no market claim or destination is represented here.</p>
+            </div>
+            <p>Each named tool step has a pending, complete, or failed state. Use source and as-of details that the application actually provides to check a claim. The assistant’s explanation is not itself a source.</p>
+            <p>Native search can return a link parsed from retrieved text. The interface labels that item <strong>Unverified search link</strong>; it does not present that text as independently verified publisher metadata. Open a source only when its actual destination is visible and you trust it.</p>
+            <figure class="capture">
+              <img src="{{capture:forecast_sources:src}}" alt="{{capture:forecast_sources:alt}}" loading="eager">
+              <figcaption><strong>{{capture:forecast_sources:label}}</strong> {{capture:forecast_sources:caption}}</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section class="guide-section" id="actions" aria-labelledby="actions-title">
+          <div class="section-index" aria-hidden="true">05</div>
+          <div class="section-body">
+            <p class="eyebrow">A suggestion is not an action</p>
+            <h2 id="actions-title">Review the exact preview before confirming</h2>
+            <p>When the assistant proposes a supported workspace change, it displays a card with the action, the affected item, and the expected change. Check the details. To proceed, type the exact confirmation phrase shown on that card and select its confirmation button. Until that confirmation succeeds, the preview remains only a proposal.</p>
+            <div class="action-flow" role="group" aria-label="Illustration of a confirmation flow">
+              <div><span class="flow-tag">Preview</span><strong>Read the exact change</strong><small>Item, quantity, and expected effect</small></div>
+              <span class="flow-arrow" aria-hidden="true"></span>
+              <div><span class="flow-tag">Confirm</span><strong>Enter its exact phrase</strong><small>Review again before submitting</small></div>
+              <span class="flow-arrow" aria-hidden="true"></span>
+              <div><span class="flow-tag receipt-tag">Receipt</span><strong>Check the saved outcome</strong><small>Applied, denied, or handed off</small></div>
+            </div>
+            <p>Account and administrator operations keep their own protected forms and authenticator step-up. A workspace action confirmation does not bypass those account checks.</p>
+            <div class="capture-pair action-captures">
+              <figure class="capture">
+                <img src="{{capture:action_preview:src}}" alt="{{capture:action_preview:alt}}" loading="eager">
+                <figcaption><strong>{{capture:action_preview:label}}</strong> {{capture:action_preview:caption}}</figcaption>
+              </figure>
+              <figure class="capture">
+                <img src="{{capture:action_receipt:src}}" alt="{{capture:action_receipt:alt}}" loading="eager">
+                <figcaption><strong>{{capture:action_receipt:label}}</strong> {{capture:action_receipt:caption}}</figcaption>
+              </figure>
+            </div>
+          </div>
+        </section>
+
+        <section class="guide-section" id="search" aria-labelledby="search-title">
+          <div class="section-index" aria-hidden="true">06</div>
+          <div class="section-body">
+            <p class="eyebrow">External search stays explicit</p>
+            <h2 id="search-title">Review the exact query and WebFetch URL</h2>
+            <p>Native <strong>WebSearch</strong> first shows the exact public search query. Review that text and approve it only if you are comfortable sending it to the search provider.</p>
+            <p>Native <strong>WebFetch</strong> is a separate step. Before a page is fetched, the assistant pauses and shows an approval card with the complete HTTPS URL and why it wants to read that page. Check the hostname, path, and query string character by character. A query string can contain private account or workspace details.</p>
+            <ol class="check-list">
+              <li>Open the approval card and inspect the exact URL and page purpose.</li>
+              <li>Approve only that public URL by entering the one-time confirmation phrase printed on the card.</li>
+              <li>If the URL is unexpected, includes private details, or is not needed, choose deny or cancel. Approval does not authorize a different URL or a later request.</li>
+            </ol>
+            <p>The approval is tied to your current signed-in session, conversation, and running turn. An expired, cancelled, or interrupted turn cannot reuse it. WebFetch accepts public HTTPS destinations; it does not make a search-text link verified or guarantee that a page is trustworthy.</p>
+            <div class="callout search-callout"><strong>Before approving</strong><span>Remove names, account details, private notes, identifiers, or anything else that should not leave your workspace.</span></div>
+            <p>Search results are retrieval leads, not endorsements. Review each destination and its date; search-text links carry the unverified label described above.</p>
+          </div>
+        </section>
+
+        <section class="guide-section" id="history" aria-labelledby="history-title">
+          <div class="section-index" aria-hidden="true">07</div>
+          <div class="section-body">
+            <p class="eyebrow">Return to saved work</p>
+            <h2 id="history-title">Reopen, rename, or delete a conversation</h2>
+            <p>Conversation history keeps saved answers, context snapshots, activity, and receipts within the authenticated workspace. Reopening a saved answer reads the saved record; it does not call a model to recreate the answer.</p>
+            <ul class="check-list">
+              <li>Rename a conversation to make its subject clear in the history list.</li>
+              <li>Review old context and tool receipts with the saved answer.</li>
+              <li>Deletion requires its own confirmation. If private cache cleanup is still pending, the transcript is retained and the interface offers a retry.</li>
+              <li>An empty history is shown as empty; a loading or storage error is shown with its own status so you can retry without mistaking it for missing data.</li>
+            </ul>
+            <div class="history-context-illustration">
+              <div class="mini-history" aria-hidden="true"><span class="history-dot current"></span><span class="history-line long"></span><span class="history-dot"></span><span class="history-line"></span><span class="history-dot"></span><span class="history-line short"></span></div>
+              <p><strong>Illustration:</strong> selecting a saved conversation restores its saved answer and context. The panel stays bound to the signed-in owner.</p>
+            </div>
+            <figure class="capture">
+              <img src="{{capture:history_context:src}}" alt="{{capture:history_context:alt}}" loading="eager">
+              <figcaption><strong>{{capture:history_context:label}}</strong> {{capture:history_context:caption}}</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section class="guide-section" id="recovery" aria-labelledby="recovery-title">
+          <div class="section-index" aria-hidden="true">08</div>
+          <div class="section-body">
+            <p class="eyebrow">Keep a clear recovery path</p>
+            <h2 id="recovery-title">Cancel, reconnect, and handle limits</h2>
+            <div class="recovery-grid">
+              <article class="mini-card"><h3>Cancel a running turn</h3><p>Use Cancel when you want to stop. The transcript remains available; a cancelled or interrupted result is not presented as a completed answer.</p></article>
+              <article class="mini-card"><h3>Reconnect after a break</h3><p>If the connection drops, use the visible reconnect or retry state. Check the saved conversation before starting a new question.</p></article>
+              <article class="mini-card"><h3>Provider unavailable</h3><p>Read the status and retry when appropriate. The assistant does not silently switch providers or move to a paid model.</p></article>
+              <article class="mini-card"><h3>Storage quota reached</h3><p>Existing workspace data stays available. Review your conversations and delete only records you intend to remove, then retry after cleanup completes.</p></article>
+              <article class="mini-card"><h3>Cancellation or other error</h3><p>A cancelled turn stays marked as incomplete. For an error, read the message and retry only after checking whether the question already has a saved result.</p></article>
+            </div>
+            <div class="callout"><strong>No background research.</strong> The assistant runs in response to an explicit request. It does not start autonomous jobs while the panel is closed.</div>
+          </div>
+        </section>
+      </div>
+
+      <section class="capture-gallery" aria-labelledby="captures-title">
+        <div class="capture-gallery-intro">
+          <p class="eyebrow">Example screenshots</p>
+          <h2 id="captures-title">Same workspace, two themes</h2>
+          <p>These screenshots show the running workspace in Light and Dark on desktop and emulated mobile. The examples use synthetic fixture data; mobile views use viewport emulation.</p>
+        </div>
+        <div class="capture-set desktop-captures">
+          <h3>Desktop view</h3>
+          <div class="capture-pair theme-captures">
+            <figure class="capture">
+              <img src="{{capture:desktop_light:src}}" alt="{{capture:desktop_light:alt}}" loading="eager">
+              <figcaption><strong>{{capture:desktop_light:label}}</strong> {{capture:desktop_light:caption}}</figcaption>
+            </figure>
+            <figure class="capture">
+              <img src="{{capture:desktop_dark:src}}" alt="{{capture:desktop_dark:alt}}" loading="eager">
+              <figcaption><strong>{{capture:desktop_dark:label}}</strong> {{capture:desktop_dark:caption}}</figcaption>
+            </figure>
+          </div>
+        </div>
+        <div class="capture-set mobile-captures">
+          <h3>Emulated mobile · viewport preview</h3>
+          <p>These emulated mobile views show the same idle synthetic workspace in Light and Dark themes.</p>
+          <div class="capture-pair">
+            <figure class="capture">
+              <img src="{{capture:mobile_light:src}}" alt="{{capture:mobile_light:alt}}" loading="eager">
+              <figcaption><strong>{{capture:mobile_light:label}}</strong> {{capture:mobile_light:caption}}</figcaption>
+            </figure>
+            <figure class="capture">
+              <img src="{{capture:mobile_dark:src}}" alt="{{capture:mobile_dark:alt}}" loading="eager">
+              <figcaption><strong>{{capture:mobile_dark:label}}</strong> {{capture:mobile_dark:caption}}</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <footer class="guide-footer">
+        <p><strong>Signal Ledger assistant · usage guide draft</strong></p>
+        <p>Example records are synthetic; mobile views use viewport emulation.</p>
+        <a class="back-to-top" href="#top">Back to the beginning <span class="back-to-top-mark" aria-hidden="true"></span></a>
+      </footer>
+    </main>
+  </body>
+</html>

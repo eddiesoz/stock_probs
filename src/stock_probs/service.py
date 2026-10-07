@@ -319,8 +319,11 @@ class ForecastService:
         event_id: int | None = None,
         page: int = 1,
         page_size: int = 20,
+        sort_by: str | None = None,
+        sort_order: str = "desc",
+        horizon: str | None = None,
     ) -> dict[str, Any]:
-        """Serve rich history facets while keeping persistence and transport separable."""
+        """Serve rich indexed history pages with optional sort and horizon filters."""
 
         return self.repository.history(
             owner_user_id=owner_user_id,
@@ -341,6 +344,9 @@ class ForecastService:
             page_size=page_size,
             include_analysis=True,
             include_facets=True,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            horizon=horizon,
         )
 
     def history_detail(self, event_id: int, *, owner_user_id: int) -> dict[str, Any] | None:
@@ -418,6 +424,7 @@ class ForecastService:
         interval: str | None = None,
         *,
         owner_user_id: int,
+        before_persist: Callable[[], None] | None = None,
     ) -> dict[str, object]:
         request_id = str(uuid4())
         submitted_at = self.clock().astimezone(UTC)
@@ -460,6 +467,8 @@ class ForecastService:
                 ) from exc
             completed_at = self.clock().astimezone(UTC)
             try:
+                if before_persist is not None:
+                    before_persist()
                 event_id, _, repeated, reused = self.repository.record_success(
                     owner_user_id=owner_user_id,
                     request_id=request_id,
@@ -483,6 +492,8 @@ class ForecastService:
             reconstructed["reused"] = reused
             return reconstructed
         except DomainError as exc:
+            if before_persist is not None:
+                before_persist()
             self.repository.record_failure(
                 owner_user_id=owner_user_id,
                 request_id=request_id,
@@ -498,7 +509,12 @@ class ForecastService:
             raise
 
     def fresh_historical_reconstruction(
-        self, source_event_id: int, cutoff: datetime, *, owner_user_id: int
+        self,
+        source_event_id: int,
+        cutoff: datetime,
+        *,
+        owner_user_id: int,
+        before_persist: Callable[[], None] | None = None,
     ) -> dict[str, object]:
         """Submit and audit a fresh cutoff analysis, never a saved-result recalculation."""
 
@@ -586,6 +602,8 @@ class ForecastService:
             )
             completed_at = self.clock().astimezone(UTC)
             try:
+                if before_persist is not None:
+                    before_persist()
                 event_id, _, repeated, reused = self.repository.record_success(
                     owner_user_id=owner_user_id,
                     request_id=request_id,
@@ -614,6 +632,8 @@ class ForecastService:
             reconstructed["reused"] = reused
             return reconstructed
         except DomainError as exc:
+            if before_persist is not None:
+                before_persist()
             self.repository.record_failure(
                 owner_user_id=owner_user_id,
                 request_id=request_id,
@@ -645,6 +665,7 @@ class ForecastService:
         note: str,
         *,
         owner_user_id: int,
+        before_persist: Callable[[], None] | None = None,
     ) -> dict[str, object] | None:
         """Keep horizon validation in the domain before appending through persistence."""
 
@@ -660,6 +681,8 @@ class ForecastService:
         if result is None:
             return None
         observed_return, comparison_rule = evaluate_outcome(result, observed_close, observed_at)
+        if before_persist is not None:
+            before_persist()
         return self.repository.append_outcome(
             owner_user_id,
             result_id,

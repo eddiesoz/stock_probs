@@ -6,6 +6,9 @@ services:
       context: ..
       dockerfile: Dockerfile
       target: frontend-builder
+      args:
+        BUILDPLATFORM: linux/amd64
+        TARGETARCH: arm64
     platform: linux/arm64
     network_mode: none
     read_only: true
@@ -20,6 +23,9 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      args:
+        BUILDPLATFORM: linux/amd64
+        TARGETARCH: arm64
     platform: linux/arm64
     environment:
       STOCK_PROBS_DATA_DIR: /data

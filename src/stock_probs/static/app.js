@@ -1405,6 +1405,39 @@ historyNext.addEventListener("click", () => {
   loadHistory();
 });
 
+function validHistoryDateValue(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+}
+
+function initializeAssistantHistoryFilters() {
+  const location = new URL(window.location.href);
+  if (location.pathname !== "/" || location.hash !== "#history-heading") return false;
+  const allowed = new Set(["q", "status", "asset_type", "analysis_kind", "submitted_from", "submitted_to", "model", "horizon", "sort", "page_size"]);
+  const entries = [...location.searchParams.entries()];
+  if (entries.length > allowed.size || new Set(entries.map(([key]) => key)).size !== entries.length
+      || entries.some(([key]) => !allowed.has(key))) return false;
+  const values = Object.fromEntries(entries);
+  if ((values.q !== undefined && values.q.length > 30)
+      || (values.status !== undefined && !["successful", "repeated", "failed"].includes(values.status))
+      || (values.asset_type !== undefined && !["stock", "etf"].includes(values.asset_type))
+      || (values.analysis_kind !== undefined && !["submitted_forecast", "fresh_historical_reconstruction"].includes(values.analysis_kind))
+      || (values.submitted_from !== undefined && !validHistoryDateValue(values.submitted_from))
+      || (values.submitted_to !== undefined && !validHistoryDateValue(values.submitted_to))
+      || (values.submitted_from && values.submitted_to && values.submitted_from > values.submitted_to)
+      || (values.model !== undefined && (values.model.length < 1 || values.model.length > 120 || /[\u0000-\u001f\u007f]/.test(values.model)))
+      || (values.horizon !== undefined && !["close_to_close", "completed_5m_to_close", "five_min_forward", "daily_1", "weekly_5", "monthly_21", "quarterly_63"].includes(values.horizon))
+      || (values.sort !== undefined && !["event_id:desc", "event_id:asc", "symbol:asc", "company:asc", "status:asc"].includes(values.sort))
+      || (values.page_size !== undefined && !["10", "20", "50"].includes(values.page_size))) return false;
+  const formValues = { ...values, sort: values.sort || "event_id:desc", page_size: values.page_size || "10" };
+  for (const name of allowed) {
+    const field = historyForm.elements.namedItem(name);
+    if (field && field instanceof HTMLElement && "value" in field) field.value = formValues[name] || "";
+  }
+  return true;
+}
+
 async function initialize() {
   const state = $(".system-state");
   try {
@@ -1415,6 +1448,7 @@ async function initialize() {
     state.classList.add("failed");
     $("#system-label").textContent = "Local service unavailable";
   }
+  initializeAssistantHistoryFilters();
   await loadHistory();
   const requestedEvent = new URLSearchParams(window.location.search).get("event_id");
   if (requestedEvent && /^[1-9][0-9]*$/.test(requestedEvent)) {

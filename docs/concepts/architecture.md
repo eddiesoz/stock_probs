@@ -1,16 +1,17 @@
 ---
 title: "Architecture"
-description: "The single-process application architecture and its API, service, provider, persistence, forecast, and presentation boundaries."
+description: "The production single-process architecture and the unaccepted same-image Ledger assistant candidate boundary."
 ---
 
 # Architecture
 
-Stock Probability is a self-hosted Linux application built as one bounded Python process. FastAPI
-remains the sole production server: it serves `/`, `/api/v1/docs`, and the workspace routes
+The deployed Stock Probability baseline is a self-hosted Linux application served by one bounded
+FastAPI process. It serves `/`, `/api/v1/docs`, and the workspace routes
 `/overview`, `/research`, `/tools`, `/tools/forecast`, `/tools/live-trading`, and
 `/tools/markets`, plus the application API below `/api/v1`. The default listener is loopback;
-production deployment runs on an operator-managed host. Node is not a production server, and the
-application does not split into multiple runtime services.
+production deployment runs on an operator-managed host. Node is not a production server. The
+unaccepted R-ASTRA-120 candidate adds one supervised OpenCode worker process inside the same image
+and container; it does not add a companion service or image.
 
 The presentation source is a Next.js `16.3.8` / React `19.3` App Router project, but it is a
 static build-time input rather than another runtime. Run `./scripts/build-frontend.sh` to create
@@ -58,6 +59,28 @@ FastAPI (`/`, `/api/v1/docs`, `/api/v1`) ── application service ── forec
                                   │
                                   └── backup manager ── managed .spbackup artifacts
 ```
+
+## R-ASTRA-120 assistant candidate boundary
+
+The assistant candidate adds a supervised OpenCode V2.0.7 worker inside the same FastAPI image.
+The browser uses same-origin `/api/v1/assistant` routes; the worker and its internal provider/MCP
+callbacks stay on private loopback. The worker has a separate UID and bounded writable runtime
+state. Application session checks bind each tool call and stream to its owner. The typed application
+MCP catalog exposes workspace/research operations; OpenCode's native websearch and webfetch are
+separate runtime tools with approval checks. The candidate does not add a companion container,
+arbitrary shell/filesystem access, or background job scheduler.
+
+Production Compose currently defaults assistant enablement to `0` and rollout to
+`disabled`. Production remains at schema 12 and the assistant is not deployed. Candidate source,
+a staged build, and local tests do not establish native provider, MCP, search/fetch, accessibility,
+security, resource, rollback, or rollout acceptance. Candidate source distinguishes rollout paths:
+`disabled` persists the disabled marker and invokes the fixed in-place assistant-kill client, while
+`owner_canary` and `invited` transitions force-recreate the app service (E53). This source behavior
+does not establish an operable live kill control or current-image acceptance. An actual in-flight
+search cancellation passed on an earlier schema-13 candidate
+image while preserving app readiness and private records. The equivalent check on the current
+candidate image remains pending. See the
+[R-ASTRA-120 evidence ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
 
 ## Boundary responsibilities
 

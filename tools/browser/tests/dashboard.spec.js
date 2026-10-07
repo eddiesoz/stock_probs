@@ -235,7 +235,8 @@ async function openSettings(page, keyboard = false) {
 
 async function attachScreenshot(testInfo, name, locator) {
   await testInfo.attach(name, {
-    body: await locator.screenshot({ animations: "disabled" }),
+    // CSS-pixel captures retain layout geometry without allocating a DPR-scaled raster.
+    body: await locator.screenshot({ animations: "disabled", scale: "css" }),
     contentType: "image/png",
   });
 }
@@ -968,24 +969,87 @@ test("company lookup is bounded, race-safe, keyboard-selectable, and confirms id
   await expectAxeClean(page);
 });
 
-test("a superseded lookup is aborted once and cannot race a direct-symbol forecast", async ({
-  page,
-  browserDiagnostics,
-}) => {
+test("a superseded lookup is aborted once and cannot race a direct-symbol forecast", async ({ page, applicationRequests, browserDiagnostics }) => {
   const lookupQueries = [];
+  const reportedAborts = [];
+  const transportAborts = [];
+  let resolveLookupAbort;
+  const lookupAbortReported = new Promise((resolve) => { resolveLookupAbort = resolve; });
+  let resolveDelayedLookupIntercept;
+  const delayedLookupIntercepted = new Promise((resolve) => { resolveDelayedLookupIntercept = resolve; });
+  page.on("requestfailed", (request) => {
+    const requestUrl = new URL(request.url());
+    if (request.method() === "GET"
+      && requestUrl.pathname === "/api/v1/instruments"
+      && requestUrl.searchParams.get("query") === "ACDC") {
+      transportAborts.push({
+        method: request.method(),
+        path: requestUrl.pathname,
+        query: requestUrl.searchParams.get("query"),
+        error: request.failure()?.errorText,
+      });
+    }
+  });
+  await page.exposeFunction("__qaReportInstrumentLookupAbort", (url) => {
+    reportedAborts.push(url);
+    resolveLookupAbort(url);
+  });
+  // Only the exact ACDC lookup receives a deferred app-side fixture response. Its native
+  // browser fetch stays bound to the real AbortSignal and exact transport-abort diagnostics.
+  await page.addInitScript(() => {
+    const nativeFetch = window.fetch;
+    window.__qaInstrumentLookupRequests = [];
+    window.fetch = function (input, init = {}) {
+      const requestUrl = new URL(
+        input instanceof Request ? input.url : input instanceof URL ? input.href : String(input),
+        window.location.href,
+      );
+      if (requestUrl.pathname === "/api/v1/instruments" && requestUrl.searchParams.get("query") === "ACDC") {
+        const request = { url: requestUrl.href, aborted: false, networkError: null, staleResponseReleased: false };
+        window.__qaInstrumentLookupRequests.push(request);
+        if (init.signal) {
+          init.signal.addEventListener("abort", () => {
+            request.aborted = true;
+            void window.__qaReportInstrumentLookupAbort(requestUrl.href);
+          }, { once: true });
+        }
+        void nativeFetch.call(this, input, init).catch((error) => {
+          if (error.name !== "AbortError") throw error;
+          request.networkError = error.name;
+        });
+        return new Promise((resolve) => {
+          window.__qaResolveDelayedInstrumentLookup = (payload) => {
+            request.staleResponseReleased = true;
+            const response = new Response(JSON.stringify(payload), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            });
+            const parseJson = response.json.bind(response);
+            response.json = async () => {
+              const body = await parseJson();
+              request.staleResponseParsed = true;
+              return body;
+            };
+            resolve(response);
+          };
+        });
+      }
+      return nativeFetch.call(this, input, init);
+    };
+  });
   await page.route("**/api/v1/instruments?*", async (route) => {
-    const query = new URL(route.request().url()).searchParams.get("query");
+    const requestUrl = new URL(route.request().url());
+    const query = requestUrl.searchParams.get("query");
     lookupQueries.push(query);
-    if (query === "ACDC-D") {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    if (query === "ACDC") {
+      resolveDelayedLookupIntercept(requestUrl.href);
+      const abortedUrl = await lookupAbortReported;
+      if (abortedUrl !== requestUrl.href) throw new Error("The held lookup was released by a different request.");
     }
     await route.continue();
   });
-  browserDiagnostics.expectRequestAborts({
-    method: "GET",
-    path: "/api/v1/instruments",
-    count: 1,
-  });
+  browserDiagnostics.expectRequestAborts({ method: "GET", path: "/api/v1/instruments", count: 1 });
+
   await gotoSurface(page, "/");
   const symbol = page.getByLabel("Company name or Yahoo Finance symbol");
   await symbol.fill("ProFrac");
@@ -995,9 +1059,12 @@ test("a superseded lookup is aborted once and cannot race a direct-symbol foreca
   await expect(page.getByRole("option", { name: /SPDR S&P 500 ETF Trust/ })).toBeVisible();
   await expect(page.locator("#instrument-options")).not.toContainText("ProFrac Holding Corp");
 
-  await symbol.fill("ACDC-D");
-  await expect(page.getByText("Looking up “ACDC-D”…")).toBeVisible();
-  await expect.poll(() => lookupQueries.filter((query) => query === "ACDC-D").length).toBe(1);
+  await symbol.fill("ACDC");
+  await expect(page.getByText("Looking up “ACDC”…")).toBeVisible();
+  await expect.poll(() => lookupQueries.filter((query) => query === "ACDC").length).toBe(1);
+  const delayedLookupUrl = await delayedLookupIntercepted;
+  expect(new URL(delayedLookupUrl).searchParams.get("query")).toBe("ACDC");
+
   const forecastResponse = page.waitForResponse((response) => (
     response.request().method() === "POST"
     && new URL(response.url()).pathname === "/api/v1/forecasts"
@@ -1007,7 +1074,52 @@ test("a superseded lookup is aborted once and cannot race a direct-symbol foreca
   await expect(page.getByRole("heading", { name: "Close → next close" })).toBeVisible();
   await expect(page.locator("#instrument-options")).toBeHidden();
   await expect(page.locator("#lookup-status")).toBeEmpty();
-  expect(lookupQueries.filter((query) => query === "ACDC-D")).toHaveLength(1);
+
+  const abortedUrl = await lookupAbortReported;
+  expect(abortedUrl).toBe(delayedLookupUrl);
+  expect(reportedAborts).toEqual([delayedLookupUrl]);
+  await expect.poll(() => transportAborts).toHaveLength(1);
+  expect(transportAborts).toEqual([{
+    method: "GET",
+    path: "/api/v1/instruments",
+    query: "ACDC",
+    error: "net::ERR_ABORTED",
+  }]);
+  const lookupRequestState = await page.evaluate(() => window.__qaInstrumentLookupRequests);
+  expect(lookupRequestState).toHaveLength(1);
+  expect(lookupRequestState[0]).toMatchObject({ url: delayedLookupUrl, aborted: true });
+
+  const applicationOrigin = new URL(page.url()).origin;
+  expect(new URL(delayedLookupUrl).origin).toBe(applicationOrigin);
+  const fixtureResponse = await page.request.get(delayedLookupUrl);
+  expect(fixtureResponse.status()).toBe(200);
+  const delayedLookupPayload = await fixtureResponse.json();
+  expect(delayedLookupPayload).toMatchObject({ query: "ACDC", limit: 5, total: 1 });
+  expect(delayedLookupPayload.items[0]).toMatchObject({
+    canonical_symbol: "ACDC",
+    company_name: "ProFrac Holding Corp.",
+    asset_type: "stock",
+  });
+  await page.evaluate((payload) => window.__qaResolveDelayedInstrumentLookup(payload), delayedLookupPayload);
+  await expect.poll(() => page.evaluate(() => window.__qaInstrumentLookupRequests[0].networkError)).toBe("AbortError");
+  await expect.poll(() => page.evaluate(() => window.__qaInstrumentLookupRequests[0].staleResponseParsed)).toBe(true);
+  expect(await page.evaluate(() => window.__qaInstrumentLookupRequests[0])).toMatchObject({
+    url: delayedLookupUrl,
+    aborted: true,
+    networkError: "AbortError",
+    staleResponseReleased: true,
+    staleResponseParsed: true,
+  });
+  await expect(page.getByRole("heading", { name: "Close → next close" })).toBeVisible();
+  await expect(page.locator(".forecast-meta")).toContainText("Canonical symbolACDC");
+  await expect(page.locator("#instrument-options")).toBeHidden();
+  await expect(page.locator("#lookup-status")).toBeEmpty();
+  expect(lookupQueries.filter((query) => query === "ACDC")).toHaveLength(1);
+  expect(applicationRequests.length).toBeGreaterThan(0);
+  expect(applicationRequests.every((url) => {
+    const requestUrl = new URL(url);
+    return requestUrl.origin === applicationOrigin && requestUrl.pathname.startsWith("/api/v1/");
+  })).toBe(true);
 });
 
 test("history filters and immutable saved reopen remain usable", async ({ page }, testInfo) => {
@@ -1759,7 +1871,9 @@ test("native settings popover is hidden, responsive, persistent, keyboard-operab
       if (path === "/" && width === 320) {
         expect(afterScroll.scrollY - beforeScroll.scrollY, "dashboard did not scroll meaningfully after Tab")
           .toBeGreaterThanOrEqual(100);
-        await expect(page.getByLabel("Company name or Yahoo Finance symbol")).toBeFocused();
+        const signInLink = page.locator('a.auth-link[href="/sign-in"]');
+        await expect(signInLink).toBeVisible();
+        await expect(signInLink).toBeFocused();
         await page.keyboard.press("Shift+Tab");
         await expect(page.locator(".theme-control").getByRole("radio", { checked: true })).toBeFocused();
         await expect(page.locator(":focus")).toBeInViewport({ ratio: 1 });

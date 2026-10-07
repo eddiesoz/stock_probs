@@ -32,6 +32,7 @@ REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 PLAN_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 IMAGE_ID_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
+CONTAINER_ID_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 BACKUP_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,126}\.spbackup$")
 
 # These paths are deliberately constants.  A tool request can select a release, but cannot
@@ -58,21 +59,40 @@ GITHUB_RELEASE_REPOSITORY = "eddiesoz/stock_probs"
 GITHUB_RELEASE_TAG_PREFIX = "signal-ledger-"
 GITHUB_RELEASE_ARCHIVE_PREFIX = "signal-ledger-image-"
 GITHUB_RELEASE_ARCHIVE_SUFFIX = ".tar.gz"
+GITHUB_RELEASE_RECOVERY_PREFIX = "signal-ledger-recovery-"
+GITHUB_RELEASE_PAIR_PREFIX = "signal-ledger-pair-"
 GITHUB_RELEASE_TRANSPORT = "github_release"
 LOCAL_IMAGE_REPOSITORY = "signal-ledger"
+PAIR_MANIFEST_VERSION = 1
+PAIR_REPOSITORY = "eddiesoz/stock_probs"
+PAIR_BASE_REVISION = "da2764e8477698fa7d686be93a4711e35478e802"
+PAIR_MIGRATION_SHA256 = "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b"
 MAX_RELEASE_ARCHIVE_BYTES = 512 * 1024 * 1024
 RELEASE_DOWNLOAD_TIMEOUT_SECONDS = 600
 HEALTH_URL = "http://127.0.0.1:8000/api/v1/readiness"
 HEALTH_ATTEMPTS = 30
 HEALTH_DELAY_SECONDS = 1.0
+ASSISTANT_MINIMUM_SCHEMA = 13
+ASSISTANT_ROLLOUT_MODES = frozenset({"disabled", "owner_canary", "invited"})
+ASSISTANT_RUNTIME_STATUS = frozenset({"disabled", "starting", "ready", "unavailable", "stopped"})
+MAX_COMPOSE_SNAPSHOT_BYTES = 128 * 1024
 
-_ALLOWED_OPERATIONS = frozenset({"inspect", "plan_deploy", "deploy", "status", "rollback"})
+_ALLOWED_OPERATIONS = frozenset(
+    {"inspect", "plan_deploy", "deploy", "status", "rollback", "set_assistant_rollout"}
+)
 _EXPECTED_PAYLOAD_KEYS = {
     "inspect": frozenset(),
     "status": frozenset(),
     "plan_deploy": frozenset({"revision", "archive_sha256", "image_id"}),
     "deploy": frozenset({"plan_id", "revision", "archive_sha256", "image_id"}),
     "rollback": frozenset({"revision", "image_id"}),
+    "set_assistant_rollout": frozenset({"mode", "revision", "archive_sha256", "image_id"}),
+}
+_PAIR_PAYLOAD_KEYS = {
+    "plan_deploy": frozenset({"revision", "archive_sha256", "image_id", "pair_manifest_sha256"}),
+    "deploy": frozenset(
+        {"plan_id", "revision", "archive_sha256", "image_id", "pair_manifest_sha256"}
+    ),
 }
 
 # The old GHCR shape remains accepted by the forced command for already prepared hosts.  The
@@ -129,6 +149,27 @@ def _release_archive_url(revision: str) -> str:
     return f"https://github.com/{GITHUB_RELEASE_REPOSITORY}/releases/download/{tag}/{_release_archive_name(revision)}"
 
 
+def _release_asset_name(revision: str, role: str) -> str:
+    """Derive one of the three immutable pair assets; callers never supply a path or URL."""
+
+    _validate_revision(revision)
+    if role == "candidate":
+        return _release_archive_name(revision)
+    if role == "recovery":
+        return f"{GITHUB_RELEASE_RECOVERY_PREFIX}{revision}{GITHUB_RELEASE_ARCHIVE_SUFFIX}"
+    if role == "pair":
+        return f"{GITHUB_RELEASE_PAIR_PREFIX}{revision}.json"
+    raise HostError("release_asset_invalid")
+
+
+def _release_asset_url(revision: str, role: str) -> str:
+    """Build a fixed GitHub Release URL for a candidate, recovery image, or pair manifest."""
+
+    name = _release_asset_name(revision, role)
+    tag = f"{GITHUB_RELEASE_TAG_PREFIX}{revision}"
+    return f"https://github.com/{GITHUB_RELEASE_REPOSITORY}/releases/download/{tag}/{name}"
+
+
 def _release_archive_name(revision: str) -> str:
     """Return the immutable asset filename derived from a reviewed revision."""
 
@@ -141,6 +182,13 @@ def _local_image_ref(revision: str) -> str:
 
     _validate_revision(revision)
     return f"{LOCAL_IMAGE_REPOSITORY}:sha-{revision}"
+
+
+def _local_recovery_image_ref(revision: str) -> str:
+    """Return the fixed local tag for the forward-compatible app-only recovery image."""
+
+    _validate_revision(revision)
+    return f"{LOCAL_IMAGE_REPOSITORY}:recovery-sha-{revision}"
 
 
 def _safe_mode(path: Path, mode: int) -> None:
@@ -488,14 +536,126 @@ def _compose_digest() -> str:
     return digest
 
 
-def _assert_record_compose_digest(record: dict[str, Any]) -> None:
-    """Reject a release unless its fixed Compose bytes are still installed."""
+def _compose_snapshot_path(revision: str) -> Path:
+    """Return the only state path used to retain this reviewed release's Compose file."""
+
+    return RELEASE_ROOT / f"{_validate_revision(revision)}.compose.yaml"
+
+
+def _read_compose_snapshot(path: Path) -> bytes:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise HostError("compose_snapshot_unavailable") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or metadata.st_size > MAX_COMPOSE_SNAPSHOT_BYTES
+        ):
+            raise HostError("compose_snapshot_unsafe")
+        content = os.read(descriptor, MAX_COMPOSE_SNAPSHOT_BYTES + 1)
+    except OSError as exc:
+        raise HostError("compose_snapshot_unavailable") from exc
+    finally:
+        os.close(descriptor)
+    if len(content) > MAX_COMPOSE_SNAPSHOT_BYTES:
+        raise HostError("compose_snapshot_unsafe")
+    return content
+
+
+def _write_compose_snapshot(revision: str, content: bytes, expected_digest: str) -> Path:
+    """Persist one bounded Compose file only when its reviewed digest matches the release."""
+
+    revision = _validate_revision(revision)
+    if (
+        not isinstance(content, bytes)
+        or not 0 < len(content) <= MAX_COMPOSE_SNAPSHOT_BYTES
+        or not isinstance(expected_digest, str)
+        or DIGEST_PATTERN.fullmatch(expected_digest) is None
+        or hashlib.sha256(content).hexdigest() != expected_digest
+    ):
+        raise HostError("compose_snapshot_invalid")
+    path = _compose_snapshot_path(revision)
+    existing: os.stat_result | None = None
+    try:
+        existing = path.lstat()
+    except FileNotFoundError:
+        existing = None
+    except OSError as exc:
+        raise HostError("compose_snapshot_unavailable") from exc
+    if existing is not None:
+        existing = _read_compose_snapshot(path)
+        if hashlib.sha256(existing).hexdigest() != expected_digest or existing != content:
+            raise HostError("compose_snapshot_mismatch")
+        return path
+    _safe_mode(path.parent, 0o750)
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    descriptor = os.open(
+        temporary,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+        0o600,
+    )
+    try:
+        _write_all(descriptor, content)
+        os.fsync(descriptor)
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise HostError("compose_snapshot_write_failed") from exc
+    finally:
+        os.close(descriptor)
+    try:
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise HostError("compose_snapshot_write_failed") from exc
+    return path
+
+
+def _ensure_compose_snapshot(record: dict[str, Any]) -> Path:
+    """Verify or recreate a release snapshot from its fixed, validated Git revision."""
+
+    revision = _validate_revision(record.get("revision"))
+    expected = record.get("compose_digest")
+    if not isinstance(expected, str) or DIGEST_PATTERN.fullmatch(expected) is None:
+        raise HostError("compose_revision_mismatch")
+    path = _compose_snapshot_path(revision)
+    try:
+        content = _read_compose_snapshot(path)
+    except HostError as exc:
+        if exc.code != "compose_snapshot_unavailable":
+            raise
+        _ensure_source()
+        try:
+            _git("cat-file", "-e", f"{revision}^{{commit}}")
+            content = _run(
+                ["git", "-C", str(SOURCE_ROOT), "show", f"{revision}:compose.production.yaml"],
+                timeout=30,
+            ).stdout.encode()
+        except HostError as source_error:
+            raise HostError("compose_snapshot_unavailable") from source_error
+        path = _write_compose_snapshot(revision, content, expected)
+    if hashlib.sha256(content).hexdigest() != expected:
+        raise HostError("compose_revision_mismatch")
+    return path
+
+
+def _assert_record_compose_digest(record: dict[str, Any]) -> Path:
+    """Verify the exact per-release Compose bytes used by safe code-only recovery."""
 
     expected = record.get("compose_digest")
     if not isinstance(expected, str) or DIGEST_PATTERN.fullmatch(expected) is None:
         raise HostError("compose_revision_mismatch")
-    if _compose_digest() != expected:
+    snapshot = _ensure_compose_snapshot(record)
+    if hashlib.sha256(_read_compose_snapshot(snapshot)).hexdigest() != expected:
         raise HostError("compose_revision_mismatch")
+    return snapshot
 
 
 def _image_ref(revision: str, image_digest: str) -> str:
@@ -605,8 +765,17 @@ def _archive_sha256(path: Path) -> tuple[str, int]:
 def _download_release_archive(revision: str) -> Path:
     """Download the fixed GitHub asset into a private, temporary release directory."""
 
+    return _download_release_asset(revision, "candidate")
+
+
+def _download_release_asset(revision: str, role: str) -> Path:
+    """Download exactly one revision-derived immutable release asset."""
+
     _safe_mode(RELEASE_ROOT, 0o750)
-    temporary = RELEASE_ROOT / f".image-{revision}-{secrets.token_hex(8)}.tar.gz"
+    _release_asset_name(revision, role)
+    asset_limit = 65_536 if role == "pair" else MAX_RELEASE_ARCHIVE_BYTES
+    suffix = ".json" if role == "pair" else ".tar.gz"
+    temporary = RELEASE_ROOT / f".{role}-{revision}-{secrets.token_hex(8)}{suffix}"
     try:
         descriptor = os.open(
             temporary,
@@ -632,17 +801,17 @@ def _download_release_archive(revision: str) -> Path:
                 "--max-time",
                 str(RELEASE_DOWNLOAD_TIMEOUT_SECONDS),
                 "--max-filesize",
-                str(MAX_RELEASE_ARCHIVE_BYTES),
+                str(asset_limit),
                 "--output",
                 str(temporary),
-                _release_archive_url(revision),
+                _release_asset_url(revision, role),
             ],
             timeout=RELEASE_DOWNLOAD_TIMEOUT_SECONDS + 30,
         )
         metadata = temporary.lstat()
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
             raise HostError("release_archive_unsafe")
-        if metadata.st_size <= 0 or metadata.st_size > MAX_RELEASE_ARCHIVE_BYTES:
+        if metadata.st_size <= 0 or metadata.st_size > asset_limit:
             raise HostError("release_archive_too_large")
         return temporary
     except HostError:
@@ -681,6 +850,255 @@ def _load_release_archive(
         return image_ref, archive_sha256, expected_image_id, platform, schema_version, archive_size
     finally:
         archive.unlink(missing_ok=True)
+
+
+def _release_pair_source_facts() -> dict[str, Any]:
+    """Recompute the fixed source and recovery overlay identities from exact checked-out main."""
+
+    facts: dict[str, Any] = {}
+    for mode in ("--source-context-manifest", "--overlay-manifest"):
+        try:
+            output = _run(
+                ["python3", "scripts/rehearse_schema13.py", mode],
+                cwd=SOURCE_ROOT,
+                timeout=180,
+            ).stdout
+            value = json.loads(output)
+        except (HostError, json.JSONDecodeError, TypeError) as exc:
+            raise HostError("release_pair_source_unavailable") from exc
+        if not isinstance(value, dict) or value.get("status") != "prepared":
+            raise HostError("release_pair_source_invalid")
+        facts[mode] = value
+    return facts
+
+
+def _validate_release_pair_manifest(
+    manifest: object,
+    *,
+    revision: str,
+    candidate_archive_sha256: str,
+    candidate_archive_size: int,
+    candidate_image_id: str,
+    facts: dict[str, Any],
+) -> dict[str, Any]:
+    """Accept only the fixed schema-12→13 candidate/recovery pair for this main revision."""
+
+    expected_root = {
+        "format_version",
+        "repository",
+        "revision",
+        "source_context_sha256",
+        "migration",
+        "candidate",
+        "recovery",
+    }
+    if not isinstance(manifest, dict) or set(manifest) != expected_root:
+        raise HostError("release_pair_invalid")
+    source = facts.get("--source-context-manifest")
+    overlay_manifest = facts.get("--overlay-manifest")
+    if not isinstance(source, dict) or not isinstance(overlay_manifest, dict):
+        raise HostError("release_pair_source_invalid")
+    baseline = overlay_manifest.get("observed_deployment_baseline")
+    overlay = overlay_manifest.get("recovery_overlay")
+    migration_files = overlay.get("files") if isinstance(overlay, dict) else None
+    migration = manifest.get("migration")
+    candidate = manifest.get("candidate")
+    recovery = manifest.get("recovery")
+    if not isinstance(recovery, dict):
+        raise HostError("release_pair_recovery_invalid")
+    if (
+        type(manifest.get("format_version")) is not int
+        or manifest["format_version"] != PAIR_MANIFEST_VERSION
+        or manifest.get("repository") != PAIR_REPOSITORY
+        or manifest.get("revision") != revision
+        or manifest.get("source_context_sha256") != source.get("source_context_sha256")
+        or not isinstance(source.get("source_context_sha256"), str)
+        or DIGEST_PATTERN.fullmatch(source["source_context_sha256"]) is None
+        or not isinstance(baseline, dict)
+        or baseline.get("source_revision") != PAIR_BASE_REVISION
+        or not isinstance(overlay, dict)
+        or overlay.get("base_revision") != PAIR_BASE_REVISION
+        or overlay_manifest.get("base_source_context_sha256")
+        != recovery.get("base_source_context_sha256")
+    ):
+        raise HostError("release_pair_invalid")
+    if (
+        not isinstance(migration, dict)
+        or set(migration) != {"from_schema", "to_schema", "sha256"}
+        or type(migration.get("from_schema")) is not int
+        or migration.get("from_schema") != 12
+        or type(migration.get("to_schema")) is not int
+        or migration.get("to_schema") != ASSISTANT_MINIMUM_SCHEMA
+        or migration.get("sha256") != PAIR_MIGRATION_SHA256
+        or not isinstance(migration_files, dict)
+        or migration_files.get("src/stock_probs/migrations/013_assistant_conversations.sql")
+        != PAIR_MIGRATION_SHA256
+    ):
+        raise HostError("release_pair_migration_invalid")
+    if (
+        not isinstance(candidate, dict)
+        or set(candidate)
+        != {
+            "asset",
+            "archive_sha256",
+            "archive_size",
+            "image_id",
+            "platform",
+            "revision",
+            "schema_version",
+            "source_context_sha256",
+        }
+        or candidate.get("asset") != _release_asset_name(revision, "candidate")
+        or candidate.get("archive_sha256") != candidate_archive_sha256
+        or type(candidate.get("archive_size")) is not int
+        or not 1 <= candidate["archive_size"] <= MAX_RELEASE_ARCHIVE_BYTES
+        or candidate.get("archive_size") != candidate_archive_size
+        or candidate.get("image_id") != candidate_image_id
+        or candidate.get("platform") != "linux/amd64"
+        or candidate.get("revision") != revision
+        or type(candidate.get("schema_version")) is not int
+        or candidate.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+        or candidate.get("source_context_sha256") != source.get("source_context_sha256")
+    ):
+        raise HostError("release_pair_candidate_invalid")
+    expected_recovery = {
+        "asset",
+        "archive_sha256",
+        "archive_size",
+        "image_id",
+        "platform",
+        "revision",
+        "schema_version",
+        "assistant_enabled",
+        "base_revision",
+        "base_image_id",
+        "base_archive_sha256",
+        "base_source_context_sha256",
+        "overlay_sha256",
+        "source_context_sha256",
+        "migration_sha256",
+    }
+    if (
+        not isinstance(recovery, dict)
+        or set(recovery) != expected_recovery
+        or recovery.get("asset") != _release_asset_name(revision, "recovery")
+        or recovery.get("platform") != "linux/amd64"
+        or recovery.get("revision") != revision
+        or type(recovery.get("schema_version")) is not int
+        or recovery.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+        or recovery.get("assistant_enabled") is not False
+        or type(recovery.get("archive_size")) is not int
+        or not 1 <= recovery["archive_size"] <= MAX_RELEASE_ARCHIVE_BYTES
+        or recovery.get("base_revision") != PAIR_BASE_REVISION
+        or recovery.get("base_image_id") != baseline.get("image_id")
+        or recovery.get("base_archive_sha256") != baseline.get("release_archive_sha256")
+        or recovery.get("base_source_context_sha256")
+        != overlay_manifest.get("base_source_context_sha256")
+        or recovery.get("overlay_sha256") != overlay.get("overlay_sha256")
+        or recovery.get("source_context_sha256") != overlay_manifest.get("recovery_context_sha256")
+        or recovery.get("migration_sha256") != PAIR_MIGRATION_SHA256
+    ):
+        raise HostError("release_pair_recovery_invalid")
+    for digest in (
+        recovery.get("archive_sha256"),
+        recovery.get("base_archive_sha256"),
+        recovery.get("base_source_context_sha256"),
+        recovery.get("overlay_sha256"),
+        recovery.get("source_context_sha256"),
+        recovery.get("migration_sha256"),
+    ):
+        if not isinstance(digest, str) or DIGEST_PATTERN.fullmatch(digest) is None:
+            raise HostError("release_pair_recovery_invalid")
+    if (
+        not isinstance(recovery.get("image_id"), str)
+        or IMAGE_ID_PATTERN.fullmatch(recovery["image_id"]) is None
+    ):
+        raise HostError("release_pair_recovery_invalid")
+    return manifest
+
+
+def _load_release_pair(
+    revision: str,
+    expected_manifest_sha256: str,
+    expected_candidate_archive_sha256: str,
+    expected_candidate_image_id: str,
+    *,
+    candidate_archive_size: int,
+) -> dict[str, Any]:
+    """Verify the manifest, current source context, migration and recovery image before staging."""
+
+    _validate_revision(revision)
+    _validate_digest(expected_manifest_sha256)
+    if (
+        type(candidate_archive_size) is not int
+        or not 1 <= candidate_archive_size <= MAX_RELEASE_ARCHIVE_BYTES
+    ):
+        raise HostError("candidate_archive_size_invalid")
+    pair_path = _download_release_asset(revision, "pair")
+    try:
+        metadata = pair_path.lstat()
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise HostError("release_pair_unsafe")
+        if metadata.st_size <= 0 or metadata.st_size > 65_536:
+            raise HostError("release_pair_too_large")
+        raw = pair_path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != expected_manifest_sha256:
+            raise HostError("release_pair_digest_mismatch")
+        try:
+            manifest = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HostError("release_pair_invalid") from exc
+        facts = _release_pair_source_facts()
+        _validate_release_pair_manifest(
+            manifest,
+            revision=revision,
+            candidate_archive_sha256=expected_candidate_archive_sha256,
+            candidate_archive_size=candidate_archive_size,
+            candidate_image_id=expected_candidate_image_id,
+            facts=facts,
+        )
+    finally:
+        pair_path.unlink(missing_ok=True)
+
+    recovery = manifest["recovery"]
+    archive = _download_release_asset(revision, "recovery")
+    try:
+        archive_sha256, archive_size = _archive_sha256(archive)
+        if archive_sha256 != recovery["archive_sha256"] or archive_size != recovery["archive_size"]:
+            raise HostError("recovery_archive_digest_mismatch")
+        _run(["docker", "load", "--input", str(archive)], timeout=300)
+        recovery_image_id = _image_id(recovery["image_id"])
+        if recovery_image_id != recovery["image_id"]:
+            raise HostError("recovery_image_id_mismatch")
+        if _image_revision(recovery_image_id) != revision:
+            raise HostError("recovery_image_revision_mismatch")
+        platform = _image_platform(recovery_image_id)
+        image_ref = _local_recovery_image_ref(revision)
+        _run(["docker", "tag", recovery_image_id, image_ref], timeout=30)
+        if _image_id(image_ref) != recovery_image_id:
+            raise HostError("recovery_image_id_mismatch")
+        schema_version = _image_schema(image_ref)
+        if (
+            schema_version != ASSISTANT_MINIMUM_SCHEMA
+            or platform != recovery["platform"]
+            or not _image_has_recovery_entrypoint(image_ref)
+        ):
+            raise HostError("recovery_image_contract_mismatch")
+    finally:
+        archive.unlink(missing_ok=True)
+    return {
+        "pair_manifest_sha256": expected_manifest_sha256,
+        "source_context_sha256": manifest["source_context_sha256"],
+        "migration_sha256": manifest["migration"]["sha256"],
+        "recovery_image_ref": image_ref,
+        "recovery_image_id": recovery_image_id,
+        "recovery_archive_sha256": archive_sha256,
+        "recovery_archive_size": archive_size,
+        "recovery_platform": platform,
+        "recovery_schema_version": schema_version,
+        "recovery_base_revision": recovery["base_revision"],
+        "recovery_overlay_sha256": recovery["overlay_sha256"],
+    }
 
 
 def _image_schema(image_ref: str) -> int:
@@ -742,8 +1160,18 @@ def _pull_image(revision: str, expected_image_digest: str) -> tuple[str, str, in
     return image_ref, expected_image_digest, _image_schema(image_ref)
 
 
-def _runtime_file(image_ref: str) -> None:
-    encoded = f"STOCK_PROBS_IMAGE={image_ref}\n".encode()
+def _runtime_file(image_ref: str, rollout_mode: str = "disabled") -> None:
+    """Write only the fixed image and bounded assistant rollout settings."""
+
+    if rollout_mode not in ASSISTANT_ROLLOUT_MODES:
+        raise HostError("assistant_rollout_invalid")
+    enabled = "0" if rollout_mode == "disabled" else "1"
+    encoded = (
+        f"STOCK_PROBS_IMAGE={image_ref}\n"
+        f"STOCK_PROBS_ASSISTANT_ENABLED={enabled}\n"
+        f"STOCK_PROBS_ASSISTANT_ROLLOUT={rollout_mode}\n"
+        "STOCK_PROBS_ASSISTANT_CANARY_GITHUB_IDS=\n"
+    ).encode()
     _safe_mode(RUNTIME_ENV_FILE.parent, 0o750)
     temporary = RUNTIME_ENV_FILE.with_name(f".{RUNTIME_ENV_FILE.name}.{secrets.token_hex(8)}.tmp")
     descriptor = os.open(
@@ -766,7 +1194,7 @@ def _runtime_file(image_ref: str) -> None:
         raise HostError("runtime_write_failed") from exc
 
 
-def _compose_prefix() -> list[str]:
+def _compose_prefix(compose_file: Path | None = None) -> list[str]:
     return [
         "docker",
         "compose",
@@ -779,30 +1207,115 @@ def _compose_prefix() -> list[str]:
         "--env-file",
         str(RUNTIME_ENV_FILE),
         "--file",
-        str(COMPOSE_FILE),
+        str(COMPOSE_FILE if compose_file is None else compose_file),
     ]
 
 
-def _compose(*arguments: str, timeout: float = 300.0) -> str:
-    return _run([*_compose_prefix(), *arguments], timeout=timeout).stdout.strip()
+def _compose(
+    *arguments: str,
+    timeout: float = 300.0,
+    compose_file: Path | None = None,
+) -> str:
+    return _run([*_compose_prefix(compose_file), *arguments], timeout=timeout).stdout.strip()
 
 
-def _compose_optional(*arguments: str, timeout: float = 300.0) -> bool:
+def _compose_optional(
+    *arguments: str,
+    timeout: float = 300.0,
+    compose_file: Path | None = None,
+) -> bool:
     try:
-        _compose(*arguments, timeout=timeout)
+        _compose(*arguments, timeout=timeout, compose_file=compose_file)
     except HostError:
         return False
     return True
 
 
-def _compose_up(record: dict[str, Any], *, timeout: float = 180.0) -> str:
+def _compose_up(
+    record: dict[str, Any],
+    *,
+    timeout: float = 180.0,
+    compose_file: Path | None = None,
+    force_recreate: bool = False,
+) -> str:
     """Start a verified image without allowing Compose to pull a mutable fallback tag."""
 
     arguments = ["up", "--detach", "--no-build"]
+    if force_recreate:
+        arguments.append("--force-recreate")
     if _is_release_record(record):
         arguments.extend(("--pull", "never"))
     arguments.append("app")
-    return _compose(*arguments, timeout=timeout)
+    return _compose(*arguments, timeout=timeout, compose_file=compose_file)
+
+
+def _stop_app(compose_file: Path | None = None) -> None:
+    """Establish and verify the maintenance boundary before a snapshot or schema migration."""
+
+    _compose("stop", "app", timeout=60, compose_file=compose_file)
+    running = _compose(
+        "ps",
+        "--status",
+        "running",
+        "--services",
+        timeout=30,
+        compose_file=compose_file,
+    )
+    if "app" in running.split():
+        raise HostError("maintenance_boundary_failed")
+
+
+def _app_container_identity(compose_file: Path) -> tuple[str, int]:
+    """Return the exact running Compose app container ID and host PID."""
+
+    container_id = _compose(
+        "ps", "--status", "running", "--quiet", "app", timeout=20, compose_file=compose_file
+    )
+    if CONTAINER_ID_PATTERN.fullmatch(container_id) is None:
+        raise HostError("assistant_app_identity_unavailable")
+    result = _run(
+        [
+            "docker",
+            "inspect",
+            "--format",
+            "{{.Id}}|{{.State.Pid}}|{{.State.Running}}",
+            container_id,
+        ],
+        timeout=10,
+    ).stdout.strip()
+    parts = result.split("|")
+    if len(parts) != 3 or parts[0] != container_id or parts[2] != "true":
+        raise HostError("assistant_app_identity_unavailable")
+    if not parts[1].isdecimal() or int(parts[1]) <= 1:
+        raise HostError("assistant_app_identity_unavailable")
+    return container_id, int(parts[1])
+
+
+def _request_in_place_assistant_kill(container_id: str) -> None:
+    """Run only the packaged no-argument kill client inside the verified app container."""
+
+    if CONTAINER_ID_PATTERN.fullmatch(container_id) is None:
+        raise HostError("assistant_app_identity_unavailable")
+    result = _run(
+        [
+            "docker",
+            "exec",
+            "--user",
+            "10001:10001",
+            container_id,
+            "python",
+            "-m",
+            "stock_probs.cli",
+            "assistant-kill",
+        ],
+        timeout=30,
+    )
+    try:
+        response = json.loads(result.stdout)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HostError("assistant_kill_unverified") from exc
+    if response != {"status": "assistant_disabled"}:
+        raise HostError("assistant_kill_unverified")
 
 
 def _is_release_record(record: dict[str, Any]) -> bool:
@@ -820,11 +1333,18 @@ def _assert_image_record(record: dict[str, Any]) -> None:
     if not isinstance(image_digest, str) or DIGEST_PATTERN.fullmatch(image_digest) is None:
         raise HostError("release_invalid")
     if _is_release_record(record):
+        release_role = record.get("release_role", "candidate")
+        expected_ref = (
+            _local_recovery_image_ref(revision)
+            if release_role == "recovery"
+            else _local_image_ref(revision)
+        )
         if (
             record.get("archive_sha256") != image_digest
             or not isinstance(record.get("image_id"), str)
             or IMAGE_ID_PATTERN.fullmatch(record["image_id"]) is None
-            or image_ref != _local_image_ref(revision)
+            or release_role not in {"candidate", "recovery"}
+            or image_ref != expected_ref
             or record.get("platform") != "linux/amd64"
             or type(record.get("archive_size")) is not int
             or not 1 <= record["archive_size"] <= MAX_RELEASE_ARCHIVE_BYTES
@@ -849,6 +1369,66 @@ def _assert_loaded_image(record: dict[str, Any]) -> None:
         raise HostError("image_digest_mismatch")
 
 
+def _assert_loaded_recovery_image(record: dict[str, Any]) -> None:
+    """Recheck the recovery pair's immutable disabled app image immediately before use."""
+
+    image_ref = record.get("recovery_image_ref")
+    image_id = record.get("recovery_image_id")
+    if (
+        record.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+        or record.get("recovery_schema_version") != ASSISTANT_MINIMUM_SCHEMA
+        or record.get("recovery_platform") != "linux/amd64"
+        or record.get("recovery_base_revision") != PAIR_BASE_REVISION
+        or not isinstance(record.get("pair_manifest_sha256"), str)
+        or DIGEST_PATTERN.fullmatch(record["pair_manifest_sha256"]) is None
+        or not isinstance(record.get("recovery_overlay_sha256"), str)
+        or DIGEST_PATTERN.fullmatch(record["recovery_overlay_sha256"]) is None
+        or not isinstance(image_ref, str)
+        or image_ref != _local_recovery_image_ref(record["revision"])
+        or not isinstance(image_id, str)
+        or IMAGE_ID_PATTERN.fullmatch(image_id) is None
+    ):
+        raise HostError("recovery_image_record_invalid")
+    if (
+        _image_id(image_ref) != image_id
+        or _image_revision(image_ref) != record["revision"]
+        or _image_platform(image_ref) != "linux/amd64"
+        or _image_schema(image_ref) != ASSISTANT_MINIMUM_SCHEMA
+        or not _image_has_recovery_entrypoint(image_ref)
+    ):
+        raise HostError("recovery_image_contract_mismatch")
+
+
+def _image_has_recovery_entrypoint(image_ref: str) -> bool:
+    """Require the fixed UID-dropping app-only entrypoint in the recovery image."""
+
+    try:
+        output = _run(
+            [
+                "docker",
+                "image",
+                "inspect",
+                "--format",
+                "{{json .Config.Entrypoint}}|{{json .Config.Cmd}}",
+                image_ref,
+            ],
+            timeout=30,
+        ).stdout.strip()
+        entrypoint_raw, command_raw = output.split("|", 1)
+        entrypoint = json.loads(entrypoint_raw)
+        command = json.loads(command_raw)
+    except (HostError, ValueError, json.JSONDecodeError):
+        return False
+    return entrypoint == ["python", "-m", "stock_probs.recovery_supervisor"] and command == [
+        "serve",
+        "--host",
+        "0.0.0.0",  # noqa: S104 - Compose exposes only 127.0.0.1 on the host.
+        "--port",
+        "8000",
+        "--allow-non-loopback",
+    ]
+
+
 def _health_check() -> dict[str, Any]:
     for _ in range(HEALTH_ATTEMPTS):
         try:
@@ -860,11 +1440,87 @@ def _health_check() -> dict[str, Any]:
             if isinstance(value, dict) and value.get("status") == "ready":
                 schema = value.get("schema_version")
                 if type(schema) is int and 1 <= schema <= 100:
-                    return {"status": "ready", "schema_version": schema}
+                    health: dict[str, Any] = {"status": "ready", "schema_version": schema}
+                    assistant = value.get("assistant")
+                    if (
+                        isinstance(assistant, dict)
+                        and type(assistant.get("enabled")) is bool
+                        and isinstance(assistant.get("status"), str)
+                        and assistant["status"] in ASSISTANT_RUNTIME_STATUS
+                    ):
+                        health["assistant"] = {
+                            "enabled": assistant["enabled"],
+                            "status": assistant["status"],
+                        }
+                    return health
         except (HostError, json.JSONDecodeError, TypeError, ValueError):
             pass
         time.sleep(HEALTH_DELAY_SECONDS)
     raise HostError("readiness_failed")
+
+
+def _require_assistant_ready(
+    health: dict[str, Any], rollout_mode: str, *, schema_version: int | None = None
+) -> None:
+    """Keep app health independent while requiring worker readiness for enabled rollout."""
+
+    if rollout_mode == "disabled":
+        if schema_version is not None and schema_version < ASSISTANT_MINIMUM_SCHEMA:
+            # The exact older image has no assistant projection; it is a valid disabled baseline.
+            return
+        assistant = health.get("assistant")
+        if (
+            not isinstance(assistant, dict)
+            or assistant.get("enabled") is not False
+            or assistant.get("status") != "disabled"
+        ):
+            raise HostError("assistant_disable_unverified")
+        return
+    assistant = health.get("assistant")
+    if (
+        not isinstance(assistant, dict)
+        or assistant.get("enabled") is not True
+        or assistant.get("status") != "ready"
+    ):
+        raise HostError("assistant_not_ready")
+
+
+def _record_rollout_failure(
+    current: dict[str, Any],
+    *,
+    requested_mode: str,
+    failure_code: str,
+    assistant_disabled_verified: bool,
+    app_stopped: bool,
+) -> None:
+    """Persist sanitized failure plus the verified disable or app-stop containment result."""
+
+    failure = {
+        "status": "assistant_rollout_failed",
+        "revision": current.get("revision"),
+        "image_id": current.get("image_id"),
+        "schema_version": current.get("schema_version"),
+        "requested_mode": requested_mode,
+        "failure_code": failure_code,
+        "assistant_rollout_mode": "disabled",
+        "assistant_disabled_verified": assistant_disabled_verified,
+        "app_stopped": app_stopped,
+        "containment_status": (
+            "assistant_disabled"
+            if assistant_disabled_verified
+            else "app_stopped"
+            if app_stopped
+            else "unverified"
+        ),
+        "failed_at": _utc_now(),
+    }
+    _write_json(FAILED_RECORD, failure)
+    _audit(
+        "assistant_rollout",
+        "failed",
+        revision=current.get("revision"),
+        schema_version=current.get("schema_version"),
+    )
 
 
 def _load_plan(plan_id: str) -> dict[str, Any]:
@@ -921,17 +1577,26 @@ def _inspect() -> dict[str, Any]:
 
 
 def _plan_deploy(
-    revision: str, expected_image_digest: str, expected_image_id: str | None = None
+    revision: str,
+    expected_image_digest: str,
+    expected_image_id: str | None = None,
+    expected_pair_manifest_sha256: str | None = None,
 ) -> dict[str, Any]:
     with _exclusive_lock():
         _ensure_layout()
         _ensure_source()
         _assert_main_revision(revision)
+        current = _read_json(CURRENT_RECORD)
+        if current is not None:
+            _ensure_compose_snapshot(current)
         _checkout_revision(revision)
         _assert_compose_revision()
         compose_digest = _compose_digest()
+        _write_compose_snapshot(revision, COMPOSE_FILE.read_bytes(), compose_digest)
         if expected_image_id is None:
             image_ref, image_digest, schema_version = _pull_image(revision, expected_image_digest)
+            if schema_version >= ASSISTANT_MINIMUM_SCHEMA:
+                raise HostError("release_pair_required")
             image_record: dict[str, Any] = {}
         else:
             (
@@ -949,6 +1614,17 @@ def _plan_deploy(
                 "platform": platform,
                 "archive_size": archive_size,
             }
+            if expected_pair_manifest_sha256 is not None:
+                pair_record = _load_release_pair(
+                    revision,
+                    expected_pair_manifest_sha256,
+                    image_digest,
+                    image_id,
+                    candidate_archive_size=archive_size,
+                )
+                image_record.update(pair_record)
+            elif schema_version >= ASSISTANT_MINIMUM_SCHEMA:
+                raise HostError("release_pair_required")
         plan_id = secrets.token_hex(16)
         record = {
             "plan_id": plan_id,
@@ -988,7 +1664,7 @@ def _backup_name(revision: str) -> str:
     return f"pre-deploy-{revision[:16]}-{secrets.token_hex(4)}.spbackup"
 
 
-def _database_present(image_ref: str) -> bool:
+def _database_present(image_ref: str, *, compose_file: Path | None = None) -> bool:
     """Check an unowned volume without importing the application or running migrations."""
 
     _runtime_file(image_ref)
@@ -997,14 +1673,18 @@ def _database_present(image_ref: str) -> bool:
         "--rm",
         "--no-deps",
         "-T",
-        "app",
+        "--user",
+        "10001:10001",
+        "--entrypoint",
         "python",
+        "app",
         "-c",
         (
             "from pathlib import Path; "
             "print('1' if Path('/data/stock_probs.sqlite3').is_file() else '0')"
         ),
         timeout=60,
+        compose_file=compose_file,
     )
     if value == "0":
         return False
@@ -1013,7 +1693,7 @@ def _database_present(image_ref: str) -> bool:
     raise HostError("database_presence_unavailable")
 
 
-def _database_schema(image_ref: str) -> int:
+def _database_schema(image_ref: str, *, compose_file: Path | None = None) -> int:
     """Read the actual volume schema without importing the app or running migrations."""
 
     _runtime_file(image_ref)
@@ -1022,8 +1702,11 @@ def _database_schema(image_ref: str) -> int:
         "--rm",
         "--no-deps",
         "-T",
-        "app",
+        "--user",
+        "10001:10001",
+        "--entrypoint",
         "python",
+        "app",
         "-c",
         (
             "import sqlite3; "
@@ -1033,13 +1716,16 @@ def _database_schema(image_ref: str) -> int:
             "print(r[0] if r and r[0] is not None else 0)"
         ),
         timeout=60,
+        compose_file=compose_file,
     )
     if not value.isdigit() or not 1 <= int(value) <= 100:
         raise HostError("database_schema_unavailable")
     return int(value)
 
 
-def _verified_backup(image_ref: str, revision: str) -> dict[str, Any]:
+def _verified_backup(
+    image_ref: str, revision: str, *, compose_file: Path | None = None
+) -> dict[str, Any]:
     name = _backup_name(revision)
     _runtime_file(image_ref)
     output = _compose(
@@ -1053,6 +1739,7 @@ def _verified_backup(image_ref: str, revision: str) -> dict[str, Any]:
         "--name",
         name,
         timeout=180,
+        compose_file=compose_file,
     )
     # The command is intentionally synchronous so the signed archive is complete before the
     # helper performs any migration or starts the new application image.
@@ -1060,7 +1747,16 @@ def _verified_backup(image_ref: str, revision: str) -> dict[str, Any]:
         value = json.loads(output)
     except json.JSONDecodeError as exc:
         raise HostError("backup_unverified") from exc
-    if not isinstance(value, dict) or value.get("name") != name:
+    expected_schema = _image_schema(image_ref)
+    if (
+        not isinstance(value, dict)
+        or value.get("name") != name
+        or value.get("verified") is not True
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != expected_schema
+        or not isinstance(value.get("sha256"), str)
+        or DIGEST_PATTERN.fullmatch(value["sha256"]) is None
+    ):
         raise HostError("backup_unverified")
     # Verify through the app's signed archive reader before allowing migration or promotion.
     verification = _compose(
@@ -1073,23 +1769,74 @@ def _verified_backup(image_ref: str, revision: str) -> dict[str, Any]:
         "restore",
         name,
         timeout=180,
+        compose_file=compose_file,
     )
     try:
         verified = json.loads(verification)
     except json.JSONDecodeError as exc:
         raise HostError("backup_unverified") from exc
-    if not isinstance(verified, dict) or verified.get("verified") is not True:
+    if (
+        not isinstance(verified, dict)
+        or verified.get("name") != name
+        or verified.get("verified") is not True
+    ):
         raise HostError("backup_unverified")
-    _audit("backup", "verified", revision=revision, backup_name=name)
-    return {"name": name, "verified": True}
+    _audit(
+        "backup",
+        "verified",
+        revision=revision,
+        backup_name=name,
+        sha256=value["sha256"],
+        schema_version=expected_schema,
+    )
+    return {
+        "trigger": "pre_deploy",
+        "name": name,
+        "sha256": value["sha256"],
+        "schema_version": expected_schema,
+        "verified": True,
+    }
 
 
 def _verified_first_release_backup(
-    image_ref: str, revision: str, source_schema: int, target_schema: int
+    image_ref: str,
+    revision: str,
+    source_schema: int,
+    target_schema: int,
+    *,
+    compose_file: Path | None = None,
 ) -> dict[str, Any]:
-    """Migrate a transferred database only after the image reports a verified old snapshot."""
+    """Migrate a transferred database only after an exact automatic-backup receipt."""
 
-    _runtime_file(image_ref)
+    receipt = _run_migrations(
+        image_ref,
+        revision,
+        source_schema=source_schema,
+        target_schema=target_schema,
+        compose_file=compose_file,
+    )
+    if source_schema > 0 and source_schema < target_schema and receipt is None:
+        raise HostError("pre_migration_backup_unverified")
+    if _database_schema(image_ref, compose_file=compose_file) != target_schema:
+        raise HostError("migration_schema_mismatch")
+    backup = _verified_backup(image_ref, revision, compose_file=compose_file)
+    backup["pre_migration_backup"] = receipt
+    return backup
+
+
+def _run_migrations(
+    image_ref: str,
+    revision: str,
+    *,
+    source_schema: int,
+    target_schema: int,
+    compose_file: Path | None = None,
+) -> dict[str, Any] | None:
+    """Run the fixed migration CLI and validate its schema-bound automatic backup receipt."""
+
+    if not 0 <= source_schema <= target_schema <= 100:
+        raise HostError("schema_incompatible")
+    _runtime_file(image_ref, "disabled")
     output = _compose(
         "run",
         "--rm",
@@ -1099,43 +1846,46 @@ def _verified_first_release_backup(
         "stock-probs",
         "migrate",
         timeout=300,
+        compose_file=compose_file,
     )
     try:
         result = json.loads(output)
     except json.JSONDecodeError as exc:
-        raise HostError("pre_migration_backup_unverified") from exc
-    receipt = result.get("pre_migration_backup") if isinstance(result, dict) else None
+        raise HostError("migration_result_unverified") from exc
+    if not isinstance(result, dict) or result.get("status") != "migrated":
+        raise HostError("migration_result_unverified")
+    receipt = result.get("pre_migration_backup")
+    if source_schema == 0 or source_schema == target_schema:
+        if receipt is not None:
+            raise HostError("pre_migration_backup_unverified")
+        return None
     if (
-        not isinstance(result, dict)
-        or result.get("status") != "migrated"
-        or not isinstance(receipt, dict)
+        not isinstance(receipt, dict)
         or receipt.get("trigger") != "pre_migration"
         or receipt.get("verified") is not True
+        or type(receipt.get("schema_version")) is not int
         or receipt.get("schema_version") != source_schema
-        or type(receipt.get("name")) is not str
+        or not isinstance(receipt.get("name"), str)
         or BACKUP_NAME_PATTERN.fullmatch(receipt["name"]) is None
-        or type(receipt.get("sha256")) is not str
+        or not isinstance(receipt.get("sha256"), str)
         or DIGEST_PATTERN.fullmatch(receipt["sha256"]) is None
     ):
         raise HostError("pre_migration_backup_unverified")
+    safe_receipt = {
+        "trigger": "pre_migration",
+        "name": receipt["name"],
+        "sha256": receipt["sha256"],
+        "schema_version": source_schema,
+        "verified": True,
+    }
     _audit(
         "backup",
         "verified",
         revision=revision,
-        backup_name=receipt["name"],
+        backup_name=safe_receipt["name"],
         schema_version=source_schema,
     )
-    # The migration command owns the pre-migration snapshot; the normal backup path verifies a
-    # current-schema artifact before the helper allows the release to continue.
-    backup = _verified_backup(image_ref, revision)
-    if backup.get("verified") is not True or type(backup.get("name")) is not str:
-        raise HostError("backup_unverified")
-    return {
-        "name": backup["name"],
-        "verified": True,
-        "pre_migration_backup": receipt["name"],
-        "schema_version": target_schema,
-    }
+    return safe_receipt
 
 
 def _write_failed_record(
@@ -1146,11 +1896,25 @@ def _write_failed_record(
     actual_schema: int | None,
     rollback_attempted: bool,
     rollback_succeeded: bool,
+    forward_recovery_attempted: bool = False,
+    forward_recovery_succeeded: bool = False,
+    backup: dict[str, Any] | None = None,
 ) -> None:
     """Publish bounded state after a failed promotion, including migration outcome."""
 
-    migrated = actual_schema is not None and (
-        previous is None or actual_schema != previous.get("schema_version")
+    previous_schema = previous.get("schema_version") if previous is not None else None
+    if previous_schema is None and isinstance(backup, dict):
+        migration_receipt = backup.get("pre_migration_backup")
+        if isinstance(migration_receipt, dict):
+            previous_schema = migration_receipt.get("schema_version")
+        else:
+            pre_deploy_receipt = backup.get("pre_deploy_backup", backup)
+            if isinstance(pre_deploy_receipt, dict):
+                previous_schema = pre_deploy_receipt.get("schema_version")
+    migrated = (
+        actual_schema is not None
+        and type(previous_schema) is int
+        and actual_schema != previous_schema
     )
     failed: dict[str, Any] = {
         "status": "failed_migrated" if migrated else "failed",
@@ -1162,14 +1926,58 @@ def _write_failed_record(
         "failure_code": failure_code,
         "rollback_attempted": rollback_attempted,
         "rollback_succeeded": rollback_succeeded,
+        "forward_recovery_attempted": forward_recovery_attempted,
+        "forward_recovery_succeeded": forward_recovery_succeeded,
         "failed_at": _utc_now(),
     }
-    for key in ("transport", "archive_sha256", "image_id", "platform", "archive_size"):
+    for key in (
+        "transport",
+        "archive_sha256",
+        "image_id",
+        "platform",
+        "archive_size",
+        "pair_manifest_sha256",
+        "source_context_sha256",
+        "migration_sha256",
+        "recovery_image_id",
+        "recovery_archive_sha256",
+        "recovery_archive_size",
+        "recovery_platform",
+        "recovery_schema_version",
+        "recovery_base_revision",
+        "recovery_overlay_sha256",
+    ):
         if key in record:
             failed[key] = record[key]
     if previous is not None:
         failed["previous_revision"] = previous.get("revision")
         failed["previous_schema_version"] = previous.get("schema_version")
+    if isinstance(backup, dict):
+        receipts = (
+            ("pre_deploy_backup", backup.get("pre_deploy_backup", backup)),
+            ("pre_migration_backup", backup.get("pre_migration_backup")),
+            ("recovery_backup", backup.get("recovery_backup")),
+        )
+        for field, receipt in receipts:
+            if (
+                isinstance(receipt, dict)
+                and receipt.get("verified") is True
+                and isinstance(receipt.get("name"), str)
+                and BACKUP_NAME_PATTERN.fullmatch(receipt["name"]) is not None
+                and isinstance(receipt.get("sha256"), str)
+                and DIGEST_PATTERN.fullmatch(receipt["sha256"]) is not None
+                and type(receipt.get("schema_version")) is int
+                and 1 <= receipt["schema_version"] <= 100
+            ):
+                failed[field] = {
+                    "trigger": receipt.get(
+                        "trigger", "pre_deploy" if field == "pre_deploy_backup" else None
+                    ),
+                    "name": receipt["name"],
+                    "sha256": receipt["sha256"],
+                    "schema_version": receipt["schema_version"],
+                    "verified": True,
+                }
     _write_json(FAILED_RECORD, failed)
     _audit(
         "deploy",
@@ -1180,6 +1988,87 @@ def _write_failed_record(
     )
 
 
+def _forward_recovery_backup(
+    failed: dict[str, Any] | None, current: dict[str, Any], target: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Recognize only this task's failed schema-12-to-13 forward-recovery boundary."""
+
+    if (
+        failed is None
+        or failed.get("status") != "failed_migrated"
+        or failed.get("actual_schema_version") != ASSISTANT_MINIMUM_SCHEMA
+        or failed.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+        or failed.get("previous_revision") != current.get("revision")
+        or failed.get("previous_schema_version") != current.get("schema_version")
+        or current.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA - 1
+        or target.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+    ):
+        return None
+    receipt = failed.get("pre_deploy_backup")
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("trigger") != "pre_deploy"
+        or receipt.get("verified") is not True
+        or not isinstance(receipt.get("name"), str)
+        or BACKUP_NAME_PATTERN.fullmatch(receipt["name"]) is None
+        or not isinstance(receipt.get("sha256"), str)
+        or DIGEST_PATTERN.fullmatch(receipt["sha256"]) is None
+        or receipt.get("schema_version") != current.get("schema_version")
+    ):
+        return None
+    return dict(receipt)
+
+
+def _activate_same_schema_recovery(record: dict[str, Any], *, compose_snapshot: Path) -> bool:
+    """Run only the verified app-only recovery image over the existing schema-13 volume."""
+
+    recovery_ref = record.get("recovery_image_ref")
+    recovery_archive_sha256 = record.get("recovery_archive_sha256")
+    recovery_archive_size = record.get("recovery_archive_size")
+    if (
+        not isinstance(recovery_archive_sha256, str)
+        or DIGEST_PATTERN.fullmatch(recovery_archive_sha256) is None
+        or type(recovery_archive_size) is not int
+        or not 1 <= recovery_archive_size <= MAX_RELEASE_ARCHIVE_BYTES
+    ):
+        return False
+    try:
+        _assert_loaded_recovery_image(record)
+        recovered = dict(record)
+        recovered.update(
+            {
+                "candidate_image_id": record.get("image_id"),
+                "candidate_archive_sha256": record.get("archive_sha256"),
+                "release_role": "recovery",
+                "image_ref": recovery_ref,
+                "image_digest": recovery_archive_sha256,
+                "archive_sha256": recovery_archive_sha256,
+                "image_id": record["recovery_image_id"],
+                "archive_size": recovery_archive_size,
+                "platform": record["recovery_platform"],
+                "assistant_rollout_mode": "disabled",
+            }
+        )
+        _assert_image_record(recovered)
+        _runtime_file(recovery_ref, "disabled")
+        _compose_up(
+            recovered,
+            timeout=180,
+            compose_file=compose_snapshot,
+            force_recreate=True,
+        )
+        health = _health_check()
+        if health.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA:
+            raise HostError("recovery_readiness_schema_mismatch")
+        _require_assistant_ready(health, "disabled", schema_version=ASSISTANT_MINIMUM_SCHEMA)
+        _write_json(CURRENT_RECORD, recovered)
+        return True
+    except HostError:
+        with suppress(HostError):
+            _stop_app(compose_snapshot)
+        return False
+
+
 def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
     revision = record["revision"]
     image_ref = record["image_ref"]
@@ -1187,31 +2076,49 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
     schema_version = record["schema_version"]
     current = _read_json(CURRENT_RECORD)
     _assert_loaded_image(record)
+    if schema_version == ASSISTANT_MINIMUM_SCHEMA:
+        _assert_loaded_recovery_image(record)
     if (
         current is not None
         and current.get("revision") == revision
         and current.get("image_digest") == image_digest
     ):
         return {"status": "ok", "result": "already_applied", "revision": revision}
+
     previous = current
+    forward_backup: dict[str, Any] | None = None
+    previous_compose: Path | None = None
     if current is not None:
-        # Validate the persisted active image before probing its schema.  A local release tag can
-        # drift after an image load; schema or Compose work must never run against that tag until
-        # its recorded immutable image identity has been re-established.
+        # Validate the persisted active image and its exact Compose definition before a probe or
+        # migration can touch the shared volume.
         _assert_image_record(current)
         _assert_loaded_image(current)
+        previous_compose = _assert_record_compose_digest(current)
         try:
             active_health = _health_check()
         except HostError as exc:
-            raise HostError("active_release_unready") from exc
-        if _image_schema(current["image_ref"]) != active_health["schema_version"]:
-            raise HostError("active_release_mismatch")
-        if schema_version < active_health["schema_version"]:
-            raise HostError("schema_incompatible")
+            failed = _read_json(FAILED_RECORD)
+            forward_backup = _forward_recovery_backup(failed, current, record)
+            if forward_backup is None:
+                raise HostError("active_release_unready") from exc
+        else:
+            if _image_schema(current["image_ref"]) != active_health["schema_version"]:
+                raise HostError("active_release_mismatch")
+            if schema_version < active_health["schema_version"]:
+                raise HostError("schema_incompatible")
+
+    backup: dict[str, Any] | None = None
     try:
+        # Stop and verify the only application container before taking the pre-migration
+        # snapshot. This is the enforced no-admitted-writes boundary for the backup identity.
+        if current is None:
+            _runtime_file(image_ref, "disabled")
+        _stop_app()
+        migration_performed = False
         if current is None:
             if not _database_present(image_ref):
-                backup: dict[str, Any] = {"name": None, "verified": True}
+                backup = {"name": None, "verified": True}
+                source_schema = 0
             else:
                 source_schema = _database_schema(image_ref)
                 if source_schema > schema_version:
@@ -1220,61 +2127,115 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
                     backup = _verified_first_release_backup(
                         image_ref, revision, source_schema, schema_version
                     )
+                    migration_performed = True
                 else:
                     backup = _verified_backup(image_ref, revision)
+        elif forward_backup is not None:
+            source_schema = _database_schema(image_ref)
+            if source_schema != ASSISTANT_MINIMUM_SCHEMA:
+                raise HostError("forward_recovery_schema_mismatch")
+            backup = _verified_backup(image_ref, revision)
+            backup["pre_deploy_backup"] = forward_backup
+            backup["recovery_backup"] = {
+                "name": backup["name"],
+                "sha256": backup.get("sha256"),
+                "schema_version": backup.get("schema_version"),
+                "verified": backup.get("verified"),
+            }
         else:
-            # The old image performs the snapshot and verification.  Its CLI cannot apply the
-            # new migration, so the pre-migration boundary remains meaningful.
-            backup = _verified_backup(current["image_ref"], revision)
-        _runtime_file(image_ref)
-        if current is not None:
-            _compose("stop", "app", timeout=60)
-        _compose("run", "--rm", "--no-deps", "-T", "app", "stock-probs", "migrate", timeout=300)
+            # The old image owns this snapshot, and its exact release Compose file runs the
+            # backup CLI while the service is stopped. The backup's schema/hash are retained.
+            assert previous_compose is not None
+            source_schema = _database_schema(current["image_ref"], compose_file=previous_compose)
+            if source_schema != current.get("schema_version"):
+                raise HostError("active_release_mismatch")
+            backup = _verified_backup(current["image_ref"], revision, compose_file=previous_compose)
+            backup["pre_deploy_backup"] = dict(backup)
+
+        if not migration_performed:
+            migration_receipt = _run_migrations(
+                image_ref,
+                revision,
+                source_schema=source_schema,
+                target_schema=schema_version,
+            )
+            if backup is not None and migration_receipt is not None:
+                backup["pre_migration_backup"] = migration_receipt
+        if _database_schema(image_ref) != schema_version:
+            raise HostError("migration_schema_mismatch")
+        _runtime_file(image_ref, "disabled")
         _compose_up(record, timeout=180)
         health = _health_check()
         if health.get("schema_version") != schema_version:
             raise HostError("readiness_schema_mismatch")
+        _require_assistant_ready(health, "disabled", schema_version=schema_version)
     except HostError as error:
-        # Stop the failed candidate before inspecting the volume.  A migration can commit before
-        # readiness fails, so the record on disk cannot establish the schema that old code sees.
-        _compose_optional("stop", "app", timeout=60)
+        # A migration can commit before startup/readiness fails. First re-establish and verify
+        # maintenance; inspect the real database schema only after no app writes are admitted.
+        stopped = False
+        try:
+            _stop_app()
+            stopped = True
+        except HostError:
+            pass
         actual_schema: int | None = None
-        with suppress(HostError):
-            actual_schema = _database_schema(image_ref)
+        if stopped:
+            with suppress(HostError):
+                actual_schema = _database_schema(image_ref)
 
         rollback_attempted = False
         rollback_succeeded = False
-        # A code-only rollback is safe only when the volume still has the previous schema.  If
-        # migration advanced it, leave the service stopped for operator recovery.
+        forward_recovery_attempted = False
+        forward_recovery_succeeded = False
         if (
-            previous is not None
+            stopped
+            and actual_schema == ASSISTANT_MINIMUM_SCHEMA
+            and record.get("schema_version") == ASSISTANT_MINIMUM_SCHEMA
+            and record.get("pair_manifest_sha256") is not None
+        ):
+            forward_recovery_attempted = True
+            try:
+                target_compose = _assert_record_compose_digest(record)
+            except HostError:
+                target_compose = None
+            if target_compose is not None:
+                forward_recovery_succeeded = _activate_same_schema_recovery(
+                    record, compose_snapshot=target_compose
+                )
+        # Code-only fallback is allowed only when the volume is still at the old app's exact
+        # schema and the old image plus its reviewed Compose snapshot are available. No DB restore
+        # is ever attempted here; schema-13 rows and all admitted data remain intact.
+        if (
+            stopped
+            and previous is not None
             and actual_schema == previous.get("schema_version")
-            and previous.get("schema_version") == schema_version
             and isinstance(previous.get("image_ref"), str)
             and isinstance(previous.get("image_digest"), str)
         ):
             try:
-                _assert_record_compose_digest(previous)
+                previous_compose = _assert_record_compose_digest(previous)
             except HostError:
                 pass
             else:
                 rollback_attempted = True
                 try:
-                    _runtime_file(previous["image_ref"])
-                    try:
-                        _assert_loaded_image(previous)
-                    except HostError:
-                        pass
-                    else:
-                        _compose_up(previous, timeout=180)
-                        rollback_health = _health_check()
-                        rollback_succeeded = rollback_health.get("schema_version") == previous.get(
-                            "schema_version"
-                        )
+                    _runtime_file(previous["image_ref"], "disabled")
+                    _assert_loaded_image(previous)
+                    _compose_up(
+                        previous,
+                        timeout=180,
+                        compose_file=previous_compose,
+                        force_recreate=True,
+                    )
+                    rollback_health = _health_check()
+                    rollback_succeeded = rollback_health.get("schema_version") == previous.get(
+                        "schema_version"
+                    )
                 except HostError:
                     rollback_succeeded = False
                 if not rollback_succeeded:
-                    _compose_optional("stop", "app", timeout=60)
+                    with suppress(HostError):
+                        _stop_app()
         _write_failed_record(
             record,
             previous,
@@ -1282,17 +2243,67 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
             actual_schema=actual_schema,
             rollback_attempted=rollback_attempted,
             rollback_succeeded=rollback_succeeded,
+            forward_recovery_attempted=forward_recovery_attempted,
+            forward_recovery_succeeded=forward_recovery_succeeded,
+            backup=backup,
         )
         raise
+
     applied = {
         "revision": revision,
         "image_ref": image_ref,
         "image_digest": image_digest,
         "schema_version": schema_version,
-        "backup_name": backup["name"],
+        "backup_name": backup["name"] if backup is not None else None,
         "deployed_at": _utc_now(),
+        "assistant_rollout_mode": "disabled",
     }
+    if backup is not None:
+        pre_deploy = backup.get("pre_deploy_backup", backup)
+        if (
+            isinstance(pre_deploy, dict)
+            and pre_deploy.get("verified") is True
+            and isinstance(pre_deploy.get("name"), str)
+            and BACKUP_NAME_PATTERN.fullmatch(pre_deploy["name"]) is not None
+            and isinstance(pre_deploy.get("sha256"), str)
+            and DIGEST_PATTERN.fullmatch(pre_deploy["sha256"]) is not None
+            and type(pre_deploy.get("schema_version")) is int
+        ):
+            applied["pre_deploy_backup"] = {
+                "trigger": "pre_deploy",
+                "name": pre_deploy["name"],
+                "sha256": pre_deploy["sha256"],
+                "schema_version": pre_deploy["schema_version"],
+                "verified": True,
+            }
+        for field in ("pre_migration_backup", "recovery_backup"):
+            receipt = backup.get(field)
+            if (
+                isinstance(receipt, dict)
+                and receipt.get("verified") is True
+                and isinstance(receipt.get("name"), str)
+                and BACKUP_NAME_PATTERN.fullmatch(receipt["name"]) is not None
+                and isinstance(receipt.get("sha256"), str)
+                and DIGEST_PATTERN.fullmatch(receipt["sha256"]) is not None
+                and type(receipt.get("schema_version")) is int
+            ):
+                applied[field] = dict(receipt)
     for key in ("transport", "archive_sha256", "image_id", "platform", "archive_size"):
+        if key in record:
+            applied[key] = record[key]
+    for key in (
+        "pair_manifest_sha256",
+        "source_context_sha256",
+        "migration_sha256",
+        "recovery_image_ref",
+        "recovery_image_id",
+        "recovery_archive_sha256",
+        "recovery_archive_size",
+        "recovery_platform",
+        "recovery_schema_version",
+        "recovery_base_revision",
+        "recovery_overlay_sha256",
+    ):
         if key in record:
             applied[key] = record[key]
     if isinstance(record.get("compose_digest"), str):
@@ -1306,13 +2317,17 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
         image_digest=image_digest,
         compose_digest=record.get("compose_digest"),
         schema_version=schema_version,
-        backup_name=backup["name"],
+        backup_name=applied["backup_name"],
     )
     return {"status": "ok", "result": "deployed", "revision": revision, "health": health}
 
 
 def _deploy(
-    plan_id: str, revision: str, image_digest: str, image_id: str | None = None
+    plan_id: str,
+    revision: str,
+    image_digest: str,
+    image_id: str | None = None,
+    pair_manifest_sha256: str | None = None,
 ) -> dict[str, Any]:
     with _exclusive_lock():
         _ensure_layout()
@@ -1321,6 +2336,7 @@ def _deploy(
             plan["revision"] != revision
             or plan["image_digest"] != image_digest
             or (_is_release_record(plan) and plan.get("image_id") != image_id)
+            or plan.get("pair_manifest_sha256") != pair_manifest_sha256
         ):
             raise HostError("plan_mismatch")
         # Bind promotion to the exact Compose bytes reviewed during planning.  SOURCE_ROOT may
@@ -1346,6 +2362,20 @@ def _deploy(
                     "archive_size": plan["archive_size"],
                 }
             )
+        for key in (
+            "pair_manifest_sha256",
+            "source_context_sha256",
+            "migration_sha256",
+            "recovery_image_id",
+            "recovery_archive_sha256",
+            "recovery_archive_size",
+            "recovery_platform",
+            "recovery_schema_version",
+            "recovery_base_revision",
+            "recovery_overlay_sha256",
+        ):
+            if key in plan:
+                result[key] = plan[key]
         return result
 
 
@@ -1369,20 +2399,37 @@ def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
                 raise HostError("rollback_identity_mismatch")
         elif image_id is not None:
             raise HostError("rollback_identity_invalid")
-        _assert_record_compose_digest(record)
+        compose_snapshot = _assert_record_compose_digest(record)
         # Check the immutable image identity before opening the database or starting Compose.  The
         # local release tag is only a convenience alias and may have been replaced since staging.
         _assert_loaded_image(record)
         actual_schema = _database_schema(record["image_ref"])
         if actual_schema != record.get("schema_version"):
             raise HostError("rollback_schema_incompatible")
-        _runtime_file(record["image_ref"])
-        _compose_up(record, timeout=180)
-        health = _health_check()
-        if health.get("schema_version") != actual_schema:
-            _compose_optional("stop", "app", timeout=60)
-            raise HostError("rollback_schema_incompatible")
-        _write_json(CURRENT_RECORD, record)
+        _stop_app()
+        try:
+            if (
+                _database_schema(record["image_ref"], compose_file=compose_snapshot)
+                != actual_schema
+            ):
+                raise HostError("rollback_schema_incompatible")
+            _runtime_file(record["image_ref"], "disabled")
+            _compose_up(
+                record,
+                timeout=180,
+                compose_file=compose_snapshot,
+                force_recreate=True,
+            )
+            health = _health_check()
+            if health.get("schema_version") != actual_schema:
+                raise HostError("rollback_schema_incompatible")
+        except HostError:
+            with suppress(HostError):
+                _stop_app(compose_snapshot)
+            raise
+        applied = dict(record)
+        applied["assistant_rollout_mode"] = "disabled"
+        _write_json(CURRENT_RECORD, applied)
         _audit(
             "rollback",
             "applied",
@@ -1412,6 +2459,157 @@ def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
         return response
 
 
+def _set_assistant_rollout(
+    mode: str,
+    *,
+    revision: str,
+    archive_sha256: str,
+    image_id: str,
+) -> dict[str, Any]:
+    """Change only the assistant rollout for the exact current schema-13 release."""
+
+    if mode not in ASSISTANT_ROLLOUT_MODES:
+        raise HostError("assistant_rollout_invalid")
+    with _exclusive_lock():
+        _ensure_layout()
+        current = _read_json(CURRENT_RECORD)
+        if current is None:
+            raise HostError("release_not_found")
+        _assert_image_record(current)
+        if current.get("release_role") == "recovery" and mode != "disabled":
+            raise HostError("recovery_image_assistant_disabled")
+        if (
+            current.get("revision") != revision
+            or current.get("transport") != GITHUB_RELEASE_TRANSPORT
+            or current.get("archive_sha256") != archive_sha256
+            or current.get("image_digest") != archive_sha256
+            or current.get("image_id") != image_id
+            or current.get("platform") != "linux/amd64"
+            or current.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+            or _image_schema(current["image_ref"]) != ASSISTANT_MINIMUM_SCHEMA
+        ):
+            raise HostError("assistant_release_identity_mismatch")
+        try:
+            compose_snapshot = _assert_record_compose_digest(current)
+            if _compose_digest() != current.get("compose_digest"):
+                raise HostError("compose_revision_mismatch")
+        except HostError:
+            raise
+        _assert_loaded_image(current)
+        previous_mode = current.get("assistant_rollout_mode", "disabled")
+        if previous_mode not in ASSISTANT_ROLLOUT_MODES:
+            raise HostError("assistant_rollout_state_invalid")
+        valid_transition = (
+            mode == previous_mode
+            or mode == "disabled"
+            or (previous_mode == "disabled" and mode == "owner_canary")
+            or (previous_mode == "owner_canary" and mode == "invited")
+        )
+        if not valid_transition:
+            raise HostError("assistant_rollout_transition_invalid")
+
+        updated = dict(current)
+        updated["assistant_rollout_mode"] = mode
+        try:
+            running_identity: tuple[str, int] | None = None
+            if mode == "disabled":
+                # Persist the rollout first so a later container restart remains disabled.
+                # The fixed in-container client only asks PID 1 to stop the worker; it never
+                # restarts Uvicorn or accepts a path/command from the MCP caller.
+                running_identity = _app_container_identity(compose_snapshot)
+            _runtime_file(current["image_ref"], mode)
+            _write_json(CURRENT_RECORD, updated)
+            if mode == "disabled":
+                assert running_identity is not None
+                _request_in_place_assistant_kill(running_identity[0])
+            else:
+                _compose_up(
+                    current,
+                    timeout=180,
+                    compose_file=compose_snapshot,
+                    force_recreate=True,
+                )
+            health = _health_check()
+            if health.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA:
+                raise HostError("readiness_schema_mismatch")
+            _require_assistant_ready(health, mode, schema_version=ASSISTANT_MINIMUM_SCHEMA)
+            if mode == "disabled" and _app_container_identity(compose_snapshot) != running_identity:
+                raise HostError("assistant_app_identity_changed")
+        except HostError as error:
+            disabled = dict(current)
+            disabled["assistant_rollout_mode"] = "disabled"
+            disabled_env_written = False
+            disabled_record_written = False
+            try:
+                _runtime_file(current["image_ref"], "disabled")
+                disabled_env_written = True
+            except HostError:
+                pass
+            try:
+                _write_json(CURRENT_RECORD, disabled)
+                disabled_record_written = True
+            except HostError:
+                pass
+            app_stopped = False
+            assistant_disabled_verified = False
+            if mode != "disabled" and disabled_env_written and disabled_record_written:
+                try:
+                    _compose_up(
+                        current,
+                        timeout=180,
+                        compose_file=compose_snapshot,
+                        force_recreate=True,
+                    )
+                    disabled_health = _health_check()
+                    if disabled_health.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA:
+                        raise HostError("readiness_schema_mismatch")
+                    _require_assistant_ready(
+                        disabled_health, "disabled", schema_version=ASSISTANT_MINIMUM_SCHEMA
+                    )
+                    assistant_disabled_verified = True
+                except HostError:
+                    try:
+                        _stop_app(compose_snapshot)
+                        app_stopped = True
+                    except HostError:
+                        app_stopped = False
+            else:
+                # A requested disable that cannot be verified must not leave an enabled worker
+                # serving under a durable disabled marker. Stop the whole app if the kill switch
+                # recreation or readiness projection is uncertain.
+                try:
+                    _stop_app(compose_snapshot)
+                    app_stopped = True
+                except HostError:
+                    app_stopped = False
+            with suppress(HostError):
+                _record_rollout_failure(
+                    current,
+                    requested_mode=mode,
+                    failure_code=error.code,
+                    assistant_disabled_verified=assistant_disabled_verified,
+                    app_stopped=app_stopped,
+                )
+            raise error
+        _audit(
+            "assistant_rollout",
+            "updated",
+            revision=revision,
+            image_digest=archive_sha256,
+            schema_version=ASSISTANT_MINIMUM_SCHEMA,
+        )
+        return {
+            "status": "ok",
+            "result": "rollout_updated",
+            "revision": revision,
+            "archive_sha256": archive_sha256,
+            "image_id": image_id,
+            "schema_version": ASSISTANT_MINIMUM_SCHEMA,
+            "assistant_rollout_mode": mode,
+            "health": health,
+        }
+
+
 def _parse_request(raw: bytes) -> tuple[str, dict[str, object]]:
     if len(raw) > REQUEST_LIMIT:
         raise HostError("request_too_large")
@@ -1428,6 +2626,8 @@ def _parse_request(raw: bytes) -> tuple[str, dict[str, object]]:
     if not isinstance(payload, dict):
         raise HostError("payload_invalid")
     allowed_keys = {_EXPECTED_PAYLOAD_KEYS[operation]}
+    if operation in _PAIR_PAYLOAD_KEYS:
+        allowed_keys.add(_PAIR_PAYLOAD_KEYS[operation])
     if operation in _LEGACY_PAYLOAD_KEYS:
         allowed_keys.add(_LEGACY_PAYLOAD_KEYS[operation])
     if frozenset(payload) not in allowed_keys:
@@ -1447,6 +2647,9 @@ def _dispatch(operation: str, payload: dict[str, object]) -> dict[str, Any]:
                 _validate_revision(payload["revision"]),
                 _validate_digest(payload["archive_sha256"]),
                 _validate_image_id(payload["image_id"]),
+                _validate_digest(payload["pair_manifest_sha256"])
+                if "pair_manifest_sha256" in payload
+                else None,
             )
         return _plan_deploy(
             _validate_revision(payload["revision"]),
@@ -1459,11 +2662,24 @@ def _dispatch(operation: str, payload: dict[str, object]) -> dict[str, Any]:
                 _validate_revision(payload["revision"]),
                 _validate_digest(payload["archive_sha256"]),
                 _validate_image_id(payload["image_id"]),
+                _validate_digest(payload["pair_manifest_sha256"])
+                if "pair_manifest_sha256" in payload
+                else None,
             )
         return _deploy(
             _validate_plan_id(payload["plan_id"]),
             _validate_revision(payload["revision"]),
             _validate_digest(payload["image_digest"]),
+        )
+    if operation == "set_assistant_rollout":
+        mode = payload["mode"]
+        if not isinstance(mode, str) or mode not in ASSISTANT_ROLLOUT_MODES:
+            raise HostError("assistant_rollout_invalid")
+        return _set_assistant_rollout(
+            mode,
+            revision=_validate_revision(payload["revision"]),
+            archive_sha256=_validate_digest(payload["archive_sha256"]),
+            image_id=_validate_image_id(payload["image_id"]),
         )
     if "image_id" in payload:
         return _rollback(

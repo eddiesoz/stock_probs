@@ -83,6 +83,27 @@ async function expectIdentity(page) {
   });
 }
 
+async function clearSyntheticListsForIsolatedQuoteTest(page) {
+  const api = page.context().request;
+  const removed = { portfolio: [], watchlist: [] };
+  for (const kind of Object.keys(removed)) {
+    const initial = await api.get(`/api/v1/lists?kind=${kind}`, { headers: { "cache-control": "no-store" } });
+    if (!initial.ok()) throw new Error(`${kind} isolation lookup failed with HTTP ${initial.status()}.`);
+    const payload = await initial.json();
+    for (const item of payload.items ?? []) {
+      const query = new URLSearchParams({ kind, symbol: item.symbol });
+      const response = await api.delete(`/api/v1/lists?${query}`);
+      if (response.status() !== 204) throw new Error(`${kind} isolation delete failed with HTTP ${response.status()}.`);
+      removed[kind].push(item.symbol);
+    }
+    const verified = await api.get(`/api/v1/lists?kind=${kind}`, { headers: { "cache-control": "no-store" } });
+    if (!verified.ok()) throw new Error(`${kind} isolation verification failed with HTTP ${verified.status()}.`);
+    const remaining = await verified.json();
+    expect(remaining.items ?? [], `the quote-strip journey must start with an empty ${kind}`).toEqual([]);
+  }
+  return removed;
+}
+
 // Documents, assets, and data must stay same-origin below /api/v1; the browser never calls
 // Yahoo Finance or any third party directly.
 function expectLocalOnly(page, requests, applicationRequests) {
@@ -226,6 +247,7 @@ test("live and markets tools disclose unavailable data without trading or extern
   applicationRequests,
   browserDiagnostics,
 }, testInfo) => {
+  const clearedSymbols = await clearSyntheticListsForIsolatedQuoteTest(page);
   await installControlledClock(page);
   const requests = observeRequests(page);
   const quoteAborts = [];
@@ -237,6 +259,7 @@ test("live and markets tools disclose unavailable data without trading or extern
   const portfolioResponse = waitForApiResponse(page, "GET", "/api/v1/lists", { kind: "portfolio" });
   const quoteResponse = waitForApiResponse(page, "GET", "/api/v1/quotes", { symbols: "ACDC" });
   await page.goto(`/tools/live-trading?${IDENTITY}`);
+  expect(Object.values(clearedSymbols).flat().every((symbol) => /^[A-Z0-9.-]{1,15}$/.test(symbol))).toBe(true);
   expect((await portfolioResponse).status()).toBe(200);
   expect((await quoteResponse).status()).toBe(200);
   await expect(page.getByRole("heading", { name: "Live Trading", exact: true })).toBeVisible();

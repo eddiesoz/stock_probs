@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { apiFetch } from "../../../components/auth-client";
+import { readAssistantMarketsAction } from "../../../components/assistant/assistant-contract";
 import { replaceInstrumentInUrl } from "../../../components/workspace-context-url";
 import { apiPayload, delay, number, quoteBatches, quotePrice, record, snapshotState, time } from "../client-utils";
 import styles from "./workspace.module.css";
@@ -141,6 +142,15 @@ export function MarketsWorkspace() {
   const initialSelection = useRef<WatchItem | null>(null);
   const quoteGeneration = useRef(0);
   const barGeneration = useRef(0);
+
+  useEffect(() => {
+    const refreshWatchlist = () => {
+      setMutationMessage("");
+      setListAttempt((current) => current + 1);
+    };
+    window.addEventListener("signal-ledger:assistant-watchlist-updated", refreshWatchlist);
+    return () => window.removeEventListener("signal-ledger:assistant-watchlist-updated", refreshWatchlist);
+  }, []);
 
   // URL context seeds the initial selection once; later selection changes are user-driven.
   useEffect(() => {
@@ -319,9 +329,57 @@ export function MarketsWorkspace() {
     });
   })();
 
-  const exchanges = [...new Set(items.map((item) => item.exchange).filter(Boolean))] as string[];
+  const exchanges = useMemo(() => [...new Set(items.map((item) => item.exchange).filter(Boolean))] as string[], [items]);
   const selectedQuote = quoteRows.find((quote) => quote.symbol.toUpperCase() === selected?.symbol) ?? null;
   const hasPreviousClose = mergedRows.some((item) => typeof item.previous_close === "number");
+
+  useEffect(() => {
+    const handleAssistantAction = (event: Event) => {
+      const detail = (event as CustomEvent<{ action?: unknown; finish?: unknown }>).detail;
+      if (typeof detail?.finish !== "function") return;
+      const finish = detail.finish as (result: { ok: boolean; message: string }) => void;
+      const result = readAssistantMarketsAction(detail.action, {
+        route: window.location.pathname,
+        selected,
+        exchanges,
+      });
+      if (!result.ok) {
+        finish({ ok: false, message: result.message });
+        return;
+      }
+      const action = result.action;
+      if (action.type === "market.filters.apply") {
+        setFilters({
+          query: action.payload.query,
+          exchange: action.payload.exchange,
+          assetType: action.payload.asset_type,
+          minPrice: action.payload.min_price,
+          maxPrice: action.payload.max_price,
+          minChange: action.payload.min_change,
+          maxChange: action.payload.max_change,
+          minVolume: action.payload.min_volume,
+          quoteField: action.payload.quote_field,
+          quoteMin: action.payload.quote_min,
+          quoteMax: action.payload.quote_max,
+        });
+        setSort(action.payload.sort);
+      } else if (action.type === "market.chart_range.set") {
+        setChartRange(action.payload.range);
+      } else if (action.type === "market.columns.set") {
+        setShowAllColumns(action.payload.show_all_columns);
+      } else if (action.payload.kind === "quotes") {
+        setQuoteAttempt((current) => current + 1);
+      } else if (action.payload.kind === "watchlist") {
+        setMutationMessage("");
+        setListAttempt((current) => current + 1);
+      } else {
+        setBarAttempt((current) => current + 1);
+      }
+      finish({ ok: true, message: result.message });
+    };
+    window.addEventListener("signal-ledger:assistant-action", handleAssistantAction);
+    return () => window.removeEventListener("signal-ledger:assistant-action", handleAssistantAction);
+  }, [exchanges, selected]);
 
   function selectItem(item: WatchItem) {
     setSelected(item);

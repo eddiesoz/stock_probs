@@ -1,0 +1,256 @@
+{
+  "_comment": "Reviewed policy is authoritative; live model discovery may only select eligible rows and cannot broaden consent or routes.",
+  "catalog_version": 1,
+  "runtime_policy": {
+    "native_output_token_budget": 4096
+  },
+  "zen": {
+    "provider_id": "opencode-zen",
+    "display_name": "OpenCode Zen (free, no-training models)",
+    "models_url": "https://opencode.ai/zen/v1/models",
+    "terms_url": "https://opencode.ai/docs/zen/",
+    "terms_reviewed_at": "2026-10-07",
+    "policy_version": "zen-free-privacy-2026-10-07-v3",
+    "privacy_policy_version": "zen-free-privacy-2026-10-07-v3",
+    "billing_policy_version": "zen-temporary-free-billing-2026-10-06-v2",
+    "reviewed_models": {
+      "space-bunny-free": {
+        "display_name": "Space Bunny Free",
+        "free": true,
+        "training": false,
+        "data_collection_allowed": false,
+        "data_collection_default": false,
+        "available": true,
+        "route": "openai-compatible",
+        "disclosure": "OpenCode documents this model as zero-retention and not used for model training. It is temporarily free; availability can change. No paid fallback or automatic top-up is enabled."
+      },
+      "longcat-2.5-preview-free": {
+        "display_name": "LongCat 2.5 Preview Free",
+        "free": true,
+        "training": false,
+        "data_collection_allowed": false,
+        "data_collection_default": false,
+        "available": true,
+        "route": "openai-compatible",
+        "disclosure": "OpenCode documents Zen models as hosted in the US and EU. For LongCat, OpenCode says the provider follows zero-retention and does not use your data for model training; LongCat is not listed among the privacy exceptions on the reviewed date. This app cannot verify per-request handling.",
+        "cost_disclosure": "OpenCode's pricing table currently lists input, output, and cached reads as free; cached writes are not listed. Pricing and availability can change. This app does not enable paid fallback or automatic top-ups."
+      },
+      "big-pickle": {
+        "display_name": "Big Pickle",
+        "free": true,
+        "training": true,
+        "data_collection_allowed": true,
+        "data_collection_default": false,
+        "available": true,
+        "route": "openai-compatible",
+        "disclosure": "OpenCode says prompts may be collected to improve this temporarily free model. Explicit, versioned data-collection opt-in is required before use."
+      },
+      "fledge-alpha-free": {
+        "display_name": "Fledge Alpha Free",
+        "free": true,
+        "training": true,
+        "data_collection_allowed": true,
+        "data_collection_default": false,
+        "available": true,
+        "route": "openai-compatible",
+        "disclosure": "OpenCode says prompts may be collected to improve this temporarily free model. Explicit, versioned data-collection opt-in is required before use."
+      },
+      "mimo-v2.6-flash-free": {
+        "display_name": "MiMo V2.6 Flash Free",
+        "free": true,
+        "training": true,
+        "data_collection_allowed": true,
+        "data_collection_default": false,
+        "available": true,
+        "route": "openai-compatible",
+        "disclosure": "OpenCode says prompts may be collected to improve this temporarily free model. Explicit, versioned data-collection opt-in is required before use."
+      },
+      "mimo-v2.5-free": {
+        "display_name": "MiMo V2.5 Free",
+        "free": true,
+        "training": true,
+        "data_collection_allowed": true,
+        "data_collection_default": false,
+        "available": true,
+        "route": "openai-compatible",
+        "disclosure": "OpenCode says prompts may be collected to improve this temporarily free model. Explicit, versioned data-collection opt-in is required before use."
+      },
+      "ling-3.1-flash-free": {
+        "display_name": "Ling 3.1 Flash Free",
+        "free": true,
+        "training": true,
+        "data_collection_allowed": true,
+        "data_collection_default": false,
+        "available": true,
+        "route": "openai-compatible",
+        "disclosure": "OpenCode says prompts may be collected to improve this temporarily free model. Explicit, versioned data-collection opt-in is required before use."
+      },
+      "ling-3.0-flash-fin-free": {
+        "display_name": "Ling 3.0 Flash Fin Free",
+        "free": true,
+        "training": true,
+        "data_collection_allowed": true,
+        "data_collection_default": false,
+        "available": true,
+        "route": "openai-compatible",
+        "disclosure": "OpenCode says prompts may be collected to improve this temporarily free model. Explicit, versioned data-collection opt-in is required before use."
+      },
+      "muse-spark-1.3-contributor-free": {
+        "display_name": "Muse Spark 1.3 Contributor Free",
+        "free": true,
+        "training": true,
+        "data_collection_allowed": true,
+        "data_collection_default": false,
+        "available": false,
+        "route": "openai-responses",
+        "disclosure": "Meta may use prompts and completions to train future models. This typed provider route is not currently supported by the assistant runtime."
+      }
+    },
+    "excluded_models": {
+      "nemotron-3-ultra-free": "trial terms prohibit personal or confidential data",
+      "nemotron-3.5-lightning-free": "trial terms prohibit personal or confidential data"
+    }
+  },
+  "providers": [
+    {
+      "provider_id": "openai",
+      "display_name": "OpenAI API",
+      "auth_methods": [
+        "api_key"
+      ],
+      "native_provider_id": "openai",
+      "adapter_id": "openai-responses",
+      "protocol": "openai-responses",
+      "endpoint_editable": false,
+      "credential_supported": true,
+      "validation_requires_credential": true,
+      "adapter_supported": true,
+      "unsupported_reason": null,
+      "default_base_url": "https://api.openai.com/v1",
+      "terms_url": "https://openai.com/policies/how-your-data-is-used-to-improve-model-performance/",
+      "runtime_provider_id": "openai",
+      "credential_required": true,
+      "terms_reviewed_at": "2026-10-04",
+      "policy_version": "openai-api-model-policy-2026-10-04-v1",
+      "privacy_policy_version": "openai-api-privacy-2026-10-04-v1",
+      "billing_policy_version": "openai-api-billing-2026-10-04-v1",
+      "privacy_disclosure": "OpenAI states API inputs and outputs are not used to train models by default unless the account opts in. Abuse-monitoring retention may still apply; this app cannot inspect account-level data controls.",
+      "cost_disclosure": "This API provider bills according to its current model pricing and account limits. Review current pricing before enabling; this app does not estimate charges and never enables paid fallback or automatic top-ups.",
+      "billing_class": "paid",
+      "training": false,
+      "data_collection_allowed": false,
+      "data_collection_default": false
+    },
+    {
+      "provider_id": "openai-chatgpt",
+      "display_name": "OpenAI ChatGPT account",
+      "auth_methods": [
+        "native_oauth"
+      ],
+      "native_provider_id": "openai",
+      "adapter_id": "openai-responses",
+      "protocol": "openai-responses",
+      "endpoint_editable": false,
+      "credential_supported": false,
+      "validation_requires_credential": false,
+      "adapter_supported": true,
+      "unsupported_reason": null,
+      "default_base_url": "https://chatgpt.com/backend-api/codex",
+      "terms_url": "https://openai.com/policies/terms-of-use/",
+      "runtime_provider_id": "openai",
+      "credential_required": true,
+      "terms_reviewed_at": "2026-10-04",
+      "policy_version": "openai-chatgpt-account-policy-2026-10-04-v1",
+      "privacy_policy_version": "openai-chatgpt-account-privacy-2026-10-04-v1",
+      "billing_policy_version": "openai-chatgpt-account-billing-2026-10-04-v1",
+      "privacy_disclosure": "This connection uses an individual ChatGPT account. OpenAI's consumer terms say account content may be used to provide, maintain, develop, and improve services; account controls may allow opting out. This app cannot inspect those controls or verify account type. Do not send confidential or regulated information unless your account and organization's rules permit it.",
+      "cost_disclosure": "Billing class and remaining plan capacity are unknown to this app. ChatGPT plan features, limits, and availability are controlled by OpenAI and may change. Review the terms for your account; this app cannot estimate charges, purchase a plan, or fall back to a paid API route.",
+      "billing_class": "unknown",
+      "training": true,
+      "data_collection_allowed": true,
+      "data_collection_default": false,
+      "reviewed_models": {
+        "gpt-5.5": "GPT-5.5 (ChatGPT account)",
+        "gpt-5.3-codex-spark": "GPT-5.3 Codex Spark (ChatGPT account)"
+      }
+    },
+    {
+      "provider_id": "anthropic",
+      "display_name": "Anthropic API",
+      "auth_methods": [
+        "api_key"
+      ],
+      "native_provider_id": "anthropic",
+      "adapter_id": "anthropic-messages",
+      "protocol": "anthropic-messages",
+      "endpoint_editable": false,
+      "credential_supported": true,
+      "validation_requires_credential": true,
+      "adapter_supported": true,
+      "unsupported_reason": null,
+      "default_base_url": "https://api.anthropic.com/v1",
+      "terms_url": "https://www.anthropic.com/legal/commercial-terms",
+      "runtime_provider_id": "anthropic",
+      "credential_required": true,
+      "terms_reviewed_at": "2026-10-04",
+      "policy_version": "anthropic-api-model-policy-2026-10-04-v1",
+      "privacy_policy_version": "anthropic-api-privacy-2026-10-04-v1",
+      "billing_policy_version": "anthropic-api-billing-2026-10-04-v1",
+      "privacy_disclosure": "Anthropic states that API customer content is not used to train its models under the commercial API terms. Provider-side abuse monitoring and retention terms may still apply; review the current agreement for the account using this key.",
+      "cost_disclosure": "This API provider bills according to its current model pricing and account limits. Review current pricing before enabling; this app does not estimate charges and never enables paid fallback or automatic top-ups.",
+      "billing_class": "paid",
+      "training": false,
+      "data_collection_allowed": false,
+      "data_collection_default": false
+    },
+    {
+      "provider_id": "google",
+      "display_name": "Google AI API",
+      "auth_methods": [
+        "api_key"
+      ],
+      "native_provider_id": "google",
+      "adapter_id": "google-generative-language",
+      "protocol": "google-generative-language",
+      "endpoint_editable": false,
+      "credential_supported": true,
+      "validation_requires_credential": true,
+      "adapter_supported": true,
+      "unsupported_reason": null,
+      "default_base_url": "https://generativelanguage.googleapis.com/v1beta",
+      "terms_url": "https://ai.google.dev/gemini-api/terms",
+      "runtime_provider_id": "google",
+      "credential_required": true,
+      "terms_reviewed_at": "2026-10-04",
+      "policy_version": "google-gemini-api-model-policy-2026-10-04-v1",
+      "privacy_policy_version": "google-gemini-api-privacy-2026-10-04-v1",
+      "billing_policy_version": "google-gemini-api-billing-2026-10-04-v1",
+      "privacy_disclosure": "Google's Gemini API Free Tier may use prompts and responses to improve products; paid services exclude that use but may log prompts and responses for limited abuse monitoring. This app cannot verify the API key's tier, so user consent treats this route as data collection enabled.",
+      "cost_disclosure": "The API key may use free quota or billable quota depending on its project, model, and current tier. Review current pricing and billing settings before enabling; this app does not estimate charges and never enables paid fallback or automatic top-ups.",
+      "billing_class": "paid",
+      "training": true,
+      "data_collection_allowed": true,
+      "data_collection_default": false
+    },
+    {
+      "provider_id": "custom",
+      "display_name": "Custom OpenAI-compatible endpoint",
+      "auth_methods": [
+        "api_key",
+        "none"
+      ],
+      "native_provider_id": "assistant-proxy",
+      "adapter_id": "openai-compatible-chat",
+      "protocol": "openai-compatible-chat",
+      "endpoint_editable": true,
+      "credential_supported": true,
+      "validation_requires_credential": false,
+      "adapter_supported": true,
+      "unsupported_reason": null,
+      "default_base_url": null,
+      "terms_url": null,
+      "runtime_provider_id": "assistant-proxy",
+      "credential_required": false
+    }
+  ]
+}

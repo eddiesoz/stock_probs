@@ -231,10 +231,23 @@ def test_idle_cpu_statistics_recompute_exactly_and_reject_one_ulp_mutation():
 
 def test_local_gate_profiles_make_performance_mandatory_for_m06_m09_and_release():
     gate = (ROOT / "scripts/local-gate.sh").read_text()
-    m04 = gate[gate.index("  m04)") : gate.index("  m06)")]
-    m06 = gate[gate.index("  m06)") : gate.index("  m09)")]
-    m09 = gate[gate.index("  m09)") : gate.index("  release)")]
-    release = gate[gate.index("  release)") : gate.index("esac")]
+    performance_dispatcher = gate.index("run_performance() {")
+    dispatcher_start = gate.index('case "$PROFILE" in', performance_dispatcher)
+    execution = gate[dispatcher_start:]
+
+    def profile_block(profile: str, next_profile: str | None = None) -> str:
+        start = execution.index(f"  {profile})")
+        end = (
+            execution.index(f"  {next_profile})", start)
+            if next_profile is not None
+            else execution.index("esac", start)
+        )
+        return execution[start:end]
+
+    m04 = profile_block("m04", "m06")
+    m06 = profile_block("m06", "m09")
+    m09 = profile_block("m09", "release")
+    release = profile_block("release")
 
     assert "run_performance" not in m04
     assert "run_performance" in m06
@@ -247,7 +260,7 @@ def test_local_gate_profiles_make_performance_mandatory_for_m06_m09_and_release(
         assert "run_ponytail_precondition" not in profile
         assert "ponytail-review.sh" not in profile
         assert profile.count("require_performance_acceptance") == 1
-    assert 'PERFORMANCE_REVIEWER:-' in gate
+    assert "PERFORMANCE_REVIEWER:-" in gate
     assert '[[ "$PROFILE" == "release" && "$DIRTY" == "true" ]]' in gate
     assert "Release performance requires a clean committed working tree." in gate
 
@@ -268,7 +281,7 @@ def test_proposed_native_bounds_are_explicit_and_not_environment_overrides():
     assert performance.NEWS_RESPONSE_LIMIT_BYTES == 32 * 1024
     assert performance.NEWS_PROVIDER_DEADLINE_SECONDS == 10
     assert manifest["static_shell_bytes_strict_max"] == performance.STATIC_LIMIT_BYTES
-    assert performance.STATIC_LIMIT_BYTES == 1_152 * 1024
+    assert performance.STATIC_LIMIT_BYTES == 1_344 * 1024
     source = (ROOT / "scripts/performance_harness.py").read_text()
     assert "STOCK_PROBS_PERF_CONCURRENCY_P95_MS" not in source
     assert "STOCK_PROBS_PERF_PACKAGE_MAX_BYTES" not in source
@@ -388,7 +401,7 @@ def test_browser_budget_manifest_pins_required_protocol_and_bounds():
     assert manifest["cls_max"] == 0.1
     assert manifest["viewports"] == [360, 390, 768, 1280, 1440]
     assert manifest["designated_response_bytes_strict_max"] == 8 * 1024
-    assert manifest["static_shell_bytes_strict_max"] == 1_152 * 1024
+    assert manifest["static_shell_bytes_strict_max"] == 1_344 * 1024
     assert manifest["response_bytes_max_per_navigation"] == 640 * 1024
     assert manifest["request_count_max_per_navigation"] == 16
     assert "/assets/theme.js" in manifest["allowed_paths"]
@@ -396,11 +409,23 @@ def test_browser_budget_manifest_pins_required_protocol_and_bounds():
     assert "/sign-in" in manifest["allowed_paths"]
     assert not any(path.startswith("/_next/") for path in manifest["allowed_paths"])
     static_justification = manifest["justification"]["static_shell_bytes"]
-    assert static_justification["measured_bytes"] == 1_155_082
-    assert static_justification["measured_bytes"] == (
-        static_justification["non_expansion_baseline_bytes"]
-        + static_justification["required_auth_route_html_bytes"]
-        + static_justification["required_auth_expansion_js_css_bytes"]
+    assert static_justification["measured_bytes"] == 1_347_449
+    assert static_justification["cached_production_baseline_bytes"] == 1_170_495
+    assert static_justification["cached_production_baseline_image"] == (
+        "sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1"
+    )
+    assert (
+        static_justification["evidenced_delta_bytes"]
+        == (
+            static_justification["measured_bytes"]
+            - static_justification["cached_production_baseline_bytes"]
+        )
+        == 176_954
+    )
+    assert static_justification["cached_production_file_count"] == 47
+    assert static_justification["current_source_file_count"] == 52
+    assert static_justification["source_review_sha256"] == (
+        "cc710b0d1258d064c5f78c861b2b2419a3529241ec0ec7f00d89a2c019b509cf"
     )
     assert static_justification["limit_bytes"] == manifest["static_shell_bytes_strict_max"]
     assert static_justification["headroom_bytes"] == (
@@ -432,7 +457,7 @@ def test_static_budget_manifest_invalid_contract_fails_closed(tmp_path, contents
 def test_static_budget_loader_accepts_current_manifest():
     path = ROOT / "tools/browser/performance-budgets.json"
 
-    assert performance._load_static_budget(path) == 1_152 * 1024
+    assert performance._load_static_budget(path) == 1_344 * 1024
 
 
 def test_static_budget_loader_rejects_oversized_manifest(tmp_path):
@@ -512,6 +537,11 @@ def test_browser_artifact_or_process_failure_stays_failed(
 @pytest.mark.parametrize("browser_result", ["Pass", "Fail"])
 def test_static_row_requires_browser_result(tmp_path, monkeypatch, browser_result):
     monkeypatch.setattr(performance, "_git_revision", lambda: ("a" * 40, True))
+    static = tmp_path / "src/stock_probs/static"
+    static.mkdir(parents=True)
+    (static / "app.js").write_bytes(b"x")
+    monkeypatch.setattr(performance, "ROOT", tmp_path)
+    monkeypatch.setattr(performance, "STATIC_LIMIT_BYTES", 4)
     harness = performance.Harness(tmp_path, 60)
     harness.rows["browser-budgets"] = {"result": browser_result}
 
@@ -521,6 +551,31 @@ def test_static_row_requires_browser_result(tmp_path, monkeypatch, browser_resul
     assert row["result"] == browser_result
     assert "initial_navigation" not in row["raw"]
     assert set(row["threshold"]) == {"class", "static", "response", "evidence_basis"}
+    assert row["raw"]["static_total_raw_bytes"] == 1
+
+
+@pytest.mark.parametrize(
+    ("static_bytes", "expected"),
+    [(1, "Pass"), (2, "Fail")],
+    ids=["one-byte-below-strict-limit", "exact-limit-is-failure"],
+)
+def test_static_row_enforces_strict_limit_in_isolated_fixture(
+    tmp_path, monkeypatch, static_bytes, expected
+):
+    monkeypatch.setattr(performance, "_git_revision", lambda: ("a" * 40, True))
+    static = tmp_path / "src/stock_probs/static"
+    static.mkdir(parents=True)
+    (static / "app.js").write_bytes(b"x" * static_bytes)
+    monkeypatch.setattr(performance, "ROOT", tmp_path)
+    monkeypatch.setattr(performance, "STATIC_LIMIT_BYTES", 2)
+    harness = performance.Harness(tmp_path / "artifacts", 60)
+    harness.rows["browser-budgets"] = {"result": "Pass"}
+
+    harness._write_static_row(b"{}")
+
+    row = harness.rows["static-and-response-bytes"]
+    assert row["raw"]["static_total_raw_bytes"] == static_bytes
+    assert row["result"] == expected
 
 
 def test_local_gate_builds_and_stages_frontend_before_profile_gates():
@@ -530,7 +585,7 @@ def test_local_gate_builds_and_stages_frontend_before_profile_gates():
     makefile = (ROOT / "Makefile").read_text()
 
     assert gate.index('\n  "$ROOT/scripts/build-frontend.sh"\n') < gate.index(
-        "\ncase \"$PROFILE\" in"
+        '\ncase "$PROFILE" in'
     )
     assert frontend_path.stat().st_mode & 0o111
     assert all(

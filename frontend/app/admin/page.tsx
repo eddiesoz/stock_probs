@@ -5,6 +5,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { AuthRequestError, authErrorMessage, authRequest, formatAuthDate, getAuthSession, type AuthSession, type TotpStatus } from "../../components/auth-client";
+import { AssistantProviderSettings } from "../../components/assistant/assistant-provider-settings";
 import { WorkspaceNav } from "../../components/workspace-nav";
 import styles from "../auth.module.css";
 
@@ -44,7 +45,7 @@ export default function AdminPage() {
     const remaining = Math.max(0, freshVerifiedUntil - Date.now());
     const timeout = window.setTimeout(() => {
       clearFreshVerification();
-      setMessage({ tone: "error", text: "Fresh authenticator verification expired. Verify again before a backup or restore." });
+      setMessage({ tone: "error", text: "Fresh authenticator verification expired. Verify again before an invitation, backup, or restore." });
     }, remaining);
     return () => window.clearTimeout(timeout);
   }, [freshVerifiedUntil]);
@@ -67,19 +68,50 @@ export default function AdminPage() {
 
   useEffect(() => { load().catch((error) => setMessage({ tone: "error", text: authErrorMessage(error) })); }, []);
 
+  useEffect(() => {
+    if (session === undefined) return;
+    const targetId = window.location.hash.slice(1);
+    if (!["invitations", "backups", "restore", "assistant-providers"].includes(targetId)) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.scrollIntoView({ block: "start" });
+      target.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [session]);
+
+  function clearInvitationStepUpOnRejection(error: unknown) {
+    if (!(error instanceof AuthRequestError) || error.code !== "authorization_denied") return;
+    clearFreshVerification();
+    window.requestAnimationFrame(() => document.getElementById("admin-totp-code")?.focus());
+  }
+
   async function createInvitation(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy("invite"); setMessage(null);
+    event.preventDefault();
+    if (!freshVerified) {
+      setMessage({ tone: "error", text: "Verify your authenticator before creating an invitation." });
+      return;
+    }
+    setBusy("invite"); setMessage(null);
     try {
       const response = await authRequest<{ invitation?: Invitation; code?: string; github_id?: number; github_login?: string; expires_at?: string }>("/api/v1/auth/invites", { method: "POST", body: JSON.stringify({ github_id: Number(githubId), github_login: githubLogin.trim() || undefined }) });
       if (response.invitation) setInvitations((items) => [response.invitation as Invitation, ...items]);
       else setInvitations((items) => [{ id: crypto.randomUUID(), code: response.code, github_id: response.github_id, github_login: response.github_login, expires_at: response.expires_at }, ...items]);
       setGithubId(""); setGithubLogin(""); setMessage({ tone: "success", text: "Invitation created. Copy the single-use code through a private channel." });
-    } catch (error) { setMessage({ tone: "error", text: authErrorMessage(error) }); }
+    } catch (error) {
+      clearInvitationStepUpOnRejection(error);
+      setMessage({ tone: "error", text: authErrorMessage(error) });
+    }
     finally { setBusy(null); }
   }
 
   async function sendInvitationEmail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!freshVerified) {
+      setMessage({ tone: "error", text: "Verify your authenticator before sending an invitation email." });
+      return;
+    }
     if (emailInvitesEnabled !== true || !emailInputRef.current?.reportValidity()) return;
     const restrictionId = emailGithubId.trim();
     const restrictionLogin = emailGithubLogin.trim();
@@ -128,6 +160,7 @@ export default function AdminPage() {
           : `Mail server accepted the invitation. ${recipientGuidance} Delivery is not confirmed. The invitation list could not be refreshed.`,
       });
     } catch (error) {
+      clearInvitationStepUpOnRejection(error);
       const text = error instanceof AuthRequestError && [401, 403].includes(error.status)
         ? authErrorMessage(error)
         : "Invitation email could not be submitted. Check the recipient address and mail configuration, then try again.";
@@ -179,9 +212,30 @@ export default function AdminPage() {
       <WorkspaceNav current="overview" />
       <main id="main" tabIndex={-1} className={styles.authMain}>
         <div className={styles.authIntro}><p className="panel-kicker">Workspace / Administration</p><h1>Keep access deliberate</h1><p>Invite the people you trust and manage verified recovery operations without exposing database controls to the browser.</p></div>
-        <section className={`${styles.authPanel} ${styles.widePanel}`} aria-labelledby="invite-heading">
+        <AssistantProviderSettings
+          freshVerified={freshVerified}
+          onStepUpRejected={() => {
+            clearFreshVerification();
+            window.requestAnimationFrame(() => document.getElementById("admin-totp-code")?.focus());
+          }}
+        />
+        <section id="invitations" tabIndex={-1} className={`${styles.authPanel} ${styles.widePanel}`} aria-labelledby="invite-heading">
+          <div className={styles.permissionBox} role="status">
+            <div>
+              <strong>{freshVerified ? "Fresh authenticator verified" : "Authenticator verification required"}</strong>
+              <p id="invitation-step-up-help">{freshVerified
+                ? "Create or send an invitation now. The server checks that verification is still recent when you submit."
+                : totpStatus?.enrolled
+                  ? "Verify your authenticator immediately below before creating or sending an invitation."
+                  : "Set up an authenticator before creating or sending invitations."}</p>
+            </div>
+          </div>
+          <div className={styles.formGrid}>
+            <label className={styles.full} htmlFor="admin-totp-code">Current authenticator code<input id="admin-totp-code" name="totp_code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={totpCode} onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" /></label>
+            <button className="secondary full" type="button" disabled={busy === "verify" || totpCode.length !== 6 || !totpStatus?.enrolled} onClick={verifyTotp}>{busy === "verify" ? "Verifying…" : freshVerified ? "Verify again" : "Verify authenticator"}</button>
+          </div>
           <div className={styles.sectionRule}><h2 id="invite-heading">Create a GitHub account code</h2><p>Manual invitation codes are single-use and expire. Resolve the identity before sharing a code privately.</p></div>
-          <form className={styles.formGrid} onSubmit={createInvitation} noValidate><label htmlFor="github-id">GitHub account ID<input id="github-id" name="github_id" inputMode="numeric" pattern="[0-9]+" value={githubId} onChange={(event) => setGithubId(event.target.value.replace(/\D/g, ""))} placeholder="1234567" autoComplete="off" required /></label><label htmlFor="github-login">GitHub username (optional)<input id="github-login" name="github_login" value={githubLogin} onChange={(event) => setGithubLogin(event.target.value)} placeholder="octocat" autoComplete="off" /></label><button className="primary full" type="submit" disabled={busy === "invite" || busy === "invite-email" || !githubId.trim()}>{busy === "invite" ? "Creating invitation…" : "Create invitation"}</button></form>
+          <form className={styles.formGrid} onSubmit={createInvitation} noValidate><label htmlFor="github-id">GitHub account ID<input id="github-id" name="github_id" inputMode="numeric" pattern="[0-9]+" value={githubId} onChange={(event) => setGithubId(event.target.value.replace(/\D/g, ""))} placeholder="1234567" autoComplete="off" required /></label><label htmlFor="github-login">GitHub username (optional)<input id="github-login" name="github_login" value={githubLogin} onChange={(event) => setGithubLogin(event.target.value)} placeholder="octocat" autoComplete="off" /></label><button className="primary full" type="submit" aria-describedby="invitation-step-up-help" disabled={!freshVerified || busy === "invite" || busy === "invite-email" || !githubId.trim()}>{busy === "invite" ? "Creating invitation…" : "Create invitation"}</button></form>
           <div className={styles.sectionRule}><h2 id="email-invite-heading">Send invitation by email</h2><p>Email-only invitations require a GitHub account with the invitation email marked verified. Adding a resolved GitHub account ID restricts redemption to that account; the address is then only the delivery destination.</p></div>
           <div className={styles.permissionBox}>
             <div>
@@ -206,17 +260,16 @@ export default function AdminPage() {
                 <label htmlFor="email-github-login">GitHub username display hint (optional)<input id="email-github-login" name="email_github_login" value={emailGithubLogin} onChange={(event) => setEmailGithubLogin(event.target.value)} placeholder="octocat" autoComplete="off" /></label>
               </div>
             </details>
-            <button className="secondary full" type="submit" aria-describedby="email-invites-help invitation-email-verification" disabled={emailInvitesEnabled !== true || busy === "invite-email" || busy === "invite" || !inviteEmail.trim()}>{busy === "invite-email" ? "Submitting invitation email…" : "Send invitation email"}</button>
+            <button className="secondary full" type="submit" aria-describedby="email-invites-help invitation-email-verification invitation-step-up-help" disabled={!freshVerified || emailInvitesEnabled !== true || busy === "invite-email" || busy === "invite" || !inviteEmail.trim()}>{busy === "invite-email" ? "Submitting invitation email…" : "Send invitation email"}</button>
           </form>
           {invitations.length ? <ul className={styles.dataList}>{invitations.map((invite) => {
             const consumedAt = invitationConsumedAt(invite);
             return <li className={styles.dataRow} key={invite.id}><div><strong>{invite.github_login || (invite.github_id !== undefined && invite.github_id !== null ? `GitHub account ${invite.github_id}` : "Email invitation · pending GitHub verification")}</strong><small>{consumedAt ? `Redeemed ${formatAuthDate(consumedAt)}` : `Expires ${formatAuthDate(invite.expires_at)}`} {invite.code ? `· Code ${invite.code}` : ""}</small></div><span className="badge neutral">{consumedAt ? "Used" : "Open"}</span></li>;
           })}</ul> : <p className={styles.loadingState}>No invitations created in this session.</p>}
-          <div className={styles.sectionRule}><h2>Verified backups</h2><p>Backups are created and verified on the server. Enter a current authenticator code below before creating one.</p></div>
+          <div className={styles.sectionRule}><h2 id="backups" tabIndex={-1}>Verified backups</h2><p>Backups are created and verified on the server. Verify with a current authenticator code above before creating one.</p></div>
           <div className={styles.formGrid}><label className={styles.full} htmlFor="backup-name">Backup label (optional)<input id="backup-name" value={backupName} onChange={(event) => setBackupName(event.target.value)} placeholder="before-auth-migration" /></label><button className="secondary full" type="button" disabled={!freshVerified || busy === "backup"} onClick={createBackup}>{busy === "backup" ? "Creating verified backup…" : "Create verified backup"}</button></div>
-          <div className={styles.sectionRule}><h2>Promote a restore</h2><p>Use only after reviewing the artifact. A promoted restore requires a fresh authenticator check and revokes other sessions.</p></div>
-          <div className={styles.permissionBox}><div><strong>{freshVerified ? "Fresh authenticator verified" : "Authenticator verification required"}</strong><p>{freshVerified ? "Complete the operation now; the server also checks that verification is recent." : totpStatus?.enrolled ? "Enter the newest code immediately before a backup or promoted restore." : "Set up an authenticator before using backup controls."}</p></div></div>
-          <div className={styles.formGrid}><label className={styles.full} htmlFor="admin-totp-code">Current authenticator code<input id="admin-totp-code" name="totp_code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={totpCode} onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" /></label><button className="secondary full" type="button" disabled={busy === "verify" || totpCode.length !== 6 || !totpStatus?.enrolled} onClick={verifyTotp}>{busy === "verify" ? "Verifying…" : freshVerified ? "Verify again" : "Verify authenticator"}</button></div>
+          <div className={styles.sectionRule}><h2 id="restore" tabIndex={-1}>Promote a restore</h2><p>Use only after reviewing the artifact. A promoted restore requires a fresh authenticator check and revokes other sessions.</p></div>
+          <div className={styles.permissionBox}><div><strong>{freshVerified ? "Fresh authenticator verified" : "Authenticator verification required"}</strong><p>{freshVerified ? "Complete the operation now; the server also checks that verification is recent." : totpStatus?.enrolled ? "Verify immediately before a backup or promoted restore; the API checks that proof is recent." : "Set up an authenticator before using backup controls."}</p></div></div>
           <form className={styles.formGrid} onSubmit={restoreBackup} noValidate><label className={styles.full} htmlFor="restore-name">Verified backup name<input id="restore-name" value={restoreName} onChange={(event) => setRestoreName(event.target.value)} placeholder="backup-2026-09-27" required /></label><button className="secondary full" type="submit" disabled={!freshVerified || busy === "restore" || !restoreName.trim()}>{busy === "restore" ? "Promoting restore…" : "Promote restore"}</button></form>
           {message ? <p className={styles.authMessage} data-tone={message.tone} role={message.tone === "error" ? "alert" : "status"}>{message.text}</p> : null}
         </section>

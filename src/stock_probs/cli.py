@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import uvicorn
-from starlette.types import ASGIApp, Receive, Scope, Send
+if TYPE_CHECKING:
+    from starlette.types import ASGIApp, Receive, Scope, Send
 
-from stock_probs.api import create_app
-from stock_probs.backup import BackupError, BackupManager, _check_deadline, _run_with_deadline
-from stock_probs.config import Settings
-from stock_probs.repository import SCHEMA_VERSION, Repository
+    from stock_probs.backup import BackupManager
+    from stock_probs.config import Settings
+    from stock_probs.repository import Repository
 
 TRUST_KEY_TRANSFER_HELP = (
     "Trust-key transfer: copy .backup-auth.key with managed .spbackup files over a protected "
@@ -40,6 +40,9 @@ def _is_loopback(host: str) -> bool:
 
 def _migrate_with_backup(repository: Repository, manager: BackupManager) -> dict[str, Any] | None:
     """Create and re-open one old-schema artifact immediately before an upgrade."""
+
+    from stock_probs.backup import BackupError, _check_deadline, _run_with_deadline
+    from stock_probs.repository import SCHEMA_VERSION
 
     def migrate() -> dict[str, Any] | None:
         # Migration and its callback stay on one worker so the repository lock remains reentrant.
@@ -81,7 +84,11 @@ def _migrate_with_backup(repository: Repository, manager: BackupManager) -> dict
 
 
 def _migration_operations(settings: Settings) -> tuple[BackupManager, dict[str, Any] | None]:
+    from stock_probs.backup import BackupManager
+
     settings.ensure_local_dirs()
+    from stock_probs.repository import Repository
+
     repository = Repository(settings.database_path)
     manager = BackupManager(repository, settings.backup_dir)
     return manager, _migrate_with_backup(repository, manager)
@@ -89,6 +96,9 @@ def _migration_operations(settings: Settings) -> tuple[BackupManager, dict[str, 
 
 def _serve_app(settings: Settings) -> ASGIApp:
     """Delay automatic persistence work until Uvicorn actually starts the ASGI lifespan."""
+
+    from stock_probs.api import create_app
+    from stock_probs.backup import BackupError, _check_deadline, _run_with_deadline
 
     application = create_app(settings)
 
@@ -116,6 +126,21 @@ def _serve_app(settings: Settings) -> ASGIApp:
         await application(scope, receive, send)
 
     return automatic_backup
+
+
+async def _assistant_kill_switch() -> None:
+    """Ask the already-running fixed supervisor to stop only its assistant worker."""
+
+    from stock_probs.assistant.supervisor_client import SupervisorClient, SupervisorClientError
+
+    supervisor = SupervisorClient()
+    try:
+        purge_id = await supervisor.disable("operator")
+        if purge_id is None or not await supervisor.wait_for_home_purge(purge_id):
+            raise SupervisorClientError("home_purge_failed")
+    except Exception as exc:
+        # The host helper consumes only this closed result; do not expose protocol details.
+        raise SystemExit(2) from exc
 
 
 def main() -> None:
@@ -150,10 +175,21 @@ def main() -> None:
     key_commands.add_parser(
         "retire", help="remove the key only after every managed backup is transferred or removed"
     )
+    subparsers.add_parser(
+        "assistant-kill",
+        help="disable the already-running assistant worker without starting the app",
+    )
     args = parser.parse_args()
 
     try:
-        if args.command == "serve":
+        if args.command == "assistant-kill":
+            asyncio.run(_assistant_kill_switch())
+            print(json.dumps({"status": "assistant_disabled"}, separators=(",", ":")))
+        elif args.command == "serve":
+            import uvicorn
+
+            from stock_probs.config import Settings
+
             settings = Settings.from_env()
             host = args.host or settings.host
             port = args.port or settings.port
@@ -175,6 +211,9 @@ def main() -> None:
                 timeout_graceful_shutdown=10,
             )
         elif args.command == "migrate":
+            from stock_probs.backup import BackupError
+            from stock_probs.config import Settings
+
             _, migration_backup = _migration_operations(Settings.from_env())
             print(
                 json.dumps(
@@ -182,16 +221,31 @@ def main() -> None:
                 )
             )
         elif args.command == "backup":
+            from stock_probs.backup import BackupError
+            from stock_probs.config import Settings
+
             manager, _ = _migration_operations(Settings.from_env())
             print(json.dumps(manager.create(args.name), indent=2))
         elif args.command == "restore":
+            from stock_probs.backup import BackupError
+            from stock_probs.config import Settings
+
             manager, _ = _migration_operations(Settings.from_env())
             print(json.dumps(manager.restore(args.name, promote=args.promote), indent=2))
         elif args.command == "backup-key":
+            from stock_probs.backup import BackupError
+            from stock_probs.config import Settings
+
             manager, _ = _migration_operations(Settings.from_env())
             result = manager.rotate_key() if args.key_command == "rotate" else manager.retire_key()
             print(json.dumps(result, indent=2))
-    except BackupError as exc:
+    except Exception as exc:
+        # Import the persistence command's exception only on a backup-related failure; the
+        # emergency assistant command must remain independent of storage initialization.
+        from stock_probs.backup import BackupError
+
+        if not isinstance(exc, BackupError):
+            raise
         print(json.dumps({"error": str(exc)}), file=sys.stderr)
         raise SystemExit(2) from exc
 

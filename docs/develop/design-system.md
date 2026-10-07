@@ -1,14 +1,15 @@
 ---
 title: "Design system and Ledger assistant"
-description: "The current Signal Ledger visual language and the approved responsive Ledger assistant panel specification."
+description: "The current Signal Ledger visual language, approved assistant visual contract, and R-ASTRA-120 candidate status."
 ---
 
 # Design system and Ledger assistant
 
-This guide describes the visual system already used by Signal Ledger and the approved design for
-the Ledger assistant. It is a planning artifact; source implementation remains pending. It is not
-evidence that an assistant has shipped or that any assistant behavior has passed runtime,
-accessibility, or browser checks.
+This guide describes the visual system already used by Signal Ledger and the approved visual
+contract for the Ledger assistant. R-ASTRA-120 now has assistant source in progress; the guide,
+source presence, and build artifacts do not establish independent runtime, accessibility, browser,
+or release acceptance. The deployed production release remains schema 12 with assistant rollout
+disabled. See the [R-ASTRA-120 plan and evidence](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
 
 ## Source of truth
 
@@ -57,7 +58,8 @@ provide hierarchy; avoid adding decorative chrome or a second brand palette.
 
 The approved direction is concept B: a Ledger assistant that can explain the current workspace and
 offer research help while leaving the selected page and its data visible when space permits. It
-should feel like another Signal Ledger surface, not an unrelated chat product.
+uses the existing Signal Ledger surface tokens. The concept image remains a design proposal; the
+current branch source implements an assistant candidate and is still under independent QA.
 
 ![Approved assistant concept B. This is a design proposal, not a screenshot of shipped or accepted behavior.](../design/assistant-concept-b.png)
 
@@ -82,11 +84,16 @@ baseline for comparison, not evidence that the assistant is present in the appli
 
 ### Small screens and on-screen keyboard
 
-At widths below 700 px, the assistant becomes a full-screen surface with safe-area padding. It must
-account for the on-screen keyboard and changing visual viewport so the composer and send control
-remain visible while typing. Keep the message list independently scrollable and do not place
-essential controls beneath browser chrome or device cutouts. On return to the page, restore the
-user's prior context and focus to the assistant launcher.
+At widths below 700 px, the assistant becomes a full-screen modal surface with safe-area padding.
+While it is open, the page wrapper is inert and hidden with `visibility: hidden`, preserving its
+layout and scroll position. Closing the assistant, unmounting it, or resizing to desktop restores
+the wrapper’s prior state. The assistant remains outside that wrapper. Account for the on-screen
+keyboard and changing visual viewport so the composer and send control remain visible while typing. Normally keep the message list independently scrollable. While an
+exact-URL WebFetch approval is pending, let the transcript use the panel body's main scroll area
+so context and status can move out of the way and the complete destination and approval controls
+can be inspected together. Keep the warning, URL, expiry and decisions intact; do not shrink text
+or touch targets to make the card fit. Do not place essential controls beneath browser chrome or
+device cutouts. On return to the page, restore the user's prior context and focus to the launcher.
 
 ### Conversation structure and states
 
@@ -127,6 +134,55 @@ user's prior context and focus to the assistant launcher.
   without depending on shadows or background tints.
 - In print, omit interactive assistant controls and retain only content that has a meaningful
   printed representation. Avoid printing hidden controls or decorative chat chrome.
+
+### R-ASTRA-120 source and release status
+
+The candidate shared workspace layout mounts the assistant host and implements the approved
+desktop panel and narrow-screen full-screen surface. Production remains at schema 12 with the
+assistant disabled; candidate source and screenshots are not a released feature.
+
+Current acceptance remains pending. The later E198 canonical pass predates subsequent source
+changes, and current native wire checks do not establish full feature or resource acceptance.
+E245's initial ignored UI candidate changed inline-code whitespace and left mobile raw-axe
+incompletes; E250's separate fixture-only follow-up preserved text/code fidelity, tested enabled
+keyboard traversal without submission, and passed mobile stacked/full-width/44px geometry. Its
+desktop Light/Dark raw axe was 0 violations/0 incompletes; mobile Light/Dark each retained one
+incomplete disclaimer contrast item, so strict app axe remains **Fail**. E251's builder-reported
+source/build checks were followed by E252/E253 source-review **Fails**: CSS-module scoping left the
+disclaimer padding rule unbound, and readiness styling was applied to the whole container rather
+than the candidate's child span while the mobile font-size override was removed. The fixes are
+authorized. E254's builder repair binds the selector and passes its scoped contract/build/stage
+checks. E257 reports readiness CSS/contract/build/test/audit/stage scope; E258 parent review
+**Passed** the bound source and served/export comparison, including the full JSX hash. E263's
+independent selected current-source browser run passed 11 cases with one expected mobile skip,
+verified all 52 served/export files, and completed cleanup. Strict raw axe still **Fails** with one
+incomplete contrast item in each of the four actual desktop/mobile Light/Dark snapshots. Sampled
+custom placeholder contrast passed only its measurements; enabled-Send keyboard traversal, numeric
+mobile target geometry, and rendered code-fence fidelity were **Unavailable**. E267 ran the E264
+local Linux/amd64 image in a native two-owner functional trial and **Failed**: one owner returned
+`provider_unavailable`, the other timed out, and neither reached search/fetch approval or produced
+an answer. E268 independently verified that failure. E272 later **Failed** on the same image: owner 0
+answered; owner 1 reached search and an approved IANA fetch, then timed out without an answer. E273
+passed result-integrity review only. The 768 MiB sample is not 1 GB acceptance; anonymous timing
+rows have no owner mapping and do not identify later-chunk activity, a stall, or cause. E274's first synthetic desktop/mobile UI fixture
+attempt **Failed at setup** on an auth-route mismatch and produced no UI records; corrected rerun is
+pending. It does not close the earlier raw-axe incompletes. E269's corrected static header/body
+inspection passed, but no independent test rerun occurred (**Skipped/not run**) and remains pending.
+The mobile raw-axe incomplete and strict accessibility **Fail** remain open. Actual 1 GB resources,
+complete security and tested PR-bound rollback remain open.
+E276's corrected synthetic browser run **Failed** because Send/Cancel left focus on `document.body`.
+E277 repaired panel focus handling and passed the approved frontend build/stage with all 52 served
+files matching. E278's post-repair aggregate **Failed** four invalid Stop-label identity assertions,
+though actual focus and keyboard-cancel assertions passed across desktop/mobile Light/Dark. E280
+passed only the corrected stop-control identity/cancellation-cleanup diagnostic. E281 later passed
+the tracked focus-only regression 2/2 after preserving its wrapper/CLI setup failures. These narrow
+fixture results do not close the raw-axe incomplete or establish full app accessibility.
+Mobile viewport evidence is emulated, not physical-device evidence.
+
+Use the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
+for exact commands, hashes, failures, repairs and historical checkpoint results. This page specifies
+the intended visual and interaction rules; earlier evidence does not supersede them or establish
+release readiness.
 
 ## Review checklist for future UI work
 

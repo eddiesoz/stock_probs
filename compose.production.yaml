@@ -2,8 +2,12 @@ name: signal-ledger
 
 services:
   app:
+    user: "0:0"
     image: "${STOCK_PROBS_IMAGE:?STOCK_PROBS_IMAGE is supplied by the fixed deployment helper}"
     environment:
+      STOCK_PROBS_ASSISTANT_ENABLED: "${STOCK_PROBS_ASSISTANT_ENABLED:-0}"
+      STOCK_PROBS_ASSISTANT_ROLLOUT: "${STOCK_PROBS_ASSISTANT_ROLLOUT:-disabled}"
+      STOCK_PROBS_ASSISTANT_CANARY_GITHUB_IDS: "${STOCK_PROBS_ASSISTANT_CANARY_GITHUB_IDS:-}"
       STOCK_PROBS_DATA_DIR: /data
       STOCK_PROBS_ENV: production
       # Settings keeps its loopback authority; the Dockerfile's explicit serve flags bind
@@ -36,22 +40,26 @@ services:
       - signal-ledger-data:/data
     read_only: true
     tmpfs:
-      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,uid=10001,gid=10001,mode=0700
+      - /run/assistant:rw,nosuid,nodev,noexec,size=16m,mode=0711
+      - /run/assistant-worker-home:rw,nosuid,nodev,noexec,size=64m,uid=10002,gid=10002,mode=0700
     cap_drop:
       - ALL
+    cap_add:
+      - SETUID
+      - SETGID
     security_opt:
       - no-new-privileges:true
     pids_limit: 128
     mem_limit: 768m
     cpus: 1.0
-    init: true
     logging:
       driver: json-file
       options:
         max-size: 10m
         max-file: "3"
     restart: unless-stopped
-    stop_grace_period: 15s
+    stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/readiness', timeout=3).close()"]
       interval: 30s

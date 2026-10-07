@@ -5,6 +5,43 @@ description: "Local developer checks for Python, API, persistence, theme/news pr
 
 # Testing
 
+## Reviewing incomplete contrast results
+
+Keep raw axe violations and incomplete results in the evidence. An incomplete result needs
+manual review; axe has not definitively classified it as a violation or a pass. See the
+[axe results contract](https://github.com/dequelabs/axe-core/blob/develop/doc/API.md#results-object).
+Map every exact raw node to the measured direct text, verify its foreground against the nearest
+opaque semantic background, and check all line rectangles, clipping and sampled foreground
+occlusion. Require independent QA and parent inspection of the bound screenshots. Unknown,
+unmapped or unresolved nodes fail the contrast gate; do not suppress the rule or alter the
+approved layout solely to clear a resolved classifier result.
+
+The current assistant contrast review and strict raw-axe status are in the
+[R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
+A manual resolution for measured nodes does not change the strict raw-axe zero-incomplete
+requirement.
+
+## Reproducible image-build and source-recovery evidence
+
+Before source edits, save the exact bytes and SHA-256 of each owned baseline file in a task-owned
+recovery directory. Require at least 4 GiB free on the build filesystem before starting a Docker
+image build; stop the owned build if free space falls below 1 GiB and hold source edits until the
+low-disk build has terminated. If the repository filesystem fills, retain terminal evidence under
+`/tmp`. Remove only exact fixed-ID cache objects proven task-owned and unused. Never force-remove,
+globally prune, or remove protected release images or application data. This procedure does not
+authorize a resize above the US$15 monthly total cap including backups and tax. The root
+[agent policy](../../AGENTS.md) is authoritative.
+
+## Unix-socket test fixtures
+
+Supervisor tests create AF_UNIX sockets. Use a unique, caller-owned short temporary root for
+their pytest base directory; evidence-directory names must not determine socket paths. Check
+the complete encoded socket-path length before binding. Linux limits pathname sockets to the
+length of `sockaddr_un.sun_path`, including its terminator. Preserve a path-length setup failure
+separately from product assertions, and rerun only after correcting that fixture boundary.
+For live supervisor cases, verify the serving thread exits and its control socket is unlinked;
+remove only that run's owned temporary directory after all children have exited.
+
 ## Current OpenCode V2 QA contract
 
 Use native OpenCode V2 `build`/`plan` entry points and the Luna profiles: `luna-build` may
@@ -22,7 +59,7 @@ error event without a report and is therefore **Unavailable**, not a provider ac
 Native V2 automatically discovers project skills from directory-based
 `.opencode/skills/<id>/SKILL.md` definitions; the `skills` configuration array is for additional
 later-precedence sources, so an explicit `.opencode/skills` entry is not expected in
-`opencode.json`. The seven approved definitions, `metadata.json`, `alwaysApply: false`,
+`opencode.json`. The eight approved definitions, `metadata.json`, `alwaysApply: false`,
 `.opencode/SKILL-INDEX.md`, the
 validator allow-list, and `.opencode/skill-history/learnings.md` are static governance/history
 artifacts, not native loader proof. Runtime skill discovery is **Unavailable** here because
@@ -57,7 +94,7 @@ The documentation gate is separate and fail-closed. Run the validator, completen
 change-aware checker, isolated self-test, and scoped `git diff --check` as applicable; do not
 install hooks or treat the hook's presence as a check result.
 
-The approved project governance set has seven directory-based definitions and no Ponytail skill.
+The approved project governance set has eight directory-based definitions and no Ponytail skill.
 This static count is not native loader/discovery acceptance. The provider/model runtime probe
 remains **Unavailable** when it reports `provider.quota`, `Insufficient Balance`, and HTTP `402`;
 no runtime, loader, or provider acceptance is claimed from that failure.
@@ -82,13 +119,15 @@ physical mobile, true browser zoom, and actual screen-reader acceptance remain *
 The recorded aggregate is scoped dirty-worktree evidence; it does not itself establish
 release/export/commit/push acceptance.
 
-Bootstrap the pinned Python 3.11.15 environment before running checks:
+## Run local checks
+
+Bootstrap the pinned development environment:
 
 ```bash
 ./scripts/bootstrap.sh
 ```
 
-Fast feedback commands are:
+Run the focused checks appropriate to the changed feature:
 
 ```bash
 .dev-venv/bin/python -m pytest -m "not live"
@@ -98,45 +137,79 @@ Fast feedback commands are:
 ./scripts/build-frontend.sh
 ```
 
-`pytest` uses temporary data directories and injected fixture providers for deterministic
-domain, API, migration, repository, and backup checks. Tests marked `live` contact Yahoo
-Finance and are deliberately excluded from deterministic gates; a skipped or unavailable
-provider run is not a deterministic pass.
+Python tests use temporary databases and injected fixtures. Tests marked `live` contact Yahoo
+Finance and are excluded from deterministic gates; a skipped or unavailable provider is not a
+pass. Run checked-in isolated browser regressions with `make browser-test`, and the official
+headless MCP interaction with `make mcp-smoke`. `scripts/local-gate.sh` provides the fail-closed
+aggregate and records revision, architecture and results; a builder run is not independent QA.
 
-Browser tests run the real local app on an isolated loopback port with packaged fixtures.
-Use `make browser-test` for checked-in Playwright regressions and `make mcp-smoke` for the
-official headless MCP interaction. `scripts/local-gate.sh` is the make-independent,
-fail-closed aggregate runner and writes revision/architecture/result artifacts. Do not treat
-a generated artifact or builder run as independent acceptance evidence.
+The frontend build exports the pinned Next App Router UI and stages it for FastAPI; it does not
+start a Next server. The served candidate contains 48 generated files and four authored assets.
+Node remains build-only in the container, while the candidate OpenCode/Bun assistant worker runs
+privately in that same application container. Keep native runtime checks separate from static
+frontend and synthetic fixture checks.
 
-Theme and news checks stay deterministic by reusing existing fixtures. The fixture provider
-loads synthetic Yahoo-shaped entries from `src/stock_probs/fixtures/news.json`; API and service
-tests inject providers and monotonic clocks to exercise closed schemas, cache boundaries,
-failure suppression, stale fallback, size limits, persistence exclusion, and the single
-retrieval slot. Provider tests stub the direct `curl-cffi` session to pin one bounded request,
-the absolute deadline, malformed-data rejection, and safe links without contacting Yahoo.
+## Assistant verification (`R-ASTRA-120`)
 
-The frontend build check is intentionally static: `./scripts/build-frontend.sh` runs the pinned
-Next.js `16.3.5` / React `19.3` App Router export, typecheck, and frontend tests, then stages
-the served tree for FastAPI. It does not start a Next server. The generated `out/` and staged
-trees are ignored, while the 12 staged served files are packaged into the Python wheel. The
-production container keeps Node in a build-only stage.
+Use focused checks to isolate their boundaries. `tests/test_assistant_delete_session_boundary.py`
+checks live-session revalidation around conversation deletion. `tests/test_assistant_native_harness_lifecycle_flows.py`
+uses synthetic OpenCode HTTP responses; it does not run the native runtime. The provider-admin
+API-flow tests use manager stubs, while `tests/test_assistant_provider_real_manager_http_flows.py`
+uses the real `AssistantProviderManager`, a disposable encrypted vault, and public HTTP routes with
+synthetic or mocked vendor, native-runtime, and model-catalog inputs. Assistant-help capture,
+render, and finalization tests exercise those helpers; they do not establish app accessibility or
+final PR-bound guide acceptance. A focused test or synthetic run establishes only its declared
+scope, not live provider, native OpenCode, production, or release acceptance.
+
+The supervised native probe retains only normalized diagnostics. Model-discovery warnings use
+closed outcome names and bounded numeric counters for catalog reads and the activation barrier;
+raw log text, request URLs and owner identifiers are excluded. The existing limits remain four
+distinct warning rows and 512 occurrences, with counter and elapsed-time bounds. These rows can
+identify the failing stage; they do not establish a timeout cause, correlate an anonymous row to
+an owner, or waive the 120-second turn deadline and shared eight-call limit. Host-probe changes
+need fresh hash bindings and independent checks, separately from the application image.
+
+The candidate timing schema v5 adds nullable `pre_session_phase` and
+`pre_session_failure_code` fields to the existing anonymous terminal row. Values come from closed
+allow-lists and are held in the private execution/owner context until that row is emitted. A
+pre-session failure cannot coexist with provider request rows, a completed workspace summary, or
+a completed terminal status. The host parser preserves older timing schemas and rejects missing,
+forged, or contradictory v5 fields. These classifications distinguish the failed boundary; they
+do not prove its cause or establish native execution acceptance. No credentials, prompts, native
+identifiers, or owner identifiers belong in the retained projection.
+
+R-ASTRA-120 remains in progress, and its assistant candidate is disabled in production. Native
+runtime/provider, accessibility, actual combined 1 GB resource, PR-bound rollback, and release
+acceptance remain open. Use the
+[authoritative R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
+for current receipts and preserved result statuses.
+
+### Binding browser evidence to the served frontend
+
+Before browser QA or screenshot/capture evidence is claimed for the current frontend, run the full
+approved `./scripts/build-frontend.sh` build-and-stage path and verify that every file FastAPI serves
+matches the current `frontend/out` export byte for byte: compare all 48 generated Next files and all
+four authored `/assets` files (52 served files total) against their matching export paths. An
+npm/Next build alone does not prove which bundle the app serves. If any file differs, label results
+as stale-stage evidence, rebuild and stage, then rerun the affected browser checks and captures.
+The build/stage evidence is recorded in the R-ASTRA-120 ledger. A successful build/stage check alone
+is not browser acceptance.
 
 The Playwright journeys emulate system color preference and storage failure, switch among
-light/dark/system on both local pages, and exercise print, reduced-motion, forced-colors, CSP,
-and contrast behavior. News routes are fixture-fulfilled for not-requested, loading, fresh,
-empty, partial, stale, provider-failure, local-unreachable, capacity-busy, and superseded
-states. The mixed-feature journey changes theme, runs a forecast, expands from five to ten
-headlines, checks local-only application requests and ledger exclusion, then reopens the saved
-forecast without an automatic news request.
+light/dark/system on both local pages, and exercise print, reduced-motion, forced-colors, CSP, and
+contrast behavior. News routes are fixture-fulfilled for not-requested, loading, fresh, empty,
+partial, stale, provider-failure, local-unreachable, capacity-busy, and superseded states. The
+mixed-feature journey changes theme, runs a forecast, expands from five to ten headlines, checks
+local-only application requests and ledger exclusion, then reopens the saved forecast without an
+automatic news request.
 
 The M09 local performance profile records theme action, news cache-hit endpoint, ten-item render,
-response-byte, and provider-deadline evidence alongside the forecast concurrency and process
-resource rows. This is aggregate mixed-load evidence; do not describe the forecast-concurrency
-row as simultaneous news traffic unless a future artifact actually drives both. The pinned
-provider feasibility evidence and opt-in ACDC/SPY live news probes remain separate from the
-deterministic suite: record their command, environment, UTC, revision, result, and provider
-availability, and never convert an unavailable live run into a pass.
+response-byte, and provider-deadline evidence alongside forecast concurrency and process-resource
+rows. This is aggregate mixed-load evidence; do not describe the forecast-concurrency row as
+simultaneous news traffic unless an artifact actually drives both. Pinned provider-feasibility
+evidence and opt-in ACDC/SPY live-news probes remain separate from the deterministic suite; record
+their command, environment, UTC, revision, result, and provider availability, and never convert an
+unavailable live run into a pass.
 
 ## Historical application gate receipt (preserved)
 

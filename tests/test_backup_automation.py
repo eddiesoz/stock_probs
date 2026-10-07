@@ -15,6 +15,7 @@ from multiprocessing.synchronize import Event
 
 import pytest
 
+import stock_probs.api as application_api
 import stock_probs.backup as backup_module
 import stock_probs.cli as cli
 from stock_probs.backup import BackupError, BackupManager
@@ -602,7 +603,7 @@ def test_serve_lifespan_runs_observable_due_check_and_surfaces_failure(
         def create_if_due(self, interval):
             return {"trigger": "due", "status": "created", "interval_seconds": interval}
 
-    monkeypatch.setattr(cli, "create_app", lambda _settings: application)
+    monkeypatch.setattr(application_api, "create_app", lambda _settings: application)
     monkeypatch.setattr(cli, "_migration_operations", lambda configured: (Manager(), None))
     wrapped = cli._serve_app(settings)
 
@@ -648,7 +649,7 @@ def test_serve_lifespan_watchdog_bounds_a_non_cooperative_due_check(settings, mo
         return None
 
     monkeypatch.setattr(backup_module, "BACKUP_TIMEOUT_SECONDS", 0.001)
-    monkeypatch.setattr(cli, "create_app", lambda _settings: application)
+    monkeypatch.setattr(application_api, "create_app", lambda _settings: application)
     monkeypatch.setattr(cli, "_migration_operations", lambda configured: (SlowManager(), None))
     started = time.monotonic()
     with pytest.raises(BackupError, match="wall-clock time limit"):

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import smtplib
 import ssl
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 
 import pytest
@@ -475,8 +475,11 @@ def test_email_invitation_capability_is_false_when_smtp_is_not_configured(tmp_pa
         assert response.json()["error"]["code"] == "authentication_unavailable"
 
 
-def test_email_invitation_endpoint_rejects_member_role(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("path", ["/api/v1/auth/invites", "/api/v1/auth/invites/email"])
+def test_invitation_endpoint_rejects_member_role(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
 ) -> None:
     """An authenticated member cannot use admin invitation delivery."""
 
@@ -511,12 +514,99 @@ def test_email_invitation_endpoint_rejects_member_role(
         lambda *_args, **_kwargs: send_calls.append(True),
     )
     with TestClient(app) as client:
+        payload = (
+            {"github_id": 24680, "github_login": "member-login"}
+            if path == "/api/v1/auth/invites"
+            else {"github_id": 24680, "email": "member@example.test"}
+        )
         response = client.post(
-            "/api/v1/auth/invites/email",
-            json={"github_id": 24680, "email": "member@example.test"},
+            path,
+            json=payload,
             headers={"Origin": "http://testserver", "x-csrf-token": member.csrf_token},
             cookies=cookies,
         )
         assert response.status_code == 403
         assert response.json()["error"]["code"] == "authorization_denied"
         assert send_calls == []
+        assert store.auth_list_invitations() == []
+
+
+@pytest.mark.parametrize("path", ["/api/v1/auth/invites", "/api/v1/auth/invites/email"])
+def test_invitation_endpoints_still_require_csrf(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+) -> None:
+    """Reject browser mutation requests without CSRF before invitation side effects."""
+
+    app, store, _issue, cookies = _github_admin_app(tmp_path, mail_settings=_mail_settings())
+    submissions: list[dict[str, object]] = []
+
+    def fake_send(_settings: InvitationMailSettings, **kwargs: object) -> InviteEmailSubmission:
+        submissions.append(kwargs)
+        return InviteEmailSubmission("d" * 32, FIXED_NOW)
+
+    monkeypatch.setattr("stock_probs.api.send_invitation_email", fake_send)
+    payload = (
+        {"github_id": 24680, "github_login": "member-login"}
+        if path == "/api/v1/auth/invites"
+        else {"github_id": 24680, "email": "member@example.test"}
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            path,
+            json=payload,
+            headers={"Origin": "http://testserver"},
+            cookies=cookies,
+        )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "csrf_rejected"
+    assert store.auth_list_invitations() == []
+    assert submissions == []
+
+
+@pytest.mark.parametrize("path", ["/api/v1/auth/invites", "/api/v1/auth/invites/email"])
+@pytest.mark.parametrize("proof_state", ["stale", "cleared"])
+def test_invitation_mutations_require_fresh_totp_before_any_write_or_send(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    proof_state: str,
+) -> None:
+    """Reject invitations unless the session still carries fresh TOTP proof."""
+
+    app, store, issue, cookies = _github_admin_app(tmp_path, mail_settings=_mail_settings())
+    session = store.sessions[issue.context.token_hash]
+    if proof_state == "stale":
+        session["mfa_verified_at"] = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+    else:
+        session["mfa_verified_at"] = None
+
+    submissions: list[dict[str, object]] = []
+
+    def fake_send(_settings: InvitationMailSettings, **kwargs: object) -> InviteEmailSubmission:
+        submissions.append(kwargs)
+        return InviteEmailSubmission("e" * 32, FIXED_NOW)
+
+    monkeypatch.setattr("stock_probs.api.send_invitation_email", fake_send)
+    payload = (
+        {"github_id": 24680, "github_login": "member-login"}
+        if path == "/api/v1/auth/invites"
+        else {"github_id": 24680, "email": "member@example.test"}
+    )
+    headers = {"Origin": "http://testserver", "x-csrf-token": issue.csrf_token}
+
+    with TestClient(app) as client:
+        response = client.post(path, json=payload, headers=headers, cookies=cookies)
+
+    invitation_count = len(store.auth_list_invitations())
+    send_count = len(submissions)
+    assert response.status_code == 403, (
+        f"unexpected invitation authorization result: status={response.status_code}, "
+        f"stored_invitations={invitation_count}, mail_submissions={send_count}"
+    )
+    assert response.json()["error"]["code"] == "authorization_denied"
+    assert store.auth_list_invitations() == []
+    assert submissions == []

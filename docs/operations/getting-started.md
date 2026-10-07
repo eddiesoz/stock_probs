@@ -421,8 +421,13 @@ records. This is local evidence; take the live snapshot again if data changes be
 
 ### Use the deployment MCP
 
-Run `./scripts/deploy-mcp.sh` locally. Its separate stdio server exposes six typed tools:
-`inspect`, `plan_deploy`, `deploy`, `status`, `rollback`, and `refresh_operator_access(operator_ipv4_cidr)`.
+Run `./scripts/deploy-mcp.sh` locally. The independent E70 official Python SDK stdio client
+initialized and listed all eight expected operations and schemas: `inspect`, `plan_deploy`,
+`deploy`, `status`, `rollback`, `refresh_operator_access(operator_ipv4_cidr)`, `rehearse_pr_pair`,
+and `set_assistant_rollout`. It invoked no tool and passed no target variables. The active Codex
+task still exposes six; discovery in a fresh Codex task remains pending. An earlier separate
+read-only SDK checkpoint reported `status` only; it is not part of E70 and neither result is a
+promotion or rollout.
 The default release transport carries
 the reviewed revision, archive SHA-256, and full Docker image ID; the optional GHCR compatibility
 shape carries its immutable digest. The controller uses the restricted SSH helper and records only
@@ -440,6 +445,127 @@ state and the reviewed clean-tree/source gate. It does not accept a caller-suppl
 state, command, or credential. R-ASTRA-106 records a live refresh result with `50.21.67.178/32`
 applied to firewall `177236117`; the Linode console login uses Google SSO and SSH material remains
 separate.
+
+R-ASTRA-120 is not deployed. Production remains at
+`da2764e8477698fa7d686be93a4711e35478e802`, schema 12, with assistant rollout disabled. The
+candidate's PR-pair rehearsal and assistant rollout operation remain subject to verification. The
+rehearsal source creates a separate, labelled user-defined bridge for each candidate run, with
+Docker's default IPAM and no published ports. Recovery and one-shot CLI containers use `none`.
+Cleanup checks the exact network ID, name, ownership and empty endpoints after confirming owned
+containers are absent; listing fallback validates bounded full-ID/name rows and compares names
+locally. E197 passes synthetic/source verification only; native bridge and PR-bound recovery
+acceptance remain open. The
+current host-helper source requests `HostConfig.SecurityOpt` and requires exactly
+`["no-new-privileges:true"]`. Independent E70 selected profile tests passed 17/17 (32 deselected),
+but these are local mocked/helper checks; live Docker or production inspection remains
+**Unavailable**. The E19 runtime-verification gap is not evidence that a live container lacks the
+setting. The local schema-12-to-13 rehearsal directly checked `no_new_privileges`, app UID/GID
+10001, no effective or permitted capabilities, read-only root, and network isolation; this does not
+substitute for live inspection. An actual active-search kill passed on earlier schema-13 image
+`sha256:37c0c449e62e14ec83afc26163c59a69d17ae6a0a8d77133d180e4d68a3a1fc6`: it cancelled the turn,
+left a pending search unexecuted, preserved app readiness/private history and saved records, and
+erased worker state with zero OOM events. The current-image kill rerun remains pending. The
+schema-12-to-13 migration/recovery rehearsal passed for its declared same-disposable-volume scope,
+preserved post-migration writes, and recorded `PR_bound=false` and `actual_1GB_Linode=false`; it is
+not PR-bound rollback or actual 1 GB host evidence. The E39 model-activation-lock native run
+failed after owner 1's approved WebFetch timed out at `dns_lookup_timeout` after 8,963 ms, leaving no
+source or final answer; the DNS/network cause is unproven. Later same-image DNS-only comparisons
+found host and owned user-defined bridge resolution at 189 ms and 440 ms, while the default bridge
+timed out after 3,005 ms (E54). The instrumented guard diagnostic errored internally (E55), then the
+unchanged hash-pinned guard resolved in 203 ms with four public addresses and exact cleanup (E56).
+Production Compose uses a user-defined bridge; these checks do not establish the native fetch cause.
+A later same-image two-owner run passed its bounded native functional workflow over that bridge
+(E58), but its local 768 MiB sample peaked at the cap; required 1 GB evidence remains open. Worker
+readiness intermittently showed starting/unavailable while app readiness stayed ready; exact cleanup
+passed. The initial migration/hash mismatch remains historical (E63); independent pin QA later
+passed its selected helper scope (E65), and parent read-only verification confirmed the two actual
+manifest pin links (E78). Neither establishes live promotion or production configuration. No live
+promotion was attempted. E85's independent PR-helper test command passed 61/61 with two warnings;
+cached amd64 recovery-profile transfer and inspection, wrong-digest denial, and cleanup passed for
+that scope. Its overall receipt is **Fail closed** because `scripts/pr_rehearsal_seed.py` lacked a
+contemporaneous pre-run hash. A matching prior prepared hash and current hash do not replace that
+missing baseline. This was a fixed 384 MiB local recovery-profile check, not a full candidate/recovery
+pair rehearsal, PR-bound rollback, production inspection, or combined 1 GB test. Production was not
+changed. Do not use
+candidate operations for production promotion; see the
+[plan evidence](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
+
+### Ledger assistant help-guide capture pipeline
+
+The candidate includes a renderer for the illustrated HTML and tagged PDF user guide. It only
+accepts a capture bundle from the approved independent browser-QA directory, a fixed manifest name,
+and the exact reviewed 40-character application revision. After an independent full browser run
+passes and records the eight approved synthetic screenshot states, invoke it with explicit inputs:
+
+```bash
+node tools/assistant-help/render.mjs \
+  --capture-root test-results/r-astra-120-independent-ui-qa-final/browser \
+  --manifest test-results/r-astra-120-independent-ui-qa-final/browser/assistant-help-captures.json \
+  --revision FULL_REVIEWED_REVISION
+```
+
+The eight manifest keys are `desktop_light`, `desktop_dark`, `mobile_light`, `mobile_dark`,
+`forecast_sources`, `action_preview`, `action_receipt`, and `history_context`. The first four
+desktop/mobile captures and the four state captures use synthetic demonstration data. Each PNG
+must have its own SHA-256 and the same reviewed revision; the manifest and independent QA receipt
+bind those eight hashes and capture metadata together. Mobile screenshots use browser viewport
+emulation and are not physical-phone evidence. The renderer validates the approved root, file types,
+image bounds, current revision, receipt status, hashes, privacy labels, and symlink boundary before
+building previews. Review both generated formats for image loading, reading order, contrast,
+captions, and page layout; renderer tests alone do not establish visual acceptance. Generated guide
+previews are local ignored artifacts, not release files.
+
+At the current R-ASTRA-120 checkpoint, the first independent eight-capture manifest and QA receipt
+passed their declared scope, but trace review confirmed the screenshots used stale staged CSS. A
+frontend build/stage subsequently passed and all 48 staged files matched the current build output;
+the refreshed staged bundle contains the current composer placeholder rule. A replacement eight-
+image set has since passed independent capture-only review with 93 source bindings, all 48 served
+files matched to `frontend/out`, and the strict loader passing (E49). An HTML/PDF draft was rendered
+with eight screenshots and no external requests (E50). Initial visual review found a broken
+section-04 border/split figure and undersized action figures (E52). The repaired draft then rendered
+with 8 DOM images and 12 PDF pages (E61), but parent visual review **Failed** because the
+action-receipt image and caption were absent from all printed pages (E62). Later standalone guide
+HTML QA passed 180 checks across 12 states with raw axe 0/0 (E73), and visual review passed for the
+current 13-page PDF (E75). Parent's later structural inspection found 30 `/Strong` structure
+elements without a role map and 30 `pdfinfo -struct` wrong-type warnings (E80); PDF/UA and
+screen-reader acceptance remain unverified. Final PR-bound guide acceptance is pending. The fresh
+150-case browser execution
+and independent receipt passed its test scope with 147 passes and 3 expected skips (E59); raw axe
+cleanliness **Failed** on incomplete items (E60). The later current-stage full run **Failed** at
+145 passed, 2 failed, and 3 expected skips, with zero flaky (E83). Both failures repeated the same
+terminal-copy test expectation in desktop and mobile; traces showed the explicit
+EOF-without-completion warning and Reconnect control. All 197 source bindings and 48 staged files
+matched at run end, and cleanup passed, but guide-capture refresh was **Skipped** because the suite
+failed. Raw axe retained one incomplete contrast rule in each of four snapshots, so strict app
+accessibility remains **Fail**. A separate focused EOF browser retest passed 2/2 in desktop Chromium
+and Pixel 7 emulation (E86); the earlier anchored-selector attempt selected zero tests and is
+retained as a setup failure. A separate focused repaired responsive retest passed 3 cases with 1
+expected mobile skip (E87), verifying minimize/resume focus and 390×844 modal restoration alongside
+the checked-in saved-answer/theme case. These focused results do not change the full-suite failure
+or establish guide accessibility. Do not use the earlier stale bundle as current evidence or treat the separate
+standalone guide checks as final PR-bound accessibility acceptance.
+The current dirty working tree is not a reviewed release revision; do not bind the guide to it or
+send it with an announcement. The latest completed quiet full browser run failed at 145 passed, 2
+failed, and 3 skipped (E36); a newer attempt stopped before an aggregate and is **Unavailable**
+(E43: 85 passed, 2 failed, 1 interrupted, 2 skipped, 60 unrun; aggregate **Unavailable**). Owned-run
+cleanup later **Passed** (E48). Its measured 3.5403:1 dark-placeholder contrast was served from the
+old staged CSS confirmed in the trace; it is not the refreshed bundle's current-source result. A fresh full browser run on the
+refreshed stage has now passed its test scope (E59), with the raw axe result retained separately in
+E60. The independent E70 Python SDK client listed all eight deployment MCP operations and schemas
+but invoked none and passed no target variables. The active Codex task still exposes six, so Codex
+task-registry discovery of the two additions remains pending; no deployment or rollout is inferred.
+
+The R-ASTRA-120 candidate helper runs database presence/schema probes with an explicit Python
+entrypoint as UID/GID 10001. This prevents the container supervisor from treating `python -c`
+as an application CLI command. Schema inspection opens SQLite read-only and fails closed on
+invalid output. Independent helper tests passed for this change (E340); actual container probes
+and the PR-bound recovery rehearsal remain pending. The production helper has not been updated
+by this local repair. See the [MVP plan](../../MVP-PLAN.md) for its exact evidence scope.
+
+The local R-ASTRA-120 candidate image build and parent image/source review passed (E343).
+That result does not authorize promotion: native/provider/search, current-image kill, actual
+1 GB, accessibility, and PR-bound recovery gates remain open. Keep the existing Linode plan
+and backups within the US$15 monthly total cap, including applicable taxes; no resize was applied.
 
 Each promotion is serialized under a lock, starts with a verified application backup, runs
 readiness checks, and attempts code-only rollback only when the database schema remains compatible.

@@ -18,6 +18,59 @@ of tracked files and shell history when they could expose private locations.
 | `STOCK_PROBS_PORT` | `8000` | Integer from 1 through 65535. |
 | `STOCK_PROBS_FIXTURE_NOW` | unset | Timezone-aware ISO-8601 clock used with fixture-driven runs. |
 
+## Ledger assistant candidate settings
+
+These source settings belong to the R-ASTRA-120 candidate. They do not enable the production
+assistant, which remains disabled on schema 12 while the required acceptance gates are open.
+Do not enable rollout based on configuration presence.
+
+The managed worker source fixes `BUN_OPTIONS` to `--smol` and discards any caller-supplied
+value. This candidate asks Bun to collect garbage more frequently; it can reduce heap growth
+at the cost of latency. It is not an operator setting, a memory cap, or a verified resource
+improvement. The local image containing this setting completed search and fetch, but its
+two-user native run failed final-answer acceptance. A lower sampled peak does not establish a
+causal improvement or the combined 1 GB resource gate. The US$15 monthly Linode cap includes
+tax and existing backups; the 1 GB plan and backups remain in place.
+
+The current source also uses the native V2 build-agent system prompt to request concise final
+answers by default, preserving necessary caveats, citations, retrieval dates and user-requested
+detail. This is fixed product guidance, not an output-token override. Its latency effect remains
+unverified until a refreshed image passes the same native workload. The
+[V2 agent system documentation](https://opencode.ai/v2/docs/agents#system) describes the
+supported prompt field; configuration alone is not runtime acceptance.
+
+The maintained application catalog also defines
+`runtime_policy.native_output_token_budget`, currently 4096. Native model aliases receive a
+protocol-specific output body limit, and the provider gateway rejects requested limits above
+the catalog budget. Compatible chat, Responses, and Gemini requests default an omitted output
+limit to this value; Anthropic retains its required `max_tokens` field. This is an output ceiling,
+not a guarantee of answer length, latency, or provider acceptance. Loading is deferred until
+assistant use, and a missing or malformed policy fails closed. The pinned harness must still
+verify the body override through an actual native request before this can satisfy a release gate.
+
+| Variable | Default | Constraint and effect |
+| --- | --- | --- |
+| `STOCK_PROBS_ASSISTANT_ENABLED` | `0` | Boolean switch for candidate assistant service registration. Production Compose defaults it to false. |
+| `STOCK_PROBS_ASSISTANT_ROLLOUT` | `disabled` | One of `disabled`, `owner_canary`, or `invited`; production default is `disabled`. |
+| `STOCK_PROBS_ASSISTANT_CANARY_GITHUB_IDS` | empty | Comma-separated positive numeric GitHub account IDs for an owner-canary rollout. Empty by default. |
+
+The candidate's `disabled` transition persists its marker and invokes the fixed in-place
+assistant-kill client. Owner-canary and invited-user transitions recreate the application
+service. Configuration presence cannot verify the kill control, worker readiness, security
+profile, or recovery behavior. Keep rollout disabled until the exact-image runtime, resource,
+recovery, and deployment gates pass. The authoritative
+[R-ASTRA-120 evidence ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
+records individual failures, repairs, and current acceptance limits.
+
+The illustrated assistant help guide is generated from revision-bound browser QA artifacts, not
+from environment variables. Its renderer requires explicit `--capture-root`, `--manifest`, and
+`--revision` arguments; the manifest binds eight synthetic screenshot hashes and an independent QA
+receipt to the same reviewed application revision. Capture correctness, HTML accessibility,
+PDF visual review, and final PR-bound acceptance are separate checks. See the evidence ledger
+for their current results and [getting started](../operations/getting-started.md#ledger-assistant-help-guide-capture-pipeline)
+for the controlled capture/render workflow. A dirty working revision or an old preview is not a
+substitute for current reviewed captures.
+
 ## Authentication settings
 
 Authentication is disabled by default for the local development path. Production requires GitHub

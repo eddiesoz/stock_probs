@@ -119,6 +119,9 @@ class Settings:
     github_client_secret: str | None = None
     github_redirect_uri: str | None = None
     owner_github_id: int | None = None
+    assistant_enabled: bool = False
+    assistant_rollout_mode: str = "disabled"
+    assistant_canary_github_ids: tuple[int, ...] = ()
     invitation_mail: InvitationMailSettings | None = field(default=None, repr=False)
     bootstrap_username: str | None = None
     bootstrap_password: str | None = None
@@ -171,6 +174,31 @@ class Settings:
             raise ValueError("STOCK_PROBS_OWNER_GITHUB_ID must be an integer") from exc
         if owner_github_id is not None and owner_github_id < 1:
             raise ValueError("STOCK_PROBS_OWNER_GITHUB_ID must be positive")
+        assistant_enabled = _environment_bool("STOCK_PROBS_ASSISTANT_ENABLED", "0")
+        assistant_rollout_mode = (
+            os.getenv("STOCK_PROBS_ASSISTANT_ROLLOUT", "disabled").strip().lower()
+        )
+        if assistant_rollout_mode not in {"disabled", "owner_canary", "invited"}:
+            raise ValueError(
+                "STOCK_PROBS_ASSISTANT_ROLLOUT must be disabled, owner_canary, or invited"
+            )
+        assistant_canary_value = os.getenv("STOCK_PROBS_ASSISTANT_CANARY_GITHUB_IDS", "")
+        try:
+            assistant_canary_github_ids = tuple(
+                sorted(
+                    {
+                        int(value.strip())
+                        for value in assistant_canary_value.split(",")
+                        if value.strip()
+                    }
+                )
+            )
+        except ValueError as exc:
+            raise ValueError(
+                "STOCK_PROBS_ASSISTANT_CANARY_GITHUB_IDS must be comma-separated positive integers"
+            ) from exc
+        if any(value < 1 for value in assistant_canary_github_ids):
+            raise ValueError("assistant canary GitHub IDs must be positive")
         if environment == "production" and owner_github_id is None:
             raise ValueError("production requires STOCK_PROBS_OWNER_GITHUB_ID")
         bootstrap_username = os.getenv("STOCK_PROBS_BOOTSTRAP_USERNAME")
@@ -241,6 +269,9 @@ class Settings:
             github_client_secret=github_client_secret,
             github_redirect_uri=github_redirect_uri,
             owner_github_id=owner_github_id,
+            assistant_enabled=assistant_enabled,
+            assistant_rollout_mode=assistant_rollout_mode,
+            assistant_canary_github_ids=assistant_canary_github_ids,
             invitation_mail=InvitationMailSettings.from_env(),
             bootstrap_username=bootstrap_username,
             bootstrap_password=bootstrap_password,

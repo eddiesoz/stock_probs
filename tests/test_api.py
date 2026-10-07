@@ -65,6 +65,7 @@ def test_health_readiness_and_security_headers(client):
 
     assert health.json() == {"status": "ok", "service": "stock-probs", "api_version": "v1"}
     assert readiness.json()["schema_version"] == SCHEMA_VERSION
+    assert readiness.json()["assistant"] == {"enabled": False, "status": "disabled"}
     assert "default-src 'self'" in health.headers["content-security-policy"]
     assert health.headers["x-content-type-options"] == "nosniff"
     assert health.headers["x-frame-options"] == "DENY"
@@ -74,6 +75,37 @@ def test_health_readiness_and_security_headers(client):
     assert "/api/v1/operations/restores" in contract["paths"]
     assert all(path.startswith("/api/v1/") for path in contract["paths"])
     assert "database_path" not in str(contract) and "backup_dir" not in str(contract)
+
+
+def test_worker_unavailability_does_not_fail_application_readiness(settings):
+    class OfflineRuntime:
+        async def start(self):
+            return None
+
+        def status(self):
+            return {"status": "unavailable", "message": "private worker diagnostic"}
+
+        async def close(self):
+            return None
+
+    enabled = replace(
+        settings,
+        assistant_enabled=True,
+        assistant_rollout_mode="owner_canary",
+    )
+    application = create_app(
+        enabled,
+        FixtureProvider(),
+        assistant_runtime=OfflineRuntime(),
+        assistant_catalog=object(),
+        assistant_providers=object(),
+    )
+    with TestClient(application) as isolated:
+        response = isolated.get("/api/v1/readiness")
+
+    assert response.status_code == 200
+    assert response.json()["assistant"] == {"enabled": True, "status": "unavailable"}
+    assert "private worker diagnostic" not in response.text
 
 
 def test_readiness_is_fail_closed_until_lifespan_startup(settings):

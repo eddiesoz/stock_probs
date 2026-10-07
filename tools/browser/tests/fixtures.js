@@ -85,7 +85,7 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
   }
 
   await start();
-  return { url, restart: async () => { await stop(); await start(); }, stop };
+  return { url, logs: () => processState.stderr, restart: async () => { await stop(); await start(); }, stop };
 }
 
 exports.expect = base.expect;
@@ -97,6 +97,8 @@ exports.test = base.test.extend({
     const failedRequests = [];
     const expectedHttpFailures = [];
     const expectedRequestAborts = [];
+    const finiteAssistantStreams = [];
+    const assistantStreamNetworkEvents = [];
     page.on("console", (message) => {
       if (message.type() === "error") {
         consoleErrors.push({ text: message.text(), location: message.location() });
@@ -112,11 +114,54 @@ exports.test = base.test.extend({
           url: response.url(),
         });
       }
+      const url = new URL(response.url());
+      if (response.request().method() === "GET" && /^\/api\/v1\/assistant\/conversations\/[^/]+\/turns\/[^/]+\/events$/.test(url.pathname)) {
+        assistantStreamNetworkEvents.push({
+          kind: "response",
+          method: response.request().method(),
+          path: url.pathname,
+          url: response.url(),
+          status: response.status(),
+          contentType: response.headers()["content-type"] || null,
+        });
+      }
+    });
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (request.method() === "GET" && /^\/api\/v1\/assistant\/conversations\/[^/]+\/turns\/[^/]+\/events$/.test(url.pathname)) {
+        assistantStreamNetworkEvents.push({
+          kind: "request",
+          method: request.method(),
+          path: url.pathname,
+          url: request.url(),
+        });
+      }
+    });
+    page.on("requestfinished", (request) => {
+      const url = new URL(request.url());
+      if (request.method() === "GET" && /^\/api\/v1\/assistant\/conversations\/[^/]+\/turns\/[^/]+\/events$/.test(url.pathname)) {
+        assistantStreamNetworkEvents.push({
+          kind: "finished",
+          method: request.method(),
+          path: url.pathname,
+          url: request.url(),
+        });
+      }
     });
     page.on("requestfailed", (request) => {
+      const url = new URL(request.url());
+      if (request.method() === "GET" && /^\/api\/v1\/assistant\/conversations\/[^/]+\/turns\/[^/]+\/events$/.test(url.pathname)) {
+        assistantStreamNetworkEvents.push({
+          kind: "failed",
+          method: request.method(),
+          path: url.pathname,
+          url: request.url(),
+          error: request.failure()?.errorText || "unknown request failure",
+        });
+      }
       failedRequests.push({
         method: request.method(),
-        path: new URL(request.url()).pathname,
+        path: url.pathname,
         error: request.failure()?.errorText || "unknown request failure",
       });
     });
@@ -131,6 +176,15 @@ exports.test = base.test.extend({
       await use({
         expectHttpFailures: (...items) => expectedHttpFailures.push(...items),
         expectRequestAborts: (...items) => expectedRequestAborts.push(...items),
+        expectCompletedAssistantEventStream: ({ path }) => {
+          if (typeof path !== "string" || !/^\/api\/v1\/assistant\/conversations\/[^/]+\/turns\/[^/]+\/events$/.test(path)) {
+            throw new Error("Only an exact assistant turn-event path can use the finite-stream classification.");
+          }
+          if (finiteAssistantStreams.includes(path)) {
+            throw new Error("A finite assistant stream path was classified more than once.");
+          }
+          finiteAssistantStreams.push(path);
+        },
       });
     } finally {
       // Let Chromium deliver the resource console event paired with the final HTTP response.
@@ -163,7 +217,24 @@ exports.test = base.test.extend({
       base.expect(unexpectedConsoleErrors, "uncaught JS, CSP, or unexpected console errors").toEqual([]);
       base.expect(pageErrors, "uncaught page errors").toEqual([]);
 
-      const expectedAborts = expand(expectedRequestAborts)
+      const finiteStreamAborts = [];
+      for (const path of finiteAssistantStreams) {
+        const requests = assistantStreamNetworkEvents.filter((item) => item.kind === "request" && item.path === path);
+        const responses = assistantStreamNetworkEvents.filter((item) => item.kind === "response" && item.path === path);
+        const finished = assistantStreamNetworkEvents.filter((item) => item.kind === "finished" && item.path === path);
+        const failed = assistantStreamNetworkEvents.filter((item) => item.kind === "failed" && item.path === path);
+        base.expect(requests, `expected one finite assistant stream request for ${path}`).toHaveLength(1);
+        base.expect(responses, `expected one HTTP response for ${path}`).toHaveLength(1);
+        base.expect(responses[0]).toMatchObject({ status: 200 });
+        base.expect(responses[0].contentType || "").toMatch(/^text\/event-stream(?:;|$)/);
+        base.expect(finished.length + failed.length, `expected exactly one terminal browser outcome for ${path}`).toBe(1);
+        if (failed.length === 1) {
+          base.expect(failed[0].error, `unexpected finite-stream failure for ${path}`).toBe("net::ERR_ABORTED");
+          finiteStreamAborts.push({ method: "GET", path, error: "net::ERR_ABORTED" });
+        }
+      }
+
+      const expectedAborts = [...expand(expectedRequestAborts), ...finiteStreamAborts]
         .map((item) => ({ ...item, error: "net::ERR_ABORTED" }))
         .sort((a, b) => diagnosticKey(a).localeCompare(diagnosticKey(b)));
       failedRequests.sort((a, b) => diagnosticKey(a).localeCompare(diagnosticKey(b)));
@@ -186,6 +257,19 @@ exports.test = base.test.extend({
     );
     try {
       await use({ url: application.url, restart: application.restart });
+    } finally {
+      await application.stop();
+    }
+  },
+  assistantApplication: async ({}, use, testInfo) => {
+    const application = await launchApplication(
+      testInfo,
+      "assistant-runtime",
+      (port) => [path.join(root, "tools/browser/assistant_qa_server.py"), "--port", String(port)],
+      "Assistant FastAPI browser fixture",
+    );
+    try {
+      await use({ url: application.url, logs: application.logs });
     } finally {
       await application.stop();
     }

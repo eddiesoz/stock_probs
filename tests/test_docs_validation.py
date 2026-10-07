@@ -46,8 +46,12 @@ def documentation_repository(tmp_path: Path) -> Path:
         target = tmp_path / relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-    for name in ("README.md", "AGENTS.md", "MVP-PLAN.md", "MVP-ROADMAP.md", "SESSION-EXPORT.md"):
-        (tmp_path / name).write_text(f"# {name}\n", encoding="utf-8")
+    for name in ("README.md", "AGENTS.md", "MVP-PLAN.md", "MVP-ROADMAP.md"):
+        shutil.copy2(ROOT / name, tmp_path / name)
+    # Authored docs link to this exact MVP-plan section; copying the source target lets the
+    # fixture exercise real anchor resolution while the isolated repo stays otherwise minimal.
+    # The generated session export is only a path target here; docs link to no export anchors.
+    (tmp_path / "SESSION-EXPORT.md").write_text("# SESSION-EXPORT.md\n", encoding="utf-8")
     assert validate_repository(tmp_path) == []
     return tmp_path
 
@@ -223,11 +227,7 @@ def test_native_agent_profiles_fail_closed_on_sensitive_reads() -> None:
                 re.MULTILINE,
             )
         ]
-        broad_allow = max(
-            index
-            for index, rule in enumerate(read_rules)
-            if rule == ("*", "allow")
-        )
+        broad_allow = max(index for index, rule in enumerate(read_rules) if rule == ("*", "allow"))
         assert all((resource, "deny") in read_rules for resource in resources)
         for sensitive_path in paths:
             matches = [
@@ -282,9 +282,7 @@ def test_astra_evidence_index_link_mutation_fails(
 ) -> None:
     index = documentation_repository / "docs/evidence/index.md"
     index.write_text(
-        index.read_text(encoding="utf-8").replace(
-            f"({topic})", "(ponytail-reviews.md)"
-        ),
+        index.read_text(encoding="utf-8").replace(f"({topic})", "(ponytail-reviews.md)"),
         encoding="utf-8",
     )
 
@@ -348,7 +346,7 @@ def test_unexpected_markdown_page_mutation_fails(documentation_repository: Path)
 
 def test_frontmatter_parser_rejects_unquoted_values(tmp_path: Path) -> None:
     document = tmp_path / "example.md"
-    document.write_text("---\ntitle: Unquoted\ndescription: \"Useful\"\n---\n\n# Example\n")
+    document.write_text('---\ntitle: Unquoted\ndescription: "Useful"\n---\n\n# Example\n')
 
     _, _, issues = parse_frontmatter(document)
 
@@ -496,9 +494,7 @@ def test_project_skill_governance_name_catalog_mutation_fails(
 ) -> None:
     skill = documentation_repository / f".opencode/skills/{name}/SKILL.md"
     skill.write_text(
-        skill.read_text(encoding="utf-8").replace(
-            f'name: "{name}"', f'name: "{name}-stale"'
-        ),
+        skill.read_text(encoding="utf-8").replace(f'name: "{name}"', f'name: "{name}-stale"'),
         encoding="utf-8",
     )
 
@@ -560,9 +556,9 @@ def test_project_skill_references_use_current_docs_and_authority_paths() -> None
     guide = (
         ROOT / ".opencode/skills/development-conventions/references/write-docs/guide.md"
     ).read_text(encoding="utf-8")
-    sources = (
-        ROOT / ".opencode/skills/documentation/references/repository-sources.md"
-    ).read_text(encoding="utf-8")
+    sources = (ROOT / ".opencode/skills/documentation/references/repository-sources.md").read_text(
+        encoding="utf-8"
+    )
     checklist = (
         ROOT / ".opencode/skills/database-conventions/references/sqlite-change-checklist.md"
     ).read_text(encoding="utf-8")
@@ -608,10 +604,7 @@ def test_project_skill_references_use_current_docs_and_authority_paths() -> None
 
 def test_active_skill_instructions_use_native_role_ids() -> None:
     skill_root = ROOT / ".opencode/skills"
-    active_files = {
-        path: path.read_text(encoding="utf-8")
-        for path in skill_root.rglob("*.md")
-    }
+    active_files = {path: path.read_text(encoding="utf-8") for path in skill_root.rglob("*.md")}
 
     for path, text in active_files.items():
         assert not re.search(r"\bSOL HIGH\b", text, re.IGNORECASE), path

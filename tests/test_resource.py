@@ -42,6 +42,7 @@ def test_package_and_local_gate_cover_portable_runtime_assets():
         "static/next/**/*",
         "migrations/*.sql",
         "fixtures/*.json",
+        "assistant/*.json",
     ]
     assert "./scripts/build-frontend.sh" in makefile
     assert "frontend-build:" in makefile
@@ -255,7 +256,7 @@ def test_generated_next_stage_is_ignored_but_authored_assets_are_not():
     assert authored.returncode == 1
 
 
-def test_next_export_stages_only_served_files_and_packages_them_recursively():
+def test_next_export_stages_only_served_files_and_packages_them_recursively(tmp_path):
     source = ROOT / "frontend/out"
     staged = ROOT / "src/stock_probs/static/next"
 
@@ -279,6 +280,7 @@ def test_next_export_stages_only_served_files_and_packages_them_recursively():
     package_data = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["setuptools"]
     distribution = Distribution(
         {
+            "script_name": str(ROOT / "pyproject.toml"),
             "packages": ["stock_probs"],
             "package_dir": {"": "src"},
             "package_data": package_data["package-data"],
@@ -291,6 +293,15 @@ def test_next_export_stages_only_served_files_and_packages_them_recursively():
         Path(path).resolve().relative_to(ROOT / "src/stock_probs").as_posix()
         for path in command.find_data_files("stock_probs", "src/stock_probs")
     }
+    catalog_relative = "assistant/assistant_catalog.json"
+    catalog_source = ROOT / "src/stock_probs" / catalog_relative
+    assert catalog_relative in packaged
+
+    command.build_lib = str(tmp_path / "package")
+    command.run()
+    catalog_package = tmp_path / "package/stock_probs" / catalog_relative
+    assert catalog_package.read_bytes() == catalog_source.read_bytes()
+
     staged_files = {
         path.relative_to(staged).as_posix() for path in staged.rglob("*") if path.is_file()
     }

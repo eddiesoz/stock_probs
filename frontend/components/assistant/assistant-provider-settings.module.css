@@ -1,0 +1,42 @@
+.section{display:grid;gap:1rem;margin:1rem 0 1.25rem;padding:1rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-raised);color:var(--text)}
+.heading{display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.heading h2{margin:.1rem 0 0;font-size:1.2rem}
+.section button{min-height:44px;min-width:44px;padding:.55rem .8rem;border:1px solid var(--accent);border-radius:var(--radius);background:var(--accent);color:var(--panel);font:inherit;font-weight:700;cursor:pointer}
+.section button:disabled{opacity:.55;cursor:not-allowed}
+.intro{max-width:70ch;margin:0;color:var(--muted);line-height:1.5}
+.provider{display:grid;gap:.7rem;padding:.9rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel)}
+.modelPolicies{display:grid;gap:.8rem;padding:.9rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-raised)}
+.modelPolicies>div:first-child h3{margin:0;font-size:1rem}
+.modelPolicies>div:first-child p,.modelPolicy>p{margin:.25rem 0;color:var(--muted);font-size:.875rem;line-height:1.45}
+.modelPolicy{display:grid;gap:.55rem;padding:.8rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel)}
+.modelPolicy h4{margin:0;font-size:.9375rem}
+.modelPolicy .providerHeader p{margin:.2rem 0;color:var(--muted);font-size:.875rem}
+.modelPolicy>label{display:flex;align-items:center;gap:.55rem;min-height:44px;font-size:.875rem;line-height:1.4;cursor:pointer}
+.modelPolicy>label input{flex:0 0 20px;width:20px;height:20px;accent-color:var(--accent)}
+.modelPolicy strong{font-size:.875rem}
+.modelPolicy .methods{margin:0;overflow-wrap:anywhere}
+.providerHeader{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem}
+.providerHeader h3{margin:0;font-size:1rem}
+.providerHeader p,.methods{margin:.2rem 0;color:var(--muted);font-size:.875rem}
+.configured,.notConfigured{padding:.25rem .5rem;border:1px solid var(--good);border-radius:999px;color:var(--good);font-size:.875rem;font-weight:700}
+.notConfigured{border-color:var(--warn);color:var(--warn)}
+.provider label{display:grid;gap:.3rem;font-weight:700}
+.provider input,.provider select,.provider textarea{width:100%;min-width:0;min-height:44px;padding:.55rem .65rem;border:1px solid var(--edge);border-radius:var(--radius);background:var(--panel-raised);color:var(--text);font:inherit}
+.provider textarea{min-height:6rem;resize:vertical;line-height:1.45}
+.customReview{display:grid;gap:.7rem;padding:.8rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--panel-raised)}
+.customReview>p{margin:0;color:var(--muted);font-size:.875rem;line-height:1.45}
+.provider .customReview .policyAck{display:flex;align-items:center;gap:.55rem;min-height:44px;line-height:1.4;cursor:pointer}
+.provider .customReview .policyAck input{flex:0 0 20px;width:20px;height:20px;min-height:20px;padding:0;accent-color:var(--accent)}
+.provider a{color:var(--accent);font-weight:700}
+.stepup{margin:0;color:var(--muted);font-size:.875rem}
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
+.section .clearButton{border-color:var(--bad);background:var(--panel);color:var(--bad)}
+.clearConfirm{display:flex;flex:1 1 100%;flex-wrap:wrap;align-items:center;gap:.5rem;padding:.65rem;border:1px solid var(--bad);border-radius:var(--radius);background:var(--bad-soft)}
+.clearConfirm span{flex:1 1 100%}
+.clearConfirm button:last-child{border-color:var(--border);background:var(--panel);color:var(--text)}
+.error,.notice{margin:0;padding:.65rem .75rem;border-left:4px solid var(--bad);background:var(--bad-soft);color:var(--text);overflow-wrap:anywhere}
+.notice{border-color:var(--good);background:var(--good-soft)}
+.error button{min-height:44px;margin-left:.5rem}
+@media(max-width:699px){.section{margin:.65rem 0;padding:.75rem}.provider,.modelPolicies,.modelPolicy{padding:.7rem}.provider input,.provider select,.provider textarea{font-size:1rem}.actions>*{flex:1 1 100%}}
+@media(forced-colors:active){.section,.provider,.modelPolicies,.modelPolicy,.clearConfirm{border-color:CanvasText}.configured,.notConfigured{border-color:CanvasText;color:CanvasText}.section button,.section .clearButton,.clearConfirm button:last-child{border:1px solid ButtonText;background:ButtonFace;color:ButtonText}}
+@media print{.section{break-inside:avoid}.modelPolicy{break-inside:avoid}}

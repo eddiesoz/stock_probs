@@ -16,6 +16,18 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = "ghcr.io/jtmb/signal-ledger:sha-566baab14c298fb52b5edb3138d64cd3e9123311"
+IMAGE_SETTING = (
+    '"${STOCK_PROBS_IMAGE:?STOCK_PROBS_IMAGE is supplied by the fixed deployment helper}"'
+)
+CURRENT_ENTRYPOINT = ["python", "-m", "stock_probs.container_supervisor"]
+CURRENT_COMMAND = [
+    "serve",
+    "--host",
+    "0.0.0.0",  # noqa: S104 - the Compose publication remains host-loopback only.
+    "--port",
+    "8000",
+    "--allow-non-loopback",
+]
 NETWORK_NAME = "signal-ledger-production-ingress"
 SUBNET = "172.30.219.0/28"
 GATEWAY = "172.30.219.1"
@@ -68,6 +80,28 @@ def _compose(
     return result.stdout.strip()
 
 
+def _apply_current_supervisor_runtime(compose_text: str) -> str:
+    """Use the current Dockerfile's supervisor when a cached image supplies only packaging."""
+
+    image_line = f"    image: {IMAGE_SETTING}\n"
+    if compose_text.count(image_line) != 1:
+        raise AssertionError("production Compose must contain one fixed application image line")
+    runtime = (
+        "    entrypoint:\n"
+        "      - python\n"
+        "      - -m\n"
+        "      - stock_probs.container_supervisor\n"
+        "    command:\n"
+        "      - serve\n"
+        "      - --host\n"
+        "      - 0.0.0.0\n"
+        "      - --port\n"
+        "      - '8000'\n"
+        "      - --allow-non-loopback\n"
+    )
+    return compose_text.replace(image_line, image_line + runtime, 1)
+
+
 def _status(host: str, port: int, caller: str, forwarded_for: str) -> int:
     connection = http.client.HTTPConnection(host, port, timeout=5)
     try:
@@ -106,6 +140,35 @@ def _wait_ready(host: str, port: int) -> None:
             last_error = exc
         time.sleep(0.25)
     raise AssertionError(f"disposable production app did not become ready: {last_error}")
+
+
+def test_cached_image_fixture_uses_current_dockerfile_supervisor_runtime() -> None:
+    """Keep the legacy image cache from bypassing the current privilege-dropping supervisor."""
+
+    production_compose = (ROOT / "compose.production.yaml").read_text()
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    assert 'ENTRYPOINT ["python", "-m", "stock_probs.container_supervisor"]' in dockerfile
+    assert (
+        'CMD ["serve", "--host", "0.0.0.0", "--port", "8000", "--allow-non-loopback"]' in dockerfile
+    )
+    image_line = f"    image: {IMAGE_SETTING}\n"
+    runtime = (
+        "    entrypoint:\n"
+        "      - python\n"
+        "      - -m\n"
+        "      - stock_probs.container_supervisor\n"
+        "    command:\n"
+        "      - serve\n"
+        "      - --host\n"
+        "      - 0.0.0.0\n"
+        "      - --port\n"
+        "      - '8000'\n"
+        "      - --allow-non-loopback\n"
+    )
+    assert production_compose.count(image_line) == 1
+    assert _apply_current_supervisor_runtime(production_compose) == production_compose.replace(
+        image_line, image_line + runtime, 1
+    )
 
 
 def test_production_bridge_keeps_cloudflare_callers_separate_and_ignores_untrusted_headers(
@@ -153,13 +216,11 @@ def test_production_bridge_keeps_cloudflare_callers_separate_and_ignores_untrust
     legacy_app_env.write_text("STOCK_PROBS_TRUSTED_PROXY_HOSTS=127.0.0.1\n")
     production_compose = (ROOT / "compose.production.yaml").read_text()
     assert production_compose.count('"127.0.0.1:8000:8000"') == 1
-    image_setting = (
-        '"${STOCK_PROBS_IMAGE:?STOCK_PROBS_IMAGE is supplied by the fixed deployment helper}"'
-    )
-    assert production_compose.count(image_setting) == 1
+    assert production_compose.count(IMAGE_SETTING) == 1
     assert production_compose.count('STOCK_PROBS_PROVIDER: "${STOCK_PROBS_PROVIDER:-yahoo}"') == 1
     assert production_compose.count("      - signal-ledger-data:/data\n") == 1
     assert production_compose.count("    name: signal-ledger-production-ingress\n") == 1
+    production_compose = _apply_current_supervisor_runtime(production_compose)
     production_compose = production_compose.replace('"127.0.0.1:8000:8000"', '"127.0.0.1::8000"', 1)
     production_compose = production_compose.replace(
         "    name: signal-ledger-production-ingress\n",
@@ -204,6 +265,16 @@ def test_production_bridge_keeps_cloudflare_callers_separate_and_ignores_untrust
         effective_compose["services"]["app"]["environment"]["STOCK_PROBS_TRUSTED_PROXY_HOSTS"]
         == "127.0.0.1,::1,localhost,172.30.219.1"
     )
+    app_service = effective_compose["services"]["app"]
+    assert app_service["image"] == IMAGE
+    assert app_service["entrypoint"] == CURRENT_ENTRYPOINT
+    assert app_service["command"] == CURRENT_COMMAND
+    assert app_service["user"] == "0:0"
+    assert app_service["read_only"] is True
+    assert app_service["cap_drop"] == ["ALL"]
+    assert set(app_service["cap_add"]) == {"SETGID", "SETUID"}
+    assert "no-new-privileges:true" in app_service["security_opt"]
+    assert app_service["ports"][0]["host_ip"] == "127.0.0.1"
     blocker = f"oauth-bridge-conflict-{run_id}"
     probe_name = f"oauth-bridge-probe-{run_id}"
     blocker_created = False
@@ -309,6 +380,20 @@ def test_production_bridge_keeps_cloudflare_callers_separate_and_ignores_untrust
         assert not ipam[0].get("IPRange")
 
         _wait_ready("127.0.0.1", published_port)
+        processes = (
+            _run(["docker", "top", container_id, "-eo", "pid,uid,gid,comm"], environment)
+            .stdout.strip()
+            .splitlines()
+        )
+        process_identities = {
+            tuple(fields[1:]) for line in processes[1:] if len(fields := line.split()) == 4
+        }
+        assert ("0", "0", "python") in process_identities, "the fixed supervisor must run as root"
+        assert (
+            "10001",
+            "10001",
+            "stock-probs",
+        ) in process_identities, "the app must run under its fixed unprivileged identity"
         caller_a = "198.51.100.71"
         caller_b = "198.51.100.72"
         for index in range(8):

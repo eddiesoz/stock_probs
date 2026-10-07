@@ -1,5 +1,120 @@
 # Stock Probability MVP Roadmap
 
+Current R-ASTRA-120 follow-on (E588–E595): the canonical gate failed with 2,620 Python passes and four stale-contract fixture failures; all four repaired regressions subsequently passed independent QA. The new local image passed build validation, but its native two-owner run failed when the search/fetch user timed out before answering. The full browser attempt failed the compact context height and hit its aggregate deadline (57 passed, one failed, 126 unrun). The parent-reviewed two-row context repair passed the full frontend build, 67 tests and packaged-export parity; rendered independent retests and a complete browser aggregate remain pending. Strict desktop raw axe still fails on an incomplete contrast rule; no gate waiver is inferred. Implementation freeze has ended for these narrow repairs, and useful disjoint Luna lanes continue. Exact PR-head image binding, native completion, current-image kill, actual combined 1 GB resources, security/recovery, PR-bound rollback and final guide/release remain open. Read-only production inspect confirms the existing healthy schema-12 revision. Existing backups and the US$15 total monthly cap are preserved; no promotion, resize, rollout or email occurred.
+
+Latest R-ASTRA-120: full browser test scope passed 153/156 cases with three expected skips (E510), while strict raw axe remains **Fail**. The versioned Zen privacy disclosure is corrected; parent review also isolated the consent regression to change only one policy field at a time (E514). Independent privacy/catalog/consent QA passed four selected cases and both Ruff checks (E515). The current four-state axe diagnostic completed with unchanged inputs/stage, zero violations and four incomplete rules; opaque-prefix evidence is diagnostic only (E516). The corrected-catalog successor image built successfully for local build scope (E518), but its two-owner native run failed: owner 0 saw worker unavailable before a model event; owner 1 completed summary/search/fetch but timed out without an answer (E520). App readiness, zero OOM/max events, stable source/stage bindings and exact fixture cleanup passed for that failure scope; the cause remains unproven. Independent review found a stale page-context WebFetch approval gap (E521); the client/server repair is implemented and parent-reviewed (E522), and selected independent backend QA passed (E523). The incremental supervisor-purge repair passed selected independent checks (E526); its added socket cleanup assertion passed separately (E529). The full approved frontend build/stage passed 57 tests and verified all 52 served files (E525). Focused desktop/emulated-mobile WebFetch checks passed 4/4 after correcting their test fixture (E527/E530/E531). Open-panel readiness and policy recovery repair received parent and independent scoped source review (E533/E535); the fresh full frontend build/stage passed 59 tests with all 52 served files matched (E534). The initial selected recovery/WebFetch browser aggregate failed 12 passed/6 failed (E536). After a one-spec fixture/scheduling repair (E537), the independent retest failed 16 passed/2 failed with stable inputs/stage and complete cleanup (E539). Parent source review confirmed sharing and refresh controls disappear on context failure. The stable-control and owned-error repair is implemented and reviewed (E540); its fresh full frontend build/stage passed 60 checks with 52 exact served/export pairs (E541). The independent 18-case context-recovery browser run failed 17 passed/1 failed at mobile incomplete-target resolution (E543), with all recovery cases passing. The refresh control now has its own mobile row (E544); the fresh approved frontend build/stage passed 60 checks and all 52 served/export pairs (E545). The independent desktop/mobile retest passed all 18 selected cases with stable source/stage bindings and verified cleanup (E546). Mobile raw axe still reports one disclaimer contrast incomplete, so strict accessibility remains Fail. Successor preparation path/cycle fixes and fresh bindings were reviewed (E547–E549); the same-container image built successfully with unchanged 147-source/52-file bindings (E550). The authorized native launcher failed before Docker because its private scratch parent was missing (E554); source/stage parity passed and no model or tool calls ran. The minimal private-scratch repair passed independent source, synthetic and prepare-only checks (E555–E556). A second invocation was held before runtime because the parent left authorization review fields pending (E557). After correcting that metadata, the single authorized native functional attempt failed for both owners before model-session events with worker_unavailable (E558). App readiness, unchanged source/stage and exact fixture cleanup passed; no answer or tool acceptance was established, and root cause remains unproven. Source-only review completed without establishing a runtime cause or a supported catalog-disable configuration (E560). The bounded anonymous pre-session diagnostic refinement passed parent review and 133 independent synthetic checks (E561–E562); turn/tool budgets and provider policy are unchanged. The canonical check failed with 2,617 Python passes and one worker-recycle regression failure (E563); the test-only incremental-tick repair passed independent scoped QA (E564), while a new canonical aggregate remains pending. Frontend advanced history/export/Markets controls are integrated, with independent focused checks and the fresh full 66-test build/stage passing (E565/E568). Backend schema and indexed-query repairs remain under source review (E566). One ignored mobile line-height candidate failed to clear strict axe and was not integrated (E567). Exact obsolete local image cleanup reclaimed space (E569); no native or production result follows. All available worker slots are being used for disjoint work under the task-scoped parallel policy. Release gates remain open. Exact unused local-image retirement reclaimed storage without affecting protected images, containers or volumes (E538). No recovery/native acceptance is inferred. Native completion, current-image kill, actual combined 1 GB resources, accessibility, current canonical gate and PR-bound rollback remain open. Read-only deployment MCP inspect reconfirmed the healthy schema-12 production baseline (E532); no promotion or rollout was invoked. The US$15 monthly total cap includes backups and taxes; the 1 GB host and backups remain, with no resize, deployment, rollout or email.
+
+
+Current R-ASTRA-120 verification: E167/E168/E171 pass disposable local native functional,
+shutdown and exact-cleanup scopes. E173 is an earlier canonical failure at 84.49% coverage; E191
+remains a historical **Fail** with 2,052 passed, two failed, three skipped, four deselected, and
+85.24% coverage. E198 later **Passed** its frozen native-x86_64 dirty-tree canonical scope with
+2,108 passed, three skipped, four deselected, and 85.25% coverage; its runner is **TERMINATED** and
+the source freeze was released after review. E198 predates E199 and the later source changes, so it
+does not accept the current tree. E194 passes three serial selections of the two test-only repairs;
+E180 independently passes 99 new boundary tests. E182's interrupted rerun remains Unavailable
+despite its contradictory Pass receipt. E179 passes browser test scope (149 passed, three expected
+skips); strict app axe remains **Fail**. E176/E178/E181 pass synthetic captures, rendering and
+standalone HTML/PDF draft review; E200's `pdfinfo -struct` diagnostic has zero `/Strong` lines but
+does not establish PDF/UA or final PR/release binding. E80's earlier structural warnings remain
+historical. E201, E256, and E301 are earlier production observations. E329 is the latest
+receipt-backed current-task read-only inspect/status pair: both confirm revision `da2764e8477698fa7d686be93a4711e35478e802`,
+image `sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1`, schema 12,
+`failed=null`, and loopback-only; inspect returned health `ready`. Neither call returned rollout,
+RAM, billing, or user/browser access. E337 later reports a parent read-only follow-up with the same
+ready schema-12 baseline, but its separate receipt and exact observation time are **Unavailable**;
+current rollout mode remains **Unavailable**.
+
+
+E284's canonical local-gate aggregate remains a historical **Fail**: 2,298 Python passes, 2
+failures, 3 skips, 4 deselected, and 85.15% coverage. E286 independently passed the two selected
+confirmation HTTP-flow tests and reproduced the host-clock/TestClient expired-cookie-jar mismatch;
+this does not change E284's aggregate or imply an application-auth defect. E288 is the latest
+complete canonical local check-profile **Pass**: 2,300 Python passes, 3 opt-in skips, 4 deselected,
+90 warnings, 85.230871% coverage, 55 frontend checks, and all three required checks complete, with
+1,048 source pins and 52 served/export bindings unchanged. The opt-in native OpenCode boundary and
+provider-wire skips remain separate gates. E287 independently passed its Sharp 0.35.5 dependency,
+55 frontend, zero-finding audit, and 52-file parity scope; E289 passed wrapper preparation/static review only at its preparation checkpoint; E292/E293 later record a separate build and failed native trial. At the E290 checkpoint, exact-current-source raw axe was **Unavailable** because retained snapshots used a different source binding. E300 later ran four exact-current-stage snapshots: selected Playwright passed 4/4, but strict raw axe **Failed** its zero-incomplete criterion, with zero violations and one incomplete contrast rule per snapshot (one unresolved desktop node and three per emulated-mobile snapshot). This targeted result does not establish full-app accessibility. No speculative UI repair is inferred. E291 preserves a current-image
+build attempt **Fail** on `ENOSPC` and a separate exact plan/disk recovery **Pass** only; the
+cached retry was pending at that checkpoint. E292 later passed Linux/amd64 build identity and
+source/stage binding (147 inputs, 52 served/export files); E293 failed the two-owner native
+functional criteria before either answer or tool activity. CPU throttling was observed, not proven
+causal, and the sample is not actual 1 GB acceptance. E294 failed synthetic geometry assertions;
+E295 passed corrected eight-state synthetic geometry but retained axe incompletes, so strict app
+axe remains **Fail**; E300 later recorded a targeted exact-current-stage strict raw axe **Fail**, not
+the earlier E290 source-binding **Unavailable**. E296/E297 passed structure and visual review of the
+exact 13-page draft PDF only; PDF/UA and final PR-bound acceptance remain open. E298's independent timing-observer source acceptance **Failed** because outer-generator close did not explicitly await the nested provider proxy, despite 201 timing/probe tests, 8 selected proxy tests, Ruff and format passing. The builder separately reported a pre-repair close regression failure at `19:16:40Z`; no failure receipt, hash or exact selector was saved. E299's independent recheck **Passed** repaired selected source/test scope (202 timing/probe and 4 proxy cleanup tests, Ruff/format) and parent integrated review **Passed**; neither proves native latency cause or provider/runtime success. E300's selected browser execution passed 4/4 while its strict axe criterion failed; source/stage bindings and cleanup passed, and physical mobile/screen-reader checks remain unavailable. E301 reconfirmed production schema-12 ready/loopback state but did not return rollout mode. E302 **Passed** a local Linux/amd64 image build and source/stage binding for image `sha256:9628a3cfddb86809efd44e3cd93829362db190702665eda488e69790f34b0bbc` (context `823777afc3ec3df12e0aa904463d17c9ed3dd6c57efd56cf0820735771e04bf6`): 147 source inputs and all 52 served/export files matched; owned cleanup passed. Parent binding review passed. This is build-only; E304 later records the native functional result for this image. E303 **Passed** manual contrast/visibility review of all 8 retained axe-incomplete nodes only: ratios were 6.4185–15.4826:1, full text was visible, each target had two unclipped in-viewport line rectangles and six sampled topmost-target hits, and no foreground obstruction was observed. Strict raw axe remains **Fail**; no cause, waiver, or full accessibility acceptance follows. See the plan for exact receipts. E304 independent native functional acceptance on the E302 image **Failed**: owner 0 completed in 63.632 seconds with a 779-byte answer, but conversation deletion failed (exact status/error unavailable); owner 1 approved search and fetch, received nine search sources and one fetch source, then timed out after 120.756 seconds without an answer. Cause remains unproven. The 768 MiB sample is not actual 1 GB acceptance, and CPU throttling is not causal proof; exact cleanup and source/stage bindings passed. No retry or kill ran. E306 independently passed selected deletion-diagnostic tests and source review only; historical baseline bytes and a deletion cause remain unavailable. E307 passed Linux/amd64 build and source/stage binding for a new image (147 inputs, 52 served files). E308 then **Failed** native functional acceptance on that image: both turns returned `provider_unavailable` after the model-session event without an answer, workspace summary, or search/fetch activity; both conversation deletes returned HTTP 200. The timing projection is invalid and model identity was not retained, so no provider cause or LongCat availability is inferred. Cleanup and bindings passed; no retry or kill ran. E309 independently **Passed** warning-projection QA for its selected source/test scope (209 tests, two deprecation warnings, Ruff check/format, and three unchanged source/test pins); it did not run native/provider work. Its first parent AST-helper lookup failed on a literal-only `OUTPUT_LIMIT` match, then the corrected source review completed (review SHA-256 `020288c1388434fbcf0656da8edbe9d8e87c03027626b21e03ee832e54d0f114`). E310 then **Failed** the one native functional attempt on E307’s image: both turns returned `provider_unavailable` after model-session, without answers, workspace summaries, or search/fetch. Exact selected model identity was unavailable. Two anonymous timing rows show eight `safe_protocol_error` attempts per turn, zero sanitized chunks/bytes, and the same `native_error_unknown` terminal warning; this supports pre-chunk failures only, with provider cause and upstream status unproven. Owner 0 conversation deletion returned HTTP 503 `assistant_cache_clear_pending`; owner 1 returned HTTP 200 `none`. The 768 MiB failure sample peaked at 542,703,616/805,306,368 bytes with zero high/max/OOM deltas; CPU throttling was observed, not causal evidence or actual 1 GB acceptance. Exact cleanup and 147-input/52-file bindings passed. A parent prefix-guard helper setup failure was corrected and was not a product failure. No retry or kill ran. E311 independently passed selected cache-clear/runtime (9), supervisor (4), HTTP-boundary (8), and API-delete (2) tests, plus a synthetic child `/api/info` supervisor purge/restart probe. The original QA pin set omitted imported `tests/native_assistant_probe.py`, so its before/after binding is **Unavailable**; its optional integrated HTTP delete harness failed during startup with `diagnostic_unknown`, cause unproven, and no retry. E312 passed a separately pinned 9-test runtime-only rerun with 54 unchanged inputs, resolving only that runtime test binding gap; it does not replace E311’s missing original pin or unavailable integrated HTTP result. E313 independently passed selected closed-stage provider-diagnostic source review, 413 tests and Ruff checks; this is not native/provider acceptance, and the eight registered observer ordinals are not an HTTP retry limit. E314 passed `./scripts/build-frontend.sh` with 55 frontend checks, 82 unchanged build inputs, and all 52 served/export files byte-matched; no browser, axe, image, or runtime result follows. E315’s independent current-source axe-stack diagnostic passed execution 4/4 with zero errors, retries, or skips across desktop Chromium (1440×1000) and emulated Pixel 7 (360×800), Light and Dark. Strict raw axe still **Fails** its zero-incomplete criterion: there were zero violations and one incomplete contrast rule in each state. Six incomplete targets mapped exactly to 12 text rectangles; ordered-stack differences appeared only below the opaque panel, supporting underlay variation only. Cause, repair, foreground obstruction, and accessibility acceptance remain unproven. Source/scaffold bindings, all 52 served/export files, and exact owned cleanup passed. Earlier closure/setup and preliminary verifier failures are preserved as separate audit history; the corrected final audit did not retry the browser run or edit source. Physical mobile, actual screen-reader, and true-zoom results remain **Unavailable**. E316 passed one local Linux/amd64 image build for build and source/stage binding only (image `sha256:9ef936567f2e270f9caac07a7f002ccc52438580a3a9be8d5ad3b6c1f31df27a`, context `bbc8bd55746f92dd39a08e56d564e898cbf09f5532ac67ff5f9573c8f1739880`): all 147 input files remained bound, all 52 served files matched the export, and the owned workspace was removed. Docker `Config.Env` was not inspected; no credentials were read and no native/provider run on this image, publish, or production action occurred. E317 then records a builder-run native functional **Fail** on E316’s image; independent QA remains pending after reviewer launch was rejected by the tool registry thread limit. Both owners returned `provider_unavailable` after model-session, without an answer, workspace summary, search, or WebFetch. Model-selection predicates matched, but exact model identity was not recorded. Two timing rows show eight `safe_protocol_error` attempts each, zero sanitized chunks/bytes and zero provider-stream-failure marker rows, with two `native_error_unknown` terminal warnings; provider/upstream cause is unproven. Both conversation DELETE calls returned HTTP 200, which does not establish that E310’s earlier 503 cause was fixed. The 147 source-input and 52 served/export bindings and exact cleanup passed. The 768 MiB failure sample peaked at 546,971,648 bytes with zero high/max/OOM deltas; throttling proves neither cause nor actual 1 GB acceptance. No retry, kill, provider fallback, or production/release action occurred; at the E317 checkpoint, no further native run or repair was authorized. E318 records builder source-preparation **Pass** for focused pytest exit 0 and Ruff, but the final test count is **Unavailable**; the earlier 14-failure, 1-failure, and terminal-metadata-unavailable attempts remain historical, and parent review was static only. E319 records read-only QA by a Luna build worker (not a formal luna-qa-profile run): the named timing/probe files exited 0 with counts **Unavailable**, the selected API JUnit passed 18/18, and six source/test pins matched. E320 records an eight-case builder scroll/layout diagnostic execution **Pass**, while 12 of 16 baseline/candidate axe analyses retained incompletes and the scrolling candidate did not improve contrast; strict raw axe remains **Fail**. The 21 source pins and 52 served/export bindings matched. Mobile was emulated, screenshots were absent, and no app-accessibility acceptance follows. E292/E293 concern the pre-repair image, and canonical E288 predates the timing cleanup.
+
+E187 passes repaired process-inspection fixtures; E189 is native-wire preparation review only with
+its old image pin held. E188's synthetic credential gap remains historical beside E190's eight-case
+repair pass. E192's original known-model exclusion P2 remains recorded; E195 passes the centralized
+exclusion repair's selected local scope. E193 leaves strict raw app axe open. E196 records the
+network-bridge exact-name absence P2; E197 passes its 83 synthetic tests and selected source/lint
+scope, without native Docker or PR-bound recovery acceptance. E199 preserves redirect consent P2
+SG-01. E202 is partial builder evidence; E203 independently **Failed** on permission/message
+ordering and test-inventory scope. E209 later **Passed** selected redirect-order runtime, helper,
+mocked Bun and inventory checks, while its old circular mock timeout remains diagnostic-only and
+native integration remains **Unavailable**. E204's five synthetic provider paths remain **Failed**;
+E205 passes two separate ASGI body-chunk revocation cases before dispatch. E206–E208 record scoped
+builder transport checks, a fixture-only 99-case pass, and parent source review. E210 independently
+passes its selected synthetic provider authorization batches, without erasing E204 or proving live
+provider/native/UI behavior. E211's current Linux/amd64 image build passed build and 52-file stage
+binding, but E212's one-shot verifier rejected worker readiness on stale fixed guard/manifest pins;
+the app and worker were not started and exact cleanup passed. E213's pin repair passed 14 selected
+tests and lint/format as builder evidence; E216's independent supervisor-pin QA also passed its
+14-test, lint/security/format and 42-binding scope. E215 built a fresh image from 147 inputs with 52
+served files matched. E218's one-shot verifier passed on that image under network-none, read-only
+root, zero capabilities, no-new-privileges, and UID/GID 10001; no app or worker started. Parent
+review confirmed the facts/log/pins but did not verify owned-container cleanup beyond `--rm`. E219
+passed the build/source-binding review. E220's separate synthetic wire setup failed before
+container start on the runner's expected four `.Mounts` entries versus Docker's two read-only binds
+and separate tmpfs report; exact cleanup passed. This is a setup failure, not native behavior.
+E221's builder-only ignored runner repair passed six Docker-free metadata tests and selected
+lint/security/format checks. E222's first same-image wire recheck **Failed** its aggregate after the
+child exited 0; E223 showed ten required assertions true, 11 authenticated listed tools, and a null
+readiness count rejected by the then-current parser. E226's parser repair passed 22 Docker-free tests,
+but E227's next aggregate still **Failed**. E231 isolated two false generic Google body assertions;
+the parent diagnosis points to Google's model-in-path and `streamGenerateContent?alt=sse` shape, with
+raw body contents unobserved. E235's ignored-runner repair passed 40 independent Docker-free tests,
+but the actual synthetic native run **Failed** with `probe_schema_row_invalid`; child exit and
+owned cleanup passed, while broader Ruff retained 14 findings. Wire acceptance remains open.
+E224's native functional attempt failed before model calls at seed and initial cleanup failed; E225
+later passed exact cleanup. E228's driver guard repair passed 14 Docker-free tests, but E230's next
+same-image functional attempt **Failed** after rejecting malformed worker status. App/worker UID
+profiles and stable source/stage binding were observed; exact cleanup passed, while the underlying
+worker failure remains **Unproven**. Native functional and kill acceptance remain open. E229's iframe
+prototype attempt **Failed** at setup on the preserved earlier spec; new wait-based tests were
+skipped and axe did not run. E232's later iframe prototype **Failed** its desktop-Light contrast
+and parity criteria. E233's failure-only projection repair passed builder and parent unit scopes;
+E234's native functional recheck still **Failed**, with owner 1 timing out after eight search
+sources and before fetch approval or an answer. Its cause is unproven and cleanup passed. E236's
+16-snapshot text-structure diagnostic completed, but no variant cleared all four raw-axe states;
+no tracked UI repair follows. E217 is a parent
+source/log consistency review of E210, with no test rerun. E213's held axe preflight and E229 do not
+establish accessibility acceptance. E214's pinned compile-source review
+is not RAM evidence. Native worker/function, live provider,
+Docker-security, strict accessibility, actual 1 GB, final guide, PR-bound rollback, deployment and
+release gates remain open. E237's narrow schema correction passed its builder scope; E238's actual
+current-image synthetic native wire run **Passed** all three provider protocols, 11 MCP declarations,
+and Google tool continuation. E239's parent review confirmed 147 current image-source bindings and
+owned cleanup. These local 1.5 GiB synthetic results do not resolve E234's live search timeout or
+the remaining feature/resource/accessibility/release gates. Broad runner lint/format failures remain
+recorded. E240–E241's paint-stack diagnostic/source audit explains the incomplete stack comparisons
+but leaves strict raw axe **Fail**; no glyph contrast result or tracked UI repair follows. E243's
+independent diagnostic review **Failed** three reporting/confirmation contracts despite 281 unit
+tests passing. E244 independently passes the repaired 297-test and 31-negative-case scopes; E246 records parent source review and authorization for one new native trial; E248 failed with one completed answer and one timeout before search. Sampled memory had no limit/OOM events, which does not establish the cause or actual 1 GB acceptance. E245's combined UI candidate clears desktop raw axe but retains the mobile disclaimer incomplete and a code-whitespace fidelity issue; strict accessibility remains Fail.
+E249 independently confirms E248's failed native functional outcome and passing bindings/cleanup;
+outer shell exit remains **Unavailable** despite the pinned runner mapping failure status to exit 1.
+E250's later fixture-only UI follow-up passes content/code fidelity, keyboard traversal and mobile
+geometry, but mobile Light/Dark each retain one incomplete raw-axe disclaimer item, so strict app axe
+remains **Fail**. E251's builder-reported frontend build/test/stage checks do not establish source
+acceptance: E252 found an unbound CSS-module selector, and E253 found readiness styling applied to
+the wrong element with the mobile font-size override removed. E254's builder repair binds the
+disclaimer selector and passes its contract/build/stage scope; it does not resolve E253 or establish
+browser acceptance. The readiness repair, independent browser review and a new native image are
+pending. The US$15 monthly total cap and existing
+1 GB/backups remain unchanged. No promotion, deploy, resize, rollout or email is claimed.
+
 ## Status Snapshot
 
 ### Current approval status
@@ -64,27 +179,325 @@ and `60` focused tests, recorded in the [MVP plan](MVP-PLAN.md). Runtime skill d
 **Unavailable** until directly verified in a fresh task. The R-ASTRA-118 retry already covered its
 deployed release, so no duplicate announcement is due.
 
-`R-ASTRA-120` is **In progress; implementation authorized**. Planning and the declared static
-documentation scope are complete; implementation has resumed, while feature acceptance and release
-remain pending. The ordered plan, limits, route/feature matrix,
-same-FastAPI-image native OpenCode V2 architecture, security controls, and pre-/post-write recovery
-paths are in the [MVP plan](MVP-PLAN.md). Concept B, the current Tools baseline, and the existing
-design tokens are documented separately in [`docs/develop/design-system.md`](docs/develop/design-system.md).
-The category index and reference images are present. Static validator registration and documentation
-coverage checks **Passed** (9 categories, 14 topics, 8 skill-governance entries; 138 mapped files;
-change-aware coverage 10 changed files, zero violations). The documentation test suite was not run.
-Isolated
-V2.0.7 API discovery passed only for discovery: its provider catalog was empty and integration
-discovery returned 229 descriptors. Credential-free Zen, model response, MCP, native V2 websearch,
-published no-training terms/app consent enforcement, security, feature/mobile, accessibility, and
-combined 1 GB resource acceptance are not established. Native model, MCP, and websearch execution
-results are **Unavailable**; credential-free Zen remains **Pending**. No key/signup action occurred.
-Source implementation is authorized and in progress; required checks and release remain **Pending**.
-The user's subsequent correction requires the same-container harness and OpenCode V2's built-in
-search; TinyFish, custom search replacements, and new mandatory account-based services are excluded.
-All required checks must pass before merge and promotion; deploy disabled, then owner-canary, then invited-user enablement. A tested PR-bound
-rollback is mandatory, with no backup restore over post-release writes. No release readiness is
-inferred from design, images, files, or configuration.
+`R-ASTRA-120` remains **In progress; implementation authorized**. Candidate source is present,
+but no assistant release or production rollout is accepted. E329 is the latest receipt-backed
+inspect/status pair; it reconfirmed the schema-12 ready/loopback baseline but did not return rollout,
+RAM, or billing fields. E337's later parent-reported read-only follow-up returned the same baseline,
+without a separate receipt or exact timestamp. E334's synthetic app-integration retry failed after
+runtime readiness and before provider activity; E335 later passed a bounded local synthetic
+identity/header-forwarding capture, not a public-provider or search run. E256's earlier inspect confirms
+the production revision `da2764e8477698fa7d686be93a4711e35478e802`, image
+`sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1`, schema 12 ready,
+`failed=null`, and loopback-only. It does not expose current rollout mode, RAM/billing, user
+authentication, browser content, or assistant feature acceptance. Earlier rollout-disabled evidence
+is not a current rollout observation. The earlier functional evidence E248 **Failed**: owner 0
+answered while owner 1 timed out before search/fetch; E249 independently confirmed that result with
+all required pins and cleanup stable. The later current-image E267 two-owner run also **Failed**:
+owner 0 returned `provider_unavailable`, owner 1 timed out, and neither answered or reached
+search/fetch approval or source. E268 independently verified its result, timing schema, bindings and
+cleanup. E271 separately passed host-only warning-parser test/Ruff scope; it is not runtime evidence
+and its parser files are excluded from the current image. E272 then **Failed** a second two-owner
+trial on that unchanged image: owner 0 answered at 80.4 s, while owner 1 reached native search and
+approved IANA fetch but timed out without an answer. E273's independent result-integrity review
+**Passed** receipt/source scope only and did not rerun the native trial or recheck cleanup. The
+empty captured warning list does not establish absence of other runtime errors. Anonymous rows A/B
+report workspace-summary, first-sanitized-chunk, and end times for their corresponding second
+provider requests; the rows have no owner mapping and later-chunk activity is unknown. They do not
+establish a stream stall, provider success, or cause. A separate parent source trace confirmed
+optional `max_tokens` validation from 1 through 4096 and found no missing-bound bug or latency cause;
+no product fix was proposed (no separate artifact or exact window supplied). The
+768 MiB failure-diagnostic sample does not satisfy the actual 1 GB resource gate. E250 improves the
+synthetic fixture's fidelity/keyboard/mobile geometry but
+retains the strict raw-axe mobile disclaimer failure. E251's builder-reported source/build checks
+were followed by E252/E253 **Fail** source findings for an unbound CSS-module selector and mismatched
+readiness styling/mobile font. E254 builder-repaired the selector; E257 reports the readiness
+CSS/contract/build/stage follow-up and E258 parent source/served-export review **Passed** for source
+and stage binding. E263 independently passed 11 selected current-source browser cases with one
+expected mobile skip, stable 52-file served/export binding, focused helper/contract checks, and
+cleanup; all four raw axe snapshots still contain one incomplete contrast item. Enabled-Send
+keyboard traversal, numeric mobile target geometry, and rendered code-fence fidelity were not
+exercised. E274's initial desktop/mobile synthetic UI-edge fixture **Failed at setup** on an auth
+route mismatch and produced no UI assertion records; its corrected rerun is pending, so it closes no
+keyboard, target geometry, code-fidelity, or raw-axe gate. The authorized anonymous timing observer
+passed E260 builder and parent source review;
+E261 independent QA **Failed** on late-callback and wrong-owner handling. E262 repaired those cases
+and passed 118 focused tests plus independent and parent review. E264 built the current local
+Linux/amd64 image with 147 source inputs and all 52 served/export files matching; E267 then ran it
+and **Failed** the two-owner functional criteria. E268 independently verified the failure and exact
+cleanup. E269's corrected static header/body inspection **Passed** after the first comparison
+failure; no independent test rerun occurred (**Skipped/not run**) and the rerun remains pending. The
+preflight did not run the runner or change E267. E265 passes builder test/comment-audit/Ruff scope
+for a test-header repair; parent review confirmed the test body is unchanged, but a fresh independent
+test rerun remained pending at that checkpoint. E288 later passed the canonical check profile with
+three opt-in native checks skipped. The native cause, current-image kill,
+provider success, actual 1 GB result, and all release
+gates remain open. See the [MVP plan](MVP-PLAN.md) for exact receipts.
+
+Post-E274 evidence preserves the failures and narrows the new results. E275 passed only the host-side
+CPU receipt-boundary review; live CPU-counter availability remains untested. E276's corrected
+synthetic UI run **Failed** because Send/Cancel left focus on `document.body`. E277 repaired panel
+focus handling and passed the approved build/stage with all 52 served files matching. E278's
+post-repair aggregate **Failed** four invalid Stop-label identity assertions even though focus and
+keyboard-cancel checks passed in all four desktop/mobile theme states; strict raw axe remains **Fail**.
+E280 passed only the corrected Stop-control identity/cancellation-cleanup diagnostic. E281 then
+passed the tracked focus-only regression 2/2 after preserving its earlier wrapper and CLI setup
+failures; it does not close raw axe or full-browser acceptance. The current image in E279 failed its
+two-owner functional criteria; local CPU throttling was recorded during that failed run, but no
+timeout cause or actual 1 GB acceptance is established. The existing 1 GB plan/backups and US$15
+monthly total cap remain unchanged. Exact details are in the [MVP plan](MVP-PLAN.md).
+
+E283 independently passed 34 focused progressive SSE/framing tests, but its source scope does not
+establish E279's native provider-latency cause; E279's image predates that repair. E286 later passed
+the two selected confirmation-flow tests and reproduced the host-clock/TestClient cookie-jar
+mismatch, without rewriting E284's earlier canonical failure. E287 independently passed Sharp
+0.35.5 metadata/compatibility, 55 frontend contracts, zero-finding audit, and 52-file stage parity.
+The full canonical E288 pass is recorded above. E289 records ignored wrapper preparation/static review at its checkpoint; E292 later records a build-identity pass and E293 a functional failure, not native acceptance. E290's source review leaves the
+current exact raw axe result **Unavailable** and the historical raw axe **Fail** intact. Existing
+production, the 1 GB plan/backups, and the US$15 monthly total cap are unchanged. E291 records an
+`ENOSPC` build-attempt **Fail** with no valid build receipt, plus exact plan restoration and bounded
+task-owned cleanup **Pass** only; the cached retry was pending at that checkpoint, and E292 later
+records its build/source/stage result. E293 subsequently **Failed** the two-owner native functional
+run. E294/E295 are synthetic axe-engine diagnostics only; the strict app axe gate remains **Fail**.
+E296/E297 pass the structure and visual review scopes for a draft PDF, not PDF/UA or final PR-bound
+guide acceptance. No resize, release, or email is claimed.
+
+The latest
+model-activation-lock candidate source review/build passed only its declared source/build scope.
+Its first two-owner native run **Failed**: owner 0 completed an answer; owner 1 received eight native
+search sources and approved search and WebFetch, but the approved fetch ended at
+`dns_lookup_timeout` after 8,963 ms without a source or answer. The DNS/network cause is unproven,
+and the run does not establish that model locking caused improvement. E51's system-resolver
+diagnostic timed out after 3,252 ms and skipped its guard. Later same-image DNS-only path comparison
+found host and owned user-defined bridge resolution in 189 ms and 440 ms, while the default bridge
+timed out after 3,005 ms (E54). An instrumented guard diagnostic errored internally (E55); the
+unchanged hash-pinned guard later resolved in 203 ms with four public addresses and exact cleanup
+(E56). These are DNS-only results and do not establish the native WebFetch cause or acceptance;
+production Compose uses a user-defined bridge.
+A later two-owner native run on the same image passed its functional workflow on the owned
+user-defined bridge (E58): both owners received nonempty answers and matching model/MCP evidence;
+owner 1 received eight text-search sources and one approved guarded fetch; cross-owner and forged-MCP
+lookups returned 404, owner deletion returned 200, and worker-cache markers were purged. Its local
+768 MiB cgroup sample reached the 805,306,368-byte cap with 186 `max` events and zero OOMs; worker
+readiness intermittently showed starting/unavailable while the app remained ready. This is not the
+required 1 GB resource result; exact owned-container/volume/network cleanup passed. The successful
+run does not establish the cause of the earlier DNS failure.
+Cleanup passed for that run's
+exact container and volume at 560,009,216 bytes peak with zero OOM events; this is not actual 1 GB
+Linode evidence. A read-only stdio check via the official Python SDK **Passed** initialization and
+discovery of all eight deployment MCP tools/schemas with zero tool invocations. A later fresh
+Codex task **Passed** discovery of all eight operation names plus read-only `inspect` and `status`
+(E90); parent app-creation/read evidence correlates the task to
+`01a10e2a-ec7e-7b33-aee1-2288ddc0bbad`, while its receipt omitted task identity. The earlier current/root snapshot showed six tools; E105 later observed eight names in the
+root and a read-only status pass. E90's fresh-task discovery remains separate; neither record
+establishes mutating-tool or release acceptance. An actual active-search kill passed on an earlier schema-13
+candidate image; the current-image rerun remains pending.
+
+An actual active-search kill checkpoint **Passed** on earlier schema-13 candidate image
+`sha256:37c0c449e62e14ec83afc26163c59a69d17ae6a0a8d77133d180e4d68a3a1fc6`: a pending search was
+not executed, the turn was cancelled, the app process/readiness and private records were preserved,
+and worker state was erased with zero OOM events. The current-image rerun remains pending. The
+An earlier quiet full browser run **Failed** with 145 passed, 2 failed, and 3 skipped out of
+150; its independent receipt and failure details are recorded in E36 of the [MVP plan](MVP-PLAN.md).
+A later isolated one-case desktop Markets diagnostic passed, but the reviewer did not verify the
+crash cause; it does not clear the full-suite failure. A subsequent 150-case run was stopped before
+an aggregate and is **Unavailable** (85 passed, 2 failed, 1 interrupted, 2 skipped, 60 unrun; E43);
+owned-run cleanup later **Passed** (E48). Its dark-placeholder measurement was 3.5403:1 on the
+stale staged export; trace review confirmed the served CSS was the staged file without the current
+placeholder rule. This does not establish current-source contrast acceptance or explain the older
+Markets/screenshot failures. Build/staging later passed (E44). The refreshed eight-image set passed
+independent capture-only review (E49), and an HTML/PDF draft was rendered (E50); initial visual
+review **Failed** on page layout (E52). The first repaired guide render passed (E61), but parent
+visual review **Failed** because the action-receipt image and caption were missing from every PDF
+page (E62); these earlier failures are superseded for visual layout by E75's 13-page review Pass.
+E80's later structure scan reported missing role mapping and 30 wrong-type `/Strong` warnings, so
+PDF/UA remains unverified. The fresh full
+150-case execution and independent receipt **Passed** for test scope: 147 passed, 3 expected skips,
+0 failures, and 0 flaky cases (E59). Raw axe cleanliness **Failed** because each of four snapshots
+had one incomplete item (E60); the custom mapped contrast assertion passed only within its sampled
+scope. The previous quiet
+attempt's timeout and the primary run's **Fail** at
+144/3/3 remain historical. The primary run recorded a missing
+current-headlines control and `ERR_INSUFFICIENT_RESOURCES`, plus two mobile screenshot/Chromium
+crashes; causes remain unverified. Four raw axe snapshots reported zero violations and one
+incomplete item each, and separate isolated/sampler passes do not clear either aggregate. The
+independent backend rerun
+passed 989 tests, with 1 skipped and 2 deselected, but scoped Ruff format **Failed** for
+`tests/test_backup_cli.py`; later builder formatting/tests are not independent acceptance. An
+earlier backend run failed 57 tests under a stale test clock and has its own retained source finding;
+no independent closure result for that finding was supplied in this checkpoint.
+
+The current local schema-13 migration/recovery rehearsal **Passed** for its declared same-volume
+scope, including write survival and direct profile checks (`no_new_privileges`, UID/GID 10001, no
+effective/permitted capabilities, read-only root, network disabled). It is not PR-bound
+(`PR_bound=false`) and did not run on the actual 1 GB Linode (`actual_1GB_Linode=false`). The current
+helper source requests `HostConfig.SecurityOpt` and requires exactly
+`["no-new-privileges:true"]`; E70's selected profile tests passed locally, but live Docker/production
+inspection remains **Unavailable** (E19). The initial deployment-helper migration/hash mismatch
+is historical (E63); E65's independent pin QA and E78's parent read-only manifest-link verification
+later passed their bounded checks. No live promotion was attempted. Independent review passed eight synthetic screenshots, their
+source/image bindings and privacy review, and the canonical manifest/receipt loader for its
+declared capture scope (E41). Trace review later confirmed those captures used stale staged CSS.
+Build/staging then **Passed** with all 48 served files matching `frontend/out` (E44). The refreshed
+eight-image set passed independent capture-only review (E49), and an HTML/PDF draft was rendered
+(E50); initial visual review found layout defects (E52). E73 later passed standalone HTML QA (180
+checks across 12 states, raw axe 0/0), and E75 passed visual review of the current 13-page PDF.
+PDF/UA, actual screen-reader, physical-mobile, true-zoom, and final PR-bound guide acceptance remain
+pending. An optional ignored verifier failed
+with `ERR_MODULE_NOT_FOUND` after the earlier canonical receipt passed (E42). Current
+PR-bound recovery, actual 1 GB resource evidence, current-image active-turn kill, broader native
+provider acceptance, raw-axe closure, and final guide remain open. No release or email is accepted. The
+ordered plan, limits, evidence matrix, same-FastAPI-image architecture, and recovery rules are in
+the [MVP plan](MVP-PLAN.md); concept B is in the [`design guide`](docs/develop/design-system.md).
+
+The later E71–E80 reconciliation preserves the canonical gate **Fail** (13 comment-audit findings)
+and the subsequent interrupted aggregate as **Unavailable** (exit 143 during pytest, no JUnit or
+canonical receipt); the latter's 336-file comment subcheck passed but does not clear the gate.
+E78 passed two parent read-only manifest-pin comparisons only. E76's detached gate snapshot was
+prepared but not launched; it recorded 140 source bindings, 48 copied export files, and four
+separately served `/assets` files. The independent 390×844 minimize/resume regression **Failed**
+two product assertions (E77). Its repaired panel and browser-spec hashes are now frozen, and the
+parent's `./scripts/build-frontend.sh` integration build/stage passed with frontend 53, typecheck,
+build, and stage checks (E79); E87 later passed the repaired focused responsive retest (3 passed,
+1 expected mobile skip). E77 remains the original failed product receipt, and full-matrix acceptance
+is not established. E80's read-only PDF
+structure diagnostic found invalid `/Strong` structure entries despite successful visual layout;
+PDF/UA remains unverified. Strict app axe remains
+**Fail** with one incomplete contrast rule per snapshot (E60/E72); standalone guide HTML and PDF
+checks passed only their separate E73/E75 scopes. Production remains unchanged at schema 12 with
+assistant disabled. None of these checks closes the PR-bound rollback, actual 1 GB, current-image
+kill, live profile inspection, formal guide, canary, or release gates.
+
+E86 later passed the focused EOF stream case in desktop Chromium and Pixel 7 emulation (2/2, zero
+failures/skips/flaky), with all source/stage/export bindings unchanged and cleanup passed. The
+earlier anchored-selector attempt selected zero tests and remains a separate setup failure. E86 does
+not change E83's full-suite Fail or the strict axe Fail. E87 later passed the repaired focused
+minimize/resume responsive edge; E77 remains the original historical Fail, and broader responsive,
+accessibility, physical-mobile, and release acceptance remain open.
+
+The user-directed search boundary remains OpenCode V2 built-in search in the same-container
+harness. TinyFish, custom search replacements, and new mandatory account-based services remain
+excluded. Merge and promotion require every release gate and a tested PR-bound recovery path.
+Deploy with assistant disabled, complete the owner canary, then explicitly enable invited users.
+The authorized post-release email and accessible HTML/PDF guide remain **Pending**; there is no
+accepted release guide or announcement. The latest authored-document validator, full/change-aware
+coverage, and scoped diff results are recorded in the R-ASTRA-120 evidence ledger; documentation
+tests were not run by that docs checkpoint.
+
+Subsequent scoped records keep that release status open. E82's focused config/docs/resource suite
+passed 90 tests with two warnings; E84's six assistant release-contract tests passed using mocked
+runtime/provider/clock seams. The latest full browser run **Failed** 145/2/3 (E83); both failures
+were the same terminal-copy expectation in desktop and mobile, where traces showed the explicit
+EOF-without-completion warning and Reconnect control. The failed aggregate retained its status,
+guide-capture refresh was **Skipped**, and raw axe remains **Fail** with one incomplete contrast
+item in each of four snapshots. E85's PR-helper command passed 61/61 with two warnings, and its
+cached amd64 recovery-profile transfer, profile inspection, wrong-digest rejection, and cleanup
+checks passed; however, the independent QA receipt is **Fail closed** because the opened
+`scripts/pr_rehearsal_seed.py` input has no contemporaneous pre-run hash. The earlier prepared hash
+and current hash do not replace that missing baseline. This limited 384 MiB test is not a full
+PR-bound rehearsal or the combined 1 GB gate. The production revision and disabled rollout are
+unchanged; the $15 monthly total spending cap still holds the resize. Native/provider, security,
+app accessibility, current-image kill, PR-bound rollback, 1 GB, canary, guide, and release gates
+remain open. Exact receipts and limitations are in the [MVP plan](MVP-PLAN.md).
+
+The latest R-ASTRA-120 records keep promotion **Pending**. E88's canonical local gate **Failed**
+at 1,627 Python passes, 1 failure, 4 skips, 4 deselected, and 80.52% coverage. E89's later
+150-case browser test scope **Passed** at 147 passed/3 expected skips, but strict app axe remains
+**Fail** because all four snapshots retain an incomplete contrast rule. E91's first boundary
+diagnostic **Failed** 27 cases because the repository-long basetemp caused AF_UNIX path-too-long
+fixture errors; E93's separate short-path 699-case diagnostic **Passed**, with 67.8391% subset
+coverage that is diagnostic only. E102 passed seven selected real-manager/provider HTTP tests and
+scoped static/cleanup checks, without live provider/model, Docker, production, coverage, or release
+claims. E99's eight synthetic captures passed image/privacy/source/stage and child/port/temp cleanup
+review; final clean PR-bound guide, HTML/PDF, PDF/UA, and accessibility acceptance remain pending.
+A parent read-only production inspect (E100) confirmed the existing revision
+`da2764e8477698fa7d686be93a4711e35478e802`, schema 12, ready and loopback-only; no deploy, resize,
+rollout, or email occurred. Exact evidence and preserved failures are in the [MVP plan](MVP-PLAN.md).
+
+Later scoped R-ASTRA-120 evidence adds E104's isolated authored-asset source/unit checks and parent full build/stage pass: all 52 FastAPI-served files matched `frontend/out` byte for byte (48 Next export files plus four authored assets); the 80 bound sources were unchanged and temporary cleanup passed. E105 records the current root's eight deployment-MCP names and a passed read-only status call; the earlier root-six snapshot and fresh-task E90 remain distinct historical observations. Production remains at the same revision/schema and loopback-only, with no mutation. E106 records 62 invitation/confirmation API-security tests passing across five commands with stable source/test hashes and cleanup; its browser step-up lane was **Skipped** and SMTP/runtime/catalog remained synthetic. E107's corrected builder synthetic invitation-browser subset passed 10/10 after its retained initial setup failure; E109 independently passed the same selected 10-case synthetic desktop/Pixel 7-emulation subset with 52 served-file bindings and cleanup verified. E112 passed one current-stage catalog-review browser case on desktop and Pixel 7 emulation, including the 44×44 CSS-pixel Refresh catalog bounds and 52 served-file bindings. Fixtures remain synthetic; real authenticator/API enforcement, live provider, production, physical mobile, keyboard navigation, and native Connect/Remove geometry remain unverified. E108's ignored semantic candidate **Failed** to clear incomplete contrast nodes in the captured Light desktop/mobile pairs; the full Light/Dark matrix is **Unavailable** after a separate geometry assertion. Strict raw axe remains **Fail**. E110 records the provider-button styling gap and two consecutive Luna model-capacity failures; E111 records the task-scoped Sol repair's 11/11 contract check, spec syntax check, and parent source-review Pass, while no browser/build or native Connect/Remove geometry acceptance is established. E113's later canonical local gate **Failed** at 1,818 Python passes, one disposable OAuth-bridge readiness failure, 3 skips, 4 deselected, and 83.55% coverage; the connection-reset cause is **Unproven**. Documentation completeness and the 54 frontend lint/test/build/stage checks passed only as subchecks; 563 bound sources were unchanged, all 52 served files matched, cleanup passed, and promotion was held. E114's ignored 1,549-line driver has only builder-reported syntax validation and remains held after partial review; it was not executed, and no current image/runtime/resource evidence exists. E115's follow-up Luna diagnosis has no completed repair or terminal root-cause report at this snapshot. The US$15 monthly total cap, existing 1 GB plan, and backups remain unchanged; required native, security, resource, rollback, canary, accessibility, and release gates remain open. No email or release is claimed. Receipts are in the [MVP plan](MVP-PLAN.md).
+
+Subsequent R-ASTRA-120 evidence updates only those later scopes. E116's native `linux/amd64` image
+build and identity binding **Passed** for its recorded context only; parent review did not run it.
+E117's independent review **Failed** the prior 1,549-line launcher on three safety/evidence
+findings. E125 later **Failed** the frozen replacement runner on a P2 output-buffering defect; no
+runner was executed, and repair/review remain **Pending**. E118 passed only its aligned OAuth-bridge
+fixture/protocol scope; E119 passed three synthetic provider-lifecycle HTTP cases. E120 locally
+passed 67 protocol/scalar tests and parent source review. E121 independently passed 67 protocol
+tests and 53 adapter/wire regressions (two expected skips), but its synthetic Google temperature
+1.5 public-manager reproduction **Failed** before mocked transport. E123's local 88-case scalar
+repair suite and E126's independent 88-case rerun **Passed** with synthetic models/transport; these
+do not establish a real provider response. E122's image `sha256:22c9838c7fa8e55b06518eccf4d96a3f163cd711a30544170416f3a836eeb27a` is historical before that repair. E124's newer local image
+`sha256:647ecdcc66288cf26cd022669db700efdd2954518276e67efc99a10cc5618e6d` is bound to source context
+`6f890e382d70b60634303a5455c5c6fc76d65f51d8e44c0e16f5211b66393e30`; it passed build/identity review
+only and has no runtime result. E127's 12-state whitespace diagnostic executed successfully, but
+strict raw axe **Failed** with zero violations and one incomplete contrast rule per state. The
+tested whitespace candidates did not clear the incomplete rule and no CSS repair followed. The
+canonical aggregate therefore remains E113 **Fail** at 1,818 passed, one failed, three skipped,
+four deselected, and 83.55% coverage. E128's current-task production `status`/`inspect` passed
+read-only scope at the unchanged schema-12 revision; no mutating operation, deployment, or resize
+occurred. Current-image native execution/kill, live provider/model/MCP/websearch/security checks,
+effective runtime resource/profile inspection, combined 1 GB, PR-bound rollback, full accessibility
+and guide, deployment, and canary remain open. Production remains at the recorded revision with
+assistant rollout disabled; the US$15 monthly total cap including backups and tax keeps the existing
+1 GB plan and backups. No release or email is claimed. Exact receipts and preserved results are in
+the [R-ASTRA-120 evidence ledger](MVP-PLAN.md). E129's documentation validator, coverage, self-test,
+and scoped diff checks **Passed**; documentation pytest was not run. A parent-reported
+candidate-only synthetic streaming secret-redaction follow-up was **Pending** at that E129 snapshot,
+without a terminal receipt or application-source edit. E130–E131 below supersede that earlier
+pending state for the narrow synthetic repair and selected HTTP review; they do not close native
+execution or release gates.
+
+E130–E131 record the narrow synthetic word-adjacent key-redaction repair and independent selected
+HTTP/source review. E132 records bounded-output candidate-runner synthetic checks and corrected
+independent reruns; runner execution remains unverified. E133 binds the refreshed `linux/amd64`
+image to its source context for build identity only; E137 records the later failed functional
+attempt on that image. E134 compared axe-core `4.13.0` and `4.14.0`;
+both retained one incomplete contrast rule in each of four desktop/mobile Light/Dark states, so
+strict raw axe remains **Fail**. E135–E136 passed builder and independent three-case history-
+recovery HTTP scopes after preserving the test-harness setup failure. E137's first current-image
+native attempt was **Unavailable** before launch and its corrected functional probe **Failed** with
+exit 2; its cause is **Unproven**, and independent wrapper QA recorded the same failed scope and
+verified the image/source binding. A source-based fixture-count explanation is an unverified
+hypothesis only; no successful native/provider interaction is established. E138 preserves
+the initial owned-resource cleanup failures and a separate read-only postcheck **Pass** confirming
+all six targeted resources/process/port entries absent. No current-image kill occurred. Canonical
+E113 remains **Fail** at 1,818 passes, one failure, three skips, four deselected, and 83.55%
+coverage; production remains unchanged at schema 12 with rollout disabled. The US$15 monthly total
+cap including backups/tax retains the existing 1 GB plan and backups. Native/provider acceptance,
+current-image kill, combined 1 GB, PR-bound rollback, accessibility/guide, deployment, and release
+remain open; no email or release is claimed. Exact receipts and preserved statuses are in the
+[R-ASTRA-120 evidence ledger](MVP-PLAN.md).
+
+E139–E142 add scoped parent confirmation/session review, current glyph/stack diagnostics, and the
+source-map-js 1.2.2 lock repair with independent zero-advisory audits and 52-file stage verification.
+The sampled text is readable, but raw axe still has one incomplete contrast rule in each state;
+strict accessibility remains **Fail**. The lock repair makes E133's image historical. No subsequent
+native acceptance, production mutation, resize, rollout, or email is inferred. The canonical gate,
+required native/resource/security checks, PR-bound rollback, and final guide/release remain open.
+
+E143–E147 record the corrected synthetic fixture QA, refreshed image, and a separate current-image
+native functional **Pass** for two users, owner-scoped MCP, native search/guarded fetch, isolation,
+and deletion/cache cleanup. The active-kill attempt **Failed** with no valid projected receipt;
+its cause remains **Unproven**, while all six owned cleanup targets passed. Independent guide-tool
+QA **Failed** on per-image digest binding and no-follow source hashing; those repairs are pending.
+The local 768 MiB sample is not actual combined 1 GB Linode acceptance. Canonical coverage,
+complete security/mobile/accessibility, current-image kill, final guide, and PR-bound rollback remain
+open. Production, the 1 GB machine, backups, and the $15 monthly total cap are unchanged; no
+promotion, rollout, resize, or email is claimed.
+
+E152 independently passes the repaired guide tooling for unit/static scope only (16 capture,
+11 finalizer and seven selected loader tests); fresh captures and final HTML/PDF acceptance remain
+pending. E153 records a separate shutdown-diagnostic integration repair and parent source review;
+independent v3 QA and native execution remain pending. The earlier failed runtime kill and strict
+raw-axe gate remain open. This work authorizes no resize or spending above the $15 monthly total.
+
+E154 passes the v3 diagnostic’s independent synthetic integration scope; E155 then records a
+separate same-image native functional Fail with full owned cleanup and an unproven specific
+cause. E156 passes a fresh actual eight-image capture and parent visual review for synthetic
+capture scope only. Native reliability, active kill, final guide and release gates remain open.
+E157 separately passes independent visual/privacy review of all eight current synthetic captures.
+Final guide and release acceptance remain open; mobile evidence is emulated only. The US$15
+monthly total cap including backups and tax remains unchanged, and no resize was applied.
+
 
 Scoped independent QA passed `64` authentication/repository/list checks, `123` API checks, `61`
 backup/CLI checks, `10` desktop/mobile-emulated auth-flow cases, `27` frontend checks, Ruff, and
@@ -2612,3 +3025,88 @@ The roadmap is complete only when:
 | --- | --- | --- | --- |
 | `R-M00-2-E64` | Exact `.dev-venv/bin/python scripts/validate_docs.py` after the `R-ASTRA-99` site-wide QA rows. | Native x86_64 Linux; dirty `HEAD` observed from the current worktree; UTC was not captured by the command tool. | **Pass**; output: `Documentation validation passed: 9 categories, 13 topics, 7 project skill governance entries.` Artifact: validator output; reviewer `LUNA MAX docs`; no source, test, configuration, export, commit, push, or Git-history mutation was performed. |
 | `R-M00-2-E65` | Exact `git diff --check -- MVP-PLAN.md MVP-ROADMAP.md` after the `R-ASTRA-99` site-wide QA rows. | Native x86_64 Linux; dirty `HEAD` observed from the current worktree; UTC was not captured by the command tool. | **Pass**; artifact: current two-file documentation diff; reviewer `LUNA MAX docs`; no source, test, configuration, export, commit, push, or Git-history mutation was performed. |
+
+
+Latest R-ASTRA-120 checkpoint (E329–E338): only read-only `inspect`/`status` were called from E329's eight-tool metadata snapshot; the schema-12 ready/loopback baseline was confirmed, while rollout/RAM/billing remain unobserved. E337 reports a later parent read-only observation of that baseline without a separate receipt or exact timestamp. E330 did not establish E322's 403 cause. E333 passed selected synthetic resource QA with the live-Docker case deselected. E334's synthetic native retry failed before provider activity; E335 later passed one local synthetic two-owner identity/header-forwarding capture, not public-provider/search acceptance. E336's image build was interrupted on ENOSPC with no verified image ID, and E337 restored one truncated test file to exact baseline bytes without product-test acceptance. Strict raw axe remains **Fail**; actual 1 GB, security, accessibility, PR-bound rollback, and release gates remain open. The existing 1 GB/backups and US$15 monthly total cap are unchanged. See the [MVP plan](MVP-PLAN.md) for exact receipts.
+
+
+R-ASTRA-120 E339–E340 add scoped local progress: fixed-ID cache cleanup met the 4 GiB build threshold, and the deployment-helper entrypoint repair passed independent 62-case helper QA. The real container probe and PR-bound rollback rehearsal remain pending; the larger test proposal is held for cleanup repair. These results do not close native/provider, actual 1 GB, strict accessibility, or release gates. The US$15 monthly total cap, existing Linode plan, and backups remain unchanged. Exact receipts are in the [MVP plan](MVP-PLAN.md).
+
+
+R-ASTRA-120 E342–E344 supersede the pending build preparation for their declared local scopes: corrected runner QA passed, one source-bound Linux/amd64 candidate image build passed, and the parent verified its terminal identity, 147-file context, 52 served files, and cleanup. V4 recovery-test cleanup mocks/static checks passed; the proposal remains unapplied and the actual PR-bound rehearsal remains pending. The new image has not passed native/provider/search, current-image kill, actual 1 GB, strict accessibility, or release gates. Production, the existing 1 GB plan, and backups are unchanged. The US$15/month total cap includes backups and applicable taxes; the 2 GB proposal stays held. See the [MVP plan](MVP-PLAN.md) for exact receipts.
+
+
+R-ASTRA-120 E345–E347: the missing-file preparation failure is preserved; repaired V3 frozen-path checks passed their scoped checks with a separate preserved metadata typo and inherited formatting limitation. The actual new-image native run failed: both users received no answer/tool results, and sanitized diagnostics recorded 16 upstream HTTP 403 failures. The forwarding fix did not close that failure; its cause remains unproven. Owned cleanup passed, the source/stage bindings matched, and no production or budget change followed. Current-image kill, native/provider/search, actual 1 GB, strict accessibility, PR rollback, and release gates remain open. Keep the existing 1 GB Linode and backups under the US$15 total monthly cap including tax. See the [MVP plan](MVP-PLAN.md) for exact evidence.
+
+
+R-ASTRA-120 E348 independently confirms the native functional failure and exact owned cleanup/source-stage verification. Its separate metadata correction rejects V3's unsupported repository-status-stability claim without asserting source drift. The upstream 403 cause remains unproven. The header-only diagnostic has a 418-case builder pass and frozen parent source/test review (E349); independent integrated QA is pending. Pinned native-source review identified omitted session/project correlation headers (E350), whose repair is in progress without changing app authorization or claiming the HTTP 403 cause. Strict raw axe remains **Fail**, and native/provider/search, current-image kill, actual 1 GB, security, PR rollback, and release remain open. Production, the existing 1 GB Linode, and backups are unchanged under the US$15 total monthly cap including tax. Exact evidence is in the [MVP plan](MVP-PLAN.md).
+
+R-ASTRA-120 E351 integrates the reviewed V4 rollback-test proposal with 73 parent test passes and one expected Docker opt-in skip. E353 independently passed the same helper-file scope with unchanged bindings and owned cleanup. E352 passed frozen diagnostic static/artifact review, without rerunning the 418 builder tests. The actual PR-bound rollback and integrated native metadata checks remain pending. The source integration does not authorize production promotion or change the US$15 total monthly cap. See the [MVP plan](MVP-PLAN.md) for exact evidence.
+
+R-ASTRA-120 E354 records the native session/project correlation repair with 748 builder test passes
+and parent frozen source review. Independent combined QA and real native/provider verification
+remain pending; the earlier 403 cause is unproven. Production and the existing 1 GB/backups remain
+unchanged under the US$15 monthly total cap. No promotion or release readiness is claimed.
+
+R-ASTRA-120 E355 independently passed 787 scoped metadata/diagnostic tests with unchanged bindings.
+E356 completed both synthetic native turns, but its original wrapper remains **Fail/Unavailable**
+on immediate port binds; the separate later port checks do not establish the failure cause or live
+provider acceptance. E357 preserves the failed read-only cleanup preflight with no mutations;
+cleanup and image build remain held. Production remains at schema 12, with the existing 1 GB
+Linode and backups under the US$15 total monthly cap. Native/provider/search, current-image kill,
+actual 1 GB, strict accessibility, security, PR rollback, and release gates remain open. Exact
+receipts and limitations are in the [MVP plan](MVP-PLAN.md).
+
+R-ASTRA-120 E360 preserves a failed canonical gate: 2,469 Python passes, 13 failures, four skips,
+four deselected, and 85.26% coverage. The two failing proxy/egress test files are under investigation;
+image build and promotion remain held. E361 records exact disposable public-doc fixture cleanup,
+with no Docker image or user-data deletion; image cleanup remains unapplied. E362 preserves a
+partial synthetic browser diagnostic interrupted by a runner temporary-path race. Its three
+Light desktop Axe snapshots do not replace the strict app accessibility failure or establish the
+full matrix. Existing production, 1 GB Linode, and backups remain unchanged under the user's
+reconfirmed **US$15 monthly total cap, including backups and applicable taxes**. The 2 GB proposal
+stays held. Required native/provider/search, current-image kill, actual 1 GB, security, accessibility,
+PR-bound rollback, and release gates remain open. See the [MVP plan](MVP-PLAN.md) for exact receipts.
+
+E364 records 116 builder fixture tests and 22 identity regressions passing, with parent source
+review and unchanged production inputs; independent QA and the full gate remain pending. E365
+retains the held image wrapper's narrower mock/static Pass and its executable-path schema **Fail**.
+Luna is repairing that mismatch; no build or promotion was invoked.
+
+E366 independently passed the repaired 116-test fixture scope with two deprecation warnings and
+unchanged bindings. The fresh canonical gate is running on 243 frozen inputs; no aggregate result
+is yet available, and image build remains held while it runs.
+
+E367 independently passed the repaired image-build wrapper's mock/static scope; parent reviewed
+its complete diff and bound new copies. Image execution remains held during the live canonical
+gate. E368 failed exact-baseline browser preparation because its geometry helper was undefined;
+V1 remains frozen and a separate V2 repair is assigned before any browser execution. These results
+do not establish native/provider, accessibility, resource, rollback, or release acceptance. The
+US$15 monthly total cap, existing 1 GB Linode, and backups remain unchanged.
+
+E369 passes the fresh canonical local gate: 2,482 Python passes, four skips, four live
+deselections, 85.35% coverage, and 55 frontend checks with unchanged bindings. E370 passes the
+actual current local container build and owned cleanup. E371 preserves browser preparation
+failures and the independently reviewed minimal parent repair after consecutive Luna failures.
+E372 reproduces the four strict raw-Axe failures with exact baseline captures; later owned
+cleanup passes separately and does not rewrite the original wrapper Fail. Native runtime,
+accessibility, actual Linode resource, PR-bound rollback, and release gates remain open.
+The user reaffirmed the US$15 monthly total cap, including backups and taxes. The existing
+1 GB Linode and backups remain unchanged; no resize, deployment, rollout, or email occurred.
+
+E374–E375 preserve local native-runner preparation failures and the independently verified
+root/leaf guard repairs. E376's actual current-image two-user run Failed: both model sessions
+matched, but upstream streams returned HTTP 403 and no answers or tools completed. Exact owned
+cleanup passed and local memory had zero max/OOM deltas; actual 1 GB capacity and the failure
+cause remain unverified. Active kill is skipped pending functional Pass. Production is unchanged
+by read-only E373 status; no resize, promotion, model fallback, or email occurred.
+
+E387 independently passes 107 synthetic private-403 diagnostic tests; no upstream cause is
+established. E391 passes the current canonical local gate: 2,543 Python passes, four opt-in skips,
+four live deselections, 90 warnings, 85.43% coverage, and 55 frontend checks. Independent audit
+passes receipt/manifest scope and current 52-file served/export parity; native/provider and
+recovery opt-ins were skipped. E392 passes refreshed eight synthetic desktop/mobile captures
+only; finalization and guide acceptance remain pending. E390 confirms unchanged production
+through read-only MCP status. The **US$15 total monthly cap includes backups and taxes**;
+the existing 1 GB Linode and backups remain unchanged. Required native/provider, strict
+accessibility, actual capacity, PR-bound rollback, and release gates remain open.

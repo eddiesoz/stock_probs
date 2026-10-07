@@ -25,7 +25,7 @@ from stock_probs.auth import (
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, HistoryFilters
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 OUTCOME_RECONSTRUCTION_LIMIT = 100
 HISTORY_EXPORT_LIMIT = 100
 INSTRUMENT_LIST_ITEM_LIMIT = 100
@@ -47,6 +47,7 @@ MIGRATION_SHA256 = {
     10: "e961d81cc560407596a3653c2ba4ff1d622ba02de20078d1066db76a8c891922",
     11: "6100174cc8a6ead5a8deb2c4437889be2f2d1609c5ce1f0bcc1fa16ac11a0f7c",
     12: "03bf4834c594e7e7704484e520202ff14a459d339397aefec2916b09a4fccd5c",
+    13: "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b",
 }
 
 
@@ -2948,8 +2949,11 @@ class Repository:
         request_id: str | None = None,
         event_id: int | None = None,
         include_facets: bool = False,
+        sort_by: str | None = None,
+        sort_order: str = "desc",
+        horizon: str | None = None,
     ) -> dict[str, Any]:
-        """Return an indexed, bounded audit page in deterministic append order."""
+        """Return an indexed, bounded audit page with optional sort and horizon filters."""
 
         owner_user_id = self._require_owner_id(owner_user_id)
         if type(page) is not int or type(page_size) is not int:
@@ -2984,6 +2988,9 @@ class Repository:
                 page_size=page_size,
                 include_analysis=include_analysis,
                 include_facets=include_facets,
+                sort_by=sort_by,
+                sort_order=sort_order,
+                horizon=horizon,
             )
 
     @staticmethod
@@ -3810,19 +3817,29 @@ class Repository:
         provider: str,
         canonical_symbol: str,
         asset_type: str,
+        expected_quantity: float | None | object = _UNSET,
     ) -> bool:
-        """Remove one item without affecting the other fixed list."""
+        """Remove one item, optionally requiring its quantity to match an approved snapshot."""
 
         owner_user_id = self._require_owner_id(owner_user_id)
         kind = self._instrument_list_kind(kind)
+        if expected_quantity is _UNSET:
+            expected_quantity_sql: str | None = None
+            expected_value: float | None = None
+        else:
+            expected_quantity_sql = " AND quantity IS ?"
+            expected_value = self._holding_value(
+                cast(float | None, expected_quantity), "expected_quantity"
+            )
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._ensure_user_exists(connection, owner_user_id)
-            cursor = connection.execute(
-                "DELETE FROM user_instrument_list_items WHERE owner_user_id = ? AND kind = ? "
+            cursor = connection.execute(  # noqa: S608
+                "DELETE FROM user_instrument_list_items WHERE owner_user_id = ? AND kind = ? "  # noqa: S608
                 "AND provider = ? "
-                "AND canonical_symbol = ? AND asset_type = ?",
-                (owner_user_id, kind, provider, canonical_symbol, asset_type),
+                "AND canonical_symbol = ? AND asset_type = ?" + (expected_quantity_sql or ""),
+                (owner_user_id, kind, provider, canonical_symbol, asset_type)
+                + (() if expected_quantity_sql is None else (expected_value,)),
             )
             if not cursor.rowcount:
                 connection.rollback()
@@ -3839,21 +3856,30 @@ class Repository:
         canonical_symbol: str,
         asset_type: str,
         quantity: float | None,
+        expected_quantity: float | None | object = _UNSET,
     ) -> bool:
-        """Set nullable quantity while retaining the selected instrument identity."""
+        """Set nullable quantity, optionally comparing the approved prior quantity atomically."""
 
         owner_user_id = self._require_owner_id(owner_user_id)
         kind = self._instrument_list_kind(kind)
         quantity = self._holding_value(quantity, "quantity")
+        if expected_quantity is _UNSET:
+            expected_quantity_sql: str | None = None
+            expected_value: float | None = None
+        else:
+            expected_quantity_sql = " AND quantity IS ?"
+            expected_value = self._holding_value(
+                cast(float | None, expected_quantity), "expected_quantity"
+            )
         if kind != "portfolio" and quantity is not None:
             raise ValueError("manual holdings require a portfolio")
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._ensure_owner_can_write(connection, owner_user_id)
-            cursor = connection.execute(
-                "UPDATE user_instrument_list_items SET quantity = ? "
+            cursor = connection.execute(  # noqa: S608
+                "UPDATE user_instrument_list_items SET quantity = ? "  # noqa: S608
                 "WHERE owner_user_id = ? AND kind = ? AND provider = ? "
-                "AND canonical_symbol = ? AND asset_type = ?",
+                "AND canonical_symbol = ? AND asset_type = ?" + (expected_quantity_sql or ""),
                 (
                     quantity,
                     owner_user_id,
@@ -3861,7 +3887,8 @@ class Repository:
                     provider,
                     canonical_symbol,
                     asset_type,
-                ),
+                )
+                + (() if expected_quantity_sql is None else (expected_value,)),
             )
             if not cursor.rowcount:
                 connection.rollback()

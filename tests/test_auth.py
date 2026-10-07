@@ -1996,6 +1996,14 @@ def test_authenticated_promoted_restore_verifies_security_state_and_revokes_sess
         record = application.state.auth.ensure_local_bootstrap(
             "admin", "development-admin-password-123", NOW
         )
+        application.state.assistant.storage.create_consent(
+            UserRecord.from_record(record).id,
+            model_id="catalog-model",
+            policy_version="policy-v1",
+            accepted_terms=True,
+            data_collection_opt_in=True,
+            recorded_at=NOW,
+        )
         issue = application.state.auth.issue_session(
             application.state.auth.user_from_record(record), datetime.now(UTC), "passkey"
         )
@@ -2015,6 +2023,64 @@ def test_authenticated_promoted_restore_verifies_security_state_and_revokes_sess
         assert restored.json()["promoted"] is True
         # Promotion clears the browser cookies and revokes the server-side session.
         assert client.get("/api/v1/auth/session").json()["authenticated"] is False
+
+
+def test_promoted_restore_rejects_backup_with_superseded_data_collection_consent(tmp_path):
+    """An older backup cannot restore data-collection consent after the owner revokes it."""
+
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "stock_probs.sqlite3",
+        backup_dir=tmp_path / "backups",
+        provider="fixture",
+        auth_mode="local",
+        auth_session_secret="r" * 48,
+        auth_public_origin="http://testserver",
+    )
+    application = create_app(settings, FixtureProvider(), lambda: NOW, auth_store=MemoryAuthStore())
+    with TestClient(application) as client:
+        record = application.state.auth.ensure_local_bootstrap(
+            "admin", "development-admin-password-123", NOW
+        )
+        owner_id = UserRecord.from_record(record).id
+        storage = application.state.assistant.storage
+        storage.create_consent(
+            owner_id,
+            model_id="catalog-model",
+            policy_version="policy-v1",
+            accepted_terms=True,
+            data_collection_opt_in=True,
+            recorded_at=NOW,
+        )
+        target = application.state.backups.create("old-consent-restore.spbackup")
+        storage.create_consent(
+            owner_id,
+            model_id="catalog-model",
+            policy_version="policy-v1",
+            accepted_terms=True,
+            data_collection_opt_in=False,
+            recorded_at=NOW + timedelta(seconds=1),
+        )
+        issue = application.state.auth.issue_session(
+            application.state.auth.user_from_record(record), datetime.now(UTC), "passkey"
+        )
+        restored = client.post(
+            "/api/v1/operations/restores",
+            json={"name": target["name"], "promote": True},
+            headers={"x-csrf-token": issue.csrf_token},
+            cookies={
+                SESSION_COOKIE_NAME: issue.session_token,
+                CSRF_COOKIE_NAME: issue.csrf_token,
+            },
+        )
+
+        assert restored.status_code == 403
+        assert (
+            application.state.assistant.storage.current_consent(
+                owner_id, "catalog-model", "policy-v1"
+            )["data_collection_opt_in"]
+            is False
+        )
 
 
 def test_promoted_restore_cleanup_failure_keeps_maintenance_barrier(tmp_path, monkeypatch) -> None:

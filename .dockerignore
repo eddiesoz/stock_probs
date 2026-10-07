@@ -74,7 +74,26 @@ build/
 dist/
 *.egg-info/
 docs/
+# The pinned OpenCode source patch/build harness is the only copied tools subtree.
 tools/
+!tools/
+tools/*
+!tools/opencode-v2-security-patch/
+tools/opencode-v2-security-patch/*
+!tools/opencode-v2-security-patch/manifest.json
+!tools/opencode-v2-security-patch/apply_native_patch.py
+!tools/opencode-v2-security-patch/apply_oauth_patch.ts
+!tools/opencode-v2-security-patch/build_native.py
+!tools/opencode-v2-security-patch/google_mcp_patch.py
+!tools/opencode-v2-security-patch/oauth-handoff.ts
+!tools/opencode-v2-security-patch/oauth-handoff.test.ts
+!tools/opencode-v2-security-patch/oauth-broker.ts
+!tools/opencode-v2-security-patch/oauth-broker.test.ts
+!tools/opencode-v2-security-patch/oauth-callback.ts
+!tools/opencode-v2-security-patch/oauth-callback.test.ts
+!tools/opencode-v2-security-patch/webfetch-guard.ts
+!tools/opencode-v2-security-patch/webfetch-guard.test.ts
+!tools/opencode-v2-security-patch/webfetch-native.integration.test.ts
 scripts/
 *.md
 

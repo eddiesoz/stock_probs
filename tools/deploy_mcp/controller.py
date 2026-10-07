@@ -24,6 +24,8 @@ REVISION = re.compile(r"^[0-9a-f]{40}$")
 PLAN_ID = re.compile(r"^[0-9a-f]{32}$")
 IMAGE_REPOSITORY = "ghcr.io/jtmb/signal-ledger"
 RELEASE_TRANSPORT = "github_release"
+ASSISTANT_ROLLOUT_MODES = frozenset({"disabled", "owner_canary", "invited"})
+ASSISTANT_READY_SCHEMA = 13
 LOCAL_IMAGE_REPOSITORY = "signal-ledger"
 HOST = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
 USER = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
@@ -397,6 +399,7 @@ class DeployController:
         expected_image_id: str | None = None,
         *,
         expected_image_digest: str | None = None,
+        expected_pair_manifest_sha256: str | None = None,
     ) -> dict[str, Any]:
         """Stage a reviewed revision from a locally published GitHub Release archive.
 
@@ -415,6 +418,10 @@ class DeployController:
             raise DeployError("archive_digest_invalid" if not legacy else "image_digest_invalid")
         if expected_image_id is not None and not IMAGE_ID.fullmatch(expected_image_id):
             raise DeployError("image_id_invalid")
+        if expected_pair_manifest_sha256 is not None and not SHA256.fullmatch(
+            expected_pair_manifest_sha256
+        ):
+            raise DeployError("pair_manifest_digest_invalid")
         # A cold clone, fetch, checkout, registry pull, and schema probe are serialized on
         # the host.  The SSH deadline must exceed their combined fixed command budgets.
         payload: dict[str, object]
@@ -429,6 +436,8 @@ class DeployController:
                 "archive_sha256": expected_archive_sha256,
                 "image_id": expected_image_id,
             }
+            if expected_pair_manifest_sha256 is not None:
+                payload["pair_manifest_sha256"] = expected_pair_manifest_sha256
         response = self._invoke(
             "plan_deploy",
             payload,
@@ -460,6 +469,16 @@ class DeployController:
             or not 1 <= response["archive_size"] <= MAX_ARCHIVE_BYTES
         ):
             raise DeployError("remote_response_invalid")
+        if expected_pair_manifest_sha256 is not None and (
+            response.get("pair_manifest_sha256") != expected_pair_manifest_sha256
+            or response.get("recovery_schema_version") != ASSISTANT_READY_SCHEMA
+            or response.get("recovery_platform") != "linux/amd64"
+            or not isinstance(response.get("recovery_image_id"), str)
+            or not IMAGE_ID.fullmatch(response["recovery_image_id"])
+            or not isinstance(response.get("recovery_archive_sha256"), str)
+            or not SHA256.fullmatch(response["recovery_archive_sha256"])
+        ):
+            raise DeployError("remote_response_invalid")
         return response
 
     def deploy(
@@ -470,6 +489,7 @@ class DeployController:
         image_id: str | None = None,
         *,
         image_digest: str | None = None,
+        pair_manifest_sha256: str | None = None,
     ) -> dict[str, Any]:
         """Promote exactly the previously prepared revision and image digest."""
 
@@ -486,6 +506,8 @@ class DeployController:
             raise DeployError("archive_digest_invalid" if not legacy else "image_digest_invalid")
         if image_id is not None and not IMAGE_ID.fullmatch(image_id):
             raise DeployError("image_id_invalid")
+        if pair_manifest_sha256 is not None and not SHA256.fullmatch(pair_manifest_sha256):
+            raise DeployError("pair_manifest_digest_invalid")
         payload: dict[str, object] = {
             "plan_id": plan_id,
             "revision": revision,
@@ -495,6 +517,8 @@ class DeployController:
         else:
             payload["archive_sha256"] = archive_sha256
             payload["image_id"] = image_id
+            if pair_manifest_sha256 is not None:
+                payload["pair_manifest_sha256"] = pair_manifest_sha256
         response = self._invoke(
             "deploy",
             payload,
@@ -511,6 +535,11 @@ class DeployController:
             response.get("transport") != RELEASE_TRANSPORT
             or response.get("archive_sha256") != archive_sha256
             or response.get("image_id") != image_id
+        ):
+            raise DeployError("remote_response_invalid")
+        if (
+            pair_manifest_sha256 is not None
+            and response.get("pair_manifest_sha256") != pair_manifest_sha256
         ):
             raise DeployError("remote_response_invalid")
         return response
@@ -543,6 +572,138 @@ class DeployController:
         ):
             raise DeployError("remote_response_invalid")
         return response
+
+    def set_assistant_rollout(self, mode: str) -> dict[str, Any]:
+        """Change the typed rollout only for the currently deployed reviewed image."""
+
+        if not isinstance(mode, str) or mode not in ASSISTANT_ROLLOUT_MODES:
+            raise DeployError("assistant_rollout_invalid")
+        status = self.status()
+        current = status.get("current") if isinstance(status, dict) else None
+        if not isinstance(current, dict):
+            raise DeployError("active_release_unavailable")
+        revision = current.get("revision")
+        archive_sha256 = current.get("archive_sha256")
+        image_id = current.get("image_id")
+        schema_version = current.get("schema_version")
+        if (
+            status.get("status") != "ok"
+            or current.get("transport") != RELEASE_TRANSPORT
+            or not isinstance(revision, str)
+            or not REVISION.fullmatch(revision)
+            or not isinstance(archive_sha256, str)
+            or not SHA256.fullmatch(archive_sha256)
+            or current.get("image_digest") != archive_sha256
+            or not isinstance(image_id, str)
+            or not IMAGE_ID.fullmatch(image_id)
+            or current.get("platform") != "linux/amd64"
+            or type(schema_version) is not int
+            or schema_version != ASSISTANT_READY_SCHEMA
+            or not isinstance(current.get("compose_digest"), str)
+            or not SHA256.fullmatch(current["compose_digest"])
+            or current.get("assistant_rollout_mode", "disabled") not in ASSISTANT_ROLLOUT_MODES
+        ):
+            raise DeployError("active_release_identity_invalid")
+        if mode != "disabled":
+            if current.get("release_role", "candidate") != "candidate":
+                raise DeployError("assistant_recovery_image_disabled")
+            if self._local_rollout_revision() != revision:
+                raise DeployError("reviewed_release_mismatch")
+            if (
+                self.config.reviewed_revision is not None
+                and self.config.reviewed_revision != revision
+            ):
+                raise DeployError("reviewed_release_mismatch")
+        response = self._invoke(
+            "set_assistant_rollout",
+            {
+                "mode": mode,
+                "revision": revision,
+                "archive_sha256": archive_sha256,
+                "image_id": image_id,
+            },
+            timeout=600,
+        )
+        health = response.get("health")
+        if (
+            response.get("status") != "ok"
+            or response.get("result") != "rollout_updated"
+            or response.get("revision") != revision
+            or response.get("archive_sha256") != archive_sha256
+            or response.get("image_id") != image_id
+            or response.get("schema_version") != ASSISTANT_READY_SCHEMA
+            or response.get("assistant_rollout_mode") != mode
+            or not isinstance(health, dict)
+            or health.get("status") != "ready"
+            or health.get("schema_version") != ASSISTANT_READY_SCHEMA
+        ):
+            raise DeployError("remote_response_invalid")
+        assistant = health.get("assistant")
+        if mode == "disabled":
+            if isinstance(assistant, dict) and assistant.get("enabled") is not False:
+                raise DeployError("remote_response_invalid")
+        elif (
+            not isinstance(assistant, dict)
+            or assistant.get("enabled") is not True
+            or assistant.get("status") != "ready"
+        ):
+            raise DeployError("assistant_not_ready")
+        return response
+
+    def _local_rollout_revision(self) -> str:
+        """Require a clean local checkout at the exact deployed revision before enabling."""
+
+        environment = {
+            "PATH": "/usr/bin:/bin",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+        try:
+            head = subprocess.run(  # noqa: S603 - fixed local Git argv
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(REPOSITORY_ROOT),
+                    "rev-parse",
+                    "--verify",
+                    "HEAD^{commit}",
+                ],
+                cwd=REPOSITORY_ROOT,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            changes = subprocess.run(  # noqa: S603 - fixed local Git argv
+                [
+                    "/usr/bin/git",
+                    "-C",
+                    str(REPOSITORY_ROOT),
+                    "status",
+                    "--porcelain",
+                    "--untracked-files=all",
+                ],
+                cwd=REPOSITORY_ROOT,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise DeployError("reviewed_revision_unavailable") from exc
+        revision = head.stdout.strip()
+        if head.returncode != 0 or changes.returncode != 0 or not REVISION.fullmatch(revision):
+            raise DeployError("reviewed_revision_unavailable")
+        if changes.stdout:
+            raise DeployError("worktree_dirty")
+        return revision
 
     def refresh_operator_access(self, operator_ipv4_cidr: str) -> dict[str, Any]:
         """Update only the fixed production firewall's operator SSH `/32` through Terraform.

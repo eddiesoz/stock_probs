@@ -9,6 +9,14 @@ Start the local app, open its loopback URL, and wait for the system status to re
 The local workspace keeps portfolio context, recorded research, and bounded market tools separate;
 it is not a brokerage or order-entry system.
 
+## Ledger assistant status
+
+The Ledger assistant is an R-ASTRA-120 candidate and is not available in the current production
+release. Production remains at schema 12 with the assistant disabled. Its acceptance work remains
+in progress; see the [assistant visual guide](../develop/design-system.md) for the design and the
+[authoritative R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
+for current evidence and open gates.
+
 ## Navigate the research workspace
 
 The shared navigation exposes these routes:

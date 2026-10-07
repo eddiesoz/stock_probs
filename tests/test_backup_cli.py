@@ -9,8 +9,10 @@ import sqlite3
 import stat
 import sys
 import zipfile
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -20,6 +22,14 @@ from stock_probs.backup import BackupError, BackupManager
 from stock_probs.repository import Repository
 
 OWNER_USER_ID = 1
+
+
+def _install_fake_uvicorn(monkeypatch: pytest.MonkeyPatch, run: Callable[..., object]) -> None:
+    """Replace the CLI's lazy Uvicorn import with an observable, network-free seam."""
+
+    module = ModuleType("uvicorn")
+    module.run = run  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "uvicorn", module)
 
 
 def _manager(settings) -> tuple[Repository, BackupManager]:
@@ -399,9 +409,11 @@ def test_backup_mutation_rejects_symlinked_coordination_file(settings):
 
 
 def test_cli_serve_passes_loopback_resource_and_timeout_bounds(monkeypatch):
+    from stock_probs import api as application_api
+
     captured = {}
-    monkeypatch.setattr(cli, "create_app", lambda _settings: object())
-    monkeypatch.setattr(cli.uvicorn, "run", lambda app, **kwargs: captured.update(kwargs))
+    monkeypatch.setattr(application_api, "create_app", lambda _settings: object())
+    _install_fake_uvicorn(monkeypatch, lambda app, **kwargs: captured.update(kwargs))
     monkeypatch.setattr(sys, "argv", ["stock-probs", "serve", "--host", "127.0.0.1"])
 
     cli.main()
@@ -420,7 +432,7 @@ def test_cli_serve_passes_loopback_resource_and_timeout_bounds(monkeypatch):
 
 def test_cli_rejects_invalid_port_before_start(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["stock-probs", "serve", "--port", "0"])
-    monkeypatch.setattr(cli.uvicorn, "run", lambda *args, **kwargs: pytest.fail("must not bind"))
+    _install_fake_uvicorn(monkeypatch, lambda *args, **kwargs: pytest.fail("must not bind"))
     with pytest.raises(SystemExit) as failure:
         cli.main()
     assert failure.value.code == 2
@@ -428,10 +440,11 @@ def test_cli_rejects_invalid_port_before_start(monkeypatch):
 
 def test_cli_requires_explicit_acknowledgement_for_broader_bind(monkeypatch):
     """The security-sensitive flag is observable and never implied by an environment default."""
+    from stock_probs import api as application_api
 
     captured = {}
-    monkeypatch.setattr(cli, "create_app", lambda _settings: object())
-    monkeypatch.setattr(cli.uvicorn, "run", lambda app, **kwargs: captured.update(kwargs))
+    monkeypatch.setattr(application_api, "create_app", lambda _settings: object())
+    _install_fake_uvicorn(monkeypatch, lambda app, **kwargs: captured.update(kwargs))
     monkeypatch.setattr(
         sys,
         "argv",

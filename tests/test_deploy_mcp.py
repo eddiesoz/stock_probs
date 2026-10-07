@@ -107,6 +107,61 @@ def test_release_plan_sends_only_archive_hash_and_image_id(tmp_path: Path) -> No
     assert result["image_id"] == image_id
 
 
+def test_schema13_release_plan_carries_pair_hash_and_validates_recovery_identity(
+    tmp_path: Path,
+) -> None:
+    controller = _controller(tmp_path)
+    revision = "a" * 40
+    archive_sha256 = "b" * 64
+    image_id = "sha256:" + "c" * 64
+    pair_sha256 = "d" * 64
+    recovery_archive_sha = "e" * 64
+    recovery_image_id = "sha256:" + "f" * 64
+    response = {
+        "status": "ok",
+        "transport": "github_release",
+        "revision": revision,
+        "plan_id": "1" * 32,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "image_ref": f"signal-ledger:sha-{revision}",
+        "platform": "linux/amd64",
+        "archive_size": 1234,
+        "pair_manifest_sha256": pair_sha256,
+        "recovery_image_id": recovery_image_id,
+        "recovery_archive_sha256": recovery_archive_sha,
+        "recovery_archive_size": 2345,
+        "recovery_platform": "linux/amd64",
+        "recovery_schema_version": 13,
+    }
+    expected_payload = {
+        "revision": revision,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "pair_manifest_sha256": pair_sha256,
+    }
+    child = (
+        "import json,sys; request=json.load(sys.stdin); "
+        "assert request['operation']=='plan_deploy'; "
+        f"assert request['payload']=={json.dumps(expected_payload)}; "
+        f"sys.stdout.write({json.dumps(json.dumps(response))})"
+    )
+    real_popen = subprocess.Popen
+
+    def fake_popen(_command: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        return real_popen([sys.executable, "-c", child], **kwargs)
+
+    with patch("controller.subprocess.Popen", side_effect=fake_popen):
+        result = controller.plan_deploy(
+            revision,
+            archive_sha256,
+            image_id,
+            expected_pair_manifest_sha256=pair_sha256,
+        )
+    assert result["pair_manifest_sha256"] == pair_sha256
+    assert result["recovery_image_id"] == recovery_image_id
+
+
 def test_release_deploy_requires_matching_archive_and_image_id(tmp_path: Path) -> None:
     controller = _controller(tmp_path)
     revision = "a" * 40
@@ -170,6 +225,95 @@ def test_release_rollback_sends_full_image_id(tmp_path: Path) -> None:
     with patch("controller.subprocess.Popen", side_effect=fake_popen):
         result = controller.rollback(revision, image_id)
     assert result["image_id"] == image_id
+
+
+def test_assistant_rollout_sends_only_current_reviewed_release_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    controller = _controller(tmp_path)
+    revision = "a" * 40
+    archive_sha256 = "b" * 64
+    image_id = "sha256:" + "c" * 64
+    current = {
+        "revision": revision,
+        "transport": "github_release",
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "platform": "linux/amd64",
+        "schema_version": 13,
+        "compose_digest": "d" * 64,
+        "assistant_rollout_mode": "disabled",
+    }
+    monkeypatch.setattr(controller, "status", lambda: {"status": "ok", "current": current})
+    monkeypatch.setattr(controller, "_local_rollout_revision", lambda: revision)
+    calls: list[tuple[str, dict[str, object], int]] = []
+
+    def invoke(operation: str, payload: dict[str, object], *, timeout: int):
+        calls.append((operation, payload, timeout))
+        return {
+            "status": "ok",
+            "result": "rollout_updated",
+            "revision": revision,
+            "archive_sha256": archive_sha256,
+            "image_id": image_id,
+            "schema_version": 13,
+            "assistant_rollout_mode": "owner_canary",
+            "health": {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": True, "status": "ready"},
+            },
+        }
+
+    monkeypatch.setattr(controller, "_invoke", invoke)
+    result = controller.set_assistant_rollout("owner_canary")
+    assert result["assistant_rollout_mode"] == "owner_canary"
+    assert calls == [
+        (
+            "set_assistant_rollout",
+            {
+                "mode": "owner_canary",
+                "revision": revision,
+                "archive_sha256": archive_sha256,
+                "image_id": image_id,
+            },
+            600,
+        )
+    ]
+
+
+def test_assistant_rollout_refuses_old_schema_and_stale_local_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    controller = _controller(tmp_path)
+    revision = "a" * 40
+    archive_sha256 = "b" * 64
+    image_id = "sha256:" + "c" * 64
+    current = {
+        "revision": revision,
+        "transport": "github_release",
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "platform": "linux/amd64",
+        "schema_version": 12,
+        "compose_digest": "d" * 64,
+        "assistant_rollout_mode": "disabled",
+    }
+    monkeypatch.setattr(controller, "status", lambda: {"status": "ok", "current": current})
+    monkeypatch.setattr(controller, "_local_rollout_revision", lambda: revision)
+    with patch.object(controller, "_invoke") as invoke:
+        with pytest.raises(DeployError, match="active_release_identity_invalid"):
+            controller.set_assistant_rollout("owner_canary")
+        invoke.assert_not_called()
+
+    current["schema_version"] = 13
+    monkeypatch.setattr(controller, "_local_rollout_revision", lambda: "e" * 40)
+    with patch.object(controller, "_invoke") as invoke:
+        with pytest.raises(DeployError, match="reviewed_release_mismatch"):
+            controller.set_assistant_rollout("invited")
+        invoke.assert_not_called()
 
 
 def test_missing_config_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:

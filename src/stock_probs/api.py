@@ -92,6 +92,16 @@ from stock_probs.schemas import (
 )
 from stock_probs.service import ForecastService
 
+_ASSISTANT_PROVIDER_PROXY_PATH = re.compile(
+    r"^/api/v1/assistant/internal/provider/[0-9a-f]{32}/chat/completions$"
+)
+_ASSISTANT_NATIVE_PROVIDER_PATH = re.compile(
+    r"^/api/v1/assistant/internal/provider/[0-9a-f]{32}/v1/"
+    r"(?:responses|messages|models/[^/]+:streamGenerateContent)$"
+)
+_ASSISTANT_OAUTH_EGRESS_PATH = re.compile(r"^/api/v1/assistant/internal/oauth$")
+_ASSISTANT_PROVIDER_PROXY_MAX_BYTES = 256 * 1024
+
 
 class ApiResponse(BaseModel):
     """Keep generated success and error contracts concrete and closed to undocumented fields."""
@@ -255,10 +265,18 @@ class HealthResponse(ApiResponse):
     api_version: Literal["v1"]
 
 
+class AssistantReadinessResponse(ApiResponse):
+    """Expose only whether the local worker is enabled and its bounded lifecycle state."""
+
+    enabled: StrictBool
+    status: Literal["disabled", "starting", "ready", "unavailable", "stopped"]
+
+
 class ReadinessResponse(ApiResponse):
     status: Literal["ready"]
     schema_version: int
     provider: str
+    assistant: AssistantReadinessResponse
 
 
 class QuoteItemResponse(ApiResponse):
@@ -1733,6 +1751,21 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
             return False
         if path.startswith("/api/v1/auth/passkeys/") or path.startswith("/api/v1/auth/totp/"):
             return False
+        # One exact per-execution MCP endpoint authenticates its own database-backed capability.
+        # Keep every browser-facing assistant route behind normal workspace session auth.
+        native_provider_path = _ASSISTANT_NATIVE_PROVIDER_PATH.fullmatch(path) is not None
+        if request.method == "POST" and (
+            (
+                not request.url.query
+                and re.fullmatch(r"/api/v1/assistant/internal/mcp/[0-9a-f]{32}", path)
+            )
+            or (not request.url.query and _ASSISTANT_PROVIDER_PROXY_PATH.fullmatch(path))
+            or native_provider_path
+            or (not request.url.query and _ASSISTANT_OAUTH_EGRESS_PATH.fullmatch(path) is not None)
+        ):
+            # This exact native endpoint validates its attempt capability and reloads the
+            # bound admin session in the assistant router before and after outbound work.
+            return False
         return path.startswith("/api/v1/") or path in {
             "/",
             "/overview",
@@ -1900,18 +1933,18 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
         )
 
     async def _cache_bounded_body(
-        self, request: Request, declared_size: int
+        self, request: Request, declared_size: int, *, max_bytes: int
     ) -> tuple[int, str, str, str] | None:
         """Read at most the application cap and verify framing before FastAPI parses JSON."""
 
         body = bytearray()
         try:
             async for chunk in request.stream():
-                if len(body) + len(chunk) > self.max_request_bytes:
+                if len(body) + len(chunk) > max_bytes:
                     return (
                         413,
                         "request_too_large",
-                        "Request body exceeds the 16 KiB local API limit.",
+                        "Request body exceeds the local API limit.",
                         "<oversized request>",
                     )
                 body.extend(chunk)
@@ -2157,7 +2190,23 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
             )
 
         declared_size = int(content_length)
-        if declared_size > self.max_request_bytes:
+        request_path = request.scope["path"]
+        request_query = request.url.query
+        native_provider_path = _ASSISTANT_NATIVE_PROVIDER_PATH.fullmatch(request_path) is not None
+        native_provider_query_allowed = native_provider_path and (
+            (request_path.endswith("/v1/responses") and request_query == "")
+            or (request_path.endswith("/v1/messages") and request_query == "beta=true")
+            or ("/v1/models/" in request_path and request_query == "alt=sse")
+        )
+        proxy_request = request.method == "POST" and (
+            (
+                request_query == ""
+                and _ASSISTANT_PROVIDER_PROXY_PATH.fullmatch(request_path) is not None
+            )
+            or native_provider_query_allowed
+        )
+        max_bytes = _ASSISTANT_PROVIDER_PROXY_MAX_BYTES if proxy_request else self.max_request_bytes
+        if declared_size > max_bytes:
             message = "Request body exceeds the local API limit."
             request_id = self._audit_transport_rejection(
                 request,
@@ -2169,12 +2218,12 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
                 status_code=413,
                 content=_error(
                     "request_too_large",
-                    "Request body exceeds the 16 KiB local API limit.",
+                    "Request body exceeds the local API limit.",
                     request_id=request_id,
                 ),
             )
 
-        framing_error = await self._cache_bounded_body(request, declared_size)
+        framing_error = await self._cache_bounded_body(request, declared_size, max_bytes=max_bytes)
         if framing_error is not None:
             status_code, code, message, forecast_label = framing_error
             request_id = self._audit_transport_rejection(request, code, message, forecast_label)
@@ -2348,6 +2397,18 @@ _RESTORE_SECURITY_TABLES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "locked_until",
         ),
     ),
+    (
+        "assistant_model_consents",
+        (
+            "id",
+            "user_id",
+            "model_id",
+            "policy_version",
+            "accepted_terms",
+            "data_collection_opt_in",
+            "recorded_at",
+        ),
+    ),
 )
 
 
@@ -2361,6 +2422,17 @@ def _restore_security_digest(path: Path) -> str:
             connection.execute("PRAGMA query_only = ON")
             state: list[tuple[str, list[tuple[object, ...]]]] = []
             for table, columns in _RESTORE_SECURITY_TABLES:
+                if table == "assistant_model_consents":
+                    # The promoted restore endpoint still requires the current schema, but
+                    # treating a pre-assistant artifact as having no consent lets the digest
+                    # fail closed if current consent has since been recorded or revoked.
+                    exists = connection.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                        (table,),
+                    ).fetchone()
+                    if exists is None:
+                        state.append((table, []))
+                        continue
                 quoted_columns = ", ".join(columns)
                 order_column = "user_id" if table == "totp_attempt_throttles" else "id"
                 rows = connection.execute(
@@ -2960,6 +3032,9 @@ def create_app(
     *,
     auth_store: object | None = None,
     passkey_backend: PasskeyBackend | None = None,
+    assistant_runtime: object | None = None,
+    assistant_catalog: object | None = None,
+    assistant_providers: object | None = None,
 ) -> FastAPI:
     """Build an injectable app so all deterministic tests use temporary SQLite files."""
 
@@ -2982,6 +3057,60 @@ def create_app(
         config.auth_settings(),
         passkey_backend=passkey_backend,
     )
+    selected_assistant_catalog = assistant_catalog
+    selected_assistant_providers = assistant_providers
+    selected_assistant_runtime = assistant_runtime
+    from stock_probs.assistant.service import AssistantService
+
+    if config.assistant_enabled:
+        # Import and construct optional assistant runtime components only when explicitly
+        # enabled. Their constructors are side-effect free; process/network startup belongs to
+        # the lifespan after canonical database migration has succeeded.
+        if selected_assistant_catalog is None:
+            from stock_probs.assistant.model_catalog import AssistantModelCatalog
+
+            selected_assistant_catalog = AssistantModelCatalog(config)
+        if selected_assistant_providers is None:
+            from stock_probs.assistant.providers import AssistantProviderManager
+
+            selected_assistant_providers = AssistantProviderManager(
+                config, selected_assistant_catalog
+            )
+    assistant_service = AssistantService(
+        config,
+        repository,
+        service,
+        auth_manager,
+        runtime=selected_assistant_runtime,
+        catalog=selected_assistant_catalog,
+        providers=selected_assistant_providers,
+        clock=selected_clock,
+        backups=backups,
+    )
+    if config.assistant_enabled and selected_assistant_runtime is None:
+        from stock_probs.assistant.runtime import OpenCodeV2Runtime
+
+        selected_assistant_runtime = OpenCodeV2Runtime(
+            config,
+            providers=selected_assistant_providers,
+            catalog=selected_assistant_catalog,
+            search_approval=assistant_service.await_search_approval,
+            webfetch_approval=assistant_service.await_webfetch_approval,
+        )
+        assistant_service.runtime = selected_assistant_runtime
+    if selected_assistant_providers is not None:
+        attach = getattr(selected_assistant_providers, "attach_runtime", None)
+        if callable(attach) and selected_assistant_runtime is not None:
+            attach(selected_assistant_runtime)
+    if selected_assistant_runtime is not None:
+        # Native V2 builtin websearch/webfetch permission requests are routed back through the
+        # server-owned exact-query approval bridge. No model/session metadata authenticates it.
+        configure_search = getattr(selected_assistant_runtime, "set_search_approval", None)
+        if callable(configure_search):
+            configure_search(assistant_service.await_search_approval)
+        configure_webfetch = getattr(selected_assistant_runtime, "set_webfetch_approval", None)
+        if callable(configure_webfetch):
+            configure_webfetch(assistant_service.await_webfetch_approval)
     static_dir = Path(__file__).parent / "static"
     next_dir = static_dir / "next"
     workspace_pages = {
@@ -3063,9 +3192,11 @@ def create_app(
             )
         application.state.ready = True
         try:
+            await assistant_service.start()
             yield
         finally:
             application.state.ready = False
+            await assistant_service.close()
 
     app = FastAPI(
         title="Stock Probability API",
@@ -3080,6 +3211,7 @@ def create_app(
     app.state.service = service
     app.state.backups = backups
     app.state.auth = auth_manager
+    app.state.assistant = assistant_service
     app.state.ready = False
     app.add_middleware(
         LocalSecurityMiddleware,
@@ -3917,7 +4049,7 @@ def create_app(
     def create_invitation(request: Request, payload: AuthInvitationRequest) -> dict[str, object]:
         """Create a single-use GitHub invitation for an administrator."""
 
-        context = _auth_context(request, role="admin")
+        context = _auth_context(request, role="admin", step_up=True)
         code, result = auth_manager.create_invitation(
             payload.github_id,
             context.user.id,
@@ -3942,7 +4074,7 @@ def create_app(
     ) -> dict[str, object]:
         """Email an invite bound to verified email or an optional numeric GitHub ID."""
 
-        context = _auth_context(request, role="admin")
+        context = _auth_context(request, role="admin", step_up=True)
         mail_settings = config.invitation_mail
         if mail_settings is None or config.auth_public_origin is None:
             raise AuthUnavailable("Email invitations are not configured.")
@@ -4192,7 +4324,22 @@ def create_app(
             raise HTTPException(status_code=503)
         # Ask through the repository boundary; transport code must not grow storage-specific SQL.
         repository.representative_counts()
-        return {"status": "ready", "schema_version": SCHEMA_VERSION, "provider": config.provider}
+        runtime_status = assistant_service._runtime_status().get("status")
+        assistant_status = (
+            runtime_status
+            if runtime_status in {"disabled", "starting", "ready", "unavailable", "stopped"}
+            else "unavailable"
+        )
+        assistant_enabled = config.assistant_enabled and not assistant_service.operator_disabled
+        return {
+            "status": "ready",
+            "schema_version": SCHEMA_VERSION,
+            "provider": config.provider,
+            "assistant": {
+                "enabled": assistant_enabled,
+                "status": assistant_status if config.assistant_enabled else "disabled",
+            },
+        }
 
     def market_identity(symbol: str, asset_type: str | None = None) -> dict[str, Any]:
         """Resolve one exact provider identity before requesting or persisting market data."""
@@ -5149,6 +5296,16 @@ def create_app(
         if path not in ("app.css", "app.js", "theme.js", "favicon.svg"):
             raise HTTPException(status_code=404)
         return FileResponse(static_dir / path)
+
+    from stock_probs.assistant.api import register_assistant_api
+
+    register_assistant_api(
+        app,
+        assistant_service,
+        auth_manager,
+        config,
+        _auth_context,
+    )
 
     app.mount("/_next", StaticFiles(directory=next_dir / "_next"), name="next-assets")
     return app

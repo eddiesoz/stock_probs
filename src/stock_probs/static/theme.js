@@ -22,11 +22,20 @@ const radio=event.target?.closest?.("[name=theme]");
 if(!radio)return;
 setChoice(radio.value);
 };
+const applyAssistantTheme=(event)=>{
+const detail=event.detail;
+if(!detail||typeof detail!=="object"||Array.isArray(detail))return;
+const keys=Object.keys(detail);
+if(keys.length!==1||keys[0]!=="theme")return;
+if(detail.theme!=="light"&&detail.theme!=="dark"&&detail.theme!=="system")return;
+setChoice(detail.theme);
+};
 const syncOpenedSettings=(event)=>{
 if(event.target?.id==="settings-menu"&&event.newState==="open")sync();
 };
 apply();
 document.addEventListener("change", handleChange);
+window.addEventListener("signal-ledger:assistant-theme", applyAssistantTheme);
 document.addEventListener("toggle", syncOpenedSettings, true);
 const bind=()=>sync();
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded", bind, { once: true });

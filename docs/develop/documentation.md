@@ -6,10 +6,18 @@ description: "Repository rules for authored pages, authoritative root records, g
 # Documentation
 
 For new or changed workspace UI, first inspect the current token and behavior sources and follow
-the [design system guide](design-system.md). That page separates the current product baseline from
-the approved Ledger assistant concept; neither a mockup nor a captured screenshot proves an
-implementation or acceptance result. Update the guide when the shared visual system intentionally
-changes, and document shipped behavior only after checking its source.
+the [design system guide](design-system.md). It records the current product baseline, the approved
+Ledger assistant visual contract, and the R-ASTRA-120 candidate status. A mockup, source presence,
+build, or screenshot does not prove runtime behavior or acceptance. Update the guide when the
+shared visual system intentionally changes, and document shipped behavior only after checking
+source and current release evidence. For browser or capture claims, follow the [served-frontend
+evidence procedure](testing.md#binding-browser-evidence-to-the-served-frontend) so the evidence
+matches the bundle FastAPI actually serves.
+
+Contrast evidence follows the root `AGENTS.md` rule: retain raw axe results and separately
+resolve uncertain results with exact-node measurements, independent QA and parent screenshot
+review. See [contrast review](testing.md#reviewing-incomplete-contrast-results). A scoped manual
+resolution does not establish full application accessibility or change the raw automated result.
 
 ## Codex project configuration
 
@@ -30,7 +38,7 @@ receipts remain unchanged and do not define current roles. User-authorized workf
 must remain limited to the named task and be recorded in `AGENTS.md` when the correction changes
 durable repository policy.
 
-Codex discovers repository skills in `.agents/skills/`. Seven relative symlinks point to the
+Codex discovers repository skills in `.agents/skills/`. Eight relative symlinks point to the
 maintained OpenCode skill directories, preserving one source for their instructions and
 references. When an approved skill is added or retired, update the corresponding Codex
 symlink and this mapping. The documentation gate covers `.codex/**` and `.agents/skills/**`.
@@ -44,6 +52,16 @@ project is needed to observe agent, skill, and MCP discovery after a configurati
 This Codex setup does not alter prior OpenCode receipts or establish provider, project-profile,
 release, export, or remote acceptance.
 
+### Source-bound build recovery
+
+For source-bound Docker work, preserve each owned source baseline as exact bytes plus SHA-256 before
+editing, require 4 GiB free before a build, stop an owned build below 1 GiB free, and hold source
+edits until a low-disk build terminates. Retain terminal evidence under `/tmp` if the repository
+filesystem is full. Cleanup is limited to exact fixed-ID cache objects proven task-owned and unused;
+never force-remove, globally prune, or delete protected release images or application data. The
+[testing guide](testing.md#reproducible-image-build-and-source-recovery-evidence) gives the
+operator-facing procedure; the root [agent policy](../../AGENTS.md) is authoritative.
+
 ### Local deployment MCP boundary
 
 Both `.codex/config.toml` and `opencode.json` declare the enabled local
@@ -53,8 +71,17 @@ tool deadline, while OpenCode declares the same catalog and execution limits. Th
 configuration contract. It does not prove that a running parent loaded the server or that an SSH
 target is configured.
 
-The server exposes six typed tools: `inspect`, `plan_deploy`, `deploy`, `status`, `rollback`, and
-`refresh_operator_access(operator_ipv4_cidr)`. The default release shape accepts a 40-character reviewed commit, a 64-hex archive
+The R-ASTRA-120 deployment MCP candidate has eight typed operations: `inspect`, `plan_deploy`,
+`deploy`, `status`, `rollback`, `refresh_operator_access(operator_ipv4_cidr)`, `rehearse_pr_pair`,
+and `set_assistant_rollout`. A fresh locked Python SDK stdio client discovered all eight and read
+production status without mutation. A later fresh Codex task also discovered all eight and passed
+read-only `inspect` and `status` (E90); parent correlation identifies task
+`01a10e2a-ec7e-7b33-aee1-2288ddc0bbad`, although the receipt does not include that task identity.
+An earlier root/current-task metadata snapshot exposed six tools. The later current-root
+observation (E105) exposed eight and passed one read-only `status` call; the earlier six-tool count
+remains historical. The default
+release shape accepts a
+40-character reviewed commit, a 64-hex archive
 SHA-256, and a full `sha256:<64-hex>` Docker image ID; the publisher derives the GitHub Release
 tag and asset URL from that commit. The controller reads one fixed target and SSH identity from
 its process environment, then sends bounded JSON through `ssh -T` to the fixed remote command
@@ -69,26 +96,45 @@ credential-free.
 The `refresh_operator_access(operator_ipv4_cidr)` operation is constrained to one canonical IPv4
 `/32` and the fixed `linode_firewall.signal_ledger` operator SSH rule. It uses the fixed external
 private Terraform state and the existing clean-tree, exact-`origin/main`, reviewed-revision source
-gate; it accepts no caller-supplied command, path, state, or credential. A successful local QA
-discovery of six tools does not establish a live firewall refresh or deployment.
+gate; it accepts no caller-supplied command, path, state, or credential. A tool listing does not
+establish a live firewall refresh or deployment.
+
+For R-ASTRA-120, retain the client/task distinction in each guide and status summary. A fresh
+official locked Python SDK stdio client at `2026-10-05T13:17:09Z`–`13:17:12Z` discovered all eight
+operations and completed read-only production `status`; this is a runtime discovery **Pass** for
+that client and MCP server. A later fresh Codex task also **Passed** discovery of all eight MCP
+operation names and one read-only `inspect` and `status` call each (E90). The parent correlates it
+to task `01a10e2a-ec7e-7b33-aee1-2288ddc0bbad`; the discovery receipt omits the task identity and
+explicitly does not include it. A later current-root snapshot (E105) exposed all eight names and passed read-only status; this
+updates only that root observation. Preserve its earlier six-name snapshot and E90's separate
+fresh-task result as distinct observations. Neither result establishes mutating-tool execution,
+health-readiness, or release acceptance. The initial SDK
+probe attempt failed because the harness read `isError` instead of the SDK's `is_error`; correcting
+the probe required no product change. The operations guide records the assistant-help renderer's
+exact three required arguments and manifest/QA-receipt binding. Generated capture bundles and
+preview files remain ignored evidence artifacts, not authored documentation topics.
 
 The current `.codex/config.toml` supplies the fixed target through a nonsecret `env` table:
 the host, restricted deployment user, and operator-owned paths for the SSH identity and known-host
 file. The key and known-host bytes remain outside the repository; no credential value belongs in
 the configuration or authored documentation. Static discovery in a fresh CLI task found the
 server and its typed tools (the task ID was not supplied). The locked stdio discovery check
-initialized the fixed-target server, listed exactly six typed tools, and completed read-only
-`inspect` with `is_error=False` and bounded text content; credential bytes were not printed. A fresh
-Codex client invocation remains **Unavailable** because the current host approval
-policy is `never`, so that client result does not replace the protocol-client pass or establish
+initialized the fixed-target server, listed six typed tools for its then-current revision, and
+completed read-only `inspect` with `is_error=False` and bounded text content; credential bytes
+were not printed. That historical protocol result does not establish runtime discovery of the
+R-ASTRA-120 additions. An earlier Codex client invocation was **Unavailable** under the host
+approval boundary at that checkpoint. E90 later records a fresh-task discovery **Pass** for the
+eight operation names and read-only calls; it does not establish execution of mutating tools or
 deploy/rollback acceptance.
 
 After changing either MCP configuration, `scripts/deploy-mcp.sh`, `tools/deploy_mcp/**`, or its
 lock, restart the parent process and open a fresh Codex/OpenCode task to verify that the server
 appears in the tool catalog and that its typed tools are discoverable. A configuration parse,
-file-presence check, or the editing session is not runtime discovery evidence. With
-`OPENCODE_DISABLE_PROJECT_CONFIG=1`, project MCP discovery is **Pending**/**Unavailable** and no
-deployment or provider acceptance may be inferred.
+file-presence check, or the editing session is not runtime discovery evidence. Earlier client
+invocation attempts that were unavailable due to the host approval boundary remain historical;
+E90's fresh-task result closes only its declared metadata/read-only discovery scope. With
+`OPENCODE_DISABLE_PROJECT_CONFIG=1`, OpenCode project MCP discovery is **Pending**/**Unavailable**
+and no deployment or provider acceptance may be inferred.
 
 ## Current native OpenCode V2 documentation workflow
 

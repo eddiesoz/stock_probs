@@ -1,0 +1,41 @@
+{
+  "_comment": "Digests bind fixed upstream and transformed inputs; update a pin only with its reviewed source bytes.",
+  "opencode": {
+    "version": "2.0.7",
+    "source_commit": "ca27d3328fcd0d470588149c902a963452f1abaf",
+    "source_archive_url": "https://codeload.github.com/anomalyco/opencode/tar.gz/ca27d3328fcd0d470588149c902a963452f1abaf",
+    "source_archive_sha256": "0540e43d4c838f14b6fdbd5ca1f22d4f2fc64688bed72cc9512cea1111a3ba9a",
+    "webfetch_path": "packages/core/src/tool/plugin/webfetch.ts",
+    "webfetch_sha256": "643585080feae0aa5bc99f143d1d9dfc75caf2c6c994bb3ff5285d943a14dc56",
+    "webfetch_patched_sha256": "c4133e89b06e6d235e65c0e841f607610e4958abd44ceaa6f8532f37aa5a628c",
+    "webfetch_guard_sha256": "9d42aca999a0342365c324ba9f82e07b86185b08a3fd94936baae4ac5d820cdb",
+    "webfetch_guard_test_sha256": "ca614bcf007137fe7a3a6a72f67576ebec601aa1fb782d82f99703551d6af022",
+    "native_integration_test_sha256": "c2745c1fea8e182ddc396c1140e0451f7611b932a47ccacd76268655ac7aac2e",
+    "mcp_tool_path": "packages/core/src/tool/mcp.ts",
+    "mcp_tool_sha256": "27766cf6f5ec17ec2c0e1806734123ea573731a633ab9b6bf1b31536fd0b730a",
+    "mcp_tool_patched_sha256": "aa7bf4c584cd8f836a738ab1f015296a0ca5bf2eec3c2cb99bf82d6b9e38cd5a",
+    "mcp_patch_script_sha256": "366e48631fc1c296f33bbbaa39b917549cbedf70f640b3bbe4853bbafa8dd650",
+    "oauth_patch_runner_sha256": "e899eee083dc287b8a717995b4d1f3c1ebb3e3822788f3fb2c569b2841ad29d5",
+    "oauth_handoff_sha256": "18a2714f6a06b00147db833b9a1dfec75303d0108b88aab299edf34db82c1691",
+    "oauth_handoff_test_sha256": "5656490d12dfcb9b092c3fee13f2b872d36df490abbf1d2d1df1ec170f2f56fe",
+    "oauth_broker_sha256": "4e4a30b79e667cdb8e8ce820482bccf537eb244d50fcc59f22a7cb40ea483ba1",
+    "oauth_broker_test_sha256": "698c4c823b73c1116674ebf5bafe36b720a5ccb4a3c59219ae00bebff4825a65",
+    "oauth_callback_sha256": "5d54f79e89bf817fbe955ffee0ca0f00aac79d3b4480abd86c6947beea038bfb",
+    "oauth_callback_test_sha256": "f525007a53d097ab52711926382fcfc4d32786bafef5f035a87629a9202384df",
+    "oauth_transformed_source_set_sha256": "6c4a0831b9109a9d2af7b896f4871949110e0cfab125ee72b681a692bba40136"
+  },
+  "bun": {
+    "version": "1.4.2",
+    "linux_amd64_url": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip",
+    "linux_amd64_archive_sha256": "c678040f14fe0440eb839d37cbd0ce4c051a32da72806ac97de6a6aab6bf728f",
+    "linux_amd64_binary_sha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+    "linux_arm64_url": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-aarch64.zip",
+    "linux_arm64_archive_sha256": "54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7"
+  },
+  "limits": {
+    "source_archive_bytes": 134217728,
+    "bun_archive_bytes": 134217728,
+    "source_members": 12000,
+    "source_expanded_bytes": 268435456
+  }
+}

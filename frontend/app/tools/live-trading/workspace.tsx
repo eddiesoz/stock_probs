@@ -3,8 +3,10 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../../../components/auth-client";
+import type { AssistantBrowserAction } from "../../../components/assistant/assistant-contract";
 import { replaceInstrumentInUrl } from "../../../components/workspace-context-url";
 import { apiPayload, delay, number, quoteBatches, quotePrice, record, snapshotState, time } from "../client-utils";
+import { applyLiveTradingAssistantAction } from "./assistant-bridge";
 import styles from "./workspace.module.css";
 
 type LoadState = "loading" | "ready" | "empty" | "error";
@@ -180,6 +182,33 @@ export function LiveTradingWorkspace() {
   }, []);
 
   useEffect(() => {
+    const request = new AbortController();
+    const refreshAfterAssistantAction = async () => {
+      setListMessage("Refreshing the saved portfolio after the confirmed assistant action…");
+      try {
+        const response = await fetch("/api/v1/lists?kind=portfolio", { signal: request.signal });
+        const holdings = portfolioItems(await apiPayload(response, `Portfolio request failed (${response.status}).`));
+        const preserveDraft = draft !== portfolioDraft(portfolio);
+        setPortfolio(holdings);
+        setPortfolioState(holdings.length ? "ready" : "empty");
+        setRowQuantities(Object.fromEntries(holdings.map((item) => [item.symbol, String(item.quantity ?? "")])));
+        if (!preserveDraft) setDraft(portfolioDraft(holdings));
+        setListMessage(preserveDraft
+          ? "The confirmed assistant action changed the saved portfolio. Your unsaved bulk draft is unchanged; review it before applying."
+          : holdings.length ? "Saved portfolio refreshed after the confirmed assistant action." : "Saved portfolio is empty after the confirmed assistant action.");
+      } catch (error) {
+        if (request.signal.aborted) return;
+        setListMessage(error instanceof Error ? error.message : "The saved portfolio could not be refreshed.");
+      }
+    };
+    window.addEventListener("signal-ledger:assistant-portfolio-updated", refreshAfterAssistantAction);
+    return () => {
+      request.abort();
+      window.removeEventListener("signal-ledger:assistant-portfolio-updated", refreshAfterAssistantAction);
+    };
+  }, [draft, portfolio]);
+
+  useEffect(() => {
     if (!initialized.current || portfolioState === "loading") return;
     const symbols = [...new Set([...(identity.symbol ? [identity.symbol] : []), ...portfolio.map((item) => item.symbol)])].slice(0, 100);
     if (!symbols.length) {
@@ -242,6 +271,44 @@ export function LiveTradingWorkspace() {
     setNotes(localStorage.getItem(`stock-probs.live-notes.${identity.symbol}`) ?? "");
     setAlerts([]);
   }, [identity.symbol]);
+
+  useEffect(() => {
+    const receiveAssistantAction = (event: Event) => {
+      const custom = event as CustomEvent<{ action?: AssistantBrowserAction; finish?: (result: { ok: boolean; message: string }) => void }>;
+      const action = custom.detail?.action;
+      const finish = custom.detail?.finish;
+      if (!action || !finish) return;
+      const result = applyLiveTradingAssistantAction(action, {
+        symbol: identity.symbol,
+        asset_type: identity.assetType,
+        provider: identity.provider,
+        exchange: identity.exchange,
+      }, alerts);
+      if (result.ok) {
+        if (result.state.note !== undefined) {
+          setNotes(result.state.note);
+          if (identity.symbol) {
+            const key = `stock-probs.live-notes.${identity.symbol}`;
+            if (result.state.note) localStorage.setItem(key, result.state.note);
+            else localStorage.removeItem(key);
+          }
+        }
+        if (result.state.alerts) setAlerts(result.state.alerts);
+        if (action.type === "notes.set" || action.type === "notes.clear" || action.type === "alerts.remove") {
+          const targetId = action.type === "alerts.remove" ? "alerts-heading" : "notes-heading";
+          window.requestAnimationFrame(() => {
+            const target = document.getElementById(targetId);
+            if (!target) return;
+            target.scrollIntoView({ block: "center" });
+            target.focus({ preventScroll: true });
+          });
+        }
+      }
+      finish(result);
+    };
+    window.addEventListener("signal-ledger:assistant-action", receiveAssistantAction);
+    return () => window.removeEventListener("signal-ledger:assistant-action", receiveAssistantAction);
+  }, [identity, alerts]);
 
   const selectedQuote = quotes.find((item) => item.symbol.toUpperCase() === identity.symbol) ?? null;
 
@@ -471,12 +538,12 @@ export function LiveTradingWorkspace() {
 
       <div className={styles.lowerGrid}>
         <section className={styles.notes} aria-labelledby="notes-heading">
-          <p className="panel-kicker">Private browser draft</p><h2 id="notes-heading">Research notes</h2>
+          <p className="panel-kicker">Private browser draft</p><h2 id="notes-heading" tabIndex={-1}>Research notes</h2>
           <label htmlFor="live-notes">Notes for {identity.symbol || "this view"} (local only; not sent to the server)</label>
           <textarea id="live-notes" value={notes} onChange={(event) => { const value = event.target.value; setNotes(value); if (identity.symbol) localStorage.setItem(`stock-probs.live-notes.${identity.symbol}`, value); }} maxLength={1000} rows={5} />
         </section>
         <section className={styles.alerts} aria-labelledby="alerts-heading">
-          <p className="panel-kicker">Active session only</p><h2 id="alerts-heading">Price alerts</h2>
+          <p className="panel-kicker">Active session only</p><h2 id="alerts-heading" tabIndex={-1}>Price alerts</h2>
           <p>Bell thresholds exist only in this open page. No scheduler or delivery is configured.</p>
           <form onSubmit={addAlert}><label htmlFor="alert-price">Price threshold</label><div><input id="alert-price" type="number" min="0.01" step="0.01" value={threshold} onChange={(event) => setThreshold(event.target.value)} /><button className="secondary" type="submit" aria-label="Add active-session price alert">🔔 Add</button></div></form>
           {alerts.length ? <ul>{alerts.map((price, index) => <li key={`${price}-${index}`}>{identity.symbol} at {price.toFixed(2)} <button type="button" className="secondary" onClick={() => setAlerts((items) => items.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></li>)}</ul> : <p>No active thresholds.</p>}

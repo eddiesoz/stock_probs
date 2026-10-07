@@ -6,6 +6,7 @@ import vm from "node:vm";
 test("theme controls added by a client route sync when Settings opens and changes", async () => {
   const source = await readFile(new URL("../../src/stock_probs/static/theme.js", import.meta.url), "utf8");
   const listeners = new Map();
+  const windowListeners = new Map();
   const radios = [];
   const storage = new Map([["stock-probs.theme", "dark"]]);
   const media = {
@@ -27,6 +28,7 @@ test("theme controls added by a client route sync when Settings opens and change
   };
   const context = {
     document,
+    window: { addEventListener(type, listener) { windowListeners.set(type, listener); } },
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
@@ -59,4 +61,10 @@ test("theme controls added by a client route sync when Settings opens and change
   assert.equal(light.checked, true);
   assert.equal(dark.checked, false);
   assert.equal(system.checked, false);
+
+  windowListeners.get("signal-ledger:assistant-theme")({ detail: { theme: "system" } });
+  assert.equal(storage.has("stock-probs.theme"), false);
+  assert.equal(document.documentElement.dataset.theme, "light");
+  windowListeners.get("signal-ledger:assistant-theme")({ detail: { theme: "dark", private_value: "ignored" } });
+  assert.equal(document.documentElement.dataset.theme, "light");
 });

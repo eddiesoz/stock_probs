@@ -155,6 +155,8 @@ def test_cli_requires_explicit_non_loopback_acknowledgement(monkeypatch):
 
 
 def test_cli_uses_bounded_environment_listener_without_startup_writes(monkeypatch, tmp_path):
+    import uvicorn
+
     captured = {}
     data_dir = tmp_path / "server-state"
     monkeypatch.setenv("STOCK_PROBS_DATA_DIR", str(data_dir))
@@ -162,9 +164,7 @@ def test_cli_uses_bounded_environment_listener_without_startup_writes(monkeypatc
     monkeypatch.setenv("STOCK_PROBS_HOST", "localhost")
     monkeypatch.setenv("STOCK_PROBS_PORT", "8123")
     monkeypatch.setattr(sys, "argv", ["stock-probs", "serve"])
-    monkeypatch.setattr(
-        "stock_probs.cli.uvicorn.run", lambda app, **kwargs: captured.update(kwargs)
-    )
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: captured.update(kwargs))
 
     main()
 
