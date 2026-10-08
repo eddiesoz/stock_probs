@@ -137,6 +137,32 @@ function AssistantHostClient() {
     window.requestAnimationFrame(() => launcherRef.current?.focus());
   }
 
+  function handoffToLocalControls(targetId: "notes-heading" | "alerts-heading", expectedHref: string) {
+    if (window.location.href !== expectedHref) return;
+    const background = document.querySelector<HTMLElement>("[data-assistant-background]");
+    const selector = targetId === "notes-heading"
+      ? 'h2#notes-heading[tabindex="-1"]'
+      : 'h2#alerts-heading[tabindex="-1"]';
+    const target = background?.querySelector<HTMLElement>(selector);
+    if (!background || !target?.matches(selector)) return;
+    setOpen(false);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (window.location.href !== expectedHref || !background.isConnected
+            || document.querySelector("[data-assistant-background]") !== background
+            || !target.isConnected || document.getElementById(targetId) !== target
+            || !background.contains(target) || !target.matches(selector)
+            || background.inert
+            || background.hasAttribute("data-assistant-mobile-modal-underlay")
+            || document.body.dataset.assistantOpen === "true"
+            || document.querySelector('[data-testid="assistant-panel"]')) return;
+        if (target.getClientRects().length === 0) return;
+        target.scrollIntoView({ block: "center" });
+        target.focus({ preventScroll: true });
+      });
+    });
+  }
+
   if (hostState !== "ready" || !status || !contextRequest) return null;
   return (
     <>
@@ -157,6 +183,7 @@ function AssistantHostClient() {
             contextRequest={contextRequest}
             initialStatus={status}
             onClose={closePanel}
+            onLocalHandoff={handoffToLocalControls}
           />
         </Suspense>
       )}

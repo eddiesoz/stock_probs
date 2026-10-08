@@ -2970,20 +2970,44 @@ def _dispatch_database_facts(
     helper: Any,
     ownership: _DispatchCleanupOwnership,
     cleanup_errors: list[str],
-) -> tuple[int, int]:
+) -> tuple[int, int, int, str]:
     """Read the task volume through the exact Compose service as its application UID."""
 
-    script = (
-        "import sqlite3; "
-        "c=sqlite3.connect('file:/data/stock_probs.sqlite3?mode=ro',uri=True); "
-        "c.execute('PRAGMA query_only=ON'); "
-        "schema=c.execute('SELECT MAX(version) FROM schema_migrations').fetchone()[0]; "
-        "rows=c.execute("
-        '"SELECT COUNT(*) FROM search_events '
-        "WHERE request_id='before-schema13'\""
-        ").fetchone()[0]; "
-        "print(f'{schema}|{rows}')"
-    )
+    script = """
+import hashlib
+import json
+import sqlite3
+
+connection = sqlite3.connect("file:/data/stock_probs.sqlite3?mode=ro", uri=True)
+connection.execute("PRAGMA query_only=ON")
+schema = connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+request_id = "before-schema13"
+rows = connection.execute(
+    "SELECT COUNT(*) FROM search_events WHERE request_id = ?", (request_id,)
+).fetchone()[0]
+event = connection.execute(
+    "SELECT id, request_id, submitted_symbol, normalized_symbol, asset_type, status, "
+    "is_repeat, error_code, error_message, run_id, submitted_at, completed_at "
+    "FROM search_events WHERE request_id = ?",
+    (request_id,),
+).fetchone()
+owner = connection.execute(
+    "SELECT owner_user_id, assigned_at FROM search_event_owners "
+    "WHERE event_id = (SELECT id FROM search_events WHERE request_id = ?)",
+    (request_id,),
+).fetchone()
+owner_count = connection.execute(
+    "SELECT COUNT(*) FROM search_event_owners "
+    "WHERE event_id = (SELECT id FROM search_events WHERE request_id = ?)",
+    (request_id,),
+).fetchone()[0]
+fixture = "missing"
+if event is not None and owner is not None:
+    fixture = hashlib.sha256(
+        json.dumps([event, owner], separators=(",", ":"), ensure_ascii=True).encode()
+    ).hexdigest()
+print(f"{schema}|{rows}|{owner_count}|{fixture}")
+"""
     before_containers = _dispatch_all_resource_ids(helper, "container")
     before_networks = _dispatch_all_resource_ids(helper, "network")
     try:
@@ -3014,9 +3038,13 @@ def _dispatch_database_facts(
             cleanup_errors=cleanup_errors,
         )
     values = output.split("|")
-    if len(values) != 2 or any(not value.isdigit() for value in values):
+    if (
+        len(values) != 4
+        or any(not value.isdigit() for value in values[:3])
+        or re.fullmatch(r"[0-9a-f]{64}", values[3]) is None
+    ):
         raise ValueError("database_fixture_probe_invalid")
-    return int(values[0]), int(values[1])
+    return int(values[0]), int(values[1]), int(values[2]), values[3]
 
 
 def _dispatch_compose_yaml(volume_name: str, run_id: str) -> bytes:
@@ -3187,7 +3215,7 @@ def _dispatch_profile(
 
 
 def test_opt_in_schema13_recovery_dispatch_on_disposable_data(tmp_path: Path) -> None:
-    """Exercise real first-deploy failure and same-schema recovery on pinned local images."""
+    """Exercise first-deploy recovery and its public rollback selector on pinned local images."""
 
     if os.environ.get("R120_RECOVERY_DISPATCH_DOCKER") != "1":
         pytest.skip("opt in only after parent review of the local Docker contract")
@@ -3208,7 +3236,7 @@ def test_opt_in_schema13_recovery_dispatch_on_disposable_data(tmp_path: Path) ->
     receipt: dict[str, object] = {
         "schema_version": 1,
         "task_id": "R-ASTRA-120",
-        "scope": "local candidate failure to same-schema recovery dispatch",
+        "scope": "candidate failure, forward recovery, and explicit same-schema rollback",
         "result": "Fail",
         "phase": "preflight",
         "started_at": start,
@@ -3225,8 +3253,20 @@ def test_opt_in_schema13_recovery_dispatch_on_disposable_data(tmp_path: Path) ->
         "candidate_failure_injected_once": False,
         "schema_version_before_candidate": None,
         "preserved_fixture_row_count_before_candidate": None,
+        "preserved_fixture_owner_count_before_candidate": None,
         "schema_version_after_recovery": None,
         "preserved_fixture_row_count": None,
+        "preserved_fixture_owner_count": None,
+        "preserved_fixture_sha256_before_candidate": None,
+        "preserved_fixture_sha256_after_recovery": None,
+        "explicit_recovery_rollback_result": None,
+        "schema_version_after_explicit_rollback": None,
+        "preserved_fixture_row_count_after_explicit_rollback": None,
+        "preserved_fixture_owner_count_after_explicit_rollback": None,
+        "preserved_fixture_sha256_after_explicit_rollback": None,
+        "explicit_rollback_health": None,
+        "explicit_rollback_profile_matches_forward_recovery": None,
+        "typed_rollback_request_parsed_dispatched": False,
         "current_release_role": None,
         "current_rollout_mode": None,
         "failed_status": None,
@@ -3652,13 +3692,22 @@ def test_opt_in_schema13_recovery_dispatch_on_disposable_data(tmp_path: Path) ->
                     raise ValueError("seed_container_id_invalid")
 
         helper._runtime_file(candidate_ref, "disabled")
-        schema_before, fixture_rows_before = _dispatch_database_facts(
-            helper, ownership, cleanup_errors
-        )
-        if schema_before != helper.ASSISTANT_MINIMUM_SCHEMA - 1 or fixture_rows_before != 1:
+        (
+            schema_before,
+            fixture_rows_before,
+            fixture_owners_before,
+            fixture_sha_before,
+        ) = _dispatch_database_facts(helper, ownership, cleanup_errors)
+        if (
+            schema_before != helper.ASSISTANT_MINIMUM_SCHEMA - 1
+            or fixture_rows_before != 1
+            or fixture_owners_before != 1
+        ):
             raise AssertionError("schema12_fixture_not_seeded")
         receipt["schema_version_before_candidate"] = schema_before
         receipt["preserved_fixture_row_count_before_candidate"] = fixture_rows_before
+        receipt["preserved_fixture_owner_count_before_candidate"] = fixture_owners_before
+        receipt["preserved_fixture_sha256_before_candidate"] = fixture_sha_before
         compose_digest = helper._compose_digest()
         target["compose_digest"] = compose_digest
         snapshot = helper._compose_snapshot_path(revision)
@@ -3784,12 +3833,20 @@ def test_opt_in_schema13_recovery_dispatch_on_disposable_data(tmp_path: Path) ->
         candidate_up, recovery_up = ups
         assert candidate_up["release_role"] == "candidate"
         assert recovery_up["release_role"] == "recovery"
+        assert recovery_up["image_id"] == target["recovery_image_id"]
         assert candidate_up["volume_name"] == recovery_up["volume_name"] == volume
         assert candidate_up["profile"] == recovery_up["profile"]
         assert candidate_up["network_internal"] is recovery_up["network_internal"] is True
 
-        schema_after, row_count = _dispatch_database_facts(helper, ownership, cleanup_errors)
-        if schema_after != helper.ASSISTANT_MINIMUM_SCHEMA or row_count != 1:
+        schema_after, row_count, owner_count, fixture_sha_after = _dispatch_database_facts(
+            helper, ownership, cleanup_errors
+        )
+        if (
+            schema_after != helper.ASSISTANT_MINIMUM_SCHEMA
+            or row_count != 1
+            or owner_count != 1
+            or fixture_sha_after != fixture_sha_before
+        ):
             raise AssertionError("schema13_fixture_data_not_preserved")
         current = json.loads(helper.CURRENT_RECORD.read_text(encoding="utf-8"))
         failed = json.loads(helper.FAILED_RECORD.read_text(encoding="utf-8"))
@@ -3800,11 +3857,92 @@ def test_opt_in_schema13_recovery_dispatch_on_disposable_data(tmp_path: Path) ->
             or failed.get("forward_recovery_succeeded") is not True
         ):
             raise AssertionError("release_recovery_records_invalid")
+
+        # Exercise the public recovery selector after the candidate's automatic recovery has
+        # already completed, using the same reviewed image pair and disposable data volume.
+        rollback_request = json.dumps(
+            {
+                "operation": "rollback",
+                "payload": {
+                    "revision": revision,
+                    "image_id": target["recovery_image_id"],
+                },
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
+        rollback_operation, rollback_payload = helper._parse_request(rollback_request)
+        if rollback_operation != "rollback":
+            raise AssertionError("explicit_rollback_operation_not_parsed")
+        rollback_result = helper._dispatch(rollback_operation, rollback_payload)
+        receipt["typed_rollback_request_parsed_dispatched"] = True
+        (
+            schema_after_rollback,
+            rows_after_rollback,
+            owners_after_rollback,
+            fixture_sha_after_rollback,
+        ) = _dispatch_database_facts(helper, ownership, cleanup_errors)
+        rollback_up = receipt["up_containers"][-1]
+        current_after_rollback = json.loads(helper.CURRENT_RECORD.read_text(encoding="utf-8"))
+        failed_after_rollback = json.loads(helper.FAILED_RECORD.read_text(encoding="utf-8"))
+        rollback_health = rollback_result.get("health", {})
+        rollback_assistant_health = rollback_health.get("assistant", {})
+        if (
+            len(receipt["up_containers"]) != 3
+            or rollback_up["release_role"] != "recovery"
+            or rollback_up["image_id"] != target["recovery_image_id"]
+            or rollback_up["volume_name"] != volume
+            or recovery_up["volume_name"] != volume
+            or rollback_up["volume_source_sha256"] != recovery_up["volume_source_sha256"]
+            or rollback_up["profile"] != recovery_up["profile"]
+            or rollback_up["network_name"] != recovery_up["network_name"]
+            or rollback_up["network_internal"] is not True
+            or schema_after_rollback != helper.ASSISTANT_MINIMUM_SCHEMA
+            or rows_after_rollback != 1
+            or owners_after_rollback != 1
+            or fixture_sha_after_rollback != fixture_sha_before
+            or rollback_result.get("status") != "ok"
+            or rollback_result.get("result") != "rolled_back"
+            or rollback_result.get("revision") != revision
+            or rollback_result.get("image_id") != target["recovery_image_id"]
+            or rollback_result.get("archive_sha256") != target["recovery_archive_sha256"]
+            or rollback_result.get("release_role") != "recovery"
+            or rollback_result.get("pair_manifest_sha256") != pair_sha
+            or rollback_result.get("schema_version") != helper.ASSISTANT_MINIMUM_SCHEMA
+            or rollback_health.get("status") != "ready"
+            or rollback_health.get("schema_version") != helper.ASSISTANT_MINIMUM_SCHEMA
+            or rollback_assistant_health.get("enabled") is not False
+            or rollback_assistant_health.get("status") != "disabled"
+            or current_after_rollback.get("release_role") != "recovery"
+            or current_after_rollback.get("image_id") != target["recovery_image_id"]
+            or current_after_rollback.get("image_ref") != target["recovery_image_ref"]
+            or current_after_rollback.get("image_digest") != target["recovery_archive_sha256"]
+            or current_after_rollback.get("pair_manifest_sha256") != pair_sha
+            or current_after_rollback.get("assistant_rollout_mode") != "disabled"
+            or current_after_rollback.get("schema_version") != helper.ASSISTANT_MINIMUM_SCHEMA
+            or failed_after_rollback != failed
+        ):
+            raise AssertionError("explicit_recorded_recovery_rollback_invalid")
         receipt.update(
             {
                 "candidate_failure_injected_once": True,
                 "schema_version_after_recovery": schema_after,
                 "preserved_fixture_row_count": row_count,
+                "preserved_fixture_owner_count": owner_count,
+                "preserved_fixture_sha256_before_candidate": fixture_sha_before,
+                "preserved_fixture_sha256_after_recovery": fixture_sha_after,
+                "explicit_recovery_rollback_result": rollback_result,
+                "typed_rollback_request_parsed_dispatched": receipt[
+                    "typed_rollback_request_parsed_dispatched"
+                ],
+                "schema_version_after_explicit_rollback": schema_after_rollback,
+                "preserved_fixture_row_count_after_explicit_rollback": rows_after_rollback,
+                "preserved_fixture_owner_count_after_explicit_rollback": owners_after_rollback,
+                "preserved_fixture_sha256_after_explicit_rollback": fixture_sha_after_rollback,
+                "explicit_rollback_health": rollback_health,
+                "explicit_rollback_profile_matches_forward_recovery": (
+                    rollback_up["profile"] == recovery_up["profile"]
+                    and rollback_up["volume_name"] == recovery_up["volume_name"]
+                ),
                 "current_release_role": current.get("release_role"),
                 "current_rollout_mode": current.get("assistant_rollout_mode"),
                 "failed_status": failed.get("status"),

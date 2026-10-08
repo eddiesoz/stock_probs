@@ -2955,6 +2955,181 @@ test("assistant availability, context, focus, and bounds hold across workspace r
   }
 });
 
+test("member sessions can use assistant workspace and account context but not the admin surface", async ({ page }) => {
+  const assistantRequests = [];
+  const protectedAdminRequests = [];
+  const contextRoutes = [];
+  let sessionReads = 0;
+  await page.route("**/api/v1/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+    if (path.startsWith("/api/v1/assistant/")) assistantRequests.push({ method: request.method(), path });
+    if (/^\/api\/v1\/(?:auth\/invites|assistant\/providers|operations\/(?:backups|restores))(?:\/|$)/.test(path)) {
+      protectedAdminRequests.push({ method: request.method(), path });
+    }
+
+    let payload = { items: [], page: 1, page_size: 20, total: 0 };
+    if (path === "/api/v1/auth/session") {
+      sessionReads += 1;
+      payload = { authenticated: true, user: { id: 9, login: "fixture-member", role: "member" }, csrf_token: "fixture-csrf" };
+    } else if (path === "/api/v1/auth/sessions") {
+      payload = { sessions: [{ id: "member-session", current: true, last_seen_at: "2026-10-08T12:00:00Z", expires_at: "2026-10-09T12:00:00Z" }] };
+    } else if (path === "/api/v1/auth/totp/status") {
+      payload = { enrolled: true, enrollment_pending: false, recovery_codes_remaining: 8, requires_totp: true, can_enroll: false };
+    } else if (path === "/api/v1/assistant/status") {
+      payload = { ...status, authorization: { role: "member", admitted: true } };
+    } else if (path === "/api/v1/assistant/models") {
+      payload = { items: [model] };
+    } else if (path === "/api/v1/assistant/context") {
+      const routeName = url.searchParams.get("route") || "/";
+      contextRoutes.push(routeName);
+      payload = {
+        context: { ...context, route: routeName, context_version: `member:${routeName}` },
+        preview: { summary: `Member context for ${routeName}`, fields: ["current route only"], note: "No administrator data." },
+      };
+    } else if (path === "/api/v1/assistant/conversations") {
+      payload = { items: [], page: 1, page_size: 20, total: 0 };
+    } else if (path === "/api/v1/auth/invites") {
+      payload = { invitations: [], email_invites_enabled: false };
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
+  });
+
+  for (const routeName of ["/overview", "/account"]) {
+    await page.goto(routeName);
+    if (routeName === "/account") {
+      await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Open admin panel" })).toHaveCount(0);
+    }
+    const launcher = page.getByRole("button", { name: "Open Ledger assistant" });
+    await expect(launcher).toBeVisible();
+    await launcher.click();
+    const panel = page.getByTestId("assistant-panel");
+    await expect(panel.getByRole("region", { name: "Workspace context" })).toBeVisible();
+    await panel.locator("details > summary").click();
+    await expect(panel.getByText(`Member context for ${routeName}`, { exact: true })).toBeVisible();
+    expect(contextRoutes.at(-1)).toBe(routeName);
+    await panel.getByRole("button", { name: "Close assistant" }).click();
+  }
+
+  assistantRequests.length = 0;
+  protectedAdminRequests.length = 0;
+  const sessionReadsBeforeAdmin = sessionReads;
+  await page.goto("/admin");
+  await expect(page.getByRole("heading", { name: "Administrator access required" })).toBeVisible();
+  await expect.poll(() => sessionReads).toBeGreaterThanOrEqual(sessionReadsBeforeAdmin + 2);
+  await expect(page.getByRole("button", { name: "Open Ledger assistant" })).toHaveCount(0);
+  await expect(page.getByTestId("assistant-panel")).toHaveCount(0);
+  expect(assistantRequests).toEqual([]);
+  expect(protectedAdminRequests).toEqual([]);
+});
+
+test("assistant stays absent on sign-in, invitation, authenticator, and legacy passkey routes", async ({ page }) => {
+  const assistantRequests = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.startsWith("/api/v1/assistant/")) assistantRequests.push(path);
+    const payload = path === "/api/v1/auth/session"
+      ? { authenticated: false }
+      : path === "/api/v1/auth/status"
+        ? { status: "github" }
+        : path === "/api/v1/auth/totp/status"
+          ? { enrolled: false, enrollment_pending: false, recovery_codes_remaining: 0, requires_totp: false, can_enroll: false }
+          : {};
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
+  });
+
+  for (const routeName of [
+    "/sign-in",
+    "/invite?error=invitation_rejected",
+    "/authenticator?mode=enroll&next=%2Foverview",
+    "/passkey?mode=verify&next=%2Foverview",
+  ]) {
+    await page.goto(routeName);
+    await expect(page.locator("main")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open Ledger assistant" })).toHaveCount(0);
+    await expect(page.getByTestId("assistant-panel")).toHaveCount(0);
+  }
+  expect(assistantRequests).toEqual([]);
+});
+
+test("session revocation while the assistant is open prevents a pending action confirmation", async ({ page, assistantApplication, browserDiagnostics }) => {
+  const origin = assistantApplication.url;
+  const confirmationRequests = [];
+  const eventStreamResponses = new Map();
+  const eventStreamTerminals = new Map();
+  const recordEventStreamTerminal = (path, outcome) => {
+    eventStreamTerminals.set(path, [...(eventStreamTerminals.get(path) || []), outcome]);
+  };
+  page.on("response", (response) => {
+    const url = new URL(response.url());
+    if (response.request().method() === "GET" && /^\/api\/v1\/assistant\/conversations\/[^/]+\/turns\/[^/]+\/events$/.test(url.pathname)) {
+      eventStreamResponses.set(url.pathname, { status: response.status(), contentType: response.headers()["content-type"] || "" });
+    }
+  });
+  page.on("requestfinished", (request) => {
+    const url = new URL(request.url());
+    if (request.method() === "GET" && /^\/api\/v1\/assistant\/conversations\/[^/]+\/turns\/[^/]+\/events$/.test(url.pathname)) {
+      recordEventStreamTerminal(url.pathname, { kind: "finished" });
+    }
+  });
+  page.on("requestfailed", (request) => {
+    const url = new URL(request.url());
+    if (request.method() === "GET" && /^\/api\/v1\/assistant\/conversations\/[^/]+\/turns\/[^/]+\/events$/.test(url.pathname)) {
+      recordEventStreamTerminal(url.pathname, { kind: "failed", error: request.failure()?.errorText || "unknown request failure" });
+    }
+  });
+  const panel = await openRealAssistant(page, origin);
+  const priorTheme = await page.locator("html").getAttribute("data-theme");
+  if (!priorTheme) throw new Error("The workspace theme must be initialized before the action check.");
+  await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Explain this page without selected references");
+  const turnResponsePromise = page.waitForResponse((response) => {
+    const request = response.request();
+    return request.method() === "POST"
+      && /^\/api\/v1\/assistant\/conversations\/[^/]+\/turns$/.test(new URL(response.url()).pathname);
+  });
+  await panel.getByRole("button", { name: "Send question" }).click();
+  const turnResponse = await turnResponsePromise;
+  expect(turnResponse.status()).toBe(202);
+  const turnPathMatch = new URL(turnResponse.url()).pathname.match(/^(\/api\/v1\/assistant\/conversations\/[^/]+)\/turns$/);
+  const turnId = (await turnResponse.json()).turn?.id;
+  expect(turnPathMatch).not.toBeNull();
+  expect(turnId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  const eventPath = `${turnPathMatch[1]}/turns/${encodeURIComponent(turnId)}/events`;
+  browserDiagnostics.expectCompletedAssistantEventStream({ path: eventPath });
+
+  const proposal = panel.getByRole("region", { name: "Preview: Change display theme" });
+  await expect(proposal).toBeVisible();
+  await expect.poll(() => eventStreamResponses.get(eventPath)?.status).toBe(200);
+  expect(eventStreamResponses.get(eventPath).contentType).toMatch(/^text\/event-stream(?:;|$)/);
+  await expect.poll(() => eventStreamTerminals.get(eventPath)?.length ?? 0).toBe(1);
+  const [streamTerminal] = eventStreamTerminals.get(eventPath);
+  expect(["finished", "failed"]).toContain(streamTerminal.kind);
+  if (streamTerminal.kind === "failed") expect(streamTerminal.error).toBe("net::ERR_ABORTED");
+  const phrase = await proposal.locator("code").textContent();
+  expect(phrase).toMatch(/^CONFIRM [a-f0-9]{8}$/);
+  await proposal.getByRole("textbox").fill(phrase);
+  const confirmation = proposal.getByRole("button", { name: "Confirm change" });
+  await expect(confirmation).toBeEnabled();
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.includes("/actions/") && path.endsWith("/confirm")) confirmationRequests.push({ method: request.method(), path });
+  });
+
+  const logout = await page.context().request.post(`${origin}/api/v1/auth/logout`, {
+    headers: { "x-csrf-token": "browser-assistant-fixture-csrf-token-not-a-production-credential" },
+  });
+  expect(logout.status()).toBe(204);
+  browserDiagnostics.expectHttpFailures({ method: "GET", path: "/api/v1/assistant/context", status: 401 });
+  await confirmation.click();
+
+  await expect(panel.getByRole("alert")).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", priorTheme);
+  await expect(proposal).toBeVisible();
+  expect(confirmationRequests).toEqual([]);
+});
+
 test("assistant print view keeps saved answer, citations, and receipts while omitting controls and covered page", async ({ page }, testInfo) => {
   const savedConversation = {
     id: "conversation-print-1",

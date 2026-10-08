@@ -464,10 +464,12 @@ export function AssistantPanel({
   contextRequest,
   initialStatus,
   onClose,
+  onLocalHandoff,
 }: Readonly<{
   contextRequest: AssistantContextRequest;
   initialStatus: AssistantStatus;
   onClose: () => void;
+  onLocalHandoff: (target: "notes-heading" | "alerts-heading", expectedHref: string) => void;
 }>) {
   const panelRef = useRef<HTMLElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -1090,7 +1092,7 @@ export function AssistantPanel({
     }
   }
 
-  async function loadConversation(id: string, preserveBusy = false, focusRequest?: FocusRequest | null) {
+  async function loadConversation(id: string, preserveBusy = false, focusRequest?: FocusRequest | null): Promise<number | undefined> {
     const previousConversationId = selectedConversationId.current;
     selectedConversationId.current = id;
     const generation = ++conversationLoadGeneration.current;
@@ -1192,7 +1194,9 @@ export function AssistantPanel({
       if (generation !== conversationLoadGeneration.current) return;
       setConversationState("error");
       setPanelError(error instanceof Error ? error.message : "The saved conversation could not be opened.");
+      return;
     }
+    return generation;
   }
 
   async function loadEarlierMessages() {
@@ -1678,12 +1682,15 @@ export function AssistantPanel({
     const generation = conversationLoadGeneration.current;
     const contextGeneration = contextRequestGeneration.current;
     const routeAtStart = currentPath();
+    const hrefAtStart = window.location.href;
     const isCurrent = () => generation === conversationLoadGeneration.current
       && selectedConversationId.current === targetConversationId;
     const contextIsCurrent = () => isCurrent()
       && contextGeneration === contextRequestGeneration.current
       && routeAtStart === currentPath();
     let localHandoffRejected = false;
+    let localControlsHandoffTarget: "notes-heading" | "alerts-heading" | null = null;
+    let localControlsHandoffReloadGeneration: number | undefined;
     const recordLocalHandoffRejection = (message: string) => {
       localHandoffRejected = true;
       const detail = message.slice(0, 300);
@@ -1796,6 +1803,13 @@ export function AssistantPanel({
               if (isCurrent()) {
                 if (result.ok) setLiveStatus(result.message);
                 else recordLocalHandoffRejection(result.message);
+                if (result.ok && isMobile && contextIsCurrent() && window.location.href === hrefAtStart) {
+                  if (browserAction.type === "notes.set" || browserAction.type === "notes.clear") {
+                    localControlsHandoffTarget = "notes-heading";
+                  } else if (browserAction.type === "alerts.remove") {
+                    localControlsHandoffTarget = "alerts-heading";
+                  }
+                }
               }
             }
           }
@@ -1815,13 +1829,24 @@ export function AssistantPanel({
           }
         }
       }
-      if (isCurrent() && !localHandoffRejected) await loadConversation(targetConversationId);
+      if (isCurrent() && !localHandoffRejected
+          && (!localControlsHandoffTarget || contextIsCurrent())) {
+        const reloadGeneration = await loadConversation(targetConversationId);
+        if (localControlsHandoffTarget) localControlsHandoffReloadGeneration = reloadGeneration;
+      }
     } catch (error) {
       if (!isCurrent()) return;
       setPanelError(error instanceof Error ? error.message : "The action was not confirmed.");
       setLiveStatus("The application did not confirm this action. No change is assumed.");
     } finally {
       finishOwnedBusy(busyOperation);
+    }
+    if (isMobile && localControlsHandoffTarget && localControlsHandoffReloadGeneration !== undefined
+        && conversationLoadGeneration.current === localControlsHandoffReloadGeneration
+        && selectedConversationId.current === targetConversationId
+        && contextGeneration === contextRequestGeneration.current
+        && routeAtStart === currentPath() && window.location.href === hrefAtStart) {
+      onLocalHandoff(localControlsHandoffTarget, hrefAtStart);
     }
   }
 

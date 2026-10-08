@@ -109,6 +109,57 @@ test("mobile assistant modal hides only its inert page underlay and restores the
   assert.match(css, /:global\(body\[data-assistant-open="true"\]\) \[data-assistant-background\]\{display:none!important\}/);
 });
 
+test("mobile local-control handoff releases the assistant modal before focusing a validated heading", async () => {
+  const host = await readFile(new URL("./assistant-host.tsx", import.meta.url), "utf8");
+  const panel = await readFile(new URL("./assistant-panel.tsx", import.meta.url), "utf8");
+  const handoffStart = host.indexOf("function handoffToLocalControls(");
+  const handoffEnd = host.indexOf("\n  if (hostState", handoffStart);
+  const handoff = host.slice(handoffStart, handoffEnd);
+  assert.ok(handoffStart >= 0 && handoffEnd > handoffStart);
+  assert.match(handoff, /targetId: "notes-heading" \| "alerts-heading", expectedHref: string/);
+  assert.match(handoff, /setOpen\(false\)/);
+  assert.match(handoff, /requestAnimationFrame\(\(\) => \{\s*window\.requestAnimationFrame/);
+  assert.match(handoff, /window\.location\.href !== expectedHref/);
+  assert.match(handoff, /background\.inert/);
+  assert.match(handoff, /data-assistant-mobile-modal-underlay/);
+  assert.match(handoff, /document\.body\.dataset\.assistantOpen === "true"/);
+  assert.match(handoff, /document\.querySelector\('\[data-testid="assistant-panel"\]'\)/);
+  assert.match(handoff, /targetId === "notes-heading"[\s\S]*h2#notes-heading\[tabindex="-1"\][\s\S]*h2#alerts-heading\[tabindex="-1"\]/);
+  assert.match(handoff, /!target\.isConnected[\s\S]*target\.getClientRects\(\)\.length === 0/);
+  assert.doesNotMatch(handoff, /launcherRef/);
+  assert.match(host, /function closePanel\(\) \{\s*setOpen\(false\);\s*window\.requestAnimationFrame\(\(\) => launcherRef\.current\?\.focus\(\)\);/);
+
+  const actionStart = panel.indexOf("async function confirmAction(");
+  const actionEnd = panel.indexOf("\n  async function confirmSearch", actionStart);
+  const confirmAction = panel.slice(actionStart, actionEnd);
+  const loadStart = panel.indexOf("async function loadConversation(");
+  const loadEnd = panel.indexOf("\n  async function loadEarlierMessages", loadStart);
+  const loadConversation = panel.slice(loadStart, loadEnd);
+  assert.ok(actionStart >= 0 && actionEnd > actionStart);
+  assert.ok(loadStart >= 0 && loadEnd > loadStart);
+  assert.match(loadConversation, /Promise<number \| undefined>/);
+  assert.match(loadConversation, /if \(generation !== conversationLoadGeneration\.current\) return;/);
+  assert.match(loadConversation, /setConversationState\("error"\)[\s\S]*return;\s*}\s*return generation;/);
+  assert.match(confirmAction, /localControlsHandoffTarget: "notes-heading" \| "alerts-heading" \| null/);
+  const identityGuardStart = confirmAction.indexOf("if (!browserActionIdentityMatches(browserAction, instrument))");
+  const identityBranchEnd = confirmAction.indexOf("} else if (result.browser_action !== undefined)", identityGuardStart);
+  assert.ok(identityGuardStart >= 0 && identityBranchEnd > identityGuardStart);
+  const identityBranch = confirmAction.slice(identityGuardStart, identityBranchEnd);
+  const successfulHandoffGuard = identityBranch.indexOf("if (result.ok && isMobile && contextIsCurrent() && window.location.href === hrefAtStart)");
+  assert.ok(successfulHandoffGuard > identityBranch.indexOf("if (!browserActionIdentityMatches(browserAction, instrument))"));
+  assert.ok(identityBranch.indexOf('localControlsHandoffTarget = "notes-heading"') > successfulHandoffGuard);
+  assert.ok(identityBranch.indexOf('localControlsHandoffTarget = "alerts-heading"') > successfulHandoffGuard);
+  assert.match(identityBranch, /browserAction\.type === "notes\.set" \|\| browserAction\.type === "notes\.clear"[\s\S]*localControlsHandoffTarget = "notes-heading"/);
+  assert.match(identityBranch, /browserAction\.type === "alerts\.remove"[\s\S]*localControlsHandoffTarget = "alerts-heading"/);
+  assert.doesNotMatch(confirmAction.slice(0, identityGuardStart), /localControlsHandoffTarget = "(?:notes|alerts)-heading"/);
+  assert.match(confirmAction, /localControlsHandoffReloadGeneration = reloadGeneration/);
+  assert.match(confirmAction, /conversationLoadGeneration\.current === localControlsHandoffReloadGeneration/);
+  assert.match(confirmAction, /selectedConversationId\.current === targetConversationId/);
+  assert.match(confirmAction, /contextGeneration === contextRequestGeneration\.current/);
+  assert.match(confirmAction, /routeAtStart === currentPath\(\) && window\.location\.href === hrefAtStart/);
+  assert.ok(confirmAction.indexOf("await loadConversation(targetConversationId)") < confirmAction.indexOf("onLocalHandoff(localControlsHandoffTarget, hrefAtStart)"));
+});
+
 test("pending WebFetch approval uses the parent scroll area while saved transcripts keep their own scroll", async () => {
   const css = await readFile(new URL("./assistant.module.css", import.meta.url), "utf8");
   const body = css.match(/\.body\{([^}]+)\}/)?.[1];

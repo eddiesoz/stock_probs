@@ -80,7 +80,7 @@ function actionScenario({ actionType, payload, result, title = "Review the reque
 function assistantContext(route) {
   return {
     route,
-    instrument: route === "/tools/markets" ? instrument : null,
+    instrument: ["/tools/markets", "/tools/live-trading"].includes(route) ? instrument : null,
     event_ref: null,
     result_ref: null,
     context_version: contextVersion,
@@ -215,19 +215,29 @@ function quote(symbol, displayName, exchange = "NMS", assetType = "stock") {
   };
 }
 
-async function installFeatureHarness(page, { route = "/", scenarios = [], markets = false, browserDiagnostics = null } = {}) {
+async function installFeatureHarness(page, { route = "/", scenarios = [], markets = false, savedForecast = null, browserDiagnostics = null } = {}) {
   const state = {
     created: false,
     started: [],
     currentScenario: null,
     confirmed: new Map(),
     confirmationRequests: [],
+    assistantRequests: [],
+    assistantStatus: { ...assistantStatus },
+    savedForecastRequests: [],
+    forecastRequests: [],
     historyRequests: [],
     exportRequests: [],
     marketRequests: { watchlist: [], quotes: [], bars: [] },
     watchlist: [instrument],
   };
   if (markets) state.watchlist.push({ ...instrument, symbol: "MSFT", display_name: "Maple Systems" });
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/v1/forecasts" || /\/api\/v1\/history\/\d+\/reconstructions$/.test(url.pathname)) {
+      state.forecastRequests.push({ method: request.method(), path: url.pathname });
+    }
+  });
 
   await page.route("**/api/v1/auth/session", (requestRoute) => requestRoute.fulfill({
     status: 200,
@@ -268,6 +278,18 @@ async function installFeatureHarness(page, { route = "/", scenarios = [], market
     return requestRoute.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: { code: "fixture_missing" } }) });
   });
 
+  if (savedForecast) {
+    await page.route("**/api/v1/saved-forecasts/*", async (requestRoute) => {
+      const request = requestRoute.request();
+      const url = new URL(request.url());
+      state.savedForecastRequests.push({ method: request.method(), path: url.pathname });
+      if (request.method() === "GET" && url.pathname === `/api/v1/saved-forecasts/${savedForecast.event.id}`) {
+        return requestRoute.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(savedForecast) });
+      }
+      return requestRoute.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: { code: "fixture_saved_event_missing" } }) });
+    });
+  }
+
   if (markets) {
     await page.route("**/api/v1/lists**", async (requestRoute) => {
       const request = requestRoute.request();
@@ -275,6 +297,9 @@ async function installFeatureHarness(page, { route = "/", scenarios = [], market
       if (request.method() === "GET" && url.searchParams.get("kind") === "watchlist") {
         state.marketRequests.watchlist.push(url.search);
         return requestRoute.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: state.watchlist }) });
+      }
+      if (request.method() === "GET" && url.searchParams.get("kind") === "portfolio") {
+        return requestRoute.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [] }) });
       }
       return requestRoute.fulfill({ status: 405, contentType: "application/json", body: JSON.stringify({ error: { code: "fixture_method_not_supported" } }) });
     });
@@ -315,8 +340,9 @@ async function installFeatureHarness(page, { route = "/", scenarios = [], market
     const request = requestRoute.request();
     const url = new URL(request.url());
     const pathname = url.pathname;
+    state.assistantRequests.push({ method: request.method(), path: pathname, body: request.postData() || "" });
     if (pathname === "/api/v1/assistant/status") {
-      return requestRoute.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(assistantStatus) });
+      return requestRoute.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(state.assistantStatus) });
     }
     if (pathname === "/api/v1/assistant/models") {
       return requestRoute.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [assistantModel] }) });
@@ -397,7 +423,7 @@ async function openAssistant(page, url) {
   return panel;
 }
 
-async function requestAndConfirm(page, panel, prompt, expectedOutcome) {
+async function requestAndConfirm(page, panel, prompt, expectedOutcome, confirmationButton = "Confirm change", beforeConfirm = null) {
   await panel.getByRole("textbox", { name: "Ask about this page" }).fill(prompt);
   await panel.getByRole("button", { name: "Send question" }).click();
   const card = panel.locator('[aria-label^="Preview:"]').last();
@@ -406,9 +432,10 @@ async function requestAndConfirm(page, panel, prompt, expectedOutcome) {
   await expect(phrase).toHaveValue("");
   const confirmationPhrase = await card.locator("code").textContent();
   await phrase.fill(confirmationPhrase);
+  if (beforeConfirm) await beforeConfirm({ card, page, panel });
   const [confirmation] = await Promise.all([
     page.waitForResponse((response) => response.request().method() === "POST" && response.url().includes("/actions/") && response.url().endsWith("/confirm")),
-    card.getByRole("button", { name: "Confirm change" }).click(),
+    card.getByRole("button", { name: confirmationButton }).click(),
   ]);
   expect(confirmation.status()).toBe(200);
   if (expectedOutcome) {
@@ -438,6 +465,24 @@ async function reopenAssistant(page, { resumeConversation = false } = {}) {
     await conversation.click();
     await expect(panel.getByText("Synthetic application preview ready.", { exact: true }).first()).toBeVisible();
   }
+  return panel;
+}
+
+async function confirmLocalControlHandoff({ page, panel, testInfo, prompt, expectedOutcome, headingId, previewText, receiptText, desktopStatusText }) {
+  const mobileHandoff = testInfo.project.name === "mobile-chromium";
+  await requestAndConfirm(page, panel, prompt, mobileHandoff ? undefined : expectedOutcome, "Open local controls", async ({ card }) => {
+    await expect(card).toContainText(previewText);
+  });
+  if (mobileHandoff) {
+    await expect(panel).toBeHidden();
+    await expect(page.locator("[data-assistant-background]")).toHaveJSProperty("inert", false);
+    await expect(page.locator(`#${headingId}`)).toBeFocused();
+    panel = await reopenAssistant(page, { resumeConversation: true });
+  } else {
+    await expect(page.locator(`#${headingId}`)).toBeFocused();
+    if (desktopStatusText) await expect(panel.locator('[aria-live="polite"]')).toHaveText(desktopStatusText);
+  }
+  await expect(panel.getByRole("region", { name: "Confirmed action receipts" })).toContainText(receiptText);
   return panel;
 }
 
@@ -865,4 +910,267 @@ test("stale or malformed confirmed browser actions leave Markets state and route
   await expect(page.getByRole("combobox", { name: "Chart range", exact: true })).toHaveValue("1mo");
   expect(state.confirmationRequests).toHaveLength(2);
   expect(state.confirmationRequests.every(({ body }) => body.context.instrument.symbol === "ACDC" && body.allow === true)).toBe(true);
+});
+
+test("confirmed notes and alert actions preserve browser drafts and keep thresholds session-only", async ({ page, browserDiagnostics }, testInfo) => {
+  const identity = {
+    symbol: instrument.symbol,
+    asset_type: instrument.asset_type,
+    provider: instrument.provider,
+    exchange: instrument.exchange,
+  };
+  const liveTradingDestination = { kind: "current-page", route: "/tools/live-trading" };
+  const scenarios = [
+    actionScenario({
+      actionType: "notes.set",
+      payload: identity,
+      title: "Open local note controls",
+      result: {
+        status: "handed_off",
+        message: "The existing browser controls are open. No note or alert was changed.",
+        browser_action: {
+          type: "notes.set",
+          payload: identity,
+          destination: { ...liveTradingDestination, focus: "notes-heading" },
+        },
+      },
+    }),
+    actionScenario({
+      actionType: "notes.clear",
+      payload: identity,
+      title: "Open local note controls",
+      result: {
+        status: "handed_off",
+        message: "The existing browser controls are open. No note or alert was changed.",
+        browser_action: {
+          type: "notes.clear",
+          payload: identity,
+          destination: { ...liveTradingDestination, focus: "notes-heading" },
+        },
+      },
+    }),
+    actionScenario({
+      actionType: "alerts.add",
+      payload: { ...identity, threshold: 12.75 },
+      title: "Add a session-only price threshold",
+      result: {
+        status: "handed_off",
+        message: "The price alert was submitted to this browser's existing alert handler.",
+        browser_action: {
+          type: "alerts.add",
+          payload: { ...identity, threshold: 12.75 },
+          destination: { ...liveTradingDestination, handler: "alerts.add" },
+        },
+      },
+    }),
+    actionScenario({
+      actionType: "alerts.remove",
+      payload: identity,
+      title: "Open current alert controls",
+      result: {
+        status: "handed_off",
+        message: "The existing browser controls are open. No note or alert was changed.",
+        browser_action: {
+          type: "alerts.remove",
+          payload: identity,
+          destination: { ...liveTradingDestination, focus: "alerts-heading" },
+        },
+      },
+    }),
+  ];
+  const state = await installFeatureHarness(page, { route: "/tools/live-trading", scenarios, markets: true, browserDiagnostics });
+  const url = `/tools/live-trading?${new URLSearchParams(instrument).toString()}`;
+  await page.goto(url);
+  const note = page.getByRole("textbox", { name: "Notes for ACDC (local only; not sent to the server)" });
+  const noteField = page.locator("#live-notes");
+  const activeThreshold = page.locator('section[aria-labelledby="alerts-heading"] li').filter({ hasText: "ACDC at 12.75" });
+  const noteKey = "stock-probs.live-notes.ACDC";
+  const noteDraft = "Review the next earnings date before changing this note.";
+  await note.fill(noteDraft);
+  await expect(note).toHaveValue(noteDraft);
+  const launcher = page.getByRole("button", { name: "Open Ledger assistant" });
+  await expect(launcher).toBeVisible();
+  await launcher.click();
+  let panel = page.getByTestId("assistant-panel");
+  await expect(panel).toBeVisible();
+  const modelSelector = panel.getByRole("combobox", { name: "Assistant model" });
+  if (await modelSelector.inputValue() !== assistantModel.id) await modelSelector.selectOption(assistantModel.id);
+  await expect(panel.getByRole("textbox", { name: "Ask about this page" })).toBeVisible();
+
+  panel = await confirmLocalControlHandoff({
+    page,
+    panel,
+    testInfo,
+    prompt: "Open the existing note editor for this instrument.",
+    expectedOutcome: "Open local note controls · handed off",
+    headingId: "notes-heading",
+    previewText: "Confirmation opens the local note editor. Review or change the note there; the chat will not replace or clear your browser draft.",
+    receiptText: "The existing browser controls are open. No note or alert was changed.",
+    desktopStatusText: "The local note controls are open. Review or edit the note there; chat did not change it.",
+  });
+  await expect(noteField).toHaveValue(noteDraft);
+  expect(await page.evaluate((key) => localStorage.getItem(key), noteKey)).toBe(noteDraft);
+
+  panel = await confirmLocalControlHandoff({
+    page,
+    panel,
+    testInfo,
+    prompt: "Open the existing note controls without changing my draft.",
+    expectedOutcome: "Open local note controls · handed off",
+    headingId: "notes-heading",
+    previewText: "Confirmation opens the local note editor. Review or change the note there; the chat will not replace or clear your browser draft.",
+    receiptText: "The existing browser controls are open. No note or alert was changed.",
+    desktopStatusText: "The local note controls are open. Review or edit the note there; chat did not change it.",
+  });
+  await expect(noteField).toHaveValue(noteDraft);
+  expect(await page.evaluate((key) => localStorage.getItem(key), noteKey)).toBe(noteDraft);
+
+  await requestAndConfirm(page, panel, "Add a session-only alert threshold of 12.75 for this page.", "Add a session-only price threshold · handed off");
+  await expect(activeThreshold).toHaveCount(1);
+  await expect(activeThreshold).toContainText("ACDC at 12.75");
+  if (testInfo.project.name === "desktop-chromium") await expect(activeThreshold).toBeVisible();
+  await expect(panel).toContainText("The threshold was added to this open page session only. No scheduler or delivery is configured.");
+
+  panel = await confirmLocalControlHandoff({
+    page,
+    panel,
+    testInfo,
+    prompt: "Open the current alert controls for this instrument.",
+    expectedOutcome: "Open current alert controls · handed off",
+    headingId: "alerts-heading",
+    previewText: "Confirmation opens the current alert controls. Choose the threshold there; the chat will not remove an alert.",
+    receiptText: "The existing browser controls are open. No note or alert was changed.",
+    desktopStatusText: "The current alert controls are open. Choose a threshold there; chat did not remove any alert.",
+  });
+  await expect(activeThreshold).toHaveCount(1);
+  await expect(activeThreshold).toContainText("ACDC at 12.75");
+  if (testInfo.project.name === "desktop-chromium") await expect(activeThreshold).toBeVisible();
+
+  expect(state.confirmationRequests.map(({ actionType }) => actionType)).toEqual([
+    "notes.set", "notes.clear", "alerts.add", "alerts.remove",
+  ]);
+  expect(state.confirmationRequests.every(({ body }) => body.allow === true
+    && body.context.route === "/tools/live-trading"
+    && body.context.instrument.symbol === "ACDC"
+    && !Object.hasOwn(body, "note"))).toBe(true);
+  expect(JSON.stringify(state.assistantRequests)).not.toContain(noteDraft);
+
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "Notes for ACDC (local only; not sent to the server)" })).toHaveValue(noteDraft);
+  await expect(page.getByText("No active thresholds.", { exact: true })).toBeVisible();
+  await expect(activeThreshold).toHaveCount(0);
+  expect(await page.evaluate((key) => localStorage.getItem(key), noteKey)).toBe(noteDraft);
+});
+
+test("confirmed saved-forecast reopen displays the immutable event without a new model or forecast request", async ({ page, browserDiagnostics }) => {
+  const eventId = 731;
+  const timestamp = "2025-01-10T17:00:00Z";
+  const savedForecast = {
+    analysis_kind: "saved_recorded_forecast",
+    immutable: true,
+    recalculated: false,
+    provider_called: false,
+    event: { id: eventId, run_id: 91, status: "successful", submitted_symbol: "ACDC", asset_type: "stock", submitted_at: timestamp },
+    input: {
+      quality: "current",
+      quality_reasons: [],
+      display_name: "Acme Industries",
+      company_name: "Acme Industries",
+      canonical_symbol: "ACDC",
+      symbol: "ACDC",
+      asset_type: "stock",
+      quote_type: "EQUITY",
+      exchange: "NMS",
+      currency: "USD",
+      exchange_timezone: "America/New_York",
+      provider_as_of: timestamp,
+      captured_at: timestamp,
+      request_cutoff: timestamp,
+      provider: "fixture",
+      model: { name: "Saved fixture model", version: "1" },
+      model_fingerprint: "saved-model-fingerprint",
+      forecast_contract_version: "fixture-contract-v1",
+      content_fingerprint: "saved-content-fingerprint",
+      selected_daily_bars: [],
+      selected_intraday_bars: [],
+      provider_metadata: { intraday_archive_limit: { statement: "Fixture data has no archived intraday bars." } },
+      limitations: [],
+      session_state_at_request: "regular",
+      session_rule: "Fixture session rule",
+      calendar: { name: "Fixture calendar", version: "1", timezone: "America/New_York" },
+    },
+    results: [{
+      horizon: "close_to_close",
+      definition: "Recorded next-close forecast",
+      origin_price: 10.25,
+      origin_timestamp: timestamp,
+      reference_timestamp: timestamp,
+      reference_state: "reported_origin",
+      target_timestamp: "2025-01-13T21:00:00Z",
+      target_state: "scheduled_session_close",
+      target_session_rule: "Fixture target session",
+      calculated_at: timestamp,
+      direction_probabilities: { down: 0.25, flat: 0.5, up: 0.25 },
+      magnitude_intervals: [{
+        level: 0.9,
+        definition: "Recorded 90 percent interval",
+        percent: { low: -4, high: 4, unit: "percent" },
+        price: { low: 9.84, high: 10.66, unit: "USD" },
+      }],
+      threshold_probabilities: [],
+      sample_size: 4,
+      distribution_definition: "Saved fixture distribution",
+      model: { name: "Saved fixture model", version: "1" },
+      forecast_contract_version: "fixture-contract-v1",
+      model_fingerprint: "saved-model-fingerprint",
+      forecast_fingerprint: "saved-forecast-fingerprint",
+    }],
+  };
+  const scenario = actionScenario({
+    actionType: "forecast.reopen",
+    payload: { event_id: eventId, event_version: "a".repeat(64) },
+    title: "Open the saved forecast",
+    summary: "Reopen the owner-validated saved event exactly as recorded.",
+    result: {
+      status: "handed_off",
+      message: "Open the owner-validated saved forecast.",
+      destination: `/?event_id=${eventId}#result-section`,
+    },
+  });
+  const state = await installFeatureHarness(page, { scenarios: [scenario], savedForecast, browserDiagnostics });
+  const panel = await openAssistant(page, "/");
+  await requestAndConfirm(page, panel, `Open saved forecast event ${eventId}.`, undefined, "Confirm change", async ({ page }) => {
+    state.assistantStatus = {
+      ...assistantStatus,
+      available: false,
+      enabled: true,
+      worker: { status: "unavailable", reason: "The assistant worker is unavailable. Your workspace is still available." },
+    };
+    const statusResponse = page.waitForResponse((response) => response.request().method() === "GET"
+      && response.url().endsWith("/api/v1/assistant/status"));
+    const observedStatus = await page.evaluate(async () => {
+      const response = await fetch("/api/v1/assistant/status", { cache: "no-store" });
+      return { httpStatus: response.status, body: await response.json() };
+    });
+    const response = await statusResponse;
+    expect(response.status()).toBe(200);
+    expect(observedStatus).toMatchObject({
+      httpStatus: 200,
+      body: { available: false, enabled: true, worker: { status: "unavailable" } },
+    });
+    expect(state.assistantRequests.filter(({ method, path }) => method === "GET" && path === "/api/v1/assistant/status")).not.toHaveLength(0);
+  });
+  await page.waitForURL((url) => url.pathname === "/" && url.search === `?event_id=${eventId}` && url.hash === "#result-section");
+  await expect(page.locator("#result-content")).toContainText(`Immutable recorded result · audit event #${eventId}`);
+  await expect(page.locator("#result-content")).toContainText("Saved fixture model / 1");
+  await expect(page.locator("#announcement")).toHaveText(`Immutable recorded result ${eventId} reopened without recalculation.`);
+
+  expect(state.confirmationRequests).toHaveLength(1);
+  expect(state.confirmationRequests[0].body).toMatchObject({ allow: true });
+  expect(savedForecast).toMatchObject({ analysis_kind: "saved_recorded_forecast", immutable: true, recalculated: false, provider_called: false });
+  expect(state.savedForecastRequests).toEqual([{ method: "GET", path: `/api/v1/saved-forecasts/${eventId}` }]);
+  expect(state.forecastRequests).toEqual([]);
+  expect(state.started).toHaveLength(1);
+  expect(state.assistantRequests.filter(({ method, path }) => method === "POST" && /\/turns$/.test(path))).toHaveLength(1);
+  expect(state.assistantStatus).toMatchObject({ available: false, enabled: true, worker: { status: "unavailable" } });
 });
