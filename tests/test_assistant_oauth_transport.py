@@ -7,7 +7,7 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from stock_probs.assistant.net import PublicHTTPResponse
+from stock_probs.assistant.net import PublicHTTPError, PublicHTTPResponse
 from stock_probs.assistant.oauth_transport import OAuthTransport, OAuthTransportError
 
 
@@ -94,6 +94,9 @@ async def test_oauth_registry_binds_capability_method_owner_and_expiry():
 @_async_test
 async def test_oauth_transport_uses_only_fixed_protocol_destinations_and_fields():
     calls: list[tuple[str, str, dict[str, str], bytes]] = []
+    expected_checks = []
+    received_checks = []
+    callback_invocations = []
     responses = [
         _response(
             {
@@ -139,21 +142,39 @@ async def test_oauth_transport_uses_only_fixed_protocol_destinations_and_fields(
         _response([{"id": "org-1", "name": "Research", "description": "Ignored metadata"}]),
     ]
 
-    async def fake_request(url: str, *, method: str, headers, body=b"", **_options):
+    def authorization_for(label: str):
+        async def check() -> bool:
+            callback_invocations.append(label)
+            return True
+
+        expected_checks.append(check)
+        return check
+
+    async def fake_request(
+        url: str, *, method: str, headers, body=b"", authorization_check, **_options
+    ):
         calls.append((url, method, dict(headers), body))
+        received_checks.append(authorization_check)
+        assert await authorization_check() is True
         return responses.pop(0)
 
     transport = OAuthTransport(request=fake_request)
-    assert await transport.perform("openai.device_start", {}) == {
+    assert await transport.perform(
+        "openai.device_start", {}, authorization_check=authorization_for("openai.device_start")
+    ) == {
         "device_auth_id": "device-1",
         "user_code": "WXYZ-1234",
         "interval": "5",
     }
     assert await transport.perform(
-        "openai.device_poll", {"device_auth_id": "device-1", "user_code": "WXYZ-1234"}
+        "openai.device_poll",
+        {"device_auth_id": "device-1", "user_code": "WXYZ-1234"},
+        authorization_check=authorization_for("openai.device_poll_pending"),
     ) == {"status": "pending"}
     assert await transport.perform(
-        "openai.device_poll", {"device_auth_id": "device-1", "user_code": "WXYZ-1234"}
+        "openai.device_poll",
+        {"device_auth_id": "device-1", "user_code": "WXYZ-1234"},
+        authorization_check=authorization_for("openai.device_poll_success"),
     ) == {
         "status": "authorized",
         "authorization_code": "auth-code",
@@ -166,30 +187,54 @@ async def test_oauth_transport_uses_only_fixed_protocol_destinations_and_fields(
             "redirect_uri": "http://localhost:1455/auth/callback",
             "code_verifier": "verifier",
         },
+        authorization_check=authorization_for("openai.token_exchange"),
     ) == {"id_token": "id-token", "access_token": "access", "refresh_token": "refresh"}
-    assert await transport.perform("opencode.device_start", {}) == {
+    assert await transport.perform(
+        "opencode.device_start", {}, authorization_check=authorization_for("opencode.device_start")
+    ) == {
         "device_code": "device-2",
         "user_code": "ABCD-EFGH",
         "verification_uri_complete": "https://opencode.ai/console/device?client_id=opencode-cli&user_code=ABCD-EFGH",
         "expires_in": 600,
         "interval": 5,
     }
-    assert await transport.perform("opencode.device_poll", {"device_code": "device-2"}) == {
-        "error": "authorization_pending"
-    }
-    assert await transport.perform("opencode.device_poll", {"device_code": "device-2"}) == {
+    assert await transport.perform(
+        "opencode.device_poll",
+        {"device_code": "device-2"},
+        authorization_check=authorization_for("opencode.device_poll_pending"),
+    ) == {"error": "authorization_pending"}
+    assert await transport.perform(
+        "opencode.device_poll",
+        {"device_code": "device-2"},
+        authorization_check=authorization_for("opencode.device_poll_success"),
+    ) == {
         "access_token": "op-access",
         "refresh_token": "op-refresh",
         "expires_in": 3600,
     }
-    assert await transport.perform("opencode.user", {"access_token": "op-access"}) == {
-        "id": "user-1",
-        "email": "user@example.net",
-    }
-    assert await transport.perform("opencode.orgs", {"access_token": "op-access"}) == [
-        {"id": "org-1", "name": "Research"}
-    ]
+    assert await transport.perform(
+        "opencode.user",
+        {"access_token": "op-access"},
+        authorization_check=authorization_for("opencode.user"),
+    ) == {"id": "user-1", "email": "user@example.net"}
+    assert await transport.perform(
+        "opencode.orgs",
+        {"access_token": "op-access"},
+        authorization_check=authorization_for("opencode.orgs"),
+    ) == [{"id": "org-1", "name": "Research"}]
     assert responses == []
+    assert received_checks == expected_checks
+    assert callback_invocations == [
+        "openai.device_start",
+        "openai.device_poll_pending",
+        "openai.device_poll_success",
+        "openai.token_exchange",
+        "opencode.device_start",
+        "opencode.device_poll_pending",
+        "opencode.device_poll_success",
+        "opencode.user",
+        "opencode.orgs",
+    ]
     assert [call[0] for call in calls] == [
         "https://auth.openai.com/api/accounts/deviceauth/usercode",
         "https://auth.openai.com/api/accounts/deviceauth/token",
@@ -233,12 +278,16 @@ async def test_oauth_transport_rejects_widened_inputs_redirect_hosts_and_private
 
     transport = OAuthTransport(request=fake_request)
     with pytest.raises(OAuthTransportError) as widened:
-        await transport.perform("openai.device_start", {"url": "https://attacker.example"})
+        await transport.perform(
+            "openai.device_start",
+            {"url": "https://attacker.example"},
+            authorization_check=lambda: True,
+        )
     assert widened.value.code == "oauth_request_invalid"
     assert calls == 0
 
     with pytest.raises(OAuthTransportError) as redirect:
-        await transport.perform("opencode.device_start", {})
+        await transport.perform("opencode.device_start", {}, authorization_check=lambda: True)
     assert redirect.value.code == "oauth_response_invalid"
     assert calls == 1
 
@@ -265,7 +314,9 @@ async def test_opencode_verification_uri_resolves_only_the_fixed_console_path():
             )
 
         with pytest.raises(OAuthTransportError) as rejected:
-            await OAuthTransport(request=fake_request).perform("opencode.device_start", {})
+            await OAuthTransport(request=fake_request).perform(
+                "opencode.device_start", {}, authorization_check=lambda: True
+            )
         assert rejected.value.code == "oauth_response_invalid"
 
 
@@ -291,6 +342,7 @@ async def test_openai_headless_exchange_accepts_only_the_pinned_device_redirect(
             "redirect_uri": "https://auth.openai.com/deviceauth/callback",
             "code_verifier": "verifier",
         },
+        authorization_check=lambda: True,
     )
     assert result == {"id_token": "id-token", "access_token": "access", "refresh_token": "refresh"}
     assert calls[0][0] == "https://auth.openai.com/oauth/token"
@@ -304,6 +356,7 @@ async def test_openai_headless_exchange_accepts_only_the_pinned_device_redirect(
                 "redirect_uri": "https://auth.openai.com.evil.test/deviceauth/callback",
                 "code_verifier": "verifier",
             },
+            authorization_check=lambda: True,
         )
     assert widened_redirect.value.code == "oauth_request_invalid"
     assert len(calls) == 1
@@ -316,6 +369,7 @@ async def test_openai_headless_exchange_accepts_only_the_pinned_device_redirect(
                 "redirect_uri": "http://localhost:1456/auth/callback",
                 "code_verifier": "verifier",
             },
+            authorization_check=lambda: True,
         )
     assert len(calls) == 1
 
@@ -335,6 +389,86 @@ async def test_oauth_transport_rejects_duplicate_json_and_sanitizes_network_erro
     for fetch in (duplicate, failure):
         transport = OAuthTransport(request=fetch)
         with pytest.raises(OAuthTransportError) as failed:
-            await transport.perform("openai.device_start", {})
+            await transport.perform("openai.device_start", {}, authorization_check=lambda: True)
         assert failed.value.code in {"oauth_response_invalid", "oauth_provider_unavailable"}
         assert "synthetic secret" not in str(failed.value)
+
+
+@_async_test
+async def test_oauth_transport_rejects_missing_or_noncallable_authorization_callbacks():
+    requests = 0
+
+    async def fake_request(_url: str, **_options):
+        nonlocal requests
+        requests += 1
+        return _response({"device_auth_id": "device", "user_code": "ABCD", "interval": "5"})
+
+    transport = OAuthTransport(request=fake_request)
+    with pytest.raises(TypeError):
+        await transport.perform("openai.device_start", {})
+
+    for callback in (None, object()):
+        with pytest.raises(OAuthTransportError) as rejected:
+            await transport.perform("openai.device_start", {}, authorization_check=callback)  # type: ignore[arg-type]
+        assert rejected.value.code == "oauth_authorization_required"
+
+    assert requests == 0
+
+
+@_async_test
+async def test_oauth_transport_keeps_concurrent_authorization_callbacks_isolated():
+    started = asyncio.Event()
+    release = asyncio.Event()
+    request_count = 0
+    writes: list[str] = []
+    received_callbacks = []
+    first_state = {"allowed": True}
+    second_state = {"allowed": True}
+
+    def make_check(state: dict[str, bool]):
+        async def check() -> bool:
+            return state["allowed"] is True
+
+        return check
+
+    first_check = make_check(first_state)
+    second_check = make_check(second_state)
+
+    async def fake_request(url: str, *, authorization_check, **_options):
+        nonlocal request_count
+        request_count += 1
+        received_callbacks.append(authorization_check)
+        assert await authorization_check() is True
+        if request_count == 2:
+            started.set()
+        await release.wait()
+        if not await authorization_check():
+            raise PublicHTTPError("provider_authorization_required")
+        writes.append(url)
+        return _response({"device_auth_id": "device", "user_code": "ABCD", "interval": "5"})
+
+    transport = OAuthTransport(request=fake_request)
+
+    async def run_pair():
+        first = asyncio.create_task(
+            transport.perform("openai.device_start", {}, authorization_check=first_check)
+        )
+        second = asyncio.create_task(
+            transport.perform("openai.device_start", {}, authorization_check=second_check)
+        )
+        await asyncio.wait_for(started.wait(), timeout=1)
+        first_state["allowed"] = False
+        release.set()
+        return await asyncio.gather(first, second, return_exceptions=True)
+
+    first_result, second_result = await run_pair()
+    assert isinstance(first_result, OAuthTransportError)
+    assert first_result.code == "oauth_authorization_required"
+    assert second_result == {
+        "device_auth_id": "device",
+        "user_code": "ABCD",
+        "interval": "5",
+    }
+    assert len(received_callbacks) == 2
+    assert {id(item) for item in received_callbacks} == {id(first_check), id(second_check)}
+    assert writes == ["https://auth.openai.com/api/accounts/deviceauth/usercode"]

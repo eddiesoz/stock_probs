@@ -185,6 +185,17 @@ the tracked focus-only regression 2/2 after preserving its wrapper/CLI setup fai
 fixture results do not close the raw-axe incomplete or establish full app accessibility.
 Mobile viewport evidence is emulated, not physical-device evidence.
 
+The latest checkpoint retains the strict app axe **Fail** despite scoped readable-text
+measurements. E664's standalone help HTML and PDF reviews apply to the earlier finalized outputs;
+the PDF had a tagged-text fidelity **Fail** despite visual review, and E670 later changed the
+tracked renderer. Its source review passed. The initial test review found a P2 gap in per-block
+boundary/order assertions; a test-only correction then passed independent source/test review and
+TAP reported 17/17; the first wrapper left its numeric exit unavailable, then E673 independently
+reran the exact command with exit 0 and 17/17. E665's private PDF artifact passed exact-structure
+review; it is not a current maintained render. Fresh capture/render/finalization remain pending.
+Neither the earlier guide result nor scoped contrast measurements establish
+application accessibility or release readiness.
+
 Use the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
 for exact commands, hashes, failures, repairs and historical checkpoint results. This page specifies
 the intended visual and interaction rules; earlier evidence does not supersede them or establish

@@ -4365,7 +4365,8 @@ def test_native_oauth_egress_requires_live_attempt_admin_and_closed_request(sett
     native_capability = None
     fetched: list[tuple[str, str, dict[str, str], bytes]] = []
 
-    async def fake_request(url, *, method, headers, body=b"", **_options):
+    async def fake_request(url, *, method, headers, body=b"", authorization_check, **_options):
+        assert await authorization_check() is True
         fetched.append((url, method, dict(headers), body))
         return PublicHTTPResponse(
             200,
@@ -4503,27 +4504,45 @@ def test_native_oauth_real_manager_route_binds_and_rechecks_live_session(
     import time
 
     from stock_probs.assistant import api as assistant_api
-    from stock_probs.assistant.net import PublicHTTPResponse
+    from stock_probs.assistant.net import PublicHTTPError, PublicHTTPResponse
     from stock_probs.assistant.providers import AssistantProviderManager
 
     application = None
-    revoke_during_request = False
+    request_mode = "success"
     fetched: list[str] = []
+    writes: list[str] = []
 
-    async def fake_request(url, *, method, headers, body=b"", **_options):
-        nonlocal revoke_during_request
+    async def fake_request(url, *, method, headers, body=b"", authorization_check, **_options):
+        nonlocal request_mode
         fetched.append(url)
-        if revoke_during_request:
-            revoke_during_request = False
+        if request_mode == "dns_revoke":
+            assert await authorization_check() is True
             assert application is not None
             application.state.repository.auth_revoke_session(
                 str(admin_identity["token_hash"]), NOW.isoformat()
             )
-            return PublicHTTPResponse(
-                200,
-                {"content-type": "application/json"},
-                b'{"authorization_code":"synthetic-code","code_verifier":"synthetic-verifier"}',
-            )
+            assert await authorization_check() is False
+            raise PublicHTTPError("provider_authorization_required")
+        if request_mode == "totp_tls_expiry":
+            assert await authorization_check() is True
+            assert await authorization_check() is True
+            assert application is not None
+            application.state.assistant.clock = lambda: NOW + timedelta(minutes=6)
+            assert await authorization_check() is False
+            raise PublicHTTPError("provider_authorization_required")
+        if request_mode == "response_body_expiry":
+            assert await authorization_check() is True
+            assert await authorization_check() is True
+            assert await authorization_check() is True
+            assert application is not None
+            writes.append(url)
+            application.state.assistant.clock = lambda: NOW + timedelta(minutes=6)
+            assert await authorization_check() is False
+            raise PublicHTTPError("provider_authorization_required")
+        assert await authorization_check() is True
+        writes.append(url)
+        if request_mode == "provider_failure":
+            return PublicHTTPResponse(503, {"content-type": "application/json"}, b"{}")
         return PublicHTTPResponse(
             200,
             {"content-type": "application/json"},
@@ -4698,20 +4717,108 @@ def test_native_oauth_real_manager_route_binds_and_rechecks_live_session(
                 "interval": "5",
             }
 
-            revoke_during_request = True
-            revoked_native = internal_client.post(
+            malformed_native = internal_client.post(
                 "/api/v1/assistant/internal/oauth",
                 headers=headers,
                 json={
                     "attempt_id": attempt["attempt_id"],
-                    "operation": "openai.device_poll",
-                    "input": {"device_auth_id": "device-id", "user_code": "WXYZ-1234"},
+                    "operation": "openai.device_start",
+                    "input": {"unexpected": "field"},
                 },
             )
-            assert revoked_native.status_code == 404
-            assert "synthetic-code" not in revoked_native.text
-            assert "synthetic-verifier" not in revoked_native.text
-            assert len(fetched) == 2
+            assert malformed_native.status_code == 422
+            assert len(fetched) == 1
+
+            request_mode = "provider_failure"
+            provider_failure = internal_client.post(
+                "/api/v1/assistant/internal/oauth",
+                headers=headers,
+                json={
+                    "attempt_id": attempt["attempt_id"],
+                    "operation": "openai.device_start",
+                    "input": {},
+                },
+            )
+            assert provider_failure.status_code == 502
+            assert provider_failure.json()["error"]["code"] == "oauth_provider_unavailable"
+            assert len(writes) == 2
+
+            def start_attempt() -> tuple[dict[str, object], str]:
+                new_started = browser.post(
+                    "/api/v1/assistant/providers/oauth/attempts",
+                    headers={"x-csrf-token": str(admin_identity["csrf"])},
+                    json={"provider_id": "openai", "method_id": "chatgpt-headless"},
+                )
+                assert new_started.status_code == 200, new_started.text
+                assert runtime.capability is not None
+                return new_started.json()["attempt"], runtime.capability
+
+            request_mode = "totp_tls_expiry"
+            totp_attempt, totp_capability = start_attempt()
+            before_totp_write = len(writes)
+            expired_step_up = internal_client.post(
+                "/api/v1/assistant/internal/oauth",
+                headers={"authorization": "Bearer " + totp_capability},
+                json={
+                    "attempt_id": totp_attempt["attempt_id"],
+                    "operation": "openai.device_start",
+                    "input": {},
+                },
+            )
+            assert expired_step_up.status_code == 404
+            assert expired_step_up.json()["error"]["code"] == "not_found"
+            assert len(writes) == before_totp_write
+            assert "oauth_provider_unavailable" not in expired_step_up.text
+            application.state.assistant.clock = lambda: NOW
+            request_mode = "success"
+            fetched_before_retry = len(fetched)
+            revoked_attempt_retry = internal_client.post(
+                "/api/v1/assistant/internal/oauth",
+                headers={"authorization": "Bearer " + totp_capability},
+                json={
+                    "attempt_id": totp_attempt["attempt_id"],
+                    "operation": "openai.device_start",
+                    "input": {},
+                },
+            )
+            assert revoked_attempt_retry.status_code == 404
+            assert len(fetched) == fetched_before_retry
+
+            request_mode = "response_body_expiry"
+            response_attempt, response_capability = start_attempt()
+            held_body_revocation = internal_client.post(
+                "/api/v1/assistant/internal/oauth",
+                headers={"authorization": "Bearer " + response_capability},
+                json={
+                    "attempt_id": response_attempt["attempt_id"],
+                    "operation": "openai.device_start",
+                    "input": {},
+                },
+            )
+            assert held_body_revocation.status_code == 404
+            assert held_body_revocation.json()["error"]["code"] == "not_found"
+            assert "device-id" not in held_body_revocation.text
+            assert "WXYZ-1234" not in held_body_revocation.text
+            assert "synthetic" not in held_body_revocation.text
+            assert len(writes) == before_totp_write + 1
+            application.state.assistant.clock = lambda: NOW
+
+            request_mode = "dns_revoke"
+            session_attempt, session_capability = start_attempt()
+            before_dns_write = len(writes)
+            revoked_during_dns = internal_client.post(
+                "/api/v1/assistant/internal/oauth",
+                headers={"authorization": "Bearer " + session_capability},
+                json={
+                    "attempt_id": session_attempt["attempt_id"],
+                    "operation": "openai.device_start",
+                    "input": {},
+                },
+            )
+            assert revoked_during_dns.status_code == 404
+            assert revoked_during_dns.json()["error"]["code"] == "not_found"
+            assert len(writes) == before_dns_write
+            assert "oauth_provider_unavailable" not in revoked_during_dns.text
         finally:
             browser.close()
 

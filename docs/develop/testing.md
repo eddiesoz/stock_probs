@@ -178,9 +178,21 @@ forged, or contradictory v5 fields. These classifications distinguish the failed
 do not prove its cause or establish native execution acceptance. No credentials, prompts, native
 identifiers, or owner identifiers belong in the retained projection.
 
-R-ASTRA-120 remains in progress, and its assistant candidate is disabled in production. Native
-runtime/provider, accessibility, actual combined 1 GB resource, PR-bound rollback, and release
-acceptance remain open. Use the
+R-ASTRA-120 remains in progress, and its assistant candidate is disabled in production. E662's
+latest canonical check **Failed** on two supervisor-test AF_UNIX socket paths that exceeded the
+Linux path limit before child spawn (2,672 tests, 2 failures, 4 skips, 0 errors). E663's selected
+short-`TMPDIR` reproduction passed 2/2 only; it does not replace the failed aggregate. The later
+OAuth callback repair passed its selected independent 14-test/source-review scope, but the full
+canonical gate has not been rerun on those modified files. The tracked guide renderer's source
+review passed. Its initial test review **Failed** on a P2 finding because the test flattened PDF
+structure leaves without asserting per-block boundaries or order. The test-only correction then
+passed independent source/test review and TAP reported 17/17, but the numeric command exit is
+**Unavailable** in that first repair attempt. E673 independently reran the exact command with exit 0
+and 17/17; it supersedes only that missing-exit result. E665's private PDF artifact passed
+exact-structure review, but that does not accept current maintained output; fresh rendering remains
+pending. Native runtime/provider, strict app
+accessibility, actual combined 1 GB resources, complete security, PR-bound rollback, final guide,
+and release acceptance remain open. Use the
 [authoritative R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
 for current receipts and preserved result statuses.
 

@@ -47,6 +47,19 @@ export const PDF_EXPORT_OPTIONS = Object.freeze({
     '<div style="width:100%;padding:0 14mm;text-align:right;color:#42535e;font:8px system-ui,sans-serif">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
 });
 
+const PDF_PRINT_TEXT_PRESERVATION_CSS = `
+  @media print {
+    h1, h2, h3, h4, p, figcaption {
+      white-space: pre-wrap;
+      font-variant-ligatures: none;
+    }
+  }
+`;
+
+export async function applyPdfPrintTextPreservation(page) {
+  return page.addStyleTag({ content: PDF_PRINT_TEXT_PRESERVATION_CSS });
+}
+
 // Chromium emits PDF 2.0's Strong tag without a RoleMap in its PDF 1.x output.
 // Normalize only the disposable print DOM to the standard inline Span tag while
 // retaining computed emphasis styles; the standalone HTML keeps semantic <strong>.
@@ -1161,6 +1174,7 @@ async function makePdf(htmlPath, pdfPath) {
     if (mobileWidth.document > mobileWidth.viewport) throw new Error("guide overflows its mobile viewport");
     if (externalRequests.length) throw new Error("guide attempted a non-local network request");
     await page.emulateMedia({ media: "print" });
+    await applyPdfPrintTextPreservation(page);
     await normalizePdfPrintEmphasis(page);
     await page.pdf({ path: pdfPath, ...PDF_EXPORT_OPTIONS });
   } finally {

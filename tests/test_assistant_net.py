@@ -1466,3 +1466,167 @@ def test_public_unicast_classifier_rejects_special_or_ambiguous_addresses(addres
 @pytest.mark.parametrize("address", ["8.8.8.8", "2606:4700:4700::1111"])
 def test_public_unicast_classifier_accepts_public_v4_and_v6(address: str) -> None:
     assert net.is_public_unicast(net.ipaddress.ip_address(address))
+
+
+def test_public_https_request_denies_before_dns_when_authorization_is_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resolver_calls: list[str] = []
+    connection_attempts: list[str] = []
+
+    async def resolver(host: str, _port: int) -> list[object]:
+        resolver_calls.append(host)
+        return [_addrinfo_record("93.184.216.34")]
+
+    async def open_connection(host: str, *_args: object, **_kwargs: object):
+        connection_attempts.append(host)
+        raise AssertionError("denied request reached the socket layer")
+
+    monkeypatch.setattr(net.asyncio, "open_connection", open_connection)
+
+    async def authorize() -> bool:
+        return False
+
+    async def exercise() -> net.PublicHTTPError:
+        with pytest.raises(net.PublicHTTPError) as caught:
+            await net.request_public_https(
+                "https://provider.example/oauth/token",
+                method="POST",
+                body=b"code=synthetic-authorization-code",
+                resolver=resolver,
+                authorization_check=authorize,
+            )
+        return caught.value
+
+    error = asyncio.run(exercise())
+    assert error.code == "provider_authorization_required"
+    assert resolver_calls == []
+    assert connection_attempts == []
+
+
+def test_public_https_request_withholds_response_body_after_mid_read_revocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body_read_started = asyncio.Event()
+    release_body = asyncio.Event()
+    authorization = {"allowed": True}
+    callback_calls = 0
+    reader: asyncio.StreamReader | None = None
+    writer_state = {"closed": False, "wait_closed": False}
+    captured_response: list[net.PublicHTTPResponse] = []
+
+    class HeldBodyReader(asyncio.StreamReader):
+        async def read(self, n: int = -1) -> bytes:
+            body_read_started.set()
+            await release_body.wait()
+            return await super().read(n)
+
+    class Writer:
+        def write(self, _data: bytes) -> None:
+            return None
+
+        async def drain(self) -> None:
+            return None
+
+        def close(self) -> None:
+            writer_state["closed"] = True
+
+        async def wait_closed(self) -> None:
+            writer_state["wait_closed"] = True
+
+    async def open_connection(*_args: object, **_kwargs: object):
+        nonlocal reader
+        reader = HeldBodyReader()
+        reader.feed_data(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 25\r\n\r\n"
+        )
+        return reader, Writer()
+
+    monkeypatch.setattr(net.asyncio, "open_connection", open_connection)
+
+    async def authorize() -> bool:
+        nonlocal callback_calls
+        callback_calls += 1
+        return authorization["allowed"] is True
+
+    async def exercise() -> net.PublicHTTPError:
+        pending = asyncio.create_task(
+            net.request_public_https(
+                "https://provider.example/oauth/token",
+                method="POST",
+                body=b"code=synthetic-authorization-code",
+                timeout_seconds=2,
+                resolver=lambda _host, _port: [_addrinfo_record("93.184.216.34")],
+                authorization_check=authorize,
+            )
+        )
+        await asyncio.wait_for(body_read_started.wait(), timeout=1)
+        authorization["allowed"] = False
+        assert reader is not None
+        reader.feed_data(b'{"access_token":"secret"}')
+        reader.feed_eof()
+        release_body.set()
+        with pytest.raises(net.PublicHTTPError) as caught:
+            response = await pending
+            captured_response.append(response)
+        return caught.value
+
+    error = asyncio.run(exercise())
+    assert error.code == "provider_authorization_required"
+    assert "secret" not in repr(error)
+    assert captured_response == []
+    assert callback_calls == 4
+    assert writer_state == {"closed": True, "wait_closed": True}
+
+
+def test_public_https_request_cancellation_during_body_read_closes_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body_read_started = asyncio.Event()
+    release_body = asyncio.Event()
+    writer_state = {"closed": False, "wait_closed": False}
+
+    class HeldBodyReader(asyncio.StreamReader):
+        async def read(self, n: int = -1) -> bytes:
+            body_read_started.set()
+            await release_body.wait()
+            return await super().read(n)
+
+    class Writer:
+        def write(self, _data: bytes) -> None:
+            return None
+
+        async def drain(self) -> None:
+            return None
+
+        def close(self) -> None:
+            writer_state["closed"] = True
+
+        async def wait_closed(self) -> None:
+            writer_state["wait_closed"] = True
+
+    async def open_connection(*_args: object, **_kwargs: object):
+        reader = HeldBodyReader()
+        reader.feed_data(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n"
+        )
+        return reader, Writer()
+
+    monkeypatch.setattr(net.asyncio, "open_connection", open_connection)
+
+    async def exercise() -> None:
+        pending = asyncio.create_task(
+            net.request_public_https(
+                "https://provider.example/oauth/token",
+                timeout_seconds=2,
+                resolver=lambda _host, _port: [_addrinfo_record("93.184.216.34")],
+                authorization_check=lambda: True,
+            )
+        )
+        await asyncio.wait_for(body_read_started.wait(), timeout=1)
+        pending.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await pending
+
+    asyncio.run(exercise())
+    assert writer_state == {"closed": True, "wait_closed": True}

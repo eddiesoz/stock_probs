@@ -560,6 +560,20 @@ task discovered all eight and completed read-only `inspect` and `status` (E90), 
 observed all eight in the current root and passed a read-only `status` call. These observations do
 not establish mutating-tool execution, deployment, or rollout.
 
+The E664 guide bundle was captured at app revision `ee65b40460fa5d5b536ae51169b9c01b6ddc1034`.
+Its standalone HTML passed six viewport/theme states; its 14-page PDF passed visual review but
+failed tagged-text fidelity because extracted structure text omits spaces present in the HTML.
+E670 later changed the tracked renderer, so the E664 finalized files no longer bind the current
+renderer. Its initial test review found a P2 gap in structure-boundary checks. A test-only repair
+then passed independent source/test review and TAP reported 17/17, but the numeric command exit is
+unavailable in that attempt. E673 independently reran the exact command with exit 0 and 17/17.
+Fresh capture/render/finalization remain pending. The separate E665 private PDF passed
+exact-structure review, but is not output from the current maintained renderer. PDF/UA and actual
+assistive-technology results are unavailable;
+the prior outputs are not final guide acceptance or release attachments. The full canonical check
+at the app revision also failed; see the [R-ASTRA-120 ledger](../../MVP-PLAN.md) for exact scope
+and receipts.
+
 The R-ASTRA-120 candidate helper runs database presence/schema probes with an explicit Python
 entrypoint as UID/GID 10001. This prevents the container supervisor from treating `python -c`
 as an application CLI command. Schema inspection opens SQLite read-only and fails closed on

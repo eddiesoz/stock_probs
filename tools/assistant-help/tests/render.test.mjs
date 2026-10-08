@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -20,6 +21,7 @@ import {
   REPO_ROOT,
   TEMPLATE_PATH,
   normalizePdfPrintEmphasis,
+  applyPdfPrintTextPreservation,
   outputDirectoryForCaptureRoot,
   assertNoSecrets,
   captureMetadataSha256,
@@ -35,6 +37,7 @@ import {
 const REVIEWED_REVISION = "a".repeat(40);
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const readJson = async (filePath) => JSON.parse(await readFile(filePath, "utf8"));
+const PDFINFO_TEST_MAX_OUTPUT_BYTES = 512 * 1024;
 const STAGED_NEXT_PREFIX = "src/stock_probs/static/next/";
 const AUTHORED_STATIC_ASSETS = Object.freeze([
   "src/stock_probs/static/app.css",
@@ -47,6 +50,44 @@ const expectedServedFileCount = (sourceHashes) => {
   const stagedNextCount = Object.keys(sourceHashes).filter((file) => file.startsWith(STAGED_NEXT_PREFIX)).length;
   return stagedNextCount + AUTHORED_STATIC_ASSETS.length;
 };
+
+function parseSyntheticPdfInfoBlocks(stdout) {
+  if (Buffer.byteLength(stdout, "utf8") > PDFINFO_TEST_MAX_OUTPUT_BYTES) {
+    throw new Error("synthetic pdfinfo output exceeds the test bound");
+  }
+  const lines = stdout.split(/\r?\n/);
+  if (lines.length > 2048) throw new Error("synthetic pdfinfo output has too many lines");
+
+  const targetPattern = /^( *)(?:(H1|P) \(block\)|Caption)$/;
+  const quotedLeafPattern = /^"(?:\\.|[^"\\])*"$/;
+  const blocks = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = targetPattern.exec(lines[index]);
+    if (!match) continue;
+
+    const depth = match[1].length;
+    const tag = match[2] ?? "FIGCAPTION";
+    const leaves = [];
+    for (let child = index + 1; child < lines.length; child += 1) {
+      const line = lines[child];
+      const indentation = line.match(/^ */)[0].length;
+      if (line.trim() && indentation <= depth) break;
+      if (targetPattern.test(line)) throw new Error("synthetic pdfinfo fixture has a nested target block");
+
+      const candidate = line.trim();
+      if (!candidate.startsWith('"')) continue;
+      if (!quotedLeafPattern.test(candidate)) throw new Error("synthetic pdfinfo fixture has a malformed quoted leaf");
+      const leaf = JSON.parse(candidate);
+      if (typeof leaf !== "string") throw new Error("synthetic pdfinfo fixture leaf is not text");
+      leaves.push(leaf);
+    }
+    blocks.push({
+      tag,
+      text: leaves.join("").normalize("NFKC").replace(/\s+/g, " ").trim(),
+    });
+  }
+  return blocks;
+}
 
 function png(width, height, marker) {
   const bytes = Buffer.alloc(25, marker);
@@ -569,6 +610,135 @@ test("pinned Chromium emits a tagged PDF with a document outline", async () => {
     assert.doesNotMatch(source, /\/Strong\b/);
   } finally {
     await browser.close();
+  }
+});
+
+test("synthetic pdfinfo block parser preserves inline adjacency, order, and boundaries", () => {
+  const inlineText = "Review Unverified search link; this punctuation stays attached to the emphasized words.";
+  const blocks = [
+    { tag: "H1", leaves: ["Ask a better question. Keep the decision yours."] },
+    { tag: "P", leaves: ["The Ledger assistant explains the workspace in this fixture."] },
+    { tag: "P", leaves: ["Review ", "Unverified search link", "; this punctuation stays attached to the emphasized words."] },
+    { tag: "FIGCAPTION", leaves: ["A non-market illustration caption."] },
+  ];
+  const structure = (items) => [
+    "Document",
+    ...items.flatMap(({ tag, leaves }) => [
+      `  ${tag === "FIGCAPTION" ? "Caption" : `${tag} (block)`}`,
+      ...leaves.flatMap((leaf) => ["    NonStruct", `      ${JSON.stringify(leaf)}`]),
+    ]),
+  ].join("\n");
+  const expected = [
+    { tag: "H1", text: "Ask a better question. Keep the decision yours." },
+    { tag: "P", text: "The Ledger assistant explains the workspace in this fixture." },
+    { tag: "P", text: inlineText },
+    { tag: "FIGCAPTION", text: "A non-market illustration caption." },
+  ];
+
+  assert.deepEqual(parseSyntheticPdfInfoBlocks(structure(blocks)), expected);
+  assert.notDeepEqual(parseSyntheticPdfInfoBlocks(structure([
+    ...blocks.slice(0, 2),
+    { ...blocks[2], leaves: ["Review ", "Unverified search link ", "; this punctuation stays attached to the emphasized words."] },
+    blocks[3],
+  ])), expected);
+  assert.notDeepEqual(parseSyntheticPdfInfoBlocks(structure([
+    ...blocks.slice(0, 2),
+    { ...blocks[2], leaves: [...blocks[2].leaves].reverse() },
+    blocks[3],
+  ])), expected);
+  assert.throws(() => parseSyntheticPdfInfoBlocks("x".repeat(PDFINFO_TEST_MAX_OUTPUT_BYTES + 1)), /exceeds the test bound/);
+});
+
+test("print-only semantic text rules preserve full tagged copy across forced wraps", async () => {
+  const browserRequire = createRequire(path.join(REPO_ROOT, "tools/browser/package.json"));
+  const { chromium } = browserRequire("playwright");
+  const temp = await mkdtemp(path.join(os.tmpdir(), "assistant-help-print-text-"));
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.setContent(`
+      <style>
+        body { font: 16px/1.3 Arial, sans-serif; }
+        h1 { width: 12ch; font-size: 28px; }
+        p, figcaption { width: 18ch; }
+      </style>
+      <main>
+        <h1 id="wrapped-heading">Ask a better question. Keep the decision yours.</h1>
+        <p id="wrapped-copy">The Ledger assistant can explain the workspace and help organize research. You choose an approved model and which workspace references to share; the current page route is always included. You decide whether a proposed change may proceed.</p>
+        <p id="inline-copy">Review <strong id="emphasis">Unverified search link</strong>; this punctuation stays attached to the emphasized words.</p>
+        <figure><figcaption id="wrapped-caption">A non-market illustration: the dotted loop is not a price series or a recommendation.</figcaption></figure>
+      </main>
+      <span id="outside-inline">Decorative inline text</span>
+      <svg id="outside-icon" aria-hidden="true" width="8" height="8"><circle cx="4" cy="4" r="4"/></svg>
+    `);
+    const standaloneMain = await page.locator("main").evaluate((element) => element.outerHTML);
+    await page.emulateMedia({ media: "print" });
+    const beforeEmphasis = await page.locator("#emphasis").evaluate((element) => {
+      const style = getComputedStyle(element);
+      return Object.fromEntries(["color", "font-size", "font-weight", "letter-spacing", "line-height"].map(
+        (property) => [property, style.getPropertyValue(property)],
+      ));
+    });
+
+    const styleElement = await applyPdfPrintTextPreservation(page);
+    const styleText = await styleElement.evaluate((element) => element.textContent);
+    assert.match(styleText, /h1, h2, h3, h4, p, figcaption/);
+    assert.doesNotMatch(styleText, /\bspan\b|\bsvg\b|\bi\b|::before|::after/);
+    assert.equal(await page.locator("main").evaluate((element) => element.outerHTML), standaloneMain);
+    assert.equal(await page.locator("#outside-inline").evaluate((element) => getComputedStyle(element).whiteSpace), "normal");
+    assert.equal(await page.locator("#outside-inline").evaluate((element) => getComputedStyle(element).fontVariantLigatures), "normal");
+    assert.equal(await page.locator("#outside-icon").evaluate((element) => getComputedStyle(element).whiteSpace), "normal");
+    const wrappedBlockStyles = await page.evaluate(() => {
+      const read = (selector) => {
+        const element = document.querySelector(selector);
+        const style = getComputedStyle(element);
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return {
+          whiteSpace: style.whiteSpace,
+          ligatures: style.fontVariantLigatures,
+          lineCount: new Set([...range.getClientRects()].map((rect) => Math.round(rect.y))).size,
+        };
+      };
+      return { heading: read("#wrapped-heading"), paragraph: read("#wrapped-copy") };
+    });
+    for (const block of Object.values(wrappedBlockStyles)) {
+      assert.equal(block.whiteSpace, "pre-wrap");
+      assert.equal(block.ligatures, "none");
+      assert.ok(block.lineCount > 1);
+    }
+    assert.deepEqual(await page.locator("#emphasis").evaluate((element) => {
+      const style = getComputedStyle(element);
+      return Object.fromEntries(["color", "font-size", "font-weight", "letter-spacing", "line-height"].map(
+        (property) => [property, style.getPropertyValue(property)],
+      ));
+    }), beforeEmphasis);
+    assert.equal(await normalizePdfPrintEmphasis(page), 1);
+
+    const pdf = await page.pdf(PDF_EXPORT_OPTIONS);
+    const pdfPath = path.join(temp, "wrapped-guide.pdf");
+    await writeFile(pdfPath, pdf, { flag: "wx", mode: 0o600 });
+    const extraction = spawnSync("pdfinfo", ["-struct-text", pdfPath], {
+      encoding: "utf8",
+      timeout: 15_000,
+      maxBuffer: 512 * 1024,
+    });
+    assert.equal(
+      extraction.status,
+      0,
+      `pdfinfo failed (status=${extraction.status}): ${extraction.error?.message ?? extraction.stderr}`,
+    );
+    const taggedBlocks = parseSyntheticPdfInfoBlocks(extraction.stdout);
+    assert.deepEqual(taggedBlocks, [
+      { tag: "H1", text: "Ask a better question. Keep the decision yours." },
+      { tag: "P", text: "The Ledger assistant can explain the workspace and help organize research. You choose an approved model and which workspace references to share; the current page route is always included. You decide whether a proposed change may proceed." },
+      { tag: "P", text: "Review Unverified search link; this punctuation stays attached to the emphasized words." },
+      { tag: "FIGCAPTION", text: "A non-market illustration: the dotted loop is not a price series or a recommendation." },
+    ]);
+  } finally {
+    if (browser) await browser.close();
+    await rm(temp, { recursive: true, force: true });
   }
 });
 

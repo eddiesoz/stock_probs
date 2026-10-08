@@ -14,7 +14,12 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
-from stock_probs.assistant.net import PublicHTTPResponse, request_public_https
+from stock_probs.assistant.net import (
+    PublicHTTPError,
+    PublicHTTPResponse,
+    RequestAuthorizationCheck,
+    request_public_https,
+)
 
 _IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 _TOKEN_HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -179,7 +184,11 @@ class OAuthTransport:
                 current.in_flight = max(0, current.in_flight - 1)
 
     async def perform(
-        self, operation: str, value: Mapping[str, object]
+        self,
+        operation: str,
+        value: Mapping[str, object],
+        *,
+        authorization_check: RequestAuthorizationCheck,
     ) -> dict[str, object] | list[dict[str, str]]:
         """Execute one source-compatible OAuth operation against a fixed HTTPS destination."""
 
@@ -188,6 +197,7 @@ class OAuthTransport:
             response = await self._json_request(
                 f"{_OPENAI_ROOT}/api/accounts/deviceauth/usercode",
                 {"client_id": _OPENAI_CLIENT_ID},
+                authorization_check=authorization_check,
             )
             return _openai_device_start(response)
 
@@ -202,6 +212,7 @@ class OAuthTransport:
                     "user_code": user_code,
                 },
                 accepted_statuses={200, 403, 404},
+                authorization_check=authorization_check,
             )
             if response.status_code in {403, 404}:
                 return {"status": "pending"}
@@ -239,6 +250,7 @@ class OAuthTransport:
                 body=form,
                 timeout_seconds=_OPERATION_TIMEOUT_SECONDS,
                 max_response_bytes=_MAX_RESPONSE_BYTES,
+                authorization_check=authorization_check,
             )
             return _token_response(response, openai=True)
 
@@ -247,6 +259,7 @@ class OAuthTransport:
             response = await self._json_request(
                 f"{_OPENCODE_ROOT}/auth/device/code",
                 {"client_id": _OPENCODE_CLIENT_ID, "supports_org_scope": True},
+                authorization_check=authorization_check,
             )
             result = _object_response(response)
             verification = _normalized_opencode_verification_uri(
@@ -273,6 +286,7 @@ class OAuthTransport:
                     "client_id": _OPENCODE_CLIENT_ID,
                 },
                 accepted_statuses={200, 400},
+                authorization_check=authorization_check,
             )
             result = _json_value(response.content)
             if not isinstance(result, Mapping):
@@ -292,6 +306,7 @@ class OAuthTransport:
                 headers={"authorization": "Bearer " + _string(value, "access_token", 16_384)},
                 timeout_seconds=_OPERATION_TIMEOUT_SECONDS,
                 max_response_bytes=_MAX_RESPONSE_BYTES,
+                authorization_check=authorization_check,
             )
             result = _object_response(response)
             if response.status_code != 200:
@@ -306,6 +321,7 @@ class OAuthTransport:
                 headers={"authorization": "Bearer " + _string(value, "access_token", 16_384)},
                 timeout_seconds=_OPERATION_TIMEOUT_SECONDS,
                 max_response_bytes=_MAX_RESPONSE_BYTES,
+                authorization_check=authorization_check,
             )
             if response.status_code != 200:
                 raise OAuthTransportError("oauth_provider_unavailable")
@@ -326,6 +342,7 @@ class OAuthTransport:
         url: str,
         payload: Mapping[str, object],
         *,
+        authorization_check: RequestAuthorizationCheck,
         accepted_statuses: set[int] | None = None,
     ) -> PublicHTTPResponse:
         body = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("ascii")
@@ -336,16 +353,32 @@ class OAuthTransport:
             body=body,
             timeout_seconds=_OPERATION_TIMEOUT_SECONDS,
             max_response_bytes=_MAX_RESPONSE_BYTES,
+            authorization_check=authorization_check,
         )
         if response.status_code not in (accepted_statuses or {200}):
             raise OAuthTransportError("oauth_provider_unavailable")
         return response
 
-    async def _checked_request(self, url: str, **options: object) -> PublicHTTPResponse:
+    async def _checked_request(
+        self,
+        url: str,
+        *,
+        authorization_check: RequestAuthorizationCheck,
+        **options: object,
+    ) -> PublicHTTPResponse:
         """Hide transport exceptions while allowing task cancellation to propagate."""
 
+        if not callable(authorization_check):
+            raise OAuthTransportError("oauth_authorization_required")
         try:
-            response = await self._request(url, **options)
+            response = await self._request(url, authorization_check=authorization_check, **options)
+        except PublicHTTPError as exc:
+            if exc.code in {
+                "provider_authorization_required",
+                "provider_authorization_timeout",
+            }:
+                raise OAuthTransportError("oauth_authorization_required") from None
+            raise OAuthTransportError("oauth_provider_unavailable") from exc
         except Exception as exc:
             raise OAuthTransportError("oauth_provider_unavailable") from exc
         if not isinstance(response, PublicHTTPResponse):

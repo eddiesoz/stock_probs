@@ -2929,15 +2929,23 @@ def create_assistant_router(
                 return False
             return current.user.id == binding.owner_id and current.session_id == binding.session_id
 
+        async def request_authorization_check() -> bool:
+            return await oauth_transport.is_current(binding) and live_admin()
+
         try:
-            if not await oauth_transport.is_current(binding) or not live_admin():
+            if not await request_authorization_check():
                 await oauth_transport.revoke(binding.attempt_id)
                 return denied
             try:
                 result = await oauth_transport.perform(
-                    str(envelope["operation"]), envelope["input"]
+                    str(envelope["operation"]),
+                    envelope["input"],
+                    authorization_check=request_authorization_check,
                 )
             except OAuthTransportError as exc:
+                if exc.code == "oauth_authorization_required":
+                    await oauth_transport.revoke(binding.attempt_id)
+                    return denied
                 status_code = 422 if exc.code == "oauth_request_invalid" else 502
                 error_code = (
                     "invalid_oauth_request" if status_code == 422 else "oauth_provider_unavailable"
@@ -2951,7 +2959,7 @@ def create_assistant_router(
                         else "The authorization provider is unavailable.",
                     ),
                 )
-            if not await oauth_transport.is_current(binding) or not live_admin():
+            if not await request_authorization_check():
                 await oauth_transport.revoke(binding.attempt_id)
                 return denied
             return JSONResponse({"result": result}, headers={"Cache-Control": "no-store"})
