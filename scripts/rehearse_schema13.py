@@ -36,6 +36,21 @@ APP_GID = 10001
 IMAGE_MEMORY_BYTES = 768 * 1024 * 1024
 IMAGE_CPUS = 1
 IMAGE_PIDS = 128
+# Project only fields used for recovery-profile and source-label checks; never fetch Config.Env.
+_CONTAINER_PROFILE_INSPECT_FORMAT = (
+    '{"HostConfig":{'
+    '"ReadonlyRootfs":{{json .HostConfig.ReadonlyRootfs}},'
+    '"NetworkMode":{{json .HostConfig.NetworkMode}},'
+    '"Memory":{{json .HostConfig.Memory}},'
+    '"NanoCpus":{{json .HostConfig.NanoCpus}},'
+    '"PidsLimit":{{json .HostConfig.PidsLimit}},'
+    '"CapDrop":{{json .HostConfig.CapDrop}},'
+    '"CapAdd":{{json .HostConfig.CapAdd}},'
+    '"SecurityOpt":{{json .HostConfig.SecurityOpt}}'
+    '},"Config":{"Labels":{"org.opencontainers.image.revision":'
+    '{{json (index .Config.Labels "org.opencontainers.image.revision")}}'
+    "}}}"
+)
 MAX_RELEASE_ARCHIVE_BYTES = 512 * 1024 * 1024
 PRE_CONSENT_BACKUP = "schema13-pre-consent.spbackup"
 CONTAINER_REMOVAL_TIMEOUT_SECONDS = 10
@@ -1596,11 +1611,25 @@ def _wait_ready(
 
 
 def _container_inspect(container: str, env: dict[str, str]) -> dict[str, object]:
-    result = _run(["docker", "inspect", container], env=env, timeout=10)
-    values = json.loads(result.stdout)
-    if not isinstance(values, list) or len(values) != 1 or not isinstance(values[0], dict):
+    result = _run(
+        ["docker", "inspect", "--format", _CONTAINER_PROFILE_INSPECT_FORMAT, container],
+        env=env,
+        timeout=10,
+    )
+    try:
+        inspection = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RehearsalError("the local app container inspection was invalid") from exc
+    configuration = inspection.get("Config") if isinstance(inspection, dict) else None
+    labels = configuration.get("Labels") if isinstance(configuration, dict) else None
+    if (
+        not isinstance(inspection, dict)
+        or not isinstance(inspection.get("HostConfig"), dict)
+        or not isinstance(labels, dict)
+        or not isinstance(labels.get("org.opencontainers.image.revision"), str)
+    ):
         raise RehearsalError("the local app container inspection was invalid")
-    return values[0]
+    return inspection
 
 
 def _string_set(value: object) -> frozenset[str] | None:
@@ -2314,7 +2343,10 @@ def run_rehearsal(
         for tag in reversed(tags):
             removed = _run(["docker", "image", "rm", tag], env=base_env, timeout=30, check=False)
             remains = _run(
-                ["docker", "image", "inspect", tag], env=base_env, timeout=10, check=False
+                ["docker", "image", "inspect", "--format", "{{.Id}}", tag],
+                env=base_env,
+                timeout=10,
+                check=False,
             )
             if removed.returncode or remains.returncode == 0:
                 cleanup_errors.append("local_image_tag_removal")

@@ -27,7 +27,7 @@
           <p class="eyebrow">A research companion with clear controls</p>
           <h1 id="hero-title">Ask a better question.<br><span>Keep the decision yours.</span></h1>
           <p class="hero-lede">The Ledger assistant can explain the workspace and help organize research. You choose what context to share, which approved model to use, and whether a proposed change may proceed.</p>
-          <p class="synthetic-note"><strong>Example data is synthetic.</strong> These screenshots show the running application with example accounts, conversations, forecasts, and sources. Mobile views use viewport emulation. The examples are not market research or recommendations.</p>
+          <p class="synthetic-note"><strong>Example data is synthetic.</strong> These screenshots show the running application with example accounts, conversations, forecasts, and sources. Mobile views use viewport emulation; behavior on a physical iPhone or iOS device is not verified. The examples are not market research or recommendations.</p>
         </div>
         <figure class="hero-art">
           <ol class="research-loop" aria-label="A four-step research loop">
@@ -80,8 +80,8 @@
           <div class="section-body">
             <p class="eyebrow">Start where you are</p>
             <h2 id="open-title">Open, resize, and return to your work</h2>
-            <p>Use the named assistant launcher when you want help. On desktop, the panel stays alongside the workspace; use its expand, minimize, history, and close controls as needed. On a narrow screen it becomes a full-screen surface with safe-area spacing. The message area scrolls independently, and the composer stays available as the on-screen keyboard opens.</p>
-            <p>No request runs just because the panel opens. Choose a model, write a question, and send it when you are ready. Closing the panel returns you to the page.</p>
+            <p>Use the named assistant launcher when you want help. On desktop, the panel stays alongside the workspace; use its expand, minimize, history, and close controls as needed. On a narrow screen it becomes a full-screen surface with safe-area spacing. The message area normally scrolls independently, and the composer stays available as the on-screen keyboard opens. While an exact WebFetch URL approval is open, scroll the panel itself to keep the full destination and its decision together.</p>
+            <p>The launcher appears after the app checks your sign-in and assistant status. Opening it checks your sign-in again, then loads the model catalog and recent conversation history and requests the current page context; it does not send a prompt, start a model turn, or run public search. Choose a model, write a question, and send it when you are ready. Closing the panel returns you to the page.</p>
             <p>On a phone, close the assistant to return to the same workspace, then use the assistant launcher to reopen it. The launcher regains focus so you can continue with the keyboard.</p>
             <div class="callout"><strong>Research only.</strong> The assistant does not place trades or orders. Its answer can be wrong, so verify important figures against their cited records.</div>
           </div>
@@ -103,7 +103,7 @@
                 <p>Select one of the approved usable models. The assistant does not silently switch to a paid model, top up a balance, or retry through a different provider.</p>
               </article>
             </div>
-            <p class="quiet-note">Your selected provider may receive your message, the page context you chose to share, and tool results needed for the answer; these can include private workspace information. Check the context preview and selected model’s disclosure before sending. Conversations and compact tool receipts are stored in owner-scoped Signal Ledger application storage until you delete them, subject to storage limits. Provider credentials and endpoint controls appear only where the reviewed provider capability supports them. Do not put passwords, API keys, authenticator or recovery codes, or invitation codes in a prompt.</p>
+            <p class="quiet-note">Your selected provider may receive your message, the page context you chose to share, and tool results needed for the answer; these can include private workspace information. Check the context preview and selected model’s disclosure before sending. Conversation content and compact tool receipts are stored in owner-scoped Signal Ledger application storage, subject to storage limits. Deleting a conversation clears its active content and cache while retaining a compact, non-content audit record. Previously created backups may retain copies under the configured backup-retention policy. Provider credentials and endpoint controls appear only where the reviewed provider capability supports them. Do not put passwords, API keys, authenticator or recovery codes, or invitation codes in a prompt.</p>
           </div>
         </section>
 
@@ -114,8 +114,8 @@
             <h2 id="context-title">Preview page context before you send</h2>
             <p>The panel names the current workspace page and shows a sharing control for selected references. Open the context preview to inspect the exact route and reference summary before sending a question.</p>
             <ul class="check-list">
-              <li>With sharing on, inspect the exact page and selected references in the preview before sending.</li>
-              <li>With sharing off, refresh and send keep route-only context; instrument and event references are omitted.</li>
+              <li>When you send a request, the current page route is always included for the selected provider; with sharing on, inspect the exact route and selected instrument, event, and saved-result references before sending.</li>
+              <li>With sharing off, requests still include the route only; instrument, event, and saved-result references are omitted.</li>
               <li>Remove or change shared context when it is not relevant to your next question.</li>
               <li>The preview explains what is available. It does not grant access to another user’s data or hidden account details.</li>
             </ul>
@@ -156,9 +156,9 @@
               <span class="flow-arrow" aria-hidden="true"></span>
               <div><span class="flow-tag receipt-tag">Receipt</span><strong>Check the saved outcome</strong><small>Applied, denied, or handed off</small></div>
             </div>
-            <p>On the Signal Ledger dashboard (<code>/</code>), ask the assistant to prepare history filters or a filtered CSV or JSON export. Review the exact preview and confirm it. Filters open in the dashboard’s history form; approved exports open the owner-authorized download. The separate Research page shows five recent records from the newest 100 and saved-forecast comparisons. The assistant can search owner-scoped history there, but a filter request takes you to the dashboard’s history form.</p>
+            <p>On the Signal Ledger home (<code>/</code>), ask the assistant to prepare history filters or a filtered CSV or JSON export. Search ledger is the home page’s history form, separate from Overview. Review the exact preview and confirm it. Filters open in that form; approved exports open the owner-authorized download. The separate Research page shows five recent records from the newest 100 and saved-forecast comparisons. The assistant can search owner-scoped history there, but a filter request takes you to the home page’s history form.</p>
             <p>On Markets, confirmed requests can apply local quote filters, change the chart range or visible columns, and refresh quotes, the watchlist, or the selected chart. Review the proposed settings before confirming. These actions use the current page’s controls and selected instrument; quotes remain provider-labelled research data, not a real-time or trading feed.</p>
-            <p>On Live Trading, a confirmed request to open note controls or remove an alert is a handoff. On mobile, the assistant closes and focuses the matching Notes or Alerts control. Finish the change in that workspace control; the handoff itself does not edit the note or remove the alert. Reopen the assistant’s conversation history and select the same conversation to review its receipt. Adding a threshold is a separate confirmed action limited to the open Live Trading page session; it has no scheduler or notification delivery.</p>
+            <p>On Live Trading, a confirmed request to open note controls or remove an alert is a handoff. On mobile, the assistant closes and focuses the Notes or Alerts section heading. Finish the change in that workspace control; the handoff itself does not edit the note or remove the alert. Reopen the assistant’s conversation history and select the same conversation to review its receipt. Adding a threshold is a separate confirmed action limited to the open Live Trading page session; it has no scheduler or notification delivery.</p>
             <p>Account and administrator operations keep their own protected forms and authenticator step-up. A workspace action confirmation does not bypass those account checks.</p>
             <div class="capture-pair action-captures">
               <figure class="capture">
@@ -200,7 +200,7 @@
             <ul class="check-list">
               <li>Rename a conversation to make its subject clear in the history list.</li>
               <li>Review old context and tool receipts with the saved answer.</li>
-              <li>Deletion requires its own confirmation. If private cache cleanup is still pending, the transcript is retained and the interface offers a retry.</li>
+              <li>Deletion requires its own confirmation. It completes only after the private cache is cleared. If cache purging fails, the conversation remains in history and the interface offers a retry.</li>
               <li>An empty history is shown as empty; a loading or storage error is shown with its own status so you can retry without mistaking it for missing data.</li>
             </ul>
             <div class="history-context-illustration">

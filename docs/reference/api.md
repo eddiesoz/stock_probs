@@ -113,8 +113,8 @@ or handoff needs the authenticated browser's exact, current, single-use confirma
 | Route or feature | Read or explanation path | Change or navigation path |
 | --- | --- | --- |
 | `/`, `/overview`: research totals, portfolio and watchlist | `workspace.summary`, `workspace.instrument_lists`; server-derived owner counts | Portfolio/watchlist proposals below; existing overview controls remain available. |
-| Signal Ledger dashboard (`/`): searchable, paginated history | `history.search`; bounded typed filters and summaries | Confirmed filter handoffs open the dashboard history form; the typed filter handoff is available only on `/`. Confirmed CSV/JSON export handoffs open owner-authorized downloads from any supported page. Source implementation is present; full feature coverage and QA remain pending. |
-| `/research`: recent research and saved-forecast comparison | `history.search`; owner-scoped bounded history and saved-forecast records | Shows five recent records from the newest 100 events and compares saved forecasts. The assistant can search owner-scoped history here. To apply filters, use the dashboard history form (`/`), where the typed filter handoff is available. Confirmed CSV/JSON export handoffs are route-independent and open owner-authorized downloads. Source implementation is present; full feature coverage and QA remain pending. |
+| Signal Ledger home (`/`), “Search ledger” history | `history.search`; bounded typed filters and summaries | Confirmed filter handoffs open the Search ledger form; the typed filter handoff is available only on `/`. Confirmed CSV/JSON export handoffs open owner-authorized downloads from any supported page. Source implementation is present; full feature coverage and QA remain pending. |
+| `/research`: recent research and saved-forecast comparison | `history.search`; owner-scoped bounded history and saved-forecast records | Shows five recent records from the newest 100 events and compares saved forecasts. The assistant can search owner-scoped history here. To apply filters, use the Search ledger form on `/`, where the typed filter handoff is available. Confirmed CSV/JSON export handoffs are route-independent and open owner-authorized downloads. Source implementation is present; full feature coverage and QA remain pending. |
 | Saved forecasts and input series | `history.saved_forecast`; immutable result and bounded daily/intraday series | `forecast.reopen` opens the saved result; it does not rerun a provider or alter the record. |
 | `/tools`: tool landing page | Route-specific harness help describes the available workspaces | Use the existing Forecast, Live Trading and Markets navigation; opening a page does not run research. |
 | `/tools/forecast`: new forecasts | `market.instrument_search`; selected instrument and saved-result references | `forecast.create` proposes a new run; `reconstruction.run` proposes separately labelled fresh historical analysis. |
@@ -141,9 +141,9 @@ must keep their evidence scopes separate.
 
 For Live Trading, `notes.set`, `notes.clear`, and `alerts.remove` are secure local-control handoffs:
 they do not change a note or remove an alert until the user completes the corresponding workspace
-control. On mobile the handoff closes the full-screen assistant and focuses that control. The
-assistant's action receipt remains in the conversation; reopen assistant history and the same
-conversation to review it. `alerts.add` instead uses the typed browser bridge after confirmation and
+control. On mobile the handoff closes the full-screen assistant and focuses the matching Notes
+or Alerts section heading. The assistant's action receipt remains in the conversation; reopen
+assistant history and the same conversation to review it. `alerts.add` instead uses the typed browser bridge after confirmation and
 is limited to the active Live Trading page/session; it is not a server-owned or cross-session alert.
 These are candidate behaviors, not production availability or release acceptance.
 

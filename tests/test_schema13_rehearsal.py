@@ -182,6 +182,164 @@ def test_recovery_profile_diagnostic_names_only_the_first_fixed_field() -> None:
     assert rehearsal._recovery_profile_mismatch(host_config) == "NetworkMode"
 
 
+def test_container_inspect_uses_only_the_fixed_profile_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    container = "c" * 64
+    revision = "a" * 40
+    host_config = {
+        "ReadonlyRootfs": True,
+        "NetworkMode": "none",
+        "Memory": rehearsal.IMAGE_MEMORY_BYTES,
+        "NanoCpus": 1_000_000_000,
+        "PidsLimit": rehearsal.IMAGE_PIDS,
+        "CapDrop": ["ALL"],
+        "CapAdd": ["SETUID", "SETGID"],
+        "SecurityOpt": ["no-new-privileges:true"],
+    }
+    inspection = {
+        "HostConfig": host_config,
+        "Config": {"Labels": {"org.opencontainers.image.revision": revision}},
+    }
+    calls: list[list[str]] = []
+
+    def inspect(command: list[str], **_kwargs: object) -> CompletedProcess[str]:
+        calls.append(command)
+        return CompletedProcess(command, 0, stdout=json.dumps(inspection), stderr="")
+
+    monkeypatch.setattr(rehearsal, "_run", inspect)
+
+    result = rehearsal._container_inspect(container, {"PATH": "/synthetic"})
+
+    assert result == inspection
+    assert calls == [
+        [
+            "docker",
+            "inspect",
+            "--format",
+            rehearsal._CONTAINER_PROFILE_INSPECT_FORMAT,
+            container,
+        ]
+    ]
+    assert ".Config.Env" not in rehearsal._CONTAINER_PROFILE_INSPECT_FORMAT
+    assert "{{json .HostConfig}}" not in rehearsal._CONTAINER_PROFILE_INSPECT_FORMAT
+    assert "{{json .Config}}" not in rehearsal._CONTAINER_PROFILE_INSPECT_FORMAT
+    for field in (
+        "ReadonlyRootfs",
+        "NetworkMode",
+        "Memory",
+        "NanoCpus",
+        "PidsLimit",
+        "CapDrop",
+        "CapAdd",
+        "SecurityOpt",
+    ):
+        assert f".HostConfig.{field}" in rehearsal._CONTAINER_PROFILE_INSPECT_FORMAT
+    assert 'index .Config.Labels "org.opencontainers.image.revision"' in (
+        rehearsal._CONTAINER_PROFILE_INSPECT_FORMAT
+    )
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        "not-json",
+        "[]",
+        "{}",
+        '{"HostConfig": [], "Config": {"Labels": {"org.opencontainers.image.revision": "a"}}}',
+        '{"HostConfig": {}, "Config": {"Labels": []}}',
+        '{"HostConfig": {}, "Config": {"Labels": {}}}',
+    ],
+)
+def test_container_inspect_rejects_malformed_or_missing_projection_facts(
+    monkeypatch: pytest.MonkeyPatch,
+    stdout: str,
+) -> None:
+    def inspect(command: list[str], **_kwargs: object) -> CompletedProcess[str]:
+        return CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(rehearsal, "_run", inspect)
+
+    with pytest.raises(rehearsal.RehearsalError, match="inspection was invalid"):
+        rehearsal._container_inspect("d" * 64, {})
+
+
+@pytest.mark.parametrize(
+    ("field", "expected"),
+    [
+        ("ReadonlyRootfs", "ReadonlyRootfs"),
+        ("NetworkMode", "NetworkMode"),
+        ("Memory", "Memory"),
+        ("NanoCpus", "NanoCpus"),
+        ("PidsLimit", "PidsLimit"),
+        ("CapDrop", "CapDrop"),
+        ("CapAdd", "CapAdd"),
+        ("SecurityOpt", "SecurityOpt"),
+    ],
+)
+def test_recovery_profile_rejects_each_missing_inspected_fact(
+    field: str,
+    expected: str,
+) -> None:
+    host_config: dict[str, object] = {
+        "ReadonlyRootfs": True,
+        "NetworkMode": "none",
+        "Memory": rehearsal.IMAGE_MEMORY_BYTES,
+        "NanoCpus": 1_000_000_000,
+        "PidsLimit": rehearsal.IMAGE_PIDS,
+        "CapDrop": ["ALL"],
+        "CapAdd": ["SETUID", "SETGID"],
+        "SecurityOpt": ["no-new-privileges:true"],
+    }
+    del host_config[field]
+
+    assert rehearsal._recovery_profile_mismatch(host_config) == expected
+
+
+def test_all_literal_docker_inspect_calls_use_cli_format_projection() -> None:
+    source = Path(rehearsal.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    inspect_commands: list[tuple[int, list[str | None], ast.List]] = []
+
+    for node in ast.walk(tree):
+        if (
+            not isinstance(node, ast.Call)
+            or not isinstance(node.func, ast.Name)
+            or node.func.id != "_run"
+            or not node.args
+            or not isinstance(node.args[0], ast.List)
+        ):
+            continue
+        command = [
+            item.value if isinstance(item, ast.Constant) and isinstance(item.value, str) else None
+            for item in node.args[0].elts
+        ]
+        if command[:2] == ["docker", "inspect"] or command[:3] == [
+            "docker",
+            "image",
+            "inspect",
+        ]:
+            inspect_commands.append((node.lineno, command, node.args[0]))
+
+    assert any(command[:2] == ["docker", "inspect"] for _, command, _ in inspect_commands)
+    assert any(command[:3] == ["docker", "image", "inspect"] for _, command, _ in inspect_commands)
+    assert all("--format" in command for _, command, _ in inspect_commands)
+    for _, command, expression in inspect_commands:
+        template_index = command.index("--format") + 1
+        template_expression = expression.elts[template_index]
+        if isinstance(template_expression, ast.Constant) and isinstance(
+            template_expression.value, str
+        ):
+            template = template_expression.value
+        else:
+            assert isinstance(template_expression, ast.Name)
+            assert template_expression.id == "_CONTAINER_PROFILE_INSPECT_FORMAT"
+            template = rehearsal._CONTAINER_PROFILE_INSPECT_FORMAT
+        assert ".Config.Env" not in template
+        assert "{{json .Config}}" not in template
+        assert "{{json .HostConfig}}" not in template
+
+
 def test_stop_container_requires_confirmation_before_volume_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

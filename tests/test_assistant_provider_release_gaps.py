@@ -230,7 +230,11 @@ def test_chatgpt_refresh_rejects_non_success_http_status_without_vault_mutation(
     target_ciphertext_before = target_path.read_bytes()
     other_ciphertext_before = other_path.read_bytes()
     requests: list[dict[str, object]] = []
+    transport_authorization_checks: list[bool] = []
     upstream_calls: list[str] = []
+
+    async def authorization_check() -> bool:
+        return True
 
     async def fake_request(
         url: str,
@@ -241,7 +245,10 @@ def test_chatgpt_refresh_rejects_non_success_http_status_without_vault_mutation(
         content_type: str,
         timeout_seconds: float,
         max_response_bytes: int,
+        authorization_check: _AuthorizationCheck | None = None,
     ) -> _HTTPResponse:
+        assert authorization_check is not None
+        transport_authorization_checks.append(await authorization_check())
         requests.append(
             {
                 "url": url,
@@ -275,7 +282,7 @@ def test_chatgpt_refresh_rejects_non_success_http_status_without_vault_mutation(
                 manager,
                 model_id,
                 owner_id=_TARGET_OWNER,
-                authorization_check=lambda: True,
+                authorization_check=authorization_check,
             )
         )
 
@@ -283,6 +290,7 @@ def test_chatgpt_refresh_rejects_non_success_http_status_without_vault_mutation(
         "oauth_connection_required" if status_code in {401, 403} else "oauth_refresh_unavailable"
     )
     assert rejected.value.code == expected_error
+    assert transport_authorization_checks == [True]
     assert requests[0]["url"] == "https://auth.openai.com/oauth/token"
     assert requests[0]["method"] == "POST"
     assert requests[0]["headers"] == {"accept": "application/json"}
@@ -346,7 +354,11 @@ def test_chatgpt_refresh_rotates_only_owner_and_omits_unrelated_response_fields(
     other_path = manager._oauth_credential_path("openai", _OTHER_OWNER, "chatgpt-headless")
     other_ciphertext_before = other_path.read_bytes()
     requests: list[dict[str, object]] = []
+    transport_authorization_checks: list[bool] = []
     upstream_calls: list[dict[str, object]] = []
+
+    async def authorization_check() -> bool:
+        return True
 
     async def fake_request(
         url: str,
@@ -357,7 +369,10 @@ def test_chatgpt_refresh_rotates_only_owner_and_omits_unrelated_response_fields(
         content_type: str,
         timeout_seconds: float,
         max_response_bytes: int,
+        authorization_check: _AuthorizationCheck | None = None,
     ) -> _HTTPResponse:
+        assert authorization_check is not None
+        transport_authorization_checks.append(await authorization_check())
         requests.append(
             {
                 "url": url,
@@ -398,11 +413,12 @@ def test_chatgpt_refresh_rotates_only_owner_and_omits_unrelated_response_fields(
             manager,
             model_id,
             owner_id=_TARGET_OWNER,
-            authorization_check=lambda: True,
+            authorization_check=authorization_check,
         )
     )
 
     assert chunks == [_COMPLETED_FRAME]
+    assert transport_authorization_checks == [True]
     assert requests[0]["url"] == "https://auth.openai.com/oauth/token"
     assert parse_qs(bytes(requests[0]["body"]).decode("ascii"))["refresh_token"] == [
         "synthetic-old-owner-refresh"
