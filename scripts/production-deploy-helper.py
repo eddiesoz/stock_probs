@@ -291,6 +291,9 @@ def _audit(operation: str, result: str, **fields: object) -> None:
         "revision",
         "plan_id",
         "image_digest",
+        "image_id",
+        "release_role",
+        "pair_manifest_sha256",
         "compose_digest",
         "schema_version",
         "backup_name",
@@ -2019,8 +2022,13 @@ def _forward_recovery_backup(
     return dict(receipt)
 
 
-def _activate_same_schema_recovery(record: dict[str, Any], *, compose_snapshot: Path) -> bool:
-    """Run only the verified app-only recovery image over the existing schema-13 volume."""
+def _activate_same_schema_recovery(
+    record: dict[str, Any],
+    *,
+    compose_snapshot: Path,
+    health_out: dict[str, Any] | None = None,
+) -> bool:
+    """Run the verified schema-13 recovery image and optionally return its checked readiness."""
 
     recovery_ref = record.get("recovery_image_ref")
     recovery_archive_sha256 = record.get("recovery_archive_sha256")
@@ -2062,6 +2070,8 @@ def _activate_same_schema_recovery(record: dict[str, Any], *, compose_snapshot: 
             raise HostError("recovery_readiness_schema_mismatch")
         _require_assistant_ready(health, "disabled", schema_version=ASSISTANT_MINIMUM_SCHEMA)
         _write_json(CURRENT_RECORD, recovered)
+        if health_out is not None:
+            health_out.update(health)
         return True
     except HostError:
         with suppress(HostError):
@@ -2379,6 +2389,108 @@ def _deploy(
         return result
 
 
+def _rollback_to_recorded_recovery(
+    revision: str,
+    record: dict[str, Any],
+    recovery_image_id: str,
+    compose_snapshot: Path,
+) -> dict[str, Any]:
+    """Activate only the exact recorded schema-13 recovery image on the existing volume."""
+
+    # This selector is limited to the pinned schema-12-to-13 migration contract.
+    if (
+        not _is_release_record(record)
+        or record.get("release_role", "candidate") != "candidate"
+        or record.get("revision") != revision
+        or record.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+        or record.get("image_id") == recovery_image_id
+        or record.get("recovery_image_id") != recovery_image_id
+        or not isinstance(record.get("pair_manifest_sha256"), str)
+        or DIGEST_PATTERN.fullmatch(record["pair_manifest_sha256"]) is None
+        or not isinstance(record.get("source_context_sha256"), str)
+        or DIGEST_PATTERN.fullmatch(record["source_context_sha256"]) is None
+        or record.get("migration_sha256") != PAIR_MIGRATION_SHA256
+    ):
+        raise HostError("recovery_image_record_invalid")
+
+    _assert_image_record(record)
+    _assert_loaded_recovery_image(record)
+    recovery_archive_sha256 = record.get("recovery_archive_sha256")
+    recovery_archive_size = record.get("recovery_archive_size")
+    if (
+        not isinstance(recovery_archive_sha256, str)
+        or DIGEST_PATTERN.fullmatch(recovery_archive_sha256) is None
+        or type(recovery_archive_size) is not int
+        or not 1 <= recovery_archive_size <= MAX_RELEASE_ARCHIVE_BYTES
+    ):
+        raise HostError("recovery_image_record_invalid")
+    actual_schema = _database_schema(record["recovery_image_ref"])
+    if actual_schema != ASSISTANT_MINIMUM_SCHEMA:
+        raise HostError("rollback_schema_incompatible")
+
+    _stop_app()
+    try:
+        if (
+            _database_schema(record["recovery_image_ref"], compose_file=compose_snapshot)
+            != ASSISTANT_MINIMUM_SCHEMA
+        ):
+            raise HostError("rollback_schema_incompatible")
+        health: dict[str, Any] = {}
+        if not _activate_same_schema_recovery(
+            record, compose_snapshot=compose_snapshot, health_out=health
+        ):
+            raise HostError("recovery_activation_failed")
+        recovered = _read_json(CURRENT_RECORD)
+        if (
+            not isinstance(recovered, dict)
+            or recovered.get("revision") != revision
+            or recovered.get("release_role") != "recovery"
+            or recovered.get("image_ref") != record.get("recovery_image_ref")
+            or recovered.get("image_id") != recovery_image_id
+            or recovered.get("image_digest") != record.get("recovery_archive_sha256")
+            or recovered.get("archive_sha256") != record.get("recovery_archive_sha256")
+            or recovered.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+            or recovered.get("assistant_rollout_mode") != "disabled"
+            or recovered.get("compose_digest") != record.get("compose_digest")
+            or recovered.get("pair_manifest_sha256") != record.get("pair_manifest_sha256")
+        ):
+            raise HostError("recovery_identity_mismatch")
+        if not health:
+            raise HostError("recovery_readiness_unverified")
+    except HostError:
+        with suppress(HostError):
+            _stop_app(compose_snapshot)
+        raise
+
+    recovery_archive_sha256 = record["recovery_archive_sha256"]
+    _audit(
+        "rollback",
+        "applied",
+        revision=revision,
+        image_digest=recovery_archive_sha256,
+        image_id=recovery_image_id,
+        release_role="recovery",
+        pair_manifest_sha256=record["pair_manifest_sha256"],
+        compose_digest=record["compose_digest"],
+        schema_version=ASSISTANT_MINIMUM_SCHEMA,
+    )
+    return {
+        "status": "ok",
+        "result": "rolled_back",
+        "revision": revision,
+        "image_digest": recovery_archive_sha256,
+        "schema_version": ASSISTANT_MINIMUM_SCHEMA,
+        "health": health,
+        "transport": GITHUB_RELEASE_TRANSPORT,
+        "archive_sha256": recovery_archive_sha256,
+        "image_id": recovery_image_id,
+        "platform": record["recovery_platform"],
+        "archive_size": record["recovery_archive_size"],
+        "release_role": "recovery",
+        "pair_manifest_sha256": record["pair_manifest_sha256"],
+    }
+
+
 def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
     with _exclusive_lock():
         _ensure_layout()
@@ -2394,12 +2506,20 @@ def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
         ):
             raise HostError("release_invalid")
         _assert_image_record(record)
+        recovery_requested = False
         if _is_release_record(record):
-            if image_id != record["image_id"]:
+            if image_id is not None and image_id == record.get("recovery_image_id"):
+                if image_id == record.get("image_id"):
+                    raise HostError("rollback_identity_mismatch")
+                recovery_requested = True
+            elif image_id != record["image_id"]:
                 raise HostError("rollback_identity_mismatch")
         elif image_id is not None:
             raise HostError("rollback_identity_invalid")
         compose_snapshot = _assert_record_compose_digest(record)
+        if recovery_requested:
+            assert image_id is not None
+            return _rollback_to_recorded_recovery(revision, record, image_id, compose_snapshot)
         # Check the immutable image identity before opening the database or starting Compose.  The
         # local release tag is only a convenience alias and may have been replaced since staging.
         _assert_loaded_image(record)

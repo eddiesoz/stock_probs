@@ -233,6 +233,26 @@ test("assistant context controls stay available during recovery and clear only c
   assert.match(panel, /if \(!current \|\| generation !== contextRequestGeneration\.current\) return;/);
 });
 
+test("print shows the nested saved context preview and hides its sharing controls", async () => {
+  const panel = await readFile(new URL("./assistant-panel.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("./assistant.module.css", import.meta.url), "utf8");
+  const controlRow = panel.indexOf('<div className={styles.contextControlRow}>');
+  const details = panel.indexOf('<details ref={contextDetailsRef} className={styles.contextDetails}>', controlRow);
+  const controlRowEnd = panel.indexOf("\n            </div>\n            {contextState === \"loading\"", details);
+  const printStart = styles.indexOf("@media print{");
+  assert.ok(controlRow >= 0 && details > controlRow && controlRowEnd > details);
+  assert.ok(printStart >= 0);
+
+  const printStyles = styles.slice(printStart);
+  const rowRules = printStyles.match(/\.contextControlRow\{([^}]*)\}/)?.[1] ?? "";
+  assert.match(rowRules, /display:block!important/);
+  assert.match(printStyles, /\.contextToggle/);
+  assert.match(printStyles, /\.contextShareMode/);
+  assert.match(printStyles, /\.contextDetails summary\{display:none!important\}/);
+  assert.match(printStyles, /\.contextDetails \.contextPreview\{display:block!important/);
+  assert.match(printStyles, /\.contextNote\{display:none!important\}/);
+});
+
 test("assistant policy changes clear consent acknowledgements and reload without resending the prompt", async () => {
   const panel = await readFile(new URL("./assistant-panel.tsx", import.meta.url), "utf8");
   assert.match(panel, /selectedModel\.policy_version,/);

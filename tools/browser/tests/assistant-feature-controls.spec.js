@@ -809,7 +809,7 @@ test("confirmed Markets refresh actions re-request only their named local data a
   expect(state.confirmationRequests.at(-1).body).toMatchObject({ allow: true, context: { route: "/tools/markets", instrument } });
 });
 
-test("stale or malformed confirmed browser actions leave Markets state and route unchanged without using a destination fallback", async ({ page }) => {
+test("stale or malformed confirmed browser actions leave Markets state and route unchanged without using a destination fallback", async ({ page, browserDiagnostics }) => {
   const staleChart = actionScenario({
     actionType: "market.chart_range.set",
     payload: chartRangePayload(instrument.symbol, "6mo"),
@@ -836,7 +836,7 @@ test("stale or malformed confirmed browser actions leave Markets state and route
       browser_action: { type: "market.columns.set", payload: { show_all_columns: true }, destination: { kind: "current-page", route: "/" } },
     },
   });
-  const state = await installFeatureHarness(page, { route: "/tools/markets", scenarios: [staleChart, malformedColumns], markets: true });
+  const state = await installFeatureHarness(page, { route: "/tools/markets", scenarios: [staleChart, malformedColumns], markets: true, browserDiagnostics });
   const marketUrl = `/tools/markets?${new URLSearchParams(instrument).toString()}`;
   let panel = await openAssistant(page, marketUrl);
   await closeAssistant(panel, page);

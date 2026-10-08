@@ -4602,3 +4602,316 @@ def test_dispatch_cleanup_revalidates_owned_network_and_volume() -> None:
         ("remove_volume", volume_name),
         ("volume_absent", volume_name),
     ]
+
+
+def _schema13_release_record(helper: Any) -> dict[str, Any]:
+    """Return the pinned candidate/recovery metadata stored during schema-13 staging."""
+    revision = "a" * 40
+    candidate_digest = "d" * 64
+    return {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": candidate_digest,
+        "archive_sha256": candidate_digest,
+        "image_id": "sha256:" + "e" * 64,
+        "platform": "linux/amd64",
+        "archive_size": 1024,
+        "schema_version": 13,
+        "compose_digest": "c" * 64,
+        "pair_manifest_sha256": "f" * 64,
+        "source_context_sha256": "1" * 64,
+        "migration_sha256": helper.PAIR_MIGRATION_SHA256,
+        "recovery_image_ref": helper._local_recovery_image_ref(revision),
+        "recovery_image_id": "sha256:" + "2" * 64,
+        "recovery_archive_sha256": "3" * 64,
+        "recovery_archive_size": 2048,
+        "recovery_platform": "linux/amd64",
+        "recovery_schema_version": 13,
+        "recovery_base_revision": helper.PAIR_BASE_REVISION,
+        "recovery_overlay_sha256": "4" * 64,
+    }
+
+
+def _install_schema13_rollback_mocks(
+    helper: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    record: dict[str, Any],
+    *,
+    database_schema: int | tuple[int, ...] = 13,
+    readiness: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Install deterministic host-operation seams for recovery rollback tests."""
+    events: list[tuple[str, Any]] = []
+    schema_results = iter(
+        database_schema if isinstance(database_schema, tuple) else (database_schema,)
+    )
+    persisted: dict[Path, dict[str, Any]] = {}
+    compose_snapshot = tmp_path / "compose.yaml"
+    release_path = tmp_path / f"{record['revision']}.json"
+    monkeypatch.setattr(helper, "RELEASE_ROOT", tmp_path)
+    monkeypatch.setattr(helper, "CURRENT_RECORD", tmp_path / "current.json")
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: record if path == release_path else persisted.get(path),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_write_json",
+        lambda path, value: persisted.__setitem__(path, dict(value)),
+    )
+    monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _: compose_snapshot)
+    monkeypatch.setattr(
+        helper,
+        "_assert_loaded_image",
+        lambda row: events.append(("loaded_candidate", row["image_id"])),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_assert_loaded_recovery_image",
+        lambda row: events.append(("loaded_recovery", row["recovery_image_id"])),
+    )
+
+    def database_schema_probe(image: str, **kwargs: Any) -> int:
+        events.append(("schema", (image, kwargs.get("compose_file"))))
+        fallback = database_schema[-1] if isinstance(database_schema, tuple) else database_schema
+        return next(schema_results, fallback)
+
+    monkeypatch.setattr(helper, "_database_schema", database_schema_probe)
+    monkeypatch.setattr(helper, "_stop_app", lambda *args, **kwargs: events.append(("stop", args)))
+    monkeypatch.setattr(
+        helper,
+        "_runtime_file",
+        lambda image, mode="disabled": events.append(("runtime", (image, mode))),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_compose_up",
+        lambda row, **kwargs: events.append(("up", (row["image_ref"], kwargs.get("compose_file")))),
+    )
+    health = readiness or {
+        "status": "ready",
+        "schema_version": 13,
+        "assistant": {"enabled": False, "status": "disabled"},
+    }
+    monkeypatch.setattr(helper, "_health_check", lambda: events.append(("health", None)) or health)
+    monkeypatch.setattr(
+        helper,
+        "_audit",
+        lambda *args, **kwargs: events.append(("audit", (args, kwargs))),
+    )
+    return {"events": events, "persisted": persisted, "compose_snapshot": compose_snapshot}
+
+
+def test_rollback_selects_exact_recorded_schema13_recovery_image(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Select only the staged recovery image and persist the verified disabled state."""
+    helper = _helper()
+    record = _schema13_release_record(helper)
+    observed = _install_schema13_rollback_mocks(helper, monkeypatch, tmp_path, record)
+    monkeypatch.setattr(
+        helper,
+        "_assert_loaded_image",
+        lambda _: pytest.fail("recovery must not require the candidate image to remain loaded"),
+    )
+
+    result = helper._rollback(record["revision"], record["recovery_image_id"])
+
+    current = observed["persisted"][helper.CURRENT_RECORD]
+    assert result["result"] == "rolled_back"
+    assert result["image_id"] == record["recovery_image_id"]
+    assert result["archive_sha256"] == record["recovery_archive_sha256"]
+    assert result["pair_manifest_sha256"] == record["pair_manifest_sha256"]
+    assert result["release_role"] == "recovery"
+    assert current["release_role"] == "recovery"
+    assert current["image_id"] == record["recovery_image_id"]
+    assert current["assistant_rollout_mode"] == "disabled"
+    assert current["schema_version"] == 13
+    events = observed["events"]
+    assert events.count(("stop", ())) == 1
+    assert events.count(("health", None)) == 1
+    assert result["health"] == {
+        "status": "ready",
+        "schema_version": 13,
+        "assistant": {"enabled": False, "status": "disabled"},
+    }
+    assert all(
+        event[1][0] == record["recovery_image_ref"] for event in events if event[0] == "schema"
+    )
+    assert ("runtime", (record["recovery_image_ref"], "disabled")) in events
+    assert ("up", (record["recovery_image_ref"], observed["compose_snapshot"])) in events
+    assert (
+        "audit",
+        (
+            ("rollback", "applied"),
+            {
+                "revision": record["revision"],
+                "image_digest": record["recovery_archive_sha256"],
+                "image_id": record["recovery_image_id"],
+                "release_role": "recovery",
+                "pair_manifest_sha256": record["pair_manifest_sha256"],
+                "compose_digest": record["compose_digest"],
+                "schema_version": 13,
+            },
+        ),
+    ) in events
+    assert not any("restore" in str(event).casefold() for event in events)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("source_context_sha256", "bad"), ("migration_sha256", "5" * 64)],
+)
+def test_rollback_rejects_unbound_recovery_pair_before_stopping_app(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: str,
+) -> None:
+    """Reject malformed source or migration bindings before stopping the app."""
+    helper = _helper()
+    record = _schema13_release_record(helper)
+    record[field] = value
+    observed = _install_schema13_rollback_mocks(helper, monkeypatch, tmp_path, record)
+
+    with pytest.raises(helper.HostError, match="recovery_image_record_invalid"):
+        helper._rollback(record["revision"], record["recovery_image_id"])
+
+    assert not any(event[0] in {"stop", "runtime", "up"} for event in observed["events"])
+    assert helper.CURRENT_RECORD not in observed["persisted"]
+
+
+def test_rollback_rejects_incompatible_actual_schema_for_recovery_image(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reject a schema mismatch before stopping or starting an application container."""
+    helper = _helper()
+    record = _schema13_release_record(helper)
+    observed = _install_schema13_rollback_mocks(
+        helper, monkeypatch, tmp_path, record, database_schema=12
+    )
+
+    with pytest.raises(helper.HostError, match="rollback_schema_incompatible"):
+        helper._rollback(record["revision"], record["recovery_image_id"])
+
+    assert not any(event[0] in {"stop", "runtime", "up"} for event in observed["events"])
+    assert helper.CURRENT_RECORD not in observed["persisted"]
+
+
+def test_rollback_rejects_unrecorded_image_id_before_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    record = _schema13_release_record(helper)
+    observed = _install_schema13_rollback_mocks(helper, monkeypatch, tmp_path, record)
+
+    with pytest.raises(helper.HostError, match="rollback_identity_mismatch"):
+        helper._rollback(record["revision"], "sha256:" + "9" * 64)
+
+    assert not any(
+        event[0] in {"stop", "runtime", "up", "loaded_recovery"} for event in observed["events"]
+    )
+    assert helper.CURRENT_RECORD not in observed["persisted"]
+
+
+def test_rollback_rechecks_schema_after_stopping_candidate_before_activation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stop the candidate and recheck the volume schema before activating recovery."""
+    helper = _helper()
+    record = _schema13_release_record(helper)
+    observed = _install_schema13_rollback_mocks(
+        helper, monkeypatch, tmp_path, record, database_schema=(13, 12)
+    )
+
+    with pytest.raises(helper.HostError, match="rollback_schema_incompatible"):
+        helper._rollback(record["revision"], record["recovery_image_id"])
+
+    events = observed["events"]
+    schema_events = [index for index, event in enumerate(events) if event[0] == "schema"]
+    stop_events = [index for index, event in enumerate(events) if event[0] == "stop"]
+    assert len(schema_events) == 2
+    assert schema_events[0] < stop_events[0] < schema_events[1] < stop_events[-1]
+    assert not any(event[0] in {"runtime", "up", "health"} for event in events)
+    assert helper.CURRENT_RECORD not in observed["persisted"]
+
+
+@pytest.mark.parametrize(
+    "readiness",
+    [
+        {"status": "ready", "schema_version": 12},
+        {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "unavailable"},
+        },
+    ],
+)
+def test_rollback_does_not_record_recovery_when_readiness_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    readiness: dict[str, Any],
+) -> None:
+    """Leave current release state untouched when recovery readiness is not verified."""
+    helper = _helper()
+    record = _schema13_release_record(helper)
+    observed = _install_schema13_rollback_mocks(
+        helper, monkeypatch, tmp_path, record, readiness=readiness
+    )
+
+    with pytest.raises(helper.HostError, match="recovery_activation_failed"):
+        helper._rollback(record["revision"], record["recovery_image_id"])
+
+    events = observed["events"]
+    assert any(event[0] == "up" and event[1][0] == record["recovery_image_ref"] for event in events)
+    assert events.count(("health", None)) == 1
+    assert events.count(("stop", ())) == 1
+    assert events.count(("stop", (observed["compose_snapshot"],))) >= 1
+    assert helper.CURRENT_RECORD not in observed["persisted"]
+
+
+def test_rollback_repeating_exact_recovery_selector_preserves_recovery_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Repeated selection of the recorded recovery image preserves the same state."""
+    helper = _helper()
+    record = _schema13_release_record(helper)
+    observed = _install_schema13_rollback_mocks(helper, monkeypatch, tmp_path, record)
+
+    first = helper._rollback(record["revision"], record["recovery_image_id"])
+    first_current = dict(observed["persisted"][helper.CURRENT_RECORD])
+    second = helper._rollback(record["revision"], record["recovery_image_id"])
+
+    current = observed["persisted"][helper.CURRENT_RECORD]
+    assert first["image_id"] == second["image_id"] == record["recovery_image_id"]
+    assert first_current == current
+    assert current["release_role"] == "recovery"
+    assert current["image_ref"] == record["recovery_image_ref"]
+    assert current["pair_manifest_sha256"] == record["pair_manifest_sha256"]
+    assert sum(event[0] == "up" for event in observed["events"]) == 2
+    assert sum(event[0] == "health" for event in observed["events"]) == 2
+    assert not any("restore" in str(event).casefold() for event in observed["events"])
+
+
+def test_rollback_keeps_candidate_image_path_for_exact_candidate_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Preserve the existing candidate-image rollback selector and behavior."""
+    helper = _helper()
+    record = _schema13_release_record(helper)
+    observed = _install_schema13_rollback_mocks(helper, monkeypatch, tmp_path, record)
+
+    result = helper._rollback(record["revision"], record["image_id"])
+
+    current = observed["persisted"][helper.CURRENT_RECORD]
+    assert result["result"] == "rolled_back"
+    assert result["image_id"] == record["image_id"]
+    assert current["image_ref"] == record["image_ref"]
+    assert current["assistant_rollout_mode"] == "disabled"
+    assert ("up", (record["image_ref"], observed["compose_snapshot"])) in observed["events"]
+    assert not any(event[0] == "loaded_recovery" for event in observed["events"])

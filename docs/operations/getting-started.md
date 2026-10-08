@@ -424,10 +424,12 @@ records. This is local evidence; take the live snapshot again if data changes be
 Run `./scripts/deploy-mcp.sh` locally. The independent E70 official Python SDK stdio client
 initialized and listed all eight expected operations and schemas: `inspect`, `plan_deploy`,
 `deploy`, `status`, `rollback`, `refresh_operator_access(operator_ipv4_cidr)`, `rehearse_pr_pair`,
-and `set_assistant_rollout`. It invoked no tool and passed no target variables. The active Codex
-task still exposes six; discovery in a fresh Codex task remains pending. An earlier separate
-read-only SDK checkpoint reported `status` only; it is not part of E70 and neither result is a
-promotion or rollout.
+and `set_assistant_rollout`. It invoked no tool and passed no target variables. E90 later records
+a fresh Codex task discovering all eight names and completing read-only `inspect` and `status`; E105
+records a separate later current-root observation with all eight names and one read-only `status`
+call. An earlier six-name root/task snapshot remains historical. These are separate discovery and
+read-only observations; no mutating-tool execution, deployment, rollback, or rollout acceptance is
+inferred.
 The default release transport carries
 the reviewed revision, archive SHA-256, and full Docker image ID; the optional GHCR compatibility
 shape carries its immutable digest. The controller uses the restricted SSH helper and records only
@@ -552,15 +554,26 @@ cleanup later **Passed** (E48). Its measured 3.5403:1 dark-placeholder contrast 
 old staged CSS confirmed in the trace; it is not the refreshed bundle's current-source result. A fresh full browser run on the
 refreshed stage has now passed its test scope (E59), with the raw axe result retained separately in
 E60. The independent E70 Python SDK client listed all eight deployment MCP operations and schemas
-but invoked none and passed no target variables. The active Codex task still exposes six, so Codex
-task-registry discovery of the two additions remains pending; no deployment or rollout is inferred.
+but invoked none and passed no target variables. An earlier root/current-task metadata snapshot
+exposed six; that is a historical snapshot, not the current discovery result. A later fresh Codex
+task discovered all eight and completed read-only `inspect` and `status` (E90), and E105 later
+observed all eight in the current root and passed a read-only `status` call. These observations do
+not establish mutating-tool execution, deployment, or rollout.
 
 The R-ASTRA-120 candidate helper runs database presence/schema probes with an explicit Python
 entrypoint as UID/GID 10001. This prevents the container supervisor from treating `python -c`
 as an application CLI command. Schema inspection opens SQLite read-only and fails closed on
 invalid output. Independent helper tests passed for this change (E340); actual container probes
-and the PR-bound recovery rehearsal remain pending. The production helper has not been updated
-by this local repair. See the [MVP plan](../../MVP-PLAN.md) for its exact evidence scope.
+and the PR-bound recovery rehearsal remain pending. The earlier E340 database-probe repair was
+local and did not update production. The later R-ASTRA-120 candidate rollback uses the existing typed
+`rollback(revision, image_id)` call with the exact recovery image ID recorded in the reviewed PR
+pair. It validates the candidate revision, pair/source/migration digests and recovery image, checks
+that the existing data volume is already at schema 13 before and after stopping the app, then starts
+the recorded Compose snapshot with assistant rollout disabled and requires readiness before it
+records the recovered release. It does not restore or replace the database. Independent local helper
+QA passed 83 tests; its opt-in Docker case was skipped. Live host/container behavior and the actual
+PR-bound rollback rehearsal remain pending, so this candidate is not production rollback acceptance.
+See the [MVP plan](../../MVP-PLAN.md) for its exact evidence scope.
 
 The local R-ASTRA-120 candidate image build and parent image/source review passed (E343).
 That result does not authorize promotion: native/provider/search, current-image kill, actual

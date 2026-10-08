@@ -159,11 +159,11 @@
   :global(body[data-assistant-open="true"]) [data-assistant-background]{display:none!important}
   .panel{position:static!important;inset:auto!important;display:block!important;width:auto!important;height:auto!important;max-height:none!important;min-height:0!important;margin:0!important;padding:0!important;overflow:visible!important;border:0!important;border-radius:0!important;background:#fff!important;color:#000!important;box-shadow:none!important}
   .body,.transcript,.toolActivity,.answerTableWrap,.answerOverflow pre{height:auto!important;max-height:none!important;overflow:visible!important;scrollbar-gutter:auto!important}
-  .headerControls,.mark,.readiness,.history,.composer,.contextToggle,.context>.textButton,.renameForm,.deleteConfirm,.actionCard,.searchCard,.webFetchCard,.cardActions,.reconnect,.cancel,.panel button,.panel input,.panel select,.panel textarea{display:none!important}
+  .headerControls,.mark,.readiness,.history,.composer,.contextToggle,.contextShareMode,.context>.textButton,.renameForm,.deleteConfirm,.actionCard,.searchCard,.webFetchCard,.cardActions,.reconnect,.cancel,.panel button,.panel input,.panel select,.panel textarea{display:none!important}
   .contextDetails summary{display:none!important}
   .contextDetails{display:block!important;width:100%!important;min-width:0!important;max-width:100%!important}
   .contextDetails .contextPreview{display:block!important;width:100%!important;white-space:normal!important}
-  .contextControlRow,.contextNote{display:none!important}
+  .contextControlRow{display:block!important;width:100%!important}.contextNote{display:none!important}
   .panel,.panel *{box-sizing:border-box;min-width:0;max-width:100%;overflow-wrap:anywhere;color:#000!important;background-color:transparent!important;box-shadow:none!important;text-shadow:none!important}
   .toolActivity li{grid-template-columns:minmax(0,1fr)}
   .answerTable{table-layout:fixed}

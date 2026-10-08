@@ -91,7 +91,9 @@ The helper verifies the fixed release asset bytes before loading the image, then
 platform, revision, Compose bytes, schema, backup, and readiness before promotion. An explicit
 `SIGNAL_LEDGER_IMAGE_PUBLISH_MODE=ghcr` remains a compatibility transport for already staged
 GHCR plans; it is not the default. Rollback is schema-compatible and responses are bounded and
-credential-free.
+credential-free. The R-ASTRA-120 candidate adds a recorded schema-13 recovery selector. Document
+its exact image, revision, schema, and readiness guards in [getting started](../operations/getting-started.md)
+and record local test versus live PR-rehearsal evidence separately in the [MVP plan](../../MVP-PLAN.md).
 
 The `refresh_operator_access(operator_ipv4_cidr)` operation is constrained to one canonical IPv4
 `/32` and the fixed `linode_firewall.signal_ledger` operator SSH rule. It uses the fixed external
