@@ -1040,6 +1040,70 @@ def test_public_https_request_uses_validated_form_content_type(monkeypatch) -> N
     assert request.endswith(b"grant_type=refresh_token&refresh_token=synthetic")
 
 
+@pytest.mark.parametrize("held_phase", ("dns", "tls"))
+def test_public_https_request_rechecks_authorization_before_provider_bytes(
+    monkeypatch: pytest.MonkeyPatch, held_phase: str
+) -> None:
+    """A revocation during DNS or TLS stops the request before credential bytes are written."""
+
+    phase_started = asyncio.Event()
+    release_phase = asyncio.Event()
+    writer_state: dict[str, object] = {"writes": 0, "closed": False}
+    authorization = {"allowed": True}
+
+    class Writer:
+        def write(self, _data: bytes) -> None:
+            writer_state["writes"] = int(writer_state["writes"]) + 1
+
+        async def drain(self) -> None:
+            return None
+
+        def close(self) -> None:
+            writer_state["closed"] = True
+
+        async def wait_closed(self) -> None:
+            return None
+
+    async def resolver(_host: str, _port: int) -> list[object]:
+        if held_phase == "dns":
+            phase_started.set()
+            await release_phase.wait()
+        return [_addrinfo_record("93.184.216.34")]
+
+    async def open_connection(*_args: object, **_kwargs: object):
+        if held_phase == "tls":
+            phase_started.set()
+            await release_phase.wait()
+        return asyncio.StreamReader(), Writer()
+
+    monkeypatch.setattr(net.asyncio, "open_connection", open_connection)
+
+    async def authorize() -> bool:
+        return authorization["allowed"] is True
+
+    async def exercise() -> net.PublicHTTPError:
+        pending = asyncio.create_task(
+            net.request_public_https(
+                "https://provider.example/v1/models",
+                headers={"authorization": "Bearer synthetic-provider-secret"},
+                timeout_seconds=2,
+                resolver=resolver,
+                authorization_check=authorize,
+            )
+        )
+        await asyncio.wait_for(phase_started.wait(), timeout=1)
+        authorization["allowed"] = False
+        release_phase.set()
+        with pytest.raises(net.PublicHTTPError) as caught:
+            await pending
+        return caught.value
+
+    error = asyncio.run(exercise())
+    assert error.code == "provider_authorization_required"
+    assert writer_state["writes"] == 0
+    assert writer_state["closed"] is (held_phase == "tls")
+
+
 def test_public_https_request_rejects_unreviewed_content_type() -> None:
     async def exercise() -> None:
         await net.request_public_https(

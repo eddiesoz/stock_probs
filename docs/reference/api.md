@@ -122,7 +122,7 @@ or handoff needs the authenticated browser's exact, current, single-use confirma
 | Watchlists | `workspace.instrument_lists`, public instrument lookup | `watchlist.add`, `watchlist.remove`; ownership derives from the active session. |
 | `/tools/markets`: quotes, bars and comparison | `market.quote`, `market.bars`, `market.compare`; exact provider/exchange identity | `market.open` navigates to the matching instrument workspace. Typed local filter, chart-range, column and refresh handoffs are being implemented; full control coverage remains pending. |
 | Selected-instrument news | `market.news`; bounded public headlines with source/as-of | Public article links retain the existing safe-link behavior; no hidden browser automation. |
-| Live Trading notes and alerts | Existing local UI; these are not silently uploaded as server-owned records | `notes.set`, `notes.clear`, `alerts.remove` hand off to the matching local control; `alerts.add` uses a typed browser action. |
+| Live Trading notes and alerts | Existing local UI; these are not silently uploaded as server-owned records | `notes.set`, `notes.clear`, and `alerts.remove` hand off to the matching local control; `alerts.add` uses a typed, active-page/session-scoped browser action. |
 | Light/Dark/System settings | Current UI and route context; stored presentation choice remains local | `theme.set` uses the typed browser bridge after confirmation. |
 | `/api-docs` | Route-specific help points to the app's reference; the harness has no local-document/file access | Read the existing documentation UI; the assistant does not rewrite API contracts. |
 | `/account`: sessions and authenticator recovery | Route-specific help; credentials, TOTP and recovery codes stay outside chat | `account.sessions.manage` hands off to secure account controls. |
@@ -137,6 +137,14 @@ The source contracts are in `assistant/tools.py`, `assistant/service.py`, `assis
 and the frontend assistant/browser bridge. Verify the matrix with populated, repeated and
 unavailable-data states. Synthetic browser tests, native disposable probes and production checks
 must keep their evidence scopes separate.
+
+For Live Trading, `notes.set`, `notes.clear`, and `alerts.remove` are secure local-control handoffs:
+they do not change a note or remove an alert until the user completes the corresponding workspace
+control. On mobile the handoff closes the full-screen assistant and focuses that control. The
+assistant's action receipt remains in the conversation; reopen assistant history and the same
+conversation to review it. `alerts.add` instead uses the typed browser bridge after confirmation and
+is limited to the active Live Trading page/session; it is not a server-owned or cross-session alert.
+These are candidate behaviors, not production availability or release acceptance.
 
 `R-ASTRA-111` applies admission bounds to GitHub OAuth start: 8 starts per effective caller
 and 64 per app process in a rolling minute, plus 8 outstanding transactions per caller and 128

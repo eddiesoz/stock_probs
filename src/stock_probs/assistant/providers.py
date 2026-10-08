@@ -34,6 +34,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from stock_probs.assistant.model_catalog import (
     AssistantModel,
     AssistantModelCatalog,
+    ModelCatalogAuthorizationError,
     known_model_exclusion_reason,
 )
 from stock_probs.assistant.native_provider_adapters import (
@@ -1452,19 +1453,41 @@ class AssistantProviderManager:
         self._invalidate_provider_inventory(provider_id)
         return next(item for item in self.list_providers() if item.provider_id == provider_id)
 
-    async def validate(self, provider_id: str) -> ProviderSummary:
+    async def validate(
+        self,
+        provider_id: str,
+        *,
+        authorization_check: Callable[[], Awaitable[bool] | bool] | None = None,
+    ) -> ProviderSummary:
         """Make one bounded, no-redirect model inventory request and return only safe status."""
 
+        if authorization_check is not None:
+            await _require_live_authorization(authorization_check)
         definition = self._require_provider(provider_id)
         if provider_id in _MODEL_DISCOVERY_PROVIDERS:
-            await self._refresh_provider_inventory(provider_id)
+            await self._refresh_provider_inventory(
+                provider_id, authorization_check=authorization_check
+            )
+            if authorization_check is not None:
+                await _require_live_authorization(authorization_check)
             return next(item for item in self.list_providers() if item.provider_id == provider_id)
         if definition["adapter_supported"] is not True and provider_id != "opencode-zen":
             raise ProviderUnavailable("provider_adapter_unsupported")
         state = self._read_metadata().get(provider_id, {})
         base_url = state.get("base_url", definition.get("default_base_url"))
         if provider_id == "opencode-zen":
-            if self.catalog is None or not await self.catalog.refresh():
+            if self.catalog is None:
+                raise ProviderUnavailable("provider_unavailable")
+            try:
+                if authorization_check is None:
+                    refreshed = await self.catalog.refresh()
+                else:
+                    refreshed = await self.catalog.refresh(authorization_check=authorization_check)
+            except ModelCatalogAuthorizationError:
+                raise CredentialRejected("oauth_authorization_required") from None
+            if authorization_check is not None:
+                await _require_live_authorization(authorization_check)
+            if not refreshed:
                 raise ProviderUnavailable("provider_unavailable")
             return next(item for item in self.list_providers() if item.provider_id == provider_id)
         if not isinstance(base_url, str):
@@ -1476,12 +1499,23 @@ class AssistantProviderManager:
         headers = _provider_headers(provider_id, secret)
         endpoint = base_url.rstrip("/") + "/models"
         try:
-            response = await request_public_https(
-                endpoint,
-                headers=headers,
-                timeout_seconds=5.0,
-                max_response_bytes=_MAX_VALIDATE_BYTES,
-            )
+            if authorization_check is None:
+                response = await request_public_https(
+                    endpoint,
+                    headers=headers,
+                    timeout_seconds=5.0,
+                    max_response_bytes=_MAX_VALIDATE_BYTES,
+                )
+            else:
+                response = await request_public_https(
+                    endpoint,
+                    headers=headers,
+                    timeout_seconds=5.0,
+                    max_response_bytes=_MAX_VALIDATE_BYTES,
+                    authorization_check=authorization_check,
+                )
+            if authorization_check is not None:
+                await _require_live_authorization(authorization_check)
             if response.status_code in {401, 403}:
                 raise CredentialRejected()
             if response.status_code != 200:
@@ -1489,7 +1523,16 @@ class AssistantProviderManager:
         except (CredentialRejected, ProviderUnavailable):
             raise
         except PublicHTTPError as exc:
+            if authorization_check is not None:
+                await _require_live_authorization(authorization_check)
+                if exc.code in {
+                    "provider_authorization_required",
+                    "provider_authorization_timeout",
+                }:
+                    raise CredentialRejected("oauth_authorization_required") from None
             raise ProviderUnavailable("provider_unavailable") from exc
+        if authorization_check is not None:
+            await _require_live_authorization(authorization_check)
         return next(item for item in self.list_providers() if item.provider_id == provider_id)
 
     async def ensure_model_inventory(
@@ -1579,8 +1622,16 @@ class AssistantProviderManager:
                         headers=headers,
                         timeout_seconds=_MODEL_DISCOVERY_TIMEOUT_SECONDS - 0.5,
                         max_response_bytes=_MAX_VALIDATE_BYTES,
+                        authorization_check=authorization_check,
                     )
-            except (PublicHTTPError, OSError, TimeoutError) as exc:
+            except PublicHTTPError as exc:
+                if exc.code in {
+                    "provider_authorization_required",
+                    "provider_authorization_timeout",
+                }:
+                    raise CredentialRejected("oauth_authorization_required") from None
+                raise ProviderUnavailable("opencode_inventory_unavailable") from exc
+            except (OSError, TimeoutError) as exc:
                 raise ProviderUnavailable("opencode_inventory_unavailable") from exc
             await _require_live_authorization(authorization_check)
             if response.status_code in {401, 403}:
@@ -2186,17 +2237,35 @@ class AssistantProviderManager:
         state = self._read_metadata().get("custom", {})
         return isinstance(state.get("base_url"), str) and _custom_review_fields_present(state)
 
-    async def _refresh_provider_inventory(self, provider_id: str) -> None:
+    async def _refresh_provider_inventory(
+        self,
+        provider_id: str,
+        *,
+        authorization_check: Callable[[], Awaitable[bool] | bool] | None = None,
+    ) -> None:
         """Force one configured provider's bounded inventory refresh for admin validation."""
 
+        if authorization_check is not None:
+            await _require_live_authorization(authorization_check)
         if provider_id not in _MODEL_DISCOVERY_PROVIDERS:
             raise ProviderUnavailable("provider_adapter_unsupported")
         async with self._inventory_lock:
-            await self._refresh_provider_inventory_locked(provider_id)
+            if authorization_check is not None:
+                await _require_live_authorization(authorization_check)
+            await self._refresh_provider_inventory_locked(
+                provider_id, authorization_check=authorization_check
+            )
 
-    async def _refresh_provider_inventory_locked(self, provider_id: str) -> None:
+    async def _refresh_provider_inventory_locked(
+        self,
+        provider_id: str,
+        *,
+        authorization_check: Callable[[], Awaitable[bool] | bool] | None = None,
+    ) -> None:
         """Fetch and validate one provider's model rows without retaining response metadata."""
 
+        if authorization_check is not None:
+            await _require_live_authorization(authorization_check)
         definition = self._require_provider(provider_id)
         if definition.get("adapter_supported") is not True:
             self._replace_provider_models(provider_id, ())
@@ -2215,13 +2284,26 @@ class AssistantProviderManager:
             raise CredentialRejected("credential_required")
         endpoint, _query = _provider_inventory_target(provider_id, base_url)
         try:
+            if authorization_check is not None:
+                await _require_live_authorization(authorization_check)
             async with asyncio.timeout(_MODEL_DISCOVERY_TIMEOUT_SECONDS):
-                response = await request_public_https(
-                    endpoint,
-                    headers=_provider_headers(provider_id, secret),
-                    timeout_seconds=_MODEL_DISCOVERY_TIMEOUT_SECONDS - 0.5,
-                    max_response_bytes=_MAX_VALIDATE_BYTES,
-                )
+                if authorization_check is None:
+                    response = await request_public_https(
+                        endpoint,
+                        headers=_provider_headers(provider_id, secret),
+                        timeout_seconds=_MODEL_DISCOVERY_TIMEOUT_SECONDS - 0.5,
+                        max_response_bytes=_MAX_VALIDATE_BYTES,
+                    )
+                else:
+                    response = await request_public_https(
+                        endpoint,
+                        headers=_provider_headers(provider_id, secret),
+                        timeout_seconds=_MODEL_DISCOVERY_TIMEOUT_SECONDS - 0.5,
+                        max_response_bytes=_MAX_VALIDATE_BYTES,
+                        authorization_check=authorization_check,
+                    )
+            if authorization_check is not None:
+                await _require_live_authorization(authorization_check)
             if response.status_code in {401, 403}:
                 raise CredentialRejected()
             if response.status_code != 200:
@@ -2232,7 +2314,11 @@ class AssistantProviderManager:
             if not isinstance(rows, list) or len(rows) > 4096:
                 raise ProviderUnavailable("provider_response_invalid")
             models = self._parse_provider_model_rows(provider_id, rows)
-        except CredentialRejected:
+        except CredentialRejected as exc:
+            if authorization_check is not None:
+                await _require_live_authorization(authorization_check)
+                if exc.code == "oauth_authorization_required":
+                    raise
             self._replace_provider_models(provider_id, ())
             self._provider_inventory_status[provider_id] = "validation_failed"
             self._provider_inventory_retry_at[provider_id] = (
@@ -2240,6 +2326,8 @@ class AssistantProviderManager:
             )
             raise
         except ProviderUnavailable:
+            if authorization_check is not None:
+                await _require_live_authorization(authorization_check)
             self._replace_provider_models(provider_id, ())
             self._provider_inventory_status[provider_id] = "unavailable"
             self._provider_inventory_retry_at[provider_id] = (
@@ -2247,12 +2335,21 @@ class AssistantProviderManager:
             )
             raise
         except (TimeoutError, PublicHTTPError, OSError, ValueError, TypeError) as exc:
+            if authorization_check is not None:
+                await _require_live_authorization(authorization_check)
+                if isinstance(exc, PublicHTTPError) and exc.code in {
+                    "provider_authorization_required",
+                    "provider_authorization_timeout",
+                }:
+                    raise CredentialRejected("oauth_authorization_required") from None
             self._replace_provider_models(provider_id, ())
             self._provider_inventory_status[provider_id] = "unavailable"
             self._provider_inventory_retry_at[provider_id] = (
                 self._clock() + _MODEL_REFRESH_FAILURE_RETRY_SECONDS
             )
             raise ProviderUnavailable("provider_unavailable") from exc
+        if authorization_check is not None:
+            await _require_live_authorization(authorization_check)
         self._provider_models[provider_id] = models
         self._provider_inventory_loaded_at[provider_id] = self._clock()
         self._provider_inventory_status[provider_id] = "connected"
@@ -3801,8 +3898,16 @@ class AssistantProviderManager:
                     ),
                     timeout_seconds=10.0,
                     max_response_bytes=65_536,
+                    authorization_check=authorization_check,
                 )
-            except (PublicHTTPError, OSError, TimeoutError) as exc:
+            except PublicHTTPError as exc:
+                if exc.code in {
+                    "provider_authorization_required",
+                    "provider_authorization_timeout",
+                }:
+                    raise CredentialRejected("oauth_authorization_required") from None
+                raise ProviderUnavailable("oauth_refresh_unavailable") from exc
+            except (OSError, TimeoutError) as exc:
                 raise ProviderUnavailable("oauth_refresh_unavailable") from exc
             if response.status_code in {401, 403}:
                 raise CredentialRejected("oauth_connection_required")
@@ -3918,8 +4023,16 @@ class AssistantProviderManager:
                     content_type="application/x-www-form-urlencoded",
                     timeout_seconds=10.0,
                     max_response_bytes=65_536,
+                    authorization_check=authorization_check,
                 )
-            except (PublicHTTPError, OSError, TimeoutError) as exc:
+            except PublicHTTPError as exc:
+                if exc.code in {
+                    "provider_authorization_required",
+                    "provider_authorization_timeout",
+                }:
+                    raise CredentialRejected("oauth_authorization_required") from None
+                raise ProviderUnavailable("oauth_refresh_unavailable") from exc
+            except (OSError, TimeoutError) as exc:
                 raise ProviderUnavailable("oauth_refresh_unavailable") from exc
             if response.status_code in {401, 403}:
                 raise CredentialRejected("oauth_connection_required")

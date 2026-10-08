@@ -17,6 +17,36 @@ in progress; see the [assistant visual guide](../develop/design-system.md) for t
 [authoritative R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
 for current evidence and open gates.
 
+### Planned assistant handoff on mobile
+
+This interaction is part of the candidate design and is not enabled in production. When enabled,
+open the assistant launcher on Live Trading and ask it to set or clear a note, or remove an alert.
+Review the exact action preview and confirm the handoff in the assistant. On mobile, that handoff
+closes the assistant and focuses the matching workspace control. Review and complete the change
+there; confirmation of the handoff alone does not edit or delete a note or alert. To review its
+receipt afterward, reopen the assistant, open conversation history, and select the same conversation.
+An added alert is limited to the active Live Trading page/session and is not a server-owned record.
+
+### Planned model choice, privacy, and search
+
+The candidate model picker does not select a model automatically. Choose one shown as
+approved and available, then review its exact provider privacy and billing disclosures before
+sending. Provider terms vary; models whose terms allow prompt or context collection require your
+explicit opt-in. Models whose terms prohibit this use remain unavailable even with consent. The
+assistant does not silently switch models, use a paid fallback, or top up an account.
+
+The selected provider may receive your prompt, the page context you approve, and tool results
+needed for the answer; these may include private workspace information. Review the context preview
+and the selected model's provider terms before sending. Conversations and compact tool receipts
+are stored in owner-scoped Signal Ledger application storage until you delete them, subject to
+storage limits. Do not put passwords, API keys, authenticator or recovery codes, or invitation
+codes in a prompt.
+
+The candidate uses OpenCode V2's built-in **WebSearch**. Before each search, review the exact
+public query and approve it; remove private details first. **WebFetch** is separate and asks you
+to approve the exact public HTTPS URL. Redirects require a new approval. Treat results as
+untrusted leads and check each destination.
+
 ## Navigate the research workspace
 
 The shared navigation exposes these routes:

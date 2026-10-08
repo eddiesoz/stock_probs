@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import secrets
+import threading
 from collections.abc import AsyncIterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
+import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from stock_probs.api import create_app
 from stock_probs.auth import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME
@@ -172,11 +177,24 @@ class _ProviderAdminManager:
     def list_providers(self) -> list[dict[str, object]]:
         return [dict(self.row)]
 
-    async def validate(self, provider_id: str) -> dict[str, object]:
+    async def validate(
+        self,
+        provider_id: str,
+        *,
+        authorization_check: object | None = None,
+    ) -> dict[str, object]:
+        if callable(authorization_check) and authorization_check() is not True:
+            raise _ProviderFailure("oauth_authorization_required")
         self.calls.append(("validate", provider_id))
         if provider_id != "openai":
             raise _ProviderFailure("provider_adapter_unsupported")
         self.provider_probes += 1
+        started = getattr(self, "validation_started", None)
+        release = getattr(self, "validation_release", None)
+        if isinstance(started, threading.Event) and isinstance(release, threading.Event):
+            started.set()
+            if not await asyncio.to_thread(release.wait, 5):
+                raise RuntimeError("held provider response timed out")
         return {
             **self.row,
             "connection_status": "ready",
@@ -487,6 +505,28 @@ def _csrf(identity: dict[str, str | int]) -> dict[str, str]:
     return {"x-csrf-token": str(identity["csrf"])}
 
 
+def _change_admin_authorization(app: object, identity: dict[str, str | int], change: str) -> None:
+    """Revoke, demote, or expire one admin session using the disposable test repository."""
+
+    repository = app.state.repository
+    if change == "revoked":
+        repository.auth_revoke_session(
+            str(identity["token_hash"]), app.state.assistant.now().isoformat()
+        )
+    elif change == "demoted":
+        repository.auth_update_user(int(identity["user_id"]), {"role": "member"})
+    elif change == "step_up_expired":
+        stale_proof = (datetime.now(UTC) - timedelta(minutes=6)).isoformat()
+        with repository.connect() as connection:
+            connection.execute(
+                "UPDATE sessions SET mfa_verified_at = ? WHERE token_hash = ?",
+                (stale_proof, str(identity["token_hash"])),
+            )
+            connection.commit()
+    else:
+        raise AssertionError(f"unknown authorization change: {change}")
+
+
 def test_provider_write_routes_require_current_admin_and_mask_manager_secrets(settings: Settings):
     providers = _ProviderAdminManager()
     application = _create_app(settings, providers)
@@ -583,6 +623,67 @@ def test_provider_write_routes_require_current_admin_and_mask_manager_secrets(se
         finally:
             for client in clients:
                 client.close()
+
+
+@pytest.mark.parametrize("hold", ("body", "provider_response"))
+@pytest.mark.parametrize("authorization_change", ("revoked", "demoted", "step_up_expired"))
+def test_provider_validation_rechecks_admin_step_up_after_awaits(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, hold: str, authorization_change: str
+) -> None:
+    """A stale admin cannot finish validation after body or provider-response waits."""
+
+    providers = _ProviderAdminManager()
+    application = _create_app(settings, providers)
+    if hold == "body":
+        client_app = application
+        body_received = threading.Event()
+        release_body = threading.Event()
+        providers.validation_started = None
+        providers.validation_release = None
+
+        original_body = Request.body
+
+        async def held_request_body(request: Request) -> bytes:
+            if request.url.path == "/api/v1/assistant/providers/openai/validate":
+                body_received.set()
+                if not await asyncio.to_thread(release_body.wait, 5):
+                    raise RuntimeError("held request body timed out")
+            return await original_body(request)
+
+        monkeypatch.setattr(Request, "body", held_request_body)
+    else:
+        client_app = application
+        body_received = None
+        release_body = None
+        providers.validation_started = threading.Event()
+        providers.validation_release = threading.Event()
+
+    with TestClient(client_app, client=("127.0.0.1", 52123)):
+        admin = _add_identity(application, 810_109, role="admin")
+        client = _browser(client_app, admin)
+        release = release_body or providers.validation_release
+        started = body_received or providers.validation_started
+        assert isinstance(release, threading.Event)
+        assert isinstance(started, threading.Event)
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                pending = executor.submit(
+                    client.post,
+                    "/api/v1/assistant/providers/openai/validate",
+                    headers=_csrf(admin),
+                    json={},
+                )
+                assert started.wait(timeout=3), "validation did not reach the held await"
+                _change_admin_authorization(application, admin, authorization_change)
+                release.set()
+                response = pending.result(timeout=5)
+
+            assert response.status_code == 403, response.text
+            assert response.json()["error"]["code"] == "oauth_authorization_required"
+            assert providers.provider_probes == (0 if hold == "body" else 1)
+        finally:
+            release.set()
+            client.close()
 
 
 def test_model_policy_route_uses_revision_cas_and_rejects_unreviewed_adapter_enable(

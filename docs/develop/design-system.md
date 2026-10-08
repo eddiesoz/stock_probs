@@ -93,7 +93,13 @@ exact-URL WebFetch approval is pending, let the transcript use the panel body's 
 so context and status can move out of the way and the complete destination and approval controls
 can be inspected together. Keep the warning, URL, expiry and decisions intact; do not shrink text
 or touch targets to make the card fit. Do not place essential controls beneath browser chrome or
-device cutouts. On return to the page, restore the user's prior context and focus to the launcher.
+device cutouts. An ordinary close or Escape restores the user's prior context and focus to the
+launcher. A mobile handoff for `notes.set`, `notes.clear`, or `alerts.remove` instead closes the
+assistant and moves focus to the matching Live Trading control. The user reviews and completes the
+change there; the handoff itself must not set, clear, or remove anything. The action receipt remains
+in the conversation and is available after reopening that conversation from assistant history.
+`alerts.add` remains a confirmed, browser-local action scoped to the active Live Trading
+page/session; it does not create a server-owned alert.
 
 ### Conversation structure and states
 

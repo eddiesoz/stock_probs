@@ -2048,6 +2048,218 @@ def test_provider_model_discovery_rejects_auth_failure_without_leaking_key(
     assert "synthetic-provider-key" not in json.dumps(public_provider, sort_keys=True)
 
 
+def test_provider_validation_revocation_after_response_preserves_inventory_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A revoked admin validation cannot clear or replace the prior provider inventory."""
+
+    manager, _catalog = _configured_provider_manager(tmp_path, lambda: 10.0)
+    manager.set_credential("openai", "synthetic-provider-key")
+    existing = (object(),)
+    manager._provider_models["openai"] = existing
+    manager._provider_inventory_loaded_at["openai"] = 8.0
+    manager._provider_inventory_status["openai"] = "connected"
+    manager._provider_inventory_retry_at["openai"] = 3.0
+    cache_before = (
+        manager._provider_models["openai"],
+        manager._provider_inventory_loaded_at["openai"],
+        manager._provider_inventory_status["openai"],
+        manager._provider_inventory_retry_at["openai"],
+    )
+    response_started = asyncio.Event()
+    release_response = asyncio.Event()
+    authorization = {"allowed": True}
+
+    async def held_request(
+        _url: str,
+        *,
+        headers: object,
+        timeout_seconds: float,
+        max_response_bytes: int,
+        authorization_check: object,
+    ) -> SimpleNamespace:
+        assert dict(headers) == {"authorization": "Bearer synthetic-provider-key"}
+        assert timeout_seconds <= 6.5
+        assert max_response_bytes == providers._MAX_VALIDATE_BYTES
+        assert callable(authorization_check)
+        response_started.set()
+        await release_response.wait()
+        return SimpleNamespace(status_code=200, content=b'{"data":[{"id":"new-model"}]}')
+
+    monkeypatch.setattr(providers, "request_public_https", held_request)
+
+    async def authorization_check() -> bool:
+        return authorization["allowed"] is True
+
+    async def exercise() -> None:
+        validation = asyncio.create_task(
+            manager.validate("openai", authorization_check=authorization_check)
+        )
+        await asyncio.wait_for(response_started.wait(), timeout=1)
+        authorization["allowed"] = False
+        release_response.set()
+        with pytest.raises(CredentialRejected, match="oauth_authorization_required"):
+            await validation
+
+    asyncio.run(exercise())
+    cache_after = (
+        manager._provider_models["openai"],
+        manager._provider_inventory_loaded_at["openai"],
+        manager._provider_inventory_status["openai"],
+        manager._provider_inventory_retry_at["openai"],
+    )
+    assert cache_after == cache_before
+
+
+def test_zen_validation_revocation_after_response_preserves_catalog_cache(
+    tmp_path: Path,
+) -> None:
+    """A revoked admin validation cannot replace or clear the shared Zen catalog cache."""
+
+    model_suffix = _reviewed_zen_model_ids()[1]
+    response_started = asyncio.Event()
+    release_response = asyncio.Event()
+    authorization = {"allowed": True}
+    calls = 0
+
+    async def requester(_url: str) -> SimpleNamespace:
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            response_started.set()
+            await release_response.wait()
+        return SimpleNamespace(
+            status_code=200,
+            content=json.dumps({"data": [{"id": model_suffix}]}).encode(),
+        )
+
+    catalog = AssistantModelCatalog(requester=requester, clock=lambda: 10.0)
+    original_models = asyncio.run(catalog.refresh())
+    settings = SimpleNamespace(data_dir=tmp_path, auth_session_secret="t" * 64)
+    manager = AssistantProviderManager(
+        settings,
+        catalog,
+        vault_dir=tmp_path / "assistant-vault",
+        clock=lambda: 10.0,
+    )
+    cache_before = (catalog._models, catalog._loaded_at, catalog._retry_at)
+
+    async def authorization_check() -> bool:
+        return authorization["allowed"] is True
+
+    async def exercise() -> None:
+        validation = asyncio.create_task(
+            manager.validate("opencode-zen", authorization_check=authorization_check)
+        )
+        await asyncio.wait_for(response_started.wait(), timeout=1)
+        authorization["allowed"] = False
+        release_response.set()
+        with pytest.raises(CredentialRejected, match="oauth_authorization_required"):
+            await validation
+
+    asyncio.run(exercise())
+
+    assert original_models == catalog._models
+    assert (catalog._models, catalog._loaded_at, catalog._retry_at) == cache_before
+    assert calls == 2
+
+
+@pytest.mark.parametrize("boundary", ("provider_inventory", "zen_catalog"))
+def test_provider_validation_revocation_while_waiting_for_refresh_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+) -> None:
+    """A revoked validation queued behind refresh single-flight cannot fetch or change cache."""
+
+    authorization = {"allowed": True}
+    calls: list[str] = []
+    manager, catalog = _configured_provider_manager(tmp_path, lambda: 10.0)
+    cache_before: tuple[object, ...] | None = None
+
+    if boundary == "provider_inventory":
+        manager.set_credential("openai", "synthetic-lock-provider-key")
+        existing_models = (object(),)
+        manager._provider_models["openai"] = existing_models
+        manager._provider_inventory_loaded_at["openai"] = 8.0
+        manager._provider_inventory_status["openai"] = "connected"
+        manager._provider_inventory_retry_at["openai"] = 3.0
+        cache_before = (
+            manager._provider_models["openai"],
+            manager._provider_inventory_loaded_at["openai"],
+            manager._provider_inventory_status["openai"],
+            manager._provider_inventory_retry_at["openai"],
+        )
+        lock = manager._inventory_lock
+        provider_id = "openai"
+
+        async def fake_request(_url: str, **_kwargs: object) -> SimpleNamespace:
+            calls.append("provider request")
+            return SimpleNamespace(status_code=200, content=b'{"data":[]}')
+
+        monkeypatch.setattr(providers, "request_public_https", fake_request)
+    else:
+        model_suffix = _reviewed_zen_model_ids()[1]
+
+        async def requester(_url: str) -> SimpleNamespace:
+            calls.append("catalog request")
+            return SimpleNamespace(
+                status_code=200,
+                content=json.dumps({"data": [{"id": model_suffix}]}).encode(),
+            )
+
+        catalog = AssistantModelCatalog(requester=requester, clock=lambda: 10.0)
+        manager = AssistantProviderManager(
+            SimpleNamespace(data_dir=tmp_path, auth_session_secret="t" * 64),
+            catalog,
+            vault_dir=tmp_path / "assistant-vault",
+            clock=lambda: 10.0,
+        )
+        lock = catalog._refresh_lock
+        provider_id = "opencode-zen"
+
+    async def authorization_check() -> bool:
+        return authorization["allowed"] is True
+
+    async def wait_until_queued() -> None:
+        for _ in range(1000):
+            waiters = getattr(lock, "_waiters", None)
+            if waiters:
+                return
+            await asyncio.sleep(0)
+        raise AssertionError("validation did not queue behind the held refresh lock")
+
+    async def exercise() -> None:
+        nonlocal cache_before
+        if boundary == "zen_catalog":
+            await catalog.refresh()
+            cache_before = (catalog._models, catalog._loaded_at, catalog._retry_at)
+            assert len(calls) == 1
+
+        await lock.acquire()
+        validation = asyncio.create_task(
+            manager.validate(provider_id, authorization_check=authorization_check)
+        )
+        await asyncio.wait_for(wait_until_queued(), timeout=1)
+        authorization["allowed"] = False
+        lock.release()
+        with pytest.raises(CredentialRejected, match="oauth_authorization_required"):
+            await validation
+
+    asyncio.run(exercise())
+    assert calls == ([] if boundary == "provider_inventory" else ["catalog request"])
+    assert cache_before is not None
+    if boundary == "provider_inventory":
+        assert (
+            manager._provider_models["openai"],
+            manager._provider_inventory_loaded_at["openai"],
+            manager._provider_inventory_status["openai"],
+            manager._provider_inventory_retry_at["openai"],
+        ) == cache_before
+    else:
+        assert (catalog._models, catalog._loaded_at, catalog._retry_at) == cache_before
+
+
 @pytest.mark.parametrize(
     ("provider_id", "adapter_request", "expected_url", "expected_headers", "expected_model"),
     [
@@ -3286,6 +3498,135 @@ def _seed_opencode_console_credential(manager: AssistantProviderManager, owner_i
             "metadata": {"server": "https://opencode.ai/console", "accountID": f"acct-{owner_id}"},
         },
     )
+
+
+@pytest.mark.parametrize("operation", ("opencode_inventory", "opencode_refresh", "chatgpt_refresh"))
+@pytest.mark.parametrize("phase", ("dns_tls", "response"))
+def test_oauth_https_operations_pass_live_authorization_into_transport(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    phase: str,
+) -> None:
+    """Revalidate the same owner lease inside DNS/TLS and after provider responses."""
+
+    owner_id = 71
+    manager = AssistantProviderManager(
+        SimpleNamespace(data_dir=tmp_path, auth_session_secret="q" * 64),
+        vault_dir=tmp_path / "assistant-vault",
+    )
+    if operation.startswith("opencode"):
+        _seed_opencode_console_credential(manager, owner_id)
+        credential = manager._owned_opencode_credential(owner_id)
+        assert credential is not None
+        if operation == "opencode_refresh":
+            credential["expires"] = int(time.time() * 1000) - 1_000
+            manager._write_oauth_credential("opencode", "device", owner_id, credential)
+            expected_url = providers._OPENCODE_REFRESH_URL
+        else:
+            expected_url = providers._OPENCODE_CONFIG_URL
+        credential_before = manager._owned_opencode_credential(owner_id)
+    else:
+        method_id = "chatgpt-headless"
+        credential = {
+            "type": "oauth",
+            "methodID": method_id,
+            "access": "synthetic-chatgpt-access",
+            "refresh": "synthetic-chatgpt-refresh",
+            "expires": int(time.time() * 1000) - 1_000,
+            "metadata": {"accountID": "synthetic-chatgpt-account"},
+        }
+        manager._write_oauth_credential("openai", method_id, owner_id, credential)
+        credential_before = manager._read_oauth_credential("openai", method_id, owner_id)
+        expected_url = providers._CHATGPT_REFRESH_URL
+
+    authorization = {"allowed": True}
+    request_started = asyncio.Event()
+    response_held = asyncio.Event()
+    release_transport = asyncio.Event()
+    request_bytes_written = {"value": False}
+    transport_callback_seen = {"value": False}
+
+    async def authorization_check() -> bool:
+        return authorization["allowed"] is True
+
+    async def fake_request(url: str, **kwargs: object) -> SimpleNamespace:
+        assert url == expected_url
+        transport_authorization = kwargs.get("authorization_check")
+        if callable(transport_authorization):
+            transport_callback_seen["value"] = True
+
+        async def transport_check() -> None:
+            assert callable(transport_authorization)
+            if await transport_authorization() is not True:
+                raise providers.PublicHTTPError("provider_authorization_required")
+
+        request_started.set()
+        if phase == "dns_tls":
+            await release_transport.wait()
+            if callable(transport_authorization):
+                await transport_check()
+            request_bytes_written["value"] = True
+        else:
+            if callable(transport_authorization):
+                await transport_check()
+            request_bytes_written["value"] = True
+            response_held.set()
+            await release_transport.wait()
+            if callable(transport_authorization):
+                await transport_check()
+        if operation == "opencode_inventory":
+            content = json.dumps(_opencode_console_payload()).encode("utf-8")
+        else:
+            content = json.dumps(
+                {
+                    "access_token": "synthetic-rotated-access",
+                    "refresh_token": "synthetic-rotated-refresh",
+                    "expires_in": 3600,
+                }
+            ).encode("utf-8")
+        return SimpleNamespace(status_code=200, content=content)
+
+    monkeypatch.setattr(providers, "request_public_https", fake_request)
+
+    async def perform_request() -> None:
+        if operation == "opencode_inventory":
+            await manager.ensure_opencode_model_inventory(
+                owner_id=owner_id, authorization_check=authorization_check, force=True
+            )
+        elif operation == "opencode_refresh":
+            assert credential_before is not None
+            await manager._refresh_opencode_credential_if_needed(
+                owner_id, credential_before, authorization_check
+            )
+        else:
+            assert credential_before is not None
+            await manager._refresh_chatgpt_credential_if_needed(
+                owner_id,
+                "chatgpt-headless",
+                credential_before,
+                authorization_check,
+            )
+
+    async def exercise() -> None:
+        pending = asyncio.create_task(perform_request())
+        await asyncio.wait_for(request_started.wait(), timeout=1)
+        if phase == "response":
+            await asyncio.wait_for(response_held.wait(), timeout=1)
+        authorization["allowed"] = False
+        release_transport.set()
+        with pytest.raises(CredentialRejected, match="oauth_authorization_required"):
+            await pending
+
+    asyncio.run(exercise())
+    assert transport_callback_seen["value"] is True
+    assert request_bytes_written["value"] is (phase == "response")
+    if operation == "opencode_refresh":
+        assert manager._owned_opencode_credential(owner_id) == credential_before
+    elif operation == "chatgpt_refresh":
+        assert manager._read_oauth_credential("openai", "chatgpt-headless", owner_id) == (
+            credential_before
+        )
 
 
 def _opencode_console_payload() -> dict[str, object]:

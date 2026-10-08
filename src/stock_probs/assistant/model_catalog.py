@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import re
 import time
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from importlib.resources import files
 from typing import Any
@@ -19,6 +20,27 @@ _MAX_CATALOG_BYTES = 1_048_576
 _MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,159}$")
 _MODEL_CACHE_SECONDS = 300.0
 _CATALOG_FAILURE_RETRY_SECONDS = 5.0
+
+
+class ModelCatalogAuthorizationError(Exception):
+    """Signal that a privileged catalog refresh lost its authorization."""
+
+
+async def _require_authorization(
+    authorization_check: Callable[[], Awaitable[object] | object] | None,
+) -> None:
+    """Fail closed when a privileged catalog refresh loses its caller authorization."""
+
+    if authorization_check is None:
+        return
+    try:
+        authorized = authorization_check()
+        if inspect.isawaitable(authorized):
+            authorized = await authorized
+    except Exception as exc:
+        raise ModelCatalogAuthorizationError from exc
+    if authorized is not True:
+        raise ModelCatalogAuthorizationError
 
 
 def known_model_exclusion_reason(
@@ -161,11 +183,15 @@ class AssistantModelCatalog:
         self._native_models: tuple[AssistantModel, ...] = ()
         self._native_loaded_at = 0.0
 
-    async def refresh(self) -> tuple[AssistantModel, ...]:
+    async def refresh(
+        self,
+        *,
+        authorization_check: Callable[[], Awaitable[object] | object] | None = None,
+    ) -> tuple[AssistantModel, ...]:
         """Force one single-flight refresh with a bounded request and response body."""
 
         async with self._refresh_lock:
-            return await self._refresh_locked()
+            return await self._refresh_locked(authorization_check=authorization_check)
 
     async def ensure_fresh(
         self, *, minimum_validity_seconds: float = 0.0
@@ -193,21 +219,33 @@ class AssistantModelCatalog:
         age = self._clock() - self._loaded_at
         return self._loaded_at > 0 and age + minimum_validity_seconds < _MODEL_CACHE_SECONDS
 
-    async def _refresh_locked(self) -> tuple[AssistantModel, ...]:
+    async def _refresh_locked(
+        self,
+        *,
+        authorization_check: Callable[[], Awaitable[object] | object] | None = None,
+    ) -> tuple[AssistantModel, ...]:
         """Refresh the fixed Zen inventory with one absolute deadline and a strict body cap."""
 
         policy = self._policy["zen"]
         try:
+            await _require_authorization(authorization_check)
             async with asyncio.timeout(7.0):
-                response = await (
-                    self._requester(str(policy["models_url"]))
-                    if self._requester is not None
-                    else request_public_https(
+                if self._requester is not None:
+                    response = await self._requester(str(policy["models_url"]))
+                elif authorization_check is None:
+                    response = await request_public_https(
                         str(policy["models_url"]),
                         timeout_seconds=6.5,
                         max_response_bytes=_MAX_CATALOG_BYTES,
                     )
-                )
+                else:
+                    response = await request_public_https(
+                        str(policy["models_url"]),
+                        timeout_seconds=6.5,
+                        max_response_bytes=_MAX_CATALOG_BYTES,
+                        authorization_check=authorization_check,
+                    )
+            await _require_authorization(authorization_check)
             if response.status_code != 200:
                 raise PublicHTTPError("model_catalog_unavailable")
             payload = json.loads(response.content)
@@ -220,12 +258,22 @@ class AssistantModelCatalog:
             ValueError,
             TypeError,
             json.JSONDecodeError,
-        ):
+        ) as exc:
+            await _require_authorization(authorization_check)
+            if (
+                authorization_check is not None
+                and isinstance(exc, PublicHTTPError)
+                and exc.code
+                in {"provider_authorization_required", "provider_authorization_timeout"}
+            ):
+                raise ModelCatalogAuthorizationError from None
             self._models = ()
             self._loaded_at = 0.0
             self._retry_at = self._clock() + _CATALOG_FAILURE_RETRY_SECONDS
             return self.list_models()
-        self._models = self._parse_zen_rows(payload["data"])
+        models = self._parse_zen_rows(payload["data"])
+        await _require_authorization(authorization_check)
+        self._models = models
         self._loaded_at = self._clock()
         self._retry_at = 0.0
         return self.list_models()

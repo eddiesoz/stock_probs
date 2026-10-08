@@ -2960,7 +2960,7 @@ def create_assistant_router(
 
     @router.post("/providers/{provider_id}/validate")
     async def validate_provider(provider_id: str, request: Request) -> dict[str, object]:
-        admin_context(request, step_up=True)
+        auth = admin_context(request, step_up=True)
         body = await request.body()
         if body:
             try:
@@ -2969,8 +2969,21 @@ def create_assistant_router(
                 raise AssistantUnavailable("invalid_provider_request", 422) from None
             if parsed != {}:
                 raise AssistantUnavailable("invalid_provider_request", 422)
+
+        def authorization_check() -> bool:
+            return live_assistant_session(request, auth, admin=True, step_up=True) is not None
+
+        if not authorization_check():
+            raise AssistantUnavailable("oauth_authorization_required", 403)
         manager = provider_manager()
-        result = await manager.validate(provider_id)
+        try:
+            result = await manager.validate(provider_id, authorization_check=authorization_check)
+        except Exception:
+            if not authorization_check():
+                raise AssistantUnavailable("oauth_authorization_required", 403) from None
+            raise
+        if not authorization_check():
+            raise AssistantUnavailable("oauth_authorization_required", 403)
         return {"provider": _json_safe_provider(result)}
 
     async def internal_native_provider_proxy(

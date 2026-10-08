@@ -40,6 +40,7 @@ _PROVIDER_403_DIAGNOSTIC_TIMEOUT_SECONDS = 1.0
 _PROVIDER_403_ERROR_TYPE_MAX_CHARS = 128
 Resolver = Callable[[str, int], Awaitable[list[object]] | list[object]]
 StreamAuthorizationCheck = Callable[[], Awaitable[object] | object]
+RequestAuthorizationCheck = Callable[[], Awaitable[object] | object]
 _STREAM_AUTHORIZATION_CHECK: contextvars.ContextVar[StreamAuthorizationCheck | None] = (
     contextvars.ContextVar("assistant_stream_authorization_check", default=None)
 )
@@ -82,6 +83,29 @@ async def _require_stream_authorization(
     except Exception as exc:
         raise PublicHTTPError("provider_authorization_required") from exc
     if authorized is not True:
+        raise PublicHTTPError("provider_authorization_required")
+
+
+async def _require_request_authorization(
+    check: RequestAuthorizationCheck | None, deadline: float
+) -> None:
+    """Run a live authorization check inside the bounded request deadline."""
+
+    if check is None:
+        return
+    if not callable(check):
+        raise PublicHTTPError("provider_authorization_required")
+    try:
+        result = check()
+        if inspect.isawaitable(result):
+            result = await asyncio.wait_for(result, timeout=_remaining(deadline))
+    except asyncio.CancelledError:
+        raise
+    except TimeoutError as exc:
+        raise PublicHTTPError("provider_authorization_timeout") from exc
+    except Exception as exc:
+        raise PublicHTTPError("provider_authorization_required") from exc
+    if result is not True:
         raise PublicHTTPError("provider_authorization_required")
 
 
@@ -321,6 +345,7 @@ async def request_public_https(
     timeout_seconds: float = 5.0,
     max_response_bytes: int = 262_144,
     resolver: Resolver | None = None,
+    authorization_check: RequestAuthorizationCheck | None = None,
 ) -> PublicHTTPResponse:
     """Connect only to public resolved addresses and preserve TLS SNI for the URL hostname.
 
@@ -362,6 +387,7 @@ async def request_public_https(
         raise PublicHTTPError("url_invalid") from exc
     started = time.monotonic()
     deadline = started + timeout_seconds
+    await _require_request_authorization(authorization_check, deadline)
     try:
         loop = asyncio.get_running_loop()
         remaining = _remaining(deadline)
@@ -394,6 +420,7 @@ async def request_public_https(
         raise PublicHTTPError("dns_unavailable") from exc
     if not addresses or any(not is_public_unicast(address) for address in addresses):
         raise PublicHTTPError("private_destination_rejected")
+    await _require_request_authorization(authorization_check, deadline)
 
     # A literal address remains pinned while certificate verification and SNI use the hostname.
     context = ssl.create_default_context()
@@ -445,6 +472,7 @@ async def request_public_https(
             request_head = f"{method} {path} HTTP/1.1\r\n{raw_headers}\r\n".encode("latin-1")
         except UnicodeEncodeError as exc:
             raise PublicHTTPError("header_invalid") from exc
+        await _require_request_authorization(authorization_check, deadline)
         writer.write(request_head + body)
         await asyncio.wait_for(writer.drain(), timeout=_remaining(deadline))
 
@@ -497,6 +525,7 @@ async def request_public_https(
             deadline=deadline,
             max_bytes=max_response_bytes,
         )
+        await _require_request_authorization(authorization_check, deadline)
         return PublicHTTPResponse(status_code, response_headers, content)
     except TimeoutError as exc:
         raise PublicHTTPError("provider_deadline_exceeded") from exc
