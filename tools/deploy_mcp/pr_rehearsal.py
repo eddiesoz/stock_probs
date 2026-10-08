@@ -7,9 +7,11 @@ import http.client
 import json
 import os
 import re
+import secrets
 import stat
 import subprocess
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,13 +27,27 @@ INCOMING_DIRECTORY = "/var/lib/signal-ledger-pr-rehearsal/incoming"
 MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 MAX_MANIFEST_BYTES = 65_536
 MAX_RESPONSE_BYTES = 65_536
+MAX_REVIEW_METADATA_BYTES = 4_096
+REVIEW_METADATA_DIRECTORY = "signal-ledger"
+REVIEW_METADATA_FILENAME = "rehearsal-review.json"
+REVIEW_METADATA_VERSION = 1
+REVIEW_METADATA_KEYS = {
+    "format_version",
+    "reviewed_pr_head_sha",
+    "reviewed_pair_manifest_sha256",
+}
+REVIEW_HEAD_ENV = "SIGNAL_LEDGER_REHEARSAL_REVIEWED_PR_HEAD_SHA"
+REVIEW_PAIR_ENV = "SIGNAL_LEDGER_REHEARSAL_REVIEWED_PAIR_MANIFEST_SHA256"
 REVISION = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 IMAGE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 OOM_EVENT_COUNTERS = ("oom", "oom_kill", "oom_group_kill")
+CPU_STAT_COUNTERS = ("usage_usec", "nr_periods", "nr_throttled", "throttled_usec")
 MAX_RESOURCE_COUNTER = (1 << 64) - 1
 EXPECTED_CANDIDATE_MEMORY_LIMIT = 768 * 1024 * 1024
 EXPECTED_RECOVERY_MEMORY_LIMIT = 384 * 1024 * 1024
+START_RESERVE_KIB = 512 * 1024
+RUN_RESERVE_KIB = 128 * 1024
 DEPLOYED_BASELINE = {
     "revision": "da2764e8477698fa7d686be93a4711e35478e802",
     "image_id": "sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1",
@@ -69,7 +85,7 @@ class RehearsalConfig:
         """Load fixed-target operator metadata without reading either private file."""
 
         home = Path.home()
-        config_home = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config")))
+        config_home = _review_config_home()
         identity = Path(
             os.environ.get(
                 "SIGNAL_LEDGER_OPERATOR_IDENTITY_FILE",
@@ -82,22 +98,378 @@ class RehearsalConfig:
                 str(config_home / "signal-ledger" / "credentials" / "linode-known-hosts"),
             )
         ).expanduser()
-        reviewed_head = os.environ.get("SIGNAL_LEDGER_REHEARSAL_REVIEWED_PR_HEAD_SHA", "")
-        reviewed_manifest = os.environ.get(
-            "SIGNAL_LEDGER_REHEARSAL_REVIEWED_PAIR_MANIFEST_SHA256", ""
-        )
+        environment_pins = _environment_review_pins()
+        metadata_pins = _read_review_metadata()
+        if (
+            environment_pins is not None
+            and metadata_pins is not None
+            and environment_pins != metadata_pins
+        ):
+            raise RehearsalError("review_pins_disagree")
+        pins = environment_pins or metadata_pins
+        if pins is None:
+            raise RehearsalError("review_pins_unconfigured")
+        reviewed_head, reviewed_manifest = pins
         _private_file_metadata(identity, "operator_identity")
         _private_file_metadata(known_hosts, "known_hosts")
-        if REVISION.fullmatch(reviewed_head) is None:
-            raise RehearsalError("reviewed_pr_head_unconfigured")
-        if DIGEST.fullmatch(reviewed_manifest) is None:
-            raise RehearsalError("reviewed_pair_manifest_unconfigured")
         return cls(
             identity.absolute(),
             known_hosts.absolute(),
             reviewed_head,
             reviewed_manifest,
         )
+
+
+def _review_config_home() -> Path:
+    """Return the fixed XDG config home without accepting relative or parent paths."""
+
+    configured = os.environ.get("XDG_CONFIG_HOME")
+    path = Path(configured) if configured is not None else Path.home() / ".config"
+    if not path.is_absolute() or path == Path("/") or ".." in path.parts:
+        raise RehearsalError("review_metadata_directory_unsafe")
+    return path
+
+
+def _environment_review_pins() -> tuple[str, str] | None:
+    """Read only the paired public review pins and reject partial configuration."""
+
+    head_present = REVIEW_HEAD_ENV in os.environ
+    pair_present = REVIEW_PAIR_ENV in os.environ
+    if head_present != pair_present:
+        raise RehearsalError("review_pins_partial_environment")
+    if not head_present:
+        return None
+    head = os.environ[REVIEW_HEAD_ENV]
+    pair = os.environ[REVIEW_PAIR_ENV]
+    if REVISION.fullmatch(head) is None or DIGEST.fullmatch(pair) is None:
+        raise RehearsalError("review_pins_invalid")
+    return head, pair
+
+
+def _open_directory_chain(path: Path) -> int:
+    """Open an absolute directory path component by component without following links."""
+
+    if not path.is_absolute() or ".." in path.parts:
+        raise RehearsalError("review_metadata_directory_unsafe")
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+    try:
+        descriptor = os.open("/", directory_flags)
+    except OSError as exc:
+        raise RehearsalError("review_metadata_directory_unavailable") from exc
+    try:
+        for component in path.parts[1:]:
+            try:
+                next_descriptor = os.open(component, directory_flags, dir_fd=descriptor)
+            except FileNotFoundError as exc:
+                raise RehearsalError("review_metadata_directory_missing") from exc
+            except OSError as exc:
+                raise RehearsalError("review_metadata_directory_unavailable") from exc
+            os.close(descriptor)
+            descriptor = next_descriptor
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.geteuid():
+            raise RehearsalError("review_metadata_directory_unsafe")
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _open_review_directory(*, create: bool) -> int | None:
+    """Open the fixed private review directory, optionally creating it mode 0700."""
+
+    config_home = _review_config_home()
+    try:
+        config_descriptor = _open_directory_chain(config_home)
+    except RehearsalError as exc:
+        if not create and exc.code == "review_metadata_directory_missing":
+            return None
+        raise
+    try:
+        created_directory = False
+        if create:
+            try:
+                os.mkdir(REVIEW_METADATA_DIRECTORY, mode=0o700, dir_fd=config_descriptor)
+                created_directory = True
+            except FileExistsError:
+                pass
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+        try:
+            descriptor = os.open(
+                REVIEW_METADATA_DIRECTORY,
+                directory_flags,
+                dir_fd=config_descriptor,
+            )
+        except FileNotFoundError as exc:
+            if not create:
+                return None
+            raise RehearsalError("review_metadata_directory_unavailable") from exc
+        except OSError as exc:
+            raise RehearsalError("review_metadata_directory_unsafe") from exc
+        metadata = os.fstat(descriptor)
+        try:
+            if created_directory:
+                os.fchmod(descriptor, 0o700)
+                metadata = os.fstat(descriptor)
+            _validate_review_directory_metadata(metadata)
+        except RehearsalError:
+            os.close(descriptor)
+            raise
+        return descriptor
+    finally:
+        os.close(config_descriptor)
+
+
+def _file_signature(metadata: os.stat_result) -> tuple[int, ...]:
+    """Return identity and metadata fields that must remain stable during access."""
+
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        stat.S_IFMT(metadata.st_mode),
+        metadata.st_uid,
+        stat.S_IMODE(metadata.st_mode),
+        metadata.st_nlink,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def _validate_review_directory_metadata(metadata: os.stat_result) -> None:
+    """Require the review directory to be private and owned by this operator."""
+
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise RehearsalError("review_metadata_directory_unsafe")
+
+
+def _validate_review_file_metadata(metadata: os.stat_result) -> None:
+    """Require a single-link, private regular file within the fixed size bound."""
+
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+        or metadata.st_nlink != 1
+        or not 1 <= metadata.st_size <= MAX_REVIEW_METADATA_BYTES
+    ):
+        raise RehearsalError("review_metadata_permissions")
+
+
+def _strict_object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Reject duplicate keys so JSON pins have one unambiguous interpretation."""
+
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate_json_key")
+        value[key] = item
+    return value
+
+
+def _validate_review_pins(value: object) -> tuple[str, str]:
+    """Validate the exact three-field nonsensitive review metadata schema."""
+
+    if (
+        not isinstance(value, dict)
+        or set(value) != REVIEW_METADATA_KEYS
+        or type(value.get("format_version")) is not int
+        or value.get("format_version") != REVIEW_METADATA_VERSION
+    ):
+        raise RehearsalError("review_metadata_invalid")
+    head = value.get("reviewed_pr_head_sha")
+    pair = value.get("reviewed_pair_manifest_sha256")
+    if (
+        not isinstance(head, str)
+        or REVISION.fullmatch(head) is None
+        or not isinstance(pair, str)
+        or DIGEST.fullmatch(pair) is None
+    ):
+        raise RehearsalError("review_metadata_invalid")
+    return head, pair
+
+
+def _read_review_metadata() -> tuple[str, str] | None:
+    """Read the fixed review file with private ownership and no-follow checks."""
+
+    directory_descriptor = _open_review_directory(create=False)
+    if directory_descriptor is None:
+        return None
+    try:
+        directory_before = os.fstat(directory_descriptor)
+        _validate_review_directory_metadata(directory_before)
+        try:
+            before = os.stat(
+                REVIEW_METADATA_FILENAME,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise RehearsalError("review_metadata_unavailable") from exc
+        _validate_review_file_metadata(before)
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+        try:
+            file_descriptor = os.open(
+                REVIEW_METADATA_FILENAME,
+                flags,
+                dir_fd=directory_descriptor,
+            )
+        except OSError as exc:
+            raise RehearsalError("review_metadata_unavailable") from exc
+        try:
+            opened = os.fstat(file_descriptor)
+            _validate_review_file_metadata(opened)
+            if _file_signature(opened) != _file_signature(before):
+                raise RehearsalError("review_metadata_changed")
+            contents = bytearray()
+            try:
+                while len(contents) <= MAX_REVIEW_METADATA_BYTES:
+                    chunk = os.read(
+                        file_descriptor,
+                        min(1024, MAX_REVIEW_METADATA_BYTES + 1 - len(contents)),
+                    )
+                    if not chunk:
+                        break
+                    contents.extend(chunk)
+            except OSError as exc:
+                raise RehearsalError("review_metadata_unavailable") from exc
+            after = os.fstat(file_descriptor)
+            _validate_review_file_metadata(after)
+            try:
+                current = os.stat(
+                    REVIEW_METADATA_FILENAME,
+                    dir_fd=directory_descriptor,
+                    follow_symlinks=False,
+                )
+                directory_after = os.fstat(directory_descriptor)
+            except OSError as exc:
+                raise RehearsalError("review_metadata_changed") from exc
+            if (
+                _file_signature(opened) != _file_signature(after)
+                or _file_signature(opened) != _file_signature(current)
+                or _file_signature(directory_before) != _file_signature(directory_after)
+                or len(contents) != opened.st_size
+                or len(contents) > MAX_REVIEW_METADATA_BYTES
+            ):
+                raise RehearsalError("review_metadata_changed")
+        finally:
+            os.close(file_descriptor)
+    finally:
+        os.close(directory_descriptor)
+    try:
+        value: object = json.loads(bytes(contents), object_pairs_hook=_strict_object_pairs)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RehearsalError("review_metadata_invalid") from exc
+    return _validate_review_pins(value)
+
+
+def _write_review_metadata(reviewed_head_sha: str, pair_manifest_sha256: str) -> None:
+    """Atomically store only verified public pins in the fixed private config directory."""
+
+    pins = _validate_review_pins(
+        {
+            "format_version": REVIEW_METADATA_VERSION,
+            "reviewed_pr_head_sha": reviewed_head_sha,
+            "reviewed_pair_manifest_sha256": pair_manifest_sha256,
+        }
+    )
+    environment_pins = _environment_review_pins()
+    if environment_pins is not None and environment_pins != pins:
+        raise RehearsalError("review_pins_disagree")
+    existing_pins = _read_review_metadata()
+    if (
+        environment_pins is not None
+        and existing_pins is not None
+        and environment_pins != existing_pins
+    ):
+        raise RehearsalError("review_pins_disagree")
+    directory_descriptor = _open_review_directory(create=True)
+    if directory_descriptor is None:
+        raise RehearsalError("review_metadata_directory_unavailable")
+    temporary_name = f".{REVIEW_METADATA_FILENAME}.{secrets.token_hex(8)}.tmp"
+    encoded = (
+        json.dumps(
+            {
+                "format_version": REVIEW_METADATA_VERSION,
+                "reviewed_pr_head_sha": reviewed_head_sha,
+                "reviewed_pair_manifest_sha256": pair_manifest_sha256,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("ascii")
+        + b"\n"
+    )
+    file_descriptor: int | None = None
+    try:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        flags |= os.O_CLOEXEC | os.O_NONBLOCK
+        try:
+            file_descriptor = os.open(
+                temporary_name,
+                flags,
+                0o600,
+                dir_fd=directory_descriptor,
+            )
+        except OSError as exc:
+            raise RehearsalError("review_metadata_write_failed") from exc
+        os.fchmod(file_descriptor, 0o600)
+        offset = 0
+        while offset < len(encoded):
+            written = os.write(file_descriptor, encoded[offset:])
+            if written <= 0:
+                raise RehearsalError("review_metadata_write_failed")
+            offset += written
+        os.fsync(file_descriptor)
+        temporary_metadata = os.fstat(file_descriptor)
+        if (
+            not stat.S_ISREG(temporary_metadata.st_mode)
+            or temporary_metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(temporary_metadata.st_mode) != 0o600
+            or temporary_metadata.st_nlink != 1
+            or temporary_metadata.st_size != len(encoded)
+        ):
+            raise RehearsalError("review_metadata_write_failed")
+        os.close(file_descriptor)
+        file_descriptor = None
+        try:
+            existing = os.stat(
+                REVIEW_METADATA_FILENAME,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            existing = None
+        if existing is not None and (
+            not stat.S_ISREG(existing.st_mode)
+            or existing.st_uid != os.geteuid()
+            or stat.S_IMODE(existing.st_mode) != 0o600
+            or existing.st_nlink != 1
+        ):
+            raise RehearsalError("review_metadata_permissions")
+        os.replace(
+            temporary_name,
+            REVIEW_METADATA_FILENAME,
+            src_dir_fd=directory_descriptor,
+            dst_dir_fd=directory_descriptor,
+        )
+        os.fsync(directory_descriptor)
+    except OSError as exc:
+        raise RehearsalError("review_metadata_write_failed") from exc
+    finally:
+        if file_descriptor is not None:
+            os.close(file_descriptor)
+        with suppress(FileNotFoundError):
+            os.unlink(temporary_name, dir_fd=directory_descriptor)
+        os.close(directory_descriptor)
+    if _read_review_metadata() != pins:
+        raise RehearsalError("review_metadata_write_failed")
 
 
 def _private_file_metadata(path: Path, label: str) -> None:
@@ -167,6 +539,20 @@ def _validated_resource_evidence(response: dict[str, object]) -> dict[str, objec
     ):
         raise RehearsalError("host_response_invalid")
 
+    available_before = response.get("host_memavailable_before_kib")
+    available_after = response.get("host_memavailable_after_kib")
+    if (
+        type(available_before) is not int
+        or type(available_after) is not int
+        or not 0 <= available_before <= capacity["memtotal_before"]
+        or not 0 <= available_after <= capacity["memtotal_after"]
+        or available_before > MAX_RESOURCE_COUNTER
+        or available_after > MAX_RESOURCE_COUNTER
+        or available_before < START_RESERVE_KIB
+        or available_after < RUN_RESERVE_KIB
+    ):
+        raise RehearsalError("host_response_invalid")
+
     candidate_peak = response.get("candidate_memory_peak_bytes")
     candidate_limit = response.get("candidate_memory_limit_bytes")
     recovery_peak = response.get("recovery_memory_peak_bytes")
@@ -219,6 +605,43 @@ def _validated_resource_evidence(response: dict[str, object]) -> dict[str, objec
 
     candidate_oom = validate_oom_evidence(response.get("candidate_oom_event_evidence"))
     recovery_oom = validate_oom_evidence(response.get("recovery_oom_event_evidence"))
+
+    def validate_cpu_evidence(value: object, expected_role: str) -> dict[str, object]:
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"complete", "resource_role", "baseline", "final", "delta"}
+            or value.get("complete") is not True
+            or value.get("resource_role") != expected_role
+        ):
+            raise RehearsalError("host_response_invalid")
+        observed: dict[str, dict[str, int]] = {}
+        for field in ("baseline", "final", "delta"):
+            counters = value.get(field)
+            if not isinstance(counters, dict) or set(counters) != set(CPU_STAT_COUNTERS):
+                raise RehearsalError("host_response_invalid")
+            if any(
+                type(counters[counter]) is not int
+                or not 0 <= counters[counter] <= MAX_RESOURCE_COUNTER
+                for counter in CPU_STAT_COUNTERS
+            ):
+                raise RehearsalError("host_response_invalid")
+            observed[field] = {counter: counters[counter] for counter in CPU_STAT_COUNTERS}
+        for counter in CPU_STAT_COUNTERS:
+            baseline = observed["baseline"][counter]
+            final = observed["final"][counter]
+            delta = observed["delta"][counter]
+            if final < baseline or delta != final - baseline:
+                raise RehearsalError("host_response_invalid")
+        return {
+            "complete": True,
+            "resource_role": expected_role,
+            "baseline": observed["baseline"],
+            "final": observed["final"],
+            "delta": observed["delta"],
+        }
+
+    candidate_cpu = validate_cpu_evidence(response.get("candidate_cpu_stat_evidence"), "candidate")
+    recovery_cpu = validate_cpu_evidence(response.get("recovery_cpu_stat_evidence"), "recovery")
     if (
         response.get("oom_event_evidence_complete") is not True
         or response.get("zero_oom_events_verified") is not True
@@ -226,6 +649,8 @@ def _validated_resource_evidence(response: dict[str, object]) -> dict[str, objec
         raise RehearsalError("host_response_invalid")
 
     return {
+        "host_memavailable_before_kib": available_before,
+        "host_memavailable_after_kib": available_after,
         "host_memory_capacity_evidence": {
             "complete": True,
             "unit": "kib",
@@ -236,9 +661,11 @@ def _validated_resource_evidence(response: dict[str, object]) -> dict[str, objec
         "candidate_memory_peak_bytes": candidate_peak,
         "candidate_memory_limit_bytes": candidate_limit,
         "candidate_oom_event_evidence": candidate_oom,
+        "candidate_cpu_stat_evidence": candidate_cpu,
         "recovery_memory_peak_bytes": recovery_peak,
         "recovery_memory_limit_bytes": recovery_limit,
         "recovery_oom_event_evidence": recovery_oom,
+        "recovery_cpu_stat_evidence": recovery_cpu,
         "oom_event_evidence_complete": True,
         "zero_oom_events_verified": True,
     }
@@ -424,6 +851,96 @@ def _artifact_pair(
     if not expected:
         raise RehearsalError("pair_manifest_identity_mismatch")
     return manifest, assets
+
+
+def write_review_pins_from_current_pair() -> dict[str, str]:
+    """Verify the current clean PR-1 pair and persist its two public review pins."""
+
+    environment_pins = _environment_review_pins()
+    metadata_pins = _read_review_metadata()
+    if (
+        environment_pins is not None
+        and metadata_pins is not None
+        and environment_pins != metadata_pins
+    ):
+        raise RehearsalError("review_pins_disagree")
+    head_raw = _run_fixed(
+        [
+            "/usr/bin/git",
+            "-C",
+            str(REPOSITORY_ROOT),
+            "rev-parse",
+            "--verify",
+            "HEAD^{commit}",
+        ],
+        timeout=15,
+    )
+    try:
+        reviewed_head_sha = head_raw.decode("ascii", errors="strict").strip()
+    except UnicodeDecodeError as exc:
+        raise RehearsalError("reviewed_pr_head_invalid") from exc
+    if REVISION.fullmatch(reviewed_head_sha) is None:
+        raise RehearsalError("reviewed_pr_head_invalid")
+
+    manifest_path = ARTIFACT_DIRECTORY / f"signal-ledger-pair-{reviewed_head_sha}.json"
+    manifest_bytes = _read_regular_file(
+        manifest_path,
+        maximum=MAX_MANIFEST_BYTES,
+        label="pair_manifest",
+    )
+    try:
+        manifest_value: object = json.loads(
+            manifest_bytes,
+            object_pairs_hook=_strict_object_pairs,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RehearsalError("pair_manifest_invalid") from exc
+    if not isinstance(manifest_value, dict):
+        raise RehearsalError("pair_manifest_invalid")
+    candidate = manifest_value.get("candidate")
+    recovery = manifest_value.get("recovery")
+    candidate_context = (
+        candidate.get("source_context_sha256") if isinstance(candidate, dict) else None
+    )
+    recovery_context = recovery.get("source_context_sha256") if isinstance(recovery, dict) else None
+    overlay = recovery.get("overlay_sha256") if isinstance(recovery, dict) else None
+    candidate_image_id = candidate.get("image_id") if isinstance(candidate, dict) else None
+    recovery_image_id = recovery.get("image_id") if isinstance(recovery, dict) else None
+    if (
+        manifest_value.get("revision") != reviewed_head_sha
+        or not isinstance(candidate_context, str)
+        or not isinstance(recovery_context, str)
+        or not isinstance(overlay, str)
+        or not isinstance(candidate_image_id, str)
+        or not isinstance(recovery_image_id, str)
+    ):
+        raise RehearsalError("pair_manifest_identity_mismatch")
+    pair_manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+    proposed_pins = (reviewed_head_sha, pair_manifest_sha256)
+    if environment_pins is not None and environment_pins != proposed_pins:
+        raise RehearsalError("review_pins_disagree")
+
+    _verify_local_reviewed_source(
+        reviewed_head_sha,
+        candidate_source_context_sha256=candidate_context,
+        recovery_source_context_sha256=recovery_context,
+        recovery_overlay_sha256=overlay,
+    )
+    verify_pull_request(reviewed_head_sha)
+    _artifact_pair(
+        reviewed_head_sha,
+        candidate_image_id=candidate_image_id,
+        candidate_source_context_sha256=candidate_context,
+        recovery_image_id=recovery_image_id,
+        recovery_source_context_sha256=recovery_context,
+        recovery_overlay_sha256=overlay,
+        pair_manifest_sha256=pair_manifest_sha256,
+    )
+    _write_review_metadata(*proposed_pins)
+    return {
+        "reviewed_pr_head_sha": reviewed_head_sha,
+        "reviewed_pair_manifest_sha256": pair_manifest_sha256,
+    }
 
 
 def _verify_local_reviewed_source(

@@ -6,7 +6,7 @@ function InlineText({ parts }: { parts: AnswerInline[] }) {
   return <>{parts.map((part, index) => {
     if (part.kind === "strong") return <strong key={index}>{part.text}</strong>;
     if (part.kind === "code") return <code key={index}>{part.text}</code>;
-    return <span key={index}>{part.text}</span>;
+    return <span className={styles.answerInlineText} key={index}>{part.text}</span>;
   })}</>;
 }
 

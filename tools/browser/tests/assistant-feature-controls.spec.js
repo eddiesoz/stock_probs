@@ -468,15 +468,30 @@ async function reopenAssistant(page, { resumeConversation = false } = {}) {
   return panel;
 }
 
-async function confirmLocalControlHandoff({ page, panel, testInfo, prompt, expectedOutcome, headingId, previewText, receiptText, desktopStatusText }) {
+async function confirmLocalControlHandoff({ page, panel, testInfo, prompt, expectedOutcome, headingId, previewText, receiptText, desktopStatusText, beforeConfirm = null }) {
   const mobileHandoff = testInfo.project.name === "mobile-chromium";
   await requestAndConfirm(page, panel, prompt, mobileHandoff ? undefined : expectedOutcome, "Open local controls", async ({ card }) => {
     await expect(card).toContainText(previewText);
+    if (beforeConfirm) await beforeConfirm({ page, card, panel });
   });
   if (mobileHandoff) {
     await expect(panel).toBeHidden();
+    await expect(page.getByTestId("assistant-panel")).toHaveCount(0);
     await expect(page.locator("[data-assistant-background]")).toHaveJSProperty("inert", false);
+    await expect(page.locator("[data-assistant-background]")).not.toHaveAttribute("data-assistant-mobile-modal-underlay");
+    await expect(page.locator("body")).not.toHaveAttribute("data-assistant-open", "true");
     await expect(page.locator(`#${headingId}`)).toBeFocused();
+    const focusAttempt = await page.evaluate((targetId) => {
+      const attempts = window.__assistantHandoffFocusProbe?.focusAttempts ?? [];
+      return attempts.filter((attempt) => attempt.targetId === targetId).at(-1) ?? null;
+    }, headingId);
+    expect(focusAttempt).toMatchObject({
+      targetId: headingId,
+      backgroundInert: false,
+      underlay: null,
+      assistantOpen: false,
+      panelMounted: false,
+    });
     panel = await reopenAssistant(page, { resumeConversation: true });
   } else {
     await expect(page.locator(`#${headingId}`)).toBeFocused();
@@ -980,6 +995,33 @@ test("confirmed notes and alert actions preserve browser drafts and keep thresho
   ];
   const state = await installFeatureHarness(page, { route: "/tools/live-trading", scenarios, markets: true, browserDiagnostics });
   const url = `/tools/live-trading?${new URLSearchParams(instrument).toString()}`;
+  await page.addInitScript(() => {
+    const nativeRequestAnimationFrame = window.requestAnimationFrame.bind(window);
+    const probe = { holdNextFrame: false, heldFrame: null, focusAttempts: [], nativeRequestAnimationFrame };
+    window.__assistantHandoffFocusProbe = probe;
+    window.requestAnimationFrame = (callback) => {
+      if (probe.holdNextFrame) {
+        probe.holdNextFrame = false;
+        probe.heldFrame = callback;
+        return -1;
+      }
+      return nativeRequestAnimationFrame(callback);
+    };
+    const nativeFocus = HTMLElement.prototype.focus;
+    HTMLElement.prototype.focus = function focus(options) {
+      if (this.id === "notes-heading" || this.id === "alerts-heading") {
+        const background = document.querySelector("[data-assistant-background]");
+        probe.focusAttempts.push({
+          targetId: this.id,
+          backgroundInert: background?.inert ?? null,
+          underlay: background?.getAttribute("data-assistant-mobile-modal-underlay") ?? null,
+          assistantOpen: document.body.dataset.assistantOpen === "true",
+          panelMounted: Boolean(document.querySelector('[data-testid="assistant-panel"]')),
+        });
+      }
+      return nativeFocus.call(this, options);
+    };
+  });
   await page.goto(url);
   const note = page.getByRole("textbox", { name: "Notes for ACDC (local only; not sent to the server)" });
   const noteField = page.locator("#live-notes");
@@ -1021,7 +1063,39 @@ test("confirmed notes and alert actions preserve browser drafts and keep thresho
     previewText: "Confirmation opens the local note editor. Review or change the note there; the chat will not replace or clear your browser draft.",
     receiptText: "The existing browser controls are open. No note or alert was changed.",
     desktopStatusText: "The local note controls are open. Review or edit the note there; chat did not change it.",
+    beforeConfirm: async ({ page: handoffPage }) => {
+      if (testInfo.project.name === "mobile-chromium") {
+        await handoffPage.evaluate(() => { window.__assistantHandoffFocusProbe.holdNextFrame = true; });
+      }
+    },
   });
+  if (testInfo.project.name === "mobile-chromium") {
+    const released = await page.evaluate(() => {
+      const probe = window.__assistantHandoffFocusProbe;
+      if (!probe?.heldFrame) return false;
+      const callback = probe.heldFrame;
+      probe.heldFrame = null;
+      probe.nativeRequestAnimationFrame(callback);
+      return true;
+    });
+    expect(released).toBe(true);
+    await expect.poll(() => page.evaluate(() => {
+      const background = document.querySelector("[data-assistant-background]");
+      return document.activeElement?.closest('[data-testid="assistant-panel"]') !== null
+        && background?.inert === true
+        && document.body.dataset.assistantOpen === "true";
+    })).toBe(true);
+    const delayedAttempt = await page.evaluate(() => {
+      const attempts = window.__assistantHandoffFocusProbe?.focusAttempts ?? [];
+      return attempts.filter((attempt) => attempt.targetId === "notes-heading").at(-1) ?? null;
+    });
+    expect(delayedAttempt).toMatchObject({
+      targetId: "notes-heading",
+      backgroundInert: true,
+      assistantOpen: true,
+      panelMounted: true,
+    });
+  }
   await expect(noteField).toHaveValue(noteDraft);
   expect(await page.evaluate((key) => localStorage.getItem(key), noteKey)).toBe(noteDraft);
 

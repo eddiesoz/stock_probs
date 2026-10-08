@@ -8,6 +8,7 @@ import json
 import os
 import re
 import secrets
+import stat
 import subprocess
 import sys
 import tarfile
@@ -17,11 +18,29 @@ from types import SimpleNamespace
 
 import pytest
 
+from scripts import pin_pr_rehearsal_review
 from scripts import pr_rehearsal_bootstrap as bootstrap
 from scripts import pr_rehearsal_host_helper as host_helper
 from scripts import rehearse_schema13 as schema13
 from stock_probs.repository import Repository
 from tools.deploy_mcp import pr_rehearsal as controller
+
+
+def _review_pin_test_environment(monkeypatch, tmp_path: Path) -> Path:
+    config_home = tmp_path / "config-home"
+    config_home.mkdir(mode=0o700)
+    identity = tmp_path / "test-identity"
+    known_hosts = tmp_path / "test-known-hosts"
+    identity.write_text("test-only identity metadata", encoding="utf-8")
+    known_hosts.write_text("test-only known-hosts metadata", encoding="utf-8")
+    identity.chmod(0o600)
+    known_hosts.chmod(0o600)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))
+    monkeypatch.setenv("SIGNAL_LEDGER_OPERATOR_IDENTITY_FILE", str(identity))
+    monkeypatch.setenv("SIGNAL_LEDGER_KNOWN_HOSTS_FILE", str(known_hosts))
+    monkeypatch.delenv(controller.REVIEW_HEAD_ENV, raising=False)
+    monkeypatch.delenv(controller.REVIEW_PAIR_ENV, raising=False)
+    return config_home
 
 
 def _owned_network_inspect_output(
@@ -132,6 +151,328 @@ def test_forged_pair_manifest_digest_is_rejected_before_any_remote_call(
             recovery_overlay_sha256="1" * 64,
             pair_manifest_sha256="2" * 64,
         )
+
+
+@pytest.mark.parametrize("pin_source", ["environment", "metadata"])
+def test_review_pins_load_from_paired_environment_or_private_metadata(
+    monkeypatch,
+    tmp_path: Path,
+    pin_source: str,
+) -> None:
+    config_home = _review_pin_test_environment(monkeypatch, tmp_path)
+    head = "a" * 40
+    pair = "b" * 64
+    if pin_source == "environment":
+        monkeypatch.setenv(controller.REVIEW_HEAD_ENV, head)
+        monkeypatch.setenv(controller.REVIEW_PAIR_ENV, pair)
+    else:
+        controller._write_review_metadata(head, pair)
+
+    config = controller.RehearsalConfig.from_env()
+
+    assert config.reviewed_head_sha == head
+    assert config.reviewed_pair_manifest_sha256 == pair
+    metadata_file = (
+        config_home / controller.REVIEW_METADATA_DIRECTORY / (controller.REVIEW_METADATA_FILENAME)
+    )
+    assert metadata_file.exists() is (pin_source == "metadata")
+
+
+def test_review_pins_reject_partial_environment_even_when_metadata_exists(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _review_pin_test_environment(monkeypatch, tmp_path)
+    controller._write_review_metadata("a" * 40, "b" * 64)
+    monkeypatch.setenv(controller.REVIEW_HEAD_ENV, "a" * 40)
+
+    with pytest.raises(controller.RehearsalError, match="review_pins_partial_environment"):
+        controller.RehearsalConfig.from_env()
+
+
+def test_review_pins_reject_environment_and_metadata_disagreement(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _review_pin_test_environment(monkeypatch, tmp_path)
+    controller._write_review_metadata("a" * 40, "b" * 64)
+    monkeypatch.setenv(controller.REVIEW_HEAD_ENV, "c" * 40)
+    monkeypatch.setenv(controller.REVIEW_PAIR_ENV, "d" * 64)
+
+    with pytest.raises(controller.RehearsalError, match="review_pins_disagree"):
+        controller.RehearsalConfig.from_env()
+
+
+def test_review_pin_directory_and_file_are_created_private(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_home = _review_pin_test_environment(monkeypatch, tmp_path)
+    head = "a" * 40
+    pair = "b" * 64
+
+    controller._write_review_metadata(head, pair)
+
+    directory = config_home / controller.REVIEW_METADATA_DIRECTORY
+    metadata_file = directory / controller.REVIEW_METADATA_FILENAME
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    assert stat.S_IMODE(metadata_file.stat().st_mode) == 0o600
+    assert metadata_file.stat().st_nlink == 1
+    assert json.loads(metadata_file.read_text(encoding="ascii")) == {
+        "format_version": controller.REVIEW_METADATA_VERSION,
+        "reviewed_pair_manifest_sha256": pair,
+        "reviewed_pr_head_sha": head,
+    }
+
+
+@pytest.mark.parametrize("mode", [0o640, 0o666])
+def test_review_metadata_rejects_non_private_file_modes(
+    monkeypatch,
+    tmp_path: Path,
+    mode: int,
+) -> None:
+    config_home = _review_pin_test_environment(monkeypatch, tmp_path)
+    directory = config_home / controller.REVIEW_METADATA_DIRECTORY
+    directory.mkdir(mode=0o700)
+    metadata_file = directory / controller.REVIEW_METADATA_FILENAME
+    metadata_file.write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "reviewed_pr_head_sha": "a" * 40,
+                "reviewed_pair_manifest_sha256": "b" * 64,
+            }
+        ),
+        encoding="ascii",
+    )
+    metadata_file.chmod(mode)
+
+    with pytest.raises(controller.RehearsalError, match="review_metadata_permissions"):
+        controller._read_review_metadata()
+
+
+def test_review_metadata_rejects_a_symlink_without_reading_its_target(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_home = _review_pin_test_environment(monkeypatch, tmp_path)
+    directory = config_home / controller.REVIEW_METADATA_DIRECTORY
+    directory.mkdir(mode=0o700)
+    target = tmp_path / "target.json"
+    target.write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "reviewed_pr_head_sha": "a" * 40,
+                "reviewed_pair_manifest_sha256": "b" * 64,
+            }
+        ),
+        encoding="ascii",
+    )
+    target.chmod(0o600)
+    (directory / controller.REVIEW_METADATA_FILENAME).symlink_to(target)
+
+    with pytest.raises(controller.RehearsalError, match="review_metadata_permissions"):
+        controller._read_review_metadata()
+
+
+def test_review_metadata_rejects_linked_parent_directory(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_home = _review_pin_test_environment(monkeypatch, tmp_path)
+    target = tmp_path / "outside"
+    target.mkdir(mode=0o700)
+    (target / controller.REVIEW_METADATA_FILENAME).write_text(
+        json.dumps(
+            {
+                "format_version": 1,
+                "reviewed_pr_head_sha": "a" * 40,
+                "reviewed_pair_manifest_sha256": "b" * 64,
+            }
+        ),
+        encoding="ascii",
+    )
+    (target / controller.REVIEW_METADATA_FILENAME).chmod(0o600)
+    (config_home / controller.REVIEW_METADATA_DIRECTORY).symlink_to(
+        target,
+        target_is_directory=True,
+    )
+
+    with pytest.raises(controller.RehearsalError, match="review_metadata_directory_unsafe"):
+        controller._read_review_metadata()
+
+
+def test_review_metadata_rejects_hardlinks_duplicate_keys_and_oversize(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_home = _review_pin_test_environment(monkeypatch, tmp_path)
+    directory = config_home / controller.REVIEW_METADATA_DIRECTORY
+    directory.mkdir(mode=0o700)
+    metadata_file = directory / controller.REVIEW_METADATA_FILENAME
+    valid = json.dumps(
+        {
+            "format_version": 1,
+            "reviewed_pr_head_sha": "a" * 40,
+            "reviewed_pair_manifest_sha256": "b" * 64,
+        },
+        separators=(",", ":"),
+    )
+    metadata_file.write_text(valid, encoding="ascii")
+    metadata_file.chmod(0o600)
+    os.link(metadata_file, directory / "second-link")
+    with pytest.raises(controller.RehearsalError, match="review_metadata_permissions"):
+        controller._read_review_metadata()
+
+    (directory / "second-link").unlink()
+    metadata_file.write_text(
+        '{"format_version":1,"format_version":1,'
+        f'"reviewed_pr_head_sha":"{"a" * 40}",'
+        f'"reviewed_pair_manifest_sha256":"{"b" * 64}"}}',
+        encoding="ascii",
+    )
+    with pytest.raises(controller.RehearsalError, match="review_metadata_invalid"):
+        controller._read_review_metadata()
+
+    metadata_file.write_bytes(b"x" * (controller.MAX_REVIEW_METADATA_BYTES + 1))
+    metadata_file.chmod(0o600)
+    with pytest.raises(controller.RehearsalError, match="review_metadata_permissions"):
+        controller._read_review_metadata()
+
+
+def test_review_metadata_rejects_owner_mismatch() -> None:
+    metadata = SimpleNamespace(
+        st_mode=stat.S_IFREG | 0o600,
+        st_uid=os.geteuid() + 1,
+        st_nlink=1,
+        st_size=128,
+    )
+
+    with pytest.raises(controller.RehearsalError, match="review_metadata_permissions"):
+        controller._validate_review_file_metadata(metadata)
+
+
+def test_review_metadata_rejects_changes_during_bounded_read(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    config_home = _review_pin_test_environment(monkeypatch, tmp_path)
+    controller._write_review_metadata("a" * 40, "b" * 64)
+    metadata_file = (
+        config_home / controller.REVIEW_METADATA_DIRECTORY / controller.REVIEW_METADATA_FILENAME
+    )
+    original_read = os.read
+    changed = False
+
+    def race_read(descriptor: int, size: int) -> bytes:
+        nonlocal changed
+        contents = original_read(descriptor, size)
+        if contents and not changed:
+            changed = True
+            metadata = metadata_file.stat()
+            metadata_file.write_bytes(contents)
+            os.utime(
+                metadata_file,
+                ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 1_000_000_000),
+            )
+        return contents
+
+    monkeypatch.setattr(controller.os, "read", race_read)
+    with pytest.raises(controller.RehearsalError, match="review_metadata_changed"):
+        controller._read_review_metadata()
+
+
+def test_review_pin_cli_verifies_current_pair_before_writing_metadata(
+    monkeypatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config_home = _review_pin_test_environment(monkeypatch, tmp_path)
+    revision = "a" * 40
+    candidate_id = "sha256:" + "b" * 64
+    recovery_id = "sha256:" + "c" * 64
+    candidate_context = "d" * 64
+    recovery_context = "e" * 64
+    overlay = "f" * 64
+    manifest = {
+        "format_version": 1,
+        "repository": controller.REPOSITORY,
+        "revision": revision,
+        "source_context_sha256": candidate_context,
+        "migration": {"from_schema": 12, "to_schema": 13, "sha256": controller.MIGRATION_SHA256},
+        "candidate": {
+            "image_id": candidate_id,
+            "source_context_sha256": candidate_context,
+        },
+        "recovery": {
+            "image_id": recovery_id,
+            "source_context_sha256": recovery_context,
+            "overlay_sha256": overlay,
+        },
+    }
+    manifest_bytes = json.dumps(manifest, separators=(",", ":")).encode("ascii")
+    monkeypatch.setattr(controller, "ARTIFACT_DIRECTORY", tmp_path / "fixed-pair")
+    monkeypatch.setattr(
+        controller, "_run_fixed", lambda *_args, **_kwargs: (revision + "\n").encode()
+    )
+    monkeypatch.setattr(
+        controller,
+        "_read_regular_file",
+        lambda *_args, **_kwargs: manifest_bytes,
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        controller,
+        "_verify_local_reviewed_source",
+        lambda _revision, **_kwargs: calls.append("source"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "verify_pull_request",
+        lambda _revision: calls.append("pull_request"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_artifact_pair",
+        lambda _revision, **_kwargs: calls.append("pair"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_private_file_metadata",
+        lambda *_args: pytest.fail("the pin CLI must not inspect SSH file metadata"),
+    )
+
+    assert pin_pr_rehearsal_review.main(["--write"]) == 0
+
+    metadata_file = (
+        config_home / controller.REVIEW_METADATA_DIRECTORY / controller.REVIEW_METADATA_FILENAME
+    )
+    assert calls == ["source", "pull_request", "pair"]
+    assert controller._read_review_metadata() == (
+        revision,
+        hashlib.sha256(manifest_bytes).hexdigest(),
+    )
+    assert stat.S_IMODE(metadata_file.stat().st_mode) == 0o600
+    assert json.loads(capsys.readouterr().out) == {
+        "reviewed_pair_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "reviewed_pr_head_sha": revision,
+        "status": "written",
+    }
+
+
+def test_review_pin_cli_rejects_path_arguments(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        pin_pr_rehearsal_review.pr_rehearsal,
+        "write_review_pins_from_current_pair",
+        lambda: pytest.fail("unexpected pin write"),
+    )
+
+    with pytest.raises(SystemExit) as failure:
+        pin_pr_rehearsal_review.main(["--write", "--config", "ignored-path"])
+    assert failure.value.code == 2
 
 
 def test_bootstrap_accepts_bounded_realistic_open_pr_payload_over_16k(
@@ -1469,7 +1810,38 @@ def test_schema_query_command_has_the_bounded_private_cli_profile(monkeypatch) -
 
 def _controller_resource_evidence() -> dict[str, object]:
     zero_events = {name: 0 for name in host_helper.OOM_EVENT_COUNTERS}
+    candidate_cpu = {
+        "complete": True,
+        "resource_role": "candidate",
+        "baseline": {
+            "usage_usec": 100,
+            "nr_periods": 5,
+            "nr_throttled": 2,
+            "throttled_usec": 40,
+        },
+        "final": {
+            "usage_usec": 240,
+            "nr_periods": 12,
+            "nr_throttled": 4,
+            "throttled_usec": 90,
+        },
+        "delta": {
+            "usage_usec": 140,
+            "nr_periods": 7,
+            "nr_throttled": 2,
+            "throttled_usec": 50,
+        },
+    }
+    recovery_cpu = {
+        **candidate_cpu,
+        "resource_role": "recovery",
+        "baseline": candidate_cpu["baseline"].copy(),
+        "final": candidate_cpu["final"].copy(),
+        "delta": candidate_cpu["delta"].copy(),
+    }
     return {
+        "host_memavailable_before_kib": 600_000,
+        "host_memavailable_after_kib": 550_000,
         "host_memory_capacity_evidence": {
             "complete": True,
             "unit": "kib",
@@ -1486,6 +1858,7 @@ def _controller_resource_evidence() -> dict[str, object]:
             "delta": zero_events.copy(),
             "zero_oom_events": True,
         },
+        "candidate_cpu_stat_evidence": candidate_cpu,
         "recovery_memory_peak_bytes": 250 * 1024 * 1024,
         "recovery_memory_limit_bytes": 384 * 1024 * 1024,
         "recovery_oom_event_evidence": {
@@ -1495,6 +1868,7 @@ def _controller_resource_evidence() -> dict[str, object]:
             "delta": zero_events.copy(),
             "zero_oom_events": True,
         },
+        "recovery_cpu_stat_evidence": recovery_cpu,
         "oom_event_evidence_complete": True,
         "zero_oom_events_verified": True,
     }
@@ -1518,6 +1892,7 @@ def test_controller_projects_only_complete_resource_observations() -> None:
         ("unbounded_capacity", "host_response_invalid"),
         ("missing_oom_counter", "host_response_invalid"),
         ("nonzero_oom_counter", "host_response_invalid"),
+        ("missing_cpu_counter", "host_response_invalid"),
     ],
 )
 def test_controller_rejects_unavailable_or_nonzero_resource_claims(
@@ -1541,7 +1916,7 @@ def test_controller_rejects_unavailable_or_nonzero_resource_claims(
         final = candidate["final"]
         assert isinstance(final, dict)
         final.pop("oom_group_kill")
-    else:
+    elif mutation == "nonzero_oom_counter":
         recovery = response["recovery_oom_event_evidence"]
         assert isinstance(recovery, dict)
         final = recovery["final"]
@@ -1550,25 +1925,113 @@ def test_controller_rejects_unavailable_or_nonzero_resource_claims(
         assert isinstance(delta, dict)
         final["oom_kill"] = 1
         delta["oom_kill"] = 1
+    else:
+        candidate = response["candidate_cpu_stat_evidence"]
+        assert isinstance(candidate, dict)
+        baseline = candidate["baseline"]
+        assert isinstance(baseline, dict)
+        baseline.pop("throttled_usec")
 
     with pytest.raises(controller.RehearsalError, match=expected_code):
         controller._validated_resource_evidence(response)
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_before",
+        "boolean_before",
+        "negative_before",
+        "over_total_after",
+        "below_start_floor",
+        "below_run_floor",
+    ],
+)
+def test_controller_requires_bounded_host_available_memory(
+    mutation: str,
+) -> None:
+    response = _controller_resource_evidence()
+    if mutation == "missing_before":
+        response.pop("host_memavailable_before_kib")
+    elif mutation == "boolean_before":
+        response["host_memavailable_before_kib"] = True
+    elif mutation == "negative_before":
+        response["host_memavailable_before_kib"] = -1
+    elif mutation == "over_total_after":
+        response["host_memavailable_after_kib"] = 1_500_001
+    elif mutation == "below_start_floor":
+        response["host_memavailable_before_kib"] = controller.START_RESERVE_KIB - 1
+    else:
+        response["host_memavailable_after_kib"] = controller.RUN_RESERVE_KIB - 1
+
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_resource_evidence(response)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "wrong_role",
+        "missing_counter",
+        "boolean_counter",
+        "negative_counter",
+        "unbounded_counter",
+        "counter_reset",
+        "incorrect_delta",
+    ],
+)
+def test_controller_rejects_incomplete_or_inconsistent_cpu_evidence(
+    mutation: str,
+) -> None:
+    response = _controller_resource_evidence()
+    evidence = response["candidate_cpu_stat_evidence"]
+    assert isinstance(evidence, dict)
+    baseline = evidence["baseline"]
+    final = evidence["final"]
+    delta = evidence["delta"]
+    assert isinstance(baseline, dict)
+    assert isinstance(final, dict)
+    assert isinstance(delta, dict)
+    if mutation == "wrong_role":
+        evidence["resource_role"] = "recovery"
+    elif mutation == "missing_counter":
+        final.pop("nr_periods")
+    elif mutation == "boolean_counter":
+        baseline["usage_usec"] = True
+    elif mutation == "negative_counter":
+        final["nr_periods"] = -1
+    elif mutation == "unbounded_counter":
+        final["usage_usec"] = controller.MAX_RESOURCE_COUNTER + 1
+    elif mutation == "counter_reset":
+        final["usage_usec"] = 99
+    else:
+        delta["usage_usec"] += 1
+
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_resource_evidence(response)
+
+
 def test_candidate_memory_evidence_is_bound_to_768_mib(monkeypatch) -> None:
     memory_events = "oom 0\noom_kill 0\noom_group_kill 0\n"
+    cpu_stat = (
+        "usage_usec 100\nuser_usec 60\nsystem_usec 40\n"
+        "nr_periods 5\nnr_throttled 2\nthrottled_usec 40\n"
+    )
 
     def fake_run(*arguments: object, **_kwargs: object) -> CompletedProcess[bytes]:
         command = arguments[0]
         assert isinstance(command, list)
         assert "/sys/fs/cgroup" in command[-1]
         assert "memory.events" in command[-1]
+        assert "cpu.stat" in command[-1]
         assert "--env" not in command
         payload = {
             "limit": host_helper.CANDIDATE_MEMORY_LIMIT,
             "peak": 520 * 1024 * 1024,
             "events_bytes": len(memory_events),
             "events": memory_events,
+            "cpu_stat_bytes": len(cpu_stat),
+            "cpu_stat": cpu_stat,
         }
         return CompletedProcess([], 0, json.dumps(payload).encode(), b"")
 
@@ -1578,6 +2041,12 @@ def test_candidate_memory_evidence_is_bound_to_768_mib(monkeypatch) -> None:
         "limit": 768 * 1024 * 1024,
         "peak": 520 * 1024 * 1024,
         "oom_events": {"oom": 0, "oom_kill": 0, "oom_group_kill": 0},
+        "cpu_stat": {
+            "usage_usec": 100,
+            "nr_periods": 5,
+            "nr_throttled": 2,
+            "throttled_usec": 40,
+        },
     }
     with pytest.raises(host_helper.RehearsalError, match="container_memory_limit_mismatch"):
         host_helper._memory_usage("a" * 64, expected_role="recovery")
@@ -1585,11 +2054,17 @@ def test_candidate_memory_evidence_is_bound_to_768_mib(monkeypatch) -> None:
 
 def test_recovery_memory_evidence_is_bound_to_384_mib(monkeypatch) -> None:
     memory_events = "oom 0\noom_kill 0\noom_group_kill 0\n"
+    cpu_stat = (
+        "usage_usec 200\nuser_usec 140\nsystem_usec 60\n"
+        "nr_periods 8\nnr_throttled 1\nthrottled_usec 25\n"
+    )
     payload = {
         "limit": host_helper.RECOVERY_MEMORY_LIMIT,
         "peak": 300 * 1024 * 1024,
         "events_bytes": len(memory_events),
         "events": memory_events,
+        "cpu_stat_bytes": len(cpu_stat),
+        "cpu_stat": cpu_stat,
     }
     monkeypatch.setattr(
         host_helper,
@@ -1603,6 +2078,12 @@ def test_recovery_memory_evidence_is_bound_to_384_mib(monkeypatch) -> None:
         "limit": 384 * 1024 * 1024,
         "peak": 300 * 1024 * 1024,
         "oom_events": {"oom": 0, "oom_kill": 0, "oom_group_kill": 0},
+        "cpu_stat": {
+            "usage_usec": 200,
+            "nr_periods": 8,
+            "nr_throttled": 1,
+            "throttled_usec": 25,
+        },
     }
 
 
@@ -1668,11 +2149,14 @@ def test_oom_event_evidence_records_complete_zero_baselines_and_deltas() -> None
 
 
 def test_oom_event_evidence_rejects_missing_counters_without_zero_claim(monkeypatch) -> None:
+    cpu_stat = "usage_usec 1\nnr_periods 1\nnr_throttled 0\nthrottled_usec 0\n"
     payload = {
         "limit": host_helper.RECOVERY_MEMORY_LIMIT,
         "peak": 100,
         "events_bytes": len("oom 0\noom_kill 0\n"),
         "events": "oom 0\noom_kill 0\n",
+        "cpu_stat_bytes": len(cpu_stat),
+        "cpu_stat": cpu_stat,
     }
     monkeypatch.setattr(
         host_helper,
@@ -1728,6 +2212,105 @@ def test_oom_event_evidence_rejects_nonzero_initial_counters() -> None:
     assert raised.value.details["oom_event_evidence"]["baseline"]["oom_kill"] == 1
     assert raised.value.details["oom_event_evidence"]["delta"]["oom_kill"] == 0
     assert raised.value.details["oom_event_evidence"]["zero_oom_events"] is False
+
+
+def test_cpu_stat_evidence_records_role_bound_deltas_without_rejecting_throttling() -> None:
+    baseline = {
+        "cpu_stat": {
+            "usage_usec": 100,
+            "nr_periods": 5,
+            "nr_throttled": 2,
+            "throttled_usec": 40,
+        }
+    }
+    final = {
+        "cpu_stat": {
+            "usage_usec": 240,
+            "nr_periods": 12,
+            "nr_throttled": 4,
+            "throttled_usec": 90,
+        }
+    }
+
+    evidence = host_helper._cpu_stat_evidence(baseline, final, role="candidate")  # type: ignore[arg-type]
+
+    assert evidence == {
+        "complete": True,
+        "resource_role": "candidate",
+        "baseline": baseline["cpu_stat"],
+        "final": final["cpu_stat"],
+        "delta": {
+            "usage_usec": 140,
+            "nr_periods": 7,
+            "nr_throttled": 2,
+            "throttled_usec": 50,
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    [
+        ("missing", "cgroup_cpu_stat_counters_incomplete"),
+        ("boolean", "cgroup_cpu_stat_counters_incomplete"),
+        ("negative", "cgroup_cpu_stat_counters_incomplete"),
+        ("unbounded", "cgroup_cpu_stat_counters_incomplete"),
+        ("reset", "cgroup_cpu_stat_counter_reset"),
+    ],
+)
+def test_cpu_stat_evidence_fails_closed_on_invalid_or_reset_counters(
+    mutation: str, expected_code: str
+) -> None:
+    baseline = {
+        "cpu_stat": {
+            "usage_usec": 100,
+            "nr_periods": 5,
+            "nr_throttled": 2,
+            "throttled_usec": 40,
+        }
+    }
+    final = {
+        "cpu_stat": {
+            "usage_usec": 240,
+            "nr_periods": 12,
+            "nr_throttled": 4,
+            "throttled_usec": 90,
+        }
+    }
+    if mutation == "missing":
+        final["cpu_stat"].pop("nr_periods")
+    elif mutation == "boolean":
+        baseline["cpu_stat"]["usage_usec"] = True
+    elif mutation == "negative":
+        final["cpu_stat"]["nr_periods"] = -1
+    elif mutation == "unbounded":
+        final["cpu_stat"]["usage_usec"] = host_helper.MAX_RESOURCE_COUNTER_VALUE + 1
+    else:
+        final["cpu_stat"]["usage_usec"] = 99
+
+    with pytest.raises(host_helper.RehearsalError, match=expected_code):
+        host_helper._cpu_stat_evidence(baseline, final, role="recovery")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "usage_usec 1\nnr_periods 1\nnr_throttled 1\n",
+        "usage_usec -1\nnr_periods 1\nnr_throttled 1\nthrottled_usec 1\n",
+        "usage_usec 18446744073709551616\nnr_periods 1\nnr_throttled 1\nthrottled_usec 1\n",
+    ],
+)
+def test_cpu_stat_parser_rejects_incomplete_or_invalid_counters(text: str) -> None:
+    with pytest.raises(host_helper.RehearsalError, match="cgroup_cpu_stat_counters_incomplete"):
+        host_helper._parse_cpu_stat(text, len(text), role="candidate")
+
+
+def test_cpu_stat_parser_rejects_oversized_evidence() -> None:
+    text = "usage_usec 1\nnr_periods 1\nnr_throttled 1\nthrottled_usec 1\n"
+    with pytest.raises(host_helper.RehearsalError, match="cgroup_cpu_stat_unavailable"):
+        host_helper._parse_cpu_stat(
+            text, host_helper.MAX_CGROUP_CPU_STAT_BYTES + 1, role="candidate"
+        )
 
 
 def test_production_headroom_floors_are_unchanged_and_fail_closed(monkeypatch) -> None:

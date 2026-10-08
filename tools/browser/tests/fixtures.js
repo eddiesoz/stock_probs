@@ -84,7 +84,25 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
     if (child === stoppingChild) child = null;
   }
 
-  await start();
+  try {
+    await start();
+  } catch (startupError) {
+    try {
+      await stop();
+    } catch (_) {
+      if (startupError && typeof startupError === "object") {
+        try {
+          Object.defineProperty(startupError, "cleanupError", {
+            configurable: true,
+            value: "application_process_cleanup_failed",
+          });
+        } catch (_) {
+          // Preserve the original startup error even if it cannot be annotated.
+        }
+      }
+    }
+    throw startupError;
+  }
   return { url, logs: () => processState.stderr, restart: async () => { await stop(); await start(); }, stop };
 }
 

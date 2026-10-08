@@ -47,8 +47,8 @@ _PREVIEW_ID = re.compile(r"^[0-9a-f-]{36}$")
 ProbeError = supervised.ProbeError
 
 
-def _candidate_is_scoped(candidate: supervised.Candidate) -> bool:
-    """Check the fixed container and volume names before every mutating candidate call."""
+def _candidate_base_is_scoped(candidate: supervised.Candidate) -> bool:
+    """Check fixed container, volume, image, and loopback identity fields."""
 
     if not isinstance(candidate.container, str) or not isinstance(candidate.data_volume, str):
         return False
@@ -70,9 +70,30 @@ def _candidate_is_scoped(candidate: supervised.Candidate) -> bool:
     )
 
 
+def _candidate_network_is_scoped(candidate: supervised.Candidate) -> bool:
+    """Require the exact user-defined network identity returned by candidate inspection."""
+
+    expected_name = f"{candidate.data_volume}-candidate-network"
+    return bool(
+        candidate.network_name == expected_name
+        and isinstance(candidate.network_id, str)
+        and _HEX64.fullmatch(candidate.network_id)
+    )
+
+
+def _candidate_is_scoped(candidate: supervised.Candidate) -> bool:
+    """Require both the fixed candidate identity and its exact private network binding."""
+
+    return _candidate_base_is_scoped(candidate) and _candidate_network_is_scoped(candidate)
+
+
 def _require_scoped_candidate(candidate: supervised.Candidate) -> None:
-    if not _candidate_is_scoped(candidate):
+    if not _candidate_base_is_scoped(candidate):
         raise ProbeError("candidate identity did not match the fixed disposable scope")
+    if not _candidate_network_is_scoped(candidate):
+        raise ProbeError(
+            "candidate exact network identity is required for the fixed disposable scope"
+        )
 
 
 def _expected_search_query_sha256() -> str:
@@ -337,7 +358,7 @@ def _run_kill(candidate: supervised.Candidate) -> dict[str, object]:
             "exec",
             "--user",
             "10001:10001",
-            candidate.container,
+            candidate.container_id,
             "python",
             "-m",
             "stock_probs.cli",
@@ -918,6 +939,58 @@ def _app_process(snapshot: list[dict[str, object]]) -> dict[str, object]:
     return {"pid": rows[0]["pid"], "uid": rows[0].get("uid"), "gid": rows[0].get("gid")}
 
 
+def _verify_surviving_app_profile(
+    snapshot: list[dict[str, object]], expected_app: dict[str, object]
+) -> dict[str, object]:
+    """Require only the unchanged, unprivileged app and bounded supervisor after kill."""
+
+    expected_roles = {"supervisor": 1, "app_wrapper": 1, "worker_wrapper": 0, "native_worker": 0}
+    counts = {role: sum(row.get("role") == role for row in snapshot) for role in expected_roles}
+    if counts != expected_roles:
+        raise ProbeError("candidate process roles were invalid after assistant kill")
+    by_role = {row.get("role"): row for row in snapshot}
+    supervisor = by_role.get("supervisor")
+    app = by_role.get("app_wrapper")
+    if not isinstance(supervisor, dict) or not isinstance(app, dict):
+        raise ProbeError("candidate app or supervisor profile was absent after assistant kill")
+    app_identity = _app_process(snapshot)
+    if (
+        app_identity != expected_app
+        or app.get("uid") != 10001
+        or app.get("gid") != 10001
+        or app.get("cap_eff") not in {"0000000000000000", "0"}
+        or app.get("cap_prm") not in {"0000000000000000", "0"}
+        or app.get("no_new_privileges") != "1"
+        or supervisor.get("pid") != 1
+        or supervisor.get("uid") != 0
+        or supervisor.get("gid") != 0
+        or supervisor.get("cap_eff") != "00000000000000c0"
+        or supervisor.get("cap_prm") != "00000000000000c0"
+        or supervisor.get("cap_bnd") != "00000000000000c0"
+        or supervisor.get("no_new_privileges") != "1"
+    ):
+        raise ProbeError(
+            "candidate surviving app or supervisor profile changed after assistant kill"
+        )
+    return {
+        "supervisor": {
+            "pid": 1,
+            "uid": 0,
+            "gid": 0,
+            "cap_eff": supervisor["cap_eff"],
+            "cap_prm": supervisor["cap_prm"],
+            "cap_bnd": supervisor["cap_bnd"],
+            "no_new_privileges": "1",
+        },
+        "app_wrapper": {
+            **app_identity,
+            "cap_eff": app["cap_eff"],
+            "cap_prm": app["cap_prm"],
+            "no_new_privileges": "1",
+        },
+    }
+
+
 def _wait_for_worker_exit(candidate: supervised.Candidate) -> dict[str, object]:
     deadline = time.monotonic() + TERMINAL_POLL_SECONDS
     latest: list[dict[str, object]] = []
@@ -995,23 +1068,41 @@ def _sample_resource_state(candidate: supervised.Candidate) -> dict[str, int]:
     return sample
 
 
-def run_probe(container: str, image_id: str, context_sha256: str, volume: str) -> dict[str, object]:
-    """Kill only a verified disposable candidate while its native search is awaiting approval."""
+def run_probe(
+    container: str,
+    image_id: str,
+    context_sha256: str,
+    volume: str,
+    candidate_revision: str | None = None,
+) -> dict[str, object]:
+    """Kill a verified candidate; PR identity comes from its verified build receipt.
 
+    The explicit revision and context digest must be copied from the verified PR-candidate build
+    receipt. The shared probe checks that the immutable image ID carries that exact revision label
+    and linux/amd64 platform; this kill probe never builds or relabels an image.
+    """
+
+    candidate_revision = supervised._validated_candidate_revision(candidate_revision)
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     if (
         supervised._SHA256_IMAGE.fullmatch(image_id) is None
         or _HEX64.fullmatch(context_sha256) is None
     ):
         raise ProbeError("candidate image and source context must use exact SHA-256 identities")
-    candidate = supervised._candidate_container(container, image_id, context_sha256, volume)
+    candidate = supervised._candidate_container(
+        container, image_id, context_sha256, volume, candidate_revision
+    )
     _require_scoped_candidate(candidate)
     initial_candidate = {
         "container": candidate.container,
         "container_id": candidate.container_id,
         "image_id": candidate.image_id,
         "data_volume": candidate.data_volume,
+        "network_name": candidate.network_name,
+        "network_id": candidate.network_id,
         "source_context_sha256": context_sha256,
+        "candidate_revision": candidate_revision,
+        "revision_label": candidate_revision or f"local-source-{context_sha256}",
         "architecture": "linux/amd64",
     }
     baseline = _sample_resource_state(candidate)
@@ -1023,6 +1114,10 @@ def run_probe(container: str, image_id: str, context_sha256: str, volume: str) -
         or assistant_before.get("enabled") is not True
     ):
         raise ProbeError("candidate assistant was not ready before the active-turn probe")
+    candidate = supervised._refresh_candidate_for_write(
+        candidate, context_sha256, candidate_revision
+    )
+    _require_scoped_candidate(candidate)
     users = supervised._seed_users(candidate)
     if len(users) != 2:
         raise ProbeError("candidate fixture did not create exactly two synthetic owners")
@@ -1077,9 +1172,10 @@ def run_probe(container: str, image_id: str, context_sha256: str, volume: str) -
             raise ProbeError(
                 "native worker process tree was absent at the pending-search checkpoint"
             )
+        process_profile_before_kill = supervised._verify_worker_processes(process_before)
 
         candidate_pre_kill = supervised._candidate_container(
-            container, image_id, context_sha256, volume
+            container, image_id, context_sha256, volume, candidate_revision
         )
         if (
             candidate_pre_kill.container_id != candidate.container_id
@@ -1087,12 +1183,15 @@ def run_probe(container: str, image_id: str, context_sha256: str, volume: str) -
             or candidate_pre_kill.image_id != candidate.image_id
             or candidate_pre_kill.data_volume != candidate.data_volume
             or candidate_pre_kill.host_port != candidate.host_port
+            or candidate_pre_kill.network_name != candidate.network_name
+            or candidate_pre_kill.network_id != candidate.network_id
+            or candidate_pre_kill.candidate_revision != candidate.candidate_revision
         ):
             raise ProbeError("candidate container identity changed before the kill command")
         kill_receipt = _run_kill(candidate_pre_kill)
         resource_after_kill = _sample_resource_state(candidate)
         candidate_after = supervised._candidate_container(
-            container, image_id, context_sha256, volume
+            container, image_id, context_sha256, volume, candidate_revision
         )
         if (
             candidate_after.container_id != candidate.container_id
@@ -1100,6 +1199,9 @@ def run_probe(container: str, image_id: str, context_sha256: str, volume: str) -
             or candidate_after.image_id != candidate.image_id
             or candidate_after.data_volume != candidate.data_volume
             or candidate_after.host_port != candidate.host_port
+            or candidate_after.network_name != candidate.network_name
+            or candidate_after.network_id != candidate.network_id
+            or candidate_after.candidate_revision != candidate.candidate_revision
         ):
             raise ProbeError("candidate container identity changed during the kill probe")
         readiness_after_projection = _wait_for_disabled_readiness(candidate_after)
@@ -1107,10 +1209,7 @@ def run_probe(container: str, image_id: str, context_sha256: str, volume: str) -
         worker_exit = _wait_for_worker_exit(candidate_after)
         process_after = supervised._process_snapshot(candidate_after)
         app_after = _app_process(process_after)
-        if app_after != app_before or not {"supervisor", "app_wrapper"}.issubset(
-            {row.get("role") for row in process_after}
-        ):
-            raise ProbeError("app or supervisor process identity changed during assistant kill")
+        surviving_app_profile = _verify_surviving_app_profile(process_after, app_before)
         home_purge = _worker_home_projection(candidate_after)
 
         terminal_state = _wait_for_terminal_state(
@@ -1234,6 +1333,8 @@ def run_probe(container: str, image_id: str, context_sha256: str, volume: str) -
             "candidate": initial_candidate,
             "active_checkpoint": checkpoint,
             "kill_command": kill_receipt,
+            "worker_process_profile_before_kill": process_profile_before_kill,
+            "surviving_app_profile_after_kill": surviving_app_profile,
             "readiness_before": {
                 "status": "ready",
                 "schema_version": 13,
@@ -1317,6 +1418,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candidate-image-id", required=True)
     parser.add_argument("--source-context-sha256", required=True)
     parser.add_argument("--candidate-volume", required=True)
+    parser.add_argument(
+        "--candidate-revision",
+        help="exact lowercase reviewed commit SHA from a verified PR-candidate build receipt",
+    )
     args = parser.parse_args(argv)
     try:
         report = run_probe(
@@ -1324,6 +1429,7 @@ def main(argv: list[str] | None = None) -> int:
             args.candidate_image_id,
             args.source_context_sha256,
             args.candidate_volume,
+            args.candidate_revision,
         )
     except ProbeError as exc:
         print(

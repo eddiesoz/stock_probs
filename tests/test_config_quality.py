@@ -337,6 +337,33 @@ def test_canonical_model_manifest_matches_codex_model_fields():
         assert role_name == "worker"
 
 
+def test_codex_deployment_mcp_exposes_all_eight_typed_tools_with_approval_modes():
+    project = tomllib.loads((ROOT / ".codex/config.toml").read_text())
+    server = project["mcp_servers"]["signal_ledger_deploy"]
+    tools = server["tools"]
+
+    assert set(tools) == {
+        "inspect",
+        "plan_deploy",
+        "deploy",
+        "status",
+        "rollback",
+        "refresh_operator_access",
+        "rehearse_pr_pair",
+        "set_assistant_rollout",
+    }
+    assert {name: value["approval_mode"] for name, value in tools.items()} == {
+        "inspect": "auto",
+        "plan_deploy": "prompt",
+        "deploy": "prompt",
+        "status": "auto",
+        "rollback": "prompt",
+        "refresh_operator_access": "prompt",
+        "rehearse_pr_pair": "prompt",
+        "set_assistant_rollout": "prompt",
+    }
+
+
 def test_model_routing_sync_checks_drift_and_is_idempotent(tmp_path: Path):
     routing_file = ROOT / "model-routing.json"
     shutil.copy2(routing_file, tmp_path / routing_file.name)

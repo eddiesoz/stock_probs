@@ -173,6 +173,17 @@ render, and finalization tests exercise those helpers; they do not establish app
 final PR-bound guide acceptance. A focused test or synthetic run establishes only its declared
 scope, not live provider, native OpenCode, production, or release acceptance.
 
+The browser fixture's startup-cleanup unit regression is run with the pinned project Node runtime:
+
+```bash
+.tools/node/bin/node --test tools/browser/tests/fixtures-lifecycle.unit.js
+```
+
+After E727's parent-applied patch, this tracked command passed 7/7 synthetic cases. It covers a
+synchronous spawn failure and readiness failure with mocked child-process, network, and filesystem
+interfaces; it does not verify real child-process readiness, asynchronous child error events, or OS
+process reaping. The full browser aggregate must still pass separately.
+
 The supervised native probe retains only normalized diagnostics. Model-discovery warnings use
 closed outcome names and bounded numeric counters for catalog reads and the activation barrier;
 raw log text, request URLs and owner identifiers are excluded. The existing limits remain four
@@ -190,23 +201,32 @@ forged, or contradictory v5 fields. These classifications distinguish the failed
 do not prove its cause or establish native execution acceptance. No credentials, prompts, native
 identifiers, or owner identifiers belong in the retained projection.
 
-R-ASTRA-120 remains **In progress**, and the assistant candidate remains disabled in production.
-E701 is the latest canonical local check and **Failed** (2,711 passed, 1 failed, 4 skipped,
-4 deselected; 85.60% coverage); a fresh canonical check is pending. E714's pre-repair standalone
-guide draft passed its four-state HTML axe audit and 14-page PDF visual review, but the cover
-Figure was unnamed. E715/E717 passed the isolated Figure-name/render-contract repair and independent
-18/18 semantic tests; the E706–E710 bundle is stale against the changed template, so fresh capture,
-render, and final guide QA remain pending. E718/E719 passed only selected source and unit-test
-checks for fixed-baseline reuse; no pair rehearsal ran. E720 passed exact-target `--no-prune`
-cleanup, while E708's earlier ancestor removal remains a separate preserved result. E721 passed its
-selected 928-test security suite and Ruff lint/security, but scoped formatting failed on unchanged
-baseline style. Strict app raw axe remains **Fail**; native/provider, current-image kill, actual
-combined 1 GB, complete security, PR-bound rollback, final guide, deployment/canary, and release
-remain open. The US$15 monthly total cap and existing 1 GB/backups are unchanged; no production
-change, resize, rollout, release, or email is claimed. See the [authoritative R-ASTRA-120 ledger]
-(../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts
-and preserved statuses. E722's final authored-documentation validator, complete/change-aware coverage,
-scoped diff, and 60-test documentation suite all **Passed**.
+### Maintained active-search kill probe preflight
+
+The maintained probe must bind the disposable candidate to the fixed local Docker endpoint
+`unix:///var/run/docker.sock` using an isolated temporary Docker config; do not inherit a remote
+Docker context or `DOCKER_HOST`. Before a run, verify the local daemon endpoint and exact candidate
+identity. The candidate must attach only to its expected per-run user-defined bridge; bind the full
+network ID to the expected name, inspect by that ID, and require local `bridge` scope, default IPAM,
+and exactly the owned candidate container as the endpoint. Reject a mismatch or any additional
+network/endpoint, and clean up only verified owned IDs.
+
+Before accepting a kill result, verify worker and survivor identity against the expected UID, GID and role-group values, and required `CapPrm` and `CapEff`. E768 found missing role-GID and `CapPrm` checks; E769–E772 later passed the repaired source/test review scope only. E769's initial builder fixture failure remains preserved beside its corrected 397-pass/two-warning report. These are source/test findings only. No fresh candidate image, current-image active-search kill, or runtime acceptance is available.
+
+For a future PR-head run, first use a fresh verified build receipt and set `REVIEWED_PR_HEAD_SHA` to its exact current 40-character lowercase PR revision. E775 added optional `--candidate-revision` validation; the default local-source mode remains available. The existing E723 image predates this source-preparation change and is not a current candidate. Set the candidate and volume to their dedicated per-run Docker names from the verified probe/build materials: `assistant-r120-candidate-<12-hex-context-prefix>` and `stock-probs-assistant-r120-<same-prefix>`. The probe resolves these names and rechecks full container, volume, and network IDs. Use the image ID, context digest, and PR SHA from the same fresh verified build receipt. Do not reuse a historical revision value:
+
+```bash
+.dev-venv/bin/python -m tests.supervised_assistant_kill_probe \
+  --candidate-container "$CANDIDATE_CONTAINER_NAME" \
+  --candidate-image-id "$CANDIDATE_IMAGE_ID" \
+  --source-context-sha256 "$CANDIDATE_SOURCE_CONTEXT_SHA256" \
+  --candidate-volume "$CANDIDATE_VOLUME_NAME" \
+  --candidate-revision "$REVIEWED_PR_HEAD_SHA"
+```
+
+This is the required module invocation for that PR-bound probe. E775 passed builder source-preparation checks (417 tests passed, 2 explicitly deselected, no failures, errors, or skips); E777 independently passed its source/test scope (417 passed, 2 deselected, 2 warnings, Ruff check/format/diff, and four stable pins). Neither ran Docker or runtime checks. Before runtime acceptance, the trusted local caller and parent must verify the maintained build-receipt SHA and its exact immutable image, context, and PR revision, then recheck the reviewed pair manifest. The PR revision is a local CLI argument, not an MCP input; the default local-source mode remains unchanged.
+
+R-ASTRA-120 remains **In progress**. E725's earlier full-browser failure remains preserved. E765 later passed 191 cases with 3 expected skips and no failures; its four maintained assistant-panel axe snapshots were 0 violations/0 incomplete, which does not establish full-app accessibility. E767 passed fresh-task discovery of all eight tools and one read-only `status` call. E721 security results cover only the selected synthetic scope. No current-image kill, native/provider runtime, full security, or release acceptance is established. See the [authoritative ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact history and receipts.
 
 ### PR-head candidate image build helper
 
@@ -232,6 +252,31 @@ open. Do not treat source presence or test passes as build or rollback acceptanc
 The later prebuilt-image rehearsal remains separate: it binds an immutable image ID and filtered
 context digest to the same reviewed PR head SHA. The production publisher remains unchanged and
 still requires a clean revision that matches exact `origin/main`.
+
+### Exact PR-pair review pins
+
+The fixed local review-pin command accepts only an explicit write request:
+
+```bash
+python3 scripts/pin_pr_rehearsal_review.py --write
+```
+
+Before writing, the helper reads the current commit, requires the exact clean PR-1 source, checks
+its fixed candidate/recovery pair manifest and image/source digests, verifies the PR identity, and
+binds the pair to that same commit. It accepts no target, path, or credential arguments. The
+operator-local record is `$XDG_CONFIG_HOME/signal-ledger/rehearsal-review.json`; when
+`XDG_CONFIG_HOME` is unset, the base defaults to `~/.config`. Keep this file outside the repository.
+It is private mode `0600` and contains only format version `1`, the reviewed PR-head SHA, and the
+pair-manifest SHA-256. It contains no credential material.
+
+For compatibility, the MCP can also read the paired environment variables
+`SIGNAL_LEDGER_REHEARSAL_REVIEWED_PR_HEAD_SHA` and
+`SIGNAL_LEDGER_REHEARSAL_REVIEWED_PAIR_MANIFEST_SHA256`. A partial pair, malformed value, or
+mismatch between the environment pair and metadata file fails closed. Do not set only one variable.
+E767 passed fresh-task discovery of all eight configured tools/schemas and one read-only `status`
+call. E741's `--write` command was not run; no review metadata was written and no PR-pair rehearsal
+occurred. See the [MVP plan](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
+for current status and detailed evidence.
 
 ### Binding browser evidence to the served frontend
 

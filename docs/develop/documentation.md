@@ -52,6 +52,14 @@ project is needed to observe agent, skill, and MCP discovery after a configurati
 This Codex setup does not alter prior OpenCode receipts or establish provider, project-profile,
 release, export, or remote acceptance.
 
+Project configuration text is not runtime-discovery evidence. E767 passed fresh-task Codex discovery of all eight configured deployment tools and one read-only `status` call; no mutating tool ran. R-ASTRA-120 remains **In progress**. E725's earlier full-browser **Fail** is preserved; E765 later passed 191 cases with 3 expected skips and no failures. Its four maintained assistant-panel axe snapshots were 0/0; full-app accessibility remains open. E721's 928 tests passed for its selected synthetic/local security scope with 75 source/test pins unchanged; its unchanged-baseline Ruff format failures remain recorded. E769–E772 passed the repaired kill-profile source/test review scope only. E775 builder source-preparation checks passed 417 tests with two explicitly deselected after adding PR-revision identity binding; E777 independently passed its selected source/test scope (417 passed, 2 deselected, 2 warnings; four pins stable); it ran no Docker or runtime check. No fresh candidate image or live kill is accepted. See the [MVP plan](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact history and evidence.
+
+The candidate
+local PR-pair helper
+`python3 scripts/pin_pr_rehearsal_review.py --write` and its fixed metadata contract are described
+in [developer testing](testing.md#exact-pr-pair-review-pins), [local configuration](../configure/local-configuration.md#local-pr-rehearsal-review-metadata),
+and [getting started](../operations/getting-started.md#review-a-pr-pair-before-rehearsal).
+
 ### Source-bound build recovery
 
 For source-bound Docker work, preserve each owned source baseline as exact bytes plus SHA-256 before
@@ -214,12 +222,18 @@ python3 scripts/check-doc-coverage-self-test.py
 The change-aware checker and self-test do not install hooks or mutate Git. A deliberate exception
 is explicit (`Doc-Gate: exempt`), not inferred from a builder report or an unavailable check.
 
-The documentation map currently covers workflow and configuration changes. If a UI change needs
-change-aware documentation coverage, the tooling owner must map the actual changed source paths to
-the relevant authored guide; keep any new rule narrow enough that unrelated interface edits do not
-require cosmetic edits to the map's target page. A new Develop topic also requires one category-index
-link and an entry in the validator's `CATEGORIES["develop"]` list. These taxonomy/configuration
-changes are owned by the tooling owner, not by the authored-documentation lane.
+The current documentation map includes a narrow `deployment-review-pins` rule for
+`scripts/pin_pr_rehearsal_review.py` and its fixed review-pin source contract in
+`tools/deploy_mcp/pr_rehearsal.py`. It requires `docs/develop/documentation.md`,
+`docs/develop/testing.md`, `docs/configure/local-configuration.md`, and
+`docs/operations/getting-started.md`; the additional `workflow-policy` rule also requires
+`AGENTS.md`. This explicit path coverage was added by the coordinator. A successful
+completeness/change-aware run applies only to the current map and the paths supplied to that run. If a UI change needs change-aware
+documentation coverage, the tooling owner must map the actual changed source paths to the relevant
+authored guide; keep any new rule narrow enough that unrelated interface edits do not require
+cosmetic edits to the map's target page. A new Develop topic also requires one category-index link
+and an entry in the validator's `CATEGORIES["develop"]` list. These taxonomy/configuration changes
+are owned by the tooling owner, not by the authored-documentation lane.
 
 The approved project governance set now contains eight directory-based skill definitions:
 `documentation`, `development-conventions`, `stock-probability-skill-maintenance`,

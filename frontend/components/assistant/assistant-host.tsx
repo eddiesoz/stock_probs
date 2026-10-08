@@ -1,6 +1,6 @@
 "use client";
 
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 import { getAuthSession } from "../auth-client";
@@ -10,6 +10,13 @@ import { AssistantClientError, assistantContextRequest, type AssistantContextReq
 import styles from "./assistant.module.css";
 
 type HostState = "checking" | "hidden" | "ready";
+type LocalControlsHandoff = Readonly<{
+  targetId: "notes-heading" | "alerts-heading";
+  expectedHref: string;
+  contextRequest: AssistantContextRequest;
+  background: HTMLElement;
+  target: HTMLElement;
+}>;
 const AssistantPanel = lazy(() => import("./assistant-panel").then((module) => ({ default: module.AssistantPanel })));
 
 export function AssistantHost() {
@@ -23,9 +30,16 @@ function AssistantHostClient() {
   const [hostState, setHostState] = useState<HostState>("checking");
   const [open, setOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [pendingLocalHandoff, setPendingLocalHandoff] = useState<LocalControlsHandoff | null>(null);
+  const pendingLocalHandoffRef = useRef<LocalControlsHandoff | null>(null);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const search = searchParams?.toString() ?? "";
+
+  const clearPendingLocalHandoff = useCallback(() => {
+    pendingLocalHandoffRef.current = null;
+    setPendingLocalHandoff(null);
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 699px)");
@@ -65,6 +79,7 @@ function AssistantHostClient() {
 
   useEffect(() => {
     const syncLocation = () => {
+      clearPendingLocalHandoff();
       setContextRequest(assistantContextRequest({ pathname: window.location.pathname, search: window.location.search }));
     };
     syncLocation();
@@ -74,12 +89,45 @@ function AssistantHostClient() {
       window.removeEventListener("popstate", syncLocation);
       window.removeEventListener(instrumentChangeEvent, syncLocation);
     };
-  }, [pathname, search]);
+  }, [clearPendingLocalHandoff, pathname, search]);
+
+  useEffect(() => {
+    // Parent passive effects run after the unmounted panel's focus-trap cleanup.
+    const handoff = pendingLocalHandoff;
+    if (!handoff || open) return;
+
+    const selector = handoff.targetId === "notes-heading"
+      ? 'h2#notes-heading[tabindex="-1"]'
+      : 'h2#alerts-heading[tabindex="-1"]';
+    const currentContext = assistantContextRequest({ pathname: window.location.pathname, search: window.location.search });
+    const isCurrent = pendingLocalHandoffRef.current === handoff
+      && contextRequest === handoff.contextRequest
+      && JSON.stringify(currentContext) === JSON.stringify(handoff.contextRequest)
+      && window.location.href === handoff.expectedHref
+      && handoff.background.isConnected
+      && document.querySelector<HTMLElement>("[data-assistant-background]") === handoff.background
+      && !handoff.background.inert
+      && !handoff.background.hasAttribute("data-assistant-mobile-modal-underlay")
+      && document.body.dataset.assistantOpen !== "true"
+      && !document.querySelector('[data-testid="assistant-panel"]')
+      && handoff.target.isConnected
+      && document.getElementById(handoff.targetId) === handoff.target
+      && handoff.background.contains(handoff.target)
+      && handoff.target.matches(selector)
+      && handoff.target.getClientRects().length > 0;
+
+    if (isCurrent) {
+      handoff.target.scrollIntoView({ block: "center" });
+      handoff.target.focus({ preventScroll: true });
+    }
+    if (pendingLocalHandoffRef.current === handoff) clearPendingLocalHandoff();
+  }, [clearPendingLocalHandoff, contextRequest, open, pendingLocalHandoff]);
 
   useEffect(() => {
     let current = true;
     if (!contextRequest) {
       setStatus(null);
+      clearPendingLocalHandoff();
       setOpen(false);
       setHostState("hidden");
       return () => { current = false; };
@@ -93,6 +141,7 @@ function AssistantHostClient() {
         if (!session?.authenticated) {
           if (current) {
             setStatus(null);
+            clearPendingLocalHandoff();
             setOpen(false);
             setHostState("hidden");
           }
@@ -101,6 +150,7 @@ function AssistantHostClient() {
         if (contextRequest.route === "/admin" && session.user?.role !== "admin") {
           if (current) {
             setStatus(null);
+            clearPendingLocalHandoff();
             setOpen(false);
             setHostState("hidden");
           }
@@ -111,7 +161,10 @@ function AssistantHostClient() {
         setStatus(result);
         // Keep provider-free history and saved conversations available during worker outages.
         setHostState(result.enabled ? "ready" : "hidden");
-        if (!result.enabled) setOpen(false);
+        if (!result.enabled) {
+          clearPendingLocalHandoff();
+          setOpen(false);
+        }
       } catch (error) {
         if (!current) return;
         const accessRevoked = error instanceof AssistantClientError
@@ -119,6 +172,7 @@ function AssistantHostClient() {
         if (accessRevoked) {
           // The canary status endpoint is deliberately hidden outside the enabled owner scope.
           setStatus(null);
+          clearPendingLocalHandoff();
           setOpen(false);
           setHostState("hidden");
         } else if (status) {
@@ -130,37 +184,29 @@ function AssistantHostClient() {
       }
     })();
     return () => { current = false; };
-  }, [contextRequest]);
+  }, [clearPendingLocalHandoff, contextRequest]);
 
   function closePanel() {
+    clearPendingLocalHandoff();
     setOpen(false);
     window.requestAnimationFrame(() => launcherRef.current?.focus());
   }
 
   function handoffToLocalControls(targetId: "notes-heading" | "alerts-heading", expectedHref: string) {
-    if (window.location.href !== expectedHref) return;
+    const handoffContext = contextRequest;
+    const currentContext = assistantContextRequest({ pathname: window.location.pathname, search: window.location.search });
+    if (!handoffContext || JSON.stringify(currentContext) !== JSON.stringify(handoffContext)
+        || window.location.href !== expectedHref) return;
     const background = document.querySelector<HTMLElement>("[data-assistant-background]");
     const selector = targetId === "notes-heading"
       ? 'h2#notes-heading[tabindex="-1"]'
       : 'h2#alerts-heading[tabindex="-1"]';
     const target = background?.querySelector<HTMLElement>(selector);
     if (!background || !target?.matches(selector)) return;
+    const handoff = { targetId, expectedHref, contextRequest: handoffContext, background, target };
+    pendingLocalHandoffRef.current = handoff;
+    setPendingLocalHandoff(handoff);
     setOpen(false);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        if (window.location.href !== expectedHref || !background.isConnected
-            || document.querySelector("[data-assistant-background]") !== background
-            || !target.isConnected || document.getElementById(targetId) !== target
-            || !background.contains(target) || !target.matches(selector)
-            || background.inert
-            || background.hasAttribute("data-assistant-mobile-modal-underlay")
-            || document.body.dataset.assistantOpen === "true"
-            || document.querySelector('[data-testid="assistant-panel"]')) return;
-        if (target.getClientRects().length === 0) return;
-        target.scrollIntoView({ block: "center" });
-        target.focus({ preventScroll: true });
-      });
-    });
   }
 
   if (hostState !== "ready" || !status || !contextRequest) return null;
@@ -172,7 +218,10 @@ function AssistantHostClient() {
           className={styles.launcher}
           type="button"
           aria-label="Open Ledger assistant"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            clearPendingLocalHandoff();
+            setOpen(true);
+          }}
         >
           <span className={styles.mark} aria-hidden="true"><i /><i /><i /></span>
           <span>Ledger assistant</span>

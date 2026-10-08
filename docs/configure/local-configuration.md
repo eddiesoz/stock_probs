@@ -71,6 +71,29 @@ for their current results and [getting started](../operations/getting-started.md
 for the controlled capture/render workflow. A dirty working revision or an old preview is not a
 substitute for current reviewed captures.
 
+## Local PR-rehearsal review metadata
+
+The R-ASTRA-120 deployment MCP can load two nonsensitive review pins from the operator-local
+`$XDG_CONFIG_HOME/signal-ledger/rehearsal-review.json` file (default base: `~/.config`). Keep
+`XDG_CONFIG_HOME` absolute and outside the repository so the metadata remains private and
+untracked. The file is mode `0600`, owned by the current operator, and has the fixed schema
+`format_version`, `reviewed_pr_head_sha`, and `reviewed_pair_manifest_sha256`; it stores only a
+commit SHA and a pair-manifest digest, never credentials.
+
+The compatibility environment pair is `SIGNAL_LEDGER_REHEARSAL_REVIEWED_PR_HEAD_SHA` plus
+`SIGNAL_LEDGER_REHEARSAL_REVIEWED_PAIR_MANIFEST_SHA256`. They must be set together and match the
+file when both sources exist. A partial, malformed, unsafe, or disagreeing value fails closed. The
+explicit `python3 scripts/pin_pr_rehearsal_review.py --write` command verifies the current clean
+PR-1 source and exact candidate/recovery pair before writing; it was not run in E741, so no review
+metadata write is evidenced. E762 and E766 later passed selected source and receipt-integrity
+reviews only; neither executed the CLI, changed the private metadata, or invoked runtime tools. The
+current `.codex/config.toml` names eight MCP operations in text, but the file alone does not establish live Codex tool discovery. E767 later passed fresh-task
+discovery of all eight configured tools/schemas and one read-only `status` call; no mutating
+operation was invoked. Future configuration changes require another fresh Codex task. See the
+[developer testing guide](../develop/testing.md#exact-pr-pair-review-pins) for the command contract
+and [getting started](../operations/getting-started.md#review-a-pr-pair-before-rehearsal) for the
+operator sequence.
+
 ## Authentication settings
 
 Authentication is disabled by default for the local development path. Production requires GitHub

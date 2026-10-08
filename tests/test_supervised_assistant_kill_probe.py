@@ -18,6 +18,9 @@ def _candidate(
     *,
     container: str = "assistant-r120-candidate-012345abcdef",
     volume: str = "stock-probs-assistant-r120-012345abcdef",
+    network_name: str | None = "stock-probs-assistant-r120-012345abcdef-candidate-network",
+    network_id: str | None = "c" * 64,
+    candidate_revision: str | None = None,
 ) -> supervised.Candidate:
     """Return the exact synthetic candidate metadata shape expected by the probe."""
 
@@ -30,6 +33,9 @@ def _candidate(
         host_port=49152,
         host_pid=12345,
         cgroup=Path("/sys/fs/cgroup/synthetic-candidate"),
+        network_name=network_name,
+        network_id=network_id,
+        candidate_revision=candidate_revision,
     )
 
 
@@ -69,6 +75,78 @@ def test_candidate_scope_rejects_unsafe_metadata_before_docker(
     assert calls == []
 
 
+@pytest.mark.parametrize("candidate_revision", ["A" * 40, "a" * 39, "a" * 41, "x" * 40])
+def test_kill_probe_rejects_malformed_candidate_revision_before_docker(
+    monkeypatch: pytest.MonkeyPatch,
+    candidate_revision: str,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(supervised, "_command", lambda args, **_kwargs: calls.append(args) or "")
+
+    with pytest.raises(kill_probe.ProbeError, match="exact lowercase commit SHA"):
+        kill_probe.run_probe(
+            "assistant-r120-candidate-012345abcdef",
+            "sha256:" + "b" * 64,
+            "0" * 64,
+            "stock-probs-assistant-r120-012345abcdef",
+            candidate_revision,
+        )
+
+    assert calls == []
+
+
+def test_kill_probe_preserves_candidate_revision_through_seed_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate_revision = "a" * 40
+    candidate = _candidate(candidate_revision=candidate_revision)
+    context_sha256 = "012345abcdef" + "0" * 52
+    inspect_revisions: list[str | None] = []
+
+    def inspect(
+        _container: str,
+        _image_id: str,
+        _context_sha256: str,
+        _volume: str,
+        expected_revision: str | None = None,
+    ) -> supervised.Candidate:
+        inspect_revisions.append(expected_revision)
+        return candidate
+
+    monkeypatch.setattr(supervised, "_candidate_container", inspect)
+    monkeypatch.setattr(
+        kill_probe,
+        "_sample_resource_state",
+        lambda _candidate: {
+            "memory_peak": 1,
+            "pids_current": 1,
+            "memory_events_oom": 0,
+            "memory_events_oom_kill": 0,
+        },
+    )
+    monkeypatch.setattr(
+        supervised,
+        "_health",
+        lambda _candidate: {"assistant": {"status": "ready", "enabled": True}},
+    )
+
+    def stop_after_refresh(_candidate: supervised.Candidate) -> list[dict[str, str]]:
+        raise kill_probe.ProbeError("stop after checked refresh")
+
+    monkeypatch.setattr(supervised, "_seed_users", stop_after_refresh)
+
+    with pytest.raises(kill_probe.ProbeError, match="stop after checked refresh"):
+        kill_probe.run_probe(
+            candidate.container,
+            candidate.image_id,
+            context_sha256,
+            candidate.data_volume,
+            candidate_revision,
+        )
+
+    assert inspect_revisions == [candidate_revision, candidate_revision]
+
+
 def test_kill_refuses_wrong_candidate_shape_before_command(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -79,6 +157,30 @@ def test_kill_refuses_wrong_candidate_shape_before_command(
 
     with pytest.raises(kill_probe.ProbeError, match="fixed disposable scope"):
         kill_probe._run_kill(_candidate(container="signal-ledger", volume="signal-ledger-data"))
+
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"network_name": None},
+        {"network_id": None},
+        {"network_name": "bridge"},
+        {"network_id": "not-a-full-network-id"},
+    ],
+)
+def test_kill_requires_bound_candidate_network_before_command(
+    monkeypatch: pytest.MonkeyPatch,
+    updates: dict[str, object],
+) -> None:
+    """Legacy candidate fixtures cannot invoke a mutating kill without exact network identity."""
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(supervised, "_command", lambda args, **_kwargs: calls.append(args) or "{}")
+
+    with pytest.raises(kill_probe.ProbeError, match="exact network identity"):
+        kill_probe._run_kill(_candidate(**updates))
 
     assert calls == []
 
@@ -106,7 +208,7 @@ def test_kill_uses_fixed_nonroot_module_command_without_operational_arguments(
         "exec",
         "--user",
         "10001:10001",
-        "assistant-r120-candidate-012345abcdef",
+        "a" * 64,
         "python",
         "-m",
         "stock_probs.cli",
@@ -307,6 +409,93 @@ def test_owner_projection_fails_closed_on_malformed_or_unbounded_data(
         kill_probe._owner_state_snapshot(
             _candidate(), {"session_cookie": "synthetic-session-cookie-0123456789abcdef"}
         )
+
+
+def _surviving_process_snapshot() -> list[dict[str, object]]:
+    """Return a synthetic app/supervisor process tree after workers have exited."""
+
+    return [
+        {
+            "pid": 1,
+            "role": "supervisor",
+            "uid": 0,
+            "gid": 0,
+            "cap_eff": "00000000000000c0",
+            "cap_prm": "00000000000000c0",
+            "cap_bnd": "00000000000000c0",
+            "no_new_privileges": "1",
+        },
+        {
+            "pid": 12346,
+            "role": "app_wrapper",
+            "uid": 10001,
+            "gid": 10001,
+            "cap_eff": "0000000000000000",
+            "cap_prm": "0000000000000000",
+            "cap_bnd": "00000000000000c0",
+            "no_new_privileges": "1",
+        },
+    ]
+
+
+def test_kill_probe_validates_surviving_app_identity_profile_and_worker_exit() -> None:
+    snapshot = _surviving_process_snapshot()
+
+    result = kill_probe._verify_surviving_app_profile(
+        snapshot, {"pid": 12346, "uid": 10001, "gid": 10001}
+    )
+
+    assert result["app_wrapper"] == {
+        "pid": 12346,
+        "uid": 10001,
+        "gid": 10001,
+        "cap_eff": "0000000000000000",
+        "cap_prm": "0000000000000000",
+        "no_new_privileges": "1",
+    }
+    assert result["supervisor"]["pid"] == 1
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "changed_app_pid",
+        "wrong_app_gid",
+        "app_capability",
+        "app_permitted_capability",
+        "app_privilege_escalation",
+        "wrong_supervisor_capability",
+        "wrong_supervisor_permitted_capability",
+        "worker_survived",
+        "duplicate_app",
+    ],
+)
+def test_kill_probe_rejects_changed_or_unsafe_surviving_process_profile(change: str) -> None:
+    snapshot = _surviving_process_snapshot()
+    app = next(row for row in snapshot if row["role"] == "app_wrapper")
+    supervisor = next(row for row in snapshot if row["role"] == "supervisor")
+    expected = {"pid": 12346, "uid": 10001, "gid": 10001}
+    if change == "changed_app_pid":
+        app["pid"] = 12347
+    elif change == "wrong_app_gid":
+        app["gid"] = 10002
+    elif change == "app_capability":
+        app["cap_eff"] = "0000000000000001"
+    elif change == "app_permitted_capability":
+        app["cap_prm"] = "0000000000000001"
+    elif change == "app_privilege_escalation":
+        app["no_new_privileges"] = "0"
+    elif change == "wrong_supervisor_capability":
+        supervisor["cap_bnd"] = "0000000000000000"
+    elif change == "wrong_supervisor_permitted_capability":
+        supervisor["cap_prm"] = "0000000000000000"
+    elif change == "worker_survived":
+        snapshot.append({"pid": 12347, "role": "worker_wrapper"})
+    else:
+        snapshot.append(app.copy())
+
+    with pytest.raises(kill_probe.ProbeError, match="after assistant kill"):
+        kill_probe._verify_surviving_app_profile(snapshot, expected)
 
 
 def test_saved_record_projection_reads_only_a_bounded_owner_digest(
@@ -579,6 +768,52 @@ def test_candidate_projection_does_not_include_raw_command_arguments() -> None:
     assert "argv" not in receipt
     assert "session_cookie" not in receipt
     assert re.fullmatch(r"sha256:[0-9a-f]{64}", receipt["image_id"])
+
+
+def test_kill_probe_cli_passes_candidate_revision_to_run_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    candidate_revision = "a" * 40
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def run_probe(*args: object, **kwargs: object) -> dict[str, object]:
+        calls.append((args, kwargs))
+        return {"status": "pass"}
+
+    monkeypatch.setattr(kill_probe, "run_probe", run_probe)
+
+    assert (
+        kill_probe.main(
+            [
+                "--candidate-container",
+                "assistant-r120-candidate-012345abcdef",
+                "--candidate-image-id",
+                "sha256:" + "b" * 64,
+                "--source-context-sha256",
+                "c" * 64,
+                "--candidate-volume",
+                "stock-probs-assistant-r120-012345abcdef",
+                "--candidate-revision",
+                candidate_revision,
+            ]
+        )
+        == 0
+    )
+
+    assert calls == [
+        (
+            (
+                "assistant-r120-candidate-012345abcdef",
+                "sha256:" + "b" * 64,
+                "c" * 64,
+                "stock-probs-assistant-r120-012345abcdef",
+                candidate_revision,
+            ),
+            {},
+        )
+    ]
+    assert json.loads(capsys.readouterr().out) == {"status": "pass"}
 
 
 def test_cli_mode_invocation_is_the_valid_module_entrypoint() -> None:

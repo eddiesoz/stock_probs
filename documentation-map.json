@@ -45,6 +45,16 @@
       "docs": ["docs/develop/documentation.md"]
     },
     {
+      "name": "deployment-review-pins",
+      "match": ["scripts/pin_pr_rehearsal_review.py", "tools/deploy_mcp/pr_rehearsal.py"],
+      "docs": [
+        "docs/develop/documentation.md",
+        "docs/develop/testing.md",
+        "docs/configure/local-configuration.md",
+        "docs/operations/getting-started.md"
+      ]
+    },
+    {
       "name": "project-commands",
       "match": [".opencode/commands/*.md"],
       "docs": ["docs/develop/documentation.md"]
@@ -60,6 +70,8 @@
         "scripts/setup-git-hooks.sh",
         "model-routing.json",
         "scripts/sync_model_routing.py",
+        "scripts/pin_pr_rehearsal_review.py",
+        "tools/deploy_mcp/pr_rehearsal.py",
         ".githooks/**",
         "scripts/local-gate.sh",
         "opencode.json",

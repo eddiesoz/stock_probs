@@ -440,6 +440,24 @@ The normal sequence is:
 inspect → plan_deploy(main revision, release archive SHA, image ID) → deploy(plan) → status
 ```
 
+#### Review a PR pair before rehearsal
+
+For the fixed R-ASTRA-120 PR #1 pair, first build and verify the exact clean candidate/recovery
+pair. Only then persist its local review pins with:
+
+```bash
+python3 scripts/pin_pr_rehearsal_review.py --write
+```
+
+The command has no target/path arguments. It checks the current clean PR head and pair manifest
+before writing private, nonsensitive pins to `$XDG_CONFIG_HOME/signal-ledger/rehearsal-review.json`
+(defaulting under `~/.config`). The paired environment compatibility variables must agree with the
+file if both are present; partial or mismatched values fail closed. This is an operator-local
+preparation step, not a deployment. The E741 candidate command was not executed, no metadata file
+was written, and no PR-pair rehearsal or remote operation is accepted. The latest config text names
+eight operations. E767 later passed fresh-task discovery for this configuration; future configuration changes require a fresh Codex task to verify discovery. See [local metadata settings](../configure/local-configuration.md#local-pr-rehearsal-review-metadata)
+and [developer testing](../develop/testing.md#exact-pr-pair-review-pins).
+
 `refresh_operator_access(operator_ipv4_cidr)` is a separate maintenance action. It accepts one
 canonical IPv4 `/32` and constrains Terraform to the fixed `linode_firewall.signal_ledger` resource
 (firewall ID `177236117`) and its `ssh-operator` TCP port-22 rule, using the fixed external private
@@ -448,9 +466,9 @@ state, command, or credential. R-ASTRA-106 records a live refresh result with `5
 applied to firewall `177236117`; the Linode console login uses Google SSO and SSH material remains
 separate.
 
-R-ASTRA-120 is not deployed. Production remains at
-`da2764e8477698fa7d686be93a4711e35478e802`, schema 12, with assistant rollout disabled. The
-candidate's PR-pair rehearsal and assistant rollout operation remain subject to verification. The
+R-ASTRA-120 remains **In progress**. E699 is the latest read-only production observation (schema 12 ready, loopback-only); rollout, RAM, and billing were not returned. E725's full-browser failure remains preserved; E765 later passed 191 cases with 3 expected skips and no failures, and four maintained panel axe snapshots were 0 violations/0 incomplete. Full-app accessibility remains open. E721 passed 928 tests for a selected synthetic/local security scope with 75 source/test pins unchanged; its baseline format failures remain recorded. E769–E772 passed kill-profile source/test review only. E775 passed builder source-preparation checks (417 passed, 2 explicitly deselected) for PR-revision identity binding; E777 independently passed its selected source/test scope (417 passed, 2 deselected, 2 warnings; four pins stable); it ran no Docker or runtime check. No fresh candidate image build/probe or live kill is accepted. Native/provider, complete security, physical mobile, actual combined 1 GB, rollback, final guide, deployment/canary, and release gates remain open. The US$15 total cap and existing 1 GB/backups remain unchanged. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts and preserved failures; no production change, resize, rollout, merge, email, or release is claimed.
+
+The
 rehearsal source creates a separate, labelled user-defined bridge for each candidate run, with
 Docker's default IPAM and no published ports. Recovery and one-shot CLI containers use `none`.
 Cleanup checks the exact network ID, name, ownership and empty endpoints after confirming owned
@@ -466,8 +484,8 @@ setting. The local schema-12-to-13 rehearsal directly checked `no_new_privileges
 substitute for live inspection. An actual active-search kill passed on earlier schema-13 image
 `sha256:37c0c449e62e14ec83afc26163c59a69d17ae6a0a8d77133d180e4d68a3a1fc6`: it cancelled the turn,
 left a pending search unexecuted, preserved app readiness/private history and saved records, and
-erased worker state with zero OOM events. The current-image kill rerun remains pending. The
-schema-12-to-13 migration/recovery rehearsal passed for its declared same-disposable-volume scope,
+erased worker state with zero OOM events. Current-image kill acceptance remains open; see the current
+checkpoint above and the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on). The schema-12-to-13 migration/recovery rehearsal passed for its declared same-disposable-volume scope,
 preserved post-migration writes, and recorded `PR_bound=false` and `actual_1GB_Linode=false`; it is
 not PR-bound rollback or actual 1 GB host evidence. The E39 model-activation-lock native run
 failed after owner 1's approved WebFetch timed out at `dns_lookup_timeout` after 8,963 ms, leaving no
@@ -574,7 +592,7 @@ at the app revision also failed; see the [R-ASTRA-120 ledger](../../MVP-PLAN.md)
 and receipts. A static instruction audit at the 30742 checkpoint found that context selection is
 all-or-none with the current route always included, email-only invitations require a verified
 GitHub email (while a supplied positive account ID restricts redemption to that account), and the
-visible cancellation control is labeled “Stop response.” E679's copy/source-contract review and E696/E697's earlier capture are historical. E706–E710 later bound a fresh eight-image synthetic guide draft to PR head `4824479eb3f8e181baeeed67577d77931a48d0e5` and passed their declared capture, review, finalization, and render scopes. E714's standalone HTML audit passed four viewport/theme states with axe 0 violations/0 incomplete, and parent visual review passed all 14 PDF pages; that draft's cover Figure was unnamed. E715 repaired the Figure name, with parent source review and E717's independent 18/18 semantic checks passing for their scopes. Because the change makes the earlier full bundle stale, fresh current-head capture, render, and guide QA remain pending. E718/E719 are selected helper checks only; no new pair rehearsal ran. E720's `--no-prune` cleanup removed only its exact target, while E708's earlier ancestor removal remains preserved. E721's selected security tests and Ruff lint/security passed; its scoped format check failed on unchanged baseline style. Strict app raw axe remains **Fail**. Physical mobile, actual assistive technology, PDF/UA, final PR-bound guide, native/provider, actual 1 GB, rollback, deployment, and release acceptance remain unavailable or pending. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md) for exact receipts and earlier failures.
+visible cancellation control is labeled “Stop response.” E679's copy/source-contract review and E696/E697's earlier capture are historical. E706–E710 bound a synthetic guide draft to the then-current PR head and passed their declared capture, review, finalization, and render scopes. E714's standalone HTML/PDF draft review found an unnamed cover Figure; E715/E717 repaired and independently checked the Figure name. That repair made the earlier bundle stale, so fresh current-head guide capture/render remains pending. E725's later 194-case browser aggregate failed, and guide capture was skipped. E760 later passed the maintained four-state panel snapshot scope with zero raw axe violations and incompletes; this does not establish full-app accessibility. E722 documentation checks passed at their earlier checkpoint. Physical mobile, actual assistive technology, PDF/UA, final PR-bound guide, native/provider, actual 1 GB, rollback, deployment, and release acceptance remain unavailable or pending. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md) for exact receipts and earlier failures.
 
 ### PR-head candidate image build helper
 
@@ -641,42 +659,10 @@ QA passed 83 tests; its opt-in Docker case was skipped. Live host/container beha
 PR-bound rollback rehearsal remain pending, so this candidate is not production rollback acceptance.
 See the [MVP plan](../../MVP-PLAN.md) for its exact evidence scope.
 
-The latest PR-head candidate build (E702) passed build/source-context binding only and was not published or run. E705 failed closed below the 4 GiB preflight before recovery-image build or pair export; E718/E719 are selected helper tests, not a rehearsal. PR-bound recovery remains pending. Native/provider acceptance, current-image kill, actual combined 1 GB, strict app accessibility, final guide, and rollback gates remain open. Keep the existing Linode plan and backups within the US$15 monthly total cap, including applicable taxes; no resize was applied.
-
-Each promotion is serialized under a lock, starts with a verified application backup, runs
-readiness checks, and attempts code-only rollback only when the database schema remains compatible.
-If a migration has advanced the schema and the candidate fails, the helper stops the service and
-records the failure for operator recovery. The fixed helper completed a private deployment plan
-(`65d8355aef719983cb989a2dd8056522`) and the remote app is healthy. The prior private image was
-reviewed commit `39bd185150cd3df70395e6c000f568dfd20831ac`, with release archive SHA-256
-`930d6d5b5d054908a25825c980584b620817bfa7ab212a62abd63f65c72f6f3f` and image ID
-`sha256:23ef16e4e5ee28db378c76bbcd9182345584bbffda55bd5313141fd0847fe31b`; publisher
-re-download verification passed. The prior origin-navigation image was reviewed commit
-`11faaf702129d0c1485a8683711d88340f623a71`, with publisher SHA-256
-`fad471b19db6ff4f9b4dc154055f0d2437128e49878e72a286b697f17e8a3f48`, image ID
-`sha256:26df706f6a2b4e76ee51bb014f94d39eb66bc7644a2c7a56eb3d012f41684d60`, and MCP plan
-`530c1c65a7b4563e9c7f1cdbf5a47a3d`; deploy reported ready schema `8`, no failure, and loopback-only
-with pre-deploy backup `pre-deploy-11faaf702129d0c1-d1c03381.spbackup`. The earlier final clean-main image
-uses revision `2de5e9f199cd145707f95e81d389c40b2ab3c32a`, archive SHA-256
-`b856795831b6fb46e94e330370e003843b266ad85f22e8d95ef7624536b2ac48`, and image ID
-`sha256:ae7991f35a2093b145245f8037a3227981b09051805467870f759c0752bbfc3d`. Its first MCP plan
-failed transiently with `remote_operation_failed`; retry plan
-`2d8b0fe91ed01b55f1625c27edcc620b` passed, and deploy returned deployed/readiness schema `8` with
-status reporting the current revision, `failed: null`, `loopback_only: true`, and pre-deploy backup
-`pre-deploy-2de5e9f199cd1457-751c7459.spbackup`. The official Python SDK MCP plan
-`a07bb7ba2716899bef956269495f0a47`
-and deploy passed to the replacement Linode; status is healthy, schema `8`, loopback-only, and a
-pre-deploy backup was present. Static MCP discovery passed in a fresh CLI task. The earlier
-read-only stdio smoke listed the five release/deployment tools available at that historical revision
-and completed `inspect` successfully
-without printing credential bytes. A separate fresh Codex client invocation remains unavailable
-under host approval policy `never`; rollback is not accepted by the read-only smoke. E63 records a
-historical deployment: main revision `27e0d2f5916d4297e10d259aa4776055a78faeaa`, Linux/amd64 image ID
-`sha256:ecd41e1b65eb76b424cff830a6150db2282d326cfb18b3b6eaa37b07f83c4bc0`, archive SHA-256
-`78f2e44ecfbe2021a61a0ecd71414065024c246eb46ca9506b33c20f13b07ad1`, retry plan
-`21ca962a39d261282610568bc1e21219`, schema `8`, `failed: null`, loopback-only, and pre-deploy
-backup `pre-deploy-27e0d2f5916d4297-39376b8d.spbackup`. The publisher exited `0`; public
-health/auth/sign-in probes returned `200`/`200`/`401`/`303` with `no-store`/`DYNAMIC`.
+Current R-ASTRA-120 release status is summarized above; the complete per-run evidence remains in
+the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
+Keep the existing 1 GB plan and backups within the US$15 monthly total cap; no resize, deployment,
+rollout, or release is authorized by this documentation status.
 
 ### R-ASTRA-106 operator-access and deployment receipt
 

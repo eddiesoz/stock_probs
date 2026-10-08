@@ -87,6 +87,7 @@
 .userMessage p,.assistantMessage p{margin:.35rem 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.875rem;line-height:1.55;user-select:text}
 .userMessage small,.assistantMessage small{display:block;margin-top:.35rem;color:var(--muted);font-size:.875rem}
 .answerBlocks{display:grid;gap:.45rem;margin-top:.4rem;font-size:.9375rem;line-height:1.5;overflow-wrap:anywhere;user-select:text}
+.answerInlineText{display:inline-block;max-width:100%;white-space:pre-wrap}
 .answerBlocks>p{margin:0;font-size:.9375rem;line-height:1.5;white-space:pre-line}
 .answerHeading{margin:.15rem 0 0;font-size:1rem;line-height:1.3}.answerHeading:first-child{margin-top:0}
 .answerBlocks ul,.answerBlocks ol{display:grid;gap:.2rem;margin:0;padding-left:1.3rem}.answerBlocks li{padding-left:.1rem;font-size:.9375rem;line-height:1.45}

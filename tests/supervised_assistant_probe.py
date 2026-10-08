@@ -18,6 +18,7 @@ import re
 import selectors
 import signal
 import subprocess
+import tempfile
 import threading
 import time
 from contextlib import suppress
@@ -39,6 +40,7 @@ DISPOSABLE_VOLUME_LABEL = "org.stock-probs.assistant-r120.disposable"
 MEMORY_LIMIT_BYTES = 768 * 1024 * 1024
 CPU_LIMIT_NANOS = 1_000_000_000
 PROCESS_LIMIT = 128
+DOCKER_DAEMON_ENDPOINT = "unix:///var/run/docker.sock"
 NATIVE_TIMEOUT_SECONDS = 180
 RESOURCE_POLL_SECONDS = 0.2
 OUTPUT_LIMIT = 128 * 1024
@@ -385,6 +387,7 @@ _NATIVE_WARNING_MODEL_DISCOVERY_PATTERN = re.compile(
 
 _SHA256_IMAGE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 _WEBFETCH_TARGET_SHA256 = hashlib.sha256(b"https://www.iana.org/domains/reserved").hexdigest()
 _NATIVE_FAILURE_STAGES = frozenset(
     {
@@ -499,6 +502,9 @@ class Candidate:
     host_port: int
     host_pid: int
     cgroup: Path
+    network_name: str | None = None
+    network_id: str | None = None
+    candidate_revision: str | None = None
 
 
 _SEED_SCRIPT = r'''import hashlib, json, secrets, sqlite3, sys
@@ -882,7 +888,7 @@ _WORKER_CACHE_MARKERS = {
 def _command_operation(args: list[str]) -> str:
     """Classify a closed operation name; never retain caller arguments in diagnostics."""
 
-    if args and args[0] == "docker":
+    if args and Path(args[0]).name == "docker":
         if len(args) > 1 and args[1] in {
             "exec",
             "image",
@@ -915,6 +921,7 @@ def _command(
         raise ProbeError("fixed candidate stderr projection buffer was invalid")
     operation = _command_operation(args)
     process: subprocess.Popen[bytes] | None = None
+    docker_config: tempfile.TemporaryDirectory[str] | None = None
     selector: selectors.BaseSelector | None = None
     output = {"stdout": bytearray(), "stderr": bytearray()}
     observed = {"stdout": 0, "stderr": 0}
@@ -966,6 +973,16 @@ def _command(
             raise fail("fixed candidate command child was not reaped", "cleanup_reap") from exc
 
     try:
+        command_environment: dict[str, str] | None = None
+        if args and Path(args[0]).name == "docker":
+            docker_config = tempfile.TemporaryDirectory(
+                prefix="stock-probs-assistant-docker-config-", dir="/tmp"
+            )
+            command_environment = {
+                "PATH": "/usr/bin:/bin",
+                "DOCKER_CONFIG": docker_config.name,
+                "DOCKER_HOST": DOCKER_DAEMON_ENDPOINT,
+            }
         process = subprocess.Popen(  # noqa: S603 - callers use validated IDs and fixed commands.
             args,
             stdin=subprocess.PIPE if input_bytes else subprocess.DEVNULL,
@@ -973,6 +990,7 @@ def _command(
             stderr=subprocess.PIPE,
             bufsize=0,
             start_new_session=True,
+            env=command_environment,
         )
         selector = selectors.DefaultSelector()
         for name, pipe in (("stdout", process.stdout), ("stderr", process.stderr)):
@@ -1070,9 +1088,30 @@ def _command(
                     if pipe is not None:
                         with suppress(OSError):
                             pipe.close()
+            if docker_config is not None:
+                docker_config.cleanup()
 
 
-def _image_identity(image_id: str, context_sha256: str) -> None:
+def _validated_candidate_revision(candidate_revision: str | None) -> str | None:
+    """Accept an optional exact reviewed commit SHA, never an arbitrary image label."""
+
+    if candidate_revision is not None and (
+        not isinstance(candidate_revision, str) or _COMMIT_SHA.fullmatch(candidate_revision) is None
+    ):
+        raise ProbeError("candidate revision must be an exact lowercase commit SHA")
+    return candidate_revision
+
+
+def _image_identity(
+    image_id: str,
+    context_sha256: str,
+    candidate_revision: str | None = None,
+) -> None:
+    """Bind the immutable image ID to platform and either its context or reviewed revision."""
+
+    candidate_revision = _validated_candidate_revision(candidate_revision)
+    if _HEX64.fullmatch(context_sha256) is None:
+        raise ProbeError("candidate source context must use an exact SHA-256 identity")
     output = _command(
         [
             "docker",
@@ -1085,7 +1124,8 @@ def _image_identity(image_id: str, context_sha256: str) -> None:
         ]
     )
     fields = output.split("|")
-    if fields != [image_id, "linux", "amd64", f"local-source-{context_sha256}"]:
+    expected_revision_label = candidate_revision or f"local-source-{context_sha256}"
+    if fields != [image_id, "linux", "amd64", expected_revision_label]:
         raise ProbeError("candidate image ID, platform, or frozen source label did not match")
 
 
@@ -1136,7 +1176,66 @@ def _validate_candidate_mounts(mount_lines: list[str], tmpfs_value: object, volu
         raise ProbeError("candidate must use only the fixed volume and tmpfs mounts") from exc
 
 
-def _candidate_container(name: str, image_id: str, context_sha256: str, volume: str) -> Candidate:
+def _validate_candidate_network(
+    *,
+    container: str,
+    container_id: str,
+    volume: str,
+    network_mode: str,
+    attached_networks: object,
+    network_inspect: str,
+) -> tuple[str, str]:
+    """Require the candidate's private user-defined bridge to contain only itself."""
+
+    expected_name = f"{volume}-candidate-network"
+    if (
+        not _SAFE_CONTAINER.fullmatch(expected_name)
+        or expected_name in {"bridge", "host", "none"}
+        or not _HEX64.fullmatch(container_id)
+        or network_mode != expected_name
+        or not isinstance(attached_networks, dict)
+        or set(attached_networks) != {expected_name}
+        or not isinstance(attached_networks[expected_name], dict)
+    ):
+        raise ProbeError("candidate must use its exact owned user-defined network")
+    attached_id = attached_networks[expected_name].get("NetworkID")
+    if not isinstance(attached_id, str) or not _HEX64.fullmatch(attached_id):
+        raise ProbeError("candidate network attachment identity was malformed")
+
+    try:
+        fields = network_inspect.split("|")
+        if len(fields) != 7:
+            raise ValueError
+        network_id, name, driver, scope, internal, ipam_driver = fields[:6]
+        members = json.loads(fields[6])
+        member = members.get(container_id) if isinstance(members, dict) else None
+        member_name = member.get("Name") if isinstance(member, dict) else None
+        if (
+            network_id != attached_id
+            or name != expected_name
+            or driver != "bridge"
+            or scope != "local"
+            or internal != "false"
+            or ipam_driver != "default"
+            or not isinstance(members, dict)
+            or set(members) != {container_id}
+            or not isinstance(member_name, str)
+            or member_name.strip("/") != container
+        ):
+            raise ValueError
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise ProbeError("candidate network ownership or membership did not match") from exc
+    return expected_name, attached_id
+
+
+def _candidate_container(
+    name: str,
+    image_id: str,
+    context_sha256: str,
+    volume: str,
+    candidate_revision: str | None = None,
+) -> Candidate:
+    candidate_revision = _validated_candidate_revision(candidate_revision)
     suffix = context_sha256[:12]
     if (
         not _SAFE_CONTAINER.fullmatch(name)
@@ -1145,7 +1244,7 @@ def _candidate_container(name: str, image_id: str, context_sha256: str, volume: 
         or volume != f"{VOLUME_PREFIX}{suffix}"
     ):
         raise ProbeError("candidate container and volume must use the dedicated R-ASTRA-120 names")
-    _image_identity(image_id, context_sha256)
+    _image_identity(image_id, context_sha256, candidate_revision)
     fields = _command(
         [
             "docker",
@@ -1157,17 +1256,18 @@ def _candidate_container(name: str, image_id: str, context_sha256: str, volume: 
             "{{.HostConfig.ReadonlyRootfs}}|{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|"
             "{{.HostConfig.CpuQuota}}|{{.HostConfig.CpuPeriod}}|{{.HostConfig.PidsLimit}}|"
             f'{{{{index .Config.Labels "{CONTROL_CANDIDATE_LABEL}"}}}}|'
-            '{{range (index .NetworkSettings.Ports "8000/tcp")}}{{.HostIp}}:{{.HostPort}};{{end}}',
+            '{{range (index .NetworkSettings.Ports "8000/tcp")}}{{.HostIp}}:{{.HostPort}};{{end}}|'
+            "{{.HostConfig.NetworkMode}}|{{json .NetworkSettings.Networks}}",
             name,
         ]
     ).split("|")
-    if len(fields) != 13:
+    if len(fields) != 15:
         raise ProbeError("candidate container inspect did not return the expected bounded fields")
     container_id, actual_image, actual_name, running, host_pid_text = fields[:5]
     read_only, memory_text, nano_cpus_text, cpu_quota_text, cpu_period_text, pids_text = fields[
         5:11
     ]
-    candidate_label, port_text = fields[11:13]
+    candidate_label, port_text, network_mode, attached_networks_text = fields[11:15]
     if (
         actual_image != image_id
         or actual_name.strip("/") != name
@@ -1193,6 +1293,30 @@ def _candidate_container(name: str, image_id: str, context_sha256: str, volume: 
             raise ValueError
     except ValueError as exc:
         raise ProbeError("candidate app must publish exactly one loopback-only port") from exc
+    try:
+        attached_networks = json.loads(attached_networks_text)
+    except json.JSONDecodeError as exc:
+        raise ProbeError("candidate network attachment inspection was malformed") from exc
+    candidate_network_name = f"{volume}-candidate-network"
+    network_inspect = _command(
+        [
+            "docker",
+            "network",
+            "inspect",
+            "--format",
+            "{{.Id}}|{{.Name}}|{{.Driver}}|{{.Scope}}|{{.Internal}}|"
+            "{{.IPAM.Driver}}|{{json .Containers}}",
+            candidate_network_name,
+        ]
+    )
+    network_name, network_id = _validate_candidate_network(
+        container=name,
+        container_id=container_id,
+        volume=volume,
+        network_mode=network_mode,
+        attached_networks=attached_networks,
+        network_inspect=network_inspect,
+    )
 
     caps = _command(
         [
@@ -1270,7 +1394,62 @@ def _candidate_container(name: str, image_id: str, context_sha256: str, volume: 
         host_port=host_port,
         host_pid=host_pid,
         cgroup=cgroup,
+        network_name=network_name,
+        network_id=network_id,
+        candidate_revision=candidate_revision,
     )
+
+
+def _refresh_candidate_for_write(
+    candidate: Candidate,
+    context_sha256: str,
+    candidate_revision: str | None = None,
+) -> Candidate:
+    """Reinspect and bind every candidate identity immediately before a state-writing exec."""
+
+    if _HEX64.fullmatch(context_sha256) is None:
+        raise ProbeError("candidate source context must use an exact SHA-256 identity")
+    expected_revision = _validated_candidate_revision(
+        candidate.candidate_revision if candidate_revision is None else candidate_revision
+    )
+    if candidate.candidate_revision != expected_revision:
+        raise ProbeError("candidate revision changed before synthetic state seeding")
+    refreshed = _candidate_container(
+        candidate.container,
+        candidate.image_id,
+        context_sha256,
+        candidate.data_volume,
+        expected_revision,
+    )
+    expected_identity = (
+        candidate.container,
+        candidate.container_id,
+        candidate.image_id,
+        candidate.data_volume,
+        candidate.base_url,
+        candidate.host_port,
+        candidate.host_pid,
+        candidate.cgroup,
+        candidate.network_name,
+        candidate.network_id,
+        candidate.candidate_revision,
+    )
+    observed_identity = (
+        refreshed.container,
+        refreshed.container_id,
+        refreshed.image_id,
+        refreshed.data_volume,
+        refreshed.base_url,
+        refreshed.host_port,
+        refreshed.host_pid,
+        refreshed.cgroup,
+        refreshed.network_name,
+        refreshed.network_id,
+        refreshed.candidate_revision,
+    )
+    if observed_identity != expected_identity:
+        raise ProbeError("candidate identity changed before synthetic state seeding")
+    return refreshed
 
 
 def _container_cgroup(host_pid: int) -> Path:
@@ -1345,6 +1524,19 @@ def _health(candidate: Candidate) -> dict[str, object]:
 
 
 def _seed_users(candidate: Candidate) -> list[dict[str, str]]:
+    expected_network = f"{candidate.data_volume}-candidate-network"
+    if (
+        not isinstance(candidate.container_id, str)
+        or _HEX64.fullmatch(candidate.container_id) is None
+        or not isinstance(candidate.image_id, str)
+        or _SHA256_IMAGE.fullmatch(candidate.image_id) is None
+        or not isinstance(candidate.data_volume, str)
+        or not _SAFE_VOLUME.fullmatch(candidate.data_volume)
+        or candidate.network_name != expected_network
+        or not isinstance(candidate.network_id, str)
+        or _HEX64.fullmatch(candidate.network_id) is None
+    ):
+        raise ProbeError("synthetic owner seeder requires an exact inspected candidate identity")
     output = _command(
         [
             "docker",
@@ -1352,7 +1544,7 @@ def _seed_users(candidate: Candidate) -> list[dict[str, str]]:
             "-i",
             "--user",
             "10001:10001",
-            candidate.container,
+            candidate.container_id,
             "python",
             "-c",
             _SEED_SCRIPT,
@@ -1445,6 +1637,11 @@ def _docker_exec_json(
     input_text: str | None = None,
     timeout: float = 8,
 ) -> Any:
+    if (
+        not isinstance(candidate.container_id, str)
+        or _HEX64.fullmatch(candidate.container_id) is None
+    ):
+        raise ProbeError("candidate exec requires an exact immutable container ID")
     output = _command(
         [
             "docker",
@@ -1452,7 +1649,7 @@ def _docker_exec_json(
             "-i",
             "--user",
             user,
-            candidate.container,
+            candidate.container_id,
             "python",
             "-c",
             script,
@@ -3294,17 +3491,22 @@ def _require_active_owner_config(
 def _verify_worker_processes(snapshot: list[dict[str, object]]) -> dict[str, object]:
     by_role = {item.get("role"): item for item in snapshot}
     expected = {
-        "supervisor": 0,
-        "app_wrapper": 10001,
-        "worker_wrapper": 10002,
-        "native_worker": 10002,
+        "supervisor": (0, 0),
+        "app_wrapper": (10001, 10001),
+        "worker_wrapper": (10002, 10002),
+        "native_worker": (10002, 10002),
     }
-    for role, uid in expected.items():
+    for role, (uid, gid) in expected.items():
         process = by_role.get(role)
-        if not isinstance(process, dict) or process.get("uid") != uid:
+        if not isinstance(process, dict) or process.get("uid") != uid or process.get("gid") != gid:
             raise ProbeError(f"candidate process identity missing for {role}")
-        if role != "supervisor" and process.get("cap_eff") not in {"0000000000000000", "0"}:
-            raise ProbeError(f"candidate {role} has unexpected effective capabilities")
+        if role == "supervisor":
+            if process.get("cap_prm") != "00000000000000c0":
+                raise ProbeError("candidate PID 1 permitted capabilities changed")
+        elif process.get("cap_eff") not in {"0000000000000000", "0"} or process.get(
+            "cap_prm"
+        ) not in {"0000000000000000", "0"}:
+            raise ProbeError(f"candidate {role} has unexpected effective or permitted capabilities")
         if process.get("no_new_privileges") != "1":
             raise ProbeError(f"candidate {role} lacks no-new-privileges")
     supervisor = by_role["supervisor"]
@@ -3323,6 +3525,7 @@ def _verify_worker_processes(snapshot: list[dict[str, object]]) -> dict[str, obj
                 "uid": by_role[role]["uid"],
                 "gid": by_role[role]["gid"],
                 "cap_eff": by_role[role]["cap_eff"],
+                "cap_prm": by_role[role]["cap_prm"],
                 "cap_bnd": by_role[role]["cap_bnd"],
                 "no_new_privileges": by_role[role]["no_new_privileges"],
                 "oom_score_adj": by_role[role]["oom_score_adj"],
@@ -3353,7 +3556,7 @@ def _probe_private_boundaries(
             "exec",
             "--user",
             "10001:10001",
-            candidate.container,
+            candidate.container_id,
             "python",
             "-c",
             writer,
@@ -3417,7 +3620,7 @@ def _probe_private_boundaries(
             "exec",
             "--user",
             "10001:10001",
-            candidate.container,
+            candidate.container_id,
             "python",
             "-c",
             verify,
@@ -3433,7 +3636,7 @@ def _probe_private_boundaries(
             "exec",
             "--user",
             "10001:10001",
-            candidate.container,
+            candidate.container_id,
             "python",
             "-c",
             cleanup,
@@ -3834,12 +4037,30 @@ def _run_native_driver(
     return driver_receipt, resource_receipt, config_boundary, dac_boundary, cache_receipt
 
 
-def run_probe(container: str, image_id: str, context_sha256: str, volume: str) -> dict[str, object]:
+def run_probe(
+    container: str,
+    image_id: str,
+    context_sha256: str,
+    volume: str,
+    candidate_revision: str | None = None,
+) -> dict[str, object]:
+    """Run against a verified image; PR mode trusts revision/context from its build receipt.
+
+    The caller supplies the immutable image ID, filtered-context digest, and exact reviewed
+    revision from the verified PR-candidate build receipt. Image inspection then binds that
+    existing image ID to linux/amd64 and the supplied revision label; this probe never builds or
+    relabels an image.
+    """
+
+    candidate_revision = _validated_candidate_revision(candidate_revision)
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     if _SHA256_IMAGE.fullmatch(image_id) is None or _HEX64.fullmatch(context_sha256) is None:
         raise ProbeError("candidate image and source context must use exact SHA-256 identities")
-    candidate = _candidate_container(container, image_id, context_sha256, volume)
+    candidate = _candidate_container(
+        container, image_id, context_sha256, volume, candidate_revision
+    )
     before = _health(candidate)
+    candidate = _refresh_candidate_for_write(candidate, context_sha256, candidate_revision)
     users = _seed_users(candidate)
     native, resources, config_boundary, boundary_receipt, cache_receipt = _run_native_driver(
         candidate, users
@@ -3860,6 +4081,8 @@ def run_probe(container: str, image_id: str, context_sha256: str, volume: str) -
             "data_volume": candidate.data_volume,
             "architecture": "linux/amd64",
             "source_context_sha256": context_sha256,
+            "candidate_revision": candidate_revision,
+            "revision_label": candidate_revision or f"local-source-{context_sha256}",
             "app_origin": PUBLIC_ORIGIN,
             "loopback_port": candidate.host_port,
         },
@@ -3881,6 +4104,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--candidate-image-id", required=True)
     parser.add_argument("--source-context-sha256", required=True)
     parser.add_argument("--candidate-volume", required=True)
+    parser.add_argument(
+        "--candidate-revision",
+        help="exact lowercase reviewed commit SHA from a verified PR-candidate build receipt",
+    )
     args = parser.parse_args(argv)
     try:
         report = run_probe(
@@ -3888,6 +4115,7 @@ def main(argv: list[str] | None = None) -> int:
             args.candidate_image_id,
             args.source_context_sha256,
             args.candidate_volume,
+            args.candidate_revision,
         )
     except ProbeError as exc:
         print(

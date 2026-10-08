@@ -11,6 +11,7 @@ import json
 import socket
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -2922,6 +2923,189 @@ def test_candidate_mount_contract_rejects_missing_or_extra_hostconfig_paths() ->
         )
 
 
+def _candidate_network_fixture(
+    *,
+    network_mode: str = "stock-probs-assistant-r120-012345abcdef-candidate-network",
+    network_name: str = "stock-probs-assistant-r120-012345abcdef-candidate-network",
+    network_id: str = "d" * 64,
+    attached_networks: dict[str, object] | None = None,
+    members: dict[str, object] | None = None,
+    driver: str = "bridge",
+    scope: str = "local",
+    internal: str = "false",
+    ipam_driver: str = "default",
+) -> dict[str, object]:
+    """Return a Docker-free candidate bridge fixture with one exact member."""
+
+    container = "assistant-r120-candidate-012345abcdef"
+    container_id = "c" * 64
+    volume = "stock-probs-assistant-r120-012345abcdef"
+    if attached_networks is None:
+        attached_networks = {network_name: {"NetworkID": network_id}}
+    if members is None:
+        members = {container_id: {"Name": container}}
+    inspect = "|".join(
+        [
+            network_id,
+            network_name,
+            driver,
+            scope,
+            internal,
+            ipam_driver,
+            json.dumps(members, separators=(",", ":")),
+        ]
+    )
+    return {
+        "container": container,
+        "container_id": container_id,
+        "volume": volume,
+        "network_mode": network_mode,
+        "attached_networks": attached_networks,
+        "network_inspect": inspect,
+    }
+
+
+def test_candidate_network_requires_owned_bridge_and_exact_single_membership() -> None:
+    fixture = _candidate_network_fixture()
+
+    assert probe._validate_candidate_network(**fixture) == (
+        "stock-probs-assistant-r120-012345abcdef-candidate-network",
+        "d" * 64,
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"network_mode": "bridge"},
+        {"network_name": "bridge"},
+        {"driver": "host"},
+        {"scope": "global"},
+        {"internal": "true"},
+        {"ipam_driver": "custom"},
+        {
+            "attached_networks": {
+                "stock-probs-assistant-r120-012345abcdef-candidate-network": {"NetworkID": "e" * 64}
+            }
+        },
+        {
+            "attached_networks": {
+                "stock-probs-assistant-r120-012345abcdef-candidate-network": {
+                    "NetworkID": "d" * 64
+                },
+                "bridge": {"NetworkID": "f" * 64},
+            }
+        },
+        {
+            "members": {
+                "c" * 64: {"Name": "assistant-r120-candidate-012345abcdef"},
+                "e" * 64: {"Name": "other-container"},
+            }
+        },
+        {"members": {"c" * 64: {"Name": "other-container"}}},
+    ],
+)
+def test_candidate_network_rejects_wrong_mode_identity_or_membership(
+    change: dict[str, object],
+) -> None:
+    fixture = _candidate_network_fixture(**change)
+
+    with pytest.raises(probe.ProbeError, match="candidate"):
+        probe._validate_candidate_network(**fixture)
+
+
+def _worker_process_snapshot_fixture() -> list[dict[str, object]]:
+    """Build the exact synthetic process credentials expected by the supervisor verifier."""
+
+    return [
+        {
+            "role": "supervisor",
+            "uid": 0,
+            "gid": 0,
+            "cap_eff": "00000000000000c0",
+            "cap_prm": "00000000000000c0",
+            "cap_bnd": "00000000000000c0",
+            "no_new_privileges": "1",
+            "oom_score_adj": "0",
+        },
+        {
+            "role": "app_wrapper",
+            "uid": 10001,
+            "gid": 10001,
+            "cap_eff": "0000000000000000",
+            "cap_prm": "0000000000000000",
+            "cap_bnd": "00000000000000c0",
+            "no_new_privileges": "1",
+            "oom_score_adj": "0",
+        },
+        {
+            "role": "worker_wrapper",
+            "uid": 10002,
+            "gid": 10002,
+            "cap_eff": "0000000000000000",
+            "cap_prm": "0000000000000000",
+            "cap_bnd": "00000000000000c0",
+            "no_new_privileges": "1",
+            "oom_score_adj": "500",
+        },
+        {
+            "role": "native_worker",
+            "uid": 10002,
+            "gid": 10002,
+            "cap_eff": "0000000000000000",
+            "cap_prm": "0000000000000000",
+            "cap_bnd": "00000000000000c0",
+            "no_new_privileges": "1",
+            "oom_score_adj": "500",
+        },
+    ]
+
+
+def test_worker_process_verifier_projects_role_gids_and_permitted_capabilities() -> None:
+    profile = probe._verify_worker_processes(_worker_process_snapshot_fixture())
+
+    assert profile["roles"]["supervisor"]["gid"] == 0
+    assert profile["roles"]["supervisor"]["cap_prm"] == "00000000000000c0"
+    for role in ("app_wrapper", "worker_wrapper", "native_worker"):
+        assert profile["roles"][role]["cap_prm"] == "0000000000000000"
+
+
+@pytest.mark.parametrize(
+    ("role", "gid"),
+    (
+        ("supervisor", 1),
+        ("app_wrapper", 10002),
+        ("worker_wrapper", 10001),
+        ("native_worker", 10001),
+    ),
+)
+def test_worker_process_verifier_rejects_wrong_role_gid(role: str, gid: int) -> None:
+    snapshot = _worker_process_snapshot_fixture()
+    next(row for row in snapshot if row["role"] == role)["gid"] = gid
+
+    with pytest.raises(probe.ProbeError, match="process identity missing"):
+        probe._verify_worker_processes(snapshot)
+
+
+@pytest.mark.parametrize(
+    ("role", "cap_prm"),
+    (
+        ("supervisor", "0000000000000000"),
+        ("app_wrapper", "0000000000000001"),
+        ("worker_wrapper", "0000000000000001"),
+        ("native_worker", "0000000000000001"),
+    ),
+)
+def test_worker_process_verifier_rejects_wrong_role_permitted_capabilities(
+    role: str, cap_prm: str
+) -> None:
+    snapshot = _worker_process_snapshot_fixture()
+    next(row for row in snapshot if row["role"] == role)["cap_prm"] = cap_prm
+
+    with pytest.raises(probe.ProbeError, match="permitted capabilities"):
+        probe._verify_worker_processes(snapshot)
+
+
 def test_native_projection_keeps_reviewable_facts_and_drops_content() -> None:
     receipt = _driver_receipt()
     receipt["interaction_diagnostic"] = {"raw_prompt": "must not be success evidence"}
@@ -3806,6 +3990,273 @@ def test_read_resources_fails_closed_on_missing_or_invalid_cpu_throttling_counte
         probe._read_resources(_resource_candidate(tmp_path / "cgroup"))
 
 
+def _seed_candidate_fixture() -> probe.Candidate:
+    """Return an inspected synthetic candidate with a full immutable Docker identity."""
+
+    volume = "stock-probs-assistant-r120-abc123def456"
+    return probe.Candidate(
+        container="assistant-r120-candidate-abc123def456",
+        container_id="a" * 64,
+        image_id="sha256:" + "c" * 64,
+        data_volume=volume,
+        base_url="http://127.0.0.1:8000",
+        host_port=8000,
+        host_pid=12345,
+        cgroup=Path("/sys/fs/cgroup/synthetic-candidate"),
+        network_name=f"{volume}-candidate-network",
+        network_id="d" * 64,
+    )
+
+
+def test_refresh_candidate_for_write_rechecks_exact_context_and_full_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = _seed_candidate_fixture()
+    context_sha256 = "abc123def456" + "0" * 52
+    calls: list[tuple[str, str, str, str, str | None]] = []
+
+    def inspect(
+        name: str,
+        image: str,
+        context: str,
+        volume: str,
+        candidate_revision: str | None = None,
+    ) -> probe.Candidate:
+        calls.append((name, image, context, volume, candidate_revision))
+        return candidate
+
+    monkeypatch.setattr(probe, "_candidate_container", inspect)
+
+    assert probe._refresh_candidate_for_write(candidate, context_sha256) is candidate
+    assert calls == [
+        (candidate.container, candidate.image_id, context_sha256, candidate.data_volume, None)
+    ]
+
+
+def test_refresh_candidate_for_write_preserves_reviewed_candidate_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate_revision = "a" * 40
+    candidate = replace(_seed_candidate_fixture(), candidate_revision=candidate_revision)
+    context_sha256 = "abc123def456" + "0" * 52
+    calls: list[tuple[str, str, str, str, str | None]] = []
+
+    def inspect(
+        name: str,
+        image: str,
+        context: str,
+        volume: str,
+        expected_revision: str | None = None,
+    ) -> probe.Candidate:
+        calls.append((name, image, context, volume, expected_revision))
+        return candidate
+
+    monkeypatch.setattr(probe, "_candidate_container", inspect)
+
+    assert probe._refresh_candidate_for_write(candidate, context_sha256) is candidate
+    assert calls == [
+        (
+            candidate.container,
+            candidate.image_id,
+            context_sha256,
+            candidate.data_volume,
+            candidate_revision,
+        )
+    ]
+
+
+def test_refresh_candidate_for_write_rejects_revision_substitution_before_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = replace(_seed_candidate_fixture(), candidate_revision="a" * 40)
+    calls: list[str] = []
+    monkeypatch.setattr(probe, "_candidate_container", lambda *_args: calls.append("inspect"))
+
+    with pytest.raises(probe.ProbeError, match="candidate revision changed"):
+        probe._refresh_candidate_for_write(candidate, "c" * 64, "b" * 40)
+
+    assert calls == []
+
+
+@pytest.mark.parametrize("candidate_revision", ["A" * 40, "a" * 39, "a" * 41, "x" * 40])
+def test_candidate_revision_rejects_malformed_values_before_image_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+    candidate_revision: str,
+) -> None:
+    commands: list[list[str]] = []
+    monkeypatch.setattr(probe, "_command", lambda args, **_kwargs: commands.append(args) or "")
+
+    with pytest.raises(probe.ProbeError, match="exact lowercase commit SHA"):
+        probe._image_identity("sha256:" + "b" * 64, "c" * 64, candidate_revision)
+
+    assert commands == []
+
+
+@pytest.mark.parametrize(
+    ("candidate_revision", "observed_label"),
+    [
+        (None, "local-source-" + "c" * 64),
+        ("a" * 40, "a" * 40),
+    ],
+)
+def test_image_identity_accepts_exact_default_or_reviewed_revision_label(
+    monkeypatch: pytest.MonkeyPatch,
+    candidate_revision: str | None,
+    observed_label: str,
+) -> None:
+    image_id = "sha256:" + "b" * 64
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        probe,
+        "_command",
+        lambda args, **_kwargs: commands.append(args) or f"{image_id}|linux|amd64|{observed_label}",
+    )
+
+    probe._image_identity(image_id, "c" * 64, candidate_revision)
+
+    assert commands[0][-1] == image_id
+
+
+def test_image_identity_rejects_a_different_reviewed_revision_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image_id = "sha256:" + "b" * 64
+    monkeypatch.setattr(
+        probe,
+        "_command",
+        lambda *_args, **_kwargs: f"{image_id}|linux|amd64|{'d' * 40}",
+    )
+
+    with pytest.raises(probe.ProbeError, match="image ID, platform, or frozen source label"):
+        probe._image_identity(image_id, "c" * 64, "a" * 40)
+
+
+@pytest.mark.parametrize("candidate_revision", ["A" * 40, "a" * 39, "a" * 41, "x" * 40])
+def test_run_probe_rejects_malformed_revision_before_candidate_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+    candidate_revision: str,
+) -> None:
+    calls: list[object] = []
+    monkeypatch.setattr(probe, "_candidate_container", lambda *_args: calls.append("inspect"))
+
+    with pytest.raises(probe.ProbeError, match="exact lowercase commit SHA"):
+        probe.run_probe(
+            "assistant-r120-candidate-012345abcdef",
+            "sha256:" + "b" * 64,
+            "c" * 64,
+            "stock-probs-assistant-r120-012345abcdef",
+            candidate_revision,
+        )
+
+    assert calls == []
+
+
+def test_probe_cli_passes_candidate_revision_to_run_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    candidate_revision = "a" * 40
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def run_probe(*args: object, **kwargs: object) -> dict[str, object]:
+        calls.append((args, kwargs))
+        return {"status": "pass"}
+
+    monkeypatch.setattr(probe, "run_probe", run_probe)
+
+    assert (
+        probe.main(
+            [
+                "--candidate-container",
+                "assistant-r120-candidate-012345abcdef",
+                "--candidate-image-id",
+                "sha256:" + "b" * 64,
+                "--source-context-sha256",
+                "c" * 64,
+                "--candidate-volume",
+                "stock-probs-assistant-r120-012345abcdef",
+                "--candidate-revision",
+                candidate_revision,
+            ]
+        )
+        == 0
+    )
+
+    assert calls == [
+        (
+            (
+                "assistant-r120-candidate-012345abcdef",
+                "sha256:" + "b" * 64,
+                "c" * 64,
+                "stock-probs-assistant-r120-012345abcdef",
+                candidate_revision,
+            ),
+            {},
+        )
+    ]
+    assert json.loads(capsys.readouterr().out) == {"status": "pass"}
+
+
+@pytest.mark.parametrize(
+    ("candidate_revision", "expected_label"),
+    [(None, "local-source-" + "c" * 64), ("a" * 40, "a" * 40)],
+)
+def test_probe_receipt_keeps_candidate_revision_and_image_label(
+    monkeypatch: pytest.MonkeyPatch,
+    candidate_revision: str | None,
+    expected_label: str,
+) -> None:
+    candidate = replace(_seed_candidate_fixture(), candidate_revision=candidate_revision)
+    monkeypatch.setattr(probe, "_candidate_container", lambda *_args: candidate)
+    monkeypatch.setattr(probe, "_health", lambda _candidate: {})
+    monkeypatch.setattr(probe, "_refresh_candidate_for_write", lambda *_args: candidate)
+    monkeypatch.setattr(probe, "_seed_users", lambda _candidate: [])
+    monkeypatch.setattr(
+        probe,
+        "_run_native_driver",
+        lambda _candidate, _users: ("driver", "resources", "config", "dac", "cache"),
+    )
+    monkeypatch.setattr(probe, "_process_snapshot", lambda _candidate: [])
+    monkeypatch.setattr(probe, "_verify_worker_processes", lambda _snapshot: "process")
+
+    report = probe.run_probe(
+        candidate.container,
+        candidate.image_id,
+        "c" * 64,
+        candidate.data_volume,
+        candidate_revision,
+    )
+
+    assert report["candidate"]["candidate_revision"] == candidate_revision
+    assert report["candidate"]["revision_label"] == expected_label
+
+
+@pytest.mark.parametrize(
+    ("field", "changed"),
+    (
+        ("container", "assistant-r120-candidate-012345abcdef"),
+        ("container_id", "b" * 64),
+        ("image_id", "sha256:" + "e" * 64),
+        ("data_volume", "stock-probs-assistant-r120-012345abcdef"),
+        ("base_url", "http://127.0.0.1:8001"),
+        ("host_port", 8001),
+        ("host_pid", 12346),
+        ("cgroup", Path("/sys/fs/cgroup/other-candidate")),
+        ("network_name", "stock-probs-assistant-r120-other-candidate-network"),
+        ("network_id", "e" * 64),
+    ),
+)
+def test_refresh_candidate_for_write_rejects_changed_identity(
+    monkeypatch: pytest.MonkeyPatch, field: str, changed: object
+) -> None:
+    candidate = _seed_candidate_fixture()
+    observed = replace(candidate, **{field: changed})
+    monkeypatch.setattr(probe, "_candidate_container", lambda *_args: observed)
+
+    with pytest.raises(probe.ProbeError, match="identity changed before synthetic state seeding"):
+        probe._refresh_candidate_for_write(candidate, "abc123def456" + "0" * 52)
+
+
 def test_seeder_passes_admin_totp_only_through_private_fixture_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3824,22 +4275,53 @@ def test_seeder_passes_admin_totp_only_through_private_fixture_payload(
             "expected_tool_result_sha256": "b" * 64,
         },
     ]
-    monkeypatch.setattr(probe, "_command", lambda *args, **kwargs: json.dumps({"users": users}))
-    candidate = probe.Candidate(
-        container="assistant-r120-candidate-abc123def456",
-        container_id="container-id",
-        image_id="sha256:" + "c" * 64,
-        data_volume="stock-probs-assistant-r120-abc123def456",
-        base_url="http://127.0.0.1:8000",
-        host_port=8000,
-        host_pid=1,
-        cgroup=Path("unused"),
-    )
+    commands: list[list[str]] = []
+
+    def command(args: list[str], **_kwargs: object) -> str:
+        commands.append(args)
+        return json.dumps({"users": users})
+
+    monkeypatch.setattr(probe, "_command", command)
+    candidate = _seed_candidate_fixture()
 
     selected = probe._seed_users(candidate)
 
     assert selected[0]["totp_secret"] == secret
     assert "totp_secret" not in selected[1]
+    assert commands[0][5] == candidate.container_id
+
+
+@pytest.mark.parametrize(
+    ("field", "changed"),
+    (
+        ("container_id", "legacy-name-only-id"),
+        ("network_name", None),
+        ("network_id", None),
+        ("network_id", "invalid-network-id"),
+    ),
+)
+def test_seeder_fails_closed_without_full_candidate_and_network_identity(
+    monkeypatch: pytest.MonkeyPatch, field: str, changed: object
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(probe, "_command", lambda args, **_kwargs: calls.append(args) or "{}")
+
+    with pytest.raises(probe.ProbeError, match="exact inspected candidate identity"):
+        probe._seed_users(replace(_seed_candidate_fixture(), **{field: changed}))
+
+    assert calls == []
+
+
+def test_candidate_exec_uses_immutable_container_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = _seed_candidate_fixture()
+    calls: list[list[str]] = []
+    monkeypatch.setattr(probe, "_command", lambda args, **_kwargs: calls.append(args) or "{}")
+
+    assert probe._docker_exec_json(candidate, "10001:10001", "print('{}')") == {}
+
+    assert calls[0][5] == candidate.container_id
 
 
 def test_embedded_seeder_creates_admin_totp_factor_in_a_temporary_repository(
@@ -3905,16 +4387,7 @@ def test_seeder_rejects_totp_secret_on_non_admin_fixture(monkeypatch: pytest.Mon
         },
     ]
     monkeypatch.setattr(probe, "_command", lambda *args, **kwargs: json.dumps({"users": users}))
-    candidate = probe.Candidate(
-        container="assistant-r120-candidate-abc123def456",
-        container_id="container-id",
-        image_id="sha256:" + "c" * 64,
-        data_volume="stock-probs-assistant-r120-abc123def456",
-        base_url="http://127.0.0.1:8000",
-        host_port=8000,
-        host_pid=1,
-        cgroup=Path("unused"),
-    )
+    candidate = _seed_candidate_fixture()
     with pytest.raises(probe.ProbeError, match="bounded identity"):
         probe._seed_users(candidate)
 
@@ -4019,3 +4492,36 @@ def test_fixed_docker_operation_diagnostics_are_closed_names() -> None:
     assert (
         probe._command_operation(["docker", "exec", "-c", probe._SEED_SCRIPT]) == "docker_seed_exec"
     )
+
+
+def test_docker_command_uses_only_fixed_local_endpoint_and_empty_private_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_popen = subprocess.Popen
+    captured: dict[str, object] = {}
+    for key in ("DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_CERT_PATH"):
+        monkeypatch.setenv(key, "synthetic-untrusted-value")
+
+    def fake_docker_popen(args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        if args == ["docker", "info"]:
+            environment = kwargs.get("env")
+            assert isinstance(environment, dict)
+            captured["environment"] = environment
+            config_path = Path(environment["DOCKER_CONFIG"])
+            captured["config_path"] = config_path
+            assert config_path.is_dir()
+            assert list(config_path.iterdir()) == []
+            return real_popen([sys.executable, "-c", "print('synthetic-docker-command')"], **kwargs)
+        return real_popen(args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(probe.subprocess, "Popen", fake_docker_popen)
+
+    assert probe._command(["docker", "info"], timeout=5) == "synthetic-docker-command"
+
+    environment = captured["environment"]
+    assert isinstance(environment, dict)
+    assert set(environment) == {"PATH", "DOCKER_CONFIG", "DOCKER_HOST"}
+    assert environment["PATH"] == "/usr/bin:/bin"
+    assert environment["DOCKER_HOST"] == probe.DOCKER_DAEMON_ENDPOINT
+    assert environment["DOCKER_HOST"] == "unix:///var/run/docker.sock"
+    assert not Path(str(captured["config_path"])).exists()

@@ -51,6 +51,7 @@ MAX_ARCHIVE_METADATA_BYTES = 1024 * 1024
 MAX_ARCHIVE_METADATA_MEMBERS = 128
 MAX_MEMINFO_BYTES = 16 * 1024
 MAX_CGROUP_MEMORY_EVENTS_BYTES = 4 * 1024
+MAX_CGROUP_CPU_STAT_BYTES = 4 * 1024
 MAX_RESOURCE_COUNTER_DIGITS = 20
 MAX_RESOURCE_COUNTER_VALUE = (1 << 64) - 1
 MAX_OPERATION_SECONDS = 1_080
@@ -60,14 +61,16 @@ RECOVERY_MEMORY_LIMIT = 384 * 1024 * 1024
 START_RESERVE_KIB = 512 * 1024
 RUN_RESERVE_KIB = 128 * 1024
 OOM_EVENT_COUNTERS = ("oom", "oom_kill", "oom_group_kill")
+CPU_STAT_COUNTERS = ("usage_usec", "nr_periods", "nr_throttled", "throttled_usec")
 
 
 class CgroupMemorySample(TypedDict):
-    """Validated memory capacity, peak, and OOM event counts for one container."""
+    """Validated memory, OOM, and CPU counters for one container."""
 
     limit: int
     peak: int
     oom_events: dict[str, int]
+    cpu_stat: dict[str, int]
 
 
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -2269,8 +2272,61 @@ def _container_fixture(
     return value
 
 
+def _parse_cpu_stat(text: str, byte_count: int, *, role: str) -> dict[str, int]:
+    """Parse the required bounded cgroup v2 CPU counters for one role."""
+
+    if (
+        not isinstance(text, str)
+        or type(byte_count) is not int
+        or not 0 <= byte_count <= MAX_CGROUP_CPU_STAT_BYTES
+        or not text.isascii()
+        or byte_count != len(text)
+    ):
+        raise RehearsalError(
+            "cgroup_cpu_stat_unavailable",
+            details={"resource_role": role, "cpu_stat_evidence_complete": False},
+        )
+
+    counters: dict[str, int] = {}
+    invalid: list[str] = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) != 2 or not re.fullmatch(r"[a-z_]{1,32}", parts[0]):
+            invalid.append("cpu.stat")
+            continue
+        name, count_text = parts
+        if name not in CPU_STAT_COUNTERS:
+            continue
+        if (
+            name in counters
+            or not count_text.isascii()
+            or not count_text.isdecimal()
+            or len(count_text) > MAX_RESOURCE_COUNTER_DIGITS
+        ):
+            invalid.append(name)
+            continue
+        parsed_count = int(count_text)
+        if parsed_count > MAX_RESOURCE_COUNTER_VALUE:
+            invalid.append(name)
+            continue
+        counters[name] = parsed_count
+
+    missing = sorted(set(CPU_STAT_COUNTERS) - counters.keys())
+    if missing or invalid:
+        raise RehearsalError(
+            "cgroup_cpu_stat_counters_incomplete",
+            details={
+                "resource_role": role,
+                "cpu_stat_evidence_complete": False,
+                "missing_counters": missing,
+                "invalid_counters": sorted(set(invalid)),
+            },
+        )
+    return counters
+
+
 def _memory_usage(container: str, *, expected_role: str = "candidate") -> CgroupMemorySample:
-    """Return bounded cgroup memory and OOM counters for one owned app container."""
+    """Return bounded cgroup memory, OOM, and CPU counters for one app container."""
 
     if re.fullmatch(r"[0-9a-f]{64}", container) is None:
         raise RehearsalError("container_identity_invalid")
@@ -2279,9 +2335,11 @@ def _memory_usage(container: str, *, expected_role: str = "candidate") -> Cgroup
     source = (
         "import json,pathlib;p=pathlib.Path('/sys/fs/cgroup');"
         "f=(p/'memory.events').open('rb');e=f.read(4097);f.close();"
+        "c=(p/'cpu.stat').open('rb');s=c.read(4097);c.close();"
         "print(json.dumps({'limit':int((p/'memory.max').read_text()),"
         "'peak':int((p/'memory.peak').read_text()),'events_bytes':len(e),"
-        "'events':e.decode('ascii',errors='replace')}))"
+        "'events':e.decode('ascii',errors='replace'),'cpu_stat_bytes':len(s),"
+        "'cpu_stat':s.decode('ascii',errors='replace')}))"
     )
     try:
         result = _run(
@@ -2383,7 +2441,15 @@ def _memory_usage(container: str, *, expected_role: str = "candidate") -> Cgroup
                 "zero_oom_claim": "unavailable",
             },
         )
-    return {"limit": value["limit"], "peak": value["peak"], "oom_events": event_counts}
+    cpu_stat = _parse_cpu_stat(
+        value.get("cpu_stat", ""), value.get("cpu_stat_bytes", -1), role=expected_role
+    )
+    return {
+        "limit": value["limit"],
+        "peak": value["peak"],
+        "oom_events": event_counts,
+        "cpu_stat": cpu_stat,
+    }
 
 
 def _oom_event_evidence(
@@ -2440,6 +2506,53 @@ def _oom_event_evidence(
             details={"resource_role": role, "oom_event_evidence": evidence},
         )
     return evidence
+
+
+def _cpu_stat_evidence(
+    baseline: CgroupMemorySample, final: CgroupMemorySample, *, role: str
+) -> dict[str, object]:
+    """Record complete monotonic CPU counters without interpreting throttling."""
+
+    if role not in {"candidate", "recovery"}:
+        raise RehearsalError("container_role_invalid")
+    snapshots: dict[str, dict[str, int]] = {}
+    missing: list[str] = []
+    for label, sample in (("baseline", baseline), ("final", final)):
+        counters = sample.get("cpu_stat")
+        if not isinstance(counters, dict):
+            missing.extend(f"{label}.{name}" for name in CPU_STAT_COUNTERS)
+            continue
+        for name in CPU_STAT_COUNTERS:
+            counter = counters.get(name)
+            if type(counter) is not int or not 0 <= counter <= MAX_RESOURCE_COUNTER_VALUE:
+                missing.append(f"{label}.{name}")
+            else:
+                snapshots.setdefault(label, {})[name] = counter
+    if missing:
+        raise RehearsalError(
+            "cgroup_cpu_stat_counters_incomplete",
+            details={
+                "resource_role": role,
+                "cpu_stat_evidence_complete": False,
+                "missing_counters": missing,
+            },
+        )
+
+    baseline_counters = snapshots["baseline"]
+    final_counters = snapshots["final"]
+    if any(final_counters[name] < baseline_counters[name] for name in CPU_STAT_COUNTERS):
+        raise RehearsalError(
+            "cgroup_cpu_stat_counter_reset",
+            details={"resource_role": role, "cpu_stat_evidence_complete": False},
+        )
+    delta = {name: final_counters[name] - baseline_counters[name] for name in CPU_STAT_COUNTERS}
+    return {
+        "complete": True,
+        "resource_role": role,
+        "baseline": baseline_counters,
+        "final": final_counters,
+        "delta": delta,
+    }
 
 
 _NATIVE_FAILURE_STAGES = {
@@ -3021,8 +3134,10 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
         raise RehearsalError("pair_archives_must_differ")
 
     sample_count = [0]
-    host_memtotal_before_kib = _memtotal_kib()
-    available_before = _check_production(sample_count, startup=True)
+    host_memtotal_before_kib, host_memavailable_before_kib = _host_memory_kib()
+    if host_memavailable_before_kib < START_RESERVE_KIB:
+        raise RehearsalError("host_memory_reserve_breached")
+    _check_production(sample_count, startup=True)
     MONITOR_ACTIVE = True
     PRODUCTION_SAMPLE_COUNT = sample_count
     OPERATION_DEADLINE = time.monotonic() + MAX_OPERATION_SECONDS
@@ -3137,6 +3252,9 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             _oom_event_evidence(
                 candidate_memory_baseline, candidate_memory_baseline, role="candidate"
             )
+            _cpu_stat_evidence(
+                candidate_memory_baseline, candidate_memory_baseline, role="candidate"
+            )
             _wait_ready(candidate_container, enabled=True, sample_count=sample_count)
             _copy_fixture_files(candidate_container, source_digests)
             seed_result = _seed(candidate_container)
@@ -3193,6 +3311,9 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             candidate_oom_event_evidence = _oom_event_evidence(
                 candidate_memory_baseline, candidate_memory_final, role="candidate"
             )
+            candidate_cpu_stat_evidence = _cpu_stat_evidence(
+                candidate_memory_baseline, candidate_memory_final, role="candidate"
+            )
         finally:
             if candidate_name in containers:
                 _remove_owned_container(candidate_name, revision, pair_sha256, volume)
@@ -3220,6 +3341,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
                 recovery_memory_baseline,
                 role="recovery",
             )
+            _cpu_stat_evidence(recovery_memory_baseline, recovery_memory_baseline, role="recovery")
             _wait_ready(recovery_container, enabled=False, sample_count=sample_count)
             _copy_fixture_files(recovery_container, source_digests)
             process_profile = _recovery_process_profile(recovery_container)
@@ -3251,6 +3373,9 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             recovery_oom_event_evidence = _oom_event_evidence(
                 recovery_memory_baseline, recovery_memory_final, role="recovery"
             )
+            recovery_cpu_stat_evidence = _cpu_stat_evidence(
+                recovery_memory_baseline, recovery_memory_final, role="recovery"
+            )
         finally:
             if recovery_name in containers:
                 _remove_owned_container(recovery_name, revision, pair_sha256, volume)
@@ -3260,7 +3385,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
 
         _verify_volume(volume, revision, pair_sha256)
         _check_production(sample_count)
-        host_memtotal_after_kib = _memtotal_kib()
+        host_memtotal_after_kib, host_memavailable_after_kib = _host_memory_kib()
         if host_memtotal_after_kib != host_memtotal_before_kib:
             raise RehearsalError(
                 "host_memory_capacity_changed",
@@ -3271,6 +3396,8 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
                     "capacity_claim": "unavailable",
                 },
             )
+        if host_memavailable_after_kib < RUN_RESERVE_KIB:
+            raise RehearsalError("host_memory_reserve_breached")
         result_receipt = {
             "status": "pass",
             "reviewed_head_sha": revision,
@@ -3283,8 +3410,8 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             "same_disposable_volume": True,
             "production_mutation": False,
             "production_health_samples": sample_count[0],
-            "host_memavailable_before_kib": available_before,
-            "host_memavailable_after_kib": _memavailable_kib(),
+            "host_memavailable_before_kib": host_memavailable_before_kib,
+            "host_memavailable_after_kib": host_memavailable_after_kib,
             "host_memory_capacity_evidence": {
                 "complete": True,
                 "unit": "kib",
@@ -3295,9 +3422,11 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             "candidate_memory_peak_bytes": candidate_memory_final["peak"],
             "candidate_memory_limit_bytes": candidate_memory_final["limit"],
             "candidate_oom_event_evidence": candidate_oom_event_evidence,
+            "candidate_cpu_stat_evidence": candidate_cpu_stat_evidence,
             "recovery_memory_peak_bytes": recovery_memory_final["peak"],
             "recovery_memory_limit_bytes": recovery_memory_final["limit"],
             "recovery_oom_event_evidence": recovery_oom_event_evidence,
+            "recovery_cpu_stat_evidence": recovery_cpu_stat_evidence,
             "oom_event_evidence_complete": True,
             "zero_oom_events_verified": True,
             "migration_backup_verified": True,

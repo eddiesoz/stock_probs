@@ -109,7 +109,7 @@ test("mobile assistant modal hides only its inert page underlay and restores the
   assert.match(css, /:global\(body\[data-assistant-open="true"\]\) \[data-assistant-background\]\{display:none!important\}/);
 });
 
-test("mobile local-control handoff releases the assistant modal before focusing a validated heading", async () => {
+test("mobile local-control handoff waits for modal teardown and invalidates stale context", async () => {
   const host = await readFile(new URL("./assistant-host.tsx", import.meta.url), "utf8");
   const panel = await readFile(new URL("./assistant-panel.tsx", import.meta.url), "utf8");
   const handoffStart = host.indexOf("function handoffToLocalControls(");
@@ -117,17 +117,40 @@ test("mobile local-control handoff releases the assistant modal before focusing 
   const handoff = host.slice(handoffStart, handoffEnd);
   assert.ok(handoffStart >= 0 && handoffEnd > handoffStart);
   assert.match(handoff, /targetId: "notes-heading" \| "alerts-heading", expectedHref: string/);
-  assert.match(handoff, /setOpen\(false\)/);
-  assert.match(handoff, /requestAnimationFrame\(\(\) => \{\s*window\.requestAnimationFrame/);
+  assert.match(handoff, /const handoffContext = contextRequest/);
+  assert.match(handoff, /JSON\.stringify\(currentContext\) !== JSON\.stringify\(handoffContext\)/);
   assert.match(handoff, /window\.location\.href !== expectedHref/);
-  assert.match(handoff, /background\.inert/);
-  assert.match(handoff, /data-assistant-mobile-modal-underlay/);
-  assert.match(handoff, /document\.body\.dataset\.assistantOpen === "true"/);
-  assert.match(handoff, /document\.querySelector\('\[data-testid="assistant-panel"\]'\)/);
-  assert.match(handoff, /targetId === "notes-heading"[\s\S]*h2#notes-heading\[tabindex="-1"\][\s\S]*h2#alerts-heading\[tabindex="-1"\]/);
-  assert.match(handoff, /!target\.isConnected[\s\S]*target\.getClientRects\(\)\.length === 0/);
-  assert.doesNotMatch(handoff, /launcherRef/);
-  assert.match(host, /function closePanel\(\) \{\s*setOpen\(false\);\s*window\.requestAnimationFrame\(\(\) => launcherRef\.current\?\.focus\(\)\);/);
+  assert.match(handoff, /pendingLocalHandoffRef\.current = handoff;\s*setPendingLocalHandoff\(handoff\);\s*setOpen\(false\)/);
+  assert.doesNotMatch(handoff, /requestAnimationFrame/);
+
+  const bodyMarkerEffectStart = host.indexOf("useEffect(() => {\n    if (!open) {");
+  const handoffEffectStart = host.indexOf("useEffect(() => {\n    // Parent passive effects run after the unmounted panel's focus-trap cleanup.");
+  const handoffEffectEnd = host.indexOf("}, [clearPendingLocalHandoff, contextRequest, open, pendingLocalHandoff]);", handoffEffectStart);
+  assert.ok(bodyMarkerEffectStart >= 0 && handoffEffectStart > bodyMarkerEffectStart && handoffEffectEnd > handoffEffectStart);
+  const handoffEffect = host.slice(handoffEffectStart, handoffEffectEnd);
+  assert.match(handoffEffect, /if \(!handoff \|\| open\) return/);
+  assert.match(handoffEffect, /pendingLocalHandoffRef\.current === handoff/);
+  assert.match(handoffEffect, /contextRequest === handoff\.contextRequest/);
+  assert.match(handoffEffect, /JSON\.stringify\(currentContext\) === JSON\.stringify\(handoff\.contextRequest\)/);
+  assert.match(handoffEffect, /window\.location\.href === handoff\.expectedHref/);
+  assert.match(handoffEffect, /handoff\.background\.isConnected/);
+  assert.match(handoffEffect, /document\.querySelector<HTMLElement>\("\[data-assistant-background\]"\) === handoff\.background/);
+  assert.match(handoffEffect, /!handoff\.background\.inert/);
+  assert.match(handoffEffect, /!handoff\.background\.hasAttribute\("data-assistant-mobile-modal-underlay"\)/);
+  assert.match(handoffEffect, /document\.body\.dataset\.assistantOpen !== "true"/);
+  assert.match(handoffEffect, /!document\.querySelector\('\[data-testid="assistant-panel"\]'\)/);
+  assert.match(handoffEffect, /handoff\.target\.isConnected[\s\S]*document\.getElementById\(handoff\.targetId\) === handoff\.target/);
+  assert.match(handoffEffect, /handoff\.background\.contains\(handoff\.target\)[\s\S]*handoff\.target\.matches\(selector\)[\s\S]*handoff\.target\.getClientRects\(\)\.length > 0/);
+  assert.match(handoffEffect, /if \(isCurrent\) \{\s*handoff\.target\.scrollIntoView\(\{ block: "center" \}\);\s*handoff\.target\.focus\(\{ preventScroll: true \}\);\s*\}/);
+  assert.match(handoffEffect, /if \(pendingLocalHandoffRef\.current === handoff\) clearPendingLocalHandoff\(\)/);
+
+  const locationSyncStart = host.indexOf("const syncLocation = () => {");
+  const locationSyncEnd = host.indexOf("};", locationSyncStart);
+  assert.ok(locationSyncStart >= 0 && locationSyncEnd > locationSyncStart);
+  assert.match(host.slice(locationSyncStart, locationSyncEnd), /clearPendingLocalHandoff\(\);\s*setContextRequest\(/);
+  assert.match(host, /function closePanel\(\) \{\s*clearPendingLocalHandoff\(\);\s*setOpen\(false\);\s*window\.requestAnimationFrame\(\(\) => launcherRef\.current\?\.focus\(\)\);/);
+  assert.match(host, /onClick=\{\(\) => \{\s*clearPendingLocalHandoff\(\);\s*setOpen\(true\);/);
+  assert.match(host, /onLocalHandoff=\{handoffToLocalControls\}/);
 
   const actionStart = panel.indexOf("async function confirmAction(");
   const actionEnd = panel.indexOf("\n  async function confirmSearch", actionStart);
@@ -650,6 +673,34 @@ test("structured assistant answers preserve semantic rows and render hostile mar
   assert.equal(manySections.at(-1).kind, "overflow");
   assert.equal(manySections.filter((block) => block.kind === "overflow").length, 1);
   assert.match(manySections.at(-1).remaining, /Section 79/);
+});
+
+test("plain answer runs use bounded inline boxes without changing text-only semantics", async () => {
+  const renderer = await readFile(new URL("./assistant-answer.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("./assistant.module.css", import.meta.url), "utf8");
+  assert.match(renderer, /if \(part\.kind === "strong"\) return <strong key=\{index\}>\{part\.text\}<\/strong>;/);
+  assert.match(renderer, /if \(part\.kind === "code"\) return <code key=\{index\}>\{part\.text\}<\/code>;/);
+  assert.match(renderer, /return <span className=\{styles\.answerInlineText\} key=\{index\}>\{part\.text\}<\/span>;/);
+  assert.doesNotMatch(renderer, /dangerouslySetInnerHTML/);
+
+  const inlineRule = css.match(/\.answerInlineText\{([^}]+)\}/)?.[1];
+  assert.ok(inlineRule);
+  assert.deepEqual(inlineRule.split(";").filter(Boolean).map((property) => property.trim()), [
+    "display:inline-block",
+    "max-width:100%",
+    "white-space:pre-wrap",
+  ]);
+  assert.doesNotMatch(inlineRule, /(?:^|;)\s*(?:width|min-width|height|min-height):/);
+
+  const paragraph = parseAssistantAnswer("**bold** and `code` and <img src=x onerror=alert(1)>")[0];
+  assert.equal(paragraph.kind, "paragraph");
+  assert.deepEqual(paragraph.content, [
+    { kind: "strong", text: "bold" },
+    { kind: "text", text: " and " },
+    { kind: "code", text: "code" },
+    { kind: "text", text: " and <img src=x onerror=alert(1)>" },
+  ]);
+  assert.ok(paragraph.content.every((part) => !Object.hasOwn(part, "html")));
 });
 
 test("turn submission preserves only server-resolved context, never its UI preview", () => {
