@@ -2158,14 +2158,16 @@ def create_assistant_router(
         auth_manager.require_csrf(context, request.headers.get("x-csrf-token"))
 
         def authorization_check() -> bool:
-            return live_assistant_session(request, context) is not None
+            return live_assistant_session(request, context, check_csrf=True) is not None
 
         inventory = await assistant.ensure_model_inventory(
             owner_id=context.user.id, authorization_check=authorization_check
         )
         if not assistant.has_model_in_inventory(model_id, inventory):
             raise AssistantUnavailable("model_unavailable", 503)
-        result = assistant.consent_response(
+        if not authorization_check():
+            raise AssistantUnavailable("assistant_authorization_required", 403)
+        return assistant.consent_response(
             context.user.id,
             model_id,
             policy_version=payload.policy_version,
@@ -2173,9 +2175,6 @@ def create_assistant_router(
             data_collection_opt_in=payload.data_collection_opt_in,
             model_inventory=inventory,
         )
-        if not authorization_check():
-            raise AssistantUnavailable("assistant_authorization_required", 403)
-        return result
 
     @router.get("/context")
     def context_preview(request: Request) -> dict[str, object]:

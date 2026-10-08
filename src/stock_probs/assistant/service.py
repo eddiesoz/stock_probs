@@ -2345,7 +2345,10 @@ class AssistantService:
             minimum_validity_seconds=120.0,
             owner_id=context.user.id,
             authorization_check=lambda: self._assistant_session_is_live(
-                context.user.id, context.session_id, context.token_hash
+                context.user.id,
+                context.session_id,
+                context.token_hash,
+                expected_csrf_hash=context.csrf_token_hash,
             ),
         )
         policy = self.policy(model_id, model_inventory=inventory, owner_id=context.user.id)
@@ -2362,7 +2365,10 @@ class AssistantService:
         now = self.now()
         # Readiness and inventory refresh can await; bind persistence to the still-live session.
         if not self._assistant_session_is_live(
-            context.user.id, context.session_id, context.token_hash
+            context.user.id,
+            context.session_id,
+            context.token_hash,
+            expected_csrf_hash=context.csrf_token_hash,
         ):
             raise AssistantUnavailable("assistant_authorization_required", 403)
         record = self.storage.create_turn(
@@ -3704,13 +3710,21 @@ class AssistantService:
             is not None
         )
 
-    def _assistant_session_is_live(self, user_id: int, session_id: str, token_hash: str) -> bool:
+    def _assistant_session_is_live(
+        self,
+        user_id: int,
+        session_id: str,
+        token_hash: str,
+        *,
+        expected_csrf_hash: str | None = None,
+    ) -> bool:
         """Return whether the same authenticated assistant session still has access."""
 
         current = self._live_auth_context(
             user_id=user_id,
             session_id=session_id,
             token_hash=token_hash,
+            expected_csrf_hash=expected_csrf_hash,
         )
         return bool(current is not None and self.can_access(current))
 

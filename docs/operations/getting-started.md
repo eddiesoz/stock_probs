@@ -578,7 +578,12 @@ GitHub email (while a supplied positive account ID restricts redemption to that 
 visible cancellation control is labeled “Stop response.” E679 later passed independent
 copy/source-contract review of the candidate template/test bytes, including those instructions; its
 Node suite passed 17/17. Separate served/export parity is unavailable, and no maintained
-capture/final render or guide acceptance is established.
+capture/final render or guide acceptance is established. E696/E697 later recorded eight candidate
+PNGs at `c169`: parent visual review and independent privacy/integrity/visual inspection passed for
+those images only. The manifest still has pending privacy labels and an unavailable all-zero QA
+receipt binding; finalization/render were skipped. The consent-source repair requires recapture at
+the repaired revision before final guide use. These image checks do not establish app accessibility,
+PDF/UA, or release acceptance.
 
 ### PR-head candidate image build helper
 

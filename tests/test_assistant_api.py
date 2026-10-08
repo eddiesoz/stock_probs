@@ -2914,6 +2914,81 @@ def test_model_consent_route_preserves_catalog_ids_with_encoded_slashes(settings
             browser.close()
 
 
+@pytest.mark.parametrize("auth_change", ("session_revoked", "csrf_rotated"))
+def test_model_consent_route_rechecks_live_auth_before_persisting_after_inventory_await(
+    settings, monkeypatch, auth_change
+):
+    providers = FakeProviders()
+    application = create_app(
+        _auth_settings(settings),
+        FixtureProvider(),
+        lambda: NOW,
+        assistant_runtime=FakeRuntime(),
+        assistant_catalog=FakeCatalog(),
+        assistant_providers=providers,
+    )
+    inventory_started = threading.Event()
+    release_inventory = threading.Event()
+    with TestClient(application, client=("127.0.0.1", 51052)):
+        owner = _add_signed_in_user(application, 50089)
+        browser = _browser_client(application, owner)
+        assistant = application.state.assistant
+        authorization_callbacks: list[bool] = []
+
+        async def hold_inventory(*, owner_id, authorization_check=None):
+            assert owner_id == owner["user_id"]
+            if callable(authorization_check):
+                authorization_callbacks.append(authorization_check())
+            inventory_started.set()
+            if not await asyncio.to_thread(release_inventory.wait, timeout=5):
+                raise RuntimeError("test consent inventory wait expired")
+            return tuple(assistant.catalog.list_models())
+
+        monkeypatch.setattr(assistant, "ensure_model_inventory", hold_inventory)
+        try:
+            path = f"/api/v1/assistant/models/{quote(MODEL.model_id, safe='')}/consent"
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                pending = executor.submit(
+                    browser.put,
+                    path,
+                    headers={"x-csrf-token": str(owner["csrf"])},
+                    json={
+                        "policy_version": MODEL.policy_version,
+                        "accepted_terms": True,
+                        "data_collection_opt_in": False,
+                    },
+                    timeout=5,
+                )
+                assert inventory_started.wait(timeout=5), "consent missed held inventory"
+                if auth_change == "session_revoked":
+                    application.state.repository.auth_revoke_session(
+                        str(owner["token_hash"]), NOW.isoformat()
+                    )
+                else:
+                    with application.state.repository.connect() as connection:
+                        connection.execute(
+                            "UPDATE sessions SET csrf_token_hash = ? WHERE token_hash = ?",
+                            (_sha("rotated-test-only-csrf-token"), str(owner["token_hash"])),
+                        )
+                        connection.commit()
+                release_inventory.set()
+                rejected = pending.result(timeout=8)
+
+            assert rejected.status_code == 403, rejected.text
+            assert rejected.json()["error"]["code"] == "assistant_authorization_required"
+            assert (
+                assistant.storage.current_consent(
+                    int(owner["user_id"]), MODEL.model_id, MODEL.policy_version
+                )
+                is None
+            )
+            assert authorization_callbacks == [True]
+            assert providers.calls == []
+        finally:
+            release_inventory.set()
+            browser.close()
+
+
 def test_model_policy_route_requires_admin_step_up_and_projects_closed_dto(settings):
     model = {
         "model_id": MODEL.model_id,
@@ -3766,16 +3841,18 @@ def test_model_discovery_route_refreshes_inventory_for_authenticated_user(settin
 
 
 @pytest.mark.parametrize("await_boundary", ["runtime_readiness", "model_inventory"])
-def test_create_turn_rechecks_live_session_after_readiness_or_inventory_await(
-    settings, monkeypatch, await_boundary
+@pytest.mark.parametrize("auth_change", ("session_revoked", "csrf_rotated"))
+def test_create_turn_rechecks_live_session_and_csrf_after_readiness_or_inventory_await(
+    settings, monkeypatch, await_boundary, auth_change
 ):
+    providers = FakeProviders()
     application = create_app(
         _auth_settings(settings),
         FixtureProvider(),
         lambda: NOW,
         assistant_runtime=FakeRuntime(),
         assistant_catalog=FakeCatalog(),
-        assistant_providers=FakeProviders(),
+        assistant_providers=providers,
     )
     await_started = threading.Event()
     release_await = threading.Event()
@@ -3851,9 +3928,17 @@ def test_create_turn_rechecks_live_session_after_readiness_or_inventory_await(
                     timeout=5,
                 )
                 assert await_started.wait(timeout=5), "request did not reach the held await"
-                application.state.repository.auth_revoke_session(
-                    str(owner["token_hash"]), NOW.isoformat()
-                )
+                if auth_change == "session_revoked":
+                    application.state.repository.auth_revoke_session(
+                        str(owner["token_hash"]), NOW.isoformat()
+                    )
+                else:
+                    with application.state.repository.connect() as connection:
+                        connection.execute(
+                            "UPDATE sessions SET csrf_token_hash = ? WHERE token_hash = ?",
+                            (_sha("rotated-test-only-csrf-token"), str(owner["token_hash"])),
+                        )
+                        connection.commit()
                 release_await.set()
                 rejected = pending.result(timeout=8)
 
@@ -3869,6 +3954,7 @@ def test_create_turn_rechecks_live_session_after_readiness_or_inventory_await(
             assert detail["turns"] == []
             assert assistant._tasks == {}
             assert run_started.is_set() is False
+            assert providers.calls == []
         finally:
             release_await.set()
             release_run.set()

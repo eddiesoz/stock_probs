@@ -183,7 +183,8 @@ latest canonical check **Failed** on two supervisor-test AF_UNIX socket paths th
 Linux path limit before child spawn (2,672 tests, 2 failures, 4 skips, 0 errors). E663's selected
 short-`TMPDIR` reproduction passed 2/2 only; it does not replace the failed aggregate. The later
 OAuth callback repair passed its selected independent 14-test/source-review scope, but the full
-canonical gate has not been rerun on those modified files. The tracked guide renderer's source
+canonical gate had not been rerun at that checkpoint; E694 later attempted one but intentionally
+interrupted during Python, leaving no completed aggregate. The tracked guide renderer's source
 review passed. Its initial test review **Failed** on a P2 finding because the test flattened PDF
 structure leaves without asserting per-block boundaries or order. The test-only correction then
 passed independent source/test review and TAP reported 17/17, but the numeric command exit is
@@ -216,7 +217,21 @@ simulated-child coverage only; no native OpenCode, external provider/model/netwo
 production operation ran. The selector uses `zen.native_acceptance_model_id` for the reviewed
 SpaceBunny model and fails closed in both probe paths without an exact selection. It does not change
 the normal runtime model choice/default, policy, or budgets. Candidate image build and native
-acceptance remain pending; no model request occurred. See the ledger for exact receipts and limits.
+acceptance remain pending; no model request occurred. E693's integrated review passed its declared
+19-file scope only. E695 reproduced a consent-mutation gap during a held inventory await:
+revoked-session handling returned 403 after persistence, and CSRF-hash rotation returned 200 with
+persistence. The authorization callback exists but uses `check_csrf=False`; the explicit route
+recheck follows persistence. E698's focused repair passed 9/9 consent/session/CSRF/turn regressions,
+1/1 normal-consent regression, and Ruff checks. E700 independently passed those scoped selections
+and no-finding source review with 21 stable bindings. The full API-module run was interrupted
+(exit 130), so no aggregate is claimed. E694's canonical attempt completed only
+documentation and frontend checks before parent-directed interruption; the maintained receipt has
+exit 2/Fail fields, but the aggregate is **Unavailable/interrupted**. Partial Python JUnit, wrapper
+`tee` exit 0, and 52 matching served/export pairs do not establish full Python or gate acceptance.
+E696/E697 cover eight synthetic candidate images bound to `c169`: parent and independent visual,
+privacy, and integrity reviews passed for the images, but the manifest's privacy fields remain
+pending, its QA digest is all zeroes, and finalization/render were skipped. Recapture after source
+repair is required. See the ledger for exact receipts and limits.
 
 Use the
 [authoritative R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)

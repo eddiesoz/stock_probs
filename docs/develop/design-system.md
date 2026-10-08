@@ -203,7 +203,11 @@ application accessibility or release readiness.
 
 E689 independently passed the renderer unit command (17/17, exit 0) for its synthetic layout/PDF
 cases. It did not run the maintained capture/finalization/render pipeline or app browser checks, so
-fresh guide outputs, PDF/UA, accessibility, and final guide acceptance remain pending. See the
+fresh guide outputs, PDF/UA, accessibility, and final guide acceptance remain pending. E696's
+parent review and E697's independent review passed visual, privacy, and image-integrity checks for
+eight synthetic PNGs bound to the earlier `c169` checkpoint only. The manifest's QA binding remains
+unavailable, its privacy fields are pending, and finalization/render were skipped. Source changes
+require fresh captures before the maintained guide can proceed. See the
 [R-ASTRA-120 ledger](../../MVP-PLAN.md) for the receipt and exact limits.
 
 Use the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
