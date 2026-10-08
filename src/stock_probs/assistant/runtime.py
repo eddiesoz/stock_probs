@@ -1051,8 +1051,8 @@ class OpenCodeV2Runtime:
         self._api_password: str | None = None
         self._status = AssistantRuntimeStatus("disabled", "Assistant runtime is disabled.")
         # Keep admission readiness separate from a previously verified, password-pinned
-        # transport. A bounded supervisor observation timeout makes admission uncertain, but
-        # does not by itself prove that an already-admitted turn's native HTTP client died.
+        # transport. A transient same-generation health observation closes admission, but does
+        # not by itself prove that an already-admitted turn's pinned HTTP client is unusable.
         self._enabled = False
         self._transport_verified = False
         self._webfetch_guard_ready = False
@@ -1071,6 +1071,7 @@ class OpenCodeV2Runtime:
         self._killed = False
         self._operator_disabled = False
         self._turn_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._cache_clear_in_progress = False
         self._turn_timing_diagnostics = _TurnTimingDiagnostics()
 
     def _begin_turn_timing_diagnostic(self, execution_id: str, owner_id: int) -> None:
@@ -1286,6 +1287,7 @@ class OpenCodeV2Runtime:
             status = await self.start(preserve_ready=True)
             if status.status != "ready":
                 raise RuntimeError("worker_unavailable")
+            self._require_ready_worker()
             attempt = _NativeOAuthAttempt(
                 attempt_id=attempt_id,
                 native_attempt_id="",
@@ -1727,9 +1729,9 @@ class OpenCodeV2Runtime:
                         and report.get("observation_uncertain") is True
                         and same_verified_generation
                     ):
-                        # This exact private marker means PID 1 timed out observing the same
-                        # previously verified worker process/password. Close admission while
-                        # keeping the pinned transport alive for work admitted before the check.
+                        # This private marker means a bounded health probe could not confirm
+                        # the same verified worker process/password. Close admission while
+                        # keeping its pinned transport for work admitted before the check.
                         saw_same_generation_uncertainty = True
                         last_uncertain_password = password
                         self._status = AssistantRuntimeStatus(
@@ -1788,6 +1790,11 @@ class OpenCodeV2Runtime:
                     self._transport_verified = False
                     self._webfetch_guard_ready = False
                     old_client, self._client = self._client, None
+                    # Invalidate any response authorization bound to the old worker before
+                    # closing its transport or binding the replacement client. A session
+                    # creation still in flight checks client identity before registering.
+                    for execution_id in tuple(self._active):
+                        self._clear_native_provider_metadata(execution_id)
                     if old_client is not None:
                         with suppress(Exception):
                             await asyncio.wait_for(old_client.aclose(), timeout=1.0)
@@ -1810,6 +1817,12 @@ class OpenCodeV2Runtime:
                 except (TimeoutError, httpx.TimeoutException) as exc:
                     return self._mark_startup_unavailable(
                         exc,
+                        startup_stage=startup_stage,
+                        preserve_verified_transport=same_verified_transport,
+                    )
+                if response.status_code in {502, 503, 504}:
+                    return self._mark_startup_unavailable(
+                        RuntimeError("native_api_unavailable"),
                         startup_stage=startup_stage,
                         preserve_verified_transport=same_verified_transport,
                     )
@@ -1893,7 +1906,7 @@ class OpenCodeV2Runtime:
     def _require_ready_worker(self) -> None:
         """Deny new direct OAuth work when admission readiness is uncertain or closed."""
 
-        if self._killed or self._status.status != "ready":
+        if self._killed or self._cache_clear_in_progress or self._status.status != "ready":
             raise RuntimeError("worker_unavailable")
 
     def status(self) -> AssistantRuntimeStatus:
@@ -1917,7 +1930,7 @@ class OpenCodeV2Runtime:
         """Run one authenticated turn through OpenCode V2 native model and MCP APIs."""
 
         current_task = asyncio.current_task()
-        if self._killed or current_task is None:
+        if self._killed or self._cache_clear_in_progress or current_task is None:
             return AssistantTurnResult("failed", "worker_unavailable")
         existing = self._turn_tasks.get(context.execution_id)
         if existing is not None and existing is not current_task:
@@ -2363,28 +2376,42 @@ class OpenCodeV2Runtime:
         """Request and verify worker-home erasure without deleting canonical SQLite history."""
 
         del conversation_id
-        supervisor = self._get_supervisor()
-        request_purge = getattr(supervisor, "request_home_purge", None)
-        wait_for_purge = getattr(supervisor, "wait_for_home_purge", None)
-        if not callable(request_purge) or not callable(wait_for_purge):
+        if self._cache_clear_in_progress or any(
+            not task.done() for task in self._turn_tasks.values()
+        ):
             return False
+
+        # Reserve admission without yielding so no new turn can race the global HOME purge.
+        self._cache_clear_in_progress = True
         try:
-            purge_id = await asyncio.wait_for(request_purge(), timeout=3.5)
-            if not isinstance(purge_id, str) or not _PURGE_ID.fullmatch(purge_id):
+            supervisor = self._get_supervisor()
+            request_purge = getattr(supervisor, "request_home_purge", None)
+            wait_for_purge = getattr(supervisor, "wait_for_home_purge", None)
+            if not callable(request_purge) or not callable(wait_for_purge):
                 return False
-            cleared = await asyncio.wait_for(wait_for_purge(purge_id, timeout=20.0), timeout=20.5)
-        except Exception as exc:
-            _LOGGER.warning("Assistant conversation cache purge failed (%s).", type(exc).__name__)
-            return False
-        if cleared is not True:
-            return False
-        # The supervisor's literal acknowledgement confirms erasure even if its new worker
-        # is still reconnecting; _refresh_after_home_purge leaves readiness degraded on failure.
-        try:
-            await self._refresh_after_home_purge()
-        except Exception as exc:
-            _LOGGER.warning("Assistant worker reconnect failed (%s).", type(exc).__name__)
-        return True
+            try:
+                purge_id = await asyncio.wait_for(request_purge(), timeout=3.5)
+                if not isinstance(purge_id, str) or not _PURGE_ID.fullmatch(purge_id):
+                    return False
+                cleared = await asyncio.wait_for(
+                    wait_for_purge(purge_id, timeout=20.0), timeout=20.5
+                )
+            except Exception as exc:
+                _LOGGER.warning(
+                    "Assistant conversation cache purge failed (%s).", type(exc).__name__
+                )
+                return False
+            if cleared is not True:
+                return False
+            # The supervisor's literal acknowledgement confirms erasure even if its new worker
+            # is still reconnecting; _refresh_after_home_purge leaves readiness degraded on failure.
+            try:
+                await self._refresh_after_home_purge()
+            except Exception as exc:
+                _LOGGER.warning("Assistant worker reconnect failed (%s).", type(exc).__name__)
+            return True
+        finally:
+            self._cache_clear_in_progress = False
 
     async def kill_switch(self, reason: str) -> None:
         """Disable new turns and interrupt all currently active native sessions."""
@@ -2973,6 +3000,16 @@ class OpenCodeV2Runtime:
     ) -> str:
         from stock_probs.assistant.tools import AssistantToolGateway
 
+        expected_client = self._client
+        expected_password = self._api_password
+        if (
+            expected_client is None
+            or not isinstance(expected_password, str)
+            or not self._enabled
+            or not self._transport_verified
+        ):
+            raise RuntimeError("worker_unavailable")
+
         mcp_permissions = [
             {
                 "action": "signal-ledger_" + str(tool["name"]).replace(".", "_"),
@@ -3021,6 +3058,16 @@ class OpenCodeV2Runtime:
             or not _SESSION_ID.fullmatch(session_id)
         ):
             raise RuntimeError("session_create_failed")
+        # The request may complete after a monitor observed a new worker generation and
+        # replaced the client. Do not repopulate native session correlation from that stale
+        # response, even if the old transport returned it successfully.
+        if (
+            self._client is not expected_client
+            or self._api_password != expected_password
+            or not self._enabled
+            or not self._transport_verified
+        ):
+            raise RuntimeError("worker_unavailable")
         if isinstance(project_id, str) and _valid_native_project_id(project_id):
             self._native_project_ids[context.execution_id] = project_id
         else:

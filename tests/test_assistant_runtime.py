@@ -1640,8 +1640,11 @@ def test_unverified_native_api_info_timeout_does_not_enable_transport() -> None:
     asyncio.run(exercise())
 
 
-def test_password_replacement_api_info_timeout_cannot_retain_old_transport() -> None:
-    """A changed supervisor password invalidates the old client before a timed-out probe."""
+@pytest.mark.parametrize("replacement_probe", ("timeout", "gateway_error"))
+def test_password_replacement_api_info_failure_cannot_retain_old_transport(
+    replacement_probe: str,
+) -> None:
+    """A changed supervisor password invalidates the old client before its probe."""
 
     supervisor = _MutableHealthSupervisor()
     fail_api_info = False
@@ -1649,7 +1652,13 @@ def test_password_replacement_api_info_timeout_cannot_retain_old_transport() -> 
 
     async def native_api(_request: httpx.Request) -> httpx.Response:
         if fail_api_info:
-            raise httpx.ReadTimeout("synthetic replacement API info timeout")
+            if replacement_probe == "timeout":
+                raise httpx.ReadTimeout("synthetic replacement API info timeout")
+            return httpx.Response(
+                503,
+                headers={"content-type": "application/json"},
+                stream=_NativeBody(b'{"error":"temporarily unavailable"}'),
+            )
         return httpx.Response(
             200,
             headers={"content-type": "application/json"},
@@ -1691,6 +1700,135 @@ def test_password_replacement_api_info_timeout_cannot_retain_old_transport() -> 
     asyncio.run(exercise())
 
 
+def test_worker_generation_change_clears_active_metadata_before_old_client_close() -> None:
+    """A replacement worker cannot inherit session authorization from the old generation."""
+
+    supervisor = _MutableHealthSupervisor()
+
+    async def native_api(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            stream=_NativeBody(b'{"version":"v2"}'),
+        )
+
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=supervisor,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
+
+    async def exercise() -> None:
+        assert (await runtime.start()).status == "ready"
+        old_client = runtime._client
+        assert old_client is not None
+        context = _context()
+        session_id = "ses_0123456789abABCDEFGHIJKLMN"
+        runtime._active[context.execution_id] = session_id
+        runtime._native_project_ids[context.execution_id] = "global"
+        assert runtime.native_provider_metadata(context.execution_id) == (session_id, "global")
+
+        original_close = old_client.aclose
+        metadata_at_close: list[tuple[str, str] | None] = []
+
+        async def inspect_before_close() -> None:
+            metadata_at_close.append(runtime.native_provider_metadata(context.execution_id))
+            await original_close()
+
+        old_client.aclose = inspect_before_close  # type: ignore[method-assign]
+        supervisor.api_password = "t" * 48
+        assert (await runtime.start(preserve_ready=True)).status == "ready"
+
+        assert metadata_at_close == [None]
+        assert runtime._client is not old_client
+        assert runtime.native_provider_metadata(context.execution_id) is None
+        assert context.execution_id not in runtime._active
+        assert context.execution_id not in runtime._native_project_ids
+        await runtime.close()
+
+    asyncio.run(exercise())
+
+
+def test_late_old_generation_session_response_cannot_restore_native_metadata() -> None:
+    """A delayed session POST cannot repopulate correlation after client replacement."""
+
+    supervisor = _MutableHealthSupervisor()
+
+    async def native_api(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            stream=_NativeBody(b'{"version":"v2"}'),
+        )
+
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=supervisor,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
+    request_started = asyncio.Event()
+    release_response = asyncio.Event()
+    original_request = runtime._request
+
+    async def delayed_session_response(
+        method: str,
+        path: str,
+        **kwargs: object,
+    ) -> httpx.Response:
+        if method == "POST" and path == "/api/session":
+            request_started.set()
+            await release_response.wait()
+            request = httpx.Request(method, "http://127.0.0.1:4097/api/session")
+            return httpx.Response(
+                200,
+                headers={"content-type": "application/json"},
+                json={
+                    "data": {
+                        "id": "ses_0123456789abABCDEFGHIJKLMN",
+                        "projectID": "global",
+                    }
+                },
+                request=request,
+            )
+        return await original_request(method, path, **kwargs)
+
+    runtime._request = delayed_session_response
+    context = _context()
+
+    async def exercise() -> None:
+        assert (await runtime.start()).status == "ready"
+        session_creation = asyncio.create_task(
+            runtime._create_session(
+                context,
+                "/run/assistant/worker-locations/" + context.execution_id,
+                {"providerID": "assistant-proxy", "modelID": "assistant-selected"},
+            )
+        )
+        await asyncio.wait_for(request_started.wait(), timeout=1.0)
+
+        supervisor.api_password = "t" * 48
+        assert (await runtime.start(preserve_ready=True)).status == "ready"
+        assert runtime.native_provider_metadata(context.execution_id) is None
+
+        release_response.set()
+        with pytest.raises(RuntimeError, match="worker_unavailable"):
+            await session_creation
+        assert runtime.native_provider_metadata(context.execution_id) is None
+        assert context.execution_id not in runtime._active
+        assert context.execution_id not in runtime._native_project_ids
+        await runtime.close()
+
+    asyncio.run(exercise())
+
+
 def test_same_generation_uncertainty_recovers_only_after_positive_observation() -> None:
     """A same-password timeout preserves transport, but readiness needs a later positive probe."""
 
@@ -1727,6 +1865,245 @@ def test_same_generation_uncertainty_recovers_only_after_positive_observation() 
         assert status.status == "ready"
         assert runtime._client is original_client
         assert runtime._enabled is True and runtime._transport_verified is True
+        await runtime.close()
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("status_code", (502, 503, 504))
+def test_transient_native_info_status_preserves_active_transport_but_closes_admission(
+    status_code: int,
+) -> None:
+    supervisor = _MutableHealthSupervisor()
+    pending_statuses: list[int] = []
+
+    async def native_api(_request: httpx.Request) -> httpx.Response:
+        status = pending_statuses.pop(0) if pending_statuses else 200
+        body = b'{"error":"temporarily unavailable"}' if status != 200 else b'{"version":"v2"}'
+        return httpx.Response(
+            status,
+            headers={"content-type": "application/json"},
+            stream=_NativeBody(body),
+        )
+
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=supervisor,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
+
+    async def exercise() -> None:
+        assert (await runtime.start()).status == "ready"
+        monitor = runtime._monitor_task
+        if monitor is not None:
+            monitor.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await monitor
+            runtime._monitor_task = None
+        original_client = runtime._client
+        assert original_client is not None
+        context = _context()
+        runtime._active[context.execution_id] = "ses_0123456789abABCDEFGHIJKLMN"
+        runtime._native_project_ids[context.execution_id] = "global"
+        active_metadata = runtime.native_provider_metadata(context.execution_id)
+        assert active_metadata == ("ses_0123456789abABCDEFGHIJKLMN", "global")
+
+        pending_statuses.append(status_code)
+        status = await runtime.start(preserve_ready=True)
+
+        assert status.status == "unavailable"
+        with pytest.raises(RuntimeError, match="worker_unavailable"):
+            runtime._require_ready_worker()
+        assert runtime._client is original_client
+        assert runtime._enabled is True
+        assert runtime._transport_verified is True
+        assert runtime.native_provider_metadata(context.execution_id) == active_metadata
+        # The verified transport remains usable by work admitted before the probe failure.
+        response = await runtime._request("GET", "/api/info", timeout=1.0)
+        assert response.status_code == 200
+
+        assert (await runtime.start(preserve_ready=True)).status == "ready"
+        assert runtime.native_provider_metadata(context.execution_id) == active_metadata
+        await runtime.close()
+
+    asyncio.run(exercise())
+
+
+def test_run_turn_closes_admission_on_same_generation_readiness_uncertainty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A new turn fails closed while a previously admitted session keeps its transport."""
+
+    class UncertainSupervisor(_MutableHealthSupervisor):
+        def __init__(self) -> None:
+            super().__init__()
+            self.uncertain = False
+
+        async def status(self) -> dict[str, object]:
+            if self.uncertain:
+                raise TimeoutError("synthetic same-generation observation timeout")
+            return await super().status()
+
+    supervisor = UncertainSupervisor()
+    native_paths: list[str] = []
+
+    async def native_api(request: httpx.Request) -> httpx.Response:
+        native_paths.append(request.url.path)
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            stream=_NativeBody(b'{"version":"v2"}'),
+        )
+
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=supervisor,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
+
+    async def exercise() -> None:
+        monkeypatch.setattr(assistant_runtime, "_STARTUP_STATUS_DEADLINE_SECONDS", 0.025)
+        monkeypatch.setattr(assistant_runtime, "_STARTUP_STATUS_POLL_SECONDS", 0.001)
+        assert (await runtime.start()).status == "ready"
+        monitor = runtime._monitor_task
+        if monitor is not None:
+            monitor.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await monitor
+            runtime._monitor_task = None
+
+        active_context = _context("d" * 32)
+        runtime._active[active_context.execution_id] = "ses_0123456789abABCDEFGHIJKLMN"
+        runtime._native_project_ids[active_context.execution_id] = "global"
+        active_metadata = runtime.native_provider_metadata(active_context.execution_id)
+        assert active_metadata == ("ses_0123456789abABCDEFGHIJKLMN", "global")
+        original_client = runtime._client
+        assert original_client is not None
+
+        supervisor.uncertain = True
+
+        async def emit(_event):
+            return None
+
+        result = await runtime.run_turn(
+            context=_context("e" * 32), prompt="wait for confirmed readiness", emit=emit
+        )
+
+        assert result == AssistantTurnResult("failed", "worker_unavailable")
+        assert runtime._turn_tasks == {}
+        assert runtime.status().status == "unavailable"
+        assert runtime._client is original_client
+        assert runtime._enabled is True and runtime._transport_verified is True
+        assert runtime.native_provider_metadata(active_context.execution_id) == active_metadata
+        assert native_paths == ["/api/info"]
+
+        response = await runtime._request("GET", "/api/info", timeout=1.0)
+        assert response.status_code == 200
+        assert native_paths == ["/api/info", "/api/info"]
+        await runtime.close()
+
+    asyncio.run(exercise())
+
+
+def test_transient_supervisor_observation_does_not_close_held_provider_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from stock_probs.assistant.api import _provider_proxy_chunks
+
+    supervisor = _MutableHealthSupervisor()
+
+    async def native_api(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            stream=_NativeBody(b'{"version":"v2"}'),
+        )
+
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=supervisor,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
+
+    async def exercise() -> None:
+        monkeypatch.setattr(assistant_runtime, "_STARTUP_STATUS_POLL_SECONDS", 0.001)
+        assert (await runtime.start()).status == "ready"
+        monitor = runtime._monitor_task
+        if monitor is not None:
+            monitor.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await monitor
+            runtime._monitor_task = None
+        context = _context()
+        runtime._active[context.execution_id] = "ses_0123456789abABCDEFGHIJKLMN"
+        runtime._native_project_ids[context.execution_id] = "global"
+        approved_metadata = runtime.native_provider_metadata(context.execution_id)
+        assert approved_metadata == ("ses_0123456789abABCDEFGHIJKLMN", "global")
+
+        upstream_waiting = asyncio.Event()
+        release_upstream = asyncio.Event()
+
+        async def upstream():
+            yield b"first"
+            upstream_waiting.set()
+            await release_upstream.wait()
+            yield b"second"
+
+        # The stream guard expects a synchronous predicate, as used by the route.
+        proxy = _provider_proxy_chunks(
+            upstream(),
+            lambda: runtime.native_provider_metadata(context.execution_id) == approved_metadata,
+        )
+        assert await proxy.__anext__() == b"first"
+        next_chunk = asyncio.create_task(proxy.__anext__())
+        await asyncio.wait_for(upstream_waiting.wait(), timeout=1.0)
+
+        original_status = supervisor.status
+        retry_status_entered = asyncio.Event()
+        release_status_retry = asyncio.Event()
+        status_calls = 0
+
+        async def uncertain_then_ready():
+            nonlocal status_calls
+            status_calls += 1
+            if status_calls == 1:
+                return {
+                    "status": "starting",
+                    "api_url": supervisor.api_url,
+                    "api_password": supervisor.api_password,
+                    "webfetch_guard_ready": supervisor.webfetch_guard_ready,
+                    "observation_uncertain": True,
+                }
+            retry_status_entered.set()
+            await release_status_retry.wait()
+            return await original_status()
+
+        supervisor.status = uncertain_then_ready
+        health_check = asyncio.create_task(runtime.start(preserve_ready=True))
+        await asyncio.wait_for(retry_status_entered.wait(), timeout=1.0)
+        assert runtime.status().status == "starting"
+        assert runtime.native_provider_metadata(context.execution_id) == approved_metadata
+        with pytest.raises(RuntimeError, match="worker_unavailable"):
+            runtime._require_ready_worker()
+
+        release_upstream.set()
+        assert await asyncio.wait_for(next_chunk, timeout=1.0) == b"second"
+        with pytest.raises(StopAsyncIteration):
+            await asyncio.wait_for(proxy.__anext__(), timeout=1.0)
+        release_status_retry.set()
+        assert (await asyncio.wait_for(health_check, timeout=1.0)).status == "ready"
         await runtime.close()
 
     asyncio.run(exercise())
@@ -1918,9 +2295,12 @@ def test_status_timeout_retry_does_not_retry_confirmed_disabled_worker() -> None
     ("failure", "expected_status"),
     (
         ("nonready", "unavailable"),
+        ("dead_worker", "unavailable"),
         ("disabled", "disabled"),
         ("bad_identity", "unavailable"),
-        ("native_info_503", "unavailable"),
+        ("native_info_401", "unavailable"),
+        ("native_info_500", "unavailable"),
+        ("native_info_malformed", "unavailable"),
     ),
 )
 def test_confirmed_startup_failure_invalidates_verified_transport(
@@ -1931,14 +2311,20 @@ def test_confirmed_startup_failure_invalidates_verified_transport(
     """Confirmed lifecycle, identity, and native API failures revoke the prior transport latch."""
 
     supervisor = _MutableHealthSupervisor()
-    native_info_503 = False
+    native_info_failure: str | None = None
 
     async def native_api(_request: httpx.Request) -> httpx.Response:
-        if native_info_503:
+        if native_info_failure in {"native_info_401", "native_info_500"}:
             return httpx.Response(
-                503,
+                401 if native_info_failure == "native_info_401" else 500,
                 headers={"content-type": "application/json"},
                 stream=_NativeBody(b'{"error":"unavailable"}'),
+            )
+        if native_info_failure == "native_info_malformed":
+            return httpx.Response(
+                200,
+                headers={"content-type": "application/json"},
+                stream=_NativeBody(b"not-json"),
             )
         return httpx.Response(
             200,
@@ -1957,7 +2343,7 @@ def test_confirmed_startup_failure_invalidates_verified_transport(
     )
 
     async def exercise() -> None:
-        nonlocal native_info_503
+        nonlocal native_info_failure
         monkeypatch.setattr(assistant_runtime, "_STARTUP_STATUS_DEADLINE_SECONDS", 0.025)
         monkeypatch.setattr(assistant_runtime, "_STARTUP_STATUS_POLL_SECONDS", 0.001)
         assert (await runtime.start()).status == "ready"
@@ -1969,12 +2355,14 @@ def test_confirmed_startup_failure_invalidates_verified_transport(
                 {"status": "starting"},
                 TimeoutError("synthetic supervisor observation timeout"),
             ]
+        elif failure == "dead_worker":
+            supervisor.reported_status = "unavailable"
         elif failure == "disabled":
             supervisor.reported_status = "disabled"
         elif failure == "bad_identity":
             supervisor.api_url = "http://127.0.0.1:4098"
         else:
-            native_info_503 = True
+            native_info_failure = failure
         status = await runtime.start(preserve_ready=True)
         assert status.status == expected_status
         assert runtime._enabled is False
@@ -2068,7 +2456,24 @@ def test_cancel_execution_clears_native_correlation_before_interrupt() -> None:
 def test_cancelled_native_session_creation_does_not_retain_project_metadata() -> None:
     """Cancellation while native creation is pending cannot leave an identity mapping."""
 
-    runtime = _oauth_test_runtime(_Supervisor())
+    supervisor = _MutableHealthSupervisor()
+
+    async def native_api(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            stream=_NativeBody(b'{"version":"v2"}'),
+        )
+
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=supervisor,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
     context = _context()
     request_started = asyncio.Event()
 
@@ -2077,9 +2482,9 @@ def test_cancelled_native_session_creation_does_not_retain_project_metadata() ->
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
 
-    runtime._request = blocked_request
-
     async def exercise() -> None:
+        assert (await runtime.start()).status == "ready"
+        runtime._request = blocked_request
         task = asyncio.create_task(
             runtime._create_session(
                 context,
@@ -2094,6 +2499,7 @@ def test_cancelled_native_session_creation_does_not_retain_project_metadata() ->
         assert runtime.native_provider_metadata(context.execution_id) is None
         assert context.execution_id not in runtime._active
         assert context.execution_id not in runtime._native_project_ids
+        await runtime.close()
 
     asyncio.run(exercise())
 
@@ -6851,6 +7257,171 @@ def test_conversation_cache_clear_requires_literal_completed_purge(purge_result:
 
     assert result is (purge_result is True)
     assert supervisor.purge_waits == [("f" * 32, 20.0)]
+
+
+def test_conversation_cache_clear_waits_until_other_turn_unwinds() -> None:
+    """A global HOME purge cannot invalidate another user's admitted native turn."""
+
+    class TrackingSupervisor(_Supervisor):
+        def __init__(self) -> None:
+            super().__init__(purge_id="f" * 32, purge_result=True)
+            self.purge_requests = 0
+
+        async def request_home_purge(self) -> str:
+            self.purge_requests += 1
+            return await super().request_home_purge()
+
+    supervisor = TrackingSupervisor()
+    runtime = _oauth_test_runtime(supervisor)
+    context = replace(_context("e" * 32), user_id=42)
+    native_session = "ses_0123456789abABCDEFGHIJKLMN"
+    runtime._active[context.execution_id] = native_session
+    runtime._native_project_ids[context.execution_id] = "global"
+    turn_started = asyncio.Event()
+    finish_turn = asyncio.Event()
+
+    async def blocked_turn(*, context, prompt, emit):
+        del prompt, emit
+        turn_started.set()
+        await finish_turn.wait()
+        return AssistantTurnResult("completed", None)
+
+    runtime._run_turn_impl = blocked_turn
+
+    async def exercise() -> None:
+        async def emit(_event):
+            return None
+
+        turn_task = asyncio.create_task(
+            runtime.run_turn(context=context, prompt="continue safely", emit=emit)
+        )
+        await asyncio.wait_for(turn_started.wait(), timeout=1.0)
+        active_metadata = runtime.native_provider_metadata(context.execution_id)
+        assert active_metadata == (native_session, "global")
+
+        assert await runtime.clear_conversation_cache("deleted-conversation") is False
+        assert supervisor.purge_requests == 0
+        assert supervisor.purge_waits == []
+        assert runtime._cache_clear_in_progress is False
+        assert runtime.native_provider_metadata(context.execution_id) == active_metadata
+        assert runtime.status().status == "ready"
+
+        finish_turn.set()
+        result = await asyncio.wait_for(turn_task, timeout=1.0)
+        assert result == AssistantTurnResult("completed", None)
+        assert runtime._turn_tasks == {}
+
+        assert await runtime.clear_conversation_cache("deleted-conversation") is True
+        assert supervisor.purge_requests == 1
+        assert supervisor.purge_waits == [("f" * 32, 20.0)]
+        assert runtime._cache_clear_in_progress is False
+        await runtime.close()
+
+    asyncio.run(exercise())
+
+
+def test_conversation_cache_clear_closes_turn_and_oauth_admission_and_releases_on_failure() -> None:
+    """Failed purges close admission only while queued and release it on return."""
+
+    class WaitingSupervisor(_Supervisor):
+        def __init__(self) -> None:
+            super().__init__(purge_id="f" * 32, purge_result=True)
+            self.request_started = asyncio.Event()
+            self.finish_request = asyncio.Event()
+
+        async def request_home_purge(self) -> str:
+            self.request_started.set()
+            await self.finish_request.wait()
+            raise RuntimeError("synthetic queued purge failure")
+
+    supervisor = WaitingSupervisor()
+    runtime = _oauth_test_runtime(supervisor)
+    context = _context()
+    impl_calls: list[str] = []
+
+    async def turn_impl(*, context, prompt, emit):
+        del prompt, emit
+        impl_calls.append(context.execution_id)
+        return AssistantTurnResult("completed", None)
+
+    runtime._run_turn_impl = turn_impl
+
+    async def exercise() -> None:
+        clear_task = asyncio.create_task(runtime.clear_conversation_cache("conversation-id"))
+        await asyncio.wait_for(supervisor.request_started.wait(), timeout=1.0)
+        assert runtime._cache_clear_in_progress is True
+        assert await runtime.clear_conversation_cache("another-conversation") is False
+
+        with pytest.raises(RuntimeError, match="worker_unavailable"):
+            runtime._require_ready_worker()
+        with pytest.raises(RuntimeError, match="worker_unavailable"):
+            await runtime.begin_native_oauth(
+                "openai",
+                "chatgpt-browser",
+                attempt_id="a" * 32,
+                capability="b" * 32,
+                owner_id=context.user_id,
+                session_id="c" * 32,
+            )
+        assert runtime._oauth_attempts == {}
+        assert supervisor.worker_holds == []
+
+        async def emit(_event):
+            return None
+
+        denied = await runtime.run_turn(context=context, prompt="must wait", emit=emit)
+        assert denied == AssistantTurnResult("failed", "worker_unavailable")
+        assert runtime._turn_tasks == {}
+        assert impl_calls == []
+
+        supervisor.finish_request.set()
+        assert await asyncio.wait_for(clear_task, timeout=1.0) is False
+        assert runtime._cache_clear_in_progress is False
+
+        admitted = await runtime.run_turn(context=context, prompt="retry", emit=emit)
+        assert admitted == AssistantTurnResult("completed", None)
+        assert impl_calls == [context.execution_id]
+        await runtime.close()
+
+    asyncio.run(exercise())
+
+
+def test_conversation_cache_clear_cancellation_releases_admission_flag() -> None:
+    """Cancellation during purge waiting always reopens admission for a later retry."""
+
+    class CancellableSupervisor(_Supervisor):
+        def __init__(self) -> None:
+            super().__init__(purge_id="f" * 32, purge_result=True)
+            self.wait_started = asyncio.Event()
+            self.block_wait = True
+
+        async def wait_for_home_purge(self, purge_id: str, *, timeout: float) -> object:
+            self.purge_waits.append((purge_id, timeout))
+            if self.block_wait:
+                self.wait_started.set()
+                await asyncio.Event().wait()
+            return True
+
+    supervisor = CancellableSupervisor()
+    runtime = _oauth_test_runtime(supervisor)
+
+    async def exercise() -> None:
+        clear_task = asyncio.create_task(runtime.clear_conversation_cache("conversation-id"))
+        await asyncio.wait_for(supervisor.wait_started.wait(), timeout=1.0)
+        assert runtime._cache_clear_in_progress is True
+
+        clear_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await clear_task
+        assert runtime._cache_clear_in_progress is False
+
+        supervisor.block_wait = False
+        assert await runtime.clear_conversation_cache("conversation-id") is True
+        assert runtime._cache_clear_in_progress is False
+        assert supervisor.purge_waits == [("f" * 32, 20.0), ("f" * 32, 20.0)]
+        await runtime.close()
+
+    asyncio.run(exercise())
 
 
 @pytest.mark.parametrize("reconnect_raises", (False, True))

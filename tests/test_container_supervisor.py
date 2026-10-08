@@ -389,7 +389,7 @@ def test_supervisor_status_projects_only_the_verified_fetch_capability(
     assert report["observation_uncertain"] is False
 
 
-def test_worker_api_timeout_is_distinct_from_confirmed_invalid_response(
+def test_worker_api_gateway_statuses_are_uncertain_but_other_failures_stay_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     instance = supervisor.ContainerSupervisor(worker_enabled=True, environment={})
@@ -400,11 +400,108 @@ def test_worker_api_timeout_is_distinct_from_confirmed_invalid_response(
     monkeypatch.setattr(supervisor.urllib.request, "urlopen", timeout)
     assert instance._worker_ready() is None
 
-    def unavailable(*_args: object, **_kwargs: object) -> object:
-        raise supervisor.urllib.error.HTTPError(None, 503, "unavailable", {}, None)
+    for status_code in (502, 503, 504):
 
-    monkeypatch.setattr(supervisor.urllib.request, "urlopen", unavailable)
+        def gateway_error(
+            *_args: object, _status_code: int = status_code, **_kwargs: object
+        ) -> object:
+            raise supervisor.urllib.error.HTTPError(
+                None, _status_code, "gateway unavailable", {}, None
+            )
+
+        monkeypatch.setattr(supervisor.urllib.request, "urlopen", gateway_error)
+        assert instance._worker_ready() is None
+
+    for status_code in (401, 500):
+
+        def definite_http_error(
+            *_args: object, _status_code: int = status_code, **_kwargs: object
+        ) -> object:
+            raise supervisor.urllib.error.HTTPError(None, _status_code, "unavailable", {}, None)
+
+        monkeypatch.setattr(supervisor.urllib.request, "urlopen", definite_http_error)
+        assert instance._worker_ready() is False
+
+    def reset(*_args: object, **_kwargs: object) -> object:
+        raise supervisor.urllib.error.URLError(ConnectionResetError("synthetic reset"))
+
+    monkeypatch.setattr(supervisor.urllib.request, "urlopen", reset)
     assert instance._worker_ready() is False
+
+    def refused(*_args: object, **_kwargs: object) -> object:
+        raise supervisor.urllib.error.URLError(ConnectionRefusedError("synthetic refusal"))
+
+    monkeypatch.setattr(supervisor.urllib.request, "urlopen", refused)
+    assert instance._worker_ready() is False
+
+    class ProbeResponse:
+        status = 200
+
+        def __init__(self, body: bytes) -> None:
+            self.body = body
+
+        def __enter__(self) -> ProbeResponse:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return self.body
+
+    for body in (b"not-json", b"x" * (32 * 1024 + 1)):
+        monkeypatch.setattr(
+            supervisor.urllib.request,
+            "urlopen",
+            lambda *_args, body=body, **_kwargs: ProbeResponse(body),
+        )
+        assert instance._worker_ready() is False
+
+
+@pytest.mark.parametrize("status_code", (502, 503, 504))
+def test_same_verified_worker_gateway_error_projects_uncertain_status(
+    status_code: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class LiveWorker:
+        def poll(self) -> None:
+            return None
+
+    class ProbeResponse:
+        status = 200
+
+        def __enter__(self) -> ProbeResponse:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return b"{}"
+
+    worker = LiveWorker()
+    instance = supervisor.ContainerSupervisor(worker_enabled=True, environment={})
+    instance._worker = worker  # type: ignore[assignment]
+    calls = 0
+
+    def verified_then_gateway_error(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ProbeResponse()
+        raise supervisor.urllib.error.HTTPError(None, status_code, "gateway unavailable", {}, None)
+
+    monkeypatch.setattr(supervisor.urllib.request, "urlopen", verified_then_gateway_error)
+
+    first = instance._dispatch({"version": 1, "op": "status"})
+    uncertain = instance._dispatch({"version": 1, "op": "status"})
+
+    assert first["status"] == "ready"
+    assert first["observation_uncertain"] is False
+    assert uncertain["status"] == "starting"
+    assert uncertain["observation_uncertain"] is True
+    assert uncertain["api_password"] == first["api_password"]
+    assert instance._verified_worker == (instance._worker_generation, worker, instance.api_password)
 
 
 def test_worker_status_marks_only_same_verified_live_generation_uncertain(

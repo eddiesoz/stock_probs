@@ -1123,7 +1123,7 @@ class ContainerSupervisor:
         return self._verified_worker == (self._worker_generation, worker, self.api_password)
 
     def _worker_ready(self) -> bool | None:
-        """Return true/false for confirmed readiness/failure, or None for probe timeout."""
+        """Return None only when a bounded probe cannot confirm readiness or failure."""
 
         credentials = base64.b64encode(f"opencode:{self.api_password}".encode()).decode()
         request = urllib.request.Request(  # noqa: S310 - constant loopback URL only.
@@ -1133,13 +1133,17 @@ class ContainerSupervisor:
         try:
             # WORKER_URL is an immutable loopback constant, never request or environment input.
             with urllib.request.urlopen(request, timeout=0.25) as response:  # noqa: S310
+                if response.status in {502, 503, 504}:
+                    return None
                 if response.status != 200:
                     return False
                 body = response.read(32 * 1024 + 1)
                 if len(body) > 32 * 1024:
                     return False
                 return isinstance(json.loads(body), dict)
-        except urllib.error.HTTPError:
+        except urllib.error.HTTPError as exc:
+            if exc.code in {502, 503, 504}:
+                return None
             return False
         except urllib.error.URLError as exc:
             return None if isinstance(exc.reason, TimeoutError) else False
