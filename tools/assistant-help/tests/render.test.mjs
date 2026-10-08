@@ -383,7 +383,16 @@ test("exported guide is self-contained with verified screenshots, trusted CSS, a
     assert.ok(heroMarkup, "the hero research illustration remains present");
     assert.doesNotMatch(heroMarkup, /<(?:svg|text)\b/i);
     assert.equal((heroMarkup.match(/<li>/g) ?? []).length, 4);
-    for (const label of ["Context", "Evidence", "Review", "Receipt", "Optional", "Attributed", "Explicit", "Saved"]) {
+    for (const label of [
+      "Page context",
+      "Evidence",
+      "Review",
+      "Receipt",
+      "References optional",
+      "Attributed",
+      "Explicit",
+      "Saved",
+    ]) {
       assert.match(heroMarkup, new RegExp(`>${label}<`));
     }
     assert.match(heroMarkup, /non-market illustration/i);
@@ -417,6 +426,21 @@ test("capture copy distinguishes a handed-off action from a completed change and
     assert.match(html, /workspace change is not shown as complete/i);
     assert.doesNotMatch(html, /workspace change (?:is|was) (?:complete|applied)/i);
     assert.doesNotMatch(html, /completed workspace-action receipt/i);
+
+    assert.match(html, /current page route is always included/i);
+    assert.match(html, /route always shared, references optional/i);
+    assert.match(html, /references optional/i);
+    assert.match(html, /portfolio and watchlist/i);
+    assert.match(html, /change a holding quantity/i);
+    assert.match(html, /confirmed new forecast request saves a new forecast/i);
+    assert.match(html, /immutable saved record without calling the model again/i);
+    assert.match(html, /recording an outcome appends an observation/i);
+    assert.match(html, /fresh historical reconstruction saves a separate analysis/i);
+    assert.match(html, /protected invitation settings/i);
+    assert.match(html, /does not create or send an invitation in chat/i);
+    assert.match(html, /administrator TOTP verification/i);
+    assert.match(html, /secure form checks it again/i);
+    assert.match(html, /never paste invitation codes in chat/i);
 
     assert.match(html, /running application with example accounts, conversations, forecasts, and sources/i);
     assert.match(html, /mobile views use viewport emulation/i);

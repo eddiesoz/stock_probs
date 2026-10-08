@@ -26,12 +26,12 @@
         <div class="hero-copy">
           <p class="eyebrow">A research companion with clear controls</p>
           <h1 id="hero-title">Ask a better question.<br><span>Keep the decision yours.</span></h1>
-          <p class="hero-lede">The Ledger assistant can explain the workspace and help organize research. You choose what context to share, which approved model to use, and whether a proposed change may proceed.</p>
+          <p class="hero-lede">The Ledger assistant can explain the workspace and help organize research. You choose an approved model and which workspace references to share; the current page route is always included. You decide whether a proposed change may proceed.</p>
           <p class="synthetic-note"><strong>Example data is synthetic.</strong> These screenshots show the running application with example accounts, conversations, forecasts, and sources. Mobile views use viewport emulation; behavior on a physical iPhone or iOS device is not verified. The examples are not market research or recommendations.</p>
         </div>
         <figure class="hero-art">
           <ol class="research-loop" aria-label="A four-step research loop">
-            <li><strong>Context</strong><small>Optional</small></li>
+            <li><strong>Page context</strong><small>References optional</small></li>
             <li><strong>Evidence</strong><small>Attributed</small></li>
             <li><strong>Review</strong><small>Explicit</small></li>
             <li><strong>Receipt</strong><small>Saved</small></li>
@@ -67,7 +67,7 @@
           <h2 id="quick-map-title">You stay in control at every step.</h2>
         </div>
         <ol class="loop-steps">
-          <li><span>01</span><strong>Choose</strong><small>An approved model and optional context.</small></li>
+          <li><span>01</span><strong>Choose</strong><small>Approved model; route always shared, references optional.</small></li>
           <li><span>02</span><strong>Ask</strong><small>A specific, bounded research question.</small></li>
           <li><span>03</span><strong>Review</strong><small>Tool steps, sources, and any exact preview.</small></li>
           <li><span>04</span><strong>Decide</strong><small>Confirm only what you intended to change.</small></li>
@@ -159,7 +159,10 @@
             <p>On the Signal Ledger home (<code>/</code>), ask the assistant to prepare history filters or a filtered CSV or JSON export. Search ledger is the home page’s history form, separate from Overview. Review the exact preview and confirm it. Filters open in that form; approved exports open the owner-authorized download. The separate Research page shows five recent records from the newest 100 and saved-forecast comparisons. The assistant can search owner-scoped history there, but a filter request takes you to the home page’s history form.</p>
             <p>On Markets, confirmed requests can apply local quote filters, change the chart range or visible columns, and refresh quotes, the watchlist, or the selected chart. Review the proposed settings before confirming. These actions use the current page’s controls and selected instrument; quotes remain provider-labelled research data, not a real-time or trading feed.</p>
             <p>On Live Trading, a confirmed request to open note controls or remove an alert is a handoff. On mobile, the assistant closes and focuses the Notes or Alerts section heading. Finish the change in that workspace control; the handoff itself does not edit the note or remove the alert. Reopen the assistant’s conversation history and select the same conversation to review its receipt. Adding a threshold is a separate confirmed action limited to the open Live Trading page session; it has no scheduler or notification delivery.</p>
-            <p>Account and administrator operations keep their own protected forms and authenticator step-up. A workspace action confirmation does not bypass those account checks.</p>
+            <p><strong>Portfolio and watchlist.</strong> Ask to add or remove an instrument, or change a holding quantity; confirm the exact symbol and amount.</p>
+            <p><strong>Forecasts and follow-up.</strong> A confirmed new forecast request saves a new forecast. Reopening opens its immutable saved record without calling the model again. Recording an outcome appends an observation; a fresh historical reconstruction saves a separate analysis at the chosen cutoff without rewriting the submitted forecast.</p>
+            <p><strong>Administrator invitations.</strong> An invitation proposal hands off to protected invitation settings; it does not create or send an invitation in chat. Confirming that handoff requires recent administrator TOTP verification, and the secure form checks it again when you create or send. Review the recipient details there; never paste invitation codes in chat.</p>
+            <p>Other account and administrator operations also use their protected forms; confirming a workspace action does not bypass those checks.</p>
             <div class="capture-pair action-captures">
               <figure class="capture">
                 <img src="{{capture:action_preview:src}}" alt="{{capture:action_preview:alt}}" loading="eager">
