@@ -37,23 +37,187 @@ sys.modules[NATIVE_SPEC.name] = native_probe
 NATIVE_SPEC.loader.exec_module(native_probe)
 
 
-def _driver_receipt() -> dict[str, object]:
-    digest = "a" * 64
+def _assistant_catalog_document() -> dict[str, object]:
+    """Load the maintained assistant policy for selector contract tests."""
+
     catalog_path = (
         Path(__file__).resolve().parents[1] / "src/stock_probs/assistant/assistant_catalog.json"
     )
-    zen = json.loads(catalog_path.read_text(encoding="utf-8"))["zen"]
-    eligible_models = sorted(
-        model_id
-        for model_id, model in zen["reviewed_models"].items()
-        if model.get("available") is True
-        and model.get("free") is True
-        and model.get("training") is False
-        and model.get("data_collection_allowed") is False
-        and model.get("data_collection_default") is False
-        and model.get("route") == "openai-compatible"
+    return json.loads(catalog_path.read_text(encoding="utf-8"))
+
+
+def _probe_zen_model(
+    model_id: str,
+    *,
+    provider_id: str = "opencode-zen",
+    available: bool = True,
+    free: bool = True,
+    training: bool = False,
+    data_collection_allowed: bool = False,
+    data_collection_default: bool = False,
+) -> native_probe.AssistantModel:
+    """Build a native discovery row without pinning a real model ID or policy version."""
+
+    return native_probe.AssistantModel(
+        model_id=model_id,
+        provider_id=provider_id,
+        display_name="Fixture reviewed model",
+        available=available,
+        free=free,
+        training=training,
+        terms_url="https://fixture.example.test/terms",
+        terms_reviewed_at="fixture-date",
+        policy_version="fixture-policy",
+        disclosure="Synthetic fixture only.",
+        data_collection_allowed=data_collection_allowed,
+        data_collection_default=data_collection_default,
     )
-    assert eligible_models
+
+
+def test_native_acceptance_selector_uses_the_exact_maintained_catalog_field() -> None:
+    """A native acceptance model is explicit in policy, not selected by sort order."""
+
+    catalog = _assistant_catalog_document()
+    zen = catalog["zen"]
+    selected_suffix = zen["native_acceptance_model_id"]
+
+    assert native_probe._reviewed_free_zen_model_id(catalog) == (
+        f"{zen['provider_id']}/{selected_suffix}"
+    )
+
+
+@pytest.mark.parametrize("selection_state", ("missing", "unknown"))
+def test_native_acceptance_selector_fails_closed_without_falling_back(
+    selection_state: str,
+) -> None:
+    """An eligible alternative cannot replace an absent or unknown explicit selection."""
+
+    catalog = _assistant_catalog_document()
+    zen = catalog["zen"]
+    selected_suffix = zen["native_acceptance_model_id"]
+    selected_policy = zen["reviewed_models"][selected_suffix]
+    zen["reviewed_models"]["eligible-alternate-fixture"] = dict(selected_policy)
+    if selection_state == "missing":
+        zen.pop("native_acceptance_model_id")
+    else:
+        zen["native_acceptance_model_id"] = "unknown-fixture-model"
+
+    with pytest.raises(RuntimeError, match="reviewed_zen_acceptance_model_invalid"):
+        native_probe._reviewed_free_zen_model_id(catalog)
+
+
+@pytest.mark.parametrize(
+    ("policy_field", "policy_value"),
+    (
+        ("available", False),
+        ("free", False),
+        ("training", True),
+        ("data_collection_allowed", True),
+        ("data_collection_default", True),
+        ("route", "unsupported-route-fixture"),
+    ),
+)
+def test_native_acceptance_selector_rejects_ineligible_selection_without_fallback(
+    policy_field: str, policy_value: object
+) -> None:
+    """Every maintained privacy, billing, availability, and route predicate stays strict."""
+
+    catalog = _assistant_catalog_document()
+    zen = catalog["zen"]
+    selected_suffix = zen["native_acceptance_model_id"]
+    selected_policy = zen["reviewed_models"][selected_suffix]
+    eligible_alternate = dict(selected_policy)
+    selected_policy[policy_field] = policy_value
+    zen["reviewed_models"]["eligible-alternate-fixture"] = eligible_alternate
+
+    with pytest.raises(RuntimeError, match="reviewed_zen_acceptance_model_invalid"):
+        native_probe._reviewed_free_zen_model_id(catalog)
+
+
+def test_native_acceptance_selector_rejects_catalog_exclusion() -> None:
+    """A selected catalog row remains unavailable when its ID is explicitly excluded."""
+
+    catalog = _assistant_catalog_document()
+    zen = catalog["zen"]
+    selected_suffix = zen["native_acceptance_model_id"]
+    zen["reviewed_models"]["eligible-alternate-fixture"] = dict(
+        zen["reviewed_models"][selected_suffix]
+    )
+    zen["excluded_models"][selected_suffix] = "fixture exclusion"
+
+    with pytest.raises(RuntimeError, match="reviewed_zen_acceptance_model_invalid"):
+        native_probe._reviewed_free_zen_model_id(catalog)
+
+
+def test_live_zen_discovery_uses_only_the_exact_selected_model() -> None:
+    """Inventory order cannot choose an alternative or conceal a missing selected row."""
+
+    selected = _probe_zen_model("opencode-zen/selected-fixture")
+    alternate = _probe_zen_model("opencode-zen/alternate-fixture")
+
+    assert (
+        native_probe._discovered_reviewed_zen_model((alternate, selected), selected.model_id)
+        is selected
+    )
+    assert native_probe._discovered_reviewed_zen_model((alternate,), selected.model_id) is None
+
+
+def test_attached_zen_inventory_uses_only_the_exact_catalog_selection() -> None:
+    """Attached-app inventory cannot substitute an eligible alternative model."""
+
+    selected_model_id = native_probe._reviewed_free_zen_model_id(_assistant_catalog_document())
+    selected = {
+        "model_id": selected_model_id,
+        "provider_id": "opencode-zen",
+        "available": True,
+        "free": True,
+        "training_uses_data": False,
+        "privacy_policy_version": "fixture-privacy",
+        "billing_policy_version": "fixture-billing",
+        "revision": 0,
+    }
+    alternate = {**selected, "model_id": "opencode-zen/alternate-fixture"}
+
+    assert (
+        native_probe._attached_reviewed_model_row([alternate, selected], selected_model_id)
+        is selected
+    )
+    with pytest.raises(native_probe._AttachedProbeFailure, match="reviewed_model_not_in_inventory"):
+        native_probe._attached_reviewed_model_row([alternate], selected_model_id)
+    with pytest.raises(native_probe._AttachedProbeFailure, match="reviewed_model_not_available"):
+        native_probe._attached_reviewed_model_row(
+            [alternate, {**selected, "available": False}], selected_model_id
+        )
+
+
+@pytest.mark.parametrize(
+    ("model_field", "model_value"),
+    (
+        ("provider_id", "other-provider"),
+        ("available", False),
+        ("free", False),
+        ("training", True),
+        ("data_collection_allowed", True),
+        ("data_collection_default", True),
+    ),
+)
+def test_live_zen_discovery_rejects_ineligible_exact_model_without_fallback(
+    model_field: str, model_value: object
+) -> None:
+    """An ineligible exact inventory row cannot cause use of an eligible alternative."""
+
+    selected = _probe_zen_model("opencode-zen/selected-fixture", **{model_field: model_value})
+    alternate = _probe_zen_model("opencode-zen/alternate-fixture")
+
+    assert (
+        native_probe._discovered_reviewed_zen_model((alternate, selected), selected.model_id)
+        is None
+    )
+
+
+def _driver_receipt() -> dict[str, object]:
+    digest = "a" * 64
+    approved_model_id = native_probe._reviewed_free_zen_model_id()
     owner = {
         "terminal_status": "completed",
         "turn_error_code": None,
@@ -107,7 +271,7 @@ def _driver_receipt() -> dict[str, object]:
         "attached_candidate_acceptance": True,
         "assistant_worker_status_after_turns": "ready",
         "search_query_sha256": digest,
-        "approved_model_id": f"{zen['provider_id']}/{eligible_models[0]}",
+        "approved_model_id": approved_model_id,
         "policy_generation_sha256": digest,
         "search_approval_count": 1,
         "webfetch_approval_count": 1,

@@ -572,7 +572,52 @@ exact-structure review, but is not output from the current maintained renderer. 
 assistive-technology results are unavailable;
 the prior outputs are not final guide acceptance or release attachments. The full canonical check
 at the app revision also failed; see the [R-ASTRA-120 ledger](../../MVP-PLAN.md) for exact scope
-and receipts.
+and receipts. A static instruction audit at the 30742 checkpoint found that context selection is
+all-or-none with the current route always included, email-only invitations require a verified
+GitHub email (while a supplied positive account ID restricts redemption to that account), and the
+visible cancellation control is labeled “Stop response.” E679 later passed independent
+copy/source-contract review of the candidate template/test bytes, including those instructions; its
+Node suite passed 17/17. Separate served/export parity is unavailable, and no maintained
+capture/final render or guide acceptance is established.
+
+### PR-head candidate image build helper
+
+The existing schema-13 rehearsal CLI now contains a fixed-source mode for a private local image
+from the exact clean, reviewed head of open PR #1. Set `REVIEWED_PR_HEAD` to that exact lowercase
+40-character SHA and `PRIVATE_RECEIPT` to a private output path, then use these mode flags:
+
+```bash
+python3 scripts/rehearse_schema13.py \
+  --build-pr-candidate \
+  --reviewed-pr-head "$REVIEWED_PR_HEAD" \
+  --receipt "$PRIVATE_RECEIPT"
+```
+
+The helper verifies local `HEAD` and a clean worktree, the fixed PR-1/head/base relationship, and
+the reviewed SHA again around the build. It writes a mode-0600 JSON receipt. The local
+`linux/amd64` image is not published; every checked build filesystem must have at least 4 GiB free
+before build, and the helper stops if free space drops below 1 GiB. E678's original independent process-ownership source review **Failed** and remains preserved.
+E683 recorded builder checks; E684 independently passed source/test QA (59/59, exit 0; 149 source
+inputs unchanged). No real Docker build, live PR/network check, process-group runtime probe, or
+PR-bound rollback ran; image-build and rollback acceptance remain open.
+
+E685's public-marker catalog GET returned HTTP 200 and did not explain the separate no-marker 403.
+E687's application refresh found seven eligible catalog rows without a model request. E690
+independently passed local catalog QA (7 focused tests and 174 provider tests); its narrower initial
+6/6 selection omitted the recovery case. Network/model/provider, Docker and production checks were
+not run. The native acceptance probe uses maintained field `zen.native_acceptance_model_id` for the
+reviewed SpaceBunny model. E691 builder checks and E692 independent synthetic QA passed the
+selector's declared source/test scope (308 probe, 38 kill, 9 attached-model, and 2 driver-binding
+tests). No native OpenCode/provider/model/network, Docker, or production action ran; candidate image
+build and native acceptance remain pending. Both probe paths must fail closed without exact explicit
+selection. This acceptance-run selector does not change the app's normal model choice/default,
+policy, or budgets; no model request occurred. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md)
+for complete evidence and limits.
+
+The later prebuilt-image rehearsal remains a separate step. It binds an immutable candidate image
+ID and context digest to the same reviewed PR head SHA, followed by the existing recovery-image
+pair. The production publisher was not changed and still requires a clean revision matching exact
+`origin/main`.
 
 The R-ASTRA-120 candidate helper runs database presence/schema probes with an explicit Python
 entrypoint as UID/GID 10001. This prevents the container supervisor from treating `python -c`

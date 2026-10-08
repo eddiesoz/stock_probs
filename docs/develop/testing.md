@@ -190,11 +190,62 @@ passed independent source/test review and TAP reported 17/17, but the numeric co
 **Unavailable** in that first repair attempt. E673 independently reran the exact command with exit 0
 and 17/17; it supersedes only that missing-exit result. E665's private PDF artifact passed
 exact-structure review, but that does not accept current maintained output; fresh rendering remains
-pending. Native runtime/provider, strict app
-accessibility, actual combined 1 GB resources, complete security, PR-bound rollback, final guide,
-and release acceptance remain open. Use the
+pending. E676 was a static instruction audit at the 30742 checkpoint. E679 passed copy/source
+contract review of the candidate template/test bytes and the exact Node command 17/17; standalone
+served/export parity was unavailable and no maintained render ran. E677's selected security suite
+passed 37/37, but its original source review failed on a post-await authorization gap. E680 passed
+parent integrated source/evidence review of the scoped repair with builder JUnit 7/7. E681's
+separate JUnit attempt recorded 6 passes and one fixture failure, not an established application
+defect. E682 later passed independent source review and its exact seven-test selection (7/7, exit 0),
+narrowly covering policy-update and turn-creation authorization checks after awaited operations. It
+does not separately test CSRF-hash rotation during inventory wait or establish broader security or
+external egress. The earlier source failure and failed test attempts remain historical. E678's original candidate-build process-ownership source review **Failed** and remains preserved.
+E683 recorded builder checks; E684 independently passed the bounded source/test scope (59/59, exit 0;
+149 inputs unchanged). No real Docker build, live PR/network check, process-group runtime probe, or
+PR-bound rollback ran; image-build and rollback acceptance remain open. Native runtime/provider,
+strict app accessibility, actual combined 1 GB resources, complete security, PR-bound rollback,
+final guide, and release acceptance remain open. E685's fixed public-marker catalog GET returned HTTP 200 with valid list data and zero model
+requests; that metadata result does not explain the separate no-marker 403. E688 independently passed its declared auth/build source and unit scope (7 API regressions and 59
+schema-13 helper tests); concurrent catalog files were excluded. E690 independently passed catalog
+repair QA (complete focused selection 7/7 and full provider file 174/174); an earlier 6/6 selection
+omitted the recovery case. Lint/security/format/diff and source review passed. Network/model/provider,
+Docker and production checks were not run. E691's builder checks and E692's independent QA passed the selector's declared local scope. E692
+passed probe 308/308, kill 38/38, attached-model contracts 9/9, and PR-driver binding 2/2, plus
+lint/security/format/compile/JSON/diff checks and source review. This is synthetic loopback and
+simulated-child coverage only; no native OpenCode, external provider/model/network, Docker, or
+production operation ran. The selector uses `zen.native_acceptance_model_id` for the reviewed
+SpaceBunny model and fails closed in both probe paths without an exact selection. It does not change
+the normal runtime model choice/default, policy, or budgets. Candidate image build and native
+acceptance remain pending; no model request occurred. See the ledger for exact receipts and limits.
+
+Use the
 [authoritative R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
 for current receipts and preserved result statuses.
+
+### PR-head candidate image build helper
+
+The existing schema-13 rehearsal CLI now has a fixed-source mode for building a private local
+image from the exact clean, reviewed head of open PR #1. Use only these mode flags:
+
+```bash
+python3 scripts/rehearse_schema13.py \
+  --build-pr-candidate \
+  --reviewed-pr-head "$REVIEWED_PR_HEAD" \
+  --receipt "$PRIVATE_RECEIPT"
+```
+
+Set `REVIEWED_PR_HEAD` to the exact lowercase 40-character PR head SHA and `PRIVATE_RECEIPT` to a
+private output path. The helper checks that local `HEAD` is that SHA and the worktree is clean,
+validates the fixed PR-1/head/base relationship, rechecks the head around the build, and writes a
+mode-0600 JSON receipt. The build is local `linux/amd64`, is not published, and requires at least
+4 GiB free on every checked build filesystem; it aborts if free space drops below 1 GiB. E678's original independent process-ownership review **Failed** and remains historical. E683
+recorded builder checks, and E684 independently passed source/test QA (59/59, exit 0; 149 inputs
+unchanged). No actual Docker build or PR-bound rollback rehearsal ran; those acceptance gates remain
+open. Do not treat source presence or test passes as build or rollback acceptance.
+
+The later prebuilt-image rehearsal remains separate: it binds an immutable image ID and filtered
+context digest to the same reviewed PR head SHA. The production publisher remains unchanged and
+still requires a clean revision that matches exact `origin/main`.
 
 ### Binding browser evidence to the served frontend
 

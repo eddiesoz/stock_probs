@@ -26,7 +26,7 @@
         <div class="hero-copy">
           <p class="eyebrow">A research companion with clear controls</p>
           <h1 id="hero-title">Ask a better question.<br><span>Keep the decision yours.</span></h1>
-          <p class="hero-lede">The Ledger assistant can explain the workspace and help organize research. You choose an approved model and which workspace references to share; the current page route is always included. You decide whether a proposed change may proceed.</p>
+          <p class="hero-lede">The Ledger assistant can explain the workspace and help organize research. You can share all available workspace references together or turn reference sharing off; the current page route is always included. You decide whether a proposed change may proceed.</p>
           <p class="synthetic-note"><strong>Example data is synthetic.</strong> These screenshots show the running application with example accounts, conversations, forecasts, and sources. Mobile views use viewport emulation; behavior on a physical iPhone or iOS device is not verified. The examples are not market research or recommendations.</p>
         </div>
         <figure class="hero-art">
@@ -112,11 +112,11 @@
           <div class="section-body">
             <p class="eyebrow">Share only what helps</p>
             <h2 id="context-title">Preview page context before you send</h2>
-            <p>The panel names the current workspace page and shows a sharing control for selected references. Open the context preview to inspect the exact route and reference summary before sending a question.</p>
+            <p>The panel has one sharing control for all available workspace references: turn it on to include the full set, or off to omit references. You cannot deselect individual references, and the current page route is always included either way. Open Preview to inspect the route and reference set; after changing page context, select Refresh preview before sending.</p>
             <ul class="check-list">
-              <li>When you send a request, the current page route is always included for the selected provider; with sharing on, inspect the exact route and selected instrument, event, and saved-result references before sending.</li>
+              <li>When sharing is on, inspect the exact route and all available instrument, event, and saved-result references before sending.</li>
               <li>With sharing off, requests still include the route only; instrument, event, and saved-result references are omitted.</li>
-              <li>Remove or change shared context when it is not relevant to your next question.</li>
+              <li>If the workspace page context changes, select Refresh preview so it reflects the current route and available references.</li>
               <li>The preview explains what is available. It does not grant access to another user’s data or hidden account details.</li>
             </ul>
             <p>A request may send your message, the page context you approved, and the tool results needed to answer to the selected provider. The preview describes selected workspace references; it is not a promise that all retrieved tool results are public. Review the model’s terms and avoid sharing details that are not needed.</p>
@@ -161,7 +161,7 @@
             <p>On Live Trading, a confirmed request to open note controls or remove an alert is a handoff. On mobile, the assistant closes and focuses the Notes or Alerts section heading. Finish the change in that workspace control; the handoff itself does not edit the note or remove the alert. Reopen the assistant’s conversation history and select the same conversation to review its receipt. Adding a threshold is a separate confirmed action limited to the open Live Trading page session; it has no scheduler or notification delivery.</p>
             <p><strong>Portfolio and watchlist.</strong> Ask to add or remove an instrument, or change a holding quantity; confirm the exact symbol and amount.</p>
             <p><strong>Forecasts and follow-up.</strong> A confirmed new forecast request saves a new forecast. Reopening opens its immutable saved record without calling the model again. Recording an outcome appends an observation; a fresh historical reconstruction saves a separate analysis at the chosen cutoff without rewriting the submitted forecast.</p>
-            <p><strong>Administrator invitations.</strong> An invitation proposal hands off to protected invitation settings; it does not create or send an invitation in chat. Confirming that handoff requires recent administrator TOTP verification, and the secure form checks it again when you create or send. Review the recipient details there; never paste invitation codes in chat.</p>
+            <p><strong>Administrator invitations.</strong> An invitation proposal hands off to protected invitation settings; it does not create or send an invitation in chat. Confirming that handoff requires recent administrator TOTP verification, and the secure form checks it again when you create or send. Email-only invitations can be redeemed only by a GitHub account with a verified email matching the invitation address. Providing a positive GitHub account ID restricts redemption to that account; the email is only a delivery destination, and a username is an optional display hint. Review the recipient details there; never paste invitation codes in chat.</p>
             <p>Other account and administrator operations also use their protected forms; confirming a workspace action does not bypass those checks.</p>
             <div class="capture-pair action-captures">
               <figure class="capture">
@@ -223,7 +223,7 @@
             <p class="eyebrow">Keep a clear recovery path</p>
             <h2 id="recovery-title">Cancel, reconnect, and handle limits</h2>
             <div class="recovery-grid">
-              <article class="mini-card"><h3>Cancel a running turn</h3><p>Use Cancel when you want to stop. The transcript remains available; a cancelled or interrupted result is not presented as a completed answer.</p></article>
+              <article class="mini-card"><h3>Cancel a running turn</h3><p>Use the “Stop response” control when you want to stop. The transcript remains available; a cancelled or interrupted result is not presented as a completed answer.</p></article>
               <article class="mini-card"><h3>Reconnect after a break</h3><p>If the connection drops, use the visible reconnect or retry state. Check the saved conversation before starting a new question.</p></article>
               <article class="mini-card"><h3>Provider unavailable</h3><p>Read the status and retry when appropriate. The assistant does not silently switch providers or move to a paid model.</p></article>
               <article class="mini-card"><h3>Storage quota reached</h3><p>Existing workspace data stays available. Review your conversations and delete only records you intend to remove, then retry after cleanup completes.</p></article>

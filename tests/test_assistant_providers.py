@@ -17,9 +17,12 @@ from urllib.parse import urlencode
 
 import pytest
 
-from stock_probs.assistant import providers
+from stock_probs.assistant import model_catalog, providers
 from stock_probs.assistant.api import _native_websearch_declaration
-from stock_probs.assistant.model_catalog import AssistantModelCatalog
+from stock_probs.assistant.model_catalog import (
+    AssistantModelCatalog,
+    ModelCatalogAuthorizationError,
+)
 from stock_probs.assistant.native_provider_adapters import (
     NATIVE_WEBFETCH_DESCRIPTION_SHA256,
     native_output_token_budget,
@@ -1717,6 +1720,100 @@ def test_model_inventory_failure_is_suppressed_then_recovers_on_later_demand() -
     recovered = asyncio.run(catalog.ensure_fresh())
     assert calls == 2
     assert len(recovered) == 1
+
+
+@pytest.mark.parametrize(
+    ("models_url", "expected_headers"),
+    [
+        (
+            "https://opencode.ai/zen/v1/models",
+            {"authorization": "Bearer public"},
+        ),
+        (
+            "https://inventory.example.test/v1/models",
+            {},
+        ),
+        (
+            "https://opencode.ai/zen/v1/models/",
+            {},
+        ),
+    ],
+)
+def test_zen_catalog_public_marker_is_fixed_endpoint_only_and_request_is_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+    models_url: str,
+    expected_headers: dict[str, str],
+) -> None:
+    """Use the native public marker only for the exact fixed Zen inventory URL."""
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    async def fake_request(url: str, **kwargs: object) -> SimpleNamespace:
+        calls.append((url, dict(kwargs)))
+        return SimpleNamespace(status_code=200, content=b'{"data":[]}')
+
+    monkeypatch.setattr(model_catalog, "request_public_https", fake_request)
+    catalog = AssistantModelCatalog(clock=lambda: 10.0)
+    catalog._policy["zen"]["models_url"] = models_url
+
+    assert asyncio.run(catalog.refresh()) == ()
+    assert len(calls) == 1
+    assert calls[0][0] == models_url
+    options = calls[0][1]
+    assert options["headers"] == expected_headers
+    assert options["timeout_seconds"] == 6.5
+    assert options["max_response_bytes"] == model_catalog._MAX_CATALOG_BYTES
+    assert "authorization_check" not in options
+
+
+def test_zen_catalog_public_marker_keeps_live_authorization_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A revoked catalog refresh cannot apply its held response or lose its callback."""
+
+    _model_id, model_suffix = _reviewed_zen_model_ids()
+    response_started = asyncio.Event()
+    release_response = asyncio.Event()
+    authorization = {"allowed": True}
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    async def fake_request(url: str, **kwargs: object) -> SimpleNamespace:
+        calls.append((url, dict(kwargs)))
+        if "authorization_check" in kwargs:
+            response_started.set()
+            await release_response.wait()
+            content = b'{"data":[]}'
+        else:
+            content = json.dumps({"data": [{"id": model_suffix}]}).encode()
+        return SimpleNamespace(status_code=200, content=content)
+
+    async def authorization_check() -> bool:
+        return authorization["allowed"] is True
+
+    monkeypatch.setattr(model_catalog, "request_public_https", fake_request)
+    catalog = AssistantModelCatalog(clock=lambda: 10.0)
+    initial_models = asyncio.run(catalog.refresh())
+    assert len(initial_models) == 1
+    cached_state = (catalog._models, catalog._loaded_at, catalog._retry_at)
+
+    async def revoke_held_refresh() -> None:
+        refresh = asyncio.create_task(catalog.refresh(authorization_check=authorization_check))
+        await asyncio.wait_for(response_started.wait(), timeout=1)
+        authorization["allowed"] = False
+        release_response.set()
+        with pytest.raises(ModelCatalogAuthorizationError):
+            await refresh
+
+    asyncio.run(revoke_held_refresh())
+
+    fixed_url = "https://opencode.ai/zen/v1/models"
+    assert len(calls) == 2
+    assert all(url == fixed_url for url, _options in calls)
+    assert all(options["headers"] == {"authorization": "Bearer public"} for _, options in calls)
+    assert calls[1][1]["authorization_check"] is authorization_check
+    assert calls[1][1]["timeout_seconds"] == 6.5
+    assert calls[1][1]["max_response_bytes"] == model_catalog._MAX_CATALOG_BYTES
+    assert (catalog._models, catalog._loaded_at, catalog._retry_at) == cached_state
 
 
 def _configured_provider_manager(

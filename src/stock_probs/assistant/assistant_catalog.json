@@ -109,7 +109,8 @@
     "excluded_models": {
       "nemotron-3-ultra-free": "trial terms prohibit personal or confidential data",
       "nemotron-3.5-lightning-free": "trial terms prohibit personal or confidential data"
-    }
+    },
+    "native_acceptance_model_id": "space-bunny-free"
   },
   "providers": [
     {

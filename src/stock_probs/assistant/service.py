@@ -2360,6 +2360,11 @@ class AssistantService:
             raise AssistantStorageConflict("policy_changed")
         capability = secrets.token_urlsafe(36)
         now = self.now()
+        # Readiness and inventory refresh can await; bind persistence to the still-live session.
+        if not self._assistant_session_is_live(
+            context.user.id, context.session_id, context.token_hash
+        ):
+            raise AssistantUnavailable("assistant_authorization_required", 403)
         record = self.storage.create_turn(
             context.user.id,
             conversation_id,

@@ -193,8 +193,18 @@ boundary/order assertions; a test-only correction then passed independent source
 TAP reported 17/17; the first wrapper left its numeric exit unavailable, then E673 independently
 reran the exact command with exit 0 and 17/17. E665's private PDF artifact passed exact-structure
 review; it is not a current maintained render. Fresh capture/render/finalization remain pending.
-Neither the earlier guide result nor scoped contrast measurements establish
+E676's static instruction audit at the 30742 checkpoint found two P2 copy omissions (all-or-none
+context selection and email-only invitation verification) plus a P3 “Cancel”/“Stop response” label
+mismatch. E679 independently confirmed the corrected copy and source contract for the candidate
+template/test bytes, with the Node suite passing 17/17. Separate served/export parity is unavailable
+and maintained capture/render/finalization remains pending; this is not rendered-guide
+acceptance. Neither the earlier guide result nor scoped contrast measurements establish
 application accessibility or release readiness.
+
+E689 independently passed the renderer unit command (17/17, exit 0) for its synthetic layout/PDF
+cases. It did not run the maintained capture/finalization/render pipeline or app browser checks, so
+fresh guide outputs, PDF/UA, accessibility, and final guide acceptance remain pending. See the
+[R-ASTRA-120 ledger](../../MVP-PLAN.md) for the receipt and exact limits.
 
 Use the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
 for exact commands, hashes, failures, repairs and historical checkpoint results. This page specifies

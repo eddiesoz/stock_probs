@@ -7,11 +7,14 @@ import argparse
 import fnmatch
 import gzip
 import hashlib
+import importlib.util
 import json
 import os
 import platform
 import re
+import selectors
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -108,6 +111,12 @@ _CONTAINER_CLEANUP_ERRORS = {
     "the task-owned container auto-removal was not verified": "container_autoremove_timeout",
 }
 _GIT_EXECUTABLE = "/usr/bin/git"
+_MIN_BUILD_FREE_BYTES = 4 * 1024**3
+_STOP_BUILD_FREE_BYTES = 1 * 1024**3
+_BUILD_TIMEOUT_SECONDS = 900
+_BUILD_STOP_TIMEOUT_SECONDS = 5
+_BUILD_TERM_GRACE_SECONDS = 1
+_BUILD_KILL_GRACE_SECONDS = 2
 _VERIFIER_IN_CONTAINER = "/run/assistant/rehearsal.py"
 _EXCLUDED_NAMES = frozenset(
     {
@@ -795,7 +804,157 @@ def _command_stage(command: list[str]) -> str:
     return executable if re.fullmatch(r"[a-z0-9_-]{1,32}", executable) else "fixed_command"
 
 
-def _build_image(context: Path, tag: str, revision_label: str, env: dict[str, str]) -> str:
+def _stop_git_status_process(process: subprocess.Popen[bytes]) -> bool:
+    """Stop and reap the fixed Git status child without signaling the parent group."""
+
+    try:
+        process.terminate()
+    except ProcessLookupError:
+        pass
+    except OSError:
+        try:
+            process.wait(timeout=1)
+            return True
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+    try:
+        process.wait(timeout=_BUILD_STOP_TIMEOUT_SECONDS)
+        return True
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+            process.wait(timeout=_BUILD_STOP_TIMEOUT_SECONDS)
+            return True
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+
+
+def _process_group_exists(process_group_id: int) -> bool:
+    if process_group_id <= 1:
+        return True
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def _signal_process_group(process_group_id: int, signal_number: int) -> bool:
+    if process_group_id <= 1:
+        return False
+    try:
+        os.killpg(process_group_id, signal_number)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _wait_process_group_absent(process_group_id: int, timeout: int) -> bool:
+    deadline = time.monotonic() + timeout
+    while _process_group_exists(process_group_id):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+    return True
+
+
+def _stop_build_process_group(process: subprocess.Popen[bytes], process_group_id: int) -> bool:
+    """Terminate, reap, and verify absence of one owned new-session build group."""
+
+    if process_group_id <= 1 or process_group_id != process.pid:
+        return False
+    if _process_group_exists(process_group_id) and not _signal_process_group(
+        process_group_id, signal.SIGTERM
+    ):
+        return False
+    leader_reaped = True
+    try:
+        process.wait(timeout=_BUILD_TERM_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        leader_reaped = False
+    except OSError:
+        return False
+    if not _wait_process_group_absent(
+        process_group_id, _BUILD_TERM_GRACE_SECONDS
+    ) and not _signal_process_group(process_group_id, signal.SIGKILL):
+        return False
+    if not leader_reaped:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        except OSError:
+            return False
+        try:
+            process.wait(timeout=_BUILD_KILL_GRACE_SECONDS)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+    return _wait_process_group_absent(process_group_id, _BUILD_KILL_GRACE_SECONDS)
+
+
+def _docker_data_root(env: dict[str, str]) -> Path:
+    result = _run(
+        ["docker", "info", "--format", "{{.DockerRootDir}}"],
+        env=env,
+        timeout=15,
+        diagnostic_stage="docker_data_root",
+    )
+    raw_path = result.stdout.strip()
+    if (
+        not raw_path
+        or len(raw_path) > 4096
+        or "\n" in raw_path
+        or "\r" in raw_path
+        or not Path(raw_path).is_absolute()
+    ):
+        raise RehearsalError("the Docker data-root could not be verified")
+    try:
+        resolved = Path(raw_path).resolve(strict=True)
+    except OSError as exc:
+        raise RehearsalError("the Docker data-root could not be verified") from exc
+    if not resolved.is_dir():
+        raise RehearsalError("the Docker data-root could not be verified")
+    return resolved
+
+
+def _build_free_bytes(path: Path) -> int:
+    try:
+        return shutil.disk_usage(path).free
+    except OSError as exc:
+        raise RehearsalError("a required image-build filesystem could not be checked") from exc
+
+
+def _check_build_space(paths: tuple[Path, ...], minimum: int) -> bool:
+    """Check every distinct build filesystem without exposing local path details."""
+
+    devices: set[int] = set()
+    for path in paths:
+        try:
+            info = path.stat()
+        except OSError as exc:
+            raise RehearsalError("a required image-build filesystem could not be checked") from exc
+        if info.st_dev in devices:
+            continue
+        devices.add(info.st_dev)
+        if _build_free_bytes(path) < minimum:
+            return False
+    return True
+
+
+def _build_image(
+    context: Path,
+    tag: str,
+    revision_label: str,
+    env: dict[str, str],
+    *,
+    build_disk_paths: tuple[Path, ...] = (),
+) -> str:
+    """Build a fixed amd64 image with bounded output, time, and disk usage."""
+
     iidfile = context.parent / f"{tag.replace(':', '_')}.iid"
     command = [
         "docker",
@@ -810,15 +969,70 @@ def _build_image(context: Path, tag: str, revision_label: str, env: dict[str, st
         tag,
         str(context),
     ]
-    _run(command, env=env, timeout=900)
-    image_id = iidfile.read_text(encoding="ascii").strip()
+    docker_root = _docker_data_root(env)
+    paths = (docker_root, context, context.parent, Path(tempfile.gettempdir()), *build_disk_paths)
+    if not _check_build_space(paths, _MIN_BUILD_FREE_BYTES):
+        raise RehearsalError("image build requires at least 4 GiB free on every build filesystem")
+    started = time.monotonic()
+    try:
+        process = subprocess.Popen(  # noqa: S603 - fixed Docker command vector, no shell
+            command,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            shell=False,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        raise RehearsalError("local_build_unavailable:docker_build:os_error") from exc
+    process_group_id = process.pid
+    try:
+        while True:
+            return_code = process.poll()
+            if return_code is not None:
+                group_remained = _process_group_exists(process_group_id)
+                if not _stop_build_process_group(process, process_group_id):
+                    raise RehearsalError(
+                        "local_build_process_group_unverified; generated image tag retained"
+                    )
+                if group_remained:
+                    raise RehearsalError(
+                        "Docker build left child processes; group stopped and image tag retained"
+                    )
+                break
+            if time.monotonic() - started >= _BUILD_TIMEOUT_SECONDS:
+                raise RehearsalError("local_build_timeout:docker_build:after_900s")
+            if not _check_build_space(paths, _STOP_BUILD_FREE_BYTES):
+                raise RehearsalError(
+                    "image build stopped below 1 GiB free space; generated image tag retained"
+                )
+            time.sleep(0.5)
+    except BaseException as exc:
+        if not _stop_build_process_group(process, process_group_id):
+            raise RehearsalError(
+                "local_build_process_group_unverified; generated image tag retained"
+            ) from exc
+        raise
+    if return_code != 0:
+        raise RehearsalError(
+            f"local_build_failed:docker_build:exit_{return_code}; generated image tag retained"
+        )
+    try:
+        image_id = iidfile.read_text(encoding="ascii").strip()
+    except OSError as exc:
+        raise RehearsalError(
+            "Docker build identity is unavailable; generated image tag retained"
+        ) from exc
     if re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
-        raise RehearsalError("Docker did not return an immutable image ID")
+        raise RehearsalError(
+            "Docker did not return an immutable image ID; generated image tag retained"
+        )
     inspected = _run(
         ["docker", "image", "inspect", "--format", "{{.Id}}", tag], env=env, timeout=30
     ).stdout.strip()
     if inspected != image_id:
-        raise RehearsalError("the built image ID did not match Docker inspection")
+        raise RehearsalError("built image identity did not match; generated image tag retained")
     return image_id
 
 
@@ -1867,6 +2081,215 @@ def _verify_candidate_image(
     }
 
 
+def _git_environment() -> dict[str, str]:
+    return {
+        "PATH": os.defpath,
+        "HOME": "/nonexistent",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+        "LC_ALL": "C",
+    }
+
+
+def _verify_local_pr_head(repository_root: Path, expected_sha: str) -> None:
+    """Require a clean checkout at the one exact reviewed PR head."""
+
+    if re.fullmatch(r"[0-9a-f]{40}", expected_sha) is None:
+        raise RehearsalError("reviewed PR head must be an exact commit SHA")
+    if not (repository_root / ".git").exists():
+        raise RehearsalError("the reviewed PR checkout is unavailable")
+    try:
+        head = subprocess.run(  # noqa: S603 - fixed Git executable and fixed revision query
+            [_GIT_EXECUTABLE, "rev-parse", "--verify", "HEAD"],
+            cwd=repository_root,
+            env=_git_environment(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RehearsalError("the reviewed PR checkout could not be verified") from exc
+    if (
+        head.returncode
+        or len(head.stdout) > 128
+        or head.stdout.decode("ascii", errors="ignore").strip() != expected_sha
+    ):
+        raise RehearsalError("local HEAD does not match the reviewed PR head")
+
+    command = [
+        _GIT_EXECUTABLE,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+    ]
+    try:
+        process = subprocess.Popen(  # noqa: S603 - fixed Git executable and status arguments
+            command,
+            cwd=repository_root,
+            env=_git_environment(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            shell=False,
+        )
+    except OSError as exc:
+        raise RehearsalError("the reviewed PR checkout could not be verified") from exc
+    if process.stdout is None:
+        if not _stop_git_status_process(process):
+            raise RehearsalError("local checkout process state is unverified")
+        raise RehearsalError("the reviewed PR checkout could not be verified")
+    with process.stdout as status_output, selectors.DefaultSelector() as selector:
+        selector.register(status_output, selectors.EVENT_READ)
+        deadline = time.monotonic() + 30
+        dirty = False
+        output_closed = False
+        while not output_closed and not dirty:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                if not _stop_git_status_process(process):
+                    raise RehearsalError("local checkout process state is unverified")
+                raise RehearsalError("local checkout verification timed out")
+            if selector.select(timeout=min(0.2, remaining)):
+                chunk = os.read(status_output.fileno(), 1)
+                if chunk:
+                    dirty = True
+                else:
+                    output_closed = True
+        if dirty:
+            if not _stop_git_status_process(process):
+                raise RehearsalError("local checkout process state is unverified")
+            raise RehearsalError("the reviewed PR checkout is not clean")
+    try:
+        return_code = process.wait(timeout=1)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        if not _stop_git_status_process(process):
+            raise RehearsalError("local checkout process state is unverified") from exc
+        raise RehearsalError("the reviewed PR checkout could not be verified") from exc
+    if return_code != 0:
+        raise RehearsalError("the reviewed PR checkout could not be verified")
+
+
+def _verify_reviewed_pr(repository_root: Path, expected_sha: str) -> None:
+    """Call the fixed adjacent PR-1 verifier and expose only its closed safe result."""
+
+    scripts_directory = repository_root / "scripts"
+    verifier_path = scripts_directory / "pr_rehearsal_bootstrap.py"
+    try:
+        scripts_info = scripts_directory.lstat()
+        verifier_info = verifier_path.lstat()
+    except OSError as exc:
+        raise RehearsalError("the fixed reviewed PR verifier is unavailable") from exc
+    if (
+        not stat.S_ISDIR(scripts_info.st_mode)
+        or stat.S_ISLNK(scripts_info.st_mode)
+        or not stat.S_ISREG(verifier_info.st_mode)
+        or stat.S_ISLNK(verifier_info.st_mode)
+    ):
+        raise RehearsalError("the fixed reviewed PR verifier is unsafe")
+    try:
+        resolved_root = repository_root.resolve(strict=True)
+        resolved_scripts = scripts_directory.resolve(strict=True)
+        if resolved_scripts != resolved_root / "scripts":
+            raise RehearsalError("the fixed reviewed PR verifier is unsafe")
+        spec = importlib.util.spec_from_file_location(
+            "_stock_probs_pr_rehearsal_bootstrap", verifier_path
+        )
+        if spec is None or spec.loader is None:
+            raise RehearsalError("the fixed reviewed PR verifier is unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        verify = getattr(module, "_verify_pull_request", None)
+        if not callable(verify):
+            raise RehearsalError("the fixed reviewed PR verifier is unavailable")
+        verify(expected_sha)
+    except RehearsalError:
+        raise
+    except Exception as exc:
+        safe_code = {
+            "reviewed_pr_unavailable": "reviewed_pr_unavailable",
+            "reviewed_pr_invalid": "reviewed_pr_invalid",
+            "reviewed_pr_mismatch": "reviewed_pr_mismatch",
+        }.get(getattr(exc, "code", None), "reviewed_pr_verification_failed")
+        raise RehearsalError(safe_code) from exc
+
+
+def build_pr_candidate(
+    repository_root: Path,
+    reviewed_sha: str,
+    receipt_path: Path,
+) -> dict[str, object]:
+    """Build one private local image for the exact open PR-1 head."""
+
+    if re.fullmatch(r"[0-9a-f]{40}", reviewed_sha) is None:
+        raise RehearsalError("reviewed PR head must be an exact commit SHA")
+    started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    _verify_local_pr_head(repository_root, reviewed_sha)
+    _verify_reviewed_pr(repository_root, reviewed_sha)
+    unique = uuid.uuid4().hex[:12]
+    tag = f"stock-probs:pr-candidate-{reviewed_sha[:12]}-{unique}"
+    with tempfile.TemporaryDirectory(prefix="stock-probs-pr-candidate-") as temporary:
+        workspace = Path(temporary)
+        docker_config = workspace / "docker-config"
+        env = _docker_environment(docker_config)
+        context = workspace / "context"
+        context_sha256 = _candidate_context(repository_root, context)
+        _verify_local_pr_head(repository_root, reviewed_sha)
+        existing = _run(
+            ["docker", "image", "inspect", "--format", "{{.Id}}", tag],
+            env=env,
+            timeout=10,
+            check=False,
+        )
+        if existing.returncode == 0 or existing.stdout.strip():
+            raise RehearsalError("the generated candidate image tag is already in use")
+        image_id = _build_image(
+            context,
+            tag,
+            reviewed_sha,
+            env,
+            build_disk_paths=(workspace,),
+        )
+        try:
+            _verify_local_pr_head(repository_root, reviewed_sha)
+            _verify_reviewed_pr(repository_root, reviewed_sha)
+            image = _verify_candidate_image(
+                image_id,
+                context_sha256,
+                env,
+                expected_revision_label=reviewed_sha,
+            )
+        except RehearsalError as exc:
+            # Keep the generated reference for safe inspection; a new tag does not prove its
+            # underlying content-addressed image ID was not already shared or protected.
+            raise RehearsalError(
+                f"{exc}; generated candidate image tag retained",
+                cleanup_unverified=exc.cleanup_unverified,
+            ) from exc
+    receipt: dict[str, object] = {
+        "task": "R-ASTRA-120 PR-head candidate image build",
+        "status": "built",
+        "repository": "eddiesoz/stock_probs",
+        "pull_request": 1,
+        "reviewed_head": reviewed_sha,
+        "source_context_sha256": context_sha256,
+        "candidate_image": {
+            "reference": tag,
+            "id": image["id"],
+            "architecture": image["architecture"],
+            "revision_label": image["revision_label"],
+        },
+        "started_at": started_at,
+        "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "published": False,
+    }
+    receipt["receipt_sha256"] = _sha256(_canonical_json(receipt))
+    _write_receipt(receipt_path, receipt)
+    return receipt
+
+
 def run_rehearsal(
     repository_root: Path,
     candidate_image_id: str,
@@ -1917,15 +2340,15 @@ def run_rehearsal(
                 f"schema13-recovery-{overlay_source_digest}"
             )
 
-            tags.append(base_tag)
             base_image_id = _build_image(base_context, base_tag, BASE_SHA, base_env)
-            tags.append(recovery_tag)
+            tags.append(base_tag)
             recovery_image_id = _build_image(
                 recovery_context,
                 recovery_tag,
                 recovery_revision_label,
                 base_env,
             )
+            tags.append(recovery_tag)
             volume_result = _run(["docker", "volume", "create", volume], env=base_env, timeout=15)
             if volume_result.stdout.strip() != volume:
                 raise RehearsalError("Docker created an unexpected disposable volume")
@@ -2413,6 +2836,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--receipt", type=Path, help="write a mode-0600 JSON receipt")
     parser.add_argument(
+        "--build-pr-candidate",
+        action="store_true",
+        help="build a private local image from the exact clean open PR-1 head",
+    )
+    parser.add_argument(
+        "--reviewed-pr-head",
+        help="exact lowercase commit SHA reviewed for PR-1 candidate building",
+    )
+    parser.add_argument(
         "--overlay-manifest",
         action="store_true",
         help="hash the fixed recovery overlay without building or running images",
@@ -2442,7 +2874,27 @@ def main() -> int:
     args = parser.parse_args()
     repository_root = Path(__file__).resolve().parents[1]
     try:
-        if args.overlay_manifest:
+        if args.build_pr_candidate:
+            legacy_inputs = (
+                args.overlay_manifest,
+                args.source_context_manifest,
+                args.candidate_image_id is not None,
+                args.expected_candidate_context_sha256 is not None,
+                args.candidate_revision is not None,
+                args.release_artifact_directory is not None,
+            )
+            if any(legacy_inputs):
+                raise RehearsalError(
+                    "PR candidate build mode cannot be combined with rehearsal inputs"
+                )
+            if args.reviewed_pr_head is None or args.receipt is None:
+                raise RehearsalError(
+                    "PR candidate build mode requires --reviewed-pr-head and --receipt"
+                )
+            receipt = build_pr_candidate(repository_root, args.reviewed_pr_head, args.receipt)
+        elif args.reviewed_pr_head is not None:
+            raise RehearsalError("--reviewed-pr-head requires --build-pr-candidate")
+        elif args.overlay_manifest:
             receipt = prepare_overlay_manifest(repository_root)
         elif args.source_context_manifest:
             receipt = prepare_source_context_manifest(repository_root)
@@ -2471,7 +2923,7 @@ def main() -> int:
             failure["cleanup_unverified"] = list(exc.cleanup_unverified)
         print(json.dumps(failure), file=sys.stderr)
         return 2
-    if args.receipt is not None:
+    if args.receipt is not None and not args.build_pr_candidate:
         _write_receipt(args.receipt, receipt)
     print(json.dumps(receipt, indent=2, sort_keys=True))
     return 0

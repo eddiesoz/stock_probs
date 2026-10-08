@@ -1254,3 +1254,434 @@ def test_recovery_metadata_keeps_production_image_identity_separate_from_local_b
         "release_transport": "GitHub Release",
         "source": "root-provided observed deployment metadata",
     }
+
+
+def test_local_pr_head_gate_requires_exact_sha_and_clean_tracked_and_untracked_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expected_sha = "a" * 40
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    (repository / ".git").mkdir()
+    commands: list[list[str]] = []
+
+    def git_run(command: list[str], **kwargs: object) -> CompletedProcess[bytes]:
+        commands.append(command)
+        return CompletedProcess(command, 0, stdout=f"{expected_sha}\n".encode(), stderr=b"")
+
+    class StatusProcess:
+        def __init__(self, output: bytes) -> None:
+            read_fd, write_fd = os.pipe()
+            if output:
+                os.write(write_fd, output)
+            os.close(write_fd)
+            self.stdout = os.fdopen(read_fd, "rb")
+            self.terminated = False
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout in {1, rehearsal._BUILD_STOP_TIMEOUT_SECONDS}
+            return 0
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            self.terminated = True
+
+    current_output = b""
+    processes: list[StatusProcess] = []
+
+    def git_popen(command: list[str], **kwargs: object) -> StatusProcess:
+        commands.append(command)
+        process = StatusProcess(current_output)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(rehearsal.subprocess, "run", git_run)
+    monkeypatch.setattr(rehearsal.subprocess, "Popen", git_popen)
+    rehearsal._verify_local_pr_head(repository, expected_sha)
+    assert commands[0] == ["/usr/bin/git", "rev-parse", "--verify", "HEAD"]
+    assert commands[1][-1] == "--untracked-files=all"
+    assert processes[0].terminated is False
+
+    current_output = b"?? untracked\0"
+    with pytest.raises(rehearsal.RehearsalError, match="checkout is not clean"):
+        rehearsal._verify_local_pr_head(repository, expected_sha)
+    assert processes[1].terminated is True
+
+    with pytest.raises(rehearsal.RehearsalError, match="exact commit SHA"):
+        rehearsal._verify_local_pr_head(repository, "A" * 40)
+
+
+def test_fixed_pr_verifier_uses_only_the_approved_api_endpoint_and_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    scripts = repository / "scripts"
+    scripts.mkdir(parents=True)
+    verifier_bytes = (REPOSITORY_ROOT / "scripts/pr_rehearsal_bootstrap.py").read_bytes()
+    (scripts / "pr_rehearsal_bootstrap.py").write_bytes(verifier_bytes)
+    reviewed_sha = "b" * 40
+    requests: list[tuple[str, str, dict[str, str]]] = []
+    payload = {
+        "state": "open",
+        "base": {"ref": "main"},
+        "head": {"sha": reviewed_sha, "repo": {"full_name": "eddiesoz/stock_probs"}},
+    }
+
+    class Response:
+        status = 200
+
+        def read(self, size: int) -> bytes:
+            assert size == 64 * 1024 + 1
+            return json.dumps(payload).encode()
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            requests.append((method, path, headers))
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(http.client, "HTTPSConnection", Connection)
+    rehearsal._verify_reviewed_pr(repository, reviewed_sha)
+    assert requests[0][0:2] == ("GET", "/repos/eddiesoz/stock_probs/pulls/1")
+
+    payload["head"]["sha"] = "c" * 40
+    with pytest.raises(rehearsal.RehearsalError, match="reviewed_pr_mismatch"):
+        rehearsal._verify_reviewed_pr(repository, reviewed_sha)
+
+
+def test_build_image_uses_fixed_amd64_argv_and_discards_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "docker-root"
+    root.mkdir()
+    context = tmp_path / "workspace/context"
+    context.mkdir(parents=True)
+    image_id = "sha256:" + "d" * 64
+    tag = "stock-probs:pr-candidate-" + "a" * 12 + "-" + "b" * 12
+    commands: list[list[str]] = []
+    launch: dict[str, object] = {}
+
+    def run(command: list[str], **kwargs: object) -> CompletedProcess[str]:
+        commands.append(command)
+        if command[1] == "info":
+            return CompletedProcess(command, 0, stdout=f"{root}\n", stderr="")
+        assert command[-1] == tag
+        return CompletedProcess(command, 0, stdout=image_id + "\n", stderr="")
+
+    class Process:
+        pid = 42001
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == rehearsal._BUILD_TERM_GRACE_SECONDS
+            return 0
+
+    def spawn(command: list[str], **kwargs: object) -> Process:
+        launch.update(kwargs)
+        launch["command"] = command
+        iidfile = Path(command[command.index("--iidfile") + 1])
+        iidfile.write_text(image_id + "\n", encoding="ascii")
+        return Process()
+
+    monkeypatch.setattr(rehearsal, "_run", run)
+    monkeypatch.setattr(rehearsal, "_build_free_bytes", lambda _path: 8 * 1024**3)
+    monkeypatch.setattr(rehearsal.subprocess, "Popen", spawn)
+    monkeypatch.setattr(
+        rehearsal.os,
+        "killpg",
+        lambda _pgid, _signal: (_ for _ in ()).throw(ProcessLookupError()),
+    )
+    assert rehearsal._build_image(context, tag, "a" * 40, {}) == image_id
+    command = launch["command"]
+    assert command[:5] == [
+        "docker",
+        "build",
+        "--pull=false",
+        "--platform=linux/amd64",
+        "--build-arg",
+    ]
+    assert command[5] == "REVISION=" + "a" * 40
+    assert command[command.index("--tag") + 1] == tag
+    assert launch["stdout"] is rehearsal.subprocess.DEVNULL
+    assert launch["stderr"] is rehearsal.subprocess.DEVNULL
+    assert launch["stdin"] is rehearsal.subprocess.DEVNULL
+    assert launch["shell"] is False
+    assert launch["start_new_session"] is True
+    assert commands[0][0:3] == ["docker", "info", "--format"]
+
+
+def test_build_image_blocks_low_disk_before_spawn_and_stops_mid_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "docker-root"
+    root.mkdir()
+    context = tmp_path / "context"
+    context.mkdir()
+    tag = "stock-probs:pr-candidate-" + "a" * 12 + "-" + "b" * 12
+    monkeypatch.setattr(rehearsal, "_docker_data_root", lambda _env: root)
+    launches: list[object] = []
+    monkeypatch.setattr(rehearsal.subprocess, "Popen", lambda *_args, **_kwargs: launches.append(1))
+    monkeypatch.setattr(rehearsal, "_build_free_bytes", lambda _path: 2 * 1024**3)
+    with pytest.raises(rehearsal.RehearsalError, match="at least 4 GiB"):
+        rehearsal._build_image(context, tag, "a" * 40, {})
+    assert launches == []
+
+    class RunningProcess:
+        pid = 42002
+        terminated = False
+        waited = False
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, *, timeout: int) -> int:
+            self.waited = True
+            assert timeout == rehearsal._BUILD_TERM_GRACE_SECONDS
+            return 0
+
+    process = RunningProcess()
+    frees = iter([8 * 1024**3, 512 * 1024**2])
+    monkeypatch.setattr(rehearsal, "_build_free_bytes", lambda _path: next(frees))
+    monkeypatch.setattr(rehearsal.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    signals: list[int] = []
+    group = {"exists": True}
+
+    def killpg(_pgid: int, signal_number: int) -> None:
+        if signal_number == 0:
+            if not group["exists"]:
+                raise ProcessLookupError()
+            return
+        signals.append(signal_number)
+        group["exists"] = False
+
+    monkeypatch.setattr(rehearsal.os, "killpg", killpg)
+    with pytest.raises(rehearsal.RehearsalError, match="stopped below 1 GiB"):
+        rehearsal._build_image(context, tag, "a" * 40, {})
+    assert process.waited is True
+    assert signals == [rehearsal.signal.SIGTERM]
+
+
+def test_stopped_build_group_kills_descendant_after_client_exits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "docker-root"
+    context = tmp_path / "context"
+    root.mkdir()
+    context.mkdir()
+    tag = "stock-probs:pr-candidate-" + "a" * 12 + "-" + "b" * 12
+    monkeypatch.setattr(rehearsal, "_docker_data_root", lambda _env: root)
+    monkeypatch.setattr(rehearsal, "_build_free_bytes", lambda _path: 8 * 1024**3)
+
+    class ExitedLeader:
+        pid = 42003
+        waited = 0
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self, *, timeout: int) -> int:
+            self.waited += 1
+            assert timeout in {
+                rehearsal._BUILD_TERM_GRACE_SECONDS,
+                rehearsal._BUILD_KILL_GRACE_SECONDS,
+            }
+            return 0
+
+    leader = ExitedLeader()
+    group = {"exists": True}
+    signals: list[int] = []
+    ticks = iter([0, 1, 2, 3])
+
+    def killpg(_pgid: int, signal_number: int) -> None:
+        if signal_number == 0:
+            if not group["exists"]:
+                raise ProcessLookupError()
+            return
+        signals.append(signal_number)
+        if signal_number == rehearsal.signal.SIGKILL:
+            group["exists"] = False
+
+    ticks = iter([0, 1, 2, 3, 4, 5])
+    monkeypatch.setattr(rehearsal.time, "monotonic", lambda: next(ticks, 100))
+    monkeypatch.setattr(rehearsal.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(rehearsal.os, "killpg", killpg)
+    monkeypatch.setattr(rehearsal.subprocess, "Popen", lambda *_args, **_kwargs: leader)
+    with pytest.raises(rehearsal.RehearsalError, match="left child processes"):
+        rehearsal._build_image(context, tag, "a" * 40, {})
+    assert leader.waited >= 2
+    assert signals == [rehearsal.signal.SIGTERM, rehearsal.signal.SIGKILL]
+    with pytest.raises(ProcessLookupError):
+        os.killpg(leader.pid, 0)
+
+
+def test_build_timeout_and_keyboard_interrupt_reap_the_owned_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "docker-root"
+    root.mkdir()
+    context = tmp_path / "context"
+    context.mkdir()
+    tag = "stock-probs:pr-candidate-" + "a" * 12 + "-" + "b" * 12
+    monkeypatch.setattr(rehearsal, "_docker_data_root", lambda _env: root)
+    monkeypatch.setattr(rehearsal, "_build_free_bytes", lambda _path: 8 * 1024**3)
+
+    class RunningProcess:
+        pid = 42004
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, *, timeout: int) -> int:
+            assert timeout == rehearsal._BUILD_TERM_GRACE_SECONDS
+            return 0
+
+    state = {"exists": True}
+    signals: list[int] = []
+
+    def killpg(_pgid: int, signal_number: int) -> None:
+        if signal_number == 0:
+            if not state["exists"]:
+                raise ProcessLookupError()
+            return
+        signals.append(signal_number)
+        state["exists"] = False
+
+    monkeypatch.setattr(rehearsal.os, "killpg", killpg)
+    timeout_process = RunningProcess()
+    monkeypatch.setattr(rehearsal.subprocess, "Popen", lambda *_args, **_kwargs: timeout_process)
+    monkeypatch.setattr(rehearsal, "_BUILD_TIMEOUT_SECONDS", 1)
+    clock = {"value": 0}
+
+    def advance_clock() -> int:
+        value = clock["value"]
+        clock["value"] += 2
+        return value
+
+    monkeypatch.setattr(rehearsal.time, "monotonic", advance_clock)
+    with pytest.raises(rehearsal.RehearsalError, match="local_build_timeout"):
+        rehearsal._build_image(context, tag, "a" * 40, {})
+    assert signals == [rehearsal.signal.SIGTERM]
+
+    state["exists"] = True
+    signals.clear()
+    interrupt_process = RunningProcess()
+
+    class InterruptedProcess(RunningProcess):
+        def poll(self) -> None:
+            raise KeyboardInterrupt()
+
+    interrupt_process = InterruptedProcess()
+    monkeypatch.setattr(rehearsal.subprocess, "Popen", lambda *_args, **_kwargs: interrupt_process)
+    monkeypatch.setattr(rehearsal, "_BUILD_TIMEOUT_SECONDS", 900)
+    monkeypatch.setattr(rehearsal.time, "monotonic", lambda: 0)
+    with pytest.raises(KeyboardInterrupt):
+        rehearsal._build_image(context, tag, "a" * 40, {})
+    assert signals == [rehearsal.signal.SIGTERM]
+
+
+def test_pr_candidate_receipt_is_bound_and_failed_revalidation_retains_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    reviewed_sha = "e" * 40
+    context_sha = "f" * 64
+    image_id = "sha256:" + "1" * 64
+    calls = {"local": 0, "pr": 0}
+    monkeypatch.setattr(
+        rehearsal,
+        "_verify_local_pr_head",
+        lambda _root, _sha: calls.__setitem__("local", calls["local"] + 1),
+    )
+    monkeypatch.setattr(
+        rehearsal,
+        "_verify_reviewed_pr",
+        lambda _root, _sha: calls.__setitem__("pr", calls["pr"] + 1),
+    )
+
+    def copy_context(_root: Path, destination: Path) -> str:
+        destination.mkdir(parents=True)
+        (destination / "Dockerfile").write_text("fixed", encoding="utf-8")
+        return context_sha
+
+    inspected_commands: list[list[str]] = []
+
+    def run(command: list[str], **_kwargs: object) -> CompletedProcess[str]:
+        inspected_commands.append(command)
+        return CompletedProcess(command, 1, stdout="", stderr="")
+
+    monkeypatch.setattr(rehearsal, "_candidate_context", copy_context)
+    monkeypatch.setattr(rehearsal, "_run", run)
+    monkeypatch.setattr(rehearsal, "_build_image", lambda *_args, **_kwargs: image_id)
+    monkeypatch.setattr(
+        rehearsal,
+        "_verify_candidate_image",
+        lambda _id, digest, _env, **kwargs: {
+            "id": image_id,
+            "architecture": "linux/amd64",
+            "source_context_sha256": digest,
+            "revision_label": kwargs["expected_revision_label"],
+        },
+    )
+    receipt_path = tmp_path / "private/build-receipt.json"
+    receipt = rehearsal.build_pr_candidate(repository, reviewed_sha, receipt_path)
+    assert calls == {"local": 3, "pr": 2}
+    assert inspected_commands[0][0:3] == ["docker", "image", "inspect"]
+    assert receipt["candidate_image"]["id"] == image_id
+    assert receipt["reviewed_head"] == reviewed_sha
+    assert receipt_path.stat().st_mode & 0o777 == 0o600
+    receipt_digest = receipt.pop("receipt_sha256")
+    assert receipt_digest == rehearsal._sha256(rehearsal._canonical_json(receipt))
+
+    calls.update(local=0, pr=0)
+
+    def pr_moved(_root: Path, _sha: str) -> None:
+        calls["pr"] += 1
+        if calls["pr"] == 2:
+            raise rehearsal.RehearsalError("reviewed_pr_mismatch")
+
+    monkeypatch.setattr(rehearsal, "_verify_reviewed_pr", pr_moved)
+    failed_receipt = tmp_path / "private/no-receipt.json"
+    with pytest.raises(rehearsal.RehearsalError, match="generated candidate image tag retained"):
+        rehearsal.build_pr_candidate(repository, reviewed_sha, failed_receipt)
+    assert not failed_receipt.exists()
+    assert not any("rm" in command for command in inspected_commands)
+
+
+def test_pr_candidate_cli_requires_exact_head_and_private_receipt(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["rehearse_schema13.py", "--build-pr-candidate"])
+    assert rehearsal.main() == 2
+    failure = json.loads(capsys.readouterr().err)
+    assert failure["status"] == "fail"
+    assert "--reviewed-pr-head and --receipt" in failure["reason"]
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "rehearse_schema13.py",
+            "--build-pr-candidate",
+            "--reviewed-pr-head",
+            "a" * 40,
+            "--receipt",
+            str(REPOSITORY_ROOT / "test-results/candidate.json"),
+            "--candidate-image-id",
+            "sha256:" + "a" * 64,
+        ],
+    )
+    assert rehearsal.main() == 2
+    assert "cannot be combined" in json.loads(capsys.readouterr().err)["reason"]

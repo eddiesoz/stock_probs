@@ -3063,6 +3063,120 @@ def test_model_policy_route_requires_admin_step_up_and_projects_closed_dto(setti
             browser.close()
 
 
+@pytest.mark.parametrize("auth_change", ["session_revoked", "admin_demoted", "totp_expired"])
+def test_model_policy_route_rechecks_admin_auth_after_inventory_await(
+    settings, monkeypatch, auth_change
+):
+    class Catalog:
+        def list_models(self):
+            return [MODEL]
+
+    class ProviderManager:
+        def __init__(self):
+            self.calls = []
+            self.policy = {
+                "model_id": MODEL.model_id,
+                "enabled": True,
+                "privacy_policy_version": "privacy-v1",
+                "privacy_disclosure": "Reviewed privacy terms.",
+                "billing_class": "unknown",
+                "billing_policy_version": None,
+                "cost_disclosure": "Billing is unknown; do not assume free service.",
+                "revision": 1,
+                "usable": True,
+                "availability_reason": None,
+                "policy_version": MODEL.policy_version,
+            }
+
+        def model_policy_state(self, model_id, *, owner_id=None):
+            del owner_id
+            assert model_id == MODEL.model_id
+            return dict(self.policy)
+
+        def update_model_policy(self, model_id, **values):
+            self.calls.append((model_id, values))
+            self.policy.update(values)
+            self.policy["revision"] = values["expected_revision"] + 1
+            self.policy["usable"] = values["enabled"]
+            return {
+                "model_id": model_id,
+                "enabled": values["enabled"],
+                "revision": self.policy["revision"],
+                "usable": self.policy["usable"],
+            }
+
+    providers = ProviderManager()
+    application = create_app(
+        _auth_settings(settings),
+        FixtureProvider(),
+        lambda: NOW,
+        assistant_runtime=FakeRuntime(),
+        assistant_catalog=Catalog(),
+        assistant_providers=providers,
+    )
+    inventory_started = threading.Event()
+    release_inventory = threading.Event()
+    with TestClient(application, client=("127.0.0.1", 51049)):
+        admin = _add_signed_in_user(application, 50086, role="admin")
+        _mark_recent_test_step_up(application, admin)
+        browser = _browser_client(application, admin)
+        assistant = application.state.assistant
+
+        async def hold_inventory(*, owner_id, authorization_check):
+            assert owner_id == admin["user_id"]
+            assert authorization_check()
+            inventory_started.set()
+            if not await asyncio.to_thread(release_inventory.wait, timeout=5):
+                raise RuntimeError("test inventory wait expired")
+            return (MODEL,)
+
+        monkeypatch.setattr(assistant, "ensure_model_inventory", hold_inventory)
+        path = f"/api/v1/assistant/models/{quote(MODEL.model_id, safe='')}/policy"
+        before_policy = dict(providers.policy)
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                pending = executor.submit(
+                    browser.put,
+                    path,
+                    headers={"x-csrf-token": str(admin["csrf"])},
+                    json={
+                        "enabled": False,
+                        "acknowledged_privacy_policy_version": None,
+                        "acknowledged_billing_policy_version": None,
+                        "expected_revision": 1,
+                    },
+                    timeout=5,
+                )
+                assert inventory_started.wait(timeout=5), "inventory did not reach the held await"
+                if auth_change == "session_revoked":
+                    application.state.repository.auth_revoke_session(
+                        str(admin["token_hash"]), NOW.isoformat()
+                    )
+                elif auth_change == "admin_demoted":
+                    application.state.repository.auth_update_user(
+                        int(admin["user_id"]), {"role": "member"}
+                    )
+                else:
+                    with application.state.repository.connect() as connection:
+                        connection.execute(
+                            "UPDATE sessions SET mfa_verified_at = ? WHERE token_hash = ?",
+                            (
+                                (NOW - timedelta(seconds=301)).isoformat(),
+                                str(admin["token_hash"]),
+                            ),
+                        )
+                        connection.commit()
+                release_inventory.set()
+                rejected = pending.result(timeout=8)
+            assert rejected.status_code == 403, rejected.text
+            assert rejected.json()["error"]["code"] == "assistant_authorization_required"
+            assert providers.calls == []
+            assert providers.policy == before_policy
+        finally:
+            release_inventory.set()
+            browser.close()
+
+
 def test_opencode_owner_inventory_review_and_clear_are_closed_and_session_bound(settings):
     fingerprint = "a" * 64
 
@@ -3648,6 +3762,116 @@ def test_model_discovery_route_refreshes_inventory_for_authenticated_user(settin
             assert turn.status_code == 202, turn.text
             assert catalog.refresh_calls == [0.0, 120.0]
         finally:
+            browser.close()
+
+
+@pytest.mark.parametrize("await_boundary", ["runtime_readiness", "model_inventory"])
+def test_create_turn_rechecks_live_session_after_readiness_or_inventory_await(
+    settings, monkeypatch, await_boundary
+):
+    application = create_app(
+        _auth_settings(settings),
+        FixtureProvider(),
+        lambda: NOW,
+        assistant_runtime=FakeRuntime(),
+        assistant_catalog=FakeCatalog(),
+        assistant_providers=FakeProviders(),
+    )
+    await_started = threading.Event()
+    release_await = threading.Event()
+    release_run = threading.Event()
+    run_started = threading.Event()
+    with TestClient(application, client=("127.0.0.1", 51050)):
+        owner = _add_signed_in_user(application, 50087)
+        browser = _browser_client(application, owner)
+        assistant = application.state.assistant
+        try:
+            context_response = browser.get(
+                "/api/v1/assistant/context", params={"route": "/overview"}
+            )
+            assert context_response.status_code == 200, context_response.text
+            context = context_response.json()["context"]
+            created = browser.post(
+                "/api/v1/assistant/conversations",
+                headers={"x-csrf-token": str(owner["csrf"])},
+                json={"context": context},
+            )
+            assert created.status_code == 201, created.text
+            conversation_id = str(created.json()["conversation"]["conversation"]["id"])
+            assistant.storage.create_consent(
+                int(owner["user_id"]),
+                model_id=MODEL.model_id,
+                policy_version=MODEL.policy_version,
+                accepted_terms=True,
+                data_collection_opt_in=False,
+                recorded_at=NOW,
+            )
+
+            async def held_await():
+                await_started.set()
+                if not await asyncio.to_thread(release_await.wait, timeout=5):
+                    raise RuntimeError("test create-turn wait expired")
+
+            if await_boundary == "runtime_readiness":
+                monkeypatch.setattr(assistant, "_ensure_runtime_ready", held_await)
+            else:
+
+                async def held_inventory(
+                    *, minimum_validity_seconds, owner_id, authorization_check
+                ):
+                    assert minimum_validity_seconds == 120.0
+                    assert owner_id == owner["user_id"]
+                    assert authorization_check()
+                    await_started.set()
+                    if not await asyncio.to_thread(release_await.wait, timeout=5):
+                        raise RuntimeError("test inventory wait expired")
+                    return tuple(assistant.catalog.list_models())
+
+                monkeypatch.setattr(assistant, "ensure_model_inventory", held_inventory)
+
+            async def record_scheduled_turn(**_kwargs):
+                run_started.set()
+                if not await asyncio.to_thread(release_run.wait, timeout=5):
+                    raise RuntimeError("test scheduled-turn wait expired")
+
+            monkeypatch.setattr(assistant, "_run_turn", record_scheduled_turn)
+            turn_path = f"/api/v1/assistant/conversations/{conversation_id}/turns"
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                pending = executor.submit(
+                    browser.post,
+                    turn_path,
+                    headers={"x-csrf-token": str(owner["csrf"])},
+                    json={
+                        "prompt": "Summarize my workspace safely.",
+                        "model_id": MODEL.model_id,
+                        "policy_version": MODEL.policy_version,
+                        "context": context,
+                        "context_preview_accepted": True,
+                    },
+                    timeout=5,
+                )
+                assert await_started.wait(timeout=5), "request did not reach the held await"
+                application.state.repository.auth_revoke_session(
+                    str(owner["token_hash"]), NOW.isoformat()
+                )
+                release_await.set()
+                rejected = pending.result(timeout=8)
+
+            assert rejected.status_code == 403, rejected.text
+            assert rejected.json()["error"]["code"] == "assistant_authorization_required"
+            detail = assistant.storage.get_conversation(
+                int(owner["user_id"]),
+                conversation_id,
+                session_id=str(owner["session_id"]),
+                now=NOW,
+            )
+            assert detail["messages"]["total"] == 0
+            assert detail["turns"] == []
+            assert assistant._tasks == {}
+            assert run_started.is_set() is False
+        finally:
+            release_await.set()
+            release_run.set()
             browser.close()
 
 

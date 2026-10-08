@@ -2105,6 +2105,9 @@ def create_assistant_router(
         updater = getattr(manager, "update_model_policy", None)
         if not callable(updater):
             raise AssistantUnavailable("model_policy_admin_unavailable", 503)
+        # Inventory refresh can await after its own live-session check.
+        if not authorization_check():
+            raise AssistantUnavailable("assistant_authorization_required", 403)
         try:
             updated = updater(
                 model_id,

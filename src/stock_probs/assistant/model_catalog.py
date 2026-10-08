@@ -17,6 +17,7 @@ from stock_probs.assistant.net import PublicHTTPError, request_public_https
 from stock_probs.assistant.schemas import AssistantModelPolicy
 
 _MAX_CATALOG_BYTES = 1_048_576
+_ZEN_MODELS_URL = "https://opencode.ai/zen/v1/models"
 _MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,159}$")
 _MODEL_CACHE_SECONDS = 300.0
 _CATALOG_FAILURE_RETRY_SECONDS = 5.0
@@ -227,20 +228,25 @@ class AssistantModelCatalog:
         """Refresh the fixed Zen inventory with one absolute deadline and a strict body cap."""
 
         policy = self._policy["zen"]
+        models_url = str(policy["models_url"])
+        # Native OpenCode V2 uses this fixed marker for its no-user-key Zen inventory request.
+        headers = {"authorization": "Bearer public"} if models_url == _ZEN_MODELS_URL else {}
         try:
             await _require_authorization(authorization_check)
             async with asyncio.timeout(7.0):
                 if self._requester is not None:
-                    response = await self._requester(str(policy["models_url"]))
+                    response = await self._requester(models_url)
                 elif authorization_check is None:
                     response = await request_public_https(
-                        str(policy["models_url"]),
+                        models_url,
+                        headers=headers,
                         timeout_seconds=6.5,
                         max_response_bytes=_MAX_CATALOG_BYTES,
                     )
                 else:
                     response = await request_public_https(
-                        str(policy["models_url"]),
+                        models_url,
+                        headers=headers,
                         timeout_seconds=6.5,
                         max_response_bytes=_MAX_CATALOG_BYTES,
                         authorization_check=authorization_check,

@@ -585,28 +585,75 @@ def _native_provider_inventory_summary(
     }
 
 
-def _reviewed_free_zen_model_id() -> str:
-    """Choose the maintained catalog's first free, no-training, no-collection model."""
+def _reviewed_free_zen_model_id(
+    catalog: Mapping[str, object] | None = None,
+) -> str:
+    """Return only the explicitly selected, reviewed free Zen model."""
 
     from importlib.resources import files
 
-    catalog = json.loads(
-        files("stock_probs.assistant")
-        .joinpath("assistant_catalog.json")
-        .read_text(encoding="utf-8")
+    if catalog is None:
+        catalog = json.loads(
+            files("stock_probs.assistant")
+            .joinpath("assistant_catalog.json")
+            .read_text(encoding="utf-8")
+        )
+    zen = catalog.get("zen") if isinstance(catalog, Mapping) else None
+    if not isinstance(zen, Mapping):
+        raise RuntimeError("reviewed_zen_acceptance_model_invalid")
+
+    provider_id = zen.get("provider_id")
+    model_suffix = zen.get("native_acceptance_model_id")
+    reviewed_models = zen.get("reviewed_models")
+    excluded_models = zen.get("excluded_models")
+    if (
+        provider_id != "opencode-zen"
+        or not isinstance(model_suffix, str)
+        or _NATIVE_ZEN_COMPONENT.fullmatch(model_suffix) is None
+        or not isinstance(reviewed_models, Mapping)
+        or not isinstance(excluded_models, Mapping)
+        or any(
+            not isinstance(excluded_id, str) or not isinstance(reason, str) or not reason
+            for excluded_id, reason in excluded_models.items()
+        )
+    ):
+        raise RuntimeError("reviewed_zen_acceptance_model_invalid")
+
+    policy = reviewed_models.get(model_suffix)
+    if (
+        not isinstance(policy, Mapping)
+        or any(excluded_id.casefold() == model_suffix.casefold() for excluded_id in excluded_models)
+        or policy.get("available") is not True
+        or policy.get("free") is not True
+        or policy.get("training") is not False
+        or policy.get("data_collection_allowed") is not False
+        or policy.get("data_collection_default") is not False
+        or policy.get("route") != "openai-compatible"
+    ):
+        raise RuntimeError("reviewed_zen_acceptance_model_invalid")
+    return f"{provider_id}/{model_suffix}"
+
+
+def _discovered_reviewed_zen_model(models: object, reviewed_model_id: str) -> AssistantModel | None:
+    """Return the exact reviewed model only when current discovery still approves it."""
+
+    if not isinstance(models, list | tuple):
+        return None
+    return next(
+        (
+            model
+            for model in models
+            if isinstance(model, AssistantModel)
+            and model.model_id == reviewed_model_id
+            and model.provider_id == "opencode-zen"
+            and model.available is True
+            and model.free is True
+            and model.training is False
+            and model.data_collection_allowed is False
+            and model.data_collection_default is False
+        ),
+        None,
     )
-    zen = catalog["zen"]
-    model_suffix = next(
-        model_id
-        for model_id, policy in sorted(zen["reviewed_models"].items())
-        if policy.get("available") is True
-        and policy.get("free") is True
-        and policy.get("training") is False
-        and policy.get("data_collection_allowed") is False
-        and policy.get("data_collection_default") is False
-        and policy.get("route") == "openai-compatible"
-    )
-    return f"{zen['provider_id']}/{model_suffix}"
 
 
 def _synthetic_application_zen_model(terms_reviewed_at: str) -> AssistantModel:
@@ -3795,19 +3842,8 @@ def run_native_live_zen_probe() -> int:
         )
         catalog = AssistantModelCatalog(settings)
         discovered = asyncio.run(catalog.refresh())
-        model = next(
-            (
-                item
-                for item in discovered
-                if item.provider_id == "opencode-zen"
-                and item.available
-                and item.free
-                and item.training is False
-                and item.data_collection_allowed is False
-                and item.data_collection_default is False
-            ),
-            None,
-        )
+        reviewed_model_id = _reviewed_free_zen_model_id()
+        model = _discovered_reviewed_zen_model(discovered, reviewed_model_id)
         if model is None:
             print(
                 json.dumps(

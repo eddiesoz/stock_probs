@@ -468,7 +468,13 @@ test("capture copy distinguishes a handed-off action from a completed change and
     assert.doesNotMatch(html, /workspace change (?:is|was) (?:complete|applied)/i);
     assert.doesNotMatch(html, /completed workspace-action receipt/i);
 
-    assert.match(html, /current page route is always included/i);
+    assert.match(html, /share all available workspace references together or turn reference sharing off/i);
+    assert.match(html, /one sharing control for all available workspace references/i);
+    assert.match(html, /you cannot deselect individual references/i);
+    assert.match(html, /current page route is always included either way/i);
+    assert.match(html, /after changing page context, select Refresh preview before sending/i);
+    assert.doesNotMatch(html, /which workspace references to share/i);
+    assert.doesNotMatch(html, /remove or change shared context/i);
     assert.match(html, /route always shared, references optional/i);
     assert.match(html, /references optional/i);
     assert.match(html, /portfolio and watchlist/i);
@@ -481,7 +487,13 @@ test("capture copy distinguishes a handed-off action from a completed change and
     assert.match(html, /does not create or send an invitation in chat/i);
     assert.match(html, /administrator TOTP verification/i);
     assert.match(html, /secure form checks it again/i);
+    assert.match(html, /email-only invitations can be redeemed only by a GitHub account with a verified email matching the invitation address/i);
+    assert.match(html, /providing a positive GitHub account ID restricts redemption to that account/i);
+    assert.match(html, /the email is only a delivery destination/i);
+    assert.match(html, /a username is an optional display hint/i);
     assert.match(html, /never paste invitation codes in chat/i);
+    assert.match(html, /use the “Stop response” control when you want to stop/i);
+    assert.doesNotMatch(html, /Use Cancel when you want to stop/i);
 
     assert.match(html, /running application with example accounts, conversations, forecasts, and sources/i);
     assert.match(html, /mobile views use viewport emulation/i);
