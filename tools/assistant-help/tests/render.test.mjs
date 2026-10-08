@@ -454,6 +454,58 @@ test("capture copy distinguishes a handed-off action from a completed change and
   });
 });
 
+test("print action layout keeps paragraphs intact and allows only the second capture to force a page", async () => {
+  const css = await readFile(CSS_PATH, "utf8");
+  const browserRequire = createRequire(path.join(REPO_ROOT, "tools/browser/package.json"));
+  const { chromium } = browserRequire("playwright");
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`
+      <style>${css}</style>
+      <main>
+        <section id="actions" class="guide-section">
+          <div class="section-body">
+            <p id="action-copy">Confirming an administrator invitation handoff requires recent TOTP verification, and the secure form checks it again when you create or send.</p>
+            <div id="action-captures" class="capture-pair action-captures">
+              <figure id="action-preview" class="capture"><figcaption>Preview</figcaption></figure>
+              <figure id="action-receipt" class="capture"><figcaption>Receipt</figcaption></figure>
+            </div>
+          </div>
+        </section>
+      </main>
+    `);
+
+    const readPrintBreaks = () => page.evaluate(() => {
+      const get = (selector, property) => getComputedStyle(document.querySelector(selector)).getPropertyValue(property);
+      return {
+        paragraph: get("#action-copy", "break-inside"),
+        captures: get("#action-captures", "break-before"),
+        firstCapture: get("#action-preview", "break-before"),
+        secondCapture: get("#action-receipt", "break-before"),
+      };
+    });
+
+    await page.emulateMedia({ media: "screen" });
+    assert.deepEqual(await readPrintBreaks(), {
+      paragraph: "auto",
+      captures: "auto",
+      firstCapture: "auto",
+      secondCapture: "auto",
+    });
+
+    await page.emulateMedia({ media: "print" });
+    assert.deepEqual(await readPrintBreaks(), {
+      paragraph: "avoid",
+      captures: "auto",
+      firstCapture: "auto",
+      secondCapture: "page",
+    });
+  } finally {
+    await browser.close();
+  }
+});
+
 test("pinned Chromium emits a tagged PDF with a document outline", async () => {
   assert.equal(PDF_EXPORT_OPTIONS.tagged, true);
   assert.equal(PDF_EXPORT_OPTIONS.outline, true);

@@ -209,7 +209,8 @@ body:has(#theme-dark:checked) { color-scheme: dark; --canvas:#0d141a;--panel:#17
   .guide-section { grid-template-columns: 12mm minmax(0, 1fr); gap: 4mm; padding: 6mm; }
   #answers, #actions { display: block; break-before: page; break-inside: auto; padding: 0; border: 0; border-radius: 0; background: transparent; }
   #answers .capture { break-before: page; }
-  #actions .action-captures { display: block; break-before: page; }
+  #actions .section-body > p { break-inside: avoid; }
+  #actions .action-captures { display: block; break-before: auto; }
   #actions .action-captures .capture + .capture { break-before: page; }
   #actions .capture { break-inside: avoid; }
   .capture img, .capture-pair .capture img { max-height: 108mm; object-fit: contain; }
