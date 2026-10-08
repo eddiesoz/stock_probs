@@ -137,6 +137,160 @@ function liveStatusSnapshot() {
   return snapshot;
 }
 
+const contextMetadataSelector = ".assistant-module__fixture__userMessage > small";
+
+function contextMetadataSnapshot() {
+  const snapshot = validSnapshot();
+  const background = "rgb(248, 250, 251)";
+  const transparent = "rgba(0, 0, 0, 0)";
+  const style = (backgroundColor) => ({
+    opacity: "1",
+    visibility: "visible",
+    display: "block",
+    backgroundColor,
+    backgroundImage: "none",
+    mixBlendMode: "normal",
+    backgroundBlendMode: "normal",
+    filter: "none",
+    backdropFilter: "none",
+    clipPath: "none",
+    maskImage: "none",
+    textShadow: "none",
+  });
+  const target = {
+    ...snapshot.targets[2],
+    role: "contextMetadata",
+    key: "context-metadata-text-1",
+    elementToken: "context-metadata-small",
+    element: { tag: "small", id: null, classes: [] },
+    textLength: "Context snapshot: Overview".length,
+    contextLabelKind: "contextSnapshot",
+    foreground: "rgb(80, 97, 109)",
+    semanticKind: "contextMetadata",
+    semanticBackgroundColor: background,
+    semanticBackgroundImage: "none",
+    ancestors: [
+      { name: "small", tag: "small", classes: [], kind: null, style: style(transparent) },
+      {
+        name: "assistant-module__fixture__userMessage",
+        tag: "li",
+        classes: ["assistant-module__fixture__userMessage"],
+        kind: "contextMetadata",
+        style: style(background),
+      },
+      { name: "assistant-module__fixture__messageList", tag: "ol", classes: ["assistant-module__fixture__messageList"], kind: null, style: style(transparent) },
+      { name: "assistant-panel", tag: "section", classes: ["assistant-module__fixture__panel"], testId: "assistant-panel", kind: null, style: style("rgb(255, 255, 255)") },
+      { name: "body", tag: "body", classes: [], kind: null, style: style(transparent) },
+      { name: "html", tag: "html", classes: [], kind: null, style: style(transparent) },
+    ],
+    lines: [{
+      rect: { left: 1020.47, top: 582.17, right: 1143.31, bottom: 601.17, width: 122.84, height: 19 },
+      inViewport: true,
+      clippingChecks: [{ ancestor: "assistant-panel", clipped: false }],
+      hitPoints: [0.25, 0.5, 0.75].map((fraction) => ({
+        x: 1020.47 + (122.84 * fraction),
+        y: 591.67,
+        targetOrDescendant: true,
+        hitRelation: "target",
+      })),
+    }],
+  };
+  const secondTarget = {
+    ...target,
+    key: "context-metadata-text-2",
+    textLength: "Overview".length,
+    lines: [{
+      ...target.lines[0],
+      rect: { left: 1143.31, top: 582.17, right: 1204.39, bottom: 601.17, width: 61.08, height: 19 },
+      hitPoints: [0.25, 0.5, 0.75].map((fraction) => ({
+        x: 1143.31 + (61.08 * fraction),
+        y: 591.67,
+        targetOrDescendant: true,
+        hitRelation: "target",
+      })),
+    }],
+  };
+  snapshot.targets.push(target, secondTarget);
+  snapshot.rawAxe.incomplete[0].nodes[0].target = [contextMetadataSelector];
+  snapshot.rawAxe.incomplete[0].nodes[0].html = "<small>Context snapshot: Overview</small>";
+  snapshot.rawNodeMappings[0] = {
+    rule: "color-contrast",
+    nodeIndex: 0,
+    selectorIndex: 0,
+    selector: contextMetadataSelector,
+    matchCount: 1,
+    roles: ["contextMetadata"],
+    measuredTargetKeys: [target.key, secondTarget.key],
+    directTextOnly: true,
+    elementToken: target.elementToken,
+    recognized: true,
+    selectorError: null,
+  };
+  return snapshot;
+}
+
+function contextMetadataTarget(snapshot) {
+  return snapshot.targets.find((target) => target.role === "contextMetadata");
+}
+
+test("measures the exact user-message context label and retains the raw axe incomplete", () => {
+  const snapshot = contextMetadataSnapshot();
+  const rawIncompleteBefore = JSON.stringify(snapshot.rawAxe.incomplete);
+  const result = evaluateAssistantContrastAudit(snapshot, { requiredRoles: ["contextMetadata"] });
+  assert.equal(result.passed, true, JSON.stringify(result.issues));
+  assert.deepEqual(snapshot.targets.filter((target) => target.role === "contextMetadata").map((target) => target.measuredContrast), [6.1307, 6.1307]);
+  assert.equal(snapshot.rawAxe.incomplete[0].nodes[0].target[0], contextMetadataSelector);
+  assert.equal(JSON.stringify(snapshot.rawAxe.incomplete), rawIncompleteBefore);
+  assert.equal(result.roleCounts.contextMetadata, 2);
+});
+
+const contextMetadataNegativeFixtures = [
+  ["ambiguous context-label selector", (snapshot) => {
+    snapshot.rawNodeMappings[0].matchCount = 2;
+    snapshot.rawNodeMappings[0].recognized = false;
+  }, "unknown-raw-incomplete-target"],
+  ["nested context-label text", (snapshot) => {
+    snapshot.rawNodeMappings[0].directTextOnly = false;
+    snapshot.rawNodeMappings[0].recognized = false;
+  }, "unknown-raw-incomplete-target"],
+  ["unrelated message parent", (snapshot) => {
+    const parent = contextMetadataTarget(snapshot).ancestors.find((ancestor) => ancestor.kind === "contextMetadata");
+    parent.classes = ["assistant-module__fixture__answerBlocks"];
+  }, "context-metadata-parent-mismatch"],
+  ["wrong context-label element", (snapshot) => {
+    contextMetadataTarget(snapshot).element.tag = "span";
+  }, "context-metadata-element-mismatch"],
+  ["lookalike message parent class", (snapshot) => {
+    const parent = contextMetadataTarget(snapshot).ancestors.find((ancestor) => ancestor.kind === "contextMetadata");
+    parent.classes = ["assistant-module__fixture__other_userMessage"];
+  }, "context-metadata-parent-mismatch"],
+  ["unverified context label kind", (snapshot) => {
+    contextMetadataTarget(snapshot).contextLabelKind = "messageText";
+  }, "context-metadata-label-mismatch"],
+  ["translucent context bubble", (snapshot) => {
+    const target = contextMetadataTarget(snapshot);
+    const parent = target.ancestors.find((ancestor) => ancestor.kind === "contextMetadata");
+    parent.style.backgroundColor = "rgba(248, 250, 251, 0.5)";
+    target.semanticBackgroundColor = parent.style.backgroundColor;
+  }, "semantic-background-not-opaque-rgb"],
+  ["low-contrast context label", (snapshot) => {
+    contextMetadataTarget(snapshot).foreground = "rgb(200, 200, 200)";
+  }, "contrast-below-4.5"],
+  ["occluded context-label line", (snapshot) => {
+    contextMetadataTarget(snapshot).lines[0].hitPoints[1].targetOrDescendant = false;
+  }, "line-hit-point-occluded"],
+];
+
+for (const [name, corrupt, expectedIssue] of contextMetadataNegativeFixtures) {
+  test(`fails closed for ${name}`, () => {
+    const snapshot = contextMetadataSnapshot();
+    corrupt(snapshot);
+    const result = evaluateAssistantContrastAudit(snapshot, { requiredRoles: ["contextMetadata"] });
+    assert.equal(result.passed, false);
+    assert.ok(result.issues.some((issue) => issue.code === expectedIssue), JSON.stringify(result.issues));
+  });
+}
+
 test("measures the bounded liveStatus target against its opaque panel background", () => {
   const result = evaluateAssistantContrastAudit(liveStatusSnapshot());
   assert.equal(result.passed, true, JSON.stringify(result.issues));

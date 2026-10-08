@@ -1,7 +1,14 @@
 "use strict";
 
 const REQUIRED_ROLES = ["readiness", "answer", "disclaimer"];
-const AUDITABLE_ROLES = [...REQUIRED_ROLES, "liveStatus"];
+const CONTEXT_METADATA_ROLE = "contextMetadata";
+const AUDITABLE_ROLES = [...REQUIRED_ROLES, "liveStatus", CONTEXT_METADATA_ROLE];
+
+function hasUserMessageClass(classes) {
+  return Array.isArray(classes) && classes.some((className) => (
+    typeof className === "string" && (className === "userMessage" || className.endsWith("__userMessage"))
+  ));
+}
 
 function parseRgb(value) {
   if (typeof value !== "string") return null;
@@ -144,6 +151,19 @@ function auditTarget(target, add) {
       add("live-status-panel-missing", key, { testId: semanticAncestor?.testId ?? null });
     }
   }
+  if (target.role === CONTEXT_METADATA_ROLE) {
+    const parentClasses = Array.isArray(semanticAncestor?.classes) ? semanticAncestor.classes : [];
+    if (target.element?.tag !== "small") add("context-metadata-element-mismatch", key, { tag: target.element?.tag ?? null });
+    if (target.contextLabelKind !== "contextSnapshot") {
+      add("context-metadata-label-mismatch", key, { labelKind: target.contextLabelKind ?? null });
+    }
+    if (semanticAncestor?.tag !== "li" || !hasUserMessageClass(parentClasses)) {
+      add("context-metadata-parent-mismatch", key, {
+        tag: semanticAncestor?.tag ?? null,
+        classes: parentClasses,
+      });
+    }
+  }
   const semanticStyleColor = semanticAncestor ? parseRgb(semanticAncestor.style?.backgroundColor) : null;
   if (!background || !semanticStyleColor || !sameRgb(background, semanticStyleColor)) {
     add("semantic-background-color-mismatch", key, {
@@ -235,6 +255,9 @@ async function captureAssistantContrastSnapshot(page, axeResults) {
     const hasComponentClass = (element, name) => Array.from(element.classList).some((value) => (
       new RegExp(`(?:^|_)${name}(?:_|$)`).test(value)
     ));
+    const hasUserMessageClass = (element) => Array.from(element.classList).some((value) => (
+      value === "userMessage" || value.endsWith("__userMessage")
+    ));
     const describe = (element) => ({
       tag: element.tagName.toLowerCase(),
       id: element.id || null,
@@ -306,6 +329,7 @@ async function captureAssistantContrastSnapshot(page, axeResults) {
       if (role === "answer" && containsClass(element, "assistantMessage")) return "answer";
       if (role === "disclaimer" && hasComponentClass(element, "composer")) return "disclaimer";
       if (role === "liveStatus" && element === panel) return "liveStatus";
+      if (role === "contextMetadata" && element.tagName === "LI" && hasUserMessageClass(element)) return "contextMetadata";
       return null;
     };
     const ancestorsFor = (element, role) => {
@@ -313,6 +337,8 @@ async function captureAssistantContrastSnapshot(page, axeResults) {
       for (let current = element; current; current = current.parentElement) {
         const record = {
           name: current.id ? `#${current.id}` : describe(current).classes.join("."),
+          tag: current.tagName.toLowerCase(),
+          classes: Array.from(current.classList),
           testId: current.getAttribute("data-testid"),
           kind: classKind(current, role),
           style: computedRecord(current),
@@ -347,6 +373,36 @@ async function captureAssistantContrastSnapshot(page, axeResults) {
       while (walker.nextNode()) if (isVisibleText(walker.currentNode)) nodes.push(walker.currentNode);
       return nodes;
     };
+    const contextMetadataElements = new Set();
+    for (const rule of incompleteRules || []) {
+      if (rule.id !== "color-contrast") continue;
+      for (const node of rule.nodes || []) {
+        for (const selector of Array.isArray(node.target) ? node.target : []) {
+          let matched = [];
+          try { matched = Array.from(document.querySelectorAll(selector)); }
+          catch { continue; }
+          if (matched.length !== 1) continue;
+          const candidate = matched[0];
+          const parent = candidate.parentElement;
+          if (contextMetadataElements.has(candidate) || candidate.tagName !== "SMALL"
+              || !panel.contains(candidate) || !parent || parent.tagName !== "LI"
+              || !hasUserMessageClass(parent)) continue;
+          if (!candidate.childNodes.length || Array.from(candidate.childNodes).some((child) => child.nodeType !== Node.TEXT_NODE)) continue;
+          const visibleTextNodes = textNodes(candidate);
+          if (visibleTextNodes.length === 0 || visibleTextNodes.some((textNode) => textNode.parentElement !== candidate)) continue;
+          const contextLabel = visibleTextNodes.map((textNode) => textNode.nodeValue).join("").replace(/\s+/g, " ").trim();
+          if (!/^Context snapshot:\s+\S.*$/.test(contextLabel)) continue;
+          contextMetadataElements.add(candidate);
+          roots.push({
+            role: "contextMetadata",
+            root: parent,
+            textRoot: candidate,
+            key: `raw-context-metadata-${contextMetadataElements.size}`,
+            contextLabelKind: "contextSnapshot",
+          });
+        }
+      }
+    }
     const targets = [];
     const elementTokens = new WeakMap();
     let nextElementToken = 1;
@@ -409,6 +465,7 @@ async function captureAssistantContrastSnapshot(page, axeResults) {
           element: describe(element),
           role: group.role,
           textLength: textNode.nodeValue.length,
+          ...(group.contextLabelKind ? { contextLabelKind: group.contextLabelKind } : {}),
           foreground,
           semanticKind: semanticAncestor?.kind ?? null,
           semanticBackgroundColor: semanticAncestor?.style.backgroundColor ?? null,
