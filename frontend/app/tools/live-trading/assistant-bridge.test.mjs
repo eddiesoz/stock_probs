@@ -29,7 +29,7 @@ test("confirmed alert actions remain per-page, capped, and removals hand off wit
   assert.deepEqual(applyLiveTradingAssistantAction({ type: "alerts.remove", payload: identity }, identity, [10, 20, 30]), {
     ok: true,
     state: {},
-    message: "The current alert controls are open. Choose a threshold there; chat did not remove any alert.",
+    message: "The current alert controls are open. Select and remove the existing alert there; chat did not remove any alert.",
   });
   assert.equal(applyLiveTradingAssistantAction({ type: "alerts.remove", payload: identity }, identity, [10]).ok, true);
 });

@@ -618,6 +618,191 @@ test("assistant desktop/mobile widget keeps a structured saved answer readable a
   }
 });
 
+test("saved conversation with no messages preserves its empty state across themes", async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  const savedConversation = {
+    id: "saved-empty-message",
+    title: "Saved conversation with no answer",
+    revision: 1,
+    created_at: "2025-01-10T17:00:00Z",
+    updated_at: "2025-01-10T17:00:00Z",
+    last_message_preview: "No saved answer yet.",
+  };
+  const emptyMessage = "Ask about the current research page, or use conversation history to reopen a saved answer.";
+  const conversationLists = [];
+  const emptyDetails = [];
+  await page.route("**/api/v1/**", async (route) => {
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    let payload = { items: [], total: 0, page: 1, page_size: 20 };
+    if (path === "/api/v1/auth/session") {
+      payload = { authenticated: true, user: { id: 1, role: "admin", login: "browser-fixture" }, csrf_token: "fixture-csrf" };
+    } else if (path === "/api/v1/lists" && url.searchParams.get("kind") === "portfolio") {
+      payload = { kind: "portfolio", items: [] };
+    } else if (path === "/api/v1/assistant/status") {
+      payload = status;
+    } else if (path === "/api/v1/assistant/models") {
+      payload = { items: [model] };
+    } else if (path === "/api/v1/assistant/context") {
+      const routeName = url.searchParams.get("route") || "/";
+      payload = {
+        context: { ...context, route: routeName, context_version: `saved-empty:${routeName}` },
+        preview: { summary: `Context for ${routeName}`, fields: ["current route only"], note: "No saved context is attached." },
+      };
+    } else if (path === "/api/v1/assistant/conversations" && route.request().method() === "GET") {
+      payload = { items: [savedConversation], page: 1, page_size: 20, total: 1 };
+      conversationLists.push(payload);
+    } else if (path === `/api/v1/assistant/conversations/${savedConversation.id}` && route.request().method() === "GET") {
+      payload = {
+        conversation: { ...savedConversation, delete_confirmation_phrase: "DELETE message" },
+        messages: { items: [], page: 1, page_size: 50, total: 0 },
+        turns: [],
+        actions: [],
+        action_pagination: { page: 1, page_size: 100, total: 0 },
+        events: { items: [], page: 1, page_size: 100, total: 0 },
+        event_pagination: { page: 1, page_size: 100, total: 0 },
+      };
+      emptyDetails.push({
+        messages: payload.messages.items.length,
+        turns: payload.turns.length,
+        actions: payload.actions.length,
+        events: payload.events.items.length,
+      });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
+  });
+
+  for (const theme of ["light", "dark"]) {
+    await page.goto("/");
+    await page.evaluate((selectedTheme) => localStorage.setItem("stock-probs.theme", selectedTheme), theme);
+    const panel = await openRealAssistant(page, new URL(page.url()).origin);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await panel.getByRole("button", { name: "Open conversation history" }).click();
+    const detailsBeforeSelection = emptyDetails.length;
+    await panel.getByRole("button", { name: /Saved conversation with no answer/ }).click();
+
+    const paragraph = panel.locator("p").filter({ hasText: emptyMessage });
+    await expect(paragraph).toHaveCount(1);
+    await expect.poll(() => emptyDetails.length).toBeGreaterThan(detailsBeforeSelection);
+    const rendered = await paragraph.evaluate((node) => {
+      const children = [];
+      for (const child of node.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          const previous = children.at(-1);
+          if (previous?.kind === "text") previous.text += child.textContent;
+          else children.push({ kind: "text", text: child.textContent });
+        } else if (child.nodeType === Node.ELEMENT_NODE) {
+          children.push({ kind: "element", tag: child.tagName.toLowerCase(), attributes: Array.from(child.attributes, ({ name, value }) => [name, value]), text: child.textContent });
+        } else if (child.nodeType !== Node.COMMENT_NODE) {
+          children.push({ kind: "unexpected", nodeType: child.nodeType });
+        }
+      }
+      return { text: node.textContent, children };
+    });
+    const expectedChildren = emptyMessage.split(/(\s+)/u).filter(Boolean).map((part) => (
+      /\S/u.test(part)
+        ? { kind: "element", tag: "span", attributes: [], text: part }
+        : { kind: "text", text: part }
+    ));
+    expect(rendered).toEqual({ text: emptyMessage, children: expectedChildren });
+
+    const geometry = await paragraph.evaluate((node) => {
+      const panelNode = node.closest('[data-testid="assistant-panel"]');
+      if (!panelNode) throw new Error("The saved-empty paragraph is outside the assistant panel.");
+      const bounds = (element) => {
+        const rect = element.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+      };
+      const inside = (inner, outer) => inner.left >= outer.left - 0.5
+        && inner.right <= outer.right + 0.5
+        && inner.top >= outer.top - 0.5
+        && inner.bottom <= outer.bottom + 0.5;
+      const paragraphBounds = bounds(node);
+      const panelBounds = bounds(panelNode);
+      const style = getComputedStyle(node);
+      const wordRects = Array.from(node.querySelectorAll(":scope > span"), (span) => {
+        const range = document.createRange();
+        range.selectNodeContents(span);
+        return {
+          text: span.textContent,
+          rects: Array.from(range.getClientRects(), (rect) => ({
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height,
+          })),
+        };
+      });
+      const allWordRects = wordRects.flatMap((word) => word.rects);
+      const viewport = { left: 0, right: innerWidth, top: 0, bottom: innerHeight };
+      return {
+        viewport: { width: innerWidth, height: innerHeight },
+        paragraph: {
+          bounds: paragraphBounds,
+          display: style.display,
+          visibility: style.visibility,
+          opacity: style.opacity,
+          scrollWidth: node.scrollWidth,
+          clientWidth: node.clientWidth,
+          scrollHeight: node.scrollHeight,
+          clientHeight: node.clientHeight,
+        },
+        panel: { bounds: panelBounds },
+        wordRects,
+        checks: {
+          paragraphVisible: node.getClientRects().length > 0 && paragraphBounds.width > 0 && paragraphBounds.height > 0
+            && style.display !== "none" && style.visibility === "visible" && Number(style.opacity) > 0,
+          paragraphInsidePanel: inside(paragraphBounds, panelBounds),
+          paragraphHasNoScrollOverflow: node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1,
+          everyWordHasOneGlyphRect: wordRects.length > 0 && wordRects.every((word) => word.rects.length === 1),
+          wordRectsInsideParagraph: allWordRects.length > 0 && allWordRects.every((rect) => inside(rect, paragraphBounds)),
+          wordRectsInsidePanel: allWordRects.length > 0 && allWordRects.every((rect) => inside(rect, panelBounds)),
+          wordRectsInsideViewport: allWordRects.length > 0 && allWordRects.every((rect) => inside(rect, viewport)),
+        },
+      };
+    });
+    await testInfo.attach(`assistant-saved-empty-${testInfo.project.name}-${theme}-geometry.json`, {
+      body: Buffer.from(JSON.stringify(geometry, null, 2)),
+      contentType: "application/json",
+    });
+    const screenshotPath = testInfo.outputPath(`assistant-saved-empty-${testInfo.project.name}-${theme}.png`);
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    await testInfo.attach(`assistant-saved-empty-${testInfo.project.name}-${theme}.png`, {
+      path: screenshotPath,
+      contentType: "image/png",
+    });
+    expect(geometry.checks).toEqual({
+      paragraphVisible: true,
+      paragraphInsidePanel: true,
+      paragraphHasNoScrollOverflow: true,
+      everyWordHasOneGlyphRect: true,
+      wordRectsInsideParagraph: true,
+      wordRectsInsidePanel: true,
+      wordRectsInsideViewport: true,
+    });
+
+    const axeResults = await new AxeBuilder({ page }).analyze();
+    await testInfo.attach(`assistant-saved-empty-${testInfo.project.name}-${theme}-raw-axe.json`, {
+      body: Buffer.from(JSON.stringify({
+        project: testInfo.project.name,
+        theme,
+        scope: "whole-document",
+        violations: axeResults.violations,
+        incomplete: axeResults.incomplete,
+      }, null, 2)),
+      contentType: "application/json",
+    });
+    expect(axeResults.violations, `raw whole-document axe violations in ${theme}`).toEqual([]);
+    expect(axeResults.incomplete, `raw whole-document axe incomplete results in ${theme}`).toEqual([]);
+  }
+  expect(conversationLists.length).toBeGreaterThanOrEqual(2);
+  expect(conversationLists.every((list) => list.total === 1 && list.items.length === 1)).toBe(true);
+  expect(emptyDetails.length).toBeGreaterThanOrEqual(2);
+  expect(emptyDetails).toEqual(Array.from({ length: emptyDetails.length }, () => ({ messages: 0, turns: 0, actions: 0, events: 0 })));
+});
+
 test("secure assistant destinations focus the matching account and admin controls", async ({ page, browserDiagnostics }) => {
   const paidModel = {
     ...model,

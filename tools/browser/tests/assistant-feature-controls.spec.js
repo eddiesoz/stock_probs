@@ -984,7 +984,7 @@ test("confirmed notes and alert actions preserve browser drafts and keep thresho
       title: "Open current alert controls",
       result: {
         status: "handed_off",
-        message: "The existing browser controls are open. No note or alert was changed.",
+        message: "Select and remove the existing browser alert in the Alert controls. No alert was changed here.",
         browser_action: {
           type: "alerts.remove",
           payload: identity,
@@ -1112,9 +1112,9 @@ test("confirmed notes and alert actions preserve browser drafts and keep thresho
     prompt: "Open the current alert controls for this instrument.",
     expectedOutcome: "Open current alert controls · handed off",
     headingId: "alerts-heading",
-    previewText: "Confirmation opens the current alert controls. Choose the threshold there; the chat will not remove an alert.",
-    receiptText: "The existing browser controls are open. No note or alert was changed.",
-    desktopStatusText: "The current alert controls are open. Choose a threshold there; chat did not remove any alert.",
+    previewText: "Confirmation opens the current alert controls. Select and remove the existing alert there; the chat will not remove an alert.",
+    receiptText: "Select and remove the existing browser alert in the Alert controls. No alert was changed here.",
+    desktopStatusText: "The current alert controls are open. Select and remove the existing alert there; chat did not remove any alert.",
   });
   await expect(activeThreshold).toHaveCount(1);
   await expect(activeThreshold).toContainText("ACDC at 12.75");

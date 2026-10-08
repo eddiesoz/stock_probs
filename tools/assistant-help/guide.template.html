@@ -18,7 +18,7 @@
         </svg>
         <span>Signal Ledger <span class="brand-divider">/</span> Assistant guide</span>
       </a>
-      <p class="draft-label"><span class="draft-mark" aria-hidden="true"></span> Pre-release draft · synthetic examples</p>
+      <p class="draft-label"><span class="draft-mark" aria-hidden="true"></span> Pre-release candidate · synthetic examples</p>
     </header>
 
     <main id="main-content">
@@ -27,7 +27,7 @@
           <p class="eyebrow">A research companion with clear controls</p>
           <h1 id="hero-title">Ask a better question.<br><span>Keep the decision yours.</span></h1>
           <p class="hero-lede">The Ledger assistant can explain the workspace and help organize research. You can share all available workspace references together or turn reference sharing off; the current page route is always included. You decide whether a proposed change may proceed.</p>
-          <p class="synthetic-note"><strong>Example data is synthetic.</strong> These screenshots show the running application with example accounts, conversations, forecasts, and sources. Mobile views use viewport emulation; behavior on a physical iPhone or iOS device is not verified. The examples are not market research or recommendations.</p>
+          <p class="synthetic-note"><strong>Example data is synthetic.</strong> These screenshots show the running application with example accounts, conversations, forecasts, and sources. Mobile views use viewport emulation; physical iOS use and actual screen-reader acceptance have not been verified. The examples are not market research or recommendations.</p>
         </div>
         <figure class="hero-art" aria-label="Four-step research loop">
           <ol class="research-loop" aria-label="A four-step research loop">
@@ -81,7 +81,7 @@
             <p class="eyebrow">Start where you are</p>
             <h2 id="open-title">Open, resize, and return to your work</h2>
             <p>Use the named assistant launcher when you want help. On desktop, the panel stays alongside the workspace; use its expand, minimize, history, and close controls as needed. On a narrow screen it becomes a full-screen surface with safe-area spacing. The message area normally scrolls independently, and the composer stays available as the on-screen keyboard opens. While an exact WebFetch URL approval is open, scroll the panel itself to keep the full destination and its decision together.</p>
-            <p>The launcher appears after the app checks your sign-in and assistant status. Opening it checks your sign-in again, then loads the model catalog and recent conversation history and requests the current page context; it does not send a prompt, start a model turn, or run public search. Choose a model, write a question, and send it when you are ready. Closing the panel returns you to the page.</p>
+            <p>The launcher appears after the app checks your sign-in and assistant status. Opening it checks your sign-in again, then loads the model catalog and recent conversation history and requests the current page context; it does not send a prompt, start a model turn, or run public search. Selecting <strong>New conversation</strong> creates and saves a separate conversation but sends no assistant request until you send a prompt. Choose a model, write a question, and send it when you are ready. Closing the panel returns you to the page.</p>
             <p>On a phone, close the assistant to return to the same workspace, then use the assistant launcher to reopen it. The launcher regains focus so you can continue with the keyboard.</p>
             <div class="callout"><strong>Research only.</strong> The assistant does not place trades or orders. Its answer can be wrong, so verify important figures against their cited records.</div>
           </div>
@@ -92,11 +92,11 @@
           <div class="section-body">
             <p class="eyebrow">Know what is enabled</p>
             <h2 id="model-title">Choose a model that has been reviewed</h2>
-            <p>When you first open the assistant, no model is selected. Choose an approved usable model before sending, then review the exact provider privacy terms and billing disclosure. Models whose terms permit prompt or context collection require a separate, version-specific opt-in. Models whose terms prohibit this use remain unavailable even with consent. The assistant does not silently switch providers or models, use a paid fallback, or top up an account.</p>
+            <p>When you first open the assistant, no model is selected. Choose an approved usable model before sending, then review the exact provider terms and displayed privacy/data-use, training, confidential-data, and billing statements. Console catalog-review statements are administrator-supplied and unverified. Models whose terms permit prompt or context collection require a separate, version-specific opt-in; models excluded by policy remain unavailable even with consent. The assistant does not silently switch providers or models, use a paid fallback, or top up an account.</p>
             <div class="two-cards">
               <article class="mini-card">
                 <h3>For an administrator</h3>
-                <p>Review the provider and exact model. The protected approval form requires a fresh authenticator check and version-specific privacy and billing acknowledgements. Administrator approval does not replace a user’s required data-collection opt-in.</p>
+                <p>Administrators manage connections, credentials, and model policy in protected <strong>Provider settings</strong> after a fresh authenticator check. Keep credentials and authorization codes, including authenticator or recovery codes, out of chat. OpenCode Console is optional; its credential is used only to discover that account’s model catalog and is separate from the provider credential used for model requests. Catalog discovery is not a user sign-up step; do not create a new Console account to follow this guide. Administrator review does not replace a user’s required data-collection opt-in.</p>
               </article>
               <article class="mini-card accent-card">
                 <h3>For a researcher</h3>
@@ -148,7 +148,7 @@
           <div class="section-body">
             <p class="eyebrow">A suggestion is not an action</p>
             <h2 id="actions-title">Review the exact preview before confirming</h2>
-            <p>When the assistant proposes a supported workspace change, it displays a card with the action, the affected item, and the expected change. Check the details. To proceed, type the exact confirmation phrase shown on that card and select its confirmation button. Until that confirmation succeeds, the preview remains only a proposal.</p>
+            <p>When the assistant proposes a supported workspace change, it displays a card with the action, the affected item, and the expected change. Check the details. To proceed, type the exact confirmation phrase shown on that action card and select its confirmation button. This phrase is for workspace action cards, not WebFetch. If a preview has expired, its saved page context is stale, or it belongs to another sign-in session, ask again for a fresh preview; it cannot be confirmed from history.</p>
             <div class="action-flow" role="group" aria-label="Illustration of a confirmation flow">
               <div><span class="flow-tag">Preview</span><strong>Read the exact change</strong><small>Item, quantity, and expected effect</small></div>
               <span class="flow-arrow" aria-hidden="true"></span>
@@ -156,13 +156,13 @@
               <span class="flow-arrow" aria-hidden="true"></span>
               <div><span class="flow-tag receipt-tag">Receipt</span><strong>Check the saved outcome</strong><small>Applied, denied, or handed off</small></div>
             </div>
-            <p>On the Signal Ledger home (<code>/</code>), ask the assistant to prepare history filters or a filtered CSV or JSON export. Search ledger is the home page’s history form, separate from Overview. Review the exact preview and confirm it. Filters open in that form; approved exports open the owner-authorized download. The separate Research page shows five recent records from the newest 100 and saved-forecast comparisons. The assistant can search owner-scoped history there, but a filter request takes you to the home page’s history form.</p>
+            <p>History-filter handoffs are available only on the Signal Ledger home (<code>/</code>) and open its Search ledger form, separate from Overview. From any supported page, you can ask for a filtered CSV or JSON export; after confirmation it opens an owner-authorized download. The separate Research page shows five recent records from the newest 100 and saved-forecast comparisons. The assistant can search owner-scoped history there, but to apply filters use the home page’s Search ledger form.</p>
             <p>On Markets, confirmed requests can apply local quote filters, change the chart range or visible columns, and refresh quotes, the watchlist, or the selected chart. Review the proposed settings before confirming. These actions use the current page’s controls and selected instrument; quotes remain provider-labelled research data, not a real-time or trading feed.</p>
             <p>On Live Trading, a confirmed request to open note controls or remove an alert is a handoff. On mobile, the assistant closes and focuses the Notes or Alerts section heading. Finish the change in that workspace control; the handoff itself does not edit the note or remove the alert. Reopen the assistant’s conversation history and select the same conversation to review its receipt. Adding a threshold is a separate confirmed action limited to the open Live Trading page session; it has no scheduler or notification delivery.</p>
             <p><strong>Portfolio and watchlist.</strong> Ask to add or remove an instrument, or change a holding quantity; confirm the exact symbol and amount.</p>
             <p><strong>Forecasts and follow-up.</strong> A confirmed new forecast request saves a new forecast. Reopening opens its immutable saved record without calling the model again. Recording an outcome appends an observation; a fresh historical reconstruction saves a separate analysis at the chosen cutoff without rewriting the submitted forecast.</p>
             <p><strong>Administrator invitations.</strong> An invitation proposal hands off to protected invitation settings; it does not create or send an invitation in chat. Confirming that handoff requires recent administrator TOTP verification, and the secure form checks it again when you create or send. Email-only invitations can be redeemed only by a GitHub account with a verified email matching the invitation address. Providing a positive GitHub account ID restricts redemption to that account; the email is only a delivery destination, and a username is an optional display hint. Review the recipient details there; never paste invitation codes in chat.</p>
-            <p>Other account and administrator operations also use their protected forms; confirming a workspace action does not bypass those checks.</p>
+            <p>A theme change affects only the Light, Dark, or System appearance setting. Account and session tasks hand off to secure Account controls. Provider settings, verified backup creation, and promoted restore stay in protected administrator forms and require fresh authenticator verification. A promoted restore revokes sessions, so sign in again afterward; confirming a handoff does not complete the secure form.</p>
             <div class="capture-pair action-captures">
               <figure class="capture">
                 <img src="{{capture:action_preview:src}}" alt="{{capture:action_preview:alt}}" loading="eager">
@@ -182,11 +182,11 @@
             <p class="eyebrow">External search stays explicit</p>
             <h2 id="search-title">Review the exact query and WebFetch URL</h2>
             <p>Native <strong>WebSearch</strong> first shows the exact public search query. Review that text and approve it only if you are comfortable sending it to the search provider.</p>
-            <p>Native <strong>WebFetch</strong> is a separate step. Before a page is fetched, the assistant pauses and shows an approval card with the complete HTTPS URL and why it wants to read that page. Check the hostname, path, and query string character by character. A query string can contain private account or workspace details.</p>
+            <p>Native <strong>WebFetch</strong> is a separate step. Before a page is fetched, the assistant pauses and shows an approval card with the complete HTTPS URL and why it wants to read that page. The complete URL, including every query parameter, is sent to the destination website; the fetched page is returned to the assistant for this turn. Check the hostname, path, and query string character by character because a query can contain private account or workspace details.</p>
             <ol class="check-list">
               <li>Open the approval card and inspect the exact URL and page purpose.</li>
-              <li>Approve only that public URL by entering the one-time confirmation phrase printed on the card.</li>
-              <li>If the URL is unexpected, includes private details, or is not needed, choose deny or cancel. A redirect or later destination requires a new request and approval.</li>
+              <li>Select <strong>Approve exact URL once</strong> only if you accept sending that exact public URL to its destination and returning the fetched page to the assistant.</li>
+              <li>Otherwise select <strong>Decline request</strong>. WebFetch uses these buttons; it does not ask for a confirmation phrase. A redirect or later destination requires a new request and exact approval.</li>
             </ol>
             <p>The approval is tied to your current signed-in session, conversation, and running turn. An expired, cancelled, or interrupted turn cannot reuse it. WebFetch accepts public HTTPS destinations; it does not make a search-text link verified or guarantee that a page is trustworthy.</p>
             <div class="callout search-callout"><strong>Before approving</strong><span>Remove names, account details, private notes, identifiers, or anything else that should not leave your workspace.</span></div>

@@ -24,5 +24,5 @@ export function applyLiveTradingAssistantAction(
     if (alerts.length >= 5) return { ok: false, message: "This page already has five active session-only thresholds; no alert was added." };
     return { ok: true, state: { alerts: [...alerts, action.payload.threshold] }, message: "The threshold was added to this open page session only. No scheduler or delivery is configured." };
   }
-  return { ok: true, state: {}, message: "The current alert controls are open. Choose a threshold there; chat did not remove any alert." };
+  return { ok: true, state: {}, message: "The current alert controls are open. Select and remove the existing alert there; chat did not remove any alert." };
 }

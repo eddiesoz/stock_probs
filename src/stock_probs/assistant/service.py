@@ -219,6 +219,7 @@ class AssistantService:
         self._execution_by_turn: dict[str, str] = {}
         self._emitters: dict[str, Any] = {}
         self._search_waiters: dict[str, asyncio.Future[str | None]] = {}
+        self._search_waiter_lock = threading.Lock()
         self._webfetch_waiters: dict[str, _WebfetchWaiter] = {}
         self._webfetch_waiter_lock = threading.Lock()
         self._task_lock = asyncio.Lock()
@@ -1751,7 +1752,8 @@ class AssistantService:
         preview_id = str(preview["id"])
         phrase = str(preview["confirmation_phrase"])
         future: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
-        self._search_waiters[preview_id] = future
+        with self._search_waiter_lock:
+            self._search_waiters[preview_id] = future
         self._emitters[runtime_context.execution_id] = emit
         try:
             await emit(
@@ -1776,12 +1778,17 @@ class AssistantService:
                     ).total_seconds(),
                 )
                 return await asyncio.wait_for(
-                    future, timeout=min(ASSISTANT_TURN_SECONDS, remaining)
+                    asyncio.shield(future), timeout=min(ASSISTANT_TURN_SECONDS, remaining)
                 )
             except TimeoutError:
                 return None
         finally:
-            self._search_waiters.pop(preview_id, None)
+            with self._search_waiter_lock:
+                removed = self._search_waiters.get(preview_id) is future
+                if removed:
+                    self._search_waiters.pop(preview_id, None)
+            if removed and not future.done():
+                future.cancel()
             if self._emitters.get(runtime_context.execution_id) is emit:
                 self._emitters.pop(runtime_context.execution_id, None)
 
@@ -2102,21 +2109,36 @@ class AssistantService:
             )
         ):
             raise AssistantStorageConflict("search_session_stale")
-        future = self._search_waiters.get(preview_id)
-        if future is None or future.done():
-            raise AssistantStorageConflict("search_execution_not_waiting")
-        preview = self.storage.resolve_search_preview(
-            context.user.id,
-            conversation_id,
-            turn_id,
-            preview_id,
-            context_version=context_version,
-            confirmation_phrase=confirmation_phrase,
-            allow=allow,
-            now=self.now(),
-        )
-        future.set_result(str(preview["query_text"]) if allow else None)
+        with self._search_waiter_lock:
+            future = self._search_waiters.get(preview_id)
+            if future is None or future.done() or future.get_loop().is_closed():
+                raise AssistantStorageConflict("search_execution_not_waiting")
+            preview = self.storage.resolve_search_preview(
+                context.user.id,
+                conversation_id,
+                turn_id,
+                preview_id,
+                context_version=context_version,
+                confirmation_phrase=confirmation_phrase,
+                allow=allow,
+                now=self.now(),
+            )
+            if self._search_waiters.get(preview_id) is not future or future.done():
+                raise AssistantStorageConflict("search_execution_not_waiting")
+            self._search_waiters.pop(preview_id)
+            future.get_loop().call_soon_threadsafe(
+                self._finish_search_waiter,
+                future,
+                str(preview["query_text"]) if allow else None,
+            )
         return {"preview_id": preview_id, "status": preview["status"]}
+
+    @staticmethod
+    def _finish_search_waiter(future: asyncio.Future[str | None], result: str | None) -> None:
+        """Complete a search waiter on its owning loop, ignoring cancellation races."""
+
+        if not future.done():
+            future.set_result(result)
 
     async def _ensure_runtime_ready(self) -> None:
         """Retry a failed optional worker start at a bounded cadence without app restart."""
@@ -3458,10 +3480,14 @@ class AssistantService:
                 bridge_payload = {
                     key: safe[key] for key in ("symbol", "asset_type", "provider", "exchange")
                 }
+                message = (
+                    "Select and remove the existing browser alert in the Alert controls. "
+                    "No alert was changed here."
+                    if action_type == "alerts.remove"
+                    else "The existing browser controls are open. No note or alert was changed."
+                )
                 return "handed_off", {
-                    "message": (
-                        "The existing browser controls are open. No note or alert was changed."
-                    ),
+                    "message": message,
                     "browser_action": {
                         "type": action_type,
                         "payload": bridge_payload,

@@ -65,6 +65,12 @@ const routeLabels: Record<AssistantContextRequest["route"], string> = {
   "/admin": "Administration",
 };
 
+function renderStaticMessageWords(text: string) {
+  return text.split(/(\s+)/u).map((part, index) => (
+    /\S/u.test(part) ? <span key={index}>{part}</span> : part
+  ));
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -2184,7 +2190,7 @@ export function AssistantPanel({
                 {eventPagination.page * eventPagination.page_size < eventPagination.total ? <button type="button" className={styles.reconnect} onClick={() => void loadActivityPage("events", "older")} disabled={activityLoading}>{activityLoading ? "Loading research steps…" : "Load older research steps"}</button> : null}
               </div>
             ) : null}
-            {conversation && messages.length === 0 && !activeTurn ? <p className={styles.empty}>Ask about the current research page, or use conversation history to reopen a saved answer.</p> : null}
+            {conversation && messages.length === 0 && !activeTurn ? <p className={styles.empty}>{renderStaticMessageWords("Ask about the current research page, or use conversation history to reopen a saved answer.")}</p> : null}
             <ol className={styles.messageList} aria-live="off">
               {messages.map((message) => (
                 <li className={message.role === "user" ? styles.userMessage : styles.assistantMessage} key={message.id}>
@@ -2233,7 +2239,7 @@ export function AssistantPanel({
             }}>Reconnect to response</button> : null}
             {busyTurn ? <button ref={cancelButtonRef} type="button" className={styles.cancel} onClick={(event) => void cancelTurn(event.currentTarget)} disabled={busy === "cancel"}>{busy === "cancel" ? "Cancelling…" : "Stop response"}</button> : null}
             {streamState === "failed" ? <p className={styles.error} role="alert">The response did not finish. Review any action receipts and reopen the conversation to check the saved state.</p> : null}
-            {!conversation && conversationState === "ready" ? <p className={styles.empty}>Start a conversation with a specific research question. The assistant does not trade or place orders.</p> : null}
+            {!conversation && conversationState === "ready" ? <p className={styles.empty}>{renderStaticMessageWords("Start a conversation with a specific research question. The assistant does not trade or place orders.")}</p> : null}
           </div>
 
           {liveStatus ? <p className={styles.liveStatus}>{liveStatus}</p> : null}
@@ -2259,7 +2265,7 @@ export function AssistantPanel({
               aria-describedby="assistant-disclaimer"
             />
             <div className={styles.composerActions}>
-              <p id="assistant-disclaimer">Research only. Answers can be wrong; no trades are placed.</p>
+              <p id="assistant-disclaimer">{renderStaticMessageWords("Research only. Answers can be wrong; no trades are placed.")}</p>
               <button type="submit" disabled={sendDisabled}>{busyTurn ? "Responding…" : "Send question"}</button>
             </div>
           </form>
@@ -2315,7 +2321,7 @@ function ActionCard({
   };
   const handoffText = proposal.action_type.startsWith("notes.")
     ? "Confirmation opens the local note editor. Review or change the note there; the chat will not replace or clear your browser draft."
-    : "Confirmation opens the current alert controls. Choose the threshold there; the chat will not remove an alert.";
+    : "Confirmation opens the current alert controls. Select and remove the existing alert there; the chat will not remove an alert.";
   return (
     <section className={styles.actionCard} aria-label={`Preview: ${actionTypeLabel(proposal.action_type)}`}>
       <p className={styles.panelKicker}>Action preview</p>

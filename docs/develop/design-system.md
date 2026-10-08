@@ -6,10 +6,7 @@ description: "The current Signal Ledger visual language, approved assistant visu
 # Design system and Ledger assistant
 
 This guide describes the visual system already used by Signal Ledger and the approved visual
-contract for the Ledger assistant. R-ASTRA-120 now has assistant source in progress; the guide,
-source presence, and build artifacts do not establish independent runtime, accessibility, browser,
-or release acceptance. The deployed production release remains schema 12 with assistant rollout
-disabled. See the [R-ASTRA-120 plan and evidence](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
+contract for the Ledger assistant. R-ASTRA-120 remains prerelease work. E798 records the search-confirmation source review, 933 selected independent security/API tests, the 52/52 frozen-banner guide-fixture pass, and a corrected frontend build/stage with all 52 served/export files matched. Preserve the pre-repair HTTP failure and pre-banner 51/52 guide failure. Focused post-stage browser QA passed 2/2 with no skips on desktop and Pixel 7 emulation after a fixture-only correction; the earlier failed assertion used a stale mock receipt-text oracle. E791/E795 browser/axe results remain pre-copy scope. Final PR-bound HTML/PDF guide acceptance remains pending. Physical mobile, true zoom, and screen-reader evidence remain unavailable. See the [R-ASTRA-120 plan and evidence](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
 
 ## Source of truth
 
@@ -124,6 +121,23 @@ page/session; it does not create a server-owned alert.
 - Include clear loading, empty, unavailable, error, and cancellation states. Keep status updates
   available to assistive technology without moving focus unexpectedly.
 
+### Static empty-state and disclaimer text
+
+The two static empty assistant messages and the composer disclaimer remain semantic paragraphs.
+Render their existing text with unstyled word spans while keeping original whitespace as text nodes.
+Preserve the exact copy, natural wrapping, paragraph boundaries, disclaimer `id`, and textarea
+`aria-describedby` relationship. Do not add `aria-hidden`, axe exclusions, or a contrast exception.
+This markup supports text-word geometry measurements without changing the message's paragraph
+semantics or accessible text.
+
+E780's private candidate diagnostic passed 20/20 states with whole-document axe at 0 violations
+and 0 incomplete. E783 and E784 each passed the focused saved-empty fixture in two viewport classes
+with four Light/Dark whole-document snapshots at 0/0; E786's integrated source review found no
+issues in copy, whitespace, paragraph semantics, or the disclaimer relationship. These are scoped
+candidate/fixture/source results only. E791 passed the corrected synthetic 196-case desktop/Pixel 7 run (193 passed, 3 expected skips, no failures/flaky) with unchanged source pins, 52/52 served/export parity and cleanup. The four saved-empty whole-document axe snapshots were 0/0, and E793 passed parent visual review of all four images. E795 then passed all 64 whole-route automated Playwright/axe states with zero violations/incompletes, no setup/scan errors or exclusions, stable source bindings, and cleanup. E797 separately failed seeded-volume startup readiness at an outer exec timeout; its cause is unproven, while a parent-reported independent exact-absence audit passed. The browser/accessibility results are scoped automated evidence only; physical mobile, true zoom, screen-reader, and broader accessibility acceptance remain open.
+See the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
+for exact receipts and preserved results.
+
 ### Accessibility and display modes
 
 - Make every action keyboard-operable. Maintain a logical reading and tab order, provide a visible
@@ -144,8 +158,11 @@ page/session; it does not create a server-owned alert.
 ### R-ASTRA-120 source and release status
 
 The candidate shared workspace layout mounts the assistant host and implements the approved
-desktop panel and narrow-screen full-screen surface. Production remains at schema 12 with the
-assistant disabled; candidate source and screenshots are not a released feature.
+desktop panel and narrow-screen full-screen surface. The latest read-only production inspect,
+at 2026-10-08T21:33:44Z, reported revision da2764e8477698fa7d686be93a4711e35478e802, image
+sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1, schema 12 ready,
+failed=null, and loopback-only. It did not return rollout, RAM, or billing; current rollout
+mode is Unavailable. Candidate source and screenshots are not a released feature.
 
 Current acceptance remains pending. The later E198 canonical pass predates subsequent source
 changes, and current native wire checks do not establish full feature or resource acceptance.

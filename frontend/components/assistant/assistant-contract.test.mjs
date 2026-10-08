@@ -81,6 +81,49 @@ test("assistant text and mobile composer retain readable whitespace and full-wid
   }
 });
 
+test("static assistant empty and disclaimer text use neutral word spans", async () => {
+  const panel = await readFile(new URL("./assistant-panel.tsx", import.meta.url), "utf8");
+  const helperStart = panel.indexOf("function renderStaticMessageWords(text: string) {");
+  const helperEnd = panel.indexOf("\n}\n\nfunction asRecord", helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const helper = panel.slice(helperStart, helperEnd + 2);
+  const splitLiteral = helper.match(/text\.split\((\/.*?\/u)\)\.map/)?.[1];
+  const wordLiteral = helper.match(/^\s*(\/.*?\/u)\.test\(part\)/m)?.[1];
+  assert.ok(splitLiteral);
+  assert.ok(wordLiteral);
+  assert.ok(helper.includes("<span key={index}>{part}</span> : part"));
+  const regexFromLiteral = (literal) => {
+    const closingSlash = literal.lastIndexOf("/");
+    assert.ok(closingSlash > 0);
+    return new RegExp(literal.slice(1, closingSlash), literal.slice(closingSlash + 1));
+  };
+  const splitPattern = regexFromLiteral(splitLiteral);
+  const wordPattern = regexFromLiteral(wordLiteral);
+  const tokenize = (text) => text.split(splitPattern).map((part) => ({
+    kind: wordPattern.test(part) ? "span" : "text",
+    text: part,
+  }));
+
+  const messages = [
+    "Ask about the current research page, or use conversation history to reopen a saved answer.",
+    "Start a conversation with a specific research question. The assistant does not trade or place orders.",
+    "Research only. Answers can be wrong; no trades are placed.",
+  ];
+  for (const message of messages) {
+    assert.ok(panel.includes(`renderStaticMessageWords(${JSON.stringify(message)})`), message);
+    const actual = tokenize(message);
+    const expected = (message.match(/\s+|\S+/gu) ?? []).map((part) => ({
+      kind: /\S/u.test(part) ? "span" : "text",
+      text: part,
+    }));
+    assert.deepEqual(actual, expected, message);
+    assert.equal(actual.map((part) => part.text).join(""), message);
+  }
+  assert.equal((panel.match(/renderStaticMessageWords\(/g) ?? []).length, 4);
+  assert.ok(panel.includes('<p id="assistant-disclaimer">{renderStaticMessageWords("Research only. Answers can be wrong; no trades are placed.")}</p>'));
+  assert.ok(panel.includes('aria-describedby="assistant-disclaimer"'));
+});
+
 test("mobile assistant modal hides only its inert page underlay and restores the prior marker", async () => {
   const host = await readFile(new URL("./assistant-host.tsx", import.meta.url), "utf8");
   const layout = await readFile(new URL("../../app/layout.tsx", import.meta.url), "utf8");
@@ -112,6 +155,13 @@ test("mobile assistant modal hides only its inert page underlay and restores the
 test("mobile local-control handoff waits for modal teardown and invalidates stale context", async () => {
   const host = await readFile(new URL("./assistant-host.tsx", import.meta.url), "utf8");
   const panel = await readFile(new URL("./assistant-panel.tsx", import.meta.url), "utf8");
+  const handoffTextStart = panel.indexOf("const handoffText = proposal.action_type.startsWith(\"notes.\")");
+  const handoffTextEnd = panel.indexOf("\n  return (", handoffTextStart);
+  const handoffText = panel.slice(handoffTextStart, handoffTextEnd);
+  const alertHandoff = handoffText.slice(handoffText.indexOf(": \"Confirmation opens the current alert controls."));
+  assert.match(alertHandoff, /Confirmation opens the current alert controls\. Select and remove the existing alert there; the chat will not remove an alert\./);
+  assert.doesNotMatch(alertHandoff, /threshold/i);
+
   const handoffStart = host.indexOf("function handoffToLocalControls(");
   const handoffEnd = host.indexOf("\n  if (hostState", handoffStart);
   const handoff = host.slice(handoffStart, handoffEnd);
