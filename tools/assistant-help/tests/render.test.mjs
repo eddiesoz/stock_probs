@@ -420,7 +420,7 @@ test("exported guide is self-contained with verified screenshots, trusted CSS, a
     }
     assert.match(html, /Example data is synthetic\./);
     assert.match(html, /not a physical phone capture/i);
-    const heroMarkup = html.match(/<figure class="hero-art">([\s\S]*?)<\/figure>/)?.[1];
+    const heroMarkup = html.match(/<figure class="hero-art"[^>]*>([\s\S]*?)<\/figure>/)?.[1];
     assert.ok(heroMarkup, "the hero research illustration remains present");
     assert.doesNotMatch(heroMarkup, /<(?:svg|text)\b/i);
     assert.equal((heroMarkup.match(/<li>/g) ?? []).length, 4);
@@ -452,6 +452,52 @@ test("exported guide is self-contained with verified screenshots, trusted CSS, a
       /unsafe closing-style sequence/,
     );
   });
+});
+
+test("hero illustration keeps its accessible name and four-step list in the tagged PDF", async () => {
+  const template = await readFile(TEMPLATE_PATH, "utf8");
+  const css = await readFile(CSS_PATH, "utf8");
+  const heroMarkup = template.match(/<section class="hero"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(heroMarkup, "the guide hero remains present");
+  assert.match(heroMarkup, /<figure class="hero-art" aria-label="Four-step research loop">/);
+  assert.equal((heroMarkup.match(/<li>/g) ?? []).length, 4);
+
+  const browserRequire = createRequire(path.join(REPO_ROOT, "tools/browser/package.json"));
+  const { chromium } = browserRequire("playwright");
+  const temp = await mkdtemp(path.join(os.tmpdir(), "assistant-help-hero-pdf-"));
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    await page.setContent(`<style>${css}</style><main>${heroMarkup}</main>`);
+    await page.emulateMedia({ media: "print" });
+    await applyPdfPrintTextPreservation(page);
+    await normalizePdfPrintEmphasis(page);
+
+    const pdf = await page.pdf(PDF_EXPORT_OPTIONS);
+    const pdfPath = path.join(temp, "hero-guide.pdf");
+    await writeFile(pdfPath, pdf, { flag: "wx", mode: 0o600 });
+    const extraction = spawnSync("pdfinfo", ["-struct-text", pdfPath], {
+      encoding: "utf8",
+      timeout: 15_000,
+      maxBuffer: 512 * 1024,
+    });
+    assert.equal(
+      extraction.status,
+      0,
+      `pdfinfo failed (status=${extraction.status}): ${extraction.error?.message ?? extraction.stderr}`,
+    );
+    assert.match(extraction.stdout, /^\s+Figure \["Four-step research loop"\]$/m);
+    assert.match(extraction.stdout, /^\s+L \(block\)$/m);
+    assert.equal((extraction.stdout.match(/^\s+LI \(block\)$/gm) ?? []).length, 4);
+    assert.match(
+      extraction.stdout,
+      /Caption[\s\S]*A non-market illustration: the dotted loop is not a price series or a recommendation\./,
+    );
+  } finally {
+    if (browser) await browser.close();
+    await rm(temp, { recursive: true, force: true });
+  }
 });
 
 test("capture copy distinguishes a handed-off action from a completed change and labels synthetic mobile examples", async () => {

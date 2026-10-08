@@ -54,6 +54,10 @@ _CONTAINER_PROFILE_INSPECT_FORMAT = (
     '{{json (index .Config.Labels "org.opencontainers.image.revision")}}'
     "}}}"
 )
+_DEPLOYED_BASELINE_INSPECT_FORMAT = (
+    "{{.Id}}|{{.Os}}|{{.Architecture}}|"
+    '{{index .Config.Labels "org.opencontainers.image.revision"}}|{{json .RepoTags}}'
+)
 MAX_RELEASE_ARCHIVE_BYTES = 512 * 1024 * 1024
 PRE_CONSENT_BACKUP = "schema13-pre-consent.spbackup"
 CONTAINER_REMOVAL_TIMEOUT_SECONDS = 10
@@ -1045,6 +1049,101 @@ def _image_platform(image_id: str, env: dict[str, str]) -> str:
     if value != "linux/amd64":
         raise RehearsalError("release image platform is not linux/amd64")
     return value
+
+
+def _verify_deployed_baseline_image(env: dict[str, str]) -> dict[str, object]:
+    """Verify the one fixed deployed baseline using only its required projected fields."""
+
+    image_id = str(DEPLOYED_BASELINE["image_id"])
+    result = _run(
+        [
+            "docker",
+            "image",
+            "inspect",
+            "--format",
+            _DEPLOYED_BASELINE_INSPECT_FORMAT,
+            image_id,
+        ],
+        env=env,
+        timeout=15,
+        check=False,
+    )
+    fields = result.stdout.rstrip("\n").split("|", 4)
+    if result.returncode or len(fields) != 5:
+        raise RehearsalError("the fixed deployed schema-12 image is unavailable")
+    try:
+        tags: object = json.loads(fields[4])
+    except json.JSONDecodeError as exc:
+        raise RehearsalError("the fixed deployed schema-12 image metadata is invalid") from exc
+    if (
+        fields[0] != image_id
+        or fields[1:4] != ["linux", "amd64", str(DEPLOYED_BASELINE["source_revision"])]
+        or not isinstance(tags, list)
+        or not tags
+        or any(
+            not isinstance(tag, str) or not tag.strip() or tag == "<none>:<none>" for tag in tags
+        )
+    ):
+        raise RehearsalError("the fixed deployed schema-12 image metadata did not match")
+    return {
+        "id": image_id,
+        "architecture": "linux/amd64",
+        "revision_label": str(DEPLOYED_BASELINE["source_revision"]),
+        "retained_tags": tags,
+    }
+
+
+def _prepare_schema12_base_image(
+    context: Path,
+    tag: str,
+    revision_label: str,
+    env: dict[str, str],
+    *,
+    use_deployed_baseline_image: bool,
+) -> tuple[str, str, dict[str, object]]:
+    """Select the fixed deployed image or build the verified base source context locally."""
+
+    if use_deployed_baseline_image:
+        verified = _verify_deployed_baseline_image(env)
+        image_id = str(verified["id"])
+        return (
+            image_id,
+            image_id,
+            {
+                "mode": "reused_exact_deployed_image",
+                "verified_projected_metadata": verified,
+                "relationship_to_deployed_image": "exact immutable deployed image ID reused",
+            },
+        )
+    image_id = _build_image(context, tag, revision_label, env)
+    return (
+        image_id,
+        tag,
+        {
+            "mode": "locally_rebuilt_from_verified_archive",
+            "relationship_to_deployed_image": (
+                "rebuilt from exact source; image ID is not asserted equal"
+            ),
+        },
+    )
+
+
+def _remove_generated_image_tag(tag: str, env: dict[str, str]) -> bool:
+    """Remove only a task-generated tag without allowing Docker to prune its ancestors."""
+
+    removed = _run(
+        ["docker", "image", "rm", "--no-prune", tag],
+        env=env,
+        timeout=30,
+        check=False,
+    )
+    remains = _run(
+        ["docker", "image", "inspect", "--format", "{{.Id}}", tag],
+        env=env,
+        timeout=10,
+        check=False,
+    )
+    return removed.returncode == 0 and remains.returncode != 0
 
 
 def _file_sha256(path: Path) -> tuple[str, int]:
@@ -2297,8 +2396,9 @@ def run_rehearsal(
     *,
     candidate_revision: str | None = None,
     release_artifact_directory: Path | None = None,
+    use_deployed_baseline_image: bool = False,
 ) -> dict[str, object]:
-    """Build ephemeral local images, migrate/write/recover one disposable Docker volume."""
+    """Migrate, write, and recover one disposable Docker volume with fixed local images."""
 
     if not (repository_root / ".git").exists():
         raise RehearsalError("the rehearsal must run from the assigned Git repository")
@@ -2340,8 +2440,17 @@ def run_rehearsal(
                 f"schema13-recovery-{overlay_source_digest}"
             )
 
-            base_image_id = _build_image(base_context, base_tag, BASE_SHA, base_env)
-            tags.append(base_tag)
+            base_image_id, base_image_reference, base_image_provenance = (
+                _prepare_schema12_base_image(
+                    base_context,
+                    base_tag,
+                    BASE_SHA,
+                    base_env,
+                    use_deployed_baseline_image=use_deployed_baseline_image,
+                )
+            )
+            if not use_deployed_baseline_image:
+                tags.append(base_tag)
             recovery_image_id = _build_image(
                 recovery_context,
                 recovery_tag,
@@ -2378,14 +2487,14 @@ def run_rehearsal(
             _write_file(verifier, _verification_source())
 
             _run_cli(
-                base_tag,
+                base_image_reference,
                 volume,
                 ["--env=STOCK_PROBS_DATA_DIR=/data", "--env=STOCK_PROBS_PROVIDER=fixture"],
                 ["migrate"],
                 base_env,
             )
             schema12 = _schema_check(
-                base_tag,
+                base_image_reference,
                 volume,
                 ["--env=STOCK_PROBS_DATA_DIR=/data"],
                 base_env,
@@ -2701,14 +2810,15 @@ def run_rehearsal(
                 "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
                 "schema12_base_revision": BASE_SHA,
                 "observed_deployment_baseline": DEPLOYED_BASELINE,
-                "local_schema12_build": {
+                "schema12_base_image": {
+                    **base_image_provenance,
                     "source_archive": base_source,
                     "source_context_sha256": base_context_digest,
-                    "image": {"reference": base_tag, "id": base_image_id},
+                    "image": {
+                        "reference": base_image_reference,
+                        "id": base_image_id,
+                    },
                     "architecture": "linux/amd64",
-                    "relationship_to_deployed_image": (
-                        "rebuilt from exact source; image ID is not asserted equal"
-                    ),
                 },
                 "candidate_source_context_sha256": candidate_digest,
                 "candidate_image": candidate_image,
@@ -2764,14 +2874,7 @@ def run_rehearsal(
         elif volume_created:
             cleanup_errors.append("volume_retained_for_unverified_container")
         for tag in reversed(tags):
-            removed = _run(["docker", "image", "rm", tag], env=base_env, timeout=30, check=False)
-            remains = _run(
-                ["docker", "image", "inspect", "--format", "{{.Id}}", tag],
-                env=base_env,
-                timeout=10,
-                check=False,
-            )
-            if removed.returncode or remains.returncode == 0:
+            if not _remove_generated_image_tag(tag, base_env):
                 cleanup_errors.append("local_image_tag_removal")
         if cleanup_errors:
             if receipt:
@@ -2871,9 +2974,21 @@ def main() -> int:
         type=Path,
         help="write verified candidate, recovery, and pair-manifest assets after rehearsal",
     )
+    parser.add_argument(
+        "--use-deployed-baseline-image",
+        action="store_true",
+        help="reuse the verified fixed deployed schema-12 image instead of rebuilding it",
+    )
     args = parser.parse_args()
     repository_root = Path(__file__).resolve().parents[1]
     try:
+        if args.use_deployed_baseline_image and (
+            args.build_pr_candidate
+            or args.reviewed_pr_head is not None
+            or args.overlay_manifest
+            or args.source_context_manifest
+        ):
+            raise RehearsalError("--use-deployed-baseline-image is only valid for a full rehearsal")
         if args.build_pr_candidate:
             legacy_inputs = (
                 args.overlay_manifest,
@@ -2912,6 +3027,7 @@ def main() -> int:
                 args.expected_candidate_context_sha256,
                 candidate_revision=args.candidate_revision,
                 release_artifact_directory=args.release_artifact_directory,
+                use_deployed_baseline_image=args.use_deployed_baseline_image,
             )
         else:
             raise RehearsalError(

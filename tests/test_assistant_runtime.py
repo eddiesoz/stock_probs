@@ -4423,14 +4423,18 @@ def test_model_activation_barrier_timeout_respects_discovery_and_turn_deadlines(
     runtime._request = native_request
 
     async def exercise() -> float:
+        context = _context()
+        descriptor = runtime._native_adapter_for_model(context.model_id, owner_id=context.user_id)
         started = asyncio.get_running_loop().time()
         deadline = started + 0.055 if outer_deadline else None
         if outer_deadline:
             with pytest.raises(TimeoutError):
-                await runtime._verify_location(_context(), location, turn_deadline=deadline)
+                await runtime._verify_location(
+                    context, location, descriptor, turn_deadline=deadline
+                )
         else:
             with pytest.raises(assistant_runtime._AssistantRuntimeFailure) as caught:
-                await runtime._verify_location(_context(), location)
+                await runtime._verify_location(context, location, descriptor)
             assert caught.value.code == "native_request_timeout"
             assert caught.value.phase == "model_discovery"
         elapsed = asyncio.get_running_loop().time() - started

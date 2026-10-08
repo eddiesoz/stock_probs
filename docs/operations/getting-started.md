@@ -517,7 +517,7 @@ building previews. Review both generated formats for image loading, reading orde
 captions, and page layout; renderer tests alone do not establish visual acceptance. Generated guide
 previews are local ignored artifacts, not release files.
 
-At the current R-ASTRA-120 checkpoint, the first independent eight-capture manifest and QA receipt
+Historical R-ASTRA-120 guide evidence begins with the first independent eight-capture manifest and QA receipt
 passed their declared scope, but trace review confirmed the screenshots used stale staged CSS. A
 frontend build/stage subsequently passed and all 48 staged files matched the current build output;
 the refreshed staged bundle contains the current composer placeholder rule. A replacement eight-
@@ -546,8 +546,7 @@ expected mobile skip (E87), verifying minimize/resume focus and 390×844 modal r
 the checked-in saved-answer/theme case. These focused results do not change the full-suite failure
 or establish guide accessibility. Do not use the earlier stale bundle as current evidence or treat the separate
 standalone guide checks as final PR-bound accessibility acceptance.
-The current dirty working tree is not a reviewed release revision; do not bind the guide to it or
-send it with an announcement. The latest completed quiet full browser run failed at 145 passed, 2
+The earlier dirty-tree review did not establish a reviewed release revision. Do not bind an unreviewed guide to a local tree or send it with an announcement. The latest completed quiet full browser run failed at 145 passed, 2
 failed, and 3 skipped (E36); a newer attempt stopped before an aggregate and is **Unavailable**
 (E43: 85 passed, 2 failed, 1 interrupted, 2 skipped, 60 unrun; aggregate **Unavailable**). Owned-run
 cleanup later **Passed** (E48). Its measured 3.5403:1 dark-placeholder contrast was served from the
@@ -575,15 +574,7 @@ at the app revision also failed; see the [R-ASTRA-120 ledger](../../MVP-PLAN.md)
 and receipts. A static instruction audit at the 30742 checkpoint found that context selection is
 all-or-none with the current route always included, email-only invitations require a verified
 GitHub email (while a supplied positive account ID restricts redemption to that account), and the
-visible cancellation control is labeled “Stop response.” E679 later passed independent
-copy/source-contract review of the candidate template/test bytes, including those instructions; its
-Node suite passed 17/17. Separate served/export parity is unavailable, and no maintained
-capture/final render or guide acceptance is established. E696/E697 later recorded eight candidate
-PNGs at `c169`: parent visual review and independent privacy/integrity/visual inspection passed for
-those images only. The manifest still has pending privacy labels and an unavailable all-zero QA
-receipt binding; finalization/render were skipped. The consent-source repair requires recapture at
-the repaired revision before final guide use. These image checks do not establish app accessibility,
-PDF/UA, or release acceptance.
+visible cancellation control is labeled “Stop response.” E679's copy/source-contract review and E696/E697's earlier capture are historical. E706–E710 later bound a fresh eight-image synthetic guide draft to PR head `4824479eb3f8e181baeeed67577d77931a48d0e5` and passed their declared capture, review, finalization, and render scopes. E714's standalone HTML audit passed four viewport/theme states with axe 0 violations/0 incomplete, and parent visual review passed all 14 PDF pages; that draft's cover Figure was unnamed. E715 repaired the Figure name, with parent source review and E717's independent 18/18 semantic checks passing for their scopes. Because the change makes the earlier full bundle stale, fresh current-head capture, render, and guide QA remain pending. E718/E719 are selected helper checks only; no new pair rehearsal ran. E720's `--no-prune` cleanup removed only its exact target, while E708's earlier ancestor removal remains preserved. E721's selected security tests and Ruff lint/security passed; its scoped format check failed on unchanged baseline style. Strict app raw axe remains **Fail**. Physical mobile, actual assistive technology, PDF/UA, final PR-bound guide, native/provider, actual 1 GB, rollback, deployment, and release acceptance remain unavailable or pending. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md) for exact receipts and earlier failures.
 
 ### PR-head candidate image build helper
 
@@ -624,6 +615,17 @@ ID and context digest to the same reviewed PR head SHA, followed by the existing
 pair. The production publisher was not changed and still requires a clean revision matching exact
 `origin/main`.
 
+For a full local pair rehearsal, the optional boolean `--use-deployed-baseline-image` selects the
+centrally pinned deployed schema-12 baseline. Omit it to retain the default verified-archive rebuild.
+The helper verifies the pinned immutable ID, `linux/amd64` platform, revision label, and a nonempty
+valid retained-tag list. The receipt's `schema12_base_image.mode` distinguishes
+`reused_exact_deployed_image` from `locally_rebuilt_from_verified_archive`. The reused protected
+image is not a generated cleanup target; remove task-generated tags only after ownership checks and
+use `docker image rm --no-prune TAG` to preserve untagged ancestors. See [local testing
+guidance](../develop/testing.md) for the cleanup
+boundary and the [R-ASTRA-120 ledger](../../MVP-PLAN.md) for current evidence. E718/E719 cover
+selected tests only; no pair rehearsal ran with the option.
+
 The R-ASTRA-120 candidate helper runs database presence/schema probes with an explicit Python
 entrypoint as UID/GID 10001. This prevents the container supervisor from treating `python -c`
 as an application CLI command. Schema inspection opens SQLite read-only and fails closed on
@@ -639,10 +641,7 @@ QA passed 83 tests; its opt-in Docker case was skipped. Live host/container beha
 PR-bound rollback rehearsal remain pending, so this candidate is not production rollback acceptance.
 See the [MVP plan](../../MVP-PLAN.md) for its exact evidence scope.
 
-The local R-ASTRA-120 candidate image build and parent image/source review passed (E343).
-That result does not authorize promotion: native/provider/search, current-image kill, actual
-1 GB, accessibility, and PR-bound recovery gates remain open. Keep the existing Linode plan
-and backups within the US$15 monthly total cap, including applicable taxes; no resize was applied.
+The latest PR-head candidate build (E702) passed build/source-context binding only and was not published or run. E705 failed closed below the 4 GiB preflight before recovery-image build or pair export; E718/E719 are selected helper tests, not a rehearsal. PR-bound recovery remains pending. Native/provider acceptance, current-image kill, actual combined 1 GB, strict app accessibility, final guide, and rollback gates remain open. Keep the existing Linode plan and backups within the US$15 monthly total cap, including applicable taxes; no resize was applied.
 
 Each promotion is serialized under a lock, starts with a verified application backup, runs
 readiness checks, and attempts code-only rollback only when the database schema remains compatible.

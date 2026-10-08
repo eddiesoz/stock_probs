@@ -333,8 +333,12 @@ def test_all_literal_docker_inspect_calls_use_cli_format_projection() -> None:
             template = template_expression.value
         else:
             assert isinstance(template_expression, ast.Name)
-            assert template_expression.id == "_CONTAINER_PROFILE_INSPECT_FORMAT"
-            template = rehearsal._CONTAINER_PROFILE_INSPECT_FORMAT
+            allowed_formats = {
+                "_CONTAINER_PROFILE_INSPECT_FORMAT": rehearsal._CONTAINER_PROFILE_INSPECT_FORMAT,
+                "_DEPLOYED_BASELINE_INSPECT_FORMAT": rehearsal._DEPLOYED_BASELINE_INSPECT_FORMAT,
+            }
+            assert template_expression.id in allowed_formats
+            template = allowed_formats[template_expression.id]
         assert ".Config.Env" not in template
         assert "{{json .Config}}" not in template
         assert "{{json .HostConfig}}" not in template
@@ -1422,6 +1426,209 @@ def test_build_image_uses_fixed_amd64_argv_and_discards_output(
     assert commands[0][0:3] == ["docker", "info", "--format"]
 
 
+def test_deployed_baseline_verification_projects_only_fixed_image_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image_id = str(rehearsal.DEPLOYED_BASELINE["image_id"])
+    revision = str(rehearsal.DEPLOYED_BASELINE["source_revision"])
+    tag = "ghcr.io/eddiesoz/stock_probs:deployed"
+    command_calls: list[list[str]] = []
+
+    def inspect(command: list[str], **_kwargs: object) -> CompletedProcess[str]:
+        command_calls.append(command)
+        return CompletedProcess(
+            command,
+            0,
+            stdout=f"{image_id}|linux|amd64|{revision}|{json.dumps([tag])}\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(rehearsal, "_run", inspect)
+
+    verified = rehearsal._verify_deployed_baseline_image({"PATH": "/synthetic"})
+
+    assert verified == {
+        "id": image_id,
+        "architecture": "linux/amd64",
+        "revision_label": revision,
+        "retained_tags": [tag],
+    }
+    assert command_calls == [
+        [
+            "docker",
+            "image",
+            "inspect",
+            "--format",
+            rehearsal._DEPLOYED_BASELINE_INSPECT_FORMAT,
+            image_id,
+        ]
+    ]
+    assert ".Config.Env" not in rehearsal._DEPLOYED_BASELINE_INSPECT_FORMAT
+    assert ".Config.Labels" in rehearsal._DEPLOYED_BASELINE_INSPECT_FORMAT
+    assert ".RepoTags" in rehearsal._DEPLOYED_BASELINE_INSPECT_FORMAT
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        "sha256:" + "0" * 64 + "|linux|amd64|" + "a" * 40 + '|["fixed:tag"]',
+        str(rehearsal.DEPLOYED_BASELINE["image_id"])
+        + "|linux|arm64|"
+        + str(rehearsal.DEPLOYED_BASELINE["source_revision"])
+        + '|["fixed:tag"]',
+        str(rehearsal.DEPLOYED_BASELINE["image_id"])
+        + "|linux|amd64|"
+        + "a" * 40
+        + '|["fixed:tag"]',
+        str(rehearsal.DEPLOYED_BASELINE["image_id"])
+        + "|linux|amd64|"
+        + str(rehearsal.DEPLOYED_BASELINE["source_revision"])
+        + "|[]",
+        str(rehearsal.DEPLOYED_BASELINE["image_id"])
+        + "|linux|amd64|"
+        + str(rehearsal.DEPLOYED_BASELINE["source_revision"])
+        + "|null",
+        str(rehearsal.DEPLOYED_BASELINE["image_id"])
+        + "|linux|amd64|"
+        + str(rehearsal.DEPLOYED_BASELINE["source_revision"])
+        + '|["<none>:<none>"]',
+        str(rehearsal.DEPLOYED_BASELINE["image_id"])
+        + "|linux|amd64|"
+        + str(rehearsal.DEPLOYED_BASELINE["source_revision"])
+        + "|not-json",
+    ],
+)
+def test_deployed_baseline_verification_fails_closed_on_invalid_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    stdout: str,
+) -> None:
+    def inspect(command: list[str], **_kwargs: object) -> CompletedProcess[str]:
+        return CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(rehearsal, "_run", inspect)
+
+    with pytest.raises(rehearsal.RehearsalError):
+        rehearsal._verify_deployed_baseline_image({})
+
+
+def test_deployed_baseline_verification_rejects_missing_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing(command: list[str], **_kwargs: object) -> CompletedProcess[str]:
+        return CompletedProcess(command, 1, stdout="", stderr="")
+
+    monkeypatch.setattr(rehearsal, "_run", missing)
+
+    with pytest.raises(rehearsal.RehearsalError, match="image is unavailable"):
+        rehearsal._verify_deployed_baseline_image({})
+
+
+def test_schema12_base_defaults_to_local_build_and_preserves_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = tmp_path / "base-context"
+    context.mkdir()
+    image_id = "sha256:" + "a" * 64
+    calls: list[tuple[Path, str, str]] = []
+
+    def build(
+        received_context: Path,
+        tag: str,
+        revision: str,
+        _env: dict[str, str],
+    ) -> str:
+        calls.append((received_context, tag, revision))
+        return image_id
+
+    monkeypatch.setattr(rehearsal, "_build_image", build)
+    monkeypatch.setattr(
+        rehearsal,
+        "_verify_deployed_baseline_image",
+        lambda _env: (_ for _ in ()).throw(AssertionError("unexpected baseline reuse")),
+    )
+
+    selected_id, image_reference, provenance = rehearsal._prepare_schema12_base_image(
+        context,
+        "stock-probs:schema12-base-test",
+        str(rehearsal.DEPLOYED_BASELINE["source_revision"]),
+        {},
+        use_deployed_baseline_image=False,
+    )
+
+    assert selected_id == image_id
+    assert image_reference == "stock-probs:schema12-base-test"
+    assert provenance["mode"] == "locally_rebuilt_from_verified_archive"
+    assert "not asserted equal" in provenance["relationship_to_deployed_image"]
+    assert calls == [
+        (
+            context,
+            "stock-probs:schema12-base-test",
+            str(rehearsal.DEPLOYED_BASELINE["source_revision"]),
+        )
+    ]
+
+
+def test_schema12_base_reuses_only_verified_image_id_without_alias_or_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image_id = str(rehearsal.DEPLOYED_BASELINE["image_id"])
+    projected = {
+        "id": image_id,
+        "architecture": "linux/amd64",
+        "revision_label": str(rehearsal.DEPLOYED_BASELINE["source_revision"]),
+        "retained_tags": ["ghcr.io/eddiesoz/stock_probs:deployed"],
+    }
+    calls: list[str] = []
+
+    def verify(_env: dict[str, str]) -> dict[str, object]:
+        calls.append("verify")
+        return projected
+
+    monkeypatch.setattr(rehearsal, "_verify_deployed_baseline_image", verify)
+    monkeypatch.setattr(
+        rehearsal,
+        "_build_image",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected build")),
+    )
+
+    selected_id, image_reference, provenance = rehearsal._prepare_schema12_base_image(
+        Path("unused"),
+        "stock-probs:schema12-base-test",
+        str(rehearsal.DEPLOYED_BASELINE["source_revision"]),
+        {},
+        use_deployed_baseline_image=True,
+    )
+
+    assert selected_id == image_id
+    assert image_reference == image_id
+    assert provenance == {
+        "mode": "reused_exact_deployed_image",
+        "verified_projected_metadata": projected,
+        "relationship_to_deployed_image": "exact immutable deployed image ID reused",
+    }
+    assert calls == ["verify"]
+
+
+def test_generated_image_tag_cleanup_disables_ancestor_pruning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tag = "stock-probs:schema13-recovery-abc123"
+    calls: list[list[str]] = []
+
+    def run(command: list[str], **_kwargs: object) -> CompletedProcess[str]:
+        calls.append(command)
+        return CompletedProcess(command, 0 if len(calls) == 1 else 1, stdout="", stderr="")
+
+    monkeypatch.setattr(rehearsal, "_run", run)
+
+    assert rehearsal._remove_generated_image_tag(tag, {}) is True
+    assert calls == [
+        ["docker", "image", "rm", "--no-prune", tag],
+        ["docker", "image", "inspect", "--format", "{{.Id}}", tag],
+    ]
+
+
 def test_build_image_blocks_low_disk_before_spawn_and_stops_mid_build(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1685,3 +1892,78 @@ def test_pr_candidate_cli_requires_exact_head_and_private_receipt(
     )
     assert rehearsal.main() == 2
     assert "cannot be combined" in json.loads(capsys.readouterr().err)["reason"]
+
+
+@pytest.mark.parametrize("reuse_baseline", [False, True])
+def test_full_rehearsal_cli_passes_explicit_baseline_choice(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    reuse_baseline: bool,
+) -> None:
+    candidate_id = "sha256:" + "a" * 64
+    candidate_context = "b" * 64
+    calls: list[dict[str, object]] = []
+
+    def run_rehearsal(
+        _repository_root: Path,
+        image_id: str,
+        context_sha256: str,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        calls.append(
+            {
+                "image_id": image_id,
+                "context_sha256": context_sha256,
+                **kwargs,
+            }
+        )
+        return {"status": "pass"}
+
+    monkeypatch.setattr(rehearsal, "run_rehearsal", run_rehearsal)
+    arguments = [
+        "rehearse_schema13.py",
+        "--candidate-image-id",
+        candidate_id,
+        "--expected-candidate-context-sha256",
+        candidate_context,
+    ]
+    if reuse_baseline:
+        arguments.append("--use-deployed-baseline-image")
+    monkeypatch.setattr(sys, "argv", arguments)
+
+    assert rehearsal.main() == 0
+    capsys.readouterr()
+    assert calls == [
+        {
+            "image_id": candidate_id,
+            "context_sha256": candidate_context,
+            "candidate_revision": None,
+            "release_artifact_directory": None,
+            "use_deployed_baseline_image": reuse_baseline,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "extra_arguments",
+    [
+        ["--overlay-manifest"],
+        ["--source-context-manifest"],
+        ["--build-pr-candidate"],
+    ],
+)
+def test_deployed_baseline_flag_is_rejected_outside_full_rehearsal(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    extra_arguments: list[str],
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["rehearse_schema13.py", "--use-deployed-baseline-image", *extra_arguments],
+    )
+
+    assert rehearsal.main() == 2
+    failure = json.loads(capsys.readouterr().err)
+    assert failure["status"] == "fail"
+    assert "only valid for a full rehearsal" in failure["reason"]

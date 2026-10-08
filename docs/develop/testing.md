@@ -32,6 +32,18 @@ globally prune, or remove protected release images or application data. This pro
 authorize a resize above the US$15 monthly total cap including backups and tax. The root
 [agent policy](../../AGENTS.md) is authoritative.
 
+For a full schema-12-to-13 pair rehearsal, `--use-deployed-baseline-image` is an optional boolean
+that selects the centrally pinned deployed schema-12 image. It is accepted only in full-rehearsal
+mode; the default still rebuilds the base image from the verified archive. Before reuse, the helper
+checks the immutable image ID, `linux/amd64` platform, expected revision label, and a nonempty valid
+retained-tag list. The receipt's `schema12_base_image.mode` distinguishes
+`reused_exact_deployed_image` from `locally_rebuilt_from_verified_archive`. A reused protected baseline is not a generated cleanup
+target. The helper removes only its task-generated tags after ownership checks, using
+`docker image rm --no-prune TAG` so Docker does not remove untagged ancestors. Manual cache cleanup
+uses exact fixed image IDs only after provenance and reference checks, as described in the root
+[agent policy](../../AGENTS.md). Selected helper tests do not establish that a pair rehearsal ran;
+see the [R-ASTRA-120 ledger](../../MVP-PLAN.md) for the current scope.
+
 ## Unix-socket test fixtures
 
 Supervisor tests create AF_UNIX sockets. Use a unique, caller-owned short temporary root for
@@ -178,64 +190,23 @@ forged, or contradictory v5 fields. These classifications distinguish the failed
 do not prove its cause or establish native execution acceptance. No credentials, prompts, native
 identifiers, or owner identifiers belong in the retained projection.
 
-R-ASTRA-120 remains in progress, and its assistant candidate is disabled in production. E662's
-latest canonical check **Failed** on two supervisor-test AF_UNIX socket paths that exceeded the
-Linux path limit before child spawn (2,672 tests, 2 failures, 4 skips, 0 errors). E663's selected
-short-`TMPDIR` reproduction passed 2/2 only; it does not replace the failed aggregate. The later
-OAuth callback repair passed its selected independent 14-test/source-review scope, but the full
-canonical gate had not been rerun at that checkpoint; E694 later attempted one but intentionally
-interrupted during Python, leaving no completed aggregate. The tracked guide renderer's source
-review passed. Its initial test review **Failed** on a P2 finding because the test flattened PDF
-structure leaves without asserting per-block boundaries or order. The test-only correction then
-passed independent source/test review and TAP reported 17/17, but the numeric command exit is
-**Unavailable** in that first repair attempt. E673 independently reran the exact command with exit 0
-and 17/17; it supersedes only that missing-exit result. E665's private PDF artifact passed
-exact-structure review, but that does not accept current maintained output; fresh rendering remains
-pending. E676 was a static instruction audit at the 30742 checkpoint. E679 passed copy/source
-contract review of the candidate template/test bytes and the exact Node command 17/17; standalone
-served/export parity was unavailable and no maintained render ran. E677's selected security suite
-passed 37/37, but its original source review failed on a post-await authorization gap. E680 passed
-parent integrated source/evidence review of the scoped repair with builder JUnit 7/7. E681's
-separate JUnit attempt recorded 6 passes and one fixture failure, not an established application
-defect. E682 later passed independent source review and its exact seven-test selection (7/7, exit 0),
-narrowly covering policy-update and turn-creation authorization checks after awaited operations. It
-does not separately test CSRF-hash rotation during inventory wait or establish broader security or
-external egress. The earlier source failure and failed test attempts remain historical. E678's original candidate-build process-ownership source review **Failed** and remains preserved.
-E683 recorded builder checks; E684 independently passed the bounded source/test scope (59/59, exit 0;
-149 inputs unchanged). No real Docker build, live PR/network check, process-group runtime probe, or
-PR-bound rollback ran; image-build and rollback acceptance remain open. Native runtime/provider,
-strict app accessibility, actual combined 1 GB resources, complete security, PR-bound rollback,
-final guide, and release acceptance remain open. E685's fixed public-marker catalog GET returned HTTP 200 with valid list data and zero model
-requests; that metadata result does not explain the separate no-marker 403. E688 independently passed its declared auth/build source and unit scope (7 API regressions and 59
-schema-13 helper tests); concurrent catalog files were excluded. E690 independently passed catalog
-repair QA (complete focused selection 7/7 and full provider file 174/174); an earlier 6/6 selection
-omitted the recovery case. Lint/security/format/diff and source review passed. Network/model/provider,
-Docker and production checks were not run. E691's builder checks and E692's independent QA passed the selector's declared local scope. E692
-passed probe 308/308, kill 38/38, attached-model contracts 9/9, and PR-driver binding 2/2, plus
-lint/security/format/compile/JSON/diff checks and source review. This is synthetic loopback and
-simulated-child coverage only; no native OpenCode, external provider/model/network, Docker, or
-production operation ran. The selector uses `zen.native_acceptance_model_id` for the reviewed
-SpaceBunny model and fails closed in both probe paths without an exact selection. It does not change
-the normal runtime model choice/default, policy, or budgets. Candidate image build and native
-acceptance remain pending; no model request occurred. E693's integrated review passed its declared
-19-file scope only. E695 reproduced a consent-mutation gap during a held inventory await:
-revoked-session handling returned 403 after persistence, and CSRF-hash rotation returned 200 with
-persistence. The authorization callback exists but uses `check_csrf=False`; the explicit route
-recheck follows persistence. E698's focused repair passed 9/9 consent/session/CSRF/turn regressions,
-1/1 normal-consent regression, and Ruff checks. E700 independently passed those scoped selections
-and no-finding source review with 21 stable bindings. The full API-module run was interrupted
-(exit 130), so no aggregate is claimed. E694's canonical attempt completed only
-documentation and frontend checks before parent-directed interruption; the maintained receipt has
-exit 2/Fail fields, but the aggregate is **Unavailable/interrupted**. Partial Python JUnit, wrapper
-`tee` exit 0, and 52 matching served/export pairs do not establish full Python or gate acceptance.
-E696/E697 cover eight synthetic candidate images bound to `c169`: parent and independent visual,
-privacy, and integrity reviews passed for the images, but the manifest's privacy fields remain
-pending, its QA digest is all zeroes, and finalization/render were skipped. Recapture after source
-repair is required. See the ledger for exact receipts and limits.
-
-Use the
-[authoritative R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
-for current receipts and preserved result statuses.
+R-ASTRA-120 remains **In progress**, and the assistant candidate remains disabled in production.
+E701 is the latest canonical local check and **Failed** (2,711 passed, 1 failed, 4 skipped,
+4 deselected; 85.60% coverage); a fresh canonical check is pending. E714's pre-repair standalone
+guide draft passed its four-state HTML axe audit and 14-page PDF visual review, but the cover
+Figure was unnamed. E715/E717 passed the isolated Figure-name/render-contract repair and independent
+18/18 semantic tests; the E706–E710 bundle is stale against the changed template, so fresh capture,
+render, and final guide QA remain pending. E718/E719 passed only selected source and unit-test
+checks for fixed-baseline reuse; no pair rehearsal ran. E720 passed exact-target `--no-prune`
+cleanup, while E708's earlier ancestor removal remains a separate preserved result. E721 passed its
+selected 928-test security suite and Ruff lint/security, but scoped formatting failed on unchanged
+baseline style. Strict app raw axe remains **Fail**; native/provider, current-image kill, actual
+combined 1 GB, complete security, PR-bound rollback, final guide, deployment/canary, and release
+remain open. The US$15 monthly total cap and existing 1 GB/backups are unchanged; no production
+change, resize, rollout, release, or email is claimed. See the [authoritative R-ASTRA-120 ledger]
+(../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts
+and preserved statuses. E722's final authored-documentation validator, complete/change-aware coverage,
+scoped diff, and 60-test documentation suite all **Passed**.
 
 ### PR-head candidate image build helper
 
