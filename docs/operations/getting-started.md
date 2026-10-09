@@ -218,6 +218,26 @@ bind mounts, active Docker/containerd mount dependencies, and application health
 archive-metadata checks and physical absent-medium startup remain unverified. See the [E826
 ledger](../../MVP-PLAN.md).
 
+At E827, the second actual application-candidate build **Failed** on the then-clean pushed PR head
+`83e0b0e1cdfbec8502208c48814a592112c022ea`. The bounded helper exited `1`, the outer
+rehearsal exited `2`, and BuildKit reported `cannot copy to non-directory .../lib` during
+`COPY --from=opencode-assets /out/ /`. The raw diagnostic and corrected projection are linked in
+[E827](../../MVP-PLAN.md#r-astra-120-e827-pr-head-candidate-build-failure-and-copy-path-repair);
+the initial flat-key projection incorrectly showed null. The read-only failure review confirmed
+storage UUID/root, app health, and controller-only limits; its snapshot still showed an in-flight
+image reservation. A later typed release passed; supplemental independent review confirmed the empty
+ledger, absent exact tag, unchanged setup/failure receipts, and app health HTTP 200. The explicit
+`/usr/lib` copy repair passed seven builder tests, parent source review, and independent QA (154
+selected tests plus Ruff/format); that QA preserved the then-unfixed Dockerfile pin. The pin-only
+follow-on passed 147 builder tests and parent constant review, and its exact diff/actual-state scope
+passed supplemental independent review (SHA-256
+`0414454819230ddd760c5a6f9da7b29291d698d508edc2f8c6ffa1c26e656693`). The setup receipt is not
+Dockerfile-bound, so no reinitialization was needed. E813's guide metadata rebind passed on this 83e
+head for 94 consumer inputs, 52 assets, 23 artifacts, and 8 PNGs; final current-head guide acceptance
+remains pending. Later source changes make 83e a historical build target. A fresh exact-head image
+build must verify library paths and loader behavior; no candidate image or schema-13 pair is accepted.
+The earlier E826 failure remains preserved.
+
 ## Invite-only production deployment
 
 Production is one FastAPI app with SQLite on a persistent Linode volume, published only through a
@@ -609,7 +629,19 @@ state, command, or credential. R-ASTRA-106 records a live refresh result with `5
 applied to firewall `177236117`; the Linode console login uses Google SSO and SSH material remains
 separate.
 
-R-ASTRA-120 remains **In progress**. Read-only E789 GitHub metadata confirms PR #1 remains open/draft at pushed head 15a6c39fbe30ffd3e685a0809426eff9be220549. E798 records a parent source-review Pass, 933 selected independent security/API tests, 52/52 current frozen-banner guide-fixture checks, and corrected frontend build/stage Pass with all 52 served/export files matched. The pre-repair HTTP 409/500 regression, pre-banner 51/52 guide failure, and interrupted pre-repair canonical gate (exit 143; aggregate Unavailable) remain preserved. Focused post-stage browser QA passed 2/2 with no skips on desktop and Pixel 7 emulation after a fixture-only correction; its earlier assertion failure was a stale mock receipt-text oracle. Prior browser/axe evidence is pre-copy scope, with no full aggregate rerun. The guide fixtures do not establish final PR-bound HTML/PDF, PDF/UA, physical mobile, screen-reader, or release acceptance. E790/E797 seeded-volume startup failures retain unproven causes; E797 verified migration and the pre-migration backup, with deadline-relative marker timing Unavailable. Production was last read at 2026-10-08T21:33:44Z (schema 12 ready, loopback-only; rollout mode unavailable). Native/provider, complete security, current-image kill, actual combined 1 GB, PR-bound rollback, final guide, deployment/canary, current canonical, and release gates remain open. The US$15 total cap and existing 1 GB/backups are unchanged. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts and preserved failures; no production change, resize, rollout, merge, email, or release is claimed.
+R-ASTRA-120 remains **In progress**. E827's candidate build failed at a BuildKit library-copy step
+on the then-clean pushed head `83e0b0e1cdfbec8502208c48814a592112c022ea`; later source repairs make
+that head historical, and no image built from the repaired exact head or PR pair is accepted.
+E823/E824 storage and bounded-worker checks passed for their recorded scopes; physical absent-medium
+startup and fresh archive-metadata checks remain unavailable. E791/E795 browser and axe evidence are
+reusable only for unchanged inputs. E813's guide metadata rebind passed for its unchanged inputs on
+83e, but final current-head guide acceptance is not established.
+Native/provider, full security, current-image kill, actual combined 1 GB, PR-bound rollback,
+current canonical, deployment/canary, and release gates remain open. Production's last recorded
+read was `2026-10-08T21:33:44Z` (schema 12 ready, loopback-only; rollout mode unavailable). The
+US$15 total cap, existing 1 GB plan, and backups remain unchanged. See the
+[R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on);
+no production change, resize, rollout, merge, email, or release is claimed.
 
 The
 rehearsal source creates a separate, labelled user-defined bridge for each candidate run, with

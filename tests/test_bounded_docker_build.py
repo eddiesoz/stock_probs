@@ -711,6 +711,41 @@ def _failed_inflight_reservation_fixture(
     }
 
 
+def _set_terminal_buildx_failure(state: dict[str, object]) -> dict[str, object]:
+    failure_path = Path(state["failure_path"])
+    receipt = json.loads(failure_path.read_bytes())
+    build_finished = datetime.fromisoformat(receipt["finished_utc"])
+    receipt["stage"] = "buildx_exit_nonzero"
+    receipt["build_exit_code"] = 1
+    receipt["build_finished_utc"] = build_finished.isoformat()
+    receipt["finished_utc"] = (build_finished + timedelta(seconds=2)).isoformat()
+    receipt.pop("process_group_cancel_verified")
+    raw = (json.dumps(receipt, sort_keys=True) + "\n").encode()
+    failure_path.write_bytes(raw)
+    failure_path.chmod(0o600)
+    failure_sha256 = hashlib.sha256(raw).hexdigest()
+    state["failure_sha256"] = failure_sha256
+    state["failure_bytes"] = raw
+    state["recovery_path"] = (
+        failure_path.parent / f"failed-reservation-release-{failure_sha256}.json"
+    )
+    return receipt
+
+
+def _rewrite_failed_receipt(state: dict[str, object], receipt: dict[str, object]) -> bytes:
+    raw = (json.dumps(receipt, sort_keys=True) + "\n").encode()
+    failure_path = Path(state["failure_path"])
+    failure_path.write_bytes(raw)
+    failure_path.chmod(0o600)
+    failure_sha256 = hashlib.sha256(raw).hexdigest()
+    state["failure_sha256"] = failure_sha256
+    state["failure_bytes"] = raw
+    state["recovery_path"] = (
+        failure_path.parent / f"failed-reservation-release-{failure_sha256}.json"
+    )
+    return raw
+
+
 def test_failed_inflight_reservation_release_requires_terminal_history_and_preserves_images(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -771,6 +806,118 @@ def test_failed_inflight_reservation_release_requires_terminal_history_and_prese
             state["kept_row"]["image_id"],
         ]
     ]
+
+
+def test_failed_inflight_reservation_release_accepts_terminal_buildx_nonzero_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    receipt = _set_terminal_buildx_failure(state)
+    before_failure = Path(state["failure_path"]).read_bytes()
+    before_inventory = dict(state["inventory"])
+
+    result = bounded._release_failed_inflight_reservation(
+        str(state["tag"]),
+        str(state["revision"]),
+        str(state["context_hash"]),
+        str(state["role"]),
+        str(state["failure_sha256"]),
+    )
+
+    assert receipt["stage"] == "buildx_exit_nonzero"
+    assert receipt["build_exit_code"] == 1
+    assert result["status"] == "failed_build_reservation_released"
+    assert json.loads(Path(state["ledger_path"]).read_bytes())["entries"] == [state["kept_row"]]
+    assert dict(state["inventory"]) == before_inventory
+    assert Path(state["failure_path"]).read_bytes() == before_failure
+    recovery = json.loads(Path(state["recovery_path"]).read_bytes())
+    assert recovery["status"] == "failed_build_reservation_released"
+    assert recovery["failure_receipt_sha256"] == state["failure_sha256"]
+    assert recovery["buildkit_history"]["status"] == "error"
+    assert recovery["buildkit_history"]["completed_steps"] == 21
+    assert recovery["buildkit_history"]["total_steps"] == 46
+    assert len(state["capture_calls"]) == 1
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    (
+        "exit_zero",
+        "exit_bool",
+        "exit_string",
+        "unknown_stage",
+        "missing_build_finished",
+        "build_finished_before_start",
+        "receipt_finished_before_build_finished",
+        "cancel_marker_present",
+        "self_reported_built",
+        "image_id_present",
+        "history_without_error",
+        "history_still_active",
+    ),
+)
+def test_failed_inflight_terminal_buildx_receipt_requires_exact_failed_terminal_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_case: str,
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    receipt = _set_terminal_buildx_failure(state)
+    if invalid_case == "exit_zero":
+        receipt["build_exit_code"] = 0
+    elif invalid_case == "exit_bool":
+        receipt["build_exit_code"] = True
+    elif invalid_case == "exit_string":
+        receipt["build_exit_code"] = "1"
+    elif invalid_case == "unknown_stage":
+        receipt["stage"] = "buildx_exit_unverified"
+    elif invalid_case == "missing_build_finished":
+        receipt.pop("build_finished_utc")
+    elif invalid_case == "build_finished_before_start":
+        receipt["build_finished_utc"] = (
+            datetime.fromisoformat(receipt["build_started_utc"]) - timedelta(seconds=1)
+        ).isoformat()
+    elif invalid_case == "receipt_finished_before_build_finished":
+        receipt["finished_utc"] = (
+            datetime.fromisoformat(receipt["build_finished_utc"]) - timedelta(seconds=1)
+        ).isoformat()
+    elif invalid_case == "cancel_marker_present":
+        receipt["process_group_cancel_verified"] = True
+    elif invalid_case == "self_reported_built":
+        receipt["status"] = "built"
+    elif invalid_case == "image_id_present":
+        receipt["image_id"] = "sha256:" + "a" * 64
+    elif invalid_case == "history_without_error":
+        state["history"][0]["status"] = "Completed"
+        state["history_state"]["bytes"] = _encode_buildkit_history_jsonl(state["history"])
+    elif invalid_case == "history_still_active":
+        state["history"][1]["status"] = "Running"
+        state["history_state"]["bytes"] = _encode_buildkit_history_jsonl(state["history"])
+
+    _rewrite_failed_receipt(state, receipt)
+    ledger_path = Path(state["ledger_path"])
+    before_ledger = ledger_path.read_bytes()
+    before_failure = Path(state["failure_path"]).read_bytes()
+    before_inventory = dict(state["inventory"])
+
+    with pytest.raises(bounded.BuildError):
+        bounded._release_failed_inflight_reservation(
+            str(state["tag"]),
+            str(state["revision"]),
+            str(state["context_hash"]),
+            str(state["role"]),
+            str(state["failure_sha256"]),
+        )
+
+    assert ledger_path.read_bytes() == before_ledger
+    assert Path(state["failure_path"]).read_bytes() == before_failure
+    assert dict(state["inventory"]) == before_inventory
+    assert state["checked_calls"] == []
+    assert not Path(state["recovery_path"]).exists()
+    if invalid_case in {"history_without_error", "history_still_active"}:
+        assert len(state["capture_calls"]) == 1
+    else:
+        assert state["capture_calls"] == []
 
 
 @pytest.mark.parametrize("failure_point", ("write", "chmod", "publish"))

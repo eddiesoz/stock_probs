@@ -53,8 +53,8 @@ This Codex setup does not alter prior OpenCode receipts or establish provider, p
 release, export, or remote acceptance.
 
 Project configuration text is not runtime-discovery evidence. E767 independently observed eight
-deployment tools and a read-only status call. The current assistant checkpoint is E826 in the [MVP
-plan](../../MVP-PLAN.md#r-astra-120-e826-pr-head-candidate-image-build-failure); E823/E824 storage
+deployment tools and a read-only status call. The current assistant checkpoint is E827 in the [MVP
+plan](../../MVP-PLAN.md#r-astra-120-e827-pr-head-candidate-build-failure-and-copy-path-repair); E823/E824 storage
 and bounded-worker results remain passed for their recorded scopes, and E825's identity-bound
 cleanup repair passed its selected tests and independent/parent source review. The first actual
 PR-head application-candidate build then **Failed** with
@@ -66,18 +66,29 @@ parent source/evidence review. Typed reservation recovery then failed synthetic 
 a P2: a partial exclusive-create receipt remained after `OSError`, although the ledger was restored
 semantically, so retry remained blocked. The frozen source repair passed 132 selected builder tests
 and parent source review; independent synthetic QA passed 132 tests with no failures/errors/skips.
-The actual typed reservation release passed on its second attempt; the candidate ledger is empty (the in-flight row was removed), and the initial failed receipt remains unchanged. Independent read-only review confirmed the matched receipts and exact candidate-tag absence. No Docker/image
-mutation occurred; this was not a broad image inventory. A follow-on managed-run-directory repair
-passed 134 builder-selected tests and parent source review; independent permission QA passed 134
-selected tests with static checks; a fresh application build remains pending. The original candidate
-image build remains failed; no image or schema-13 pair is accepted. The `16:44:54.174085Z` readback recorded approximately 55 GiB free on main
-and 59 GiB on SD. A later independent current-state read passed at `17:27:11Z`, confirming the SD
-UUID/mount, Docker root, four cache binds, active Docker/containerd mount dependencies, and
-application health HTTP 200. Fresh archive-metadata checks and physical absent-medium startup remain
-unavailable. The current read-only production
-status/inspect pair is not a deployment mutation. Reuse guide/UI evidence only for unchanged,
-matching bindings; the retained guide artifacts have not been newly bound to the current PR head.
-Earlier failures retain their declared scope. For a native-runtime repair, establish real functional
+The actual typed reservation release passed on its second attempt; the candidate ledger is empty (the
+in-flight row was removed), and the initial failed receipt remains unchanged. Supplemental
+independent review confirmed the exact pin-only diff, empty ledger, absent candidate tag, unchanged
+setup/failure receipts, and app health HTTP 200; it did not perform Docker/image mutation or a broad
+image inventory. A follow-on managed-run-directory repair passed 134 builder-selected tests and
+parent review; independent permission QA passed 134 selected tests with static checks. The original
+candidate image build remains failed; no image or schema-13 pair is accepted. E827's second build,
+targeting the then-clean pushed head `83e0b0e1cdfbec8502208c48814a592112c022ea`, also **Failed**:
+BuildKit reported `cannot copy to non-directory .../lib` at `COPY --from=opencode-assets /out/ /`.
+The raw diagnostic is recorded in E827; the first projection incorrectly showed a null error. The
+explicit-`/usr/lib` copy repair passed seven builder tests, parent source review, and independent QA
+(154 selected tests plus Ruff/format); that independent review preserved the then-unfixed Dockerfile
+pin. The pin-only follow-on matched the Dockerfile pin (old prefix `2d9355`, new prefix `f2dc019c`),
+passed 147 builder tests and parent constant-only review; the supplemental independent review passed
+its exact diff and actual-state scope. The setup receipt is not Dockerfile-bound, so no BuildKit
+reinitialization was needed. The latest current-state read confirmed the SD UUID/mount, Docker root,
+four cache binds, active Docker/containerd mount dependencies, and application health HTTP 200. Fresh
+archive-metadata checks and physical absent-medium startup remain unavailable. E813's guide metadata
+rebind passed on 83e for 94 consumer inputs, 52 assets, 23 artifacts, and 8 PNGs (receipt SHA-256
+`fd763fb3916cdd3fef86303c0d12d46da0c24e044e7dc35d83d38d919f220908`); this is the bound guide scope,
+not final current-head guide acceptance. Later source changes require a fresh exact-head image build;
+the read-only production status/inspect pair is not a deployment mutation. Earlier failures retain
+their declared scope. For a native-runtime repair, establish real functional
 behavior before rerunning the full release aggregate, and retain every failed or interrupted
 aggregate. Required security, resource, rollback and release gates remain mandatory.
 

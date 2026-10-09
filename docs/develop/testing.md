@@ -124,9 +124,22 @@ review confirmed the empty candidate ledger, matched receipts, and exact candida
 Docker/image mutation occurred; the tag check was not a broad image inventory.
 
 A follow-on managed-run-directory repair passed 134 builder-selected tests, parent review, and 134
-independent permission tests with static checks. The original application-candidate build remains
-**Failed**; a fresh build is pending, and no image or schema-13 pair is accepted. Preserve the
-original failed receipt. See [E826](../../MVP-PLAN.md).
+independent permission tests with static checks. E827 then attempted a second application build on
+the then-clean pushed head `83e0b0e1cdfbec8502208c48814a592112c022ea`; the helper exited 1 and outer
+rehearsal exited 2. BuildKit reported `cannot copy to non-directory .../lib` at
+`COPY --from=opencode-assets /out/ /`. Preserve the raw failure diagnostic and corrected projection
+linked in [E827](../../MVP-PLAN.md#r-astra-120-e827-pr-head-candidate-build-failure-and-copy-path-repair);
+the initial flat-key projection's null error was incorrect. The explicit-`/usr/lib` copy repair has
+seven builder tests, parent source review, and independent two-module QA (154 selected tests plus
+Ruff/format checks); that QA preserved the then-unfixed Dockerfile pin. The pin-only follow-on matched
+the Dockerfile pin (old prefix `2d9355`, new prefix `f2dc019c`), passed 147 builder tests and parent
+constant-only review; supplemental independent review passed the exact pin-only diff and read-only
+actual-state checks (empty ledger, exact tag absent, prior receipts unchanged, app health HTTP 200).
+See E827 for the bound receipts. The setup receipt is not Dockerfile-bound, so no BuildKit
+reinitialization was needed. E813's guide metadata rebind passed against 83e for 94 consumer inputs,
+52 assets, 23 artifacts, and 8 PNGs; this does not establish final PR-head guide acceptance. Later
+source edits make 83e historical. A fresh exact-head image build, library-path/loader verification,
+current-head image, and schema-13 pair remain pending.
 
 ## Unix-socket test fixtures
 

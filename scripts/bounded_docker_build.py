@@ -50,7 +50,7 @@ CONFIG_SHA = "13cd7fdb92639849d02db6d2f9773ddb812ba777a07d409d49ddebad2e56cdb6"
 BUILD_X_PACKAGE = "docker-buildx=0.30.1-0ubuntu1"
 BUILDX_VERSION = "0.30.1"
 BUILDX_PACKAGE_VERSION = "0.30.1-0ubuntu1"
-DOCKERFILE_SHA = "2d9355b7922068b5f547707527aa640fb2f202bb551b37d7b96f36b145a91683"
+DOCKERFILE_SHA = "f2dc019c11f6c981cb31bcb277446743c0e90b650932290c56322cdf76f8c9aa"
 DOCKERIGNORE_SHA = "f70781201adb36c390bcb9155b9c4836046285ea842ad642a3cebaaaf475b210"
 BUILDER = "r120-bounded"
 BUILDER_NETWORK = "r120-bounded-build"
@@ -1585,7 +1585,6 @@ def _failed_build_receipt(
     if (
         receipt.get("schema") != "r120-bounded-image-build-v1"
         or receipt.get("status") != "failed"
-        or receipt.get("stage") != "fixed_command_unavailable_or_timeout"
         or receipt.get("builder") != BUILDER
         or receipt.get("source_head") != revision
         or receipt.get("revision_label") != revision
@@ -1593,19 +1592,40 @@ def _failed_build_receipt(
         or receipt.get("candidate_tag") != tag
         or receipt.get("candidate_role") != role
         or receipt.get("setup_receipt_sha256") != setup_sha256
-        or receipt.get("process_group_cancel_verified") is not True
         or receipt.get("ledger_reservation_retained") is not True
-        or any(key in receipt for key in ("image_id", "image_platform", "build_exit_code"))
+        or any(key in receipt for key in ("image_id", "image_platform"))
     ):
         raise BuildError("failed_reservation_receipt_contract_mismatch")
     started = _parse_buildkit_utc(receipt.get("build_started_utc"))
     finished = _parse_buildkit_utc(receipt.get("finished_utc"))
     run_started = _parse_buildkit_utc(receipt.get("started_utc"))
-    if not run_started <= started <= finished <= datetime.now(UTC) or os.path.lexists(
-        run_dir / "image.iid"
-    ):
+    stage = receipt.get("stage")
+    if stage == "fixed_command_unavailable_or_timeout":
+        if (
+            receipt.get("process_group_cancel_verified") is not True
+            or "build_exit_code" in receipt
+            or "build_finished_utc" in receipt
+        ):
+            raise BuildError("failed_reservation_receipt_contract_mismatch")
+        build_finished = finished
+    elif stage == "buildx_exit_nonzero":
+        exit_code = receipt.get("build_exit_code")
+        if (
+            type(exit_code) is not int
+            or exit_code == 0
+            or "process_group_cancel_verified" in receipt
+        ):
+            raise BuildError("failed_reservation_receipt_contract_mismatch")
+        build_finished = _parse_buildkit_utc(receipt.get("build_finished_utc"))
+        if not started <= build_finished <= finished:
+            raise BuildError("failed_reservation_receipt_artifact_or_time_invalid")
+    else:
+        raise BuildError("failed_reservation_receipt_contract_mismatch")
+    if not run_started <= started <= build_finished <= finished <= datetime.now(
+        UTC
+    ) or os.path.lexists(run_dir / "image.iid"):
         raise BuildError("failed_reservation_receipt_artifact_or_time_invalid")
-    return receipt, started, finished
+    return receipt, started, build_finished
 
 
 def _current_setup_receipt_sha256() -> tuple[dict[str, object], str]:

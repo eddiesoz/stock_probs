@@ -96,7 +96,9 @@ ENV HOME=/tmp \
 # Runtime does not install packages; remove base-image package managers and build tooling.
 RUN python -m pip uninstall --yes setuptools wheel pip
 COPY --from=builder /install /
-COPY --from=opencode-assets /out/ /
+# Debian's /lib is a /usr/lib symlink, so merge both asset trees into the real directory.
+COPY --from=opencode-assets /out/lib/ /usr/lib/
+COPY --from=opencode-assets /out/usr/lib/ /usr/lib/
 RUN install --directory --owner=10001 --group=10001 --mode=0700 /data \
     && install --directory --mode=0755 /usr/local/share/stock-probs \
     && install --directory --owner=10002 --group=10002 --mode=0700 /run/assistant-worker-home \

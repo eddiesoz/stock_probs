@@ -155,6 +155,17 @@ assignments, runtime acceptance paths, or release gates.
   container-cgroup ancestor, then verify descendant memory and CPU limits; controller PID limits
   describe the controller, not its worker. Keep release-image retention separate from BuildKit
   cache collection; a config file or source-level bound alone is not runtime proof.
+  E827's candidate build on the then-clean pushed PR head `83e0b0e1` failed at the library-copy
+  step. Preserve its raw diagnostic and failed receipt. For a completed build with nonzero status,
+  bind typed recovery to the original build's exact terminal result and matching failure receipt,
+  then verify that the ledger row is removed and the exact tag is absent before retry. Keep
+  cancellation/timeout handling under its existing verified timeout guard. E827 resolved `/lib` to
+  its canonical `/usr/lib` target; its explicit-path copy repair and Dockerfile-pin update passed
+  their recorded scoped checks, including supplemental exact-diff/actual-state QA, but repaired
+  source still needs a fresh exact-head image build and library-path/loader verification. Its setup
+  receipt was not Dockerfile-bound, so it was not reset.
+  Storage restore, Docker/containerd/cache relocation, and bounded worker proof passed their
+  recorded scopes; physical absent-medium startup remains unavailable. See E827 in `MVP-PLAN.md`.
 - Evidence remains architecture-specific: native x86_64, emulated ARM64, and physical
   ARM64 are separate labels. Emulated ARM64 can support package/runtime/functional/build/tool
   claims, not ARM64 performance. Physical mobile, actual screen-reader, true-zoom, native

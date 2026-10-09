@@ -80,8 +80,26 @@ def test_native_opencode_is_source_built_in_a_separate_pinned_stage() -> None:
     ) in runtime_stage
     assert "bun install" not in runtime_stage
     assert "build_native.py" not in runtime_stage
-    assert "COPY --from=opencode-assets /out/ /" in runtime_stage
+    assert "COPY --from=opencode-assets /out/ /" not in runtime_stage
+    assert "COPY --from=opencode-assets /out/lib/ /usr/lib/" in runtime_stage
+    assert "COPY --from=opencode-assets /out/usr/lib/ /usr/lib/" in runtime_stage
     assert build_stage.count("AS opencode-patched-builder") == 1
+
+
+def test_opencode_library_assets_keep_their_selected_architecture_paths() -> None:
+    """Both extracted library trees land in Debian's canonical runtime directory."""
+
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    asset_stage = dockerfile.split(" AS opencode-assets\n", maxsplit=1)[1].split(
+        "\n# Compile the fixed, checksum-pinned V2.0.7 source patch", maxsplit=1
+    )[0]
+
+    assert "RUN mkdir -p /assets/amd64/lib /assets/amd64/usr/lib \\" in asset_stage
+    assert "    /assets/arm64/lib /assets/arm64/usr/lib" in asset_stage
+    assert "amd64) cp -a /assets/amd64/. /out/ ;;" in asset_stage
+    assert "arm64) cp -a /assets/arm64/. /out/ ;;" in asset_stage
+    assert "COPY --from=opencode-assets /out/lib/ /usr/lib/" in dockerfile
+    assert "COPY --from=opencode-assets /out/usr/lib/ /usr/lib/" in dockerfile
 
 
 def test_next_export_is_built_with_pinned_node_but_runtime_is_python_only() -> None:
