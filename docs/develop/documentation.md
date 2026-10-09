@@ -53,8 +53,11 @@ This Codex setup does not alter prior OpenCode receipts or establish provider, p
 release, export, or remote acceptance.
 
 Project configuration text is not runtime-discovery evidence. E767 independently observed eight
-deployment tools and a read-only status call. The current assistant checkpoint is E828 in the [MVP
-plan](../../MVP-PLAN.md#r-astra-120-e828-latest-built-candidate-and-recovery-checkpoint); E823/E824 storage
+deployment tools and a read-only status call. The current assistant checkpoint is E829 in the [MVP
+plan](../../MVP-PLAN.md#r-astra-120-e829-candidate-native-failure-repair-and-guide-checkpoint).
+The detailed E823–E828 narrative below is retained as historical scoped evidence; E829's guide is a
+standalone draft result and does not establish final PR/release or full-app accessibility
+acceptance. E823/E824 storage
 and bounded-worker results remain passed for their recorded scopes, and E825's identity-bound
 cleanup repair passed its selected tests and independent/parent source review. The first actual
 PR-head application-candidate build then **Failed** with

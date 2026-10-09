@@ -164,6 +164,16 @@ guide acceptance bound to this head; PDF/UA, physical mobile, full-app accessibi
 combined 1 GB, and PR-bound rollback remain open. Exact receipts and limits
 are recorded in the [R-ASTRA-120 ledger](../../MVP-PLAN.md).
 
+E829's bounded read-only GET-observation repair passed parent source review and independent frozen
+source/test QA (57 selected tests, zero failures/errors/skips, plus diff, Ruff, and format checks).
+The selected scope keeps the original 120-second deadline, retries only transient read-only GET
+observations, and leaves authorization, protocol, worker, and permission-reply POST failures
+fail-closed. The builder's final focused terminal result remains **Unavailable**; its fixture setup
+failures are preserved, and the built image predates the repair. E829's separate two-owner native
+attempt **Failed** with cause **Unproven**; no native/provider or release acceptance follows. See
+[E829](../../MVP-PLAN.md#r-astra-120-e829-candidate-native-failure-repair-and-guide-checkpoint)
+for exact windows, receipts, and remaining gates.
+
 ## Unix-socket test fixtures
 
 Supervisor tests create AF_UNIX sockets. Use a unique, caller-owned short temporary root for

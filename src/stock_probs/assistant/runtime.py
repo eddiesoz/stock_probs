@@ -155,6 +155,38 @@ _MAX_NATIVE_PARTS = 16_384
 _MAX_NATIVE_TOOLS = 8
 _MAX_NATIVE_WEBFETCH_REDIRECTS = 5
 _MAX_NATIVE_MESSAGE_POLL_SECONDS = 0.25
+_MAX_NATIVE_PERMISSION_POLL_SECONDS = 0.25
+_NATIVE_LOCAL_FAILURE_CODES = frozenset(
+    {
+        "assistant_finish_error",
+        "diagnostic_unknown",
+        "message_read_network",
+        "message_read_timeout",
+        "message_session_mismatch",
+        "message_snapshot_invalid",
+        "message_text_prefix_mismatch",
+        "message_tool_invariant",
+        "native_protocol_error",
+        "native_request_timeout",
+        "native_session_failed",
+        "native_terminal_incomplete",
+        "native_transport_error",
+        "owner_revoked",
+        "permission_read_network",
+        "permission_read_timeout",
+        "permission_reply_failed",
+        "permission_snapshot_invalid",
+        "worker_unavailable",
+    }
+)
+_NATIVE_TRANSIENT_READ_FAILURE_CODES = frozenset(
+    {
+        "message_read_network",
+        "message_read_timeout",
+        "permission_read_network",
+        "permission_read_timeout",
+    }
+)
 
 
 def _valid_native_project_id(value: object) -> bool:
@@ -490,6 +522,42 @@ class _AssistantRuntimeFailure(RuntimeError):
         self.code = code if code in _RUNTIME_FAILURE_CODES else "diagnostic_unknown"
         self.phase = phase if phase in _TURN_DIAGNOSTIC_PHASES else "unknown"
         super().__init__(self.code)
+
+
+class _TransientNativeReadFailure(RuntimeError):
+    """Mark only an exhausted retry of one read-only native API GET."""
+
+    def __init__(self, read_kind: str, exception: Exception, *, retryable: bool) -> None:
+        if read_kind not in {"message", "permission"}:
+            read_kind = "message"
+        if isinstance(exception, TimeoutError | httpx.TimeoutException):
+            failure = f"{read_kind}_read_timeout"
+        elif isinstance(exception, httpx.NetworkError):
+            failure = f"{read_kind}_read_network"
+        else:
+            failure = "diagnostic_unknown"
+        self.local_failure = (
+            failure if failure in _NATIVE_LOCAL_FAILURE_CODES else "diagnostic_unknown"
+        )
+        error_type = type(exception).__name__
+        self.error_type = (
+            error_type
+            if error_type
+            in {
+                "TimeoutError",
+                "ReadTimeout",
+                "ConnectTimeout",
+                "WriteTimeout",
+                "PoolTimeout",
+                "ReadError",
+                "ConnectError",
+                "WriteError",
+                "CloseError",
+            }
+            else "NetworkError"
+        )
+        self.retryable = retryable
+        super().__init__(self.local_failure)
 
 
 class _TurnTimingDiagnostics:
@@ -2228,6 +2296,8 @@ class OpenCodeV2Runtime:
                     outcome["native_session_outcome"] = session_outcome
                     if session_outcome != "succeeded":
                         outcome["status"] = "failed"
+                        if "local_failure_reason" not in outcome:
+                            _set_native_local_failure(outcome, "native_session_failed")
                     # The pinned V2 log stream only emitted `log.synced`; it did not carry the
                     # message deltas needed by the UI. Read the session-scoped message list once
                     # after the wait endpoint completes, then validate the terminal assistant
@@ -2239,9 +2309,12 @@ class OpenCodeV2Runtime:
                         emit,
                         outcome,
                         deadline=started + _MAX_TURN_SECONDS,
+                        retry_transient_reads=True,
                     )
                 else:
                     outcome["native_session_outcome"] = "wait_failed"
+                    if "local_failure_reason" not in outcome:
+                        _set_native_local_failure(outcome, "native_session_failed")
                     stopped.set()
                     await self._drain_turn_tasks(
                         (permission_task, message_task), outcome, timeout=0.5
@@ -2251,6 +2324,10 @@ class OpenCodeV2Runtime:
                     or not wait_idle
                     or outcome.get("terminal_finish") != "stop"
                 ):
+                    if outcome.get("status") != "failed" and not wait_idle:
+                        _set_native_local_failure(outcome, "native_session_failed")
+                    elif outcome.get("status") != "failed":
+                        _set_native_local_failure(outcome, "native_terminal_incomplete")
                     result = AssistantTurnResult("failed", "provider_unavailable")
                 elif time.monotonic() - started > _MAX_TURN_SECONDS:
                     result = AssistantTurnResult("timed_out", "turn_timeout")
@@ -2279,9 +2356,11 @@ class OpenCodeV2Runtime:
                     )
                 if elapsed >= _MAX_TURN_SECONDS:
                     _LOGGER.warning(
-                        "Assistant turn deadline expired (phase=%s, elapsed_ms=%d).",
+                        "Assistant turn deadline expired "
+                        "(phase=%s, elapsed_ms=%d, local_failure=%s).",
                         safe_phase,
                         max(0, int(elapsed * 1000)),
+                        _safe_native_local_failure(outcome.get("local_failure_reason")),
                     )
                     result = AssistantTurnResult("timed_out", "turn_timeout")
                 else:
@@ -2300,6 +2379,8 @@ class OpenCodeV2Runtime:
                     )
                     result = AssistantTurnResult("failed", error_code)
             except Exception as exc:
+                if isinstance(exc, _TransientNativeReadFailure):
+                    _set_native_local_failure(outcome, exc.local_failure)
                 safe_phase = (
                     failure_phase if failure_phase in _TURN_DIAGNOSTIC_PHASES else "unknown"
                 )
@@ -2368,6 +2449,7 @@ class OpenCodeV2Runtime:
                     _log_native_terminal_failure(
                         diagnostic,
                         session_outcome=outcome.get("native_session_outcome"),
+                        local_failure=outcome.get("local_failure_reason"),
                     )
                 self._clear_native_provider_metadata(context.execution_id)
                 self._locks.pop(context.execution_id, None)
@@ -3165,11 +3247,66 @@ class OpenCodeV2Runtime:
         outcome.setdefault("webfetch_redirect_targets", set())
         outcome.setdefault("webfetch_blocked_redirect_urls", set())
         while not stopped.is_set() and time.monotonic() - started < _MAX_TURN_SECONDS:
-            await self._consume_message_snapshot(
-                session_id, context, emit, outcome, deadline=started + _MAX_TURN_SECONDS
+            observed = await self._consume_message_snapshot(
+                session_id,
+                context,
+                emit,
+                outcome,
+                deadline=started + _MAX_TURN_SECONDS,
+                retry_transient_reads=True,
+                stopped=stopped,
             )
+            if not observed or outcome.get("status") == "failed":
+                return
             with suppress(TimeoutError):
                 await asyncio.wait_for(stopped.wait(), timeout=_MAX_NATIVE_MESSAGE_POLL_SECONDS)
+
+    async def _request_read_poll_until_deadline(
+        self,
+        path: str,
+        *,
+        deadline: float,
+        read_kind: str,
+        outcome: dict[str, object],
+        poll_interval: float,
+        stopped: asyncio.Event | None = None,
+    ) -> httpx.Response | None:
+        """Retry only classified read-only GET failures inside the original turn budget."""
+
+        while True:
+            if stopped is not None and stopped.is_set():
+                _clear_native_transient_local_failure(outcome, read_kind)
+                return None
+            try:
+                response = await self._request_read_poll(
+                    path, deadline=deadline, read_kind=read_kind
+                )
+            except _TransientNativeReadFailure as exc:
+                _set_native_local_failure(outcome, exc.local_failure)
+                remaining = deadline - time.monotonic()
+                if not exc.retryable or remaining < 0.05:
+                    outcome["status"] = "failed"
+                    raise
+                delay = min(max(0.01, poll_interval), remaining)
+                if stopped is None:
+                    await asyncio.sleep(delay)
+                else:
+                    with suppress(TimeoutError):
+                        await asyncio.wait_for(stopped.wait(), timeout=delay)
+                    if stopped.is_set():
+                        _clear_native_transient_local_failure(outcome, read_kind)
+                        return None
+                if deadline - time.monotonic() < 0.05:
+                    outcome["status"] = "failed"
+                    raise
+            except TimeoutError as exc:
+                read_failure = _TransientNativeReadFailure(read_kind, exc, retryable=False)
+                _set_native_local_failure(outcome, read_failure.local_failure)
+                outcome["status"] = "failed"
+                raise read_failure from None
+            else:
+                _clear_native_transient_local_failure(outcome, read_kind)
+                return response
 
     @staticmethod
     def _webfetch_state_lock(outcome: dict[str, object]) -> asyncio.Lock:
@@ -3194,7 +3331,12 @@ class OpenCodeV2Runtime:
             raise
         except Exception as exc:
             outcome["status"] = "failed"
-            outcome["background_error"] = type(exc).__name__
+            outcome["background_error"] = (
+                exc.error_type
+                if isinstance(exc, _TransientNativeReadFailure)
+                else type(exc).__name__
+            )
+            _set_native_local_failure(outcome, _native_local_failure_for_exception(exc))
 
     async def _drain_turn_tasks(
         self,
@@ -3218,7 +3360,14 @@ class OpenCodeV2Runtime:
                     exception = task.exception()
                     if exception is not None:
                         outcome["status"] = "failed"
-                        outcome["background_error"] = type(exception).__name__
+                        outcome["background_error"] = (
+                            exception.error_type
+                            if isinstance(exception, _TransientNativeReadFailure)
+                            else type(exception).__name__
+                        )
+                        _set_native_local_failure(
+                            outcome, _native_local_failure_for_exception(exception)
+                        )
 
     async def _consume_message_snapshot(
         self,
@@ -3228,14 +3377,23 @@ class OpenCodeV2Runtime:
         outcome: dict[str, object],
         *,
         deadline: float | None = None,
-    ) -> None:
+        retry_transient_reads: bool = False,
+        stopped: asyncio.Event | None = None,
+    ) -> bool:
         """Serialize message reads so permission checks observe applied redirect history."""
 
         state_lock = self._webfetch_state_lock(outcome)
         async with state_lock:
             await self._consume_message_snapshot_locked(
-                session_id, context, emit, outcome, deadline=deadline
+                session_id,
+                context,
+                emit,
+                outcome,
+                deadline=deadline,
+                retry_transient_reads=retry_transient_reads,
+                stopped=stopped,
             )
+        return stopped is None or not stopped.is_set()
 
     async def _consume_message_snapshot_locked(
         self,
@@ -3245,6 +3403,8 @@ class OpenCodeV2Runtime:
         outcome: dict[str, object],
         *,
         deadline: float | None = None,
+        retry_transient_reads: bool = False,
+        stopped: asyncio.Event | None = None,
     ) -> None:
         """Read and apply one native message snapshot while holding the turn state lock."""
 
@@ -3260,7 +3420,23 @@ class OpenCodeV2Runtime:
         outcome.setdefault("webfetch_redirect_targets", set())
         outcome.setdefault("webfetch_blocked_redirect_urls", set())
         message_path = f"/api/session/{session_id}/message"
-        response = await self._request_read_poll(message_path, deadline=deadline)
+        if retry_transient_reads:
+            if deadline is None:
+                raise RuntimeError("message_poll_deadline_missing")
+            response = await self._request_read_poll_until_deadline(
+                message_path,
+                deadline=deadline,
+                read_kind="message",
+                outcome=outcome,
+                poll_interval=_MAX_NATIVE_MESSAGE_POLL_SECONDS,
+                stopped=stopped,
+            )
+            if response is None:
+                return
+        else:
+            response = await self._request_read_poll(
+                message_path, deadline=deadline, read_kind="message"
+            )
         payload = _json_object(response)
         messages = payload.get("data") if payload else None
         if response.status_code != 200 or not isinstance(messages, list):
@@ -3309,6 +3485,7 @@ class OpenCodeV2Runtime:
                 raise RuntimeError("session_parts_too_large")
             if _contains_foreign_session_id(row, session_id):
                 outcome["status"] = "failed"
+                _set_native_local_failure(outcome, "message_session_mismatch")
                 return
             role = info.get("role")
             if not isinstance(role, str):
@@ -3324,6 +3501,7 @@ class OpenCodeV2Runtime:
             finish = info.get("finish")
             if finish == "error":
                 outcome["status"] = "failed"
+                _set_native_local_failure(outcome, "assistant_finish_error")
             if finish == "stop":
                 outcome["terminal_finish"] = "stop"
                 outcome["terminal_message_id"] = message_id
@@ -3341,6 +3519,7 @@ class OpenCodeV2Runtime:
                         previous = ""
                     if not text.startswith(previous):
                         outcome["status"] = "failed"
+                        _set_native_local_failure(outcome, "message_text_prefix_mismatch")
                         return
                     delta = text[len(previous) :]
                     text_parts[identity] = text
@@ -3358,11 +3537,13 @@ class OpenCodeV2Runtime:
                         r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}", raw_name
                     ):
                         outcome["status"] = "failed"
+                        _set_native_local_failure(outcome, "message_tool_invariant")
                         return
                     if identity not in tool_ids:
                         tool_ids.add(identity)
                         if len(tool_ids) > _MAX_NATIVE_TOOLS:
                             outcome["status"] = "failed"
+                            _set_native_local_failure(outcome, "message_tool_invariant")
                             return
                     raw_state = part.get("state")
                     raw_status = raw_state.get("status") if isinstance(raw_state, Mapping) else None
@@ -3376,6 +3557,7 @@ class OpenCodeV2Runtime:
                         # cannot safely continue. Other tool errors still fail the turn.
                         if raw_name != "webfetch":
                             outcome["status"] = "failed"
+                            _set_native_local_failure(outcome, "message_tool_invariant")
                     else:
                         status = "running"
                     if tool_states.get(identity) != status:
@@ -3459,16 +3641,20 @@ class OpenCodeV2Runtime:
                         final_url = validate_webfetch_url(raw_final_url)
                         if requested_url is None:
                             outcome["status"] = "failed"
+                            _set_native_local_failure(outcome, "message_tool_invariant")
                             return
                         if not approval_consumed:
                             outcome["status"] = "failed"
+                            _set_native_local_failure(outcome, "message_tool_invariant")
                             return
                         if final_url is None or final_url != requested_url:
                             outcome["status"] = "failed"
+                            _set_native_local_failure(outcome, "message_tool_invariant")
                             return
                         final_host = urlsplit(final_url).hostname
                         if not final_host:
                             outcome["status"] = "failed"
+                            _set_native_local_failure(outcome, "message_tool_invariant")
                             return
                         fetch_source_parts.add(identity)
                         await emit(
@@ -3502,10 +3688,20 @@ class OpenCodeV2Runtime:
         deadline = started + _MAX_TURN_SECONDS
         while not stopped.is_set() and time.monotonic() - started < _MAX_TURN_SECONDS:
             permission_path = f"/api/session/{session_id}/permission"
-            response = await self._request_read_poll(permission_path, deadline=deadline)
+            response = await self._request_read_poll_until_deadline(
+                permission_path,
+                deadline=deadline,
+                read_kind="permission",
+                outcome=outcome,
+                poll_interval=_MAX_NATIVE_PERMISSION_POLL_SECONDS,
+                stopped=stopped,
+            )
+            if response is None:
+                return
             payload = _json_object(response)
             pending = payload.get("data") if payload else None
             if response.status_code != 200 or not isinstance(pending, list) or len(pending) > 16:
+                _set_native_local_failure(outcome, "permission_snapshot_invalid")
                 raise RuntimeError("permission_poll_invalid")
             if response.status_code == 200:
                 for item in pending[:16]:
@@ -3519,7 +3715,6 @@ class OpenCodeV2Runtime:
                         or item.get("sessionID") != session_id
                     ):
                         continue
-                    handled.add(permission_id)
                     action = item.get("action")
                     resources = item.get("resources")
                     fetch_candidate = validate_webfetch_url(
@@ -3531,9 +3726,17 @@ class OpenCodeV2Runtime:
                         # Permission polling and message polling are independent native API
                         # reads. Refresh under the same lock used by the message consumer
                         # before showing an exact-URL approval prompt.
-                        await self._consume_message_snapshot(
-                            session_id, context, emit, outcome, deadline=deadline
+                        observed = await self._consume_message_snapshot(
+                            session_id,
+                            context,
+                            emit,
+                            outcome,
+                            deadline=deadline,
+                            retry_transient_reads=True,
+                            stopped=stopped,
                         )
+                        if not observed or stopped.is_set() or outcome.get("status") == "failed":
+                            return
                         async with webfetch_state_lock:
                             blocked_before_approval = (
                                 fetch_candidate is not None
@@ -3549,6 +3752,7 @@ class OpenCodeV2Runtime:
                                 fetch_candidate,
                                 approved_fetch_urls,
                             )
+                            handled.add(permission_id)
                         else:
                             decision = await self._approval.decide(
                                 context=context,
@@ -3556,12 +3760,22 @@ class OpenCodeV2Runtime:
                                 resources=resources,
                                 emit=emit,
                             )
+                            if stopped.is_set():
+                                return
                             # A redirect result can arrive while the user is reviewing the
                             # exact destination. Re-read and apply it before replying once.
                             async with webfetch_state_lock:
                                 await self._consume_message_snapshot_locked(
-                                    session_id, context, emit, outcome, deadline=deadline
+                                    session_id,
+                                    context,
+                                    emit,
+                                    outcome,
+                                    deadline=deadline,
+                                    retry_transient_reads=False,
+                                    stopped=stopped,
                                 )
+                                if stopped.is_set() or outcome.get("status") == "failed":
+                                    return
                                 if (
                                     decision.decision == "once"
                                     and fetch_candidate in blocked_redirect_urls
@@ -3577,6 +3791,7 @@ class OpenCodeV2Runtime:
                                     fetch_candidate,
                                     approved_fetch_urls,
                                 )
+                                handled.add(permission_id)
                     else:
                         decision = await self._approval.decide(
                             context=context,
@@ -3584,6 +3799,8 @@ class OpenCodeV2Runtime:
                             resources=resources,
                             emit=emit,
                         )
+                        if stopped.is_set():
+                            return
                         await self._reply_native_permission(
                             session_id,
                             permission_id,
@@ -3592,8 +3809,9 @@ class OpenCodeV2Runtime:
                             None,
                             approved_fetch_urls,
                         )
+                        handled.add(permission_id)
             with suppress(TimeoutError):
-                await asyncio.wait_for(stopped.wait(), timeout=0.25)
+                await asyncio.wait_for(stopped.wait(), timeout=_MAX_NATIVE_PERMISSION_POLL_SECONDS)
 
     async def _reply_native_permission(
         self,
@@ -3777,21 +3995,32 @@ class OpenCodeV2Runtime:
                     request=response.request,
                 )
 
-    async def _request_read_poll(self, path: str, *, deadline: float | None) -> httpx.Response:
-        """Retry one transient read-only session poll without extending its turn deadline."""
+    async def _request_read_poll(
+        self, path: str, *, deadline: float | None, read_kind: str = "message"
+    ) -> httpx.Response:
+        """Retry one transient read-only session GET without extending its turn deadline."""
 
         if deadline is None:
-            return await self._request("GET", path, timeout=3.0)
+            try:
+                return await self._request("GET", path, timeout=3.0)
+            except (TimeoutError, httpx.TimeoutException, httpx.NetworkError) as exc:
+                raise _TransientNativeReadFailure(read_kind, exc, retryable=False) from None
         remaining = deadline - time.monotonic()
         if remaining < 0.05:
             raise TimeoutError
         try:
             return await self._request("GET", path, timeout=min(3.0, remaining))
-        except (TimeoutError, httpx.TimeoutException, httpx.NetworkError):
+        except (TimeoutError, httpx.TimeoutException, httpx.NetworkError) as first_error:
             remaining = deadline - time.monotonic()
             if remaining < 0.05:
-                raise
-            return await self._request("GET", path, timeout=min(3.0, remaining))
+                raise _TransientNativeReadFailure(read_kind, first_error, retryable=False) from None
+            try:
+                return await self._request("GET", path, timeout=min(3.0, remaining))
+            except (TimeoutError, httpx.TimeoutException, httpx.NetworkError) as second_error:
+                remaining = deadline - time.monotonic()
+                raise _TransientNativeReadFailure(
+                    read_kind, second_error, retryable=remaining >= 0.05
+                ) from None
 
     async def _interrupt(self, session_id: str | None) -> None:
         if not isinstance(session_id, str) or not _SESSION_ID.fullmatch(session_id):
@@ -4419,8 +4648,68 @@ def _safe_native_session_outcome(value: object) -> str:
     return value if isinstance(value, str) and value in allowed else "unknown"
 
 
+def _safe_native_local_failure(value: object) -> str:
+    """Return one allowlisted local cause without exposing exception or session data."""
+
+    return (
+        value
+        if isinstance(value, str) and value in _NATIVE_LOCAL_FAILURE_CODES
+        else "diagnostic_unknown"
+    )
+
+
+def _set_native_local_failure(outcome: dict[str, object], value: object) -> None:
+    outcome["local_failure_reason"] = _safe_native_local_failure(value)
+
+
+def _clear_native_transient_local_failure(outcome: dict[str, object], read_kind: str) -> None:
+    matching_codes = {
+        f"{read_kind}_read_network",
+        f"{read_kind}_read_timeout",
+    }
+    if outcome.get("local_failure_reason") in matching_codes & _NATIVE_TRANSIENT_READ_FAILURE_CODES:
+        outcome.pop("local_failure_reason", None)
+
+
+def _native_local_failure_for_exception(exception: Exception) -> str:
+    if isinstance(exception, _TransientNativeReadFailure):
+        return exception.local_failure
+    if type(exception) is RuntimeError:
+        message = exception.args[0] if len(exception.args) == 1 else None
+        fixed_codes = {
+            "fetch_approval_count_invalid": "message_tool_invariant",
+            "fetch_approval_resource_invalid": "message_tool_invariant",
+            "native_response_encoding_invalid": "message_snapshot_invalid",
+            "native_response_invalid": "message_snapshot_invalid",
+            "native_response_too_large": "message_snapshot_invalid",
+            "output_too_large": "message_tool_invariant",
+            "permission_poll_invalid": "permission_snapshot_invalid",
+            "permission_reply_failed": "permission_reply_failed",
+            "session_message_invalid": "message_snapshot_invalid",
+            "session_messages_too_large": "message_snapshot_invalid",
+            "session_messages_unavailable": "message_snapshot_invalid",
+            "session_part_invalid": "message_snapshot_invalid",
+            "session_parts_too_large": "message_snapshot_invalid",
+            "session_wait_failed": "native_session_failed",
+            "session_wait_incomplete": "native_session_failed",
+            "worker_unavailable": "worker_unavailable",
+        }
+        if type(message) is str:
+            return fixed_codes.get(message, "diagnostic_unknown")
+        return "diagnostic_unknown"
+    if type(exception).__name__ == "AssistantUnavailable":
+        return "owner_revoked"
+    if isinstance(exception, httpx.ProtocolError):
+        return "native_protocol_error"
+    if isinstance(exception, httpx.TimeoutException | TimeoutError):
+        return "native_request_timeout"
+    if isinstance(exception, httpx.HTTPError):
+        return "native_transport_error"
+    return "diagnostic_unknown"
+
+
 def _log_native_terminal_failure(
-    diagnostic: Mapping[str, object], *, session_outcome: object
+    diagnostic: Mapping[str, object], *, session_outcome: object, local_failure: object = None
 ) -> None:
     """Log only the closed-category projection of a failed native terminal snapshot."""
 
@@ -4430,7 +4719,7 @@ def _log_native_terminal_failure(
         "assistant_error_count=%d, webfetch_state=%s, webfetch_failure=%s, "
         "webfetch_timeout_stage=%s, webfetch_timeout_seconds_max=%s, "
         "webfetch_tool_elapsed_ms_max=%s, webfetch_completion=%s, native_failure=%s, "
-        "native_tool_error_count=%d).",
+        "native_tool_error_count=%d, local_failure=%s).",
         _safe_native_session_outcome(session_outcome),
         diagnostic["snapshot_status"],
         diagnostic["assistant_finish"],
@@ -4444,6 +4733,7 @@ def _log_native_terminal_failure(
         diagnostic["webfetch_completion_categories"],
         diagnostic["native_failure_categories"],
         diagnostic["native_tool_error_count"],
+        _safe_native_local_failure(local_failure),
     )
 
 

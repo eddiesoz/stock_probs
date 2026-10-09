@@ -1642,6 +1642,41 @@ def test_native_timing_v3_projects_embedded_provider_failures_as_closed_records(
     assert "private" not in encoded
 
 
+def test_native_warning_projection_accepts_closed_local_failure_with_legacy_compatibility() -> None:
+    terminal = _native_terminal_warning().replace(
+        "native_tool_error_count=1).",
+        "native_tool_error_count=1, local_failure=message_read_timeout).",
+    )
+    deadline = (
+        probe._NATIVE_WARNING_DEADLINE_MARKER
+        + "(phase=consume_messages, elapsed_ms=121250, local_failure=permission_read_network)."
+    )
+
+    projection = probe._native_timing_projection(terminal + "\n" + deadline)
+
+    assert projection["runtime_warnings"][0]["local_failure"] == "message_read_timeout"
+    assert projection["runtime_warnings"][1] == {
+        "kind": "turn_deadline_expired",
+        "occurrence_count": 1,
+        "phase": "consume_messages",
+        "elapsed_ms": 121250,
+        "local_failure": "permission_read_network",
+    }
+    legacy = probe._native_timing_projection(_native_terminal_warning())
+    assert "local_failure" not in legacy["runtime_warnings"][0]
+
+
+def test_native_warning_projection_rejects_private_local_failure_code() -> None:
+    warning = _native_terminal_warning().replace(
+        "native_tool_error_count=1).",
+        "native_tool_error_count=1, local_failure=private_secret).",
+    )
+
+    with pytest.raises(probe.ProbeError, match="native terminal warning diagnostic") as error:
+        probe._native_timing_projection(warning)
+    assert "private_secret" not in str(error.value)
+
+
 def test_native_timing_v4_projects_closed_403_header_classes() -> None:
     payload = _native_timing_v4_payload()
     requests = payload["provider_requests"]

@@ -214,6 +214,29 @@ _NATIVE_WARNING_FAILURE_CODES = frozenset(
         "worker_unavailable",
     }
 )
+_NATIVE_WARNING_LOCAL_FAILURES = frozenset(
+    {
+        "assistant_finish_error",
+        "diagnostic_unknown",
+        "message_read_network",
+        "message_read_timeout",
+        "message_session_mismatch",
+        "message_snapshot_invalid",
+        "message_text_prefix_mismatch",
+        "message_tool_invariant",
+        "native_protocol_error",
+        "native_request_timeout",
+        "native_session_failed",
+        "native_terminal_incomplete",
+        "native_transport_error",
+        "owner_revoked",
+        "permission_read_network",
+        "permission_read_timeout",
+        "permission_reply_failed",
+        "permission_snapshot_invalid",
+        "worker_unavailable",
+    }
+)
 _NATIVE_TIMING_PRESESSION_PHASES = _NATIVE_WARNING_PRESESSION_STAGES | frozenset(
     {
         "input_validation",
@@ -370,10 +393,12 @@ _NATIVE_WARNING_TERMINAL_PATTERN = re.compile(
     r"webfetch_tool_elapsed_ms_max=(?P<webfetch_tool_elapsed_ms_max>[^,]+), "
     r"webfetch_completion=(?P<webfetch_completion>[a-z0-9_,-]+), "
     r"native_failure=(?P<native_failure>[a-z0-9_,-]+), "
-    r"native_tool_error_count=(?P<native_tool_error_count>[0-9]+)\)\."
+    r"native_tool_error_count=(?P<native_tool_error_count>[0-9]+)"
+    r"(?:, local_failure=(?P<local_failure>[a-z][a-z0-9_]*))?\)\."
 )
 _NATIVE_WARNING_DEADLINE_PATTERN = re.compile(
-    r"^\(phase=(?P<phase>[a-z_]+), elapsed_ms=(?P<elapsed_ms>[0-9]+)\)\."
+    r"^\(phase=(?P<phase>[a-z_]+), elapsed_ms=(?P<elapsed_ms>[0-9]+)"
+    r"(?:, local_failure=(?P<local_failure>[a-z][a-z0-9_]*))?\)\."
 )
 _NATIVE_WARNING_REQUEST_TIMEOUT_PATTERN = re.compile(
     r"^\(phase=(?P<phase>[a-z_]+), error_code=request_timeout, "
@@ -2200,7 +2225,10 @@ def _project_native_terminal_warning(payload: str) -> dict[str, object]:
         if elapsed_raw == "none"
         else _warning_integer(elapsed_raw, maximum=_NATIVE_WARNING_TOOL_ELAPSED_MAX_MS)
     )
-    return {
+    local_failure = values["local_failure"]
+    if local_failure is not None and local_failure not in _NATIVE_WARNING_LOCAL_FAILURES:
+        raise ProbeError("native terminal warning diagnostic local failure was invalid")
+    projected = {
         "kind": "native_terminal_failure",
         "session_outcome": session_outcome,
         "snapshot_status": snapshot_status,
@@ -2228,6 +2256,9 @@ def _project_native_terminal_warning(payload: str) -> dict[str, object]:
             values["native_tool_error_count"], maximum=_NATIVE_WARNING_TOOL_ERROR_MAX
         ),
     }
+    if local_failure is not None:
+        projected["local_failure"] = local_failure
+    return projected
 
 
 def _project_native_model_discovery_warning(payload: str) -> dict[str, object]:
@@ -2311,13 +2342,19 @@ def _project_native_runtime_warning(line: str) -> dict[str, object] | None:
         phase = match.group("phase")
         if phase not in _NATIVE_WARNING_PHASES:
             raise ProbeError("native warning diagnostic phase was invalid")
-        return {
+        local_failure = match.group("local_failure")
+        if local_failure is not None and local_failure not in _NATIVE_WARNING_LOCAL_FAILURES:
+            raise ProbeError("native warning diagnostic local failure was invalid")
+        projected = {
             "kind": "turn_deadline_expired",
             "phase": phase,
             "elapsed_ms": _warning_integer(
                 match.group("elapsed_ms"), maximum=_NATIVE_WARNING_ELAPSED_MAX_MS
             ),
         }
+        if local_failure is not None:
+            projected["local_failure"] = local_failure
+        return projected
     if marker == _NATIVE_WARNING_REQUEST_TIMEOUT_MARKER:
         match = _NATIVE_WARNING_REQUEST_TIMEOUT_PATTERN.fullmatch(payload)
         if match is None:

@@ -1,24 +1,26 @@
 # Stock Probability MVP Roadmap
 
-Current R-ASTRA-120 E828 checkpoint: E823/E824 storage restore, Docker/containerd and cache
-relocation, bounded BuildKit, and worker-step proof remain Passed for their recorded scopes. The
-latest built Linux/amd64 candidate was built from head `fb8a9cc6d5f723b976897f3643895c66127a0d27` as
-image `sha256:802319bed035d9f40425c019951e2e764b2e0253d7161da4964f7c2a6d87bb8a`; its one-shot
-OpenCode loader probe and active-search-kill diagnostic passed, with the kill scoped to 768 MiB and
-zero OOM events. Later diagnostic-source edits mean a fresh exact-head image is required before
-another native run. The two-owner native functional attempt **Failed**: owner 0 answered, while
-owner 1 timed out after six native-search sources without a fetch source or answer.
-The local schema-13 PR-pair rehearsal **Failed** before producing its required receipt because the
-cleanup result was not allowlisted. A separate exact recovery-image retirement later passed using
-the RootFS guard; it does not repair the pair failure. The bounded RootFS/stdout guard and a separate
-provider-response-phase observer passed their reviewed selected source/test scopes, but no native
-provider cause or latency repair is established. Parent PR-bound standalone guide acceptance passed
-for the bound bundle; PDF/UA, physical mobile, full-app accessibility, and true zoom remain
-unavailable. The current canonical check is **Pending**; actual combined 1 GB resources, a fresh
-exact-head build, current PR-pair/rollback, security, owner canary, and release gates remain open.
-Production and the US$15 monthly total cap, existing 1 GB plan, and
-backups are unchanged; no merge, deployment, resize, rollout, or email occurred. See E828 in the
-[MVP plan](MVP-PLAN.md).
+Current R-ASTRA-120 E829 checkpoint: candidate image `sha256:adb82504d866e026f513d1397046ce656e1f90e7fe010d8e3db63bfe91cfb9f9` was built from head
+`4b5023f01253930a6ad2a7aee6a14e72580fd11d` and context
+`21e15827134f80deddc43dd4dc5cb712457a5605fac749fc60dd53c7aff75b57`. Its one authorized native
+two-owner attempt **Failed**: owner 0 answered; owner 1 returned `provider_unavailable` after seven
+search and one approved fetch source without an answer. Cause remains **Unproven**; the 768 MiB
+sample is not actual combined 1 GB acceptance. The bounded read-only GET-observation repair passed
+parent source review and independent selected QA (57 tests with zero failures/errors/skips and
+scoped static checks); the builder's final focused result remains **Unavailable**. That image
+predates the repair, so a fresh exact-head build and native verification remain pending. E828's
+schema-13 PR-pair attempt remains **Fail**; no E829 pair rerun is recorded. E829's standalone guide
+draft passed its scoped HTML/PDF review and parent 14-page visual review, but final PR/release guide,
+PDF/UA, physical mobile, true zoom, and actual screen-reader acceptance remain open. E791's 193-case
+browser scope and E795's 64-state whole-route axe scope passed; these do not establish full WCAG AA.
+The current canonical check is **Pending**; E300's earlier raw axe failure remains historical.
+Current-image kill, actual combined 1 GB resources, security, owner canary, rollback, and release
+gates remain open. Storage restore and retained backup evidence passed their recorded scope;
+physical absent-medium startup remains unavailable. Production and the US$15 monthly total cap,
+existing 1 GB plan, and backups are unchanged; no merge, deployment, resize, rollout, or email
+occurred. See [E829](MVP-PLAN.md#r-astra-120-e829-candidate-native-failure-repair-and-guide-checkpoint)
+and the preserved [E828 record](MVP-PLAN.md#historical-r-astra-120-e828-built-candidate-and-recovery-checkpoint)
+in the [MVP plan](MVP-PLAN.md).
 
 Historical R-ASTRA-120 E825 checkpoint: the E823/E824 storage restore, Docker/containerd migration,
 cache relocation and retirement, bounded BuildKit setup, actual network-none worker proof, retained

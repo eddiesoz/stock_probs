@@ -3512,15 +3512,19 @@ def test_native_message_and_permission_polls_retry_transient_read_errors_once() 
         path = request.url.path
         if path == "/api/session/sesABCDEFGH/message":
             reads["message"] += 1
-            if reads["message"] == 1:
+            if reads["message"] <= 4:
+                if reads["message"] % 2:
+                    raise httpx.ReadTimeout("synthetic message poll timeout")
                 raise httpx.ReadError("synthetic message connection reset")
             return _native_json_response(message)
         if path == "/api/session/sesABCDEFGH":
             return _native_json_response({"data": {"outcome": "succeeded"}})
         if path == "/api/session/sesABCDEFGH/permission":
             reads["permission"] += 1
-            if reads["permission"] == 1:
-                raise httpx.ReadTimeout("synthetic permission poll timeout")
+            if reads["permission"] <= 4:
+                if reads["permission"] % 2:
+                    raise httpx.ReadTimeout("synthetic permission poll timeout")
+                raise httpx.ReadError("synthetic permission connection reset")
             stopped_permission.set()
             return _native_json_response({"data": []})
         if path.endswith("/permission/per12345/reply"):
@@ -3568,11 +3572,12 @@ def test_native_message_and_permission_polls_retry_transient_read_errors_once() 
             await runtime.close()
 
     outcome = asyncio.run(exercise())
-    assert reads == {"message": 3, "permission": 2, "reply": 0}
+    assert reads == {"message": 6, "permission": 5, "reply": 0}
     assert outcome["status"] == "completed"
     assert outcome.get("background_error") is None
     assert outcome["native_session_outcome"] == "succeeded"
     assert outcome["terminal_finish"] == "stop"
+    assert outcome.get("local_failure_reason") is None
     assert outcome["tokens"] == len("Recovered.")
     assert events == [{"type": "token", "data": {"text": "Recovered."}}]
 
@@ -3614,6 +3619,94 @@ def test_native_read_poll_respects_expired_deadline_and_cancellation() -> None:
             await runtime.close()
 
     asyncio.run(exercise())
+
+
+def test_native_read_observation_recovers_until_original_deadline() -> None:
+    """Repeated read-only GET failures may recover, but the original deadline still wins."""
+
+    request_count = 0
+
+    async def native_api(_request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        raise httpx.ReadTimeout("synthetic transient snapshot timeout")
+
+    runtime = _runtime_for_native_api(native_api)
+
+    async def exercise() -> tuple[dict[str, object], int, float]:
+        outcome: dict[str, object] = {"status": "completed"}
+        deadline = time.monotonic() + 0.08
+        started = time.monotonic()
+        try:
+            with pytest.raises(assistant_runtime._TransientNativeReadFailure) as error:
+                await runtime._request_read_poll_until_deadline(
+                    "/api/session/sesABCDEFGH/message",
+                    deadline=deadline,
+                    read_kind="message",
+                    outcome=outcome,
+                    poll_interval=0.01,
+                )
+            assert error.value.local_failure == "message_read_timeout"
+            return outcome, request_count, time.monotonic() - started
+        finally:
+            await runtime.close()
+
+    outcome, requests, elapsed = asyncio.run(exercise())
+    assert outcome == {"status": "failed", "local_failure_reason": "message_read_timeout"}
+    assert 2 <= requests < 10
+    assert elapsed < 0.5
+
+
+def test_native_read_observation_cancellation_interrupts_retry_wait() -> None:
+    """A stop signal ends a transient-read wait without another GET or failed status."""
+
+    request_count = 0
+    stopped = asyncio.Event()
+
+    async def native_api(_request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        raise httpx.ReadTimeout("synthetic transient snapshot timeout")
+
+    runtime = _runtime_for_native_api(native_api)
+
+    async def exercise() -> dict[str, object]:
+        outcome: dict[str, object] = {"status": "completed"}
+        deadline = time.monotonic() + 1.0
+
+        async def stop_soon() -> None:
+            await asyncio.sleep(0.02)
+            stopped.set()
+
+        stopper = asyncio.create_task(stop_soon())
+        try:
+            response = await runtime._request_read_poll_until_deadline(
+                "/api/session/sesABCDEFGH/message",
+                deadline=deadline,
+                read_kind="message",
+                outcome=outcome,
+                poll_interval=0.5,
+                stopped=stopped,
+            )
+            assert response is None
+            await stopper
+            return outcome
+        finally:
+            if not stopper.done():
+                stopper.cancel()
+                await asyncio.gather(stopper, return_exceptions=True)
+            await runtime.close()
+
+    outcome = asyncio.run(exercise())
+    assert outcome == {"status": "completed"}
+    assert request_count == 2
+
+
+def test_native_local_failure_projection_rejects_unhashable_exception_args() -> None:
+    for argument in ({"secret": "private"}, ["secret", "private"]):
+        projected = assistant_runtime._native_local_failure_for_exception(RuntimeError(argument))
+        assert projected == "diagnostic_unknown"
+        assert "secret" not in projected
 
 
 @pytest.mark.parametrize(
@@ -4881,6 +4974,166 @@ def test_native_webfetch_permission_records_only_exact_once_reply(
     outcome = asyncio.run(exercise())
     assert replies == [{"decision": reply}]
     assert outcome["approved_fetch_urls"] == ({url: 1} if approved_count else {})
+
+
+def test_native_permission_read_recovery_keeps_one_decision_and_one_reply() -> None:
+    """Transient list and pre-approval snapshot reads recover within the same decision."""
+
+    url = "https://example.test/recovered"
+    stopped = asyncio.Event()
+    counts = {"permission": 0, "message": 0, "approval": 0, "reply": 0}
+
+    async def native_api(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/api/session/sesABCDEFGH/permission":
+            counts["permission"] += 1
+            if counts["permission"] <= 4:
+                if counts["permission"] % 2:
+                    raise httpx.ReadTimeout("synthetic permission list timeout")
+                raise httpx.ReadError("synthetic permission list reset")
+            return _native_json_response(
+                {
+                    "data": [
+                        {
+                            "id": "per12345",
+                            "sessionID": "sesABCDEFGH",
+                            "action": "webfetch",
+                            "resources": [url],
+                        }
+                    ]
+                }
+            )
+        if path == "/api/session/sesABCDEFGH/message":
+            counts["message"] += 1
+            if counts["message"] <= 4:
+                if counts["message"] % 2:
+                    raise httpx.ReadTimeout("synthetic pre-approval snapshot timeout")
+                raise httpx.ReadError("synthetic pre-approval snapshot reset")
+            return _native_json_response({"data": []})
+        if path == "/api/session/sesABCDEFGH/permission/per12345/reply":
+            counts["reply"] += 1
+            stopped.set()
+            return httpx.Response(204, stream=_NativeBody(b""))
+        raise AssertionError(f"unexpected native API route {path}")
+
+    async def approve(
+        _context: AssistantTurnContext, destination: str, _emit: EventEmitter
+    ) -> str | None:
+        counts["approval"] += 1
+        assert destination == url
+        return url
+
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=_Supervisor(),
+        webfetch_approval=approve,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
+
+    async def exercise() -> dict[str, object]:
+        runtime._client = runtime._http_client_factory(
+            base_url="http://127.0.0.1:4097",
+            auth=("opencode", "s" * 48),
+            timeout=httpx.Timeout(5.0),
+            trust_env=False,
+        )
+        runtime._enabled = True
+        outcome: dict[str, object] = {"approved_fetch_urls": {}}
+
+        async def emit(_event: object) -> None:
+            return None
+
+        try:
+            await runtime._poll_permissions(
+                "sesABCDEFGH", _context(), emit, stopped, outcome, time.monotonic()
+            )
+            return outcome
+        finally:
+            await runtime.close()
+
+    outcome = asyncio.run(exercise())
+    assert counts == {"permission": 5, "message": 6, "approval": 1, "reply": 1}
+    assert outcome["approved_fetch_urls"] == {url: 1}
+    assert outcome.get("local_failure_reason") is None
+
+
+def test_native_post_approval_snapshot_does_not_extend_approval_window() -> None:
+    """A failed post-approval refresh stays fatal and cannot duplicate the decision or POST."""
+
+    url = "https://example.test/expired-review"
+    stopped = asyncio.Event()
+    counts = {"message": 0, "approval": 0, "reply": 0}
+
+    async def native_api(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/api/session/sesABCDEFGH/permission":
+            return _native_json_response(
+                {
+                    "data": [
+                        {
+                            "id": "per12345",
+                            "sessionID": "sesABCDEFGH",
+                            "action": "webfetch",
+                            "resources": [url],
+                        }
+                    ]
+                }
+            )
+        if path == "/api/session/sesABCDEFGH/message":
+            counts["message"] += 1
+            if counts["message"] == 1:
+                return _native_json_response({"data": []})
+            raise httpx.ReadTimeout("synthetic post-approval snapshot timeout")
+        if path == "/api/session/sesABCDEFGH/permission/per12345/reply":
+            counts["reply"] += 1
+            return httpx.Response(204)
+        raise AssertionError(f"unexpected native API route {path}")
+
+    async def approve(
+        _context: AssistantTurnContext, destination: str, _emit: EventEmitter
+    ) -> str | None:
+        counts["approval"] += 1
+        assert destination == url
+        return url
+
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=_Supervisor(),
+        webfetch_approval=approve,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
+
+    async def exercise() -> None:
+        runtime._client = runtime._http_client_factory(
+            base_url="http://127.0.0.1:4097",
+            auth=("opencode", "s" * 48),
+            timeout=httpx.Timeout(5.0),
+            trust_env=False,
+        )
+        runtime._enabled = True
+        outcome: dict[str, object] = {"approved_fetch_urls": {}}
+
+        async def emit(_event: object) -> None:
+            return None
+
+        try:
+            with pytest.raises(assistant_runtime._TransientNativeReadFailure):
+                await runtime._poll_permissions(
+                    "sesABCDEFGH", _context(), emit, stopped, outcome, time.monotonic()
+                )
+        finally:
+            await runtime.close()
+
+    asyncio.run(exercise())
+    assert counts == {"message": 3, "approval": 1, "reply": 0}
 
 
 @pytest.mark.parametrize("reply_failure", ("http_503", "read_timeout"))
