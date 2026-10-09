@@ -52,7 +52,7 @@ project is needed to observe agent, skill, and MCP discovery after a configurati
 This Codex setup does not alter prior OpenCode receipts or establish provider, project-profile,
 release, export, or remote acceptance.
 
-Project configuration text is not runtime-discovery evidence. E767 independently observed eight deployment tools and a read-only status call. The current assistant checkpoint is E817 in the [MVP plan](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on); earlier receipts retain their declared scope. For a native-runtime repair, establish real functional behavior before rerunning the full release aggregate. Reuse unchanged UI/component evidence only with matching source bindings, and retain every failed or interrupted aggregate. Required security, resource, rollback and release gates remain mandatory.
+Project configuration text is not runtime-discovery evidence. E767 independently observed eight deployment tools and a read-only status call. The current assistant checkpoint is E818 in the [MVP plan](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on); earlier receipts retain their declared scope. For a native-runtime repair, establish real functional behavior before rerunning the full release aggregate. Reuse unchanged UI/component evidence only with matching source bindings, and retain every failed or interrupted aggregate. Required security, resource, rollback and release gates remain mandatory.
 
 The candidate
 local PR-pair helper

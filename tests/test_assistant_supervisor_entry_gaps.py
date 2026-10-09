@@ -445,8 +445,8 @@ def test_main_serve_path_enables_supervisor_then_closes_on_shutdown(
 
 
 def _use_temporary_control_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    control_directory = tmp_path / "assistant-control"
-    control_socket = control_directory / "control.sock"
+    control_directory = tmp_path / "c"
+    control_socket = control_directory / "s"
     monkeypatch.setattr(supervisor, "CONTROL_DIRECTORY", control_directory)
     monkeypatch.setattr(supervisor, "CONTROL_SOCKET", control_socket)
     monkeypatch.setattr(supervisor, "_ensure_location_root", lambda _fd: None)
