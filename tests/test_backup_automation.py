@@ -9,9 +9,12 @@ import sqlite3
 import sys
 import threading
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from importlib.resources import files
 from multiprocessing.synchronize import Event
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -484,19 +487,81 @@ def test_direct_create_delay_times_out_without_artifact_or_staging(settings, mon
     repository.migrate()
     _record_failure(repository, "retained-create-timeout-event")
     manager = BackupManager(repository, settings.backup_dir)
+    timeout_seconds = 0.5
+    clock = [0.0]
+    snapshot_entered = threading.Event()
+    release_snapshot = threading.Event()
+    snapshot_finished = threading.Event()
+    caller_finished = threading.Event()
+    caller_errors: list[BaseException] = []
+    backup_workers: list[threading.Thread] = []
+    thread_class = threading.Thread
+    caller_ident: list[int | None] = [None]
+    caller_clock_calls = [0]
 
-    def delayed_snapshot(snapshot):
-        time.sleep(0.05)
+    def test_monotonic() -> float:
+        if caller_ident[0] == threading.get_ident():
+            caller_clock_calls[0] += 1
+            if caller_clock_calls[0] == 1:
+                return 0.0
+            if not snapshot_entered.wait(timeout=1.0):
+                raise TimeoutError("snapshot callback did not start")
+        return clock[0]
 
-    monkeypatch.setattr(backup_module, "BACKUP_TIMEOUT_SECONDS", 0.001)
+    def delayed_snapshot(_snapshot: Path) -> None:
+        clock[0] = timeout_seconds + 1.0
+        snapshot_entered.set()
+        try:
+            if not release_snapshot.wait(timeout=2.0):
+                raise AssertionError("snapshot callback was not released")
+        finally:
+            snapshot_finished.set()
+
+    def tracked_thread(*, target: Callable[[], None], name: str, daemon: bool) -> threading.Thread:
+        worker = thread_class(target=target, name=name, daemon=daemon)
+        if name == "stock-probs-backup":
+            backup_workers.append(worker)
+        return worker
+
+    def run_create() -> None:
+        caller_ident[0] = threading.get_ident()
+        try:
+            manager.create("must-not-publish.spbackup")
+        except BaseException as exc:
+            caller_errors.append(exc)
+        finally:
+            caller_finished.set()
+
+    monkeypatch.setattr(backup_module, "BACKUP_TIMEOUT_SECONDS", timeout_seconds)
+    monkeypatch.setattr(
+        backup_module,
+        "time",
+        SimpleNamespace(monotonic=test_monotonic, sleep=time.sleep),
+    )
+    monkeypatch.setattr(backup_module, "threading", SimpleNamespace(Thread=tracked_thread))
     monkeypatch.setattr(manager, "_online_snapshot", delayed_snapshot)
-    started = time.monotonic()
-    with pytest.raises(BackupError, match="wall-clock time limit"):
-        manager.create("must-not-publish.spbackup")
-    elapsed = time.monotonic() - started
+    caller = thread_class(target=run_create, name="test-backup-caller", daemon=True)
+    caller.start()
+    try:
+        assert snapshot_entered.wait(timeout=1.0)
+        assert caller_finished.wait(timeout=2.0)
+        assert len(caller_errors) == 1
+        assert isinstance(caller_errors[0], BackupError)
+        assert "wall-clock time limit" in str(caller_errors[0])
+        assert not snapshot_finished.is_set()
+        assert len(backup_workers) == 1
+        assert backup_workers[0].is_alive()
+        assert not list(settings.backup_dir.glob("*.spbackup"))
+    finally:
+        release_snapshot.set()
+        caller.join(timeout=2.0)
+        for worker in backup_workers:
+            worker.join(timeout=2.0)
 
-    assert elapsed < 0.04
-    assert not list(settings.backup_dir.glob("*.spbackup"))
+    assert not caller.is_alive()
+    assert len(backup_workers) == 1
+    assert not backup_workers[0].is_alive()
+    assert snapshot_finished.is_set()
     assert repository.history(owner_user_id=OWNER_USER_ID)["items"][0]["request_id"] == (
         "retained-create-timeout-event"
     )

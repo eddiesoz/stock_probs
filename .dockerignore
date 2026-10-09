@@ -33,6 +33,7 @@ burry_env/
 **/__pycache__/
 *.py[cod]
 frontend/node_modules/
+**/*.tsbuildinfo
 frontend/.next/
 frontend/out/
 src/stock_probs/static/next/

@@ -9,6 +9,7 @@ import socket
 import threading
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 
 import pytest
@@ -171,14 +172,19 @@ def test_client_status_cancellation_aborts_socket_without_waiting_for_close(
     monkeypatch.setattr(supervisor_client, "_validate_socket_path", lambda: None)
     monkeypatch.setattr(supervisor_client, "_peer_uid", lambda _peer: os.getuid())
     monkeypatch.setattr(supervisor_client.asyncio, "open_unix_connection", open_connection)
+    monkeypatch.setattr(supervisor_client, "IO_TIMEOUT_SECONDS", 10.0)
 
     async def exercise() -> None:
         task = asyncio.create_task(supervisor_client.SupervisorClient().status())
         started = read_started if phase == "read" else close_started
-        await asyncio.wait_for(started.wait(), timeout=1.0)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        try:
+            await asyncio.wait_for(started.wait(), timeout=2.0)
+        finally:
+            if not task.done():
+                task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        assert task.cancelled()
 
     asyncio.run(exercise())
 

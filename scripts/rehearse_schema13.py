@@ -289,6 +289,7 @@ def _excluded_name(name: str) -> bool:
                 "*.tfplan",
                 "*.plan",
                 "*.egg-info",
+                "*.tsbuildinfo",
                 "*.md",
             )
         )

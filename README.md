@@ -27,7 +27,7 @@ The app runs on your machine, stores its state locally in SQLite, and serves bro
 one loopback FastAPI boundary. It is designed for research and auditability. It does not place
 orders, connect to a brokerage, promise real-time delivery, or fabricate market depth.
 
-**Prerelease notice:** The Ledger assistant is under active development. PR #1 remains open and in draft at `15a6c39fbe30ffd3e685a0809426eff9be220549`; the assistant is not accepted for production. Native/provider behavior, PR-bound rollback, actual combined 1 GB resources, complete security, and broader accessibility acceptance (including physical mobile and screen-reader verification) remain unresolved. See the [R-ASTRA-120 evidence ledger](MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for current results and the [assistant design guide](docs/develop/design-system.md) for visual and interaction requirements.
+**Prerelease notice:** The Ledger assistant is under active development in [PR #1](https://github.com/eddiesoz/stock_probs/pull/1). It is not accepted for production. Actual-host native/resource/recovery checks, current-image shutdown, the final canonical check, owner canary and release gates remain open. Completed browser and mobile-emulation evidence is scoped to its bound inputs. See the [R-ASTRA-120 evidence ledger](MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for current results and the [assistant design guide](docs/develop/design-system.md) for visual and interaction requirements.
 
 ## Screenshots
 

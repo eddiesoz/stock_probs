@@ -1009,6 +1009,8 @@ def test_candidate_context_excludes_nested_staged_output_without_opening_secret_
     staged_next.mkdir(parents=True)
     staged_chunk = staged_next / "staged.js"
     staged_chunk.write_text("generated output", encoding="utf-8")
+    tsbuildinfo = source / "frontend/tsconfig.tsbuildinfo"
+    tsbuildinfo.write_text("synthetic generated cache", encoding="utf-8")
     frontend_routes = (
         "frontend/app/tools/layout.tsx",
         "frontend/app/tools/page.tsx",
@@ -1029,7 +1031,10 @@ def test_candidate_context_excludes_nested_staged_output_without_opening_secret_
     real_builtin_open = builtins.open
     real_io_open = io.open
     real_os_open = os.open
-    excluded = {item.resolve() for item in (staged_chunk, credentials, database, backup, ssh_key)}
+    excluded = {
+        item.resolve()
+        for item in (staged_chunk, tsbuildinfo, credentials, database, backup, ssh_key)
+    }
 
     def assert_not_excluded(file: object) -> None:
         try:
@@ -1068,6 +1073,8 @@ def test_candidate_context_excludes_nested_staged_output_without_opening_secret_
     first_hash = rehearsal._candidate_context(source, first_context)
     with real_io_open(staged_chunk, "w", encoding="utf-8") as staged_file:
         staged_file.write("different stale generated output")
+    with real_io_open(tsbuildinfo, "w", encoding="utf-8") as generated_file:
+        generated_file.write("different generated cache")
     second_context = tmp_path / "second-context"
     second_hash = rehearsal._candidate_context(source, second_context)
 
@@ -1081,6 +1088,8 @@ def test_candidate_context_excludes_nested_staged_output_without_opening_secret_
     assert not rehearsal._excluded_relative_path(("frontend", "tests", "unit.py"))
     assert not rehearsal._excluded_relative_path(("frontend", "app", "tools", "page.tsx"))
     assert not (first_context / "src/stock_probs/static/next").exists()
+    assert not (first_context / "frontend/tsconfig.tsbuildinfo").exists()
+    assert rehearsal._excluded_relative_path(("frontend", "tsconfig.tsbuildinfo"))
     assert not (first_context / "src/stock_probs/auth.json").exists()
     assert not (first_context / "src/stock_probs/cache.sqlite3-wal").exists()
     assert not (first_context / "frontend/predeploy.spbackup-20261004").exists()
