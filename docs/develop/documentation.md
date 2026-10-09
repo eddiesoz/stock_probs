@@ -53,19 +53,28 @@ This Codex setup does not alter prior OpenCode receipts or establish provider, p
 release, export, or remote acceptance.
 
 Project configuration text is not runtime-discovery evidence. E767 independently observed eight
-deployment tools and a read-only status call. The current assistant checkpoint is E832 in the [MVP
-plan](../../MVP-PLAN.md). Its two-file test/probe-only late-failure diagnostic repair passed the
-focused builder and independent QA scopes (437 tests, including 19 new cases, zero
-failures/errors/skips, and 46 unchanged source/import/data pins) plus parent source/evidence review.
-The repair reports bounded validated projections and preserves the original readiness/resource
-conditions and budgets; it changes no application/UI bytes and does not fix runtime reliability.
-The latest native attempt remains E831's **Fail** (exit 2): the retained output records a ready
-schema-13 preflight and only a generic app-health/worker-readiness guard failure. Per-owner results
-and the resource sample are **Unavailable**; cause remains **Unproven**. A follow-up packet passed
-static path/pin/syntax review only, with candidate identity unbound and execution held. E791 and E795
-remain scoped browser and whole-route axe passes, not full WCAG AA. E830's guide metadata rebind
-remains limited to its bound inputs and artifacts; final PR/release guide acceptance remains pending.
-The detailed E823–E830 narrative below is retained as historical scoped evidence. E823/E824 storage
+deployment tools and a read-only status call. The current assistant checkpoint is E833 in the [MVP
+plan](../../MVP-PLAN.md#r-astra-120-e833-current-candidate-and-scoped-acceptance-checkpoint). Its
+exact-head candidate passed one two-owner real-Zen native functional run and a separate synthetic
+wire scope; native and kill used 768 MiB, while synthetic wire used 1.5 GiB. The corrected
+active-kill diagnostic review passed for pending-search cancellation and zero approvals, but
+`active_search_scan_acknowledged=false` and no provider execution-count claim follows. None is actual
+combined 1 GB acceptance. The local
+PR-pair rehearsal passed its write scope, independent identity review is **Unavailable**, and the
+actual-host pair attempt **Failed** on archive identity. Its narrow checker repair is applied
+locally; builder and direct independent runs each passed 161 tests with one local-Docker test
+deselected, with scoped static and archive-manifest checks passing. Actual-host retry remains
+pending. The current canonical gate **Failed** with
+three container-permission tests because the wrapper's `077` mask
+created `0600` files instead of the requested `0640`; the selectors failed at `077` and passed at
+`022`, confirming a local wrapper/environment mismatch. The corrected `022` wrapper is prepared
+but unexecuted, and production process umask is unobserved. E791/E795 current reuse is **Unavailable** after UI
+input drift, and fresh browser/axe plus changed-module security QA remain pending. Standalone guide
+binding/reuse **Passed** without new captures, but is not a release gate. Production remains schema
+12, ready and loopback-only; no merge, deployment, resize, rollout, or email occurred. PDF/UA,
+physical mobile, true zoom, and actual screen-reader evidence remain **Unavailable**. See E833 for
+the exact receipts and hashes. The detailed E823–E830 narrative below is retained as historical
+scoped evidence. E823/E824 storage
 and bounded-worker results remain passed for their recorded scopes, and E825's identity-bound
 cleanup repair passed its selected tests and independent/parent source review. The first actual
 PR-head application-candidate build then **Failed** with

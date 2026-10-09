@@ -223,6 +223,28 @@ assignments, runtime acceptance paths, or release gates.
   browser and whole-route axe Passes, not full WCAG AA. Physical mobile, actual screen reader, true
   zoom, and PDF/UA remain **Unavailable**. The existing 1 GB plan, backups, and US$15 cap are unchanged;
   no merge, deployment, resize, rollout, or email occurred. See E832 in `MVP-PLAN.md`.
+  E833 binds image `sha256:df31982abbb58343cf3a49e7157bfc810b46edc09669b375dcb5a3edc7542b11`
+  to clean pushed head `9fae511aad2b6dc6544ad57e208f268138b0a669`, 148 source inputs, and 52
+  served/export files. Its one two-owner real-Zen native run and synthetic three-protocol wire
+  run passed their declared scopes; native and kill used a local 768 MiB cgroup, while synthetic
+  wire used 1.5 GiB. The active-kill diagnostic passed review for pending-search cancellation
+  and zero approvals, but `active_search_scan_acknowledged=false` and no provider execution-count
+  claim is made. None establishes the actual combined 1 GB gate. The PR-pair local rehearsal
+  passed its migration/recovery/archive-write scope, while independent identity review is
+  **Unavailable**; the actual-host pair attempt **Failed** on archive identity. The narrow OCI
+  checker repair is applied locally; its builder and direct independent applied-source runs each
+  passed 161 tests with one local-Docker test deselected. Independent Ruff, security, format,
+  diff, and bounded archive-manifest checks passed; the actual-host retry remains pending. The
+  canonical gate **Failed** with three container-permission tests because the
+  wrapper's `077` mask created `0600` files where tests requested `0640`; all three selectors
+  failed at `077` and passed at `022`, confirming the local wrapper/environment mismatch. A
+  corrected `022` wrapper is prepared but unexecuted, so the canonical rerun remains pending;
+  production process umask is unobserved. UI input drift makes E791/E795
+  historical; current full browser/axe and fresh security QA remain pending. E833's exact-current
+  standalone guide binding/reuse **Passed** without new captures; PDF/UA, physical mobile, true
+  zoom, and actual screen-reader evidence remain **Unavailable**. Production remains at schema
+  12, ready and loopback-only; no merge, deployment, resize, rollout, or email occurred. See
+  E833 in `MVP-PLAN.md`.
   Fresh E831 storage readback recorded Docker root `/srv/signal-ledger-storage/docker` and free space
   of 58,614,149,120 bytes on the main filesystem and 57,275,715,584 bytes on SD. Original-file restore
   and backup retention rely on the prior bound receipt; a fresh private-backup stat is **Unavailable**

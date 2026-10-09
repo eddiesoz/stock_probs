@@ -225,6 +225,29 @@ Pass only; its candidate identity remains unbound and execution held. Its earlie
 ledger](../../MVP-PLAN.md#r-astra-120-e832-late-failure-diagnostic-only-repair) for exact pins and
 receipts.
 
+### R-ASTRA-120 E833 current evidence
+
+The E833 exact-head candidate passed one two-owner real-Zen native functional run and a synthetic
+three-protocol wire run. Native and kill used a local 768 MiB cgroup; synthetic wire used 1.5 GiB.
+The corrected independent kill review passed for pending-search cancellation and zero approvals,
+but `active_search_scan_acknowledged=false`, so active-search execution after acknowledgement and
+provider execution count are not claimed. None is actual combined 1 GB evidence. The local PR-pair
+rehearsal passed its migration/recovery/archive-write scope, but independent identity review is
+**Unavailable** and the actual-host pair attempt **Failed** on archive identity. Its narrow checker
+patch is applied locally; builder and direct independent runs each passed 161 tests with one
+local-Docker test deselected, and scoped static/archive-manifest checks passed. Actual-host retry
+remains pending. The canonical check **Failed**
+with 3,215 passed, 3 failed, 4 skipped, 4 deselected, 99
+warnings, and 85.69% coverage. The wrapper's `077` mask created `0600` files where tests requested
+`0640`; all three unchanged selectors failed at `077` and passed at `022`, confirming the local
+wrapper/environment mismatch. The corrected `022` wrapper is prepared but not run; production
+process umask is unobserved and no canonical rerun has passed. E791/E795 are historical after
+UI pins changed; current full-browser/64-state axe and changed-module security QA remain pending
+(the read-only audit found eight security-input drifts). Standalone guide binding/reuse passed
+without new captures. Production remains schema 12, ready and loopback-only; no release action is
+claimed. See [E833](../../MVP-PLAN.md#r-astra-120-e833-current-candidate-and-scoped-acceptance-checkpoint)
+for receipt paths and hashes.
+
 ## Unix-socket test fixtures
 
 Supervisor tests create AF_UNIX sockets. Use a unique, caller-owned short temporary root for

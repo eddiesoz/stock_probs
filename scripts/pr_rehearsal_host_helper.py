@@ -732,6 +732,27 @@ def _stage_asset(
     return StagedArchive(destination, expected_digest, copied, image_id)
 
 
+OCI_CREATED_ANNOTATION_KEY = "org.opencontainers.image.created"
+OCI_CREATED_TIMESTAMP_RE = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z"
+)
+
+
+def _valid_oci_created_timestamp(value: object) -> bool:
+    """Return whether an OCI created annotation is a bounded UTC RFC3339 timestamp."""
+    if (
+        not isinstance(value, str)
+        or len(value) > 30
+        or OCI_CREATED_TIMESTAMP_RE.fullmatch(value) is None
+    ):
+        return False
+    try:
+        datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        return False
+    return True
+
+
 def _verify_archive_manifest(path: Path, image_id: str) -> None:
     """Validate legacy Docker and OCI-layout saves without extracting or buffering layers."""
     if IMAGE_RE.fullmatch(image_id) is None:
@@ -847,7 +868,11 @@ def _verify_archive_manifest(path: Path, image_id: str) -> None:
             or not isinstance(index.get("manifests"), list)
             or len(index["manifests"]) != 1
             or not isinstance(index["manifests"][0], dict)
-            or set(index["manifests"][0]) != {"digest", "mediaType", "size"}
+            or set(index["manifests"][0])
+            not in (
+                {"digest", "mediaType", "size"},
+                {"annotations", "digest", "mediaType", "size"},
+            )
             or index["manifests"][0].get("digest") != image_id
             or index["manifests"][0].get("mediaType")
             != "application/vnd.oci.image.manifest.v1+json"
@@ -858,6 +883,15 @@ def _verify_archive_manifest(path: Path, image_id: str) -> None:
             or image_manifest.get("mediaType") != "application/vnd.oci.image.manifest.v1+json"
         ):
             raise RehearsalError("image_archive_identity_mismatch")
+        descriptor = index["manifests"][0]
+        if "annotations" in descriptor:
+            annotations = descriptor["annotations"]
+            if (
+                not isinstance(annotations, dict)
+                or set(annotations) != {OCI_CREATED_ANNOTATION_KEY}
+                or not _valid_oci_created_timestamp(annotations.get(OCI_CREATED_ANNOTATION_KEY))
+            ):
+                raise RehearsalError("image_archive_identity_mismatch")
         config = image_manifest.get("config")
         oci_layers = image_manifest.get("layers")
         if (

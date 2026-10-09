@@ -1,33 +1,26 @@
 # Stock Probability MVP Roadmap
 
-Current R-ASTRA-120 E832 diagnostic follow-on: the two-file test/probe-only late-failure repair
-passed its selected builder and independent QA scopes (437 tests, including 19 new cases, zero
-failures/errors/skips, and 46 unchanged source/import/data pins) plus parent source/evidence review.
-It adds bounded diagnostic output from validated projections and preserves the original readiness
-and resource predicates and budgets; no application/UI change, runtime fix, or native acceptance is
-inferred. The latest native result remains E831's **Fail** (exit 2, cause **Unproven**): its
-schema-13 preflight reported ready, followed by a generic readiness/health guard failure, with
-per-owner details and resource sample **Unavailable**. The prepared follow-up packet passed static
-path/pin/syntax review only; its candidate identity remains unbound and execution is held. E831's
-exact E829 candidate retirement and storage readback remain scoped evidence, not runtime acceptance.
-E830's bounded cached-snapshot diagnostic and guide metadata rebind remain limited to their recorded
-scopes. E791's 193-case browser scope and E795's 64-state whole-route axe scope passed for desktop
-and emulated Pixel 7; neither establishes full WCAG AA or physical-device/assistive-technology
-acceptance. Final PR/release guide acceptance remains pending; PDF/UA, physical mobile, true zoom,
-and actual screen-reader evidence remain **Unavailable**. The current canonical check is **Pending**.
-The PR-pair/rollback, current-image kill, complete security, actual combined 1 GB, owner canary, and
-release gates remain open. E831's fresh read-only storage check recorded Docker root
-`/srv/signal-ledger-storage/docker` and free-space observations of 58,614,149,120 bytes (main) and
-57,275,715,584 bytes (SD); original-file restoration and backup retention rely on the earlier
-verified receipt, while a fresh private-backup stat and physical absent-medium startup remain
-**Unavailable**. The latest recorded production read is E829's schema-12 ready/loopback observation;
-rollout/RAM/billing were not returned. The existing US$15 monthly total cap, 1 GB plan, and backups
-are unchanged; no merge, deployment, resize, rollout, or email occurred. See [E832](MVP-PLAN.md#r-astra-120-e832-late-failure-diagnostic-only-repair),
-[E831](MVP-PLAN.md#r-astra-120-e831-candidate-native-readiness-guard-failure-checkpoint),
-the preserved [E830 record](MVP-PLAN.md#r-astra-120-e830-current-native-failure-and-bounded-snapshot-checkpoint),
-and prior [E829](MVP-PLAN.md#r-astra-120-e829-candidate-native-failure-repair-and-guide-checkpoint)
-and [E828](MVP-PLAN.md#historical-r-astra-120-e828-built-candidate-and-recovery-checkpoint) in the
-[MVP plan](MVP-PLAN.md).
+Current R-ASTRA-120 E833 checkpoint: the bound candidate image passed one real-Zen two-owner
+native functional run and a separate synthetic three-protocol wire run. Native and kill used a
+local 768 MiB cgroup; synthetic wire used 1.5 GiB. The active-kill diagnostic passed for
+pending-search cancellation and zero approvals, but scan acknowledgement was false and no
+provider execution-count claim follows. These are not actual combined 1 GB acceptance. The local PR-pair rehearsal passed
+its write scope, but independent identity review is **Unavailable** and the actual-host pair attempt
+**Failed** on archive identity. A narrow checker repair is applied locally; builder and direct
+independent runs each passed 161 tests with one local-Docker test deselected, and scoped static and
+archive-manifest checks passed. The actual-host retry remains pending. The canonical gate **Failed** on
+three container-permission tests because the wrapper's `077` mask created `0600` files instead of
+the requested `0640`; all three selectors fail at `077` and pass at `022`, confirming a local
+wrapper/environment mismatch. The prepared corrected-`022` wrapper has not run, and production
+process umask remains unobserved. E791/E795 are historical because their UI pins changed; current
+full-browser/64-state axe and changed-module security QA remain pending. Standalone guide binding
+and evidence reuse **Passed** without new captures. Production remains schema 12, ready and
+loopback-only; no merge, deployment, resize, rollout, or email occurred. Actual 1 GB, PR-bound
+rollback, current browser/axe, security, owner canary, and release gates remain open. Physical
+mobile, true zoom, screen-reader, and PDF/UA evidence remain **Unavailable**. See [E833](MVP-PLAN.md#r-astra-120-e833-current-candidate-and-scoped-acceptance-checkpoint),
+[E832](MVP-PLAN.md#r-astra-120-e832-late-failure-diagnostic-only-repair), and the earlier
+[E831 checkpoint](MVP-PLAN.md#r-astra-120-e831-candidate-native-readiness-guard-failure-checkpoint)
+in the [MVP plan](MVP-PLAN.md).
 
 Historical R-ASTRA-120 E825 checkpoint: the E823/E824 storage restore, Docker/containerd migration,
 cache relocation and retirement, bounded BuildKit setup, actual network-none worker proof, retained

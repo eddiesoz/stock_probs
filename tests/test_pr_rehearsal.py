@@ -2774,7 +2774,13 @@ def _write_pax_archive(
         archive.addfile(member, io.BytesIO(manifest))
 
 
-def _write_oci_archive(path: Path) -> str:
+def _write_oci_archive(
+    path: Path,
+    *,
+    descriptor_overrides: dict[str, object] | None = None,
+    additional_descriptors: list[dict[str, object]] | None = None,
+    docker_manifest_overrides: dict[str, object] | None = None,
+) -> str:
     config = b"{}"
     layer = b"synthetic layer blob"
     config_digest = hashlib.sha256(config).hexdigest()
@@ -2800,23 +2806,23 @@ def _write_oci_archive(path: Path) -> str:
     ).encode()
     image_digest = hashlib.sha256(image_manifest).hexdigest()
     image_id = f"sha256:{image_digest}"
-    docker_manifest = [
-        {
-            "Config": f"blobs/sha256/{config_digest}",
-            "RepoTags": None,
-            "Layers": [f"blobs/sha256/{layer_digest}"],
-        }
-    ]
+    docker_descriptor = {
+        "Config": f"blobs/sha256/{config_digest}",
+        "RepoTags": None,
+        "Layers": [f"blobs/sha256/{layer_digest}"],
+    }
+    docker_descriptor.update(docker_manifest_overrides or {})
+    docker_manifest = [docker_descriptor]
+    index_descriptor = {
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "digest": image_id,
+        "size": len(image_manifest),
+    }
+    index_descriptor.update(descriptor_overrides or {})
     index = {
         "schemaVersion": 2,
         "mediaType": "application/vnd.oci.image.index.v1+json",
-        "manifests": [
-            {
-                "mediaType": "application/vnd.oci.image.manifest.v1+json",
-                "digest": image_id,
-                "size": len(image_manifest),
-            }
-        ],
+        "manifests": [index_descriptor, *(additional_descriptors or [])],
     }
     members = (
         ("blobs", None),
@@ -2889,6 +2895,113 @@ def test_archive_scanner_accepts_strict_oci_layout(tmp_path: Path) -> None:
 
     with pytest.raises(host_helper.RehearsalError, match="image_archive_identity_mismatch"):
         host_helper._verify_archive_manifest(archive, "sha256:" + "f" * 64)
+
+
+@pytest.mark.parametrize(
+    "descriptor_overrides",
+    (
+        {},
+        {"annotations": {"org.opencontainers.image.created": "2025-09-15T00:00:00Z"}},
+        {"annotations": {"org.opencontainers.image.created": "2025-09-15T00:00:00.123456789Z"}},
+    ),
+)
+def test_archive_scanner_accepts_optional_bounded_oci_created_annotation(
+    tmp_path: Path, descriptor_overrides: dict[str, object]
+) -> None:
+    archive = tmp_path / "oci-created-annotation.tar.gz"
+    image_id = _write_oci_archive(archive, descriptor_overrides=descriptor_overrides)
+
+    host_helper._verify_archive_manifest(archive, image_id)
+
+
+@pytest.mark.parametrize(
+    "descriptor_overrides",
+    (
+        {"annotations": None},
+        {"annotations": []},
+        {"annotations": "org.opencontainers.image.created=2025-09-15T00:00:00Z"},
+        {"annotations": {"org.opencontainers.image.created": None}},
+        {"annotations": {"org.opencontainers.image.created": 1757894400}},
+        {"annotations": {"org.opencontainers.image.created": "2025-02-30T00:00:00Z"}},
+        {"annotations": {"org.opencontainers.image.created": "2025-09-15T00:00:00+00:00"}},
+        {"annotations": {"org.opencontainers.image.created": "2025-09-15T00:00:00.1234567890Z"}},
+        {"annotations": {"org.opencontainers.image.created": "https://example.test/image"}},
+        {
+            "annotations": {
+                "org.opencontainers.image.created": "2025-09-15T00:00:00Z",
+                "org.opencontainers.image.url": "https://example.test/image",
+            }
+        },
+        {
+            "annotations": {
+                "org.opencontainers.image.created": "2025-09-15T00:00:00Z",
+                "com.example.command": "sh -c id",
+            }
+        },
+        {
+            "annotations": {
+                "org.opencontainers.image.created": "2025-09-15T00:00:00Z",
+                "org.opencontainers.image.ref.name": "latest",
+            }
+        },
+        {"url": "https://example.test/image"},
+        {"command": "sh -c id"},
+    ),
+)
+def test_archive_scanner_rejects_unapproved_oci_index_annotations_and_fields(
+    tmp_path: Path, descriptor_overrides: dict[str, object]
+) -> None:
+    archive = tmp_path / "oci-invalid-annotation.tar.gz"
+    image_id = _write_oci_archive(archive, descriptor_overrides=descriptor_overrides)
+
+    with pytest.raises(host_helper.RehearsalError, match="image_archive_identity_mismatch"):
+        host_helper._verify_archive_manifest(archive, image_id)
+
+
+@pytest.mark.parametrize(
+    "descriptor_overrides",
+    (
+        {"digest": "sha256:" + "f" * 64},
+        {"mediaType": "application/vnd.docker.distribution.manifest.v2+json"},
+        {"size": 0},
+        {"size": True},
+    ),
+)
+def test_archive_scanner_keeps_oci_index_descriptor_identity_exact(
+    tmp_path: Path, descriptor_overrides: dict[str, object]
+) -> None:
+    archive = tmp_path / "oci-invalid-descriptor-reference.tar.gz"
+    image_id = _write_oci_archive(archive, descriptor_overrides=descriptor_overrides)
+
+    with pytest.raises(host_helper.RehearsalError, match="image_archive_identity_mismatch"):
+        host_helper._verify_archive_manifest(archive, image_id)
+
+
+def test_archive_scanner_rejects_multiple_oci_index_references(tmp_path: Path) -> None:
+    archive = tmp_path / "oci-multiple-descriptors.tar.gz"
+    image_id = _write_oci_archive(
+        archive,
+        additional_descriptors=[
+            {
+                "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                "digest": "sha256:" + "a" * 64,
+                "size": 1,
+            }
+        ],
+    )
+    with pytest.raises(host_helper.RehearsalError, match="image_archive_identity_mismatch"):
+        host_helper._verify_archive_manifest(archive, image_id)
+
+
+def test_archive_scanner_rejects_changed_oci_manifest_references(tmp_path: Path) -> None:
+    for name, overrides in (
+        ("config", {"Config": "blobs/sha256/" + "0" * 64}),
+        ("layer", {"Layers": ["blobs/sha256/" + "0" * 64]}),
+    ):
+        archive = tmp_path / f"oci-invalid-{name}-reference.tar.gz"
+        image_id = _write_oci_archive(archive, docker_manifest_overrides=overrides)
+        with pytest.raises(host_helper.RehearsalError, match="image_archive_identity_mismatch"):
+            host_helper._verify_archive_manifest(archive, image_id)
 
 
 def test_archive_scan_bounds_member_count_and_samples_production_health(
