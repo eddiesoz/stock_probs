@@ -40,7 +40,6 @@ import uvicorn
 
 from stock_probs.assistant.model_catalog import AssistantModel
 from stock_probs.assistant.providers import AssistantProviderManager
-from stock_probs.assistant.tools import AssistantToolGateway
 from stock_probs.container_supervisor import _fixed_location_config
 
 _BINARY_CANDIDATES = (
@@ -67,10 +66,6 @@ _NATIVE_ZEN_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
 _NATIVE_ZEN_USER_AGENT_MAX = 256
 _NATIVE_OPENCODE_SESSION_ID = re.compile(r"^ses_[0-9a-f]{12}[A-Za-z0-9]{14}$")
 _NATIVE_PROJECT_ID_MAX = 128
-_TOOL_ACTIONS = tuple(
-    "signal-ledger_" + str(tool["name"]).replace(".", "_")
-    for tool in AssistantToolGateway.list_tools()
-)
 _ATTACH_ORIGIN = "https://ledger-r120.test"
 _ATTACH_SEARCH_QUERY = "IANA reserved example domains purpose"
 _ATTACH_WEBFETCH_URL = "https://www.iana.org/domains/reserved"
@@ -79,6 +74,23 @@ _ATTACH_MAX_ACK_BYTES = 128
 _ATTACH_MAX_RESPONSE_BYTES = 1_048_576
 _ATTACH_DELETE_RETRY_INITIAL_SECONDS = 0.25
 _ATTACH_DELETE_RETRY_MAX_SECONDS = 1.0
+
+
+def _native_tool_definitions() -> list[dict[str, object]]:
+    """Load the maintained app MCP schemas for synthetic native modes."""
+
+    from stock_probs.assistant.tools import AssistantToolGateway
+
+    return AssistantToolGateway.list_tools()
+
+
+def _native_tool_actions() -> tuple[str, ...]:
+    """Return native OpenCode permission actions for the maintained MCP schemas."""
+
+    return tuple(
+        "signal-ledger_" + str(tool["name"]).replace(".", "_")
+        for tool in _native_tool_definitions()
+    )
 
 
 def _attached_probe_prompts() -> tuple[str, str]:
@@ -250,7 +262,7 @@ class _McpHandler(BaseHTTPRequestHandler):
                 "serverInfo": {"name": "signal-ledger", "version": "probe"},
             }
         elif method == "tools/list":
-            result = {"tools": AssistantToolGateway.list_tools()}
+            result = {"tools": _native_tool_definitions()}
         elif method == "tools/call":
             result = {
                 "content": [{"type": "text", "text": "synthetic tool result"}],
@@ -930,7 +942,7 @@ def _run_native_search_probe(
                 {"action": "*", "resource": "*", "effect": "deny"},
                 *[
                     {"action": action, "resource": "*", "effect": "allow"}
-                    for action in _TOOL_ACTIONS
+                    for action in _native_tool_actions()
                 ],
                 {"action": "websearch", "resource": "*", "effect": "ask"},
                 *[
@@ -3379,7 +3391,7 @@ def run_native_probe() -> None:
                             {"action": "*", "resource": "*", "effect": "deny"},
                             *[
                                 {"action": action, "resource": "*", "effect": "allow"}
-                                for action in _TOOL_ACTIONS
+                                for action in _native_tool_actions()
                             ],
                             {"action": "websearch", "resource": "*", "effect": "ask"},
                             {"action": "webfetch", "resource": "*", "effect": "ask"},
@@ -3673,7 +3685,7 @@ def run_native_probe() -> None:
                         and "signal-ledger" in debug_mcp["servers"]
                     ),
                     "generated_config": _generated_config_summary(generated_config),
-                    "native_tool_actions": list(_TOOL_ACTIONS),
+                    "native_tool_actions": list(_native_tool_actions()),
                     "locations": observations,
                     "native_turns": compact_turns,
                     "native_search_feasibility": native_search,

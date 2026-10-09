@@ -39,6 +39,45 @@ sys.modules[NATIVE_SPEC.name] = native_probe
 NATIVE_SPEC.loader.exec_module(native_probe)
 
 
+def test_native_probe_defers_mcp_service_import_until_synthetic_tool_use() -> None:
+    """Attached-mode import stays light while synthetic modes keep the exact app schemas."""
+
+    repository_root = Path(__file__).resolve().parents[1]
+    child_script = "\n".join(
+        (
+            "import runpy, sys",
+            f"sys.path.insert(0, {str(repository_root / 'src')!r})",
+            f"namespace = runpy.run_path({str(NATIVE_MODULE_PATH)!r}, "
+            "run_name='native_probe_import_only')",
+            "assert 'stock_probs.assistant.tools' not in sys.modules",
+            "assert 'stock_probs.assistant.service' not in sys.modules",
+            "definitions = namespace['_native_tool_definitions']()",
+            "actions = namespace['_native_tool_actions']()",
+            "from stock_probs.assistant.tools import AssistantToolGateway",
+            "assert definitions == AssistantToolGateway.list_tools()",
+            "assert actions == tuple('signal-ledger_' + str(tool['name']).replace('.', '_') "
+            "for tool in AssistantToolGateway.list_tools())",
+            "assert 'stock_probs.assistant.tools' in sys.modules",
+            "assert 'stock_probs.assistant.service' in sys.modules",
+        )
+    )
+    result = subprocess.run(  # noqa: S603 - fixed local Python and source path.
+        [sys.executable, "-B", "-c", child_script],
+        cwd=repository_root,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "PYTHONPATH": str(repository_root / "src"),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        },
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def _assistant_catalog_document() -> dict[str, object]:
     """Load the maintained assistant policy for selector contract tests."""
 
