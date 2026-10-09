@@ -13,6 +13,7 @@ import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import IO
 
 import pytest
 
@@ -269,6 +270,22 @@ def _driver_receipt() -> dict[str, object]:
         "forged_internal_mcp_status": 404,
         "same_supervised_app_reachable": True,
         "turn_requests_issued_concurrently": True,
+        "conversation_delete_diagnostics": [
+            {
+                "owner_index": 0,
+                "http_status": 200,
+                "public_error_code": "none",
+                "attempt_count": 1,
+                "pending_count": 0,
+            },
+            {
+                "owner_index": 1,
+                "http_status": 200,
+                "public_error_code": "none",
+                "attempt_count": 2,
+                "pending_count": 1,
+            },
+        ],
         "attached_candidate_acceptance": True,
         "assistant_worker_status_after_turns": "ready",
         "search_query_sha256": digest,
@@ -2533,6 +2550,163 @@ def test_active_search_checkpoint_is_exact_and_bounded() -> None:
         probe._validate_active_search_checkpoint(receipt)
 
 
+@pytest.mark.parametrize("fail_dac", [False, True])
+def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fail_dac: bool
+) -> None:
+    owner1_cookie = "B" * 43
+    config_path = f"/run/assistant/worker-locations/{'2' * 32}/opencode.json"
+    ack_path = tmp_path / "acknowledged"
+    release_path = tmp_path / "release"
+    checkpoint = {
+        "mode": "attach-existing-app",
+        "phase": "active_search_wait",
+        "origin": probe.PUBLIC_ORIGIN,
+        "owner_index": 1,
+        "turn_status": "running",
+        "search_preview_pending": True,
+        "workspace_summary_digest_matches": True,
+        "search_query_sha256": hashlib.sha256(
+            probe._WORKER_CACHE_MARKERS["search_query"].encode("utf-8")
+        ).hexdigest(),
+    }
+    final_line = json.dumps(_driver_receipt(), separators=(",", ":"))
+    checkpoint_line = json.dumps(checkpoint, separators=(",", ":"))
+    driver_script = "\n".join(
+        (
+            "import pathlib,sys,time",
+            "sys.stdin.readline()",
+            f"sys.stdout.write({checkpoint_line!r}+'\\n'); sys.stdout.flush()",
+            "if sys.stdin.readline() != '{\"continue\":true}\\n': sys.exit(2)",
+            f"pathlib.Path({str(ack_path)!r}).write_text('ack')",
+            f"release=pathlib.Path({str(release_path)!r})",
+            "while not release.exists(): time.sleep(0.01)",
+            f"sys.stdout.write({final_line!r}+'\\n'); sys.stdout.flush()",
+        )
+    )
+    real_popen = subprocess.Popen
+    launched: list[subprocess.Popen[bytes]] = []
+    events: list[str] = []
+    ack_sent = {"value": False}
+
+    class TrackingStdin:
+        def __init__(self, stream: IO[bytes]) -> None:
+            self._stream = stream
+            self._last_write = b""
+
+        def write(self, value: bytes) -> int:
+            self._last_write = value
+            return self._stream.write(value)
+
+        def flush(self) -> None:
+            self._stream.flush()
+            if self._last_write == b'{"continue":true}\n':
+                ack_sent["value"] = True
+                events.append("ack")
+
+        def close(self) -> None:
+            self._stream.close()
+
+    def popen_fixture(_args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        child = real_popen([sys.executable, "-c", driver_script], **kwargs)
+        assert child.stdin is not None
+        child.stdin = TrackingStdin(child.stdin)  # type: ignore[assignment]
+        launched.append(child)
+        return child
+
+    monkeypatch.setattr(probe.subprocess, "Popen", popen_fixture)
+    monkeypatch.setattr(probe, "_read_resources", lambda _candidate: _resource_sample())
+    monkeypatch.setattr(
+        probe,
+        "_health",
+        lambda _candidate: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"status": "ready"},
+        },
+    )
+    cache_scans: list[str] = []
+
+    def scan_cache(_candidate: object) -> dict[str, object]:
+        cache_scans.append("checkpoint" if not cache_scans else "purge")
+        events.append("cache_checkpoint" if len(cache_scans) == 1 else "cache_purge")
+        return {
+            "complete": True,
+            "marker_counts": {"search_query": 1 if len(cache_scans) == 1 else 0},
+        }
+
+    original_active_health = probe._active_native_health_sample
+
+    def active_health(health: object) -> dict[str, object]:
+        events.append("active_health")
+        return original_active_health(health)
+
+    def active_config(_candidate: object, cookie: str) -> str:
+        assert cookie == owner1_cookie
+        assert not ack_sent["value"]
+        events.append("active_config")
+        return config_path
+
+    def private_boundaries(
+        _candidate: object, users: list[dict[str, str]], path: str
+    ) -> dict[str, object]:
+        assert users[1]["session_cookie"] == owner1_cookie
+        assert path == config_path
+        assert ack_sent["value"]
+        events.append("dac")
+        if fail_dac:
+            raise probe.ProbeError("synthetic DAC denial")
+        release_path.write_text("release")
+        return {"worker_uid_10002": "denied"}
+
+    monkeypatch.setattr(probe, "_scan_worker_cache", scan_cache)
+    monkeypatch.setattr(probe, "_active_native_health_sample", active_health)
+    monkeypatch.setattr(probe, "_active_owner_config_path", active_config)
+    monkeypatch.setattr(probe, "_probe_private_boundaries", private_boundaries)
+    monkeypatch.setattr(
+        probe,
+        "_candidate_native_timing_projection",
+        lambda _candidate, _since: {"scope": "diagnostic_only", "status": "unavailable"},
+    )
+    candidate = probe.Candidate(
+        container="assistant-r120-candidate-abc123def456",
+        container_id="container-id",
+        image_id="sha256:" + "c" * 64,
+        data_volume="stock-probs-assistant-r120-abc123def456",
+        base_url="http://127.0.0.1:8000",
+        host_port=8000,
+        host_pid=1,
+        cgroup=Path("unused"),
+    )
+    users = [
+        {"session_cookie": "A" * 43},
+        {"session_cookie": owner1_cookie},
+    ]
+
+    if fail_dac:
+        with pytest.raises(probe.ProbeError, match="synthetic DAC denial"):
+            probe._run_native_driver(candidate, users)
+        assert cache_scans == ["checkpoint"]
+        assert events == ["active_health", "cache_checkpoint", "active_config", "ack", "dac"]
+        assert launched and launched[0].poll() is not None
+    else:
+        driver, _resources, _config, dac, cache = probe._run_native_driver(candidate, users)
+        events.append("returned")
+        assert driver["acceptance"]["attached_candidate_acceptance"] is True
+        assert dac == {"worker_uid_10002": "denied"}
+        assert cache["after_cleanup"]["marker_counts"] == {"search_query": 0}
+        assert cache_scans == ["checkpoint", "purge"]
+        assert events == [
+            "active_health",
+            "cache_checkpoint",
+            "active_config",
+            "ack",
+            "dac",
+            "cache_purge",
+            "returned",
+        ]
+
+
 def test_active_config_is_selected_from_owner_one_session_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3115,6 +3289,22 @@ def test_native_projection_keeps_reviewable_facts_and_drops_content() -> None:
     assert projection["owners"][1]["native_webfetch_source_hosts"] == ["www.iana.org"]
     assert projection["webfetch_approved"] is True
     assert projection["webfetch_approval_count"] == 1
+    assert projection["conversation_delete_diagnostics"] == [
+        {
+            "owner_index": 0,
+            "http_status": 200,
+            "public_error_code": "none",
+            "attempt_count": 1,
+            "pending_count": 0,
+        },
+        {
+            "owner_index": 1,
+            "http_status": 200,
+            "public_error_code": "none",
+            "attempt_count": 2,
+            "pending_count": 1,
+        },
+    ]
     assert "https://www.iana.org/domains/reserved" not in repr(projection)
     assert "raw_answer" not in projection
     assert "raw_answer" not in repr(projection)
@@ -3133,6 +3323,73 @@ def test_native_projection_requires_final_phase_and_both_deletions() -> None:
     receipt = _driver_receipt()
     receipt["phase"] = "active_search_wait"
     with pytest.raises(probe.ProbeError, match="receipt type"):
+        probe._native_driver_projection(receipt)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("conversation_delete_statuses", [200, 503]),
+        ("conversation_delete_diagnostics", None),
+        (
+            "conversation_delete_diagnostics",
+            [
+                {
+                    "owner_index": 0,
+                    "http_status": 200,
+                    "public_error_code": "none",
+                    "attempt_count": 1,
+                    "pending_count": 0,
+                }
+            ],
+        ),
+        (
+            "conversation_delete_diagnostics",
+            [
+                {
+                    "owner_index": 0,
+                    "http_status": 200,
+                    "public_error_code": "none",
+                    "attempt_count": 257,
+                    "pending_count": 0,
+                },
+                {
+                    "owner_index": 1,
+                    "http_status": 200,
+                    "public_error_code": "none",
+                    "attempt_count": 1,
+                    "pending_count": 0,
+                },
+            ],
+        ),
+        (
+            "conversation_delete_diagnostics",
+            [
+                {
+                    "owner_index": 0,
+                    "http_status": 200,
+                    "public_error_code": "none",
+                    "attempt_count": 1,
+                    "pending_count": 2,
+                },
+                {
+                    "owner_index": 1,
+                    "http_status": 200,
+                    "public_error_code": "none",
+                    "attempt_count": 1,
+                    "pending_count": 0,
+                },
+            ],
+        ),
+    ],
+)
+def test_native_projection_fails_closed_on_incomplete_delete_retry_acceptance(
+    field: str, value: object
+) -> None:
+    receipt = _driver_receipt()
+    receipt[field] = value
+
+    with pytest.raises(probe.ProbeError, match="deletion"):
         probe._native_driver_projection(receipt)
 
 
@@ -3220,12 +3477,16 @@ def test_native_failure_projection_preserves_safe_per_owner_deletion_diagnostics
             "owner_index": 0,
             "http_status": 200,
             "public_error_code": "none",
+            "attempt_count": 1,
+            "pending_count": 0,
             "response_body": "private deletion response",
         },
         {
             "owner_index": 1,
             "http_status": 503,
             "public_error_code": "assistant_cache_clear_pending",
+            "attempt_count": 2,
+            "pending_count": 2,
             "detail": "private deletion detail",
         },
     ]
@@ -3234,11 +3495,19 @@ def test_native_failure_projection_preserves_safe_per_owner_deletion_diagnostics
     projection = probe._native_driver_failure_projection(receipt)
 
     assert projection["conversation_delete_diagnostics"] == [
-        {"owner_index": 0, "http_status": 200, "public_error_code": "none"},
+        {
+            "owner_index": 0,
+            "http_status": 200,
+            "public_error_code": "none",
+            "attempt_count": 1,
+            "pending_count": 0,
+        },
         {
             "owner_index": 1,
             "http_status": 503,
             "public_error_code": "assistant_cache_clear_pending",
+            "attempt_count": 2,
+            "pending_count": 2,
         },
     ]
     assert "approved_model_id" not in projection
@@ -3257,13 +3526,25 @@ def test_native_failure_projection_maps_unknown_delete_codes_to_fixed_unknown(
 ) -> None:
     receipt = _native_delete_failure_receipt()
     receipt["conversation_delete_diagnostics"] = [
-        {"owner_index": 0, "http_status": 503, "public_error_code": error_code}
+        {
+            "owner_index": 0,
+            "http_status": 503,
+            "public_error_code": error_code,
+            "attempt_count": 1,
+            "pending_count": 0,
+        }
     ]
 
     projection = probe._native_driver_failure_projection(receipt)
 
     assert projection["conversation_delete_diagnostics"] == [
-        {"owner_index": 0, "http_status": 503, "public_error_code": "unknown"}
+        {
+            "owner_index": 0,
+            "http_status": 503,
+            "public_error_code": "unknown",
+            "attempt_count": 1,
+            "pending_count": 0,
+        }
     ]
     assert error_code is None or str(error_code) not in repr(projection)
 
@@ -3272,17 +3553,88 @@ def test_native_failure_projection_maps_unknown_delete_codes_to_fixed_unknown(
 def test_native_failure_projection_rejects_invalid_deletion_http_status(status: object) -> None:
     receipt = _native_delete_failure_receipt()
     receipt["conversation_delete_diagnostics"] = [
-        {"owner_index": 0, "http_status": status, "public_error_code": "unknown"}
+        {
+            "owner_index": 0,
+            "http_status": status,
+            "public_error_code": "unknown",
+            "attempt_count": 1,
+            "pending_count": 0,
+        }
     ]
 
     with pytest.raises(probe.ProbeError, match="deletion HTTP status was malformed"):
         probe._native_driver_failure_projection(receipt)
 
 
+@pytest.mark.parametrize(
+    ("attempt_count", "pending_count"),
+    [(True, 0), (-1, 0), (257, 0), (0, 1), (1, -1), (1, 2)],
+)
+def test_native_failure_projection_rejects_invalid_deletion_retry_counts(
+    attempt_count: object, pending_count: object
+) -> None:
+    receipt = _native_delete_failure_receipt()
+    receipt["conversation_delete_diagnostics"] = [
+        {
+            "owner_index": 0,
+            "attempt_count": attempt_count,
+            "pending_count": pending_count,
+        }
+    ]
+
+    with pytest.raises(probe.ProbeError, match="deletion retry counts were malformed"):
+        probe._native_driver_failure_projection(receipt)
+
+
+@pytest.mark.parametrize(
+    ("status", "error_code", "attempt_count", "pending_count"),
+    [
+        (200, "none", 1, 1),
+        (503, "assistant_cache_clear_pending", 2, 1),
+        (503, "assistant_storage_unavailable", 2, 2),
+    ],
+)
+def test_native_failure_projection_rejects_inconsistent_pending_delete_counts(
+    status: int, error_code: str, attempt_count: int, pending_count: int
+) -> None:
+    receipt = _native_delete_failure_receipt()
+    receipt["conversation_delete_diagnostics"] = [
+        {
+            "owner_index": 0,
+            "http_status": status,
+            "public_error_code": error_code,
+            "attempt_count": attempt_count,
+            "pending_count": pending_count,
+        }
+    ]
+
+    with pytest.raises(probe.ProbeError, match="pending-delete count was inconsistent"):
+        probe._native_driver_failure_projection(receipt)
+
+
+def test_native_failure_projection_allows_owner_with_no_delete_attempt() -> None:
+    receipt = _native_delete_failure_receipt()
+    receipt["conversation_delete_diagnostics"] = [
+        {"owner_index": 0, "attempt_count": 0, "pending_count": 0}
+    ]
+
+    projection = probe._native_driver_failure_projection(receipt)
+
+    assert projection["conversation_delete_diagnostics"] == [
+        {"owner_index": 0, "attempt_count": 0, "pending_count": 0}
+    ]
+
+
 def test_native_failure_projection_rejects_misattributed_deletion_owner_slot() -> None:
     receipt = _native_delete_failure_receipt()
     receipt["conversation_delete_diagnostics"] = [
-        {"owner_index": 1, "http_status": 503, "public_error_code": "unknown"}
+        {
+            "owner_index": 1,
+            "http_status": 503,
+            "public_error_code": "unknown",
+            "attempt_count": 1,
+            "pending_count": 0,
+        }
     ]
 
     with pytest.raises(probe.ProbeError, match="deletion diagnostics were misattributed"):
@@ -3290,7 +3642,10 @@ def test_native_failure_projection_rejects_misattributed_deletion_owner_slot() -
 
 
 def test_native_failure_projection_accepts_legacy_receipt_without_deletion_diagnostics() -> None:
-    projection = probe._native_driver_failure_projection(_native_delete_failure_receipt())
+    receipt = _native_delete_failure_receipt()
+    receipt.pop("conversation_delete_diagnostics")
+
+    projection = probe._native_driver_failure_projection(receipt)
 
     assert "conversation_delete_diagnostics" not in projection
 

@@ -468,6 +468,7 @@ _NATIVE_DELETE_DIAGNOSTIC_ERROR_CODES = _NATIVE_DELETE_PUBLIC_ERROR_CODES | {
     "none",
     "unknown",
 }
+_NATIVE_DELETE_DIAGNOSTIC_MAX_ATTEMPTS = 256
 _NATIVE_TURN_FAILURE_STAGES = frozenset(
     {"none", "before_model_session_event", "after_model_session_event", "unknown_terminal"}
 )
@@ -2558,6 +2559,84 @@ def _candidate_native_timing_projection(candidate: Candidate, since: str) -> dic
 _DNS_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", re.IGNORECASE)
 
 
+def _project_native_delete_diagnostics(
+    value: object,
+    *,
+    expected_statuses: list[int] | None = None,
+    require_final_status: bool,
+) -> list[dict[str, object]]:
+    """Project bounded per-owner delete counts and the final public result."""
+
+    if (
+        not isinstance(value, list)
+        or len(value) > 2
+        or (require_final_status and len(value) != 2)
+        or (expected_statuses is not None and len(expected_statuses) != len(value))
+    ):
+        raise ProbeError("native attach driver deletion diagnostics were malformed")
+    projected: list[dict[str, object]] = []
+    for index, row in enumerate(value):
+        if not isinstance(row, dict) or type(row.get("owner_index")) is not int:
+            raise ProbeError("native attach driver deletion diagnostics were malformed")
+        if row["owner_index"] != index:
+            raise ProbeError("native attach driver deletion diagnostics were misattributed")
+        attempt_count = row.get("attempt_count")
+        pending_count = row.get("pending_count")
+        if (
+            type(attempt_count) is not int
+            or not 0 <= attempt_count <= _NATIVE_DELETE_DIAGNOSTIC_MAX_ATTEMPTS
+            or type(pending_count) is not int
+            or not 0 <= pending_count <= attempt_count
+        ):
+            raise ProbeError("native attach driver deletion retry counts were malformed")
+        status = row.get("http_status")
+        error_code = row.get("public_error_code")
+        if attempt_count == 0:
+            if require_final_status or status is not None or error_code is not None:
+                raise ProbeError("native attach driver deletion final result was malformed")
+            projected.append(
+                {
+                    "owner_index": index,
+                    "attempt_count": attempt_count,
+                    "pending_count": pending_count,
+                }
+            )
+            continue
+        if type(status) is not int or not 100 <= status <= 599:
+            raise ProbeError("native attach driver deletion HTTP status was malformed")
+        if expected_statuses is not None and status != expected_statuses[index]:
+            raise ProbeError(
+                "native attach driver deletion diagnostics disagreed with final status"
+            )
+        expected_pending_count = (
+            attempt_count
+            if status == 503 and error_code == "assistant_cache_clear_pending"
+            else attempt_count - 1
+        )
+        if pending_count != expected_pending_count:
+            raise ProbeError("native attach driver pending-delete count was inconsistent")
+        if require_final_status and (status != 200 or error_code != "none"):
+            raise ProbeError("native attach driver final deletion result was not successful")
+        if (
+            not isinstance(error_code, str)
+            or len(error_code) > 64
+            or error_code not in _NATIVE_DELETE_DIAGNOSTIC_ERROR_CODES
+            or (status == 200 and error_code not in {"none", "unknown"})
+            or (status != 200 and error_code == "none")
+        ):
+            error_code = "unknown"
+        projected.append(
+            {
+                "owner_index": index,
+                "http_status": status,
+                "public_error_code": error_code,
+                "attempt_count": attempt_count,
+                "pending_count": pending_count,
+            }
+        )
+    return projected
+
+
 def _native_driver_projection(driver: object) -> dict[str, object]:
     """Keep only the attached driver's bounded, reviewable acceptance facts."""
 
@@ -2704,6 +2783,13 @@ def _native_driver_projection(driver: object) -> dict[str, object]:
         or any(type(value) is not int for value in statuses)
     ):
         raise ProbeError("native attach driver deletion statuses were malformed")
+    if statuses != [200, 200]:
+        raise ProbeError("native attach driver final deletion status was not successful")
+    deletion_diagnostics = _project_native_delete_diagnostics(
+        driver.get("conversation_delete_diagnostics"),
+        expected_statuses=statuses,
+        require_final_status=True,
+    )
     for field in ("cross_owner_conversation_status", "forged_internal_mcp_status"):
         if type(driver.get(field)) is not int:
             raise ProbeError("native attach driver denial statuses were malformed")
@@ -2774,6 +2860,7 @@ def _native_driver_projection(driver: object) -> dict[str, object]:
         "cross_owner_error_code": driver.get("cross_owner_error_code"),
         "forged_internal_mcp_status": driver["forged_internal_mcp_status"],
         "conversation_delete_statuses": statuses,
+        "conversation_delete_diagnostics": deletion_diagnostics,
         "assistant_worker_status_after_turns": driver["assistant_worker_status_after_turns"],
         "same_supervised_app_reachable": driver["same_supervised_app_reachable"],
         "attached_candidate_acceptance": driver["attached_candidate_acceptance"],
@@ -2823,35 +2910,10 @@ def _native_driver_failure_projection(driver: object) -> dict[str, object]:
         projection["acceptance_failure_code"] = failure_code
         projection["missing_conditions"] = missing_conditions
     if "conversation_delete_diagnostics" in driver:
-        diagnostics = driver["conversation_delete_diagnostics"]
-        if not isinstance(diagnostics, list) or len(diagnostics) > 2:
-            raise ProbeError("native attach driver deletion diagnostics were malformed")
-        projected_diagnostics: list[dict[str, object]] = []
-        for index, row in enumerate(diagnostics):
-            if not isinstance(row, dict) or type(row.get("owner_index")) is not int:
-                raise ProbeError("native attach driver deletion diagnostics were malformed")
-            if row["owner_index"] != index:
-                raise ProbeError("native attach driver deletion diagnostics were misattributed")
-            status = row.get("http_status")
-            if type(status) is not int or not 100 <= status <= 599:
-                raise ProbeError("native attach driver deletion HTTP status was malformed")
-            error_code = row.get("public_error_code")
-            if (
-                not isinstance(error_code, str)
-                or len(error_code) > 64
-                or error_code not in _NATIVE_DELETE_DIAGNOSTIC_ERROR_CODES
-                or (status == 200 and error_code not in {"none", "unknown"})
-                or (status != 200 and error_code == "none")
-            ):
-                error_code = "unknown"
-            projected_diagnostics.append(
-                {
-                    "owner_index": index,
-                    "http_status": status,
-                    "public_error_code": error_code,
-                }
-            )
-        projection["conversation_delete_diagnostics"] = projected_diagnostics
+        projection["conversation_delete_diagnostics"] = _project_native_delete_diagnostics(
+            driver["conversation_delete_diagnostics"],
+            require_final_status=False,
+        )
     failure_stage = driver.get("failure_stage")
     if failure_stage not in _NATIVE_FAILURE_STAGES:
         raise ProbeError("native attach driver failure stage was malformed")
@@ -3806,6 +3868,18 @@ def _run_native_driver(
     stderr_reader = threading.Thread(target=drain_stderr, daemon=True)
     stdout_reader.start()
     stderr_reader.start()
+
+    def stop_child() -> None:
+        child.terminate()
+        try:
+            child.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait(timeout=3)
+        if child.stdin is not None:
+            with suppress(OSError, ValueError):
+                child.stdin.close()
+
     start = time.monotonic()
     baseline = _read_resources(candidate)
     samples: list[dict[str, int]] = [baseline]
@@ -3912,8 +3986,11 @@ def _run_native_driver(
                 if not isinstance(owner1_cookie, str):
                     child.terminate()
                     raise ProbeError("candidate owner-1 session was unavailable at active search")
-                config_path = _active_owner_config_path(candidate, owner1_cookie)
-                dac_boundary = _probe_private_boundaries(candidate, users, config_path)
+                try:
+                    config_path = _active_owner_config_path(candidate, owner1_cookie)
+                except ProbeError:
+                    stop_child()
+                    raise
                 config_boundary = {
                     "owner_uid": 0,
                     "group_gid": 10002,
@@ -3928,6 +4005,11 @@ def _run_native_driver(
                 except OSError as exc:
                     child.terminate()
                     raise ProbeError("native active-search acknowledgement pipe failed") from exc
+                try:
+                    dac_boundary = _probe_private_boundaries(candidate, users, config_path)
+                except ProbeError:
+                    stop_child()
+                    raise
             elif phase == "final":
                 if value.get("attached_candidate_acceptance") is False:
                     expected_line_count = 1 if checkpoint_scan is None else 2

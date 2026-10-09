@@ -77,6 +77,8 @@ _ATTACH_WEBFETCH_URL = "https://www.iana.org/domains/reserved"
 _ATTACH_MAX_STDIN_BYTES = 8192
 _ATTACH_MAX_ACK_BYTES = 128
 _ATTACH_MAX_RESPONSE_BYTES = 1_048_576
+_ATTACH_DELETE_RETRY_INITIAL_SECONDS = 0.25
+_ATTACH_DELETE_RETRY_MAX_SECONDS = 1.0
 _ATTACH_TIMELINE_PHASES = (
     "search_preview",
     "search_approval",
@@ -4820,6 +4822,89 @@ def _attached_conversation_detail(
     return detail, conversation_value
 
 
+def _attached_delete_with_pending_retry(
+    request: Callable[..., tuple[httpx.Response, dict[str, object]]],
+    owner_index: int,
+    conversation_id: str,
+    *,
+    deadline: float,
+    diagnostic: dict[str, object],
+    now: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> tuple[int, str]:
+    """Retry only a pending cache-clear DELETE within the existing probe deadline."""
+
+    if (
+        type(owner_index) is not int
+        or owner_index not in {0, 1}
+        or not isinstance(conversation_id, str)
+        or re.fullmatch(r"[0-9a-f-]{36}", conversation_id) is None
+        or not math.isfinite(deadline)
+    ):
+        raise _AttachedProbeFailure("conversation_delete_invalid")
+    diagnostic["attempt_count"] = 0
+    diagnostic["pending_count"] = 0
+    retry_delay = _ATTACH_DELETE_RETRY_INITIAL_SECONDS
+    last_status: int | None = None
+    last_error_code: str | None = None
+
+    while True:
+        remaining = deadline - now()
+        if remaining <= 0:
+            if last_status is None or last_error_code is None:
+                raise _AttachedProbeFailure("assistant_delete_deadline")
+            return last_status, last_error_code
+
+        detail_response, detail_payload = request(
+            owner_index,
+            "GET",
+            f"/api/v1/assistant/conversations/{conversation_id}",
+            timeout=min(8.0, remaining),
+        )
+        _attached_require(detail_response, detail_payload, {200})
+        _detail, conversation = _attached_conversation_detail(detail_payload)
+        if conversation.get("id") != conversation_id:
+            raise _AttachedProbeFailure("conversation_owner_mismatch", detail_response.status_code)
+        revision = conversation["revision"]
+        confirmation_phrase = conversation["delete_confirmation_phrase"]
+        remaining = deadline - now()
+        if remaining <= 0:
+            if last_status is None or last_error_code is None:
+                raise _AttachedProbeFailure("assistant_delete_deadline")
+            return last_status, last_error_code
+
+        delete_response, delete_payload = request(
+            owner_index,
+            "DELETE",
+            f"/api/v1/assistant/conversations/{conversation_id}",
+            body={
+                "expected_revision": revision,
+                "confirmation_phrase": confirmation_phrase,
+            },
+            csrf=True,
+            timeout=min(8.0, remaining),
+        )
+        status = delete_response.status_code
+        error_code = _attached_delete_public_error_code(delete_payload, status)
+        last_status = status
+        last_error_code = error_code
+        attempt_count = int(diagnostic["attempt_count"]) + 1
+        pending_count = int(diagnostic["pending_count"]) + int(
+            status == 503 and error_code == "assistant_cache_clear_pending"
+        )
+        diagnostic["attempt_count"] = attempt_count
+        diagnostic["pending_count"] = pending_count
+        diagnostic["http_status"] = status
+        diagnostic["public_error_code"] = error_code
+        if status == 200 or status != 503 or error_code != "assistant_cache_clear_pending":
+            return status, error_code
+        remaining = deadline - now()
+        if remaining <= 0:
+            return status, error_code
+        sleep(min(retry_delay, remaining))
+        retry_delay = min(retry_delay * 2, _ATTACH_DELETE_RETRY_MAX_SECONDS)
+
+
 def _attached_owner_evidence(
     detail: Mapping[str, object] | None,
     *,
@@ -5297,6 +5382,7 @@ def run_attached_existing_app_probe() -> int:
             *,
             body: Mapping[str, object] | None = None,
             csrf: bool = False,
+            timeout: float | None = None,
         ) -> tuple[httpx.Response, dict[str, object]]:
             user = validated_users[owner_index]
             headers = {
@@ -5308,8 +5394,11 @@ def run_attached_existing_app_probe() -> int:
             }
             if csrf:
                 headers["x-csrf-token"] = user["csrf_cookie"]
+            request_options = {} if timeout is None else {"timeout": timeout}
             try:
-                response = clients[owner_index].request(method, path, json=body, headers=headers)
+                response = clients[owner_index].request(
+                    method, path, json=body, headers=headers, **request_options
+                )
             except httpx.HTTPError as exc:
                 raise _AttachedProbeFailure(f"transport_{type(exc).__name__.casefold()}") from None
             parsed = _attached_json(response)
@@ -6072,35 +6161,26 @@ def run_attached_existing_app_probe() -> int:
         deletion_diagnostics: list[dict[str, object]] = []
         result["conversation_delete_diagnostics"] = deletion_diagnostics
         for owner_index, conversation_id in enumerate(conversations):
-            detail_response, detail = request(
-                owner_index,
-                "GET",
-                f"/api/v1/assistant/conversations/{conversation_id}",
-            )
-            _attached_require(detail_response, detail, {200})
-            _detail, conversation = _attached_conversation_detail(detail)
-            revision = conversation["revision"]
-            confirmation_phrase = conversation["delete_confirmation_phrase"]
-            delete_response, _delete_payload = request(
-                owner_index,
-                "DELETE",
-                f"/api/v1/assistant/conversations/{conversation_id}",
-                body={
-                    "expected_revision": revision,
-                    "confirmation_phrase": confirmation_phrase,
-                },
-                csrf=True,
-            )
-            deletions.append(delete_response.status_code)
-            deletion_diagnostics.append(
-                {
-                    "owner_index": owner_index,
-                    "http_status": delete_response.status_code,
-                    "public_error_code": _attached_delete_public_error_code(
-                        _delete_payload, delete_response.status_code
-                    ),
-                }
-            )
+            diagnostic: dict[str, object] = {
+                "owner_index": owner_index,
+                "attempt_count": 0,
+                "pending_count": 0,
+            }
+            try:
+                status, error_code = _attached_delete_with_pending_retry(
+                    request,
+                    owner_index,
+                    conversation_id,
+                    deadline=deadline,
+                    diagnostic=diagnostic,
+                )
+            finally:
+                if "http_status" in diagnostic:
+                    deletion_diagnostics.append(diagnostic)
+            deletions.append(status)
+            result["conversation_delete_statuses"] = list(deletions)
+            if status != 200:
+                raise _AttachedProbeFailure(error_code, status)
         result["conversation_delete_statuses"] = deletions
 
         health_response, health_payload = request(0, "GET", "/api/v1/assistant/status")

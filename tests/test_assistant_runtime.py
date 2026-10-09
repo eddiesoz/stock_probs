@@ -43,6 +43,7 @@ from stock_probs.assistant.supervisor_client import SupervisorClientError
 from tests.native_assistant_probe import (
     _attached_acceptance_failures,
     _attached_conversation_detail,
+    _attached_delete_with_pending_retry,
     _attached_interaction_diagnostic,
     _attached_new_interaction_tracker,
     _attached_observe_interaction_snapshot,
@@ -885,6 +886,248 @@ def test_attached_probe_unwraps_create_and_detail_conversation_contracts() -> No
     assert created_row == row
     assert fetched_detail["conversation"] == row
     assert fetched_row == row
+
+
+def test_attached_delete_retries_exact_pending_error_with_fresh_owner_confirmation() -> None:
+    """A pending deletion retries only after rechecking owner detail and CSRF inputs."""
+
+    conversation_id = "01234567-89ab-cdef-0123-456789abcdef"
+    calls: list[dict[str, object]] = []
+    detail_revisions = iter((1, 2))
+    delete_responses = iter(
+        (
+            (503, {"error": {"code": "assistant_cache_clear_pending"}}),
+            (200, {}),
+        )
+    )
+    clock = [10.0]
+    sleeps: list[float] = []
+    diagnostic: dict[str, object] = {"owner_index": 1}
+
+    def request(
+        owner_index: int,
+        method: str,
+        path: str,
+        *,
+        body: object = None,
+        csrf: bool = False,
+        timeout: float | None = None,
+    ) -> tuple[httpx.Response, dict[str, object]]:
+        calls.append(
+            {
+                "owner_index": owner_index,
+                "method": method,
+                "path": path,
+                "body": body,
+                "csrf": csrf,
+                "timeout": timeout,
+            }
+        )
+        if method == "GET":
+            revision = next(detail_revisions)
+            return httpx.Response(200), {
+                "conversation": {
+                    "id": conversation_id,
+                    "revision": revision,
+                    "delete_confirmation_phrase": f"DELETE {conversation_id[-8:]}",
+                },
+                "messages": {"items": []},
+                "events": {"items": []},
+                "turns": [],
+                "actions": [],
+            }
+        status, payload = next(delete_responses)
+        return httpx.Response(status), payload
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock[0] += seconds
+
+    status, error_code = _attached_delete_with_pending_retry(
+        request,
+        1,
+        conversation_id,
+        deadline=20.0,
+        diagnostic=diagnostic,
+        now=lambda: clock[0],
+        sleep=sleep,
+    )
+
+    assert (status, error_code) == (200, "none")
+    assert [call["method"] for call in calls] == ["GET", "DELETE", "GET", "DELETE"]
+    assert all(call["owner_index"] == 1 for call in calls)
+    delete_calls = [call for call in calls if call["method"] == "DELETE"]
+    assert [call["body"] for call in delete_calls] == [
+        {"expected_revision": 1, "confirmation_phrase": "DELETE 89abcdef"},
+        {"expected_revision": 2, "confirmation_phrase": "DELETE 89abcdef"},
+    ]
+    assert all(call["csrf"] is True and call["timeout"] == 8.0 for call in delete_calls)
+    assert sleeps == [0.25]
+    assert diagnostic["http_status"] == 200
+    assert diagnostic["public_error_code"] == "none"
+    assert diagnostic["attempt_count"] == 2
+    assert diagnostic["pending_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("http_status", "public_error_code"),
+    ((503, "assistant_worker_unavailable"), (500, "assistant_cache_clear_pending")),
+)
+def test_attached_delete_does_not_retry_other_failures(
+    http_status: int, public_error_code: str
+) -> None:
+    """Only the exact pending cache-clear response is eligible for retry."""
+
+    conversation_id = "01234567-89ab-cdef-0123-456789abcdef"
+    calls: list[str] = []
+    diagnostic: dict[str, object] = {"owner_index": 0}
+
+    def request(
+        _owner_index: int,
+        method: str,
+        _path: str,
+        *,
+        body: object = None,
+        csrf: bool = False,
+        timeout: float | None = None,
+    ) -> tuple[httpx.Response, dict[str, object]]:
+        del body, csrf, timeout
+        calls.append(method)
+        if method == "GET":
+            return httpx.Response(200), {
+                "conversation": {
+                    "id": conversation_id,
+                    "revision": 1,
+                    "delete_confirmation_phrase": "DELETE 89abcdef",
+                },
+                "messages": {"items": []},
+                "events": {"items": []},
+                "turns": [],
+                "actions": [],
+            }
+        return httpx.Response(http_status), {"error": {"code": public_error_code}}
+
+    status, error_code = _attached_delete_with_pending_retry(
+        request,
+        0,
+        conversation_id,
+        deadline=20.0,
+        diagnostic=diagnostic,
+        now=lambda: 10.0,
+        sleep=lambda _seconds: pytest.fail("non-pending deletion must not sleep or retry"),
+    )
+
+    assert (status, error_code) == (http_status, public_error_code)
+    assert calls == ["GET", "DELETE"]
+    assert diagnostic["attempt_count"] == 1
+    assert diagnostic["pending_count"] == 0
+
+
+def test_attached_delete_stops_if_refreshed_owner_detail_changes() -> None:
+    """A pending retry cannot reuse a confirmation for another conversation."""
+
+    conversation_id = "01234567-89ab-cdef-0123-456789abcdef"
+    other_conversation_id = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+    get_count = 0
+    delete_count = 0
+    diagnostic: dict[str, object] = {"owner_index": 0}
+
+    def request(
+        _owner_index: int,
+        method: str,
+        _path: str,
+        *,
+        body: object = None,
+        csrf: bool = False,
+        timeout: float | None = None,
+    ) -> tuple[httpx.Response, dict[str, object]]:
+        nonlocal get_count, delete_count
+        del body, csrf, timeout
+        if method == "GET":
+            get_count += 1
+            current_id = conversation_id if get_count == 1 else other_conversation_id
+            return httpx.Response(200), {
+                "conversation": {
+                    "id": current_id,
+                    "revision": 1,
+                    "delete_confirmation_phrase": f"DELETE {current_id[-8:]}",
+                },
+                "messages": {"items": []},
+                "events": {"items": []},
+                "turns": [],
+                "actions": [],
+            }
+        delete_count += 1
+        return httpx.Response(503), {"error": {"code": "assistant_cache_clear_pending"}}
+
+    with pytest.raises(_AttachedProbeFailure, match="conversation_owner_mismatch"):
+        _attached_delete_with_pending_retry(
+            request,
+            0,
+            conversation_id,
+            deadline=20.0,
+            diagnostic=diagnostic,
+            now=lambda: 10.0,
+            sleep=lambda _seconds: None,
+        )
+
+    assert (get_count, delete_count) == (2, 1)
+    assert diagnostic["pending_count"] == 1
+
+
+def test_attached_delete_preserves_pending_error_when_deadline_expires() -> None:
+    """A final pending response remains visible when the shared deadline is exhausted."""
+
+    conversation_id = "01234567-89ab-cdef-0123-456789abcdef"
+    calls: list[str] = []
+    timeouts: list[float | None] = []
+    clock = [0.0]
+    diagnostic: dict[str, object] = {"owner_index": 0}
+
+    def request(
+        _owner_index: int,
+        method: str,
+        _path: str,
+        *,
+        body: object = None,
+        csrf: bool = False,
+        timeout: float | None = None,
+    ) -> tuple[httpx.Response, dict[str, object]]:
+        del body, csrf
+        calls.append(method)
+        timeouts.append(timeout)
+        if method == "GET":
+            return httpx.Response(200), {
+                "conversation": {
+                    "id": conversation_id,
+                    "revision": 1,
+                    "delete_confirmation_phrase": "DELETE 89abcdef",
+                },
+                "messages": {"items": []},
+                "events": {"items": []},
+                "turns": [],
+                "actions": [],
+            }
+        return httpx.Response(503), {"error": {"code": "assistant_cache_clear_pending"}}
+
+    def sleep(seconds: float) -> None:
+        clock[0] += seconds
+
+    status, error_code = _attached_delete_with_pending_retry(
+        request,
+        0,
+        conversation_id,
+        deadline=0.25,
+        diagnostic=diagnostic,
+        now=lambda: clock[0],
+        sleep=sleep,
+    )
+
+    assert (status, error_code) == (503, "assistant_cache_clear_pending")
+    assert calls == ["GET", "DELETE"]
+    assert timeouts == [0.25, 0.25]
+    assert diagnostic["pending_count"] == 1
+    assert diagnostic["attempt_count"] == 1
 
 
 def _attached_acceptance_receipt() -> dict[str, object]:
@@ -7315,6 +7558,68 @@ def test_conversation_cache_clear_waits_until_other_turn_unwinds() -> None:
         assert supervisor.purge_requests == 1
         assert supervisor.purge_waits == [("f" * 32, 20.0)]
         assert runtime._cache_clear_in_progress is False
+        await runtime.close()
+
+    asyncio.run(exercise())
+
+
+def test_conversation_cache_clear_stays_pending_during_cancelled_turn_cleanup() -> None:
+    """Deletion remains retryable until a timed-out runtime task finishes cleanup."""
+
+    class TrackingSupervisor(_Supervisor):
+        def __init__(self) -> None:
+            super().__init__(purge_id="f" * 32, purge_result=True)
+            self.purge_requests = 0
+
+        async def request_home_purge(self) -> str:
+            self.purge_requests += 1
+            return await super().request_home_purge()
+
+    supervisor = TrackingSupervisor()
+    runtime = _oauth_test_runtime(supervisor)
+    context = _context("e" * 32)
+    turn_started = asyncio.Event()
+    cancellation_cleanup_started = asyncio.Event()
+    finish_cleanup = asyncio.Event()
+
+    async def blocked_turn(*, context, prompt, emit):
+        del context, prompt, emit
+        turn_started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancellation_cleanup_started.set()
+            await finish_cleanup.wait()
+            raise
+
+    runtime._run_turn_impl = blocked_turn
+
+    async def exercise() -> None:
+        async def emit(_event):
+            return None
+
+        turn_task = asyncio.create_task(
+            runtime.run_turn(context=context, prompt="finish safely", emit=emit)
+        )
+        await asyncio.wait_for(turn_started.wait(), timeout=1.0)
+        turn_task.cancel()
+        await asyncio.wait_for(cancellation_cleanup_started.wait(), timeout=1.0)
+
+        assert turn_task.cancelling() > 0
+        assert runtime._turn_tasks.get(context.execution_id) is turn_task
+        assert await runtime.clear_conversation_cache("deleted-conversation") is False
+        assert supervisor.purge_requests == 0
+        assert supervisor.purge_waits == []
+        assert runtime._turn_tasks.get(context.execution_id) is turn_task
+
+        finish_cleanup.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(turn_task, timeout=1.0)
+        assert runtime._turn_tasks == {}
+
+        assert await runtime.clear_conversation_cache("deleted-conversation") is True
+        assert supervisor.purge_requests == 1
+        assert supervisor.purge_waits == [("f" * 32, 20.0)]
         await runtime.close()
 
     asyncio.run(exercise())
