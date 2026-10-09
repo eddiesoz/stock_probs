@@ -27,6 +27,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tests import native_assistant_probe as native_probe
+
 ROOT = Path(__file__).resolve().parents[1]
 NATIVE_DRIVER = ROOT / "tests" / "native_assistant_probe.py"
 PYTHON = ROOT / ".dev-venv" / "bin" / "python"
@@ -870,17 +872,12 @@ print(json.dumps(result, separators=(",", ":")))
 """
 
 
+_ATTACH_SEARCH_QUERY = native_probe._ATTACH_SEARCH_QUERY
+_ATTACH_PROMPTS = native_probe._attached_probe_prompts()
 _WORKER_CACHE_MARKERS = {
-    "owner_a_prompt": (
-        "Use workspace.summary to read my saved instruments. State the number of saved "
-        "instruments and do not infer data that the tool did not return."
-    ),
-    "owner_b_prompt": (
-        "Use workspace.summary to read my saved instruments, then use built-in web search "
-        "with exactly this public query: NASA Artemis II official mission timeline. "
-        "Summarize both results briefly and do not invent facts."
-    ),
-    "search_query": "NASA Artemis II official mission timeline",
+    "owner_a_prompt": _ATTACH_PROMPTS[0],
+    "owner_b_prompt": _ATTACH_PROMPTS[1],
+    "search_query": _ATTACH_SEARCH_QUERY,
     "owner_a_tool_json": '{"portfolio_items":1,"saved_searches":0,"watchlist_items":0}',
     "owner_b_tool_json": '{"portfolio_items":2,"saved_searches":0,"watchlist_items":0}',
 }

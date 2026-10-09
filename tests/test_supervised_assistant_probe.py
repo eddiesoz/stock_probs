@@ -2550,6 +2550,16 @@ def test_active_search_checkpoint_is_exact_and_bounded() -> None:
         probe._validate_active_search_checkpoint(receipt)
 
 
+def test_worker_cache_markers_follow_native_attached_probe_contract() -> None:
+    prompts = native_probe._attached_probe_prompts()
+
+    assert probe._ATTACH_SEARCH_QUERY == native_probe._ATTACH_SEARCH_QUERY
+    assert prompts == probe._ATTACH_PROMPTS
+    assert probe._WORKER_CACHE_MARKERS["search_query"] == native_probe._ATTACH_SEARCH_QUERY
+    assert probe._WORKER_CACHE_MARKERS["owner_a_prompt"] == prompts[0]
+    assert probe._WORKER_CACHE_MARKERS["owner_b_prompt"] == prompts[1]
+
+
 @pytest.mark.parametrize("fail_dac", [False, True])
 def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fail_dac: bool
