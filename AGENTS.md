@@ -116,8 +116,11 @@ assignments, runtime acceptance paths, or release gates.
 - Before source edits, preserve the exact bytes and SHA-256 of each owned baseline file in a
   task-owned recovery directory. Before a Docker image build, require at least 4 GiB free on
   its build filesystem. Stop an owned build if free space falls below 1 GiB, and hold source
-  edits while a low-disk build is running. If the repository filesystem is full, retain
-  terminal evidence under `/tmp`. Reclaim only exact fixed-ID cache objects proven task-owned
+  edits while a low-disk build is running. For R-ASTRA-120, put task-generated bulk recovery,
+  QA, and build artifacts on the UUID-verified SD-backed `test-results/` or `/var/tmp/r12r`
+  mounts. Verify UUID `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e` with `findmnt` before writing; if
+  either required mount is missing or mismatched, stop rather than falling back to the main
+  filesystem, including `/tmp`. Reclaim only exact fixed-ID cache objects proven task-owned
   and unused after checking full IDs, build/ownership provenance, tags, ancestry, and container
   references. For Docker image removal, use `docker image rm --no-prune IMAGE_ID` to prevent
   implicit removal of untagged ancestors. Never force-remove, globally prune, or remove protected
@@ -129,7 +132,14 @@ assignments, runtime acceptance paths, or release gates.
   inventory or mutation; remove only that ID with `--no-prune`, verify the image and tag are
   absent, and only then update the ledger. Mismatched, shared, protected, current, referenced,
   unregistered, or malformed entries leave the ledger row intact; restore the recorded tag after
-  partial removal. Never edit the ledger manually. Resolve in-flight reservations only with the
+  partial removal. For OCI layer relationships in a containerd-backed store, inspect a bounded
+  Docker `RootFS` inventory instead of assuming a `Parent` field exists. Accept only exact unique
+  requested full image IDs with `RootFS.Type=layers` and a canonical, nonempty list of at most
+  128 unique SHA-256 layer digests. Missing, duplicate, extra, unknown, malformed, unavailable,
+  timed-out, or overflowing metadata fails closed; protect equal-layer and strict-prefix
+  ambiguities and leave unknown images untouched. Remove only the validated full ID with
+  `--no-prune`, verify absence, then mutate the ledger. Never edit the ledger manually. Resolve
+  in-flight reservations only with the
   reviewed typed recovery operation. Recovery receipt publication must fail closed on write errors:
   a partial exclusive-create file is not a valid receipt and must not be manually removed or
   treated as a released reservation. Retry only after reviewed recovery reconciles the receipt and
@@ -161,9 +171,17 @@ assignments, runtime acceptance paths, or release gates.
   then verify that the ledger row is removed and the exact tag is absent before retry. Keep
   cancellation/timeout handling under its existing verified timeout guard. E827 resolved `/lib` to
   its canonical `/usr/lib` target; its explicit-path copy repair and Dockerfile-pin update passed
-  their recorded scoped checks, including supplemental exact-diff/actual-state QA, but repaired
-  source still needs a fresh exact-head image build and library-path/loader verification. Its setup
-  receipt was not Dockerfile-bound, so it was not reset.
+  their recorded scoped checks, including supplemental exact-diff/actual-state QA; at the E827
+  checkpoint, the repaired source still needed a fresh exact-head image build and library-path/
+  loader verification. Its setup
+  receipt was not Dockerfile-bound, so it was not reset. E828 built the latest candidate image
+  `sha256:802319bed035d9f40425c019951e2e764b2e0253d7161da4964f7c2a6d87bb8a` from reviewed head
+  `fb8a9cc6` and passed selected loader and active-search-kill scopes. Its two-owner native
+  functional attempt and local schema-13 PR-pair rehearsal **Failed**; the exact recovery-image
+  retirement passed separately and does not repair the missing pair receipt or establish release
+  acceptance. E828's bounded RootFS/stdout source and independent QA passed their selected scope.
+  See E828 in `MVP-PLAN.md`; actual combined 1 GB, current release, and remaining owner/provider
+  gates stay open.
   Storage restore, Docker/containerd/cache relocation, and bounded worker proof passed their
   recorded scopes; physical absent-medium startup remains unavailable. See E827 in `MVP-PLAN.md`.
 - Evidence remains architecture-specific: native x86_64, emulated ARM64, and physical

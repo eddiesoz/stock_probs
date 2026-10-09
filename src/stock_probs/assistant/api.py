@@ -134,6 +134,17 @@ _PROVIDER_403_CF_MITIGATED_CLASSES = frozenset({"challenge", "absent", "other"})
 _PROVIDER_403_ERROR_TYPE_CLASSES = frozenset(
     {"region_error", "data_policy_error", "free_usage_limit_error", "other", "malformed", "unknown"}
 )
+_PROVIDER_RESPONSE_FAILURE_PHASES = frozenset(
+    {
+        "body_eof",
+        "content_encoding",
+        "content_type",
+        "headers",
+        "status_line",
+        "transfer_framing",
+        "transport_io",
+    }
+)
 _SAFE_PROVIDER_FIELDS = frozenset(
     {
         "provider_id",
@@ -461,6 +472,14 @@ async def _provider_proxy_chunks(
                     and exc.provider_error_type_class in _PROVIDER_403_ERROR_TYPE_CLASSES
                     else None
                 )
+                response_failure_phase = (
+                    exc.response_failure_phase
+                    if type(exc) is net.PublicHTTPError
+                    and error_code == "provider_response_invalid"
+                    and type(exc.response_failure_phase) is str
+                    and exc.response_failure_phase in _PROVIDER_RESPONSE_FAILURE_PHASES
+                    else None
+                )
                 raise _ProviderProxyProtocolError(
                     stage="upstream_stream",
                     error_code=error_code,
@@ -468,6 +487,7 @@ async def _provider_proxy_chunks(
                     content_type_class=content_type_class,
                     cf_mitigated_class=cf_mitigated_class,
                     provider_error_type_class=provider_error_type_class,
+                    response_failure_phase=response_failure_phase,
                 ) from None
             except Exception:
                 # Do not turn an upstream exception into clean EOF; native clients must see
@@ -548,6 +568,7 @@ class _ProviderProxyProtocolError(AssistantUnavailable):
         content_type_class: str | None = None,
         cf_mitigated_class: str | None = None,
         provider_error_type_class: str | None = None,
+        response_failure_phase: str | None = None,
     ) -> None:
         super().__init__("provider_unavailable", 503)
         self.stage = (
@@ -582,6 +603,13 @@ class _ProviderProxyProtocolError(AssistantUnavailable):
             and provider_error_type_class in _PROVIDER_403_ERROR_TYPE_CLASSES
         )
         self.provider_error_type_class = provider_error_type_class if error_type_is_valid else None
+        response_phase_is_valid = (
+            self.stage == "upstream_stream"
+            and self.error_code == "provider_response_invalid"
+            and type(response_failure_phase) is str
+            and response_failure_phase in _PROVIDER_RESPONSE_FAILURE_PHASES
+        )
+        self.response_failure_phase = response_failure_phase if response_phase_is_valid else None
 
 
 class _ProviderProxyStreamingResponse(StreamingResponse):
@@ -741,6 +769,7 @@ async def _provider_proxy_chunks_with_timing(
         content_type_class: str | None = None,
         cf_mitigated_class: str | None = None,
         provider_error_type_class: str | None = None,
+        response_failure_phase: str | None = None,
     ) -> None:
         if (
             stage == "upstream_stream"
@@ -767,6 +796,23 @@ async def _provider_proxy_chunks_with_timing(
                 status_code,
                 content_type_class,
                 cf_mitigated_class,
+            )
+            return
+        if (
+            stage == "upstream_stream"
+            and error_code == "provider_response_invalid"
+            and type(response_failure_phase) is str
+            and response_failure_phase in _PROVIDER_RESPONSE_FAILURE_PHASES
+        ):
+            record(
+                "_record_provider_stream_failure",
+                stage,
+                error_code,
+                status_code,
+                None,
+                None,
+                None,
+                response_failure_phase,
             )
             return
         record("_record_provider_stream_failure", stage, error_code, status_code)
@@ -796,6 +842,7 @@ async def _provider_proxy_chunks_with_timing(
             exc.content_type_class,
             exc.cf_mitigated_class,
             exc.provider_error_type_class,
+            exc.response_failure_phase,
         )
         record("_record_provider_stream_end", "failed", "safe_protocol_error")
         raise

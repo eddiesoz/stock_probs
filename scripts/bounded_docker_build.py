@@ -58,6 +58,8 @@ BUILDER_NETWORK_OWNER_LABEL = "io.signal-ledger.r120-bounded-builder"
 BUILDER_NETWORK_OWNER_VALUE = "r120-bounded"
 BUILDX_LISTING_MAX_BYTES = 65536
 BUILDX_LISTING_TIMEOUT = 30
+_SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES = 8 * 1024 * 1024
+_SCHEMA13_ROOTFS_MAX_LAYERS = 128
 BUILDX_HISTORY_REF_PATTERN = re.compile(r"r120-bounded/r120-bounded0/[a-z0-9]{25}")
 BUILDX_HISTORY_STEP_LIMIT = 64
 CONTAINER_NAME = "/buildx_buildkit_r120-bounded0"
@@ -1788,13 +1790,13 @@ def _schema13_rehearsal_image_facts(
     tag: str, image_id: str, revision: str, repo_tags_expected: list[str]
 ) -> None:
     fmt = (
-        "{{.Id}}|{{.Parent}}|{{.Os}}/{{.Architecture}}|{{json .RepoTags}}|"
+        "{{.Id}}|{{.Os}}/{{.Architecture}}|{{json .RepoTags}}|"
         '{{index .Config.Labels "org.opencontainers.image.revision"}}'
     )
     fields = checked([DOCKER, "image", "inspect", "--format", fmt, image_id])
     try:
-        observed_id, _parent_id, platform_name, raw_tags, observed_revision = (
-            fields.decode("utf-8", "strict").strip().split("|", 4)
+        observed_id, platform_name, raw_tags, observed_revision = (
+            fields.decode("utf-8", "strict").strip().split("|", 3)
         )
         repo_tags = json.loads(raw_tags)
     except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
@@ -1832,43 +1834,55 @@ def _restore_schema13_rehearsal_tag(tag: str, image_id: str, revision: str) -> b
     return _image_inventory().get(tag) == image_id
 
 
-def _schema13_rehearsal_parent_map(image_ids: set[str]) -> dict[str, str]:
+def _schema13_rehearsal_rootfs_layers(image_ids: set[str]) -> dict[str, tuple[str, ...]]:
+    if not image_ids or any(
+        re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None for image_id in image_ids
+    ):
+        raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
     if len(image_ids) > 8192:
         raise BuildError("schema13_rehearsal_image_inventory_too_large")
-    fmt = "{{.Id}}|{{.Parent}}"
+    fmt = "{{.Id}}|{{.RootFS.Type}}|{{json .RootFS.Layers}}"
     try:
-        fields = checked([DOCKER, "image", "inspect", "--format", fmt, *sorted(image_ids)])
+        fields = _capture_bounded_stdout(
+            [DOCKER, "image", "inspect", "--format", fmt, *sorted(image_ids)],
+            max_bytes=_SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES,
+            timeout=BUILDX_LISTING_TIMEOUT,
+        )
+    except BuildError as exc:
+        if exc.code == "builder_driver_listing_too_large":
+            raise BuildError("schema13_rehearsal_image_inventory_too_large") from exc
+        raise
+    try:
         lines = fields.decode("ascii", "strict").splitlines()
     except UnicodeDecodeError as exc:
         raise BuildError("schema13_rehearsal_ancestry_metadata_invalid") from exc
     if len(lines) != len(image_ids):
         raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
-    parent_by_id: dict[str, str] = {}
+    layers_by_id: dict[str, tuple[str, ...]] = {}
     for line in lines:
         try:
-            observed_id, parent_id = line.split("|", 1)
+            observed_id, rootfs_type, raw_layers = line.split("|", 2)
         except ValueError as exc:
             raise BuildError("schema13_rehearsal_ancestry_metadata_invalid") from exc
-        if (
-            observed_id not in image_ids
-            or observed_id in parent_by_id
-            or (parent_id and re.fullmatch(r"sha256:[0-9a-f]{64}", parent_id) is None)
-            or (parent_id and parent_id not in image_ids)
-            or parent_id == observed_id
-        ):
+        if observed_id not in image_ids or observed_id in layers_by_id or rootfs_type != "layers":
             raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
-        parent_by_id[observed_id] = parent_id
-    if set(parent_by_id) != image_ids:
+        try:
+            layers = json.loads(raw_layers)
+        except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+            raise BuildError("schema13_rehearsal_ancestry_metadata_invalid") from exc
+        if not isinstance(layers, list) or not layers:
+            raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
+        if len(layers) > _SCHEMA13_ROOTFS_MAX_LAYERS:
+            raise BuildError("schema13_rehearsal_image_inventory_too_large")
+        if any(
+            not isinstance(layer, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", layer) is None
+            for layer in layers
+        ) or len(layers) != len(set(layers)):
+            raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
+        layers_by_id[observed_id] = tuple(layers)
+    if set(layers_by_id) != image_ids:
         raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
-    for candidate_id in image_ids:
-        visited: set[str] = set()
-        parent_id = candidate_id
-        while parent_id:
-            if parent_id in visited:
-                raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
-            visited.add(parent_id)
-            parent_id = parent_by_id[parent_id]
-    return parent_by_id
+    return layers_by_id
 
 
 @_ledger_serialized
@@ -1915,9 +1929,15 @@ def _retire_schema13_rehearsal_tag(tag: str, expected_image_id: str) -> dict[str
             raise BuildError("schema13_rehearsal_image_shared_or_rebound")
         _verify_ledger_inventory(ledger, setup)
         _schema13_rehearsal_image_facts(tag, image_id, str(row["revision"]), [tag])
-        parent_by_id = _schema13_rehearsal_parent_map(image_ids)
-        if image_id in parent_by_id.values():
-            raise BuildError("schema13_rehearsal_image_has_child")
+        rootfs_layers = _schema13_rehearsal_rootfs_layers(image_ids)
+        image_layers = rootfs_layers[image_id]
+        for other_image_id, other_layers in rootfs_layers.items():
+            if other_image_id == image_id or len(other_layers) < len(image_layers):
+                continue
+            if other_layers[: len(image_layers)] == image_layers:
+                if len(other_layers) == len(image_layers):
+                    raise BuildError("schema13_rehearsal_image_rootfs_ancestry_ambiguous")
+                raise BuildError("schema13_rehearsal_image_has_child")
         if _container_uses_image_id(image_id):
             raise BuildError("schema13_rehearsal_image_in_use")
         try:

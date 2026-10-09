@@ -79,6 +79,17 @@ _NATIVE_PROVIDER_403_CF_MITIGATED_CLASSES = frozenset({"challenge", "absent", "o
 _NATIVE_PROVIDER_403_ERROR_TYPE_CLASSES = frozenset(
     {"region_error", "data_policy_error", "free_usage_limit_error", "other", "malformed", "unknown"}
 )
+_NATIVE_PROVIDER_RESPONSE_FAILURE_PHASES = frozenset(
+    {
+        "body_eof",
+        "content_encoding",
+        "content_type",
+        "headers",
+        "status_line",
+        "transfer_framing",
+        "transport_io",
+    }
+)
 _NATIVE_WARNING_MAX_RECORDS = 4
 _NATIVE_WARNING_MARKER_COUNT_CAP = _NATIVE_WARNING_MAX_RECORDS + 1
 # The collector's 256-line Docker tail is bounded even if each captured stream reaches that count.
@@ -2027,6 +2038,14 @@ def _project_native_embedded_provider_stream_failure(
         if version == 3
         else (base_fields, header_class_fields, error_type_fields, classified_fields)
     )
+    if version == 5:
+        phase_fields = base_fields | {"response_failure_phase"}
+        valid_shapes += (
+            phase_fields,
+            header_class_fields | {"response_failure_phase"},
+            error_type_fields | {"response_failure_phase"},
+            classified_fields | {"response_failure_phase"},
+        )
     if type(value) is not dict or set(value) not in valid_shapes:
         raise ProbeError("native provider stream diagnostic payload was malformed")
     stage = value.get("stage")
@@ -2048,8 +2067,17 @@ def _project_native_embedded_provider_stream_failure(
     )
     has_header_classes = {"content_type_class", "cf_mitigated_class"}.issubset(value)
     has_error_type_class = "provider_error_type_class" in value
+    has_response_failure_phase = "response_failure_phase" in value
     if version in {4, 5} and (has_header_classes or has_error_type_class) and not is_classified_403:
         raise ProbeError("native provider stream diagnostic payload was malformed")
+    if has_response_failure_phase and (
+        version != 5
+        or stage != "upstream_stream"
+        or error_code != "provider_response_invalid"
+        or type(value.get("response_failure_phase")) is not str
+        or value["response_failure_phase"] not in _NATIVE_PROVIDER_RESPONSE_FAILURE_PHASES
+    ):
+        raise ProbeError("native provider response failure phase was invalid")
     if has_header_classes and (
         type(value.get("content_type_class")) is not str
         or value["content_type_class"] not in _NATIVE_PROVIDER_403_CONTENT_TYPE_CLASSES
@@ -2079,6 +2107,8 @@ def _project_native_embedded_provider_stream_failure(
         projected["cf_mitigated_class"] = value["cf_mitigated_class"]
     if has_error_type_class:
         projected["provider_error_type_class"] = value["provider_error_type_class"]
+    if has_response_failure_phase:
+        projected["response_failure_phase"] = value["response_failure_phase"]
     return projected
 
 

@@ -53,8 +53,8 @@ This Codex setup does not alter prior OpenCode receipts or establish provider, p
 release, export, or remote acceptance.
 
 Project configuration text is not runtime-discovery evidence. E767 independently observed eight
-deployment tools and a read-only status call. The current assistant checkpoint is E827 in the [MVP
-plan](../../MVP-PLAN.md#r-astra-120-e827-pr-head-candidate-build-failure-and-copy-path-repair); E823/E824 storage
+deployment tools and a read-only status call. The current assistant checkpoint is E828 in the [MVP
+plan](../../MVP-PLAN.md#r-astra-120-e828-latest-built-candidate-and-recovery-checkpoint); E823/E824 storage
 and bounded-worker results remain passed for their recorded scopes, and E825's identity-bound
 cleanup repair passed its selected tests and independent/parent source review. The first actual
 PR-head application-candidate build then **Failed** with
@@ -71,8 +71,7 @@ in-flight row was removed), and the initial failed receipt remains unchanged. Su
 independent review confirmed the exact pin-only diff, empty ledger, absent candidate tag, unchanged
 setup/failure receipts, and app health HTTP 200; it did not perform Docker/image mutation or a broad
 image inventory. A follow-on managed-run-directory repair passed 134 builder-selected tests and
-parent review; independent permission QA passed 134 selected tests with static checks. The original
-candidate image build remains failed; no image or schema-13 pair is accepted. E827's second build,
+parent review; independent permission QA passed 134 selected tests with static checks. The latest candidate image build passed, but the schema-13 pair is not accepted. E827's second build,
 targeting the then-clean pushed head `83e0b0e1cdfbec8502208c48814a592112c022ea`, also **Failed**:
 BuildKit reported `cannot copy to non-directory .../lib` at `COPY --from=opencode-assets /out/ /`.
 The raw diagnostic is recorded in E827; the first projection incorrectly showed a null error. The
@@ -102,9 +101,12 @@ and [getting started](../operations/getting-started.md#review-a-pr-pair-before-r
 
 For source-bound Docker work, preserve each owned source baseline as exact bytes plus SHA-256 before
 editing, require 4 GiB free before a build, stop an owned build below 1 GiB free, and hold source
-edits until a low-disk build terminates. Retain terminal evidence under `/tmp` if the repository
-filesystem is full. Cleanup is limited to exact fixed-ID cache objects proven task-owned and unused;
-never force-remove, globally prune, or delete protected release images or application data. The
+edits until a low-disk build terminates. For R-ASTRA-120, place task-generated bulk recovery, QA,
+and build artifacts on the SD-backed `test-results/` or `/var/tmp/r12r` mounts. Before writing,
+verify UUID `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e` with `findmnt`; if the expected mount is absent
+or mismatched, stop rather than falling back to the main filesystem or `/tmp`. Cleanup is limited
+to exact fixed-ID cache objects proven task-owned and unused; never force-remove, globally prune,
+or delete protected release images or application data. The
 [testing guide](testing.md#reproducible-image-build-and-source-recovery-evidence) gives the
 operator-facing procedure; the root [agent policy](../../AGENTS.md) is authoritative.
 

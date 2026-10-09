@@ -1823,6 +1823,86 @@ def test_native_timing_v5_preserves_existing_provider_failure_projection() -> No
     assert projection["rows"][0]["pre_session_failure_code"] is None
 
 
+def test_native_timing_v5_projects_closed_response_failure_phase() -> None:
+    payload = _native_timing_v5_payload()
+    requests = payload["provider_requests"]
+    assert isinstance(requests, list)
+    _native_timing_v3_set_failure(
+        requests[0],
+        {
+            "stage": "upstream_stream",
+            "error_code": "provider_response_invalid",
+            "http_status": 200,
+            "response_failure_phase": "body_eof",
+        },
+    )
+
+    projection = probe._native_timing_projection(
+        probe._NATIVE_TIMING_V5_MARKER + json.dumps(payload)
+    )
+
+    assert projection["provider_stream_failures"] == [
+        {
+            "kind": "provider_stream_failure",
+            "stage": "upstream_stream",
+            "error_code": "provider_response_invalid",
+            "http_status": 200,
+            "response_failure_phase": "body_eof",
+        }
+    ]
+    encoded = json.dumps(projection)
+    assert "execution_id" not in encoded
+    assert "owner_id" not in encoded
+    assert "raw" not in encoded
+
+
+@pytest.mark.parametrize(
+    ("stage", "error_code", "response_failure_phase"),
+    [
+        ("proxy_guard", "provider_response_invalid", "body_eof"),
+        ("upstream_stream", "provider_upstream_unavailable", "body_eof"),
+        ("upstream_stream", "provider_response_invalid", True),
+        ("upstream_stream", "provider_response_invalid", "private token=synthetic"),
+    ],
+)
+def test_native_timing_v5_rejects_invalid_response_failure_phase(
+    stage: str, error_code: str, response_failure_phase: object
+) -> None:
+    payload = _native_timing_v5_payload()
+    requests = payload["provider_requests"]
+    assert isinstance(requests, list)
+    _native_timing_v3_set_failure(
+        requests[0],
+        {
+            "stage": stage,
+            "error_code": error_code,
+            "http_status": 200,
+            "response_failure_phase": response_failure_phase,
+        },
+    )
+
+    with pytest.raises(probe.ProbeError, match="response failure phase"):
+        probe._native_timing_projection(probe._NATIVE_TIMING_V5_MARKER + json.dumps(payload))
+
+
+def test_native_timing_v4_rejects_response_failure_phase_extension() -> None:
+    payload = _native_timing_v4_payload()
+    requests = payload["provider_requests"]
+    assert isinstance(requests, list)
+    _native_timing_v3_set_failure(
+        requests[0],
+        {
+            "stage": "upstream_stream",
+            "error_code": "provider_response_invalid",
+            "http_status": 200,
+            "response_failure_phase": "body_eof",
+        },
+    )
+
+    with pytest.raises(probe.ProbeError, match="payload was malformed"):
+        probe._native_timing_projection(probe._NATIVE_TIMING_V4_MARKER + json.dumps(payload))
+
+
 def test_native_timing_v5_schema_covers_only_runtime_emitter_classifications() -> None:
     assert (
         assistant_runtime._TURN_TIMING_PRESESSION_PHASES <= probe._NATIVE_TIMING_PRESESSION_PHASES
@@ -1830,6 +1910,15 @@ def test_native_timing_v5_schema_covers_only_runtime_emitter_classifications() -
     assert (
         assistant_runtime._TURN_TIMING_PRESESSION_FAILURE_CODES
         <= probe._NATIVE_TIMING_PRESESSION_FAILURE_CODES
+    )
+    assert assistant_runtime._TURN_TIMING_PROVIDER_RESPONSE_FAILURE_PHASES == (
+        probe._NATIVE_PROVIDER_RESPONSE_FAILURE_PHASES
+    )
+    assert assistant_runtime._TURN_TIMING_PROVIDER_RESPONSE_FAILURE_PHASES == (
+        assistant_api._PROVIDER_RESPONSE_FAILURE_PHASES
+    )
+    assert assistant_runtime._TURN_TIMING_PROVIDER_RESPONSE_FAILURE_PHASES == (
+        assistant_net._PROVIDER_RESPONSE_FAILURE_PHASES
     )
 
 

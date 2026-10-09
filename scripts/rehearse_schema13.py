@@ -211,6 +211,7 @@ class RehearsalError(RuntimeError):
             "volume_removal_unverified",
             "volume_retained_for_unverified_container",
             "local_image_tag_removal",
+            "local_image_ledger_retirement",
         }
         if any(item not in allowed for item in cleanup_unverified):
             raise ValueError("cleanup error code is not allowlisted")

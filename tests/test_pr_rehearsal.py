@@ -26,6 +26,15 @@ from stock_probs.repository import Repository
 from tools.deploy_mcp import pr_rehearsal as controller
 
 
+def test_rehearsal_error_preserves_local_image_ledger_retirement_failure() -> None:
+    error = schema13.RehearsalError(
+        "the local rehearsal cleanup could not be verified",
+        cleanup_unverified=("local_image_ledger_retirement",),
+    )
+
+    assert error.cleanup_unverified == ("local_image_ledger_retirement",)
+
+
 def _review_pin_test_environment(monkeypatch, tmp_path: Path) -> Path:
     config_home = tmp_path / "config-home"
     config_home.mkdir(mode=0o700)

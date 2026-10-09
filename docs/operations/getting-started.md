@@ -107,6 +107,11 @@ procedure below. Do not copy development bootstrap credentials into a production
 Use this procedure for operator-owned local Docker and build storage. It does not migrate the
 production application volume or production data.
 
+For R-ASTRA-120, keep task-generated bulk recovery, QA, and build artifacts on the SD-backed
+`test-results/` or `/var/tmp/r12r` mounts. Before writing, use `findmnt` to verify UUID
+`54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; stop if either expected mount is missing or mismatched.
+Do not fall back to the main filesystem or `/tmp`, and do not move active Codex or browser state.
+
 1. Copy the source medium to an independent, protected filesystem. Before formatting, verify the
    backup checksum and byte count, the complete file/member inventory, and preserved metadata. If
    any check is missing or fails, stop before formatting.
@@ -142,7 +147,11 @@ production application volume or production data.
    row intact. If cleanup is partial, the helper restores the bound tag. Do not repair the ledger
    manually or substitute a global prune. The initial E825 candidate failed independent review
    because it omitted the expected ID. Its identity-bound repair passed 179 selected tests and
-   independent/parent source review, but no actual Docker cleanup or pair rehearsal is recorded.
+   independent/parent source review. For OCI layer ancestry in a containerd-backed image store,
+   the E828 guard uses bounded Docker `RootFS` metadata and does not assume a `Parent` field exists;
+   see the [developer testing guide](../develop/testing.md#schema-13-rehearsal-image-cleanup) for
+   its fail-closed limits. The guarded retirement passed for one exact recovery image, but the
+   separate E828 PR-pair run failed before creating its required receipt.
 
 At the R-ASTRA-120 E823 storage checkpoint, Docker and containerd used the removable-media roots;
 the matching image/container/volume inventory and application health passed, and the old main-disk
@@ -234,9 +243,17 @@ passed supplemental independent review (SHA-256
 `0414454819230ddd760c5a6f9da7b29291d698d508edc2f8c6ffa1c26e656693`). The setup receipt is not
 Dockerfile-bound, so no reinitialization was needed. E813's guide metadata rebind passed on this 83e
 head for 94 consumer inputs, 52 assets, 23 artifacts, and 8 PNGs; final current-head guide acceptance
-remains pending. Later source changes make 83e a historical build target. A fresh exact-head image
-build must verify library paths and loader behavior; no candidate image or schema-13 pair is accepted.
-The earlier E826 failure remains preserved.
+remained pending at that checkpoint. Later E828 built and checked a new exact-head image; the earlier
+E826 and E827 build failures remain preserved.
+
+At E828, Linux/amd64 image `sha256:802319bed035d9f40425c019951e2e764b2e0253d7161da4964f7c2a6d87bb8a`
+was built from head `fb8a9cc6d5f723b976897f3643895c66127a0d27`, and the one-shot OpenCode loader
+probe passed. The active-search kill on this image passed its 768 MiB scope, while the two-owner
+native functional run and local schema-13 PR-pair rehearsal failed; the later exact recovery-image
+retirement pass does not change the failed pair result. The RootFS/stdout guard's selected QA and
+parent source review passed. Parent standalone guide acceptance passed for the bound bundle;
+PDF/UA, physical mobile, remaining accessibility checks, current PR-pair/rollback, and actual combined 1 GB
+acceptance remain open. See [E828](../../MVP-PLAN.md#r-astra-120-e828-latest-built-candidate-and-recovery-checkpoint).
 
 ## Invite-only production deployment
 
@@ -629,17 +646,19 @@ state, command, or credential. R-ASTRA-106 records a live refresh result with `5
 applied to firewall `177236117`; the Linode console login uses Google SSO and SSH material remains
 separate.
 
-R-ASTRA-120 remains **In progress**. E827's candidate build failed at a BuildKit library-copy step
-on the then-clean pushed head `83e0b0e1cdfbec8502208c48814a592112c022ea`; later source repairs make
-that head historical, and no image built from the repaired exact head or PR pair is accepted.
-E823/E824 storage and bounded-worker checks passed for their recorded scopes; physical absent-medium
-startup and fresh archive-metadata checks remain unavailable. E791/E795 browser and axe evidence are
-reusable only for unchanged inputs. E813's guide metadata rebind passed for its unchanged inputs on
-83e, but final current-head guide acceptance is not established.
-Native/provider, full security, current-image kill, actual combined 1 GB, PR-bound rollback,
-current canonical, deployment/canary, and release gates remain open. Production's last recorded
-read was `2026-10-08T21:33:44Z` (schema 12 ready, loopback-only; rollout mode unavailable). The
-US$15 total cap, existing 1 GB plan, and backups remain unchanged. See the
+R-ASTRA-120 remains **In progress**. E828 built the latest Linux/amd64 candidate, and its selected
+loader and active-search-kill scopes passed. Later diagnostic-source edits require a new exact-head
+image before another native run. The native two-owner functional run **Failed**. The local
+schema-13 PR-pair command also **Failed** and produced no pair receipt; separate exact-image
+retirement does not make the pair pass.
+The bounded RootFS/stdout source review and 301-case independent QA passed, and parent standalone
+guide acceptance passed for the current bound bundle. Native/provider cause, the current canonical
+check, actual combined 1 GB, complete security, remaining accessibility checks, current
+PR-pair/rollback, deployment/canary, and release gates remain open. Physical absent-medium startup
+and fresh archive-metadata checks remain
+unavailable. Production's last recorded read was `2026-10-08T21:33:44Z` (schema 12 ready,
+loopback-only; rollout mode unavailable). The US$15 total cap, existing 1 GB plan, and backups
+remain unchanged. See the
 [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on);
 no production change, resize, rollout, merge, email, or release is claimed.
 

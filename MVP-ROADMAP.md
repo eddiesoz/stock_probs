@@ -1,30 +1,24 @@
 # Stock Probability MVP Roadmap
 
-Current R-ASTRA-120 E827 checkpoint: the E823/E824 storage restore, Docker/containerd and cache
-relocation, bounded BuildKit setup, and recorded worker-step proof remain passed for their scopes.
-The second actual candidate build **Failed** on the then-clean pushed PR head
-`83e0b0e1cdfbec8502208c48814a592112c022ea`: BuildKit reported
-`cannot copy to non-directory .../lib` at `COPY --from=opencode-assets /out/ /`. The bounded helper
-exited 1 and the outer rehearsal exited 2. The immutable raw diagnostic is recorded in E827; the
-initial flat-key projection's null error was a projection defect. Independent failure review
-confirmed storage UUID/root, application health, and controller limits within their controller-only
-scope; its snapshot still showed the in-flight image reservation. The later typed release and
-independent read cleared that reservation. A focused explicit-`/usr/lib` copy repair passed seven
-builder tests with a parent source review. Independent two-module QA passed 154 selected tests and
-Ruff/format checks while preserving the Dockerfile-pin issue. The typed nonzero placeholder
-reservation release passed with result 0 and no Docker/image deletion. A pin-only follow-on matched
-the Dockerfile pin (old prefix `2d9355`, new prefix `f2dc019c`); 147 selected builder tests and parent
-constant review passed. Supplemental independent review passed the exact pin-only diff and actual
-state: the ledger was empty, the tag absent, setup and failed-build receipts unchanged, and app
-health HTTP 200 (receipt SHA-256
-`0414454819230ddd760c5a6f9da7b29291d698d508edc2f8c6ffa1c26e656693`). E813 guide metadata rebind
-passed at the same 83e head for 94 consumer inputs, 52 assets, 23 artifacts, and 8 PNGs; this is not
-final current-head guide acceptance. Later source edits make 83e a historical build target, so a
-fresh exact-head image build must verify library paths and loader behavior. No new image, native run,
-current-head pair, or release is accepted. E826's earlier failed build remains preserved. Original
-user files/backups remain retained; the US$15 monthly cap and existing 1 GB plan are unchanged.
-Fresh archive-metadata checks and physical absent-medium startup remain **Unavailable**. See E827 in
-the [MVP plan](MVP-PLAN.md).
+Current R-ASTRA-120 E828 checkpoint: E823/E824 storage restore, Docker/containerd and cache
+relocation, bounded BuildKit, and worker-step proof remain Passed for their recorded scopes. The
+latest built Linux/amd64 candidate was built from head `fb8a9cc6d5f723b976897f3643895c66127a0d27` as
+image `sha256:802319bed035d9f40425c019951e2e764b2e0253d7161da4964f7c2a6d87bb8a`; its one-shot
+OpenCode loader probe and active-search-kill diagnostic passed, with the kill scoped to 768 MiB and
+zero OOM events. Later diagnostic-source edits mean a fresh exact-head image is required before
+another native run. The two-owner native functional attempt **Failed**: owner 0 answered, while
+owner 1 timed out after six native-search sources without a fetch source or answer.
+The local schema-13 PR-pair rehearsal **Failed** before producing its required receipt because the
+cleanup result was not allowlisted. A separate exact recovery-image retirement later passed using
+the RootFS guard; it does not repair the pair failure. The bounded RootFS/stdout guard and a separate
+provider-response-phase observer passed their reviewed selected source/test scopes, but no native
+provider cause or latency repair is established. Parent PR-bound standalone guide acceptance passed
+for the bound bundle; PDF/UA, physical mobile, full-app accessibility, and true zoom remain
+unavailable. The current canonical check is **Pending**; actual combined 1 GB resources, a fresh
+exact-head build, current PR-pair/rollback, security, owner canary, and release gates remain open.
+Production and the US$15 monthly total cap, existing 1 GB plan, and
+backups are unchanged; no merge, deployment, resize, rollout, or email occurred. See E828 in the
+[MVP plan](MVP-PLAN.md).
 
 Historical R-ASTRA-120 E825 checkpoint: the E823/E824 storage restore, Docker/containerd migration,
 cache relocation and retirement, bounded BuildKit setup, actual network-none worker proof, retained

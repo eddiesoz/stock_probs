@@ -56,6 +56,16 @@ full image ID; the helper checks that the ID and tag are absent before updating 
 the ledger. If image removal is partial, it restores the recorded tag. Keep failed rows for review
 and do not edit the ledger by hand, force-remove, or prune globally.
 
+For OCI layer ancestry in a containerd-backed image store, inspect bounded Docker `RootFS`
+metadata rather than assuming a `Parent` value is present. The guard accepts only requested,
+unique full image IDs with `RootFS.Type=layers` and a canonical nonempty list of at most 128 unique
+SHA-256 layer digests. Missing, duplicate, extra, unknown, malformed, unavailable, timed-out, or
+over-limit metadata fails closed; preserve equal-layer and strict-prefix ambiguity checks. Capture
+Docker stdout incrementally and reject overflow before appending beyond the configured byte cap.
+E828's 301-case independent suite and parent source review passed this selected guard scope; its
+separate actual recovery-image retirement passed, while its local PR-pair rehearsal failed before
+writing the required receipt. See [E828](../../MVP-PLAN.md#r-astra-120-e828-latest-built-candidate-and-recovery-checkpoint).
+
 For E825, a diagnostic confirmed `candidate_ledger_inventory_mismatch` in the pre-repair cleanup
 state (receipt SHA-256
 `b261bc2fbba5b7594ab25e3293046e28735b8d429fa6badd5799d72df2ae90f7`). The initial helper and
@@ -138,8 +148,21 @@ actual-state checks (empty ledger, exact tag absent, prior receipts unchanged, a
 See E827 for the bound receipts. The setup receipt is not Dockerfile-bound, so no BuildKit
 reinitialization was needed. E813's guide metadata rebind passed against 83e for 94 consumer inputs,
 52 assets, 23 artifacts, and 8 PNGs; this does not establish final PR-head guide acceptance. Later
-source edits make 83e historical. A fresh exact-head image build, library-path/loader verification,
-current-head image, and schema-13 pair remain pending.
+source edits make 83e historical. At the E827 checkpoint, a fresh exact-head image build and
+schema-13 pair remained pending; E828 supersedes only the image-build status.
+
+E828 built the latest Linux/amd64 image
+`sha256:802319bed035d9f40425c019951e2e764b2e0253d7161da4964f7c2a6d87bb8a` from candidate head
+`fb8a9cc6d5f723b976897f3643895c66127a0d27`; its one-shot OpenCode loader probe and active-search-kill diagnostic passed their declared scopes (the kill used a 768 MiB cap). The
+two-owner native functional attempt **Failed**. The local schema-13 pair command also **Failed**
+without a pair receipt; separate exact-image retirement does not change either result. The
+RootFS/stdout guard passed independent 301-case QA and parent source review. A separate provider-response-phase
+observer passed 523 builder and 523 independent selected tests plus parent source/evidence review;
+no native acceptance, provider cause, or latency repair is inferred. Later diagnostic-source edits
+require a new exact-head image before another native run. E828's parent review also passed standalone
+guide acceptance bound to this head; PDF/UA, physical mobile, full-app accessibility, actual
+combined 1 GB, and PR-bound rollback remain open. Exact receipts and limits
+are recorded in the [R-ASTRA-120 ledger](../../MVP-PLAN.md).
 
 ## Unix-socket test fixtures
 

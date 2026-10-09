@@ -7970,6 +7970,71 @@ def test_internal_provider_proxy_returns_initial_upstream_auth_status_before_str
             browser.close()
 
 
+def test_internal_provider_proxy_keeps_malformed_200_status_as_stream_status(settings) -> None:
+    class Runtime(FakeRuntime):
+        def __init__(self) -> None:
+            super().__init__()
+            self.failures: list[tuple[object, ...]] = []
+
+        def _record_provider_stream_start(self, *_args: object) -> int:
+            return 1
+
+        def _record_provider_stream_failure(self, *args: object) -> None:
+            self.failures.append(args)
+
+    class NativeProviders(FakeProviders):
+        async def proxy_chat_completion(self, provider_id, model_id, body, **context):
+            del provider_id, model_id, body, context
+            raise net.PublicHTTPError(
+                "provider_response_invalid",
+                status_code=200,
+                response_failure_phase="content_type",
+            )
+            yield b"unreachable"
+
+    runtime = Runtime()
+    application = create_app(
+        _auth_settings(settings),
+        FixtureProvider(),
+        lambda: NOW,
+        assistant_runtime=runtime,
+        assistant_catalog=FakeCatalog(),
+        assistant_providers=NativeProviders(),
+    )
+    with TestClient(
+        application,
+        client=("127.0.0.1", 51087),
+        raise_server_exceptions=False,
+    ) as machine:
+        owner = _add_signed_in_user(application, 50087)
+        browser = _browser_client(application, owner)
+        try:
+            _context, _conversation, turn, _lease, capability = _conversation_and_running_turn(
+                browser, owner
+            )
+            response = machine.post(
+                f"/api/v1/assistant/internal/provider/{turn['execution_id']}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {capability}",
+                    "session-id": "ses_malformed_200_fixture_01",
+                },
+                json={
+                    "model": "assistant-selected",
+                    "stream": True,
+                    "messages": [{"role": "user", "content": "synthetic"}],
+                },
+            )
+            assert response.status_code == 200
+            assert response.headers["content-type"].startswith("text/event-stream")
+            assert response.content == b""
+            assert "provider_response_invalid" not in response.text
+            assert len(runtime.failures) == 1
+            assert runtime.failures[0][5] == 200
+            assert runtime.failures[0][-1] == "content_type"
+        finally:
+            browser.close()
+
+
 def test_internal_provider_proxy_replays_first_chunk_once_and_records_one_timing_row(settings):
     class Runtime(FakeRuntime):
         def __init__(self) -> None:

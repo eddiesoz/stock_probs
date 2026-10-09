@@ -115,6 +115,17 @@ _TURN_TIMING_PROVIDER_403_CF_MITIGATED_CLASSES = frozenset({"challenge", "absent
 _TURN_TIMING_PROVIDER_403_ERROR_TYPE_CLASSES = frozenset(
     {"region_error", "data_policy_error", "free_usage_limit_error", "other", "malformed", "unknown"}
 )
+_TURN_TIMING_PROVIDER_RESPONSE_FAILURE_PHASES = frozenset(
+    {
+        "body_eof",
+        "content_encoding",
+        "content_type",
+        "headers",
+        "status_line",
+        "transfer_framing",
+        "transport_io",
+    }
+)
 _TURN_TIMING_LOG_MARKER = "ASSISTANT_TURN_TIMING_V5 "
 _LOCATION_DISCOVERY_SECONDS = 15.0
 _LOCATION_DISCOVERY_REQUEST_SECONDS = 5.0
@@ -692,6 +703,7 @@ class _TurnTimingDiagnostics:
         content_type_class: object = None,
         cf_mitigated_class: object = None,
         provider_error_type_class: object = None,
+        response_failure_phase: object = None,
     ) -> None:
         """Keep one closed transport failure on its already-registered request row."""
 
@@ -733,6 +745,13 @@ class _TurnTimingDiagnostics:
             or provider_error_type_class not in _TURN_TIMING_PROVIDER_403_ERROR_TYPE_CLASSES
         ):
             return
+        if response_failure_phase is not None and (
+            stage != "upstream_stream"
+            or error_code != "provider_response_invalid"
+            or type(response_failure_phase) is not str
+            or response_failure_phase not in _TURN_TIMING_PROVIDER_RESPONSE_FAILURE_PHASES
+        ):
+            return
         failure_diagnostic: dict[str, object] = {
             "stage": stage,
             "error_code": error_code,
@@ -745,6 +764,8 @@ class _TurnTimingDiagnostics:
             )
         if provider_error_type_class is not None:
             failure_diagnostic["provider_error_type_class"] = provider_error_type_class
+        if response_failure_phase is not None:
+            failure_diagnostic["response_failure_phase"] = response_failure_phase
         row["failure_diagnostic"] = failure_diagnostic
 
     def _provider_row(
@@ -924,6 +945,7 @@ class _TurnTimingDiagnostics:
                 or set(failure_diagnostic)
                 not in (
                     {"stage", "error_code", "http_status"},
+                    {"stage", "error_code", "http_status", "response_failure_phase"},
                     {
                         "stage",
                         "error_code",
@@ -931,7 +953,22 @@ class _TurnTimingDiagnostics:
                         "content_type_class",
                         "cf_mitigated_class",
                     },
+                    {
+                        "stage",
+                        "error_code",
+                        "http_status",
+                        "content_type_class",
+                        "cf_mitigated_class",
+                        "response_failure_phase",
+                    },
                     {"stage", "error_code", "http_status", "provider_error_type_class"},
+                    {
+                        "stage",
+                        "error_code",
+                        "http_status",
+                        "provider_error_type_class",
+                        "response_failure_phase",
+                    },
                     {
                         "stage",
                         "error_code",
@@ -939,6 +976,15 @@ class _TurnTimingDiagnostics:
                         "content_type_class",
                         "cf_mitigated_class",
                         "provider_error_type_class",
+                    },
+                    {
+                        "stage",
+                        "error_code",
+                        "http_status",
+                        "content_type_class",
+                        "cf_mitigated_class",
+                        "provider_error_type_class",
+                        "response_failure_phase",
                     },
                 )
                 or type(failure_diagnostic.get("stage")) is not str
@@ -978,6 +1024,16 @@ class _TurnTimingDiagnostics:
                         or type(failure_diagnostic.get("provider_error_type_class")) is not str
                         or failure_diagnostic["provider_error_type_class"]
                         not in _TURN_TIMING_PROVIDER_403_ERROR_TYPE_CLASSES
+                    )
+                )
+                or (
+                    "response_failure_phase" in failure_diagnostic
+                    and (
+                        failure_diagnostic.get("stage") != "upstream_stream"
+                        or failure_diagnostic.get("error_code") != "provider_response_invalid"
+                        or type(failure_diagnostic.get("response_failure_phase")) is not str
+                        or failure_diagnostic["response_failure_phase"]
+                        not in _TURN_TIMING_PROVIDER_RESPONSE_FAILURE_PHASES
                     )
                 )
             ):
@@ -1172,6 +1228,7 @@ class OpenCodeV2Runtime:
         content_type_class: object = None,
         cf_mitigated_class: object = None,
         provider_error_type_class: object = None,
+        response_failure_phase: object = None,
     ) -> None:
         try:
             self._turn_timing_diagnostics.provider_failed(
@@ -1184,6 +1241,7 @@ class OpenCodeV2Runtime:
                 content_type_class,
                 cf_mitigated_class,
                 provider_error_type_class,
+                response_failure_phase,
             )
         except Exception:
             return

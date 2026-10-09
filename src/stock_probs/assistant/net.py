@@ -30,6 +30,17 @@ _PROVIDER_403_CF_MITIGATED_CLASSES = frozenset({"challenge", "absent", "other"})
 _PROVIDER_403_ERROR_TYPE_CLASSES = frozenset(
     {"region_error", "data_policy_error", "free_usage_limit_error", "other", "malformed", "unknown"}
 )
+_PROVIDER_RESPONSE_FAILURE_PHASES = frozenset(
+    {
+        "body_eof",
+        "content_encoding",
+        "content_type",
+        "headers",
+        "status_line",
+        "transfer_framing",
+        "transport_io",
+    }
+)
 _PROVIDER_403_ERROR_TYPE_MAP = {
     "RegionError": "region_error",
     "DataPolicyError": "data_policy_error",
@@ -137,6 +148,7 @@ class PublicHTTPError(Exception):
         content_type_class: str | None = None,
         cf_mitigated_class: str | None = None,
         provider_error_type_class: str | None = None,
+        response_failure_phase: str | None = None,
     ):
         if status_code is not None and (
             type(status_code) is not int or not 100 <= status_code <= 599
@@ -166,6 +178,13 @@ class PublicHTTPError(Exception):
         self.content_type_class = content_type_class
         self.cf_mitigated_class = cf_mitigated_class
         self.provider_error_type_class = provider_error_type_class
+        self.response_failure_phase = (
+            response_failure_phase
+            if code == "provider_response_invalid"
+            and type(response_failure_phase) is str
+            and response_failure_phase in _PROVIDER_RESPONSE_FAILURE_PHASES
+            else None
+        )
 
 
 def _classify_provider_403_content_type(value: bytes | None) -> str:
@@ -617,6 +636,7 @@ async def stream_public_https(
     await _require_stream_authorization(live_authorization, deadline)
 
     writer: asyncio.StreamWriter | None = None
+    status_code: int | None = None
     try:
         reader, writer = await asyncio.wait_for(
             asyncio.open_connection(
@@ -666,14 +686,17 @@ async def stream_public_https(
             raise PublicHTTPError("header_invalid") from exc
         await asyncio.wait_for(writer.drain(), timeout=_remaining(deadline))
 
-        status_line = await _readline(reader, deadline)
+        status_line = await _readline(reader, deadline, response_failure_phase="status_line")
         try:
             protocol, status_text, _ = status_line.decode("latin-1").rstrip("\r\n").split(" ", 2)
-            status_code = int(status_text)
+            parsed_status_code = int(status_text)
         except (ValueError, UnicodeError) as exc:
-            raise PublicHTTPError("provider_response_invalid") from exc
-        if protocol not in {"HTTP/1.0", "HTTP/1.1"} or not 100 <= status_code <= 599:
-            raise PublicHTTPError("provider_response_invalid")
+            raise PublicHTTPError(
+                "provider_response_invalid", response_failure_phase="status_line"
+            ) from exc
+        if protocol not in {"HTTP/1.0", "HTTP/1.1"} or not 100 <= parsed_status_code <= 599:
+            raise PublicHTTPError("provider_response_invalid", response_failure_phase="status_line")
+        status_code = parsed_status_code
         response_headers: dict[str, str] = {}
         provider_403_content_type_class: str | None = None
         provider_403_cf_mitigated_class: str | None = None
@@ -681,17 +704,30 @@ async def stream_public_https(
         provider_403_cf_mitigated_seen = False
         total_header_bytes = len(status_line)
         while True:
-            line = await _readline(reader, deadline)
+            line = await _readline(
+                reader,
+                deadline,
+                response_failure_phase="headers",
+                status_code=status_code,
+            )
             total_header_bytes += len(line)
             if total_header_bytes > MAX_HEADER_BYTES:
                 raise PublicHTTPError("provider_headers_too_large")
             if line in {b"\r\n", b"\n"}:
                 break
             if line[:1] in {b" ", b"\t"} or b":" not in line:
-                raise PublicHTTPError("provider_response_invalid")
+                raise PublicHTTPError(
+                    "provider_response_invalid",
+                    status_code=status_code,
+                    response_failure_phase="headers",
+                )
             name_bytes, value_bytes = line.rstrip(b"\r\n").split(b":", 1)
             if not name_bytes or any(byte < 33 or byte > 126 for byte in name_bytes):
-                raise PublicHTTPError("provider_response_invalid")
+                raise PublicHTTPError(
+                    "provider_response_invalid",
+                    status_code=status_code,
+                    response_failure_phase="headers",
+                )
             key = name_bytes.decode("ascii").lower()
             value = value_bytes.decode("latin-1").strip()
             if key in response_headers and key in {
@@ -699,7 +735,11 @@ async def stream_public_https(
                 "transfer-encoding",
                 "content-encoding",
             }:
-                raise PublicHTTPError("provider_response_invalid")
+                raise PublicHTTPError(
+                    "provider_response_invalid",
+                    status_code=status_code,
+                    response_failure_phase="headers",
+                )
             if status_code == 403 and key == "content-type":
                 if provider_403_content_type_seen:
                     provider_403_content_type_class = "invalid"
@@ -743,20 +783,41 @@ async def stream_public_https(
                 )
             raise PublicHTTPError("provider_upstream_unavailable", status_code=status_code)
         if response_headers.get("content-encoding", "identity").lower() != "identity":
-            raise PublicHTTPError("provider_response_invalid")
+            raise PublicHTTPError(
+                "provider_response_invalid",
+                status_code=status_code,
+                response_failure_phase="content_encoding",
+            )
         if "transfer-encoding" in response_headers and "content-length" in response_headers:
-            raise PublicHTTPError("provider_response_invalid")
+            raise PublicHTTPError(
+                "provider_response_invalid",
+                status_code=status_code,
+                response_failure_phase="transfer_framing",
+            )
         content_type = response_headers.get("content-type", "").split(";", 1)[0].strip().lower()
         if content_type != "text/event-stream":
-            raise PublicHTTPError("provider_response_invalid")
+            raise PublicHTTPError(
+                "provider_response_invalid",
+                status_code=status_code,
+                response_failure_phase="content_type",
+            )
 
         sent = 0
         transfer = response_headers.get("transfer-encoding", "").lower()
         if transfer:
             if transfer != "chunked":
-                raise PublicHTTPError("provider_response_invalid")
+                raise PublicHTTPError(
+                    "provider_response_invalid",
+                    status_code=status_code,
+                    response_failure_phase="transfer_framing",
+                )
             while True:
-                line = await _readline(reader, deadline)
+                line = await _readline(
+                    reader,
+                    deadline,
+                    response_failure_phase="transfer_framing",
+                    status_code=status_code,
+                )
                 try:
                     size_field = line.split(b";", 1)[0]
                     if size_field.endswith(b"\r\n"):
@@ -771,18 +832,31 @@ async def stream_public_https(
                         raise ValueError
                     size = int(size_token, 16)
                 except ValueError as exc:
-                    raise PublicHTTPError("provider_response_invalid") from exc
+                    raise PublicHTTPError(
+                        "provider_response_invalid",
+                        status_code=status_code,
+                        response_failure_phase="transfer_framing",
+                    ) from exc
                 if size == 0:
                     trailer_bytes = 0
                     while True:
-                        trailer = await _readline(reader, deadline)
+                        trailer = await _readline(
+                            reader,
+                            deadline,
+                            response_failure_phase="transfer_framing",
+                            status_code=status_code,
+                        )
                         trailer_bytes += len(trailer)
                         if trailer_bytes > 8192:
                             raise PublicHTTPError("provider_headers_too_large")
                         if trailer in {b"\r\n", b"\n"}:
                             return
                         if b":" not in trailer or trailer[:1] in {b" ", b"\t"}:
-                            raise PublicHTTPError("provider_response_invalid")
+                            raise PublicHTTPError(
+                                "provider_response_invalid",
+                                status_code=status_code,
+                                response_failure_phase="transfer_framing",
+                            )
                     continue
                 if size > max_response_bytes - sent:
                     raise PublicHTTPError("provider_response_too_large")
@@ -791,21 +865,40 @@ async def stream_public_https(
                     take = min(remaining_chunk, 16_384)
                     part = await asyncio.wait_for(reader.read(take), timeout=_remaining(deadline))
                     if not part:
-                        raise PublicHTTPError("provider_response_invalid")
+                        raise PublicHTTPError(
+                            "provider_response_invalid",
+                            status_code=status_code,
+                            response_failure_phase="body_eof",
+                        )
                     remaining_chunk -= len(part)
                     sent += len(part)
                     yield part
-                terminator = await asyncio.wait_for(
-                    reader.readexactly(2), timeout=_remaining(deadline)
-                )
+                try:
+                    terminator = await asyncio.wait_for(
+                        reader.readexactly(2), timeout=_remaining(deadline)
+                    )
+                except asyncio.IncompleteReadError as exc:
+                    raise PublicHTTPError(
+                        "provider_response_invalid",
+                        status_code=status_code,
+                        response_failure_phase="body_eof",
+                    ) from exc
                 if terminator != b"\r\n":
-                    raise PublicHTTPError("provider_response_invalid")
+                    raise PublicHTTPError(
+                        "provider_response_invalid",
+                        status_code=status_code,
+                        response_failure_phase="transfer_framing",
+                    )
         content_length = response_headers.get("content-length")
         if content_length is not None:
             try:
                 length = int(content_length)
             except ValueError as exc:
-                raise PublicHTTPError("provider_response_invalid") from exc
+                raise PublicHTTPError(
+                    "provider_response_invalid",
+                    status_code=status_code,
+                    response_failure_phase="transfer_framing",
+                ) from exc
             if length < 0 or length > max_response_bytes:
                 raise PublicHTTPError("provider_response_too_large")
             while sent < length:
@@ -813,7 +906,11 @@ async def stream_public_https(
                     reader.read(min(16_384, length - sent)), timeout=_remaining(deadline)
                 )
                 if not part:
-                    raise PublicHTTPError("provider_response_invalid")
+                    raise PublicHTTPError(
+                        "provider_response_invalid",
+                        status_code=status_code,
+                        response_failure_phase="body_eof",
+                    )
                 sent += len(part)
                 yield part
             return
@@ -828,7 +925,11 @@ async def stream_public_https(
     except TimeoutError as exc:
         raise PublicHTTPError("provider_deadline_exceeded") from exc
     except (OSError, ssl.SSLError, asyncio.IncompleteReadError) as exc:
-        raise PublicHTTPError("provider_response_invalid") from exc
+        raise PublicHTTPError(
+            "provider_response_invalid",
+            status_code=status_code,
+            response_failure_phase="transport_io",
+        ) from exc
     finally:
         if writer is not None:
             writer.close()
@@ -838,10 +939,20 @@ async def stream_public_https(
                     await asyncio.wait_for(writer.wait_closed(), timeout=min(remaining, 0.1))
 
 
-async def _readline(reader: asyncio.StreamReader, deadline: float) -> bytes:
+async def _readline(
+    reader: asyncio.StreamReader,
+    deadline: float,
+    *,
+    response_failure_phase: str | None = None,
+    status_code: int | None = None,
+) -> bytes:
     value = await asyncio.wait_for(reader.readline(), timeout=_remaining(deadline))
     if not value or len(value) > MAX_HEADER_BYTES:
-        raise PublicHTTPError("provider_response_invalid")
+        raise PublicHTTPError(
+            "provider_response_invalid",
+            status_code=status_code,
+            response_failure_phase=response_failure_phase,
+        )
     return value
 
 

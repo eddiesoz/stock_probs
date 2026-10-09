@@ -441,11 +441,22 @@ def _schema13_rehearsal_cleanup_fixture(
     ledger_path.chmod(0o600)
     inventory = {tag: image_id}
     image_ids = {image_id, parent_id}
-    parent_by_id = {image_id: parent_id, parent_id: ""}
+    first_layer = "sha256:" + "a" * 64
+    second_layer = "sha256:" + "b" * 64
+    rootfs_layers_by_id = {
+        image_id: [first_layer, second_layer],
+        parent_id: [first_layer],
+    }
     repo_tags = {image_id: [tag], parent_id: []}
     references: set[str] = set()
-    state_flags = {"remove_fails": False, "remove_leaves_id": False}
+    state_flags = {
+        "remove_fails": False,
+        "remove_leaves_id": False,
+        "rootfs_inventory_override": None,
+        "rootfs_capture_outcome": None,
+    }
     calls: list[list[str]] = []
+    capture_calls: list[tuple[list[str], int, float]] = []
     monkeypatch.setattr(bounded, "setup_receipt", lambda: {"legacy_task_image_inventory": {}})
     monkeypatch.setattr(bounded, "_image_inventory", lambda: inventory.copy())
     monkeypatch.setattr(bounded, "_all_image_ids", lambda: set(image_ids))
@@ -461,15 +472,19 @@ def _schema13_rehearsal_cleanup_fixture(
         if fmt == '{{.Id}}|{{index .Config.Labels "org.opencontainers.image.revision"}}':
             assert candidates == [image_id]
             return f"{image_id}|{revision}".encode()
-        if "{{json .RepoTags}}" in fmt:
+        if fmt == (
+            "{{.Id}}|{{.Os}}/{{.Architecture}}|{{json .RepoTags}}|"
+            '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+        ):
             assert candidates == [image_id]
-            return (
-                f"{image_id}|{parent_by_id[image_id]}|linux/amd64|"
-                f"{json.dumps(repo_tags[image_id])}|{revision}"
-            ).encode()
-        if fmt == "{{.Id}}|{{.Parent}}":
+            return (f"{image_id}|linux/amd64|{json.dumps(repo_tags[image_id])}|{revision}").encode()
+        if fmt == "{{.Id}}|{{.RootFS.Type}}|{{json .RootFS.Layers}}":
+            override = state_flags["rootfs_inventory_override"]
+            if override is not None:
+                return override
             return "\n".join(
-                f"{candidate_id}|{parent_by_id[candidate_id]}" for candidate_id in candidates
+                f"{candidate_id}|layers|{json.dumps(rootfs_layers_by_id[candidate_id])}"
+                for candidate_id in candidates
             ).encode()
         raise AssertionError(f"unexpected Docker inspect format: {fmt}")
 
@@ -493,7 +508,19 @@ def _schema13_rehearsal_cleanup_fixture(
             return b"tagged"
         raise AssertionError(f"unexpected Docker command: {argv}")
 
+    def bounded_capture(argv: list[str], *, max_bytes: int, timeout: float) -> bytes:
+        capture_calls.append((argv.copy(), max_bytes, timeout))
+        outcome = state_flags["rootfs_capture_outcome"]
+        if outcome == "too_large":
+            raise bounded.BuildError("builder_driver_listing_too_large")
+        if outcome == "unavailable":
+            raise bounded.BuildError("fixed_command_failed")
+        if outcome == "timeout":
+            raise bounded.BuildError("fixed_command_unavailable_or_timeout")
+        return inspect(argv, int(timeout))
+
     monkeypatch.setattr(bounded, "checked", docker_check)
+    monkeypatch.setattr(bounded, "_capture_bounded_stdout", bounded_capture)
     return {
         "tag": tag,
         "image_id": image_id,
@@ -504,11 +531,12 @@ def _schema13_rehearsal_cleanup_fixture(
         "ledger_path": ledger_path,
         "inventory": inventory,
         "image_ids": image_ids,
-        "parent_by_id": parent_by_id,
+        "rootfs_layers_by_id": rootfs_layers_by_id,
         "repo_tags": repo_tags,
         "references": references,
         "state_flags": state_flags,
         "calls": calls,
+        "capture_calls": capture_calls,
     }
 
 
@@ -2304,6 +2332,8 @@ def test_schema13_retirement_rejects_noncanonical_expected_image_id_before_docke
         ("shared_tag", "schema13_rehearsal_image_identity_mismatch"),
         ("container", "schema13_rehearsal_image_in_use"),
         ("child", "schema13_rehearsal_image_has_child"),
+        ("deep_child", "schema13_rehearsal_image_has_child"),
+        ("same_rootfs", "schema13_rehearsal_image_rootfs_ancestry_ambiguous"),
         ("docker_failure", "schema13_rehearsal_image_remove_failed"),
         ("receipt_mismatch", "candidate_ledger_build_receipt_mismatch"),
     ),
@@ -2338,8 +2368,22 @@ def test_schema13_rehearsal_retirement_fails_closed_and_retains_ledger(
     elif case == "child":
         child_id = "sha256:" + "8" * 64
         state["image_ids"].add(child_id)
-        state["parent_by_id"][child_id] = image_id
+        state["rootfs_layers_by_id"][child_id] = state["rootfs_layers_by_id"][image_id] + [
+            "sha256:" + "9" * 64
+        ]
         state["repo_tags"][child_id] = []
+    elif case == "deep_child":
+        child_id = "sha256:" + "8" * 64
+        state["image_ids"].add(child_id)
+        state["rootfs_layers_by_id"][child_id] = state["rootfs_layers_by_id"][image_id] + [
+            "sha256:" + "9" * 64,
+            "sha256:" + "c" * 64,
+        ]
+        state["repo_tags"][child_id] = []
+    elif case == "same_rootfs":
+        state["rootfs_layers_by_id"][state["parent_id"]] = state["rootfs_layers_by_id"][
+            image_id
+        ].copy()
     elif case == "docker_failure":
         state["state_flags"]["remove_fails"] = True
     elif case == "receipt_mismatch":
@@ -2351,10 +2395,107 @@ def test_schema13_rehearsal_retirement_fails_closed_and_retains_ledger(
     assert json.loads(Path(state["ledger_path"]).read_bytes())["entries"] == [row]
     if case in {"current", "transient", "protected", "unregistered", "docker_failure"}:
         assert state["inventory"].get(str(state["tag"])) == image_id
-    if case == "child":
+    if case in {"child", "deep_child"}:
+        assert state["image_id"] in state["image_ids"]
+    if case == "same_rootfs":
         assert state["image_id"] in state["image_ids"]
     if case == "container":
         assert state["image_id"] in state["references"]
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected_error"),
+    (
+        ("duplicate_image_id", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("missing_image_id", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("unknown_image_id", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("wrong_rootfs_type", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("empty_layers", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("duplicate_layer", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("malformed_layer_digest", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("malformed_json", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("too_many_layers", "schema13_rehearsal_image_inventory_too_large"),
+        ("capture_too_large", "schema13_rehearsal_image_inventory_too_large"),
+        ("capture_unavailable", "fixed_command_failed"),
+        ("capture_timeout", "fixed_command_unavailable_or_timeout"),
+    ),
+)
+def test_schema13_rehearsal_retirement_rejects_incomplete_rootfs_inventory_before_removal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+    expected_error: str,
+) -> None:
+    state = _schema13_rehearsal_cleanup_fixture(tmp_path, monkeypatch)
+    image_id = str(state["image_id"])
+    parent_id = str(state["parent_id"])
+    layers_by_id = state["rootfs_layers_by_id"]
+    assert isinstance(layers_by_id, dict)
+    rows = [
+        f"{candidate_id}|layers|{json.dumps(layers_by_id[candidate_id])}"
+        for candidate_id in sorted(state["image_ids"])
+    ]
+    if fault == "duplicate_image_id":
+        rows[1] = rows[0]
+    elif fault == "missing_image_id":
+        rows.pop()
+    elif fault == "unknown_image_id":
+        rows[1] = f"{'sha256:' + '7' * 64}|layers|{json.dumps(layers_by_id[parent_id])}"
+    elif fault == "wrong_rootfs_type":
+        rows[1] = rows[1].replace("|layers|", "|unknown|")
+    elif fault == "empty_layers":
+        rows[1] = f"{parent_id}|layers|[]"
+    elif fault == "duplicate_layer":
+        duplicate = layers_by_id[image_id][0]
+        rows[0] = f"{image_id}|layers|{json.dumps([duplicate, duplicate])}"
+    elif fault == "malformed_layer_digest":
+        rows[1] = f"{parent_id}|layers|{json.dumps(['sha256:' + 'Z' * 64])}"
+    elif fault == "malformed_json":
+        rows[1] = f"{parent_id}|layers|not-json"
+    elif fault == "too_many_layers":
+        many_layers = [f"sha256:{index:064x}" for index in range(129)]
+        rows[1] = f"{parent_id}|layers|{json.dumps(many_layers)}"
+    elif fault == "capture_too_large":
+        state["state_flags"]["rootfs_capture_outcome"] = "too_large"
+    elif fault == "capture_unavailable":
+        state["state_flags"]["rootfs_capture_outcome"] = "unavailable"
+    elif fault == "capture_timeout":
+        state["state_flags"]["rootfs_capture_outcome"] = "timeout"
+    if state["state_flags"]["rootfs_capture_outcome"] is None:
+        state["state_flags"]["rootfs_inventory_override"] = "\n".join(rows).encode()
+    before_ledger = Path(state["ledger_path"]).read_bytes()
+    before_inventory = state["inventory"].copy()
+    before_image_ids = state["image_ids"].copy()
+
+    with pytest.raises(bounded.BuildError, match=expected_error):
+        bounded._retire_schema13_rehearsal_tag(str(state["tag"]), image_id)
+
+    assert before_ledger == Path(state["ledger_path"]).read_bytes()
+    assert state["inventory"] == before_inventory
+    assert state["image_ids"] == before_image_ids
+    assert not any(
+        command[:4] == [bounded.DOCKER, "image", "rm", "--no-prune"] for command in state["calls"]
+    )
+    assert state["capture_calls"]
+    assert state["capture_calls"][0][1] == bounded._SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES
+    assert state["capture_calls"][0][2] == bounded.BUILDX_LISTING_TIMEOUT
+
+
+def test_schema13_rehearsal_retirement_allows_unrelated_complete_rootfs_inventory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _schema13_rehearsal_cleanup_fixture(tmp_path, monkeypatch)
+    state["rootfs_layers_by_id"][state["parent_id"]] = [
+        "sha256:" + "c" * 64,
+        "sha256:" + "d" * 64,
+    ]
+
+    result = bounded._retire_schema13_rehearsal_tag(str(state["tag"]), str(state["image_id"]))
+
+    assert result["status"] == "retired"
+    assert state["image_id"] not in state["image_ids"]
+    assert state["inventory"] == {}
+    assert state["capture_calls"][0][1] == bounded._SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES
 
 
 def test_schema13_rehearsal_partial_removal_restores_registered_tag_for_retry(

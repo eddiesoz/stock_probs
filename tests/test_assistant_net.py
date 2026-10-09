@@ -1229,6 +1229,81 @@ def test_public_https_stream_accepts_public_unicast_dns_answer(
     assert connection_attempts == ["93.184.216.34"]
 
 
+@pytest.mark.parametrize(
+    ("response_bytes", "expected_phase", "expected_status"),
+    [
+        (b"not-http\r\n", "status_line", None),
+        (b"HTTP/1.1 200 OK\r\nbad header\r\n\r\n", "headers", 200),
+        (
+            b"HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Type: text/event-stream\r\n\r\n",
+            "content_encoding",
+            200,
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 0\r\n\r\n",
+            "content_type",
+            200,
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+            b"Content-Length: 0\r\nTransfer-Encoding: chunked\r\n\r\n",
+            "transfer_framing",
+            200,
+        ),
+        (
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 1\r\n\r\n",
+            "body_eof",
+            200,
+        ),
+    ],
+)
+def test_public_https_stream_classifies_closed_response_failure_phases(
+    monkeypatch: pytest.MonkeyPatch,
+    response_bytes: bytes,
+    expected_phase: str,
+    expected_status: int | None,
+) -> None:
+    class Writer:
+        def write(self, _data: bytes) -> None:
+            return None
+
+        async def drain(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+        async def wait_closed(self) -> None:
+            return None
+
+    async def resolve(_loop, _host: str, _port: int, **_kwargs: object):
+        return [_addrinfo_record("93.184.216.34")]
+
+    async def open_connection(_host: str, *_args: object, **_kwargs: object):
+        reader = asyncio.StreamReader()
+        reader.feed_data(response_bytes)
+        reader.feed_eof()
+        return reader, Writer()
+
+    monkeypatch.setattr(net.asyncio.BaseEventLoop, "getaddrinfo", resolve)
+    monkeypatch.setattr(net.asyncio, "open_connection", open_connection)
+
+    async def exercise() -> None:
+        with pytest.raises(net.PublicHTTPError) as caught:
+            async for _chunk in net.stream_public_https(
+                "https://provider.example/v1/responses",
+                body=b"{}",
+                timeout_seconds=1,
+            ):
+                raise AssertionError("invalid response emitted data")
+        assert caught.value.code == "provider_response_invalid"
+        assert caught.value.response_failure_phase == expected_phase
+        assert caught.value.status_code == expected_status
+        assert str(caught.value) == "provider_response_invalid"
+
+    asyncio.run(exercise())
+
+
 def test_public_https_stream_yields_available_data_before_chunk_remainder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1381,6 +1456,7 @@ def test_public_https_stream_rejects_non_hex_chunk_sizes_before_body_io(
             ):
                 chunks.append(chunk)
         assert caught.value.code == "provider_response_invalid"
+        assert caught.value.response_failure_phase == "transfer_framing"
         return chunks
 
     chunks = asyncio.run(exercise())
@@ -1452,6 +1528,10 @@ def test_public_https_stream_rejects_invalid_chunked_framing_and_bounds(
             ):
                 chunks.append(chunk)
         assert caught.value.code == expected_code
+        if expected_code == "provider_response_invalid":
+            assert caught.value.response_failure_phase == (
+                "body_eof" if chunked_body == b"4\r\nab" else "transfer_framing"
+            )
         return b"".join(chunks)
 
     assert asyncio.run(exercise()) == expected_prefix

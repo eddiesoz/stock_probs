@@ -384,9 +384,15 @@ class _TimingRecorder:
         stage: str,
         error_code: str,
         status_code: int | None,
+        content_type_class: str | None = None,
+        cf_mitigated_class: str | None = None,
+        provider_error_type_class: str | None = None,
+        response_failure_phase: str | None = None,
     ) -> None:
+        del content_type_class, cf_mitigated_class, provider_error_type_class
+        event = ("failure", execution_id, owner_id, ordinal, stage, error_code, status_code)
         self.events.append(
-            ("failure", execution_id, owner_id, ordinal, stage, error_code, status_code)
+            event + (response_failure_phase,) if response_failure_phase is not None else event
         )
 
     def _record_workspace_summary_completion(self, execution_id: str, owner_id: int) -> None:
@@ -669,6 +675,39 @@ def test_provider_timing_wrapper_records_known_transport_code_and_status() -> No
     ]
 
 
+def test_provider_timing_wrapper_forwards_closed_response_failure_phase() -> None:
+    recorder = _TimingRecorder()
+
+    async def upstream():
+        raise assistant_api.net.PublicHTTPError(
+            "provider_response_invalid",
+            status_code=200,
+            response_failure_phase="body_eof",
+        )
+        yield b"unreachable"
+
+    async def run() -> None:
+        bridge = _timing_wrapper(recorder, upstream())
+        with pytest.raises(AssistantUnavailable):
+            await bridge.__anext__()
+        await bridge.aclose()
+
+    asyncio.run(run())
+    assert recorder.events[-2:] == [
+        (
+            "failure",
+            EXECUTION_ID,
+            4,
+            1,
+            "upstream_stream",
+            "provider_response_invalid",
+            200,
+            "body_eof",
+        ),
+        ("end", EXECUTION_ID, 4, 1, "failed", "safe_protocol_error"),
+    ]
+
+
 def test_runtime_provider_failure_diagnostic_is_owner_bound_closed_and_single_assignment() -> None:
     now = [30.0]
     diagnostics = assistant_runtime._TurnTimingDiagnostics(clock=lambda: now[0])
@@ -721,6 +760,69 @@ def test_runtime_provider_failure_diagnostic_is_owner_bound_closed_and_single_as
     assert EXECUTION_ID not in encoded
     assert "private" not in encoded
     assert diagnostics._contexts == {}
+
+
+def test_runtime_provider_response_failure_phase_is_closed_and_private() -> None:
+    diagnostics = assistant_runtime._TurnTimingDiagnostics(clock=lambda: 30.0)
+    diagnostics.begin(EXECUTION_ID, 81)
+    ordinal = diagnostics.provider_started(EXECUTION_ID, 81)
+    assert ordinal == 1
+    diagnostics.provider_failed(
+        EXECUTION_ID,
+        81,
+        ordinal,
+        "upstream_stream",
+        "provider_response_invalid",
+        200,
+        response_failure_phase="body_eof",
+    )
+    diagnostics.provider_finished(EXECUTION_ID, 81, ordinal, "failed", "safe_protocol_error")
+
+    receipt = diagnostics.finish(EXECUTION_ID, 81, "failed")
+
+    assert receipt is not None
+    assert receipt["provider_requests"][0]["failure_diagnostic"] == {
+        "stage": "upstream_stream",
+        "error_code": "provider_response_invalid",
+        "http_status": 200,
+        "response_failure_phase": "body_eof",
+    }
+    assert EXECUTION_ID not in json.dumps(receipt)
+    assert "owner_id" not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize(
+    ("stage", "error_code", "response_failure_phase"),
+    [
+        ("proxy_guard", "provider_response_invalid", "body_eof"),
+        ("upstream_stream", "provider_upstream_unavailable", "body_eof"),
+        ("upstream_stream", "provider_response_invalid", True),
+        ("upstream_stream", "provider_response_invalid", "private token=synthetic"),
+    ],
+)
+def test_runtime_provider_response_failure_phase_rejects_wrong_or_untrusted_values(
+    stage: str, error_code: str, response_failure_phase: object
+) -> None:
+    diagnostics = assistant_runtime._TurnTimingDiagnostics(clock=lambda: 30.0)
+    diagnostics.begin(EXECUTION_ID, 82)
+    ordinal = diagnostics.provider_started(EXECUTION_ID, 82)
+    assert ordinal == 1
+    diagnostics.provider_failed(
+        EXECUTION_ID,
+        82,
+        ordinal,
+        stage,
+        error_code,
+        200,
+        response_failure_phase=response_failure_phase,
+    )
+    diagnostics.provider_finished(EXECUTION_ID, 82, ordinal, "failed", "safe_protocol_error")
+
+    receipt = diagnostics.finish(EXECUTION_ID, 82, "failed")
+
+    assert receipt is not None
+    assert receipt["provider_requests"][0]["failure_diagnostic"] is None
+    assert "synthetic" not in json.dumps(receipt)
 
 
 def test_runtime_provider_failure_v4_keeps_only_valid_403_classes() -> None:
