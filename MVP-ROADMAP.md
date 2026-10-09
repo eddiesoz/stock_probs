@@ -1,6 +1,40 @@
 # Stock Probability MVP Roadmap
 
-Current R-ASTRA-120 E822: The attached HTTP probe now defers its unused MCP Gateway/service imports; application, UI, tool definitions, permissions and acceptance assertions are unchanged. Independent QA passed all 380 probe-file tests, Ruff and format, with exact equality for 11 MCP definitions/actions (receipt SHA-256 `c36c28d103346e6e7562046b2993c9d196c3bc4da15d90f8ce84a3279cf807bf`). An isolated import-only comparison on the bound candidate image passed: peak process RSS fell from 135,536 to 67,624 KiB. This is fixture-overhead evidence, not the actual-host failure cause or a 1 GB Pass. New exact-head artifacts and actual-host native/resource/recovery verification remain pending. The earlier memory failures remain recorded; production, budget, backups and release gates are unchanged. See the [MVP plan](MVP-PLAN.md).
+Current R-ASTRA-120 E825 checkpoint: the E823/E824 storage restore, Docker/containerd migration,
+cache relocation and retirement, bounded BuildKit setup, actual network-none worker proof, retained
+backups, and HTTP 200 application-health observation remain Passed for their recorded scopes. The
+restore unit's PID 1 journal now supplies exact terminal times and result 0. Physical removal and
+startup with the SD medium absent remain unverified. A schema-13 cleanup-ledger mismatch was
+confirmed. The first independent cleanup QA **Failed** on a P2 because expected full image ID was
+not required before deletion; that failure is preserved. The identity-bound repair then passed
+179 selected tests, Ruff, format, security, and diff checks, and independent plus parent integrated
+review passed for the four source/test pins. The repair review was mocked-Docker only. An actual
+Docker build/pair rehearsal remains **Pending**; no image build/deletion or real rehearsal occurred.
+The separate bounded-policy helper passed its 145-test independent scope. A read-only MCP
+status/inspect pair confirmed unchanged schema-12 production; no production mutation, release,
+resize, rollout, or email occurred. The guide bindings remain reusable for their prior scope, not
+newly bound to the current PR head. See E825 in the [MVP plan](MVP-PLAN.md).
+
+Historical R-ASTRA-120 E824 storage-maintenance and bounded-worker checkpoint: actual setup completed
+with receipt `/var/lib/stock-probs/r120-buildkit-v1/setup-receipt.json` (SHA-256
+`291ca40fc11266bac55fb095a30bcc17e9f0baf49530f72d5f703b300f0d7ceb`). A real network-none worker
+`RUN` passed strict container-cgroup ancestry verification with descendant `memory.max=1342177280`
+and `cpu.max=100000 100000`; controller PID limit 128 is controller-only. The managed builder uses
+the owned `r120-bounded-build` bridge without changing the default builder. Normal-user helper
+validation passed at 16:08 UTC with an empty managed-image ledger, no legacy adoption, and valid
+builder inspection/data-root configuration; independent read-only helper QA passed at 16:14 UTC.
+Selected independent producer/wrapper source QA also passed (13+27+8 cases), without a full gate or
+app-image build. Final host observation SHA-256
+`7a016e229c7f24e8c9e22f94fa1ebbe9fe1a114f65d0f60ca311a499ab2dc180` confirmed the unit terminal
+state, installed pins, receipt/failure preservation, mounts, retained archives and application
+health HTTP 200. Main/SD free space was 59,009,478,656/63,949,541,376 bytes. Physical device
+removal and startup with the medium absent remain unverified; no application image build, release,
+or production acceptance is claimed. Earlier probe-02 and completion-03 failures remain in the E823
+record below. See E824 in the [MVP plan](MVP-PLAN.md).
+
+Historical R-ASTRA-120 E823 storage-maintenance checkpoint: exact cleanup of 336 proven-unused image IDs, removable-media restore, Docker/containerd migration, application-health checks, and independently reviewed old-main-root retirement passed for their recorded scopes. The first two Docker/containerd migration attempts failed; their distinct rollback outcomes remain in the plan. The third attempt with repair `047ef` passed, retaining the 505-image, 7-container, 13-volume inventory on removable storage. Present-mount guards passed and a private namespace simulation made both guards fail closed; physical removal and daemon startup with the medium absent remain pending. Generated-cache copy, activation, persistence, unprivileged access and tool checks, and explicit source retirement passed. A final parent observation confirmed all four cache mounts, absence of old Docker/containerd roots, retained and size-checked main-filesystem backups, and health HTTP 200. The earlier read-only retirement preflight's computed-snapshot/unknown-optimization limitation is preserved; the explicit mover freshly revalidated mandatory guards. Cache plan 03 was interrupted; plan 04 failed on active UV references; plan 05 passed. Earlier collector/parser failures and scoped repairs remain recorded. The bounded BuildKit controller is running with reported limits, but worker probe 02 failed at a verifier boundary and completion 03 timed out during default-bridge Docker Hub DNS failures. A bridge lookup pass is diagnostic only. Strict verifier independent QA and a fresh worker probe remain pending; actual worker limits are **Unverified**. The 4 GiB BuildKit max-used value is a periodic GC target, not an instantaneous absolute quota. Production was not changed by this storage task. No promotion, resize, rollout, release, or email occurred. See E823 in the [MVP plan](MVP-PLAN.md).
+
+Historical R-ASTRA-120 E822: The attached HTTP probe now defers its unused MCP Gateway/service imports; application, UI, tool definitions, permissions and acceptance assertions are unchanged. Independent QA passed all 380 probe-file tests, Ruff and format, with exact equality for 11 MCP definitions/actions (receipt SHA-256 `c36c28d103346e6e7562046b2993c9d196c3bc4da15d90f8ce84a3279cf807bf`). An isolated import-only comparison on the bound candidate image passed: peak process RSS fell from 135,536 to 67,624 KiB. This is fixture-overhead evidence, not the actual-host failure cause or a 1 GB Pass. New exact-head artifacts and actual-host native/resource/recovery verification remain pending. The earlier memory failures remain recorded; production, budget, backups and release gates are unchanged. See the [MVP plan](MVP-PLAN.md).
 
 Historical R-ASTRA-120 E821: The clean `4bf0fd43` candidate and recovery archives passed the local schema-13 PR-pair rehearsal and independent artifact review (receipt SHA-256 `ca0dd740abd94b203dcdb93f83b377c70510cf18dbe367a0fc0d0f87ce45ad2d`). Unchanged application/UI inputs retain the earlier complete canonical and browser evidence; no redundant aggregate was run. Two actual-host MCP attempts returned `host_memory_reserve_breached`. The second, observed call ran at `2026-10-09T09:31:34Z`–`09:32:44Z`; its bounded read-only sampler captured three seconds below the 128 MiB reserve, with a minimum of 72,864 KiB at `09:32:39Z`, then recovery. Specific phase/cause remains Unavailable. Independent diagnostic receipt SHA-256 is `a9eb1ddf9b0a770c63c13f47baec7d2e48cec70629aa537b8c7fdd42e2908154`; the sampler was intentionally stopped at 168 samples and does not establish environment isolation, cgroup acceptance, or cleanup. Production inspect still reports the unchanged schema-12 revision ready and loopback-only. Native probe import overhead is under focused diagnosis. Actual-host native/resource/recovery, owner canary and promotion gates remain open. The existing 1 GB machine, backups, and US$15 total monthly cap are unchanged; no merge, deployment, resize, rollout or email occurred. See the [MVP plan](MVP-PLAN.md).
 

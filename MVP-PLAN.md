@@ -2385,9 +2385,268 @@ documentation/configuration evidence alone.
 
 Exact current-head artifacts: `test-results/local-gates/R-ASTRA-120-20261009T070553Z/evidence.json`; local pair `/var/tmp/r120-pr6efcf-pair-collector-20261009T061814Z-h2h0y48k/pair-rehearsal.json` (SHA-256 `fd9023bba54b9cbbe99db222dec2b174b5ff2bf5225cb557367457374b17a319`); host failure `/tmp/r120-host-pair-mcp-collector-20261009/receipts/1791532419304003395-rehearse_pr_pair-d6c16d7427f74a2ea16a2e338beae830.json`; parser baseline, focused JUnit and source pins `/var/tmp/r120-cpu-stat-parser-fix-20261009/`. These are scoped receipts, not deployment acceptance.
 
+### R-ASTRA-120 E823 storage recovery and Docker migration
+
+This is a separate local storage-maintenance checkpoint. It does not supersede E822's application-probe evidence or establish R-ASTRA-120 release acceptance.
+
+**Verified cleanup and removable-media restore:** Direct log evidence records removal of 336 proven-unused local image IDs with `docker image rm --no-prune IMAGE_ID`, reclaiming approximately 19.7 GiB. The cleanup-result SHA-256 is `e8c5ceccfd15475b9c2c0ad7768ef4dc87c5f746e076e12c9cd41f281611373e`; its separate run ID and exact observation time were not supplied. An 8,870,451,200-byte independent backup remained on the main filesystem with archive SHA-256 `7eb9a4dcc040414acb6cf7c6e048fed955d7d70c491712243663044076d8ff60` and backup-receipt SHA-256 `fde24886fb1f8099109c97c6e6812ea976acd968e8d462b4e5ef7212b832fa34`. On 2026-10-09, restore unit `r120-sd-restore-20261009-v3.service` started at 11:37:50 UTC and completed at 12:06:41 UTC with exit 0. Its receipt reports all original removable-media files restored and checksum, member-list, and metadata checks **Pass**; the filesystem is ext4, UUID `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`. Restore-receipt SHA-256 is `0168672528e53f5e6bb62e8b26e76b3f74e4562824cf8f06f247f9ec32c4cac8`; the verified terminal projection is SHA-256 `d9ce3aab1f5f93173be7056d749fd30e3f00d202479ddd5da0cd4dcae11b075f`.
+
+**First Docker/containerd migration attempt — Fail:** Run label `d180`, unit `r120-storage-migrate.service` (PID 108174), started at 12:17:41 UTC and failed at 12:18:19 UTC with `fixed_command_failed`. Its original safe projection is SHA-256 `f20f8bcd035f9de8a4ab64a0bba5160ae249b48fe6dc504a02c18605a274acca`. The specific cause remains **Unproven**. Original roots and configuration were retained, the prior services were restarted and reported healthy, and the partial copy was quarantined without deletion. The rollback inventory check **Failed** (`old_docker_inventory_verified=false`; `service_rollback_failed`); this failure is preserved and is not replaced by the later preflight.
+
+**Repair and fresh preflight — scoped Pass:** The reviewed `745e` watch/shared-budget/old-root-readiness repair passed 11 independent stub cases; the exact review time and receipt hash were not supplied. Fresh preflight 02 passed from 12:31:45 to 12:32:43 UTC with 505 images, 7 containers, and 13 volumes matching the source inventory; reported available capacity was 109,411,688,448 bytes against 40,063,934,503 required bytes including reserve. Its safe projection SHA-256 is `b94b1e619e23fdea22f63cebd2dc65018eb5a25cb950206991923e4a97c5f4aa`. This preflight is not a migration or application-health pass.
+
+**Repaired migration at the initial E823 checkpoint — Pending (running):** At the initial coordinator report, a new `r120-storage-migrate.service` process (PID 115335), launched through `r120-storage-migration-launch-20261009-v2.service`, was still running under approval SHA-256 `c1a748773056438e00fdd0235ab4469e96d28b135aad4160cb529da16e570cdd`. The launch was reported at approximately 12:34 UTC; exact start and observation times are **Unavailable**. No terminal receipt was available at that checkpoint, so migration acceptance was **Pending** there. Generated-cache relocation and BuildKit runtime setup were also **Pending**. The target BuildKit policy is 4 GiB garbage collection and no more than three newly managed images between explicit cleanup reviews; effective runtime controller/cgroup limits have not been verified.
+
+At the initial E823 checkpoint, the coordinator reported production healthy on its unchanged schema-12 baseline. This storage task did not modify production; the 1 GB host and backups and the US$15 monthly total cap remain in force. No promotion, resize, rollout, release, or email occurred. The exact image-retirement run ID/time and the `745e` review receipt remain **Unavailable**. The running migration's later terminal result is recorded in the E823 supplement below.
+
+### R-ASTRA-120 E823 supplement: second migration attempt
+
+The second r120-storage-migrate.service attempt (PID 115335) started at 2026-10-09T12:33:58Z and ended at 12:35:20Z with exit 1 and **Fail**, code copy_watch_copy_device_mount_timeout. The actual safe terminal projection SHA-256 is 53d9492e6b8327b39f95f3882c0bfb0771ee490ce99654d7f08c33625d2634a0. No new configuration was installed; both original roots were retained. Rollback **Passed** for stopping the new services, restoring the original configuration, restarting the old services, and verifying the exact old Docker inventory; the projection reports an empty error list. The old Docker service was reported healthy. The failed copy remains quarantined and was not deleted; the parent reports it was preserved by rename and the original-root modification time was restored. The failure code records a copy-watch mount timeout; the underlying cause remains **Unproven**.
+
+The follow-on repair for the kernel mount record and file-descriptor-bound copy path is **In progress**; no repaired migration result is available. Docker/containerd relocation, generated-cache relocation, BuildKit runtime installation/effective limits, and present/absent-medium startup verification remain **Pending**. This supplement records the second failed attempt and successful rollback without changing the earlier E823 note that the attempt was running at its prior checkpoint. Production remains on the unchanged healthy schema-12 baseline; no promotion, resize, rollout, release, or email occurred.
+
+### R-ASTRA-120 E823 supplement: restore terminal proof and third migration attempt
+
+The restore unit's terminal journal supplement now directly records `r120-sd-restore-20261009-v3.service` started at `2026-10-09T11:37:50.332071Z` and deactivated successfully at `2026-10-09T12:06:41.656350Z`. The supplement SHA-256 is `2d84e14f2c72b8e100d25e3cb5daffbe53863613f7840fe126ecde4b94049332`. The earlier terminal projection remains part of the record; because systemd later garbage-collected the transient unit, not-found defaults from a later query are not terminal proof. The restored files, member inventory, checksums, and metadata passed in the recorded restore scope; this is not Docker relocation acceptance.
+
+The exact unused-image cleanup completed at `2026-10-09T11:02:12.134306Z`: `retire.py` PID 73501 exited 0 after handling 336 proven-unused image IDs. Free space changed from 4,151,255,040 to 25,338,744,832 bytes. The direct execution-result SHA-256 is `e8c5ceccfd15475b9c2c0ad7768ef4dc87c5f746e076e12c9cd41f281611373e`; this is direct process evidence, not a separate systemd-unit terminal record.
+
+The repaired pinned-mount watcher change `047ef` passed its 23-case independent synthetic review from `2026-10-09T12:48:04Z` to `12:49:08Z`; receipt SHA-256 `9b94ac1d02e7898b4bdfcec65c125ac09f1f5ee304379be71a88e0009d0a90b5`. This is host-free watcher evidence. Fresh preflight 03 then **Passed** its prepare-journal and inventory scope at `12:53:55Z`–`12:54:56Z`: 505 images, 7 containers, 13 volumes, 108,460,113,920 available bytes versus 40,063,941,622 required including reserve. Its safe projection SHA-256 is `00666cd5593c366845b6d383f14419f30aab6d79ac93a89443d4dcab55cb0728`. Preflight is not migration or application-health acceptance.
+
+At the next checkpoint, a third `r120-storage-migrate.service` attempt had started at `2026-10-09T12:56:39Z` and was still copying containerd data. Its PID, run identifier, and terminal receipt were **Unavailable**; no migration result or acceptance is claimed. The preceding two failures and their distinct rollback outcomes remain preserved above. The maintained launcher and bounded-builder source contract are now defined: local Compose build/start/inspect/stop use `scripts/local-compose.sh`, and the root Compose file requires `STOCK_PROBS_LOCAL_IMAGE`. The operator documentation now describes this path without freezing a local image tag. This is source/documentation scope only: BuildKit installation, effective limit inspection, and the worker-step probe remain **Pending** until copy and cache retirement permit setup. Generated-cache relocation and present/absent-device startup checks remain **Pending**. Production remains on the unchanged healthy schema-12 baseline; the existing 1 GB host, backups, and US$15 monthly cap remain unchanged. No promotion, resize, rollout, release, or email occurred.
+
+At an interim coordinator checkpoint with exact observation time **Unavailable**, the same third attempt was still copying. Removable-media usage was reported as 21 GiB, compared with 9.7 GB at the initial run observation; the exact measurement source/time, migration PID, and terminal receipt were not supplied. This interim status is superseded by the later terminal proof below. BuildKit setup and its limited worker-step run had not been performed; cache retirement remained **Pending**.
+
+### R-ASTRA-120 E823 supplement: migration and cache-retirement checkpoint
+
+The third migration attempt using pinned-mount watcher repair `047ef` later **Passed**. PID 1's journal contains the matching invocation's Starting, Deactivated successfully, and Finished records and the service's default successful oneshot exit policy; after transient-unit garbage collection, direct `ExecMainStatus` is **Unavailable**. The terminal journal projection is `/var/tmp/r120-phase3-journal-terminal-projection-20261009-03.json`, SHA-256 `8999b5ec2e6ff25be11d296743aaf26e5fa9a4ca1120a63431ddc8ecc8cdb132`. It records start `2026-10-09T12:56:39Z`, finish `2026-10-09T14:00:55Z`, and migration-result SHA-256 `dceedade46eb276c0f26ab9bb2ea4ea3daa16197f001397da3caa71d11254473`. The active Docker and containerd roots and the 505-image, 7-container, 13-volume inventory were retained on the SD filesystem. This later Pass does not erase either previous migration failure or their distinct rollback results.
+
+Phase 4 application-health acceptance **Passed** at `2026-10-09T14:24:54Z`: application health passed, no container or volume mount referenced the old roots, and the matching inventory was 505 images, 7 containers, and 13 volumes. The component receipt SHA-256 is `561a05acf67c286679b264e763b3dca2ef986285875b8992177d914144caa4a7`. The present-mount Docker and containerd guard checks both exited 0. Missing-card simulation in a private mount namespace made both guards exit 1 and passed that simulation scope; it is not physical-card removal or an actual daemon startup test. Guard receipt SHA-256 is `1b20a3a96262bcbcf66368f084400e2289c534171b6c5a52293932092fadbc89`; combined phase 4 projection SHA-256 is `36829641df87269589c4d4b07199f22982f60fe0d571aa7c6a317828f6ef63ab`. Physical missing-device startup verification remains **Pending**.
+
+A frozen copy of the Docker root was written to the main filesystem at `2026-10-09T14:25:35.245770Z`: 137,216,000 bytes; the copy and tar comparison **Passed**. Archive SHA-256 is `2d5dae8a73b8fbce11b820ce7f23757722466930986b855312f8b78ace3aa77b`, backup-receipt SHA-256 is `857c9c566277956b892fda989181bde9fda60a071aec14668cbadae8e9935938`, and PID 1 terminal-projection SHA-256 is `18e720533fc6be93bb3bfc806d8f5ae7a322fd30971d41e37e7c3403f51c110c`. The original 8.87 GB backup of the removable-media source remains retained on the main filesystem. Neither backup authorizes retiring the old main-disk roots before independent verification.
+
+The separate generated-cache retirement sequence remains unresolved, and all earlier failures are preserved: cache plan 01 **Failed** on active UV locks; four identified idle deployment-MCP processes were terminated. Collector 01 **Failed** with `receipt_time_invalid`; strict parser review `25f` **Failed** on a `24:00` timestamp case, while repair `e66` passed its selected parser scope (5 valid and 11 invalid cases). Collector 02 **Failed** because template health was missing on six exited candidates. An `a6` safe-index repair preceded collector 03's **Pass**. Cache plan 02 **Failed** on external UV hardlinks; UV-only source/synthetic repair `6d286` passed six independent tests. A fresh cache plan 03 is **Running**, so cache deletion/retirement is not accepted. Full receipt hashes and exact observation times for these cache-plan diagnostics were not supplied.
+
+The final file-descriptor-bound source repair passed four affected independent tests; only source/test hash prefixes `4cdb` and `5c748` were supplied. The earlier 192-test/six-module Pass remains a separate scope and does not replace this repair's smaller result. These checks do not substitute for actual cache retirement or BuildKit runtime acceptance. The latest coordinator disk observation reported about 15 GB free on the main filesystem (87% used) and 48 GB used on the SD filesystem (43% used); its exact time was not supplied. Old-root retirement, generated-cache relocation, BuildKit setup/effective-limit verification, and physical missing-device startup checks remain **Pending**. No image build/publish, production, release, or email action occurred.
+
+### R-ASTRA-120 E823 supplement: old-root retirement, cache copy, and BuildKit attempts
+
+The later phase 4 old-main-root retirement **Passed** after independent review. The safe projection records old Docker/containerd roots removed from the main filesystem, empty dry-run checksums, no remaining container/volume references to those roots, matching before/after inventory, and filesystem flush success. Its result SHA-256 is `5d81f7518bd3e4b0bbf759ece08d3eade709f23183176af22446eff1d6f8d254`; projection `/var/tmp/r120-old-root-retirement-projection-20261009-01.json` SHA-256 `319b6638d9ce94221e5723f4ed0700651259dfb369bfe35258268ada259cb245`; independent projection review SHA-256 `0a33daf53aee7faaafc4338a53f530bde44c057737b3475e98021867ddba03a6`. Active Docker/containerd roots remain on the SD filesystem and the application was healthy. A coordinator observation reported 53 GiB free on the main filesystem (53% used); exact observation time was unavailable. This later result supersedes the earlier checkpoint's old-root-retirement **Pending** status, but not its preserved migration and rollback failures.
+
+Generated-cache work has advanced but is not complete. Cache plan 03 was intentionally interrupted for performance diagnosis and is not a Pass. Optimizer repair `802e` repaired equivalent manifests. Plan 04 **Failed** on active UV references from the automatic deployment MCP; the underlying cause is not established. A temporarily changed executable mode was byte-identical to its baseline, and restoration to the original `0755` mode remains held until cache work finishes. Cache plan 05 **Passed** (plan SHA-256 `1d24aaeb15c0839cd7adf771a730b210fd90024a1facb63c2e6e198153ebdc57`). Actual artifact-copy run 01 **Passed** at `2026-10-09T14:55:14Z`: the copied data was approximately 3.4 GiB and source/destination manifests matched exactly (manifest SHA-256 `dbcb3b3c56fdf1bafdcee9526dfd5cca667d103d3a2fe6b1501960b65166b4bb`). Its safe projection `/var/tmp/r120-artifact-copy-projection-20261009-01.json` has SHA-256 `3d27702e7c5e89697daa9f5836195770956a15b06f1bb5d52ecba5c205a3693a`. The original cache source remains unchanged and has not been retired; activation, persistence verification, and source retirement remain **Pending**. UV cache external hardlinks also remain in the reported inventory (35,833 links across 25,521 inodes). No cache deletion is accepted from the copy result alone.
+
+Bounded BuildKit setup attempt 01 **Failed** because the installer read Docker image field `.Id` with the wrong casing. The narrow `.ID` repair passed 31 independent tests; this does not pass host installation. Setup attempt 02 **Failed** with `buildx_version_mismatch`; the underlying cause is not established and no controller was installed or accepted. Setup receipt, effective builder/controller limits, and the worker-step resource probe remain **Pending**. The configured 4 GiB max-used value is a periodic garbage-collection target, not an instantaneous absolute cache quota.
+
+The original independent removable-media backup remains retained; the frozen Docker-root backup on the main filesystem also remains retained. Physical missing-device startup verification, generated-cache activation/persistence/source retirement, and BuildKit runtime acceptance remain **Pending**. Production remains on the unchanged healthy schema-12 baseline; no production mutation, promotion, resize, rollout, image release, or email occurred.
+
+### R-ASTRA-120 E823 supplement: generated-cache activation, persistence, and bounded-builder follow-up
+
+The copied generated cache was activated at `2026-10-09T15:03:29Z`; activation projection `/var/tmp/r120-artifact-activation-projection-20261009-01.json` SHA-256 `d9a1f8260c2b9de0b3551920b1d4bff8b2f76e072c43f0eaf2c8a9ca76921e01`. Persistence verification **Passed** at `2026-10-09T15:06:30Z`; projection `/var/tmp/r120-artifact-fstab-projection-20261009-01.json` SHA-256 `8b12e10cc80ec3ff7e22b5b7d982fffb471db5d26c1e10f62152501b34420990`, and the observed `/etc/fstab` SHA-256 was `511cfb2dc4d64947622933a7e812aed5c27812cc8000a528efe29275a96e619a`. An unprivileged account's read/write/delete checks on the four relocated SD cache paths **Passed**; only receipt hash prefix `be3e…` was supplied. The relocated-tool check **Passed** with UV `0.12.15` and Chromium `153.0.8010.12`; receipt `/var/tmp/r120-relocated-cache-tool-checks-20261009-01.json` SHA-256 `a5c7e2fa724d6b7900fec289253f69f1c200ce5bea1fa5b0168eb25d649a92ef`. An earlier guessed executable-location check found no tools at those guesses, but was setup-only and did not execute or fail either tool.
+
+The cache no-fallback simulation **Passed** in a private mount namespace after removing four bind mounts: the main-filesystem underlay was mode `000` and non-root write checks were false. Projection `/var/tmp/r120-cache-underlay-no-fallback-simulation-20261009-01.json` SHA-256 `85c771e391f110beedb01f7fffd1ddeeca133c99b320b7b5d8a28cc98f818efe`. This is simulation evidence only, not physical-medium removal or actual startup acceptance. Original cache backups remain retained. The source-retirement preflight **Failed** with `fstab_changed_since_phase2`: the mover compared the original fstab after the approved persistence update. A narrow loader repair is in progress; no source cache retirement or deletion is accepted yet.
+
+Bounded-builder setup attempt 03 **Failed** with `apt_plan_missing_already_installed`: the Ubuntu package command omitted `-v` when the package was already installed. Its narrow repair passed 19 independent tests. Setup attempt 04 created a bounded controller but **Failed** config verification with `buildkit_config_mismatch`: Buildx reformatted the TOML although the values were exact. A semantic comparison repair is in progress; effective builder configuration and current worker-step resource proof remain **Pending**. Earlier setup failures remain preserved above. The no-fallback `up --no-build --pull never` ARM contract passed 28 independent tests; native ARM execution remains **Unavailable**. This does not change the GC-target limitation: 4 GiB is periodic collection policy, not an instantaneous absolute cache quota.
+
+At this checkpoint, cache activation and persistence passed, but original-source retirement, bounded-builder configuration acceptance, current worker-step proof, and physical missing-medium startup remain **Pending**. Production remains unchanged; no production mutation, promotion, resize, rollout, release, or email occurred.
+
+### R-ASTRA-120 E823 supplement: cache-source retirement and actual storage observation
+
+The read-only retirement preflight 02 is **Unavailable** as mandatory-guard acceptance: it evaluated a computed snapshot only, and its optimization result was **Unknown**. This limitation remains distinct from the subsequent explicit mover. At `2026-10-09T15:31:20Z`, the actual cache-source mover **Passed** after freshly revalidating all mandatory guards; it retired four original cache duplicates while retaining the active SD copies. Safe projection `/var/tmp/r120-artifact-retirement-projection-20261009-01.json` SHA-256 `b3da3f9c30f0f57511f174d0713e5ee0d930e382c895db13b6633e6a692a6eba`. The original cache backup archives remain retained. This result supersedes the earlier source-retirement **Pending** status; it does not supersede the read-only preflight limitation or the pending physical absent-medium startup check.
+
+The permission restoration for `scripts/deploy-mcp.sh` **Passed**: exact mode `0755` was restored; its observed SHA-256 prefix is `7c364…`, recorded in `/var/tmp/r120-deploy-mcp-permission-restored-20261009-01.json`. A subsequent MCP `status` attempt ended with `Transport closed` and is **Unavailable**; no production action occurred. The earlier temporary mode change and its hold are retained as history, with this later restoration result superseding that pending mode state.
+
+The final actual parent observation **Passed** at `2026-10-09T15:39:58Z`: projection `/var/tmp/r120-storage-final-observation-20261009-01.json`, SHA-256 `19b88920e116ccef2b4114628b843954e4ac7e964eb33cc06d8c7b0d249c7a0d`. It confirmed all four cache mounts active, exact absence of the four retired cache duplicates and the old Docker/containerd roots, both main-filesystem archives retained with size checks, and application health HTTP 200. Free space was 59,002,597,376 bytes on the main filesystem and 64,139,616,256 bytes on the SD filesystem. An earlier observer attempt failed at setup because `netnsenter` was unavailable and returned a health-check refusal; a user-issued direct request returned 200, and corrected observer 02 using `--net` passed. The initial observer failure is not an application-health failure and remains preserved separately.
+
+Bounded BuildKit runtime evidence is partial. A fresh read-only selected-controller report (hash prefix `a50dc…`) reported `running=true`, memory `1,342,177,280` bytes, swap `2,147,483,648` bytes, CPU quota/period `100000/100000`, and PID limit `128`. This controller observation does not establish the worker-step cgroup limit. Completion wrapper attempt 01 **Failed** before that worker probe because its `buildx inspect --format` form was unsupported; `buildx ls --format json` was observed supported. The setup/helper semantic repair (`460349`/`de3505`) passed 53 independent tests. An earlier independent driver review passed 75 unit tests but **Failed** with a P2 unbounded-output-capture finding. The narrowed output-reader repair passed 79 builder tests; current setup/helper/private-wrapper bindings (`95b5`/`68ee`/`1533`) also have a 79-test builder Pass, while independent QA remains **Pending**. Do not claim bounded setup completion or worker-step acceptance. The no-fallback ARM `up --no-build --pull never` contract passed 28 independent tests; native ARM execution remains **Unavailable**.
+
+At this checkpoint, Docker/containerd migration, old-root retirement, cache activation/persistence/source retirement, backup retention and actual application health are recorded as passed in their stated scopes. BuildKit semantic/configuration acceptance, completion-wrapper independent review, worker-step resource proof, and physical missing-medium startup remain **Pending**. The 4 GiB BuildKit value remains a periodic GC target, not an instantaneous absolute cache quota. No production mutation, promotion, resize, rollout, release, or email occurred.
+
+### R-ASTRA-120 E823 supplement: bounded-worker verifier and completion diagnostics
+
+Actual worker probe 02 **Failed** from `2026-10-09T15:42:07Z` to `15:42:26Z` with `worker_step_outside_bounded_builder`; receipt SHA-256 prefix `4484…` was retained with the probe directories. This does not establish that the worker exceeded its limit. Diagnosis found the verifier selected the host `MainPID` cgroup leaf `/system.slice/docker-a50dc…scope/init` instead of the bounded container's common ancestor. The Docker-container parent reported `memory.max=1342177280` and `cpu.max=100000 100000`; actual worker limits remain **Unverified**. A strict CID/PID-bound common-container-ancestor verifier repair is in progress, with independent QA and a fresh probe 03 pending.
+
+Completion wrapper attempt 02 also **Failed** at its verifier boundary by checking the `init` leaf rather than the strict container parent. Completion attempt 03 **Failed** at its 120-second cutoff; BuildKit logs included Docker Hub DNS timeouts on the default bridge. This is an observed symptom, not a universal DNS cause. A dedicated owned user-defined bridge operation retained the same controller identity and cache (safe projection SHA-256 prefix `1f6d…`), and a normal-namespace DNS lookup succeeded at `2026-10-09T16:01:36Z`; neither fact explains the earlier timeout. Completion 04 is held until independent review and fresh verifier/probe evidence.
+
+The producer's 16-case independent suite **Passed** (receipt SHA-256 prefix `13692…`), and consumer selection 1 **Passed** (receipt prefix `f335…`). A distinct consumer candidate `4eab29…` passed 79 independent tests (receipt prefix `7919…`). The earlier setup/helper/private-wrapper candidate bindings `95b5…`/`68ee…`/`1533…` passed 79 builder tests, with independent QA pending at that checkpoint. The newer producer/wrapper source bindings `387939…`/`d915…` are frozen for independent QA; that QA remains **Pending**. Earlier capture diagnostic QA passed (receipt prefix `6fbb…`), and helper-version-12 QA passed (prefix `685a…`). An earlier independent driver review passed 75 unit tests but **Failed** with a P2 unbounded-output-capture finding; the narrowed output-reader repair's 79-test builder result does not replace independent QA.
+
+A narrowly scoped user read-access policy **Passed**: UID 1000 received traverse-only (`--x`) access on `/var/lib/stock-probs`, whose root-owned mode remains `0700`, without directory listing, write permission, or broader grants, to allow reading only the nonsecret policy target. Public projection `/var/tmp/r120-build-policy-user-traverse-20261009-01.json` SHA-256 prefix `34b437…`. The earlier normal-read-denied setup failure remains preserved; this policy does not grant access to secrets or cache contents.
+
+The current actual controller observation remains bounded to its reported running state and selected limits; it does not prove worker-step placement. The actual native run 04 and fresh worker probe 03 have not run at this checkpoint. Strict verifier independent QA, source QA for the frozen producer/wrapper, and subsequent completion attempt 04 remain **Pending**. No full local suite or application image build was run for this documentation/source-review checkpoint. No production mutation, promotion, resize, rollout, release, or email occurred.
+
+### R-ASTRA-120 E824 bounded BuildKit setup and actual worker proof
+
+This supplement supersedes the E823 pending status for bounded setup and actual worker-step
+verification only. It does not supersede the preserved E823 worker-probe 02 verifier failure,
+completion-03 timeout, cache/retirement preflight limitation, or any pending absent-device startup
+check.
+
+The bounded setup completed: `/var/lib/stock-probs/r120-buildkit-v1/setup-receipt.json` has SHA-256
+`291ca40fc11266bac55fb095a30bcc17e9f0baf49530f72d5f703b300f0d7ceb`. The actual network-none
+BuildKit worker `RUN` **Passed** strict container-cgroup-boundary and descendant-limit verification:
+`memory.max=1342177280` bytes and `cpu.max=100000 100000`. The nested
+`worker_step_cgroup_proof` in the configured setup receipt was re-read and parent-verified against
+the real container root cgroup; bound worker output `/var/lib/stock-probs/r120-buildkit-v1/worker-cgroup-probe-output/proof.txt` has SHA-256
+`31a12180b43e847a671b2afb8cfeb6ead4fbb23de6b4d14f5f0af7c1a3b01a98`. The final root re-read
+of the output marker and probe-process cleanup **Passed**; projection
+`/var/tmp/r120-real-worker-output-supplement-20261009-01.json` SHA-256
+`c52ae28849b5ad682c7abd51c1682cb1fbb2c6698dc8f9c04ea375b14d41c0c2` verified the exact marker
+file and no remaining probe process. Independent QA of this marker projection **Passed** at the
+separate projected-review scope: `/var/tmp/r120-storage-worker-marker-supplement-independent-qa-20261009T1615Z.json`
+SHA-256 `1f85c50b6ed5cd7d8a0287d40f5b36a6b696618692dcc09bea8744d2962c1370`; it does not claim
+private-output access. The exact per-RUN time was not supplied; its execution is contained within
+the successful terminal unit window below. The controller's PID limit is 128; it
+is not the worker's PID limit. The final actual-host observation **Passed** at the terminal unit state
+`Starting=2026-10-09T16:07:26.962242Z`, `Deactivated successfully=2026-10-09T16:07:38.993813Z`,
+`Finished=2026-10-09T16:07:38.996024Z`. It bound the installed pins and configured setup receipt,
+preserved failure evidence, checked mounts and retained archives, and observed application health
+HTTP 200. Projection `/var/tmp/r120-storage-final-host-observation-20261009-02.json` SHA-256
+`7a016e229c7f24e8c9e22f94fa1ebbe9fe1a114f65d0f60ca311a499ab2dc180`; its log SHA-256 is
+`bd982f50b88af57d15c4045389d36730323ab06d450ed472f5f1fa05ed13a4c1`. No new full archive rehash
+was performed; the earlier full restore validation was reused. No reboot or physical absent-medium
+startup was tested. At this observation, main-filesystem free space was 59,009,478,656 bytes
+(about 54.96 GiB), SD free space was 63,949,541,376 bytes (about 59.56 GiB), and application
+health returned 200.
+
+The builder runs on the fixed owned bridge `r120-bounded-build`; the default builder was not
+changed. Normal-user helper validation **Passed** at 16:08 UTC; receipt
+`/var/tmp/r120-normal-user-build-policy-validation-20261009-01.json` SHA-256
+`1d389708564a22d30dd08a33d568de18fb175d6c18d8e51cef1f9821353cffb3`. It reported an empty
+managed-image ledger (no legacy image adoption) and valid actual builder inspection/data-root
+configuration. Independent actual normal-user helper QA **Passed** at 16:14 UTC;
+`/var/tmp/r120-storage-normal-user-helper-independent-qa-20261009T1614Z.json` SHA-256
+`ec900344ebc77209ef096a416571f8b6e57a6f6dda09d1a836f048f85504a7f8`. It verified UID 1000's
+read-only live setup-receipt/data-root/builder inspection, controller, memory/CPU/network/config,
+and cache-volume UUID, with no build or mutation. The earlier expected-status typo stopped before
+helper or Docker calls and remains a separate setup failure. The latest output-reader/producer wrapper bindings were reported as
+`38793942e3a7eb1459f5614934e98e1b161fe3535c2e6bea03ab317ffff8fc82` and
+`d91522f7574afe7e0c1088ad4d4d38a0fa777897eabe58a3821b30bf4d3ca6a1`. Independent source QA
+**Passed** for these exact setup/producer/wrapper pins and matching consumer `4eab4231…`: 13 network-
+producer, 27 consumer, and 8 space-guard selected tests passed at `2026-10-09T16:04:24Z`–
+`16:04:37Z`; read-only source review found no findings through `16:05:17Z`. Receipt
+`/var/tmp/r120-storage-maintenance-20261009/network-producer-independent-review-20261009T160517Z-3c1b2b0d.json`
+SHA-256 `a7d56805e3fa1c3382fe39605881cab72b5b86cf0897bb0afb19f94a0d7ab7a5`. This is the selected
+source/test/review scope; it is not an application image build or full local gate.
+
+The 4 GiB BuildKit max-used setting remains a periodic garbage-collection target, not an
+instantaneous absolute cache quota; keep at most three new managed images between explicit cleanup
+reviews. The user-defined-bridge DNS lookup and successful worker run do not establish the cause of
+the earlier default-bridge Docker Hub DNS timeout. The actual worker-step proof covers its network-none
+`RUN` scope, not an application Compose image build, app-image runtime, release, or production.
+Docker/containerd and generated-cache relocation/source retirement remain Passed for their recorded
+scopes; the original independent backup and main-disk archive remain retained. No production
+mutation, promotion, resize, rollout, release, or email occurred.
+
+### R-ASTRA-120 E825 schema-13 cleanup-ledger repair and current storage checkpoint
+
+This supplement records the E825 cleanup-helper repair and current read-only observations. It does
+not supersede the two failed migration attempts, the earlier worker verifier/timeout failures, or
+the E823/E824 limits on absent-device and application-image acceptance.
+
+The restored SD filesystem remains mounted at `/srv/signal-ledger-storage` by UUID
+`54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`. The restore unit's PID 1 journal records
+`Started=2026-10-09T11:37:50.332071Z` and `Deactivated successfully=2026-10-09T12:06:41.656350Z`,
+with actual restore result `0`; the public projection is
+`/var/tmp/r120-restore-journal-terminal-supplement-20261009-01.json`, SHA-256
+`2d84e14f2c72b8e100d25e3cb5daffbe53863613f7840fe126ecde4b94049332`. This journal closes the
+terminal-time gap in the earlier restore projection; a later transient-unit `not-found` response
+with default status fields is not terminal evidence. The separately verified 8.87 GiB original SD
+backup and both main-filesystem archives remain retained. The existing E823/E824 inventory,
+mount-guard, cache-relocation, worker-step, and application-health results remain scoped to their
+receipts. Physical removal and startup with the medium absent were not performed.
+
+A fresh actual mounted-state readback at `2026-10-09T16:44:54.174085Z` confirmed the expected UUID on
+`/srv/signal-ledger-storage` and the test-results filesystem, Docker's root at
+`/srv/signal-ledger-storage/docker`, and both daemons active with mount `Requires`/`After`
+dependencies. Main-filesystem free space was 58,940,370,944 bytes and SD free space was
+63,949,533,184 bytes. Receipt
+`test-results/assistant-r120/coordination/storage-resume-20261009/parent-storage-readback-20261009T1645Z.json`
+has SHA-256 `a633a4b7bc3cf4a57c5f224938bd1fe309dc410541de8e722130864f620e811a`. This is a
+present-mount/service observation only; no physical removal or reboot was performed.
+
+The independent cleanup diagnostic confirmed an existing schema-13 candidate-ledger inventory
+mismatch: `/var/tmp/r120-schema13-cleanup-ledger-diagnostic-20261009T1627Z/diagnostic-receipt.json`,
+SHA-256 `b261bc2fbba5b7594ab25e3293046e28735b8d429fa6badd5799d72df2ae90f7`. The four-file repair
+candidate added a bounded-helper operation for one exact registered recovery tag while holding the
+ledger lock. It validates the completed recovery row and bound receipt, rejects
+protected/shared/current, unregistered, malformed, or referenced images without dropping the row,
+removes only the full image ID with `docker image rm --no-prune`, verifies the image and tag are
+absent, and only then updates the ledger. If removal is partial, it restores the recorded tag. A
+stale-ledger mismatch is therefore a retained failure, not a reason for manual row deletion or
+broad pruning.
+
+Builder checks for the initial helper/rehearsal repair candidate passed 172 selected tests, Ruff,
+and format; its source hashes at that checkpoint were `95530d821b66f33238a0d19a537b68eb659386e27d28c49f2926aa0fe11c1939`
+(`scripts/bounded_docker_build.py`),
+`6eda48c6514918610725a55d32b8fb4f0a523a9767fb21e2de85ed39df24bc61`
+(`scripts/rehearse_schema13.py`),
+`45efedd2076bf0f66ef164c7a1cb35f202e58b75e776c46fa12384a8548e2ae5`
+(`tests/test_bounded_docker_build.py`), and
+`e7eb5b02243b22161bcec8103b3aab02cfc1bf6390a3017260b757b30de096a2`
+(`tests/test_schema13_rehearsal.py`). Earlier E501 and three format diagnostics are preserved as
+builder-check failures; they were not runtime failures. The first independent cleanup QA **Failed**
+on a P2: the operation did not require the expected full image ID before deletion. Receipt
+`/var/tmp/r120-rehearsal-ledger-independent-qa-20261009T1638Z/independent-qa-receipt.json` has
+SHA-256 `b139822219e5e1bb194e6b541fd8cee0b3c0351ffaf5a841be300306a1dc5423`; its mock-only
+reproduction hash prefix is `7cf56ecd…`. The review ran no Docker build, image deletion, or
+production operation. Luna's `r120_retirement_identity_repair` added the required expected-full-ID
+validation before mutation. That repair candidate passed 179 selected tests (0 failures, 0 skips),
+Ruff lint/format/security, and scoped diff-check. JUnit
+`/var/tmp/r120-retirement-identity-verified.Vj170V/junit.xml` has SHA-256
+`cf2b0b1239ab6588d4660566ec9546612009ec78adcd8b2181abbfb34f402169`; its window was
+`2026-10-09T16:45:45.834627Z`–`16:45:56.465627Z`. The repaired source/test hashes are
+`8e0690218946466222202f8e7daddedbca7ab2f69ddca6a26fc67e63ee095298`
+(`scripts/bounded_docker_build.py`),
+`32d9bb6c5c209d938ffeba64baee0a7676062fa67328277a30a45530cab98f69`
+(`scripts/rehearse_schema13.py`),
+`88cb220c4dd140ea5b490e76744ea7e31979f20f0d34fac727c095bc3754fba9`
+(`tests/test_bounded_docker_build.py`), and
+`de50aacb7da0c986b922e234709d012d7f638eaf26690c02ce6b8b0d60089a66`
+(`tests/test_schema13_rehearsal.py`). These builder results do not erase the initial independent
+failure. Parent source review **Passed** for the narrow four-file identity repair; actual Docker
+cleanup/build was skipped. Independent re-review **Passed** on the four frozen source/test pins at
+revision `4e3ffbcb195908e8c69955562c7ab0fa47a4bac3`, native Linux x86_64. The selected pytest
+command ran under `.dev-venv/bin/python` (Python 3.11.15); the separate reviewer-host Python version
+does not describe that test runtime. It passed 179 selected tests, Ruff lint/format, and the
+repository security check; source review confirmed
+the expected full ID is checked against the ledger before setup, Docker inspection/removal,
+reconciliation, or ledger mutation. Receipt
+`/var/tmp/r120-retirement-identity-independent-qa-20261009T1647Z/independent-qa-receipt.json` has
+SHA-256 `a04ff94c9e22f89a00021af9b74deede6f748f0ed79727e80df364ffa2493833`; its JUnit
+`/var/tmp/r120-retirement-identity-independent-qa-20261009T1647Z/junit.xml` has SHA-256
+`cff73d844cb79d0025698172687109e63cc3c5ee5d3cf15fef84adfdeb597ec5` and ran
+`2026-10-09T16:46:45.776865Z`–`16:46:56.344865Z`. The exploratory security command without the
+repository's `--ignore S101` option **Failed** on intentional assertions; the scoped repository
+security command passed and the exploratory failure remains in the review receipt. Parent source
+review and integrated review passed the same narrow repair. Integrated receipt
+`test-results/assistant-r120/coordination/storage-resume-20261009/cleanup-identity-independent-qa-final/parent-integrated-review.json`
+has SHA-256 `973b3ddbcf641bf548c2fe344a85d4c0da668c33bf1323c6cbfcfd0aa9744260` and confirmed all
+four source/test pins and the exact independent QA/JUnit hashes. This was mocked-Docker review
+only: no Docker build, image deletion, or actual schema-13 pair rehearsal has run. A
+separate bounded-policy helper QA passed its four-module, 145-test scope on the reported `4eab…`
+baseline (receipt SHA-256 prefix `57833f…`); its artifact path was not supplied. The earlier
+diagnostic mismatch remains preserved alongside the repair.
+
+A fresh read-only deployment-MCP `status`/`inspect` pair confirmed the unchanged production
+revision `da2764e8477698fa7d686be93a4711e35478e802`, schema 12, ready health, and loopback-only
+boundary. Receipt `test-results/assistant-r120/coordination/storage-resume-20261009/native-deployment-mcp-read.json`
+has SHA-256 `1b9f32a7cfb685c9adecd81963a6d5e9c5fe1b28f4723152dc9a336af9fc4e5c`; it observed
+`2026-10-09T16:21:35.121482Z`. The calls were read-only and did not observe rollout mode, RAM,
+billing, or user/browser access. The current UI run `f863ea37d9038d591d922ce54170c58e132c6d13f429e15304ac89be6306a4ab`
+and independent current-panel reconcile **Passed** 4/4 focused browser cases and 64/64 current-stage
+route axe states with zero violations/incompletes. Review receipt
+`/var/tmp/r120-feature-coverage-current-panel-reconciliation-20261009T1634Z.json` has SHA-256
+`8d30fb75e57891d8d966a0a1391a072dd34b20efea8b7a332b7a9549d50c5827` and matched the current
+`assistant-panel.tsx` input and 52/52 served/export files. Raw per-case axe attachments were not
+retained; this is a focused current-panel scope, not a full-app accessibility pass. The existing
+guide's 94 source, 52 served/export, and 23 artifact bindings still match
+the previously audited inputs, but no new final-head binding was performed. These results do not
+establish full-app accessibility, physical-device behavior, PDF/UA, or final PR-bound guide
+acceptance. No application image build, full local gate, production mutation, promotion, resize,
+rollout, release, or email occurred.
+
 ### R-ASTRA-120 E822 attached-probe import repair
 
-Current R-ASTRA-120 E822: The attached HTTP probe now defers its unused MCP Gateway/service imports; application, UI, tool definitions, permissions and acceptance assertions are unchanged. Independent QA passed all 380 probe-file tests, Ruff and format, with exact equality for 11 MCP definitions/actions (receipt SHA-256 `c36c28d103346e6e7562046b2993c9d196c3bc4da15d90f8ce84a3279cf807bf`). An isolated import-only comparison on the bound candidate image passed: peak process RSS fell from 135,536 to 67,624 KiB. This is fixture-overhead evidence, not the actual-host failure cause or a 1 GB Pass. New exact-head artifacts and actual-host native/resource/recovery verification remain pending. The earlier memory failures remain recorded; production, budget, backups and release gates are unchanged.
+Historical R-ASTRA-120 E822: The attached HTTP probe now defers its unused MCP Gateway/service imports; application, UI, tool definitions, permissions and acceptance assertions are unchanged. Independent QA passed all 380 probe-file tests, Ruff and format, with exact equality for 11 MCP definitions/actions (receipt SHA-256 `c36c28d103346e6e7562046b2993c9d196c3bc4da15d90f8ce84a3279cf807bf`). An isolated import-only comparison on the bound candidate image passed: peak process RSS fell from 135,536 to 67,624 KiB. This is fixture-overhead evidence, not the actual-host failure cause or a 1 GB Pass. New exact-head artifacts and actual-host native/resource/recovery verification remain pending. The earlier memory failures remain recorded; production, budget, backups and release gates are unchanged.
 
 Builder baselines are preserved under `/var/tmp/r120-native-probe-import-rss-20261009T0935Z/recovery/`. Final probe SHA-256 is `a9bba2182e74fd947fab608e9d8755c9372d0f60026cfbfdd3f42fc808b9963c`; regression-file SHA-256 is `6af1d01ff61c9a539ccabcc15917e896ed23877922266b97babbc83adc0e4188`. Independent receipt: `/var/tmp/r120-native-probe-import-independent-review-20261009T094611Z.json`; JUnit SHA-256 `d3afdf89d8ddb3afa545c87c95fc2117d5e5b70a16af2d59e2bdfdb2c28f231d`. Parent source review found no issue in the narrow import deferral; the maintained Gateway catalogue still supplies every synthetic definition/action on use. Pinned-image import comparison: `/var/tmp/r120-image-probe-import-20261009T0943Z/result.json`, SHA-256 `acfa3d77b45d6e40a5d48650dd2699210d605646c644555c11648a2268127458`; both one-shot container commands exited 0 and owned containers were absent. This comparison used Python 3.11.15 and process-local peak RSS, not cgroup peak or native provider acceptance. No unchanged app/UI/full-suite rerun was performed.
 

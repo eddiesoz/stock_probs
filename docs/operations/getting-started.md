@@ -40,14 +40,29 @@ described in [backup and restore](backup-restore.md).
 
 ## Optional local production Compose path
 
-The root `compose.yaml` provides one minimal local production-style
-service; it is not a hosted deployment or a replacement for native development. Build and start
-it from the repository root:
+The root `compose.yaml` provides one minimal local production-style service; it is not a hosted
+deployment or a replacement for native development. Use the maintained launcher from the
+repository root for every operation on this local Compose service. The Compose file requires
+`STOCK_PROBS_LOCAL_IMAGE` and fails closed if called directly without it; the launcher selects and
+sets the local image for you.
+
+Build and start the service:
 
 ```bash
-docker compose up --build -d
-docker compose ps
+./scripts/local-compose.sh up --build -d
+./scripts/local-compose.sh ps
 ```
+
+The `up --build` form runs the bounded Buildx build first, then starts Compose without passing a
+build request to Compose. To build without starting the app, use
+`./scripts/local-compose.sh build`; to start an already-built local image without rebuilding, use
+`./scripts/local-compose.sh up -d`. At the E824 R-ASTRA-120 checkpoint, the actual BuildKit setup receipt is complete and a real
+network-none worker `RUN` passed strict container-cgroup ancestry verification with its descendant
+memory and CPU limits confirmed. Independent normal-user helper QA verified the receipt, data-root,
+builder, and cache-volume configuration read-only. This proves the bounded worker-step and helper
+verification scopes, not an application Compose image build or release. The launcher still fails closed unless the required setup receipt
+and storage checks are valid for a build request; source or configuration presence alone is not
+runtime acceptance.
 
 Open `http://127.0.0.1:8000/`. Compose publishes only
 `127.0.0.1:${STOCK_PROBS_PORT:-8000}` and keeps the database, SQLite WAL sidecars, trust key, and
@@ -60,8 +75,20 @@ set it explicitly only when a deliberate local fixture run is required.
 Stop the service without deleting its named volume:
 
 ```bash
-docker compose down
+./scripts/local-compose.sh down
 ```
+
+Keep at least 4 GiB free on each filesystem used by a build before starting. The bounded builder
+stops the owned build if free space falls below 1 GiB. Its BuildKit configuration sets a periodic
+garbage-collection max-used target of 4 GiB, reserves 1 GiB, requires 4 GiB minimum free space,
+and allows one parallel build. The 4 GiB target is not an instantaneous absolute cache quota.
+Treat these as the configured policy; claim effective runtime limits only after the setup receipt,
+installed builder inspection, and worker-step cgroup probe pass. Builder setup is a separate,
+explicit operation after the Docker root is mounted on the intended UUID and has sufficient free
+space. The setup helper dry-runs by default and requires the reviewed mounted-filesystem UUID and
+an immutable BuildKit image digest; only the reviewed invocation with `--apply` performs the
+root-owned installation. At E824, the setup receipt and actual network-none worker-step cgroup
+proof passed; the separate application Compose image build was not run.
 
 The native path above remains the development path: it uses `.dev-venv/`, the local CLI, and
 directly selected `STOCK_PROBS_DATA_DIR`/provider settings. The Compose path builds the pinned
@@ -74,6 +101,97 @@ This Compose path is local development and validation. The invite-only GitHub OA
 deployment, local GitHub Release publication (with GHCR as an explicit compatibility transport),
 Terraform-managed Linode host, and closed-until-canary Cloudflare Tunnel use the production
 procedure below. Do not copy development bootstrap credentials into a production environment.
+
+## Local Docker storage on removable media
+
+Use this procedure for operator-owned local Docker and build storage. It does not migrate the
+production application volume or production data.
+
+1. Copy the source medium to an independent, protected filesystem. Before formatting, verify the
+   backup checksum and byte count, the complete file/member inventory, and preserved metadata. If
+   any check is missing or fails, stop before formatting.
+2. Format only the intended partition, then mount it by filesystem UUID. Confirm the expected UUID,
+   filesystem type, mountpoint, and read/write state before restoring files.
+3. Stop both Docker and containerd while moving their data. If Docker uses the containerd image
+   store, move and verify both roots; changing Docker's `data-root` alone does not relocate
+   containerd-managed image content.
+4. Make both services depend on the expected UUID-mounted filesystem and run a pre-start guard
+   that checks the mounted device and filesystem. Use a private mount-namespace simulation to
+   verify a missing or mismatched medium fails closed before retiring the original roots; neither
+   daemon may create or use an empty fallback root. Treat physical removal and startup with the
+   medium absent as a separate acceptance check.
+5. Compare the restored image, container, and volume inventories with the source and verify
+   application health on the restored data. Keep the original roots until these checks and the
+   scoped private absent-medium simulation pass independent review. Retain the verified backup
+   until physical removal and startup with the medium absent pass independent review; a simulation
+   does not substitute for that check. Quarantine a failed partial copy for review; do not delete it
+   as cleanup.
+6. Move generated build and test caches as a separate operation. Record and compare their complete
+   inventory and metadata, and retain their original copies until the relocated tools pass their
+   scoped checks.
+7. Bound BuildKit garbage collection to 4 GiB and review managed-image retention separately, with
+   no more than three new managed images between explicit cleanup reviews. Confirm the running
+   builder's effective controller limits before relying on them. Remove only exact reviewed
+   objects; do not use global prune or force removal.
+8. For schema-13 rehearsal cleanup, provide both the exact generated recovery tag and the expected
+   full image ID registered in the bounded builder's ledger. The helper holds the ledger lock and
+   compares the caller's expected ID with the completed recovery row before Docker inspection or
+   mutation. It checks the bound receipt, image references, and protected/current inventory,
+   removes only that full ID with `--no-prune`, verifies removal, and then updates the ledger. A shared, protected,
+   current, unregistered, malformed, child-referenced, or container-referenced image must leave the
+   row intact. If cleanup is partial, the helper restores the bound tag. Do not repair the ledger
+   manually or substitute a global prune. The initial E825 candidate failed independent review
+   because it omitted the expected ID. Its identity-bound repair passed 179 selected tests and
+   independent/parent source review, but no actual Docker cleanup or pair rehearsal is recorded.
+
+At the R-ASTRA-120 E823 storage checkpoint, Docker and containerd used the removable-media roots;
+the matching image/container/volume inventory and application health passed, and the old main-disk
+roots were retired after verification. Both guards passed with the mount present, and a
+private mount-namespace simulation made both fail closed; physical removal and daemon startup with
+the medium absent remain unverified. Generated-cache copy, activation, and filesystem persistence
+checks passed, as did unprivileged read/write/delete checks and the relocated UV/Chromium tool check.
+The explicit cache-source mover then revalidated its mandatory guards and retired the four original
+cache duplicates; the active SD copies and original backup archives were retained. A final parent
+observation confirmed all four cache mounts, absent main-disk Docker/containerd roots, matching
+archive size checks, and application health HTTP 200. The earlier read-only preflight used a
+computed snapshot and did not establish its optimization assertion; the later explicit mover
+freshly revalidated mandatory guards and retired the original cache duplicates. Physical removal
+and daemon startup with the medium absent remain unverified. The bounded BuildKit controller is
+running with reported limits, but worker probe 02 failed at a verifier boundary that selected the
+container's `init` leaf instead of the bounded ancestor. Completion 03 timed out while BuildKit logs
+showed Docker Hub DNS timeouts on the default bridge. A dedicated user-defined bridge lookup
+succeeded, but it does not establish a universal DNS cause. Those worker-verification failures are superseded by the E824 actual network-none worker `RUN`
+Pass, which confirmed strict container-cgroup ancestry and descendant memory/CPU limits. Setup
+receipt SHA-256 is `291ca40fc11266bac55fb095a30bcc17e9f0baf49530f72d5f703b300f0d7ceb`; the latest
+normal-user helper validation passed at 16:08 UTC with an empty managed-image ledger, no legacy
+image adoption, and valid builder inspection/data-root configuration. The managed builder uses the
+owned `r120-bounded-build` bridge; the default builder was unchanged. Controller PID limit 128 is
+not a worker PID-limit result. At the final actual-host observation, the main filesystem had
+59,009,478,656 bytes free and the SD filesystem had 63,949,541,376 bytes free; application health
+was HTTP 200. Physical device removal and boot/startup with the medium absent remain unverified.
+Keep the original verified backups. No application image was built for this proof, and no release
+or production acceptance is claimed. See the [MVP plan](../../MVP-PLAN.md#r-astra-120-e823-storage-recovery-and-docker-migration)
+for exact checkpoints, receipts, and preserved failures.
+
+The E825 restore journal now records the successful restore unit's actual `Started` time
+(`2026-10-09T11:37:50.332071Z`), successful deactivation
+(`2026-10-09T12:06:41.656350Z`), and result `0`; this supplements the earlier restore projection.
+The verified SD backup and both main-filesystem archives remain retained. A later transient-unit
+`not-found` response with default status fields is not terminal proof. The initial cleanup-helper
+candidate passed 172 builder tests and Ruff/format, but independent QA **Failed** on a P2:
+expected full image ID was not required before deletion. The identity-bound repair and re-review
+passed 179 selected tests with Ruff, format, security, and diff checks; independent and parent
+integrated source review passed for that scope. The reviews used mocked Docker and did not run a
+Docker build, image deletion, or actual schema-13 pair rehearsal. The separate
+candidate-ledger mismatch remains preserved as the diagnostic that motivated the repair. The
+physical absent-medium startup check also remains unverified. See the
+[developer testing guide](../develop/testing.md#schema-13-rehearsal-image-cleanup) and the [E825
+ledger](../../MVP-PLAN.md) for scope and receipt details.
+
+The `2026-10-09T16:45Z` mounted-state readback confirmed the SD UUID at the configured mountpoint,
+the Docker root beneath that mount, and both daemons active with mount dependencies. It observed
+58,940,370,944 bytes free on the main filesystem and 63,949,533,184 bytes free on the SD. This
+present-state check does not substitute for physical absent-medium startup.
 
 ## Invite-only production deployment
 

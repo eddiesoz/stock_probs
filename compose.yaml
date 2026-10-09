@@ -1,8 +1,7 @@
 services:
   app:
-    build:
-      context: .
-    image: stock-probs:local
+    image: "${STOCK_PROBS_LOCAL_IMAGE:?Use scripts/local-compose.sh to build and run the local image}"
+    pull_policy: never
     environment:
       STOCK_PROBS_DATA_DIR: /data
       STOCK_PROBS_PROVIDER: "${STOCK_PROBS_PROVIDER:-yahoo}"

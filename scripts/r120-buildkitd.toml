@@ -1,0 +1,7 @@
+# BuildKit GC and solver settings for this dedicated builder only.
+[worker.oci]
+gc = true
+reservedSpace = 1073741824
+maxUsedSpace = 4294967296
+minFreeSpace = 4294967296
+max-parallelism = 1

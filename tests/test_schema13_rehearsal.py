@@ -1425,67 +1425,94 @@ def test_fixed_pr_verifier_uses_only_the_approved_api_endpoint_and_head(
         rehearsal._verify_reviewed_pr(repository, reviewed_sha)
 
 
-def test_build_image_uses_fixed_amd64_argv_and_discards_output(
+def test_build_image_delegates_to_bounded_helper_with_fixed_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = tmp_path / "docker-root"
-    root.mkdir()
     context = tmp_path / "workspace/context"
     context.mkdir(parents=True)
     image_id = "sha256:" + "d" * 64
     tag = "stock-probs:pr-candidate-" + "a" * 12 + "-" + "b" * 12
-    commands: list[list[str]] = []
-    launch: dict[str, object] = {}
+    calls: list[tuple[list[str], dict[str, object]]] = []
 
     def run(command: list[str], **kwargs: object) -> CompletedProcess[str]:
-        commands.append(command)
-        if command[1] == "info":
-            return CompletedProcess(command, 0, stdout=f"{root}\n", stderr="")
-        assert command[-1] == tag
-        return CompletedProcess(command, 0, stdout=image_id + "\n", stderr="")
-
-    class Process:
-        pid = 42001
-
-        def poll(self) -> int:
-            return 0
-
-        def wait(self, *, timeout: int) -> int:
-            assert timeout == rehearsal._BUILD_TERM_GRACE_SECONDS
-            return 0
-
-    def spawn(command: list[str], **kwargs: object) -> Process:
-        launch.update(kwargs)
-        launch["command"] = command
-        iidfile = Path(command[command.index("--iidfile") + 1])
-        iidfile.write_text(image_id + "\n", encoding="ascii")
-        return Process()
+        calls.append((command, kwargs))
+        if command[1:3] == ["rev-parse", "HEAD"]:
+            return CompletedProcess(command, 0, stdout="c" * 40, stderr="")
+        if command[1:3] == ["branch", "--show-current"]:
+            return CompletedProcess(command, 0, stdout="codex/r120", stderr="")
+        return CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "status": "built",
+                    "image_id": image_id,
+                    "receipt": (
+                        "/home/james/.local/state/stock-probs/r120-buildkit-v1/"
+                        "build-runs/run/build-receipt.json"
+                    ),
+                    "receipt_sha256": "e" * 64,
+                }
+            ),
+            stderr="",
+        )
 
     monkeypatch.setattr(rehearsal, "_run", run)
-    monkeypatch.setattr(rehearsal, "_build_free_bytes", lambda _path: 8 * 1024**3)
-    monkeypatch.setattr(rehearsal.subprocess, "Popen", spawn)
-    monkeypatch.setattr(
-        rehearsal.os,
-        "killpg",
-        lambda _pgid, _signal: (_ for _ in ()).throw(ProcessLookupError()),
-    )
-    assert rehearsal._build_image(context, tag, "a" * 40, {}) == image_id
-    command = launch["command"]
-    assert command[:5] == [
-        "docker",
-        "build",
-        "--pull=false",
-        "--platform=linux/amd64",
-        "--build-arg",
+    digest = "f" * 64
+    assert rehearsal._build_image(context, tag, "c" * 40, {}, context_sha256=digest) == image_id
+    assert len(calls) == 3
+    command, kwargs = calls[-1]
+    assert command[:2] == [
+        "/usr/bin/python3",
+        str(REPOSITORY_ROOT / "scripts/bounded_docker_build.py"),
     ]
-    assert command[5] == "REVISION=" + "a" * 40
+    assert command[command.index("--source-head") + 1] == "c" * 40
+    assert command[command.index("--source-branch") + 1] == "codex/r120"
+    assert command[command.index("--revision-label") + 1] == "c" * 40
+    assert command[command.index("--context") + 1] == str(context)
+    assert command[command.index("--context-sha256") + 1] == digest
     assert command[command.index("--tag") + 1] == tag
-    assert launch["stdout"] is rehearsal.subprocess.DEVNULL
-    assert launch["stderr"] is rehearsal.subprocess.DEVNULL
-    assert launch["stdin"] is rehearsal.subprocess.DEVNULL
-    assert launch["shell"] is False
-    assert launch["start_new_session"] is True
-    assert commands[0][0:3] == ["docker", "info", "--format"]
+    assert command[command.index("--role") + 1] == "current"
+    assert kwargs["timeout"] == 930
+    assert kwargs["check"] is False
+    assert kwargs["diagnostic_stage"] == "bounded_image_build"
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        "{}",
+        json.dumps(
+            {
+                "status": "built",
+                "image_id": "sha256:" + "d" * 64,
+                "receipt": "/untrusted/build-receipt.json",
+                "receipt_sha256": "e" * 64,
+            }
+        ),
+    ],
+)
+def test_build_image_rejects_unbound_helper_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, result: str
+) -> None:
+    context = tmp_path / "workspace/context"
+    context.mkdir(parents=True)
+    tag = "stock-probs:pr-candidate-" + "a" * 12 + "-" + "b" * 12
+
+    def run(command: list[str], **_kwargs: object) -> CompletedProcess[str]:
+        if command[1:3] == ["rev-parse", "HEAD"]:
+            output = "c" * 40
+        elif command[1:3] == ["branch", "--show-current"]:
+            output = "codex/r120"
+        else:
+            output = result
+        return CompletedProcess(command, 0, stdout=output, stderr="")
+
+    monkeypatch.setattr(rehearsal, "_run", run)
+    with pytest.raises(
+        rehearsal.RehearsalError, match="bounded image build returned an invalid result"
+    ):
+        rehearsal._build_image(context, tag, "c" * 40, {}, context_sha256="f" * 64)
 
 
 def test_deployed_baseline_verification_projects_only_fixed_image_metadata(
@@ -1599,7 +1626,9 @@ def test_schema12_base_defaults_to_local_build_and_preserves_provenance(
         tag: str,
         revision: str,
         _env: dict[str, str],
+        **kwargs: object,
     ) -> str:
+        assert kwargs == {"context_sha256": "b" * 64}
         calls.append((received_context, tag, revision))
         return image_id
 
@@ -1612,6 +1641,7 @@ def test_schema12_base_defaults_to_local_build_and_preserves_provenance(
 
     selected_id, image_reference, provenance = rehearsal._prepare_schema12_base_image(
         context,
+        "b" * 64,
         "stock-probs:schema12-base-test",
         str(rehearsal.DEPLOYED_BASELINE["source_revision"]),
         {},
@@ -1656,6 +1686,7 @@ def test_schema12_base_reuses_only_verified_image_id_without_alias_or_build(
 
     selected_id, image_reference, provenance = rehearsal._prepare_schema12_base_image(
         Path("unused"),
+        "b" * 64,
         "stock-probs:schema12-base-test",
         str(rehearsal.DEPLOYED_BASELINE["source_revision"]),
         {},
@@ -1672,192 +1703,71 @@ def test_schema12_base_reuses_only_verified_image_id_without_alias_or_build(
     assert calls == ["verify"]
 
 
-def test_generated_image_tag_cleanup_disables_ancestor_pruning(
+def test_generated_image_tag_cleanup_uses_bounded_ledger_retirement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tag = "stock-probs:schema13-recovery-abc123"
+    image_id = "sha256:" + "a" * 64
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def run(command: list[str], **kwargs: object) -> CompletedProcess[str]:
+        calls.append((command, kwargs))
+        return CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps({"status": "retired", "tag": tag, "image_id": image_id}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(rehearsal, "_run", run)
+
+    assert rehearsal._retire_generated_image_tag(tag, image_id, {}) is True
+    command, kwargs = calls[0]
+    assert command == [
+        "/usr/bin/python3",
+        str(REPOSITORY_ROOT / "scripts/bounded_docker_build.py"),
+        "--retire-schema13-rehearsal-tag",
+        tag,
+        "--retire-schema13-rehearsal-image-id",
+        image_id,
+    ]
+    assert kwargs["timeout"] == 120
+    assert kwargs["check"] is False
+    assert kwargs["diagnostic_stage"] == "schema13_rehearsal_image_retirement"
+
+
+def test_generated_image_tag_cleanup_rejects_unbound_retirement_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tag = "stock-probs:schema13-recovery-abc123"
+    image_id = "sha256:" + "a" * 64
     calls: list[list[str]] = []
 
     def run(command: list[str], **_kwargs: object) -> CompletedProcess[str]:
         calls.append(command)
-        return CompletedProcess(command, 0 if len(calls) == 1 else 1, stdout="", stderr="")
+        return CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps({"status": "retired", "tag": tag, "image_id": "sha256:" + "b" * 64}),
+            stderr="",
+        )
 
     monkeypatch.setattr(rehearsal, "_run", run)
-
-    assert rehearsal._remove_generated_image_tag(tag, {}) is True
-    assert calls == [
-        ["docker", "image", "rm", "--no-prune", tag],
-        ["docker", "image", "inspect", "--format", "{{.Id}}", tag],
-    ]
+    assert rehearsal._retire_generated_image_tag(tag, image_id, {}) is False
+    assert calls[0][-2:] == ["--retire-schema13-rehearsal-image-id", image_id]
 
 
-def test_build_image_blocks_low_disk_before_spawn_and_stops_mid_build(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_generated_image_tag_cleanup_rejects_noncanonical_expected_id_before_cli(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    root = tmp_path / "docker-root"
-    root.mkdir()
-    context = tmp_path / "context"
-    context.mkdir()
-    tag = "stock-probs:pr-candidate-" + "a" * 12 + "-" + "b" * 12
-    monkeypatch.setattr(rehearsal, "_docker_data_root", lambda _env: root)
-    launches: list[object] = []
-    monkeypatch.setattr(rehearsal.subprocess, "Popen", lambda *_args, **_kwargs: launches.append(1))
-    monkeypatch.setattr(rehearsal, "_build_free_bytes", lambda _path: 2 * 1024**3)
-    with pytest.raises(rehearsal.RehearsalError, match="at least 4 GiB"):
-        rehearsal._build_image(context, tag, "a" * 40, {})
-    assert launches == []
+    calls: list[list[str]] = []
+    monkeypatch.setattr(rehearsal, "_run", lambda command, **_kwargs: calls.append(command))
 
-    class RunningProcess:
-        pid = 42002
-        terminated = False
-        waited = False
-
-        def poll(self) -> None:
-            return None
-
-        def wait(self, *, timeout: int) -> int:
-            self.waited = True
-            assert timeout == rehearsal._BUILD_TERM_GRACE_SECONDS
-            return 0
-
-    process = RunningProcess()
-    frees = iter([8 * 1024**3, 512 * 1024**2])
-    monkeypatch.setattr(rehearsal, "_build_free_bytes", lambda _path: next(frees))
-    monkeypatch.setattr(rehearsal.subprocess, "Popen", lambda *_args, **_kwargs: process)
-    signals: list[int] = []
-    group = {"exists": True}
-
-    def killpg(_pgid: int, signal_number: int) -> None:
-        if signal_number == 0:
-            if not group["exists"]:
-                raise ProcessLookupError()
-            return
-        signals.append(signal_number)
-        group["exists"] = False
-
-    monkeypatch.setattr(rehearsal.os, "killpg", killpg)
-    with pytest.raises(rehearsal.RehearsalError, match="stopped below 1 GiB"):
-        rehearsal._build_image(context, tag, "a" * 40, {})
-    assert process.waited is True
-    assert signals == [rehearsal.signal.SIGTERM]
-
-
-def test_stopped_build_group_kills_descendant_after_client_exits(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = tmp_path / "docker-root"
-    context = tmp_path / "context"
-    root.mkdir()
-    context.mkdir()
-    tag = "stock-probs:pr-candidate-" + "a" * 12 + "-" + "b" * 12
-    monkeypatch.setattr(rehearsal, "_docker_data_root", lambda _env: root)
-    monkeypatch.setattr(rehearsal, "_build_free_bytes", lambda _path: 8 * 1024**3)
-
-    class ExitedLeader:
-        pid = 42003
-        waited = 0
-
-        def poll(self) -> int:
-            return 0
-
-        def wait(self, *, timeout: int) -> int:
-            self.waited += 1
-            assert timeout in {
-                rehearsal._BUILD_TERM_GRACE_SECONDS,
-                rehearsal._BUILD_KILL_GRACE_SECONDS,
-            }
-            return 0
-
-    leader = ExitedLeader()
-    group = {"exists": True}
-    signals: list[int] = []
-    ticks = iter([0, 1, 2, 3])
-
-    def killpg(_pgid: int, signal_number: int) -> None:
-        if signal_number == 0:
-            if not group["exists"]:
-                raise ProcessLookupError()
-            return
-        signals.append(signal_number)
-        if signal_number == rehearsal.signal.SIGKILL:
-            group["exists"] = False
-
-    ticks = iter([0, 1, 2, 3, 4, 5])
-    monkeypatch.setattr(rehearsal.time, "monotonic", lambda: next(ticks, 100))
-    monkeypatch.setattr(rehearsal.time, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(rehearsal.os, "killpg", killpg)
-    monkeypatch.setattr(rehearsal.subprocess, "Popen", lambda *_args, **_kwargs: leader)
-    with pytest.raises(rehearsal.RehearsalError, match="left child processes"):
-        rehearsal._build_image(context, tag, "a" * 40, {})
-    assert leader.waited >= 2
-    assert signals == [rehearsal.signal.SIGTERM, rehearsal.signal.SIGKILL]
-    with pytest.raises(ProcessLookupError):
-        os.killpg(leader.pid, 0)
-
-
-def test_build_timeout_and_keyboard_interrupt_reap_the_owned_group(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    root = tmp_path / "docker-root"
-    root.mkdir()
-    context = tmp_path / "context"
-    context.mkdir()
-    tag = "stock-probs:pr-candidate-" + "a" * 12 + "-" + "b" * 12
-    monkeypatch.setattr(rehearsal, "_docker_data_root", lambda _env: root)
-    monkeypatch.setattr(rehearsal, "_build_free_bytes", lambda _path: 8 * 1024**3)
-
-    class RunningProcess:
-        pid = 42004
-
-        def poll(self) -> None:
-            return None
-
-        def wait(self, *, timeout: int) -> int:
-            assert timeout == rehearsal._BUILD_TERM_GRACE_SECONDS
-            return 0
-
-    state = {"exists": True}
-    signals: list[int] = []
-
-    def killpg(_pgid: int, signal_number: int) -> None:
-        if signal_number == 0:
-            if not state["exists"]:
-                raise ProcessLookupError()
-            return
-        signals.append(signal_number)
-        state["exists"] = False
-
-    monkeypatch.setattr(rehearsal.os, "killpg", killpg)
-    timeout_process = RunningProcess()
-    monkeypatch.setattr(rehearsal.subprocess, "Popen", lambda *_args, **_kwargs: timeout_process)
-    monkeypatch.setattr(rehearsal, "_BUILD_TIMEOUT_SECONDS", 1)
-    clock = {"value": 0}
-
-    def advance_clock() -> int:
-        value = clock["value"]
-        clock["value"] += 2
-        return value
-
-    monkeypatch.setattr(rehearsal.time, "monotonic", advance_clock)
-    with pytest.raises(rehearsal.RehearsalError, match="local_build_timeout"):
-        rehearsal._build_image(context, tag, "a" * 40, {})
-    assert signals == [rehearsal.signal.SIGTERM]
-
-    state["exists"] = True
-    signals.clear()
-    interrupt_process = RunningProcess()
-
-    class InterruptedProcess(RunningProcess):
-        def poll(self) -> None:
-            raise KeyboardInterrupt()
-
-    interrupt_process = InterruptedProcess()
-    monkeypatch.setattr(rehearsal.subprocess, "Popen", lambda *_args, **_kwargs: interrupt_process)
-    monkeypatch.setattr(rehearsal, "_BUILD_TIMEOUT_SECONDS", 900)
-    monkeypatch.setattr(rehearsal.time, "monotonic", lambda: 0)
-    with pytest.raises(KeyboardInterrupt):
-        rehearsal._build_image(context, tag, "a" * 40, {})
-    assert signals == [rehearsal.signal.SIGTERM]
+    assert (
+        rehearsal._retire_generated_image_tag("stock-probs:schema13-recovery-abc123", "1" * 64, {})
+        is False
+    )
+    assert calls == []
 
 
 def test_pr_candidate_receipt_is_bound_and_failed_revalidation_retains_tag(

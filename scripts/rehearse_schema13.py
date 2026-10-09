@@ -957,89 +957,86 @@ def _build_image(
     revision_label: str,
     env: dict[str, str],
     *,
+    context_sha256: str | None = None,
     build_disk_paths: tuple[Path, ...] = (),
 ) -> str:
-    """Build a fixed amd64 image with bounded output, time, and disk usage."""
+    """Delegate all local image builds to the shared, fail-closed bounded Buildx helper."""
 
-    iidfile = context.parent / f"{tag.replace(':', '_')}.iid"
+    if context_sha256 is None:
+        context_sha256 = _tree_sha256(context)
+    if re.fullmatch(r"[0-9a-f]{64}", context_sha256) is None:
+        raise RehearsalError("the fixed source context identity is invalid")
+    if tag.startswith("stock-probs:pr-candidate-") or tag.startswith(
+        "ghcr.io/jtmb/signal-ledger:sha-"
+    ):
+        role = "current"
+    elif tag.startswith(("stock-probs:schema12-base-", "stock-probs:schema13-recovery-")):
+        role = "recovery"
+    else:
+        raise RehearsalError("the requested image tag is outside the bounded build policy")
+    try:
+        source_head = _run(
+            [_GIT_EXECUTABLE, "rev-parse", "HEAD"], env=env, timeout=10
+        ).stdout.strip()
+        source_branch = _run(
+            [_GIT_EXECUTABLE, "branch", "--show-current"], env=env, timeout=10
+        ).stdout.strip()
+    except RehearsalError as exc:
+        raise RehearsalError("the reviewed build source identity could not be checked") from exc
+    if re.fullmatch(r"[0-9a-f]{40}", source_head) is None or not source_branch:
+        raise RehearsalError("the reviewed build source identity is invalid")
+    helper = Path(__file__).resolve().parent / "bounded_docker_build.py"
     command = [
-        "docker",
-        "build",
-        "--pull=false",
-        "--platform=linux/amd64",
-        "--build-arg",
-        f"REVISION={revision_label}",
-        "--iidfile",
-        str(iidfile),
+        "/usr/bin/python3",
+        str(helper),
+        "--source-head",
+        source_head,
+        "--source-branch",
+        source_branch,
+        "--revision-label",
+        revision_label,
+        "--context",
+        str(context),
+        "--context-sha256",
+        context_sha256,
+        "--context-owner-uid",
+        str(os.getuid()),
         "--tag",
         tag,
-        str(context),
+        "--role",
+        role,
     ]
-    docker_root = _docker_data_root(env)
-    paths = (docker_root, context, context.parent, Path(tempfile.gettempdir()), *build_disk_paths)
-    if not _check_build_space(paths, _MIN_BUILD_FREE_BYTES):
-        raise RehearsalError("image build requires at least 4 GiB free on every build filesystem")
-    started = time.monotonic()
-    try:
-        process = subprocess.Popen(  # noqa: S603 - fixed Docker command vector, no shell
-            command,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            shell=False,
-            start_new_session=True,
-        )
-    except OSError as exc:
-        raise RehearsalError("local_build_unavailable:docker_build:os_error") from exc
-    process_group_id = process.pid
-    try:
-        while True:
-            return_code = process.poll()
-            if return_code is not None:
-                group_remained = _process_group_exists(process_group_id)
-                if not _stop_build_process_group(process, process_group_id):
-                    raise RehearsalError(
-                        "local_build_process_group_unverified; generated image tag retained"
-                    )
-                if group_remained:
-                    raise RehearsalError(
-                        "Docker build left child processes; group stopped and image tag retained"
-                    )
-                break
-            if time.monotonic() - started >= _BUILD_TIMEOUT_SECONDS:
-                raise RehearsalError("local_build_timeout:docker_build:after_900s")
-            if not _check_build_space(paths, _STOP_BUILD_FREE_BYTES):
-                raise RehearsalError(
-                    "image build stopped below 1 GiB free space; generated image tag retained"
-                )
-            time.sleep(0.5)
-    except BaseException as exc:
-        if not _stop_build_process_group(process, process_group_id):
-            raise RehearsalError(
-                "local_build_process_group_unverified; generated image tag retained"
-            ) from exc
-        raise
-    if return_code != 0:
+    result = _run(
+        command,
+        env=env,
+        timeout=930,
+        check=False,
+        diagnostic_stage="bounded_image_build",
+    )
+    if result.returncode != 0:
         raise RehearsalError(
-            f"local_build_failed:docker_build:exit_{return_code}; generated image tag retained"
+            "local_build_failed:bounded_image_build:"
+            f"exit_{result.returncode}; generated image state retained"
         )
     try:
-        image_id = iidfile.read_text(encoding="ascii").strip()
-    except OSError as exc:
-        raise RehearsalError(
-            "Docker build identity is unavailable; generated image tag retained"
-        ) from exc
-    if re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
-        raise RehearsalError(
-            "Docker did not return an immutable image ID; generated image tag retained"
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RehearsalError("bounded image build returned an invalid result") from exc
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"status", "image_id", "receipt", "receipt_sha256"}
+        or payload.get("status") != "built"
+        or not isinstance(payload.get("image_id"), str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", payload["image_id"]) is None
+        or not isinstance(payload.get("receipt"), str)
+        or not payload["receipt"].startswith(
+            "/home/james/.local/state/stock-probs/r120-buildkit-v1/build-runs/"
         )
-    inspected = _run(
-        ["docker", "image", "inspect", "--format", "{{.Id}}", tag], env=env, timeout=30
-    ).stdout.strip()
-    if inspected != image_id:
-        raise RehearsalError("built image identity did not match; generated image tag retained")
-    return image_id
+        or not isinstance(payload.get("receipt_sha256"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", payload["receipt_sha256"]) is None
+    ):
+        raise RehearsalError("bounded image build returned an invalid result")
+    return str(payload["image_id"])
 
 
 def _image_platform(image_id: str, env: dict[str, str]) -> str:
@@ -1097,6 +1094,7 @@ def _verify_deployed_baseline_image(env: dict[str, str]) -> dict[str, object]:
 
 def _prepare_schema12_base_image(
     context: Path,
+    context_sha256: str,
     tag: str,
     revision_label: str,
     env: dict[str, str],
@@ -1117,7 +1115,7 @@ def _prepare_schema12_base_image(
                 "relationship_to_deployed_image": "exact immutable deployed image ID reused",
             },
         )
-    image_id = _build_image(context, tag, revision_label, env)
+    image_id = _build_image(context, tag, revision_label, env, context_sha256=context_sha256)
     return (
         image_id,
         tag,
@@ -1130,22 +1128,39 @@ def _prepare_schema12_base_image(
     )
 
 
-def _remove_generated_image_tag(tag: str, env: dict[str, str]) -> bool:
-    """Remove only a task-generated tag without allowing Docker to prune its ancestors."""
+def _retire_generated_image_tag(tag: str, image_id: str, env: dict[str, str]) -> bool:
+    """Retire one verified rehearsal image through the bounded ledger owner."""
 
-    removed = _run(
-        ["docker", "image", "rm", "--no-prune", tag],
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
+        return False
+    helper = Path(__file__).resolve().parent / "bounded_docker_build.py"
+    result = _run(
+        [
+            "/usr/bin/python3",
+            str(helper),
+            "--retire-schema13-rehearsal-tag",
+            tag,
+            "--retire-schema13-rehearsal-image-id",
+            image_id,
+        ],
         env=env,
-        timeout=30,
+        timeout=120,
         check=False,
+        diagnostic_stage="schema13_rehearsal_image_retirement",
     )
-    remains = _run(
-        ["docker", "image", "inspect", "--format", "{{.Id}}", tag],
-        env=env,
-        timeout=10,
-        check=False,
+    if result.returncode != 0:
+        return False
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return False
+    return (
+        isinstance(payload, dict)
+        and set(payload) == {"status", "tag", "image_id"}
+        and payload.get("status") == "retired"
+        and payload.get("tag") == tag
+        and payload.get("image_id") == image_id
     )
-    return removed.returncode == 0 and remains.returncode != 0
 
 
 def _file_sha256(path: Path) -> tuple[str, int]:
@@ -2351,6 +2366,7 @@ def build_pr_candidate(
             tag,
             reviewed_sha,
             env,
+            context_sha256=context_sha256,
             build_disk_paths=(workspace,),
         )
         try:
@@ -2413,6 +2429,8 @@ def run_rehearsal(
     volume_created = False
     base_env: dict[str, str] = {}
     receipt: dict[str, object] = {}
+    managed_images: dict[str, str] = {}
+    retired_images: list[dict[str, str]] = []
     started = datetime.now(UTC)
     try:
         with tempfile.TemporaryDirectory(prefix="stock-probs-schema13-") as temporary:
@@ -2445,6 +2463,7 @@ def run_rehearsal(
             base_image_id, base_image_reference, base_image_provenance = (
                 _prepare_schema12_base_image(
                     base_context,
+                    base_context_digest,
                     base_tag,
                     BASE_SHA,
                     base_env,
@@ -2453,13 +2472,16 @@ def run_rehearsal(
             )
             if not use_deployed_baseline_image:
                 tags.append(base_tag)
+                managed_images[base_tag] = base_image_id
             recovery_image_id = _build_image(
                 recovery_context,
                 recovery_tag,
                 recovery_revision_label,
                 base_env,
+                context_sha256=recovery_digest,
             )
             tags.append(recovery_tag)
+            managed_images[recovery_tag] = recovery_image_id
             volume_result = _run(["docker", "volume", "create", volume], env=base_env, timeout=15)
             if volume_result.stdout.strip() != volume:
                 raise RehearsalError("Docker created an unexpected disposable volume")
@@ -2876,8 +2898,11 @@ def run_rehearsal(
         elif volume_created:
             cleanup_errors.append("volume_retained_for_unverified_container")
         for tag in reversed(tags):
-            if not _remove_generated_image_tag(tag, base_env):
-                cleanup_errors.append("local_image_tag_removal")
+            image_id = managed_images.get(tag)
+            if image_id is None or not _retire_generated_image_tag(tag, image_id, base_env):
+                cleanup_errors.append("local_image_ledger_retirement")
+            else:
+                retired_images.append({"tag": tag, "image_id": image_id})
         if cleanup_errors:
             if receipt:
                 raise RehearsalError(
@@ -2891,8 +2916,11 @@ def run_rehearsal(
             receipt["cleanup"] = {
                 "containers_removed": True,
                 "volume_removed": True,
-                "local_image_tags_removed": True,
-                "verification": "task containers absent, volume unlisted, and image tags absent",
+                "local_images_retired": retired_images,
+                "verification": (
+                    "task containers and volume absent; each registered rehearsal image ID "
+                    "absent before its ledger row was retired"
+                ),
             }
 
 

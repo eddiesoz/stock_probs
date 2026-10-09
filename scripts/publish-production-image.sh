@@ -45,9 +45,8 @@ fi
 TEMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEMP_ROOT"' EXIT
 IMAGE_TAG="$IMAGE_REPOSITORY:sha-$REVISION"
-if [[ "$PUBLISH_MODE" == "release" ]]; then
-  CANDIDATE_CONTEXT="$TEMP_ROOT/candidate-context"
-  SOURCE_CONTEXT_SHA256="$(python3 - "$CANDIDATE_CONTEXT" <<'PY'
+CANDIDATE_CONTEXT="$TEMP_ROOT/candidate-context"
+SOURCE_CONTEXT_SHA256="$(python3 - "$CANDIDATE_CONTEXT" <<'PY'
 import importlib.util
 import sys
 from pathlib import Path
@@ -62,15 +61,50 @@ digest = module._candidate_context(Path.cwd(), Path(sys.argv[1]))
 print(digest)
 PY
 )"
-  if [[ ! "$SOURCE_CONTEXT_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
-    printf 'The filtered production source context was not verifiable.\n' >&2
-    exit 3
-  fi
-  docker build --memory 1280m --memory-swap 2048m \
-    --build-arg "REVISION=$REVISION" --tag "$IMAGE_TAG" "$CANDIDATE_CONTEXT"
-else
-  docker build --memory 1280m --memory-swap 2048m \
-    --build-arg "REVISION=$REVISION" --tag "$IMAGE_TAG" .
+if [[ ! "$SOURCE_CONTEXT_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+  printf 'The filtered production source context was not verifiable.\n' >&2
+  exit 3
+fi
+SOURCE_BRANCH="$(git branch --show-current)"
+if [[ -z "$SOURCE_BRANCH" ]]; then
+  printf 'The reviewed source branch is unavailable.\n' >&2
+  exit 4
+fi
+if ! BUILD_RESULT="$(/usr/bin/python3 scripts/bounded_docker_build.py \
+  --source-head "$REVISION" --source-branch "$SOURCE_BRANCH" \
+  --revision-label "$REVISION" --context "$CANDIDATE_CONTEXT" \
+  --context-sha256 "$SOURCE_CONTEXT_SHA256" --context-owner-uid "$(id -u)" \
+  --tag "$IMAGE_TAG" --role current 2>/dev/null)"; then
+  printf 'The bounded Linux amd64 image build failed closed; inspect its fixed receipt.\n' >&2
+  exit 4
+fi
+IMAGE_ID="$(python3 - "$BUILD_RESULT" <<'PY'
+import json
+import re
+import sys
+
+try:
+    result = json.loads(sys.argv[1])
+except (IndexError, json.JSONDecodeError) as exc:
+    raise SystemExit(1) from exc
+if (
+    not isinstance(result, dict)
+    or set(result) != {"status", "image_id", "receipt", "receipt_sha256"}
+    or result.get("status") != "built"
+    or not isinstance(result.get("image_id"), str)
+    or re.fullmatch(r"sha256:[0-9a-f]{64}", result["image_id"]) is None
+    or not isinstance(result.get("receipt"), str)
+    or not result["receipt"].startswith("/home/james/.local/state/stock-probs/r120-buildkit-v1/build-runs/")
+    or not isinstance(result.get("receipt_sha256"), str)
+    or re.fullmatch(r"[0-9a-f]{64}", result["receipt_sha256"]) is None
+):
+    raise SystemExit(1)
+print(result["image_id"])
+PY
+)"
+if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  printf 'The bounded image build returned an invalid image identity.\n' >&2
+  exit 4
 fi
 IMAGE_REVISION="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE_TAG")"
 if [[ "$IMAGE_REVISION" != "$REVISION" ]]; then
@@ -78,9 +112,9 @@ if [[ "$IMAGE_REVISION" != "$REVISION" ]]; then
   exit 3
 fi
 
-IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$IMAGE_TAG")"
+INSPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$IMAGE_TAG")"
 IMAGE_PLATFORM="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE_TAG")"
-if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ || "$IMAGE_PLATFORM" != "linux/amd64" ]]; then
+if [[ "$INSPECTED_IMAGE_ID" != "$IMAGE_ID" || "$IMAGE_PLATFORM" != "linux/amd64" ]]; then
   printf 'The built image must be a Linux amd64 image with a complete image ID.\n' >&2
   exit 3
 fi

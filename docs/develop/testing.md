@@ -1,6 +1,6 @@
 ---
 title: "Testing"
-description: "Local developer checks for Python, API, persistence, theme/news presentation, package, backup, provider, and architecture behavior."
+description: "Local developer checks for Python, APIs, persistence, browser behavior, bounded builds, backups, providers, and architecture."
 ---
 
 # Testing
@@ -43,6 +43,63 @@ target. The helper removes only its task-generated tags after ownership checks, 
 uses exact fixed image IDs only after provenance and reference checks, as described in the root
 [agent policy](../../AGENTS.md). Selected helper tests do not establish that a pair rehearsal ran;
 see the [R-ASTRA-120 ledger](../../MVP-PLAN.md) for the current scope.
+
+### Schema-13 rehearsal image cleanup
+
+The rehearsal runner delegates cleanup of a generated recovery image to the bounded builder with
+`--retire-schema13-rehearsal-tag TAG --retire-schema13-rehearsal-image-id sha256:<64-lowercase-hex>`.
+The operation serializes on the image-ledger lock, checks the required expected ID against a
+completed registered recovery row before Docker inventory or mutation, and validates the bound
+receipt. It refuses protected or current images, shared or rebound tags, malformed or unregistered
+rows, child images, and container references. Removal uses `docker image rm --no-prune` with the
+full image ID; the helper checks that the ID and tag are absent before updating and revalidating
+the ledger. If image removal is partial, it restores the recorded tag. Keep failed rows for review
+and do not edit the ledger by hand, force-remove, or prune globally.
+
+For E825, a diagnostic confirmed `candidate_ledger_inventory_mismatch` in the pre-repair cleanup
+state (receipt SHA-256
+`b261bc2fbba5b7594ab25e3293046e28735b8d429fa6badd5799d72df2ae90f7`). The initial helper and
+rehearsal candidate passed 172 builder-selected tests with Ruff and format; initial E501 and three
+format diagnostics remain recorded as check failures. Initial independent cleanup QA **Failed** on
+a P2 because the expected full image ID was not required before deletion. The identity-bound repair
+then passed 179 selected tests with Ruff, format, security, and diff checks. Independent re-review
+and parent integrated review **Passed** for the four pinned files; the source review confirms the
+expected ID is checked before Docker inventory/removal and before ledger mutation. Independent
+receipt `/var/tmp/r120-retirement-identity-independent-qa-20261009T1647Z/independent-qa-receipt.json`
+has SHA-256 `a04ff94c9e22f89a00021af9b74deede6f748f0ed79727e80df364ffa2493833`; parent review
+receipt is linked from the [E825 ledger](../../MVP-PLAN.md). Receipt for the original QA failure:
+`/var/tmp/r120-rehearsal-ledger-independent-qa-20261009T1638Z/independent-qa-receipt.json` has
+SHA-256 `b139822219e5e1bb194e6b541fd8cee0b3c0351ffaf5a841be300306a1dc5423`; it used mocks and did
+not build or delete an image. The repaired independent review also used mocks: no Docker build,
+image deletion, or actual schema-13 pair rehearsal has run. The separate bounded-policy helper's
+145-test result is a distinct scope. See the [E825 ledger](../../MVP-PLAN.md) for exact bindings
+and status.
+
+## Bounded local Docker builds and worker verification
+
+Use `./scripts/local-compose.sh build` or `./scripts/local-compose.sh up --build -d` for local
+root-Compose builds. The launcher performs the bounded build; `compose.yaml` intentionally has no
+build context and requires its explicit local-image pointer. Keep at least 4 GiB free before an
+owned build and stop below 1 GiB. BuildKit's configured 4 GiB maximum-used setting is a periodic
+garbage-collection target, not an instantaneous cache quota. See the [local storage procedure](../operations/getting-started.md#local-docker-storage-on-removable-media)
+for UUID mounts, backups, cache relocation, and present/absent-medium guards.
+
+Before claiming bounded-build acceptance, bind the setup receipt to the selected controller,
+inspect its limits, and prove the actual build worker runs beneath the expected bounded container
+ancestor. A controller's `init` process leaf, a TOML file, or a passing mocked test is not worker
+cgroup evidence. Keep source QA, controller verification, and actual worker-step evidence separate.
+At the E823 checkpoint, worker probe 02 **Failed** because its verifier selected the container's
+`init` leaf instead of the bounded ancestor, and completion 03 **Failed** at its timeout while logs
+showed Docker Hub DNS timeouts on the default bridge. A successful DNS lookup on the dedicated
+owned bridge does not establish a universal cause. E824 supersedes the pending worker result: the
+actual network-none worker `RUN` passed strict container-cgroup ancestry verification, with
+descendant `memory.max=1342177280` and `cpu.max=100000 100000`. The controller's PID limit of 128
+applies to the controller, not the worker. Independent source QA passed the exact setup/producer/wrapper pins in its selected scope (13
+producer, 27 consumer, and 8 space-guard cases), and independent normal-user helper QA passed its
+read-only setup-receipt, data-root, controller, and cache-volume checks; that helper review made no
+build or mutation. The actual setup receipt and worker-step pass prove this bounded worker scope;
+they do not establish an application Compose image build, release, or production acceptance. Preserve the earlier failures and see the [MVP plan](../../MVP-PLAN.md)
+for receipt details and remaining gates.
 
 ## Unix-socket test fixtures
 

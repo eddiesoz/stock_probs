@@ -124,6 +124,27 @@ assignments, runtime acceptance paths, or release gates.
   release images or application data; record unresolved ancestry ownership as Unavailable and
   leave it untouched. These safeguards do not authorize spending above the US$15 monthly
   total cap, including backups and tax.
+- Before formatting or relocating removable storage, make a backup on an independent filesystem
+  and verify its checksum, byte count, complete file/member inventory, and metadata before
+  formatting. Mount the replacement filesystem by UUID. Require both Docker and containerd to
+  validate that mount before startup; a missing or mismatched device must fail closed before either
+  daemon can create or use fallback roots. When Docker uses the containerd image store, changing
+  Docker's `data-root` alone does not move the full store; verify both roots and their image,
+  container, and volume inventories. Keep the original roots until restored health, matching
+  inventories, the present-mount guard, and a scoped private missing-device simulation pass
+  independent review. Retain the verified backup until physical removal and startup with the medium
+  absent pass independent review; a namespace simulation is not physical startup acceptance. Keep
+  generated-cache relocation separate and verify its inventory before retiring its source.
+  Route root Compose builds and operations through `scripts/local-compose.sh`; `compose.yaml`
+  requires `STOCK_PROBS_LOCAL_IMAGE` and intentionally fails closed when raw Compose is invoked
+  without it. Require 4 GiB free before an owned build and stop below 1 GiB. Set BuildKit's
+  periodic garbage-collection max-used target to 4 GiB; this is a GC target, not an
+  instantaneous absolute cache quota. Keep the managed-image set to at most three between explicit
+  cleanup reviews, and verify the setup receipt, installed builder/controller limits, and worker
+  step limits before claiming them. Bind the actual worker PID and container ID to a strict
+  container-cgroup ancestor, then verify descendant memory and CPU limits; controller PID limits
+  describe the controller, not its worker. Keep release-image retention separate from BuildKit
+  cache collection; a config file or source-level bound alone is not runtime proof.
 - Evidence remains architecture-specific: native x86_64, emulated ARM64, and physical
   ARM64 are separate labels. Emulated ARM64 can support package/runtime/functional/build/tool
   claims, not ARM64 performance. Physical mobile, actual screen-reader, true-zoom, native
@@ -335,7 +356,7 @@ Historical R-ASTRA-120 E818: The cfb50 candidate built with 149 source inputs an
 
 Historical R-ASTRA-120 E819: The clean `8605e0e` image passed local PR-pair migration/recovery with verified backup and retained user/assistant data. Its active-kill attempt stopped at a five-second read-only observation timeout; no kill acceptance is inferred. The canonical run failed at 2,900 passes, two fixture-coordination failures, four skips, four deselected, and 85.68% coverage. Builder and independent scoped repairs passed 65 fixture tests and 77 rehearsal tests plus three selected PR tests; all 19 independent source/test/import pins stayed unchanged. A generated `tsconfig.tsbuildinfo` cache was the sole input changed by the frontend build and caused the host MCP rehearsal to reject the old source fingerprint before SSH. Release packaging now excludes this cache; a new exact-head image is required. Application/UI bytes are unchanged, so bound browser, mobile-emulation and guide evidence is reused within its original scope. Actual-host native/resource/recovery, current-image kill, current canonical, owner canary and release gates remain open. Production and the US$15 total cap are unchanged; no merge, deployment, resize, rollout or email occurred.
 
-Current R-ASTRA-120 E822: The attached HTTP probe now defers its unused MCP Gateway/service imports; application, UI, tool definitions, permissions and acceptance assertions are unchanged. Independent QA passed all 380 probe-file tests, Ruff and format, with exact equality for 11 MCP definitions/actions (receipt SHA-256 `c36c28d103346e6e7562046b2993c9d196c3bc4da15d90f8ce84a3279cf807bf`). An isolated import-only comparison on the bound candidate image passed: peak process RSS fell from 135,536 to 67,624 KiB. This is fixture-overhead evidence, not the actual-host failure cause or a 1 GB Pass. New exact-head artifacts and actual-host native/resource/recovery verification remain pending. The earlier memory failures remain recorded; production, budget, backups and release gates are unchanged.
+Historical R-ASTRA-120 E822: The attached HTTP probe now defers its unused MCP Gateway/service imports; application, UI, tool definitions, permissions and acceptance assertions are unchanged. Independent QA passed all 380 probe-file tests, Ruff and format, with exact equality for 11 MCP definitions/actions (receipt SHA-256 `c36c28d103346e6e7562046b2993c9d196c3bc4da15d90f8ce84a3279cf807bf`). An isolated import-only comparison on the bound candidate image passed: peak process RSS fell from 135,536 to 67,624 KiB. This is fixture-overhead evidence, not the actual-host failure cause or a 1 GB Pass. New exact-head artifacts and actual-host native/resource/recovery verification remain pending. The earlier memory failures remain recorded; production, budget, backups and release gates are unchanged.
 
 Historical R-ASTRA-120 E821: The clean `4bf0fd43` candidate and recovery archives passed the local schema-13 PR-pair rehearsal and independent artifact review (receipt SHA-256 `ca0dd740abd94b203dcdb93f83b377c70510cf18dbe367a0fc0d0f87ce45ad2d`). Unchanged application/UI inputs retain the earlier complete canonical and browser evidence; no redundant aggregate was run. Two actual-host MCP attempts returned `host_memory_reserve_breached`. The second, observed call ran at `2026-10-09T09:31:34Z`–`09:32:44Z`; its bounded read-only sampler captured three seconds below the 128 MiB reserve, with a minimum of 72,864 KiB at `09:32:39Z`, then recovery. Specific phase/cause remains Unavailable. Independent diagnostic receipt SHA-256 is `a9eb1ddf9b0a770c63c13f47baec7d2e48cec70629aa537b8c7fdd42e2908154`; the sampler was intentionally stopped at 168 samples and does not establish environment isolation, cgroup acceptance, or cleanup. Production inspect still reports the unchanged schema-12 revision ready and loopback-only. Native probe import overhead is under focused diagnosis. Actual-host native/resource/recovery, owner canary and promotion gates remain open. The existing 1 GB machine, backups, and US$15 total monthly cap are unchanged; no merge, deployment, resize, rollout or email occurred.
 

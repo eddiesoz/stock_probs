@@ -27,6 +27,7 @@ QEMU_VERSION="not used"
 COMPOSE_ACTIVE="false"
 BINFMT_OWNED="false"
 IMAGES_OWNED="false"
+ARM_BUILD_ATTEMPTED="false"
 CROSS_ARCH_RESULT="Not requested for this task."
 TASK_BINFMT_MARKER="$ROOT/.tools/qemu-arm64/$TASK_SLUG-binfmt-owned"
 ARM64_PORT="$(PYTHONPATH="$ROOT" python3 -c 'from scripts.package_smoke import _free_port; print(_free_port())')"
@@ -97,6 +98,51 @@ compose_down() {
     down --volumes --remove-orphans
 }
 
+retire_built_images() {
+  local cleanup_plan registered_text remove_text image_id
+  local -a remove_ids=() ack_args=()
+  cleanup_plan="$(/usr/bin/python3 "$ROOT/scripts/bounded_docker_build.py" \
+    --plan-arm64-cleanup \
+    --revision "$REVISION" \
+    --runtime-image "$ARM64_IMAGE" \
+    --frontend-image "$ARM64_FRONTEND_IMAGE")" || return $?
+  registered_text="$(CLEANUP_PLAN="$cleanup_plan" /usr/bin/python3 -c '
+import json, os, re
+value = json.loads(os.environ["CLEANUP_PLAN"])
+ids = value.get("registered_image_ids")
+assert value.get("status") == "ready" and isinstance(ids, list)
+assert all(isinstance(item, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", item) for item in ids)
+assert len(ids) == len(set(ids))
+print("\n".join(ids))
+')" || return $?
+  remove_text="$(CLEANUP_PLAN="$cleanup_plan" /usr/bin/python3 -c '
+import json, os, re
+value = json.loads(os.environ["CLEANUP_PLAN"])
+ids = value.get("remove_image_ids")
+assert value.get("status") == "ready" and isinstance(ids, list)
+assert all(isinstance(item, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", item) for item in ids)
+assert len(ids) == len(set(ids))
+print("\n".join(ids))
+')" || return $?
+  while IFS= read -r image_id; do
+    [[ -n "$image_id" ]] || continue
+    remove_ids+=("$image_id")
+  done <<< "$remove_text"
+  for image_id in "${remove_ids[@]}"; do
+    docker image rm --no-prune "$image_id" >/dev/null || return $?
+  done
+  while IFS= read -r image_id; do
+    [[ -n "$image_id" ]] || continue
+    ack_args+=(--registered-image-id "$image_id")
+  done <<< "$registered_text"
+  /usr/bin/python3 "$ROOT/scripts/bounded_docker_build.py" \
+    --ack-arm64-cleanup \
+    --revision "$REVISION" \
+    --runtime-image "$ARM64_IMAGE" \
+    --frontend-image "$ARM64_FRONTEND_IMAGE" \
+    "${ack_args[@]}" >/dev/null
+}
+
 cleanup_stale_projects() {
   local network project network_label attached
   local -a networks=()
@@ -144,8 +190,8 @@ on_exit() {
       REASON="Task-owned binfmt or Compose resources could not be removed."
     fi
   fi
-  if [[ "$IMAGES_OWNED" == "true" ]]; then
-    docker image rm "$ARM64_IMAGE" "$ARM64_FRONTEND_IMAGE" >/dev/null
+  if [[ "$IMAGES_OWNED" == "true" || "$ARM_BUILD_ATTEMPTED" == "true" ]]; then
+    retire_built_images
     local image_cleanup_code="$?"
     if (( image_cleanup_code != 0 && exit_code == 0 )); then
       exit_code="4"
@@ -248,10 +294,18 @@ add_check "emulated-arm64-wheel-package-runtime"
 
 fi
 
+ARM_BUILD_ATTEMPTED="true"
+/usr/bin/python3 "$ROOT/scripts/bounded_docker_build.py" \
+  --arm64-compose-build \
+  --task-id "$TASK_ID" \
+  --revision "$REVISION" \
+  --project-name "$PROJECT" \
+  --runtime-image "$ARM64_IMAGE" \
+  --frontend-image "$ARM64_FRONTEND_IMAGE" \
+  --port "$ARM64_PORT" \
+  --qemu-dir "$STOCK_PROBS_QEMU_DIR" \
+  --artifact-dir "$RUN_DIR"
 IMAGES_OWNED="true"
-timeout --signal=TERM --kill-after=30s 1800s docker compose \
-  --project-name "$PROJECT" --file "$COMPOSE_FILE" build --pull \
-  arm64-frontend-builder arm64-app
 add_check "dockerfile-arm64-frontend-and-production-build"
 
 timeout --signal=TERM --kill-after=5s 120s docker compose \
@@ -262,7 +316,8 @@ timeout --signal=TERM --kill-after=5s 120s docker compose \
 add_check "node-process-arch-build-id-export"
 
 timeout --signal=TERM --kill-after=5s 120s docker compose \
-  --project-name "$PROJECT" --file "$COMPOSE_FILE" up --detach --no-deps arm64-app
+  --project-name "$PROJECT" --file "$COMPOSE_FILE" up --detach --no-build --pull never \
+  --no-deps arm64-app
 timeout --signal=TERM --kill-after=5s 120s docker compose \
   --project-name "$PROJECT" --file "$COMPOSE_FILE" exec --no-TTY arm64-app \
   python -c 'import platform; assert platform.machine() in {"aarch64", "arm64"}; print(platform.machine())' \

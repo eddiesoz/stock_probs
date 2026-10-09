@@ -10,12 +10,18 @@
         "scripts/setup-git-hooks.sh",
         ".githooks/**"
       ],
-      "docs": ["docs/develop/documentation.md"]
+      "docs": [
+        "docs/develop/documentation.md"
+      ]
     },
     {
       "name": "local-gate",
-      "match": ["scripts/local-gate.sh"],
-      "docs": ["docs/develop/testing.md"]
+      "match": [
+        "scripts/local-gate.sh"
+      ],
+      "docs": [
+        "docs/develop/testing.md"
+      ]
     },
     {
       "name": "opencode-workflow",
@@ -29,12 +35,19 @@
         ".opencode/package.json",
         ".opencode/package-lock.json"
       ],
-      "docs": ["docs/develop/documentation.md"]
+      "docs": [
+        "docs/develop/documentation.md"
+      ]
     },
     {
       "name": "model-routing",
-      "match": ["model-routing.json", "scripts/sync_model_routing.py"],
-      "docs": ["docs/develop/documentation.md"]
+      "match": [
+        "model-routing.json",
+        "scripts/sync_model_routing.py"
+      ],
+      "docs": [
+        "docs/develop/documentation.md"
+      ]
     },
     {
       "name": "codex-workflow",
@@ -42,11 +55,16 @@
         ".codex/**",
         ".agents/skills/**"
       ],
-      "docs": ["docs/develop/documentation.md"]
+      "docs": [
+        "docs/develop/documentation.md"
+      ]
     },
     {
       "name": "deployment-review-pins",
-      "match": ["scripts/pin_pr_rehearsal_review.py", "tools/deploy_mcp/pr_rehearsal.py"],
+      "match": [
+        "scripts/pin_pr_rehearsal_review.py",
+        "tools/deploy_mcp/pr_rehearsal.py"
+      ],
       "docs": [
         "docs/develop/documentation.md",
         "docs/develop/testing.md",
@@ -56,8 +74,36 @@
     },
     {
       "name": "project-commands",
-      "match": [".opencode/commands/*.md"],
-      "docs": ["docs/develop/documentation.md"]
+      "match": [
+        ".opencode/commands/*.md"
+      ],
+      "docs": [
+        "docs/develop/documentation.md"
+      ]
+    },
+    {
+      "name": "bounded-docker-build-workflow",
+      "match": [
+        "compose.yaml",
+        "scripts/arm64-smoke.sh",
+        "scripts/bounded_docker_build.py",
+        "scripts/local-compose.sh",
+        "scripts/publish-production-image.sh",
+        "scripts/rehearse_schema13.py",
+        "scripts/r120-buildkitd.toml",
+        "scripts/setup_bounded_buildkit.py",
+        "tests/test_bounded_build_entrypoints.py",
+        "tests/test_bounded_docker_build.py",
+        "tests/test_production_deploy_helper.py",
+        "tests/test_schema13_rehearsal.py",
+        "tests/test_setup_builder_inventory.py",
+        "tests/test_setup_builder_space_guard.py"
+      ],
+      "docs": [
+        "docs/develop/documentation.md",
+        "docs/develop/testing.md",
+        "docs/operations/getting-started.md"
+      ]
     }
   ],
   "additional": [
@@ -84,9 +130,25 @@
         ".opencode/package-lock.json",
         ".opencode/commands/*.md",
         ".codex/**",
-        ".agents/skills/**"
+        ".agents/skills/**",
+        "compose.yaml",
+        "scripts/arm64-smoke.sh",
+        "scripts/bounded_docker_build.py",
+        "scripts/local-compose.sh",
+        "scripts/publish-production-image.sh",
+        "scripts/rehearse_schema13.py",
+        "scripts/r120-buildkitd.toml",
+        "scripts/setup_bounded_buildkit.py",
+        "tests/test_bounded_build_entrypoints.py",
+        "tests/test_bounded_docker_build.py",
+        "tests/test_production_deploy_helper.py",
+        "tests/test_schema13_rehearsal.py",
+        "tests/test_setup_builder_inventory.py",
+        "tests/test_setup_builder_space_guard.py"
       ],
-      "docs": ["AGENTS.md"]
+      "docs": [
+        "AGENTS.md"
+      ]
     }
   ]
 }

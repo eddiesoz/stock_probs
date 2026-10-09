@@ -52,7 +52,7 @@ project is needed to observe agent, skill, and MCP discovery after a configurati
 This Codex setup does not alter prior OpenCode receipts or establish provider, project-profile,
 release, export, or remote acceptance.
 
-Project configuration text is not runtime-discovery evidence. E767 independently observed eight deployment tools and a read-only status call. The current assistant checkpoint is E818 in the [MVP plan](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on); earlier receipts retain their declared scope. For a native-runtime repair, establish real functional behavior before rerunning the full release aggregate. Reuse unchanged UI/component evidence only with matching source bindings, and retain every failed or interrupted aggregate. Required security, resource, rollback and release gates remain mandatory.
+Project configuration text is not runtime-discovery evidence. E767 independently observed eight deployment tools and a read-only status call. The current assistant checkpoint is E825 in the [MVP plan](../../MVP-PLAN.md#r-astra-120-e825-schema-13-cleanup-ledger-repair-and-current-storage-checkpoint); it records storage and bounded-worker results for their tested scopes, while physical absent-medium startup remains unverified. Initial independent cleanup QA found a P2 because expected full image ID was not required before deletion. The identity-bound repair passed 179 selected builder tests and independent/parent integrated source review; an actual pair rehearsal remains pending. Those reviews used mocked Docker and did not build or delete an image. The current read-only production status/inspect pair is not a deployment mutation. Reuse guide/UI evidence only for unchanged, matching bindings; the retained guide artifacts have not been newly bound to the current PR head. Earlier failures retain their declared scope. For a native-runtime repair, establish real functional behavior before rerunning the full release aggregate, and retain every failed or interrupted aggregate. Required security, resource, rollback and release gates remain mandatory.
 
 The candidate
 local PR-pair helper
@@ -234,6 +234,28 @@ authored guide; keep any new rule narrow enough that unrelated interface edits d
 cosmetic edits to the map's target page. A new Develop topic also requires one category-index link
 and an entry in the validator's `CATEGORIES["develop"]` list. These taxonomy/configuration changes
 are owned by the tooling owner, not by the authored-documentation lane.
+
+Document removable-media recovery and local Docker storage in the existing
+[Getting started operations guide](../operations/getting-started.md#local-docker-storage-on-removable-media).
+Keep durable storage safeguards in `AGENTS.md` and task-specific receipts and status in
+`MVP-PLAN.md`; do not add a category or duplicate the evidence ledger. The existing documentation
+map already reaches the operations guide and requires `AGENTS.md` for workflow-policy changes.
+A documentation link alone does not establish path coverage for a later source or configuration
+change.
+
+The current documentation map includes the narrow `bounded-docker-build-workflow` rule for
+`compose.yaml`, `scripts/arm64-smoke.sh`, `scripts/bounded_docker_build.py`,
+`scripts/local-compose.sh`, `scripts/publish-production-image.sh`, `scripts/rehearse_schema13.py`,
+`scripts/r120-buildkitd.toml`, `scripts/setup_bounded_buildkit.py`,
+`tests/test_bounded_build_entrypoints.py`, `tests/test_bounded_docker_build.py`,
+`tests/test_production_deploy_helper.py`, `tests/test_schema13_rehearsal.py`,
+`tests/test_setup_builder_inventory.py`, and `tests/test_setup_builder_space_guard.py`. It requires
+this page, [developer testing](testing.md), and [getting started](../operations/getting-started.md);
+the separate workflow-policy rule requires `AGENTS.md`. Keep this path coverage aligned as the
+local build command contract changes. Record current runtime acceptance in the task ledger and
+reflect operational status in the operations/testing guides; the map describes source coverage, not
+runtime acceptance. A prose statement here does not replace a passing completeness and change-aware
+coverage check.
 
 The approved project governance set now contains eight directory-based skill definitions:
 `documentation`, `development-conventions`, `stock-probability-skill-maintenance`,
