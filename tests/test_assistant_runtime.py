@@ -41,6 +41,8 @@ from stock_probs.assistant.search import NativeSearchPermissionBridge
 from stock_probs.assistant.service import AssistantService, AssistantUnavailable
 from stock_probs.assistant.supervisor_client import SupervisorClientError
 from tests.native_assistant_probe import (
+    _ATTACH_SEARCH_QUERY,
+    _ATTACH_WEBFETCH_URL,
     _attached_acceptance_failures,
     _attached_conversation_detail,
     _attached_delete_with_pending_retry,
@@ -48,6 +50,7 @@ from tests.native_assistant_probe import (
     _attached_new_interaction_tracker,
     _attached_observe_interaction_snapshot,
     _attached_owner_evidence,
+    _attached_probe_prompts,
     _attached_record_timeline_phase,
     _attached_require_search_confirmation,
     _attached_reviewed_model_row,
@@ -57,6 +60,33 @@ from tests.native_assistant_probe import (
 )
 
 _TEST_MODEL_ID = "fixture-provider/" + secrets.token_hex(8)
+
+
+def test_attached_probe_prompt_keeps_owner_research_task_coherent_and_bounded() -> None:
+    """The live fixture asks one coherent retrieval question with exact approval constraints."""
+
+    owner_prompts = _attached_probe_prompts()
+    assert len(owner_prompts) == 2
+    assert owner_prompts[0] == (
+        "Use workspace.summary to read my saved instruments. State the number of saved "
+        "instruments and do not infer data that the tool did not return."
+    )
+
+    prompt = owner_prompts[1]
+    assert "why IANA reserves example domains for documentation" in prompt
+    assert "Use workspace.summary once" in prompt
+    assert "state the holding count without guessing" in prompt
+    assert prompt.count("built-in web search exactly once") == 1
+    assert f"exactly this public query: {_ATTACH_SEARCH_QUERY}" in prompt
+    assert "native WebFetch tool exactly once" in prompt
+    assert f"once for {_ATTACH_WEBFETCH_URL}" in prompt
+    assert "explicit approval of that exact URL before fetching" in prompt
+    assert "one relevant fact from the search result" in prompt
+    assert "one fact from the fetched page" in prompt
+    assert "no more than 100 words" in prompt
+    assert "one fact from each retrieval" in prompt
+    assert "Do not fetch any other URL or invent facts." in prompt
+    assert "NASA Artemis" not in prompt
 
 
 def test_attached_probe_totp_matches_rfc6238_six_digit_vector() -> None:

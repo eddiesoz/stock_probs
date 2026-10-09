@@ -72,13 +72,33 @@ _TOOL_ACTIONS = tuple(
     for tool in AssistantToolGateway.list_tools()
 )
 _ATTACH_ORIGIN = "https://ledger-r120.test"
-_ATTACH_SEARCH_QUERY = "NASA Artemis II official mission timeline"
+_ATTACH_SEARCH_QUERY = "IANA reserved example domains purpose"
 _ATTACH_WEBFETCH_URL = "https://www.iana.org/domains/reserved"
 _ATTACH_MAX_STDIN_BYTES = 8192
 _ATTACH_MAX_ACK_BYTES = 128
 _ATTACH_MAX_RESPONSE_BYTES = 1_048_576
 _ATTACH_DELETE_RETRY_INITIAL_SECONDS = 0.25
 _ATTACH_DELETE_RETRY_MAX_SECONDS = 1.0
+
+
+def _attached_probe_prompts() -> tuple[str, str]:
+    """Return the two owner prompts, keeping the retrieval fixture coherent and bounded."""
+
+    return (
+        "Use workspace.summary to read my saved instruments. State the number of saved "
+        "instruments and do not infer data that the tool did not return.",
+        "Use workspace.summary once to read my saved instruments and state the holding count "
+        "without guessing. Then research why IANA reserves example domains for documentation. "
+        "Use built-in web search exactly once with exactly this public query: "
+        f"{_ATTACH_SEARCH_QUERY}. "
+        "Use one relevant fact from the search result. Then use the native WebFetch tool exactly "
+        f"once for {_ATTACH_WEBFETCH_URL}; wait for explicit approval of that exact URL before "
+        "fetching, and use one fact from the fetched page. Finish with a concise answer of no "
+        "more than 100 words that includes the holding count and one fact from each retrieval. "
+        "Do not fetch any other URL or invent facts.",
+    )
+
+
 _ATTACH_TIMELINE_PHASES = (
     "search_preview",
     "search_approval",
@@ -5552,15 +5572,7 @@ def run_attached_existing_app_probe() -> int:
             conversation_id = str(conversation["id"])
             conversations.append(conversation_id)
 
-        prompts = (
-            "Use workspace.summary to read my saved instruments. State the number of saved "
-            "instruments and do not infer data that the tool did not return.",
-            "Use workspace.summary to read my saved instruments, then use built-in web search "
-            f"with exactly this public query: {_ATTACH_SEARCH_QUERY}. Summarize both results "
-            f"briefly. Then use the native WebFetch tool exactly once for {_ATTACH_WEBFETCH_URL}, "
-            "wait for exact URL approval, and summarize that public page. Do not fetch any other "
-            "URL or invent facts.",
-        )
+        prompts = _attached_probe_prompts()
         turn_ids: list[str] = []
         turn_intervals: list[tuple[float, float]] = []
 
