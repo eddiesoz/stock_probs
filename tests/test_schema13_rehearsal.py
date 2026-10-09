@@ -103,6 +103,59 @@ def test_local_timeouts_report_fixed_phase_without_command_output(
     assert "private" not in str(captured.value)
 
 
+def test_wait_ready_accepts_exact_readiness_after_original_20_second_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"seconds": 0.0}
+    probe_attempts = 0
+    sleep_durations: list[float] = []
+    readiness = {
+        "schema_version": 13,
+        "assistant": {"enabled": False, "status": "disabled"},
+    }
+
+    def advance_clock(seconds: float) -> None:
+        sleep_durations.append(seconds)
+        clock["seconds"] += seconds
+
+    def fake_run(command: list[str], **kwargs: object) -> CompletedProcess[str]:
+        nonlocal probe_attempts
+        assert kwargs["timeout"] == 10
+        assert kwargs["check"] is False
+        if command[1] == "inspect":
+            assert kwargs["diagnostic_stage"] == "candidate_http_verify"
+            return CompletedProcess(command, 0, stdout="true\n", stderr="")
+        if command[1] == "exec":
+            probe_attempts += 1
+            assert kwargs["diagnostic_stage"] == "readiness_exec"
+            if clock["seconds"] < 20.5:
+                return CompletedProcess(command, 1, stdout="", stderr="")
+            return CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps(readiness),
+                stderr="",
+            )
+        raise AssertionError("unexpected readiness command")
+
+    monkeypatch.setattr(rehearsal.time, "monotonic", lambda: clock["seconds"])
+    monkeypatch.setattr(rehearsal.time, "sleep", advance_clock)
+    monkeypatch.setattr(rehearsal, "_run", fake_run)
+
+    assert (
+        rehearsal._wait_ready(
+            "a" * 64,
+            "stock-probs:synthetic",
+            {},
+            diagnostic_stage="candidate_http_verify",
+        )
+        == readiness
+    )
+    assert clock["seconds"] == 20.5
+    assert probe_attempts == 42
+    assert sleep_durations == [0.5] * 41
+
+
 def test_local_command_launch_failure_is_distinct_from_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

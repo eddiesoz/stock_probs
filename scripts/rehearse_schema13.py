@@ -61,6 +61,7 @@ _DEPLOYED_BASELINE_INSPECT_FORMAT = (
 MAX_RELEASE_ARCHIVE_BYTES = 512 * 1024 * 1024
 PRE_CONSENT_BACKUP = "schema13-pre-consent.spbackup"
 CONTAINER_REMOVAL_TIMEOUT_SECONDS = 10
+_APP_READINESS_TIMEOUT_SECONDS = 60
 _CANDIDATE_VERIFICATION_STEPS = frozenset(
     {
         "assistant_owner_boundary",
@@ -1877,7 +1878,7 @@ def _wait_ready(
     *,
     diagnostic_stage: str,
 ) -> dict[str, object]:
-    deadline = time.monotonic() + 20
+    deadline = time.monotonic() + _APP_READINESS_TIMEOUT_SECONDS
     last_status = "starting"
     while time.monotonic() < deadline:
         inspect = _run(
