@@ -3657,6 +3657,148 @@ def _native_success_resource_projection(samples: object, baseline: object) -> di
     }
 
 
+def _native_late_health_failure_conditions(health_samples: object) -> list[str]:
+    """Name only the fixed health predicates that failed after driver acceptance."""
+
+    if not isinstance(health_samples, list) or not health_samples:
+        return ["health_samples_missing"]
+    conditions: list[str] = []
+    if any(sample.get("status") != "ready" for sample in health_samples):
+        conditions.append("app_readiness_not_ready")
+    if any(sample.get("schema_version") != 13 for sample in health_samples):
+        conditions.append("schema_mismatch")
+    if not any(
+        sample.get("worker_status") == "ready" and sample.get("native_turn_active") is True
+        for sample in health_samples
+    ):
+        conditions.append("ready_active_worker_sample_missing")
+    return conditions
+
+
+_NATIVE_HEALTH_FAILURE_REASONS = {
+    "candidate app readiness request failed": "transport_failure",
+    "candidate readiness did not return HTTP 200": "non_200",
+    "candidate readiness response exceeded its bound": "oversize",
+    "candidate readiness response was invalid": "invalid_json",
+    "candidate app is not ready on the expected schema": "app_schema_rejected",
+    "candidate readiness omitted the assistant status projection": "assistant_projection_missing",
+}
+_NATIVE_HEALTH_FAILURE_KINDS = (
+    "transport_failure",
+    "non_200",
+    "oversize",
+    "invalid_json",
+    "app_schema_rejected",
+    "assistant_projection_missing",
+    "observation_unknown",
+)
+
+
+def _native_health_failure_kind(error: ProbeError) -> str:
+    """Map only fixed health errors to closed categories, never retain their text."""
+
+    message = error.args[0] if error.args and isinstance(error.args[0], str) else None
+    return _NATIVE_HEALTH_FAILURE_REASONS.get(message, "observation_unknown")
+
+
+def _native_health_failure_counts(failure_kinds: object) -> dict[str, int]:
+    """Count bounded, already-classified readiness observations without private detail."""
+
+    if (
+        not isinstance(failure_kinds, list)
+        or len(failure_kinds) > 256
+        or any(kind not in _NATIVE_HEALTH_FAILURE_KINDS for kind in failure_kinds)
+    ):
+        raise ProbeError("native health failure category summary was malformed")
+    counts = dict.fromkeys(_NATIVE_HEALTH_FAILURE_KINDS, 0)
+    for kind in failure_kinds:
+        counts[kind] += 1
+    return counts
+
+
+def _native_late_resource_failure_conditions(resource_projection: object) -> list[str]:
+    """Name only the existing memory, PID, and OOM acceptance failures."""
+
+    if not isinstance(resource_projection, dict):
+        raise ProbeError("native late-failure resource projection was malformed")
+    memory_events = resource_projection.get("memory_events_delta")
+    if not isinstance(memory_events, dict) or set(memory_events) != {
+        "high",
+        "max",
+        "oom",
+        "oom_kill",
+    }:
+        raise ProbeError("native late-failure resource projection was malformed")
+    pids_peak = resource_projection.get("pids_peak")
+    within_memory_limit = resource_projection.get("within_memory_limit")
+    if (
+        type(pids_peak) is not int
+        or type(within_memory_limit) is not bool
+        or any(
+            type(memory_events[name]) is not int or memory_events[name] < 0
+            for name in ("oom", "oom_kill")
+        )
+    ):
+        raise ProbeError("native late-failure resource projection was malformed")
+    conditions: list[str] = []
+    if not within_memory_limit:
+        conditions.append("memory_limit_exceeded")
+    if pids_peak > PROCESS_LIMIT:
+        conditions.append("pid_limit_exceeded")
+    if memory_events["oom"] > 0:
+        conditions.append("oom_event_observed")
+    if memory_events["oom_kill"] > 0:
+        conditions.append("oom_kill_event_observed")
+    return conditions
+
+
+def _native_late_failure_safe_details(
+    stage: str,
+    failed_conditions: list[str],
+    health_failure_kinds: list[str],
+    driver_projection: dict[str, object],
+    resource_diagnostic: dict[str, object],
+    timing_diagnostic: dict[str, object],
+) -> dict[str, object]:
+    """Retain only fixed failure categories and previously sanitized projections."""
+
+    health_conditions = {
+        "health_samples_missing",
+        "app_readiness_not_ready",
+        "schema_mismatch",
+        "ready_active_worker_sample_missing",
+    }
+    resource_conditions = {
+        "memory_limit_exceeded",
+        "pid_limit_exceeded",
+        "oom_event_observed",
+        "oom_kill_event_observed",
+    }
+    stage_conditions = {
+        "post_driver_health": health_conditions,
+        "post_driver_resources": resource_conditions,
+    }.get(stage)
+    if (
+        stage_conditions is None
+        or not failed_conditions
+        or len(failed_conditions) != len(set(failed_conditions))
+        or any(condition not in stage_conditions for condition in failed_conditions)
+        or driver_projection.get("attached_candidate_acceptance") is not True
+    ):
+        raise ProbeError("native late-failure diagnostic was malformed")
+    return {
+        "native_late_failure": {
+            "scope": "diagnostic_only",
+            "stage": stage,
+            "failed_conditions": failed_conditions,
+            "health_observation_failures": _native_health_failure_counts(health_failure_kinds),
+        },
+        "native_driver_acceptance": driver_projection,
+        "native_failure_resource_diagnostic": resource_diagnostic,
+        "native_turn_timing_diagnostic": timing_diagnostic,
+    }
+
+
 def _process_snapshot(candidate: Candidate) -> list[dict[str, object]]:
     value = _docker_exec_json(candidate, "0:0", _PROCESS_SNAPSHOT_SCRIPT)
     if not isinstance(value, list):
@@ -4059,6 +4201,7 @@ def _run_native_driver(
     baseline = _read_resources(candidate)
     samples: list[dict[str, int]] = [baseline]
     health_samples: list[dict[str, object]] = []
+    health_failure_kinds: list[str] = []
     next_health_sample = start
     stdout_capture = bytearray()
     parsed_lines: list[dict[str, object]] = []
@@ -4102,7 +4245,8 @@ def _run_native_driver(
                         "native_turn_active": False,
                     }
                 )
-            except ProbeError:
+            except ProbeError as exc:
+                health_failure_kinds.append(_native_health_failure_kind(exc))
                 health_samples.append(
                     {
                         "status": "unavailable",
@@ -4268,7 +4412,24 @@ def _run_native_driver(
             for sample in health_samples
         )
     ):
-        raise ProbeError("candidate app was unhealthy or native worker readiness was not observed")
+        resource_diagnostic = _native_failure_resource_projection(
+            samples,
+            baseline,
+            health_samples,
+            time.monotonic() - start,
+        )
+        safe_details = _native_late_failure_safe_details(
+            "post_driver_health",
+            _native_late_health_failure_conditions(health_samples),
+            health_failure_kinds,
+            driver_projection,
+            resource_diagnostic,
+            _candidate_native_timing_projection(candidate, timing_since),
+        )
+        raise ProbeError(
+            "candidate app was unhealthy or native worker readiness was not observed",
+            safe_details=safe_details,
+        )
     resource_projection = _native_success_resource_projection(samples, baseline)
     resource_receipt = {
         **resource_projection,
@@ -4281,7 +4442,18 @@ def _run_native_driver(
         or resource_receipt["memory_events_delta"]["oom"] > 0
         or resource_receipt["memory_events_delta"]["oom_kill"] > 0
     ):
-        raise ProbeError("candidate exceeded its cgroup memory or PID limit during native turns")
+        safe_details = _native_late_failure_safe_details(
+            "post_driver_resources",
+            _native_late_resource_failure_conditions(resource_projection),
+            health_failure_kinds,
+            driver_projection,
+            resource_projection,
+            _candidate_native_timing_projection(candidate, timing_since),
+        )
+        raise ProbeError(
+            "candidate exceeded its cgroup memory or PID limit during native turns",
+            safe_details=safe_details,
+        )
     driver_receipt = {
         "status": "pass",
         "sha256": hashlib.sha256(bytes(stdout_capture)).hexdigest(),

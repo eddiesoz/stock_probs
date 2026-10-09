@@ -2981,6 +2981,167 @@ was not run. Commands: `python3 scripts/check-doc-coverage.py --root . --map doc
 `--changed-file` for `AGENTS.md`, `MVP-PLAN.md`, `MVP-ROADMAP.md`, `docs/develop/testing.md`, and
 `docs/develop/documentation.md`, plus the validator and scoped diff check above.
 
+### R-ASTRA-120 E832 late-failure diagnostic-only repair
+
+Task `R-ASTRA-120`, source head `fa3db0e9fd2b48032735474691df900135aa1357`. The narrow two-file
+repair changes only `tests/supervised_assistant_probe.py` (SHA-256
+`374013099b69ca6f107ec85de7af3687d6b80e21ca428c7e84bc1c254327d829`) and
+`tests/test_supervised_assistant_probe.py` (SHA-256
+`3f135c483f08bea3cac4d5e40ccb266c08c6ac81f10d1600c5ae12f9ffc5ded7`). It adds bounded reporting
+of the already validated driver, resource, and timing projections, fixed original-guard condition
+codes, and periodic-health failure counts. The original readiness/resource predicates, budgets,
+permission rules, and provider policy are unchanged. No application/UI bytes changed; this is
+diagnostic instrumentation, not a runtime fix or native acceptance.
+
+The final builder-selected module run **Passed** 437 tests with zero failures/errors/skips; Ruff
+check, Ruff format check, and scoped diff check also passed. Its post-classifier JUnit SHA-256 is
+`d8e98660770f635f12cb640502ed0c53fee3c6c451a88f1eccee8c6693e2c872`; the full test log SHA-256 is
+`c397f6028b87d9a5a2de2d5f80239624489978150276cd501596ee324c7ca566`. The initial baseline manifest
+and three earlier scoped runs remain in
+`test-results/assistant-r120/coordination/native-failure-diagnostic-repair-1719f0407b6a4168aaecc2789d00c6c9/`.
+The independent frozen source/test QA **Passed** 437 tests, including 19 new diagnostic cases, with
+zero failures/errors/skips; all 46 before/after source/import/data pins matched. Ruff check/format
+and diff check passed. Warning count is **Unavailable** under project `--disable-warnings`; plugin
+autoload was disabled and no async tests ran. QA receipt
+`test-results/assistant-r120/coordination/native-failure-diagnostic-independent-qa-20261009T213148Z-5060b653/independent-late-diagnostic-qa-receipt.json`,
+SHA-256 `f977f739feb0d44d38070bf51ce2a046c1b812a7d6263db343f0d869fde96848`; its independent JUnit
+SHA-256 is `76c7c80c2dae0a3862b93ccb2222ea94523ddc577d5f30be70f7e788b354fd75`.
+
+The independent verifier's first attempt **Failed at setup** because it compared current source
+hashes with older recovery copies; the corrected comparison used the hashes in the original baseline
+manifest and **Passed**. This is preserved verifier history, not a source/test assertion failure.
+Parent source/evidence review **Passed** with no findings after verifying the JUnit, all cited QA
+hashes, 46 pins, and unchanged original guard predicates. Receipt
+`test-results/assistant-r120/coordination/native-late-guard-parent-review-20261009T213728Z-ff2cd2/parent-review.json`,
+SHA-256 `db55a3b697ed467e58fe90b42250d79792971c826f0c8df301e27838ee392c81`.
+
+The held follow-up native packet received **Pass** for static path/pin/syntax review only. Its
+candidate head/image remain unbound, `execution_authorized=false`, and no runner, readiness preflight,
+Docker, provider, or runtime operation was invoked. The earlier parent packet-preparation
+`AssertionError` remains preserved; it came from the parent's mistaken absolute-path assertion. The
+runner's existing `__file__`-based packet-root derivation was unchanged; no runtime or source-root
+repair occurred. Static review receipt
+`test-results/assistant-r120/coordination/native-held-packet-static-review-20261009T2133Z-5a9868d2/static-review.json`,
+SHA-256 `e5870c12f313b79b814c9aa2c3586bc9dc15bcc5dff8eb18570c3cd0063b8b5c`. This does not change
+E831's native functional **Fail** (exit 2) or **Unproven** cause. No successful native turn, current
+image kill, actual combined `1 GB`, PR-pair/rollback, canonical, production, or release acceptance is
+inferred. The current canonical, pair/rollback, kill, complete security, actual 1 GB, owner canary,
+guide/release, and deployment gates remain open; E791/E795 remain scoped browser/whole-route axe
+Passes, not full WCAG AA. The existing 1 GB plan, backups, production baseline, and US$15 monthly
+total cap are unchanged; no merge, deployment, resize, rollout, or email occurred.
+
+Before this documentation edit, exact bytes for the five owned Markdown files were copied to
+`test-results/assistant-r120/coordination/docs-e832-baseline-fa3db0e-20261009T213321Z/`; all copies
+passed `cmp` and `SHA256SUMS` verification on the UUID-verified SD mount. Pre-edit hashes: `AGENTS.md`
+`4541c83e0679c3923ffc27c90dca3d266f1891c0407b1a1544dd00f9ac5d434b`, `MVP-PLAN.md`
+`d7004b06dd5b070d780684256d01ddede05f806e196c274e2ef24234410093fb`, `MVP-ROADMAP.md`
+`21e0159572e1d36a79b0778966a3eb1d76df15b92a74ffd60f1adf148e9c0bbf`,
+`docs/develop/documentation.md` `7ac0d730cb0132f530cf953fc6776b823c17e8d559ab0f4be667c5156dbd37ea`, and
+`docs/develop/testing.md` `e96cf906ca62e702c8df3a8abc98c584df0996cead1ed9a4e182a32117ec4993`.
+
+The E832 authored-documentation checks **Passed** on native x86_64 dirty `HEAD`
+`fa3db0e9fd2b48032735474691df900135aa1357`: `.dev-venv/bin/python scripts/validate_docs.py`
+reported `9` categories, `14` topics, and `8` project-skill entries; completeness coverage checked
+`154` mapped files; the coverage self-test passed `26` cases; change-aware coverage checked `154`
+mapped files and all `5` changed owned documents; and the scoped `git diff --check` exited `0`.
+Documentation pytest was not run. Commands were the validator, `python3 scripts/check-doc-coverage.py
+--root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, the
+change-aware coverage command with `--base HEAD` and `--changed-file` for each of the five owned
+Markdown paths, and the scoped diff check. E831's prior parent documentation review **Passed** for
+its five-file state (receipt SHA-256 `fac86220fe82c7e3cd77c3cd7d492e9db7f131a5ee70fb490711fbea314dc5b9`);
+that receipt predates and does not review the E832 text added here.
+
+### R-ASTRA-120 E831 candidate native readiness-guard failure checkpoint
+
+Task `R-ASTRA-120`; the clean pushed PR head was `fa3db0e9fd2b48032735474691df900135aa1357`.
+The Linux/amd64 candidate build **Passed** for build and source/context/stage binding only: image
+`sha256:7801b92f125a25a3cfcf112b4d584da76685be73cb9b5e2f8a087beb3fc56479`, context
+`e03ff9920e84e6ac10a61f381d7a2d2127fd0220a34aa76e42842533520a2b0f`, build window
+`2026-10-09T20:59:59.919496Z`–`21:03:42.738152Z`. The candidate was not published. Build receipt
+`test-results/assistant-r120/coordination/candidate-fa3db0e9-d6373db023b4464e985c8dc90879860e/candidate-build.json`,
+SHA-256 `cf7d55bbc9f469eff024236d68ecda890bde0b7d08c78174afffff46926ee6ff`; source/export binding
+SHA-256 `949cd27250eadcecedb0a3b0227029f93d5acc170a7a60117d08897c4ad5ffdc`. Independent candidate
+review **Passed** the declared exact-head, context, terminal, source-pin, Docker-image and 52
+served/export-pair binding checks; receipt
+`test-results/assistant-r120/coordination/candidate-fa3db0e-independent-qa-20261009T210547Z/independent-candidate-build-qa-receipt.json`,
+SHA-256 `d826518c2d0e05079b5eddcc254b81c273150334c2aa0e4e02c62a14f6ff3ce1`.
+
+The one authorized native two-owner attempt on that image **Failed**, actual exit `2`, at
+`2026-10-09T21:09:20.830529Z`–`21:11:43.594443Z`. The 824-byte bounded stdout records a schema-13
+preflight with assistant/app status `ready`, 36 attempts, 18.507 seconds and seven profile commands,
+then only the generic message `candidate app was unhealthy or native worker readiness was not
+observed`. That preflight does not establish post-preflight health or worker readiness. No per-owner
+answers, tool activity, detailed snapshot counts, post-run app query or resource sample were retained;
+those details are **Unavailable** and the cause is **Unproven**. The raw stdout SHA-256 is
+`cf456c5e48a6838785ce88b6093e84f9f3c9394243f79eced8cb77acca0ae6ec`; terminal SHA-256 is
+`41113caced5b28c412da0d6b08fa368fe5f21e550a632901e0e1f15e93d8e619`.
+
+Independent result-integrity review **Passed** for the preserved native failure, candidate/source
+bindings and exact owned cleanup; the native functional result remains **Fail**. The first reviewer
+verification attempt was **Fail** only because its volume-absence error-text matcher did not match
+Docker wording; a corrected exact-reference check passed. The final review receipt is
+`test-results/assistant-r120/coordination/native-fa3db0e-independent-review-20261009T211351Z/independent-native-functional-qa-receipt.json`,
+SHA-256 `1f60d0a1295248796c25a940278bacec860382cfcd49d234255b1b9f727fef91`; its supplemental exact
+volume-name inventory receipt has SHA-256
+`0b323d24838ea12b07675b4c50492d82061731163f2a4b778e703b3b0c7488cf`. The native fixture created
+and cleaned its owned resources; independent read-only verification then confirmed the exact
+candidate container, network, and volume references and names absent. That absence verification
+itself made no Docker state mutation.
+Parent failure review, SHA-256
+`ec8c28652e5b51730deb0feabd8d026dd37af79fe1a5978ee50eca6b9e55daed`, traced the generic guard to
+`tests/supervised_assistant_probe.py:4271`, where the post-driver health-sample guard raises without
+safe detail. The persisted record does not identify a failed health criterion or preserve a
+validated driver projection, so this source trace does not establish the runtime failure cause.
+Retry, PR-pair rehearsal, and kill were not authorized. The source freeze was released only for a
+narrow test/probe diagnostic repair to preserve validated late-failure evidence; that repair and its
+independent QA are **Pending**. No successful native turn, runtime repair, provider cause, or
+resource acceptance is inferred.
+
+The exact E829 candidate image `sha256:adb82504d866e026f513d1397046ce656e1f90e7fe010d8e3db63bfe91cfb9f9`
+was retired with the reviewed full-ID `--no-prune` operation. Parent retirement review **Passed**
+(SHA-256 `cf670761ab6177455039e7abb0a6c5ca9309d98d58d3bd2ef8cbe6652d4c92de`); independent
+post-retirement verification **Passed**, confirming the old full ID/tag and ledger entries absent
+while protecting the then-current E830 candidate (receipt SHA-256
+`d92472a37c77cb0a7f25965ca31841ec31f3681f77962b0f4f2d0b7ba2237c00`). This exact cleanup does not
+change E829's native failure or establish release acceptance.
+
+The fresh read-only storage readback at `2026-10-09T21:03:33.494861Z` confirmed SD UUID
+`54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`, Docker root `/srv/signal-ledger-storage/docker`, and free
+space of `58,614,149,120` bytes on the main filesystem and `57,275,715,584` bytes on SD. Readback
+receipt `test-results/assistant-r120/coordination/storage-final-readback-20261009T210333Z-eb28e6/readback.json`,
+SHA-256 `7e9dc59e61e817d068c569c029bba50f80f2a6e9505405cc59df152a043aeea5`, reuses the earlier
+verified restore receipt `4e7eaf309ab5b149467830a422e1e60d7bf563985ae779682828eb06a4ca54bf` for original
+file restoration and backup retention. A fresh private-backup stat is **Unavailable** after sudo
+authentication failed; physical removal/absent-medium startup was not run and remains **Unavailable**.
+
+E791's 193-case browser scope and E795's 64-state whole-route axe scope remain scoped Passes, not
+full WCAG AA. E830's guide metadata rebind remains limited to its bound artifacts; final PR/release
+guide acceptance is **Pending**, and PDF/UA, physical mobile, true zoom, and actual screen-reader
+evidence remain **Unavailable**. The latest production observation remains E829's read-only
+schema-12 ready/loopback result; E831 performed no production action or newer inspection. The
+current canonical check, current-image kill, complete security, actual combined `1 GB`, PR-pair and
+rollback, owner canary, deployment, and release gates remain open. The existing 1 GB plan, backups,
+and US$15 monthly total cap are unchanged. No merge, deployment, resize, rollout, or email occurred.
+
+Before documentation edits, exact bytes for the five owned Markdown files were copied to
+`test-results/assistant-r120/coordination/docs-e831-baseline-fa3db0e-20261009T211747Z/`; all copies
+passed `cmp` and their `SHA256SUMS` verification on the UUID-verified SD mount. The pre-edit hashes
+are `AGENTS.md` `35f43d2a55555d48b26f4f7670e17858fb63ca9631f1e1be0e759fb03b8400a3`, `MVP-PLAN.md`
+`cb8655afde427e5e8bacd04120f264edf63f508209245366b0a7890c5842b418`, `MVP-ROADMAP.md`
+`1260317e0361562f48a43210cfe59f5da9579e481ac43fe998d2cfe2cc230196`,
+`docs/develop/documentation.md` `583ca4ae4381dc07f1109275dd9d1337f69f616a94724a2c3afdc5f7211e8e4f`, and
+`docs/develop/testing.md` `2eb4c3ebd9457ec262a889f93a7a056fef41e467e224a4a1a0958fb3812418d3`.
+
+The E831 authored-documentation checks **Passed** on native x86_64 dirty `HEAD`
+`fa3db0e9fd2b48032735474691df900135aa1357`: `.dev-venv/bin/python scripts/validate_docs.py`
+reported `9` categories, `14` topics, and `8` project-skill entries; completeness coverage checked
+`154` mapped files; the coverage self-test passed `26` cases; change-aware coverage checked `154`
+mapped files and all `5` changed owned documents; and the scoped `git diff --check` exited `0`.
+Documentation pytest was not run. Commands were the validator, `python3 scripts/check-doc-coverage.py
+--root . --map documentation-map.json`, `python3 scripts/check-doc-coverage-self-test.py`, the
+change-aware coverage command with `--base HEAD` and `--changed-file` for each of the five owned
+Markdown paths, and the scoped diff check.
+
 ### R-ASTRA-120 E830 current native failure and bounded snapshot checkpoint
 
 Task `R-ASTRA-120`; accepted clean pushed PR head `09bdc942982c077535a4841f1439a012834fefc6`

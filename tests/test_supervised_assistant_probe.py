@@ -4664,6 +4664,299 @@ def test_native_success_resource_projection_reports_exact_success_deltas() -> No
 
 
 @pytest.mark.parametrize(
+    ("health_samples", "expected"),
+    [
+        ([], ["health_samples_missing"]),
+        (
+            [
+                {
+                    "status": "unavailable",
+                    "schema_version": None,
+                    "worker_status": None,
+                    "native_turn_active": None,
+                }
+            ],
+            [
+                "app_readiness_not_ready",
+                "schema_mismatch",
+                "ready_active_worker_sample_missing",
+            ],
+        ),
+        (
+            [
+                {
+                    "status": "ready",
+                    "schema_version": 13,
+                    "worker_status": "starting",
+                    "native_turn_active": False,
+                }
+            ],
+            ["ready_active_worker_sample_missing"],
+        ),
+    ],
+)
+def test_native_late_health_failure_categories_are_closed_and_exact(
+    health_samples: list[dict[str, object]], expected: list[str]
+) -> None:
+    assert probe._native_late_health_failure_conditions(health_samples) == expected
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("candidate app readiness request failed", "transport_failure"),
+        ("candidate readiness did not return HTTP 200", "non_200"),
+        ("candidate readiness response exceeded its bound", "oversize"),
+        ("candidate readiness response was invalid", "invalid_json"),
+        ("candidate app is not ready on the expected schema", "app_schema_rejected"),
+        (
+            "candidate readiness omitted the assistant status projection",
+            "assistant_projection_missing",
+        ),
+        ("private response body token=must-not-escape", "observation_unknown"),
+    ],
+)
+def test_native_health_failure_classifier_uses_only_fixed_categories(
+    message: str, expected: str
+) -> None:
+    assert probe._native_health_failure_kind(probe.ProbeError(message)) == expected
+
+
+@pytest.mark.parametrize(
+    ("projection", "expected"),
+    [
+        (
+            {
+                "within_memory_limit": True,
+                "pids_peak": 4,
+                "memory_events_delta": {"high": 0, "max": 0, "oom": 0, "oom_kill": 0},
+            },
+            [],
+        ),
+        (
+            {
+                "within_memory_limit": False,
+                "pids_peak": 4,
+                "memory_events_delta": {"high": 0, "max": 0, "oom": 0, "oom_kill": 0},
+            },
+            ["memory_limit_exceeded"],
+        ),
+        (
+            {
+                "within_memory_limit": True,
+                "pids_peak": probe.PROCESS_LIMIT + 1,
+                "memory_events_delta": {"high": 0, "max": 0, "oom": 0, "oom_kill": 0},
+            },
+            ["pid_limit_exceeded"],
+        ),
+        (
+            {
+                "within_memory_limit": True,
+                "pids_peak": 4,
+                "memory_events_delta": {"high": 0, "max": 0, "oom": 1, "oom_kill": 1},
+            },
+            ["oom_event_observed", "oom_kill_event_observed"],
+        ),
+    ],
+)
+def test_native_late_resource_failure_categories_preserve_original_limits(
+    projection: dict[str, object], expected: list[str]
+) -> None:
+    assert probe._native_late_resource_failure_conditions(projection) == expected
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_message", "expected_conditions"),
+    [
+        (
+            "health",
+            "candidate app was unhealthy or native worker readiness was not observed",
+            ["app_readiness_not_ready", "schema_mismatch"],
+        ),
+        (
+            "memory",
+            "candidate exceeded its cgroup memory or PID limit during native turns",
+            ["memory_limit_exceeded"],
+        ),
+        (
+            "pids",
+            "candidate exceeded its cgroup memory or PID limit during native turns",
+            ["pid_limit_exceeded"],
+        ),
+        (
+            "oom",
+            "candidate exceeded its cgroup memory or PID limit during native turns",
+            ["oom_event_observed"],
+        ),
+        (
+            "oom_kill",
+            "candidate exceeded its cgroup memory or PID limit during native turns",
+            ["oom_kill_event_observed"],
+        ),
+    ],
+)
+def test_native_late_driver_failures_retain_bounded_diagnostics_without_relaxing_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+    expected_message: str,
+    expected_conditions: list[str],
+) -> None:
+    checkpoint = {
+        "mode": "attach-existing-app",
+        "phase": "active_search_wait",
+        "origin": probe.PUBLIC_ORIGIN,
+        "owner_index": 1,
+        "turn_status": "running",
+        "search_preview_pending": True,
+        "workspace_summary_digest_matches": True,
+        "search_query_sha256": hashlib.sha256(
+            probe._WORKER_CACHE_MARKERS["search_query"].encode("utf-8")
+        ).hexdigest(),
+    }
+    final = _driver_receipt()
+    final.update(
+        {
+            "synthetic_prompt": "raw-prompt-sentinel",
+            "session_cookie": "raw-session-cookie-sentinel",
+            "private_url": "https://private.invalid/path",
+            "raw_error": "raw-error-sentinel",
+        }
+    )
+    child_stdout = (
+        json.dumps(checkpoint, separators=(",", ":"))
+        + "\n"
+        + json.dumps(final, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+
+    class FakeChild:
+        def __init__(self) -> None:
+            self.stdin = io.BytesIO()
+            self.stdout = io.BytesIO(child_stdout)
+            self.stderr = io.BytesIO(b"raw-error-sentinel\n")
+            self.returncode = 0
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            return 0
+
+        def terminate(self) -> None:
+            return None
+
+        def kill(self) -> None:
+            return None
+
+    monkeypatch.setattr(probe.subprocess, "Popen", lambda *_args, **_kwargs: FakeChild())
+    health_calls = 0
+
+    def health(_candidate: object) -> dict[str, object]:
+        nonlocal health_calls
+        health_calls += 1
+        if failure == "health" and health_calls == 1:
+            raise probe.ProbeError("raw readiness error token=raw-error-sentinel")
+        return {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"status": "ready"},
+        }
+
+    monkeypatch.setattr(probe, "_health", health)
+    baseline = _resource_sample()
+    ending = _resource_sample()
+    if failure == "memory":
+        ending["memory_peak"] = probe.MEMORY_LIMIT_BYTES + 1
+    elif failure == "pids":
+        ending["pids_current"] = probe.PROCESS_LIMIT + 1
+    elif failure == "oom":
+        ending["memory_events_oom"] = 1
+    elif failure == "oom_kill":
+        ending["memory_events_oom_kill"] = 1
+    resource_calls = 0
+
+    def read_resources(_candidate: object) -> dict[str, int]:
+        nonlocal resource_calls
+        resource_calls += 1
+        return (baseline if resource_calls == 1 else ending).copy()
+
+    monkeypatch.setattr(probe, "_read_resources", read_resources)
+    cache_calls = 0
+
+    def scan_cache(_candidate: object) -> dict[str, object]:
+        nonlocal cache_calls
+        cache_calls += 1
+        return {
+            "complete": True,
+            "marker_counts": {"search_query": 1 if cache_calls == 1 else 0},
+        }
+
+    monkeypatch.setattr(probe, "_scan_worker_cache", scan_cache)
+    monkeypatch.setattr(
+        probe,
+        "_active_owner_config_path",
+        lambda _candidate, _cookie: "/run/assistant/worker-locations/"
+        + "2" * 32
+        + "/opencode.json",
+    )
+    monkeypatch.setattr(
+        probe,
+        "_probe_private_boundaries",
+        lambda _candidate, _users, _path: {"worker_uid_10002": "denied"},
+    )
+    monkeypatch.setattr(
+        probe,
+        "_candidate_native_timing_projection",
+        lambda _candidate, _since: {"scope": "diagnostic_only", "status": "unavailable"},
+    )
+    candidate = probe.Candidate(
+        container="assistant-r120-candidate-abc123def456",
+        container_id="a" * 64,
+        image_id="sha256:" + "c" * 64,
+        data_volume="stock-probs-assistant-r120-abc123def456",
+        base_url="http://127.0.0.1:8000",
+        host_port=8000,
+        host_pid=1,
+        cgroup=Path("unused"),
+    )
+    users = [
+        {"session_cookie": "A" * 43},
+        {"session_cookie": "B" * 43},
+    ]
+
+    with pytest.raises(probe.ProbeError, match=expected_message) as caught:
+        probe._run_native_driver(candidate, users)
+
+    details = caught.value.safe_details
+    health_failure_counts = dict.fromkeys(probe._NATIVE_HEALTH_FAILURE_KINDS, 0)
+    if failure == "health":
+        health_failure_counts["observation_unknown"] = 1
+    assert details["native_late_failure"] == {
+        "scope": "diagnostic_only",
+        "stage": "post_driver_health" if failure == "health" else "post_driver_resources",
+        "failed_conditions": expected_conditions,
+        "health_observation_failures": health_failure_counts,
+    }
+    assert details["native_driver_acceptance"]["attached_candidate_acceptance"] is True
+    assert "native_failure_resource_diagnostic" in details
+    assert details["native_turn_timing_diagnostic"] == {
+        "scope": "diagnostic_only",
+        "status": "unavailable",
+    }
+    encoded = json.dumps(details, sort_keys=True)
+    for private_value in (
+        "raw-prompt-sentinel",
+        "raw-session-cookie-sentinel",
+        "private.invalid",
+        "raw-error-sentinel",
+        "token=",
+    ):
+        assert private_value not in encoded
+    assert "raw-error-sentinel" not in str(caught.value)
+
+
+@pytest.mark.parametrize(
     ("field", "decreased_value"),
     [
         ("cpu_usage_usec", 19),

@@ -1,31 +1,31 @@
 # Stock Probability MVP Roadmap
 
-Current R-ASTRA-120 E830 checkpoint: candidate image `sha256:d2cd30ca3a8d2c792d7362a37c19f9f865d5802542661db62e41d3bf47ab175f` was built from accepted PR head
-`09bdc942982c077535a4841f1439a012834fefc6` and context
-`a0815be053c97510e5e9d3b45fea72dac2127bf3bf5ee7fb88e561970be0f8e5`; build/source/stage binding
-passed, not runtime acceptance. Its one authorized native two-owner attempt **Failed** (exit 2):
-owner 0 answered in 48.016 seconds; owner 1 timed out at 120.973 seconds after seven native-search
-sources and one approved fetch source, without an answer. Both conversation deletes returned HTTP
-200. Cause remains **Unproven**; a 768 MiB sample is not actual combined 1 GB acceptance. A bounded
-cached-snapshot diagnostic then passed parent source review and independent selected QA (21 runtime
-and 78 parser tests); it is diagnostic instrumentation, not a reliability repair or native result.
-The candidate image predates those diagnostic source changes. The exact retirement of E828's candidate image
-`sha256:802319bed035d9f40425c019951e2e764b2e0253d7161da4964f7c2a6d87bb8a` passed separately; two
-managed image entries remain, and this does not repair the failed schema-13 pair. The pair/rollback,
-current-source image and native acceptance, current-image kill, current canonical check, complete
-security, actual combined 1 GB, owner canary, and release gates remain open. E791's 193-case browser
-scope and E795's 64-state whole-route axe scope passed for desktop and emulated Pixel 7; neither
-establishes full WCAG AA or physical-device/assistive-technology acceptance. E830's guide metadata
-rebind passed 94 consumer inputs, 52 served/export pairs, and 23 artifacts while retaining the
-original capture head and QA attribution; it is not a fresh capture or final PR/release guide
-acceptance. PDF/UA, physical mobile, true zoom, and actual screen-reader evidence remain
-**Unavailable**. The current canonical check is **Pending**; E300's earlier scoped raw axe failure
-remains historical. Storage restore and retained backup evidence passed their recorded scopes;
-physical absent-medium startup remains unavailable. The latest read-only production observation
-remains schema 12, ready and loopback-only, with rollout/RAM/billing unavailable. The existing
-US$15 monthly total cap, 1 GB plan, and backups are unchanged; no merge, deployment, resize, rollout,
-or email occurred. See [E830](MVP-PLAN.md#r-astra-120-e830-current-native-failure-and-bounded-snapshot-checkpoint),
-the preserved [E829 record](MVP-PLAN.md#r-astra-120-e829-candidate-native-failure-repair-and-guide-checkpoint),
+Current R-ASTRA-120 E832 diagnostic follow-on: the two-file test/probe-only late-failure repair
+passed its selected builder and independent QA scopes (437 tests, including 19 new cases, zero
+failures/errors/skips, and 46 unchanged source/import/data pins) plus parent source/evidence review.
+It adds bounded diagnostic output from validated projections and preserves the original readiness
+and resource predicates and budgets; no application/UI change, runtime fix, or native acceptance is
+inferred. The latest native result remains E831's **Fail** (exit 2, cause **Unproven**): its
+schema-13 preflight reported ready, followed by a generic readiness/health guard failure, with
+per-owner details and resource sample **Unavailable**. The prepared follow-up packet passed static
+path/pin/syntax review only; its candidate identity remains unbound and execution is held. E831's
+exact E829 candidate retirement and storage readback remain scoped evidence, not runtime acceptance.
+E830's bounded cached-snapshot diagnostic and guide metadata rebind remain limited to their recorded
+scopes. E791's 193-case browser scope and E795's 64-state whole-route axe scope passed for desktop
+and emulated Pixel 7; neither establishes full WCAG AA or physical-device/assistive-technology
+acceptance. Final PR/release guide acceptance remains pending; PDF/UA, physical mobile, true zoom,
+and actual screen-reader evidence remain **Unavailable**. The current canonical check is **Pending**.
+The PR-pair/rollback, current-image kill, complete security, actual combined 1 GB, owner canary, and
+release gates remain open. E831's fresh read-only storage check recorded Docker root
+`/srv/signal-ledger-storage/docker` and free-space observations of 58,614,149,120 bytes (main) and
+57,275,715,584 bytes (SD); original-file restoration and backup retention rely on the earlier
+verified receipt, while a fresh private-backup stat and physical absent-medium startup remain
+**Unavailable**. The latest recorded production read is E829's schema-12 ready/loopback observation;
+rollout/RAM/billing were not returned. The existing US$15 monthly total cap, 1 GB plan, and backups
+are unchanged; no merge, deployment, resize, rollout, or email occurred. See [E832](MVP-PLAN.md#r-astra-120-e832-late-failure-diagnostic-only-repair),
+[E831](MVP-PLAN.md#r-astra-120-e831-candidate-native-readiness-guard-failure-checkpoint),
+the preserved [E830 record](MVP-PLAN.md#r-astra-120-e830-current-native-failure-and-bounded-snapshot-checkpoint),
+and prior [E829](MVP-PLAN.md#r-astra-120-e829-candidate-native-failure-repair-and-guide-checkpoint)
 and [E828](MVP-PLAN.md#historical-r-astra-120-e828-built-candidate-and-recovery-checkpoint) in the
 [MVP plan](MVP-PLAN.md).
 

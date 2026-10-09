@@ -196,6 +196,35 @@ and unproven cause remain. The image predates the observer changes, so it does n
 diagnostic in native execution. See the [E830 ledger](../../MVP-PLAN.md#r-astra-120-e830-current-native-failure-and-bounded-snapshot-checkpoint)
 for exact receipts and remaining gates.
 
+E831 built candidate image `sha256:7801b92f125a25a3cfcf112b4d584da76685be73cb9b5e2f8a087beb3fc56479`
+from clean pushed PR head `fa3db0e9fd2b48032735474691df900135aa1357`; independent build review passed
+its exact-head, source/context, terminal, and 52 served/export binding scope. The one authorized native
+attempt **Failed** (exit 2). Its bounded output contains a schema-13 readiness preflight reported ready
+after 36 attempts in 18.507 seconds, followed by only a generic app-health/worker-readiness guard
+failure. No per-owner answer/tool details, post-run readiness query, or resource sample was retained;
+the failure cause is **Unproven**. Independent result-integrity and exact cleanup review passed for
+their declared scope, not for native function. The first independent volume check failed only on an
+error-text matcher; its corrected exact-reference check passed. No retry, pair rehearsal, kill, or
+production operation was authorized or run. A narrow test/probe-only late-failure diagnostic repair
+is in progress; independent verification is pending. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md)
+for receipt hashes, exact limits, and remaining release gates.
+
+E832 supersedes only E831's pending diagnostic-repair and independent-QA status. The two-file
+test/probe-only repair passed the final builder module run (437 tests, zero failures/errors/skips;
+Ruff check, format, and diff check passed) and independent focused QA (437 tests, including 19 new
+cases; zero failures/errors/skips; 46 before/after source/import/data pins matched). Parent source
+and evidence review passed. The change adds bounded output from validated driver/resource/timing
+projections and fixed failure-condition codes; readiness/resource predicates and budgets are
+unchanged. The first independent baseline verifier attempt failed at setup because it used current
+hashes for older recovery copies; the corrected check used the recorded pre-edit hashes and passed.
+Warning count is **Unavailable** under `--disable-warnings`, and plugin autoload was disabled; no
+async tests ran. This does not repair E831's native failure or establish runtime, provider, Docker,
+resource, image, or release acceptance. The follow-up native packet received static path/pin/syntax
+Pass only; its candidate identity remains unbound and execution held. Its earlier setup
+`AssertionError` remains preserved, and no runtime or Docker operation was invoked. See the [E832
+ledger](../../MVP-PLAN.md#r-astra-120-e832-late-failure-diagnostic-only-repair) for exact pins and
+receipts.
+
 ## Unix-socket test fixtures
 
 Supervisor tests create AF_UNIX sockets. Use a unique, caller-owned short temporary root for

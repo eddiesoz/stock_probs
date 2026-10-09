@@ -185,7 +185,7 @@ assignments, runtime acceptance paths, or release gates.
   Historical E829 built head `4b5023f01253930a6ad2a7aee6a14e72580fd11d`; its native two-owner
   attempt **Failed** and its cause remains **Unproven**. The bounded GET-observation repair passed
   independent selected QA (57 tests) and parent review; the builder terminal was **Unavailable**.
-  E830 then built image `sha256:d2cd30ca3a8d2c792d7362a37c19f9f865d5802542661db62e41d3bf47ab175f`
+  Historical E830 built image `sha256:d2cd30ca3a8d2c792d7362a37c19f9f865d5802542661db62e41d3bf47ab175f`
   from accepted PR head `09bdc942982c077535a4841f1439a012834fefc6`, passing build/source/stage
   binding only. Its one authorized native attempt **Failed**: owner 0 answered in 48.016 seconds;
   owner 1 timed out at 120.973 seconds after seven search and one approved fetch source, with no
@@ -203,6 +203,30 @@ assignments, runtime acceptance paths, or release gates.
   while physical absent-medium startup remains unavailable. Production remains schema 12, ready and
   loopback-only; rollout/RAM/billing were not returned. The 1 GB plan, backups and US$15 cap remain
   unchanged; no merge, deployment, resize, rollout or email occurred. See E830 in `MVP-PLAN.md`.
+  Historical E831 built candidate image `sha256:7801b92f125a25a3cfcf112b4d584da76685be73cb9b5e2f8a087beb3fc56479`
+  from clean pushed PR head `fa3db0e9fd2b48032735474691df900135aa1357`, passing build/source/context/stage
+  binding only. Its one authorized native attempt **Failed** (exit 2): schema-13 readiness preflight
+  reported ready after 36 attempts in 18.507 seconds, then the bounded output recorded only a generic
+  app-health/worker-readiness guard failure. Per-owner answers/tools/snapshot counts and resource
+  sample are **Unavailable**; cause is **Unproven**. Exact independent integrity/cleanup review passed
+  for its declared scope; no retry, pair, kill, or production mutation occurred. E832's test/probe-only
+  late-failure diagnostic repair passed its focused builder/independent scope
+  and parent source/evidence review: 437 selected tests passed with 19 new regressions and 46
+  unchanged source/import/data pins. It preserves the existing readiness/resource guards and budgets;
+  no application/UI change, runtime fix, or native acceptance follows. The held follow-up packet
+  passed static path/pin/syntax review only; candidate identity remains unbound and execution held.
+  E831 also records exact retirement of the E829 candidate image and a fresh storage readback; the
+  latest production read is still E829's schema-12 ready/loopback observation, not a new E831 inspect.
+  The current canonical,
+  current-image native acceptance, PR-pair/rollback, current-image kill, actual combined 1 GB,
+  complete security, owner canary, final guide, and release gates remain open. E791/E795 remain scoped
+  browser and whole-route axe Passes, not full WCAG AA. Physical mobile, actual screen reader, true
+  zoom, and PDF/UA remain **Unavailable**. The existing 1 GB plan, backups, and US$15 cap are unchanged;
+  no merge, deployment, resize, rollout, or email occurred. See E832 in `MVP-PLAN.md`.
+  Fresh E831 storage readback recorded Docker root `/srv/signal-ledger-storage/docker` and free space
+  of 58,614,149,120 bytes on the main filesystem and 57,275,715,584 bytes on SD. Original-file restore
+  and backup retention rely on the prior bound receipt; a fresh private-backup stat is **Unavailable**
+  after sudo authentication failed, and physical absent-medium startup remains **Unavailable**.
   Storage restore, Docker/containerd/cache relocation, and bounded worker proof passed their
   recorded scopes; physical absent-medium startup remains unavailable. See E827 in `MVP-PLAN.md`.
 - Evidence remains architecture-specific: native x86_64, emulated ARM64, and physical
