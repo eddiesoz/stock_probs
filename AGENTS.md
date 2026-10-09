@@ -124,6 +124,16 @@ assignments, runtime acceptance paths, or release gates.
   release images or application data; record unresolved ancestry ownership as Unavailable and
   leave it untouched. These safeguards do not authorize spending above the US$15 monthly
   total cap, including backups and tax.
+- For schema-13 rehearsal-image cleanup, require the registered recovery tag and the expected
+  full image ID. Validate the ID against the completed ledger row and bound receipt before Docker
+  inventory or mutation; remove only that ID with `--no-prune`, verify the image and tag are
+  absent, and only then update the ledger. Mismatched, shared, protected, current, referenced,
+  unregistered, or malformed entries leave the ledger row intact; restore the recorded tag after
+  partial removal. Never edit the ledger manually. Resolve in-flight reservations only with the
+  reviewed typed recovery operation. Recovery receipt publication must fail closed on write errors:
+  a partial exclusive-create file is not a valid receipt and must not be manually removed or
+  treated as a released reservation. Retry only after reviewed recovery reconciles the receipt and
+  ledger safely.
 - Before formatting or relocating removable storage, make a backup on an independent filesystem
   and verify its checksum, byte count, complete file/member inventory, and metadata before
   formatting. Mount the replacement filesystem by UUID. Require both Docker and containerd to

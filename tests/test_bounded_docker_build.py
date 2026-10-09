@@ -10,6 +10,7 @@ import os
 import signal
 import sys
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -511,6 +512,656 @@ def _schema13_rehearsal_cleanup_fixture(
     }
 
 
+def _encode_buildkit_history_jsonl(rows: list[dict[str, object]]) -> bytes:
+    encoded = [json.dumps(row, separators=(",", ":")) for row in rows]
+    return ("\n".join(encoded) + "\n").encode()
+
+
+def _failed_inflight_reservation_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, object]:
+    state, ledger_path = _test_ledger_paths(tmp_path, monkeypatch)
+    runs = state / "build-runs"
+    runs.mkdir(mode=0o700)
+    runs.chmod(0o700)
+    monkeypatch.setattr(bounded, "RUNS", runs)
+    root_state = state / "root-state"
+    root_state.mkdir(mode=0o700)
+    root_state.chmod(0o700)
+    setup_path = root_state / "setup-receipt.json"
+    setup_bytes = b'{"fixture":"current setup receipt"}\n'
+    setup_path.write_bytes(setup_bytes)
+    setup_path.chmod(0o600)
+    monkeypatch.setattr(bounded, "ROOT_STATE", root_state)
+    monkeypatch.setattr(bounded, "SETUP_RECEIPT", setup_path)
+
+    revision = "ae140dd011ee" + "1" * 28
+    context_hash = "9" * 64
+    tag = f"stock-probs:pr-candidate-{revision[:12]}-905bb33256c5"
+    role = "current"
+    run_key = hashlib.sha256((tag + "\0" + context_hash).encode()).hexdigest()
+    run_dir = runs / revision / run_key
+    run_dir.mkdir(mode=0o700, parents=True)
+    (runs / revision).chmod(0o700)
+    run_dir.chmod(0o700)
+    started = datetime.now(UTC) - timedelta(seconds=20)
+    build_started = started + timedelta(seconds=5)
+    finished = build_started + timedelta(seconds=10)
+    history_created = build_started + timedelta(seconds=2)
+    history_completed = finished + timedelta(seconds=1)
+    failure_receipt: dict[str, object] = {
+        "schema": "r120-bounded-image-build-v1",
+        "status": "failed",
+        "stage": "fixed_command_unavailable_or_timeout",
+        "source_head": revision,
+        "source_branch": "codex/signal-ledger-assistant-r120",
+        "revision_label": revision,
+        "context_sha256": context_hash,
+        "candidate_tag": tag,
+        "candidate_role": role,
+        "builder": bounded.BUILDER,
+        "setup_receipt_sha256": hashlib.sha256(setup_bytes).hexdigest(),
+        "started_utc": started.isoformat(),
+        "build_started_utc": build_started.isoformat(),
+        "finished_utc": finished.isoformat(),
+        "process_group_cancel_verified": True,
+        "ledger_reservation_retained": True,
+    }
+    raw_failure_receipt = (json.dumps(failure_receipt, sort_keys=True) + "\n").encode()
+    failure_path = run_dir / "build-receipt.json"
+    failure_path.write_bytes(raw_failure_receipt)
+    failure_path.chmod(0o600)
+    failure_sha256 = hashlib.sha256(raw_failure_receipt).hexdigest()
+    reservation = {
+        "image_id": bounded._reservation_image_id(tag),
+        "tag": tag,
+        "revision": revision,
+        "context_sha256": context_hash,
+        "role": role,
+        "status": "inflight",
+    }
+
+    kept_tag = "stock-probs:pr-candidate-aaaaaaaaaaaa-bbbbbbbbbbbb"
+    kept_revision = "b" * 40
+    kept_context = "c" * 64
+    kept_image_id = "sha256:" + "d" * 64
+    kept_run_key = hashlib.sha256((kept_tag + "\0" + kept_context).encode()).hexdigest()
+    kept_run_dir = runs / kept_revision / kept_run_key
+    kept_run_dir.mkdir(mode=0o700, parents=True)
+    (runs / kept_revision).chmod(0o700)
+    kept_run_dir.chmod(0o700)
+    kept_receipt = {
+        "schema": "r120-bounded-image-build-v1",
+        "status": "built",
+        "candidate_tag": kept_tag,
+        "candidate_role": "current",
+        "image_id": kept_image_id,
+        "revision_label": kept_revision,
+        "context_sha256": kept_context,
+    }
+    kept_receipt_bytes = (json.dumps(kept_receipt, sort_keys=True) + "\n").encode()
+    kept_receipt_path = kept_run_dir / "build-receipt.json"
+    kept_receipt_path.write_bytes(kept_receipt_bytes)
+    kept_receipt_path.chmod(0o600)
+    kept_row = {
+        "image_id": kept_image_id,
+        "tag": kept_tag,
+        "revision": kept_revision,
+        "context_sha256": kept_context,
+        "role": "current",
+        "status": "complete",
+        "receipt_path": str(kept_receipt_path),
+        "receipt_sha256": hashlib.sha256(kept_receipt_bytes).hexdigest(),
+    }
+    legacy_tag = "stock-probs:schema12-base-ffffffffffff"
+    legacy_image_id = "sha256:" + "e" * 64
+    legacy_inventory = {legacy_tag: legacy_image_id}
+    inventory = {kept_tag: kept_image_id, **legacy_inventory}
+    ledger = {"schema": bounded.LEDGER_SCHEMA, "entries": [reservation, kept_row]}
+    ledger_path.write_text(json.dumps(ledger, sort_keys=True), encoding="utf-8")
+    ledger_path.chmod(0o600)
+    history_ref = "r120-bounded/r120-bounded0/" + "a" * 25
+    history = [
+        {
+            "cached_steps": 3,
+            "completed_at": history_completed.isoformat().replace("+00:00", "Z"),
+            "completed_steps": 21,
+            "created_at": history_created.isoformat().replace("+00:00", "Z"),
+            "name": "context",
+            "ref": history_ref,
+            "status": "Error",
+            "total_steps": 46,
+        },
+        {
+            "cached_steps": 0,
+            "completed_at": (started - timedelta(seconds=1)).isoformat().replace("+00:00", "Z"),
+            "completed_steps": 2,
+            "created_at": (started - timedelta(seconds=3)).isoformat().replace("+00:00", "Z"),
+            "name": "context",
+            "ref": "r120-bounded/r120-bounded0/" + "b" * 25,
+            "status": "Completed",
+            "total_steps": 4,
+        },
+        {
+            "cached_steps": 2,
+            "completed_at": (started - timedelta(seconds=2)).isoformat().replace("+00:00", "Z"),
+            "completed_steps": 3,
+            "created_at": (started - timedelta(seconds=4)).isoformat().replace("+00:00", "Z"),
+            "name": "worker-probe",
+            "ref": "r120-bounded/r120-bounded0/" + "c" * 25,
+            "status": "Completed",
+            "total_steps": 5,
+        },
+        {
+            "cached_steps": 0,
+            "completed_at": (started - timedelta(seconds=5)).isoformat().replace("+00:00", "Z"),
+            "completed_steps": 1,
+            "created_at": (started - timedelta(seconds=6)).isoformat().replace("+00:00", "Z"),
+            "name": "context-check",
+            "ref": "r120-bounded/r120-bounded0/" + "d" * 25,
+            "status": "Canceled",
+            "total_steps": 2,
+        },
+    ]
+    history_state = {"bytes": _encode_buildkit_history_jsonl(history)}
+    capture_calls: list[tuple[list[str], int, float]] = []
+
+    def capture(argv: list[str], *, max_bytes: int, timeout: float) -> bytes:
+        capture_calls.append((argv, max_bytes, timeout))
+        return history_state["bytes"]
+
+    checked_calls: list[list[str]] = []
+
+    def checked(argv: list[str], timeout: int = 30) -> bytes:
+        checked_calls.append(argv)
+        assert argv[:3] == [bounded.DOCKER, "image", "inspect"]
+        assert argv[-1] == kept_image_id
+        return f"{kept_image_id}|{kept_revision}".encode()
+
+    monkeypatch.setattr(
+        bounded,
+        "setup_receipt",
+        lambda: {"legacy_task_image_inventory": legacy_inventory},
+    )
+    monkeypatch.setattr(bounded, "_image_inventory", lambda: inventory.copy())
+    monkeypatch.setattr(bounded, "checked", checked)
+    monkeypatch.setattr(bounded, "_capture_bounded_stdout", capture)
+    return {
+        "tag": tag,
+        "revision": revision,
+        "context_hash": context_hash,
+        "role": role,
+        "failure_sha256": failure_sha256,
+        "failure_path": failure_path,
+        "failure_bytes": raw_failure_receipt,
+        "ledger_path": ledger_path,
+        "ledger_before": ledger_path.read_bytes(),
+        "reservation": reservation,
+        "kept_row": kept_row,
+        "kept_receipt": kept_receipt_path,
+        "inventory": inventory,
+        "legacy_inventory": legacy_inventory,
+        "history": history,
+        "history_state": history_state,
+        "history_ref": history_ref,
+        "capture_calls": capture_calls,
+        "checked_calls": checked_calls,
+        "recovery_path": run_dir / f"failed-reservation-release-{failure_sha256}.json",
+        "setup_sha256": hashlib.sha256(setup_bytes).hexdigest(),
+    }
+
+
+def test_failed_inflight_reservation_release_requires_terminal_history_and_preserves_images(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    before_inventory = dict(state["inventory"])
+    before_ledger = Path(state["ledger_path"]).read_bytes()
+    before_failure = Path(state["failure_path"]).read_bytes()
+
+    result = bounded._release_failed_inflight_reservation(
+        str(state["tag"]),
+        str(state["revision"]),
+        str(state["context_hash"]),
+        str(state["role"]),
+        str(state["failure_sha256"]),
+    )
+
+    ledger = json.loads(Path(state["ledger_path"]).read_bytes())
+    assert result["status"] == "failed_build_reservation_released"
+    assert ledger["entries"] == [state["kept_row"]]
+    assert dict(state["inventory"]) == before_inventory
+    assert Path(state["failure_path"]).read_bytes() == before_failure
+    assert Path(state["recovery_path"]).is_file()
+    recovery_raw = Path(state["recovery_path"]).read_bytes()
+    assert hashlib.sha256(recovery_raw).hexdigest() == result["recovery_receipt_sha256"]
+    recovery = json.loads(recovery_raw)
+    assert recovery["status"] == "failed_build_reservation_released"
+    assert recovery["failure_receipt_sha256"] == state["failure_sha256"]
+    assert recovery["tag"] == state["tag"]
+    assert recovery["revision"] == state["revision"]
+    assert recovery["context_sha256"] == state["context_hash"]
+    assert recovery["role"] == "current"
+    assert recovery["buildkit_history"]["ref"] == state["history_ref"]
+    assert recovery["buildkit_history"]["status"] == "error"
+    assert result["recovery_receipt"] == str(state["recovery_path"])
+    assert Path(state["ledger_path"]).read_bytes() != before_ledger
+    assert len(state["capture_calls"]) == 1
+    argv, max_bytes, timeout = state["capture_calls"][0]
+    assert argv == [
+        bounded.DOCKER,
+        "buildx",
+        "history",
+        "ls",
+        "--builder",
+        bounded.BUILDER,
+        "--no-trunc",
+        "--format",
+        "json",
+    ]
+    assert max_bytes == bounded.BUILDX_LISTING_MAX_BYTES
+    assert timeout == bounded.BUILDX_LISTING_TIMEOUT
+    assert state["checked_calls"] == [
+        [
+            bounded.DOCKER,
+            "image",
+            "inspect",
+            "--format",
+            '{{.Id}}|{{index .Config.Labels "org.opencontainers.image.revision"}}',
+            state["kept_row"]["image_id"],
+        ]
+    ]
+
+
+@pytest.mark.parametrize("failure_point", ("write", "chmod", "publish"))
+def test_failed_inflight_release_write_failure_is_retryable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    ledger_path = Path(state["ledger_path"])
+    failure_path = Path(state["failure_path"])
+    recovery_path = Path(state["recovery_path"])
+    before_ledger = ledger_path.read_bytes()
+    before_failure = failure_path.read_bytes()
+    before_inventory = dict(state["inventory"])
+    triggered = False
+
+    if failure_point == "write":
+        original_write = os.write
+        calls = 0
+
+        def fail_after_partial_write(fd: int, data: bytes | memoryview) -> int:
+            nonlocal calls, triggered
+            calls += 1
+            if calls == 1:
+                written = original_write(fd, data[:45])
+                triggered = True
+                return written
+            if calls == 2:
+                raise OSError("injected receipt write failure")
+            return original_write(fd, data)
+
+        monkeypatch.setattr(bounded.os, "write", fail_after_partial_write)
+    elif failure_point == "chmod":
+        original_fchmod = os.fchmod
+
+        def fail_chmod(fd: int, mode: int) -> None:
+            nonlocal triggered
+            triggered = True
+            raise OSError("injected receipt chmod failure")
+
+        monkeypatch.setattr(bounded.os, "fchmod", fail_chmod)
+    else:
+        original_link = os.link
+
+        def fail_publish(*args: object, **kwargs: object) -> None:
+            nonlocal triggered
+            triggered = True
+            raise OSError("injected atomic publication failure")
+
+        monkeypatch.setattr(bounded.os, "link", fail_publish)
+
+    with pytest.raises(
+        bounded.BuildError, match="failed_reservation_recovery_receipt_write_failed"
+    ):
+        bounded._release_failed_inflight_reservation(
+            str(state["tag"]),
+            str(state["revision"]),
+            str(state["context_hash"]),
+            str(state["role"]),
+            str(state["failure_sha256"]),
+        )
+
+    assert triggered
+    if failure_point == "publish":
+        assert json.loads(ledger_path.read_bytes()) == json.loads(before_ledger)
+    else:
+        assert ledger_path.read_bytes() == before_ledger
+    assert dict(state["inventory"]) == before_inventory
+    assert failure_path.read_bytes() == before_failure
+    assert not recovery_path.exists()
+    assert list(recovery_path.parent.glob(f".{recovery_path.name}.*.tmp")) == []
+
+    if failure_point == "write":
+        monkeypatch.setattr(bounded.os, "write", original_write)
+    elif failure_point == "chmod":
+        monkeypatch.setattr(bounded.os, "fchmod", original_fchmod)
+    else:
+        monkeypatch.setattr(bounded.os, "link", original_link)
+
+    result = bounded._release_failed_inflight_reservation(
+        str(state["tag"]),
+        str(state["revision"]),
+        str(state["context_hash"]),
+        str(state["role"]),
+        str(state["failure_sha256"]),
+    )
+
+    assert result["status"] == "failed_build_reservation_released"
+    assert json.loads(ledger_path.read_bytes())["entries"] == [state["kept_row"]]
+    assert dict(state["inventory"]) == before_inventory
+    assert failure_path.read_bytes() == before_failure
+    assert recovery_path.is_file()
+    assert list(recovery_path.parent.glob(f".{recovery_path.name}.*.tmp")) == []
+
+
+@pytest.mark.parametrize(
+    ("binding", "replacement"),
+    (
+        ("tag", "stock-probs:pr-candidate-ae140dd011ee-111111111111"),
+        ("revision", "f" * 40),
+        ("context_hash", "e" * 64),
+        ("role", "recovery"),
+        ("failure_sha256", "0" * 64),
+    ),
+)
+def test_failed_inflight_reservation_mismatched_binding_precedes_docker_or_ledger_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    binding: str,
+    replacement: str,
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    ledger_path = Path(state["ledger_path"])
+    before_ledger = ledger_path.read_bytes()
+    args = {
+        "tag": str(state["tag"]),
+        "revision": str(state["revision"]),
+        "context_hash": str(state["context_hash"]),
+        "role": str(state["role"]),
+        "failure_receipt_sha256": str(state["failure_sha256"]),
+    }
+    if binding == "failure_sha256":
+        args["failure_receipt_sha256"] = replacement
+    else:
+        args[binding] = replacement
+
+    with pytest.raises(bounded.BuildError):
+        bounded._release_failed_inflight_reservation(**args)
+
+    assert ledger_path.read_bytes() == before_ledger
+    assert state["capture_calls"] == []
+    assert state["checked_calls"] == []
+    assert dict(state["inventory"]) == {
+        state["kept_row"]["tag"]: state["kept_row"]["image_id"],
+        **state["legacy_inventory"],
+    }
+    assert not Path(state["recovery_path"]).exists()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("stage", "buildx_exit_nonzero"),
+        ("process_group_cancel_verified", False),
+        ("ledger_reservation_retained", False),
+        ("setup_receipt_sha256", "0" * 64),
+        ("image_id", "sha256:" + "a" * 64),
+    ),
+)
+def test_failed_inflight_receipt_contract_mismatch_is_read_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    receipt_path = Path(state["failure_path"])
+    receipt = json.loads(receipt_path.read_bytes())
+    receipt[field] = value
+    raw = (json.dumps(receipt, sort_keys=True) + "\n").encode()
+    receipt_path.write_bytes(raw)
+    before_ledger = Path(state["ledger_path"]).read_bytes()
+
+    with pytest.raises(bounded.BuildError):
+        bounded._release_failed_inflight_reservation(
+            str(state["tag"]),
+            str(state["revision"]),
+            str(state["context_hash"]),
+            str(state["role"]),
+            hashlib.sha256(raw).hexdigest(),
+        )
+
+    assert Path(state["ledger_path"]).read_bytes() == before_ledger
+    assert state["capture_calls"] == []
+    assert state["checked_calls"] == []
+    assert dict(state["inventory"]) == {
+        state["kept_row"]["tag"]: state["kept_row"]["image_id"],
+        **state["legacy_inventory"],
+    }
+    assert not Path(state["recovery_path"]).exists()
+
+
+@pytest.mark.parametrize(
+    ("history_change", "expected_error"),
+    (
+        ("duplicate", "failed_reservation_buildkit_record_not_unique_error"),
+        ("active", "failed_reservation_buildkit_history_invalid"),
+        ("wrong_name", "failed_reservation_buildkit_record_not_unique_error"),
+        ("wrong_status", "failed_reservation_buildkit_record_not_unique_error"),
+        ("invalid_ref", "failed_reservation_buildkit_history_invalid"),
+        ("invalid_counter", "failed_reservation_buildkit_history_invalid"),
+        ("blank_line", "failed_reservation_buildkit_history_invalid"),
+        ("array_envelope", "failed_reservation_buildkit_history_invalid"),
+        ("duplicate_key", "failed_reservation_buildkit_history_invalid"),
+        ("trailing_text", "failed_reservation_buildkit_history_invalid"),
+    ),
+)
+def test_failed_inflight_history_must_have_one_bounded_terminal_error_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    history_change: str,
+    expected_error: str,
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    history = [json.loads(line) for line in state["history_state"]["bytes"].splitlines()]
+    if history_change == "duplicate":
+        duplicate = dict(history[0])
+        duplicate["ref"] = "r120-bounded/r120-bounded0/" + "e" * 25
+        history.append(duplicate)
+    elif history_change == "active":
+        history[1]["status"] = "running"
+    elif history_change == "wrong_name":
+        history[0]["name"] = "other"
+    elif history_change == "wrong_status":
+        history[0]["status"] = "Completed"
+    elif history_change == "invalid_ref":
+        history[0]["ref"] = "other-builder/node0/" + "a" * 25
+    elif history_change == "invalid_counter":
+        history[0]["total_steps"] = bounded.BUILDX_HISTORY_STEP_LIMIT + 1
+    if history_change in {
+        "duplicate",
+        "active",
+        "wrong_name",
+        "wrong_status",
+        "invalid_ref",
+        "invalid_counter",
+    }:
+        state["history_state"]["bytes"] = _encode_buildkit_history_jsonl(history)
+    elif history_change == "blank_line":
+        state["history_state"]["bytes"] += b"\n"
+    elif history_change == "array_envelope":
+        state["history_state"]["bytes"] = json.dumps(history).encode() + b"\n"
+    elif history_change == "duplicate_key":
+        first_line = state["history_state"]["bytes"].splitlines()[0]
+        state["history_state"]["bytes"] = first_line[:-1] + b',"status":"Error"}\n'
+    elif history_change == "trailing_text":
+        state["history_state"]["bytes"] += b"unparsed\n"
+    ledger_path = Path(state["ledger_path"])
+    before_ledger = ledger_path.read_bytes()
+
+    with pytest.raises(bounded.BuildError, match=expected_error):
+        bounded._release_failed_inflight_reservation(
+            str(state["tag"]),
+            str(state["revision"]),
+            str(state["context_hash"]),
+            str(state["role"]),
+            str(state["failure_sha256"]),
+        )
+
+    assert ledger_path.read_bytes() == before_ledger
+    assert state["checked_calls"] == []
+    assert not Path(state["recovery_path"]).exists()
+
+
+def test_failed_inflight_reservation_requires_absent_iidfile_and_task_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    ledger_path = Path(state["ledger_path"])
+    before_ledger = ledger_path.read_bytes()
+    run_dir = Path(state["failure_path"]).parent
+    iidfile = run_dir / "image.iid"
+    iidfile.write_text("sha256:" + "a" * 64, encoding="ascii")
+
+    with pytest.raises(bounded.BuildError, match="artifact_or_time_invalid"):
+        bounded._release_failed_inflight_reservation(
+            str(state["tag"]),
+            str(state["revision"]),
+            str(state["context_hash"]),
+            str(state["role"]),
+            str(state["failure_sha256"]),
+        )
+    assert state["capture_calls"] == []
+    assert ledger_path.read_bytes() == before_ledger
+
+    iidfile.unlink()
+    tag_image = "sha256:" + "a" * 64
+    state["inventory"][str(state["tag"])] = tag_image
+    with pytest.raises(bounded.BuildError, match="candidate_tag_still_present"):
+        bounded._release_failed_inflight_reservation(
+            str(state["tag"]),
+            str(state["revision"]),
+            str(state["context_hash"]),
+            str(state["role"]),
+            str(state["failure_sha256"]),
+        )
+    assert ledger_path.read_bytes() == before_ledger
+    assert state["inventory"][str(state["tag"])] == tag_image
+    assert not Path(state["recovery_path"]).exists()
+
+
+def test_failed_inflight_release_cli_requires_fixed_identity_and_passes_only_bindings(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tag = "stock-probs:pr-candidate-aaaaaaaaaaaa-bbbbbbbbbbbb"
+    revision = "a" * 40
+    context_hash = "c" * 64
+    failure_sha256 = "d" * 64
+    result = {"status": "failed_build_reservation_released", "tag": tag}
+    calls: list[tuple[str, str, str, str, str]] = []
+
+    def release(
+        received_tag: str,
+        received_revision: str,
+        received_context_hash: str,
+        received_role: str,
+        received_failure_sha256: str,
+    ) -> dict[str, object]:
+        calls.append(
+            (
+                received_tag,
+                received_revision,
+                received_context_hash,
+                received_role,
+                received_failure_sha256,
+            )
+        )
+        return result
+
+    monkeypatch.setattr(bounded.os, "geteuid", lambda: bounded.USER.pw_uid)
+    monkeypatch.setattr(bounded, "validate_user_state", lambda: None)
+    monkeypatch.setattr(bounded.os, "access", lambda *_args: True)
+    monkeypatch.setattr(bounded, "_release_failed_inflight_reservation", release)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "bounded_docker_build.py",
+            "--release-failed-inflight-reservation",
+            "--failure-receipt-sha256",
+            failure_sha256,
+            "--tag",
+            tag,
+            "--revision",
+            revision,
+            "--context-sha256",
+            context_hash,
+            "--role",
+            "current",
+        ],
+    )
+
+    assert bounded.main() == 0
+    assert json.loads(capsys.readouterr().out) == result
+    assert calls == [(tag, revision, context_hash, "current", failure_sha256)]
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "bounded_docker_build.py",
+            "--release-failed-inflight-reservation",
+            "--failure-receipt-sha256",
+            failure_sha256,
+            "--tag",
+            tag,
+        ],
+    )
+    with pytest.raises(SystemExit):
+        bounded.main()
+    assert "requires only its receipt SHA and bound identity" in capsys.readouterr().err
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "bounded_docker_build.py",
+            "--release-failed-inflight-reservation",
+            "--failure-receipt-sha256",
+            failure_sha256,
+            "--tag",
+            tag,
+            "--revision",
+            revision,
+            "--context-sha256",
+            context_hash,
+            "--role",
+            "current",
+            "--retire-schema13-rehearsal-tag",
+            "stock-probs:schema13-recovery-012345abcdef",
+            "--retire-schema13-rehearsal-image-id",
+            "sha256:" + "e" * 64,
+        ],
+    )
+    with pytest.raises(SystemExit):
+        bounded.main()
+    assert "requires only its receipt SHA and bound identity" in capsys.readouterr().err
+    assert calls == [(tag, revision, context_hash, "current", failure_sha256)]
+
+
 def test_bounded_buildx_command_uses_only_supported_fixed_flags(tmp_path: Path) -> None:
     command = bounded._buildx_argv(
         "stock-probs:pr-candidate-aaaaaaaaaaaa-bbbbbbbbbbbb",
@@ -555,6 +1206,71 @@ def test_local_buildx_command_uses_fixed_builder_load_and_native_platform(
     assert "--load" in command
     assert "--resource" not in command
     assert command[command.index("--tag") + 1].startswith("stock-probs:local-")
+
+
+def test_build_mount_monitor_checks_only_the_bound_mount_uuid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expected_uuid = "12345678-1234-1234-1234-123456789abc"
+    calls: list[tuple[list[str], float]] = []
+
+    def checked(argv: list[str], timeout: float = 30) -> bytes:
+        calls.append((argv, timeout))
+        return (expected_uuid + "\n").encode()
+
+    monkeypatch.setattr(bounded, "checked", checked)
+
+    bounded.verify_build_mount(
+        expected_uuid,
+        str(tmp_path.resolve()),
+        deadline=time.monotonic() + 10,
+    )
+
+    assert calls == [
+        (
+            [bounded.FINDMNT, "-n", "-o", "UUID", "--target", str(tmp_path.resolve())],
+            pytest.approx(10, abs=0.1),
+        )
+    ]
+
+
+def test_build_mount_monitor_rejects_path_or_uuid_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expected_uuid = "12345678-1234-1234-1234-123456789abc"
+    alias = tmp_path / "alias"
+    alias.symlink_to(tmp_path, target_is_directory=True)
+
+    with pytest.raises(bounded.BuildError, match="build_mount_path_changed"):
+        bounded.verify_build_mount(
+            expected_uuid,
+            str(alias),
+            deadline=time.monotonic() + 10,
+        )
+
+    monkeypatch.setattr(bounded, "checked", lambda *_args, **_kwargs: b"different-uuid\n")
+    with pytest.raises(bounded.BuildError, match="build_mount_uuid_mismatch"):
+        bounded.verify_build_mount(
+            expected_uuid,
+            str(tmp_path.resolve()),
+            deadline=time.monotonic() + 10,
+        )
+
+
+def test_build_mount_monitor_reports_lookup_failure_without_command_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def failed_lookup(*_args: object, **_kwargs: object) -> bytes:
+        raise bounded.BuildError("fixed_command_unavailable_or_timeout")
+
+    monkeypatch.setattr(bounded, "checked", failed_lookup)
+
+    with pytest.raises(bounded.BuildError, match="build_mount_lookup_failed"):
+        bounded.verify_build_mount(
+            "12345678-1234-1234-1234-123456789abc",
+            str(tmp_path.resolve()),
+            deadline=time.monotonic() + 10,
+        )
 
 
 def test_arm64_compose_command_selects_only_the_bounded_builder_and_fixed_services(
@@ -626,6 +1342,94 @@ def test_bounded_compose_build_rejects_success_observed_after_deadline(
             space_paths=(tmp_path,),
             env={},
             timeout=1,
+        )
+
+
+def test_bounded_build_monitors_mount_and_checks_docker_root_after_success(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class BuildProcess:
+        pid = 502
+
+        def __init__(self) -> None:
+            self.poll_count = 0
+
+        def poll(self) -> int | None:
+            self.poll_count += 1
+            return None if self.poll_count == 1 else 0
+
+    process = BuildProcess()
+    events: list[str] = []
+
+    def no_process_group(_pid: int, _signal: int) -> None:
+        raise ProcessLookupError
+
+    def mount_check(
+        _uuid: str,
+        _path: str,
+        *,
+        deadline: float,
+    ) -> None:
+        assert deadline > time.monotonic()
+        events.append("mount")
+
+    def docker_root_check(
+        _uuid: str,
+        _path: str,
+        *,
+        deadline: float | None = None,
+    ) -> tuple[Path, int]:
+        assert process.poll_count >= 2
+        assert deadline is not None and deadline > time.monotonic()
+        events.append("docker-root")
+        return tmp_path, bounded.MIN_FREE
+
+    monkeypatch.setattr(bounded.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(bounded.os, "killpg", no_process_group)
+    monkeypatch.setattr(bounded, "verify_build_mount", mount_check)
+    monkeypatch.setattr(bounded, "data_root", docker_root_check)
+    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(bounded.time, "sleep", lambda _seconds: None)
+
+    bounded._run_bounded_build(
+        [bounded.DOCKER, "buildx", "build"],
+        expected_uuid="12345678-1234-1234-1234-123456789abc",
+        docker_root=tmp_path,
+        space_paths=(tmp_path,),
+        env={},
+        timeout=10,
+    )
+
+    assert events == ["mount", "docker-root"]
+
+
+def test_bounded_build_rejects_success_when_post_build_docker_root_check_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class CompleteProcess:
+        pid = 503
+
+        def poll(self) -> int:
+            return 0
+
+    def no_process_group(_pid: int, _signal: int) -> None:
+        raise ProcessLookupError
+
+    def docker_root_failure(*_args: object, **_kwargs: object) -> tuple[Path, int]:
+        raise bounded.BuildError("docker_root_path_changed")
+
+    monkeypatch.setattr(bounded.subprocess, "Popen", lambda *_args, **_kwargs: CompleteProcess())
+    monkeypatch.setattr(bounded.os, "killpg", no_process_group)
+    monkeypatch.setattr(bounded, "data_root", docker_root_failure)
+
+    with pytest.raises(bounded.BuildError, match="bounded_build_post_root_identity_failed"):
+        bounded._run_bounded_build(
+            [bounded.DOCKER, "buildx", "build"],
+            expected_uuid="12345678-1234-1234-1234-123456789abc",
+            docker_root=tmp_path,
+            space_paths=(tmp_path,),
+            env={},
+            timeout=10,
         )
 
 
@@ -1223,6 +2027,68 @@ def test_schema13_rehearsal_retirement_removes_exact_id_and_frees_next_build_slo
     )
     assert len(next_ledger["entries"]) == 1
     assert next_ledger["entries"][0]["tag"] == next_tag
+
+
+def test_managed_run_dir_creates_private_revision_and_leaf_with_permissive_umask(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs = tmp_path / "build-runs"
+    monkeypatch.setattr(bounded, "RUNS", runs)
+    monkeypatch.setattr(bounded, "USER", SimpleNamespace(pw_uid=os.getuid(), pw_dir=str(tmp_path)))
+    revision = "a" * 40
+    tag = f"stock-probs:pr-candidate-{revision[:12]}-bbbbbbbbbbbb"
+    context_hash = "c" * 64
+    previous_umask = os.umask(0o002)
+    try:
+        run_dir = bounded._managed_run_dir(revision, tag, context_hash)
+    finally:
+        os.umask(previous_umask)
+
+    revision_dir = runs / revision
+    assert (
+        run_dir == revision_dir / hashlib.sha256((tag + "\0" + context_hash).encode()).hexdigest()
+    )
+    assert not runs.is_symlink()
+    assert not revision_dir.is_symlink()
+    assert not run_dir.is_symlink()
+    assert runs.lstat().st_mode & 0o777 == 0o700
+    assert revision_dir.lstat().st_mode & 0o777 == 0o700
+    assert run_dir.lstat().st_mode & 0o777 == 0o700
+    assert list(runs.iterdir()) == [revision_dir]
+    assert list(revision_dir.iterdir()) == [run_dir]
+
+
+def test_managed_run_dir_rejects_existing_unsafe_or_symlinked_revision_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs = tmp_path / "build-runs"
+    runs.mkdir(mode=0o700)
+    runs.chmod(0o700)
+    monkeypatch.setattr(bounded, "RUNS", runs)
+    monkeypatch.setattr(bounded, "USER", SimpleNamespace(pw_uid=os.getuid(), pw_dir=str(tmp_path)))
+    revision = "d" * 40
+    tag = f"stock-probs:pr-candidate-{revision[:12]}-eeeeeeeeeeee"
+    context_hash = "f" * 64
+    run_key = hashlib.sha256((tag + "\0" + context_hash).encode()).hexdigest()
+    revision_dir = runs / revision
+
+    revision_dir.mkdir(mode=0o700)
+    revision_dir.chmod(0o775)
+    with pytest.raises(bounded.BuildError, match="build_receipt_directory_owner_or_mode_invalid"):
+        bounded._managed_run_dir(revision, tag, context_hash)
+    assert revision_dir.lstat().st_mode & 0o777 == 0o775
+    assert not (revision_dir / run_key).exists()
+
+    revision_dir.chmod(0o700)
+    revision_dir.rmdir()
+    outside = tmp_path / "outside"
+    outside.mkdir(mode=0o700)
+    revision_dir.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(bounded.BuildError, match="build_receipt_directory_owner_or_mode_invalid"):
+        bounded._managed_run_dir(revision, tag, context_hash)
+    assert revision_dir.is_symlink()
+    assert list(outside.iterdir()) == []
+    assert list(runs.iterdir()) == [revision_dir]
 
 
 @pytest.mark.parametrize("image_is_present", [True, False])

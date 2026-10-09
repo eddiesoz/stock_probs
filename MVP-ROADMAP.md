@@ -1,6 +1,35 @@
 # Stock Probability MVP Roadmap
 
-Current R-ASTRA-120 E825 checkpoint: the E823/E824 storage restore, Docker/containerd migration,
+Current R-ASTRA-120 E826 checkpoint: E823/E824 storage and bounded-worker acceptance remain passed
+for their recorded scopes, and E825's identity-bound cleanup repair passed its selected source/test
+and review checks. The first actual application-candidate build on pushed, clean PR head
+`ae140dd011ee043cd24c7db84b6922826d012d28` **Failed** with
+`local_build_failed:bounded_image_build:exit_1`; its expected receipt was absent and the exact
+candidate tag was not present. Docker API calls later recovered and application health returned
+HTTP 200. Independent terminal review confirmed the failed build, absent tag, and BuildKit `Error`
+history; the exact failing subcommand and cause remain **Unproven**. Source-context equality to the
+earlier pair receipt does not accept the current image or rehearsal. The source-only monitor repair
+passed 106 builder tests and 106 independent tests with zero failures, errors, or skips; parent
+source/evidence review passed and was recorded in the integrated-review receipt (SHA-256
+`8850e4efb061b5bd4ea252e9a3d45c6a6530282a60e1294348a0e6293dd5ee2f`). A later independent synthetic
+QA **Failed** with a P2 in typed-reservation recovery receipt publication: an `O_EXCL` receipt
+write left a partial file after `OSError`, restored the ledger semantically, and blocked retry while
+retaining the in-flight reservation. The frozen source repair passed 132 builder-selected and 132
+independent synthetic tests, with parent review passing. After an initial receipt-path setup failure
+that left the ledger unchanged, the actual typed reservation release passed, with an independent
+read-only review confirming the empty ledger, matched receipts, and exact candidate-tag absence; no
+Docker/image mutation occurred. The check was not a broad image inventory. A follow-on
+managed-run-directory repair passed 134 builder-selected tests and parent source review; independent
+permission QA passed 134 selected tests with static checks; a fresh application build remains
+pending. The original application-candidate build remains failed; no image or schema-13 pair is
+accepted. The
+`16:44:54.174085Z` readback recorded approximately 55 GiB free on main and 59 GiB on SD. A later
+independent current-state read passed at `17:27:11Z`, confirming the SD UUID/mount, Docker root,
+four cache binds, active Docker/containerd mount dependencies, and application health HTTP 200.
+Fresh archive-metadata checks and physical absent-medium startup remain **Unavailable**. See E826
+in the [MVP plan](MVP-PLAN.md).
+
+Historical R-ASTRA-120 E825 checkpoint: the E823/E824 storage restore, Docker/containerd migration,
 cache relocation and retirement, bounded BuildKit setup, actual network-none worker proof, retained
 backups, and HTTP 200 application-health observation remain Passed for their recorded scopes. The
 restore unit's PID 1 journal now supplies exact terminal times and result 0. Physical removal and

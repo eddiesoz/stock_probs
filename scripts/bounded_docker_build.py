@@ -58,6 +58,8 @@ BUILDER_NETWORK_OWNER_LABEL = "io.signal-ledger.r120-bounded-builder"
 BUILDER_NETWORK_OWNER_VALUE = "r120-bounded"
 BUILDX_LISTING_MAX_BYTES = 65536
 BUILDX_LISTING_TIMEOUT = 30
+BUILDX_HISTORY_REF_PATTERN = re.compile(r"r120-bounded/r120-bounded0/[a-z0-9]{25}")
+BUILDX_HISTORY_STEP_LIMIT = 64
 CONTAINER_NAME = "/buildx_buildkit_r120-bounded0"
 CACHE_VOLUME = "buildx_buildkit_r120-bounded0_state"
 MIN_FREE = 4 * 1024**3
@@ -227,7 +229,7 @@ def sha(path: Path) -> str:
 
 
 def cmd(
-    argv: list[str], *, timeout: int = 30, capture: bool = True
+    argv: list[str], *, timeout: float = 30, capture: bool = True
 ) -> subprocess.CompletedProcess[bytes]:
     environment = (
         ENV
@@ -256,11 +258,20 @@ def cmd(
         raise BuildError("fixed_command_unavailable_or_timeout") from exc
 
 
-def checked(argv: list[str], timeout: int = 30) -> bytes:
+def checked(argv: list[str], timeout: float = 30) -> bytes:
     result = cmd(argv, timeout=timeout)
     if result.returncode:
         raise BuildError("fixed_command_failed")
     return result.stdout
+
+
+def _command_timeout(maximum: float, deadline: float | None) -> float:
+    if deadline is None:
+        return maximum
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise BuildError("bounded_build_timeout")
+    return min(maximum, remaining)
 
 
 def check_uuid(value: str) -> bool:
@@ -271,24 +282,61 @@ def check_uuid(value: str) -> bool:
     )
 
 
-def data_root(expected_uuid: str, expected_path: str | None = None) -> tuple[Path, int]:
+def data_root(
+    expected_uuid: str,
+    expected_path: str | None = None,
+    *,
+    deadline: float | None = None,
+) -> tuple[Path, int]:
     try:
         socket_info = SOCKET.lstat()
     except OSError as exc:
         raise BuildError("docker_socket_unavailable") from exc
     if stat.S_ISLNK(socket_info.st_mode) or not stat.S_ISSOCK(socket_info.st_mode):
         raise BuildError("docker_socket_unavailable")
-    raw = checked([DOCKER, "info", "--format", "{{.DockerRootDir}}"], timeout=15)
+    raw = checked(
+        [DOCKER, "info", "--format", "{{.DockerRootDir}}"],
+        timeout=_command_timeout(15, deadline),
+    )
     text = raw.decode("utf-8", "strict").strip()
     if not text or "\n" in text or "\r" in text or not Path(text).is_absolute():
         raise BuildError("docker_root_unparseable")
     root = Path(text).resolve(strict=True)
     if expected_path and str(root) != expected_path:
         raise BuildError("docker_root_path_changed")
-    observed = checked([FINDMNT, "-n", "-o", "UUID", "--target", str(root)])
+    observed = checked(
+        [FINDMNT, "-n", "-o", "UUID", "--target", str(root)],
+        timeout=_command_timeout(30, deadline),
+    )
     if observed.decode("ascii", "strict").strip().lower() != expected_uuid:
         raise BuildError("docker_root_uuid_mismatch")
     return root, shutil.disk_usage(root).free
+
+
+def verify_build_mount(expected_uuid: str, expected_path: str, *, deadline: float) -> None:
+    try:
+        root = Path(expected_path).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise BuildError("build_mount_path_unavailable") from exc
+    if not root.is_dir():
+        raise BuildError("build_mount_path_invalid")
+    if str(root) != expected_path:
+        raise BuildError("build_mount_path_changed")
+    try:
+        observed = checked(
+            [FINDMNT, "-n", "-o", "UUID", "--target", str(root)],
+            timeout=_command_timeout(30, deadline),
+        )
+    except BuildError as exc:
+        if exc.code == "bounded_build_timeout":
+            raise
+        raise BuildError("build_mount_lookup_failed") from exc
+    try:
+        observed_uuid = observed.decode("ascii", "strict").strip().lower()
+    except UnicodeDecodeError as exc:
+        raise BuildError("build_mount_uuid_unparseable") from exc
+    if observed_uuid != expected_uuid:
+        raise BuildError("build_mount_uuid_mismatch")
 
 
 def check_space(paths: tuple[Path, ...], minimum: int) -> dict[str, int]:
@@ -987,6 +1035,151 @@ def _reservation_image_id(tag: str) -> str:
     return "sha256:" + digest
 
 
+def _read_private_file(
+    path: Path,
+    *,
+    owner_uid: int,
+    max_bytes: int,
+    error_code: str,
+    reject_group_write: bool = False,
+) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise BuildError(error_code) from exc
+    try:
+        info = os.fstat(descriptor)
+        forbidden_mode = 0o022 if reject_group_write else 0o077
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != owner_uid
+            or info.st_mode & forbidden_mode
+            or info.st_nlink != 1
+            or info.st_size > max_bytes
+        ):
+            raise BuildError(error_code)
+        chunks: list[bytes] = []
+        remaining = max_bytes + 1
+        while remaining:
+            chunk = os.read(descriptor, min(65536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        if len(raw) > max_bytes or len(raw) != info.st_size:
+            raise BuildError(error_code)
+        return raw
+    except OSError as exc:
+        raise BuildError(error_code) from exc
+    finally:
+        os.close(descriptor)
+
+
+def _parse_buildkit_utc(value: object) -> datetime:
+    if not isinstance(value, str) or not value or len(value) > 64:
+        raise BuildError("failed_reservation_buildkit_history_invalid")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise BuildError("failed_reservation_buildkit_history_invalid") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise BuildError("failed_reservation_buildkit_history_invalid")
+    return parsed.astimezone(UTC)
+
+
+def verify_failed_buildkit_history(
+    raw: bytes, *, build_started: datetime, build_finished: datetime
+) -> dict[str, object]:
+    if not raw or len(raw) > BUILDX_LISTING_MAX_BYTES:
+        raise BuildError("failed_reservation_buildkit_history_invalid")
+    try:
+        text = raw.decode("utf-8", "strict")
+    except UnicodeDecodeError as exc:
+        raise BuildError("failed_reservation_buildkit_history_invalid") from exc
+    # Buildx emits JSON Lines here: one object per record and optionally one final LF.
+    lines = text.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    fields = {
+        "cached_steps",
+        "completed_at",
+        "completed_steps",
+        "created_at",
+        "name",
+        "ref",
+        "status",
+        "total_steps",
+    }
+    if not lines or len(lines) > 64 or any(not line or line.strip() != line for line in lines):
+        raise BuildError("failed_reservation_buildkit_history_invalid")
+
+    refs: set[str] = set()
+    possible_matches: list[dict[str, object]] = []
+    now = datetime.now(UTC)
+    terminal_statuses = {"completed", "error", "canceled", "cancelled"}
+    for line in lines:
+        if len(line) > 16384:
+            raise BuildError("failed_reservation_buildkit_history_invalid")
+        try:
+            row = json.loads(
+                line,
+                object_pairs_hook=_unique_json_object,
+                parse_constant=_reject_json_constant,
+            )
+        except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+            raise BuildError("failed_reservation_buildkit_history_invalid") from exc
+        if not isinstance(row, dict) or set(row) != fields:
+            raise BuildError("failed_reservation_buildkit_history_invalid")
+        ref = row.get("ref")
+        name = row.get("name")
+        status = row.get("status")
+        if (
+            not isinstance(ref, str)
+            or BUILDX_HISTORY_REF_PATTERN.fullmatch(ref) is None
+            or ref in refs
+            or not isinstance(name, str)
+            or re.fullmatch(r"[A-Za-z0-9._/-]{1,128}", name) is None
+            or not isinstance(status, str)
+            or status.casefold() not in terminal_statuses
+        ):
+            raise BuildError("failed_reservation_buildkit_history_invalid")
+        refs.add(ref)
+
+        created = _parse_buildkit_utc(row.get("created_at"))
+        completed = _parse_buildkit_utc(row.get("completed_at"))
+        completed_steps = row.get("completed_steps")
+        cached_steps = row.get("cached_steps")
+        total_steps = row.get("total_steps")
+        if (
+            completed < created
+            or completed > now
+            or not all(
+                isinstance(value, int) and not isinstance(value, bool)
+                for value in (completed_steps, cached_steps, total_steps)
+            )
+            or not 0 <= cached_steps <= completed_steps <= total_steps <= BUILDX_HISTORY_STEP_LIMIT
+        ):
+            raise BuildError("failed_reservation_buildkit_history_invalid")
+        if name == "context" and build_started <= created <= build_finished:
+            possible_matches.append(
+                {
+                    "ref": ref,
+                    "status": status.casefold(),
+                    "created_at": created.isoformat(),
+                    "completed_at": completed.isoformat(),
+                    "completed_steps": completed_steps,
+                    "cached_steps": cached_steps,
+                    "total_steps": total_steps,
+                }
+            )
+
+    if len(possible_matches) != 1 or possible_matches[0]["status"] != "error":
+        raise BuildError("failed_reservation_buildkit_record_not_unique_error")
+    return possible_matches[0]
+
+
 def _validate_ledger_document(data: object, *, allow_inflight: bool = False) -> None:
     if not isinstance(data, dict) or data.get("schema") != LEDGER_SCHEMA:
         raise BuildError("candidate_ledger_invalid")
@@ -1347,6 +1540,230 @@ def _managed_build_receipt(row: dict[str, object]) -> dict[str, object]:
     return receipt
 
 
+def _failed_candidate_run_directory(revision: str, tag: str, context_hash: str) -> Path:
+    run_key = hashlib.sha256((tag + "\0" + context_hash).encode()).hexdigest()
+    run_dir = RUNS / revision / run_key
+    for directory in (RUNS, RUNS / revision, run_dir):
+        try:
+            info = directory.lstat()
+        except OSError as exc:
+            raise BuildError("failed_reservation_receipt_unavailable") from exc
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != USER.pw_uid or info.st_mode & 0o077:
+            raise BuildError("failed_reservation_receipt_path_invalid")
+    return run_dir
+
+
+def _failed_build_receipt(
+    *,
+    run_dir: Path,
+    tag: str,
+    revision: str,
+    context_hash: str,
+    role: str,
+    expected_sha256: str,
+    setup_sha256: str,
+) -> tuple[dict[str, object], datetime, datetime]:
+    raw = _read_private_file(
+        run_dir / "build-receipt.json",
+        owner_uid=USER.pw_uid,
+        max_bytes=1024 * 1024,
+        error_code="failed_reservation_receipt_unavailable",
+    )
+    observed_sha256 = hashlib.sha256(raw).hexdigest()
+    if observed_sha256 != expected_sha256:
+        raise BuildError("failed_reservation_receipt_sha256_mismatch")
+    try:
+        receipt = json.loads(
+            raw,
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+        raise BuildError("failed_reservation_receipt_invalid") from exc
+    if not isinstance(receipt, dict):
+        raise BuildError("failed_reservation_receipt_invalid")
+    if (
+        receipt.get("schema") != "r120-bounded-image-build-v1"
+        or receipt.get("status") != "failed"
+        or receipt.get("stage") != "fixed_command_unavailable_or_timeout"
+        or receipt.get("builder") != BUILDER
+        or receipt.get("source_head") != revision
+        or receipt.get("revision_label") != revision
+        or receipt.get("context_sha256") != context_hash
+        or receipt.get("candidate_tag") != tag
+        or receipt.get("candidate_role") != role
+        or receipt.get("setup_receipt_sha256") != setup_sha256
+        or receipt.get("process_group_cancel_verified") is not True
+        or receipt.get("ledger_reservation_retained") is not True
+        or any(key in receipt for key in ("image_id", "image_platform", "build_exit_code"))
+    ):
+        raise BuildError("failed_reservation_receipt_contract_mismatch")
+    started = _parse_buildkit_utc(receipt.get("build_started_utc"))
+    finished = _parse_buildkit_utc(receipt.get("finished_utc"))
+    run_started = _parse_buildkit_utc(receipt.get("started_utc"))
+    if not run_started <= started <= finished <= datetime.now(UTC) or os.path.lexists(
+        run_dir / "image.iid"
+    ):
+        raise BuildError("failed_reservation_receipt_artifact_or_time_invalid")
+    return receipt, started, finished
+
+
+def _current_setup_receipt_sha256() -> tuple[dict[str, object], str]:
+    setup = setup_receipt()
+    try:
+        state_info = ROOT_STATE.lstat()
+    except OSError as exc:
+        raise BuildError("setup_receipt_missing") from exc
+    if not stat.S_ISDIR(state_info.st_mode):
+        raise BuildError("setup_receipt_owner_or_mode_invalid")
+    raw = _read_private_file(
+        SETUP_RECEIPT,
+        owner_uid=state_info.st_uid,
+        max_bytes=1024 * 1024,
+        error_code="setup_receipt_missing",
+        reject_group_write=True,
+    )
+    return setup, hashlib.sha256(raw).hexdigest()
+
+
+def _failed_buildkit_history_record(
+    build_started: datetime, build_finished: datetime
+) -> dict[str, object]:
+    raw = _capture_bounded_stdout(
+        [
+            DOCKER,
+            "buildx",
+            "history",
+            "ls",
+            "--builder",
+            BUILDER,
+            "--no-trunc",
+            "--format",
+            "json",
+        ],
+        max_bytes=BUILDX_LISTING_MAX_BYTES,
+        timeout=BUILDX_LISTING_TIMEOUT,
+    )
+    return verify_failed_buildkit_history(
+        raw, build_started=build_started, build_finished=build_finished
+    )
+
+
+@_ledger_serialized
+def _release_failed_inflight_reservation(
+    tag: str,
+    revision: str,
+    context_hash: str,
+    role: str,
+    failure_receipt_sha256: str,
+) -> dict[str, object]:
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", revision) is None
+        or re.fullmatch(r"[0-9a-f]{64}", context_hash) is None
+        or re.fullmatch(r"[0-9a-f]{64}", failure_receipt_sha256) is None
+        or role != "current"
+        or re.fullmatch(rf"stock-probs:pr-candidate-{re.escape(revision[:12])}-[0-9a-f]{{12}}", tag)
+        is None
+    ):
+        raise BuildError("failed_reservation_identity_invalid")
+
+    ledger = _ledger_read(allow_inflight=True)
+    entries = ledger["entries"]
+    assert isinstance(entries, list)
+    inflight = [row for row in entries if isinstance(row, dict) and row.get("status") == "inflight"]
+    matches = [row for row in inflight if row.get("tag") == tag]
+    if (
+        len(inflight) != 1
+        or len(matches) != 1
+        or set(matches[0]) != {"image_id", "tag", "revision", "context_sha256", "role", "status"}
+        or matches[0].get("image_id") != _reservation_image_id(tag)
+        or matches[0].get("revision") != revision
+        or matches[0].get("context_sha256") != context_hash
+        or matches[0].get("role") != role
+    ):
+        raise BuildError("failed_reservation_ledger_binding_mismatch")
+
+    run_dir = _failed_candidate_run_directory(revision, tag, context_hash)
+    setup, setup_sha256 = _current_setup_receipt_sha256()
+    _failure, build_started, build_finished = _failed_build_receipt(
+        run_dir=run_dir,
+        tag=tag,
+        revision=revision,
+        context_hash=context_hash,
+        role=role,
+        expected_sha256=failure_receipt_sha256,
+        setup_sha256=setup_sha256,
+    )
+    history_record = _failed_buildkit_history_record(build_started, build_finished)
+
+    remaining_entries = [row for row in entries if row is not matches[0]]
+    remaining_ledger: dict[str, object] = {"schema": LEDGER_SCHEMA, "entries": remaining_entries}
+    _validate_ledger_document(remaining_ledger)
+    inventory = _image_inventory()
+    if tag in inventory:
+        raise BuildError("failed_reservation_candidate_tag_still_present")
+    legacy = setup.get("legacy_task_image_inventory")
+    if not isinstance(legacy, dict) or inventory != _expected_managed_inventory(
+        remaining_ledger, legacy
+    ):
+        raise BuildError("candidate_ledger_inventory_mismatch")
+    _verify_ledger_inventory(remaining_ledger, setup)
+
+    recovery_path = run_dir / f"failed-reservation-release-{failure_receipt_sha256}.json"
+    if os.path.lexists(recovery_path):
+        raise BuildError("failed_reservation_recovery_receipt_already_exists")
+    recovery_utc = datetime.now(UTC).isoformat()
+    recovery_receipt: dict[str, object] = {
+        "schema": "r120-bounded-failed-reservation-release-v1",
+        "status": "failed_build_reservation_released",
+        "failure_receipt_sha256": failure_receipt_sha256,
+        "tag": tag,
+        "revision": revision,
+        "context_sha256": context_hash,
+        "role": role,
+        "builder": BUILDER,
+        "setup_receipt_sha256": setup_sha256,
+        "buildkit_history": history_record,
+        "released_utc": recovery_utc,
+    }
+    temporary_receipt: Path | None = None
+    temporary_identity: tuple[int, int] | None = None
+    try:
+        (
+            temporary_receipt,
+            temporary_identity,
+            recovery_sha256,
+            recovery_size,
+        ) = _prepare_receipt_publication(recovery_path, recovery_receipt)
+        _atomic_json(LEDGER_FILE, remaining_ledger)
+        try:
+            assert temporary_receipt is not None and temporary_identity is not None
+            _publish_receipt_no_replace(
+                temporary_receipt,
+                recovery_path,
+                temporary_identity,
+                recovery_size,
+            )
+        except OSError:
+            _atomic_json(LEDGER_FILE, ledger)
+            raise
+    except OSError as exc:
+        raise BuildError("failed_reservation_recovery_receipt_write_failed") from exc
+    finally:
+        if temporary_receipt is not None and temporary_identity is not None:
+            _unlink_owned_receipt_temporary(temporary_receipt, temporary_identity)
+    return {
+        "status": "failed_build_reservation_released",
+        "tag": tag,
+        "revision": revision,
+        "context_sha256": context_hash,
+        "role": role,
+        "failure_receipt_sha256": failure_receipt_sha256,
+        "recovery_receipt": str(recovery_path),
+        "recovery_receipt_sha256": recovery_sha256,
+    }
+
+
 def _schema13_rehearsal_image_facts(
     tag: str, image_id: str, revision: str, repo_tags_expected: list[str]
 ) -> None:
@@ -1619,7 +2036,14 @@ def _managed_run_dir(revision: str, tag: str, context_hash: str) -> Path:
             or runs_info.st_mode & 0o077
         ):
             raise BuildError("build_receipt_directory_owner_or_mode_invalid")
-        run_dir.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        run_dir.parent.mkdir(mode=0o700, exist_ok=True)
+        revision_info = run_dir.parent.lstat()
+        if (
+            not stat.S_ISDIR(revision_info.st_mode)
+            or revision_info.st_uid != USER.pw_uid
+            or revision_info.st_mode & 0o077
+        ):
+            raise BuildError("build_receipt_directory_owner_or_mode_invalid")
         run_dir.mkdir(mode=0o700, exist_ok=False)
     except BuildError:
         raise
@@ -1919,6 +2343,7 @@ def _run_bounded_build(
         raise BuildError("bounded_build_command_start_failed") from exc
 
     started = time.monotonic()
+    deadline = started + timeout
     next_uuid_check = started
     original_term_handler = signal.getsignal(signal.SIGTERM)
 
@@ -1931,7 +2356,7 @@ def _run_bounded_build(
             now = time.monotonic()
             result = process.poll()
             if result is not None:
-                if time.monotonic() - started >= timeout:
+                if time.monotonic() >= deadline:
                     raise BuildError("bounded_build_timeout")
                 try:
                     os.killpg(process.pid, 0)
@@ -1944,18 +2369,32 @@ def _run_bounded_build(
                     raise BuildError("bounded_build_child_process_cancel_unverified")
                 raise BuildError("bounded_build_left_child_processes")
 
-            if now - started >= timeout:
+            if now >= deadline:
                 if not cancel(process):
                     raise BuildError("bounded_build_timeout_cancel_unverified")
                 raise BuildError("bounded_build_timeout")
             if now >= next_uuid_check:
                 try:
-                    data_root(expected_uuid, str(docker_root))
+                    verify_build_mount(
+                        expected_uuid,
+                        str(docker_root),
+                        deadline=deadline,
+                    )
                 except BuildError as exc:
+                    if exc.code == "bounded_build_timeout":
+                        if not cancel(process):
+                            raise BuildError("bounded_build_timeout_cancel_unverified") from exc
+                        raise BuildError("bounded_build_timeout") from exc
                     if not cancel(process):
-                        raise BuildError("bounded_build_mount_cancel_unverified") from exc
-                    raise BuildError("bounded_build_mount_guard_failed") from exc
-                next_uuid_check = now + UUID_POLL
+                        suffix = exc.code.removeprefix("build_mount_")
+                        raise BuildError(f"bounded_build_mount_cancel_unverified_{suffix}") from exc
+                    suffix = exc.code.removeprefix("build_mount_")
+                    raise BuildError(f"bounded_build_mount_{suffix}") from exc
+                if time.monotonic() >= deadline:
+                    if not cancel(process):
+                        raise BuildError("bounded_build_timeout_cancel_unverified")
+                    raise BuildError("bounded_build_timeout")
+                next_uuid_check = time.monotonic() + UUID_POLL
             try:
                 check_space(space_paths, STOP_FREE)
             except BuildError as exc:
@@ -1964,7 +2403,12 @@ def _run_bounded_build(
                 if exc.code == "build_disk_floor_breached":
                     raise BuildError("bounded_build_cancelled_below_1gib") from exc
                 raise
-            time.sleep(POLL)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                if not cancel(process):
+                    raise BuildError("bounded_build_timeout_cancel_unverified")
+                raise BuildError("bounded_build_timeout")
+            time.sleep(min(POLL, remaining))
     except KeyboardInterrupt as exc:
         if not cancel(process):
             raise BuildError("bounded_build_interrupt_cancel_unverified") from exc
@@ -1972,6 +2416,15 @@ def _run_bounded_build(
     finally:
         signal.signal(signal.SIGTERM, original_term_handler)
 
+    if return_code == 0:
+        try:
+            data_root(expected_uuid, str(docker_root), deadline=deadline)
+        except BuildError as exc:
+            if exc.code == "bounded_build_timeout":
+                raise
+            raise BuildError(f"bounded_build_post_root_identity_failed_{exc.code}") from exc
+        if time.monotonic() >= deadline:
+            raise BuildError("bounded_build_timeout")
     if return_code != 0:
         raise BuildError("bounded_build_exit_nonzero")
 
@@ -2392,12 +2845,96 @@ def save_receipt(path: Path, data: dict[str, object]) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _prepare_receipt_publication(
+    path: Path, data: dict[str, object]
+) -> tuple[Path, tuple[int, int], str, int]:
+    """Write a complete private receipt to an owned temporary file."""
+    raw = (json.dumps(data, sort_keys=True, indent=2) + "\n").encode()
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    identity: tuple[int, int] | None = None
+    try:
+        metadata = os.fstat(fd)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != USER.pw_uid
+            or metadata.st_mode & 0o077
+        ):
+            raise OSError("receipt_temporary_file_owner_or_mode_invalid")
+        identity = (metadata.st_dev, metadata.st_ino)
+        view = memoryview(raw)
+        while view:
+            written = os.write(fd, view)
+            if written <= 0:
+                raise OSError("receipt_temporary_write_made_no_progress")
+            view = view[written:]
+        os.fsync(fd)
+        os.fchmod(fd, 0o600)
+        os.fsync(fd)
+        os.close(fd)
+        fd = -1
+    except OSError:
+        if fd >= 0:
+            with suppress(OSError):
+                os.close(fd)
+        if identity is not None:
+            _unlink_owned_receipt_temporary(temporary_path, identity)
+        raise
+    assert identity is not None
+    return temporary_path, identity, hashlib.sha256(raw).hexdigest(), len(raw)
+
+
+def _publish_receipt_no_replace(
+    temporary_path: Path,
+    path: Path,
+    identity: tuple[int, int],
+    expected_size: int,
+) -> None:
+    """Publish a complete receipt atomically without replacing an existing path."""
+    try:
+        os.link(temporary_path, path, follow_symlinks=False)
+    except OSError:
+        if not _is_owned_receipt_file(path, identity, expected_size):
+            raise
+
+
+def _is_owned_receipt_file(path: Path, identity: tuple[int, int], expected_size: int) -> bool:
+    try:
+        metadata = path.lstat()
+    except OSError:
+        return False
+    return (
+        stat.S_ISREG(metadata.st_mode)
+        and metadata.st_uid == USER.pw_uid
+        and not metadata.st_mode & 0o077
+        and (metadata.st_dev, metadata.st_ino) == identity
+        and metadata.st_size == expected_size
+    )
+
+
+def _unlink_owned_receipt_temporary(path: Path, identity: tuple[int, int]) -> None:
+    """Remove only the private temporary inode created for a receipt write."""
+    try:
+        metadata = path.lstat()
+    except OSError:
+        return
+    if (
+        stat.S_ISREG(metadata.st_mode)
+        and metadata.st_uid == USER.pw_uid
+        and (metadata.st_dev, metadata.st_ino) == identity
+    ):
+        with suppress(OSError):
+            path.unlink()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Build with the installed bounded Buildx builder and guarded storage."
     )
     parser.add_argument("--initialize-empty-ledger", action="store_true")
     parser.add_argument("--ack-retirement-receipt", type=Path)
+    parser.add_argument("--release-failed-inflight-reservation", action="store_true")
+    parser.add_argument("--failure-receipt-sha256")
     parser.add_argument("--retire-schema13-rehearsal-tag")
     parser.add_argument("--retire-schema13-rehearsal-image-id")
     parser.add_argument("--plan-arm64-cleanup", action="store_true")
@@ -2428,6 +2965,62 @@ def main() -> int:
     validate_user_state()
     if not os.access(SOCKET, os.W_OK):
         raise BuildError("docker_socket_group_access_unavailable")
+    if args.release_failed_inflight_reservation or args.failure_receipt_sha256 is not None:
+        if (
+            not args.release_failed_inflight_reservation
+            or args.failure_receipt_sha256 is None
+            or args.tag is None
+            or args.revision is None
+            or args.context_sha256 is None
+            or args.role != "current"
+            or args.initialize_empty_ledger
+            or args.ack_retirement_receipt is not None
+            or args.retire_schema13_rehearsal_tag is not None
+            or args.retire_schema13_rehearsal_image_id is not None
+            or args.plan_arm64_cleanup
+            or args.ack_arm64_cleanup
+            or args.registered_image_id
+            or args.local_current_image
+            or args.local_image_build
+            or args.arm64_compose_build
+            or any(
+                value is not None
+                for value in (
+                    args.task_id,
+                    args.project_name,
+                    args.runtime_image,
+                    args.frontend_image,
+                    args.port,
+                    args.qemu_dir,
+                    args.artifact_dir,
+                    args.source_head,
+                    args.source_branch,
+                    args.revision_label,
+                    args.context,
+                    args.context_owner_uid,
+                )
+            )
+        ):
+            parser.error(
+                "failed inflight reservation release requires only its receipt SHA "
+                "and bound identity"
+            )
+        try:
+            result = _release_failed_inflight_reservation(
+                args.tag,
+                args.revision,
+                args.context_sha256,
+                args.role,
+                args.failure_receipt_sha256,
+            )
+        except BuildError as exc:
+            print(
+                json.dumps({"status": "failed", "stage": exc.code}, sort_keys=True),
+                file=sys.stderr,
+            )
+            return 1
+        print(json.dumps(result, sort_keys=True))
+        return 0
     if (
         args.retire_schema13_rehearsal_tag is not None
         or args.retire_schema13_rehearsal_image_id is not None
@@ -2704,23 +3297,7 @@ def main() -> int:
         _verify_ledger_inventory(ledger, setup)
         if tag in _image_inventory():
             raise BuildError("candidate_tag_already_exists")
-    run_key = hashlib.sha256((tag + "\0" + context_hash).encode()).hexdigest()
-    run_dir = RUNS / head / run_key
-    try:
-        RUNS.mkdir(parents=True, mode=0o700, exist_ok=True)
-        runs_info = RUNS.lstat()
-        if (
-            not stat.S_ISDIR(runs_info.st_mode)
-            or runs_info.st_uid != USER.pw_uid
-            or runs_info.st_mode & 0o077
-        ):
-            raise BuildError("build_receipt_directory_owner_or_mode_invalid")
-        run_dir.mkdir(parents=True, mode=0o700, exist_ok=False)
-    except BuildError:
-        raise
-    except OSError as exc:
-        raise BuildError("build_receipt_directory_unavailable") from exc
-    os.chmod(run_dir, 0o700)
+    run_dir = _managed_run_dir(head, tag, context_hash)
     receipt_path = run_dir / "build-receipt.json"
     data: dict[str, object] = {
         "schema": "r120-bounded-image-build-v1",
@@ -2797,16 +3374,34 @@ def main() -> int:
         except OSError as exc:
             raise BuildError("build_command_start_failed") from exc
         started = time.monotonic()
+        deadline = started + TIMEOUT
         uuid_check = started
-        while process.poll() is None:
+        while True:
             now = time.monotonic()
-            if now - started >= TIMEOUT:
+            result = process.poll()
+            if result is not None:
+                if now >= deadline:
+                    raise BuildError("build_timeout_after_900s")
+                break
+            if now >= deadline:
                 if not cancel(process):
                     raise BuildError("build_timeout_cancel_unverified")
                 raise BuildError("build_timeout_after_900s")
-            if now - uuid_check >= UUID_POLL:
-                data_root(uuid, str(root))
-                uuid_check = now
+            if now >= uuid_check:
+                try:
+                    verify_build_mount(uuid, str(root), deadline=deadline)
+                except BuildError as exc:
+                    data["build_monitor_mount_error"] = exc.code
+                    if exc.code == "bounded_build_timeout":
+                        if not cancel(process):
+                            raise BuildError("build_timeout_cancel_unverified") from exc
+                        raise BuildError("build_timeout_after_900s") from exc
+                    raise BuildError("build_monitor_mount_guard_failed") from exc
+                if time.monotonic() >= deadline:
+                    if not cancel(process):
+                        raise BuildError("build_timeout_cancel_unverified")
+                    raise BuildError("build_timeout_after_900s")
+                uuid_check = time.monotonic() + UUID_POLL
             try:
                 data["last_distinct_filesystem_free_bytes"] = check_space(
                     (root, context, context.parent, RUNS), STOP_FREE
@@ -2816,11 +3411,27 @@ def main() -> int:
                     raise
                 data["below_1gib_cancel_verified"] = cancel(process)
                 raise BuildError("build_cancelled_below_1gib") from exc
-            time.sleep(POLL)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                data["build_deadline_cancel_verified"] = cancel(process)
+                raise BuildError("build_timeout_after_900s")
+            time.sleep(min(POLL, remaining))
         data["build_exit_code"] = process.returncode
         data["build_finished_utc"] = datetime.now(UTC).isoformat()
         if process.returncode != 0:
             raise BuildError("buildx_exit_nonzero")
+        data["stage"] = "post_build_root_identity"
+        try:
+            data_root(uuid, str(root), deadline=deadline)
+        except BuildError as exc:
+            data["post_build_root_identity_error"] = exc.code
+            if exc.code == "bounded_build_timeout":
+                raise BuildError("build_timeout_after_900s") from exc
+            raise BuildError("post_build_root_identity_failed") from exc
+        if time.monotonic() >= deadline:
+            raise BuildError("build_timeout_after_900s")
+        data["post_build_root_identity_verified"] = True
+        data["stage"] = "image_validation"
         iid = iidfile.read_text(encoding="ascii").strip()
         if re.fullmatch(r"sha256:[0-9a-f]{64}", iid) is None:
             raise BuildError("build_iid_invalid")

@@ -52,7 +52,34 @@ project is needed to observe agent, skill, and MCP discovery after a configurati
 This Codex setup does not alter prior OpenCode receipts or establish provider, project-profile,
 release, export, or remote acceptance.
 
-Project configuration text is not runtime-discovery evidence. E767 independently observed eight deployment tools and a read-only status call. The current assistant checkpoint is E825 in the [MVP plan](../../MVP-PLAN.md#r-astra-120-e825-schema-13-cleanup-ledger-repair-and-current-storage-checkpoint); it records storage and bounded-worker results for their tested scopes, while physical absent-medium startup remains unverified. Initial independent cleanup QA found a P2 because expected full image ID was not required before deletion. The identity-bound repair passed 179 selected builder tests and independent/parent integrated source review; an actual pair rehearsal remains pending. Those reviews used mocked Docker and did not build or delete an image. The current read-only production status/inspect pair is not a deployment mutation. Reuse guide/UI evidence only for unchanged, matching bindings; the retained guide artifacts have not been newly bound to the current PR head. Earlier failures retain their declared scope. For a native-runtime repair, establish real functional behavior before rerunning the full release aggregate, and retain every failed or interrupted aggregate. Required security, resource, rollback and release gates remain mandatory.
+Project configuration text is not runtime-discovery evidence. E767 independently observed eight
+deployment tools and a read-only status call. The current assistant checkpoint is E826 in the [MVP
+plan](../../MVP-PLAN.md#r-astra-120-e826-pr-head-candidate-image-build-failure); E823/E824 storage
+and bounded-worker results remain passed for their recorded scopes, and E825's identity-bound
+cleanup repair passed its selected tests and independent/parent source review. The first actual
+PR-head application-candidate build then **Failed** with
+`local_build_failed:bounded_image_build:exit_1`; its expected receipt was not created and no image
+was accepted. The helper identifies only `fixed_command_unavailable_or_timeout`; the exact failed
+subcommand and cause remain **Unproven**. The source-only monitor repair addresses a possible
+false-abort path but does not prove the build-failure cause. It passed 106 independent tests and
+parent source/evidence review. Typed reservation recovery then failed synthetic independent QA with
+a P2: a partial exclusive-create receipt remained after `OSError`, although the ledger was restored
+semantically, so retry remained blocked. The frozen source repair passed 132 selected builder tests
+and parent source review; independent synthetic QA passed 132 tests with no failures/errors/skips.
+The actual typed reservation release passed on its second attempt; the candidate ledger is empty (the in-flight row was removed), and the initial failed receipt remains unchanged. Independent read-only review confirmed the matched receipts and exact candidate-tag absence. No Docker/image
+mutation occurred; this was not a broad image inventory. A follow-on managed-run-directory repair
+passed 134 builder-selected tests and parent source review; independent permission QA passed 134
+selected tests with static checks; a fresh application build remains pending. The original candidate
+image build remains failed; no image or schema-13 pair is accepted. The `16:44:54.174085Z` readback recorded approximately 55 GiB free on main
+and 59 GiB on SD. A later independent current-state read passed at `17:27:11Z`, confirming the SD
+UUID/mount, Docker root, four cache binds, active Docker/containerd mount dependencies, and
+application health HTTP 200. Fresh archive-metadata checks and physical absent-medium startup remain
+unavailable. The current read-only production
+status/inspect pair is not a deployment mutation. Reuse guide/UI evidence only for unchanged,
+matching bindings; the retained guide artifacts have not been newly bound to the current PR head.
+Earlier failures retain their declared scope. For a native-runtime repair, establish real functional
+behavior before rerunning the full release aggregate, and retain every failed or interrupted
+aggregate. Required security, resource, rollback and release gates remain mandatory.
 
 The candidate
 local PR-pair helper

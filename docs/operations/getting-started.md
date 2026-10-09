@@ -188,10 +188,35 @@ physical absent-medium startup check also remains unverified. See the
 [developer testing guide](../develop/testing.md#schema-13-rehearsal-image-cleanup) and the [E825
 ledger](../../MVP-PLAN.md) for scope and receipt details.
 
-The `2026-10-09T16:45Z` mounted-state readback confirmed the SD UUID at the configured mountpoint,
+The `2026-10-09T16:44:54.174085Z` mounted-state readback confirmed the SD UUID at the configured mountpoint,
 the Docker root beneath that mount, and both daemons active with mount dependencies. It observed
 58,940,370,944 bytes free on the main filesystem and 63,949,533,184 bytes free on the SD. This
 present-state check does not substitute for physical absent-medium startup.
+
+At the later E826 checkpoint, the first actual application-candidate build on pushed, clean PR
+head `ae140dd011ee043cd24c7db84b6922826d012d28` **Failed** with
+`local_build_failed:bounded_image_build:exit_1`; its expected candidate receipt was not created,
+and the requested image tag was absent. Docker API calls later recovered and application health
+returned HTTP 200. The helper reported only `fixed_command_unavailable_or_timeout`; the exact
+failed subcommand and cause remain **Unproven**. Independent review confirmed the failed-build result. The
+source-only monitor repair passed 106 builder and 106 independent tests plus static checks, with
+parent source/evidence review recorded in the integrated-review receipt (SHA-256
+`8850e4efb061b5bd4ea252e9a3d45c6a6530282a60e1294348a0e6293dd5ee2f`). Typed
+reservation recovery then failed independent synthetic QA with a P2: a partial exclusive-create
+receipt remained after an `OSError`, while the ledger was restored and retry stayed blocked.
+The source repair passed 132 builder-selected and 132 independent synthetic tests, with parent
+review passing. After an initial receipt-path setup failure that left the ledger unchanged, the
+actual typed reservation release passed, with an independent read-only review confirming the empty
+candidate ledger, matched receipts, and exact candidate-tag absence; no Docker/image mutation
+occurred. The check was not a broad image inventory. A follow-on managed-run-directory repair passed
+134 builder-selected tests and parent source review; independent permission QA passed 134 selected
+tests with static checks; a fresh application build remains pending. The original application-candidate build remains failed; no image or schema-13 pair is
+accepted. Preserve the original failed receipt. The `2026-10-09T16:44:54.174085Z` readback
+recorded about 55 GiB free on the main filesystem and 59 GiB on SD. A later independent
+current-state read passed at `17:27:11Z`, confirming the SD UUID/mount, Docker root, four cache
+bind mounts, active Docker/containerd mount dependencies, and application health HTTP 200. Fresh
+archive-metadata checks and physical absent-medium startup remain unverified. See the [E826
+ledger](../../MVP-PLAN.md).
 
 ## Invite-only production deployment
 

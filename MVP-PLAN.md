@@ -2644,6 +2644,158 @@ establish full-app accessibility, physical-device behavior, PDF/UA, or final PR-
 acceptance. No application image build, full local gate, production mutation, promotion, resize,
 rollout, release, or email occurred.
 
+### R-ASTRA-120 E826 PR-head candidate image build failure
+
+The first actual application-candidate build was attempted on pushed, clean PR head
+`ae140dd011ee043cd24c7db84b6922826d012d28` with:
+
+```bash
+/usr/bin/python3 scripts/rehearse_schema13.py --build-pr-candidate --reviewed-pr-head ae140dd011ee043cd24c7db84b6922826d012d28 --receipt test-results/assistant-r120/coordination/storage-candidate-ae140dd-20261009T1653Z/candidate-build.json
+```
+
+The bounded build stage **Failed** with exit 1 and status
+`local_build_failed:bounded_image_build:exit_1`; the outer rehearsal command exited 2 in the
+independent terminal review. The expected candidate receipt was not created;
+the retained terminal log was 110 bytes. The bounded-helper terminal report recorded stage
+`fixed_command_unavailable_or_timeout`, start `2026-10-09T16:54:07.183664Z`, build start
+`16:54:10.791220Z`, finish `16:56:09.969501Z`, and verified cancellation. Its artifact path and
+private original receipt path were not supplied. The retained public copy is
+`test-results/assistant-r120/coordination/storage-candidate-ae140dd-20261009T1653Z/failed-helper-receipt.json`,
+SHA-256 `580dfd49e2d5ab0eb93226b5fd6968fb3cf69c4fc94234debb513da8a66b1277`; the expected
+successful candidate receipt was not created. The candidate log SHA-256 is
+`f64596d59a69ae4537b8ef18666f91067f849a13c909def2687ade973e87dbc8`. A matching
+BuildKit history record was `Error 21/46`, created at
+`2026-10-09T16:54:11.009384679Z` and ended at `16:56:14.191775558Z`. Docker API calls stalled and
+later recovered; application health then returned HTTP 200. Exact-tag inspection returned
+`NoSuchImage` (absence confirmation, not a successful image inspection), and the ledger's in-flight
+identifiers were synthetic placeholders, not actual image IDs. No candidate image is accepted. The
+bounded-helper report only identifies stage `fixed_command_unavailable_or_timeout`; the exact failed
+subcommand and cause remain **Unproven**. The later monitor repair addresses a possible false-abort
+path, but no specific cause for this build failure has been established.
+
+Independent failure review by `r120_sd_candidate_build_qa` completed at
+`2026-10-09T17:03:39.007429Z`. Its public receipt
+`/var/tmp/r120-storage-candidate-independent-qa-20261009T1653Z.json` has SHA-256
+`6d7a820ca30db3af13efd95d7871aa42270d0c115e9bf5dcfbad2ead51e7e20f`. It binds the candidate and
+remote-tracking revision to the same commit, confirms the exact tag is absent and the BuildKit
+history is `Error`, and confirms source-context hash equality with the prior pair receipt
+(`84d4b82310e45611c36e403864898b6c9ed8212707f8836d4b08c0062194a2cc`). That context equality does
+not establish image/export equivalence or current PR-pair acceptance. The review's pre-build
+worktree snapshot was **Unavailable**; it observed a clean worktree during the build. The exact
+Docker cause query was **Unavailable**, and browser/runtime acceptance was **Skipped**. This review
+confirms the failed-build result only; it does not accept an image.
+
+At the build observation, main-filesystem free space was approximately 58.9 GB and SD free space
+approximately 62.57 GB. The source-only monitor repair passed a builder-selected 106 tests plus
+Ruff, format, and scoped diff checks (source/test hash prefixes `cf32a756…`/`94c30a01…`). Its
+independent QA passed 106 tests with zero failures, errors, or skips under Python 3.11.15; receipt
+`/var/tmp/r120-build-monitor-independent-qa-20261009T1704Z/independent-qa-receipt.json` has
+SHA-256 `97dc21549ffb3543452a211c8ee64e890cebd41bc1320247e49e52914d2f9248`, and JUnit has
+SHA-256 `2747663693c70b1cb472a8d1bb327659fe0b2c7a90171cb0a45f991c89bb50fb` for
+`2026-10-09T17:05:12.729218Z`–`17:05:13.727218Z`. Parent source/evidence review passed the exact
+delta, including the bounded OS-mount observation during the build, pre/post `DockerRootDir`,
+deadline/floor checks, and cancellation preservation. Integrated-review receipt
+`test-results/assistant-r120/coordination/storage-candidate-ae140dd-20261009T1653Z/monitor-repair-review/parent-review.json`
+has SHA-256 `8850e4efb061b5bd4ea252e9a3d45c6a6530282a60e1294348a0e6293dd5ee2f`. These source/test
+results do not retry or accept the application build. The in-flight
+reservation has no actual image tag and remains fail-closed; its typed recovery repair is now in
+implementation. Do not edit the ledger manually. Retry remains pending safe recovery and
+independent review of the typed repair. The actual PR-head build has now been
+attempted and failed, superseding E825's earlier checkpoint that no application image build had
+run. A schema-13 pair rehearsal, accepted application image, and runtime or release acceptance
+remain **Pending**. This attempt made no production change, promotion, resize, rollout, or email.
+
+### R-ASTRA-120 E826 supplement: typed reservation receipt-publication failure
+
+Independent QA **Failed** with a P2 in synthetic typed-reservation release: `save_receipt` opened
+the recovery receipt with exclusive creation, wrote a partial file, then raised `OSError`. The
+helper restored the ledger semantically and retained the in-flight reservation, but left the
+partial 45-byte receipt behind. A retry returned
+`failed_reservation_recovery_receipt_already_exists` and retained the reservation; the mocked
+Docker inventory remained unchanged. Reproduction
+`/var/tmp/r120-failed-reservation-release-writefail-20261009T1719Z/write-failure-reproduction.json`
+has SHA-256 `62bf73e3b97222421df5c6429ce3787c9eff225b86aabb4906b703f377d24af7`. This is synthetic
+mock evidence only; no live ledger release occurred. The builder repair and independent re-review
+remain **Pending**, and no additional application build has run during this recovery repair. Keep the initial P2 visible; do not edit
+the ledger or partial receipt manually. Retry remains pending a reviewed safe recovery operation.
+
+The frozen typed-recovery repair was reviewed by the parent with no findings for its declared
+source/test scope. Builder checks passed 132 selected tests with zero failures, errors, or skips,
+plus Ruff and scoped diff checks (`2026-10-09T17:28:15.004876Z`–`17:28:19.741537Z`). Helper and
+test SHA-256 values are `4688c5ce00cb20e638058bb7749ed5a87155a740fd30ead329d99e8f61ff1c4e` and
+`5276e2d152cdaa9407a605d2bb4e9e65b0ec6b26b4cbb0ec7684d0506958cce0`; JUnit SHA-256 is
+`f68edf71aaef36d8db766950e696603d97e4b4ad1aa045d0abe99a4be9d1511b`. Parent source-review
+receipt `test-results/assistant-r120/coordination/storage-candidate-ae140dd-20261009T1653Z/typed-recovery-parent-review/parent-review.json`
+has SHA-256 `3cd9cadf5d2fd4cb754c923b20b36fbc973e5efae5dbd939b5c4fcdee1e4f28e`. The repair uses
+pre-write/fsync, atomic no-replace publication, inode-bound temporary-file cleanup, and ledger
+restoration on publication failure. Independent QA then **Passed** the focused synthetic scope:
+132 tests, Ruff/format/security checks, and failure/race/inode cases, with the original helper and
+test pins unchanged. Receipt
+`test-results/assistant-r120/coordination/failed-reservation-repair-independent-qa-20261009T1730Z/independent-qa-receipt-20261009T173344.524404Z.json`
+has SHA-256 `6be4c347d2227267dd742b57b29056bddc74c472a0943861d94762910679a71e`. This did not invoke
+Docker or mutate the live ledger, and does not establish crash/power-loss durability. The initial
+P2 remains preserved. The first actual typed-reservation release attempt **Failed** with
+`failed_reservation_receipt_path_invalid`; its receipt
+`test-results/assistant-r120/coordination/typed-failed-reservation-live-20261009T1735Z/receipt.json`
+has SHA-256 `342d33a04a3ada7ad3c5a29c6004153634b80781dfa8f33d7ccf56831ba9a8eb`, and the ledger was
+unchanged. The specific path issue was a revision directory created with mode `0775`; the parent
+verified the exact directory owner/inode and changed only that directory to mode `0700`. The
+metadata receipt `test-results/assistant-r120/coordination/typed-failed-reservation-live-20261009T1735Z/directory-mode-repair.json`
+has SHA-256 `0549ce7aba102d4751bdc925a2371f1472f51b043f08087c95e295f27f4d541a`. A second actual
+release then **Passed**: the in-flight ledger reservation is empty, the initial failed receipt is
+unchanged, and no Docker or image mutation occurred. Retry receipt
+`test-results/assistant-r120/coordination/typed-failed-reservation-live-retry-20261009T1736Z/receipt.json`
+has SHA-256 `f518a9fabf7ceeac513e4f8d74db668318d0e9667e244d0ff484486964057cc5`; the separate
+completion receipt SHA-256 is `da3070fe5754e5de634d721f5fc9aecd8b5ed3cd44ede17396a99f80c63ccaed`.
+This resolves the typed in-flight reservation only. The candidate image build remains **Failed**;
+no application image or schema-13 pair rehearsal is accepted.
+
+An independent read-only review then **Passed** the actual failed-attempt recovery and successful
+retry: the old ledger hash was preserved on the first attempt, the exact revision directory was
+repaired without changing its inode, the retry and recovery receipts matched, the candidate ledger
+was empty, the exact candidate tag was absent, and mounted-storage, free-space, and app-health
+observations passed. This was an exact-tag check, not a broad image inventory. One malformed
+`findmnt` invocation was corrected before the passing observation. Review receipt
+`test-results/assistant-r120/coordination/typed-failed-reservation-actual-review-20261009T1737Z/independent-review-20261009T173840.359881Z.json`
+has SHA-256 `761033148cf568ef51199b27b1b164927dc62d9f99bac81839dc9663bfda9ad4`. Physical
+absent-medium startup remains **Unavailable**; no application build, production change, or release
+acceptance is claimed.
+
+A follow-on source repair now creates the managed candidate run directory through a checked helper:
+it requires the revision parent to have the expected type, ownership, and private mode, creates
+intermediate directories as `0700`, and rejects unsafe or symlinked existing parents without
+changing their permissions. Builder checks passed 134 selected tests with zero failures, errors,
+or skips (`2026-10-09T17:37:04.690737Z`–`17:37:09.514297Z`); Ruff, format, and scoped diff checks
+passed. Helper and test SHA-256 values are
+`446a880425a6cbc4269899b6401da88128a25f4fcbc762ebdca4e93a4b774d7e` and
+`8dacaccdebaee2065d3a439fa7c906f9b0e4f0742d40f5094c2c615343db4207`; JUnit SHA-256 is
+`627f43a9d9cfc6860b96c383fb322769e4ff099189ccf8e8898dc2b054984184`. Parent source/test review
+passed with no findings; receipt
+`test-results/assistant-r120/coordination/typed-failed-reservation-live-retry-20261009T1736Z/parent-private-directory-review.json`
+has SHA-256 `90de2400c3a10c8236c427c3ac14f29900565f5f3f7032b5dbe6c766d8664912`. Independent
+permission QA then **Passed** 134/134 tests with no failures, errors, or skips, plus Ruff lint,
+format, security, and scoped diff checks at `2026-10-09T17:39:29Z`–`17:39:52Z`; both helper/test
+pins matched before and after. Receipt
+`test-results/assistant-r120/coordination/private-build-directory-independent-20261009T173929Z/independent-qa-receipt.json`
+has SHA-256 `95fa4b21ddedda7f16f8ca7e62d835d879ddbccbf84f21680caa7b2744d43dc3`, and JUnit SHA-256
+is `e70b1553a6c33089b8f7e4dbdeb521396e0e3f0cb439174b7f284d2f88317252`. Independent review of
+the live typed release passed as recorded above. No fresh application-candidate build has run
+against this follow-on repair; the accepted-image and schema-13 rehearsal gates remain open.
+
+The `2026-10-09T16:44:54.174085Z` parent readback recorded restored storage, application health
+HTTP 200, and approximately 55 GiB free on main and 59 GiB on SD. An independent current-state
+read passed at `2026-10-09T17:27:11.156688Z`–`17:27:11.342077Z`: ext4 and the expected SD UUID
+were present at the configured mountpoint, Docker's root was beneath it, four cache bind mounts
+were present, both Docker and containerd were active with mount `Requires`/`After` dependencies,
+and application health returned HTTP 200. Receipt
+`test-results/assistant-r120/coordination/storage-resume-20261009/current-storage-qa-20261009T172711.342253Z-supplement.json`
+has SHA-256 `76283fbcee9583bcf2c92f7bfa32e8765f693e313215a4d76c51edfe3dff264c`. An earlier
+current-state evaluator **Failed** by misreading the escaped systemd mount name; this supplement
+corrected that interpretation. Fresh archive-metadata checks were **Unavailable**; previously
+verified backup and restore checks retain their recorded scope, with no new large rehash. Physical
+absent-medium startup remains **Unavailable**. This readback does not clear the application-build
+failure or establish schema-13 pair acceptance.
+
 ### R-ASTRA-120 E822 attached-probe import repair
 
 Historical R-ASTRA-120 E822: The attached HTTP probe now defers its unused MCP Gateway/service imports; application, UI, tool definitions, permissions and acceptance assertions are unchanged. Independent QA passed all 380 probe-file tests, Ruff and format, with exact equality for 11 MCP definitions/actions (receipt SHA-256 `c36c28d103346e6e7562046b2993c9d196c3bc4da15d90f8ce84a3279cf807bf`). An isolated import-only comparison on the bound candidate image passed: peak process RSS fell from 135,536 to 67,624 KiB. This is fixture-overhead evidence, not the actual-host failure cause or a 1 GB Pass. New exact-head artifacts and actual-host native/resource/recovery verification remain pending. The earlier memory failures remain recorded; production, budget, backups and release gates are unchanged.

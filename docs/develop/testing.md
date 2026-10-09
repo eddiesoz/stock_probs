@@ -70,10 +70,10 @@ has SHA-256 `a04ff94c9e22f89a00021af9b74deede6f748f0ed79727e80df364ffa2493833`; 
 receipt is linked from the [E825 ledger](../../MVP-PLAN.md). Receipt for the original QA failure:
 `/var/tmp/r120-rehearsal-ledger-independent-qa-20261009T1638Z/independent-qa-receipt.json` has
 SHA-256 `b139822219e5e1bb194e6b541fd8cee0b3c0351ffaf5a841be300306a1dc5423`; it used mocks and did
-not build or delete an image. The repaired independent review also used mocks: no Docker build,
-image deletion, or actual schema-13 pair rehearsal has run. The separate bounded-policy helper's
-145-test result is a distinct scope. See the [E825 ledger](../../MVP-PLAN.md) for exact bindings
-and status.
+not build or delete an image. At the E825 checkpoint, the repaired independent review also used
+mocks: no Docker build, image deletion, or actual schema-13 pair rehearsal had run. The separate
+bounded-policy helper's 145-test result is a distinct scope. See the [E825 ledger](../../MVP-PLAN.md)
+for exact bindings and status.
 
 ## Bounded local Docker builds and worker verification
 
@@ -100,6 +100,33 @@ read-only setup-receipt, data-root, controller, and cache-volume checks; that he
 build or mutation. The actual setup receipt and worker-step pass prove this bounded worker scope;
 they do not establish an application Compose image build, release, or production acceptance. Preserve the earlier failures and see the [MVP plan](../../MVP-PLAN.md)
 for receipt details and remaining gates.
+
+E826 then attempted the first actual PR-head application build on pushed, clean head
+`ae140dd011ee043cd24c7db84b6922826d012d28`; the bounded build stage **Failed** with exit 1 and
+`local_build_failed:bounded_image_build:exit_1`, while the outer rehearsal command exited 2. The
+expected candidate receipt was not created, the terminal log was 110 bytes, and independent review
+confirmed the candidate tag was absent and BuildKit history ended in `Error`. The independent
+review completed at `2026-10-09T17:03:39Z` (receipt SHA-256
+`6d7a820ca30db3af13efd95d7871aa42270d0c115e9bf5dcfbad2ead51e7e20f`); its exact Docker-cause
+query was **Unavailable**, and browser/runtime acceptance was **Skipped**. The exact failed
+subcommand and cause remain **Unproven**; the helper reports only
+`fixed_command_unavailable_or_timeout`. The monitor repair addressed a possible false-abort path,
+but does not establish the cause of the failed build.
+The source-only monitor repair passed 106 builder tests and static checks, then 106 independent
+tests with zero failures, errors, or skips; parent source/evidence review passed with integrated
+receipt SHA-256 `8850e4efb061b5bd4ea252e9a3d45c6a6530282a60e1294348a0e6293dd5ee2f`. Typed recovery for the in-flight reservation initially failed independent synthetic QA with a P2: an
+exclusive-create receipt remained partial after `OSError`, although the ledger was restored and the
+reservation retained. The repair passed 132 builder-selected tests, parent source review, and 132
+independent synthetic tests with no failures/errors/skips. The first actual release attempt then
+failed receipt-path validation with an unchanged ledger; after a narrowly scoped directory-mode
+repair, the second actual release passed and removed the in-flight row. Independent read-only
+review confirmed the empty candidate ledger, matched receipts, and exact candidate-tag absence. No
+Docker/image mutation occurred; the tag check was not a broad image inventory.
+
+A follow-on managed-run-directory repair passed 134 builder-selected tests, parent review, and 134
+independent permission tests with static checks. The original application-candidate build remains
+**Failed**; a fresh build is pending, and no image or schema-13 pair is accepted. Preserve the
+original failed receipt. See [E826](../../MVP-PLAN.md).
 
 ## Unix-socket test fixtures
 
