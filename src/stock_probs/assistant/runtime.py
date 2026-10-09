@@ -2175,7 +2175,13 @@ class OpenCodeV2Runtime:
                     # after the wait endpoint completes, then validate the terminal assistant
                     # finish before reporting success.
                     failure_phase = "consume_messages"
-                    await self._consume_message_snapshot(native_session, context, emit, outcome)
+                    await self._consume_message_snapshot(
+                        native_session,
+                        context,
+                        emit,
+                        outcome,
+                        deadline=started + _MAX_TURN_SECONDS,
+                    )
                 else:
                     outcome["native_session_outcome"] = "wait_failed"
                     stopped.set()
@@ -3101,7 +3107,9 @@ class OpenCodeV2Runtime:
         outcome.setdefault("webfetch_redirect_targets", set())
         outcome.setdefault("webfetch_blocked_redirect_urls", set())
         while not stopped.is_set() and time.monotonic() - started < _MAX_TURN_SECONDS:
-            await self._consume_message_snapshot(session_id, context, emit, outcome)
+            await self._consume_message_snapshot(
+                session_id, context, emit, outcome, deadline=started + _MAX_TURN_SECONDS
+            )
             with suppress(TimeoutError):
                 await asyncio.wait_for(stopped.wait(), timeout=_MAX_NATIVE_MESSAGE_POLL_SECONDS)
 
@@ -3160,12 +3168,16 @@ class OpenCodeV2Runtime:
         context: AssistantTurnContext,
         emit: EventEmitter,
         outcome: dict[str, object],
+        *,
+        deadline: float | None = None,
     ) -> None:
         """Serialize message reads so permission checks observe applied redirect history."""
 
         state_lock = self._webfetch_state_lock(outcome)
         async with state_lock:
-            await self._consume_message_snapshot_locked(session_id, context, emit, outcome)
+            await self._consume_message_snapshot_locked(
+                session_id, context, emit, outcome, deadline=deadline
+            )
 
     async def _consume_message_snapshot_locked(
         self,
@@ -3173,6 +3185,8 @@ class OpenCodeV2Runtime:
         context: AssistantTurnContext,
         emit: EventEmitter,
         outcome: dict[str, object],
+        *,
+        deadline: float | None = None,
     ) -> None:
         """Read and apply one native message snapshot while holding the turn state lock."""
 
@@ -3187,7 +3201,8 @@ class OpenCodeV2Runtime:
         outcome.setdefault("webfetch_requested_urls", set())
         outcome.setdefault("webfetch_redirect_targets", set())
         outcome.setdefault("webfetch_blocked_redirect_urls", set())
-        response = await self._request("GET", f"/api/session/{session_id}/message", timeout=3.0)
+        message_path = f"/api/session/{session_id}/message"
+        response = await self._request_read_poll(message_path, deadline=deadline)
         payload = _json_object(response)
         messages = payload.get("data") if payload else None
         if response.status_code != 200 or not isinstance(messages, list):
@@ -3426,10 +3441,10 @@ class OpenCodeV2Runtime:
             raise RuntimeError("fetch_redirect_state_invalid")
         webfetch_state_lock = self._webfetch_state_lock(outcome)
         handled: set[str] = set()
+        deadline = started + _MAX_TURN_SECONDS
         while not stopped.is_set() and time.monotonic() - started < _MAX_TURN_SECONDS:
-            response = await self._request(
-                "GET", f"/api/session/{session_id}/permission", timeout=3.0
-            )
+            permission_path = f"/api/session/{session_id}/permission"
+            response = await self._request_read_poll(permission_path, deadline=deadline)
             payload = _json_object(response)
             pending = payload.get("data") if payload else None
             if response.status_code != 200 or not isinstance(pending, list) or len(pending) > 16:
@@ -3458,7 +3473,9 @@ class OpenCodeV2Runtime:
                         # Permission polling and message polling are independent native API
                         # reads. Refresh under the same lock used by the message consumer
                         # before showing an exact-URL approval prompt.
-                        await self._consume_message_snapshot(session_id, context, emit, outcome)
+                        await self._consume_message_snapshot(
+                            session_id, context, emit, outcome, deadline=deadline
+                        )
                         async with webfetch_state_lock:
                             blocked_before_approval = (
                                 fetch_candidate is not None
@@ -3485,7 +3502,7 @@ class OpenCodeV2Runtime:
                             # exact destination. Re-read and apply it before replying once.
                             async with webfetch_state_lock:
                                 await self._consume_message_snapshot_locked(
-                                    session_id, context, emit, outcome
+                                    session_id, context, emit, outcome, deadline=deadline
                                 )
                                 if (
                                     decision.decision == "once"
@@ -3701,6 +3718,22 @@ class OpenCodeV2Runtime:
                     content=bytes(content),
                     request=response.request,
                 )
+
+    async def _request_read_poll(self, path: str, *, deadline: float | None) -> httpx.Response:
+        """Retry one transient read-only session poll without extending its turn deadline."""
+
+        if deadline is None:
+            return await self._request("GET", path, timeout=3.0)
+        remaining = deadline - time.monotonic()
+        if remaining < 0.05:
+            raise TimeoutError
+        try:
+            return await self._request("GET", path, timeout=min(3.0, remaining))
+        except (TimeoutError, httpx.TimeoutException, httpx.NetworkError):
+            remaining = deadline - time.monotonic()
+            if remaining < 0.05:
+                raise
+            return await self._request("GET", path, timeout=min(3.0, remaining))
 
     async def _interrupt(self, session_id: str | None) -> None:
         if not isinstance(session_id, str) or not _SESSION_ID.fullmatch(session_id):

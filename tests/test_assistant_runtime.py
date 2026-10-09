@@ -8,7 +8,7 @@ import json
 import secrets
 import socket
 import time
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -1673,6 +1673,36 @@ class _NativeBody(httpx.AsyncByteStream):
 
     async def aclose(self) -> None:
         return None
+
+
+def _native_json_response(payload: object, *, status_code: int = 200) -> httpx.Response:
+    return httpx.Response(
+        status_code,
+        headers={"content-type": "application/json"},
+        stream=_NativeBody(json.dumps(payload).encode("utf-8")),
+    )
+
+
+def _runtime_for_native_api(
+    native_api: Callable[[httpx.Request], Awaitable[httpx.Response]],
+) -> OpenCodeV2Runtime:
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=_Supervisor(),
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
+    runtime._client = runtime._http_client_factory(
+        base_url="http://127.0.0.1:4097",
+        auth=("opencode", "s" * 48),
+        timeout=httpx.Timeout(5.0),
+        trust_env=False,
+    )
+    runtime._enabled = True
+    return runtime
 
 
 def _native_webfetch_redirect_messages(
@@ -3461,6 +3491,230 @@ def test_native_flat_content_text_snapshot_deduplicates_repeated_polling() -> No
     assert events == [{"type": "token", "data": {"text": "Hello native."}}]
 
 
+def test_native_message_and_permission_polls_retry_transient_read_errors_once() -> None:
+    """Only read-only polls retry; recovered messages still need the final stop snapshot."""
+
+    reads = {"message": 0, "permission": 0, "reply": 0}
+    stopped_message = asyncio.Event()
+    stopped_permission = asyncio.Event()
+    message = {
+        "data": [
+            {
+                "type": "assistant",
+                "id": "message-recovered",
+                "finish": "stop",
+                "content": [{"type": "text", "id": "part-recovered", "text": "Recovered."}],
+            }
+        ]
+    }
+
+    async def native_api(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/api/session/sesABCDEFGH/message":
+            reads["message"] += 1
+            if reads["message"] == 1:
+                raise httpx.ReadError("synthetic message connection reset")
+            return _native_json_response(message)
+        if path == "/api/session/sesABCDEFGH":
+            return _native_json_response({"data": {"outcome": "succeeded"}})
+        if path == "/api/session/sesABCDEFGH/permission":
+            reads["permission"] += 1
+            if reads["permission"] == 1:
+                raise httpx.ReadTimeout("synthetic permission poll timeout")
+            stopped_permission.set()
+            return _native_json_response({"data": []})
+        if path.endswith("/permission/per12345/reply"):
+            reads["reply"] += 1
+            raise AssertionError("read recovery must not replay a permission reply")
+        raise AssertionError("unexpected native API route")
+
+    runtime = _runtime_for_native_api(native_api)
+    events: list[object] = []
+
+    async def exercise() -> dict[str, object]:
+        outcome: dict[str, object] = {"status": "completed", "tokens": 0}
+        started = time.monotonic()
+
+        async def emit(event: object) -> None:
+            events.append(event)
+            if isinstance(event, dict) and event.get("type") == "token":
+                stopped_message.set()
+
+        try:
+            await runtime._guard_turn_task(
+                lambda: runtime._consume_session_messages(
+                    "sesABCDEFGH", _context(), emit, stopped_message, outcome, started
+                ),
+                outcome,
+            )
+            outcome["native_session_outcome"] = await runtime._native_session_outcome("sesABCDEFGH")
+            await runtime._consume_message_snapshot(
+                "sesABCDEFGH",
+                _context(),
+                emit,
+                outcome,
+                deadline=started + assistant_runtime._MAX_TURN_SECONDS,
+            )
+            await runtime._poll_permissions(
+                "sesABCDEFGH",
+                _context(),
+                emit,
+                stopped_permission,
+                outcome,
+                started,
+            )
+            return outcome
+        finally:
+            await runtime.close()
+
+    outcome = asyncio.run(exercise())
+    assert reads == {"message": 3, "permission": 2, "reply": 0}
+    assert outcome["status"] == "completed"
+    assert outcome.get("background_error") is None
+    assert outcome["native_session_outcome"] == "succeeded"
+    assert outcome["terminal_finish"] == "stop"
+    assert outcome["tokens"] == len("Recovered.")
+    assert events == [{"type": "token", "data": {"text": "Recovered."}}]
+
+
+def test_native_read_poll_respects_expired_deadline_and_cancellation() -> None:
+    """An exhausted turn or cancellation cannot start a second read attempt."""
+
+    request_started = asyncio.Event()
+    request_count = 0
+
+    async def native_api(_request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        request_started.set()
+        await asyncio.Event().wait()
+        raise AssertionError("cancelled synthetic read should not return")
+
+    runtime = _runtime_for_native_api(native_api)
+
+    async def exercise() -> None:
+        try:
+            with pytest.raises(TimeoutError):
+                await runtime._request_read_poll(
+                    "/api/session/sesABCDEFGH/message", deadline=time.monotonic() - 1.0
+                )
+            assert request_count == 0
+
+            pending = asyncio.create_task(
+                runtime._request_read_poll(
+                    "/api/session/sesABCDEFGH/message", deadline=time.monotonic() + 5.0
+                )
+            )
+            await asyncio.wait_for(request_started.wait(), timeout=1.0)
+            pending.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await pending
+            assert request_count == 1
+        finally:
+            await runtime.close()
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    ("first_poll", "expected_error", "expected_poll_attempts"),
+    (
+        ("malformed", "RuntimeError", 1),
+        ("protocol", "RemoteProtocolError", 1),
+        ("worker_unavailable", "RuntimeError", 1),
+        ("owner_revoked", "AssistantUnavailable", 1),
+        ("foreign_session", None, 1),
+        ("persistent_timeout", "ReadTimeout", 2),
+    ),
+)
+def test_native_message_poll_keeps_protocol_and_security_failures_fail_closed(
+    first_poll: str, expected_error: str | None, expected_poll_attempts: int
+) -> None:
+    """The retry boundary excludes protocol, worker, and owner-authorization failures."""
+
+    message_reads = 0
+    final_message = {
+        "data": [
+            {
+                "type": "assistant",
+                "id": "message-final",
+                "finish": "stop",
+                "content": [{"type": "text", "id": "part-final", "text": "Final."}],
+            }
+        ]
+    }
+
+    async def native_api(request: httpx.Request) -> httpx.Response:
+        nonlocal message_reads
+        if request.url.path == "/api/session/sesABCDEFGH/message":
+            message_reads += 1
+            if message_reads == 1 and first_poll == "malformed":
+                return _native_json_response({"data": "not-a-message-list"})
+            if message_reads == 1 and first_poll == "worker_unavailable":
+                return _native_json_response({"data": []}, status_code=503)
+            if message_reads == 1 and first_poll == "protocol":
+                raise httpx.RemoteProtocolError("synthetic invalid framing")
+            if first_poll == "persistent_timeout" and message_reads <= 2:
+                raise httpx.ReadTimeout("synthetic repeated poll timeout")
+            if message_reads == 1 and first_poll == "foreign_session":
+                return _native_json_response(
+                    {
+                        "data": [
+                            {
+                                "type": "assistant",
+                                "id": "message-foreign",
+                                "sessionID": "sesFOREIGN123",
+                                "finish": "stop",
+                                "content": [],
+                            }
+                        ]
+                    }
+                )
+            return _native_json_response(final_message)
+        if request.url.path == "/api/session/sesABCDEFGH":
+            return _native_json_response({"data": {"outcome": "succeeded"}})
+        raise AssertionError("unexpected native API route")
+
+    runtime = _runtime_for_native_api(native_api)
+
+    async def exercise() -> tuple[dict[str, object], int]:
+        outcome: dict[str, object] = {"status": "completed", "tokens": 0}
+        deadline = time.monotonic() + assistant_runtime._MAX_TURN_SECONDS
+
+        async def emit(_event: object) -> None:
+            if first_poll == "owner_revoked":
+                raise AssistantUnavailable("session_revoked", 403)
+
+        async def emit_final(_event: object) -> None:
+            return None
+
+        try:
+            await runtime._guard_turn_task(
+                lambda: runtime._consume_message_snapshot(
+                    "sesABCDEFGH", _context(), emit, outcome, deadline=deadline
+                ),
+                outcome,
+            )
+            poll_reads = message_reads
+            outcome["native_session_outcome"] = await runtime._native_session_outcome("sesABCDEFGH")
+            await runtime._consume_message_snapshot(
+                "sesABCDEFGH", _context(), emit_final, outcome, deadline=deadline
+            )
+            return outcome, poll_reads
+        finally:
+            await runtime.close()
+
+    outcome, poll_reads = asyncio.run(exercise())
+    assert (poll_reads, message_reads) == (expected_poll_attempts, expected_poll_attempts + 1)
+    assert outcome["status"] == "failed"
+    if expected_error is None:
+        assert outcome.get("background_error") is None
+    else:
+        assert outcome["background_error"] == expected_error
+    assert outcome["native_session_outcome"] == "succeeded"
+    assert outcome["terminal_finish"] == "stop"
+
+
 def test_completed_native_exa_result_emits_bounded_public_sources_once() -> None:
     """Only exact native Exa H2 records persist, never links embedded in result snippets."""
 
@@ -4629,14 +4883,19 @@ def test_native_webfetch_permission_records_only_exact_once_reply(
     assert outcome["approved_fetch_urls"] == ({url: 1} if approved_count else {})
 
 
-def test_native_webfetch_permission_reply_failure_rolls_back_approval() -> None:
+@pytest.mark.parametrize("reply_failure", ("http_503", "read_timeout"))
+def test_native_webfetch_permission_reply_failure_rolls_back_approval(
+    reply_failure: str,
+) -> None:
     """A failed native permission reply cannot leave a citation authorization behind."""
 
     url = "https://example.test/report"
     stopped = asyncio.Event()
     outcome: dict[str, object] = {"approved_fetch_urls": {}}
+    reply_calls = 0
 
     async def native_api(request: httpx.Request) -> httpx.Response:
+        nonlocal reply_calls
         if request.url.path == "/api/session/sesABCDEFGH/message":
             return httpx.Response(
                 200,
@@ -4663,7 +4922,10 @@ def test_native_webfetch_permission_reply_failure_rolls_back_approval() -> None:
                 ),
             )
         if request.url.path == "/api/session/sesABCDEFGH/permission/per12345/reply":
+            reply_calls += 1
             stopped.set()
+            if reply_failure == "read_timeout":
+                raise httpx.ReadTimeout("synthetic permission reply timeout")
             return httpx.Response(503, stream=_NativeBody(b""))
         raise AssertionError(f"unexpected native API route {request.url.path}")
 
@@ -4703,9 +4965,14 @@ def test_native_webfetch_permission_reply_failure_rolls_back_approval() -> None:
         finally:
             await runtime.close()
 
-    with pytest.raises(RuntimeError, match="permission_reply_failed"):
-        asyncio.run(exercise())
+    if reply_failure == "read_timeout":
+        with pytest.raises(httpx.ReadTimeout):
+            asyncio.run(exercise())
+    else:
+        with pytest.raises(RuntimeError, match="permission_reply_failed"):
+            asyncio.run(exercise())
     assert outcome["approved_fetch_urls"] == {}
+    assert reply_calls == 1
 
 
 @pytest.mark.parametrize(

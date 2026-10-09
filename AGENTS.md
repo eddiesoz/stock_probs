@@ -324,8 +324,10 @@ runtime, rollback, resource, accessibility, and release gates remain mandatory.
 For focused diagnosis across tasks, reuse verified evidence while its bound inputs remain
 unchanged. Reproduce the specific failing path before expanding tests, then rerun affected checks
 after a fix. Repeat a full suite when a release gate or shared-contract impact requires it. This
-workflow does not relax release, security, or acceptance gates.
-R-ASTRA-120 E816: candidate head 4cadfa607908f9ee433b22d7cbe8a6ded567f1ee had a native functional **Fail**; the integrated worker-readiness repair has selected builder and independent QA **Pass**, while post-repair image/native, canonical, combined-resource and PR-bound rollback checks remain **Pending**.
+workflow does not relax release, security, or acceptance gates. For native-runtime repairs, run the
+real functional check before the full release aggregate so a known runtime failure does not waste
+another broad run; retain unchanged UI and component evidence with exact input bindings.
+R-ASTRA-120 E817: The f9d1 candidate image built and matched 149 source inputs and 52 served/export files, but its native run **Failed**: owner 0 answered; owner 1 received seven search sources and one fetch source then returned provider_unavailable. Native cause remains **Unproven**. A synthetic reproduction confirmed an irreversible failure after a transient snapshot read timeout despite later native success. The bounded read-only GET retry repair passed 14 builder and 11 independent selected tests plus parent source review; it retains the original 120-second deadline and fatal authorization/protocol checks. The f9d1 canonical run was intentionally interrupted at 156 partial Python passes with only two of three required checks completed; it is not a Pass. A repaired image/native run precedes the next final aggregate. Actual 1 GB, current-image shutdown, PR rollback, final guide and release gates remain open; production and the US$15 cap are unchanged.
 
 R-ASTRA-120 candidate source exposes eight deployment MCP operations: `inspect`, `plan_deploy`,
 `deploy`, `status`, `rollback`, `refresh_operator_access`, `rehearse_pr_pair`, and
