@@ -182,17 +182,27 @@ assignments, runtime acceptance paths, or release gates.
   acceptance. E828's bounded RootFS/stdout source and independent QA passed their selected scope.
   See E828 in `MVP-PLAN.md`; actual combined 1 GB, current release, and remaining owner/provider
   gates stay open.
-  E829 built a candidate from head `4b5023f01253930a6ad2a7aee6a14e72580fd11d`, but its one
-  authorized native two-owner attempt **Failed**: owner 0 answered; owner 1 returned
-  `provider_unavailable` after seven search sources and one approved fetch source without an
-  answer. The cause is **Unproven**, and its 768 MiB sample is not actual 1 GB acceptance. The
-  subsequent bounded read-only GET-observation recovery repair passed parent source review and
-  independent selected 57-test/static QA; builder terminal evidence remains **Unavailable**, and
-  the built image predates the repair. See E829 in `MVP-PLAN.md`; a fresh image/native check,
-  current canonical, PR-pair/rollback, current-image kill, actual 1 GB, security, canary, and release
-  gates remain open. E829's standalone guide draft passed its declared HTML/PDF and 14-page visual
-  review only; E791/E795 passed their scoped browser and whole-route axe checks without establishing
-  full WCAG AA. Final PR/release guide acceptance remains open.
+  Historical E829 built head `4b5023f01253930a6ad2a7aee6a14e72580fd11d`; its native two-owner
+  attempt **Failed** and its cause remains **Unproven**. The bounded GET-observation repair passed
+  independent selected QA (57 tests) and parent review; the builder terminal was **Unavailable**.
+  E830 then built image `sha256:d2cd30ca3a8d2c792d7362a37c19f9f865d5802542661db62e41d3bf47ab175f`
+  from accepted PR head `09bdc942982c077535a4841f1439a012834fefc6`, passing build/source/stage
+  binding only. Its one authorized native attempt **Failed**: owner 0 answered in 48.016 seconds;
+  owner 1 timed out at 120.973 seconds after seven search and one approved fetch source, with no
+  answer. Both conversation deletes returned HTTP 200; cause remains **Unproven**, and the 768 MiB
+  sample does not establish actual 1 GB acceptance. A follow-up bounded cached-snapshot diagnostic
+  passed independent selected QA (21 runtime and 78 parser tests) and parent source/evidence review;
+  this is diagnostic scope, not native reliability acceptance or a cause. The image predates those
+  diagnostic-source changes. E830's guide metadata rebind passed 94 consumer inputs, 52 served/export
+  pairs, and 23 artifacts while retaining the original capture head and QA attribution; it did not
+  create new captures or final PR/release acceptance. E791/E795 remain scoped browser and axe Passes,
+  not full WCAG AA. The current canonical, current-source image/runtime, PR-pair/rollback,
+  current-image kill, actual combined 1 GB, complete security, owner canary, final guide, and release
+  gates remain open. Physical mobile, actual screen reader, true zoom, and PDF/UA evidence remain
+  **Unavailable**; no full-app accessibility claim follows. Storage restore/backup scope passed,
+  while physical absent-medium startup remains unavailable. Production remains schema 12, ready and
+  loopback-only; rollout/RAM/billing were not returned. The 1 GB plan, backups and US$15 cap remain
+  unchanged; no merge, deployment, resize, rollout or email occurred. See E830 in `MVP-PLAN.md`.
   Storage restore, Docker/containerd/cache relocation, and bounded worker proof passed their
   recorded scopes; physical absent-medium startup remains unavailable. See E827 in `MVP-PLAN.md`.
 - Evidence remains architecture-specific: native x86_64, emulated ARM64, and physical

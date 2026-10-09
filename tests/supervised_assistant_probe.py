@@ -118,6 +118,16 @@ _NATIVE_TIMING_FAILURE_REASON_CODES = {
     "native warning diagnostic phase was invalid": "warning_phase_invalid",
     "native warning diagnostic marker was invalid": "warning_marker_invalid",
     "native warning diagnostic record count was malformed": "warning_record_count_invalid",
+    "native turn snapshot diagnostic was malformed": "turn_snapshot_payload_invalid",
+    "native turn snapshot diagnostic termination was invalid": "turn_snapshot_termination_invalid",
+    "native turn snapshot diagnostic status was invalid": "turn_snapshot_status_invalid",
+    "native turn snapshot diagnostic age was invalid": "turn_snapshot_age_invalid",
+    "native turn snapshot diagnostic part counts were invalid": (
+        "turn_snapshot_part_counts_invalid"
+    ),
+    "native turn snapshot diagnostic tool counts were invalid": (
+        "turn_snapshot_tool_counts_invalid"
+    ),
     "native provider stream diagnostic marker was malformed": "provider_stream_marker_invalid",
     "native provider stream diagnostic marker was invalid": "provider_stream_marker_invalid",
     "native provider stream diagnostic payload was malformed": "provider_stream_payload_invalid",
@@ -308,6 +318,7 @@ _NATIVE_WARNING_WEBFETCH_COMPLETIONS = frozenset(
     }
 )
 _NATIVE_WARNING_SNAPSHOT_MARKER = "Assistant native terminal turn failed "
+_NATIVE_WARNING_TURN_SNAPSHOT_MARKER = "Assistant native turn snapshot "
 _NATIVE_WARNING_DEADLINE_MARKER = "Assistant turn deadline expired "
 _NATIVE_WARNING_REQUEST_TIMEOUT_MARKER = "Assistant native request timed out "
 _NATIVE_WARNING_STARTUP_MARKER = "Assistant worker startup failed "
@@ -315,6 +326,7 @@ _NATIVE_WARNING_PRESESSION_MARKER = "Assistant pre-session failure "
 _NATIVE_WARNING_MODEL_DISCOVERY_MARKER = "Assistant model discovery diagnostic "
 _NATIVE_WARNING_MARKERS = (
     _NATIVE_WARNING_SNAPSHOT_MARKER,
+    _NATIVE_WARNING_TURN_SNAPSHOT_MARKER,
     _NATIVE_WARNING_DEADLINE_MARKER,
     _NATIVE_WARNING_REQUEST_TIMEOUT_MARKER,
     _NATIVE_WARNING_STARTUP_MARKER,
@@ -375,6 +387,9 @@ _NATIVE_WARNING_ELAPSED_MAX_MS = 180_000
 _NATIVE_WARNING_PROVIDER_TIMEOUT_MAX_SECONDS = 120.0
 _NATIVE_WARNING_TOOL_ELAPSED_MAX_MS = 120_000
 _NATIVE_WARNING_TOOL_ERROR_MAX = 8
+_NATIVE_WARNING_TURN_SNAPSHOT_AGE_MAX_MS = 120_000
+_NATIVE_WARNING_TURN_SNAPSHOT_PART_COUNT_MAX = 16_384
+_NATIVE_WARNING_TURN_SNAPSHOT_TOOL_COUNT_MAX = 8
 _NATIVE_WARNING_INT = re.compile(r"^(?:0|[1-9][0-9]{0,8})$")
 _NATIVE_WARNING_SECONDS = re.compile(
     r"^(?:0|[1-9][0-9]{0,2})(?:\.[0-9]{1,17})?(?:e[+-]?[0-9]{1,3})?$"
@@ -395,6 +410,21 @@ _NATIVE_WARNING_TERMINAL_PATTERN = re.compile(
     r"native_failure=(?P<native_failure>[a-z0-9_,-]+), "
     r"native_tool_error_count=(?P<native_tool_error_count>[0-9]+)"
     r"(?:, local_failure=(?P<local_failure>[a-z][a-z0-9_]*))?\)\."
+)
+_NATIVE_WARNING_TURN_SNAPSHOT_PATTERN = re.compile(
+    r"^\(termination=(?P<termination>[a-z_]+), "
+    r"snapshot_status=(?P<snapshot_status>[a-z_]+), "
+    r"snapshot_age_ms=(?P<snapshot_age_ms>[^,]+), "
+    r"assistant_finish=(?P<assistant_finish>[a-z,-]+), "
+    r"text_parts=(?P<text_parts>[0-9]+), "
+    r"text_nonempty_parts=(?P<text_nonempty_parts>[0-9]+), "
+    r"reasoning_parts=(?P<reasoning_parts>[0-9]+), "
+    r"tool_parts=(?P<tool_parts>[0-9]+), "
+    r"other_parts=(?P<other_parts>[0-9]+), "
+    r"tools_running=(?P<tools_running>[0-9]+), "
+    r"tools_completed=(?P<tools_completed>[0-9]+), "
+    r"tools_error=(?P<tools_error>[0-9]+), "
+    r"tools_unknown=(?P<tools_unknown>[0-9]+)\)\."
 )
 _NATIVE_WARNING_DEADLINE_PATTERN = re.compile(
     r"^\(phase=(?P<phase>[a-z_]+), elapsed_ms=(?P<elapsed_ms>[0-9]+)"
@@ -2198,6 +2228,85 @@ def _warning_timeout_seconds(raw: str) -> float | None:
     return value
 
 
+def _project_native_turn_snapshot_warning(payload: str) -> dict[str, object]:
+    """Project the closed latest-snapshot summary carried by a turn terminal warning."""
+
+    match = _NATIVE_WARNING_TURN_SNAPSHOT_PATTERN.fullmatch(payload)
+    if match is None:
+        raise ProbeError("native turn snapshot diagnostic was malformed")
+    values = match.groupdict()
+    termination = values["termination"]
+    if termination not in {"timed_out", "cancelled"}:
+        raise ProbeError("native turn snapshot diagnostic termination was invalid")
+    snapshot_status = values["snapshot_status"]
+    if snapshot_status not in {"observed", "unavailable"}:
+        raise ProbeError("native turn snapshot diagnostic status was invalid")
+
+    snapshot_age_raw = values["snapshot_age_ms"]
+    snapshot_age_ms = (
+        None
+        if snapshot_age_raw == "none"
+        else _warning_integer(
+            snapshot_age_raw,
+            maximum=_NATIVE_WARNING_TURN_SNAPSHOT_AGE_MAX_MS,
+        )
+    )
+    assistant_finish = _warning_category_list(
+        values["assistant_finish"], _NATIVE_WARNING_ASSISTANT_FINISHES
+    )
+
+    part_counts = {
+        field: _warning_integer(values[field], maximum=_NATIVE_WARNING_TURN_SNAPSHOT_PART_COUNT_MAX)
+        for field in (
+            "text_parts",
+            "text_nonempty_parts",
+            "reasoning_parts",
+            "tool_parts",
+            "other_parts",
+        )
+    }
+    tool_counts = {
+        field: _warning_integer(values[field], maximum=_NATIVE_WARNING_TURN_SNAPSHOT_TOOL_COUNT_MAX)
+        for field in ("tools_running", "tools_completed", "tools_error", "tools_unknown")
+    }
+
+    if snapshot_status == "observed" and snapshot_age_ms is None:
+        raise ProbeError("native turn snapshot diagnostic age was invalid")
+    if snapshot_status == "unavailable" and (
+        snapshot_age_ms is not None
+        or assistant_finish
+        or any(part_counts.values())
+        or any(tool_counts.values())
+    ):
+        raise ProbeError("native turn snapshot diagnostic status was invalid")
+    if (
+        part_counts["text_nonempty_parts"] > part_counts["text_parts"]
+        or part_counts["tool_parts"] > _NATIVE_WARNING_TURN_SNAPSHOT_TOOL_COUNT_MAX
+        or sum(
+            part_counts[field]
+            for field in ("text_parts", "reasoning_parts", "tool_parts", "other_parts")
+        )
+        > _NATIVE_WARNING_TURN_SNAPSHOT_PART_COUNT_MAX
+    ):
+        raise ProbeError("native turn snapshot diagnostic part counts were invalid")
+    tool_count_total = sum(tool_counts.values())
+    if (
+        tool_count_total > _NATIVE_WARNING_TURN_SNAPSHOT_TOOL_COUNT_MAX
+        or tool_count_total != part_counts["tool_parts"]
+    ):
+        raise ProbeError("native turn snapshot diagnostic tool counts were invalid")
+
+    return {
+        "kind": "native_turn_snapshot",
+        "termination": termination,
+        "snapshot_status": snapshot_status,
+        "snapshot_age_ms": snapshot_age_ms,
+        "assistant_finish": assistant_finish,
+        **part_counts,
+        **tool_counts,
+    }
+
+
 def _project_native_terminal_warning(payload: str) -> dict[str, object]:
     match = _NATIVE_WARNING_TERMINAL_PATTERN.fullmatch(payload)
     if match is None:
@@ -2306,6 +2415,8 @@ def _project_native_runtime_warning(line: str) -> dict[str, object] | None:
     payload = line[position + len(marker) :]
     if marker == _NATIVE_WARNING_SNAPSHOT_MARKER:
         return _project_native_terminal_warning(payload)
+    if marker == _NATIVE_WARNING_TURN_SNAPSHOT_MARKER:
+        return _project_native_turn_snapshot_warning(payload)
     if marker == _NATIVE_WARNING_MODEL_DISCOVERY_MARKER:
         return _project_native_model_discovery_warning(payload)
     if marker in {_NATIVE_WARNING_STARTUP_MARKER, _NATIVE_WARNING_PRESESSION_MARKER}:

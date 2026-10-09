@@ -156,6 +156,9 @@ _MAX_NATIVE_TOOLS = 8
 _MAX_NATIVE_WEBFETCH_REDIRECTS = 5
 _MAX_NATIVE_MESSAGE_POLL_SECONDS = 0.25
 _MAX_NATIVE_PERMISSION_POLL_SECONDS = 0.25
+_NATIVE_TIMEOUT_FINISH_CATEGORIES = frozenset(
+    {"stop", "tool-calls", "length", "content-filter", "error", "other"}
+)
 _NATIVE_LOCAL_FAILURE_CODES = frozenset(
     {
         "assistant_finish_error",
@@ -187,6 +190,23 @@ _NATIVE_TRANSIENT_READ_FAILURE_CODES = frozenset(
         "permission_read_timeout",
     }
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeTimeoutSnapshot:
+    """Keep only a closed summary and monotonic observation time for one turn."""
+
+    observed_monotonic: float
+    assistant_finish: str
+    text_parts: int
+    text_nonempty_parts: int
+    reasoning_parts: int
+    tool_parts: int
+    other_parts: int
+    tools_running: int
+    tools_completed: int
+    tools_error: int
+    tools_unknown: int
 
 
 def _valid_native_project_id(value: object) -> bool:
@@ -2451,6 +2471,17 @@ class OpenCodeV2Runtime:
                         session_outcome=outcome.get("native_session_outcome"),
                         local_failure=outcome.get("local_failure_reason"),
                     )
+                termination = (
+                    "timed_out"
+                    if result.status == "timed_out"
+                    else "cancelled"
+                    if turn_cancelled
+                    else None
+                )
+                if termination is not None and native_session is not None:
+                    _log_native_turn_snapshot(
+                        outcome.get("native_timeout_snapshot"), termination=termination
+                    )
                 self._clear_native_provider_metadata(context.execution_id)
                 self._locks.pop(context.execution_id, None)
                 self._search_available.pop(context.execution_id, None)
@@ -3465,6 +3496,14 @@ class OpenCodeV2Runtime:
         assert isinstance(webfetch_redirect_targets, set)
         assert isinstance(webfetch_blocked_redirect_urls, set)
         part_count = 0
+        timeout_parts = {
+            "text_parts": 0,
+            "text_nonempty_parts": 0,
+            "reasoning_parts": 0,
+            "other_parts": 0,
+        }
+        timeout_finishes: set[str] = set()
+        timeout_tool_states: dict[str, str] = {}
         for message_index, row in enumerate(messages):
             if not isinstance(row, Mapping):
                 raise RuntimeError("session_message_invalid")
@@ -3499,6 +3538,10 @@ class OpenCodeV2Runtime:
                 continue
             message_id = _stable_native_id(info, row, "message", message_index)
             finish = info.get("finish")
+            if isinstance(finish, str):
+                timeout_finishes.add(
+                    finish if finish in _NATIVE_TIMEOUT_FINISH_CATEGORIES else "other"
+                )
             if finish == "error":
                 outcome["status"] = "failed"
                 _set_native_local_failure(outcome, "assistant_finish_error")
@@ -3510,8 +3553,12 @@ class OpenCodeV2Runtime:
                     raise RuntimeError("session_part_invalid")
                 part_key = _stable_native_id(part, {}, "part", part_index)
                 identity = f"{message_id}:{part_key}"
-                if part.get("type") == "text":
+                part_type = part.get("type")
+                if part_type == "text":
+                    timeout_parts["text_parts"] += 1
                     text = part.get("text")
+                    if isinstance(text, str) and text:
+                        timeout_parts["text_nonempty_parts"] += 1
                     if not isinstance(text, str) or not text:
                         continue
                     previous = text_parts.get(identity, "")
@@ -3531,7 +3578,9 @@ class OpenCodeV2Runtime:
                             raise RuntimeError("output_too_large")
                         for token_chunk in _utf8_chunks(delta, _MAX_RUNTIME_TOKEN_BYTES):
                             await emit({"type": "token", "data": {"text": token_chunk}})
-                elif part.get("type") == "tool":
+                elif part_type == "reasoning":
+                    timeout_parts["reasoning_parts"] += 1
+                elif part_type == "tool":
                     raw_name = part.get("name")
                     if not isinstance(raw_name, str) or not re.fullmatch(
                         r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,79}", raw_name
@@ -3560,6 +3609,14 @@ class OpenCodeV2Runtime:
                             _set_native_local_failure(outcome, "message_tool_invariant")
                     else:
                         status = "running"
+                    if isinstance(raw_status, str) and raw_status in {"completed", "success"}:
+                        timeout_tool_states[identity] = "completed"
+                    elif isinstance(raw_status, str) and raw_status in {"error", "failed"}:
+                        timeout_tool_states[identity] = "error"
+                    elif isinstance(raw_status, str) and raw_status in {"running", "pending"}:
+                        timeout_tool_states[identity] = "running"
+                    else:
+                        timeout_tool_states[identity] = "unknown"
                     if tool_states.get(identity) != status:
                         tool_states[identity] = status
                         raw_call_id = part.get("id")
@@ -3667,6 +3724,30 @@ class OpenCodeV2Runtime:
                                 },
                             }
                         )
+                else:
+                    timeout_parts["other_parts"] += 1
+
+        timeout_tool_counts = {
+            "running": 0,
+            "completed": 0,
+            "error": 0,
+            "unknown": 0,
+        }
+        for status in timeout_tool_states.values():
+            timeout_tool_counts[status] += 1
+        outcome["native_timeout_snapshot"] = _NativeTimeoutSnapshot(
+            observed_monotonic=time.monotonic(),
+            assistant_finish=",".join(sorted(timeout_finishes)) or "none",
+            text_parts=timeout_parts["text_parts"],
+            text_nonempty_parts=timeout_parts["text_nonempty_parts"],
+            reasoning_parts=timeout_parts["reasoning_parts"],
+            tool_parts=len(timeout_tool_states),
+            other_parts=timeout_parts["other_parts"],
+            tools_running=timeout_tool_counts["running"],
+            tools_completed=timeout_tool_counts["completed"],
+            tools_error=timeout_tool_counts["error"],
+            tools_unknown=timeout_tool_counts["unknown"],
+        )
 
     async def _poll_permissions(
         self,
@@ -4734,6 +4815,100 @@ def _log_native_terminal_failure(
         diagnostic["native_failure_categories"],
         diagnostic["native_tool_error_count"],
         _safe_native_local_failure(local_failure),
+    )
+
+
+def _log_native_turn_snapshot(snapshot: object, *, termination: str) -> None:
+    """Log cached closed message-state counts for timeout or cancellation."""
+
+    unavailable: tuple[object, ...] = (
+        "unavailable",
+        "none",
+        "none",
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    values = unavailable
+    safe_termination = termination if termination in {"timed_out", "cancelled"} else "cancelled"
+    if isinstance(snapshot, _NativeTimeoutSnapshot):
+        part_counts = (
+            snapshot.text_parts,
+            snapshot.text_nonempty_parts,
+            snapshot.reasoning_parts,
+            snapshot.tool_parts,
+            snapshot.other_parts,
+        )
+        tool_counts = (
+            snapshot.tools_running,
+            snapshot.tools_completed,
+            snapshot.tools_error,
+            snapshot.tools_unknown,
+        )
+        finish_values = (
+            snapshot.assistant_finish.split(",")
+            if isinstance(snapshot.assistant_finish, str)
+            else []
+        )
+        valid_finish = isinstance(snapshot.assistant_finish, str) and (
+            snapshot.assistant_finish == "none"
+            or (
+                finish_values == sorted(set(finish_values))
+                and all(value in _NATIVE_TIMEOUT_FINISH_CATEGORIES for value in finish_values)
+                and ",".join(finish_values) == snapshot.assistant_finish
+            )
+        )
+        valid_counts = (
+            all(type(count) is int and 0 <= count <= _MAX_NATIVE_PARTS for count in part_counts)
+            and sum(
+                (
+                    snapshot.text_parts,
+                    snapshot.reasoning_parts,
+                    snapshot.tool_parts,
+                    snapshot.other_parts,
+                )
+            )
+            <= _MAX_NATIVE_PARTS
+            and snapshot.text_nonempty_parts <= snapshot.text_parts
+            and snapshot.tool_parts <= _MAX_NATIVE_TOOLS
+            and all(type(count) is int and 0 <= count <= _MAX_NATIVE_TOOLS for count in tool_counts)
+            and sum(tool_counts) == snapshot.tool_parts
+        )
+        valid_time = type(snapshot.observed_monotonic) is float and math.isfinite(
+            snapshot.observed_monotonic
+        )
+        if valid_finish and valid_counts and valid_time:
+            age_seconds = time.monotonic() - snapshot.observed_monotonic
+            if math.isfinite(age_seconds) and age_seconds >= 0:
+                age_ms = (
+                    _TURN_TIMING_WORK_LIMIT_MS
+                    if age_seconds >= _TURN_TIMING_WORK_LIMIT_MS / 1000
+                    else int(age_seconds * 1000)
+                )
+                values = (
+                    safe_termination,
+                    "observed",
+                    age_ms,
+                    snapshot.assistant_finish,
+                    *part_counts,
+                    *tool_counts,
+                )
+    if values is unavailable:
+        values = (safe_termination, *unavailable)
+
+    _LOGGER.warning(
+        "Assistant native turn snapshot "
+        "(termination=%s, snapshot_status=%s, snapshot_age_ms=%s, assistant_finish=%s, "
+        "text_parts=%d, text_nonempty_parts=%d, reasoning_parts=%d, tool_parts=%d, "
+        "other_parts=%d, tools_running=%d, tools_completed=%d, tools_error=%d, "
+        "tools_unknown=%d).",
+        *values,
     )
 
 

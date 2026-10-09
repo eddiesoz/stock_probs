@@ -174,6 +174,28 @@ attempt **Failed** with cause **Unproven**; no native/provider or release accept
 [E829](../../MVP-PLAN.md#r-astra-120-e829-candidate-native-failure-repair-and-guide-checkpoint)
 for exact windows, receipts, and remaining gates.
 
+E830 built image `sha256:d2cd30ca3a8d2c792d7362a37c19f9f865d5802542661db62e41d3bf47ab175f`
+from PR head `09bdc942982c077535a4841f1439a012834fefc6`; parent review passed only build, context,
+stage, and static packet binding. The one authorized native attempt **Failed** (exit 2): owner 0
+answered in 48.016 seconds; owner 1 timed out at 120.973 seconds after seven native-search sources
+and one approved fetch source without an answer. Both conversation deletes returned HTTP 200. The
+cause remains **Unproven**, and a 768 MiB diagnostic is not actual combined 1 GB acceptance.
+
+The follow-up cached-snapshot observer is bounded diagnostic instrumentation: it records only a
+closed snapshot of counts/finish classes and cancellation/timeout status from an already validated
+GET observation. It makes no extra GET, does not extend the original 120-second deadline, and leaves
+authorization/protocol checks and the single permission-reply POST unchanged. Builder-selected
+results were reported separately from independent QA. The earlier builder 23-case pre-freeze report
+is not accepted. Independent QA of the frozen four-file set passed 21 runtime and 78 parser tests,
+zero failures/errors/skips, Ruff/format/diff checks, and unchanged 18-file source pins; its receipt
+is `test-results/assistant-r120/coordination/timeout-snapshot-independent-qa-20261009T2044Z/independent-qa-receipt.json`
+(SHA-256 `32aad4016965251bc2e3a9aee8f011bfa236a75e97d97d168c1736a269f65b7c`). The parent source
+review and integrated evidence review passed for those pinned diagnostic-source/test artifacts.
+This QA did not run live runtime, provider, Docker, or service operations; the E830 native failure
+and unproven cause remain. The image predates the observer changes, so it does not test that
+diagnostic in native execution. See the [E830 ledger](../../MVP-PLAN.md#r-astra-120-e830-current-native-failure-and-bounded-snapshot-checkpoint)
+for exact receipts and remaining gates.
+
 ## Unix-socket test fixtures
 
 Supervisor tests create AF_UNIX sockets. Use a unique, caller-owned short temporary root for

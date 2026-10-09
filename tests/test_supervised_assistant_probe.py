@@ -835,6 +835,36 @@ def _native_terminal_warning() -> str:
     )
 
 
+def _native_turn_snapshot_warning(
+    *,
+    termination: object = "timed_out",
+    snapshot_status: object = "observed",
+    snapshot_age_ms: object = 120_000,
+    assistant_finish: object = "error,stop",
+    text_parts: object = 4,
+    text_nonempty_parts: object = 3,
+    reasoning_parts: object = 2,
+    tool_parts: object = 1,
+    other_parts: object = 1,
+    tools_running: object = 0,
+    tools_completed: object = 1,
+    tools_error: object = 0,
+    tools_unknown: object = 0,
+) -> str:
+    """Build one turn snapshot warning, allowing malformed fixture values."""
+
+    return (
+        probe._NATIVE_WARNING_TURN_SNAPSHOT_MARKER
+        + f"(termination={termination}, snapshot_status={snapshot_status}, "
+        + f"snapshot_age_ms={snapshot_age_ms}, "
+        + f"assistant_finish={assistant_finish}, text_parts={text_parts}, "
+        + f"text_nonempty_parts={text_nonempty_parts}, reasoning_parts={reasoning_parts}, "
+        + f"tool_parts={tool_parts}, other_parts={other_parts}, "
+        + f"tools_running={tools_running}, tools_completed={tools_completed}, "
+        + f"tools_error={tools_error}, tools_unknown={tools_unknown})."
+    )
+
+
 def _native_empty_terminal_warning() -> str:
     return (
         probe._NATIVE_WARNING_SNAPSHOT_MARKER
@@ -1041,6 +1071,209 @@ def test_native_warning_projection_keeps_only_closed_terminal_and_timeout_fields
     assert "stock_probs.assistant.runtime" not in encoded
     assert "session_id" not in encoded
     assert "owner_id" not in encoded
+
+
+def test_native_turn_snapshot_warning_projects_only_closed_cached_counts() -> None:
+    warning = _native_turn_snapshot_warning()
+    raw = (
+        "private prompt=https://private.example/?token=secret owner_id=41\n"
+        + warning
+        + "\ncredential=discard-this"
+    )
+
+    projection = probe._native_timing_projection(raw)
+
+    assert projection["runtime_warnings"] == [
+        {
+            "kind": "native_turn_snapshot",
+            "occurrence_count": 1,
+            "termination": "timed_out",
+            "snapshot_status": "observed",
+            "snapshot_age_ms": 120_000,
+            "assistant_finish": ["error", "stop"],
+            "text_parts": 4,
+            "text_nonempty_parts": 3,
+            "reasoning_parts": 2,
+            "tool_parts": 1,
+            "other_parts": 1,
+            "tools_running": 0,
+            "tools_completed": 1,
+            "tools_error": 0,
+            "tools_unknown": 0,
+        }
+    ]
+    encoded = json.dumps(projection)
+    assert "private.example" not in encoded
+    assert "token=secret" not in encoded
+    assert "owner_id" not in encoded
+    assert "credential" not in encoded
+
+
+def test_native_turn_snapshot_warning_preserves_cancellation_without_guessing_cause() -> None:
+    projection = probe._native_timing_projection(
+        _native_turn_snapshot_warning(termination="cancelled")
+    )
+    warning = projection["runtime_warnings"][0]
+
+    assert warning["termination"] == "cancelled"
+    assert warning["snapshot_status"] == "observed"
+    assert warning["tool_parts"] == 1
+    assert "cause" not in warning
+    assert "reason" not in warning
+
+
+def test_native_turn_snapshot_warning_accepts_unavailable_and_identical_occurrences() -> None:
+    unavailable = _native_turn_snapshot_warning(
+        termination="cancelled",
+        snapshot_status="unavailable",
+        snapshot_age_ms="none",
+        assistant_finish="none",
+        text_parts=0,
+        text_nonempty_parts=0,
+        reasoning_parts=0,
+        tool_parts=0,
+        other_parts=0,
+        tools_running=0,
+        tools_completed=0,
+        tools_error=0,
+        tools_unknown=0,
+    )
+    projection = probe._native_timing_projection("\n".join((unavailable, unavailable)))
+
+    assert projection["status"] == "available"
+    assert projection["runtime_warnings"] == [
+        {
+            "kind": "native_turn_snapshot",
+            "occurrence_count": 2,
+            "termination": "cancelled",
+            "snapshot_status": "unavailable",
+            "snapshot_age_ms": None,
+            "assistant_finish": [],
+            "text_parts": 0,
+            "text_nonempty_parts": 0,
+            "reasoning_parts": 0,
+            "tool_parts": 0,
+            "other_parts": 0,
+            "tools_running": 0,
+            "tools_completed": 0,
+            "tools_error": 0,
+            "tools_unknown": 0,
+        }
+    ]
+    assert "cause" not in projection["runtime_warnings"][0]
+    assert "reason" not in projection["runtime_warnings"][0]
+
+
+def test_native_turn_snapshot_warning_accepts_exact_part_and_tool_caps() -> None:
+    warning = _native_turn_snapshot_warning(
+        snapshot_age_ms=0,
+        text_parts=16_376,
+        text_nonempty_parts=16_376,
+        reasoning_parts=0,
+        tool_parts=8,
+        other_parts=0,
+        tools_running=2,
+        tools_completed=2,
+        tools_error=2,
+        tools_unknown=2,
+    )
+
+    projected = probe._native_timing_projection(warning)["runtime_warnings"][0]
+
+    assert projected["snapshot_age_ms"] == 0
+    assert projected["text_parts"] == 16_376
+    assert projected["text_nonempty_parts"] == 16_376
+    assert projected["tool_parts"] == 8
+    assert (
+        sum(
+            projected[field]
+            for field in ("tools_running", "tools_completed", "tools_error", "tools_unknown")
+        )
+        == projected["tool_parts"]
+    )
+
+
+@pytest.mark.parametrize(
+    "warning",
+    [
+        _native_turn_snapshot_warning(termination="lease_expired"),
+        _native_turn_snapshot_warning(snapshot_status="future"),
+        _native_turn_snapshot_warning(snapshot_age_ms="none"),
+        _native_turn_snapshot_warning(snapshot_age_ms="-1"),
+        _native_turn_snapshot_warning(snapshot_age_ms="012"),
+        _native_turn_snapshot_warning(snapshot_age_ms=120_001),
+        _native_turn_snapshot_warning(
+            snapshot_status="unavailable", snapshot_age_ms=0, assistant_finish="none"
+        ),
+        _native_turn_snapshot_warning(
+            snapshot_status="unavailable",
+            snapshot_age_ms="none",
+            assistant_finish="stop",
+            text_parts=0,
+            text_nonempty_parts=0,
+            reasoning_parts=0,
+            tool_parts=0,
+            other_parts=0,
+            tools_running=0,
+            tools_completed=0,
+            tools_error=0,
+            tools_unknown=0,
+        ),
+        _native_turn_snapshot_warning(
+            snapshot_status="unavailable",
+            snapshot_age_ms="none",
+            assistant_finish="none",
+            text_parts=1,
+            text_nonempty_parts=0,
+            reasoning_parts=0,
+            tool_parts=0,
+            other_parts=0,
+            tools_running=0,
+            tools_completed=0,
+            tools_error=0,
+            tools_unknown=0,
+        ),
+        _native_turn_snapshot_warning(assistant_finish="stop,error"),
+        _native_turn_snapshot_warning(assistant_finish="error,error"),
+        _native_turn_snapshot_warning(assistant_finish="private_value"),
+        _native_turn_snapshot_warning(text_nonempty_parts=5),
+        _native_turn_snapshot_warning(text_parts=16_385),
+        _native_turn_snapshot_warning(text_parts=16_383, reasoning_parts=1),
+        _native_turn_snapshot_warning(
+            text_parts=16_377,
+            text_nonempty_parts=16_377,
+            reasoning_parts=0,
+            tool_parts=8,
+            other_parts=0,
+            tools_running=2,
+            tools_completed=2,
+            tools_error=2,
+            tools_unknown=2,
+        ),
+        _native_turn_snapshot_warning(tool_parts=9),
+        _native_turn_snapshot_warning(tools_completed=9),
+        _native_turn_snapshot_warning(tools_running=1, tools_completed=1),
+        _native_turn_snapshot_warning(
+            tool_parts=8, tools_running=3, tools_completed=3, tools_error=2, tools_unknown=1
+        ),
+        _native_turn_snapshot_warning(tool_parts=2),
+        _native_turn_snapshot_warning().replace("text_parts=4", "text_parts=04"),
+        _native_turn_snapshot_warning().replace(
+            "tools_unknown=0).", "tools_unknown=0, owner_id=41)."
+        ),
+        _native_turn_snapshot_warning().replace(
+            "tools_unknown=0).", "tools_unknown=0, tools_unknown=0)."
+        ),
+        _native_turn_snapshot_warning().replace("snapshot_age_ms=120000", "snapshot_age_ms=1.5"),
+    ],
+)
+def test_native_turn_snapshot_warning_rejects_malformed_private_or_unbounded_fields(
+    warning: str,
+) -> None:
+    with pytest.raises(probe.ProbeError, match="native .*diagnostic") as error:
+        probe._native_timing_projection(warning)
+    assert "owner_id" not in str(error.value)
+    assert "private_value" not in str(error.value)
 
 
 def test_native_warning_projection_accepts_deadline_and_discards_unbounded_failure_text() -> None:
@@ -1448,6 +1681,32 @@ def test_candidate_timing_projection_keeps_bounded_warning_counts_and_output(
     ]
     assert "runtime_warnings_truncated" not in projection
     assert len(json.dumps(projection)) < 4096
+
+
+def test_candidate_timing_projection_marks_malformed_turn_snapshot_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = probe.Candidate(
+        container="assistant-r120-candidate-abc123def456",
+        container_id="container-id",
+        image_id="sha256:" + "c" * 64,
+        data_volume="stock-probs-assistant-r120-abc123def456",
+        base_url="http://127.0.0.1:8000",
+        host_port=8000,
+        host_pid=1,
+        cgroup=Path("unused"),
+    )
+    malformed = _native_turn_snapshot_warning().replace(
+        "tools_unknown=0).", "tools_unknown=0, owner_id=41)."
+    )
+    monkeypatch.setattr(probe, "_command", lambda *_arguments, **_kwargs: malformed)
+
+    projection = probe._candidate_native_timing_projection(candidate, "2026-10-06T12:00:00Z")
+
+    assert projection["status"] == "invalid"
+    assert projection["failure_reason"] == "turn_snapshot_payload_invalid"
+    assert projection["runtime_warnings"] == []
+    assert projection["marker_counts"] == {"timing": 0, "warning": 1}
 
 
 def test_native_warning_occurrence_count_rejects_values_above_tail_bound() -> None:

@@ -3491,6 +3491,281 @@ def test_native_flat_content_text_snapshot_deduplicates_repeated_polling() -> No
     assert events == [{"type": "token", "data": {"text": "Hello native."}}]
 
 
+def test_native_timeout_snapshot_caches_closed_counts_without_content_or_extra_reads(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a fully consumed message snapshot is cached, and its log is content-free."""
+
+    private_text = "private native partial answer"
+    private_reasoning = "private native reasoning"
+    private_identifier = "private-message-identifier"
+    payload = {
+        "data": [
+            {
+                "type": "assistant",
+                "id": private_identifier,
+                "finish": "tool-calls",
+                "content": [
+                    {"type": "text", "id": "text-nonempty", "text": private_text},
+                    {"type": "text", "id": "text-empty", "text": ""},
+                    {"type": "reasoning", "id": "reasoning-private", "text": private_reasoning},
+                    {
+                        "type": "tool",
+                        "id": "tool-completed",
+                        "name": "fixture.completed",
+                        "state": {"status": "completed"},
+                    },
+                    {
+                        "type": "tool",
+                        "id": "tool-running",
+                        "name": "fixture.running",
+                        "state": {"status": "pending"},
+                    },
+                    {
+                        "type": "tool",
+                        "id": "tool-error",
+                        "name": "webfetch",
+                        "state": {"status": "error", "error": {"message": "private error"}},
+                    },
+                    {
+                        "type": "tool",
+                        "id": "tool-unknown",
+                        "name": "fixture.unknown",
+                        "state": {"status": "not-a-known-state"},
+                    },
+                    {"type": "private-part-kind", "value": "private other part"},
+                ],
+            }
+        ]
+    }
+    requests: list[str] = []
+
+    async def native_api(request: httpx.Request) -> httpx.Response:
+        requests.append(request.url.path)
+        return _native_json_response(payload)
+
+    runtime = _runtime_for_native_api(native_api)
+    outcome: dict[str, object] = {"status": "completed", "tokens": 0}
+    events: list[object] = []
+
+    async def emit(event: object) -> None:
+        events.append(event)
+
+    async def exercise() -> dict[str, object]:
+        try:
+            await runtime._consume_message_snapshot("sesABCDEFGH", _context(), emit, outcome)
+            return outcome
+        finally:
+            await runtime.close()
+
+    observed = asyncio.run(exercise())
+    snapshot = observed["native_timeout_snapshot"]
+    assert isinstance(snapshot, assistant_runtime._NativeTimeoutSnapshot)
+    assert snapshot.assistant_finish == "tool-calls"
+    assert snapshot.text_parts == 2
+    assert snapshot.text_nonempty_parts == 1
+    assert snapshot.reasoning_parts == 1
+    assert snapshot.tool_parts == 4
+    assert snapshot.other_parts == 1
+    assert (
+        snapshot.tools_running,
+        snapshot.tools_completed,
+        snapshot.tools_error,
+        snapshot.tools_unknown,
+    ) == (1, 1, 1, 1)
+    assert len(requests) == 1
+
+    observed_at = snapshot.observed_monotonic
+    monkeypatch.setattr(
+        assistant_runtime,
+        "time",
+        SimpleNamespace(monotonic=lambda: observed_at + 0.5),
+    )
+    assistant_runtime._log_native_turn_snapshot(snapshot, termination="timed_out")
+
+    assert (
+        "Assistant native turn snapshot (termination=timed_out, snapshot_status=observed, "
+        "snapshot_age_ms=500,"
+    ) in (caplog.text)
+    assert "assistant_finish=tool-calls" in caplog.text
+    assert "text_parts=2, text_nonempty_parts=1, reasoning_parts=1, tool_parts=4" in caplog.text
+    assert "other_parts=1, tools_running=1, tools_completed=1, tools_error=1, tools_unknown=1" in (
+        caplog.text
+    )
+    assert private_text not in caplog.text
+    assert private_reasoning not in caplog.text
+    assert private_identifier not in caplog.text
+    assert "private error" not in caplog.text
+    assert "private-part-kind" not in caplog.text
+    assert len(requests) == 1
+
+
+def test_native_timeout_snapshot_does_not_cache_foreign_or_malformed_reads(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Foreign or malformed rows cannot replace the last fully validated snapshot."""
+
+    snapshots = [
+        {
+            "data": [
+                {
+                    "type": "assistant",
+                    "id": "private-good-id",
+                    "finish": "stop",
+                    "content": [{"type": "text", "id": "good-part", "text": "safe to omit"}],
+                }
+            ]
+        },
+        {
+            "data": [
+                {
+                    "type": "assistant",
+                    "sessionID": "sesFOREIGNIDENTITY",
+                    "id": "foreign-private-id",
+                    "content": [{"type": "text", "text": "foreign private text"}],
+                }
+            ]
+        },
+        {"data": [{"type": "assistant", "content": [None]}]},
+    ]
+    reads = 0
+
+    async def native_api(_request: httpx.Request) -> httpx.Response:
+        nonlocal reads
+        payload = snapshots[reads]
+        reads += 1
+        return _native_json_response(payload)
+
+    runtime = _runtime_for_native_api(native_api)
+    outcome: dict[str, object] = {"status": "completed", "tokens": 0}
+
+    async def emit(_event: object) -> None:
+        return None
+
+    async def exercise() -> tuple[object, object, object]:
+        try:
+            await runtime._consume_message_snapshot("sesABCDEFGH", _context(), emit, outcome)
+            cached = outcome.get("native_timeout_snapshot")
+            assert isinstance(cached, assistant_runtime._NativeTimeoutSnapshot)
+            await runtime._consume_message_snapshot("sesABCDEFGH", _context(), emit, outcome)
+            after_foreign = outcome.get("native_timeout_snapshot")
+            with pytest.raises(RuntimeError, match="session_part_invalid"):
+                await runtime._consume_message_snapshot("sesABCDEFGH", _context(), emit, outcome)
+            after_malformed = outcome.get("native_timeout_snapshot")
+            return cached, after_foreign, after_malformed
+        finally:
+            await runtime.close()
+
+    cached, after_foreign, after_malformed = asyncio.run(exercise())
+    assert cached is after_foreign is after_malformed
+    assert reads == 3
+
+    assistant_runtime._log_native_turn_snapshot(cached, termination="timed_out")
+    assert "snapshot_status=observed" in caplog.text
+    assert "foreign private text" not in caplog.text
+    assert "foreign-private-id" not in caplog.text
+    assert "private-good-id" not in caplog.text
+
+
+def test_native_timeout_snapshot_unavailable_defaults_and_closed_count_bounds(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Missing snapshots are fixed; counts saturate only at accepted closed bounds."""
+
+    assistant_runtime._log_native_turn_snapshot(None, termination="timed_out")
+    assert (
+        "Assistant native turn snapshot (termination=timed_out, snapshot_status=unavailable, "
+        "snapshot_age_ms=none, "
+        "assistant_finish=none, text_parts=0, text_nonempty_parts=0, reasoning_parts=0, "
+        "tool_parts=0, other_parts=0, tools_running=0, tools_completed=0, tools_error=0, "
+        "tools_unknown=0)."
+    ) in caplog.text
+
+    caplog.clear()
+    snapshot = assistant_runtime._NativeTimeoutSnapshot(
+        observed_monotonic=time.monotonic(),
+        assistant_finish="none",
+        text_parts=assistant_runtime._MAX_NATIVE_PARTS,
+        text_nonempty_parts=assistant_runtime._MAX_NATIVE_PARTS,
+        reasoning_parts=0,
+        tool_parts=0,
+        other_parts=0,
+        tools_running=0,
+        tools_completed=0,
+        tools_error=0,
+        tools_unknown=0,
+    )
+    assistant_runtime._log_native_turn_snapshot(snapshot, termination="timed_out")
+    assert f"text_parts={assistant_runtime._MAX_NATIVE_PARTS}" in caplog.text
+    assert f"text_nonempty_parts={assistant_runtime._MAX_NATIVE_PARTS}" in caplog.text
+    assert "snapshot_status=observed" in caplog.text
+
+    caplog.clear()
+    overflow = assistant_runtime._NativeTimeoutSnapshot(
+        observed_monotonic=time.monotonic(),
+        assistant_finish="none",
+        text_parts=assistant_runtime._MAX_NATIVE_PARTS + 1,
+        text_nonempty_parts=assistant_runtime._MAX_NATIVE_PARTS + 1,
+        reasoning_parts=0,
+        tool_parts=0,
+        other_parts=0,
+        tools_running=0,
+        tools_completed=0,
+        tools_error=0,
+        tools_unknown=0,
+    )
+    assistant_runtime._log_native_turn_snapshot(overflow, termination="timed_out")
+    assert "snapshot_status=unavailable" in caplog.text
+    assert "text_parts=0, text_nonempty_parts=0" in caplog.text
+
+
+@pytest.mark.parametrize("observed_monotonic", (float("nan"), float("inf"), 1e308))
+def test_native_timeout_snapshot_rejects_nonfinite_or_future_age(
+    observed_monotonic: float,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Unusable monotonic observations fall back without raising or emitting counts."""
+
+    snapshot = assistant_runtime._NativeTimeoutSnapshot(
+        observed_monotonic=observed_monotonic,
+        assistant_finish="stop",
+        text_parts=1,
+        text_nonempty_parts=1,
+        reasoning_parts=0,
+        tool_parts=0,
+        other_parts=0,
+        tools_running=0,
+        tools_completed=0,
+        tools_error=0,
+        tools_unknown=0,
+    )
+    assistant_runtime._log_native_turn_snapshot(snapshot, termination="timed_out")
+    assert "snapshot_status=unavailable" in caplog.text
+    assert "snapshot_age_ms=none" in caplog.text
+    assert "text_parts=0, text_nonempty_parts=0" in caplog.text
+
+
+def test_native_timeout_snapshot_age_saturates_at_turn_budget(caplog) -> None:
+    """The age field is capped rather than converting an unbounded delta to an integer."""
+
+    snapshot = assistant_runtime._NativeTimeoutSnapshot(
+        observed_monotonic=-1e308,
+        assistant_finish="stop",
+        text_parts=1,
+        text_nonempty_parts=1,
+        reasoning_parts=0,
+        tool_parts=0,
+        other_parts=0,
+        tools_running=0,
+        tools_completed=0,
+        tools_error=0,
+        tools_unknown=0,
+    )
+    assistant_runtime._log_native_turn_snapshot(snapshot, termination="timed_out")
+    assert "snapshot_status=observed" in caplog.text
+    assert f"snapshot_age_ms={assistant_runtime._TURN_TIMING_WORK_LIMIT_MS}" in caplog.text
+
+
 def test_native_message_and_permission_polls_retry_transient_read_errors_once() -> None:
     """Only read-only polls retry; recovered messages still need the final stop snapshot."""
 
@@ -6938,6 +7213,156 @@ def test_only_full_turn_budget_expiry_returns_turn_timeout(
     assert "request_timeout" not in caplog.text
     assert "Synthetic full deadline fixture" not in caplog.text
     assert supervisor.removed == ["a" * 32]
+
+
+@pytest.mark.parametrize("termination", ("timed_out", "cancelled"))
+def test_native_turn_snapshot_logs_last_cached_observation_without_an_extra_get(
+    termination: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Timeout and outer cancellation log only the last bounded poll without another GET."""
+
+    monkeypatch.setattr(assistant_runtime, "_MAX_TURN_SECONDS", 1.0)
+    caplog.set_level("WARNING")
+    location = "/run/assistant/worker-locations/" + "a" * 32
+    message_observed = asyncio.Event()
+    wait_started = asyncio.Event()
+    wait_finished = asyncio.Event()
+    termination_requested = asyncio.Event()
+    message_calls = 0
+    message_calls_after_termination = 0
+    payload = {
+        "data": [
+            {
+                "type": "assistant",
+                "id": "private-timeout-message",
+                "content": [
+                    {"type": "text", "id": "private-timeout-part", "text": "private partial text"},
+                    {"type": "reasoning", "id": "private-reasoning", "text": "private reasoning"},
+                    {
+                        "type": "tool",
+                        "id": "private-tool-part",
+                        "name": "fixture.tool",
+                        "state": {"status": "running"},
+                    },
+                ],
+            }
+        ]
+    }
+
+    def response(status: int, body: object | None = None) -> httpx.Response:
+        content = json.dumps(body).encode("utf-8") if body is not None else b""
+        headers = {"content-type": "application/json"} if body is not None else {}
+        return httpx.Response(status, headers=headers, stream=_NativeBody(content))
+
+    async def native_api(request: httpx.Request) -> httpx.Response:
+        nonlocal message_calls, message_calls_after_termination
+        path = request.url.path
+        if path == "/api/info":
+            return response(200, {"version": "v2"})
+        if path == "/api/location":
+            return response(200, {"directory": location, "project": {"directory": location}})
+        if path == "/api/model":
+            directory = request.url.params.get("location[directory]", "")
+            return response(
+                200,
+                _native_model_payload(
+                    directory,
+                    [{"id": "assistant-selected", "providerID": "assistant-proxy"}],
+                    capability="d" * 48,
+                ),
+            )
+        if path == "/api/mcp":
+            return response(
+                200, {"data": [{"name": "signal-ledger", "status": {"status": "connected"}}]}
+            )
+        if path == "/api/websearch/provider":
+            return response(200, {"data": []})
+        if path == "/api/session":
+            return response(200, {"data": {"id": "sesABCDEFGH"}})
+        if path == "/api/session/sesABCDEFGH/prompt":
+            return response(204)
+        if path == "/api/experimental/session/sesABCDEFGH/wait":
+            wait_started.set()
+            await asyncio.wait_for(message_observed.wait(), timeout=2.0)
+            if termination == "timed_out":
+                await asyncio.sleep(1.05)
+                wait_finished.set()
+            else:
+                await termination_requested.wait()
+            return response(204)
+        if path == "/api/session/sesABCDEFGH/message":
+            message_calls += 1
+            if wait_finished.is_set() or termination_requested.is_set():
+                message_calls_after_termination += 1
+            return response(200, payload)
+        if path == "/api/session/sesABCDEFGH/permission":
+            return response(200, {"data": []})
+        if path == "/api/session/sesABCDEFGH":
+            if request.method == "DELETE":
+                return response(204)
+            return response(200, {"data": {"outcome": "succeeded"}})
+        if path == "/api/session/sesABCDEFGH/interrupt":
+            return response(204)
+        raise AssertionError(f"unexpected native API route {path}")
+
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=_Supervisor(),
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
+
+    async def emit(event: object) -> None:
+        if isinstance(event, dict) and event.get("type") == "token":
+            message_observed.set()
+
+    async def exercise() -> AssistantTurnResult | None:
+        task = asyncio.create_task(
+            runtime.run_turn(context=_context(), prompt="synthetic timeout", emit=emit)
+        )
+        try:
+            await asyncio.wait_for(wait_started.wait(), timeout=3.0)
+            await asyncio.wait_for(message_observed.wait(), timeout=3.0)
+            if termination == "cancelled":
+                termination_requested.set()
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                return None
+            return await asyncio.wait_for(task, timeout=5.0)
+        finally:
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            await runtime.close()
+
+    result = asyncio.run(exercise())
+
+    if termination == "timed_out":
+        assert result is not None
+        assert (result.status, result.error_code) == ("timed_out", "turn_timeout")
+        assert "Assistant turn deadline expired" in caplog.text
+    else:
+        assert result is None
+        assert "Assistant turn deadline expired" not in caplog.text
+    assert message_calls >= 1
+    assert message_calls_after_termination == 0
+    assert (
+        f"Assistant native turn snapshot (termination={termination}, snapshot_status=observed, "
+    ) in caplog.text
+    assert "assistant_finish=none" in caplog.text
+    assert "text_parts=1, text_nonempty_parts=1, reasoning_parts=1, tool_parts=1" in caplog.text
+    assert "tools_running=1, tools_completed=0, tools_error=0, tools_unknown=0" in caplog.text
+    assert "private partial text" not in caplog.text
+    assert "private reasoning" not in caplog.text
+    assert "private-timeout-message" not in caplog.text
+    assert "private-tool-part" not in caplog.text
 
 
 @pytest.mark.parametrize(
