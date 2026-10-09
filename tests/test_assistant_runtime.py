@@ -8,6 +8,7 @@ import json
 import secrets
 import socket
 import time
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -5064,16 +5065,99 @@ def test_model_activation_barrier_rejects_malformed_or_foreign_location(
     assert routes == ["/api/location", "/api/model", "/api/integration"]
 
 
+def test_slow_model_activation_gets_fresh_bounded_catalog_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cold activation can finish before a separate bounded catalog lookup."""
+
+    monkeypatch.setattr(assistant_runtime, "_MODEL_DISCOVERY_SECONDS", 0.03)
+    monkeypatch.setattr(assistant_runtime, "_MODEL_ACTIVATION_SECONDS", 0.12)
+    monkeypatch.setattr(assistant_runtime, "_MODEL_DISCOVERY_REQUEST_SECONDS", 0.02)
+    monkeypatch.setattr(assistant_runtime, "_MODEL_DISCOVERY_RETRY_SECONDS", 0.001)
+    context = _context()
+    location = f"/run/assistant/worker-locations/{context.execution_id}"
+    model_calls = 0
+    readiness_calls = 0
+    routes: list[str] = []
+    request_timeouts: list[float] = []
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=_Supervisor(),
+    )
+    descriptor = runtime._native_adapter_for_model(context.model_id, owner_id=context.user_id)
+
+    async def native_request(method: str, path: str, **kwargs: object) -> httpx.Response:
+        nonlocal model_calls, readiness_calls
+        assert method == "GET"
+        routes.append(path)
+        request_timeouts.append(float(kwargs["timeout"]))
+        if path == "/api/model":
+            model_calls += 1
+            rows = (
+                []
+                if model_calls == 1
+                else [
+                    {
+                        "id": assistant_runtime._MODEL_ALIAS,
+                        "providerID": "assistant-proxy",
+                    }
+                ]
+            )
+            return httpx.Response(
+                200,
+                json=_native_model_payload(
+                    location,
+                    rows,
+                    capability=context.capability,
+                ),
+            )
+        if path == "/api/integration":
+            readiness_calls += 1
+            if readiness_calls < 3:
+                await asyncio.sleep(float(kwargs["timeout"]))
+                raise httpx.ReadTimeout("private activation wait detail")
+            return httpx.Response(200, json=_native_integration_payload(location))
+        raise AssertionError(f"unexpected native route {path}")
+
+    runtime._request = native_request
+
+    async def exercise() -> Mapping[str, str]:
+        try:
+            return await runtime._verify_location_model(
+                context, location, descriptor, turn_deadline=None
+            )
+        finally:
+            await runtime.close()
+
+    provider_ref = asyncio.run(exercise())
+
+    assert provider_ref == {"id": assistant_runtime._MODEL_ALIAS, "providerID": "assistant-proxy"}
+    assert model_calls == 2
+    assert readiness_calls == 3
+    assert routes == [
+        "/api/model",
+        "/api/integration",
+        "/api/integration",
+        "/api/integration",
+        "/api/model",
+    ]
+    assert len(request_timeouts) == 5
+    assert all(0 < timeout <= 0.02 for timeout in request_timeouts)
+
+
 @pytest.mark.parametrize("outer_deadline", (False, True))
 def test_model_activation_barrier_timeout_respects_discovery_and_turn_deadlines(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
     outer_deadline: bool,
 ) -> None:
-    """The readiness waiter cannot extend the fixed catalog or whole-turn budget."""
+    """The readiness waiter cannot extend its activation or whole-turn budget."""
 
     caplog.set_level("WARNING")
     monkeypatch.setattr(assistant_runtime, "_MODEL_DISCOVERY_SECONDS", 0.5)
+    monkeypatch.setattr(assistant_runtime, "_MODEL_ACTIVATION_SECONDS", 0.5)
     monkeypatch.setattr(assistant_runtime, "_MODEL_DISCOVERY_REQUEST_SECONDS", 0.02)
     monkeypatch.setattr(assistant_runtime, "_MODEL_DISCOVERY_RETRY_SECONDS", 0.005)
     location = "/run/assistant/worker-locations/" + "a" * 32

@@ -119,6 +119,7 @@ _TURN_TIMING_LOG_MARKER = "ASSISTANT_TURN_TIMING_V5 "
 _LOCATION_DISCOVERY_SECONDS = 15.0
 _LOCATION_DISCOVERY_REQUEST_SECONDS = 5.0
 _LOCATION_DISCOVERY_RETRY_SECONDS = 0.2
+_MODEL_ACTIVATION_SECONDS = 15.0
 _MODEL_DISCOVERY_SECONDS = 8.0
 _MODEL_DISCOVERY_REQUEST_SECONDS = 2.0
 _MODEL_DISCOVERY_RETRY_SECONDS = 0.2
@@ -2633,9 +2634,10 @@ class OpenCodeV2Runtime:
         provider_ref: Mapping[str, str] | None = None
         loop = asyncio.get_running_loop()
         model_started = loop.time()
-        model_deadline = model_started + _MODEL_DISCOVERY_SECONDS
+        catalog_deadline = model_started + _MODEL_DISCOVERY_SECONDS
         if turn_deadline is not None:
-            model_deadline = min(model_deadline, turn_deadline)
+            catalog_deadline = min(catalog_deadline, turn_deadline)
+        activation_deadline: float | None = None
         model_attempts = 0
         model_timeouts = 0
         readiness_attempts = 0
@@ -2667,7 +2669,7 @@ class OpenCodeV2Runtime:
             )
 
         while True:
-            remaining = model_deadline - loop.time()
+            remaining = catalog_deadline - loop.time()
             if remaining <= 0:
                 break
             model_attempts += 1
@@ -2679,11 +2681,10 @@ class OpenCodeV2Runtime:
                     timeout=min(_MODEL_DISCOVERY_REQUEST_SECONDS, remaining),
                 )
             except (TimeoutError, httpx.TimeoutException):
-                # Native provider/config initialization can make an early catalog read slow.
-                # Retry only this request-local timeout inside the original fixed discovery
-                # budget; malformed data and non-timeout errors still fail immediately.
+                # Retry a cold catalog read only within its bounded catalog window. The
+                # activation barrier receives a separate finite window below.
                 model_timeouts += 1
-                remaining = model_deadline - loop.time()
+                remaining = catalog_deadline - loop.time()
                 if remaining <= 0:
                     break
                 await asyncio.sleep(min(_MODEL_DISCOVERY_RETRY_SECONDS, remaining))
@@ -2763,8 +2764,12 @@ class OpenCodeV2Runtime:
                 # V2.0.7's integration.list handler waits on Plugin.awaitActivation.
                 # Its location-scoped response is used only as the activation barrier;
                 # the exact model still has to appear in the model catalog below.
+                if activation_deadline is None:
+                    activation_deadline = loop.time() + _MODEL_ACTIVATION_SECONDS
+                    if turn_deadline is not None:
+                        activation_deadline = min(activation_deadline, turn_deadline)
                 while not readiness_complete:
-                    remaining = model_deadline - loop.time()
+                    remaining = activation_deadline - loop.time()
                     if remaining <= 0:
                         break
                     readiness_attempts += 1
@@ -2777,7 +2782,7 @@ class OpenCodeV2Runtime:
                         )
                     except (TimeoutError, httpx.TimeoutException):
                         readiness_timeouts += 1
-                        remaining = model_deadline - loop.time()
+                        remaining = activation_deadline - loop.time()
                         if remaining <= 0:
                             break
                         await asyncio.sleep(min(_MODEL_DISCOVERY_RETRY_SECONDS, remaining))
@@ -2808,8 +2813,11 @@ class OpenCodeV2Runtime:
                     raise _AssistantRuntimeFailure(
                         "native_request_timeout", "model_discovery"
                     ) from None
+                catalog_deadline = loop.time() + _MODEL_DISCOVERY_SECONDS
+                if turn_deadline is not None:
+                    catalog_deadline = min(catalog_deadline, turn_deadline)
                 continue
-            remaining = model_deadline - loop.time()
+            remaining = catalog_deadline - loop.time()
             if remaining <= 0:
                 break
             await asyncio.sleep(min(_MODEL_DISCOVERY_RETRY_SECONDS, remaining))
@@ -2825,8 +2833,7 @@ class OpenCodeV2Runtime:
                 if missing_alias_responses
                 else "catalog_timeout"
             )
-            # This is catalog unavailability inside its own 8s budget, not the outer
-            # 120s turn deadline. Keep the closed stage/code for safe operational diagnosis.
+            # Keep setup exhaustion distinct from the outer turn deadline and fail closed.
             raise _AssistantRuntimeFailure("model_alias_unavailable", "model_discovery") from None
         if model_timeouts or readiness_timeouts or readiness_complete:
             elapsed_ms = max(0, int((loop.time() - model_started) * 1000))
