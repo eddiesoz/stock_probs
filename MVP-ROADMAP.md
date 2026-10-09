@@ -3121,3 +3121,8 @@ only; finalization and guide acceptance remain pending. E390 confirms unchanged 
 through read-only MCP status. The **US$15 total monthly cap includes backups and taxes**;
 the existing 1 GB Linode and backups remain unchanged. Required native/provider, strict
 accessibility, actual capacity, PR-bound rollback, and release gates remain open.
+
+
+### R-ASTRA-120 E820 deployment-checker follow-on
+
+The clean `6efcf212` canonical local gate passed with 2,902 Python passes, four skips, four deselected, 85.68% coverage and 71 frontend checks; independent review receipt SHA-256 is `91be63769b6327c004fbe786244bccfb4a4b53c0d048642ae5cb36458e533bda`. The current image `99b82f99` and recovery `52934202` passed the local schema-13 pair, verified backup and write-preservation rehearsal. Current-image active-search shutdown passed its local scope, with no provider-side execution-count claim. The first fresh SDK attempt failed before initialization; a corrected actual-host MCP attempt returned `cgroup_cpu_stat_counters_incomplete`. Read-only host counters include `core_sched.force_idle_usec` alongside all required counters; exact container text was not observed. A narrow dotted-counter parser repair passed 13 builder and 13 independent tests plus parent source review; independent JUnit SHA-256 is `69d4879da1c64d6b7b1464df64e4143cd178c2f1815a141879727ef817db72d0`. A fresh host result remains pending. Actual-host native/resource/recovery, owner canary and release gates remain open. Production and the US$15 monthly cap are unchanged; no merge, deployment, resize, rollout or email occurred.

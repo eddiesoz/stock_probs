@@ -2297,12 +2297,26 @@ def test_cpu_stat_evidence_fails_closed_on_invalid_or_reset_counters(
     [
         "usage_usec 1\nnr_periods 1\nnr_throttled 1\n",
         "usage_usec -1\nnr_periods 1\nnr_throttled 1\nthrottled_usec 1\n",
+        "usage_usec invalid\nnr_periods 1\nnr_throttled 1\nthrottled_usec 1\n",
+        "usage_usec 1\nusage_usec 2\nnr_periods 1\nnr_throttled 1\nthrottled_usec 1\n",
         "usage_usec 18446744073709551616\nnr_periods 1\nnr_throttled 1\nthrottled_usec 1\n",
     ],
 )
 def test_cpu_stat_parser_rejects_incomplete_or_invalid_counters(text: str) -> None:
     with pytest.raises(host_helper.RehearsalError, match="cgroup_cpu_stat_counters_incomplete"):
         host_helper._parse_cpu_stat(text, len(text), role="candidate")
+
+
+def test_cpu_stat_parser_ignores_bounded_dotted_unknown_counter() -> None:
+    text = "usage_usec 1\nnr_periods 1\nnr_throttled 1\nthrottled_usec 1\n"
+    text += "core_sched.force_idle_usec 0\n"
+
+    assert host_helper._parse_cpu_stat(text, len(text), role="candidate") == {
+        "usage_usec": 1,
+        "nr_periods": 1,
+        "nr_throttled": 1,
+        "throttled_usec": 1,
+    }
 
 
 def test_cpu_stat_parser_rejects_oversized_evidence() -> None:

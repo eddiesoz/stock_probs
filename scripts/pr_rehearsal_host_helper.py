@@ -2291,7 +2291,11 @@ def _parse_cpu_stat(text: str, byte_count: int, *, role: str) -> dict[str, int]:
     invalid: list[str] = []
     for line in text.splitlines():
         parts = line.split()
-        if len(parts) != 2 or not re.fullmatch(r"[a-z_]{1,32}", parts[0]):
+        if (
+            len(parts) != 2
+            or len(parts[0]) > 32
+            or re.fullmatch(r"[a-z_]+(?:\.[a-z_]+)*", parts[0]) is None
+        ):
             invalid.append("cpu.stat")
             continue
         name, count_text = parts
