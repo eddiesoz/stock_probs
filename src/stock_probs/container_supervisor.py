@@ -1146,10 +1146,12 @@ class ContainerSupervisor:
                 return None
             return False
         except urllib.error.URLError as exc:
-            return None if isinstance(exc.reason, TimeoutError) else False
+            return None if isinstance(exc.reason, OSError) else False
         except TimeoutError:
             return None
-        except (OSError, json.JSONDecodeError, ValueError):
+        except OSError:
+            return None
+        except (json.JSONDecodeError, ValueError):
             return False
 
     def _poll_worker(self) -> None:

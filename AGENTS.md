@@ -321,6 +321,12 @@ before building. Every failed diagnostic must identify a concrete next repair or
 do not repeat an unchanged trial without new discriminating evidence. All required security,
 runtime, rollback, resource, accessibility, and release gates remain mandatory.
 
+For focused diagnosis across tasks, reuse verified evidence while its bound inputs remain
+unchanged. Reproduce the specific failing path before expanding tests, then rerun affected checks
+after a fix. Repeat a full suite when a release gate or shared-contract impact requires it. This
+workflow does not relax release, security, or acceptance gates.
+R-ASTRA-120 E816: candidate head 4cadfa607908f9ee433b22d7cbe8a6ded567f1ee had a native functional **Fail**; the integrated worker-readiness repair has selected builder and independent QA **Pass**, while post-repair image/native, canonical, combined-resource and PR-bound rollback checks remain **Pending**.
+
 R-ASTRA-120 candidate source exposes eight deployment MCP operations: `inspect`, `plan_deploy`,
 `deploy`, `status`, `rollback`, `refresh_operator_access`, `rehearse_pr_pair`, and
 `set_assistant_rollout`. Independent official Python SDK stdio initialization/list_tools later

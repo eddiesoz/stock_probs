@@ -426,13 +426,27 @@ def test_worker_api_gateway_statuses_are_uncertain_but_other_failures_stay_close
         raise supervisor.urllib.error.URLError(ConnectionResetError("synthetic reset"))
 
     monkeypatch.setattr(supervisor.urllib.request, "urlopen", reset)
-    assert instance._worker_ready() is False
+    assert instance._worker_ready() is None
 
     def refused(*_args: object, **_kwargs: object) -> object:
         raise supervisor.urllib.error.URLError(ConnectionRefusedError("synthetic refusal"))
 
     monkeypatch.setattr(supervisor.urllib.request, "urlopen", refused)
-    assert instance._worker_ready() is False
+    assert instance._worker_ready() is None
+
+    for reason in ("synthetic non-I/O reason", ValueError("synthetic value error")):
+
+        def non_io_failure(*_args: object, _reason: object = reason, **_kwargs: object) -> object:
+            raise supervisor.urllib.error.URLError(_reason)
+
+        monkeypatch.setattr(supervisor.urllib.request, "urlopen", non_io_failure)
+        assert instance._worker_ready() is False
+
+    def direct_reset(*_args: object, **_kwargs: object) -> object:
+        raise ConnectionResetError("synthetic direct reset")
+
+    monkeypatch.setattr(supervisor.urllib.request, "urlopen", direct_reset)
+    assert instance._worker_ready() is None
 
     class ProbeResponse:
         status = 200
@@ -458,9 +472,19 @@ def test_worker_api_gateway_statuses_are_uncertain_but_other_failures_stay_close
         assert instance._worker_ready() is False
 
 
-@pytest.mark.parametrize("status_code", (502, 503, 504))
-def test_same_verified_worker_gateway_error_projects_uncertain_status(
-    status_code: int,
+@pytest.mark.parametrize(
+    "failure",
+    (
+        supervisor.urllib.error.HTTPError(None, 502, "gateway unavailable", {}, None),
+        supervisor.urllib.error.HTTPError(None, 503, "gateway unavailable", {}, None),
+        supervisor.urllib.error.HTTPError(None, 504, "gateway unavailable", {}, None),
+        supervisor.urllib.error.URLError(ConnectionResetError("synthetic reset")),
+        supervisor.urllib.error.URLError(ConnectionRefusedError("synthetic refusal")),
+        ConnectionResetError("synthetic direct reset"),
+    ),
+)
+def test_same_verified_worker_transport_error_projects_uncertain_status(
+    failure: BaseException,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class LiveWorker:
@@ -489,7 +513,7 @@ def test_same_verified_worker_gateway_error_projects_uncertain_status(
         calls += 1
         if calls == 1:
             return ProbeResponse()
-        raise supervisor.urllib.error.HTTPError(None, status_code, "gateway unavailable", {}, None)
+        raise failure
 
     monkeypatch.setattr(supervisor.urllib.request, "urlopen", verified_then_gateway_error)
 
@@ -513,11 +537,13 @@ def test_worker_status_marks_only_same_verified_live_generation_uncertain(
 
     instance = supervisor.ContainerSupervisor(worker_enabled=True, environment={})
     instance._worker = LiveWorker()  # type: ignore[assignment]
-    probe_results = iter((True, None, False))
+    probe_results = iter((True, None, None, False))
     monkeypatch.setattr(instance, "_worker_ready", lambda: next(probe_results))
 
     first = instance._dispatch({"version": 1, "op": "status"})
     uncertain = instance._dispatch({"version": 1, "op": "status"})
+    instance._worker_generation += 1
+    changed_generation = instance._dispatch({"version": 1, "op": "status"})
     rejected = instance._dispatch({"version": 1, "op": "status"})
 
     assert first["status"] == "ready"
@@ -525,6 +551,8 @@ def test_worker_status_marks_only_same_verified_live_generation_uncertain(
     assert uncertain["status"] == "starting"
     assert uncertain["observation_uncertain"] is True
     assert uncertain["api_password"] == first["api_password"]
+    assert changed_generation["status"] == "starting"
+    assert changed_generation["observation_uncertain"] is False
     assert rejected["status"] == "unavailable"
     assert rejected["observation_uncertain"] is False
 
@@ -555,7 +583,11 @@ def test_prepare_location_allows_only_previously_verified_generation_during_time
 
     unverified = supervisor.ContainerSupervisor(worker_enabled=True, environment={})
     unverified._worker = LiveWorker()  # type: ignore[assignment]
-    monkeypatch.setattr(unverified, "_worker_ready", lambda: None)
+
+    def unverified_refusal(*_args: object, **_kwargs: object) -> object:
+        raise supervisor.urllib.error.URLError(ConnectionRefusedError("synthetic refusal"))
+
+    monkeypatch.setattr(supervisor.urllib.request, "urlopen", unverified_refusal)
     with pytest.raises(supervisor.SupervisorError, match="worker_unavailable"):
         unverified._prepare_location(_prepare_request("c" * 32))
 
