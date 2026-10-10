@@ -3178,6 +3178,72 @@ canary and release gates remain open. No merge, deployment, resize, rollout or e
 | Input reuse Pass | `/var/tmp/r12r/independent-r120-canonical-browser-reuse-qa-20261010T0202Z-dfeddc57.json`, `0be8bf9ff929d3317066d5cc3864a7d532bbd97ee13f876cd658e2cae586cc93` |
 | Loaded artifact recovery / independent post-apply Pass | `/home/james/.local/state/stock-probs/r120-buildkit-v1/build-runs/0193fb93eaf66555a25990e6478032fb074ba737/3ff36c04f1f34d875729fa87cafc45b2ae7afbc4fb217f845656394e6d7d0a7f/loaded-artifact-recovery-d1daf531512045ed8bbaf75062ae9510.json`, `c0867517a120e070e5babbbdfac330bc19a7c7167ef9b6174c9eef97d86e2a1c`; `/var/tmp/r12r/independent-r120-loaded-artifact-postapply-qa-20261010T0157Z-31af8e1d.json`, `879e6ef42c81cb758ac3d31b7f0b5bdcf9eee5daa478af9bd60178c0df4499b3` |
 
+### R-ASTRA-120 E837 current PR-head and deployment-checker checkpoint
+
+Task `R-ASTRA-120`; PR #1 remains draft at pushed head
+`68c0423da76d0bf57ec19a7472dda5cfffc0a184`. At the initial E837 pre-doc observation, `HEAD` and
+its local `origin/codex/signal-ledger-assistant-r120` tracking ref matched; only the three
+in-progress deployment-checker files were modified. Candidate image
+`sha256:8e97513244b33e8feff2af68891a31f8bb21b7e914f64a890b709fced289de88` is bound to this head
+and source context `254e9e3d89257379a8844f332be2ebe5132536ed63ec0d655c1470144989936e`.
+
+The fresh 196-case browser aggregate **Passed** its test scope on the clean pushed head: 193
+passed, three expected skips, zero unexpected results and zero flaky cases. Parent integrated
+review passed that aggregate. The separate 68-state/72-phase raw axe result remains the scoped
+E836 **Pass**, with no full-app accessibility claim. The 14-page guide candidate also passed its
+declared parent visual and independent HTML/PDF review: 180 HTML checks across 12 viewport/theme
+states, raw axe 0/0, and eight embedded screenshots. PDF/UA, actual screen-reader, physical-mobile
+and true-zoom evidence remain **Unavailable**.
+
+The local current-image native functional run exited 0 at `2026-10-10T03:37:59.062628Z`–
+`03:40:54.484832Z`. Parent and independent terminal/cleanup reviews passed the declared local
+functional scope: two Zen model owners answered (604 and 852 bytes), workspace MCP and owner
+isolation/deletion checks passed, and the run recorded five native search sources and one guarded
+fetch source. Independent review confirmed exact image/revision binding, zero main PID and an empty
+service cgroup, loopback refusal, container/network/volume absence, and source/probe/launcher pins.
+Its 768 MiB cgroup sample reached the 805,306,368-byte cap with 126 `max` events and zero
+OOM/OOM-kill events; worker health sampling recorded 101 ready and two starting observations, not
+continuous readiness. This is not actual combined 1 GB acceptance. The separate
+current-image pending-search shutdown scope passed parent review; the search was not acknowledged
+or approved, and no provider-side execution-count claim follows. That diagnostic also used 768 MiB.
+
+Independent review passed the recorded local schema-13 PR-pair rehearsal, its source/archive
+binding and backup/write-preservation assertions. The later inventory recheck is **Unavailable**;
+this is not the required PR-bound rollback acceptance. The actual typed MCP PR-bound host rehearsal
+then **Failed** at `2026-10-10T02:52:18Z`–`02:54:26Z` with the generic
+`fixed_command_failed` projection. Read-only host event/journal projections supplied no
+discriminator, so the failure cause remains **Unproven** and no host acceptance is established.
+
+The checker-only repair received parent source review **Pass**. The reviewed boundary retains only
+a closed command category, numeric exit code and opaque receipt ID; it rejects extra or malformed
+fields and retains the existing native failure projection. Builder-reported checks were 165 passed
+with one Docker-mutating integration test deselected. Independent checker QA then **Passed** its
+declared Docker-free scope: 165 passed, zero failures/errors/skips, the same one test deselected,
+Ruff check/format, three exact source pins and task-temp cleanup. This does not establish a host
+retry or runtime acceptance. No repaired actual-host retry or new canonical aggregate was run. E836's canonical
+Pass remains bound to `0193fb93eaf66555a25990e6478032fb074ba737`; under the explicit checker-only
+reuse rule, unchanged app/Python/UI checks are reused only for their unchanged inputs. No canonical
+aggregate was run for head `68c0423` or the current dirty checker tree.
+
+The owner canary remains **Unavailable** at the existing IAB/TOTP boundary; no code was entered
+and no signed-in session state was cleared. Actual combined 1 GB, repaired actual-host rehearsal,
+PR-bound rollback, complete security, owner canary, deployment and release gates remain open.
+Production was not changed. The existing 1 GB plan, backups and US$15 monthly total cap including
+tax remain unchanged; no merge, deployment,
+resize, rollout or email occurred.
+
+| Evidence | Artifact and SHA-256 |
+| --- | --- |
+| Fresh full-browser Pass / parent review | `/var/tmp/r12r/r120-full196-68c-20261010T024222Z-prep/artifacts/final-full196-qa-receipt.json`, `3e0bc027602fe8b05eff7999d69c77cff6d6ef9c664c5a6772054ece7f22df8f`; `/var/tmp/r12r/r120-full196-68c-20261010T024222Z-prep/artifacts/parent-full196-review-20261010T0320Z.json`, `f0633926dc464a5f02e2ba6d97d80e20e2b296bc045e29d9de0a22b670b0452e` |
+| Current-image native functional terminal / parent review | `/var/tmp/r12r/r120-native-functional-68c-20261010T033709Z-673d722543d9/native-functional-terminal.json`, `c204c93e8320f660ae60c19974876dbd4d43588a3a45164c1f5ee06a898dffac`; `/var/tmp/r12r/r120-native-functional-68c-20261010T033709Z-673d722543d9/parent-native-functional-review.json`, `d13376ff09d6ef07d8869c15f553aac1284688c5b657e1226c23d70190bc4369` |
+| Independent native terminal/cleanup supplement | `/var/tmp/r12r/r120-independent-native-review-68c-20261010T0351Z.json`, `7455354677922339e80cb133dc9fe45ae8a5846a050ffd0e83d4c97dd9793a15` |
+| Local PR-pair independent scope | `/var/tmp/r12r/r120-local-pair-independent-qa-20261010T0249Z-be7529e3/receipt.json`, `16b420dd3f4fb16f23f92082644d621a1b74c9227b62750be3cc709d4be687bf` |
+| Current-image kill parent review | `/var/tmp/r12r/r120-current-kill-68c-sd-20261010T023535Z/parent-current-kill-review-20261010T0301Z.json`, `3fe4f6f0b7dfb3e66c5b54689f6df3ae522eb5c270362840d96180eaa12e489b` |
+| Guide HTML/PDF independent review / parent acceptance | `/var/tmp/r12r/r120-guide-html-qa-68c-20261010T0233Z/standalone-guide-html-pdf-independent-review-receipt.json`, `9c5acb0075d9bde3ed74ab75b7e3e52467a5b80e3fafb836381ebfc8f41c9a7b`; `/var/tmp/r12r/r120-current-guide-pdfreview-68c-20261010T0226Z/parent-guide-html-pdf-acceptance.json`, `8555de1db50db221794f1992a021d4d6d2a376c38708bd904ec15b7dad8d9eed` |
+| Actual-host MCP failure / checker source review | `/var/tmp/r12r/r120-host-mcp-68c-failure-20261010T0254Z.json`, `13675961c3cdef7d9bd2d78db80ced608c1a6434845607067a5885e4e69b5002`; `/var/tmp/r12r/pr-rehearsal-observability-repair-20261010T0415Z-r120/parent-source-review.json`, `9d8eb551c69a520f04929bd65aff974dbfed79b6880cf0a99de364ea41f5fc9c` |
+| Independent checker QA | `/var/tmp/r12r/r120-checker-independent-qa-20261010T0351Z.json`, `5674fdda27ac7cf27f3bea0e621bbc45f183f0a228b1bee81e5a63afd467d32a`; JUnit `dba1e27d2a4f7e1306cac9b8f6d4a100cb5ad5fb16a6564b797f6da5d6f1e1c9`; pytest log `2dd2622599a0ff937604a6aea5bc42089ec265642b8da65ddda4b85c08a64bbe` |
+| Authored-documentation checks | **Pass**, exit 0: `.dev-venv/bin/python scripts/validate_docs.py` (9 categories, 14 topics, 8 governance entries); `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` (154 files); `python3 scripts/check-doc-coverage-self-test.py` (26 cases); scoped `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs` |
+
 ### R-ASTRA-120 E832 late-failure diagnostic-only repair
 
 Task `R-ASTRA-120`, source head `fa3db0e9fd2b48032735474691df900135aa1357`. The narrow two-file

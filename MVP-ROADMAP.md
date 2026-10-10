@@ -1,21 +1,22 @@
 # Stock Probability MVP Roadmap
 
-Current R-ASTRA-120 E836: clean pushed head `0193fb93eaf66555a25990e6478032fb074ba737`
-passed the complete canonical local check (3,255 Python passes, four skips, four deselected,
-85.70% coverage and 72 frontend checks). Independent terminal and exact-owned cleanup review
-passed; full-host FD visibility remains unavailable. The 68-case route/auth-loading axe matrix
-passed with zero violations/incompletes across 72 scans. The newer full 196-case browser run
-failed (189 passed, four failed, three skipped); two unchanged real assistant cases subsequently
-passed in a serialized run. A two-spec sequencing repair then passed four desktop/mobile-emulated
-news/session-expiry checks. These scoped passes do not replace the failed browser aggregate.
-Independent reuse review matched 588 of 590 authored inputs, with only those two reviewed browser
-specs changed; all 80 frontend and 52 served/export bindings are unchanged. The interrupted image
-wrapper exited 143, but independent recovery verified its completed BuildKit history and the loaded
-image `sha256:2323a9c04a5fdca0b40c598e5d363fc9b5d3c13a03ee6d4188fb71b5661a6b82`, 148 measured
-context files and 52 served/export files. This is recovered build identity, not runtime acceptance.
-Actual combined 1 GB, PR-bound rollback, current-image runtime/shutdown, final guide, owner canary
-and release gates remain open. Production is unchanged at schema 12; no merge, deployment,
-rollout, resize or email occurred. See [E836](MVP-PLAN.md#r-astra-120-e836-canonical-browser-and-build-recovery-checkpoint).
+Current R-ASTRA-120 E837: PR #1 remains draft at pushed head
+`68c0423da76d0bf57ec19a7472dda5cfffc0a184`. The fresh full 196-case browser aggregate passed
+(193 passed, three expected skips, no failures/flaky cases); parent review passed. The scoped
+68-state/72-phase raw axe result remains E836 evidence, not full-app accessibility acceptance. A
+current-image local native functional run exited 0 and passed parent plus independent terminal/
+cleanup review for its declared two-owner scope; its 768 MiB cap sample is not actual combined 1 GB
+acceptance. Current-image pending-search shutdown, local schema-13 pair
+rehearsal, and 14-page HTML/PDF guide review passed only their recorded scopes. The later local-pair
+inventory recheck is unavailable; actual typed MCP PR-bound host rehearsal failed with generic
+`fixed_command_failed` and cause unproven. The checker-only source review passed; independent
+Docker-free QA passed 165 tests, Ruff, and three pinned files with the Docker-mutating test
+deselected. No host retry or runtime acceptance follows. E836's canonical result remains bound to
+its original commit; unchanged inputs are reused only under the checker-only rule. No canonical
+aggregate was run for the current PR head. Actual 1 GB, actual-host retry, PR-bound rollback, complete security,
+owner canary, deployment and release gates remain open. Production, the existing 1 GB plan/backups,
+and the US$15 monthly total cap are unchanged. No merge, deployment, resize, rollout or email
+occurred. See [E837](MVP-PLAN.md#r-astra-120-e837-current-pr-head-and-deployment-checker-checkpoint).
 
 Historical R-ASTRA-120 E825 checkpoint: the E823/E824 storage restore, Docker/containerd migration,
 cache relocation and retirement, bounded BuildKit setup, actual network-none worker proof, retained

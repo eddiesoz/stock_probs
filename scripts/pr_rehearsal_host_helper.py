@@ -82,6 +82,10 @@ RUN_ID_RE = re.compile(r"^[0-9a-f]{16}$")
 CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{64}$")
 NETWORK_ID_RE = re.compile(r"^[0-9a-f]{64}$")
 NETWORK_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
+CLI_CONTAINER_NAME_RE = re.compile(
+    r"^signal-ledger-pr1-[0-9a-f]{8}-[0-9a-f]{16}-cli-"
+    r"(?:migrate|restore|backup|schema)-[0-9a-f]{8}$"
+)
 MODEL_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+-]{0,95}$")
 INSTALLED_FILES = {
     "host_helper.py": 256 * 1024,
@@ -492,7 +496,13 @@ def _run(
             command, return_code, bytes(output["stdout"]), bytes(output["stderr"])
         )
         if return_code and not allow_failure:
-            raise RehearsalError("fixed_command_failed")
+            raise RehearsalError(
+                "fixed_command_failed",
+                details={
+                    "command_category": _fixed_command_category(command),
+                    "exit_status": return_code,
+                },
+            )
         return result
     except OSError as exc:
         if process is not None and process.poll() is None:
@@ -512,6 +522,101 @@ def _run(
                 if stream is not None:
                     with suppress(OSError):
                         stream.close()
+
+
+def _fixed_command_category(command: list[str]) -> str:
+    """Classify recognized fixed Docker argv shapes without retaining their values."""
+    if (
+        not command
+        or any(not isinstance(argument, str) for argument in command)
+        or command[0] != "/usr/bin/docker"
+        or len(command) < 2
+    ):
+        return "other_fixed"
+
+    if len(command) == 4 and command[1:3] == ["load", "--input"]:
+        return "image_load"
+    if (
+        len(command) == 6
+        and command[1:4] == ["image", "inspect", "--format"]
+        and IMAGE_RE.fullmatch(command[5]) is not None
+    ):
+        return "image_inspect"
+    if (
+        len(command) == 8
+        and command[1] == "ps"
+        and command[2:4] == ["--filter", "label=com.docker.compose.project=signal-ledger"]
+        and command[4:6] == ["--filter", "label=com.docker.compose.service=app"]
+        and command[6:] == ["--format", "{{.ID}}"]
+    ):
+        return "container_list"
+    if (
+        len(command) == 5
+        and command[1] == "inspect"
+        and command[2] == "--format"
+        and re.fullmatch(r"[0-9a-f]{12,64}", command[4]) is not None
+    ):
+        return "container_inspect"
+    if (
+        len(command) == 10
+        and command[1:3] == ["volume", "create"]
+        and command[3] == "--label"
+        and command[4] == "org.stock-probs.pr-rehearsal=true"
+        and command[5] == "--label"
+        and re.fullmatch(r"org\.stock-probs\.pr-rehearsal\.head=[0-9a-f]{40}", command[6])
+        is not None
+        and command[7] == "--label"
+        and re.fullmatch(r"org\.stock-probs\.pr-rehearsal\.pair=[0-9a-f]{64}", command[8])
+        is not None
+        and VOLUME_RE.fullmatch(command[9]) is not None
+    ):
+        return "volume_create"
+    if (
+        len(command) >= 5
+        and command[1] == "run"
+        and command[2:4] == ["--rm", "--name"]
+        and CLI_CONTAINER_NAME_RE.fullmatch(command[4]) is not None
+    ):
+        return "cli_run"
+    if (
+        len(command) >= 5
+        and command[1] == "run"
+        and command[2:4] == ["--detach", "--name"]
+        and re.fullmatch(
+            r"signal-ledger-pr1-[0-9a-f]{8}-[0-9a-f]{16}-(?:candidate|recovery)",
+            command[4],
+        )
+        is not None
+    ):
+        return "container_run"
+    if command[1] == "exec" and len(command) in {8, 12}:
+        if len(command) == 8 and command[2:4] == ["--user", "10001:10001"]:
+            identifier_index = 4
+            command_shape = command[5:7] == ["python", "-c"]
+        elif len(command) == 12 and command[2:5] == ["-i", "--user", "0:0"]:
+            identifier_index = 5
+            command_shape = command[6:8] == ["python", "-c"]
+        else:
+            identifier_index = -1
+            command_shape = False
+        if command_shape and CONTAINER_ID_RE.fullmatch(command[identifier_index]) is not None:
+            return "container_exec"
+    if (
+        len(command) == 3
+        and command[1] == "rm"
+        and CONTAINER_ID_RE.fullmatch(command[2]) is not None
+    ):
+        return "container_remove"
+    if (
+        len(command) == 4
+        and command[1] == "stop"
+        and command[2] == "--time=5"
+        and CONTAINER_ID_RE.fullmatch(command[3]) is not None
+    ):
+        return "container_stop"
+    if command == ["/usr/bin/docker", "version", "--format", "{{.Server.Version}}"]:
+        return "docker_version"
+    return "other_fixed"
 
 
 def _json_output(result: subprocess.CompletedProcess[bytes], code: str) -> object:

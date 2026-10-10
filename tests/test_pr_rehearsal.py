@@ -1057,6 +1057,119 @@ def test_host_failure_projection_keeps_stage_and_owner_outcomes_without_content(
     assert "synthetic" not in json.dumps(host)
 
 
+def test_fixed_command_failure_records_only_category_and_numeric_status() -> None:
+    private_argument = "synthetic-secret-argv-value"
+    with pytest.raises(host_helper.RehearsalError, match="fixed_command_failed") as failure:
+        host_helper._run(
+            [sys.executable, "-c", "import sys; sys.exit(23)", private_argument],
+            timeout=5,
+        )
+
+    assert failure.value.details == {"command_category": "other_fixed", "exit_status": 23}
+    assert private_argument not in json.dumps(failure.value.details)
+
+
+def test_fixed_command_category_recognizes_only_closed_rehearsal_shapes() -> None:
+    volume = "signal-ledger-pr1-12345678-0123456789abcdef"
+    revision = "a" * 40
+    pair = "b" * 64
+    image_id = "sha256:" + "c" * 64
+
+    assert (
+        host_helper._fixed_command_category(
+            ["/usr/bin/docker", "load", "--input", "/fixed/private/archive.tar.gz"]
+        )
+        == "image_load"
+    )
+    assert (
+        host_helper._fixed_command_category(
+            ["/usr/bin/docker", "image", "inspect", "--format", "{{.Id}}", image_id]
+        )
+        == "image_inspect"
+    )
+    assert (
+        host_helper._fixed_command_category(
+            [
+                "/usr/bin/docker",
+                "volume",
+                "create",
+                "--label",
+                "org.stock-probs.pr-rehearsal=true",
+                "--label",
+                f"org.stock-probs.pr-rehearsal.head={revision}",
+                "--label",
+                f"org.stock-probs.pr-rehearsal.pair={pair}",
+                volume,
+            ]
+        )
+        == "volume_create"
+    )
+    assert (
+        host_helper._fixed_command_category(
+            ["/usr/bin/docker", "load", "--input", "/fixed/archive", "--password", "secret"]
+        )
+        == "other_fixed"
+    )
+    assert (
+        host_helper._fixed_command_category(
+            ["/bin/sh", "-c", "echo do-not-run", "synthetic-secret-argv-value"]
+        )
+        == "other_fixed"
+    )
+
+
+def test_controller_projects_only_typed_host_command_failure_and_receipt() -> None:
+    projected = controller._safe_host_failure_details(
+        {
+            "status": "error",
+            "code": "fixed_command_failed",
+            "receipt_id": "a" * 32,
+            "failure": {"command_category": "image_load", "exit_status": 1},
+        }
+    )
+    assert projected == {
+        "fixed_command_failure": {"command_category": "image_load", "exit_status": 1},
+        "host_receipt_id": "a" * 32,
+    }
+
+    private_value = "synthetic-secret-argv-value"
+    rejected = controller._safe_host_failure_details(
+        {
+            "status": "error",
+            "code": "fixed_command_failed",
+            "receipt_id": "not-a-receipt-id",
+            "failure": {
+                "command_category": "image_load",
+                "exit_status": 1,
+                "argv": [private_value],
+            },
+        }
+    )
+    assert rejected is None
+    assert private_value not in json.dumps(rejected)
+
+
+def test_controller_host_failure_projection_preserves_native_details() -> None:
+    projected = controller._safe_host_failure_details(
+        {
+            "status": "error",
+            "code": "native_workload_incomplete",
+            "receipt_id": "b" * 32,
+            "failure": {
+                "failure_stage": "owner_evidence_and_isolation",
+                "missing_conditions": ["owner1_answer_empty"],
+            },
+        }
+    )
+    assert projected == {
+        "failure": {
+            "failure_stage": "owner_evidence_and_isolation",
+            "missing_conditions": ["owner1_answer_empty"],
+        },
+        "host_receipt_id": "b" * 32,
+    }
+
+
 def test_controller_native_failure_allowlist_keeps_only_bounded_status_fields() -> None:
     safe = controller._safe_native_failure(
         {

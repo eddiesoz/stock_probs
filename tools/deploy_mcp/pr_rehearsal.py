@@ -1240,8 +1240,7 @@ def rehearse_pr_pair(
         code = response.get("code")
         if not isinstance(code, str) or re.fullmatch(r"[a-z0-9_:-]{1,96}", code) is None:
             code = "host_rehearsal_failed"
-        failure = _safe_native_failure(response.get("failure"))
-        details = {"failure": failure} if failure is not None else None
+        details = _safe_host_failure_details(response)
         raise RehearsalError(code, details=details)
     if (
         response.get("reviewed_head_sha") != reviewed_head_sha
@@ -1361,6 +1360,53 @@ _SAFE_NATIVE_TURN_FAILURE_STAGES = {
     "after_model_session_event",
     "unknown_terminal",
 }
+_SAFE_FIXED_COMMAND_CATEGORIES = {
+    "image_load",
+    "image_inspect",
+    "container_list",
+    "container_inspect",
+    "volume_create",
+    "cli_run",
+    "container_run",
+    "container_exec",
+    "container_remove",
+    "container_stop",
+    "docker_version",
+    "other_fixed",
+}
+
+
+def _safe_fixed_command_failure(value: object) -> dict[str, object] | None:
+    """Project only a closed command category and nonzero numeric exit status."""
+    if not isinstance(value, dict) or set(value) != {"command_category", "exit_status"}:
+        return None
+    category = value.get("command_category")
+    exit_status = value.get("exit_status")
+    if (
+        not isinstance(category, str)
+        or category not in _SAFE_FIXED_COMMAND_CATEGORIES
+        or type(exit_status) is not int
+        or exit_status == 0
+        or not -255 <= exit_status <= 255
+    ):
+        return None
+    return {"command_category": category, "exit_status": exit_status}
+
+
+def _safe_host_failure_details(response: dict[str, object]) -> dict[str, object] | None:
+    """Keep the existing native projection and add only typed command/receipt facts."""
+    details: dict[str, object] = {}
+    failure = response.get("failure")
+    native_failure = _safe_native_failure(failure)
+    if native_failure is not None:
+        details["failure"] = native_failure
+    command_failure = _safe_fixed_command_failure(failure)
+    if command_failure is not None:
+        details["fixed_command_failure"] = command_failure
+    receipt_id = response.get("receipt_id")
+    if isinstance(receipt_id, str) and re.fullmatch(r"[0-9a-f]{32}", receipt_id) is not None:
+        details["host_receipt_id"] = receipt_id
+    return details or None
 
 
 def _safe_native_failure(value: object) -> dict[str, object] | None:
