@@ -1,13 +1,14 @@
 # Stock Probability MVP Roadmap
 
-R-ASTRA-120 merged baseline E839; current follow-on E841–E847. PR #1 merged at exact revision
+R-ASTRA-120 merged baseline E839; current follow-on E841–E848. PR #1 merged at exact revision
 `6dc259e91cc8077b9264901bee3282167b9d05af` on `2026-10-10T06:25:51Z`. Its actual-host typed
 MCP rehearsal, schema-13 recovery, bounded combined 1 GB workload and current-image pending-search
 shutdown passed their declared scopes. The final eight captures and 14-page HTML/PDF guide passed
 their declared review scopes; reused HTML checks retain their original bindings. Physical mobile,
 actual screen reader, true zoom and PDF/UA remain Unavailable. E841's shared credential scanner
 repair and independent 23-test/provenance review passed; publication had failed earlier before a
-GitHub release was created. Parent-observed metadata reports PR #2 **OPEN/DRAFT** at pushed head
+GitHub release was created. At the E847 checkpoint, parent-observed metadata reported PR #2
+**OPEN/DRAFT** at pushed head
 `53578a4c0995c13a787ee05044ede691ac84dd24`. Earlier actual-host pair calls failed with
 `host_memory_reserve_breached` and a sampled minimum of `70,848 KiB`, below the `131,072 KiB`
 reserve; preserve those failures. E846 later bound image
@@ -3214,7 +3215,7 @@ accessibility, actual capacity, PR-bound rollback, and release gates remain open
 
 The clean `6efcf212` canonical local gate passed with 2,902 Python passes, four skips, four deselected, 85.68% coverage and 71 frontend checks; independent review receipt SHA-256 is `91be63769b6327c004fbe786244bccfb4a4b53c0d048642ae5cb36458e533bda`. The current image `99b82f99` and recovery `52934202` passed the local schema-13 pair, verified backup and write-preservation rehearsal. Current-image active-search shutdown passed its local scope, with no provider-side execution-count claim. The first fresh SDK attempt failed before initialization; a corrected actual-host MCP attempt returned `cgroup_cpu_stat_counters_incomplete`. Read-only host counters include `core_sched.force_idle_usec` alongside all required counters; exact container text was not observed. A narrow dotted-counter parser repair passed 13 builder and 13 independent tests plus parent source review; independent JUnit SHA-256 is `69d4879da1c64d6b7b1464df64e4143cd178c2f1815a141879727ef817db72d0`. A fresh host result remains pending. Actual-host native/resource/recovery, owner canary and release gates remain open. Production and the US$15 monthly cap are unchanged; no merge, deployment, resize, rollout or email occurred.
 
-### Current R-ASTRA-120 checkpoint E847
+### Historical R-ASTRA-120 checkpoint E847
 
 PR #2 remains **OPEN/DRAFT** at pushed head `53578a4c0995c13a787ee05044ede691ac84dd24`. Its
 managed build **Failed** with `build_timeout_after_900s`; a later exact-context BuildKit error
@@ -3240,3 +3241,23 @@ reconfirmed schema 12 ready, `failed=null`, and loopback-only; no rollout, RAM, 
 access result is inferred. No merge, prebuilt publication, production update/deploy, resize, rollout,
 or email occurred. The US$15 cap, existing 1 GB host, and backups are unchanged. See
 [E847 in the MVP plan](MVP-PLAN.md#r-astra-120-e847-canonical-and-checker-repair-checkpoint).
+
+
+### Current R-ASTRA-120 checkpoint E848
+
+PR #2 merged at tested head `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`. The exact PR-bound
+actual-host schema-13 pair/resource/recovery, actual combined 1 GB and PR-bound rollback scopes
+passed. The prebuilt publisher downloaded and reverified remote assets; independent publication review passed local
+artifact and GitHub metadata checks but skipped its own separate download. The fixed helper and
+Compose updates passed. The visible deploy attempt **Failed** with `backup_unverified` before
+migration; rollback was attempted and succeeded, leaving the prior schema-12 revision ready and
+loopback-only. Source review traced `backup_unverified` to the backup-create response lacking the
+`verified` field expected by the helper; E847's canonical/security, browser/axe, and guide results,
+plus current-product native
+wire/kill results, remain Pass for their exact declared/reused scopes. Parent source review, builder
+checks, and independent QA passed for the operational backup-contract repair.
+Product image/pair inputs remain bound to tested 5ad; no product rebuild was needed for the
+helper-only repair. Only successful deployment, owner canary, invited-user rollout and release
+announcement remain pending. Physical mobile, actual screen reader, true zoom,
+and PDF/UA remain **Unavailable**; no full accessibility claim follows. The US$15 cap, existing 1
+GB plan and backups remain unchanged. See the [E848 evidence](MVP-PLAN.md#r-astra-120-e848-production-deployment-checkpoint).

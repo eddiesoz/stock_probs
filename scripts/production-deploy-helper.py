@@ -1754,7 +1754,6 @@ def _verified_backup(
     if (
         not isinstance(value, dict)
         or value.get("name") != name
-        or value.get("verified") is not True
         or type(value.get("schema_version")) is not int
         or value.get("schema_version") != expected_schema
         or not isinstance(value.get("sha256"), str)
@@ -1782,6 +1781,7 @@ def _verified_backup(
         not isinstance(verified, dict)
         or verified.get("name") != name
         or verified.get("verified") is not True
+        or verified.get("promoted") is not False
     ):
         raise HostError("backup_unverified")
     _audit(

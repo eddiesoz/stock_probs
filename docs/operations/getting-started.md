@@ -672,29 +672,27 @@ state, command, or credential. R-ASTRA-106 records a live refresh result with `5
 applied to firewall `177236117`; the Linode console login uses Google SSO and SSH material remains
 separate.
 
-R-ASTRA-120 remains **In progress**. E847's managed Linux/amd64 build **Failed** with
-`build_timeout_after_900s`; the later exact-context BuildKit error leaves cause **Unproven**. The
-clean pushed-head 53578 canonical local gate subsequently **Passed** (3,294 passed, 4 skipped,
-4 deselected, zero failures/errors, 99 warnings, 85.69% coverage, 72 frontend checks). Checker-v3
-builder checks passed 27 focused tests and Ruff. Its first independent applied-source attempt is
-**Unavailable** (JUnit reported 190 tests with zero failures; terminal record missing); the bounded
-190-test rerun **Passed** with
-no errors/skips and Ruff, security, and format checks. The first receipt serialization was invalid
-JSON; its corrected receipt is recorded in E847 without a test rerun. Parent source review rehashed
-the unchanged product context
-`9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb` (148 inputs, 52 served/export
-files), but the canonical 479-input manifest predates checker and documentation edits. Previously
-bound `06a` pair/resource/native, UI/axe, guide, wire, and kill results remain reusable only within
-their unchanged product scopes; a fresh image and exact-head pair for the next checker checkpoint
-remain pending. Typed recovery released the failed build row and confirmed its tag absent while the
-protected `06a` image record stayed unchanged. Independent read-only recovery review passed exact
-receipt/ledger hash binding; it did not query Docker, so absence remains parent-observed.
-Deployment, rollback, security, current-image
-runtime, accessibility, owner-canary, and release gates remain open. A fresh read-only production
-inspect reconfirmed schema 12 ready, `failed=null`, and loopback-only; no rollout, RAM, billing, or
-browser-access result is inferred. The US$15 total cap, existing 1 GB plan, and backups remain
-unchanged. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-e847-canonical-and-checker-repair-checkpoint);
-no merge, prebuilt publication, production update/deploy, resize, rollout, or email occurred.
+R-ASTRA-120 remains **In progress**. PR #2 merged at tested head
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`. Its exact PR-bound actual-host schema-13
+pair/resource/recovery, actual combined 1 GB, and PR-bound rollback scopes passed. The prebuilt publisher downloaded and
+reverified remote assets; independent publication review passed local artifact and GitHub metadata
+checks but skipped its own separate download. The fixed production helper and Compose updates passed.
+The visible production deploy attempt **Failed** before migration with `backup_unverified`; rollback
+was attempted and succeeded, leaving the prior schema-12 revision ready and loopback-only. E847's
+canonical/security, browser/axe and guide results, plus current-product native wire/kill results,
+remain Pass for their exact declared/reused scopes. Parent source review confirmed the backup-create
+contract mismatch and passed the narrow helper/test repair source scope. Builder checks passed 11
+focused tests and 88 of 89 helper tests (1 skipped), plus Ruff check/format and diff. Independent QA
+also **Passed**. The application image/pair remain bound to tested 5ad product inputs; no product
+rebuild was needed for the helper-only change. Only successful application deployment, owner canary,
+invited-user rollout and the authorized announcement remain pending. E847's
+managed-build timeout, interrupted aggregate and earlier failed checks remain historical. The
+479-input manifest predates checker/documentation edits. Physical mobile, actual screen reader, true
+zoom and PDF/UA remain **Unavailable**; no full accessibility claim is made. Backup creation metadata
+is not the verification receipt: promotion requires separate signed-reader verification of the exact
+backup artifact without promotion, and helpers must be tested against actual CLI/service response
+shapes. The US$15 total cap, existing 1 GB plan and backups remain unchanged. See the
+[R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-e848-production-deployment-checkpoint).
 
 The
 rehearsal source creates a separate, labelled user-defined bridge for each candidate run, with

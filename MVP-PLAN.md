@@ -6098,3 +6098,121 @@ E847 documentation evidence:
 | --- | --- |
 | Pre-edit authored-file baseline | Task `R-ASTRA-120`; UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; copies in `/var/tmp/r12r/r120-docs-e847-20261010T141913Z/` with directory mode `0700`, files mode `0600`, and byte comparisons passed. SHA-256: `AGENTS.md` `458f4fb5525fff44802b593a26369ade0f0779b9fb2ef4fe7d26707ae75e557f`; `MVP-PLAN.md` `cecb2e3b5a9e19f198021bbefd3bdc17a9420c9f3689ecd5f1d9b666ac6c5415`; `MVP-ROADMAP.md` `d70203de34b69459c3397b67555c4d537c528d67dd4df4080dfcbcd345a187a6`; `docs/operations/getting-started.md` `a7c5f2451ce7272644ef9ec71d019b03dd2b843f96c0b61540bfdb88037dd951`. |
 | Authored documentation checks | `.dev-venv/bin/python scripts/validate_docs.py` **Pass** (9 categories, 14 topics, 8 governance entries); `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` **Pass** (154 mapped files); `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs/operations/getting-started.md` **Pass**. Documentation tests were not run. |
+
+
+### R-ASTRA-120 E848 production deployment checkpoint
+
+PR #2 merged at the exact tested head `5ad2c3fddfce5a5a631b72cd832a53f24757c44a` at
+`2026-10-10T15:02:35Z`; the parent observed `origin/main` at the same revision. The E847 managed
+build timeout, interrupted gate without JUnit/terminal, clean-53578 canonical Pass, and checker-v3
+initial unavailable/malformed receipt attempts remain preserved in E847. E848 does not claim a new
+full 479-input canonical run after checker/documentation edits.
+
+The exact PR-bound actual-host schema-13 pair/resource/recovery and PR-bound rollback scopes
+**Passed** for their declared inputs: candidate image ID
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, image archive SHA-256
+`99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5`, recovery image ID
+`sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f`, recovery archive SHA-256
+`082d04e065acfc1eb7db86358e40e20f937111f7d26901bd98b589521f8628c3`, pair-manifest SHA-256
+`e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3`, and fixed Compose digest
+`01028e5b02cc0eded5f7b5207950a54b5a111b169f2a60a4ae8abdc6dfdb92b0`. The recorded pair command
+exited `0` at `2026-10-10T14:46:20.843230Z`–`14:52:32.996440Z`; pair receipt
+`/var/tmp/r12r/r120-pr2-pair-5ad2c3f-20261010T1441Z/local-pair.json` SHA-256
+`370184acb9b7410a73932dc48a8c3ff5fc771bfcee88f9aca6dffa50d4e693fb`, terminal SHA-256
+`69ea8ff3c36e1e5eb8d43bd50bed1329e78c9a7109f932310aa8d7ef131cc693`.
+
+The fixed upload directory was initially missing the original pair receipt, so the first prebuilt
+publication attempt **Failed**. The exact original receipt was copied byte-identically; the retry
+**Passed** with exit `0` at `2026-10-10T15:07:05.301684Z`–`15:09:03.735165Z`. Terminal
+`/var/tmp/r12r/r120-release-publication-5ad2c3f-retry-20261010T150700Z/terminal.json`, SHA-256
+`79e9f32b84dd68740f5c0dc4267ca88e4a7c2d23421f95fded70aee55cfb23c7`; publication log SHA-256
+`1250412acfcc39ed31ae5583ebdfb511f7c4e736cc5b951e5a1f5df44f98eadc`. The publisher downloaded and reverified the remote assets. Independent publication review
+**Passed** its local pair identity/terminal, manifest/local-artifact binding, publication terminal/log,
+release-metadata, and source-revision/environment checks; it **Skipped** its own second remote asset
+download and tests/builds/Docker/browser/source edits. Receipt
+`/var/tmp/r12r/r120-5ad-pair-publication-independent-qa-20261010T1511Z/independent-pair-receipt-publication-review.json`,
+SHA-256 `3e52472e57a01df5aa96892ee7b594125f318b6c2a3e0fc0b42aa991f1b4e1ed`. GitHub release metadata
+reports tag `signal-ledger-5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, release ID `409020946`,
+published `2026-10-10T15:08:23Z`, HTTP `200`, non-draft and non-prerelease. Its three uploaded
+assets were:
+
+| Asset | SHA-256 | Bytes |
+| --- | --- | ---: |
+| `signal-ledger-image-5ad2c3fddfce5a5a631b72cd832a53f24757c44a.tar.gz` | `sha256:99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5` | 202,156,038 |
+| `signal-ledger-pair-5ad2c3fddfce5a5a631b72cd832a53f24757c44a.json` | `sha256:e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3` | 1,807 |
+| `signal-ledger-recovery-5ad2c3fddfce5a5a631b72cd832a53f24757c44a.tar.gz` | `sha256:082d04e065acfc1eb7db86358e40e20f937111f7d26901bd98b589521f8628c3` | 103,190,644 |
+
+The fixed updater had first failed preflight because the source Git mode was `100755` while the
+helper expected `100644`. The private mode repair's independent source review **Passed**, receipt
+`/var/tmp/r12r/r120-fixed-host-updater-mode-review-5ad2c3f-ca036a04-b2fd-45c9-a198-b1720eb98e9a/review-receipt.json`,
+SHA-256 `86cd9dee88f7c4423a32025175c5476fb5d5c84739fdba0bf138702292e62702`. Fixed-host helper
+update exited `0` at `2026-10-10T15:09:53.916017Z`–`15:09:55.139098Z`; terminal
+`/var/tmp/r12r/r120-fixed-host-helper-apply-mode-repaired-20261010T1512Z/terminal.json`, SHA-256
+`89d1d34d46764a13687221e1fe0b59388b5d771c2c71dbb0e99b7c024f832ccd`, log SHA-256
+`b5a1a3a08ce1b5ee08269c586ecbcbc448081b618f9eb12f037d5314b50f80d2`. Fixed Compose update
+exited `0` at `2026-10-10T15:10:09.877039Z`–`15:10:11.201436Z`; terminal
+`/var/tmp/r12r/r120-fixed-host-compose-apply-20261010T1513Z/terminal.json`, SHA-256
+`c77dbdf896213bf83847686d786d694bbb19d31c3c59b92adaa227e4d2d44c0c`, log SHA-256
+`e0705ce20471e6ee6b15d5376da5502167b1dfd72fb0d50d06e0297c33b2da26`.
+
+The first visible MCP plan returned `remote_operation_failed`; its cause is **Unproven**. A fixed
+typed-helper diagnostic plan then succeeded, and the visible MCP retry **Passed** with plan ID
+`c12a54e80c0352c20184c72856ba2234`. The two responses are in
+`/var/tmp/r12r/r120-pr2-production-deploy-5ad2c3f-20261010T1512Z/plan-results.json`, SHA-256
+`f4c8897fa689c6aee6b15d5376da550db223d63e4ead238d24da89cb07776b65`.
+
+The subsequent visible MCP `deploy` **Failed** before migration with `backup_unverified` at
+`2026-10-10T15:13:28.874044Z`. Its structured failure records target revision
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`/schema 13 and actual schema 12;
+`rollback_attempted=true`, `rollback_succeeded=true`, and
+`forward_recovery_attempted=false`. The post-failure observation reports prior revision
+`da2764e8477698fa7d686be93a4711e35478e802`, schema 12 ready, and loopback-only. Receipt
+`/var/tmp/r12r/r120-pr2-production-deploy-5ad2c3f-20261010T1512Z/failed-deploy-and-inspect.json`,
+SHA-256 `c7adaeba3e78fc33c753a1e22b0d6104004d1526ebf2f574161c8a0d86470741`. No successful app
+deployment or migration occurred.
+
+Parent source review of the backup manager and helper **Passed** for its declared source scope and
+confirmed the failure contract: backup creation does not return the `verified` field the helper
+required before checking the signed restore result. Receipt
+`/var/tmp/r12r/r120-parent-backup-contract-review-20261010T1518Z/parent-review.json`, SHA-256
+`c3ee5490cdefa687db4b91a2dc8051d30aa8c810e3f978e09cbb99735c9bcb44`. A narrow operational
+helper/test repair is in progress for a separate PR #3 carrying helper,
+tests and documentation only. Its builder terminal **Passed** on branch
+`codex/r120-production-backup-contract` at base head `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`:
+11 focused tests passed; the full helper run had 88 passes, 1 skipped, and 0 failures/errors. The
+scoped helper tests included disposable `BackupManager` create/restore
+integration. Ruff check/format and scoped diff checks passed. Earlier system-tools **Unavailable**,
+stale mocked-restore fixture **Failed**, and formatting **Failed** attempts remain preserved; they
+were corrected in later builder work and do not count as independent QA. Builder receipt
+`/var/tmp/r12r/r120-backup-contract-focused-56d01979-dd33-4599-910c-f7b86e95acf8/final-terminal-receipt-v2.json`,
+SHA-256 `5b140fe049e2745f2f1b2ad2a5f8e6237c214662bd03c2d49e2538778f49efad`. Applied helper SHA-256
+`299c227e894020a37aecb7539e8586827a45b47019e4503683415f10f76849bd`; test SHA-256
+`21674bb556fdebbd7f072ba06d8bd8bb373ca7f990c1adb7dc2385bbe4cfa1bc`. Independent QA **Passed**;
+receipt `/var/tmp/r12r/r120-independent-backup-contract-review-20261010T1525Z/independent-review.json`,
+SHA-256 `8e5e61b226e9410e82a1fa11ebc9cfe0b5d73c9475c99d8587e2d8ccc7a22ceb`. The E847 canonical security scope **Passed** (590/590 security-module checks). Reused
+browser/axe results remain Pass for their original product bindings: whole-route axe 68 cases/72 scans with 0
+violations and 0 incompletes, and browser 193/196 with 3 expected skips; the guide passed its
+declared review scope. Current-product native synthetic wire/kill and exact-5ad actual-host
+pair/resource/recovery, actual combined 1 GB, and PR-bound rollback results also Passed for their
+declared scopes. These are scoped/reused results,
+not a full WCAG AA claim; physical mobile, actual screen reader, true zoom and PDF/UA remain
+**Unavailable**.
+
+The parent's separate filtered product-binding check **Passed** after the helper-only repair; it
+confirmed the unchanged product context
+`9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb` (148 product inputs, 52
+served/export files), so no application rebuild was required. Binding receipt
+`/var/tmp/r12r/r120-host-only-repair-product-binding-20261010T1520Z/binding.json`, SHA-256
+`75d45ce4bf9417ac8bd55fee8169ff4be0ff1b5b6e5ab50da4ef203fe8f0b655`. The failed deploy's
+rollback succeeded as recorded, separately from the passed PR-bound rollback scope. Only successful
+application deployment, owner canary, invited-user rollout and the authorized release announcement
+remain pending. No successful production promotion, migration,
+invited-user rollout, resize or email occurred. The US$15 monthly total cap, existing 1 GB host and
+backups are unchanged.
+
+E848 documentation evidence:
+
+| Check | Task and observed result |
+| --- | --- |
+| Pre-edit authored-file baseline | Task `R-ASTRA-120`; UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; byte-copied and `cmp`-verified files in `/var/tmp/r12r/r120-e848-private-prep-20261010T150909Z/`, directory `0700`, files `0600`. SHA-256: `AGENTS.md` `6dc5aa25276ec67600825288b7f7f59e40ac1c1147842dbd11979389e63bf6af`; `MVP-PLAN.md` `b97e83371cb3764667fb4be4dfbfcd0f6c9721fa8fbe0cc850d1a0c2a9dc9a47`; `MVP-ROADMAP.md` `ff352ce9d16dcceab2ade188cee65802c9da13fbc0a4a14eed3480925ad2335b`; `docs/operations/getting-started.md` `57c783b42f9353ebdc1ddfa0a4b169558abe2fc1bbaafc77b264f208ffb6e735`. Pre-change `HEAD` was `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`. |
+| Authored documentation checks | `.dev-venv/bin/python scripts/validate_docs.py` exited `0` (**Pass**, 9 categories, 14 topics, 8 project skill governance entries); `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` exited `0` (**Pass**, 154 mapped files); `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs/operations/getting-started.md` exited `0` (**Pass**). Documentation tests were not run. |

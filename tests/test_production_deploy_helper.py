@@ -2229,11 +2229,9 @@ def test_first_release_backup_requires_verified_pre_migration_receipt(
             return json.dumps(migrate_receipt)
         if "backup" in arguments:
             name = arguments[arguments.index("--name") + 1]
-            return json.dumps(
-                {"name": name, "verified": True, "schema_version": 8, "sha256": "4" * 64}
-            )
+            return json.dumps({"name": name, "schema_version": 8, "sha256": "4" * 64})
         if "restore" in arguments:
-            return json.dumps({"name": arguments[-1], "verified": True})
+            return json.dumps({"name": arguments[-1], "verified": True, "promoted": False})
         return "8"
 
     monkeypatch.setattr(helper, "_compose", compose)
@@ -5128,3 +5126,120 @@ def test_rollback_keeps_candidate_image_path_for_exact_candidate_id(
     assert current["assistant_rollout_mode"] == "disabled"
     assert ("up", (record["image_ref"], observed["compose_snapshot"])) in observed["events"]
     assert not any(event[0] == "loaded_recovery" for event in observed["events"])
+
+
+def test_verified_backup_accepts_real_backup_manager_create_and_restore_results(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Pass real backup and signed-reader results through the helper's Compose boundary."""
+
+    helper = _helper()
+    revision = "a" * 40
+    image_ref = "signal-ledger:reviewed-image"
+    backup_name = "pre-deploy-aaaaaaaaaaaaaaaa-01234567.spbackup"
+    data_dir = tmp_path / "data"
+    settings = Settings(
+        data_dir=data_dir,
+        database_path=data_dir / "stock_probs.sqlite3",
+        backup_dir=data_dir / "backups",
+        provider="fixture",
+    )
+    compose_file = Path("/verified/compose.yaml")
+    calls: list[tuple[tuple[str, ...], dict[str, object]]] = []
+    responses: list[dict[str, Any]] = []
+
+    def fake_compose(*arguments: str, **options: object) -> str:
+        calls.append((arguments, options))
+        manager, migration_receipt = cli._migration_operations(settings)
+        assert migration_receipt is None
+        if arguments[6] == "backup":
+            response = manager.create(arguments[-1])
+        else:
+            assert arguments[6] == "restore"
+            response = manager.restore(arguments[-1])
+        responses.append(response)
+        return json.dumps(response)
+
+    monkeypatch.setattr(helper, "_backup_name", lambda _: backup_name)
+    monkeypatch.setattr(helper, "_runtime_file", lambda *_arguments, **_options: None)
+    monkeypatch.setattr(helper, "_image_schema", lambda _: SCHEMA_VERSION)
+    monkeypatch.setattr(helper, "_compose", fake_compose)
+    monkeypatch.setattr(helper, "_audit", lambda *_arguments, **_options: None)
+
+    result = helper._verified_backup(image_ref, revision, compose_file=compose_file)
+
+    assert "verified" not in responses[0]
+    assert responses[1] == {
+        "name": backup_name,
+        "verified": True,
+        "promoted": False,
+        "counts": responses[1]["counts"],
+    }
+    assert result == {
+        "trigger": "pre_deploy",
+        "name": backup_name,
+        "sha256": responses[0]["sha256"],
+        "schema_version": SCHEMA_VERSION,
+        "verified": True,
+    }
+    assert len(calls) == 2
+    assert calls[0][0][6:] == ("backup", "--name", backup_name)
+    assert calls[1][0][6:] == ("restore", backup_name)
+    assert calls[0][1] == calls[1][1] == {"timeout": 180, "compose_file": compose_file}
+
+
+@pytest.mark.parametrize(
+    "restore_result",
+    [
+        {
+            "name": "pre-deploy-aaaaaaaaaaaaaaaa-01234567.spbackup",
+            "verified": False,
+            "promoted": False,
+        },
+        {"name": "pre-deploy-other.spbackup", "verified": True, "promoted": False},
+        {
+            "name": "pre-deploy-aaaaaaaaaaaaaaaa-01234567.spbackup",
+            "verified": True,
+            "promoted": True,
+        },
+        {"name": "pre-deploy-aaaaaaaaaaaaaaaa-01234567.spbackup", "verified": True},
+    ],
+)
+def test_verified_backup_rejects_unverified_or_promoting_restore_result(
+    monkeypatch: pytest.MonkeyPatch,
+    restore_result: dict[str, object],
+) -> None:
+    """Require signed-reader confirmation for the same artifact without promotion."""
+
+    helper = _helper()
+    image_ref = "signal-ledger:reviewed-image"
+    backup_name = "pre-deploy-aaaaaaaaaaaaaaaa-01234567.spbackup"
+    create_result = {
+        "name": backup_name,
+        "sha256": "1" * 64,
+        "format": "stock-probs-backup",
+        "format_version": 1,
+        "schema_version": 12,
+        "schema_sha256": "2" * 64,
+        "created_at": "2026-10-10T15:00:00+00:00",
+        "database_sha256": "3" * 64,
+        "database_size": 4096,
+        "counts": {},
+        "manifest_hmac_sha256": "4" * 64,
+    }
+    calls = 0
+
+    def fake_compose(*arguments: str, **_options: object) -> str:
+        nonlocal calls
+        calls += 1
+        return json.dumps(create_result if arguments[6] == "backup" else restore_result)
+
+    monkeypatch.setattr(helper, "_backup_name", lambda _: backup_name)
+    monkeypatch.setattr(helper, "_runtime_file", lambda *_arguments, **_options: None)
+    monkeypatch.setattr(helper, "_image_schema", lambda _: 12)
+    monkeypatch.setattr(helper, "_compose", fake_compose)
+
+    with pytest.raises(helper.HostError, match="backup_unverified"):
+        helper._verified_backup(image_ref, "a" * 40)
+
+    assert calls == 2
