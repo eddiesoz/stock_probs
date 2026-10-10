@@ -128,7 +128,10 @@ assignments, runtime acceptance paths, or release gates.
   implicit removal of untagged ancestors. Never force-remove, globally prune, or remove protected
   release images or application data; record unresolved ancestry ownership as Unavailable and
   leave it untouched. These safeguards do not authorize spending above the US$15 monthly
-  total cap, including backups and tax.
+  total cap, including backups and tax. For private audit scratch and receipts, create directories
+  with explicit `0700` permissions and files with explicit `0600` permissions; record each child
+  process umask and preserve the approved normal test environment instead of silently inheriting a
+  restrictive audit umask.
 - For schema-13 rehearsal-image cleanup, require the registered recovery tag and the expected
   full image ID. Validate the ID against the completed ledger row and bound receipt before Docker
   inventory or mutation; remove only that ID with `--no-prune`, verify the image and tag are
@@ -458,22 +461,36 @@ after a fix. Repeat a full suite when a release gate or shared-contract impact r
 workflow does not relax release, security, or acceptance gates. For native-runtime repairs, run the
 real functional check before the full release aggregate so a known runtime failure does not waste
 another broad run; retain unchanged UI and component evidence with exact input bindings.
-R-ASTRA-120 merged baseline E839; current follow-on E841–E845. PR #1 merged at exact revision
-`6dc259e91cc8077b9264901bee3282167b9d05af`. E841's scanner repair passed independent selected
-tests, exact archive scans, and public provenance checks. Parent-observed metadata reports PR #2
-**OPEN/DRAFT** at clean pushed head `f4a620f784d01eae917fd729ae3ece2e05378858`; its exact candidate
-build and local schema-13 pair passed, but two actual-host pair calls failed the 128 MiB reserve
-(`70,848 KiB` minimum on the reviewed call). Listed cleanup passed; temporary-entry details and
-actual-host migration/recovery facts are Unavailable. E843's driver-import and E844's supervisor-
-import selected QA passed; E845 also passed its package-export source/test delta, with no image or
-actual-host rerun.
-These results do not accept the 1 GB resource gate, PR rollback, native/provider reliability, or
-release. Parent-observed post-failure inspect reconfirmed the production schema-12 ready,
-`failed=null`, loopback-only baseline. No PR #2 merge, publication, deployment, resize, rollout,
-or email occurred. The US$15 monthly cap, existing 1 GB host and backups remain unchanged. See
+R-ASTRA-120 merged baseline E839; latest checkpoint E846. PR #1 merged at exact revision
+`6dc259e91cc8077b9264901bee3282167b9d05af`. PR #2 remains **OPEN/DRAFT** at pushed head
+`06a175abe9ac80fe16d0f4dbd0b8d28cb5473649`. E846's Linux/amd64 image
+`sha256:9247ce78af0db4ab72337c1f462648e5e9433af72b7d2fdf1175fd515d6af6ea` is bound to 148
+source inputs and 52 served/export files. The exact-head actual-host SDK pair/resource/recovery
+scope **Passed**, as did separate current-image synthetic wire and parent-observed active-search
+kill scopes; the host receipt does not expose exact cleanup identities or minimum MemAvailable.
+The current canonical local gate **Failed** (3,288 passed, 6 failed, 4 skipped, 4 deselected,
+85.67% coverage, 72 frontend checks). Direct QA reproduced the three supervisor mode failures
+under launcher umask `077`; the first selector also reported a cleanup-lambda TypeError. The
+history selector passed separately on SD-backed storage, but the measured cause is **Unproven**.
+Two publisher-scanner test repairs passed their selected builder and independent scopes; no
+canonical rerun followed. A later test/documentation head needs fresh image and pair binding.
+The current-source required whole-route browser/axe matrix is **Pass for its reused scope**: the
+68-case, 72-scan axe receipt has zero violations and zero incompletes, with 80 frontend pins, 3
+fixture pins, and 52 served/export pairs matching. The reused browser aggregate is 193/196 with
+three expected skips and 106 source/test pins plus 52 served/export pairs matching. These are
+input-bound reuse checks, not reruns or full WCAG AA, physical-mobile, true-zoom, screen-reader,
+PDF/UA, or assistant-runtime acceptance; earlier raw axe failures remain historical. The exact-head
+`06a` PR-bound host pair/recovery scope **Passed**; the typed call did not exercise deploy/rollback
+mutations, and the next changed test/documentation head still needs fresh image and pair binding.
+The recorded actual-host native scope passed, without establishing every native/provider gate.
+Security retest, a clean canonical rerun, disabled-feature deployment, owner canary, final
+guide/release remain pending. The last separate production inspect remains schema 12 ready, `failed=null`,
+loopback-only; E846 made no production change. No PR #2 merge, publication, deployment, resize,
+rollout, or email occurred. The US$15 monthly cap, existing 1 GB host, and backups remain unchanged.
+See
 [E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair),
 [E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair), and
-[E842–E845](MVP-PLAN.md#r-astra-120-e842-pr-2-actual-host-reserve-failure).
+[E846](MVP-PLAN.md#r-astra-120-e846-pr-2-host-pair-canonical-and-publisher-test-checkpoint).
 
 For the remainder of R-ASTRA-120, serialize heavy local Docker builds, canonical gates, browser
 aggregates, and real provider/native trials; run independent source/documentation review in parallel. Reuse unchanged bound evidence

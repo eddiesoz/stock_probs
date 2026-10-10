@@ -3505,8 +3505,8 @@ task `R-ASTRA-120 independent assistant package lazy-export QA`, receipt SHA-256
 `/var/tmp/r12r/r120-assistant-package-lazyexport-independent-qa-20261010T0831Z/independent-review.json`;
 the focused run was `2026-10-10T08:32:15.582412Z`–`08:32:20.473923Z`. The `12.6 MiB` off-tree
 comparison and parent-reported `62 MiB` overall estimate are not observed aggregate memory savings
-or actual-host results. This is selected source/test acceptance only; no image, actual-host
-rehearsal, or canonical gate was rerun after it.
+or actual-host results. At the E845 checkpoint this was selected source/test acceptance only; no
+image, actual-host rehearsal, or canonical gate had yet been rerun after it.
 
 | Evidence | Receipt SHA-256 / scope |
 | --- | --- |
@@ -5946,3 +5946,72 @@ The MVP is done only when all of the following are true:
 | --- | --- | --- | --- |
 | `R-M00-2-E64` | Exact `.dev-venv/bin/python scripts/validate_docs.py` after the `R-ASTRA-99` site-wide QA rows. | Native x86_64 Linux; dirty `HEAD` observed from the current worktree; UTC was not captured by the command tool. | **Pass**; output: `Documentation validation passed: 9 categories, 13 topics, 7 project skill governance entries.` Artifact: validator output; reviewer `LUNA MAX docs`; no source, test, configuration, export, commit, push, or Git-history mutation was performed. |
 | `R-M00-2-E65` | Exact `git diff --check -- MVP-PLAN.md MVP-ROADMAP.md` after the `R-ASTRA-99` site-wide QA rows. | Native x86_64 Linux; dirty `HEAD` observed from the current worktree; UTC was not captured by the command tool. | **Pass**; artifact: current two-file documentation diff; reviewer `LUNA MAX docs`; no source, test, configuration, export, commit, push, or Git-history mutation was performed. |
+
+### R-ASTRA-120 E846 PR #2 host-pair, canonical, and publisher-test checkpoint
+
+Task `R-ASTRA-120`; PR #2 remains **OPEN/DRAFT** at pushed head
+`06a175abe9ac80fe16d0f4dbd0b8d28cb5473649`. The exact-head Linux/amd64 image
+`sha256:9247ce78af0db4ab72337c1f462648e5e9433af72b7d2fdf1175fd515d6af6ea` passed its build and
+source/stage binding for 148 source inputs and 52/52 served/export files. Independent review
+records the exact-head official-SDK `rehearse_pr_pair` **Pass** on the actual x86_64 1 GB host:
+two simultaneous owner turns, native model `opencode-zen/space-bunny-free`, five native search
+sources, verified migration backup, schema-13 recovery with preserved writes, 25 production-health
+samples, stable `MemTotal` of 984,564 KiB, candidate/recovery peaks of 709,218,304/805,306,368
+and 297,283,584/402,653,184 bytes in sequential role cgroups, and zero OOM deltas. The recorded
+criteria do not sum sequential peaks and did not return minimum `MemAvailable`. Cleanup is
+service-reported; exact container/volume identities and independent live-absence verification are
+**Unavailable**. This typed rehearsal did not invoke deploy or rollback. Separate current-image
+synthetic wire QA **Passed** its 11-tool, three-protocol, ten-assertion scope and exact owned
+cleanup; the raw container output was not retained, and the review used its bounded sanitized
+projection. The parent-observed current-image active-search kill **Passed** its scoped shutdown
+check: the pending search approval remained unapproved and the turn was cancelled, six assistant endpoints
+returned 503, app readiness and owner-private history remained available, and OOM was zero. No
+provider execution-count claim is made; post-run stdout reported owned container, volume, and
+network cleanup/absence. No independent kill-review receipt was supplied.
+
+The fresh native-x86_64 `TASK_ID=R-ASTRA-120 TMPDIR=/var/tmp/r12r ./scripts/local-gate.sh check`
+**Failed** at exit 1 (`09:13:28Z`–`09:46:34Z`): 3,288 Python passes, 6 failures, 4 skips,
+4 deselected, 99 warnings, 85.67% coverage, and 72 frontend checks. Only documentation and
+frontend checks completed; the six Python failures were three supervisor location-permission
+cases, one 100,000-event history query timing assertion (0.6589 s versus 0.25 s), and two publisher
+tests with stale shell-source expectations. Independent QA directly reproduced the three mode
+failures under child umask `077` (`0640` requested, `0600` observed); the same supervisor selectors
+had passed under `002`, `027`, and `022`. The first failing selector also raised a cleanup-lambda
+`owner_uid` TypeError, which remains part of the observed failure. A separate SD-backed history
+selector passed under normal umask `002`, but its exact passing timings are **Unavailable**; no
+NVMe comparison ran and the earlier threshold failure's cause remains **Unproven**. The two
+publisher tests were repaired to exercise the shared archive scanner: allow public CA bundles,
+reject private keys, and reject database backups/SQLite sidecars. Builder checks passed 2 selected
+tests plus Ruff check/format; independent QA passed the same 2 tests and 23 archive tests. These
+selected results do not replace the failed canonical aggregate; no canonical rerun followed.
+
+The exact-head `06a` PR-bound host pair/recovery passed its declared scope; it did not invoke deploy or
+rollback mutations. The publisher test repair and this documentation update are outside image
+`9247…`'s binding, so any later candidate head requires a fresh image and pair binding. The
+current-source whole-route browser/axe evidence is **Pass for its reused scope**: the 68-case,
+72-scan matrix reports zero raw violations and zero incompletes, with all 80 frontend pins, 3
+fixture pins, and 52 served/export pairs matched. The reused browser aggregate is 193/196 with
+three expected skips and 106 source/test pins plus 52 served/export pairs matched. These are
+bound-input reuse checks, not new browser runs or full WCAG AA, physical-mobile, true-zoom,
+screen-reader, PDF/UA, or assistant-runtime acceptance; prior raw axe failures remain historical.
+The current actual-host native pair passed its recorded scope, without establishing all
+native/provider reliability. Security retest, a new canonical aggregate, disabled-feature
+deployment, owner canary, final guide/release, and remaining release checks remain pending. No
+new captures or final guide acceptance are claimed. The last separate receipt-backed production
+inspect remains revision
+`da2764e8477698fa7d686be93a4711e35478e802`, schema 12 ready, `failed=null`, loopback-only; the
+host rehearsal's 25 health samples do not report rollout, RAM, billing, or browser access. No PR
+#2 merge, publication, deployment, resize, rollout, or email occurred. The US$15 monthly cap,
+existing 1 GB host, and backups remain unchanged.
+
+| Evidence | Task ID, window, artifact, and limitation |
+| --- | --- |
+| Exact-head candidate, pair, archive, and synthetic wire independent review | Task `R-ASTRA-120`; reviewed `2026-10-10T09:12:00Z`; `/var/tmp/r12r/r120-pr2-host-wire-independent-qa-20261010T0912Z/independent-host-wire-qa.json`, SHA-256 `ed8ba9fbde7e195506ab7617464e6aba855d96c9f82026ff29c4af907e7e5542`; **Pass** for the declared bindings, host-pair, archive, and synthetic-wire scopes. |
+| Actual-host typed pair receipt | Task `R-ASTRA-120`; service receipt ID `1dca285a3eda6c696fc2dabad9905a82`; host window `09:00:50.728896Z`–`09:02:52.158386Z`; `/var/tmp/r12r/r120-pr2-sdk-fresh-06a175a-20261010T083927Z/mcp-result.json`, SHA-256 `2e52fd75b0bad03329bd7c5ce39eeea1677ed202aa369aae7498466a4e289d5c`. SDK run receipt SHA-256 `683a39d1f2b555667b1117eb50904eb5d71e0d0e8b2c03fd101cee233f03ce43`; run window `09:00:16.252559Z`–`09:02:53.839763Z`. |
+| Parent-dispatched current-image kill | Task `R-ASTRA-120`; dispatch `/var/tmp/r12r/r120-current-kill-pr2-06a175a-20261010T085200Z/dispatch/authorized-dispatch.json`, SHA-256 `e72a2c397513882231024a8989f21da79ee04cb2f4c6dde51e7b7321fa5b481e`; diagnostic stdout SHA-256 `4c442e2be0530867bb1d28db6596d1343a93d753ec89c2a122b9af2632b74a9a`; diagnostic window `09:04:52.098814Z`–`09:05:55.263083Z`. Parent-observed bounded scope; independent review artifact **Unavailable**. |
+| Canonical local check and independent review | Task `R-ASTRA-120`; `test-results/local-gates/R-ASTRA-120-20261010T091328Z/evidence.json`, SHA-256 `d69c9f85e0c4eedd9daebda56c8d26fa5e71052e3b2db4cfe4f04abe8a4ce22c`; independent `/var/tmp/r12r/r120-pr2-canonical-independent-qa-06a175a-20261010T091305Z/independent-canonical-gate-qa.json`, SHA-256 `d8527996ac2eb6bbdac4b4198010e15385759602cd65876506924353c2be3ba0`. Both preserve **Fail**; independent review started `09:13:05Z`. |
+| SD-history and umask diagnostics | Task `R-ASTRA-120 scoped history performance and supervisor umask independent QA`; `/var/tmp/r12r/r120-pr2-history-umask-diagnostics-20261010T0952Z/independent-umask-diagnostic-receipt.json`, SHA-256 `56ee015d9003f76ddb369e37775b72ee3b31f02a6c074e4375a4b72d90bb0162`; direct `077` discriminator task `R-ASTRA-120 direct 077 supervisor umask discriminator`, `/var/tmp/r12r/r120-pr2-history-umask-diagnostics-20261010T0952Z/independent-umask-077-reproduction.json`, SHA-256 `4b22ef16b6ebd6d4c97e263cfd7d2182963a12e4152ce4e12d9c72f1b9e9d77a`. The former records selected passes under `002`/`027`/`022`; the latter independently reproduces the three failures under `077`. |
+| Publisher test-only repair | Builder receipt `/var/tmp/r12r/r120-canonical-test-repair-20261010T101500Z/publisher-test-repair-builder-receipt.json`, SHA-256 `3231d985e364c7f8a9a17abbf35f497c48b6c53483b59dd24ae48cacaeb428c0`; 2 selected tests and Ruff check/format **Pass**. Independent task `Independent QA of publisher scanner-test repair`; `/var/tmp/r12r/r120-publisher-scanner-independent-qa-20261010T0956Z/independent-qa-receipt.json`, SHA-256 `7754903cf3c4117f66c7431481ebfa5bfe7bd21d85b2cd360d2760d19f0e6f3c`; 2 publisher tests and 23 archive tests **Pass**; test SHA-256 `92b41bc9f985d0abd77f0f1e8cd1a91ce5209cf4567ebf7d863a63a4394fc060`. Parent source/evidence review found no findings; no canonical rerun. |
+| Current-source browser and axe evidence reuse | Task `R-ASTRA-120`; audit `/var/tmp/r12r/r120-current-06a-reuse-audit-20261010T085151Z/current-head-reuse-audit.json`, SHA-256 `a7900d4f5a7768cd89654657dd5f99dcff776bd0febc82054c98fa85da7a8829`. Exact reused axe receipt `/var/tmp/r12r/r120-auth-aria-axe-v2-20261010T005305Z/independent-axe-v2-receipt.json`, SHA-256 `af2d99cfcbfafbacb27952bbb939912d613d9b98924bd6d88399fa5dc3f37d83`: 68 cases, 72 scans, zero violations/incompletes; 80 frontend pins, 3 fixture pins, and 52 served/export pairs matched. Reused browser receipt `/var/tmp/r12r/r120-full196-68c-20261010T024222Z-prep/artifacts/final-full196-qa-receipt.json`, SHA-256 `3e0bc027602fe8b05eff7999d69c77cff6d6ef9c664c5a6772054ece7f22df8f`: 193/196 passed, three expected skips, 106 inputs and 52 served/export pairs matched. These were reuse audits, not reruns or full WCAG/mobile/screen-reader/zoom/PDF/UA/runtime acceptance. |
+| Documentation baseline | Pre-edit copies in `/var/tmp/r12r/r120-e846-docs-baseline-20261010T095658Z/` (UUID-verified mount; directory `0700`, files `0600`, byte comparison passed): `AGENTS.md` SHA-256 `370bc6e01d632197ae288c65667a20a03356d2e63b7b64eef4a2b6ef4e7902e2`; `MVP-PLAN.md` `25ad4501440ff535c13f384bee97a56880548e0eda7763d3a0823177c406560e`; `MVP-ROADMAP.md` `ee584282dc11627524b0146af2b203a8abf6194c32857125dc136f1f75479be5`. |
+| Documentation check | Task `R-ASTRA-120` docs checkpoint; exact scoped command `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` **Pass**, exit `0`, after the final documentation edits. Docs validator and tests were not run in this checkpoint. No implementation, tests, build, browser, host, Git-metadata, branch, staging, commit, remote, or export mutation was performed. |

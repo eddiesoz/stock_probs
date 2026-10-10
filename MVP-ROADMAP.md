@@ -1,26 +1,34 @@
 # Stock Probability MVP Roadmap
 
-R-ASTRA-120 merged baseline E839; current follow-on E841–E845. PR #1 merged at exact revision
+R-ASTRA-120 merged baseline E839; current follow-on E841–E846. PR #1 merged at exact revision
 `6dc259e91cc8077b9264901bee3282167b9d05af` on `2026-10-10T06:25:51Z`. Its actual-host typed
 MCP rehearsal, schema-13 recovery, bounded combined 1 GB workload and current-image pending-search
 shutdown passed their declared scopes. The final eight captures and 14-page HTML/PDF guide passed
 their declared review scopes; reused HTML checks retain their original bindings. Physical mobile,
 actual screen reader, true zoom and PDF/UA remain Unavailable. E841's shared credential scanner
 repair and independent 23-test/provenance review passed; publication had failed earlier before a
-GitHub release was created. Parent-observed metadata reports PR #2 **OPEN/DRAFT** at clean pushed
-head `f4a620f784d01eae917fd729ae3ece2e05378858`. Its candidate image build, local schema-13 pair,
-and bounded archive verifier checks passed their declared scopes, but both fresh actual-host pair
-calls failed with `host_memory_reserve_breached`; the reviewed sample fell to `70,848 KiB`, below
-the required `131,072 KiB` reserve. Listed cleanup passed, temporary-entry detail is Unavailable,
-and actual-host migration/recovery facts were not returned. Independent driver and supervisor
-lazy-import checks passed only selected synthetic/local scopes, including the package-export delta;
-no image, actual-host, or canonical acceptance follows. No new canonical, browser, security, guide,
-or actual-host acceptance is inferred.
+GitHub release was created. Parent-observed metadata reports PR #2 **OPEN/DRAFT** at pushed head
+`06a175abe9ac80fe16d0f4dbd0b8d28cb5473649`. Earlier actual-host pair calls failed with
+`host_memory_reserve_breached` and a sampled minimum of `70,848 KiB`, below the `131,072 KiB`
+reserve; preserve those failures. E846 later bound image
+`sha256:9247ce78af0db4ab72337c1f462648e5e9433af72b7d2fdf1175fd515d6af6ea` to 148 source inputs and
+52 served/export files, and its exact-head actual-host pair/resource/recovery scope passed. The
+separate synthetic wire and current-image active-search-kill scopes passed. E846's canonical local
+gate **Failed** with 3,288 passes, 6 failures, 4 skips, 4 deselected, 85.67% coverage and 72
+frontend checks; the 3 supervisor permission failures were independently reproduced under umask
+`077`, and the 2 publisher tests later passed selected builder/independent checks without a
+canonical rerun. The history timing cause remains unproven.
+The required whole-route axe matrix is **Pass for reused scope** (68 cases, 72 scans, zero raw
+violations/incompletes), and the reused browser aggregate is 193/196 with 3 expected skips; exact
+frontend/fixture/source/test and 52 served/export pins matched. These are reuse audits, not reruns
+or full WCAG AA, physical mobile, true zoom, actual screen-reader, PDF/UA or runtime acceptance.
+The exact-head `06a` PR-bound recovery passed its declared scope; it did not invoke deploy/rollback
+mutations. A changed test/documentation head needs a fresh image and pair binding. Security retest,
+new canonical, disabled-feature deployment, owner canary, final guide and release remain pending.
 Parent-observed post-failure inspect reconfirmed production revision
 `da2764e8477698fa7d686be93a4711e35478e802`, schema 12 ready, `failed=null`, loopback-only; no PR #2
 merge, publication, deployment, rollout, resize or email occurred. The US$15 monthly cap and
-existing 1 GB plan/backups remain unchanged. PR-bound host rehearsal, reserve, owner canary and
-release remain open. See [E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair),
+existing 1 GB plan/backups remain unchanged. See [E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair),
 [E840](MVP-PLAN.md#r-astra-120-e840-follow-on-pr-binding-and-scanner-diagnosis),
 [E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair),
 [E842](MVP-PLAN.md#r-astra-120-e842-pr-2-actual-host-reserve-failure),
@@ -3189,6 +3197,26 @@ the existing 1 GB Linode and backups remain unchanged. Required native/provider,
 accessibility, actual capacity, PR-bound rollback, and release gates remain open.
 
 
-### R-ASTRA-120 E820 deployment-checker follow-on
+### Historical R-ASTRA-120 E820 deployment-checker follow-on
 
 The clean `6efcf212` canonical local gate passed with 2,902 Python passes, four skips, four deselected, 85.68% coverage and 71 frontend checks; independent review receipt SHA-256 is `91be63769b6327c004fbe786244bccfb4a4b53c0d048642ae5cb36458e533bda`. The current image `99b82f99` and recovery `52934202` passed the local schema-13 pair, verified backup and write-preservation rehearsal. Current-image active-search shutdown passed its local scope, with no provider-side execution-count claim. The first fresh SDK attempt failed before initialization; a corrected actual-host MCP attempt returned `cgroup_cpu_stat_counters_incomplete`. Read-only host counters include `core_sched.force_idle_usec` alongside all required counters; exact container text was not observed. A narrow dotted-counter parser repair passed 13 builder and 13 independent tests plus parent source review; independent JUnit SHA-256 is `69d4879da1c64d6b7b1464df64e4143cd178c2f1815a141879727ef817db72d0`. A fresh host result remains pending. Actual-host native/resource/recovery, owner canary and release gates remain open. Production and the US$15 monthly cap are unchanged; no merge, deployment, resize, rollout or email occurred.
+
+### Current R-ASTRA-120 checkpoint E846
+
+PR #2 remains **OPEN/DRAFT** at pushed head `06a175abe9ac80fe16d0f4dbd0b8d28cb5473649`. Its
+exact-head image passed the actual-host pair/resource/recovery scope and separate synthetic wire
+and current-image active-kill scopes. The same-head canonical local gate **Failed** at 3,288
+passed, 6 failed, 4 skipped, 4 deselected, 85.67% coverage, and 72 frontend checks. Three
+supervisor mode failures were reproduced under audit umask `077`; two publisher test-only repairs
+later passed selected builder and independent checks, but the canonical check was not rerun. The
+history timing cause remains **Unproven**. Current-source whole-route axe evidence is **Pass for
+reused scope** (68 cases, 72 raw scans, zero violations/incompletes); the reused browser aggregate
+is 193/196 with three expected skips. Exact pins for those prior runs matched current inputs, but
+these are not reruns or full WCAG AA, physical-mobile, true-zoom, screen-reader, PDF/UA, or runtime
+acceptance; earlier raw axe failures remain historical. The exact-head PR-bound recovery passed its
+declared scope, while deploy/rollback mutations were not invoked. Later test/documentation changes
+need a fresh image and pair binding. Security retest, new canonical, disabled-feature deployment,
+owner canary, final guide/release, and remaining release gates are pending. Production remains at
+the last receipt-backed schema-12 ready/loopback observation; no merge, publication, deployment,
+resize, rollout, or email occurred. The US$15 cap, existing 1 GB host, and backups are unchanged. See
+[E846 in the MVP plan](MVP-PLAN.md#r-astra-120-e846-pr-2-host-pair-canonical-and-publisher-test-checkpoint).

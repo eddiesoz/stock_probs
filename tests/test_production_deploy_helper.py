@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -13,6 +14,7 @@ import socket
 import sqlite3
 import stat
 import sys
+import tarfile
 import tempfile
 import time
 from collections.abc import Callable
@@ -31,6 +33,52 @@ from stock_probs.repository import SCHEMA_VERSION, Repository
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER_PATH = ROOT / "scripts/production-deploy-helper.py"
+RELEASE_ARCHIVE_SCANNER_PATH = ROOT / "scripts/verify-release-archive.py"
+RELEASE_ARCHIVE_SCANNER_SPEC = importlib.util.spec_from_file_location(
+    "release_archive_scanner_for_deploy_tests", RELEASE_ARCHIVE_SCANNER_PATH
+)
+assert RELEASE_ARCHIVE_SCANNER_SPEC is not None
+assert RELEASE_ARCHIVE_SCANNER_SPEC.loader is not None
+release_archive_scanner = importlib.util.module_from_spec(RELEASE_ARCHIVE_SCANNER_SPEC)
+RELEASE_ARCHIVE_SCANNER_SPEC.loader.exec_module(release_archive_scanner)
+
+
+def _release_archive_with_layer_files(archive_path: Path, files: dict[str, bytes]) -> Path:
+    """Build a tiny Docker archive and exercise the maintained release scanner on it."""
+
+    layer_bytes = io.BytesIO()
+    with tarfile.open(fileobj=layer_bytes, mode="w") as layer:
+        for name, contents in files.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(contents)
+            layer.addfile(member, io.BytesIO(contents))
+    layer_contents = layer_bytes.getvalue()
+    manifest = json.dumps(
+        [{"Config": "config.json", "RepoTags": [], "Layers": ["layer/layer.tar"]}]
+    ).encode("utf-8")
+    with tarfile.open(archive_path, mode="w:gz") as archive:
+        for name, contents in (
+            ("manifest.json", manifest),
+            ("layer/layer.tar", layer_contents),
+        ):
+            member = tarfile.TarInfo(name)
+            member.size = len(contents)
+            archive.addfile(member, io.BytesIO(contents))
+    return archive_path
+
+
+def _assert_release_scanner_accepts(files: dict[str, bytes], archive_path: Path) -> None:
+    archive = _release_archive_with_layer_files(archive_path, files)
+    result = release_archive_scanner.verify_image_archive(archive)
+    assert result["status"] == "pass"
+
+
+def _assert_release_scanner_rejects(
+    files: dict[str, bytes], archive_path: Path, reason: str
+) -> None:
+    archive = _release_archive_with_layer_files(archive_path, files)
+    with pytest.raises(release_archive_scanner.ArchiveError, match=reason):
+        release_archive_scanner.verify_image_archive(archive)
 
 
 def test_disposable_schema12_migration_backup_preserves_new_schema13_writes(tmp_path: Path) -> None:
@@ -1378,38 +1426,65 @@ def test_local_release_publisher_uses_revision_bound_archive_and_digest() -> Non
     assert "SIGNAL_LEDGER_IMAGE_PUBLISH_MODE must be release, prebuilt-release, or ghcr." in script
 
 
-def test_local_release_publisher_allows_public_ca_bundle_but_scans_private_keys() -> None:
-    script = (ROOT / "scripts/publish-production-image.sh").read_text()
-    assert ".*\\.pem$" not in script
-    assert "id_(rsa|dsa|ecdsa|ed25519)" in script
-    assert "PRIVATE KEY" in script
+def test_local_release_publisher_allows_public_ca_bundle_but_scans_private_keys(
+    tmp_path: Path,
+) -> None:
+    script = (ROOT / "scripts/publish-production-image.sh").read_text(encoding="utf-8")
+    assert 'python3 scripts/verify-release-archive.py "$ARCHIVE_PATH"' in script
+
+    _assert_release_scanner_accepts(
+        {
+            "usr/share/ca-certificates/mozilla/ISRG_Root_X1.crt": (
+                b"-----BEGIN CERTIFICATE-----\n" + b"A" * 48 + b"\n-----END CERTIFICATE-----\n"
+            )
+        },
+        tmp_path / "public-ca.tar.gz",
+    )
+    _assert_release_scanner_rejects(
+        {"home/signalops/.ssh/id_ed25519": b"synthetic private key path"},
+        tmp_path / "private-key-path.tar.gz",
+        "credential_like_path",
+    )
+    _assert_release_scanner_rejects(
+        {
+            "app/public-note.txt": (
+                b"-----BEGIN PRIVATE KEY-----\n" + b"A" * 48 + b"\n-----END PRIVATE KEY-----\n"
+            )
+        },
+        tmp_path / "private-key-bytes.tar.gz",
+        "credential_like_bytes",
+    )
 
 
-def test_local_release_publisher_rejects_database_backup_and_sqlite_sidecar_paths() -> None:
-    script = (ROOT / "scripts/publish-production-image.sh").read_text()
-    pattern_match = re.search(r"DATA_PATH_PATTERN='([^']+)'", script)
-    assert pattern_match is not None
-    data_path_pattern = re.compile(pattern_match.group(1), re.IGNORECASE)
+def test_local_release_publisher_rejects_database_backup_and_sqlite_sidecar_paths(
+    tmp_path: Path,
+) -> None:
+    script = (ROOT / "scripts/publish-production-image.sh").read_text(encoding="utf-8")
+    assert 'python3 scripts/verify-release-archive.py "$ARCHIVE_PATH"' in script
 
-    for path in (
+    rejected_paths = (
         "var/lib/signal-ledger/stock_probs.sqlite3",
         "var/lib/signal-ledger/stock_probs.sqlite3-wal",
         "var/lib/signal-ledger/stock_probs.sqlite3-shm",
         "var/lib/signal-ledger/stock_probs.sqlite3-journal",
         "var/lib/signal-ledger/legacy.spbackup",
         "tmp/cache.db/metadata.json",
-    ):
-        assert data_path_pattern.search(path), path
+        "tmp/archive.sqlite/member.txt",
+    )
+    for index, path in enumerate(rejected_paths):
+        _assert_release_scanner_rejects(
+            {path: b"synthetic persistent data marker"},
+            tmp_path / f"persistent-data-{index}.tar.gz",
+            "persistent_data_path",
+        )
 
-    for path in (
-        "usr/lib/python3.12/sqlite3/__init__.py",
-        "usr/share/ca-certificates/mozilla/ISRG_Root_X1.crt",
-        "app/src/stock_probs/static/dashboard.js",
-    ):
-        assert not data_path_pattern.search(path), path
-
-    assert "data_path_pattern = re.compile(data_path_expression, re.IGNORECASE)" in script
-    assert "13) printf 'The image archive contains a database or backup path." in script
+    _assert_release_scanner_accepts(
+        {
+            "usr/lib/python3.12/sqlite3/__init__.py": b"# Python's sqlite module source",
+            "app/src/stock_probs/static/dashboard.js": b"export const dashboard = true;",
+        },
+        tmp_path / "non-persistent-source.tar.gz",
+    )
 
 
 def test_existing_release_is_backed_up_with_old_image_before_migration(
