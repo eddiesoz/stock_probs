@@ -1,12 +1,19 @@
 ---
 title: "Design system and Ledger assistant"
-description: "The current Signal Ledger visual language, approved assistant visual contract, and R-ASTRA-120 candidate status."
+description: "The current Signal Ledger visual language, approved assistant visual contract, and R-ASTRA-120 owner-canary status."
 ---
 
 # Design system and Ledger assistant
 
 This guide describes the visual system already used by Signal Ledger and the approved visual
-contract for the Ledger assistant. R-ASTRA-120 remains prerelease work. E798 records the search-confirmation source review, 933 selected independent security/API tests, the 52/52 frozen-banner guide-fixture pass, and a corrected frontend build/stage with all 52 served/export files matched. Preserve the pre-repair HTTP failure and pre-banner 51/52 guide failure. Focused post-stage browser QA passed 2/2 with no skips on desktop and Pixel 7 emulation after a fixture-only correction; the earlier failed assertion used a stale mock receipt-text oracle. E791/E795 browser/axe results remain pre-copy scope. Final PR-bound HTML/PDF guide acceptance remains pending. Physical mobile, true zoom, and screen-reader evidence remain unavailable. See the [R-ASTRA-120 plan and evidence](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
+contract for the Ledger assistant. At E849, the tested PR #2 image is deployed at schema 13, ready
+and loopback-only, with rollout control set to `owner_canary`; the actual owner UI/model/action
+canary remains pending. E847's reused 193/196 browser aggregate (three expected skips) and 68-case,
+72-scan whole-route axe scope (zero violations/incompletes) passed for their unchanged bindings.
+The guide passed its declared review scope. These scoped results are not full WCAG AA; physical
+mobile, true zoom, actual screen-reader and PDF/UA evidence remain unavailable. E798's focused
+checks and its pre-repair HTTP and pre-banner guide failures are historical. See the
+[R-ASTRA-120 plan and evidence](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
 
 ## Source of truth
 
@@ -157,20 +164,28 @@ for exact receipts and preserved results.
 
 ### R-ASTRA-120 source and release status
 
-The candidate shared workspace layout mounts the assistant host and implements the approved
-desktop panel and narrow-screen full-screen surface. The latest read-only production inspect,
-at 2026-10-08T21:33:44Z, reported revision da2764e8477698fa7d686be93a4711e35478e802, image
-sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1, schema 12 ready,
-failed=null, and loopback-only. It did not return rollout, RAM, or billing; current rollout
-mode is Unavailable. Candidate source and screenshots are not a released feature.
+The deployed PR #2 release mounts the approved desktop panel and narrow-screen full-screen surface
+in the same application image. E849 reports the tested image at schema 13, ready and loopback-only,
+with verified pre-deploy/pre-migration backups and registered recovery image. The rollout-control
+call passed with `owner_canary`; the actual owner UI/model/action canary remains pending. The
+owner's current authenticator-code field was empty, so no authenticated owner interaction is
+claimed. Invited-user rollout and the announcement remain held.
 
-Current acceptance remains pending. The later E198 canonical pass predates subsequent source
-changes, and current native wire checks do not establish full feature or resource acceptance.
+E847's canonical and 590-check security scopes passed. Its input-bound browser and axe evidence
+remains Pass: 193/196 browser cases with three expected skips, and 68 route cases with 72 scans at
+zero violations/incompletes. Earlier input-bound current-product native wire/kill scopes passed.
+E848 passed the exact-5ad actual-host pair/resource/recovery, actual combined 1 GB and PR-bound
+rollback scopes. The guide passed its declared review scope. These results do not establish full
+WCAG AA; physical mobile, true zoom, actual screen-reader and PDF/UA evidence remain unavailable.
+The E848 deployment failure and
+successful failure-path rollback remain historical. The following E245–E797 diagnostics are
+historical; their failures remain preserved and do not override the later E847 results for the
+explicitly reused browser/axe bindings.
 E245's initial ignored UI candidate changed inline-code whitespace and left mobile raw-axe
 incompletes; E250's separate fixture-only follow-up preserved text/code fidelity, tested enabled
 keyboard traversal without submission, and passed mobile stacked/full-width/44px geometry. Its
 desktop Light/Dark raw axe was 0 violations/0 incompletes; mobile Light/Dark each retained one
-incomplete disclaimer contrast item, so strict app axe remains **Fail**. E251's builder-reported
+incomplete disclaimer contrast item, so strict app axe **Failed in that historical snapshot**. E251's builder-reported
 source/build checks were followed by E252/E253 source-review **Fails**: CSS-module scoping left the
 disclaimer padding rule unbound, and readiness styling was applied to the whole container rather
 than the candidate's child span while the mobile font-size override was removed. The fixes are
@@ -178,7 +193,7 @@ authorized. E254's builder repair binds the selector and passes its scoped contr
 checks. E257 reports readiness CSS/contract/build/test/audit/stage scope; E258 parent review
 **Passed** the bound source and served/export comparison, including the full JSX hash. E263's
 independent selected current-source browser run passed 11 cases with one expected mobile skip,
-verified all 52 served/export files, and completed cleanup. Strict raw axe still **Fails** with one
+verified all 52 served/export files, and completed cleanup. E263's strict raw axe **Failed** with one
 incomplete contrast item in each of the four actual desktop/mobile Light/Dark snapshots. Sampled
 custom placeholder contrast passed only its measurements; enabled-Send keyboard traversal, numeric
 mobile target geometry, and rendered code-fence fidelity were **Unavailable**. E267 ran the E264
@@ -191,8 +206,9 @@ rows have no owner mapping and do not identify later-chunk activity, a stall, or
 attempt **Failed at setup** on an auth-route mismatch and produced no UI records; corrected rerun is
 pending. It does not close the earlier raw-axe incompletes. E269's corrected static header/body
 inspection passed, but no independent test rerun occurred (**Skipped/not run**) and remains pending.
-The mobile raw-axe incomplete and strict accessibility **Fail** remain open. Actual 1 GB resources,
-complete security and tested PR-bound rollback remain open.
+Those E263 mobile raw-axe and strict-accessibility results are historical. E847 later passed its
+bound axe and security scopes; E848 passed the exact-5ad actual-host resource and PR-bound rollback
+scopes.
 E276's corrected synthetic browser run **Failed** because Send/Cancel left focus on `document.body`.
 E277 repaired panel focus handling and passed the approved frontend build/stage with all 52 served
 files matching. E278's post-repair aggregate **Failed** four invalid Stop-label identity assertions,
@@ -202,7 +218,7 @@ the tracked focus-only regression 2/2 after preserving its wrapper/CLI setup fai
 fixture results do not close the raw-axe incomplete or establish full app accessibility.
 Mobile viewport evidence is emulated, not physical-device evidence.
 
-The latest checkpoint retains the strict app axe **Fail** despite scoped readable-text
+The E263 historical checkpoint reported strict app axe **Fail** despite scoped readable-text
 measurements. E664's standalone help HTML and PDF reviews apply to the earlier finalized outputs;
 the PDF had a tagged-text fidelity **Fail** despite visual review, and E670 later changed the
 tracked renderer. Its source review passed. The initial test review found a P2 gap in per-block

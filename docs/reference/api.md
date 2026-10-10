@@ -60,26 +60,29 @@ flow. Invitation creation, listing, and email submission require an administrato
 and revocation are limited to the signed-in user's own sessions. The HTTP API has no invitation
 revocation route; invitations expire and can be redeemed once.
 
-## R-ASTRA-120 assistant candidate API
+## R-ASTRA-120 assistant API
 
-These routes are present in the R-ASTRA-120 candidate source and are not part of the currently
-deployed schema-12 production release. User routes use the existing authenticated, CSRF-protected
+These routes are part of the deployed R-ASTRA-120 schema-13 release. E849 reports exact PR #2 image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1` ready, enabled
+with rollout mode `owner_canary`. The actual owner UI/model/action
+canary remains pending; route presence and rollout-control success do not establish owner
+interaction acceptance. User routes use the existing authenticated, CSRF-protected
 application boundary; mutations require CSRF, and conversation, turn, event, and preview access
 checks active-session ownership. Provider administration routes use administrator checks, with
-fresh TOTP for sensitive operations. Candidate route presence is not runtime or release acceptance.
+fresh TOTP for sensitive operations.
 
 | Method and route family | Purpose |
 | --- | --- |
-| `GET /api/v1/assistant/status`, `GET /api/v1/assistant/models`, `GET /api/v1/assistant/context` | Report candidate readiness and retrieve user-authorized model/workspace context. |
+| `GET /api/v1/assistant/status`, `GET /api/v1/assistant/models`, `GET /api/v1/assistant/context` | Report assistant readiness and retrieve user-authorized model/workspace context. |
 | `POST /api/v1/assistant/conversations`; `GET /api/v1/assistant/conversations`; `GET/PATCH/DELETE /api/v1/assistant/conversations/{conversation_id}` | Create, list, read, update, and delete user-owned conversations. |
 | `POST /api/v1/assistant/conversations/{conversation_id}/turns`; `GET /api/v1/assistant/conversations/{conversation_id}/turns/{turn_id}/events`; `POST /api/v1/assistant/conversations/{conversation_id}/turns/{turn_id}/cancel` | Submit turns, read that user's turn events, or request cancellation. |
 | `POST /api/v1/assistant/conversations/{conversation_id}/actions/{action_id}/confirm` | Confirm or decline a versioned, user-visible action preview. |
 | `GET /api/v1/assistant/conversations/{conversation_id}/turns/{turn_id}/search-previews/{preview_id}`; `POST .../{preview_id}/confirm` | Review and confirm native websearch previews. |
 | `GET /api/v1/assistant/conversations/{conversation_id}/turns/{turn_id}/webfetch-previews/{preview_id}`; `POST .../{preview_id}/confirm` | Review and confirm bounded native webfetch previews. |
-| `/api/v1/assistant/providers/**` | Candidate provider/model policy, consent, validation, and OAuth administration routes. |
+| `/api/v1/assistant/providers/**` | Provider/model policy, consent, validation, and OAuth administration routes. |
 | `/api/v1/assistant/internal/**` | Private loopback-only provider/MCP bridge endpoints for a live execution; these are not browser APIs. |
 
-The candidate application MCP catalog is typed and owner-scoped. Private reads derive ownership from
+The application MCP catalog is typed and owner-scoped. Private reads derive ownership from
 the authenticated user's live execution lease and are bounded to the turn. Each turn starts with a
 browser-reviewed page-context preview; this is separate from tool execution and does not approve
 external requests. `assistant.propose_action` creates a user-visible card but never applies it. The
@@ -94,16 +97,24 @@ a safe redirect requires a new WebFetch request and a separate approval for that
 redirects need further approvals, within the five-hop, eight-tool, and 120-second turn bounds. When
 the guard is unavailable, WebFetch is denied. Chat text does not approve a search, fetch, or action.
 
-R-ASTRA-120 remains **In progress**, and the assistant candidate is disabled in production.
-Native/runtime, accessibility, actual combined 1 GB resource, PR-bound rollback, and release
-acceptance remain open. See the
+R-ASTRA-120 remains **In progress**. E847 passed the declared canonical and security scopes, and
+its input-bound browser/axe reuse passed: the 68-case/72-scan axe scope had zero violations or
+incompletes, and the 193/196 browser aggregate had three expected skips. Earlier input-bound
+current-product native wire/kill scopes passed; E848 passed the exact-5ad actual-host pair/resource/
+recovery, combined 1 GB and PR-bound rollback scopes. E849
+deployed the exact PR #2 image at schema 13 and set `owner_canary`; the actual owner UI/model/action
+canary is pending, and invited-user rollout and announcement are held. These scoped results do not
+establish full WCAG AA; physical mobile, actual screen reader, true zoom and PDF/UA remain
+unavailable. See the
 [authoritative R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
 for current receipts and detailed statuses.
 
 ### Assistant feature coverage matrix
 
-This matrix maps the candidate source contracts to the existing application. It is a coverage
-inventory for verification, not evidence that each workflow has passed. Application MCP reads
+This matrix maps the source contracts to the existing application. It is a coverage inventory for
+verification, not evidence that each workflow has passed or that the owner canary is complete.
+E847's reused browser/axe passes cover their declared unchanged inputs; they do not verify every
+matrix action through the authenticated owner UI/model/action canary. Application MCP reads
 require a live owner-scoped execution. Each turn requires acknowledgement of the visible page-context
 preview; subsequent private reads use that turn's live owner/session lease and bounded tool-call
 counter. This is not a separate approval for each private read. External search and fetch requests
@@ -113,15 +124,15 @@ or handoff needs the authenticated browser's exact, current, single-use confirma
 | Route or feature | Read or explanation path | Change or navigation path |
 | --- | --- | --- |
 | `/`, `/overview`: research totals, portfolio and watchlist | `workspace.summary`, `workspace.instrument_lists`; server-derived owner counts | Portfolio/watchlist proposals below; existing overview controls remain available. |
-| Signal Ledger home (`/`), “Search ledger” history | `history.search`; bounded typed filters and summaries | Confirmed filter handoffs open the Search ledger form; the typed filter handoff is available only on `/`. Confirmed CSV/JSON export handoffs open owner-authorized downloads from any supported page. Source implementation is present; full feature coverage and QA remain pending. |
-| `/research`: recent research and saved-forecast comparison | `history.search`; owner-scoped bounded history and saved-forecast records | Shows five recent records from the newest 100 events and compares saved forecasts. The assistant can search owner-scoped history here. To apply filters, use the Search ledger form on `/`, where the typed filter handoff is available. Confirmed CSV/JSON export handoffs are route-independent and open owner-authorized downloads. Source implementation is present; full feature coverage and QA remain pending. |
+| Signal Ledger home (`/`), “Search ledger” history | `history.search`; bounded typed filters and summaries | Confirmed filter handoffs open the Search ledger form; the typed filter handoff is available only on `/`. Confirmed CSV/JSON export handoffs open owner-authorized downloads from any supported page. The source contract is present; actual owner UI/model/action acceptance remains pending. |
+| `/research`: recent research and saved-forecast comparison | `history.search`; owner-scoped bounded history and saved-forecast records | Shows five recent records from the newest 100 events and compares saved forecasts. The assistant can search owner-scoped history here. To apply filters, use the Search ledger form on `/`, where the typed filter handoff is available. Confirmed CSV/JSON export handoffs are route-independent and open owner-authorized downloads. The source contract is present; actual owner UI/model/action acceptance remains pending. |
 | Saved forecasts and input series | `history.saved_forecast`; immutable result and bounded daily/intraday series | `forecast.reopen` opens the saved result; it does not rerun a provider or alter the record. |
 | `/tools`: tool landing page | Route-specific harness help describes the available workspaces | Use the existing Forecast, Live Trading and Markets navigation; opening a page does not run research. |
 | `/tools/forecast`: new forecasts | `market.instrument_search`; selected instrument and saved-result references | `forecast.create` proposes a new run; `reconstruction.run` proposes separately labelled fresh historical analysis. |
 | Forecast outcomes | `history.outcomes`; owner-checked result and bounded observations | `outcome.record` appends an observation after confirmation; recorded forecasts remain immutable. |
 | `/tools/live-trading`: holdings | `workspace.instrument_lists`, public quote reads | `portfolio.add`, `portfolio.set_quantity`, `portfolio.remove`; quantities are research records, not brokerage positions. |
 | Watchlists | `workspace.instrument_lists`, public instrument lookup | `watchlist.add`, `watchlist.remove`; ownership derives from the active session. |
-| `/tools/markets`: quotes, bars and comparison | `market.quote`, `market.bars`, `market.compare`; exact provider/exchange identity | `market.open` navigates to the matching instrument workspace. Typed local filter, chart-range, visible-column, and quote/watchlist/chart refresh controls are implemented in source on the Markets page. Full feature coverage and independent QA remain pending. |
+| `/tools/markets`: quotes, bars and comparison | `market.quote`, `market.bars`, `market.compare`; exact provider/exchange identity | `market.open` navigates to the matching instrument workspace. Typed local filter, chart-range, visible-column, and quote/watchlist/chart refresh controls are implemented in source on the Markets page. The actual owner UI/model/action canary remains pending. |
 | Selected-instrument news | `market.news`; bounded public headlines with source/as-of | Public article links retain the existing safe-link behavior; no hidden browser automation. |
 | Live Trading notes and alerts | Existing local UI; these are not silently uploaded as server-owned records | `notes.set`, `notes.clear`, and `alerts.remove` hand off to the matching local control; `alerts.add` uses a typed, active-page/session-scoped browser action. |
 | Light/Dark/System settings | Current UI and route context; stored presentation choice remains local | `theme.set` uses the typed browser bridge after confirmation. |
@@ -145,7 +156,9 @@ control. On mobile the handoff closes the full-screen assistant and focuses the 
 or Alerts section heading. The assistant's action receipt remains in the conversation; reopen
 assistant history and the same conversation to review it. `alerts.add` instead uses the typed browser bridge after confirmation and
 is limited to the active Live Trading page/session; it is not a server-owned or cross-session alert.
-These are candidate behaviors, not production availability or release acceptance.
+These rows describe source behavior in the deployed release; they are not production owner-canary
+acceptance. E849's rollout-control pass set `owner_canary`, while the actual owner UI/model/action
+canary remains pending.
 
 `R-ASTRA-111` applies admission bounds to GitHub OAuth start: 8 starts per effective caller
 and 64 per app process in a rolling minute, plus 8 outstanding transactions per caller and 128

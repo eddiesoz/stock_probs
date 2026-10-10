@@ -254,19 +254,26 @@ service.
 | Export formula execution or data leakage | Bounded exports, typed shared record construction, dangerous spreadsheet-cell prefixes neutralized, and no server filesystem paths in responses. |
 | Diagnostic leakage | Public failures use stable safe categories and request IDs; logs classify operation and exception type without request bodies, local paths, or raw exception text. |
 
-## R-ASTRA-120 assistant candidate boundary
+## R-ASTRA-120 assistant security boundary
 
-The assistant source is a candidate on the shared R-ASTRA-120 branch. E256's read-only production
-inspect recorded revision `da2764e8477698fa7d686be93a4711e35478e802`, image
-`sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1`, schema 12 ready,
-`failed=null`, and loopback-only. E301 later reconfirmed those facts; E329's current-task read-only
-inspect/status pair reconfirmed them again. Neither E301 nor E329 returned assistant rollout mode
-or user/browser access. Earlier rollout-disabled evidence is historical, and current rollout mode
-remains **Unavailable**.
+E849 deployed the tested PR #2 release at schema 13, ready and loopback-only, with verified
+pre-deploy and pre-migration backups and registered schema-13 recovery image. The subsequent
+rollout-control call passed with `owner_canary` on the same image. Independent production-boundary
+QA passed its eight unauthenticated TLS probes and exact deployment/backup/recovery/rollout
+identity checks. The no-cookie session was unauthenticated, no cookies were set, and private/hostile-
+header boundaries held. E847's canonical security scope passed 590 checks; the independent boundary
+QA passed eight probes for its declared scope. The actual owner UI/model/action canary remains
+pending. The owner's current authenticator-code field was empty; invited-user rollout and the
+announcement remain held. E256/E301/E329 below are historical schema-12 inspections, superseded by
+E849 for current deployment state.
+
 The source boundary uses same-origin authenticated
 application routes, session-owned tool calls, typed tools, bounded request/storage limits, private
 loopback callbacks, and a worker UID separate from the FastAPI process. These are source/design
 observations, not independent security acceptance.
+
+The following E167–E777 records preserve earlier scoped findings and failures. They are historical;
+the E847/E849 scopes above supersede only the bindings and checks they explicitly cover.
 
 Earlier candidate-image disposable native checks passed their local functional and shutdown scopes
 (E167/E168), with independent terminal, source-binding and exact-cleanup review (E171). Two owners
@@ -289,14 +296,18 @@ backend checks and focused desktop/emulated-mobile checks passed that scoped rep
 The incremental worker-cache purge repair passed selected independent checks, followed by its
 explicit socket-cleanup assertion (E526/E529). Open-panel worker/policy recovery remains in progress
 (E528); these results do not establish current full-application acceptance.
-Current-image shutdown, strict accessibility, combined 1 GB resources and PR-bound rollback remain
-open; no production promotion is authorized by these source or local-test results.
+At the E520 checkpoint, current-image shutdown, strict accessibility, combined 1 GB resources and
+PR-bound rollback remained open. Earlier input-bound current-product native wire/kill scopes later
+passed. E847 passed the canonical/security scopes and input-bound browser/axe reuse; E848 passed
+the exact-5ad actual-host pair/resource/recovery, combined 1 GB and PR-bound rollback scopes. E849
+subsequently deployed the release and set `owner_canary`. The actual owner UI/model/action canary
+remains pending.
 
-The current task advertised eight deployment MCP operations. E329 is the latest receipt-backed
-read-only production `inspect`/`status` pair; both returned `status=ok`, the revision and image above, schema 12,
-`failed=null`, and loopback-only, while inspect returned `ready`. The receipt does not expose
-rollout, RAM, billing, or user/browser access, so it is not rollout or authenticated UI verification.
-No promotion or production mutation occurred in that check. E330's bounded pinned-V2/current-upstream
+At the E329 checkpoint, the task advertised eight deployment MCP operations. Its read-only
+production `inspect`/`status` pair returned `status=ok`, the then-current revision and image, schema
+12, `failed=null`, and loopback-only, while inspect returned `ready`. The receipt did not expose
+rollout, RAM, billing, or user/browser access. No promotion or production mutation occurred in that
+check. E330's bounded pinned-V2/current-upstream
 public-source audit did not reveal the eligibility clause behind E322's HTTP 403; its cause remains
 unproven, and no live provider request was made. Current helper source
 requires no-new-privileges and a pinned migration/hash pair; their source and selected tests do not
@@ -518,10 +529,10 @@ See [getting started](../operations/getting-started.md),
 
 ## Current R-ASTRA-120 security and release checkpoint
 
-R-ASTRA-120 remains **In progress**. E699 is the latest read-only production observation: revision `da2764e8477698fa7d686be93a4711e35478e802`, schema 12 ready and loopback-only. Rollout, RAM, billing and user/browser state were not returned; no production change is inferred. The detailed evidence and subsequent task statuses are in the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
+R-ASTRA-120 remains **In progress**. E849 is the latest production checkpoint: the exact tested PR #2 image is deployed at schema 13, ready and loopback-only, with verified pre-deploy/pre-migration backups and recovery image; rollout control passed with `owner_canary`. The actual owner UI/model/action canary remains **Pending**. E699's schema-12 inspection below is historical. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts.
 
 E721 independently passed 928 tests and Ruff lint/security checks for a selected synthetic/local boundary scope, with all 75 tracked source/test pins unchanged under the corrected binding review. The scope covers API, session, consent, egress, WebFetch and storage contracts; it is not complete live-security acceptance. Its `ruff format --check` failed on unchanged baseline formatting in one selected test and four additional existing files in the broader check; no formatting repair was made. The first binding comparison omitted non-Python assets, and the corrected 75-path manifest is the accepted binding result.
 
 E765 passed the maintained full browser aggregate: 191 passed, 3 expected skips and no failures. Four maintained assistant-panel snapshots reported raw axe 0 violations and 0 incomplete items. This is panel scope only; full-app accessibility remains open. E725's earlier full-browser failure remains preserved. E768's kill-profile source finding was repaired for source/test review in E769–E772; those results do not establish a live current-image kill. E775's builder source-preparation report passed 417 tests with two explicitly deselected after adding optional exact PR-revision binding. E777 independently passed the selected source/test scope (417 passed, 2 deselected, 2 warnings, four stable pins); review retained a trusted local caller precondition that verifies the maintained build-receipt SHA and exact immutable image/context/PR revision, then rechecks the reviewed pair manifest before runtime acceptance. The revision is not exposed as an MCP input, and no relabel or permissive-label fallback was accepted. These are source/test results only; no fresh image build, Docker probe, or runtime acceptance occurred. E774 identified that this page's prior status had stopped at E699; its audit adds no runtime evidence.
 
-Native/provider runtime, current-image active-search kill, complete security, physical-mobile and screen-reader acceptance, actual combined 1 GB resources, tested PR-bound rollback, deployment/canary and release remain open. The existing 1 GB host/backups and US$15 monthly total cap remain unchanged; no resize, rollout, production mutation, merge, release or email is claimed. See the [ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts and preserved failures.
+E847's canonical security scope passed 590 checks, and its input-bound browser/axe reuse remains Pass: browser 193/196 with three expected skips and whole-route axe 68 cases/72 scans with zero violations/incompletes. Earlier input-bound current-product native wire/kill scopes passed. E848 passed the exact-5ad actual-host pair/resource/recovery, actual combined 1 GB and PR-bound rollback scopes. E849 deployed the release and set `owner_canary`. The actual owner UI/model/action canary, invited-user rollout and authorized announcement remain pending/held. Physical mobile, actual screen reader, true zoom and PDF/UA remain **Unavailable**; these scopes do not establish full WCAG AA. The existing 1 GB host/backups and US$15 monthly total cap are unchanged. See the [ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts and preserved failures.

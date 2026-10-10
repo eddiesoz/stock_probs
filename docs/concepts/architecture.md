@@ -1,6 +1,6 @@
 ---
 title: "Architecture"
-description: "The production single-process architecture and the unaccepted same-image Ledger assistant candidate boundary."
+description: "The production single-process architecture and the deployed R-ASTRA-120 owner-canary boundary."
 ---
 
 # Architecture
@@ -10,8 +10,8 @@ FastAPI process. It serves `/`, `/api/v1/docs`, and the workspace routes
 `/overview`, `/research`, `/tools`, `/tools/forecast`, `/tools/live-trading`, and
 `/tools/markets`, plus the application API below `/api/v1`. The default listener is loopback;
 production deployment runs on an operator-managed host. Node is not a production server. The
-unaccepted R-ASTRA-120 candidate adds one supervised OpenCode worker process inside the same image
-and container; it does not add a companion service or image.
+deployed R-ASTRA-120 release adds one supervised OpenCode worker process inside the same image and
+container; it does not add a companion service or image.
 
 The presentation source is a Next.js `16.3.8` / React `19.3` App Router project, but it is a
 static build-time input rather than another runtime. Run `./scripts/build-frontend.sh` to create
@@ -60,26 +60,38 @@ FastAPI (`/`, `/api/v1/docs`, `/api/v1`) ── application service ── forec
                                   └── backup manager ── managed .spbackup artifacts
 ```
 
-## R-ASTRA-120 assistant candidate boundary
+## R-ASTRA-120 assistant boundary
 
-The assistant candidate adds a supervised OpenCode V2.0.7 worker inside the same FastAPI image.
+The R-ASTRA-120 release runs a supervised OpenCode V2.0.7 worker inside the same FastAPI image.
 The browser uses same-origin `/api/v1/assistant` routes; the worker and its internal provider/MCP
 callbacks stay on private loopback. The worker has a separate UID and bounded writable runtime
 state. Application session checks bind each tool call and stream to its owner. The typed application
 MCP catalog exposes workspace/research operations; OpenCode's native websearch and webfetch are
-separate runtime tools with approval checks. The candidate does not add a companion container,
+separate runtime tools with approval checks. The release does not add a companion container,
 arbitrary shell/filesystem access, or background job scheduler.
 
-Production Compose currently defaults assistant enablement to `0` and rollout to
-`disabled`. Production remains at schema 12 and the assistant is not deployed. Candidate source,
-a staged build, and local tests do not establish native provider, MCP, search/fetch, accessibility,
-security, resource, rollback, or rollout acceptance. Candidate source distinguishes rollout paths:
-`disabled` persists the disabled marker and invokes the fixed in-place assistant-kill client, while
-`owner_canary` and `invited` transitions force-recreate the app service (E53). This source behavior
-does not establish an operable live kill control or current-image acceptance. An actual in-flight
-search cancellation passed on an earlier schema-13 candidate
-image while preserving app readiness and private records. The equivalent check on the current
-candidate image remains pending. See the
+Production Compose still defaults assistant enablement to `0` and rollout to `disabled`, but that
+is not the deployed setting. E849 deployed the tested PR #2 image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1` at schema 13, ready
+and loopback-only, then the rollout control passed with `owner_canary` on that same image. The
+deployment verified pre-deploy and pre-migration backups and registered recovery image
+`sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f`. The actual owner
+UI/model/action canary remains pending; the owner's current authenticator-code field was empty.
+Invited-user rollout and the announcement remain held.
+
+E847 passed its declared canonical and 590-check security scopes. Its input-bound browser/axe reuse
+passed for 193/196 browser cases with three expected skips and 68 cases/72 scans with zero
+violations or incompletes. Earlier input-bound current-product native wire/kill scopes also passed.
+E848 passed the exact-5ad actual-host pair/resource/recovery, combined 1 GB and PR-bound rollback
+scopes. These results do not establish full WCAG AA or owner UI/model/action acceptance. Physical
+mobile, actual screen reader, true zoom and PDF/UA evidence remain unavailable. The E848
+`backup_unverified` deployment failure and successful failure-path rollback are historical, not
+the current E849 result.
+
+The source distinguishes rollout paths: `disabled` persists the disabled marker and invokes the
+fixed in-place assistant-kill client, while `owner_canary` and `invited` transitions force-recreate
+the app service (E53). An earlier input-bound current-product active-search kill scope passed for
+its image; this does not establish actual owner interaction. See the
 [R-ASTRA-120 evidence ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
 
 ## Boundary responsibilities
