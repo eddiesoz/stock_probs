@@ -25,12 +25,6 @@ from contextlib import suppress
 from pathlib import Path
 from typing import cast
 
-from stock_probs.assistant.native_provider_adapters import (
-    NativeProviderDescriptorError,
-    native_output_token_body,
-    resolve_native_adapter,
-)
-
 CONTROL_DIRECTORY = Path("/run/assistant")
 CONTROL_SOCKET = CONTROL_DIRECTORY / "control.sock"
 LOCATION_ROOT = CONTROL_DIRECTORY / "worker-locations"
@@ -482,6 +476,11 @@ def _fixed_location_config(
 ) -> dict[str, object]:
     """Build a closed native config from one reviewed adapter and fixed local endpoints."""
 
+    from stock_probs.assistant.native_provider_adapters import (
+        native_output_token_body,
+        resolve_native_adapter,
+    )
+
     descriptor = resolve_native_adapter(adapter_id, native_provider_id)
     native_model_ref = f"{descriptor.native_provider_id}/assistant-selected"
     permissions: list[dict[str, str]] = [
@@ -614,6 +613,11 @@ def _validate_prepare(request: dict[str, object]) -> tuple[str, str]:
         or not _validated_local_endpoint(request.get("mcp_url"), "mcp", execution_id)
     ):
         raise SupervisorError("request_invalid")
+    from stock_probs.assistant.native_provider_adapters import (
+        NativeProviderDescriptorError,
+        resolve_native_adapter,
+    )
+
     try:
         resolve_native_adapter(adapter_id, native_provider_id)
     except NativeProviderDescriptorError as exc:

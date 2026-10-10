@@ -1,23 +1,32 @@
 # Stock Probability MVP Roadmap
 
-R-ASTRA-120 merged baseline E839, current follow-on E841: PR #1 merged at exact revision
+R-ASTRA-120 merged baseline E839; current follow-on E841–E845. PR #1 merged at exact revision
 `6dc259e91cc8077b9264901bee3282167b9d05af` on `2026-10-10T06:25:51Z`. Its actual-host typed
-MCP rehearsal passed two-owner real Zen/MCP/native-search, migration, verified backup,
-write-preserving schema-13 recovery, and the bounded combined 1 GB workload. The exact current-image
-pending-search shutdown passed, with independent cleanup review. The final eight captures and
-14-page HTML/PDF guide passed their declared review scopes; unchanged HTML structure permits reuse
-of the earlier 180-check accessibility result. Physical mobile, actual screen reader, true zoom and
-PDF/UA remain Unavailable. Browser, security and canonical evidence is reused only for unchanged
-bound inputs; no new whole-tree aggregate is inferred. The prebuilt publication failed at the
-credential-byte scan before creating a GitHub release. Two SPDX exception identifiers in the public
-packaging source matched the broad token heuristic. The repaired shared scanner now passes independent
-23-test, exact candidate/recovery archive and official public-source provenance checks. The follow-on
-PR and newly bound image/pair remain pending. Production still serves the schema-12 baseline; no deploy, resize, rollout or
-email occurred. The US$15 monthly total cap, 1 GB plan and backups remain unchanged. Publication,
-exact follow-on PR/image-pair binding, owner canary and release remain open. See
-[E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair) and
-[E840](MVP-PLAN.md#r-astra-120-e840-follow-on-pr-binding-and-scanner-diagnosis) and
-[E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair).
+MCP rehearsal, schema-13 recovery, bounded combined 1 GB workload and current-image pending-search
+shutdown passed their declared scopes. The final eight captures and 14-page HTML/PDF guide passed
+their declared review scopes; reused HTML checks retain their original bindings. Physical mobile,
+actual screen reader, true zoom and PDF/UA remain Unavailable. E841's shared credential scanner
+repair and independent 23-test/provenance review passed; publication had failed earlier before a
+GitHub release was created. Parent-observed metadata reports PR #2 **OPEN/DRAFT** at clean pushed
+head `f4a620f784d01eae917fd729ae3ece2e05378858`. Its candidate image build, local schema-13 pair,
+and bounded archive verifier checks passed their declared scopes, but both fresh actual-host pair
+calls failed with `host_memory_reserve_breached`; the reviewed sample fell to `70,848 KiB`, below
+the required `131,072 KiB` reserve. Listed cleanup passed, temporary-entry detail is Unavailable,
+and actual-host migration/recovery facts were not returned. Independent driver and supervisor
+lazy-import checks passed only selected synthetic/local scopes, including the package-export delta;
+no image, actual-host, or canonical acceptance follows. No new canonical, browser, security, guide,
+or actual-host acceptance is inferred.
+Parent-observed post-failure inspect reconfirmed production revision
+`da2764e8477698fa7d686be93a4711e35478e802`, schema 12 ready, `failed=null`, loopback-only; no PR #2
+merge, publication, deployment, rollout, resize or email occurred. The US$15 monthly cap and
+existing 1 GB plan/backups remain unchanged. PR-bound host rehearsal, reserve, owner canary and
+release remain open. See [E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair),
+[E840](MVP-PLAN.md#r-astra-120-e840-follow-on-pr-binding-and-scanner-diagnosis),
+[E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair),
+[E842](MVP-PLAN.md#r-astra-120-e842-pr-2-actual-host-reserve-failure),
+[E843](MVP-PLAN.md#r-astra-120-e843-native-driver-import-diagnostic),
+[E844](MVP-PLAN.md#r-astra-120-e844-supervisor-lazy-import-selected-qa), and
+[E845](MVP-PLAN.md#r-astra-120-e845-assistant-package-lazy-export-selected-qa).
 
 Historical R-ASTRA-120 E825 checkpoint: the E823/E824 storage restore, Docker/containerd migration,
 cache relocation and retirement, bounded BuildKit setup, actual network-none worker proof, retained

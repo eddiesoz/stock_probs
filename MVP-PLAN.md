@@ -3412,6 +3412,106 @@ No new PR merge, publication, deployment, resize, rollout or email is claimed by
 | Independent scanner QA | `caa209f18690406517a9b5cbd7c01ddba1b6b9ac818facac53f8d1c5dc272e6e`; `/var/tmp/r12r/r120-release-archive-independent-qa-20261010T0654Z/independent-release-archive-qa-receipt.json`; 23 tests, both exact archives and fresh official provenance Pass. |
 | SDK field correction | `14e158946de6a0984c23aaf950d0259371318f4f7aafedde6320c4efce77069f`; synthetic SDK objects only. |
 
+### R-ASTRA-120 E842 PR #2 actual-host reserve failure
+
+Review task `R-ASTRA-120 independent exact PR2 local-pair and actual-host evidence review`.
+Parent-observed PR metadata reports PR #2 **OPEN/DRAFT** at clean pushed head
+`f4a620f784d01eae917fd729ae3ece2e05378858` on `codex/r120-release-archive-scanner`; the query
+receipt and exact observation time were not supplied. The `linux/amd64` candidate image
+`sha256:eaa9366bf63d4b599f23d6ceb00d65abd093b5fd508a1ffd54cf4abd98678da1` was built for that head
+from source context `254e9e3d89257379a8844f332be2ebe5132536ed63ec0d655c1470144989936e` and remains
+unpublished. The local schema-12-to-13 candidate/recovery rehearsal **Passed** for its declared
+scope with a verified pre-migration backup, same disposable volume, preserved data/writes, and
+cleanup. The candidate and recovery archive verifier commands both exited `0` for 13 and 7 OCI
+layers; the scan subreceipt says independent scanning was not performed, while the independent
+PR #2 review checked the recorded artifact/manifest hashes.
+
+Two fresh official-SDK actual-host `rehearse_pr_pair` calls **Failed** with
+`host_memory_reserve_breached`: the first ran `2026-10-10T07:55:31.927581Z`–
+`07:57:13.677322Z`; the second ran `08:11:51.416548Z`–`08:13:24.648748Z`. Independent review of
+the second attempt recorded 160 host samples and a minimum `MemAvailable` of `70,848 KiB`, below
+the required `131,072 KiB` reserve. Its candidate-profile cgroup peak was `735,752,192` of
+`805,306,368` bytes, with observed `high`, `max`, `oom`, and `oom_kill` deltas all zero; this does
+not pass the reserve gate. The listed owned Docker objects and seven incoming assets were absent,
+but temporary cleanup is **Unavailable** because two entries were scanned without names or
+per-entry state. Actual-host migration, recovery, and write-preservation facts were not returned.
+The post-second-failure parent inspect confirmed the unchanged production revision
+`da2764e8477698fa7d686be93a4711e35478e802`, schema 12, ready, `failed=null`, and loopback-only;
+its exact observation time is **Unavailable**. No PR #2 merge, publication, deployment, rollout,
+or email occurred. The PR-bound host pair, actual 1 GB reserve, owner canary, and release gates
+remain open.
+
+| Evidence | Receipt SHA-256 / scope |
+| --- | --- |
+| Candidate image build | `92f7e271493a6e398f64e5244f08882ed0f9d6c38cd6e8a1976426385cb81ef0`; `/var/tmp/r12r/r120-pr2-build-f4a620f-20261010T0710Z/candidate-build.json`; `2026-10-10T07:04:17.100628Z`–`07:15:13.674331Z`; build/source-context binding only. |
+| Local candidate/recovery pair | Pair `618da23fd31085f9bcd94cd8a4547a9508ad6ce44fc73e3b7517de6bd38bd3c2`; terminal `252501d4971b0f77c4073413a660524baa3fe7902e324c59b88eb4071604c4ae`; `/var/tmp/r12r/r120-pr2-pair-f4a620f-20261010T0718Z/`; `07:23:37.622194Z`–`07:38:45.641034Z`; local rehearsal only. |
+| Candidate/recovery archive scan | `1907a51a076a9f0f610eb9c4b8ad9f3de17c2f137d54b0d5d5b9697e25d33a3c`; `/var/tmp/r12r/r120-pr2-archive-scan-f4a620f784d01eae917fd729ae3ece2e05378858-20261010T074028084635Z/scan-receipt.json`; both verifier exits `0`; independent scanning was not performed in this subreceipt. |
+| First actual-host call | Parent terminal review `f6593871e7243a0de2d4cb1ad7c04dc820e25686b8f7a6f1da620eb80e77790a`; `/var/tmp/r12r/r120-pr2-sdk-runner-retry-prep-20261010T075000Z/parent-host-terminal-review.json`; **Fail**, `host_memory_reserve_breached`, exit `2`. |
+| Second actual-host call and independent review | Review `2026-10-10T08:21:24.222328Z`–`08:21:25.760678Z`; `9de6fa23ecd967e68105cbd6aab2a6efed916754ef1525f8ee4f6ba67d38cd0c`; `/var/tmp/r12r/r120-pr2-actual-host-independent-review-20261010T0820Z.json`; **Fail** for host pair and reserve. Observer receipt `1eb22e1803be81dcf1fdc7cddd1e14e3298a4f262e5b148c9be3d2f20643456d`; 160-sample stream SHA-256 `2f5a2432ff89cf774cfdba755ee96564c7825899ca243668fa9f04f99eeca666`. |
+| Post-first-call host cleanup read | `88cad81834583a42bc9f19beee08e7b3589953cfa3abdeafdb68f4b372c14c13`; `/var/tmp/r12r/r120-pr2-host-readonly-20261010T080131Z/host-readonly-receipt.json`; listed absence passed, temporary-entry detail unavailable. |
+| Post-first-call production inspect | `537381da169dbb94894cacdb3ed6d0448dc46eda349cc6d71a19d99106bbb9b6`; `/var/tmp/r12r/r120-pr2-sdk-runner-retry-prep-20261010T075000Z/post-failed-host-production-inspect.json`; the receipt records `08:02:18Z`, while the exact inspect-call time is unavailable. |
+| Post-second-call host cleanup read | `ec320aa9801e0414bf9f8c3026f6cd95d825fb4081b3a9bfc868a2860bba4f3a`; `/var/tmp/r12r/r120-pr2-host-readonly-followup-20261010T081653Z/host-readonly-receipt.json`; listed absence passed, temporary-entry detail unavailable. |
+| Post-second-call parent production inspect | `7b11717ac885e2b42a5d8cf35861346370425cd758f3d621a3c95beee6c4a027`; `/var/tmp/r12r/r120-second-memory-failure-production-inspect-20261010T0830Z/inspect.json`; parent-observed after failure and cleanup; exact timestamp unavailable. |
+
+### R-ASTRA-120 E843 native-driver import diagnostic
+
+Independent source review and focused tests **Passed** for a narrow lazy-import change in
+`tests/native_assistant_probe.py`: unused Uvicorn, model-catalog/provider-manager, and fixed-location
+configuration imports are deferred to the paths that use them, with the maintained
+`AssistantModel` compatibility attribute preserved. The independent run passed `9` selected tests
+with `2` warnings. Isolated `ru_maxrss` samples were `55,692 KiB` before and `37,080 KiB` after
+the change, a diagnostic difference of `18,612 KiB`; this is test-driver import evidence, not
+application or host resource acceptance or a causal explanation for the reserve failures. The file
+change occurred after both actual-host calls, so neither call tested this version. Builder Ruff,
+format, and compile results were not independently rerun; Docker, provider, canonical, production,
+browser, and host checks were not run.
+
+| Evidence | Receipt SHA-256 / scope |
+| --- | --- |
+| Independent source and focused-test QA | Task `R-ASTRA-120 independent lazy-import source and focused-test QA`; `4147b46a5d244e1643a0db4922346459f9fef51729441194a11014c36b533e01`; `/var/tmp/r12r/r120-native-driver-independent-qa-20261010T0825Z/lazy-import-independent-review.json`; revision `f4a620f784d01eae917fd729ae3ece2e05378858`; tests `08:24:08.576700Z`–`08:24:14.647982Z`. |
+| Post-run driver source pin | Baseline `a9bba2182e74fd947fab608e9d8755c9372d0f60026cfbfdd3f42fc808b9963c`; reviewed file `d3be041634bfe2ededc4ddca1345fc51d4399e120a6347fba020a55f49f58d3c`; this change postdates the host attempts. |
+
+### R-ASTRA-120 E844 supervisor lazy-import selected QA
+
+Independent source review and the selected synthetic/local test scope **Passed** on revision
+`f4a620f784d01eae917fd729ae3ece2e05378858`: `native_provider_adapters` imports moved from module
+scope into the existing `_fixed_location_config` and `_validate_prepare` functions, and the
+focused run passed `16` tests with `2` warnings. This does not test a Docker container, provider,
+MCP/SDK, actual host, production process, image build, or canonical gate. The local startup
+measurement was reported as about `16 MiB` lower per app/worker child-wrapper process; PID 1 later
+loads the adapter and incurs that import cost, so this is not a net service-memory or reserve-gate
+Pass. The underlying builder measurement artifact and exact run time were not supplied.
+
+| Evidence | Receipt SHA-256 / scope |
+| --- | --- |
+| Independent supervisor source/test QA | Task `R-ASTRA-120 independent container supervisor lazy-import QA`; `21cd9232dbd61f95de6511171f1aec5ba1607897c63f3dd0373ec2a0cde8fd26`; `/var/tmp/r12r/r120-supervisor-lazyimport-independent-qa-20261010T0826Z/independent-review.json`; `2026-10-10T08:29:07.609230Z`–`08:29:13.336784Z`; source/test pins matched. |
+
+### R-ASTRA-120 E845 assistant package lazy-export selected QA
+
+A subsequent builder change makes `src/stock_probs/assistant/__init__.py`'s `AssistantStorage`
+export lazy using `TYPE_CHECKING` and `__getattr__`, while preserving the exact class, cached
+attribute, unknown-attribute error behavior, and `__all__`; the supervisor adapter calls are
+unchanged. The builder reported `16` focused tests passed and an off-tree parent-process estimate
+of `12.6 MiB` saved. Independent source review and the selected synthetic/local delta **Passed**:
+`13` tests passed with `2` warnings. Earlier wrapper-dispatch and shutdown results are retained for
+unchanged supervisor behavior; package-export and affected adapter/configuration cases were rerun.
+This did not rerun the entire earlier 16-test selection. Source SHA-256 is
+`d72ddc2028771e6e1545bedbc575cf04c5cee3a510ebb8c0bac9a1e59ade89cc`; test SHA-256 is
+`b13d1cd5a6e780e8d9f67e570e10269464dcd71963d1b7123b40dfaa204c24aa`; the unchanged supervisor
+source SHA-256 is `918665eb89687fa9cdb611d44753c612efbe2faf9721c171b96be0b71eb93fa9`. The exact
+builder task identifier, command, timestamp, and receipt are **Unavailable**. Independent QA is
+task `R-ASTRA-120 independent assistant package lazy-export QA`, receipt SHA-256
+`2e109a24c05272fb60ce9391a0e242793a3f3bd88752351ea452d49edd8bd748` at
+`/var/tmp/r12r/r120-assistant-package-lazyexport-independent-qa-20261010T0831Z/independent-review.json`;
+the focused run was `2026-10-10T08:32:15.582412Z`–`08:32:20.473923Z`. The `12.6 MiB` off-tree
+comparison and parent-reported `62 MiB` overall estimate are not observed aggregate memory savings
+or actual-host results. This is selected source/test acceptance only; no image, actual-host
+rehearsal, or canonical gate was rerun after it.
+
+| Evidence | Receipt SHA-256 / scope |
+| --- | --- |
+| Independent package-export QA | Task `R-ASTRA-120 independent assistant package lazy-export QA`; `/var/tmp/r12r/r120-assistant-package-lazyexport-independent-qa-20261010T0831Z/independent-review.json`, SHA-256 `2e109a24c05272fb60ce9391a0e242793a3f3bd88752351ea452d49edd8bd748`; 13 selected tests, 2 warnings. Earlier wrapper-dispatch and shutdown results are retained from E844 for unchanged supervisor behavior; no Docker/provider/SDK/host/production/image/canonical gate. |
+
 ### R-ASTRA-120 E832 late-failure diagnostic-only repair
 
 Task `R-ASTRA-120`, source head `fa3db0e9fd2b48032735474691df900135aa1357`. The narrow two-file

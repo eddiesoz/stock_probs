@@ -10,6 +10,7 @@ import socket
 import stat
 import subprocess
 import sys
+import textwrap
 import threading
 import time
 from pathlib import Path
@@ -23,6 +24,62 @@ from stock_probs.assistant.native_provider_adapters import (
     resolve_native_adapter,
 )
 from stock_probs.assistant.tools import AssistantToolGateway
+
+
+def test_supervisor_config_defers_storage_until_public_export() -> None:
+    """Adapter-only supervisor setup avoids storage while the package API stays intact."""
+
+    repository_root = Path(__file__).resolve().parents[1]
+    script = textwrap.dedent(
+        """
+        import sys
+
+        from stock_probs import container_supervisor as supervisor
+
+        assert "stock_probs.assistant" not in sys.modules
+        config = supervisor._fixed_location_config(
+            proxy_base_url="http://127.0.0.1:8000/api/v1/assistant/internal/provider/" + "a" * 32,
+            proxy_capability="b" * 48,
+            mcp_url="http://127.0.0.1:8000/api/v1/assistant/internal/mcp/" + "a" * 32,
+            mcp_capability="c" * 48,
+        )
+
+        assert config["model"] == "assistant-proxy/assistant-selected"
+        assert "stock_probs.assistant.native_provider_adapters" in sys.modules
+        assert "stock_probs.assistant.storage" not in sys.modules
+
+        import stock_probs.assistant as assistant_package
+        from stock_probs.assistant import AssistantStorage
+        from stock_probs.assistant.storage import AssistantStorage as StorageClass
+
+        assert assistant_package.__all__ == ["AssistantStorage"]
+        assert AssistantStorage is StorageClass
+        assert assistant_package.AssistantStorage is StorageClass
+        assert "stock_probs.assistant.storage" in sys.modules
+
+        try:
+            assistant_package.unknown_export
+        except AttributeError:
+            pass
+        else:
+            raise AssertionError("unknown package attributes must fail")
+        """
+    )
+    result = subprocess.run(  # noqa: S603 - argv is this test's fixed import-only snippet.
+        [sys.executable, "-c", script],
+        cwd=repository_root,
+        env={
+            "PATH": os.defpath,
+            "PYTHONPATH": str(repository_root / "src"),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        },
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def _prepare_request(execution_id: str = "a" * 32) -> dict[str, object]:
@@ -605,6 +662,42 @@ def test_worker_spawn_rotates_password_and_invalidates_prior_readiness(
     assert instance._worker_generation == 1
     assert instance.api_password != old_password
     assert instance._verified_worker is None
+
+
+@pytest.mark.parametrize("role", ("app", "worker"))
+def test_spawn_keeps_fixed_child_wrapper_dispatch(
+    role: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both roles retain the fixed module wrapper and closed child-role argument."""
+
+    instance = object.__new__(supervisor.ContainerSupervisor)
+    instance.environment = {"FIXED_PARENT_SETTING": "1"}
+    instance.api_password = "d" * 48
+    spawned = object()
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def record_popen(command: list[str], **kwargs: object) -> object:
+        calls.append((command, kwargs))
+        return spawned
+
+    monkeypatch.setattr(supervisor.subprocess, "Popen", record_popen)
+
+    result = instance._spawn(role)
+
+    assert result is spawned
+    assert len(calls) == 1
+    command, kwargs = calls[0]
+    assert command == [sys.executable, "-m", "stock_probs.container_supervisor", "--child", role]
+    assert kwargs["stdin"] is subprocess.PIPE
+    assert kwargs["start_new_session"] is True
+    assert callable(kwargs["preexec_fn"])
+    expected_environment = (
+        supervisor._clean_worker_environment(instance.api_password)
+        if role == "worker"
+        else instance.environment
+    )
+    assert kwargs["env"] == expected_environment
 
 
 @pytest.mark.parametrize(

@@ -458,24 +458,22 @@ after a fix. Repeat a full suite when a release gate or shared-contract impact r
 workflow does not relax release, security, or acceptance gates. For native-runtime repairs, run the
 real functional check before the full release aggregate so a known runtime failure does not waste
 another broad run; retain unchanged UI and component evidence with exact input bindings.
-R-ASTRA-120 merged baseline E839, current follow-on E841: PR #1 merged at exact revision
-`6dc259e91cc8077b9264901bee3282167b9d05af` on `2026-10-10T06:25:51Z`. Its actual-host typed
-MCP rehearsal passed two-owner real Zen/MCP/native-search, migration, verified backup,
-write-preserving schema-13 recovery, and the bounded combined 1 GB workload. The exact current-image
-pending-search shutdown passed, with independent cleanup review. The final eight captures and
-14-page HTML/PDF guide passed their declared review scopes; unchanged HTML structure permits reuse
-of the earlier 180-check accessibility result. Physical mobile, actual screen reader, true zoom and
-PDF/UA remain Unavailable. Browser, security and canonical evidence is reused only for unchanged
-bound inputs; no new whole-tree aggregate is inferred. The prebuilt publication failed at the
-credential-byte scan before creating a GitHub release. Two SPDX exception identifiers in the public
-packaging source matched the broad token heuristic. The repaired shared scanner now passes independent
-23-test, exact candidate/recovery archive and official public-source provenance checks. The follow-on
-PR and newly bound image/pair remain pending. Production still serves the schema-12 baseline; no deploy, resize, rollout or
-email occurred. The US$15 monthly total cap, 1 GB plan and backups remain unchanged. Publication,
-exact follow-on PR/image-pair binding, owner canary and release remain open. See
-[E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair) and
-[E840](MVP-PLAN.md#r-astra-120-e840-follow-on-pr-binding-and-scanner-diagnosis) and
-[E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair).
+R-ASTRA-120 merged baseline E839; current follow-on E841–E845. PR #1 merged at exact revision
+`6dc259e91cc8077b9264901bee3282167b9d05af`. E841's scanner repair passed independent selected
+tests, exact archive scans, and public provenance checks. Parent-observed metadata reports PR #2
+**OPEN/DRAFT** at clean pushed head `f4a620f784d01eae917fd729ae3ece2e05378858`; its exact candidate
+build and local schema-13 pair passed, but two actual-host pair calls failed the 128 MiB reserve
+(`70,848 KiB` minimum on the reviewed call). Listed cleanup passed; temporary-entry details and
+actual-host migration/recovery facts are Unavailable. E843's driver-import and E844's supervisor-
+import selected QA passed; E845 also passed its package-export source/test delta, with no image or
+actual-host rerun.
+These results do not accept the 1 GB resource gate, PR rollback, native/provider reliability, or
+release. Parent-observed post-failure inspect reconfirmed the production schema-12 ready,
+`failed=null`, loopback-only baseline. No PR #2 merge, publication, deployment, resize, rollout,
+or email occurred. The US$15 monthly cap, existing 1 GB host and backups remain unchanged. See
+[E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair),
+[E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair), and
+[E842–E845](MVP-PLAN.md#r-astra-120-e842-pr-2-actual-host-reserve-failure).
 
 For the remainder of R-ASTRA-120, serialize heavy local Docker builds, canonical gates, browser
 aggregates, and real provider/native trials; run independent source/documentation review in parallel. Reuse unchanged bound evidence

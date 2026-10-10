@@ -33,14 +33,24 @@ from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
-import uvicorn
 
-from stock_probs.assistant.model_catalog import AssistantModel
-from stock_probs.assistant.providers import AssistantProviderManager
-from stock_probs.container_supervisor import _fixed_location_config
+if TYPE_CHECKING:
+    from stock_probs.assistant.model_catalog import AssistantModel
+
+
+def __getattr__(name: str) -> object:
+    """Load the model type only for callers that inspect it from this probe module."""
+
+    if name == "AssistantModel":
+        from stock_probs.assistant.model_catalog import AssistantModel
+
+        return AssistantModel
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 _BINARY_CANDIDATES = (
     Path("/home/james/.local/opt/opencode-v2/opencode"),
@@ -671,6 +681,8 @@ def _reviewed_free_zen_model_id(
 def _discovered_reviewed_zen_model(models: object, reviewed_model_id: str) -> AssistantModel | None:
     """Return the exact reviewed model only when current discovery still approves it."""
 
+    from stock_probs.assistant.model_catalog import AssistantModel
+
     if not isinstance(models, list | tuple):
         return None
     return next(
@@ -692,6 +704,9 @@ def _discovered_reviewed_zen_model(models: object, reviewed_model_id: str) -> As
 
 def _synthetic_application_zen_model(terms_reviewed_at: str) -> AssistantModel:
     """Build the synthetic probe model with the provider manager's maintained identity."""
+
+    from stock_probs.assistant.model_catalog import AssistantModel
+    from stock_probs.assistant.providers import AssistantProviderManager
 
     model_id = _reviewed_free_zen_model_id()
     provider_id, separator, _ = model_id.partition("/")
@@ -1819,6 +1834,8 @@ def _binary() -> Path:
 
 
 def _write_location_config(location: Path, mcp_url: str, provider_url: str) -> None:
+    from stock_probs.container_supervisor import _fixed_location_config
+
     config = _fixed_location_config(
         proxy_base_url=provider_url,
         proxy_capability="synthetic-provider-capability-" + location.name,
@@ -1995,6 +2012,8 @@ class _ProbeRuntimeSupervisor:
         }
 
     async def prepare_location(self, **values: str) -> dict[str, str]:
+        from stock_probs.container_supervisor import _fixed_location_config
+
         execution_id = values["execution_id"]
         location = self.location_root / execution_id
         location.mkdir(mode=0o700)
@@ -2350,8 +2369,11 @@ def _run_application_integration(
 
     from unittest.mock import patch
 
+    import uvicorn
+
     from stock_probs.api import create_app
     from stock_probs.assistant.api import _validated_provider_request
+    from stock_probs.assistant.providers import AssistantProviderManager
     from stock_probs.assistant.runtime import OpenCodeV2Runtime
     from stock_probs.auth import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME
     from stock_probs.config import Settings
@@ -3130,6 +3152,8 @@ def _run_application_integration(
 def run_native_probe() -> None:
     """Run bounded V2 model, MCP, and location discovery against synthetic fixtures."""
 
+    from stock_probs.container_supervisor import _fixed_location_config
+
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     binary = _binary()
     version_result = subprocess.run(  # noqa: S603 - fixed local binary from source.
@@ -3817,6 +3841,8 @@ def run_native_app_integration_probe() -> int:
 
 def run_native_live_zen_probe() -> int:
     """Run one synthetic FastAPI turn through native V2 to the approved free Zen route."""
+
+    import uvicorn
 
     from stock_probs.api import create_app
     from stock_probs.assistant.model_catalog import AssistantModelCatalog
