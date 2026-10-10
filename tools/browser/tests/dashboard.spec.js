@@ -2123,10 +2123,22 @@ test("news renders empty partial stale failure busy unreachable and superseded s
     { method: "GET", path: "/api/v1/news", status: 503 },
   );
   await gotoSurface(page, "/");
+  const submitForecast = async () => {
+    const forecastResponsePromise = page.waitForResponse((response) => (
+      response.request().method() === "POST"
+      && new URL(response.url()).pathname === "/api/v1/forecasts"
+    ));
+    await page.getByRole("button", { name: "Run forecast" }).click();
+    expect((await forecastResponsePromise).status()).toBe(201);
+    const result = page.locator("#result-content");
+    await expect(result).toHaveAttribute("aria-busy", "false");
+    await expect(result.locator(".forecast-grid .forecast-card")).toHaveCount(2);
+    await expect(page.locator("#announcement")).toHaveText("Forecast ready for ACDC-D.");
+  };
   const run = async (state) => {
     mode = state;
     await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
-    await page.getByRole("button", { name: "Run forecast" }).click();
+    await submitForecast();
     await page.getByText("Current headlines for this symbol", { exact: true }).click();
     return page.locator(".news-content");
   };
@@ -2149,7 +2161,7 @@ test("news renders empty partial stale failure busy unreachable and superseded s
   await expect(busy.getByRole("button", { name: "Retry headlines" })).toHaveCount(1);
 
   await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
-  await page.getByRole("button", { name: "Run forecast" }).click();
+  await submitForecast();
   await page.evaluate(() => {
     window.__realFetch = window.fetch;
     window.fetch = (url, options) => String(url).includes("/api/v1/news")
@@ -2176,7 +2188,7 @@ test("news renders empty partial stale failure busy unreachable and superseded s
     };
   });
   await page.getByLabel("Company name or Yahoo Finance symbol").fill("ACDC-D");
-  await page.getByRole("button", { name: "Run forecast" }).click();
+  await submitForecast();
   await page.getByText("Current headlines for this symbol", { exact: true }).click();
   await expect(page.locator(".news-content")).toHaveAttribute("data-state", "loading");
   await page.getByLabel("Company name or Yahoo Finance symbol").fill("SPY-D");

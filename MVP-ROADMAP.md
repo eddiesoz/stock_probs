@@ -1,18 +1,21 @@
 # Stock Probability MVP Roadmap
 
-Current R-ASTRA-120 E835 follow-on: after the E834 exact-head canonical local Pass, the reviewed
-Auth aria repair and RootFS chunk repair were applied to the local working tree. Their selected
-checks passed (Auth Node 1/1; RootFS 48 plus Ruff/format), and the approved frontend build/stage
-passed 72 checks with 52/52 served/export byte pairs. Exact-ID retirement of the E834 image passed:
-the target is absent and one managed image remains; no force, prune, or volume operation occurred.
-Independent container-identity observer QA passed its source, six Docker-free test, Ruff, and format
-scope; Docker, image/build binding, and PR-pair acceptance were skipped. No image was built from
-E835 source. Independent browser/axe follow-up passed the affected five cases and the complete
-68-case matrix, with zero violations/incompletes over 72 scans and exact source/stage/cleanup
-bindings. The older 196-case aggregate remains failed and was not rerun; Pixel 7 was emulated.
-Production remains schema 12 without promotion; native/runtime, actual 1 GB, PR rollback, security,
-accessibility beyond this scoped axe run, owner-canary, and release gates remain open. See
-[E834–E835](MVP-PLAN.md#r-astra-120-e835-authrootfs-application-and-frontend-stage-follow-on) in the [MVP plan](MVP-PLAN.md).
+Current R-ASTRA-120 E836: clean pushed head `0193fb93eaf66555a25990e6478032fb074ba737`
+passed the complete canonical local check (3,255 Python passes, four skips, four deselected,
+85.70% coverage and 72 frontend checks). Independent terminal and exact-owned cleanup review
+passed; full-host FD visibility remains unavailable. The 68-case route/auth-loading axe matrix
+passed with zero violations/incompletes across 72 scans. The newer full 196-case browser run
+failed (189 passed, four failed, three skipped); two unchanged real assistant cases subsequently
+passed in a serialized run. A two-spec sequencing repair then passed four desktop/mobile-emulated
+news/session-expiry checks. These scoped passes do not replace the failed browser aggregate.
+Independent reuse review matched 588 of 590 authored inputs, with only those two reviewed browser
+specs changed; all 80 frontend and 52 served/export bindings are unchanged. The interrupted image
+wrapper exited 143, but independent recovery verified its completed BuildKit history and the loaded
+image `sha256:2323a9c04a5fdca0b40c598e5d363fc9b5d3c13a03ee6d4188fb71b5661a6b82`, 148 measured
+context files and 52 served/export files. This is recovered build identity, not runtime acceptance.
+Actual combined 1 GB, PR-bound rollback, current-image runtime/shutdown, final guide, owner canary
+and release gates remain open. Production is unchanged at schema 12; no merge, deployment,
+rollout, resize or email occurred. See [E836](MVP-PLAN.md#r-astra-120-e836-canonical-browser-and-build-recovery-checkpoint).
 
 Historical R-ASTRA-120 E825 checkpoint: the E823/E824 storage restore, Docker/containerd migration,
 cache relocation and retirement, bounded BuildKit setup, actual network-none worker proof, retained

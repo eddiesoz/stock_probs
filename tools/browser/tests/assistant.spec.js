@@ -271,16 +271,38 @@ async function chooseFixtureModel(panel) {
   if (await selector.inputValue() !== model.id) await selector.selectOption(model.id);
 }
 
-async function openRealAssistant(page, origin) {
+async function openRealAssistant(page, origin, { requireModelAndContextReady = false } = {}) {
   await page.context().addCookies([
     { name: "signal_ledger_session", value: "browser-assistant-fixture-session-not-a-production-credential", url: origin, httpOnly: true, sameSite: "Lax" },
     { name: "signal_ledger_csrf", value: "browser-assistant-fixture-csrf-token-not-a-production-credential", url: origin, sameSite: "Lax" },
   ]);
+  const modelResponsePromise = requireModelAndContextReady
+    ? page.waitForResponse((response) => response.request().method() === "GET"
+      && new URL(response.url()).pathname === "/api/v1/assistant/models")
+    : null;
+  const contextResponsePromise = requireModelAndContextReady
+    ? page.waitForResponse((response) => response.request().method() === "GET"
+      && new URL(response.url()).pathname === "/api/v1/assistant/context")
+    : null;
   await page.goto(`${origin}/overview`);
   await page.getByRole("button", { name: "Open Ledger assistant" }).click();
   const panel = page.getByTestId("assistant-panel");
   await expect(panel).toBeVisible();
+  if (requireModelAndContextReady) {
+    const [modelResponse, contextResponse] = await Promise.all([
+      modelResponsePromise,
+      contextResponsePromise,
+    ]);
+    expect(modelResponse.status(), "model discovery must succeed before the session-expiry check").toBe(200);
+    expect(contextResponse.status(), "workspace context must load before the session-expiry check").toBe(200);
+    await expect(panel.getByRole("combobox", { name: "Assistant model" })).toBeEnabled();
+  }
   await chooseFixtureModel(panel);
+  if (requireModelAndContextReady) {
+    const selector = panel.getByRole("combobox", { name: "Assistant model" });
+    await expect(selector).toHaveValue(model.id);
+    await expect(panel.getByRole("region", { name: "Workspace context" }).getByText("Preview", { exact: true })).toBeVisible();
+  }
   const consent = panel.getByRole("checkbox", { name: /I accept this model's privacy terms/ });
   if (await consent.count()) {
     await consent.check();
@@ -2907,7 +2929,7 @@ test("assistant host readiness supersedes a late non-ready panel response", asyn
 
 test("assistant recovers visibly when the authenticated session expires before a turn", async ({ page, assistantApplication, browserDiagnostics }, testInfo) => {
   const origin = assistantApplication.url;
-  const panel = await openRealAssistant(page, origin);
+  const panel = await openRealAssistant(page, origin, { requireModelAndContextReady: true });
   const logout = await page.context().request.post(`${origin}/api/v1/auth/logout`, {
     headers: { "x-csrf-token": "browser-assistant-fixture-csrf-token-not-a-production-credential" },
   });

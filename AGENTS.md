@@ -458,25 +458,27 @@ after a fix. Repeat a full suite when a release gate or shared-contract impact r
 workflow does not relax release, security, or acceptance gates. For native-runtime repairs, run the
 real functional check before the full release aggregate so a known runtime failure does not waste
 another broad run; retain unchanged UI and component evidence with exact input bindings.
-Current R-ASTRA-120 checkpoint E835: E834's clean exact-head canonical local gate passed its
-declared native-x86_64 scope (3,241 Python passes, 4 skips, 4 deselected, 85.70% coverage, 71
-frontend checks); its independent terminal audit also passed its declared scope. E834's full
-196-case browser aggregate and 64-state axe run failed, and its private auth-loading fixture failed:
-63 passed, 5 failed. Those results remain bound to the pre-E835 inputs. E835 applied the reviewed
-Auth aria fix and RootFS chunk repair: the focused Auth regression passed 1/1, applied-source RootFS
-QA passed 48 tests with Ruff/format, and the approved frontend build/stage passed 72 checks with
-52/52 served/export pairs. The old E834 image was retired under the reviewed exact-ID guard; the
-parent receipt confirms the target absent and one managed image retained, with no force, prune, or
-volume operation. Independent Docker-free observer QA passed six tests, source review, Ruff check,
-and format; Docker/build/runtime and PR-pair binding were skipped. No image was built from E835
-source. Independent browser/axe follow-up passed 5/5 affected cases and 68/68 in the reviewed
-whole-route axe matrix, with zero raw violations/incompletes across 72 scans; 80 source pins, 52 served/
-export pairs, and exact cleanup matched. Pixel 7 was emulated; physical mobile is **Unavailable**.
-The earlier 196-case aggregate **Fail** remains historical; a fresh run is held until a new committed
-head and green current stage.
-Production remains schema 12 with no promotion. Native/provider, actual combined 1 GB,
-current-image shutdown, PR rollback, complete security/accessibility, owner-canary, final guide and
-release gates remain open. See E834–E835 in `MVP-PLAN.md`.
+Current R-ASTRA-120 E836: clean pushed head `0193fb93eaf66555a25990e6478032fb074ba737`
+passed the complete canonical local check (3,255 Python passes, four skips, four deselected,
+85.70% coverage and 72 frontend checks). Independent terminal and exact-owned cleanup review
+passed; full-host FD visibility remains unavailable. The 68-case route/auth-loading axe matrix
+passed with zero violations/incompletes across 72 scans. The newer full 196-case browser run
+failed (189 passed, four failed, three skipped); two unchanged real assistant cases subsequently
+passed in a serialized run. A two-spec sequencing repair then passed four desktop/mobile-emulated
+news/session-expiry checks. These scoped passes do not replace the failed browser aggregate.
+Independent reuse review matched 588 of 590 authored inputs, with only those two reviewed browser
+specs changed; all 80 frontend and 52 served/export bindings are unchanged. The interrupted image
+wrapper exited 143, but independent recovery verified its completed BuildKit history and the loaded
+image `sha256:2323a9c04a5fdca0b40c598e5d363fc9b5d3c13a03ee6d4188fb71b5661a6b82`, 148 measured
+context files and 52 served/export files. This is recovered build identity, not runtime acceptance.
+Actual combined 1 GB, PR-bound rollback, current-image runtime/shutdown, final guide, owner canary
+and release gates remain open. Production is unchanged at schema 12; no merge, deployment,
+rollout, resize or email occurred. See E836 in `MVP-PLAN.md`.
+
+For the remainder of R-ASTRA-120, serialize heavy local Docker builds, canonical gates and browser
+aggregates; run independent source/documentation review in parallel. Reuse unchanged bound evidence
+and rerun affected scopes plus required release checks. Do not manufacture an aggregate Pass from
+separate case runs or clear the operator's browser session to create fixtures.
 
 Historical R-ASTRA-120 E817: The f9d1 candidate image built and matched 149 source inputs and 52 served/export files, but its native run **Failed**: owner 0 answered; owner 1 received seven search sources and one fetch source then returned provider_unavailable. Native cause remains **Unproven**. A synthetic reproduction confirmed an irreversible failure after a transient snapshot read timeout despite later native success. The bounded read-only GET retry repair passed 14 builder and 11 independent selected tests plus parent source review; it retains the original 120-second deadline and fatal authorization/protocol checks. The f9d1 canonical run was intentionally interrupted at 156 partial Python passes with only two of three required checks completed; it is not a Pass. A repaired image/native run precedes the next final aggregate. Actual 1 GB, current-image shutdown, PR rollback, final guide and release gates remain open; production and the US$15 cap are unchanged.
 

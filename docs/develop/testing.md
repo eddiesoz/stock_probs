@@ -232,32 +232,25 @@ Pass only; its candidate identity remains unbound and execution held. Its earlie
 ledger](../../MVP-PLAN.md#r-astra-120-e832-late-failure-diagnostic-only-repair) for exact pins and
 receipts.
 
-### R-ASTRA-120 E834–E835 current evidence
+### R-ASTRA-120 E836 current evidence
 
-The exact-head `26997c426eacd0d283e44d62a338203f5cee6783` Linux/amd64 image build and independent
-source/stage bindings **Passed** (148 source inputs and 52 served/export pairs); this is build-only.
-The 196-case browser aggregate **Failed** (182 passed, 2 skipped, 1 failed, 11 unrun, 2 suite
-errors); the separate derived union (193 passes, 3 skips) does not replace it. The 64-state
-whole-route axe run **Failed** with one moderate heading-order incomplete and zero violations. The
-68-state private auth-loading fixture **Failed** (63 passed, 5 failed) on a serious
-`aria-prohibited-attr` violation for an empty status span. A private `aria-hidden` source/test repair
-passed independent selected source, regression, and syntax review; actual build/browser/axe checks
-were skipped for those repaired bytes. A separate private RootFS chunk candidate passed 48 focused
-and 6 standalone tests and matched a read-only Docker image-inspect probe for 508 IDs, with no Docker mutation. The exact-head canonical local gate **Passed** for E834 only: 3,241 Python passes, 4 skips, 4
-deselected, 85.70% coverage, and 71 frontend checks. Parent and independent review passed its
-terminal/source/stage and exact-owned-cleanup scope; full-host FD visibility remains **Unavailable**.
-Four opt-in native tests were skipped. After E834, Auth and RootFS source repairs were applied;
-selected checks passed (Auth Node 1/1; RootFS 48 plus Ruff/format), and the approved frontend
-build/stage passed 72 checks with 52/52 byte pairs. Exact-ID retirement and acknowledgement of the
-E834 image **Passed**; the parent receipt confirms the target absent and one managed image retained.
-The earlier supplemental-receipt **Pending** checkpoint is superseded. Independent container-identity
-observer QA passed source review, six Docker-free tests, Ruff check, and format; Docker, image/build,
-real wrapper, and PR-pair binding were skipped. No new image is established. Independent browser/axe
-QA passed the affected five cases and full 68-case matrix, with 0 violations/incompletes across 72
-scans; 80 source pins, 52 served/export pairs, and cleanup matched. Pixel 7 was emulated, and the
-older 196-case aggregate was not rerun. Production remains schema 12 without promotion. See E835 in
-the [MVP plan](../../MVP-PLAN.md). See [E834](../../MVP-PLAN.md#r-astra-120-e834-exact-head-build-and-bounded-follow-up-scopes)
-for receipt paths and hashes.
+The complete native-x86_64 canonical local check at clean pushed `0193fb93` passed: 3,255 Python
+passes, four opt-in skips, four deselected, 85.70% coverage and 72 frontend checks. Terminal exit,
+JUnit, all three ordered subchecks, 590 post-launch authored pins, 80 frontend inputs and 52
+served/export pairs were reviewed. Independent exact-owned cleanup passed; full-host FD visibility
+remains unavailable. The separate 68-case desktop/Pixel 7 emulation axe matrix passed with zero
+violations/incompletes across 72 scans, without establishing physical-mobile or full WCAG acceptance.
+
+The full 196-case browser aggregate failed (189 passed, four failed, three skipped). Two unchanged
+real assistant cases subsequently passed under serialized load. A two-spec repair waits for forecast
+render completion before opening news and for successful model/context responses before expiring
+the session; all four selected desktop/mobile-emulated cases passed. No retry/deadline relaxation,
+force-click or product change was made. Independent reuse review matched every authored input
+except those two reviewed specs, all frontend inputs and all served files. The failed aggregate
+remains preserved until a fresh complete browser run passes. A newly labelled exact-head image and
+actual-host/rollback/runtime/guide/owner-canary release gates are still required. See
+[E836](../../MVP-PLAN.md#r-astra-120-e836-canonical-browser-and-build-recovery-checkpoint) for exact
+receipts, the interrupted build/recovered artifact distinction and earlier setup failures.
 
 ## Unix-socket test fixtures
 

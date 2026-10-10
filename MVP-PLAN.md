@@ -3109,6 +3109,75 @@ complete security/accessibility, owner-canary, final guide, and release gates re
 | Container-identity observer | Independent QA **Pass** for static source review, six Docker-free tests, Ruff check, and format. Docker, image build, real wrapper/rehearsal, and candidate image/context binding were **Skipped**; no PR-pair acceptance follows. | `/var/tmp/r12r/schema13-container-identity-observer-20261010T0054Z/independent-qa-receipt.json`, SHA-256 `acc338a9b6b7db80449f486a6edcee23d3cb338b661f8ffe931bf3fa4676d943`; window `2026-10-10T00:53:50Z`–`00:55:04.616089Z`. |
 | Affected browser and complete 68-case follow-up | **Pass**: affected subset 5/5; complete matrix 68/68, no skips/failures, zero raw axe violations/incompletes across 72 scans; 80 source pins, 52 served/export pairs, and 136 raw artifact hashes matched; exact cleanup passed. This is scoped emulated-browser/axe evidence, not the 196-case aggregate or full accessibility/release acceptance. | Independent receipt `/var/tmp/r12r/r120-auth-aria-axe-v2-20261010T005305Z/independent-axe-v2-receipt.json`, SHA-256 `af2d99cfcbfafbacb27952bbb939912d613d9b98924bd6d88399fa5dc3f37d83`; parent terminal review `/var/tmp/r12r/r120-auth-aria-axe-v2-20261010T005305Z/parent-terminal-review-20261010T0104Z.json`, SHA-256 `ee8fc4fe6f07383fc074082e052bb758f352678deeed4f71b6a4701863ea6e47`; run `2026-10-10T00:56:53.530031Z`–`00:59:27.427312Z`; 34 desktop and 34 Pixel 7 emulation cases per theme/viewport matrix; physical mobile **Unavailable**. |
 
+### R-ASTRA-120 E836 canonical, browser and build recovery checkpoint
+
+At clean pushed head `0193fb93eaf66555a25990e6478032fb074ba737`, the native-x86_64 canonical
+`./scripts/local-gate.sh check` with SD-backed short TMP and `TASK_ID=R-ASTRA-120` completed at
+`2026-10-10T01:05:19Z`–`01:45:27Z`, actual exit 0: 3,255 Python passes, four skips, four deselected,
+99 warnings, 85.70% coverage and 72 frontend checks. Documentation, frontend and Python subchecks
+completed in order; JUnit has 3,259 cases, zero failures/errors and four skips. Parent terminal
+review and independent exact-owned cleanup passed. The 590 authored pins were captured after
+launch; their unchanged result does not assert pre-launch timing. There were 163 inaccessible
+process views, so full-host FD visibility remains unavailable. Earlier helper setup errors and the
+terminal metadata's stale prepared-only limitation are preserved in supplemental review.
+
+The 68-case route/auth-loading axe follow-up passed (34 desktop, 34 Pixel 7 emulation; Light/Dark,
+72 scan phases, zero violations/incompletes), with 80 frontend and 52 served/export bindings intact.
+The complete newer 196-case browser run failed at `01:10:24.889932Z`–`01:31:56.938656Z`, exit 1:
+189 passed, four failed, three skipped, zero unrun. Trace ordering shows the durable-receipt GET
+occurred after fixture teardown, not the initiating cause; setup latency remains unproven. WebFetch
+fixture readiness and session-expiry setup failed before their intended assertions. The news case
+clicked its disclosure while the forecast was still rendering, a confirmed test sequencing race.
+Two unchanged real assistant cases passed in a serialized run at `01:53:24.808Z`–`01:54:31.395Z`.
+An earlier attempt failed before browser assertions because XDG cache redirection hid the installed
+browser; its separate failure remains. The corrected run explicitly used the installed SD browser.
+
+A reviewed two-spec repair arms response waits before triggering forecast or model/context loads,
+requires successful responses and rendered readiness, and retains original deadlines, retries and
+assertions. The four selected news/session-expiry cases passed on desktop and Pixel 7 emulation at
+`02:02:14.159Z`–`02:03:18.944Z`, exit 0, one worker, retries 0, exact owned cleanup passed. It changes
+no application/frontend/runtime bytes. Independent reuse review matched 588/590 authored inputs,
+with only the two reviewed specs changed, all 80 frontend inputs and 52 served/export pairs intact.
+The original canonical Pass is reused only for unchanged bound scopes; no new canonical or release
+aggregate is inferred. A distinct post-edit comment-audit receipt was unavailable in that review. The later parent
+post-edit checks passed comment audit (374 files), documentation validator (9 categories, 14 topics,
+8 governance entries), complete/change-aware coverage (154 mapped files), both JS syntax checks
+and whitespace; receipt `/var/tmp/r12r/r120-e836-post-edit-checks-20261010T0212Z/receipt.json`,
+SHA-256 `22566aa864a7c98889bef7033572a0d9f0f37764ce2d0a8540b2887ec1d51f5b`. This is a separate
+scoped check, not new canonical acceptance.
+
+The outer image-build wrapper was interrupted at exit 143; it did not complete successfully.
+BuildKit history independently shows 48/48 completed steps (`01:08:00.707854735Z`–
+`01:14:56.954898031Z`) and a loaded image. Private recovery V1/V2 review failures remain preserved;
+V3 removed an unsupported 149-file declaration and passed 21 synthetic tests/static review. One
+reviewed V3 apply at `01:55:41Z`–`01:55:52Z`, exit 0, completed the maintained serialized ledger.
+Independent post-apply verification at `01:59:01.127680Z`–`01:59:03.258755Z` passed exact image,
+revision, platform, history, immutable receipt, 148 measured context files and 52 stage bindings.
+Image `sha256:2323a9c04a5fdca0b40c598e5d363fc9b5d3c13a03ee6d4188fb71b5661a6b82` is bound to
+context `254e9e3d89257379a8844f332be2ebe5132536ed63ec0d655c1470144989936e`; this is recovered
+build identity, not native/runtime or release acceptance. No rebuild, protected-image removal,
+credential inspection or production operation was used for recovery.
+
+The full-browser receipt's initially announced `0a5f3189...` hash was followed by a newline-only
+rewrite before its author called it finalized; final verified SHA is `921298b0...`. This evidence
+handling error is preserved, not represented as immutable original bytes. Future delivered receipts
+must never be overwritten. The incomplete help capture produced five of eight images and failed;
+no final guide is inferred. Production remains the healthy schema-12 baseline; owner-browser GitHub
+sign-in reached TOTP verification without clearing session state, but no code or workspace was
+observed. Actual combined 1 GB, PR rollback, current-image runtime/shutdown, final guide, owner
+canary and release gates remain open. No merge, deployment, resize, rollout or email occurred.
+
+| Evidence | Artifact and SHA-256 |
+| --- | --- |
+| Canonical Pass | `test-results/local-gates/R-ASTRA-120-20261010T010519Z/evidence.json`, `01e3a72b85a25316bdbf3a93bf85f6557e279163bca890da77bc19bc4068e74f`; JUnit `a7a83b53103d210a4b2982cbe3cecf420bcf3ad5f3557f300e387bb64c081a9c` |
+| Parent terminal / independent cleanup | `/var/tmp/r12r/r120-canonical-0193fb93-20261010T010519Z-405095/parent-terminal-review-20261010T0146Z.json`, `a6247f5b6ff0ee7f01145cf291e08a2c35b1057209ca649a603902e74fa38621`; `/var/tmp/r12r/independent-canonical-terminal-cleanup-20261010T015022Z-af24eb5c.json`, `858ba68f6d84951c1b4336d64d4f70dc346f2590b1335e77a69559bc9e5b5bae` |
+| Full browser Fail | `/var/tmp/r12r/r120-full196-0193fb93-20261010T010845Z/independent-full196-receipt.json`, `921298b08ea26e86e976948dea0aa860b1c7c9c75ac33d15ed8f7678f48cf6cd` |
+| Corrected event ordering | `/var/tmp/r12r/r120-full196-event-ordering-supplement-20261010T012900Z-5f63/receipt.json`, `418559b9dd8126d7c4ae3146314d5f78790f50f2ff8975d032a2e92ae171e20f` |
+| Serialized real-flow Pass | `/var/tmp/r12r/r120-focused-real2-browserpath-0193fb93-20261010T015241Z/independent-terminal-cleanup-review.json`, `aa4771b3c95b94a2f79e4781bbc23b7b71e8bc1a4dde19d3005b6f71d62cf2cd` |
+| Reviewed test repair / four-case Pass | `/var/tmp/r12r/r120-browser-sequencing-v2-20261010T013253Z-df8a87ad/parent-static-review-20261010T0141Z.json`, `fd264eb1fa459ada71e637b0dcf5a15b0f1fde77c71d184d165354066c60f3e7`; `/var/tmp/r12r/r120-news-session-v2-0193fb93-20261010T020120Z/independent-terminal-cleanup-review.json`, `5ab12fb17f18eb2f3ae283b85d6cd363e623c71b768ddba4e7d9d55e57410e52` |
+| Input reuse Pass | `/var/tmp/r12r/independent-r120-canonical-browser-reuse-qa-20261010T0202Z-dfeddc57.json`, `0be8bf9ff929d3317066d5cc3864a7d532bbd97ee13f876cd658e2cae586cc93` |
+| Loaded artifact recovery / independent post-apply Pass | `/home/james/.local/state/stock-probs/r120-buildkit-v1/build-runs/0193fb93eaf66555a25990e6478032fb074ba737/3ff36c04f1f34d875729fa87cafc45b2ae7afbc4fb217f845656394e6d7d0a7f/loaded-artifact-recovery-d1daf531512045ed8bbaf75062ae9510.json`, `c0867517a120e070e5babbbdfac330bc19a7c7167ef9b6174c9eef97d86e2a1c`; `/var/tmp/r12r/independent-r120-loaded-artifact-postapply-qa-20261010T0157Z-31af8e1d.json`, `879e6ef42c81cb758ac3d31b7f0b5bdcf9eee5daa478af9bd60178c0df4499b3` |
+
 ### R-ASTRA-120 E832 late-failure diagnostic-only repair
 
 Task `R-ASTRA-120`, source head `fa3db0e9fd2b48032735474691df900135aa1357`. The narrow two-file
