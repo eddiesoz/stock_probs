@@ -305,6 +305,11 @@ reflect operational status in the operations/testing guides; the map describes s
 runtime acceptance. The optional `prebuilt-release` publisher mode uses the completed schema-13
 pair receipt and fixed revision-named artifacts; keep its verification and release prerequisites
 documented in the operations and testing guides when changing that contract.
+Archive-scanner changes also require the testing and operations guides to describe the fixed
+individually provenance-bound artifact exceptions and retained credential checks. Capture and diagnosis allowlists, genuine
+pre-snapshots, and immutable receipts follow the root agent policy.
+The merged application PR #1 is historical evidence. The current fixed rehearsal binding moves
+to follow-on PR #2, retaining exact repository, open state, main base and reviewed-head checks.
 A prose statement here does not replace a passing completeness and change-aware
 coverage check.
 

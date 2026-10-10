@@ -20,7 +20,7 @@ ARTIFACT_DIRECTORY = REPOSITORY_ROOT / "test-results" / "assistant-r120-pr-pair"
 HOST = "45.79.180.32"
 USER = "signalops"
 REPOSITORY = "eddiesoz/stock_probs"
-PULL_NUMBER = 1
+PULL_NUMBER = 2
 HELPER_PATH = "/usr/local/libexec/signal-ledger-pr-rehearsal/host_helper.py"
 STATE_ROOT = "/var/lib/signal-ledger-pr-rehearsal"
 INCOMING_DIRECTORY = "/var/lib/signal-ledger-pr-rehearsal/incoming"
@@ -672,7 +672,7 @@ def _validated_resource_evidence(response: dict[str, object]) -> dict[str, objec
 
 
 def verify_pull_request(reviewed_head_sha: str) -> dict[str, object]:
-    """Require public PR #1 to remain open, based on main, at the reviewed SHA."""
+    """Require public PR #2 to remain open, based on main, at the reviewed SHA."""
 
     if REVISION.fullmatch(reviewed_head_sha) is None:
         raise RehearsalError("reviewed_pr_head_invalid")
@@ -854,7 +854,7 @@ def _artifact_pair(
 
 
 def write_review_pins_from_current_pair() -> dict[str, str]:
-    """Verify the current clean PR-1 pair and persist its two public review pins."""
+    """Verify the current clean PR #2 pair and persist its two public review pins."""
 
     environment_pins = _environment_review_pins()
     metadata_pins = _read_review_metadata()
@@ -1167,7 +1167,7 @@ def rehearse_pr_pair(
     recovery_overlay_sha256: str,
     pair_manifest_sha256: str,
 ) -> dict[str, object]:
-    """Run only the fixed PR #1 disposable pair rehearsal through the operator helper."""
+    """Run only the fixed PR #2 disposable pair rehearsal through the operator helper."""
 
     config = RehearsalConfig.from_env()
     if reviewed_head_sha != config.reviewed_head_sha:

@@ -1,4 +1,4 @@
-"""Verify the fixed local PR pair and write its private review pins."""
+"""Verify the fixed local PR #2 pair and write its private review pins."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
         "--write",
         action="store_true",
         required=True,
-        help="verify the current clean PR-1 pair and write its private review metadata",
+        help="verify the current clean PR #2 pair and write its private review metadata",
     )
     arguments = parser.parse_args(argv)
     if not arguments.write:

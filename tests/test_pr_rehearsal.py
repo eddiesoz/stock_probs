@@ -513,7 +513,7 @@ def test_bootstrap_accepts_bounded_realistic_open_pr_payload_over_16k(
 
         def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
             assert method == "GET"
-            assert path == "/repos/eddiesoz/stock_probs/pulls/1"
+            assert path == "/repos/eddiesoz/stock_probs/pulls/2"
             assert headers["Accept"] == "application/vnd.github+json"
 
         def getresponse(self) -> Response:
@@ -524,6 +524,92 @@ def test_bootstrap_accepts_bounded_realistic_open_pr_payload_over_16k(
 
     monkeypatch.setattr(bootstrap.http.client, "HTTPSConnection", Connection)
     bootstrap._verify_pull_request(revision)
+
+
+def test_controller_verifies_fixed_open_pr2_head(monkeypatch) -> None:
+    revision = "a" * 40
+    payload = {
+        "state": "open",
+        "draft": True,
+        "base": {"ref": "main"},
+        "head": {"sha": revision, "repo": {"full_name": controller.REPOSITORY}},
+    }
+    requests: list[tuple[str, str, dict[str, str]]] = []
+
+    class Response:
+        status = 200
+
+        def read(self, size: int) -> bytes:
+            assert size == controller.MAX_RESPONSE_BYTES + 1
+            return json.dumps(payload).encode()
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            requests.append((method, path, headers))
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(controller.http.client, "HTTPSConnection", Connection)
+
+    receipt = controller.verify_pull_request(revision)
+
+    assert requests[0][0:2] == (
+        "GET",
+        f"/repos/{controller.REPOSITORY}/pulls/2",
+    )
+    assert receipt == {
+        "repository": controller.REPOSITORY,
+        "pull_number": 2,
+        "state": "open",
+        "base": "main",
+        "head_sha": revision,
+        "draft": True,
+    }
+
+
+def test_host_helper_verifies_fixed_open_pr2_head(monkeypatch) -> None:
+    revision = "a" * 40
+    payload = {
+        "state": "open",
+        "base": {"ref": "main"},
+        "head": {"sha": revision, "repo": {"full_name": host_helper.REPOSITORY}},
+    }
+    requests: list[tuple[str, str]] = []
+
+    class Response:
+        status = 200
+
+        def read(self, size: int) -> bytes:
+            assert size == host_helper.MAX_PR_RESPONSE + 1
+            return json.dumps(payload).encode()
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            requests.append((method, path))
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(host_helper.http.client, "HTTPSConnection", Connection)
+
+    host_helper._verify_pull_request(revision)
+
+    assert requests == [("GET", f"/repos/{host_helper.REPOSITORY}/pulls/2")]
 
 
 def test_bootstrap_install_requires_fixed_reviewed_manifest_digest() -> None:
@@ -679,6 +765,10 @@ def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
         "native_driver.py",
         "installed.json",
     }
+    installed_manifest = next(
+        content for path, content, _mode in installed if path.name == "installed.json"
+    )
+    assert json.loads(installed_manifest)["pull_number"] == 2
     for _role, (_relative, staged_name, _maximum) in bootstrap.ASSETS.items():
         assert not (incoming / f"signal-ledger-pr1-{revision}-{staged_name}").exists()
         assert (incoming / staged_name).read_bytes() == b"legacy name must remain untouched"

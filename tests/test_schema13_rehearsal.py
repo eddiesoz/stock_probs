@@ -1418,7 +1418,7 @@ def test_fixed_pr_verifier_uses_only_the_approved_api_endpoint_and_head(
 
     monkeypatch.setattr(http.client, "HTTPSConnection", Connection)
     rehearsal._verify_reviewed_pr(repository, reviewed_sha)
-    assert requests[0][0:2] == ("GET", "/repos/eddiesoz/stock_probs/pulls/1")
+    assert requests[0][0:2] == ("GET", "/repos/eddiesoz/stock_probs/pulls/2")
 
     payload["head"]["sha"] = "c" * 40
     with pytest.raises(rehearsal.RehearsalError, match="reviewed_pr_mismatch"):
@@ -1818,6 +1818,7 @@ def test_pr_candidate_receipt_is_bound_and_failed_revalidation_retains_tag(
     receipt = rehearsal.build_pr_candidate(repository, reviewed_sha, receipt_path)
     assert calls == {"local": 3, "pr": 2}
     assert inspected_commands[0][0:3] == ["docker", "image", "inspect"]
+    assert receipt["pull_request"] == 2
     assert receipt["candidate_image"]["id"] == image_id
     assert receipt["reviewed_head"] == reviewed_sha
     assert receipt_path.stat().st_mode & 0o777 == 0o600

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import TypedDict
 
 REPOSITORY = "eddiesoz/stock_probs"
-PULL_NUMBER = 1
+PULL_NUMBER = 2
 TASK_ID = "R-ASTRA-120"
 BASE_REVISION = "da2764e8477698fa7d686be93a4711e35478e802"
 BASE_IMAGE_ID = "sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1"

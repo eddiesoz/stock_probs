@@ -2290,7 +2290,7 @@ def _verify_local_pr_head(repository_root: Path, expected_sha: str) -> None:
 
 
 def _verify_reviewed_pr(repository_root: Path, expected_sha: str) -> None:
-    """Call the fixed adjacent PR-1 verifier and expose only its closed safe result."""
+    """Call the fixed adjacent PR-2 verifier and expose only its closed safe result."""
 
     scripts_directory = repository_root / "scripts"
     verifier_path = scripts_directory / "pr_rehearsal_bootstrap.py"
@@ -2338,7 +2338,7 @@ def build_pr_candidate(
     reviewed_sha: str,
     receipt_path: Path,
 ) -> dict[str, object]:
-    """Build one private local image for the exact open PR-1 head."""
+    """Build one private local image for the exact open PR-2 head."""
 
     if re.fullmatch(r"[0-9a-f]{40}", reviewed_sha) is None:
         raise RehearsalError("reviewed PR head must be an exact commit SHA")
@@ -2390,7 +2390,7 @@ def build_pr_candidate(
         "task": "R-ASTRA-120 PR-head candidate image build",
         "status": "built",
         "repository": "eddiesoz/stock_probs",
-        "pull_request": 1,
+        "pull_request": 2,
         "reviewed_head": reviewed_sha,
         "source_context_sha256": context_sha256,
         "candidate_image": {
@@ -2972,11 +2972,11 @@ def main() -> int:
     parser.add_argument(
         "--build-pr-candidate",
         action="store_true",
-        help="build a private local image from the exact clean open PR-1 head",
+        help="build a private local image from the exact clean open PR #2 head",
     )
     parser.add_argument(
         "--reviewed-pr-head",
-        help="exact lowercase commit SHA reviewed for PR-1 candidate building",
+        help="exact lowercase commit SHA reviewed for PR #2 candidate building",
     )
     parser.add_argument(
         "--overlay-manifest",

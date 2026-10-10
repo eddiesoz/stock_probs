@@ -3286,6 +3286,132 @@ remain in force. No merge, deploy, resize, rollout, or email occurred.
 | Authored documentation checkpoint | Before edits, exact-byte snapshots on UUID-verified `/var/tmp/r12r` matched the three owned baselines: `AGENTS.md` `da42a1be99021233b60f69def339245ee807a564813becd0917d2046624f2ac5`, `MVP-PLAN.md` `8b3a2728d55eff5d3e60142f923e34990218ad849cfdddf40020f8e2959b38ac`, `MVP-ROADMAP.md` `76f5bb8dd00ebee1c98085ab993ffa9b2f16891a3308d1a7c68ceeecea2649e0`, under `/var/tmp/r12r/r120-integration-docs-baseline-20261010T0513Z`. Final docs validation: `.dev-venv/bin/python scripts/validate_docs.py` passed (9 categories, 14 topics, 8 governance entries); change-aware coverage checked 154 mapped files/14 changed paths using `--changed-file` for every tracked diff path plus `--added-file tests/test_pr_rehearsal_seed_repair.py`; scoped `git diff --check` passed for the six authored docs. No documentation or product tests were run by this docs lane. |
 | Publisher source review | `/var/tmp/r12r/r120-publisher-parent-source-review-20261010T0520Z.json`, SHA-256 `23ded078d1ae3167ff0cc87dcd4c5e631f3b88208312be84918be80b2bb5a772`; parent source scope Pass; independent selected review also Pass: `/var/tmp/r12r/r120-publisher-independent-qa-20261010T0518Z-d4c9659ad634/independent-review-receipt.json`, SHA-256 `12d0a20088e6f9cf81ddeb43c8106d13ca8667541f4814521c6a768b0bddc3ee`; 16/16 tests at `2026-10-10T05:18:15.638Z`–`05:18:31.453Z`, Ruff, shell syntax, diff, exact source pins and offline actual-pair parser passed. No Docker/GitHub/publication ran. |
 
+
+### R-ASTRA-120 E839 merged candidate and publication repair
+
+PR #1 merged at exact `6dc259e91cc8077b9264901bee3282167b9d05af` on
+`2026-10-10T06:25:51Z`. The bound candidate image is
+`sha256:83a0fdb4a5314608ace2009a837efe90181a6aaef5784392c775360cbfc184d5`;
+application context `254e9e3d89257379a8844f332be2ebe5132536ed63ec0d655c1470144989936e`
+contains 148 files. The cached build, 52 served/export bindings, verified local schema-13 pair,
+actual-host MCP pair and parent integrated review passed their declared scopes. The actual-host
+run (`2026-10-10T05:46:53.897780Z`–`05:49:01.414404Z`) used the approved real Zen model,
+two simultaneous owner turns, two owner-scoped MCP summaries and five native search sources.
+It verified migration/backup, retained data, new writes under same-volume recovery, isolation,
+26 production-health/reserve samples, complete CPU counters and zero OOM deltas. The host had
+984,564 KiB total RAM; candidate peak was 712,359,936/805,306,368 bytes and sequential recovery
+peak was 298,790,912/402,653,184 bytes. This passes the fixed combined 1 GB workload, not indefinite
+reliability. The current-image pending-search kill subsequently passed at
+`2026-10-10T06:06:33.963953Z`–`06:07:19.790688Z`: cancellation preserved private history/records,
+six assistant endpoints returned 503, normal app readiness survived, the worker/cache were erased,
+and exact owned cleanup passed. The earlier malformed-checkpoint attempt remains Fail; its cause
+is unproven and the later success does not establish provider-side search execution counts.
+
+The final capture bundle contains eight synthetic application views; the 14-page PDF and standalone
+HTML passed independent review. Only eight inline PNG payloads changed from the previously checked
+HTML: all other markup, CSS, text, alternatives and links are identical, allowing scoped reuse of
+180 checks across 12 viewport/theme states with raw axe 0/0. The actual current PDF was reviewed in
+full. Tagged PDF is not PDF/UA; physical mobile, actual screen reader and true zoom remain
+Unavailable. Reused browser/security/canonical evidence retains its original revision and input
+bindings; no new whole-tree aggregate is inferred.
+
+Publication command `SIGNAL_LEDGER_IMAGE_PUBLISH_MODE=prebuilt-release
+./scripts/publish-production-image.sh` exited 4 before release creation because the credential-byte
+scanner matched two SPDX exception identifiers in packaging 26.3's public `_spdx.py`. The fixed
+candidate and recovery scans reproduce that category; no raw matched bytes were retained. A
+narrow follow-on scanner repair is in progress, with exact public-source provenance, path, digest,
+size and span checks; no generic token-boundary weakening or file-wide bypass is authorized.
+A follow-on PR requires a newly bound image/pair, while unchanged application, UI, security,
+resource and guide inputs remain reusable. The latest production read remains revision
+`da2764e8477698fa7d686be93a4711e35478e802`, schema 12, loopback-only, failed=null. No deployment,
+resize, rollout or email occurred. Publication, follow-on PR/image binding, authenticated owner
+canary and release remain open; the US$15 monthly total cap and existing 1 GB/backups are unchanged.
+
+| Evidence | Receipt SHA-256 / scope |
+| --- | --- |
+| Actual-host typed MCP pair | `a3a3dc0bc45b5aa637ff661d591b5a0f3ce8fb335c54a62733b6fcba92b06103`; `/var/tmp/r12r/r120-actual-host-mcp-6dc259e-20261010T0546Z.json`. |
+| Independent resource criterion supplement | `8b58be61f376526f4f665ba4e3dcf0e5820e68335b5e8c14454cdb785f442208`; fixed workload/reserve criterion only. |
+| Independent active-kill review | `f563624dd8fad673f08eefaf4ec1e5030838cc921eb8b8579d4b5057144c7819`; `/var/tmp/r12r/r120-active-kill-independent-qa-20261010T0616Z-614334d2.json`. |
+| Final guide independent review | `a7a12f5c391a1b35f12d7050c5a312cd61540ebd9195c2ff6d911e0537f7794f`; `/var/tmp/r12r/r120-guide-final-independent-qa-20261010T0623Z-ed4a089a.json`. PDF `9c1e344fd8f3ab65a830cf0df4c702f9846ec856086141204985ed1f4d6b2df4`; HTML `241514cd71f5af776a9eb82ac4f5af4262460a23da457aaad3ea14f892d5ac2a`. |
+| Independent unchanged-HTML reuse | `d4532989912ebe387707eab008775f99cdd1b5574c606e4d59452580c33e01b5`; scope/time of original checks retained. |
+| Parent integrated release review | `8fd8ec53f25e7656b629097bb349cb1833acd6a68d44d7fbf7096339b43356bd`; `/var/tmp/r12r/r120-final-release-review-6dc-20261010T0626Z.json`. |
+| Publication failure | `fe707f4a4aab6e8a905fa0c5021f8f16e30be62ff4c36be9ec7f9428737862ae`; `/var/tmp/r12r/r120-prebuilt-publication-6dc-20261010T0626Z/publication-failure-receipt.json`. GitHub release lookup returned 404; production was unchanged. |
+
+
+### R-ASTRA-120 E840 follow-on PR binding and scanner diagnosis
+
+The follow-on branch is `codex/r120-release-archive-scanner`; its pre-change base remains
+`6dc259e91cc8077b9264901bee3282167b9d05af`. The fixed rehearsal binding now targets PR #2 in
+the controller, bootstrap and host helper, and emits that number in install/build receipts.
+Repository, open-state, main-base, exact-head and source-repository checks remain intact. The
+historical fixed internal resource namespace is unchanged. Independent QA passed six selected
+tests, 12 mocked negative checks and Ruff/format/diff. Parent integrated source review passed.
+These are synthetic checks; actual PR #2 creation and its live head binding remain pending.
+
+A filtered-context proof returned the unchanged application digest
+`254e9e3d89257379a8844f332be2ebe5132536ed63ec0d655c1470144989936e`, 148 files and 3,185,819 bytes;
+all 17 modified tooling/docs paths were excluded and exact temporary cleanup passed. The current
+root MCP connection still advertises the original PR #1 description; the server has no hot-reload
+path. Fresh official-SDK discovery is a separate evidence category, not inferred current-root Codex
+reconnection. Use a fresh initialized connection for the PR #2 rehearsal and preserve the old
+metadata observation. No credential files, Config.Env or private keys were read by this lane.
+
+The scanner's first narrow SPDX patch still **Failed** the actual candidate/recovery scan.
+Seven residual matches were observed in other public dependency metadata and the compiled harness;
+public-source verification is in progress. No raw match values were printed and no broader exemption
+is accepted. One preliminary independent scan duplicated that Fail before the new repair was frozen;
+its exact scan timestamps are Unavailable and the transcribed publisher-SHA correction is retained.
+Do not rerun unchanged failed scans. Publication remains held and production remains unchanged.
+
+| Evidence | Receipt SHA-256 / scope |
+| --- | --- |
+| Builder PR #2 binding | `f6564231fa61c7b2bfb3aca583604ece9f7d52d177e8f35f4588a09b705eb65a`; `/var/tmp/r12r/r120-pr2-pr-binding-pre-edit-20261010T063958Z/pr2-binding-implementation-receipt.json`; initial wrong-response-field test Fail retained. |
+| Independent PR #2 QA | `d876e94750f9dab63b45e7f757bf370df7803160b13e080764d8604eac1e4d60`; `/var/tmp/r12r/r120-pr2-independent-qa-20261010T0645Z-fbd8a231/independent-pr2-binding-qa.json`; 6 selected tests and 12 negative cases Pass. |
+| Parent source review | `15024e6d25cf9b16d3b05a89e5d13b2bf55bb8be96f0e52bb2cfb397bcd5cfd8`; fixed binding only, no remote invocation. |
+| Context / lifecycle proof | `d23a053da99761ba4b8358866f89833873144e7d283ffbf2c8e804f2789dc9ee` and `f3a04c1550e804d69d34cf536d459da1ec56868bb010f2e5a78d3c85f46eee72`; `/var/tmp/r12r/r120-pr2-runtime-lifecycle-20261010T064451Z/`; no MCP restart/call. |
+| Preliminary scan / correction | `87ad94473bc0cb30b4076e9e0e76b2cbb697e4f22180f149f05ae19bda309d90` and `d34a24d51b1be74e5d2f15c83379251dc8745b024c8d1eb909b3d26c2afd3e5d`; both archive scans Fail with the closed credential-byte category. |
+
+### R-ASTRA-120 E841 exact-provenance scanner repair
+
+The final shared candidate/recovery scanner passed 23 focused tests, Ruff/format, publisher shell
+syntax and scoped diff checks. Its broad credential patterns are unchanged. Four exact artifacts
+have nine verified public match spans, bound to path, size, full-file SHA-256 and offsets. Official
+PyPI wheel hashes and RECORD/member bytes establish the packaging, vendored setuptools and Peewee
+metadata provenance. The custom source-pinned OpenCode executable has four matching spans at the
+same offsets and with the same span digests in the pinned official Bun 1.4.2 executable; this does
+not claim that the custom executable is an unmodified upstream OpenCode release. All other bytes
+remain scanned, and altered digests, extra matches even with an updated digest, changed paths,
+word-adjacent tokens and chunk-boundary matches fail closed. Reads remain bounded streams.
+
+Independent QA passed the 23 tests and current static checks, then scanned the exact E839 candidate
+archive at `2026-10-10T06:54:06.700946Z`–`06:54:19.454763Z` and recovery at
+`06:54:19.455111Z`–`06:54:26.357651Z`; both passed. Fresh official wheel and Bun provenance
+comparisons matched. An initial hand-written provenance checker selected a nested setuptools
+RECORD and stopped before assertions; the corrected package-specific RECORD comparison passed.
+The builder's earlier candidate window remains Unavailable; its mistyped recovery-path failure
+and E840's preliminary scan failures remain preserved. Parent integrated scanner source review
+passed. No additional app, UI, provider or production check is inferred from these scans.
+
+Fresh PR #2 official-SDK runner preparation initially used incorrect camelCase Python fields.
+Preflight introspection identified this before MCP initialization or any tool invocation. A private
+runner-only repair uses MCP 2.2.0's native `input_schema`/`is_error` fields and alias-aware result
+serialization. Synthetic eight-tool, seven-required-field and structured-result checks passed;
+64 KiB file/output bounds remain verified. The earlier supplement with a manually entered inaccurate
+timestamp is preserved and superseded. Actual SDK discovery and the PR #2 host call remain pending.
+
+The filtered application context is unchanged. A new exact PR-head image/pair is still required;
+unchanged implementation, browser/mobile, security, native, resource and guide evidence retain their
+original input bindings and scope. Production remains unchanged at the healthy schema-12 baseline.
+No new PR merge, publication, deployment, resize, rollout or email is claimed by this checkpoint.
+
+| Evidence | Receipt SHA-256 / scope |
+| --- | --- |
+| Scanner builder/provenance | `6aa1ea87ad49c932c033ade1a745fdc31e454bc6580d503e295dc51a49b0d990`; final source and exact public-artifact provenance. |
+| Scanner comment-only follow-up | `f69d4a4931717c0aec3a6367c04ef86d878aa15a4c9860f5c9b7e5ad2e755e2e`; no behavioral change. |
+| Parent scanner source review | `30149d62bef30db34ab976bdc1bdc0c84db96cafa3a6446e7eba851520ceffc0`; shared streaming scanner and publisher integration. |
+| Independent scanner QA | `caa209f18690406517a9b5cbd7c01ddba1b6b9ac818facac53f8d1c5dc272e6e`; `/var/tmp/r12r/r120-release-archive-independent-qa-20261010T0654Z/independent-release-archive-qa-receipt.json`; 23 tests, both exact archives and fresh official provenance Pass. |
+| SDK field correction | `14e158946de6a0984c23aaf950d0259371318f4f7aafedde6320c4efce77069f`; synthetic SDK objects only. |
+
 ### R-ASTRA-120 E832 late-failure diagnostic-only repair
 
 Task `R-ASTRA-120`, source head `fa3db0e9fd2b48032735474691df900135aa1357`. The narrow two-file

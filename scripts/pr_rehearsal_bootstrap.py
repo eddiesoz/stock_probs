@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 REPOSITORY = "eddiesoz/stock_probs"
-PULL_NUMBER = 1
+PULL_NUMBER = 2
 HOST = "raw.githubusercontent.com"
 INCOMING = Path("/var/lib/signal-ledger-pr-rehearsal/incoming")
 INSTALL_ROOT = Path("/usr/local/libexec/signal-ledger-pr-rehearsal")

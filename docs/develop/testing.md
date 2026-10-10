@@ -439,7 +439,7 @@ R-ASTRA-120 remains **In progress**. E725's earlier full-browser failure remains
 ### PR-head candidate image build helper
 
 The existing schema-13 rehearsal CLI now has a fixed-source mode for building a private local
-image from the exact clean, reviewed head of open PR #1. Use only these mode flags:
+image from the exact clean, reviewed head of open PR #2. Use only these mode flags:
 
 ```bash
 python3 scripts/rehearse_schema13.py \
@@ -450,7 +450,7 @@ python3 scripts/rehearse_schema13.py \
 
 Set `REVIEWED_PR_HEAD` to the exact lowercase 40-character PR head SHA and `PRIVATE_RECEIPT` to a
 private output path. The helper checks that local `HEAD` is that SHA and the worktree is clean,
-validates the fixed PR-1/head/base relationship, rechecks the head around the build, and writes a
+validates the fixed PR-2/head/base relationship, rechecks the head around the build, and writes a
 mode-0600 JSON receipt. The build is local `linux/amd64`, is not published, and requires at least
 4 GiB free on every checked build filesystem; it aborts if free space drops below 1 GiB. E678's original independent process-ownership review **Failed** and remains historical. E683
 recorded builder checks, and E684 independently passed source/test QA (59/59, exit 0; 149 inputs
@@ -462,6 +462,12 @@ context digest to the same reviewed PR head SHA. The optional `prebuilt-release`
 checks and publishes that exact completed pair, preserving its original rehearsal receipt and
 requiring a clean revision that matches exact `origin/main`. Publication is separate from QA;
 it does not satisfy the actual-host, rollback, canary, or rollout gates.
+The shared archive scanner must reject altered pinned source, extra token-like bytes, alternate
+paths and word-adjacent tokens. Each provenance-verified exception is restricted to its exact
+digest, size, path and match spans; exercise both candidate and recovery archives. The fixed
+compiled harness is custom-source-pinned; its exempt spans are verified against the pinned public
+Bun binary, not an official unmodified OpenCode binary. No whole-file waiver is permitted.
+
 
 ### Exact PR-pair review pins
 
@@ -471,7 +477,7 @@ The fixed local review-pin command accepts only an explicit write request:
 python3 scripts/pin_pr_rehearsal_review.py --write
 ```
 
-Before writing, the helper reads the current commit, requires the exact clean PR-1 source, checks
+Before writing, the helper reads the current commit, requires the exact clean PR-2 source, checks
 its fixed candidate/recovery pair manifest and image/source digests, verifies the PR identity, and
 binds the pair to that same commit. It accepts no target, path, or credential arguments. The
 operator-local record is `$XDG_CONFIG_HOME/signal-ledger/rehearsal-review.json`; when

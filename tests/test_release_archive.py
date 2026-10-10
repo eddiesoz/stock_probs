@@ -5,7 +5,6 @@ import importlib.util
 import io
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -410,6 +409,175 @@ def test_release_archive_verifier_accepts_clean_bounded_single_image(tmp_path: P
     assert len(result["archive_sha256"]) == 64
 
 
+def _spdx_test_source() -> tuple[bytes, tuple[tuple[int, int], ...]]:
+    first = b"sk-" + b"A" * 20
+    second = b"sk-" + b"B" * 20
+    contents = b"X" + first + b" middle X" + second + b" " + b"x" * 23
+    first_start = contents.index(first)
+    second_start = contents.index(second)
+    return contents, (
+        (first_start, first_start + len(first)),
+        (second_start, second_start + len(second)),
+    )
+
+
+def _configure_spdx_test_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+    contents: bytes,
+    spans: tuple[tuple[int, int], ...],
+) -> None:
+    monkeypatch.setattr(
+        verifier,
+        "PINNED_PUBLIC_MATCH_SOURCES",
+        {
+            "vendor/licenses/_spdx.py": (
+                len(contents),
+                hashlib.sha256(contents).hexdigest(),
+                spans,
+            )
+        },
+    )
+
+
+def test_release_archive_verifier_allows_only_pinned_spdx_match_spans(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    _configure_spdx_test_allowlist(monkeypatch, contents, spans)
+    archive = _docker_archive(tmp_path, {"vendor/licenses/_spdx.py": contents})
+
+    result = verifier.verify_image_archive(archive)
+
+    assert result["status"] == "pass"
+
+
+def test_release_archive_verifier_rejects_spdx_file_with_added_match(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    _configure_spdx_test_allowlist(monkeypatch, contents, spans)
+    extra_match = b"sk-" + b"C" * 20
+    changed = contents[: -len(extra_match)] + extra_match
+    assert len(changed) == len(contents)
+    archive = _docker_archive(tmp_path, {"vendor/licenses/_spdx.py": changed})
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(archive)
+
+
+def test_release_archive_verifier_rejects_spdx_digest_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    _configure_spdx_test_allowlist(monkeypatch, contents, spans)
+    changed = contents[:-1] + b"z"
+    assert len(changed) == len(contents)
+    archive = _docker_archive(tmp_path, {"vendor/licenses/_spdx.py": changed})
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(archive)
+
+
+def test_release_archive_verifier_rejects_added_match_with_updated_source_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    extra_match = b"sk-" + b"C" * 20
+    changed = contents[: -len(extra_match)] + extra_match
+    assert len(changed) == len(contents)
+    _configure_spdx_test_allowlist(monkeypatch, contents, spans)
+    monkeypatch.setattr(
+        verifier,
+        "PINNED_PUBLIC_MATCH_SOURCES",
+        {
+            "vendor/licenses/_spdx.py": (
+                len(changed),
+                hashlib.sha256(changed).hexdigest(),
+                spans,
+            )
+        },
+    )
+    archive = _docker_archive(tmp_path, {"vendor/licenses/_spdx.py": changed})
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(archive)
+
+
+def test_release_archive_verifier_pinned_spans_cross_stream_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_match = b"sk-" + b"F" * 20
+    second_match = b"sk-" + b"G" * 20
+    first_start = verifier.CHUNK_BYTES - 100
+    second_start = verifier.CHUNK_BYTES * 2 - 10
+    size = verifier.CHUNK_BYTES * 2 + 64
+    contents = bytearray(b"!" * size)
+    contents[first_start : first_start + len(first_match)] = first_match
+    contents[second_start : second_start + len(second_match)] = second_match
+    source = bytes(contents)
+    spans = (
+        (first_start, first_start + len(first_match)),
+        (second_start, second_start + len(second_match)),
+    )
+    monkeypatch.setattr(
+        verifier,
+        "PINNED_PUBLIC_MATCH_SOURCES",
+        {
+            "vendor/licenses/_spdx.py": (
+                size,
+                hashlib.sha256(source).hexdigest(),
+                spans,
+            )
+        },
+    )
+
+    assert verifier._scan_member("vendor/licenses/_spdx.py", io.BytesIO(source), size) == size
+
+
+def test_release_archive_verifier_does_not_exempt_spdx_path_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    _configure_spdx_test_allowlist(monkeypatch, contents, spans)
+    archive = _docker_archive(tmp_path, {"vendor/licenses/_spdx_copy.py": contents})
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(archive)
+
+
+def test_release_archive_verifier_scans_other_bytes_in_allowlisted_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    other_marker = b"ghp_" + b"D" * 20
+    contents += b" " + other_marker
+    _configure_spdx_test_allowlist(monkeypatch, contents, spans)
+    archive = _docker_archive(tmp_path, {"vendor/licenses/_spdx.py": contents})
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(archive)
+
+
+def test_release_archive_verifier_rejects_quoted_environment_and_adjacent_tokens(
+    tmp_path: Path,
+) -> None:
+    token = b"sk-" + b"E" * 24
+    for contents in (
+        b'"OPENAI_API_KEY=' + token + b'"',
+        b"OPENAI_API_KEY=" + token,
+        b"x" + token + b"y",
+    ):
+        archive = _docker_archive(tmp_path, {"app.py": contents})
+        with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+            verifier.verify_image_archive(archive)
+
+
 @pytest.mark.parametrize(
     ("layer_files", "reason"),
     [
@@ -445,25 +613,22 @@ def test_release_archive_verifier_rejects_path_traversal_without_extracting(
         verifier.verify_image_archive(archive)
 
 
-def test_publisher_shell_scanner_matches_fixed_secret_name_and_token_rules() -> None:
+def test_publisher_uses_shared_archive_scanner_and_keeps_metadata_screen() -> None:
     script = SCRIPT.with_name("publish-production-image.sh").read_text(encoding="utf-8")
-    path_match = re.search(r"SECRET_PATH_PATTERN='([^']+)'", script)
-    bytes_match = re.search(r"SECRET_BYTES_PATTERN='([^']+)'", script)
-    assert path_match is not None
-    assert bytes_match is not None
-    path_pattern = re.compile(path_match.group(1), re.IGNORECASE)
-    bytes_pattern = re.compile(bytes_match.group(1).encode())
+    assert 'python3 scripts/verify-release-archive.py "$ARCHIVE_PATH"' in script
+    assert "SECRET_BYTES_PATTERN" not in script
 
     for path in ("home/.aws/credentials", "home/.ssh/config", "app/Auth.JSON"):
-        assert path_pattern.search(path), path
+        assert verifier.SECRET_PATH.search(path), path
     for value in (b"sk-ant-api03-" + b"A" * 32, b"AIza" + b"A" * 32):
-        assert bytes_pattern.search(value), value[:8]
+        assert verifier.SECRET_BYTES.search(value)
     assert "IMAGE_SCHEMA >= 13" in script
     assert "candidate/recovery GitHub release pair" in script
     assert "SIGNAL_LEDGER_IMAGE_PUBLISH_MODE:-release" in script
     assert '"$PUBLISH_MODE" == "prebuilt-release"' in script
     assert 'docker load --input "$ARCHIVE_PATH"' in script
     assert "{{json .Config.Env}} {{json .Config.Labels}}" in script
+    assert "IMAGE_METADATA" in script and "RECOVERY_METADATA" in script
     assert 'validate-prebuilt-pair.py" final' in script
 
 

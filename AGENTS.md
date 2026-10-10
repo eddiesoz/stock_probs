@@ -458,27 +458,37 @@ after a fix. Repeat a full suite when a release gate or shared-contract impact r
 workflow does not relax release, security, or acceptance gates. For native-runtime repairs, run the
 real functional check before the full release aggregate so a known runtime failure does not waste
 another broad run; retain unchanged UI and component evidence with exact input bindings.
-Current R-ASTRA-120 E838 checkpoint: PR #1 remains draft; E838 source/test results are bound to
-reviewed pre-commit head `5bbd3d4b89541ef3d7949d4fc6f98d9e3bba7a17`. E837's 196-case browser scope,
-E836's scoped axe result, and the 14-page guide review remain reusable only on unchanged inputs;
-none establishes full-app accessibility or final PR-bound guide acceptance. The local schema-13 pair
-and current-image pending-search kill passed only their 768 MiB scopes. The actual-host MCP
-rehearsal failed at exit 1 with `fixed_command_failed`; read-only review recognized the final
-fixture-restore guard, but original stderr is unavailable and the host failure cause remains
-unproven. The seed restore-guard repair passed parent source review, four focused independent tests,
-and the same Ruff check from repository CWD; the scratch-CWD `I001` failure is preserved and
-attributed by supplement to CWD-dependent Ruff project-root discovery. The checker repair passed 178
-independent tests with one Docker integration deselected; after five whitespace-only folds, builder
-tests/Ruff and parent AST-identity review passed. Publisher source review and independent 16-case checks passed; the actual saved pair parser also passed its offline scope. Nothing was published. No current canonical aggregate was
-run. Complete security/accessibility, actual 1 GB, host retry, PR rollback, owner canary, final
-guide and release remain open. Production, the US$15 cap, 1 GB plan and backups are unchanged; no
-merge, deploy, resize, rollout or email occurred. See
-[E838](MVP-PLAN.md#r-astra-120-e838-seed-guard-checker-and-host-rehearsal-checkpoint).
+R-ASTRA-120 merged baseline E839, current follow-on E841: PR #1 merged at exact revision
+`6dc259e91cc8077b9264901bee3282167b9d05af` on `2026-10-10T06:25:51Z`. Its actual-host typed
+MCP rehearsal passed two-owner real Zen/MCP/native-search, migration, verified backup,
+write-preserving schema-13 recovery, and the bounded combined 1 GB workload. The exact current-image
+pending-search shutdown passed, with independent cleanup review. The final eight captures and
+14-page HTML/PDF guide passed their declared review scopes; unchanged HTML structure permits reuse
+of the earlier 180-check accessibility result. Physical mobile, actual screen reader, true zoom and
+PDF/UA remain Unavailable. Browser, security and canonical evidence is reused only for unchanged
+bound inputs; no new whole-tree aggregate is inferred. The prebuilt publication failed at the
+credential-byte scan before creating a GitHub release. Two SPDX exception identifiers in the public
+packaging source matched the broad token heuristic. The repaired shared scanner now passes independent
+23-test, exact candidate/recovery archive and official public-source provenance checks. The follow-on
+PR and newly bound image/pair remain pending. Production still serves the schema-12 baseline; no deploy, resize, rollout or
+email occurred. The US$15 monthly total cap, 1 GB plan and backups remain unchanged. Publication,
+exact follow-on PR/image-pair binding, owner canary and release remain open. See
+[E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair) and
+[E840](MVP-PLAN.md#r-astra-120-e840-follow-on-pr-binding-and-scanner-diagnosis) and
+[E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair).
 
-For the remainder of R-ASTRA-120, serialize heavy local Docker builds, canonical gates and browser
-aggregates; run independent source/documentation review in parallel. Reuse unchanged bound evidence
+For the remainder of R-ASTRA-120, serialize heavy local Docker builds, canonical gates, browser
+aggregates, and real provider/native trials; run independent source/documentation review in parallel. Reuse unchanged bound evidence
 and rerun affected scopes plus required release checks. Do not manufacture an aggregate Pass from
 separate case runs or clear the operator's browser session to create fixtures.
+
+
+For captures and publication diagnosis, use maintained explicit source/stage allowlists and
+bounded output. Do not recursively scan or hash generated test-results, hidden frontend trees,
+node_modules, or credential trees. Validate capture pre-snapshot and finalizer schemas before a
+capture; never backdate or reconstruct a missing baseline. A credential-scanner exemption requires
+verified public provenance plus exact path, source digest, size and match spans; keep all other
+bytes subject to scanning and retain detection of word-adjacent credentials.
 
 Historical R-ASTRA-120 E817: The f9d1 candidate image built and matched 149 source inputs and 52 served/export files, but its native run **Failed**: owner 0 answered; owner 1 received seven search sources and one fetch source then returned provider_unavailable. Native cause remains **Unproven**. A synthetic reproduction confirmed an irreversible failure after a transient snapshot read timeout despite later native success. The bounded read-only GET retry repair passed 14 builder and 11 independent selected tests plus parent source review; it retains the original 120-second deadline and fatal authorization/protocol checks. The f9d1 canonical run was intentionally interrupted at 156 partial Python passes with only two of three required checks completed; it is not a Pass. A repaired image/native run precedes the next final aggregate. Actual 1 GB, current-image shutdown, PR rollback, final guide and release gates remain open; production and the US$15 cap are unchanged.
 

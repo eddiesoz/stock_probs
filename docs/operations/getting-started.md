@@ -526,6 +526,12 @@ pair manifest, and `signal-ledger-pair-receipt-<reviewed-sha>.json` in the priva
 image, schema, backup, recovery, and archive bindings before publication; it retains archive and
 metadata screening and download verification. This option does not establish release approval or
 replace the required actual-host rehearsal, owner canary, and rollout gates.
+Candidate and recovery archive scans share one maintained verifier. Its narrowly reviewed public
+artifact exceptions require an exact source digest, size, path and match spans for each
+individually verified dependency file. The custom-built harness uses only spans verified against
+the pinned public Bun binary. Changed files and all other credential-like bytes still fail closed;
+no whole-file waiver or relaxed word-adjacent detection is allowed.
+
 
 ### Prepare the host
 
@@ -632,7 +638,7 @@ inspect → plan_deploy(main revision, release archive SHA, image ID) → deploy
 
 #### Review a PR pair before rehearsal
 
-For the fixed R-ASTRA-120 PR #1 pair, first build and verify the exact clean candidate/recovery
+For the fixed R-ASTRA-120 PR #2 pair, first build and verify the exact clean candidate/recovery
 pair. Only then persist its local review pins with:
 
 ```bash
@@ -801,7 +807,7 @@ visible cancellation control is labeled “Stop response.” E679's copy/source-
 ### PR-head candidate image build helper
 
 The existing schema-13 rehearsal CLI now contains a fixed-source mode for a private local image
-from the exact clean, reviewed head of open PR #1. Set `REVIEWED_PR_HEAD` to that exact lowercase
+from the exact clean, reviewed head of open PR #2. Set `REVIEWED_PR_HEAD` to that exact lowercase
 40-character SHA and `PRIVATE_RECEIPT` to a private output path, then use these mode flags:
 
 ```bash
@@ -811,7 +817,7 @@ python3 scripts/rehearse_schema13.py \
   --receipt "$PRIVATE_RECEIPT"
 ```
 
-The helper verifies local `HEAD` and a clean worktree, the fixed PR-1/head/base relationship, and
+The helper verifies local `HEAD` and a clean worktree, the fixed PR-2/head/base relationship, and
 the reviewed SHA again around the build. It writes a mode-0600 JSON receipt. The local
 `linux/amd64` image is not published; every checked build filesystem must have at least 4 GiB free
 before build, and the helper stops if free space drops below 1 GiB. E678's original independent process-ownership source review **Failed** and remains preserved.
