@@ -461,37 +461,43 @@ after a fix. Repeat a full suite when a release gate or shared-contract impact r
 workflow does not relax release, security, or acceptance gates. For native-runtime repairs, run the
 real functional check before the full release aggregate so a known runtime failure does not waste
 another broad run; retain unchanged UI and component evidence with exact input bindings.
-R-ASTRA-120 merged baseline E839; latest checkpoint E848. PR #1 is merged at exact revision
+R-ASTRA-120 merged baseline E839; latest checkpoint E849. PR #1 is merged at exact revision
 `6dc259e91cc8077b9264901bee3282167b9d05af`. PR #2 merged at tested head
-`5ad2c3fddfce5a5a631b72cd832a53f24757c44a` at `2026-10-10T15:02:35Z`. E847 preserves the
-53578 managed-build timeout and **Unproven** cause, the interrupted gate without JUnit/terminal,
-and the separate clean-head canonical **Pass**; checker-v3 passed its scoped builder and independent
-checks. The 479-input full manifest predates checker/documentation edits; unchanged product context
-and staged files were re-used only within their original bindings.
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`; operational PR #3 merged at
+`ea71fddd1519394c59960c60a3c36a83b15b76dc` at `2026-10-10T15:30:22Z`, with public `main` matching.
+The E847 managed-build timeout with **Unproven** cause, interrupted gate without JUnit/terminal,
+and separate clean-head canonical Pass remain historical. E848's first production deploy failed
+before migration with `backup_unverified`; source review found backup creation metadata does not
+include the `verified` field the helper expected before checking signed-reader restore verification.
+That failed attempt remains preserved and is not the current production state.
 
-E848's exact PR-bound actual-host pair/resource/recovery, actual combined 1 GB, and PR-bound rollback
-scopes passed for their declared bindings; its prebuilt release was published. The publisher
-downloaded and reverified remote assets, while the independent publication reviewer passed its local
-artifact/metadata checks and skipped a separate download. The fixed production helper and Compose updates passed. The visible
-production deploy attempt **Failed** before migration with `backup_unverified`; rollback was attempted
-and succeeded, leaving the prior schema-12 revision ready and loopback-only. The E847 security
-(590/590), whole-route axe (68 cases/72 scans, 0 violations/0 incompletes), browser (193/196 with 3
-expected skips), and guide results, plus current-product native wire/kill results, remain **Pass** for
-their exact declared/reused scopes. Parent source review confirmed the backup-result contract
-mismatch and passed the narrow helper/test repair source scope; builder checks passed 11 focused
-tests and 88 of 89 helper tests (1 skipped); independent QA also passed. Only successful application
-deployment, owner canary, invited-user rollout, and authorized release announcement remain pending.
-Physical mobile, actual screen reader, true zoom,
-and PDF/UA remain
-**Unavailable**; no full accessibility claim follows. Backup creation metadata is not the verification
-receipt: before production promotion, require separate signed-reader verification of the exact backup
-artifact without promotion, and test helper contracts against actual CLI/service response shapes.
-The US$15 monthly cap, existing 1 GB host and backups are unchanged. No resize or email occurred.
-See [E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair),
+E849's fixed helper updater passed independent static review and applied successfully; the exact
+tested application release remains 5ad. Production deployed image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1` at
+`2026-10-10T15:32:35.858627Z`, schema 13, ready, assistant disabled and loopback-only, with verified
+pre-deploy and pre-migration backups and recovery image `sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f`. The visible rollout control then **Passed** setting `owner_canary`; status reported ready,
+enabled, schema 13 on the same image. Independent production-boundary QA **Passed** its eight
+unauthenticated TLS probes and exact deployment/backup/recovery/rollout identity checks; the no-cookie
+session was unauthenticated, no cookies were set, and private-route and hostile-origin/host boundaries
+held. Actual owner TOTP/UI canary was skipped. The owner's existing browser remains on authenticator
+verification with the current-code field empty; no cookies were cleared and no development login or
+MFA bypass was used. Owner UI/model/action canary remains **Pending**. Invited-user rollout and the
+authorized announcement are held.
+
+E847 security (590 checks), browser (193/196, three expected skips), whole-route axe (68 cases/72
+scans, zero violations/incompletes), guide, and current-product native wire/kill results remain Pass
+for their original bindings. E849 reuses the exact-5ad pair, recovery, actual combined 1 GB and
+PR-bound rollback results; no application rebuild was needed for the helper-only repair. Physical
+mobile, actual screen reader, true zoom, and PDF/UA remain **Unavailable**; no full accessibility
+claim follows. Backup creation metadata is not the verification receipt: promotion requires separate
+signed-reader verification of the exact backup artifact without promotion, and helper contracts must
+be tested against actual CLI/service response shapes. The US$15 monthly cap, existing 1 GB host and
+backups are unchanged; no email occurred. See [E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair),
 [E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair),
 [E846](MVP-PLAN.md#r-astra-120-e846-pr-2-host-pair-canonical-and-publisher-test-checkpoint),
-[E847](MVP-PLAN.md#r-astra-120-e847-canonical-and-checker-repair-checkpoint), and
-[E848](MVP-PLAN.md#r-astra-120-e848-production-deployment-checkpoint).
+[E847](MVP-PLAN.md#r-astra-120-e847-canonical-and-checker-repair-checkpoint),
+[E848](MVP-PLAN.md#r-astra-120-e848-production-deployment-checkpoint), and
+[E849](MVP-PLAN.md#r-astra-120-e849-production-deployment-and-owner-canary-checkpoint).
 
 For the remainder of R-ASTRA-120, serialize heavy local Docker builds, canonical gates, browser
 aggregates, and real provider/native trials; run independent source/documentation review in parallel. Reuse unchanged bound evidence

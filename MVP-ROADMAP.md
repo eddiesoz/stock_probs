@@ -1,12 +1,12 @@
 # Stock Probability MVP Roadmap
 
-R-ASTRA-120 merged baseline E839; current follow-on E841–E848. PR #1 merged at exact revision
+R-ASTRA-120 merged baseline E839; current follow-on E841–E849. PR #1 merged at exact revision
 `6dc259e91cc8077b9264901bee3282167b9d05af` on `2026-10-10T06:25:51Z`. Its actual-host typed
 MCP rehearsal, schema-13 recovery, bounded combined 1 GB workload and current-image pending-search
 shutdown passed their declared scopes. The final eight captures and 14-page HTML/PDF guide passed
 their declared review scopes; reused HTML checks retain their original bindings. Physical mobile,
 actual screen reader, true zoom and PDF/UA remain Unavailable. E841's shared credential scanner
-repair and independent 23-test/provenance review passed; publication had failed earlier before a
+repair and independent 23-test/provenance review passed; publication had failed at E841 before a
 GitHub release was created. At the E847 checkpoint, parent-observed metadata reported PR #2
 **OPEN/DRAFT** at pushed head
 `53578a4c0995c13a787ee05044ede691ac84dd24`. Earlier actual-host pair calls failed with
@@ -36,12 +36,12 @@ violations/incompletes), and the reused browser aggregate is 193/196 with 3 expe
 frontend/fixture/source/test and 52 served/export pins matched. These are reuse audits, not reruns
 or full WCAG AA, physical mobile, true zoom, actual screen-reader, PDF/UA or runtime acceptance.
 The exact-head `06a` PR-bound recovery passed its declared scope; it did not invoke deploy/rollback
-mutations and does not bind the next checker checkpoint. Fresh image and pair binding, security
-retest, disabled-feature deployment, owner canary, final guide and release remain pending. A fresh
-read-only inspect reconfirmed production revision `da2764e8477698fa7d686be93a4711e35478e802`,
+mutations and does not bind the next checker checkpoint. At E847, fresh image and pair binding,
+security retest, disabled-feature deployment, owner canary, final guide and release remained pending.
+E847's read-only inspect reconfirmed production revision `da2764e8477698fa7d686be93a4711e35478e802`,
 image `sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1`, schema 12 ready,
-`failed=null`, and loopback-only; rollout, RAM, billing, and browser access were not returned. No
-PR #2 merge, prebuilt publication, production update/deploy, rollout, resize or email occurred. The US$15 monthly cap and
+`failed=null`, and loopback-only; rollout, RAM, billing, and browser access were not returned.
+At E847, no PR #2 merge, prebuilt publication, production update/deploy, rollout, resize or email had occurred. The US$15 monthly cap and
 existing 1 GB plan/backups remain unchanged. See [E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair),
 [E840](MVP-PLAN.md#r-astra-120-e840-follow-on-pr-binding-and-scanner-diagnosis),
 [E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair),
@@ -3243,7 +3243,7 @@ or email occurred. The US$15 cap, existing 1 GB host, and backups are unchanged.
 [E847 in the MVP plan](MVP-PLAN.md#r-astra-120-e847-canonical-and-checker-repair-checkpoint).
 
 
-### Current R-ASTRA-120 checkpoint E848
+### Historical R-ASTRA-120 checkpoint E848
 
 PR #2 merged at tested head `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`. The exact PR-bound
 actual-host schema-13 pair/resource/recovery, actual combined 1 GB and PR-bound rollback scopes
@@ -3257,7 +3257,28 @@ plus current-product native
 wire/kill results, remain Pass for their exact declared/reused scopes. Parent source review, builder
 checks, and independent QA passed for the operational backup-contract repair.
 Product image/pair inputs remain bound to tested 5ad; no product rebuild was needed for the
-helper-only repair. Only successful deployment, owner canary, invited-user rollout and release
-announcement remain pending. Physical mobile, actual screen reader, true zoom,
+helper-only repair. At E848, successful deployment, owner canary, invited-user rollout and release
+announcement remained pending. Physical mobile, actual screen reader, true zoom,
 and PDF/UA remain **Unavailable**; no full accessibility claim follows. The US$15 cap, existing 1
 GB plan and backups remain unchanged. See the [E848 evidence](MVP-PLAN.md#r-astra-120-e848-production-deployment-checkpoint).
+
+
+### Current R-ASTRA-120 checkpoint E849
+
+Operational PR #3 merged at exact revision `ea71fddd1519394c59960c60a3c36a83b15b76dc` at
+`2026-10-10T15:30:22Z`, and public `main` matched. The helper-only updater passed independent
+static review and applied successfully. The unchanged, published 5ad application image was deployed
+at `2026-10-10T15:32:35.858627Z`; production reported schema 13, ready, assistant disabled and
+loopback-only with verified pre-deploy and pre-migration backups and the schema-13 recovery image.
+The visible rollout control then passed setting `owner_canary`; status reported ready and enabled on
+the same schema-13 image. Independent production-boundary QA passed eight unauthenticated TLS probes
+and the exact deployment/backup/recovery/rollout identity checks. It observed the expected public
+health/readiness/auth-status, private-route and hostile-origin/host boundaries; the actual owner
+TOTP/UI canary was skipped. The owner's existing browser remains at authenticator verification with
+the current-code field empty. No cookies were cleared and no development login or MFA bypass
+occurred. The owner UI/model/action canary remains pending; invited-user rollout and announcement
+are held. E848's earlier `backup_unverified` deploy failure remains historical. E847's security,
+browser/axe, guide and native wire/kill results, and the exact-5ad pair/resource/recovery, actual
+combined 1 GB and PR-bound rollback results, remain Pass within their original bindings. The US$15
+cap, existing 1 GB host and backups are unchanged. See the
+[E849 evidence](MVP-PLAN.md#r-astra-120-e849-production-deployment-and-owner-canary-checkpoint).

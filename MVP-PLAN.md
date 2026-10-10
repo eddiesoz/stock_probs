@@ -6216,3 +6216,60 @@ E848 documentation evidence:
 | --- | --- |
 | Pre-edit authored-file baseline | Task `R-ASTRA-120`; UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; byte-copied and `cmp`-verified files in `/var/tmp/r12r/r120-e848-private-prep-20261010T150909Z/`, directory `0700`, files `0600`. SHA-256: `AGENTS.md` `6dc5aa25276ec67600825288b7f7f59e40ac1c1147842dbd11979389e63bf6af`; `MVP-PLAN.md` `b97e83371cb3764667fb4be4dfbfcd0f6c9721fa8fbe0cc850d1a0c2a9dc9a47`; `MVP-ROADMAP.md` `ff352ce9d16dcceab2ade188cee65802c9da13fbc0a4a14eed3480925ad2335b`; `docs/operations/getting-started.md` `57c783b42f9353ebdc1ddfa0a4b169558abe2fc1bbaafc77b264f208ffb6e735`. Pre-change `HEAD` was `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`. |
 | Authored documentation checks | `.dev-venv/bin/python scripts/validate_docs.py` exited `0` (**Pass**, 9 categories, 14 topics, 8 project skill governance entries); `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` exited `0` (**Pass**, 154 mapped files); `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs/operations/getting-started.md` exited `0` (**Pass**). Documentation tests were not run. |
+
+
+### R-ASTRA-120 E849 production deployment and owner-canary checkpoint
+
+Operational PR #3 merged at exact revision `ea71fddd1519394c59960c60a3c36a83b15b76dc` at
+`2026-10-10T15:30:22Z`; the parent reported public `main` at the same revision. The app release
+remains PR #2's tested/published head `5ad2c3fddfce5a5a631b72cd832a53f24757c44a` and image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`; helper-only PR #3 did
+not change the application image/pair. E848's earlier `backup_unverified` deployment failure and
+successful failure-path rollback remain historical; they are not the current production result.
+
+The fixed helper updater passed independent static review at
+`/var/tmp/r12r/r120-fixed-host-helper-updater-review-ea71fdd-20261010T1531Z/independent-review.json`,
+SHA-256 `0781c25bdb251f47ed95f142756bc4504aac8cb4718d7a52e04b5e4f7acdb28d`. Parent clean/public-main
+`verify_source` preflight **Passed**. The helper update exited `0` at
+`2026-10-10T15:31:53.393743Z`–`15:31:54.965237Z`; terminal
+`/var/tmp/r12r/r120-production-deploy-backup-repaired-20261010T1532Z/helper-update-terminal.json`,
+log SHA-256 `b5a1a3a08ce1b5ee08269c586ecbcbc448081b618f9eb12f037d5314b50f80d2`.
+
+The visible MCP deploy retry **Passed** using the already staged plan ID
+`c12a54e80c0352c20184c72856ba2234` and the exact published 5ad image/pair. At
+`2026-10-10T15:32:35.858627Z`, production reported schema 13, ready, assistant disabled and
+loopback-only; pre-deploy and pre-migration backups were verified, and the registered schema-13
+recovery image was `sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f`. Deployment and
+post-deploy inspect receipt `/var/tmp/r12r/r120-production-deploy-backup-repaired-20261010T1532Z/deploy-and-inspect.json`,
+SHA-256 `1ef1c1cc5682207563827464e32172b2cec2a1c876718fd346335ec9393d3344`.
+
+The subsequent visible MCP rollout-control call **Passed** when setting `owner_canary`; status
+reported ready, enabled, schema 13 on the same exact 5ad image. Receipt
+`/var/tmp/r12r/r120-production-deploy-backup-repaired-20261010T1532Z/owner-canary-rollout.json`,
+SHA-256 `bc81cfae945c25b472a54d4106a518c0742169a38371f459383e3bd1667a8f09`. This is a successful
+rollout-control result, not completion of the owner UI/model/action canary.
+
+Independent production-boundary QA **Passed** its eight unauthenticated TLS probes and exact
+deployment/backup/recovery/rollout identity checks. The probes observed health/readiness/auth-status
+`200`, a no-cookie unauthenticated auth session, private-history and assistant-status `401`, and hostile-origin
+and hostile-host `403` without ACAO reflection. Receipt
+`/var/tmp/r12r/r120-production-boundary-independent-qa-20261010T1536Z/independent-boundary-review.json`,
+SHA-256 `0226a5b3fd976e7e9a4e8e07ce08689cdae9e545d5a7c71b287dfa9887c94b10`. The receipt did not
+preserve an absolute UTC probe time. It skipped actual owner TOTP/UI canary work. The owner's existing
+browser tab 6 remains at authenticator verification with the current-code field empty. No browser
+cookies were cleared, and no development login or MFA bypass occurred. The actual owner canary remains
+**Pending**; invited-user rollout and the authorized announcement remain held.
+
+E847 security (590 checks), browser (193/196 with three expected skips), whole-route axe (68 cases/72
+scans, zero violations and zero incompletes), guide and current-product native wire/kill results
+remain Pass for their original bindings. E849 reuses the exact-5ad pair/resource/recovery, actual
+combined 1 GB and PR-bound rollback scopes. Physical mobile, actual screen reader, true zoom and
+PDF/UA remain **Unavailable**; these results do not establish full WCAG AA. The existing 1 GB host,
+backups and US$15 monthly total cap are unchanged. No invited rollout or email occurred.
+
+E849 documentation evidence:
+
+| Check | Task and observed result |
+| --- | --- |
+| Pre-edit authored-file baseline | Task `R-ASTRA-120`; UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; byte-identical copies in `/var/tmp/r12r/r120-e849-private-baseline-20261010T153300Z/`, directory mode `0700`, files mode `0600`. SHA-256: `AGENTS.md` `caa42add7284f5e0df20cdec1a0923b852ce68a7e836d04bee8eaf6a97b6a0a6`; `MVP-PLAN.md` `b9d2f854eccc1865fdb20457c7b0e99dbfe8310a006b2dfc9c0ceede60aeabac`; `MVP-ROADMAP.md` `3d4a65b97a6c0c00680fd5d70b229c9727141c8f5d7b8269fc188a5046d2f009`; `docs/operations/getting-started.md` `5721ee989e0d7361e6973028ee78c933823ec580537be3a56aec7e5bd8fd59b0`. |
+| Authored documentation checks | `.dev-venv/bin/python scripts/validate_docs.py` exited `0` (**Pass**, 9 categories, 14 topics, 8 project skill governance entries); `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` exited `0` (**Pass**, 154 mapped files); `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs/operations/getting-started.md` exited `0` (**Pass**). Documentation tests were not run. |
