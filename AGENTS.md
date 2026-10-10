@@ -458,23 +458,22 @@ after a fix. Repeat a full suite when a release gate or shared-contract impact r
 workflow does not relax release, security, or acceptance gates. For native-runtime repairs, run the
 real functional check before the full release aggregate so a known runtime failure does not waste
 another broad run; retain unchanged UI and component evidence with exact input bindings.
-Current R-ASTRA-120 E837: PR #1 remains draft at pushed head
-`68c0423da76d0bf57ec19a7472dda5cfffc0a184`. A fresh 196-case browser aggregate passed its test
-scope (193 passed, three expected skips, no failures/flaky cases), with parent review passed. The
-scoped 68-state/72-phase raw axe Pass remains E836 evidence, not full-app accessibility acceptance.
-The bound current-image local native functional run passed its declared two-owner scope, and
-independent terminal/cleanup review passed; its 768 MiB sample is not actual combined 1 GB
-acceptance. Current-image pending-search shutdown, local schema-13 pair rehearsal, and the 14-page
-HTML/PDF guide review passed only their declared scopes. The local pair's later inventory recheck is
-Unavailable. Actual typed MCP PR-bound host rehearsal failed with generic `fixed_command_failed`;
-cause is Unproven. The checker-only repair received parent source-review Pass and independent
-Docker-free QA Pass for 165 tests, Ruff, and three pinned files, with its one Docker-mutating test
-deselected. This does not verify a host retry or runtime. E836's canonical result remains bound to
-its original commit; unchanged inputs are reused only under the checker-only rule. No canonical
-aggregate was run for the current PR head or dirty checker tree. Actual combined 1 GB, actual-host retry, PR-bound
-rollback, complete security, owner canary, deployment, and release gates remain open. Production
-was not changed; the existing 1 GB plan/backups and US$15 monthly total cap remain unchanged. No
-merge, deployment, resize, rollout, or email occurred. See E837 in `MVP-PLAN.md`.
+Current R-ASTRA-120 E838 checkpoint: PR #1 remains draft; E838 source/test results are bound to
+reviewed pre-commit head `5bbd3d4b89541ef3d7949d4fc6f98d9e3bba7a17`. E837's 196-case browser scope,
+E836's scoped axe result, and the 14-page guide review remain reusable only on unchanged inputs;
+none establishes full-app accessibility or final PR-bound guide acceptance. The local schema-13 pair
+and current-image pending-search kill passed only their 768 MiB scopes. The actual-host MCP
+rehearsal failed at exit 1 with `fixed_command_failed`; read-only review recognized the final
+fixture-restore guard, but original stderr is unavailable and the host failure cause remains
+unproven. The seed restore-guard repair passed parent source review, four focused independent tests,
+and the same Ruff check from repository CWD; the scratch-CWD `I001` failure is preserved and
+attributed by supplement to CWD-dependent Ruff project-root discovery. The checker repair passed 178
+independent tests with one Docker integration deselected; after five whitespace-only folds, builder
+tests/Ruff and parent AST-identity review passed. Publisher source review and independent 16-case checks passed; the actual saved pair parser also passed its offline scope. Nothing was published. No current canonical aggregate was
+run. Complete security/accessibility, actual 1 GB, host retry, PR rollback, owner canary, final
+guide and release remain open. Production, the US$15 cap, 1 GB plan and backups are unchanged; no
+merge, deploy, resize, rollout or email occurred. See
+[E838](MVP-PLAN.md#r-astra-120-e838-seed-guard-checker-and-host-rehearsal-checkpoint).
 
 For the remainder of R-ASTRA-120, serialize heavy local Docker builds, canonical gates and browser
 aggregates; run independent source/documentation review in parallel. Reuse unchanged bound evidence

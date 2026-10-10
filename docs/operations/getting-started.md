@@ -517,6 +517,16 @@ schema `8`. The Linode helper derives the fixed GitHub URL from the reviewed rev
 only the verified archive hash and full image ID. It does not accept mutable tags, arbitrary image
 names, remote builds, shell commands, paths, URLs, Compose edits, or Docker-socket operations.
 
+For the assistant release, `SIGNAL_LEDGER_IMAGE_PUBLISH_MODE=prebuilt-release` publishes the
+already rehearsed image pair instead of building another candidate. It still requires a clean
+checkout matching exact `origin/main`. Keep the revision-named candidate archive, recovery archive,
+pair manifest, and `signal-ledger-pair-receipt-<reviewed-sha>.json` in the private fixed directory
+`test-results/assistant-r120-pr-pair/`. The receipt is the completed output of
+`scripts/rehearse_schema13.py`, including successful cleanup. The publisher checks source, revision,
+image, schema, backup, recovery, and archive bindings before publication; it retains archive and
+metadata screening and download verification. This option does not establish release approval or
+replace the required actual-host rehearsal, owner canary, and rollout gates.
+
 ### Prepare the host
 
 The operator's Linode console login uses Google SSO. This web-console identity is separate from
@@ -824,8 +834,9 @@ for complete evidence and limits.
 
 The later prebuilt-image rehearsal remains a separate step. It binds an immutable candidate image
 ID and context digest to the same reviewed PR head SHA, followed by the existing recovery-image
-pair. The production publisher was not changed and still requires a clean revision matching exact
-`origin/main`.
+pair. The optional `prebuilt-release` publisher mode consumes that completed pair and its original
+rehearsal receipt. It requires a clean revision matching exact `origin/main` and does not rebuild
+the candidate or rerun the local pair during publication.
 
 For a full local pair rehearsal, the optional boolean `--use-deployed-baseline-image` selects the
 centrally pinned deployed schema-12 baseline. Omit it to retain the default verified-archive rebuild.

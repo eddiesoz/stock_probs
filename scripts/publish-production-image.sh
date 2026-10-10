@@ -24,7 +24,7 @@ if [[ "$REMOTE_MAIN" != "$REVISION" ]]; then
   exit 2
 fi
 
-if [[ "$PUBLISH_MODE" == "release" ]]; then
+if [[ "$PUBLISH_MODE" == "release" || "$PUBLISH_MODE" == "prebuilt-release" ]]; then
   command -v gh >/dev/null || {
     printf 'The GitHub CLI is required for release publication.\n' >&2
     exit 4
@@ -38,7 +38,7 @@ if [[ "$PUBLISH_MODE" == "release" ]]; then
     exit 4
   fi
 elif [[ "$PUBLISH_MODE" != "ghcr" ]]; then
-  printf 'SIGNAL_LEDGER_IMAGE_PUBLISH_MODE must be release or ghcr.\n' >&2
+  printf 'SIGNAL_LEDGER_IMAGE_PUBLISH_MODE must be release, prebuilt-release, or ghcr.\n' >&2
   exit 2
 fi
 
@@ -65,20 +65,325 @@ if [[ ! "$SOURCE_CONTEXT_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
   printf 'The filtered production source context was not verifiable.\n' >&2
   exit 3
 fi
-SOURCE_BRANCH="$(git branch --show-current)"
-if [[ -z "$SOURCE_BRANCH" ]]; then
-  printf 'The reviewed source branch is unavailable.\n' >&2
-  exit 4
-fi
-if ! BUILD_RESULT="$(/usr/bin/python3 scripts/bounded_docker_build.py \
-  --source-head "$REVISION" --source-branch "$SOURCE_BRANCH" \
-  --revision-label "$REVISION" --context "$CANDIDATE_CONTEXT" \
-  --context-sha256 "$SOURCE_CONTEXT_SHA256" --context-owner-uid "$(id -u)" \
-  --tag "$IMAGE_TAG" --role current 2>/dev/null)"; then
-  printf 'The bounded Linux amd64 image build failed closed; inspect its fixed receipt.\n' >&2
-  exit 4
-fi
-IMAGE_ID="$(python3 - "$BUILD_RESULT" <<'PY'
+ARCHIVE_PATH="$TEMP_ROOT/image.tar.gz"
+IMAGE_TAG="$IMAGE_REPOSITORY:sha-$REVISION"
+IMAGE_INSPECT_REF="$IMAGE_TAG"
+if [[ "$PUBLISH_MODE" == "prebuilt-release" ]]; then
+  PAIR_ROOT="test-results/assistant-r120-pr-pair"
+  ARCHIVE_NAME="signal-ledger-image-$REVISION.tar.gz"
+  RECOVERY_ARCHIVE_NAME="signal-ledger-recovery-$REVISION.tar.gz"
+  PAIR_MANIFEST_NAME="signal-ledger-pair-$REVISION.json"
+  cat > "$TEMP_ROOT/validate-prebuilt-pair.py" <<'PY'
+import hashlib
+import json
+import os
+import re
+import stat
+import sys
+
+ROOT = "test-results/assistant-r120-pr-pair"
+SHA = re.compile(r"[0-9a-f]{64}")
+IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}")
+UID = os.getuid()
+CHUNK = 1024 * 1024
+
+
+def fail(message):
+    raise ValueError(message)
+
+
+def unique(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            fail("duplicate JSON field")
+        result[key] = value
+    return result
+
+
+def field(source, path):
+    value = source
+    for key in path.split("."):
+        if not isinstance(value, dict) or key not in value:
+            fail("missing receipt or manifest field")
+        value = value[key]
+    return value
+
+
+def expect(source, path, expected):
+    actual = field(source, path)
+    if type(actual) is not type(expected) or actual != expected:
+        fail("receipt or manifest binding mismatch")
+
+
+def valid(pattern, value):
+    return isinstance(value, str) and pattern.fullmatch(value) is not None
+
+
+def pair_root():
+    results = os.open("test-results", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(results)
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != UID:
+            fail("test-results directory owner or type mismatch")
+        fd = os.open(
+            ROOT.rsplit("/", 1)[1],
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=results,
+        )
+    finally:
+        os.close(results)
+    info = os.fstat(fd)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != UID or stat.S_IMODE(info.st_mode) != 0o700:
+        os.close(fd)
+        fail("fixed artifact directory owner, type, or mode mismatch")
+    return fd
+
+
+def read_file(root, name, maximum, keep=False):
+    fd = os.open(
+        name,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
+        dir_fd=root,
+    )
+    before = os.fstat(fd)
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or stat.S_IMODE(before.st_mode) != 0o600
+        or before.st_uid != UID
+        or before.st_nlink != 1
+        or before.st_size < 1
+        or before.st_size > maximum
+    ):
+        os.close(fd)
+        fail("artifact owner, mode, type, or size mismatch")
+    digest, chunks, count = hashlib.sha256(), [], 0
+    try:
+        while True:
+            block = os.read(fd, min(CHUNK, maximum + 1 - count))
+            if not block:
+                break
+            count += len(block)
+            if count > maximum:
+                fail("artifact exceeded its bound")
+            digest.update(block)
+            if keep:
+                chunks.append(block)
+        after = os.fstat(fd)
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns, item.st_ctime_ns
+        )
+        if identity(before) != identity(after) or count != after.st_size:
+            fail("artifact changed while it was read")
+        return b"".join(chunks) if keep else None, digest.hexdigest(), count
+    finally:
+        os.close(fd)
+
+
+def initial(revision, context, maximum):
+    if re.fullmatch(r"[0-9a-f]{40}", revision) is None or not valid(SHA, context):
+        fail("invalid revision or source context")
+    root = pair_root()
+    try:
+        candidate_name = f"signal-ledger-image-{revision}.tar.gz"
+        recovery_name = f"signal-ledger-recovery-{revision}.tar.gz"
+        manifest_name = f"signal-ledger-pair-{revision}.json"
+        receipt_name = f"signal-ledger-pair-receipt-{revision}.json"
+        raw, _, _ = read_file(root, receipt_name, 64 * 1024, True)
+        receipt = json.loads(raw, object_pairs_hook=unique)
+        raw, manifest_sha, manifest_size = read_file(root, manifest_name, 64 * 1024, True)
+        manifest = json.loads(raw, object_pairs_hook=unique)
+
+        for path, expected in (
+            ("status", "pass"),
+            ("same_disposable_volume", True),
+            ("production_or_remote_mutation", False),
+            ("candidate_source_context_sha256", context),
+            ("candidate_image.revision_label", revision),
+            ("candidate_image.source_context_sha256", context),
+            ("candidate_image.architecture", "linux/amd64"),
+            ("migration.schema_before", 12),
+            ("migration.schema_after", 13),
+            ("migration.pre_migration_backup.schema_version", 12),
+            ("migration.pre_migration_backup.verified", True),
+            ("migration.read_only_backup_verification.schema_version", 12),
+            ("migration.read_only_backup_verification.verified", True),
+            ("migration.read_only_backup_verification.integrity_verified", True),
+            ("candidate.stage", "candidate"),
+            ("candidate.status", "ready"),
+            ("candidate.schema_version", 13),
+            ("candidate.assistant.enabled", False),
+            ("recovery.stage", "recovery"),
+            ("recovery.schema_after_recovery", 13),
+            ("recovery.historical_schema12_backup_integrity_verified", True),
+            ("recovery.container_profile.assistant_enabled", False),
+            ("recovery_overlay.schema_version", 13),
+            ("cleanup.containers_removed", True),
+            ("cleanup.volume_removed", True),
+        ):
+            expect(receipt, path, expected)
+        if field(receipt, "recovery.schema_versions") != list(range(1, 14)):
+            fail("recovery migration history mismatch")
+        cleanup = field(receipt, "cleanup.verification")
+        if not isinstance(cleanup, str) or not cleanup:
+            fail("pair cleanup verification is missing")
+
+        candidate_id = field(receipt, "candidate_image.id")
+        recovery_id = field(receipt, "recovery_image.id")
+        recovery_context = field(receipt, "recovery_context_sha256")
+        overlay_sha = field(receipt, "recovery_overlay.overlay_sha256")
+        overlay_files = field(receipt, "recovery_overlay.files")
+        if not isinstance(overlay_files, dict):
+            fail("recovery overlay file hashes are missing")
+        migration_sha = overlay_files.get(
+            "src/stock_probs/migrations/013_assistant_conversations.sql"
+        )
+        if not all(valid(IMAGE_ID, value) for value in (candidate_id, recovery_id)):
+            fail("pair receipt image ID is invalid")
+        if not all(valid(SHA, value) for value in (recovery_context, overlay_sha, migration_sha)):
+            fail("pair receipt recovery digest is invalid")
+
+        pair = field(receipt, "release_pair")
+        for path, expected in (
+            ("release_pair.candidate_archive_name", candidate_name),
+            ("release_pair.recovery_archive_name", recovery_name),
+            ("release_pair.manifest_name", manifest_name),
+        ):
+            expect(receipt, path, expected)
+        candidate_sha = field(pair, "candidate_archive_sha256")
+        recovery_sha = field(pair, "recovery_archive_sha256")
+        recorded_manifest_sha = field(pair, "manifest_sha256")
+        candidate_size = field(pair, "candidate_archive_size")
+        recovery_size = field(pair, "recovery_archive_size")
+        if not all(valid(SHA, value) for value in (candidate_sha, recovery_sha, recorded_manifest_sha)):
+            fail("pair receipt archive digest is invalid")
+        if any(type(size) is not int or size < 1 or size > maximum for size in (candidate_size, recovery_size)):
+            fail("pair receipt archive size is invalid")
+        if recorded_manifest_sha != manifest_sha:
+            fail("pair manifest digest mismatch")
+
+        for path, expected in (
+            ("format_version", 1),
+            ("repository", "eddiesoz/stock_probs"),
+            ("revision", revision),
+            ("source_context_sha256", context),
+            ("migration.from_schema", 12),
+            ("migration.to_schema", 13),
+            ("migration.sha256", migration_sha),
+            ("candidate.asset", candidate_name),
+            ("candidate.archive_sha256", candidate_sha),
+            ("candidate.archive_size", candidate_size),
+            ("candidate.image_id", candidate_id),
+            ("candidate.platform", "linux/amd64"),
+            ("candidate.revision", revision),
+            ("candidate.schema_version", 13),
+            ("candidate.source_context_sha256", context),
+            ("recovery.asset", recovery_name),
+            ("recovery.archive_sha256", recovery_sha),
+            ("recovery.archive_size", recovery_size),
+            ("recovery.image_id", recovery_id),
+            ("recovery.platform", "linux/amd64"),
+            ("recovery.revision", revision),
+            ("recovery.schema_version", 13),
+            ("recovery.assistant_enabled", False),
+            ("recovery.source_context_sha256", recovery_context),
+            ("recovery.overlay_sha256", overlay_sha),
+            ("recovery.migration_sha256", migration_sha),
+        ):
+            expect(manifest, path, expected)
+        base_revision = field(receipt, "schema12_base_revision")
+        base_id = field(receipt, "schema12_base_image.image.id")
+        base_archive = field(receipt, "observed_deployment_baseline.release_archive_sha256")
+        base_context = field(receipt, "schema12_base_image.source_context_sha256")
+        for path, expected in (
+            ("recovery.base_revision", base_revision),
+            ("recovery.base_image_id", base_id),
+            ("recovery.base_archive_sha256", base_archive),
+            ("recovery.base_source_context_sha256", base_context),
+        ):
+            expect(manifest, path, expected)
+        expect(receipt, "observed_deployment_baseline.image_id", base_id)
+        if (
+            field(manifest, "recovery.base_revision") != field(receipt, "recovery_overlay.base_revision")
+            or not valid(IMAGE_ID, base_id)
+            or not all(valid(SHA, value) for value in (base_archive, base_context))
+        ):
+            fail("schema-12 recovery base binding is invalid")
+
+        _, actual_candidate_sha, actual_candidate_size = read_file(root, candidate_name, maximum)
+        _, actual_recovery_sha, actual_recovery_size = read_file(root, recovery_name, maximum)
+        if (actual_candidate_sha, actual_candidate_size) != (candidate_sha, candidate_size):
+            fail("candidate archive receipt binding mismatch")
+        if (actual_recovery_sha, actual_recovery_size) != (recovery_sha, recovery_size):
+            fail("recovery archive receipt binding mismatch")
+        print("\t".join((
+            candidate_name, candidate_sha, str(candidate_size),
+            recovery_name, recovery_sha, str(recovery_size),
+            manifest_name, recorded_manifest_sha, str(manifest_size),
+            candidate_id, recovery_id, context, recovery_context, overlay_sha,
+        )))
+    finally:
+        os.close(root)
+
+
+def final(revision, values):
+    root = pair_root()
+    names = (
+        f"signal-ledger-image-{revision}.tar.gz",
+        f"signal-ledger-recovery-{revision}.tar.gz",
+        f"signal-ledger-pair-{revision}.json",
+    )
+    try:
+        for name, digest, size, maximum in zip(
+            names, (values[0], values[2], values[4]),
+            (int(values[1]), int(values[3]), int(values[5])),
+            (512 * 1024 * 1024, 512 * 1024 * 1024, 64 * 1024), strict=True,
+        ):
+            _, actual_digest, actual_size = read_file(root, name, maximum)
+            if (actual_digest, actual_size) != (digest, size):
+                fail("fixed pair changed before publication")
+    finally:
+        os.close(root)
+
+
+try:
+    if sys.argv[1] == "initial":
+        initial(sys.argv[2], sys.argv[3], int(sys.argv[4]))
+    elif sys.argv[1] == "final":
+        final(sys.argv[2], sys.argv[3:])
+    else:
+        fail("invalid validation phase")
+except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"fixed prebuilt pair is invalid: {exc}") from exc
+PY
+  PAIR_FIELDS="$(python3 "$TEMP_ROOT/validate-prebuilt-pair.py" initial \
+    "$REVISION" "$SOURCE_CONTEXT_SHA256" "$MAX_ARCHIVE_BYTES")" || {
+    printf 'The fixed prebuilt pair failed receipt, manifest, or archive identity checks.\n' >&2
+    exit 4
+  }
+  IFS=$'\t' read -r ARCHIVE_NAME PAIR_CANDIDATE_SHA PAIR_CANDIDATE_SIZE \
+    RECOVERY_ARCHIVE_NAME RECOVERY_ARCHIVE_SHA RECOVERY_ARCHIVE_SIZE PAIR_MANIFEST_NAME \
+    PAIR_MANIFEST_SHA PAIR_MANIFEST_SIZE IMAGE_ID RECOVERY_IMAGE_ID \
+    PAIR_SOURCE_CONTEXT_SHA PAIR_RECOVERY_CONTEXT_SHA PAIR_OVERLAY_SHA <<< "$PAIR_FIELDS"
+  ARCHIVE_PATH="$PAIR_ROOT/$ARCHIVE_NAME"
+  RECOVERY_ARCHIVE_PATH="$PAIR_ROOT/$RECOVERY_ARCHIVE_NAME"
+  PAIR_MANIFEST_PATH="$PAIR_ROOT/$PAIR_MANIFEST_NAME"
+  IMAGE_INSPECT_REF="$IMAGE_ID"
+else
+  SOURCE_BRANCH="$(git branch --show-current)"
+  if [[ -z "$SOURCE_BRANCH" ]]; then
+    printf 'The reviewed source branch is unavailable.\n' >&2
+    exit 4
+  fi
+  if ! BUILD_RESULT="$(/usr/bin/python3 scripts/bounded_docker_build.py \
+    --source-head "$REVISION" --source-branch "$SOURCE_BRANCH" \
+    --revision-label "$REVISION" --context "$CANDIDATE_CONTEXT" \
+    --context-sha256 "$SOURCE_CONTEXT_SHA256" --context-owner-uid "$(id -u)" \
+    --tag "$IMAGE_TAG" --role current 2>/dev/null)"; then
+    printf 'The bounded Linux amd64 image build failed closed; inspect its fixed receipt.\n' >&2
+    exit 4
+  fi
+  IMAGE_ID="$(python3 - "$BUILD_RESULT" <<'PY'
 import json
 import re
 import sys
@@ -102,21 +407,22 @@ if (
 print(result["image_id"])
 PY
 )"
-if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-  printf 'The bounded image build returned an invalid image identity.\n' >&2
-  exit 4
-fi
-IMAGE_REVISION="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE_TAG")"
-if [[ "$IMAGE_REVISION" != "$REVISION" ]]; then
-  printf 'The built image is missing the reviewed revision label.\n' >&2
-  exit 3
-fi
+  if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    printf 'The bounded image build returned an invalid image identity.\n' >&2
+    exit 4
+  fi
+  IMAGE_REVISION="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE_TAG")"
+  if [[ "$IMAGE_REVISION" != "$REVISION" ]]; then
+    printf 'The built image is missing the reviewed revision label.\n' >&2
+    exit 3
+  fi
 
-INSPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$IMAGE_TAG")"
-IMAGE_PLATFORM="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE_TAG")"
-if [[ "$INSPECTED_IMAGE_ID" != "$IMAGE_ID" || "$IMAGE_PLATFORM" != "linux/amd64" ]]; then
-  printf 'The built image must be a Linux amd64 image with a complete image ID.\n' >&2
-  exit 3
+  INSPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$IMAGE_TAG")"
+  IMAGE_PLATFORM="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE_TAG")"
+  if [[ "$INSPECTED_IMAGE_ID" != "$IMAGE_ID" || "$IMAGE_PLATFORM" != "linux/amd64" ]]; then
+    printf 'The built image must be a Linux amd64 image with a complete image ID.\n' >&2
+    exit 3
+  fi
 fi
 if [[ "$PUBLISH_MODE" == "ghcr" ]]; then
   IMAGE_SCHEMA="$(docker run --rm --pull never --network none --read-only \
@@ -129,18 +435,19 @@ if [[ "$PUBLISH_MODE" == "ghcr" ]]; then
   fi
 fi
 
-ARCHIVE_PATH="$TEMP_ROOT/image.tar.gz"
-if [[ "$PUBLISH_MODE" == "release" ]]; then
-  PAIR_ROOT="$TEMP_ROOT/release-pair"
-  mkdir -m 700 "$PAIR_ROOT"
-  REHEARSAL_RECEIPT="$TEMP_ROOT/schema13-rehearsal.json"
-  python3 scripts/rehearse_schema13.py \
-    --candidate-image-id "$IMAGE_ID" \
-    --expected-candidate-context-sha256 "$SOURCE_CONTEXT_SHA256" \
-    --candidate-revision "$REVISION" \
-    --release-artifact-directory "$PAIR_ROOT" \
-    --receipt "$REHEARSAL_RECEIPT" >/dev/null
-  ARCHIVE_PATH="$PAIR_ROOT/$ARCHIVE_NAME"
+if [[ "$PUBLISH_MODE" == "release" || "$PUBLISH_MODE" == "prebuilt-release" ]]; then
+  if [[ "$PUBLISH_MODE" == "release" ]]; then
+    PAIR_ROOT="$TEMP_ROOT/release-pair"
+    mkdir -m 700 "$PAIR_ROOT"
+    REHEARSAL_RECEIPT="$TEMP_ROOT/schema13-rehearsal.json"
+    python3 scripts/rehearse_schema13.py \
+      --candidate-image-id "$IMAGE_ID" \
+      --expected-candidate-context-sha256 "$SOURCE_CONTEXT_SHA256" \
+      --candidate-revision "$REVISION" \
+      --release-artifact-directory "$PAIR_ROOT" \
+      --receipt "$REHEARSAL_RECEIPT" >/dev/null
+    ARCHIVE_PATH="$PAIR_ROOT/$ARCHIVE_NAME"
+  fi
 else
   docker save "$IMAGE_TAG" | gzip -n -9 > "$ARCHIVE_PATH"
 fi
@@ -151,11 +458,6 @@ if [[ ! "$ARCHIVE_SIZE" =~ ^[0-9]+$ ]] || (( ARCHIVE_SIZE == 0 || ARCHIVE_SIZE >
 fi
   # A production image is assembled from allowlisted source trees. Refuse obvious credential
   # material in metadata, layer paths, or layer bytes before publishing the immutable asset.
-  IMAGE_METADATA="$(docker image inspect --format '{{json .Config.Env}} {{json .Config.Labels}}' "$IMAGE_TAG")"
-  if grep -aEi -- '-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|AKIA[0-9A-Z]{16}|AWS_SECRET_ACCESS_KEY=|SIGNAL_LEDGER_.*SECRET=' <<< "$IMAGE_METADATA" >/dev/null; then
-    printf 'The image metadata contains credential-like material.\n' >&2
-    exit 4
-  fi
   # Public CA bundles (for example /usr/lib/ssl/cert.pem) are required at runtime.  Match
   # private-key and credential filenames instead of treating every certificate extension as a
   # secret; the byte scan below still rejects embedded private-key markers and known tokens.
@@ -279,8 +581,34 @@ if [[ ! "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
   printf 'The image archive hash was unavailable.\n' >&2
   exit 4
 fi
-if [[ "$PUBLISH_MODE" == "release" ]]; then
-  PAIR_FIELDS="$(python3 - "$REHEARSAL_RECEIPT" "$PAIR_ROOT" "$REVISION" <<'PY'
+if [[ "$PUBLISH_MODE" == "prebuilt-release" ]]; then
+  if [[ "$ARCHIVE_SHA256" != "$PAIR_CANDIDATE_SHA" || "$ARCHIVE_SIZE" != "$PAIR_CANDIDATE_SIZE" ]]; then
+    printf 'The candidate archive changed after pair validation.\n' >&2
+    exit 4
+  fi
+  if ! docker load --input "$ARCHIVE_PATH" >/dev/null; then
+    printf 'The fixed candidate archive could not be loaded for metadata screening.\n' >&2
+    exit 4
+  fi
+  IMAGE_REVISION="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE_ID")"
+  INSPECTED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$IMAGE_ID")"
+  IMAGE_PLATFORM="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE_ID")"
+  if [[ "$IMAGE_REVISION" != "$REVISION" || "$INSPECTED_IMAGE_ID" != "$IMAGE_ID" \
+    || "$IMAGE_PLATFORM" != "linux/amd64" ]]; then
+    printf 'The prebuilt candidate image identity failed verification.\n' >&2
+    exit 4
+  fi
+  IMAGE_METADATA="$(docker image inspect --format '{{json .Config.Env}} {{json .Config.Labels}}' "$IMAGE_ID")"
+else
+  IMAGE_METADATA="$(docker image inspect --format '{{json .Config.Env}} {{json .Config.Labels}}' "$IMAGE_TAG")"
+fi
+if grep -aEi -- '-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|AKIA[0-9A-Z]{16}|AWS_SECRET_ACCESS_KEY=|SIGNAL_LEDGER_.*SECRET=' <<< "$IMAGE_METADATA" >/dev/null; then
+  printf 'The image metadata contains credential-like material.\n' >&2
+  exit 4
+fi
+if [[ "$PUBLISH_MODE" == "release" || "$PUBLISH_MODE" == "prebuilt-release" ]]; then
+  if [[ "$PUBLISH_MODE" == "release" ]]; then
+    PAIR_FIELDS="$(python3 - "$REHEARSAL_RECEIPT" "$PAIR_ROOT" "$REVISION" <<'PY'
 import json
 import re
 import sys
@@ -322,31 +650,63 @@ except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
     raise SystemExit("schema-13 pair receipt is invalid") from exc
 PY
 )"
-  IFS=$'\t' read -r PAIR_CANDIDATE_NAME PAIR_CANDIDATE_SHA PAIR_CANDIDATE_SIZE \
+    IFS=$'\t' read -r PAIR_CANDIDATE_NAME PAIR_CANDIDATE_SHA PAIR_CANDIDATE_SIZE \
     RECOVERY_ARCHIVE_NAME RECOVERY_ARCHIVE_SHA RECOVERY_ARCHIVE_SIZE PAIR_MANIFEST_NAME \
     PAIR_MANIFEST_SHA PAIR_CANDIDATE_IMAGE_ID PAIR_SOURCE_CONTEXT_SHA <<< "$PAIR_FIELDS"
-  if [[ "$PAIR_CANDIDATE_NAME" != "$ARCHIVE_NAME" \
+    if [[ "$PAIR_CANDIDATE_NAME" != "$ARCHIVE_NAME" \
     || "$PAIR_CANDIDATE_SHA" != "$ARCHIVE_SHA256" \
     || "$PAIR_CANDIDATE_SIZE" != "$ARCHIVE_SIZE" \
     || "$PAIR_CANDIDATE_IMAGE_ID" != "$IMAGE_ID" \
     || "$PAIR_SOURCE_CONTEXT_SHA" != "$SOURCE_CONTEXT_SHA256" ]]; then
-    printf 'The rehearsed candidate pair does not bind the built candidate archive.\n' >&2
-    exit 4
+      printf 'The rehearsed candidate pair does not bind the built candidate archive.\n' >&2
+      exit 4
+    fi
+    RECOVERY_ARCHIVE_PATH="$PAIR_ROOT/$RECOVERY_ARCHIVE_NAME"
+    PAIR_MANIFEST_PATH="$PAIR_ROOT/$PAIR_MANIFEST_NAME"
+    PAIR_MANIFEST_SIZE="$(stat -c '%s' "$PAIR_MANIFEST_PATH")"
+    PAIR_MANIFEST_SHA_LOCAL="$(sha256sum "$PAIR_MANIFEST_PATH" | awk '{print $1}')"
+    if [[ ! "$PAIR_MANIFEST_SIZE" =~ ^[0-9]+$ ]] \
+      || (( PAIR_MANIFEST_SIZE == 0 || PAIR_MANIFEST_SIZE > 65536 )) \
+      || [[ "$PAIR_MANIFEST_SHA_LOCAL" != "$PAIR_MANIFEST_SHA" ]]; then
+      printf 'The local recovery-pair manifest failed its receipt identity.\n' >&2
+      exit 4
+    fi
   fi
-  RECOVERY_ARCHIVE_PATH="$PAIR_ROOT/$RECOVERY_ARCHIVE_NAME"
-  PAIR_MANIFEST_PATH="$PAIR_ROOT/$PAIR_MANIFEST_NAME"
-  PAIR_MANIFEST_SIZE="$(stat -c '%s' "$PAIR_MANIFEST_PATH")"
-  PAIR_MANIFEST_SHA_LOCAL="$(sha256sum "$PAIR_MANIFEST_PATH" | awk '{print $1}')"
-  if [[ ! "$PAIR_MANIFEST_SIZE" =~ ^[0-9]+$ ]] \
-    || (( PAIR_MANIFEST_SIZE == 0 || PAIR_MANIFEST_SIZE > 65536 )) \
-    || [[ "$PAIR_MANIFEST_SHA_LOCAL" != "$PAIR_MANIFEST_SHA" ]]; then
-    printf 'The local recovery-pair manifest failed its receipt identity.\n' >&2
-    exit 4
+  if [[ "$PUBLISH_MODE" == "release" ]]; then
+    RECOVERY_IMAGE_ID="$(python3 - "$PAIR_MANIFEST_PATH" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(manifest["recovery"]["image_id"])
+PY
+)"
   fi
   python3 scripts/verify-release-archive.py "$RECOVERY_ARCHIVE_PATH" \
     > "$TEMP_ROOT/recovery-archive-scan.json"
-  python3 - "$TEMP_ROOT/recovery-archive-scan.json" "$PAIR_MANIFEST_PATH" \
-    "$RECOVERY_ARCHIVE_SHA" "$RECOVERY_ARCHIVE_SIZE" <<'PY'
+  if [[ "$PUBLISH_MODE" == "prebuilt-release" ]]; then
+    python3 - "$TEMP_ROOT/recovery-archive-scan.json" \
+      "$RECOVERY_ARCHIVE_SHA" "$RECOVERY_ARCHIVE_SIZE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+scan_path, expected_digest, expected_size = sys.argv[1:]
+try:
+    scan = json.loads(Path(scan_path).read_text(encoding="utf-8"))
+    if (
+        scan.get("status") != "pass"
+        or scan.get("archive_sha256") != expected_digest
+        or scan.get("archive_size") != int(expected_size)
+    ):
+        raise ValueError("recovery archive verification mismatch")
+except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+    raise SystemExit("recovery image archive failed verification") from exc
+PY
+  else
+    python3 - "$TEMP_ROOT/recovery-archive-scan.json" "$PAIR_MANIFEST_PATH" \
+      "$RECOVERY_ARCHIVE_SHA" "$RECOVERY_ARCHIVE_SIZE" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -368,20 +728,13 @@ try:
 except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
     raise SystemExit("recovery image archive failed verification") from exc
 PY
+  fi
   if ! docker load --input "$RECOVERY_ARCHIVE_PATH" >/dev/null; then
     printf 'The rehearsed recovery image archive could not be loaded.\n' >&2
     exit 4
   fi
-  RECOVERY_IMAGE_ID="$(python3 - "$PAIR_MANIFEST_PATH" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-print(manifest["recovery"]["image_id"])
-PY
-)"
   RECOVERY_REVISION="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$RECOVERY_IMAGE_ID")"
+  RECOVERY_INSPECTED_ID="$(docker image inspect --format '{{.Id}}' "$RECOVERY_IMAGE_ID")"
   RECOVERY_PLATFORM="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$RECOVERY_IMAGE_ID")"
   RECOVERY_METADATA="$(docker image inspect --format '{{json .Config.Env}} {{json .Config.Labels}}' "$RECOVERY_IMAGE_ID")"
   if grep -aEi -- '-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|AKIA[0-9A-Z]{16}|AWS_SECRET_ACCESS_KEY=|SIGNAL_LEDGER_.*SECRET=' <<< "$RECOVERY_METADATA" >/dev/null; then
@@ -389,7 +742,8 @@ PY
     exit 4
   fi
   RECOVERY_CONFIG="$(docker image inspect --format '{{json .Config.Entrypoint}}|{{json .Config.Cmd}}' "$RECOVERY_IMAGE_ID")"
-  if [[ "$RECOVERY_REVISION" != "$REVISION" || "$RECOVERY_PLATFORM" != "linux/amd64" ]] \
+  if [[ "$RECOVERY_REVISION" != "$REVISION" || "$RECOVERY_INSPECTED_ID" != "$RECOVERY_IMAGE_ID" \
+    || "$RECOVERY_PLATFORM" != "linux/amd64" ]] \
     || ! python3 - "$RECOVERY_CONFIG" <<'PY'
 import json
 import sys
@@ -429,6 +783,15 @@ PY
     printf 'The recovery archive failed its pair digest.\n' >&2
     exit 4
   fi
+  if [[ "$PUBLISH_MODE" == "prebuilt-release" ]]; then
+    if ! python3 "$TEMP_ROOT/validate-prebuilt-pair.py" final "$REVISION" \
+      "$PAIR_CANDIDATE_SHA" "$PAIR_CANDIDATE_SIZE" \
+      "$RECOVERY_ARCHIVE_SHA" "$RECOVERY_ARCHIVE_SIZE" \
+      "$PAIR_MANIFEST_SHA" "$PAIR_MANIFEST_SIZE"; then
+      printf 'The fixed pair changed before immutable release creation.\n' >&2
+      exit 4
+    fi
+  fi
   gh release create "$RELEASE_TAG" "$ARCHIVE_PATH" "$RECOVERY_ARCHIVE_PATH" "$PAIR_MANIFEST_PATH" \
     --repo "$RELEASE_REPOSITORY" \
     --target "$REVISION" \
@@ -467,9 +830,9 @@ PY
     printf 'The published image asset could not be loaded for verification.\n' >&2
     exit 4
   fi
-  DOWNLOADED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$IMAGE_TAG")"
-  DOWNLOADED_REVISION="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE_TAG")"
-  DOWNLOADED_PLATFORM="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE_TAG")"
+  DOWNLOADED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$IMAGE_INSPECT_REF")"
+  DOWNLOADED_REVISION="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE_INSPECT_REF")"
+  DOWNLOADED_PLATFORM="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE_INSPECT_REF")"
   if [[ "$DOWNLOADED_IMAGE_ID" != "$IMAGE_ID" || "$DOWNLOADED_REVISION" != "$REVISION" \
     || "$DOWNLOADED_PLATFORM" != "$IMAGE_PLATFORM" ]]; then
     printf 'The published image asset failed image identity verification.\n' >&2

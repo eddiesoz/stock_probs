@@ -1375,7 +1375,7 @@ def test_local_release_publisher_uses_revision_bound_archive_and_digest() -> Non
     assert "verify-release-archive.py" in script
     assert 'tarfile.open(path, mode="r:gz")' in verifier
     assert 'tarfile.open(fileobj=layer_stream, mode="r|*")' in verifier
-    assert "SIGNAL_LEDGER_IMAGE_PUBLISH_MODE must be release or ghcr." in script
+    assert "SIGNAL_LEDGER_IMAGE_PUBLISH_MODE must be release, prebuilt-release, or ghcr." in script
 
 
 def test_local_release_publisher_allows_public_ca_bundle_but_scans_private_keys() -> None:

@@ -7,6 +7,8 @@ import json
 import re
 import secrets
 import sys
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -197,7 +199,110 @@ def _snapshot(repository: Repository, request_id: str) -> dict[str, object]:
     }
 
 
-def _restore_guard(request: object) -> dict[str, object]:
+@contextmanager
+def _stale_synthetic_step_up(repository: Repository, users: list[dict[str, str]]) -> Iterator[None]:
+    """Temporarily age verified synthetic sessions for the restore-denial probe."""
+
+    expected_identities = (
+        (OWNER_GITHUB_ID, "admin"),
+        (MEMBER_GITHUB_ID, "member"),
+    )
+    now = datetime.now(UTC)
+    stale_at = (now - timedelta(minutes=10)).isoformat()
+    sessions: list[tuple[int, int, str, str]] = []
+    token_hashes: set[str] = set()
+    for user, (github_id, role) in zip(users, expected_identities, strict=True):
+        session_cookie = user["session_cookie"]
+        csrf_cookie = user["csrf_cookie"]
+        token_hash = hashlib.sha256(session_cookie.encode()).hexdigest()
+        csrf_hash = hashlib.sha256(csrf_cookie.encode()).hexdigest()
+        if token_hash in token_hashes:
+            raise RuntimeError("restore-guard synthetic sessions are not distinct")
+        token_hashes.add(token_hash)
+        with repository.connect() as connection:
+            rows = connection.execute(
+                """SELECT session.id AS session_id, session.user_id,
+                session.csrf_token_hash, session.mfa_method, session.mfa_verified_at,
+                session.mfa_factor_id, session.revoked_at, user.github_user_id,
+                user.login, user.role, user.status
+                FROM sessions AS session
+                JOIN users AS user ON user.id = session.user_id
+                WHERE session.token_hash = ?""",
+                (token_hash,),
+            ).fetchall()
+        if len(rows) != 1:
+            raise RuntimeError("restore-guard synthetic session is invalid")
+        row = rows[0]
+        verified_text = row["mfa_verified_at"]
+        try:
+            verified_at = datetime.fromisoformat(verified_text)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("restore-guard synthetic step-up is invalid") from exc
+        if verified_at.tzinfo is None:
+            raise RuntimeError("restore-guard synthetic step-up is invalid")
+        if (
+            type(row["github_user_id"]) is not int
+            or row["github_user_id"] != github_id
+            or not isinstance(row["login"], str)
+            or re.fullmatch(r"r120-rehearsal-[a-f0-9]{8}", row["login"]) is None
+            or row["role"] != role
+            or row["status"] != "active"
+            or row["csrf_token_hash"] != csrf_hash
+            or row["mfa_method"] != "totp"
+            or type(row["mfa_factor_id"]) is not int
+            or row["revoked_at"] is not None
+            or repository.auth_get_session(token_hash) is None
+        ):
+            raise RuntimeError("restore-guard synthetic identity is invalid")
+        sessions.append((int(row["session_id"]), int(row["user_id"]), token_hash, verified_text))
+
+    with repository.connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            for session_id, user_id, token_hash, verified_text in sessions:
+                cursor = connection.execute(
+                    """UPDATE sessions SET mfa_verified_at = ?
+                    WHERE id = ? AND user_id = ? AND token_hash = ?
+                      AND mfa_verified_at = ? AND mfa_method = 'totp'
+                      AND revoked_at IS NULL""",
+                    (stale_at, session_id, user_id, token_hash, verified_text),
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError("restore-guard synthetic session changed")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+    try:
+        yield
+    finally:
+        with repository.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                for session_id, user_id, token_hash, verified_text in sessions:
+                    cursor = connection.execute(
+                        """UPDATE sessions SET mfa_verified_at = ?
+                        WHERE id = ? AND user_id = ? AND token_hash = ?
+                          AND mfa_verified_at = ? AND mfa_method = 'totp'
+                          AND revoked_at IS NULL""",
+                        (verified_text, session_id, user_id, token_hash, stale_at),
+                    )
+                    if cursor.rowcount != 1:
+                        raise RuntimeError(
+                            "restore-guard could not restore synthetic step-up state"
+                        )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+
+def _restore_guard(
+    request: object,
+    repository: Repository,
+    *,
+    post_request: Callable[..., httpx.Response] | None = None,
+) -> dict[str, object]:
     if (
         not isinstance(request, dict)
         or set(request) != {"users", "backup_name"}
@@ -207,32 +312,71 @@ def _restore_guard(request: object) -> dict[str, object]:
         or RESTORE_NAME.fullmatch(request["backup_name"]) is None
     ):
         raise RuntimeError("restore-guard fixture is invalid")
-    statuses: list[int] = []
-    for user in request["users"]:
+    user_fields = (
+        {
+            "session_cookie",
+            "csrf_cookie",
+            "expected_tool_result_sha256",
+            "totp_secret",
+        },
+        {"session_cookie", "csrf_cookie", "expected_tool_result_sha256"},
+    )
+    fixture_users: list[dict[str, str]] = []
+    for index, user in enumerate(request["users"]):
+        if not isinstance(user, dict) or set(user) != user_fields[index]:
+            raise RuntimeError("restore-guard identity is invalid")
         if (
-            not isinstance(user, dict)
-            or set(user) != {"session_cookie", "csrf_cookie"}
-            or not isinstance(user["session_cookie"], str)
+            not isinstance(user["session_cookie"], str)
+            or re.fullmatch(r"[A-Za-z0-9_-]{16,256}", user["session_cookie"]) is None
             or not isinstance(user["csrf_cookie"], str)
+            or re.fullmatch(r"[A-Za-z0-9_-]{16,256}", user["csrf_cookie"]) is None
+            or not isinstance(user["expected_tool_result_sha256"], str)
+            or re.fullmatch(r"[0-9a-f]{64}", user["expected_tool_result_sha256"]) is None
+            or (
+                index == 0
+                and (
+                    not isinstance(user["totp_secret"], str)
+                    or not 16 <= len(user["totp_secret"]) <= 128
+                )
+            )
         ):
             raise RuntimeError("restore-guard identity is invalid")
-        headers = {
-            "host": "ledger-r120.test",
-            "origin": "https://ledger-r120.test",
-            "cookie": (
-                f"{SESSION_COOKIE_NAME}={user['session_cookie']}; "
-                f"{CSRF_COOKIE_NAME}={user['csrf_cookie']}"
-            ),
-            "x-csrf-token": user["csrf_cookie"],
-            "accept": "application/json",
-        }
-        with httpx.Client(base_url="http://127.0.0.1:8000", timeout=3.0, trust_env=False) as client:
-            response = client.post(
-                "/api/v1/operations/restores",
-                headers=headers,
-                json={"name": request["backup_name"], "promote": True},
-            )
-        statuses.append(response.status_code)
+        fixture_users.append(
+            {
+                "session_cookie": user["session_cookie"],
+                "csrf_cookie": user["csrf_cookie"],
+            }
+        )
+
+    statuses: list[int] = []
+    with _stale_synthetic_step_up(repository, fixture_users):
+        for user in fixture_users:
+            headers = {
+                "host": "ledger-r120.test",
+                "origin": "https://ledger-r120.test",
+                "cookie": (
+                    f"{SESSION_COOKIE_NAME}={user['session_cookie']}; "
+                    f"{CSRF_COOKIE_NAME}={user['csrf_cookie']}"
+                ),
+                "x-csrf-token": user["csrf_cookie"],
+                "accept": "application/json",
+            }
+            if post_request is None:
+                with httpx.Client(
+                    base_url="http://127.0.0.1:8000", timeout=3.0, trust_env=False
+                ) as client:
+                    response = client.post(
+                        "/api/v1/operations/restores",
+                        headers=headers,
+                        json={"name": request["backup_name"], "promote": True},
+                    )
+            else:
+                response = post_request(
+                    "/api/v1/operations/restores",
+                    headers=headers,
+                    json={"name": request["backup_name"], "promote": True},
+                )
+            statuses.append(response.status_code)
     if statuses != [403, 403]:
         raise RuntimeError("restore-security boundary did not refuse both synthetic owners")
     return {"restore_guard_denied_without_fresh_step_up": True}
@@ -314,7 +458,7 @@ def main() -> int:
             return 2
         value = _verify_historical_backup(repository, settings, request["backup_name"])
     else:
-        value = _restore_guard(json.load(sys.stdin))
+        value = _restore_guard(json.load(sys.stdin), repository)
     sys.stdout.write(json.dumps(value, sort_keys=True, separators=(",", ":")))
     return 0
 

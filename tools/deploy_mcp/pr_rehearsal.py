@@ -1369,10 +1369,27 @@ _SAFE_FIXED_COMMAND_CATEGORIES = {
     "cli_run",
     "container_run",
     "container_exec",
+    "fixture_seed",
+    "fixture_verify_backup",
+    "fixture_restore_guard",
+    "fixture_marker",
+    "fixture_snapshot",
     "container_remove",
     "container_stop",
+    "volume_inspect",
+    "volume_list",
+    "volume_remove",
     "docker_version",
     "other_fixed",
+}
+_SAFE_CLEANUP_FAILURES = {
+    "container_removal_unverified",
+    "cli_container_removal_unverified",
+    "network_or_volume_removal_unverified",
+    "disposable_volume_retained_for_running_container",
+    "staged_archive_cleanup_unverified",
+    "asset_cleanup_unverified",
+    "cleanup_unverified",
 }
 
 
@@ -1406,6 +1423,9 @@ def _safe_host_failure_details(response: dict[str, object]) -> dict[str, object]
     receipt_id = response.get("receipt_id")
     if isinstance(receipt_id, str) and re.fullmatch(r"[0-9a-f]{32}", receipt_id) is not None:
         details["host_receipt_id"] = receipt_id
+    cleanup_failure = response.get("cleanup_failure")
+    if isinstance(cleanup_failure, str) and cleanup_failure in _SAFE_CLEANUP_FAILURES:
+        details["cleanup_failure"] = cleanup_failure
     return details or None
 
 

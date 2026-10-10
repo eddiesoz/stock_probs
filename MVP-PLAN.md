@@ -3244,6 +3244,48 @@ resize, rollout or email occurred.
 | Independent checker QA | `/var/tmp/r12r/r120-checker-independent-qa-20261010T0351Z.json`, `5674fdda27ac7cf27f3bea0e621bbc45f183f0a228b1bee81e5a63afd467d32a`; JUnit `dba1e27d2a4f7e1306cac9b8f6d4a100cb5ad5fb16a6564b797f6da5d6f1e1c9`; pytest log `2dd2622599a0ff937604a6aea5bc42089ec265642b8da65ddda4b85c08a64bbe` |
 | Authored-documentation checks | **Pass**, exit 0: `.dev-venv/bin/python scripts/validate_docs.py` (9 categories, 14 topics, 8 governance entries); `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` (154 files); `python3 scripts/check-doc-coverage-self-test.py` (26 cases); scoped `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md docs` |
 
+### R-ASTRA-120 E838 seed-guard, checker, and host-rehearsal checkpoint
+
+Task `R-ASTRA-120`; reviewed candidate head `5bbd3d4b89541ef3d7949d4fc6f98d9e3bba7a17`; PR #1
+remains draft. The bound Linux/amd64 image for the actual-host attempt was
+`sha256:fe473d6afedfea77295b02ade3e517bada61c606981d0aaa103fb699ac6bb275` (source context
+`254e9e3d89257379a8844f332be2ebe5132536ed63ec0d655c1470144989936e`).
+
+The actual-host typed MCP rehearsal **Failed** at exit `1` (`2026-10-10T04:28:25Z`–`04:30:52Z`) with
+`fixed_command_failed` / `other_fixed`. Read-only V6 observation recognized the final
+`fixture_restore_guard`; parent reproduced a full seeded-object versus cookie-only guard mismatch
+before HTTP. The original stderr is **Unavailable**, so the host failure cause remains **Unproven**
+and no host acceptance is established. The narrow seed repair preserves exact seeded fields for
+validation, projects only cookie fields to HTTP, temporarily adjusts timestamps only on fixed
+validated synthetic sessions, and restores them in `finally`. Parent source review **Passed**;
+independent selected QA passed `4/4` tests and `ruff format`. The first independent scratch-CWD
+`ruff check` **Failed** with `I001` on both candidate files; the same command, config, and frozen
+paths passed from repository CWD. The supplement attributes this to CWD-dependent Ruff
+`project_root` discovery, not a source defect. Preserve the initial invocation failure; no source
+lint repair was made. This is synthetic in-process source/test evidence, not host runtime
+acceptance.
+
+The checker diagnostic and primary-cleanup repair independently passed `178` selected rehearsal
+tests, with one Docker-mutating integration test deselected and Ruff check passing. Its first format
+check **Failed**; five whitespace-only folds followed. Builder reruns then passed the same `178`
+tests and Ruff, and parent post-format review **Passed**, confirming AST identity and the three
+integrated files. The publisher prebuilt-release lane's parent source review and builder-reported
+`16` selected checks plus candidate pair validator **Passed**; independent review passed all `16` checks and the actual saved pair parser offline. No release was published. E837 browser/UI evidence is reused only for
+unchanged inputs. No full canonical aggregate was run for this candidate/dirty tree; E836 remains
+bound to its earlier revision. Local pair and current-image kill are Pass only for their 768 MiB
+scopes. Actual combined 1 GB, a successful actual-host retry, PR-bound rollback, owner canary, and
+release gates remain open. Production was not changed; existing backups and the US$15 monthly cap
+remain in force. No merge, deploy, resize, rollout, or email occurred.
+
+| Evidence | Artifact / exact scope |
+| --- | --- |
+| Actual-host MCP attempt | `/var/tmp/r12r/r120-host-mcp-5bbd-failure-20261010T0431Z.json`, SHA-256 `436f978b8344aea788d899a08dab76aef57aa17520d9b66d261fe9188acc9fb1`; generic failure projection, exit 1, no retained original stderr. |
+| Seed repair parent review | `/var/tmp/r12r/r120-seed-restore-guard-repair-20261010T0501Z/parent-source-review-20261010T0511Z.json`, SHA-256 `6c0536f0cbb232799d4a13fb6315897152675af8a7bd5d02a90bb236a8b92bba`; seed source `56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15`, tests `bf837a29fd2c6308e14e712fe3834e07d317748a866292cf9d7b651e8b7497f4`. |
+| Seed independent tests and CWD supplement | `/var/tmp/r12r/r120-seed-restore-guard-repair-20261010T0501Z/independent-qa-20261010T051124Z/independent-qa-receipt.json`, SHA-256 `7b975ec777c37429ce5cbffe57e48520cee9d8fade229aa250532129805bb322` (four tests Pass; initial scratch-CWD Ruff Fail retained); `ruff-cwd-supplement.json`, SHA-256 `25c3b0738a7f58c6a8631f118e50fc91ab18c76ec0ff1e0c24096e79f8cfd016` (same repo-CWD Ruff command Pass; no pytest rerun). |
+| Checker independent review / post-format parent review | `/var/tmp/r12r/r120-closed-diagnostic-repair-20261010T0445Z-6ae4ddf9/independent-full-rehearsal-qa-20261010T0506Z-8d8cf7a3/independent-qa-receipt.json`, SHA-256 `b236e6e65a050a3e43a45d924801c1b52a13409192d426d3170d4ae5d025f075`; `/var/tmp/r12r/r120-closed-diagnostic-repair-20261010T0445Z-6ae4ddf9/parent-post-format-review-20261010T0515Z.json`, SHA-256 `80f4b859e4c0d542a58adf3f42854465e6c25c9e3efd6b1e87c66e54b531042e`. Post-format pins: helper `1570a39aa95634bdc3f80932b015d7b3561b79f54cf69aa1f2422d8e466aa020`, client `fe3f739a2a6e02fa84d41314a0d415412d1972ef9e2bc1e761e0a158166eabec`, tests `4690741898f5310c1dc7e4889865361734677f022d213771b13b706e05070f72`. |
+| Authored documentation checkpoint | Before edits, exact-byte snapshots on UUID-verified `/var/tmp/r12r` matched the three owned baselines: `AGENTS.md` `da42a1be99021233b60f69def339245ee807a564813becd0917d2046624f2ac5`, `MVP-PLAN.md` `8b3a2728d55eff5d3e60142f923e34990218ad849cfdddf40020f8e2959b38ac`, `MVP-ROADMAP.md` `76f5bb8dd00ebee1c98085ab993ffa9b2f16891a3308d1a7c68ceeecea2649e0`, under `/var/tmp/r12r/r120-integration-docs-baseline-20261010T0513Z`. Final docs validation: `.dev-venv/bin/python scripts/validate_docs.py` passed (9 categories, 14 topics, 8 governance entries); change-aware coverage checked 154 mapped files/14 changed paths using `--changed-file` for every tracked diff path plus `--added-file tests/test_pr_rehearsal_seed_repair.py`; scoped `git diff --check` passed for the six authored docs. No documentation or product tests were run by this docs lane. |
+| Publisher source review | `/var/tmp/r12r/r120-publisher-parent-source-review-20261010T0520Z.json`, SHA-256 `23ded078d1ae3167ff0cc87dcd4c5e631f3b88208312be84918be80b2bb5a772`; parent source scope Pass; independent selected review also Pass: `/var/tmp/r12r/r120-publisher-independent-qa-20261010T0518Z-d4c9659ad634/independent-review-receipt.json`, SHA-256 `12d0a20088e6f9cf81ddeb43c8106d13ca8667541f4814521c6a768b0bddc3ee`; 16/16 tests at `2026-10-10T05:18:15.638Z`–`05:18:31.453Z`, Ruff, shell syntax, diff, exact source pins and offline actual-pair parser passed. No Docker/GitHub/publication ran. |
+
 ### R-ASTRA-120 E832 late-failure diagnostic-only repair
 
 Task `R-ASTRA-120`, source head `fa3db0e9fd2b48032735474691df900135aa1357`. The narrow two-file

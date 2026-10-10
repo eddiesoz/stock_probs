@@ -82,6 +82,29 @@ RUN_ID_RE = re.compile(r"^[0-9a-f]{16}$")
 CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{64}$")
 NETWORK_ID_RE = re.compile(r"^[0-9a-f]{64}$")
 NETWORK_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
+VOLUME_INSPECT_TEMPLATE = (
+    '{{.Driver}}|{{index .Labels "org.stock-probs.pr-rehearsal"}}|'
+    '{{index .Labels "org.stock-probs.pr-rehearsal.head"}}|'
+    '{{index .Labels "org.stock-probs.pr-rehearsal.pair"}}'
+)
+FIXTURE_OPERATION_CATEGORIES = {
+    "seed": "fixture_seed",
+    "verify-backup": "fixture_verify_backup",
+    "restore-guard": "fixture_restore_guard",
+    "marker": "fixture_marker",
+    "snapshot": "fixture_snapshot",
+}
+CLEANUP_FAILURE_CODES = frozenset(
+    {
+        "container_removal_unverified",
+        "cli_container_removal_unverified",
+        "network_or_volume_removal_unverified",
+        "disposable_volume_retained_for_running_container",
+        "staged_archive_cleanup_unverified",
+        "asset_cleanup_unverified",
+        "cleanup_unverified",
+    }
+)
 CLI_CONTAINER_NAME_RE = re.compile(
     r"^signal-ledger-pr1-[0-9a-f]{8}-[0-9a-f]{16}-cli-"
     r"(?:migrate|restore|backup|schema)-[0-9a-f]{8}$"
@@ -246,7 +269,18 @@ class RehearsalError(Exception):
     def __init__(self, code: str, *, details: dict[str, object] | None = None) -> None:
         self.code = code
         self.details = details or {}
+        self.cleanup_failure: str | None = None
         super().__init__(code)
+
+
+def _record_cleanup_failure(primary_error: BaseException, failure_code: str) -> None:
+    """Attach the first valid closed cleanup category without replacing the primary error."""
+    if not isinstance(failure_code, str) or failure_code not in CLEANUP_FAILURE_CODES:
+        failure_code = "cleanup_unverified"
+    existing_failure = getattr(primary_error, "cleanup_failure", None)
+    if isinstance(existing_failure, str) and existing_failure in CLEANUP_FAILURE_CODES:
+        return
+    primary_error.cleanup_failure = failure_code  # type: ignore[attr-defined]
 
 
 def _parse_request(raw: bytes) -> tuple[str, dict[str, object]]:
@@ -572,6 +606,32 @@ def _fixed_command_category(command: list[str]) -> str:
     ):
         return "volume_create"
     if (
+        len(command) == 6
+        and command[1:4] == ["volume", "inspect", "--format"]
+        and command[4] == VOLUME_INSPECT_TEMPLATE
+        and VOLUME_RE.fullmatch(command[5]) is not None
+    ) or (
+        len(command) == 4
+        and command[1:3] == ["volume", "inspect"]
+        and VOLUME_RE.fullmatch(command[3]) is not None
+    ):
+        return "volume_inspect"
+    if (
+        len(command) == 7
+        and command[1:3] == ["volume", "ls"]
+        and command[3] == "--filter"
+        and re.fullmatch(r"name=\^(signal-ledger-pr1-[0-9a-f]{8}-[0-9a-f]{16})\$", command[4])
+        is not None
+        and command[5:7] == ["--format", "{{.Name}}"]
+    ):
+        return "volume_list"
+    if (
+        len(command) == 4
+        and command[1:3] == ["volume", "rm"]
+        and VOLUME_RE.fullmatch(command[3]) is not None
+    ):
+        return "volume_remove"
+    if (
         len(command) >= 5
         and command[1] == "run"
         and command[2:4] == ["--rm", "--name"]
@@ -601,6 +661,14 @@ def _fixed_command_category(command: list[str]) -> str:
             command_shape = False
         if command_shape and CONTAINER_ID_RE.fullmatch(command[identifier_index]) is not None:
             return "container_exec"
+    if (
+        len(command) == 9
+        and command[1:5] == ["exec", "-i", "--user", "10001:10001"]
+        and CONTAINER_ID_RE.fullmatch(command[5]) is not None
+        and command[6:8] == ["python", "/run/assistant/seed.py"]
+        and command[8] in FIXTURE_OPERATION_CATEGORIES
+    ):
+        return FIXTURE_OPERATION_CATEGORIES[command[8]]
     if (
         len(command) == 3
         and command[1] == "rm"
@@ -2387,7 +2455,7 @@ def _copy_fixture_files(container: str, source_digests: dict[str, str]) -> None:
 def _container_fixture(
     container: str, operation: str, request: dict[str, object] | None = None
 ) -> dict[str, object]:
-    if operation not in {"seed", "marker", "snapshot", "restore-guard", "verify-backup"}:
+    if operation not in FIXTURE_OPERATION_CATEGORIES:
         raise RehearsalError("synthetic_operation_invalid")
     encoded = json.dumps(request, separators=(",", ":")).encode() if request is not None else b""
     result = _run(
@@ -2979,6 +3047,18 @@ def _cleanup_assets(revision: str) -> dict[str, object]:
     return {"status": "cleaned", "reviewed_head_sha": revision, "removed_assets": removed}
 
 
+def _cleanup_assets_preserving_primary(
+    revision: str, primary_error: BaseException | None = None
+) -> None:
+    """Keep the operation error while reporting asset-cleanup failure separately."""
+    try:
+        _cleanup_assets(revision)
+    except (RehearsalError, OSError, ValueError, TypeError, KeyError):
+        if primary_error is None:
+            raise RehearsalError("asset_cleanup_unverified") from None
+        _record_cleanup_failure(primary_error, "asset_cleanup_unverified")
+
+
 def _verify_volume(volume: str, revision: str, pair_sha256: str) -> None:
     if (
         VOLUME_RE.fullmatch(volume) is None
@@ -2992,9 +3072,7 @@ def _verify_volume(volume: str, revision: str, pair_sha256: str) -> None:
             "volume",
             "inspect",
             "--format",
-            '{{.Driver}}|{{index .Labels "org.stock-probs.pr-rehearsal"}}|'
-            '{{index .Labels "org.stock-probs.pr-rehearsal.head"}}|'
-            '{{index .Labels "org.stock-probs.pr-rehearsal.pair"}}',
+            VOLUME_INSPECT_TEMPLATE,
             volume,
         ],
         timeout=10,
@@ -3017,9 +3095,7 @@ def _remove_volume_if_owned(volume: str, revision: str, pair_sha256: str) -> boo
             "volume",
             "inspect",
             "--format",
-            '{{.Driver}}|{{index .Labels "org.stock-probs.pr-rehearsal"}}|'
-            '{{index .Labels "org.stock-probs.pr-rehearsal.head"}}|'
-            '{{index .Labels "org.stock-probs.pr-rehearsal.pair"}}',
+            VOLUME_INSPECT_TEMPLATE,
             volume,
         ],
         timeout=10,
@@ -3300,6 +3376,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
     volume_removed = False
     native_summary: dict[str, object] | None = None
     result_receipt: dict[str, object] | None = None
+    primary_exception: BaseException | None = None
     started = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     try:
         manifest, staged = _verify_pair(payload, revision)
@@ -3373,6 +3450,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
         runtime_users: list[dict[str, str]] = []
         candidate_container: str | None = None
         recovery_container: str | None = None
+        candidate_operation_failed = False
         try:
             network_created = True
             candidate_network_id = _create_candidate_network(
@@ -3457,13 +3535,18 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             candidate_cpu_stat_evidence = _cpu_stat_evidence(
                 candidate_memory_baseline, candidate_memory_final, role="candidate"
             )
+        except BaseException:
+            # Let the outer cleanup retry without replacing the active operation error.
+            candidate_operation_failed = True
+            raise
         finally:
-            if candidate_name in containers:
+            if not candidate_operation_failed and candidate_name in containers:
                 _remove_owned_container(candidate_name, revision, pair_sha256, volume)
                 containers.remove(candidate_name)
                 candidate_removed = True
                 candidate_container = None
 
+        recovery_operation_failed = False
         try:
             containers.append(recovery_name)
             recovery_container = _start_app(
@@ -3519,8 +3602,12 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             recovery_cpu_stat_evidence = _cpu_stat_evidence(
                 recovery_memory_baseline, recovery_memory_final, role="recovery"
             )
+        except BaseException:
+            # Let the outer cleanup retry without replacing the active operation error.
+            recovery_operation_failed = True
+            raise
         finally:
-            if recovery_name in containers:
+            if not recovery_operation_failed and recovery_name in containers:
                 _remove_owned_container(recovery_name, revision, pair_sha256, volume)
                 containers.remove(recovery_name)
                 recovery_removed = True
@@ -3593,6 +3680,9 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             "started_at": started,
             "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         }
+    except BaseException as exc:
+        primary_exception = exc
+        raise
     finally:
         cleanup_error: str | None = None
         containers_removed = True
@@ -3601,9 +3691,9 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             for container in reversed(containers):
                 try:
                     _remove_owned_container(container, revision, pair_sha256, volume)
-                except RehearsalError:
+                except (RehearsalError, OSError, ValueError, TypeError, KeyError):
                     containers_removed = False
-                    cleanup_error = "container_removal_unverified"
+                    cleanup_error = cleanup_error or "container_removal_unverified"
             for container_name, container_volume, container_revision, container_pair in reversed(
                 OPERATION_CONTAINERS
             ):
@@ -3614,9 +3704,9 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
                     OPERATION_CONTAINERS.remove(
                         (container_name, container_volume, container_revision, container_pair)
                     )
-                except RehearsalError:
+                except (RehearsalError, OSError, ValueError, TypeError, KeyError):
                     containers_removed = False
-                    cleanup_error = "cli_container_removal_unverified"
+                    cleanup_error = cleanup_error or "cli_container_removal_unverified"
             if containers_removed:
                 try:
                     _network_removed, volume_removed = _cleanup_network_before_volume(
@@ -3629,10 +3719,10 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
                         volume=volume,
                         volume_created=volume_created,
                     )
-                except RehearsalError:
-                    cleanup_error = "network_or_volume_removal_unverified"
+                except (RehearsalError, OSError, ValueError, TypeError, KeyError):
+                    cleanup_error = cleanup_error or "network_or_volume_removal_unverified"
             elif volume_created or network_created:
-                cleanup_error = "disposable_volume_retained_for_running_container"
+                cleanup_error = cleanup_error or "disposable_volume_retained_for_running_container"
             for archive in staged.values():
                 try:
                     info = archive.path.lstat()
@@ -3640,12 +3730,19 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
                         archive.path.unlink()
                 except FileNotFoundError:
                     pass
-            _cleanup_assets(revision)
+                except OSError:
+                    cleanup_error = cleanup_error or "staged_archive_cleanup_unverified"
+            try:
+                _cleanup_assets(revision)
+            except (RehearsalError, OSError, ValueError, TypeError, KeyError):
+                cleanup_error = cleanup_error or "asset_cleanup_unverified"
         finally:
             MONITOR_ACTIVE = False
             OPERATION_DEADLINE = None
         if cleanup_error is not None:
-            raise RehearsalError(cleanup_error)
+            if primary_exception is None:
+                raise RehearsalError(cleanup_error)
+            _record_cleanup_failure(primary_exception, cleanup_error)
     if result_receipt is None:
         raise RehearsalError("rehearsal_result_missing")
     result_receipt["volume_removed"] = volume_removed
@@ -3676,13 +3773,18 @@ def main() -> int:
                     revision = _revision(payload.get("reviewed_head_sha"))
                     try:
                         response = _run_pair(payload)
-                    finally:
-                        _cleanup_assets(revision)
+                    except Exception as exc:
+                        _cleanup_assets_preserving_primary(revision, exc)
+                        raise
+                    else:
+                        _cleanup_assets_preserving_primary(revision)
                     response["receipt_id"] = _write_receipt(response)
             except RehearsalError as exc:
                 response = {"status": "error", "code": exc.code}
                 if exc.details:
                     response["failure"] = exc.details
+                if exc.cleanup_failure in CLEANUP_FAILURE_CODES:
+                    response["cleanup_failure"] = exc.cleanup_failure
                 if lock_descriptor >= 0 and response.get("status") == "error":
                     with suppress(RehearsalError, OSError):
                         response["receipt_id"] = _write_receipt(response)
@@ -3692,6 +3794,9 @@ def main() -> int:
                     "status": "error",
                     "code": f"operation_failed:{type(exc).__name__.casefold()}",
                 }
+                cleanup_failure = getattr(exc, "cleanup_failure", None)
+                if cleanup_failure in CLEANUP_FAILURE_CODES:
+                    response["cleanup_failure"] = cleanup_failure
             finally:
                 if lock_descriptor >= 0:
                     fcntl.flock(lock_descriptor, fcntl.LOCK_UN)

@@ -458,8 +458,10 @@ unchanged). No actual Docker build or PR-bound rollback rehearsal ran; those acc
 open. Do not treat source presence or test passes as build or rollback acceptance.
 
 The later prebuilt-image rehearsal remains separate: it binds an immutable image ID and filtered
-context digest to the same reviewed PR head SHA. The production publisher remains unchanged and
-still requires a clean revision that matches exact `origin/main`.
+context digest to the same reviewed PR head SHA. The optional `prebuilt-release` publisher mode
+checks and publishes that exact completed pair, preserving its original rehearsal receipt and
+requiring a clean revision that matches exact `origin/main`. Publication is separate from QA;
+it does not satisfy the actual-host, rollback, canary, or rollout gates.
 
 ### Exact PR-pair review pins
 

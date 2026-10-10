@@ -1074,6 +1074,7 @@ def test_fixed_command_category_recognizes_only_closed_rehearsal_shapes() -> Non
     revision = "a" * 40
     pair = "b" * 64
     image_id = "sha256:" + "c" * 64
+    container_id = "d" * 64
 
     assert (
         host_helper._fixed_command_category(
@@ -1103,6 +1104,85 @@ def test_fixed_command_category_recognizes_only_closed_rehearsal_shapes() -> Non
             ]
         )
         == "volume_create"
+    )
+    fixture_categories = (
+        ("seed", "fixture_seed"),
+        ("verify-backup", "fixture_verify_backup"),
+        ("restore-guard", "fixture_restore_guard"),
+        ("marker", "fixture_marker"),
+        ("snapshot", "fixture_snapshot"),
+    )
+    for operation, expected_category in fixture_categories:
+        assert (
+            host_helper._fixed_command_category(
+                [
+                    "/usr/bin/docker",
+                    "exec",
+                    "-i",
+                    "--user",
+                    "10001:10001",
+                    container_id,
+                    "python",
+                    "/run/assistant/seed.py",
+                    operation,
+                ]
+            )
+            == expected_category
+        )
+    assert (
+        host_helper._fixed_command_category(
+            [
+                "/usr/bin/docker",
+                "volume",
+                "inspect",
+                "--format",
+                host_helper.VOLUME_INSPECT_TEMPLATE,
+                volume,
+            ]
+        )
+        == "volume_inspect"
+    )
+    assert (
+        host_helper._fixed_command_category(["/usr/bin/docker", "volume", "inspect", volume])
+        == "volume_inspect"
+    )
+    assert (
+        host_helper._fixed_command_category(
+            [
+                "/usr/bin/docker",
+                "volume",
+                "ls",
+                "--filter",
+                f"name=^{volume}$",
+                "--format",
+                "{{.Name}}",
+            ]
+        )
+        == "volume_list"
+    )
+    assert (
+        host_helper._fixed_command_category(["/usr/bin/docker", "volume", "rm", volume])
+        == "volume_remove"
+    )
+    assert (
+        host_helper._fixed_command_category(["/usr/bin/docker", "volume", "rm", volume, "--force"])
+        == "other_fixed"
+    )
+    assert (
+        host_helper._fixed_command_category(
+            [
+                "/usr/bin/docker",
+                "exec",
+                "-i",
+                "--user",
+                "10001:10001",
+                container_id,
+                "python",
+                "/run/assistant/seed.py",
+                "shell",
+            ]
+        )
+        == "other_fixed"
     )
     assert (
         host_helper._fixed_command_category(
@@ -1147,6 +1227,159 @@ def test_controller_projects_only_typed_host_command_failure_and_receipt() -> No
     )
     assert rejected is None
     assert private_value not in json.dumps(rejected)
+
+
+@pytest.mark.parametrize(
+    "category",
+    (
+        "fixture_seed",
+        "fixture_verify_backup",
+        "fixture_restore_guard",
+        "fixture_marker",
+        "fixture_snapshot",
+        "volume_inspect",
+        "volume_list",
+        "volume_remove",
+    ),
+)
+def test_controller_projects_closed_command_and_cleanup_failure_categories(
+    category: str,
+) -> None:
+    projected = controller._safe_host_failure_details(
+        {
+            "status": "error",
+            "code": "fixed_command_failed",
+            "failure": {"command_category": category, "exit_status": 23},
+            "cleanup_failure": "asset_cleanup_unverified",
+        }
+    )
+    assert projected == {
+        "fixed_command_failure": {
+            "command_category": category,
+            "exit_status": 23,
+        },
+        "cleanup_failure": "asset_cleanup_unverified",
+    }
+    rejected = controller._safe_host_failure_details(
+        {
+            "status": "error",
+            "code": "fixed_command_failed",
+            "failure": {"command_category": category, "exit_status": 23},
+            "cleanup_failure": "synthetic-private-path",
+        }
+    )
+    assert rejected == {
+        "fixed_command_failure": {
+            "command_category": category,
+            "exit_status": 23,
+        }
+    }
+
+
+def test_record_cleanup_failure_preserves_first_closed_category() -> None:
+    primary = host_helper.RehearsalError("primary_operation_failed")
+
+    host_helper._record_cleanup_failure(primary, "container_removal_unverified")
+    host_helper._record_cleanup_failure(primary, "asset_cleanup_unverified")
+
+    assert primary.cleanup_failure == "container_removal_unverified"
+
+
+def test_host_main_preserves_primary_details_and_first_cleanup_failure(
+    monkeypatch,
+) -> None:
+    revision = "a" * 40
+    primary = host_helper.RehearsalError(
+        "fixed_command_failed",
+        details={"command_category": "fixture_seed", "exit_status": 23},
+    )
+    host_helper._record_cleanup_failure(primary, "container_removal_unverified")
+
+    def fail_run(_payload: dict[str, object]) -> dict[str, object]:
+        raise primary
+
+    def fail_asset_cleanup(_revision: str) -> dict[str, object]:
+        raise host_helper.RehearsalError("cleanup_asset_unavailable")
+
+    output_stream = SimpleNamespace(buffer=io.BytesIO())
+    monkeypatch.setattr(host_helper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b"{}")))
+    monkeypatch.setattr(sys, "stdout", output_stream)
+    monkeypatch.setattr(
+        host_helper,
+        "_parse_request",
+        lambda _raw: ("rehearse_pr_pair", {"reviewed_head_sha": revision}),
+    )
+    monkeypatch.setattr(host_helper, "_prepare_host_paths", lambda: None)
+    monkeypatch.setattr(host_helper, "_operation_lock", lambda: -1)
+    monkeypatch.setattr(host_helper, "_run_pair", fail_run)
+    monkeypatch.setattr(host_helper, "_cleanup_assets", fail_asset_cleanup)
+
+    assert host_helper.main() == 0
+    assert json.loads(output_stream.buffer.getvalue()) == {
+        "status": "error",
+        "code": "fixed_command_failed",
+        "failure": {"command_category": "fixture_seed", "exit_status": 23},
+        "cleanup_failure": "container_removal_unverified",
+    }
+
+
+def test_host_main_returns_error_when_success_cleanup_fails(monkeypatch) -> None:
+    revision = "a" * 40
+
+    def pass_run(_payload: dict[str, object]) -> dict[str, object]:
+        return {"status": "pass"}
+
+    def fail_asset_cleanup(_revision: str) -> dict[str, object]:
+        raise host_helper.RehearsalError("cleanup_asset_unavailable")
+
+    output_stream = SimpleNamespace(buffer=io.BytesIO())
+    monkeypatch.setattr(host_helper.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b"{}")))
+    monkeypatch.setattr(sys, "stdout", output_stream)
+    monkeypatch.setattr(
+        host_helper,
+        "_parse_request",
+        lambda _raw: ("rehearse_pr_pair", {"reviewed_head_sha": revision}),
+    )
+    monkeypatch.setattr(host_helper, "_prepare_host_paths", lambda: None)
+    monkeypatch.setattr(host_helper, "_operation_lock", lambda: -1)
+    monkeypatch.setattr(host_helper, "_run_pair", pass_run)
+    monkeypatch.setattr(host_helper, "_cleanup_assets", fail_asset_cleanup)
+
+    assert host_helper.main() == 0
+    assert json.loads(output_stream.buffer.getvalue()) == {
+        "status": "error",
+        "code": "asset_cleanup_unverified",
+    }
+
+
+def test_controller_rejects_removed_generic_fixture_category() -> None:
+    assert (
+        controller._safe_fixed_command_failure(
+            {"command_category": "container_fixture", "exit_status": 23}
+        )
+        is None
+    )
+
+
+def test_asset_cleanup_failure_preserves_primary_error_and_fails_closed(
+    monkeypatch,
+) -> None:
+    revision = "a" * 40
+
+    def fail_cleanup(_revision: str) -> dict[str, object]:
+        raise host_helper.RehearsalError("cleanup_asset_unavailable")
+
+    monkeypatch.setattr(host_helper, "_cleanup_assets", fail_cleanup)
+    primary = host_helper.RehearsalError("historical_backup_verification_failed")
+
+    host_helper._cleanup_assets_preserving_primary(revision, primary)
+
+    assert primary.code == "historical_backup_verification_failed"
+    assert primary.cleanup_failure == "asset_cleanup_unverified"
+    with pytest.raises(host_helper.RehearsalError, match="asset_cleanup_unverified"):
+        host_helper._cleanup_assets_preserving_primary(revision)
 
 
 def test_controller_host_failure_projection_preserves_native_details() -> None:

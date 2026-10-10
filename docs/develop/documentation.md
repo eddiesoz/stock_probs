@@ -302,7 +302,10 @@ this page, [developer testing](testing.md), and [getting started](../operations/
 the separate workflow-policy rule requires `AGENTS.md`. Keep this path coverage aligned as the
 local build command contract changes. Record current runtime acceptance in the task ledger and
 reflect operational status in the operations/testing guides; the map describes source coverage, not
-runtime acceptance. A prose statement here does not replace a passing completeness and change-aware
+runtime acceptance. The optional `prebuilt-release` publisher mode uses the completed schema-13
+pair receipt and fixed revision-named artifacts; keep its verification and release prerequisites
+documented in the operations and testing guides when changing that contract.
+A prose statement here does not replace a passing completeness and change-aware
 coverage check.
 
 The approved project governance set now contains eight directory-based skill definitions:
