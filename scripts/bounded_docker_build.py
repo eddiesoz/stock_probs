@@ -60,6 +60,9 @@ BUILDX_LISTING_MAX_BYTES = 65536
 BUILDX_LISTING_TIMEOUT = 30
 _SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES = 8 * 1024 * 1024
 _SCHEMA13_ROOTFS_MAX_LAYERS = 128
+_SCHEMA13_ROOTFS_CHUNK_SIZE = 32
+_SCHEMA13_ROOTFS_CHUNK_MAX_BYTES = 512 * 1024
+_SCHEMA13_ROOTFS_GLOBAL_TIMEOUT = 75.0
 BUILDX_HISTORY_REF_PATTERN = re.compile(r"r120-bounded/r120-bounded0/[a-z0-9]{25}")
 BUILDX_HISTORY_STEP_LIMIT = 64
 CONTAINER_NAME = "/buildx_buildkit_r120-bounded0"
@@ -1841,45 +1844,69 @@ def _schema13_rehearsal_rootfs_layers(image_ids: set[str]) -> dict[str, tuple[st
         raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
     if len(image_ids) > 8192:
         raise BuildError("schema13_rehearsal_image_inventory_too_large")
+
+    requested = tuple(sorted(image_ids))
     fmt = "{{.Id}}|{{.RootFS.Type}}|{{json .RootFS.Layers}}"
-    try:
-        fields = _capture_bounded_stdout(
-            [DOCKER, "image", "inspect", "--format", fmt, *sorted(image_ids)],
-            max_bytes=_SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES,
-            timeout=BUILDX_LISTING_TIMEOUT,
-        )
-    except BuildError as exc:
-        if exc.code == "builder_driver_listing_too_large":
-            raise BuildError("schema13_rehearsal_image_inventory_too_large") from exc
-        raise
-    try:
-        lines = fields.decode("ascii", "strict").splitlines()
-    except UnicodeDecodeError as exc:
-        raise BuildError("schema13_rehearsal_ancestry_metadata_invalid") from exc
-    if len(lines) != len(image_ids):
-        raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
+    deadline = time.monotonic() + _SCHEMA13_ROOTFS_GLOBAL_TIMEOUT
+    total_bytes = 0
     layers_by_id: dict[str, tuple[str, ...]] = {}
-    for line in lines:
-        try:
-            observed_id, rootfs_type, raw_layers = line.split("|", 2)
-        except ValueError as exc:
-            raise BuildError("schema13_rehearsal_ancestry_metadata_invalid") from exc
-        if observed_id not in image_ids or observed_id in layers_by_id or rootfs_type != "layers":
-            raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
-        try:
-            layers = json.loads(raw_layers)
-        except (json.JSONDecodeError, RecursionError, ValueError) as exc:
-            raise BuildError("schema13_rehearsal_ancestry_metadata_invalid") from exc
-        if not isinstance(layers, list) or not layers:
-            raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
-        if len(layers) > _SCHEMA13_ROOTFS_MAX_LAYERS:
+    for offset in range(0, len(requested), _SCHEMA13_ROOTFS_CHUNK_SIZE):
+        chunk = requested[offset : offset + _SCHEMA13_ROOTFS_CHUNK_SIZE]
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise BuildError("schema13_rehearsal_ancestry_metadata_timeout")
+        byte_budget = min(
+            _SCHEMA13_ROOTFS_CHUNK_MAX_BYTES,
+            _SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES - total_bytes,
+        )
+        if byte_budget < 1:
             raise BuildError("schema13_rehearsal_image_inventory_too_large")
-        if any(
-            not isinstance(layer, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", layer) is None
-            for layer in layers
-        ) or len(layers) != len(set(layers)):
+        try:
+            fields = _capture_bounded_stdout(
+                [DOCKER, "image", "inspect", "--format", fmt, *chunk],
+                max_bytes=byte_budget,
+                timeout=min(BUILDX_LISTING_TIMEOUT, remaining),
+            )
+        except BuildError as exc:
+            if exc.code == "builder_driver_listing_too_large":
+                raise BuildError("schema13_rehearsal_image_inventory_too_large") from exc
+            raise
+        if time.monotonic() >= deadline:
+            raise BuildError("schema13_rehearsal_ancestry_metadata_timeout")
+        if len(fields) > byte_budget:
+            raise BuildError("schema13_rehearsal_image_inventory_too_large")
+        total_bytes += len(fields)
+        if total_bytes > _SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES:
+            raise BuildError("schema13_rehearsal_image_inventory_too_large")
+        try:
+            lines = fields.decode("ascii", "strict").splitlines()
+        except UnicodeDecodeError as exc:
+            raise BuildError("schema13_rehearsal_ancestry_metadata_invalid") from exc
+        if len(lines) != len(chunk):
             raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
-        layers_by_id[observed_id] = tuple(layers)
+        for line in lines:
+            try:
+                observed_id, rootfs_type, raw_layers = line.split("|", 2)
+            except ValueError as exc:
+                raise BuildError("schema13_rehearsal_ancestry_metadata_invalid") from exc
+            if observed_id not in chunk or observed_id in layers_by_id or rootfs_type != "layers":
+                raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
+            try:
+                layers = json.loads(raw_layers)
+            except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+                raise BuildError("schema13_rehearsal_ancestry_metadata_invalid") from exc
+            if not isinstance(layers, list) or not layers:
+                raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
+            if len(layers) > _SCHEMA13_ROOTFS_MAX_LAYERS:
+                raise BuildError("schema13_rehearsal_image_inventory_too_large")
+            if any(
+                not isinstance(layer, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", layer) is None
+                for layer in layers
+            ) or len(layers) != len(set(layers)):
+                raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
+            layers_by_id[observed_id] = tuple(layers)
+        if time.monotonic() >= deadline:
+            raise BuildError("schema13_rehearsal_ancestry_metadata_timeout")
     if set(layers_by_id) != image_ids:
         raise BuildError("schema13_rehearsal_ancestry_metadata_invalid")
     return layers_by_id

@@ -5,6 +5,13 @@ description: "Local developer checks for Python, APIs, persistence, browser beha
 
 # Testing
 
+## Local browser authentication fixtures
+
+Use development fixture accounts and isolated browser contexts for local QA. Preserve the user's
+signed-in tabs and authentication state. Never clear user cookies, browser storage, or profiles to
+reset a test. Do not use production local-login flows or claim an MFA bypass; exercise authentication
+through development fixtures and isolated contexts.
+
 ## Reviewing incomplete contrast results
 
 Keep raw axe violations and incomplete results in the evidence. An incomplete result needs
@@ -225,27 +232,31 @@ Pass only; its candidate identity remains unbound and execution held. Its earlie
 ledger](../../MVP-PLAN.md#r-astra-120-e832-late-failure-diagnostic-only-repair) for exact pins and
 receipts.
 
-### R-ASTRA-120 E833 current evidence
+### R-ASTRA-120 E834–E835 current evidence
 
-The E833 exact-head candidate passed one two-owner real-Zen native functional run and a synthetic
-three-protocol wire run. Native and kill used a local 768 MiB cgroup; synthetic wire used 1.5 GiB.
-The corrected independent kill review passed for pending-search cancellation and zero approvals,
-but `active_search_scan_acknowledged=false`, so active-search execution after acknowledgement and
-provider execution count are not claimed. None is actual combined 1 GB evidence. The local PR-pair
-rehearsal passed its migration/recovery/archive-write scope, but independent identity review is
-**Unavailable** and the actual-host pair attempt **Failed** on archive identity. Its narrow checker
-patch is applied locally; builder and direct independent runs each passed 161 tests with one
-local-Docker test deselected, and scoped static/archive-manifest checks passed. Actual-host retry
-remains pending. The canonical check **Failed**
-with 3,215 passed, 3 failed, 4 skipped, 4 deselected, 99
-warnings, and 85.69% coverage. The wrapper's `077` mask created `0600` files where tests requested
-`0640`; all three unchanged selectors failed at `077` and passed at `022`, confirming the local
-wrapper/environment mismatch. The corrected `022` wrapper is prepared but not run; production
-process umask is unobserved and no canonical rerun has passed. E791/E795 are historical after
-UI pins changed; current full-browser/64-state axe and changed-module security QA remain pending
-(the read-only audit found eight security-input drifts). Standalone guide binding/reuse passed
-without new captures. Production remains schema 12, ready and loopback-only; no release action is
-claimed. See [E833](../../MVP-PLAN.md#r-astra-120-e833-current-candidate-and-scoped-acceptance-checkpoint)
+The exact-head `26997c426eacd0d283e44d62a338203f5cee6783` Linux/amd64 image build and independent
+source/stage bindings **Passed** (148 source inputs and 52 served/export pairs); this is build-only.
+The 196-case browser aggregate **Failed** (182 passed, 2 skipped, 1 failed, 11 unrun, 2 suite
+errors); the separate derived union (193 passes, 3 skips) does not replace it. The 64-state
+whole-route axe run **Failed** with one moderate heading-order incomplete and zero violations. The
+68-state private auth-loading fixture **Failed** (63 passed, 5 failed) on a serious
+`aria-prohibited-attr` violation for an empty status span. A private `aria-hidden` source/test repair
+passed independent selected source, regression, and syntax review; actual build/browser/axe checks
+were skipped for those repaired bytes. A separate private RootFS chunk candidate passed 48 focused
+and 6 standalone tests and matched a read-only Docker image-inspect probe for 508 IDs, with no Docker mutation. The exact-head canonical local gate **Passed** for E834 only: 3,241 Python passes, 4 skips, 4
+deselected, 85.70% coverage, and 71 frontend checks. Parent and independent review passed its
+terminal/source/stage and exact-owned-cleanup scope; full-host FD visibility remains **Unavailable**.
+Four opt-in native tests were skipped. After E834, Auth and RootFS source repairs were applied;
+selected checks passed (Auth Node 1/1; RootFS 48 plus Ruff/format), and the approved frontend
+build/stage passed 72 checks with 52/52 byte pairs. Exact-ID retirement and acknowledgement of the
+E834 image **Passed**; the parent receipt confirms the target absent and one managed image retained.
+The earlier supplemental-receipt **Pending** checkpoint is superseded. Independent container-identity
+observer QA passed source review, six Docker-free tests, Ruff check, and format; Docker, image/build,
+real wrapper, and PR-pair binding were skipped. No new image is established. Independent browser/axe
+QA passed the affected five cases and full 68-case matrix, with 0 violations/incompletes across 72
+scans; 80 source pins, 52 served/export pairs, and cleanup matched. Pixel 7 was emulated, and the
+older 196-case aggregate was not rerun. Production remains schema 12 without promotion. See E835 in
+the [MVP plan](../../MVP-PLAN.md). See [E834](../../MVP-PLAN.md#r-astra-120-e834-exact-head-build-and-bounded-follow-up-scopes)
 for receipt paths and hashes.
 
 ## Unix-socket test fixtures

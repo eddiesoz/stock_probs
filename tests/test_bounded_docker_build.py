@@ -2477,8 +2477,8 @@ def test_schema13_rehearsal_retirement_rejects_incomplete_rootfs_inventory_befor
         command[:4] == [bounded.DOCKER, "image", "rm", "--no-prune"] for command in state["calls"]
     )
     assert state["capture_calls"]
-    assert state["capture_calls"][0][1] == bounded._SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES
-    assert state["capture_calls"][0][2] == bounded.BUILDX_LISTING_TIMEOUT
+    assert state["capture_calls"][0][1] <= bounded._SCHEMA13_ROOTFS_CHUNK_MAX_BYTES
+    assert 0 < state["capture_calls"][0][2] <= bounded.BUILDX_LISTING_TIMEOUT
 
 
 def test_schema13_rehearsal_retirement_allows_unrelated_complete_rootfs_inventory(
@@ -2495,7 +2495,192 @@ def test_schema13_rehearsal_retirement_allows_unrelated_complete_rootfs_inventor
     assert result["status"] == "retired"
     assert state["image_id"] not in state["image_ids"]
     assert state["inventory"] == {}
-    assert state["capture_calls"][0][1] == bounded._SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES
+    assert state["capture_calls"][0][1] <= bounded._SCHEMA13_ROOTFS_CHUNK_MAX_BYTES
+
+
+def _rootfs_test_image_ids(count: int) -> set[str]:
+    return {f"sha256:{number:064x}" for number in range(1, count + 1)}
+
+
+def _rootfs_test_row(image_id: str, layers: list[str] | None = None) -> bytes:
+    actual_layers = layers or ["sha256:" + "a" * 64, "sha256:" + "b" * 64]
+    return f"{image_id}|layers|{json.dumps(actual_layers)}\n".encode("ascii")
+
+
+def test_schema13_rootfs_inventory_reads_exact_507_ids_in_bounded_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image_ids = _rootfs_test_image_ids(507)
+    calls: list[tuple[list[str], int, float]] = []
+
+    def capture(argv: list[str], *, max_bytes: int, timeout: float) -> bytes:
+        requested = argv[5:]
+        assert 0 < len(requested) <= bounded._SCHEMA13_ROOTFS_CHUNK_SIZE
+        assert max_bytes <= bounded._SCHEMA13_ROOTFS_CHUNK_MAX_BYTES
+        assert 0 < timeout <= bounded.BUILDX_LISTING_TIMEOUT
+        calls.append((requested, max_bytes, timeout))
+        return b"".join(_rootfs_test_row(image_id) for image_id in requested)
+
+    monkeypatch.setattr(bounded, "_capture_bounded_stdout", capture)
+    inventory = bounded._schema13_rehearsal_rootfs_layers(image_ids)
+
+    assert set(inventory) == image_ids
+    assert len(inventory) == 507
+    assert len(calls) == 16
+    assert [len(requested) for requested, _max_bytes, _timeout in calls] == [
+        32,
+    ] * 15 + [27]
+    flattened = [image_id for requested, _max_bytes, _timeout in calls for image_id in requested]
+    assert len(flattened) == len(set(flattened)) == 507
+    assert set(flattened) == image_ids
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected_error"),
+    (
+        ("duplicate_within_chunk", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("omitted_within_chunk", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("omitted_second_chunk", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("foreign_from_prior_chunk", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("non_ascii", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("invalid_type", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("empty_layers", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("invalid_layer_digest", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("duplicate_layer_digest", "schema13_rehearsal_ancestry_metadata_invalid"),
+        ("129_layers", "schema13_rehearsal_image_inventory_too_large"),
+    ),
+)
+def test_schema13_rootfs_inventory_rejects_malformed_chunk_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+    expected_error: str,
+) -> None:
+    ids = sorted(
+        _rootfs_test_image_ids(
+            33 if fault in {"omitted_second_chunk", "foreign_from_prior_chunk"} else 2
+        )
+    )
+    requested_chunks: list[list[str]] = []
+
+    def capture(argv: list[str], *, max_bytes: int, timeout: float) -> bytes:
+        requested = argv[5:]
+        requested_chunks.append(requested)
+        if fault == "omitted_second_chunk" and len(requested_chunks) == 2:
+            return b""
+        if fault == "foreign_from_prior_chunk" and len(requested_chunks) == 2:
+            return _rootfs_test_row(requested_chunks[0][0])
+        if fault == "duplicate_within_chunk":
+            return _rootfs_test_row(requested[0]) + _rootfs_test_row(requested[0])
+        if fault == "omitted_within_chunk":
+            return _rootfs_test_row(requested[0])
+        if fault == "non_ascii":
+            return requested[0].encode("ascii") + b'|layers|["sha256:\xff"]\n'
+        if fault == "invalid_type":
+            return f"{requested[0]}|unknown|[]\n".encode("ascii")
+        if fault == "empty_layers":
+            return f"{requested[0]}|layers|[]\n".encode("ascii")
+        if fault == "invalid_layer_digest":
+            return f'{requested[0]}|layers|["sha256:{"G" * 64}"]\n'.encode("ascii")
+        if fault == "duplicate_layer_digest":
+            digest = "sha256:" + "a" * 64
+            return f"{requested[0]}|layers|{json.dumps([digest, digest])}\n".encode("ascii")
+        if fault == "129_layers":
+            layers = [f"sha256:{number:064x}" for number in range(129)]
+            return b"".join(
+                _rootfs_test_row(image_id, layers if image_id == requested[0] else None)
+                for image_id in requested
+            )
+        return b"".join(_rootfs_test_row(image_id) for image_id in requested)
+
+    monkeypatch.setattr(bounded, "_capture_bounded_stdout", capture)
+    with pytest.raises(bounded.BuildError, match=expected_error):
+        bounded._schema13_rehearsal_rootfs_layers(set(ids))
+
+    if fault in {"omitted_second_chunk", "foreign_from_prior_chunk"}:
+        assert len(requested_chunks) == 2
+
+
+def test_schema13_rootfs_inventory_accepts_exact_128_layer_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image_id = next(iter(_rootfs_test_image_ids(1)))
+    layers = [f"sha256:{number:064x}" for number in range(128)]
+    monkeypatch.setattr(
+        bounded,
+        "_capture_bounded_stdout",
+        lambda argv, **_kwargs: _rootfs_test_row(argv[5], layers),
+    )
+
+    assert bounded._schema13_rehearsal_rootfs_layers({image_id}) == {image_id: tuple(layers)}
+
+
+def test_schema13_rootfs_inventory_enforces_exact_deadline_and_subprocess_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ids = _rootfs_test_image_ids(2)
+    ticks = iter([0.0, 0.0, bounded._SCHEMA13_ROOTFS_GLOBAL_TIMEOUT])
+    monkeypatch.setattr(
+        bounded,
+        "time",
+        SimpleNamespace(monotonic=lambda: next(ticks)),
+    )
+    calls: list[list[str]] = []
+
+    def capture(argv: list[str], **_kwargs: object) -> bytes:
+        calls.append(argv[5:])
+        return b"".join(_rootfs_test_row(image_id) for image_id in argv[5:])
+
+    monkeypatch.setattr(bounded, "_capture_bounded_stdout", capture)
+    with pytest.raises(
+        bounded.BuildError,
+        match="schema13_rehearsal_ancestry_metadata_timeout",
+    ):
+        bounded._schema13_rehearsal_rootfs_layers(ids)
+    assert len(calls) == 1
+
+    monkeypatch.setattr(bounded, "time", __import__("time"))
+
+    def subprocess_timeout(*_args: object, **_kwargs: object) -> bytes:
+        raise bounded.BuildError("fixed_command_unavailable_or_timeout")
+
+    monkeypatch.setattr(bounded, "_capture_bounded_stdout", subprocess_timeout)
+    with pytest.raises(bounded.BuildError, match="fixed_command_unavailable_or_timeout"):
+        bounded._schema13_rehearsal_rootfs_layers(ids)
+
+
+def test_schema13_rootfs_inventory_enforces_aggregate_bytes_and_image_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ids = _rootfs_test_image_ids(3)
+    monkeypatch.setattr(bounded, "_SCHEMA13_ROOTFS_CHUNK_SIZE", 1)
+    monkeypatch.setattr(bounded, "_SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES", 250)
+    calls: list[int] = []
+
+    def overflow_on_remaining_budget(argv: list[str], *, max_bytes: int, timeout: float) -> bytes:
+        calls.append(max_bytes)
+        output = _rootfs_test_row(argv[5], ["sha256:" + "a" * 64])
+        if len(output) > max_bytes:
+            raise bounded.BuildError("builder_driver_listing_too_large")
+        return output
+
+    monkeypatch.setattr(bounded, "_capture_bounded_stdout", overflow_on_remaining_budget)
+    with pytest.raises(
+        bounded.BuildError,
+        match="schema13_rehearsal_image_inventory_too_large",
+    ):
+        bounded._schema13_rehearsal_rootfs_layers(ids)
+    assert len(calls) == 2
+    assert calls[0] == 250
+    assert 0 < calls[1] < calls[0]
+
+    monkeypatch.setattr(bounded, "_SCHEMA13_ROOTFS_CHUNK_SIZE", 32)
+    calls.clear()
+    with pytest.raises(
+        bounded.BuildError,
+        match="schema13_rehearsal_image_inventory_too_large",
+    ):
+        bounded._schema13_rehearsal_rootfs_layers(_rootfs_test_image_ids(8193))
+    assert calls == []
 
 
 def test_schema13_rehearsal_partial_removal_restores_registered_tag_for_retry(

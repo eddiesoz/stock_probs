@@ -17,7 +17,7 @@ export function AuthControls() {
     return () => { active = false; };
   }, []);
 
-  if (session === undefined) return <span className="auth-status-skeleton" aria-label="Checking account" />;
+  if (session === undefined) return <span className="auth-status-skeleton" aria-hidden="true" />;
   if (!session?.authenticated || !session.user) return <a className="auth-link" href="/sign-in">Sign in</a>;
 
   const label = session.user.name || session.user.login || "Account";

@@ -1,26 +1,18 @@
 # Stock Probability MVP Roadmap
 
-Current R-ASTRA-120 E833 checkpoint: the bound candidate image passed one real-Zen two-owner
-native functional run and a separate synthetic three-protocol wire run. Native and kill used a
-local 768 MiB cgroup; synthetic wire used 1.5 GiB. The active-kill diagnostic passed for
-pending-search cancellation and zero approvals, but scan acknowledgement was false and no
-provider execution-count claim follows. These are not actual combined 1 GB acceptance. The local PR-pair rehearsal passed
-its write scope, but independent identity review is **Unavailable** and the actual-host pair attempt
-**Failed** on archive identity. A narrow checker repair is applied locally; builder and direct
-independent runs each passed 161 tests with one local-Docker test deselected, and scoped static and
-archive-manifest checks passed. The actual-host retry remains pending. The canonical gate **Failed** on
-three container-permission tests because the wrapper's `077` mask created `0600` files instead of
-the requested `0640`; all three selectors fail at `077` and pass at `022`, confirming a local
-wrapper/environment mismatch. The prepared corrected-`022` wrapper has not run, and production
-process umask remains unobserved. E791/E795 are historical because their UI pins changed; current
-full-browser/64-state axe and changed-module security QA remain pending. Standalone guide binding
-and evidence reuse **Passed** without new captures. Production remains schema 12, ready and
-loopback-only; no merge, deployment, resize, rollout, or email occurred. Actual 1 GB, PR-bound
-rollback, current browser/axe, security, owner canary, and release gates remain open. Physical
-mobile, true zoom, screen-reader, and PDF/UA evidence remain **Unavailable**. See [E833](MVP-PLAN.md#r-astra-120-e833-current-candidate-and-scoped-acceptance-checkpoint),
-[E832](MVP-PLAN.md#r-astra-120-e832-late-failure-diagnostic-only-repair), and the earlier
-[E831 checkpoint](MVP-PLAN.md#r-astra-120-e831-candidate-native-readiness-guard-failure-checkpoint)
-in the [MVP plan](MVP-PLAN.md).
+Current R-ASTRA-120 E835 follow-on: after the E834 exact-head canonical local Pass, the reviewed
+Auth aria repair and RootFS chunk repair were applied to the local working tree. Their selected
+checks passed (Auth Node 1/1; RootFS 48 plus Ruff/format), and the approved frontend build/stage
+passed 72 checks with 52/52 served/export byte pairs. Exact-ID retirement of the E834 image passed:
+the target is absent and one managed image remains; no force, prune, or volume operation occurred.
+Independent container-identity observer QA passed its source, six Docker-free test, Ruff, and format
+scope; Docker, image/build binding, and PR-pair acceptance were skipped. No image was built from
+E835 source. Independent browser/axe follow-up passed the affected five cases and the complete
+68-case matrix, with zero violations/incompletes over 72 scans and exact source/stage/cleanup
+bindings. The older 196-case aggregate remains failed and was not rerun; Pixel 7 was emulated.
+Production remains schema 12 without promotion; native/runtime, actual 1 GB, PR rollback, security,
+accessibility beyond this scoped axe run, owner-canary, and release gates remain open. See
+[E834–E835](MVP-PLAN.md#r-astra-120-e835-authrootfs-application-and-frontend-stage-follow-on) in the [MVP plan](MVP-PLAN.md).
 
 Historical R-ASTRA-120 E825 checkpoint: the E823/E824 storage restore, Docker/containerd migration,
 cache relocation and retirement, bounded BuildKit setup, actual network-none worker proof, retained

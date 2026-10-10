@@ -20,7 +20,9 @@ access. Do not read `.env` files, credential or token files, or private keys. Ne
 configuration parsing, skill symlinks, or an agent file as proof of runtime discovery or QA.
 Open a new Codex task after changing project configuration or skills to check discovery.
 OpenCode-specific loader, restart, and provider limitations below continue to describe
-OpenCode evidence only.
+OpenCode evidence only. For local browser QA, use development fixture accounts and isolated
+browser contexts. Preserve signed-in tabs and authentication state; never clear user cookies,
+browser storage, or profiles to reset tests. Do not claim production local login or an MFA bypass.
 
 ### Current model routing
 
@@ -223,7 +225,7 @@ assignments, runtime acceptance paths, or release gates.
   browser and whole-route axe Passes, not full WCAG AA. Physical mobile, actual screen reader, true
   zoom, and PDF/UA remain **Unavailable**. The existing 1 GB plan, backups, and US$15 cap are unchanged;
   no merge, deployment, resize, rollout, or email occurred. See E832 in `MVP-PLAN.md`.
-  E833 binds image `sha256:df31982abbb58343cf3a49e7157bfc810b46edc09669b375dcb5a3edc7542b11`
+  Historical E833 binds image `sha256:df31982abbb58343cf3a49e7157bfc810b46edc09669b375dcb5a3edc7542b11`
   to clean pushed head `9fae511aad2b6dc6544ad57e208f268138b0a669`, 148 source inputs, and 52
   served/export files. Its one two-owner real-Zen native run and synthetic three-protocol wire
   run passed their declared scopes; native and kill used a local 768 MiB cgroup, while synthetic
@@ -456,6 +458,26 @@ after a fix. Repeat a full suite when a release gate or shared-contract impact r
 workflow does not relax release, security, or acceptance gates. For native-runtime repairs, run the
 real functional check before the full release aggregate so a known runtime failure does not waste
 another broad run; retain unchanged UI and component evidence with exact input bindings.
+Current R-ASTRA-120 checkpoint E835: E834's clean exact-head canonical local gate passed its
+declared native-x86_64 scope (3,241 Python passes, 4 skips, 4 deselected, 85.70% coverage, 71
+frontend checks); its independent terminal audit also passed its declared scope. E834's full
+196-case browser aggregate and 64-state axe run failed, and its private auth-loading fixture failed:
+63 passed, 5 failed. Those results remain bound to the pre-E835 inputs. E835 applied the reviewed
+Auth aria fix and RootFS chunk repair: the focused Auth regression passed 1/1, applied-source RootFS
+QA passed 48 tests with Ruff/format, and the approved frontend build/stage passed 72 checks with
+52/52 served/export pairs. The old E834 image was retired under the reviewed exact-ID guard; the
+parent receipt confirms the target absent and one managed image retained, with no force, prune, or
+volume operation. Independent Docker-free observer QA passed six tests, source review, Ruff check,
+and format; Docker/build/runtime and PR-pair binding were skipped. No image was built from E835
+source. Independent browser/axe follow-up passed 5/5 affected cases and 68/68 in the reviewed
+whole-route axe matrix, with zero raw violations/incompletes across 72 scans; 80 source pins, 52 served/
+export pairs, and exact cleanup matched. Pixel 7 was emulated; physical mobile is **Unavailable**.
+The earlier 196-case aggregate **Fail** remains historical; a fresh run is held until a new committed
+head and green current stage.
+Production remains schema 12 with no promotion. Native/provider, actual combined 1 GB,
+current-image shutdown, PR rollback, complete security/accessibility, owner-canary, final guide and
+release gates remain open. See E834–E835 in `MVP-PLAN.md`.
+
 Historical R-ASTRA-120 E817: The f9d1 candidate image built and matched 149 source inputs and 52 served/export files, but its native run **Failed**: owner 0 answered; owner 1 received seven search sources and one fetch source then returned provider_unavailable. Native cause remains **Unproven**. A synthetic reproduction confirmed an irreversible failure after a transient snapshot read timeout despite later native success. The bounded read-only GET retry repair passed 14 builder and 11 independent selected tests plus parent source review; it retains the original 120-second deadline and fatal authorization/protocol checks. The f9d1 canonical run was intentionally interrupted at 156 partial Python passes with only two of three required checks completed; it is not a Pass. A repaired image/native run precedes the next final aggregate. Actual 1 GB, current-image shutdown, PR rollback, final guide and release gates remain open; production and the US$15 cap are unchanged.
 
 Historical R-ASTRA-120 E818: The cfb50 candidate built with 149 source inputs and 52 served/export files unchanged. Both owners completed real native model/MCP turns, including search and guarded fetch, but the complete raw functional output was not persisted; full independent functional acceptance remains **Unavailable**. Independent current-image active-search cancellation passed its local scope; the separate native wire command passed its synthetic protocol scope. The canonical check **Failed** at 2,900 passes, two AF_UNIX temporary-path setup failures, four skips, four deselected and 85.63% coverage. A test-only path shortening passed all 557 supervisor tests and independent QA passed both original failures with 83-byte socket paths; production assertions are unchanged. No product bytes changed in that repair. Actual 1 GB, PR-bound rollback, current canonical, final guide, owner canary and release gates remain open. Production, backups and the US$15 monthly cap are unchanged; no merge, promotion or email occurred.
@@ -490,10 +512,10 @@ OOM events were zero. The equivalent current-image kill remains pending and neit
 establishes the combined 1 GB test. Selected helper profile tests passed in E70, but live Docker or
 production `HostConfig.SecurityOpt`/no-new-privileges inspection remains **Unavailable**; the earlier
 local schema-13 rehearsal directly verified `no_new_privileges`, UID/GID 10001, no
-effective/permitted capabilities, and read-only root. E65 covers migration-pin QA only. The latest read-only production observation is the E829 inspect/status receipt at `2026-10-09T20:10:32Z`:
+effective/permitted capabilities, and read-only root. E65 covers migration-pin QA only. The latest receipt-backed read-only production observation is E833's post-failure inspect:
 revision `da2764e8477698fa7d686be93a4711e35478e802`, image
 `sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1`, schema 12 ready,
-`failed=null`, and loopback-only. Receipt `test-results/assistant-r120/coordination/read-observation-parent-source-20261009T2007Z/production-mcp-read.json`, SHA-256 `1325b55c20ad6b753227963a7edddb2a01cc5d5dfce1c433e056edfbdd3589ff`, did not return rollout, RAM, billing, or browser access; rollout state remains **Unavailable**. E798 and E699 are earlier observations.
+`failed=null`, and loopback-only. Receipt `test-results/assistant-r120/coordination/actual-host-9fae-mcp-20261009T223042Z/post-failure-inspect.json`, SHA-256 `2ed091bdacc76c101bd4f585305106b3755824947b1aa69129aab79e50f83a61`, did not return rollout, RAM, billing, or browser access; rollout state remains **Unavailable**. E829 is an earlier observation.
 
 An earlier completed quiet full browser aggregate was **Fail** at 145 passed, 2 failed, and 3 skipped;
 its receipt is `/tmp/r-astra-120-browser-final-rerun-20261005T131314Z/independent-browser-qa-receipt.json`

@@ -241,3 +241,12 @@ test("portfolio, market, and forecast mutations use the CSRF-aware API helper", 
     assert.doesNotMatch(file, /fetch\([\s\S]{0,260}?method:\s*["'](?:POST|DELETE|PUT|PATCH)["']/);
   }
 });
+
+test("pending account status skeleton is hidden from assistive technology", async () => {
+  const controls = await source("components/auth-controls.tsx");
+  const pendingSkeleton = controls.match(/if \(session === undefined\) return ([^;]+);/);
+  assert.ok(pendingSkeleton, "pending account placeholder must remain present");
+  assert.match(pendingSkeleton[1], /className="auth-status-skeleton"/);
+  assert.match(pendingSkeleton[1], /aria-hidden="true"/, "empty decorative placeholder must be removed from the accessibility tree");
+  assert.doesNotMatch(pendingSkeleton[1], /aria-label=/, "empty placeholder must not expose a prohibited accessible name");
+});

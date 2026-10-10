@@ -53,31 +53,24 @@ This Codex setup does not alter prior OpenCode receipts or establish provider, p
 release, export, or remote acceptance.
 
 Project configuration text is not runtime-discovery evidence. E767 independently observed eight
-deployment tools and a read-only status call. The current assistant checkpoint is E833 in the [MVP
-plan](../../MVP-PLAN.md#r-astra-120-e833-current-candidate-and-scoped-acceptance-checkpoint). Its
-exact-head candidate passed one two-owner real-Zen native functional run and a separate synthetic
-wire scope; native and kill used 768 MiB, while synthetic wire used 1.5 GiB. The corrected
-active-kill diagnostic review passed for pending-search cancellation and zero approvals, but
-`active_search_scan_acknowledged=false` and no provider execution-count claim follows. None is actual
-combined 1 GB acceptance. The local
-PR-pair rehearsal passed its write scope, independent identity review is **Unavailable**, and the
-actual-host pair attempt **Failed** on archive identity. Its narrow checker repair is applied
-locally; builder and direct independent runs each passed 161 tests with one local-Docker test
-deselected, with scoped static and archive-manifest checks passing. Actual-host retry remains
-pending. The current canonical gate **Failed** with
-three container-permission tests because the wrapper's `077` mask
-created `0600` files instead of the requested `0640`; the selectors failed at `077` and passed at
-`022`, confirming a local wrapper/environment mismatch. The corrected `022` wrapper is prepared
-but unexecuted, and production process umask is unobserved. E791/E795 current reuse is **Unavailable** after UI
-input drift, and fresh browser/axe plus changed-module security QA remain pending. Standalone guide
-binding/reuse **Passed** without new captures, but is not a release gate. Production remains schema
-12, ready and loopback-only; no merge, deployment, resize, rollout, or email occurred. PDF/UA,
-physical mobile, true zoom, and actual screen-reader evidence remain **Unavailable**. See E833 for
-the exact receipts and hashes. The detailed E823–E830 narrative below is retained as historical
-scoped evidence. E823/E824 storage
-and bounded-worker results remain passed for their recorded scopes, and E825's identity-bound
-cleanup repair passed its selected tests and independent/parent source review. The first actual
-PR-head application-candidate build then **Failed** with
+deployment tools and a read-only status call. The current assistant follow-on is E835 in the [MVP
+plan](../../MVP-PLAN.md#r-astra-120-e835-authrootfs-application-and-frontend-stage-follow-on). E834's exact-head local canonical gate passed its declared scope, while its full browser aggregate,
+64-state axe run, and private auth-loading fixture failed. E835's applied Auth and RootFS source
+checks and 72-check frontend build/stage passed for their declared scopes. Exact-ID retirement of the
+E834 image and acknowledgement **Passed**; the supplemental parent receipt confirms target absence
+and one managed image remaining. Independent container-identity observer QA passed source review,
+six Docker-free tests, Ruff check, and format; Docker/image/build and PR-pair binding were skipped,
+so no runtime or pair acceptance is established. Independent browser/axe QA passed the affected five
+cases and complete 68-case matrix with 0 violations/incompletes across 72 scans; source/stage pins
+and cleanup matched. Pixel 7 was emulated; the older 196-case aggregate was not rerun. Production
+remains schema 12 without promotion; physical mobile, true zoom, screen-reader, and PDF/UA results
+remain **Unavailable**. See E834–E835 for exact receipts and
+limitations.
+
+The detailed E823–E830 narrative below is retained as historical scoped evidence.
+E823/E824 storage and bounded-worker results remain passed for their recorded scopes, and E825's
+identity-bound cleanup repair passed its selected tests and independent/parent source review. The
+first actual PR-head application-candidate build then **Failed** with
 `local_build_failed:bounded_image_build:exit_1`; its expected receipt was not created and no image
 was accepted. The helper identifies only `fixed_command_unavailable_or_timeout`; the exact failed
 subcommand and cause remain **Unproven**. The source-only monitor repair addresses a possible
