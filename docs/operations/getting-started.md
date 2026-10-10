@@ -672,34 +672,25 @@ state, command, or credential. R-ASTRA-106 records a live refresh result with `5
 applied to firewall `177236117`; the Linode console login uses Google SSO and SSH material remains
 separate.
 
-R-ASTRA-120 remains **In progress**. PR #2's tested app release remains exact head
-`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`; helper-only PR #3 merged at
-`ea71fddd1519394c59960c60a3c36a83b15b76dc` at `2026-10-10T15:30:22Z`, with public `main` matching.
-The fixed helper updater passed independent static review and applied successfully after the parent
-verified clean public-main source. The exact 5ad image was deployed at `2026-10-10T15:32:35.858627Z`;
-production reported schema 13, ready, assistant disabled and loopback-only, with verified pre-deploy
-and pre-migration backups and the registered schema-13 recovery image. The visible rollout control
-then **Passed** setting `owner_canary`; status reported ready, enabled, schema 13 on the same image.
-Receipts: [deployment and inspect](../../MVP-PLAN.md#r-astra-120-e849-production-deployment-and-owner-canary-checkpoint)
-and [owner-canary rollout](../../MVP-PLAN.md#r-astra-120-e849-production-deployment-and-owner-canary-checkpoint).
-
-Independent production-boundary QA **Passed** eight unauthenticated TLS probes plus deployment,
-backup, recovery and rollout-identity checks. It observed health/readiness/auth-status `200`, a
-no-cookie unauthenticated auth session, private-history and assistant-status `401`, and hostile-origin/host
-`403` responses without ACAO reflection. It skipped the actual owner TOTP/UI canary. The owner's
-existing browser remains at authenticator verification with the current-code field empty; no cookies
-were cleared and no development login or MFA bypass was used. The owner UI/model/action canary remains
-**Pending**. Invited-user rollout and the authorized announcement are held. E848's earlier
-`backup_unverified` deploy failure remains
-historical; source review found that backup-creation metadata lacked the `verified` field expected by
-the helper before signed-reader verification. E847 security, browser/axe, guide and native wire/kill
-results, and the exact-5ad pair/resource/recovery, actual combined 1 GB and PR-bound rollback scopes,
-remain Pass within their original bindings. Physical mobile, actual screen reader, true zoom and
-PDF/UA remain **Unavailable**; no full accessibility claim is made. Backup creation metadata is not
-the verification receipt: promotion requires separate signed-reader verification of the exact backup
-artifact without promotion, and helpers must be checked against actual CLI/service response shapes.
-The US$15 monthly total cap, existing 1 GB host and backups are unchanged. See the
-[R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-e849-production-deployment-and-owner-canary-checkpoint).
+E850 completed the owner UI/model/action canary, invited-user rollout, and authorized release notice
+for their declared scopes on the exact tested PR #2 app release
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13. Production
+and assistant health were ready/enabled and loopback-only after the invited rollout. The parent-observed
+canary covered four model answers, an aggregate-only workspace summary, exact-query native search with
+seven sources, guarded exact-URL fetch, a confirmed theme action, saved-chat/context behavior,
+cancellation/focus, and emulated-mobile modal/Escape behavior. Independent review confirmed the
+receipt/image bindings and a corrected desktop answer/source capture, but did not replay the original
+clicks. Preserve the initial screenshot-label **Fail** and the mobile CSS-scale/focus evidence marked
+**Unavailable**; parent DOM observations are not an independent replay. The notice was sent in the
+authorized existing thread to three recipients; delivery, inbox placement, and read status remain
+**Unavailable**. E848's earlier `backup_unverified` deploy failure remains historical; the repaired
+deployment and its verified backups are recorded in the [E849 ledger](../../MVP-PLAN.md#r-astra-120-e849-production-deployment-and-owner-canary-checkpoint).
+E847's canonical/security/browser/axe and E848's exact-5ad pair/native/resource/recovery/rollback
+results remain bounded to their original bindings. Physical mobile, actual screen reader, true zoom,
+and PDF/UA remain **Unavailable**; no full WCAG AA claim follows. The existing 1 GB host, backups,
+and US$15 monthly cap including tax remain unchanged. See the
+[E850 ledger](../../MVP-PLAN.md#r-astra-120-e850-owner-canary-invited-rollout-and-release-notice).
 
 The
 rehearsal source creates a separate, labelled user-defined bridge for each candidate run, with

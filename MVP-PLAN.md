@@ -6217,6 +6217,79 @@ E848 documentation evidence:
 | Pre-edit authored-file baseline | Task `R-ASTRA-120`; UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; byte-copied and `cmp`-verified files in `/var/tmp/r12r/r120-e848-private-prep-20261010T150909Z/`, directory `0700`, files `0600`. SHA-256: `AGENTS.md` `6dc5aa25276ec67600825288b7f7f59e40ac1c1147842dbd11979389e63bf6af`; `MVP-PLAN.md` `b97e83371cb3764667fb4be4dfbfcd0f6c9721fa8fbe0cc850d1a0c2a9dc9a47`; `MVP-ROADMAP.md` `ff352ce9d16dcceab2ade188cee65802c9da13fbc0a4a14eed3480925ad2335b`; `docs/operations/getting-started.md` `57c783b42f9353ebdc1ddfa0a4b169558abe2fc1bbaafc77b264f208ffb6e735`. Pre-change `HEAD` was `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`. |
 | Authored documentation checks | `.dev-venv/bin/python scripts/validate_docs.py` exited `0` (**Pass**, 9 categories, 14 topics, 8 project skill governance entries); `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` exited `0` (**Pass**, 154 mapped files); `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs/operations/getting-started.md` exited `0` (**Pass**). Documentation tests were not run. |
 
+### R-ASTRA-120 E850 owner canary, invited rollout, and release notice
+
+E850 completes the authenticated owner UI/model/action canary, invited-user rollout, and the
+authorized release notice for their declared scopes. The application release remains the exact
+tested PR #2 head `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13. E849's
+earlier owner-canary-pending, invited-rollout-held, and no-email checkpoint remains historically
+accurate; E850 supersedes those statuses without changing the application image.
+
+The parent-observed owner canary **Passed** for its declared authenticated browser/model/action
+scope at `2026-10-10T18:56:00Z`–`19:05:19.457743Z`. The existing signed-in session was preserved;
+no agent entered an owner TOTP code, cleared cookies, or used a development login/MFA bypass. Four
+real Space Bunny Free answers completed. The application MCP workspace-summary read returned
+aggregate counts only. Native search used exact-query browser confirmation and returned seven
+sources; a guarded native fetch used the approved exact URL
+`https://www.iana.org/help/example-domains` and produced a source and answer. One
+`theme.set` action was explicitly confirmed, applied, and then restored to Light. The canary also
+reopened a saved chat, observed the new-context update while prior answers retained Research context,
+cancelled an active turn with DOM focus on the assistant prompt, and observed a 390×844 emulated-mobile
+full-screen `role=dialog`/`aria-modal=true` surface; Escape returned focus to the launcher. Parsed search links were not independently verified for source
+attribution; per-click timestamps and provider-side execution counts are **Unavailable**.
+
+Independent owner-canary QA **Passed** receipt integrity, deployment binding, screenshot file
+integrity, and the remaining screenshot visual scope, but it did not replay the original clicks or
+model actions. Its initial screenshot-label check **Failed** because the image labeled as showing a
+guarded-fetch answer showed tool activity without the final answer. The supplemental desktop
+answer/source capture was independently reviewed and **Passed** for visible answer/source content
+only; it does not prove provider correctness or source attribution. The mobile images are 375×812
+pixels and do not bind the claimed 390×844 CSS viewport; CSS pixel scale is **Unavailable**. Focus
+on the prompt after cancellation was observed in parent DOM output, not independently replayed or
+proven by screenshot pixels. These limitations and the initial failure remain visible.
+
+The invited-user rollout call **Passed** on the same exact image. The follow-up inspect reported
+assistant rollout `invited`, app ready, assistant enabled and ready, schema 13, and loopback-only.
+Independent read-only production-identity QA **Passed** the exact tested app/recovery, archive,
+pair-manifest, verified pre-deploy and pre-migration backup, and rollout identity checks; its
+interactive owner step was skipped and is covered only by the parent-observed canary plus the
+separate artifact review.
+
+After invited rollout and health confirmation, the authorized release notice was **Sent** to the
+three authorized recipients in the existing personal thread. Gmail sent-message readback **Passed**
+for the same-thread sent item and the four attachment byte counts: inline synthetic desktop PNG
+151,332 bytes, inline synthetic mobile-emulation PNG 57,018 bytes, HTML guide 1,543,993 bytes, and
+PDF guide 1,216,365 bytes. The notice included two focused feedback questions. Independent
+final-release receipt QA **Passed** its declared integrity,
+identity, chronology, and byte-count scope. Its fresh inspect at `2026-10-10T19:15:27Z`–`19:15:28Z`
+confirmed exact revision/image/schema 13, invited mode, app ready, assistant enabled and ready, and
+loopback-only. Binary digest/disposition independent readback and the worker-specific health field
+are **Unavailable**. Delivery, inbox placement, and read status are **Unavailable**. No recipient
+addresses, message/thread IDs, or message body are recorded here.
+
+E847's clean canonical result (3,294 Python passes and 72 frontend checks), 590-check security
+scope, reused browser aggregate (193/196 with three expected skips), and whole-route axe scope (68
+cases/72 scans with zero violations and incompletes) remain Pass for their original exact bindings.
+E848's exact-5ad actual-host PR-pair, two-owner/native, actual combined 1 GB, recovery, and PR-bound
+rollback results are reused without a new application build; they are not relabeled as E850 reruns.
+Physical mobile, actual screen reader, true zoom, and PDF/UA remain **Unavailable**, and no full
+WCAG AA claim follows. The existing 1 GB host and backups and US$15 monthly total cap including tax
+remain unchanged; no resize occurred.
+
+| Evidence | Task and observed result |
+| --- | --- |
+| Pre-edit documentation baseline | Task `R-ASTRA-120`; UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; `/var/tmp/r12r/r120-owner-canary-doc-baseline-20261010T182323Z/baseline.json`, SHA-256 `89f4384c684b5136e518d2657924e14cddeec96e7eba3c23ab8670def8b9bc37`. Its eight owned-file byte counts and SHA-256 values matched before edits; baseline directory/files were `0700`/`0600`. Actual authored paths were verified from the manifest. |
+| Owner canary | `/var/tmp/r12r/r120-owner-canary-20261010T1856Z/owner-canary.json`, SHA-256 `05ecb600ff82d090d31cdc0b171789f4b8af98949b3732df61f3a092335a79ac`; status **Pass** for parent-observed declared scope. |
+| Canary supplement | `/var/tmp/r12r/r120-owner-canary-20261010T1856Z/supplemental-visual-and-tool-recovery.json`, SHA-256 `89b5c2031ca1d68c82cd65f0c95ef090dab0f957dd06fca98b300dad22eca303`; parent-observed correction and recovery details. |
+| Invited rollout and health | `/var/tmp/r12r/r120-owner-canary-20261010T1856Z/invited-rollout-and-health.json`, SHA-256 `e7d41eb9f4682cb928406099faea5fc446d1843606494b9019260431f8e2a20a`; rollout and ready/loopback health **Pass**. |
+| Independent production identity | `/var/tmp/r12r/r120-live-prod-identity-qa-20261010T1900Z/independent-review.json`, SHA-256 `7bd7d5085a1e8d0bdeddf230599107f1045862def76e09bdf6cc2d79b3cbd22f`; read-only identity and verified-backup scope **Pass**, interactive owner canary **Skipped**. |
+| Independent owner-canary review | `/var/tmp/r12r/r120-owner-canary-independent-qa-20261010T1906Z/independent-review.json`, SHA-256 `278ea10106b7382da35663e7ea55ad7000d2b8137f9b298c288c5227c1b15e6f`; preserves the screenshot-label **Fail**, mobile viewport/focus **Unavailable**, and original-interaction replay **Skipped**. |
+| Independent supplement review | `/var/tmp/r12r/r120-owner-canary-supplement-review-20261010T1908Z/independent-review.json`, SHA-256 `b59fcf76faf81fbcf96f9ca99c157253e7cd2a04c118ce1010ef7277bc1a04fb`; corrected desktop answer/source visual scope **Pass**, mobile CSS/focus corroboration **Unavailable**, runtime reproduction **Skipped**. |
+| Release notice sent | `/var/tmp/r12r/r120-owner-canary-20261010T1856Z/release-email-sent.json`, SHA-256 `36a0aed9c4f409a9b64eab28f282ac10fe7c84d4bff1437cba86f35c720293e9`; authorized sent scope **Pass**, no delivery/read claim. |
+| Sent-message readback | `/var/tmp/r12r/r120-owner-canary-20261010T1856Z/release-email-readback.json`, SHA-256 `214c90d498efe02a7b629ee9d5449a531ca0c0207f90250376ef60d57efb1af9`; sent item and attachment byte-count scope **Pass**, delivery/inbox/read **Unavailable**. |
+| Independent final-release receipt review | `/var/tmp/r12r/r120-owner-release-email-independent-qa-20261010T1915Z/independent-review.json`, SHA-256 `5f01e7a58a1befe7b3fba6f2c5c269a219505952642155dc390562475068c8a7`; declared identity, chronology, and attachment byte-count review **Pass**; binary digest/disposition readback and worker-specific health **Unavailable**. |
+
 
 ### R-ASTRA-120 E849 production deployment and owner-canary checkpoint
 

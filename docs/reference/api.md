@@ -62,11 +62,10 @@ revocation route; invitations expire and can be redeemed once.
 
 ## R-ASTRA-120 assistant API
 
-These routes are part of the deployed R-ASTRA-120 schema-13 release. E849 reports exact PR #2 image
-`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1` ready, enabled
-with rollout mode `owner_canary`. The actual owner UI/model/action
-canary remains pending; route presence and rollout-control success do not establish owner
-interaction acceptance. User routes use the existing authenticated, CSRF-protected
+These routes are part of the deployed R-ASTRA-120 schema-13 release. E850 reports exact PR #2 image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1` ready and enabled
+with rollout mode `invited`, loopback-only. The declared owner UI/model/action canary passed for its
+observed subset; it does not verify every route or feature in the matrix below. User routes use the existing authenticated, CSRF-protected
 application boundary; mutations require CSRF, and conversation, turn, event, and preview access
 checks active-session ownership. Provider administration routes use administrator checks, with
 fresh TOTP for sensitive operations.
@@ -97,24 +96,23 @@ a safe redirect requires a new WebFetch request and a separate approval for that
 redirects need further approvals, within the five-hop, eight-tool, and 120-second turn bounds. When
 the guard is unavailable, WebFetch is denied. Chat text does not approve a search, fetch, or action.
 
-R-ASTRA-120 remains **In progress**. E847 passed the declared canonical and security scopes, and
-its input-bound browser/axe reuse passed: the 68-case/72-scan axe scope had zero violations or
-incompletes, and the 193/196 browser aggregate had three expected skips. Earlier input-bound
-current-product native wire/kill scopes passed; E848 passed the exact-5ad actual-host pair/resource/
-recovery, combined 1 GB and PR-bound rollback scopes. E849
-deployed the exact PR #2 image at schema 13 and set `owner_canary`; the actual owner UI/model/action
-canary is pending, and invited-user rollout and announcement are held. These scoped results do not
-establish full WCAG AA; physical mobile, actual screen reader, true zoom and PDF/UA remain
-unavailable. See the
+E850 completed the declared owner UI/model/action canary, invited rollout, and authorized release
+notice for the exact tested PR #2 release. The canary observed four model answers, an aggregate-only
+workspace summary, exact-query native search, guarded fetch, a confirmed theme action, saved-chat and
+context behavior, cancellation/focus, and emulated-mobile modal/Escape behavior. This does not certify
+every API route or workflow in the feature matrix below. E847's canonical/security/browser/axe results
+and E848's exact-5ad actual-host pair/native/resource/recovery/rollback results remain bounded to
+their original bindings. Physical mobile, actual screen reader, true zoom and PDF/UA remain
+unavailable; no full WCAG AA claim follows. See the
 [authoritative R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
 for current receipts and detailed statuses.
 
 ### Assistant feature coverage matrix
 
 This matrix maps the source contracts to the existing application. It is a coverage inventory for
-verification, not evidence that each workflow has passed or that the owner canary is complete.
-E847's reused browser/axe passes cover their declared unchanged inputs; they do not verify every
-matrix action through the authenticated owner UI/model/action canary. Application MCP reads
+verification, not evidence that each workflow has passed. E850 completed a declared owner canary,
+but did not verify every matrix action. E847's reused browser/axe passes cover their declared
+unchanged inputs. Application MCP reads
 require a live owner-scoped execution. Each turn requires acknowledgement of the visible page-context
 preview; subsequent private reads use that turn's live owner/session lease and bounded tool-call
 counter. This is not a separate approval for each private read. External search and fetch requests
@@ -132,7 +130,7 @@ or handoff needs the authenticated browser's exact, current, single-use confirma
 | Forecast outcomes | `history.outcomes`; owner-checked result and bounded observations | `outcome.record` appends an observation after confirmation; recorded forecasts remain immutable. |
 | `/tools/live-trading`: holdings | `workspace.instrument_lists`, public quote reads | `portfolio.add`, `portfolio.set_quantity`, `portfolio.remove`; quantities are research records, not brokerage positions. |
 | Watchlists | `workspace.instrument_lists`, public instrument lookup | `watchlist.add`, `watchlist.remove`; ownership derives from the active session. |
-| `/tools/markets`: quotes, bars and comparison | `market.quote`, `market.bars`, `market.compare`; exact provider/exchange identity | `market.open` navigates to the matching instrument workspace. Typed local filter, chart-range, visible-column, and quote/watchlist/chart refresh controls are implemented in source on the Markets page. The actual owner UI/model/action canary remains pending. |
+| `/tools/markets`: quotes, bars and comparison | `market.quote`, `market.bars`, `market.compare`; exact provider/exchange identity | `market.open` navigates to the matching instrument workspace. Typed local filter, chart-range, visible-column, and quote/watchlist/chart refresh controls are implemented in source on the Markets page. These Markets-specific owner workflows were not part of the E850 canary. |
 | Selected-instrument news | `market.news`; bounded public headlines with source/as-of | Public article links retain the existing safe-link behavior; no hidden browser automation. |
 | Live Trading notes and alerts | Existing local UI; these are not silently uploaded as server-owned records | `notes.set`, `notes.clear`, and `alerts.remove` hand off to the matching local control; `alerts.add` uses a typed, active-page/session-scoped browser action. |
 | Light/Dark/System settings | Current UI and route context; stored presentation choice remains local | `theme.set` uses the typed browser bridge after confirmation. |
@@ -156,9 +154,9 @@ control. On mobile the handoff closes the full-screen assistant and focuses the 
 or Alerts section heading. The assistant's action receipt remains in the conversation; reopen
 assistant history and the same conversation to review it. `alerts.add` instead uses the typed browser bridge after confirmation and
 is limited to the active Live Trading page/session; it is not a server-owned or cross-session alert.
-These rows describe source behavior in the deployed release; they are not production owner-canary
-acceptance. E849's rollout-control pass set `owner_canary`, while the actual owner UI/model/action
-canary remains pending.
+These rows describe source behavior in the deployed release, not acceptance of every workflow.
+E850's production canary passed its declared subset; the specific Live Trading note/alert handoffs
+described here were not individually exercised in that canary.
 
 `R-ASTRA-111` applies admission bounds to GitHub OAuth start: 8 starts per effective caller
 and 64 per app process in a rolling minute, plus 8 outstanding transactions per caller and 128

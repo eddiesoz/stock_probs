@@ -71,22 +71,23 @@ separate runtime tools with approval checks. The release does not add a companio
 arbitrary shell/filesystem access, or background job scheduler.
 
 Production Compose still defaults assistant enablement to `0` and rollout to `disabled`, but that
-is not the deployed setting. E849 deployed the tested PR #2 image
-`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1` at schema 13, ready
-and loopback-only, then the rollout control passed with `owner_canary` on that same image. The
-deployment verified pre-deploy and pre-migration backups and registered recovery image
-`sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f`. The actual owner
-UI/model/action canary remains pending; the owner's current authenticator-code field was empty.
-Invited-user rollout and the announcement remain held.
+is not the deployed setting. E850 records the exact tested PR #2 image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1` at schema 13, ready,
+enabled, and loopback-only, with rollout mode `invited`. The verified pre-deploy and pre-migration
+backups and registered recovery image `sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f`
+remain bound to that release. The parent-observed owner canary passed its declared model, native
+search/fetch, confirmed action, history/context, cancellation/focus, and emulated mobile modal scope;
+independent QA verified artifact bindings but did not replay the original actions. The release notice
+was sent after invited rollout and health confirmation. See the [E850 evidence ledger](../../MVP-PLAN.md#r-astra-120-e850-owner-canary-invited-rollout-and-release-notice).
 
 E847 passed its declared canonical and 590-check security scopes. Its input-bound browser/axe reuse
 passed for 193/196 browser cases with three expected skips and 68 cases/72 scans with zero
 violations or incompletes. Earlier input-bound current-product native wire/kill scopes also passed.
 E848 passed the exact-5ad actual-host pair/resource/recovery, combined 1 GB and PR-bound rollback
-scopes. These results do not establish full WCAG AA or owner UI/model/action acceptance. Physical
+scopes. These are still limited to their exact bindings and do not establish full WCAG AA. Physical
 mobile, actual screen reader, true zoom and PDF/UA evidence remain unavailable. The E848
 `backup_unverified` deployment failure and successful failure-path rollback are historical, not
-the current E849 result.
+the current E850 result.
 
 The source distinguishes rollout paths: `disabled` persists the disabled marker and invokes the
 fixed in-place assistant-kill client, while `owner_canary` and `invited` transitions force-recreate
