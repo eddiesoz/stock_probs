@@ -1,13 +1,13 @@
 # Stock Probability MVP Roadmap
 
-R-ASTRA-120 merged baseline E839; current follow-on E841–E849. PR #1 merged at exact revision
+R-ASTRA-120 merged baseline E839; current follow-on E841–E850. PR #1 merged at exact revision
 `6dc259e91cc8077b9264901bee3282167b9d05af` on `2026-10-10T06:25:51Z`. Its actual-host typed
 MCP rehearsal, schema-13 recovery, bounded combined 1 GB workload and current-image pending-search
 shutdown passed their declared scopes. The final eight captures and 14-page HTML/PDF guide passed
 their declared review scopes; reused HTML checks retain their original bindings. Physical mobile,
 actual screen reader, true zoom and PDF/UA remain Unavailable. E841's shared credential scanner
 repair and independent 23-test/provenance review passed; publication had failed at E841 before a
-GitHub release was created. At the E847 checkpoint, parent-observed metadata reported PR #2
+GitHub release was created. Historical R-ASTRA-120 status through E849 (superseded by E850): at the E847 checkpoint, parent-observed metadata reported PR #2
 **OPEN/DRAFT** at pushed head
 `53578a4c0995c13a787ee05044ede691ac84dd24`. Earlier actual-host pair calls failed with
 `host_memory_reserve_breached` and a sampled minimum of `70,848 KiB`, below the `131,072 KiB`
@@ -271,7 +271,7 @@ and `60` focused tests, recorded in the [MVP plan](MVP-PLAN.md). Runtime skill d
 **Unavailable** until directly verified in a fresh task. The R-ASTRA-118 retry already covered its
 deployed release, so no duplicate announcement is due.
 
-`R-ASTRA-120` remains **In progress; implementation authorized**. Current results are summarized in the E817 checkpoint above and detailed in the [MVP plan](MVP-PLAN.md). The longer chronological R-ASTRA-120 material below is preserved as historical evidence and does not update current gate status.
+Historical roadmap snapshot at E817: `R-ASTRA-120` was **In progress; implementation authorized**. E850 below supersedes that status; the longer chronological material remains preserved as historical evidence and does not update current gate status.
 
 Historical R-ASTRA-120 checkpoint, E595 onward: candidate source is present,
 but no assistant release or production rollout is accepted. E595 records the latest receipt-backed
@@ -3263,7 +3263,7 @@ and PDF/UA remain **Unavailable**; no full accessibility claim follows. The US$1
 GB plan and backups remain unchanged. See the [E848 evidence](MVP-PLAN.md#r-astra-120-e848-production-deployment-checkpoint).
 
 
-### Current R-ASTRA-120 checkpoint E849
+### Historical R-ASTRA-120 checkpoint E849
 
 Operational PR #3 merged at exact revision `ea71fddd1519394c59960c60a3c36a83b15b76dc` at
 `2026-10-10T15:30:22Z`, and public `main` matched. The helper-only updater passed independent
@@ -3282,3 +3282,29 @@ browser/axe, guide and native wire/kill results, and the exact-5ad pair/resource
 combined 1 GB and PR-bound rollback results, remain Pass within their original bindings. The US$15
 cap, existing 1 GB host and backups are unchanged. See the
 [E849 evidence](MVP-PLAN.md#r-astra-120-e849-production-deployment-and-owner-canary-checkpoint).
+
+### Current R-ASTRA-120 checkpoint E850
+
+E850 completes the owner UI/model/action canary, invited-user rollout, and authorized release
+notice for their declared scopes on the unchanged PR #2 app release
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13. The
+parent-observed authenticated canary passed four real model answers, aggregate-only workspace
+summary, exact-query native search with seven sources, guarded exact-URL fetch and answer, a
+confirmed theme action applied/restored to Light, saved-chat reopen/context behavior, cancellation
+focus, and 390×844 emulated-mobile modal/Escape behavior. Search attribution was not independently
+verified. Independent review verified receipt/image and screenshot bindings, and passed a corrected
+desktop answer/source capture for visible content only; it did not replay the original actions.
+Preserve the initial screenshot-label **Fail**. Mobile screenshot CSS-scale and screenshot focus
+corroboration remain **Unavailable**; the DOM viewport/focus checks are parent-observed only.
+
+The invited rollout **Passed**; production reported the same image, app and assistant ready/enabled,
+schema 13, invited mode, and loopback-only. The authorized notice was **Sent** to three recipients in
+the existing personal thread; independent final-receipt review passed declared identity, chronology,
+and attachment byte-count checks. Binary digest/disposition readback and worker-specific health are
+**Unavailable**. Delivery, inbox placement, and read remain **Unavailable**. E847's canonical, security, browser and
+whole-route axe results, and E848's exact-5ad actual-host pair/native, combined 1 GB, recovery, and
+PR-bound rollback results are reused only for their original bindings. Physical mobile, actual
+screen reader, true zoom and PDF/UA remain **Unavailable**; no full WCAG AA claim follows. The
+existing 1 GB host/backups and US$15 monthly total cap including tax remain unchanged; no resize
+occurred. See the [E850 evidence](MVP-PLAN.md#r-astra-120-e850-owner-canary-invited-rollout-and-release-notice).

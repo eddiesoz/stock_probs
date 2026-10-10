@@ -256,16 +256,16 @@ service.
 
 ## R-ASTRA-120 assistant security boundary
 
-E849 deployed the tested PR #2 release at schema 13, ready and loopback-only, with verified
-pre-deploy and pre-migration backups and registered schema-13 recovery image. The subsequent
-rollout-control call passed with `owner_canary` on the same image. Independent production-boundary
-QA passed its eight unauthenticated TLS probes and exact deployment/backup/recovery/rollout
-identity checks. The no-cookie session was unauthenticated, no cookies were set, and private/hostile-
-header boundaries held. E847's canonical security scope passed 590 checks; the independent boundary
-QA passed eight probes for its declared scope. The actual owner UI/model/action canary remains
-pending. The owner's current authenticator-code field was empty; invited-user rollout and the
-announcement remain held. E256/E301/E329 below are historical schema-12 inspections, superseded by
-E849 for current deployment state.
+E850 records the exact tested PR #2 release at schema 13, ready and loopback-only, with verified
+pre-deploy/pre-migration backups and the registered schema-13 recovery image. The owner UI/model/action
+canary and invited rollout passed for their declared scopes; the app and assistant reported ready and
+enabled on the same image. The authorized release notice was sent after rollout and health confirmation.
+E847's canonical security scope passed 590 checks. E849's independent production-boundary QA passed
+eight unauthenticated TLS probes for its declared scope. The owner canary was parent-observed; independent
+QA verified receipt/image bindings and a corrected desktop answer/source capture without replaying
+the original actions. Preserve the initial screenshot-label **Fail** and mobile viewport/focus
+**Unavailable** results. E256/E301/E329 below are historical schema-12 inspections, superseded by
+E850 for current deployment state.
 
 The source boundary uses same-origin authenticated
 application routes, session-owned tool calls, typed tools, bounded request/storage limits, private
@@ -273,7 +273,7 @@ loopback callbacks, and a worker UID separate from the FastAPI process. These ar
 observations, not independent security acceptance.
 
 The following E167–E777 records preserve earlier scoped findings and failures. They are historical;
-the E847/E849 scopes above supersede only the bindings and checks they explicitly cover.
+the E847/E849/E850 scopes above supersede only the bindings and checks they explicitly cover.
 
 Earlier candidate-image disposable native checks passed their local functional and shutdown scopes
 (E167/E168), with independent terminal, source-binding and exact-cleanup review (E171). Two owners
@@ -299,9 +299,10 @@ explicit socket-cleanup assertion (E526/E529). Open-panel worker/policy recovery
 At the E520 checkpoint, current-image shutdown, strict accessibility, combined 1 GB resources and
 PR-bound rollback remained open. Earlier input-bound current-product native wire/kill scopes later
 passed. E847 passed the canonical/security scopes and input-bound browser/axe reuse; E848 passed
-the exact-5ad actual-host pair/resource/recovery, combined 1 GB and PR-bound rollback scopes. E849
-subsequently deployed the release and set `owner_canary`. The actual owner UI/model/action canary
-remains pending.
+the exact-5ad actual-host pair/resource/recovery, combined 1 GB and PR-bound rollback scopes. At E849,
+the deployed release was at `owner_canary` and the actual owner UI/model/action canary remained
+pending. E850 later passed the declared owner canary and invited rollout; see the current
+security/release checkpoint below.
 
 At the E329 checkpoint, the task advertised eight deployment MCP operations. Its read-only
 production `inspect`/`status` pair returned `status=ok`, the then-current revision and image, schema
@@ -529,10 +530,10 @@ See [getting started](../operations/getting-started.md),
 
 ## Current R-ASTRA-120 security and release checkpoint
 
-R-ASTRA-120 remains **In progress**. E849 is the latest production checkpoint: the exact tested PR #2 image is deployed at schema 13, ready and loopback-only, with verified pre-deploy/pre-migration backups and recovery image; rollout control passed with `owner_canary`. The actual owner UI/model/action canary remains **Pending**. E699's schema-12 inspection below is historical. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts.
+E850 is the latest production/release checkpoint. The exact tested PR #2 image is deployed at schema 13, ready, enabled and loopback-only, with invited rollout and verified pre-deploy/pre-migration backups and recovery image. The owner UI/model/action canary passed for its declared observed subset; the authorized notice was sent after rollout and health confirmation. Independent final-release receipt review passed its declared integrity/binding scope; delivery, inbox placement and read remain unavailable. E699's schema-12 inspection below is historical. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts and limits.
 
 E721 independently passed 928 tests and Ruff lint/security checks for a selected synthetic/local boundary scope, with all 75 tracked source/test pins unchanged under the corrected binding review. The scope covers API, session, consent, egress, WebFetch and storage contracts; it is not complete live-security acceptance. Its `ruff format --check` failed on unchanged baseline formatting in one selected test and four additional existing files in the broader check; no formatting repair was made. The first binding comparison omitted non-Python assets, and the corrected 75-path manifest is the accepted binding result.
 
 E765 passed the maintained full browser aggregate: 191 passed, 3 expected skips and no failures. Four maintained assistant-panel snapshots reported raw axe 0 violations and 0 incomplete items. This is panel scope only; full-app accessibility remains open. E725's earlier full-browser failure remains preserved. E768's kill-profile source finding was repaired for source/test review in E769–E772; those results do not establish a live current-image kill. E775's builder source-preparation report passed 417 tests with two explicitly deselected after adding optional exact PR-revision binding. E777 independently passed the selected source/test scope (417 passed, 2 deselected, 2 warnings, four stable pins); review retained a trusted local caller precondition that verifies the maintained build-receipt SHA and exact immutable image/context/PR revision, then rechecks the reviewed pair manifest before runtime acceptance. The revision is not exposed as an MCP input, and no relabel or permissive-label fallback was accepted. These are source/test results only; no fresh image build, Docker probe, or runtime acceptance occurred. E774 identified that this page's prior status had stopped at E699; its audit adds no runtime evidence.
 
-E847's canonical security scope passed 590 checks, and its input-bound browser/axe reuse remains Pass: browser 193/196 with three expected skips and whole-route axe 68 cases/72 scans with zero violations/incompletes. Earlier input-bound current-product native wire/kill scopes passed. E848 passed the exact-5ad actual-host pair/resource/recovery, actual combined 1 GB and PR-bound rollback scopes. E849 deployed the release and set `owner_canary`. The actual owner UI/model/action canary, invited-user rollout and authorized announcement remain pending/held. Physical mobile, actual screen reader, true zoom and PDF/UA remain **Unavailable**; these scopes do not establish full WCAG AA. The existing 1 GB host/backups and US$15 monthly total cap are unchanged. See the [ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts and preserved failures.
+E847's canonical security scope passed 590 checks, and its input-bound browser/axe reuse remains Pass: browser 193/196 with three expected skips and whole-route axe 68 cases/72 scans with zero violations/incompletes. Earlier input-bound current-product native wire/kill scopes passed. E848 passed the exact-5ad actual-host pair/resource/recovery, actual combined 1 GB and PR-bound rollback scopes. E850 passed the declared owner canary and invited rollout; the authorized notice was sent. The final receipt review verified production identity and four attachment byte counts, while binary-digest/disposition review and worker-specific health are **Unavailable**; delivery, inbox placement and read are **Unavailable**. Physical mobile, actual screen reader, true zoom and PDF/UA remain **Unavailable**; these scopes do not establish full WCAG AA. The existing 1 GB host/backups and US$15 monthly total cap are unchanged. See the [ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts and preserved failures.

@@ -6,13 +6,14 @@ description: "The current Signal Ledger visual language, approved assistant visu
 # Design system and Ledger assistant
 
 This guide describes the visual system already used by Signal Ledger and the approved visual
-contract for the Ledger assistant. At E849, the tested PR #2 image is deployed at schema 13, ready
-and loopback-only, with rollout control set to `owner_canary`; the actual owner UI/model/action
-canary remains pending. E847's reused 193/196 browser aggregate (three expected skips) and 68-case,
-72-scan whole-route axe scope (zero violations/incompletes) passed for their unchanged bindings.
-The guide passed its declared review scope. These scoped results are not full WCAG AA; physical
-mobile, true zoom, actual screen-reader and PDF/UA evidence remain unavailable. E798's focused
-checks and its pre-repair HTTP and pre-banner guide failures are historical. See the
+contract for the Ledger assistant. E850 records the owner UI/model/action canary and invited rollout
+on the exact tested PR #2 image at schema 13, ready/enabled and loopback-only. The canary's declared
+scope included Light/Dark action restoration and the emulated mobile full-screen/Escape path; it is
+not a full-app accessibility review. E847's reused 193/196 browser aggregate (three expected skips)
+and 68-case, 72-scan whole-route axe scope (zero violations/incompletes) passed for their unchanged
+bindings. Physical mobile, true zoom, actual screen-reader and PDF/UA evidence remain unavailable;
+these results do not establish full WCAG AA. E798's focused checks and its pre-repair HTTP and
+pre-banner guide failures are historical. See the
 [R-ASTRA-120 plan and evidence](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on).
 
 ## Source of truth
@@ -165,19 +166,26 @@ for exact receipts and preserved results.
 ### R-ASTRA-120 source and release status
 
 The deployed PR #2 release mounts the approved desktop panel and narrow-screen full-screen surface
-in the same application image. E849 reports the tested image at schema 13, ready and loopback-only,
-with verified pre-deploy/pre-migration backups and registered recovery image. The rollout-control
-call passed with `owner_canary`; the actual owner UI/model/action canary remains pending. The
-owner's current authenticator-code field was empty, so no authenticated owner interaction is
-claimed. Invited-user rollout and the announcement remain held.
+in the same application image. E850 records the owner canary and invited rollout on the exact tested
+schema-13 image, with app and assistant ready and loopback-only. The parent-observed canary passed
+four model answers, the aggregate-only workspace-summary read, exact-query native search, guarded
+fetch, a confirmed `theme.set` change and restoration to Light, saved-chat/context behavior,
+cancellation/focus, and emulated mobile modal/Escape behavior. Independent review verified the
+receipt and screenshot bindings and passed a corrected desktop answer/source capture for its visible
+content only; it did not replay the original actions. Preserve the initial screenshot-label failure,
+the mobile CSS-scale and screenshot-focus limitations, and the fact that direct DOM observations were
+parent-observed only. E847's reused browser/axe and E848's pair/resource/recovery/rollback scopes
+remain bounded to their original inputs. Physical mobile, actual screen reader, true zoom and PDF/UA
+remain unavailable; no full WCAG AA claim follows. The E848 `backup_unverified` deployment failure
+and successful failure-path rollback remain historical, not the current E850 result.
 
 E847's canonical and 590-check security scopes passed. Its input-bound browser and axe evidence
 remains Pass: 193/196 browser cases with three expected skips, and 68 route cases with 72 scans at
 zero violations/incompletes. Earlier input-bound current-product native wire/kill scopes passed.
 E848 passed the exact-5ad actual-host pair/resource/recovery, actual combined 1 GB and PR-bound
-rollback scopes. The guide passed its declared review scope. These results do not establish full
-WCAG AA; physical mobile, true zoom, actual screen-reader and PDF/UA evidence remain unavailable.
-The E848 deployment failure and
+rollback scopes. E850 completes the declared owner-canary/invited-rollout portion, but does not
+establish every assistant action or route. Physical mobile, actual screen-reader, true zoom and
+PDF/UA evidence remain unavailable. The E848 deployment failure and
 successful failure-path rollback remain historical. The following E245–E797 diagnostics are
 historical; their failures remain preserved and do not override the later E847 results for the
 explicitly reused browser/axe bindings.

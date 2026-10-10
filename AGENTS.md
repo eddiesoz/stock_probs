@@ -461,7 +461,7 @@ after a fix. Repeat a full suite when a release gate or shared-contract impact r
 workflow does not relax release, security, or acceptance gates. For native-runtime repairs, run the
 real functional check before the full release aggregate so a known runtime failure does not waste
 another broad run; retain unchanged UI and component evidence with exact input bindings.
-R-ASTRA-120 merged baseline E839; latest checkpoint E849. PR #1 is merged at exact revision
+R-ASTRA-120 merged baseline E839; latest checkpoint E850. PR #1 is merged at exact revision
 `6dc259e91cc8077b9264901bee3282167b9d05af`. PR #2 merged at tested head
 `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`; operational PR #3 merged at
 `ea71fddd1519394c59960c60a3c36a83b15b76dc` at `2026-10-10T15:30:22Z`, with public `main` matching.
@@ -479,25 +479,47 @@ pre-deploy and pre-migration backups and recovery image `sha256:a9b5147cff0016e4
 enabled, schema 13 on the same image. Independent production-boundary QA **Passed** its eight
 unauthenticated TLS probes and exact deployment/backup/recovery/rollout identity checks; the no-cookie
 session was unauthenticated, no cookies were set, and private-route and hostile-origin/host boundaries
-held. Actual owner TOTP/UI canary was skipped. The owner's existing browser remains on authenticator
-verification with the current-code field empty; no cookies were cleared and no development login or
-MFA bypass was used. Owner UI/model/action canary remains **Pending**. Invited-user rollout and the
-authorized announcement are held.
+held. Actual owner TOTP/UI canary was skipped in that E849 review. At the E849 checkpoint, the owner
+canary remained **Pending**, and invited-user rollout and the authorized announcement were held; E850
+supersedes those statuses below. No cookies were cleared and no development login or MFA bypass was
+used.
 
 E847 security (590 checks), browser (193/196, three expected skips), whole-route axe (68 cases/72
 scans, zero violations/incompletes), guide, and current-product native wire/kill results remain Pass
 for their original bindings. E849 reuses the exact-5ad pair, recovery, actual combined 1 GB and
-PR-bound rollback results; no application rebuild was needed for the helper-only repair. Physical
+PR-bound rollback results; no application rebuild was needed for the helper-only repair. No email had
+been sent at that E849 checkpoint. Physical
 mobile, actual screen reader, true zoom, and PDF/UA remain **Unavailable**; no full accessibility
 claim follows. Backup creation metadata is not the verification receipt: promotion requires separate
 signed-reader verification of the exact backup artifact without promotion, and helper contracts must
 be tested against actual CLI/service response shapes. The US$15 monthly cap, existing 1 GB host and
-backups are unchanged; no email occurred. See [E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair),
+backups are unchanged. See [E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair),
 [E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair),
 [E846](MVP-PLAN.md#r-astra-120-e846-pr-2-host-pair-canonical-and-publisher-test-checkpoint),
 [E847](MVP-PLAN.md#r-astra-120-e847-canonical-and-checker-repair-checkpoint),
 [E848](MVP-PLAN.md#r-astra-120-e848-production-deployment-checkpoint), and
 [E849](MVP-PLAN.md#r-astra-120-e849-production-deployment-and-owner-canary-checkpoint).
+
+E850 completed the authenticated owner UI/model/action canary, invited-user rollout, and authorized
+release notice for their declared scopes on the exact tested app release `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`,
+image `sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13.
+The parent-observed canary covered four model answers, an aggregate-only workspace summary read,
+exact-query native search with seven sources, guarded fetch with the approved exact URL, a confirmed
+`theme.set` action applied and restored to Light, saved-chat reopen, context/history updates, turn
+cancellation and focus, and emulated 390×844 modal/Escape behavior. Search-source attribution was not
+independently verified. Independent QA confirmed receipt/image bindings and the corrected desktop
+answer/source capture, but did not replay the original clicks. Preserve the initial screenshot-label
+**Fail**; mobile screenshot CSS-scale and screenshot-based focus evidence remain **Unavailable**, and
+parent DOM observations are not independent replay. Invited rollout and ready app/assistant health
+passed on the same image, still loopback-only. The authorized notice was sent in the existing thread
+to three recipients; independent final-receipt review passed its declared identity, chronology, and
+attachment byte-count scope. Binary-digest/disposition readback and worker-specific health remain
+**Unavailable**; delivery, inbox placement, and read status also remain **Unavailable**. E847/E848 canonical, security, browser/axe,
+actual-host pair/native/resource/recovery, and PR-bound rollback results remain reused only for their
+original exact bindings. Physical mobile, actual screen reader, true zoom, and PDF/UA remain
+**Unavailable**; no full WCAG AA claim follows. The existing 1 GB host, backups, and US$15 monthly
+total cap including tax remain unchanged; no resize occurred. See
+[E850](MVP-PLAN.md#r-astra-120-e850-owner-canary-invited-rollout-and-release-notice).
 
 For the remainder of R-ASTRA-120, serialize heavy local Docker builds, canonical gates, browser
 aggregates, and real provider/native trials; run independent source/documentation review in parallel. Reuse unchanged bound evidence
