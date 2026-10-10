@@ -6015,3 +6015,86 @@ existing 1 GB host, and backups remain unchanged.
 | Current-source browser and axe evidence reuse | Task `R-ASTRA-120`; audit `/var/tmp/r12r/r120-current-06a-reuse-audit-20261010T085151Z/current-head-reuse-audit.json`, SHA-256 `a7900d4f5a7768cd89654657dd5f99dcff776bd0febc82054c98fa85da7a8829`. Exact reused axe receipt `/var/tmp/r12r/r120-auth-aria-axe-v2-20261010T005305Z/independent-axe-v2-receipt.json`, SHA-256 `af2d99cfcbfafbacb27952bbb939912d613d9b98924bd6d88399fa5dc3f37d83`: 68 cases, 72 scans, zero violations/incompletes; 80 frontend pins, 3 fixture pins, and 52 served/export pairs matched. Reused browser receipt `/var/tmp/r12r/r120-full196-68c-20261010T024222Z-prep/artifacts/final-full196-qa-receipt.json`, SHA-256 `3e0bc027602fe8b05eff7999d69c77cff6d6ef9c664c5a6772054ece7f22df8f`: 193/196 passed, three expected skips, 106 inputs and 52 served/export pairs matched. These were reuse audits, not reruns or full WCAG/mobile/screen-reader/zoom/PDF/UA/runtime acceptance. |
 | Documentation baseline | Pre-edit copies in `/var/tmp/r12r/r120-e846-docs-baseline-20261010T095658Z/` (UUID-verified mount; directory `0700`, files `0600`, byte comparison passed): `AGENTS.md` SHA-256 `370bc6e01d632197ae288c65667a20a03356d2e63b7b64eef4a2b6ef4e7902e2`; `MVP-PLAN.md` `25ad4501440ff535c13f384bee97a56880548e0eda7763d3a0823177c406560e`; `MVP-ROADMAP.md` `ee584282dc11627524b0146af2b203a8abf6194c32857125dc136f1f75479be5`. |
 | Documentation check | Task `R-ASTRA-120` docs checkpoint; exact scoped command `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md` **Pass**, exit `0`, after the final documentation edits. Docs validator and tests were not run in this checkpoint. No implementation, tests, build, browser, host, Git-metadata, branch, staging, commit, remote, or export mutation was performed. |
+
+### R-ASTRA-120 E847 canonical and checker-repair checkpoint
+
+PR #2 is **OPEN/DRAFT** at pushed head
+`53578a4c0995c13a787ee05044ede691ac84dd24`; PR #1 remains merged at
+`6dc259e91cc8077b9264901bee3282167b9d05af`. A fresh managed build for 53578 **Failed** with
+`build_timeout_after_900s` at `2026-10-10T10:19:25Z`–`10:34:33Z` (receipt SHA-256
+`b52ff8f4603fdb0ceed931b533bca8f9ba6044ac668f38c8c8f518d3190f6c2f`). Build storage had about
+55 GB free. A BuildKit exact-context terminal error was recorded later, at `10:38:18Z`, after the
+client timeout; the cause is **Unproven**. A separate full-gate attempt started around `10:35Z`
+and was interrupted by about `10:39Z`; the owned process was confirmed absent, but no JUnit or
+terminal record was available, so that attempt is **Unavailable**, not a Pass. Task-125's missing-map
+preflight stopped before tests and is a setup failure, not a product failure.
+
+The subsequent canonical run on clean pushed head `53578a4c` **Passed** at
+`2026-10-10T13:41:03.209Z`–`14:11:21.091Z`: 3,294 passed, 4 skipped, 4 deselected, 0
+failed/errors, 99 warnings, 85.69% coverage, eight security modules with 590 passed and 0 skipped,
+and 72 frontend checks. It bound
+479 full inputs, including 148 product inputs and 52 served/export files. Canonical receipt
+`test-results/local-gates/R-ASTRA-120-20261010T134104Z/evidence.json`, SHA-256
+`c4ca949157bc62f73d854a246223d29beb74d1dca7f0b259db09de341e8a85bd`; JUnit SHA-256:
+`9451fb697b9a3f5525ef6f2e1cadd34c6ad27557f80037298c9c38dc5a8accd8`; terminal record SHA-256:
+`e683ad30686a006618e7f33a926b3036e97a7f75c3702ac6381f3c30680e1fe1`. This clean-head result
+predates the subsequent checker and documentation edits; it is not a fresh 479-input manifest for
+the edited tree.
+
+Checker v3 changes only `scripts/bounded_docker_build.py` and
+`tests/test_bounded_docker_build.py`, outside the filtered 148-input product context. Builder
+checks passed 27 focused tests and Ruff; receipt
+`/var/tmp/r12r/r120-pr2-build-timeout-patch-prep-20261010T134809Z/builder-focused-terminal-receipt-20261010T1418Z.json`, SHA-256
+`01f5b03c82c131cde675f5ef25928ffd20582219e4cf314d756d0486b3a552ed`. The first applied-source
+independent attempt remains **Unavailable**: its JUnit reported 190 tests and zero failures, but no
+terminal record was preserved. A subsequent
+bounded independent rerun **Passed** 190 tests with no errors or skips, plus Ruff, security, and
+format checks. Its first receipt serialization was invalid JSON due to a literal trailing `\n`;
+the corrected receipt is
+`/var/tmp/r12r/r120-timeout-recovery-independent-qa-20261010T1419Z/independent-timeout-recovery-applied-source-qa-20261010T1423Z.json`, SHA-256
+`8b0d6def9af9b1529dd112124cfb3ee4e1cc00e0c2117c41f91e891ee6f4048c`. It was validated before
+and after write; tests were not rerun. The initial v1 review found a P2:
+timeout handling claimed cancellation without verifying it for an already-exited process or
+post-build timeout; v3 records cancellation only when literally verified and retains a late actual
+nonzero exit. V1 review receipt SHA-256 `4d50569c07105170df113e592c2bdd32c0785cb748a44f0a3af805af2b09a8f6`;
+v2 source repair `bf28399d0df7e44cb166d93dce976a901f4d65c346d0a98d5b6b975ba39bc4ea`; v3 delta
+`7f3b8f8f7d1e3656a06cae1bca52faee18d61c9be997a5c8728ba310376c819b`. Parent source review and fresh product-context
+rehash **Passed** for their declared scope; receipt
+`/var/tmp/r12r/r120-parent-canonical-checker-review-20261010T1421Z/parent-review.json`, SHA-256
+`92010508ac4f298d86b559a33dc234d3eb66975bd4e523ee49307e962eb775fc`, confirms current 148-input
+product context and 52 staged files unchanged
+(`9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb`).
+
+Typed recovery of the failed managed-build reservation **Passed** at
+`2026-10-10T14:21:42.133886Z`–`14:21:45.409098Z`. It preserved the original immutable failure
+receipt SHA-256 `b52ff8f4603fdb0ceed931b533bca8f9ba6044ac668f38c8c8f518d3190f6c2f`, released the
+sole failed 53578 ledger row, verified its candidate tag absent, and left the complete image
+inventory and protected `06a` row unchanged. Typed recovery receipt SHA-256
+`71cf81902f4f226e191c641cd99953bd2edc1606e1cac4675a724235d3faa0ac`; parent terminal review
+`/var/tmp/r12r/r120-parent-timeout-recovery-53578-20261010T1425Z/parent-recovery-terminal.json`,
+SHA-256 `40c2092f18072040794ef3e265ee32e9de2bc5f1ee566ae58f1223769fe697f6`. Independent
+read-only recovery review **Passed** exact immutable-failure/typed-recovery/current-ledger hash
+bindings: `/var/tmp/r12r/r120-timeout-recovery-independent-qa-20261010T1419Z/independent-timeout-recovery-recovery-receipt-review-20261010T1424Z.json`, SHA-256
+`64592f8cb9d45f24110a9429606cb87f29fdf03f2890d645d03a17f9b8312985`. It did not query Docker;
+tag and image-inventory absence remain parent-observed.
+
+The earlier `06a` actual-host pair/resource/recovery/native, browser/axe, guide, synthetic-wire,
+and current-image kill results remain reusable only for their unchanged bound product context;
+they do not establish a fresh image or exact-head pair for the next checker checkpoint. The 148
+product inputs and 52 served/export files are unchanged, but the full 479-input manifest is
+invalidated by checker and documentation edits. Fresh image and pair binding remain **Pending**.
+A fresh read-only MCP inspect
+reconfirmed production at revision `da2764e8477698fa7d686be93a4711e35478e802`, image
+`sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1`, schema 12 ready,
+`failed=null`, and loopback-only; no rollout, RAM, billing, or browser-access result is inferred.
+Required security, native/provider, current-image kill, actual 1 GB, PR-bound rollback, accessibility,
+final-guide, disabled-feature deployment, owner-canary, and release gates remain open. No PR #2
+merge, prebuilt publication, production update/deploy, rollout, resize, or email occurred. The US$15
+monthly cap, existing 1 GB host, and backups remain unchanged.
+
+E847 documentation evidence:
+
+| Check | Task and observed result |
+| --- | --- |
+| Pre-edit authored-file baseline | Task `R-ASTRA-120`; UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; copies in `/var/tmp/r12r/r120-docs-e847-20261010T141913Z/` with directory mode `0700`, files mode `0600`, and byte comparisons passed. SHA-256: `AGENTS.md` `458f4fb5525fff44802b593a26369ade0f0779b9fb2ef4fe7d26707ae75e557f`; `MVP-PLAN.md` `cecb2e3b5a9e19f198021bbefd3bdc17a9420c9f3689ecd5f1d9b666ac6c5415`; `MVP-ROADMAP.md` `d70203de34b69459c3397b67555c4d537c528d67dd4df4080dfcbcd345a187a6`; `docs/operations/getting-started.md` `a7c5f2451ce7272644ef9ec71d019b03dd2b843f96c0b61540bfdb88037dd951`. |
+| Authored documentation checks | `.dev-venv/bin/python scripts/validate_docs.py` **Pass** (9 categories, 14 topics, 8 governance entries); `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` **Pass** (154 mapped files); `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs/operations/getting-started.md` **Pass**. Documentation tests were not run. |

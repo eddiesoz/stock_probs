@@ -636,6 +636,16 @@ The normal sequence is:
 inspect → plan_deploy(main revision, release archive SHA, image ID) → deploy(plan) → status
 ```
 
+For schema-13 GitHub-release deployments, supply `pair_manifest_sha256` from the exact revision's
+`signal-ledger-pair-<revision>.json` manifest to both calls. The MCP schema declares this field
+optional, but the schema-13 host requires it, and `deploy` must match the hash bound by
+`plan_deploy`:
+
+```text
+plan_deploy(revision, archive_sha256, image_id, pair_manifest_sha256)
+deploy(plan_id, revision, archive_sha256, image_id, pair_manifest_sha256)
+```
+
 #### Review a PR pair before rehearsal
 
 For the fixed R-ASTRA-120 PR #2 pair, first build and verify the exact clean candidate/recovery
@@ -662,21 +672,29 @@ state, command, or credential. R-ASTRA-106 records a live refresh result with `5
 applied to firewall `177236117`; the Linode console login uses Google SSO and SSH material remains
 separate.
 
-R-ASTRA-120 remains **In progress**. E828 built the latest Linux/amd64 candidate, and its selected
-loader and active-search-kill scopes passed. Later diagnostic-source edits require a new exact-head
-image before another native run. The native two-owner functional run **Failed**. The local
-schema-13 PR-pair command also **Failed** and produced no pair receipt; separate exact-image
-retirement does not make the pair pass.
-The bounded RootFS/stdout source review and 301-case independent QA passed, and parent standalone
-guide acceptance passed for the current bound bundle. Native/provider cause, the current canonical
-check, actual combined 1 GB, complete security, remaining accessibility checks, current
-PR-pair/rollback, deployment/canary, and release gates remain open. Physical absent-medium startup
-and fresh archive-metadata checks remain
-unavailable. Production's last recorded read was `2026-10-08T21:33:44Z` (schema 12 ready,
-loopback-only; rollout mode unavailable). The US$15 total cap, existing 1 GB plan, and backups
-remain unchanged. See the
-[R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on);
-no production change, resize, rollout, merge, email, or release is claimed.
+R-ASTRA-120 remains **In progress**. E847's managed Linux/amd64 build **Failed** with
+`build_timeout_after_900s`; the later exact-context BuildKit error leaves cause **Unproven**. The
+clean pushed-head 53578 canonical local gate subsequently **Passed** (3,294 passed, 4 skipped,
+4 deselected, zero failures/errors, 99 warnings, 85.69% coverage, 72 frontend checks). Checker-v3
+builder checks passed 27 focused tests and Ruff. Its first independent applied-source attempt is
+**Unavailable** (JUnit reported 190 tests with zero failures; terminal record missing); the bounded
+190-test rerun **Passed** with
+no errors/skips and Ruff, security, and format checks. The first receipt serialization was invalid
+JSON; its corrected receipt is recorded in E847 without a test rerun. Parent source review rehashed
+the unchanged product context
+`9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb` (148 inputs, 52 served/export
+files), but the canonical 479-input manifest predates checker and documentation edits. Previously
+bound `06a` pair/resource/native, UI/axe, guide, wire, and kill results remain reusable only within
+their unchanged product scopes; a fresh image and exact-head pair for the next checker checkpoint
+remain pending. Typed recovery released the failed build row and confirmed its tag absent while the
+protected `06a` image record stayed unchanged. Independent read-only recovery review passed exact
+receipt/ledger hash binding; it did not query Docker, so absence remains parent-observed.
+Deployment, rollback, security, current-image
+runtime, accessibility, owner-canary, and release gates remain open. A fresh read-only production
+inspect reconfirmed schema 12 ready, `failed=null`, and loopback-only; no rollout, RAM, billing, or
+browser-access result is inferred. The US$15 total cap, existing 1 GB plan, and backups remain
+unchanged. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-e847-canonical-and-checker-repair-checkpoint);
+no merge, prebuilt publication, production update/deploy, resize, rollout, or email occurred.
 
 The
 rehearsal source creates a separate, labelled user-defined bridge for each candidate run, with

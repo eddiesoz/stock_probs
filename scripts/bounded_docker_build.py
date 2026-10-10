@@ -1558,6 +1558,15 @@ def _failed_candidate_run_directory(revision: str, tag: str, context_hash: str) 
     return run_dir
 
 
+def _record_timeout_cancellation_contract(data: dict[str, object]) -> None:
+    """Record the timeout contract only after process-group cancellation is verified."""
+    if any(
+        data.get(field) is True
+        for field in ("process_group_cancel_verified", "build_deadline_cancel_verified")
+    ):
+        data["timeout_cancellation_contract"] = "bounded-cancel-v1"
+
+
 def _failed_build_receipt(
     *,
     run_dir: Path,
@@ -1624,6 +1633,27 @@ def _failed_build_receipt(
         build_finished = _parse_buildkit_utc(receipt.get("build_finished_utc"))
         if not started <= build_finished <= finished:
             raise BuildError("failed_reservation_receipt_artifact_or_time_invalid")
+    elif stage == "build_timeout_after_900s":
+        cancellation_fields = (
+            "process_group_cancel_verified",
+            "build_deadline_cancel_verified",
+        )
+        cancellation_values = [receipt[field] for field in cancellation_fields if field in receipt]
+        cancellation_contract = receipt.get("timeout_cancellation_contract")
+        if (
+            type(receipt.get("timeout_seconds")) is not int
+            or receipt["timeout_seconds"] != 900
+            or (finished - started).total_seconds() < 900
+            or "build_exit_code" in receipt
+            or "build_finished_utc" in receipt
+            or any(type(value) is not bool or value is not True for value in cancellation_values)
+            or (
+                "timeout_cancellation_contract" in receipt
+                and (cancellation_contract != "bounded-cancel-v1" or not cancellation_values)
+            )
+        ):
+            raise BuildError("failed_reservation_receipt_contract_mismatch")
+        build_finished = finished
     else:
         raise BuildError("failed_reservation_receipt_contract_mismatch")
     if not run_started <= started <= build_finished <= finished <= datetime.now(
@@ -1720,6 +1750,7 @@ def _release_failed_inflight_reservation(
         setup_sha256=setup_sha256,
     )
     history_record = _failed_buildkit_history_record(build_started, build_finished)
+    history_observed_utc = datetime.now(UTC)
 
     remaining_entries = [row for row in entries if row is not matches[0]]
     remaining_ledger: dict[str, object] = {"schema": LEDGER_SCHEMA, "entries": remaining_entries}
@@ -1751,6 +1782,19 @@ def _release_failed_inflight_reservation(
         "buildkit_history": history_record,
         "released_utc": recovery_utc,
     }
+    if _failure.get("stage") == "build_timeout_after_900s":
+        cancellation_verified = any(
+            _failure.get(field) is True
+            for field in ("process_group_cancel_verified", "build_deadline_cancel_verified")
+        )
+        recovery_receipt.update(
+            {
+                "client_process_group_cancellation": (
+                    "verified" if cancellation_verified else "unavailable"
+                ),
+                "backend_terminal_error_observed_utc": history_observed_utc.isoformat(),
+            }
+        )
     temporary_receipt: Path | None = None
     temporary_identity: tuple[int, int] | None = None
     try:
@@ -3448,10 +3492,15 @@ def main() -> int:
             result = process.poll()
             if result is not None:
                 if now >= deadline:
+                    data["build_exit_code"] = result
+                    data["build_finished_utc"] = datetime.now(UTC).isoformat()
+                    if result != 0:
+                        raise BuildError("buildx_exit_nonzero")
                     raise BuildError("build_timeout_after_900s")
                 break
             if now >= deadline:
-                if not cancel(process):
+                data["build_deadline_cancel_verified"] = cancel(process)
+                if data["build_deadline_cancel_verified"] is not True:
                     raise BuildError("build_timeout_cancel_unverified")
                 raise BuildError("build_timeout_after_900s")
             if now >= uuid_check:
@@ -3460,12 +3509,14 @@ def main() -> int:
                 except BuildError as exc:
                     data["build_monitor_mount_error"] = exc.code
                     if exc.code == "bounded_build_timeout":
-                        if not cancel(process):
+                        data["build_deadline_cancel_verified"] = cancel(process)
+                        if data["build_deadline_cancel_verified"] is not True:
                             raise BuildError("build_timeout_cancel_unverified") from exc
                         raise BuildError("build_timeout_after_900s") from exc
                     raise BuildError("build_monitor_mount_guard_failed") from exc
                 if time.monotonic() >= deadline:
-                    if not cancel(process):
+                    data["build_deadline_cancel_verified"] = cancel(process)
+                    if data["build_deadline_cancel_verified"] is not True:
                         raise BuildError("build_timeout_cancel_unverified")
                     raise BuildError("build_timeout_after_900s")
                 uuid_check = time.monotonic() + UUID_POLL
@@ -3481,6 +3532,8 @@ def main() -> int:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 data["build_deadline_cancel_verified"] = cancel(process)
+                if data["build_deadline_cancel_verified"] is not True:
+                    raise BuildError("build_timeout_cancel_unverified")
                 raise BuildError("build_timeout_after_900s")
             time.sleep(min(POLL, remaining))
         data["build_exit_code"] = process.returncode
@@ -3574,6 +3627,8 @@ def main() -> int:
     except BuildError as exc:
         if process is not None and process.poll() is None:
             data["process_group_cancel_verified"] = cancel(process)
+        if exc.code == "build_timeout_after_900s":
+            _record_timeout_cancellation_contract(data)
         data.update(
             {
                 "status": "failed",

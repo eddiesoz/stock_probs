@@ -774,6 +774,214 @@ def _rewrite_failed_receipt(state: dict[str, object], receipt: dict[str, object]
     return raw
 
 
+def _set_terminal_build_timeout(
+    state: dict[str, object], *, elapsed_seconds: int = 901
+) -> dict[str, object]:
+    failure_path = Path(state["failure_path"])
+    receipt = json.loads(failure_path.read_bytes())
+    finished = datetime.now(UTC) - timedelta(seconds=1)
+    build_started = finished - timedelta(seconds=elapsed_seconds)
+    receipt.update(
+        {
+            "stage": "build_timeout_after_900s",
+            "timeout_seconds": 900,
+            "started_utc": (build_started - timedelta(seconds=1)).isoformat(),
+            "build_started_utc": build_started.isoformat(),
+            "finished_utc": finished.isoformat(),
+        }
+    )
+    for field in (
+        "process_group_cancel_verified",
+        "build_deadline_cancel_verified",
+        "timeout_cancellation_contract",
+        "build_exit_code",
+        "build_finished_utc",
+    ):
+        receipt.pop(field, None)
+    rows = [dict(row) for row in state["history"]]
+    for index, row in enumerate(rows):
+        if row["ref"] == state["history_ref"]:
+            created = build_started + timedelta(seconds=1)
+            completed = finished + timedelta(milliseconds=500)
+            row.update(
+                {
+                    "name": "context",
+                    "status": "Error",
+                    "created_at": created.isoformat().replace("+00:00", "Z"),
+                    "completed_at": completed.isoformat().replace("+00:00", "Z"),
+                    "completed_steps": 36,
+                    "cached_steps": 19,
+                    "total_steps": 47,
+                }
+            )
+        else:
+            created = build_started - timedelta(seconds=10 + index)
+            completed = created + timedelta(seconds=1)
+            row["created_at"] = created.isoformat().replace("+00:00", "Z")
+            row["completed_at"] = completed.isoformat().replace("+00:00", "Z")
+    state["history"] = rows
+    state["history_state"]["bytes"] = _encode_buildkit_history_jsonl(rows)
+    _rewrite_failed_receipt(state, receipt)
+    return receipt
+
+
+@pytest.mark.parametrize(
+    ("cancellation", "expected"),
+    (
+        ({}, False),
+        ({"process_group_cancel_verified": False}, False),
+        ({"build_deadline_cancel_verified": 1}, False),
+        ({"build_deadline_cancel_verified": True}, True),
+    ),
+)
+def test_timeout_cancellation_contract_requires_literal_verified_process_group_state(
+    cancellation: dict[str, object], expected: bool
+) -> None:
+    data = dict(cancellation)
+
+    bounded._record_timeout_cancellation_contract(data)
+
+    assert ("timeout_cancellation_contract" in data) is expected
+    if expected:
+        assert data["timeout_cancellation_contract"] == "bounded-cancel-v1"
+
+
+def test_failed_inflight_timeout_release_uses_fresh_terminal_history_and_preserves_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    receipt = _set_terminal_build_timeout(state)
+    before_failure = Path(state["failure_path"]).read_bytes()
+    before_inventory = dict(state["inventory"])
+
+    result = bounded._release_failed_inflight_reservation(
+        str(state["tag"]),
+        str(state["revision"]),
+        str(state["context_hash"]),
+        str(state["role"]),
+        str(state["failure_sha256"]),
+    )
+
+    assert receipt["timeout_seconds"] == 900
+    assert "process_group_cancel_verified" not in receipt
+    assert result["status"] == "failed_build_reservation_released"
+    assert Path(state["failure_path"]).read_bytes() == before_failure
+    assert dict(state["inventory"]) == before_inventory
+    assert state["tag"] not in state["inventory"]
+    assert json.loads(Path(state["ledger_path"]).read_bytes())["entries"] == [state["kept_row"]]
+    recovery = json.loads(Path(state["recovery_path"]).read_bytes())
+    assert recovery["buildkit_history"]["status"] == "error"
+    assert recovery["buildkit_history"]["completed_steps"] == 36
+    assert recovery["client_process_group_cancellation"] == "unavailable"
+    observed = datetime.fromisoformat(recovery["backend_terminal_error_observed_utc"])
+    assert observed >= datetime.fromisoformat(recovery["buildkit_history"]["completed_at"])
+    assert observed <= datetime.fromisoformat(recovery["released_utc"])
+
+
+def test_failed_inflight_late_nonzero_exit_uses_terminal_exit_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    receipt = _set_terminal_build_timeout(state)
+    receipt.update(
+        {
+            "stage": "buildx_exit_nonzero",
+            "build_exit_code": 1,
+            "build_finished_utc": receipt["finished_utc"],
+        }
+    )
+    receipt.pop("timeout_seconds")
+    _rewrite_failed_receipt(state, receipt)
+
+    result = bounded._release_failed_inflight_reservation(
+        str(state["tag"]),
+        str(state["revision"]),
+        str(state["context_hash"]),
+        str(state["role"]),
+        str(state["failure_sha256"]),
+    )
+
+    assert result["status"] == "failed_build_reservation_released"
+    recovery = json.loads(Path(state["recovery_path"]).read_bytes())
+    assert recovery["buildkit_history"]["status"] == "error"
+
+
+def test_failed_inflight_timeout_release_records_verified_current_cancellation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    receipt = _set_terminal_build_timeout(state)
+    receipt.update(
+        {
+            "timeout_cancellation_contract": "bounded-cancel-v1",
+            "build_deadline_cancel_verified": True,
+        }
+    )
+    _rewrite_failed_receipt(state, receipt)
+
+    bounded._release_failed_inflight_reservation(
+        str(state["tag"]),
+        str(state["revision"]),
+        str(state["context_hash"]),
+        str(state["role"]),
+        str(state["failure_sha256"]),
+    )
+
+    recovery = json.loads(Path(state["recovery_path"]).read_bytes())
+    assert recovery["client_process_group_cancellation"] == "verified"
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    (
+        "short_elapsed",
+        "wrong_timeout",
+        "noninteger_timeout",
+        "false_cancel",
+        "cancel_contract_without_proof",
+        "exit_code",
+        "build_finished",
+    ),
+)
+def test_failed_inflight_timeout_release_rejects_unproven_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid_case: str
+) -> None:
+    state = _failed_inflight_reservation_fixture(tmp_path, monkeypatch)
+    receipt = _set_terminal_build_timeout(
+        state, elapsed_seconds=899 if invalid_case == "short_elapsed" else 901
+    )
+    if invalid_case == "wrong_timeout":
+        receipt["timeout_seconds"] = 901
+    elif invalid_case == "noninteger_timeout":
+        receipt["timeout_seconds"] = 900.0
+    elif invalid_case == "false_cancel":
+        receipt["build_deadline_cancel_verified"] = False
+    elif invalid_case == "cancel_contract_without_proof":
+        receipt["timeout_cancellation_contract"] = "bounded-cancel-v1"
+    elif invalid_case == "exit_code":
+        receipt["build_exit_code"] = 1
+    elif invalid_case == "build_finished":
+        receipt["build_finished_utc"] = receipt["finished_utc"]
+    _rewrite_failed_receipt(state, receipt)
+    before_ledger = Path(state["ledger_path"]).read_bytes()
+    before_inventory = dict(state["inventory"])
+
+    with pytest.raises(bounded.BuildError, match="failed_reservation_receipt_contract_mismatch"):
+        bounded._release_failed_inflight_reservation(
+            str(state["tag"]),
+            str(state["revision"]),
+            str(state["context_hash"]),
+            str(state["role"]),
+            str(state["failure_sha256"]),
+        )
+
+    assert Path(state["ledger_path"]).read_bytes() == before_ledger
+    assert dict(state["inventory"]) == before_inventory
+    assert state["capture_calls"] == []
+    assert state["checked_calls"] == []
+    assert not Path(state["recovery_path"]).exists()
+
+
 def test_failed_inflight_reservation_release_requires_terminal_history_and_preserves_images(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

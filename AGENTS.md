@@ -461,36 +461,62 @@ after a fix. Repeat a full suite when a release gate or shared-contract impact r
 workflow does not relax release, security, or acceptance gates. For native-runtime repairs, run the
 real functional check before the full release aggregate so a known runtime failure does not waste
 another broad run; retain unchanged UI and component evidence with exact input bindings.
-R-ASTRA-120 merged baseline E839; latest checkpoint E846. PR #1 merged at exact revision
+R-ASTRA-120 merged baseline E839; latest checkpoint E847. PR #1 is merged at exact revision
 `6dc259e91cc8077b9264901bee3282167b9d05af`. PR #2 remains **OPEN/DRAFT** at pushed head
-`06a175abe9ac80fe16d0f4dbd0b8d28cb5473649`. E846's Linux/amd64 image
-`sha256:9247ce78af0db4ab72337c1f462648e5e9433af72b7d2fdf1175fd515d6af6ea` is bound to 148
-source inputs and 52 served/export files. The exact-head actual-host SDK pair/resource/recovery
-scope **Passed**, as did separate current-image synthetic wire and parent-observed active-search
-kill scopes; the host receipt does not expose exact cleanup identities or minimum MemAvailable.
-The current canonical local gate **Failed** (3,288 passed, 6 failed, 4 skipped, 4 deselected,
-85.67% coverage, 72 frontend checks). Direct QA reproduced the three supervisor mode failures
-under launcher umask `077`; the first selector also reported a cleanup-lambda TypeError. The
-history selector passed separately on SD-backed storage, but the measured cause is **Unproven**.
-Two publisher-scanner test repairs passed their selected builder and independent scopes; no
-canonical rerun followed. A later test/documentation head needs fresh image and pair binding.
-The current-source required whole-route browser/axe matrix is **Pass for its reused scope**: the
-68-case, 72-scan axe receipt has zero violations and zero incompletes, with 80 frontend pins, 3
-fixture pins, and 52 served/export pairs matching. The reused browser aggregate is 193/196 with
-three expected skips and 106 source/test pins plus 52 served/export pairs matching. These are
-input-bound reuse checks, not reruns or full WCAG AA, physical-mobile, true-zoom, screen-reader,
-PDF/UA, or assistant-runtime acceptance; earlier raw axe failures remain historical. The exact-head
-`06a` PR-bound host pair/recovery scope **Passed**; the typed call did not exercise deploy/rollback
-mutations, and the next changed test/documentation head still needs fresh image and pair binding.
-The recorded actual-host native scope passed, without establishing every native/provider gate.
-Security retest, a clean canonical rerun, disabled-feature deployment, owner canary, final
-guide/release remain pending. The last separate production inspect remains schema 12 ready, `failed=null`,
-loopback-only; E846 made no production change. No PR #2 merge, publication, deployment, resize,
-rollout, or email occurred. The US$15 monthly cap, existing 1 GB host, and backups remain unchanged.
-See
+`53578a4c0995c13a787ee05044ede691ac84dd24`. Its fresh managed Linux/amd64 build **Failed** with
+`build_timeout_after_900s` from `2026-10-10T10:19:25Z` to `10:34:33Z`; the receipt SHA-256 is
+`b52ff8f4603fdb0ceed931b533bca8f9ba6044ac668f38c8c8f518d3190f6c2f`. Build storage had about
+55 GB free. A later BuildKit record at `10:38:18Z` contains an exact-context terminal error after
+the client timeout; the cause is **Unproven**. An earlier full-gate attempt was interrupted and
+the owned process was confirmed absent, but no JUnit or terminal receipt was available, so that
+attempt is not a Pass. A separate task-125 preflight stopped for a missing map before running
+tests; it is setup failure, not a product failure.
+
+A later canonical run on clean pushed head `53578a4c` **Passed** at
+`2026-10-10T13:41:03.209Z`–`14:11:21.091Z`: 3,294 passed, 4 skipped, 4 deselected, 0
+failed/errors, 99 warnings, 85.69% coverage, and 72 frontend checks; eight security modules
+reported 590 passed and 0 skipped. Its receipt SHA-256 is
+`c4ca949157bc62f73d854a246223d29beb74d1dca7f0b259db09de341e8a85bd`, JUnit SHA-256
+`9451fb697b9a3f5525ef6f2e1cadd34c6ad27557f80037298c9c38dc5a8accd8`, and terminal record
+SHA-256 `e683ad30686a006618e7f33a926b3036e97a7f75c3702ac6381f3c30680e1fe1`. It bound 479 full
+inputs, including 148 product inputs and 52 served/export files. The later checker-v3 repair is
+limited to `scripts/bounded_docker_build.py` and `tests/test_bounded_docker_build.py`; its builder
+scope passed 27 tests and Ruff (receipt SHA-256
+`01f5b03c82c131cde675f5ef25928ffd20582219e4cf314d756d0486b3a552ed`). The first applied-source
+independent attempt is **Unavailable**: its JUnit reported 190 tests and zero failures, but no
+terminal record was preserved. The first v1 review
+found a P2 in cancellation claims for already-exited or post-build-timeout processes; v3 reports
+cancellation only when verified and retains a late nonzero exit. A subsequent bounded independent
+rerun **Passed** 190 tests with no errors or skips and Ruff, security, and format checks. Its first
+receipt serialization was invalid JSON; a corrected receipt was validated and recorded in E847,
+without rerunning tests.
+Parent source review and a fresh product-context rehash passed (receipt SHA-256
+`92010508ac4f298d86b559a33dc234d3eb66975bd4e523ee49307e962eb775fc`). These checker files are
+outside the 148-input product context. Documentation and checker changes invalidate the 479-input
+full manifest; they do not change the rehashed product context
+`9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb` or its 52 staged files.
+
+The earlier exact-head `06a` actual-host pair/resource/recovery, native, synthetic wire and
+active-search-kill, browser/axe, and guide evidence remains reusable only for its unchanged bound
+product inputs (`9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb`, 148 product
+inputs, 52 served/export files); it does not bind the next checker checkpoint. Fresh image and
+exact-head pair binding remain **Pending**. The prior whole-route
+axe and browser results remain scoped reuse, not full WCAG AA, physical-mobile, true-zoom,
+screen-reader, PDF/UA, or assistant-runtime acceptance. Schema-13 `plan_deploy` and `deploy`
+require the reviewed pair-manifest SHA-256; see the [deployment runbook](docs/operations/getting-started.md).
+Typed recovery reconciled the failed 53578 build: the original failure receipt remains immutable,
+the single failed row was released, its candidate tag is absent, and the image inventory and
+protected `06a` row are unchanged. Independent read-only recovery review passed its receipt/hash
+binding scope; it did not query Docker, so absence remains parent-observed. An E847
+read-only production inspect reconfirmed schema 12 ready, `failed=null`, and loopback-only.
+Security retest, fresh image/pair, disabled-feature
+deployment, owner canary, final guide/release, and remaining release gates are pending. No PR #2
+merge, prebuilt publication, production helper update/deploy, rollout, resize, or email occurred.
+The US$15 monthly cap, existing 1 GB host, and backups remain unchanged. See
 [E839](MVP-PLAN.md#r-astra-120-e839-merged-candidate-and-publication-repair),
-[E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair), and
-[E846](MVP-PLAN.md#r-astra-120-e846-pr-2-host-pair-canonical-and-publisher-test-checkpoint).
+[E841](MVP-PLAN.md#r-astra-120-e841-exact-provenance-scanner-repair),
+[E846](MVP-PLAN.md#r-astra-120-e846-pr-2-host-pair-canonical-and-publisher-test-checkpoint), and
+[E847](MVP-PLAN.md#r-astra-120-e847-canonical-and-checker-repair-checkpoint).
 
 For the remainder of R-ASTRA-120, serialize heavy local Docker builds, canonical gates, browser
 aggregates, and real provider/native trials; run independent source/documentation review in parallel. Reuse unchanged bound evidence
