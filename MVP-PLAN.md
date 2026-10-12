@@ -6391,5 +6391,7 @@ axe each retained one incomplete and zero violations, while emulated mobile was 
 zero-incomplete criterion remains **Fail**. The parent personally reviewed all four corrected
 captures and the integrated diff; receipt SHA-256
 `9988560d68b5d2971961fb6177eedc4fdec7c26052f26386860d1e1605eef251`.
-The independent receipt-only finalization remains separate from those observed terminal checks.
+The completed independent receipt SHA-256 is
+`9e26dda16e3bcb5264a60fbca275376ce3c45345f8553de89350bcabcbd3f174`, at
+`independent-hotfix-rerun-20261012T233437Z/independent-qa-receipt.json` under the private task root.
 No completed native answer or deployment is established by this synthetic evidence.
