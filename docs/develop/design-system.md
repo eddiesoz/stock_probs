@@ -18,6 +18,18 @@ pre-banner guide failures are historical. See the
 
 ## Source of truth
 
+R121 Release 2 follows the approved [portfolio](../design/features/portfolio.png) and
+[what-if](../design/features/what-if.png) mockups. Overview keeps four value cards, holdings and
+allocation, with native cash and separate realized book results. Transactions expose a deliberate
+review card before the commit control. Tools → What-if pairs frozen inputs with before/after value
+and allocation cards and a persistent Simulation only label. All use existing theme tokens,
+neutral surfaces and teal accents; the three primary navigation entries remain unchanged.
+Mobile stacks the cards and exposes original values in labelled table cells. Charts include
+equivalent text and native progress controls. Empty/loading/error/disabled states retain page
+navigation and headings. Current browser findings and design acceptance are recorded separately
+in the R121 ledger; implementation presence does not establish accessibility or rollout acceptance.
+
+
 The packaged workspace stylesheet, [`app.css`](../../src/stock_probs/static/app.css), defines the
 current color, type, surface, focus, reduced-motion, forced-colors, and print behavior. The Next.js
 workspace uses the same packaged stylesheet through [`layout.tsx`](../../frontend/app/layout.tsx).
@@ -291,3 +303,10 @@ portfolio, comparison, briefing and what-if images replace their initial drafts.
 ![Approved briefing design proposal; fictional data.](../design/features/briefing.png)
 
 ![Approved what if design proposal; fictional data.](../design/features/what-if.png)
+
+
+### Portfolio tool navigation on narrow screens
+
+The Tools links wrap within the viewport when Compare and What-if are enabled. Keep the primary
+Overview / Research / Tools navigation and desktop order. Every secondary link remains visible,
+keyboard reachable, and at least 44 CSS pixels high; avoid clipped horizontal navigation text.

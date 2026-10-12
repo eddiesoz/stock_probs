@@ -468,6 +468,16 @@ _NATIVE_HTTP_STATUS_TEXT = re.compile(
     re.IGNORECASE,
 )
 _ROUTE_HELP = {
+    "/overview/transactions": (
+        "Transactions are original-currency manual ledger records. Corrections append replacements "
+        "or reversals. The user must preview and commit in the workspace. Never claim to commit "
+        "transactions, imports or conversions through chat. Unknown book cost remains unknown."
+    ),
+    "/tools/what-if": (
+        "What-if is simulation only using a frozen identified portfolio, quote and FX baseline. "
+        "Reopening never refreshes saved inputs. Hypothetical allocations require existing cash; "
+        "no simulation control changes real transactions or executes trades."
+    ),
     "/research/theses": (
         "Theses are private investment reasoning with evidence, risks and invalidation conditions. "
         "Draft only when asked. The user can deliberately select a saved reply as an editable "
@@ -484,7 +494,10 @@ _ROUTE_HELP = {
     ),
     "/overview": (
         "The overview workspace summarizes saved research and owner-held portfolio or "
-        "watchlist items. Read those only when the user asks about them."
+        "watchlist items. Read those only when the user asks about them. The transaction ledger "
+        "can contain different records from the legacy manual list. Existing list tools read "
+        "legacy context, not derived account balances; never label those results "
+        "current ledger holdings."
     ),
     "/research": (
         "Research contains submitted forecast searches and saved results. Saved results are "

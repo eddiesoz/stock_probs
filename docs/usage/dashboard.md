@@ -200,3 +200,47 @@ part of thesis history after its original chat is deleted. Existing notes for an
 can be edited and reviewed without fetching a new provider identity.
 
 Use **Reopen this thesis** for an authenticated link to a saved card. History shows each revision’s title, instrument, status, review dates, reasoning, risks, invalidation conditions, and evidence. Comparison legends identify observation gaps against the union of observed dates, without inventing exchange-calendar sessions. The exact-values disclosure has a keyboard-focusable scroll region and separate pagination controls on desktop and mobile.
+
+## Portfolio ledger and what-if candidate
+
+R121 Release 2 remains a local candidate, disabled by default. When enabled, Overview opens the
+derived portfolio and its Transactions tab. Create manually maintained TFSA, RRSP, taxable or other
+accounts. Account labels describe your records; the app has no brokerage connection.
+
+Record the original date and currency for opening cash/positions, deposits, withdrawals, buys,
+sells, dividends, interest, fees, splits, exchanges or linked transfers. Exchange paid/received
+amounts determine the actual execution rate. **Preview balances** shows all original rows and
+before/after native balances. **Commit reviewed transactions** is the explicit write action.
+Insufficient cash, short positions and invalid backdated corrections are rejected. Corrections
+append a replacement or reversal; the original record remains visible. Book cost uses decimal
+weighted-average calculations per account and instrument. Realized sales remain separate from
+unrealized gains; these results are not tax reports.
+
+CSV imports accept UTF-8 files up to 64 KiB and 200 rows. Download the template, choose the account,
+map columns, then validate the entire file before committing. Dates use `YYYY-MM-DD`; decimal
+amounts use a dot and no currency symbol or thousands separator. Duplicate rows require deliberate
+approval, and a failed batch imports no rows. Opening-position cost may be blank when unknown.
+Existing manual holdings remain separate: select each original currency and explicitly preview
+their conversion to opening positions. Conversion preserves quantity, leaves cost unknown and
+does not invent purchases. A source holding can be converted only once.
+
+**Refresh values** explicitly collects dated quotes and indicative display FX. CAD is the default;
+USD is available. Native amounts remain beside converted amounts. Bank of Canada daily indicative
+USD/CAD observations are cached and labelled with their publication date; fixture mode labels its
+simulated rate explicitly. These rates never replace recorded exchange execution amounts. Missing
+quotes or FX make the total unavailable, with a separately labelled known subtotal. Missing cost
+makes the affected gain unavailable. The largest-position figure combines exposure to the same
+instrument across accounts.
+
+Tools → **What-if** freezes the selected portfolio, quotes and FX into an identifiable baseline.
+Include an additional instrument before freezing when you want a hypothetical cash-funded
+allocation to it. Apply percentage price shocks, USD/CAD changes, or allocations funded from cash
+already in the baseline, then choose **Calculate simulation**. The before/after values and
+allocation use deterministic arithmetic. Save a named scenario to reopen its original baseline
+and assumptions without fetching new quotes. **Simulation only** stays visible; no scenario
+control changes your ledger. Freeze a new baseline explicitly when you want updated inputs.
+
+Ledger CSV/JSON and saved-scenario JSON exports retain native records and frozen evidence. CSV
+exports neutralize spreadsheet formulas. Feature-specific local checks are recorded in the
+[implementation ledger](../../MVP-PLAN.md#r-astra-121-seven-visible-feature-additions); production
+enablement and schema-compatible recovery acceptance remain pending.

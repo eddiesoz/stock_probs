@@ -22,6 +22,8 @@ PAGES = (
     "tools/markets.html",
     "research/theses.html",
     "tools/compare.html",
+    "overview/transactions.html",
+    "tools/what-if.html",
     "sign-in.html",
     "invite.html",
     "passkey.html",

@@ -4,6 +4,13 @@
 
 <h1 align="center">Signal Ledger</h1>
 
+R121's seven-feature expansion is in progress through four scoped releases. The local candidates
+add thesis/comparison workspaces and a decimal transaction ledger with frozen what-if scenarios;
+new capabilities default disabled. Alerts, report cards and personal briefings remain planned
+follow-on releases. See the [implementation status](MVP-PLAN.md#r-astra-121-seven-visible-feature-additions)
+and [portfolio guide](docs/usage/dashboard.md#portfolio-ledger-and-what-if-candidate). These candidate
+checks do not establish production rollout or schema-compatible recovery acceptance.
+
 <p align="center">
   <strong>Auditable stock-probability research in a calm, local workspace.</strong>
 </p>

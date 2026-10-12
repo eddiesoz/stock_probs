@@ -527,3 +527,5 @@ Native V2's directory-based auto-discovery is the loader boundary, and runtime d
 The `research-workspaces` map rule binds thesis/comparison implementation and their fixtures to
 the dashboard, API, approved design and threat-model guides. Add matching rules as later R121
 releases introduce new record types. Candidate documentation does not establish deployment or QA.
+
+For R121 portfolio changes, reconcile the portfolio-ledger-workspaces map entry with the dashboard, API, design and threat-model guides. Preserve native amounts, partial-valuation wording, unknown costs and the separation between simulated and committed transactions. A full SQLite archive retains the new tables; a local restore test does not establish an exact-PR recovery-image or actual-host rollback gate.

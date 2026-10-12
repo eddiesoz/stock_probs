@@ -116,11 +116,20 @@ test("owned static routes expose workspace navigation and honest initial states"
     assert.match(html, /aria-label="Primary navigation"/);
     for (const label of ["Overview", "Research", "Tools"]) assert.match(html, new RegExp(`>${label}<`));
   }
-  assert.match(overview, /Loading portfolio records/);
-  assert.match(overview, /Manual portfolio holdings/);
+  assert.match(overview, /Checking feature availability/);
+  assert.match(overview, /Your portfolio/);
+  assert.doesNotMatch(overview, /CAD [0-9]/);
   assert.match(overview, /No brokerage connection, order routing, or assumed real-time valuation/);
   assert.match(research, /Open search ledger/);
   assert.match(research, /Not a trading platform/);
   for (const label of ["Forecast", "Live Trading", "Markets"]) assert.match(tools, new RegExp(`>${label}<`));
   assert.doesNotMatch(tools, /buy|sell|place order/i);
+  const transactions = await readFile(new URL("overview/transactions.html", output), "utf8");
+  const whatIf = await readFile(new URL("tools/what-if.html", output), "utf8");
+  for (const html of [transactions, whatIf]) {
+    assert.match(html, /aria-label="Primary navigation"/);
+    assert.match(html, /Checking feature availability/);
+    assert.match(html, /id="main"/);
+  }
+  assert.match(whatIf, /Simulation only/);
 });

@@ -45,6 +45,30 @@ No R121 production deployment, merge, rollback, rollout, or email has occurred.
 Historical R120 release/evidence below remains unchanged. R121 does not supersede E850's deployed
 product identity or claim new production observations.
 
+### R121 E9 mobile Tools navigation follow-up
+
+Parent capture review found the earlier mobile What-if page exceeded its 360 CSS-pixel viewport.
+A scrolling navigation candidate passed route geometry checks but failed axe on clipped navigation
+text. The corrected local design wraps secondary Tools links, retains their order, and preserves
+Overview / Research / Tools, both themes, and desktop layout. The approved build-and-stage command
+passed 72 frontend contracts. The first eight-case browser attempt failed because the launcher left
+both new feature controls disabled; its exit-1 receipt is preserved, not product acceptance.
+
+With explicit local fixture feature controls and absolute worktree import path, the corrected
+selected browser command passed all eight desktop/mobile theme cases with exit 0: all enabled
+Tools routes, keyboard links with 44-pixel target checks, deterministic What-if allocation, and
+saved-scenario reopening. The four scenario captures have raw axe zero violations and zero
+incompletes. Parent reviewed all four captures; mobile content remains within 360 CSS pixels.
+Source/stage bindings remained unchanged across both runs (54 staged Next files plus four authored
+assets). Receipt `/var/tmp/r12r/signal-ledger-features-20261011/r2-tools-wrap-browser-02/terminal.json`
+records the terminal exit and unchanged bindings; log SHA-256
+`2f4ebefcc30550cfc94ca83e1f26a6518c88c5d9494f27fc0ce2e00c39d45b02`.
+Receipt creation `2026-10-12T23:34:21.872537Z` is not the execution start time.
+
+This is parent-scoped local evidence. Fresh independent navigation verification, complete current
+release checks, schema-compatible recovery, actual 1 GB acceptance, and deployment remain open.
+No R121 production changes, new provider connection, or email occurred.
+
 ### R121 E1 local Release 1 implementation and first independent review
 
 The isolated managed worktree uses branch `codex/signal-ledger-research-r1` from
@@ -217,6 +241,86 @@ recovery image. Application/UI bytes are unchanged by the schema-check repair; e
 retains its declared bindings. Current candidate canonical, image/runtime/security, actual combined
 1 GB, exact-PR post-migration rollback, canary and invited-user gates remain open. No R121 merge,
 deployment, rollout, resize or email occurred. The existing host, backups and US$15 total cap remain.
+
+
+### R121 E7 integrated portfolio candidate and preserved failures
+
+Release 2 is implemented locally in managed branch `codex/signal-ledger-portfolio-r2`, based on
+Release 1 checkpoint `5f7e269`. It introduces schema 15 and owner-specific decimal ledger accounts,
+append-only transactions/corrections, atomic mapped CSV previews, explicit legacy-holding conversion,
+dated partial portfolio valuation and immutable saved simulation baselines/scenarios. Feature
+controls default disabled; the original checkout's unrelated skill/catalog edits remain untouched.
+
+The first independent integrated backend review **Failed** seven CSV cases because a candidate-list
+initializer was unreachable after an error branch, and found one Ruff line-length issue. Preserve
+receipt `/var/tmp/r12r/signal-ledger-r2-backend-independent-qa-20261012T050621Z-d0cb99aa/independent-qa-receipt.json`,
+SHA-256 `bc368bb6cee64c1cd3729a5bb6884b17c362250e382a768cc5d7456b564a491d`.
+Its separate schema-15 signed-backup/promote roundtrip retained an account, transaction/batch,
+baseline and scenario after restoring the earlier balance; this is local SQLite preservation,
+not image recovery or exact-PR rollback acceptance. Its two-account local-auth probes passed their
+declared anonymous, canary, hostile-host and payload-limit scope.
+
+After the CSV initializer repair, the independent fresh backend recheck **Passed** all 53 selected
+tests, strict typing of seven modules, Ruff/security/format and 43 unchanged reviewed inputs at
+`2026-10-12T05:21:58Z`–`05:23:47Z`. Receipt
+`/var/tmp/r12r/signal-ledger-r2-backend-repair-independent-qa-20261012T052112Z-108b56af/independent-repair-recheck-receipt.json`,
+SHA-256 `569ef51940c6a5962bdb62a04df68c739cd45b7b2f0cf1bdd53052065ea3bc63`.
+The earlier archived-transfer reversal reproduction **Failed** and its guard repair passed a
+selected regression; later scoped passes do not erase these findings.
+
+The first frontend build **Failed** missing route-label typing; the second **Failed** one stale
+Overview static contract after successful typecheck/build. The third and fourth approved
+`./scripts/build-frontend.sh` runs **Passed** 72 contracts, typecheck/build and stage equality.
+The fourth run retained 97 inputs and 54 byte-matched served/export files; receipt
+`/var/tmp/r12r/signal-ledger-features-20261011/r2-frontend-build-04/terminal.json`.
+The first selected 12-case browser execution **Failed** eight success journeys at select locators;
+four desktop/mobile Light/Dark state cases passed. A subsequent one-case locator diagnostic reached
+committed arithmetic, then failed a string-format assertion (`24.0` versus `24`); its contemporaneous
+pre-run binding is **Unavailable**. Success, current full browser/design, final canonical,
+independent complete security, actual combined 1 GB, compatible recovery, exact-PR rollback and
+production canary remain pending. No R121 merge, image promotion, deploy, rollout, resize or email
+occurred. The 1 GB host, retained backups and US$15 monthly total cap remain unchanged.
+
+
+### R121 E8 portfolio source findings and affected repairs
+
+Independent read-only review **Failed** four findings: hypothetical reallocation mixed quote and
+book currencies, correction drafts retained response-only metadata, preview commit/discard lost
+focus, and allocation/mobile tiles departed from the approved mockup. Receipt
+`/var/tmp/r12r/signal-ledger-r2-source-security-qa-20261012T0539Z-f2cd2f0f/independent-source-review-final.json`,
+SHA-256 `f590d53f22c2e66d6731b3704f283527a718bdffc947d19c355277e07ea30428`, retained 23 reviewed
+inputs at HEAD `5f7e269`. Parent reproductions separately **Failed** the currency boundary
+(CAD 500 cost became CAD 600 after a USD allocation) and the actual workspace correction
+(HTTP 422 before preview). The earlier four-case state pass, first locator failures and subsequent
+ambiguous-table/label diagnostic failures remain preserved. The second selected 12-case browser
+run was interrupted at exit 143 before an aggregate; its aggregate is **Unavailable**, cause unproven.
+
+The repaired scenario rejects a differing recorded position/quote currency without mutating its
+baseline. Corrections whitelist original financial fields, and commit/discard explicitly restore
+focus after the busy state ends. Allocation uses labelled horizontal bars with displayed values;
+mobile value cards keep the approved two-by-two grid. Full account/transaction editors remain in
+Transactions; What-if baseline and provenance disclosures remain accessible while reducing page
+length. Parent ten-case scenario checks and the fifth approved frontend build **Passed** 72
+contracts, typecheck/build and served/export equality. These do not close broader release gates.
+
+A fresh selected 14-case browser command **Passed** with exit 0, desktop Chromium and Pixel 7
+emulation, Light/Dark, at unchanged 114 reviewed inputs and 54 served/export files. It verified
+explicit preview/commit balances, correction history retention, focus restoration, quote refresh,
+frozen-scenario reopening without a new snapshot, empty/loading/error/disabled states and sampled
+44-pixel controls. The HTML report retains 32 raw axe analyses with zero violations/incompletes.
+Receipt `/var/tmp/r12r/signal-ledger-features-20261011/r2-browser-third/terminal.json` and supplemental
+raw attachment audit `raw-axe-supplement.json` in the same directory. The first finalizer looked for
+external JSON files and failed; the second read an attachment summary without its body and failed.
+The corrected extractor read detailed embedded report bodies; no prior receipt was overwritten.
+These are selected synthetic-fixture results, not full-app accessibility, physical mobile, actual
+screen-reader, true zoom, live-provider, canonical, actual combined 1 GB or release acceptance.
+A subsequent independent affected recheck passed ten scenario tests, one saved-scenario HTTP
+regression, strict scenario typing and scoped Ruff, while retaining an aggregate **Fail** for
+Overview’s five-row rendering with ten-row page advances. Receipt
+`/var/tmp/r12r/signal-ledger-r2-affected-qa-20261012T0556Z-1439530a/independent-affected-review-final.json`,
+SHA-256 `4adbd7d8ed98f07a7df4f81c9e9b3b4c2ef8f039b97608dcaa7a501904a901ee`. Its separate browser
+addendum verified parent artifacts without replay. The narrow pagination repair now requests five
+rows and exposes View all transactions; a rendered mapped-CSV/pagination regression remains pending.
 
 ## Status And Scope
 
