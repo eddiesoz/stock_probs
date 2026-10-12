@@ -436,6 +436,16 @@ This is the required module invocation for that PR-bound probe. E775 passed buil
 
 R-ASTRA-120 remains **In progress**. E725's earlier full-browser failure remains preserved. E765 later passed 191 cases with 3 expected skips and no failures; its four maintained assistant-panel axe snapshots were 0 violations/0 incomplete, which does not establish full-app accessibility. E767 passed fresh-task discovery of all eight tools and one read-only `status` call. E721 security results cover only the selected synthetic scope. No current-image kill, native/provider runtime, full security, or release acceptance is established. See the [authoritative ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact history and receipts.
 
+### Named schema verification boundary
+
+`scripts/rehearse_schema13.py` retains its historical schema-12-to-13 main path and recovery
+overlay. Its `_verification_source(schema_version=13)` accepts named schemas 13, 14 and 15 for
+selected generated-verifier checks, preserving exact readiness/consent equality and contiguous
+migration history. The default generated source remains byte-identical to the historical version.
+This parameter does not change the main rehearsal, deployed-image binding, or recovery overlay.
+Each new feature migration still requires a current-schema recovery image and an exact-PR
+rollback rehearsal retaining post-migration feature records before release acceptance.
+
 ### PR-head candidate image build helper
 
 The existing schema-13 rehearsal CLI now has a fixed-source mode for building a private local

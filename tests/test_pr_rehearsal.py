@@ -22,7 +22,7 @@ from scripts import pin_pr_rehearsal_review
 from scripts import pr_rehearsal_bootstrap as bootstrap
 from scripts import pr_rehearsal_host_helper as host_helper
 from scripts import rehearse_schema13 as schema13
-from stock_probs.repository import Repository
+from stock_probs.repository import SCHEMA_VERSION, Repository
 from tools.deploy_mcp import pr_rehearsal as controller
 
 
@@ -1064,7 +1064,10 @@ def test_host_schema_probe_is_read_only_and_matches_repository_migration_history
         timeout=15,
     )
     assert probe.returncode == 0
-    assert json.loads(probe.stdout) == {"versions": list(range(1, 14)), "max": 13}
+    assert json.loads(probe.stdout) == {
+        "versions": list(range(1, SCHEMA_VERSION + 1)),
+        "max": SCHEMA_VERSION,
+    }
 
     missing = tmp_path / "missing.sqlite3"
     absent_probe = subprocess.run(  # noqa: S603 - fixed interpreter and generated fixed-query probe.

@@ -1397,8 +1397,11 @@ def _verify_historical_backup_without_promotion(
         staging.cleanup()
 
 
-def _verification_source() -> str:
-    return """from __future__ import annotations
+def _verification_source(schema_version: int = 13) -> str:
+    """Keep the historical v13 default while binding selected checks to a named new schema."""
+    if type(schema_version) is not int or schema_version not in {13, 14, 15}:
+        raise RehearsalError("unsupported verification schema")
+    source = """from __future__ import annotations
 
 import json
 import sys
@@ -1812,6 +1815,12 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 """
+
+    if source.count("== 13") != 2 or source.count("range(1, 14)") != 1:
+        raise RehearsalError("verification schema template changed")
+    return source.replace("== 13", f"== {schema_version}").replace(
+        "range(1, 14)", f"range(1, {schema_version + 1})"
+    )
 
 
 def _write_file(path: Path, contents: str) -> None:

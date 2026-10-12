@@ -14,6 +14,12 @@ source and current release evidence. For browser or capture claims, follow the [
 evidence procedure](testing.md#binding-browser-evidence-to-the-served-frontend) so the evidence
 matches the bundle FastAPI actually serves.
 
+For R-ASTRA-121 migration changes, record the current schema and the recovery image's compatible
+schema separately. The historical schema-13 rehearsal retains its default contract; selecting a
+new schema in a generated verifier changes only that verifier's exact assertions. See the
+[migration rehearsal boundary](testing.md#named-schema-verification-boundary) and the R121 ledger
+in `MVP-PLAN.md`. Do not describe a selected test as image or production rollback acceptance.
+
 Contrast evidence follows the root `AGENTS.md` rule: retain raw axe results and separately
 resolve uncertain results with exact-node measurements, independent QA and parent screenshot
 review. See [contrast review](testing.md#reviewing-incomplete-contrast-results). A scoped manual

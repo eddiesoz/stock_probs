@@ -5,6 +5,8 @@ corrected designs take precedence. Use phased, reviewed releases and retain owne
 explicit confirmation, schema-compatible data-preserving rollback and the existing 1 GB/US$15 cap.
 The research-workspace documentation-map entry binds new code and fixtures to the dashboard, API,
 design and threat-model guides; documentation presence does not establish acceptance.
+Keep historical schema-13 rehearsal defaults and receipts intact. A named-schema verifier check
+does not establish a new schema-compatible recovery image, actual-host rollback, or release gate.
 
 ## Codex project workflow
 

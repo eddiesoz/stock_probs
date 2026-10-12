@@ -11,7 +11,7 @@ fictional data, incidental labels, and logos are not product requirements. See t
 | Release | Complete user-facing scope | Current status |
 | --- | --- | --- |
 | 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | In progress; local implementation and selected checks only |
-| 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | Pending |
+| 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | In progress in a separate managed checkout; no release acceptance |
 | 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | Pending |
 | 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Pending |
 
@@ -37,7 +37,7 @@ No R121 production deployment, merge, rollback, rollout, or email has occurred.
 ### R121 implementation checklist
 
 1. **In progress:** implement, independently verify and integrate Release 1.
-2. **Pending:** implement and verify Release 2.
+2. **In progress:** implement and verify Release 2 in an isolated checkout.
 3. **Pending:** implement and verify Release 3.
 4. **Pending:** implement and verify Release 4.
 5. **Pending:** complete each release's exact-revision acceptance, recovery and publication.
@@ -176,6 +176,47 @@ production auth acceptance. No Release 2 files or migration are integrated at th
 Canonical runtime preparation moved only task-owned links to an isolated venv and SD gate path;
 an initial cross-filesystem rename setup failure is retained. The original Python runtime is not
 modified. No R121 image, PR, merge, deployment, rollout, resize or email has occurred yet.
+
+### R121 E6 draft PR, complete canonical failure and selected schema repair
+
+Release 1 was committed and pushed at `ecb55ff3c78883cd58756c9f7fd14293b597cfe8` and opened as
+[draft PR #7](https://github.com/eddiesoz/stock_probs/pull/7); it remains unmerged. Parent review
+covered the integrated diff and all eight isolated Light/Dark desktop/mobile-emulated success
+captures against the two approved mockups. A later independent five-case calculation check
+**Passed** normalization overflow/underflow, malformed/ambiguous provider timestamps and ordinary
+price-change/volatility/drawdown math. Receipt
+`/var/tmp/r12r/signal-ledger-r1-calc-confirm-20261012T034411Z/independent-calc-api-qa-receipt.json`,
+SHA-256 `44cae405dc55c0fd5e03ae2f4ffdf52a371958470295217023ef443f7fe2d29a`.
+
+The first complete canonical command **Failed**, exit 1, at this clean pushed revision on native
+x86_64/Python 3.11.15: `PYTHONPATH=<R1>/src TMPDIR=/var/tmp/r12r UV_CACHE_DIR=<task>/uv-cache
+UV_LINK_MODE=symlink TASK_ID=R-ASTRA-121 ./scripts/local-gate.sh check`, from
+`2026-10-12T03:41:17Z` to `04:14:04Z`. It recorded 3,328 passes, four failures, four skips,
+four deselections, 100 warnings and 85.77% coverage. Documentation and frontend completed;
+Python did not, so the required three-check contract was unsatisfied. All 387 source pins,
+55 served/export pairs, HEAD and clean Git status matched. Canonical receipt
+`test-results/local-gates/R-ASTRA-121-20261012T034117Z/evidence.json`, SHA-256
+`e8ca1116a6a6842b7c9645f043e3cf9171d1f57473871517b293d1be7815d0bd`; JUnit SHA-256
+`aa5e43f73ba015b41030a96f0527962cd4e898bd59d6446d4b11ca2a767170cf`.
+Independent integrity review retained **Fail**; exact owned process/temp cleanup is
+**Unavailable**, with four failure-cited pytest directories still present. Receipt
+`/var/tmp/r12r/signal-ledger-r1-canonical-first-audit-20261012T041745Z-dfce497b/independent-canonical-first-audit.json`,
+SHA-256 `d31a7767128e3cc10341a452ad3eb7f659f802e953b6396155ef523952986cbc`.
+
+All four failures pinned schema 13 while the current repository uses schema 14. The repair binds
+current-repository assertions to `SCHEMA_VERSION` and permits exact named-schema generated checks,
+while retaining the historical default and old-schema restore rejection. The initial selected
+repair run **Failed** four passes/one remaining stale error-message regex; its corrected rerun and
+independent verification **Passed** five selected tests. Independent generated 13/14/15 checks,
+Ruff/security/format and 387 unchanged pins also passed at `2026-10-12T04:27:44.599733Z`–
+`04:27:59.026253Z`, child umask `022`. Receipt
+`/var/tmp/r12r/signal-ledger-r1-schema-repair-independent-qa-20261012T042744Z-3e76b3cb/independent-qa-receipt.json`,
+SHA-256 `4b28c1d624a4671cf3fff67153e9e72b5a1e815a8ebf847d4f1b26dd58c423f6`.
+These selected results do not replace the failed canonical aggregate or establish a schema-14
+recovery image. Application/UI bytes are unchanged by the schema-check repair; earlier evidence
+retains its declared bindings. Current candidate canonical, image/runtime/security, actual combined
+1 GB, exact-PR post-migration rollback, canary and invited-user gates remain open. No R121 merge,
+deployment, rollout, resize or email occurred. The existing host, backups and US$15 total cap remain.
 
 ## Status And Scope
 
