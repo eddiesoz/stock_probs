@@ -61,6 +61,10 @@ Codex project-configuration changes and restart the OpenCode parent after OpenCo
 or profile changes before checking discovery. File presence, synchronization, or parsing does not
 prove runtime loading; no runtime-discovery pass is inferred.
 
+For R-ASTRA-121, repair the reported assistant non-response and verify a completed native model
+answer before claiming restoration, then continue the approved seven visible features. The incident
+does not cancel the feature plan. Error-message or diagnostic improvements alone are not restoration.
+
 ## Current operational baseline: native OpenCode V2
 
 For OpenCode, this section is the current workflow authority. The historical ledgers below preserve

@@ -195,6 +195,7 @@ def test_public_http_error_keeps_code_only_compatibility_and_validates_403_class
         ("RegionError", "region_error"),
         ("DataPolicyError", "data_policy_error"),
         ("FreeUsageLimitError", "free_usage_limit_error"),
+        ("FreeTierError", "free_tier_access_error"),
         ("UNTRUSTED_PROVIDER_TYPE_SECRET", "other"),
     ],
 )

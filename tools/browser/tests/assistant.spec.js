@@ -344,6 +344,72 @@ function conversationDetail() {
   };
 }
 
+for (const theme of ["light", "dark"]) {
+  test(`assistant preserves provider failure after completion and saved-chat reopening in ${theme}`, async ({ page }, testInfo) => {
+  await page.addInitScript((value) => localStorage.setItem("stock-probs.theme", value), theme);
+  let submitted = false;
+  let submittedContext = null;
+  let created = false;
+  let detailReads = 0;
+  let turnPosts = 0;
+  const summary = { id: "conversation-provider-failure", title: "Provider access check", revision: 1,
+    created_at: "2025-01-10T17:00:00Z", updated_at: "2025-01-10T17:01:00Z" };
+  const failure = "The selected model provider could not answer. Check Providers for access or choose another approved model. Your question was saved.";
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({ status: 200, contentType: "application/json",
+    body: JSON.stringify({ authenticated: true, user: { id: 1, role: "admin" }, csrf_token: "fixture-csrf" }) }));
+  await page.route("**/api/v1/assistant/**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    const fulfill = (body, statusCode = 200) => route.fulfill({ status: statusCode, contentType: "application/json", body: JSON.stringify(body) });
+    if (pathname.endsWith("/status")) return fulfill(status);
+    if (pathname.endsWith("/models")) return fulfill({ items: [model] });
+    if (pathname.endsWith("/context")) return fulfill({ context: { ...context, route: "/overview" }, preview: { summary: "Overview", fields: ["page route only"] } });
+    if (pathname.endsWith("/conversations") && request.method() === "GET") return fulfill({ items: created ? [summary] : [], page: 1, page_size: 20, total: created ? 1 : 0 });
+    if (pathname.endsWith("/conversations") && request.method() === "POST") {
+      created = true;
+      return fulfill({ conversation: summary }, 201);
+    }
+    if (pathname.endsWith("/turns") && request.method() === "POST") {
+      turnPosts += 1;
+      submittedContext = request.postDataJSON().context;
+      submitted = true;
+      return fulfill({ turn: { id: "turn-provider-failure", status: "running" } }, 202);
+    }
+    if (pathname.endsWith("/events")) {
+      const events = [[1, "error", { code: "provider_unavailable", message: "UNTRUSTED_PROVIDER_BODY" }],
+        [2, "complete", { status: "failed", assistant_message_id: null }]];
+      return route.fulfill({ status: 200, contentType: "text/event-stream", body: events.map(([id, type, data]) => `id: ${id}\nevent: ${type}\ndata: ${JSON.stringify(data)}\n\n`).join("") });
+    }
+    if (pathname.endsWith("/conversation-provider-failure") && request.method() === "GET") {
+      detailReads += 1;
+      return fulfill({ conversation: { ...summary, delete_confirmation_phrase: "DELETE failure" },
+        messages: { items: submitted ? [{ id: "user-failure", seq: 1, turn_id: "turn-provider-failure", role: "user", text: "Synthetic provider check", created_at: summary.updated_at }] : [], page: 1, page_size: 50, total: submitted ? 1 : 0 },
+        turns: submitted ? [{ id: "turn-provider-failure", status: "failed", model_id: model.id, policy_version: model.policy_version, context: submittedContext, created_at: summary.updated_at }] : [],
+        events: { items: submitted ? [{ turn_id: "turn-provider-failure", type: "error", sequence: 1, data: { code: "provider_unavailable", message: "UNTRUSTED_PROVIDER_BODY" }, created_at: summary.updated_at }] : [], page: 1, page_size: 100, total: submitted ? 1 : 0 },
+        actions: [], action_pagination: { page: 1, page_size: 100, total: 0 } });
+    }
+    throw new Error(`Unexpected assistant failure fixture route: ${request.method()} ${pathname}`);
+  });
+  await page.goto("/overview");
+  await page.getByRole("button", { name: "Open Ledger assistant" }).click();
+  const panel = page.getByTestId("assistant-panel");
+  await chooseFixtureModel(panel);
+  await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Synthetic provider check");
+  await panel.getByRole("button", { name: "Send question" }).click();
+  await expect.poll(() => detailReads).toBeGreaterThan(0);
+  await expectAssistantLiveStatus(panel, failure);
+  await expect(panel.getByText("Synthetic provider check", { exact: true })).toBeVisible();
+  await expect(panel.getByText("UNTRUSTED_PROVIDER_BODY", { exact: true })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Open conversation history" }).click();
+  await panel.getByRole("button", { name: /Provider access check/ }).click();
+  await expect.poll(() => detailReads).toBeGreaterThan(1);
+  await expectAssistantLiveStatus(panel, failure);
+  expect(turnPosts).toBe(1);
+  await expectAssistantAxeClean(page, testInfo, `provider-failure-${theme}`);
+  await testInfo.attach(`provider-failure-${theme}.png`, { body: await page.screenshot({ fullPage: true, scale: "css" }), contentType: "image/png" });
+  });
+}
+
 test("assistant desktop/mobile widget keeps a structured saved answer readable and applies only a confirmed typed theme action", async ({ page }, testInfo) => {
   const originalViewport = page.viewportSize();
   if (!originalViewport) throw new Error("The browser project must provide a viewport for this regression.");

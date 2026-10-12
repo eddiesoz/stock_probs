@@ -10,6 +10,8 @@ import {
   assistantContextUrl,
   assistantHistoryDestination,
   assistantErrorMessage,
+  assistantTurnErrorMessage,
+  savedAssistantTurnFailure,
   assistantTurnContext,
   consumeAssistantStream,
   readableTimestamp,
@@ -446,22 +448,6 @@ function formatStorage(value: number, limit: number): string {
   return `${mb(value)} of ${mb(limit)}`;
 }
 
-function safeTurnError(code: string): string {
-  const messages: Record<string, string> = {
-    provider_unavailable: "The selected model provider is unavailable.",
-    provider_policy_changed: "The model policy changed. Review the current privacy terms before continuing.",
-    turn_timeout: "The response reached its time limit.",
-    turn_cancelled: "The response was cancelled.",
-    runtime_restarted: "The assistant stopped during a service restart.",
-    tool_failed: "An approved research step could not finish.",
-    tool_unavailable: "An approved research step is currently unavailable.",
-    worker_unavailable: "The assistant worker is unavailable.",
-    assistant_worker_unavailable: "The assistant worker is unavailable.",
-    invalid_runtime_event: "The response could not be safely displayed.",
-  };
-  return messages[code] ?? "The assistant could not complete this turn.";
-}
-
 function selectedContextRequest(request: AssistantContextRequest, includeSelectedReferences: boolean): AssistantContextRequest {
   return includeSelectedReferences ? request : { route: request.route };
 }
@@ -551,6 +537,7 @@ export function AssistantPanel({
   const [activeTurn, setActiveTurn] = useState<ActiveTurn | null>(null);
   const activeTurnRef = useRef<ActiveTurn | null>(null);
   const [streamState, setStreamState] = useState<StreamState>("idle");
+  const turnErrorRef = useRef<string | null>(null);
   const terminalEventRef = useRef<Extract<AssistantEvent, { type: "complete" }> | null>(null);
   const terminalTurnRef = useRef<ActiveTurn | null>(null);
   const [liveStatus, setLiveStatus] = useState("");
@@ -1111,6 +1098,7 @@ export function AssistantPanel({
       streamAbortRef.current?.abort();
       streamAbortRef.current = null;
       terminalEventRef.current = null;
+      turnErrorRef.current = null;
       terminalTurnRef.current = null;
       cursorRef.current = 0;
       setConversation(null);
@@ -1182,6 +1170,7 @@ export function AssistantPanel({
           && terminalTurnRef.current.turnId === currentTurn.id;
         if (!sameTerminalTurn) {
           terminalEventRef.current = null;
+          turnErrorRef.current = null;
           terminalTurnRef.current = { conversationId: id, turnId: currentTurn.id };
           cursorRef.current = 0;
         }
@@ -1190,10 +1179,15 @@ export function AssistantPanel({
         setLiveStatus("A response was interrupted. Reconnect to its saved event stream.");
       } else {
         terminalEventRef.current = null;
+        turnErrorRef.current = null;
         terminalTurnRef.current = null;
         cursorRef.current = 0;
         setActiveTurn(null);
-        setStreamState("idle");
+        const failure = savedAssistantTurnFailure(detail);
+        setStreamState(failure ? "failed" : "idle");
+        if (failure) {
+          setLiveStatus(failure);
+        }
       }
       setHistoryOpen(false);
     } catch (error) {
@@ -1442,6 +1436,7 @@ export function AssistantPanel({
       && terminalTurnRef.current.turnId === turn.turnId;
     if (!sameTurn) {
       terminalEventRef.current = null;
+      turnErrorRef.current = null;
       terminalTurnRef.current = turn;
     }
     setActiveTurn(turn);
@@ -1477,10 +1472,11 @@ export function AssistantPanel({
           setLiveStatus("Response cancelled. Review the saved conversation for its final state.");
         } else {
           setStreamState("failed");
-          setPanelError(terminal.status === "timed_out"
-            ? "The response timed out before it finished. Review any action receipts and reopen the conversation to check the saved state."
-            : "The response did not finish. Review any action receipts and reopen the conversation to check the saved state.");
-          setLiveStatus("The assistant turn ended without a completed answer.");
+          const message = turnErrorRef.current ?? (terminal.status === "timed_out"
+            ? assistantTurnErrorMessage("turn_timeout")
+            : "The assistant turn ended without a completed answer.");
+          setPanelError("");
+          setLiveStatus(message);
         }
         void loadConversation(turn.conversationId, false, focusRequest ?? currentFocusRequest(turn.conversationId));
       } else if (streamAbortRef.current === controller) {
@@ -1547,9 +1543,10 @@ export function AssistantPanel({
       terminalEventRef.current = event;
       setLiveStatus("The assistant response is finishing.");
     } else if (event.type === "error") {
-      setPanelError(safeTurnError(event.code));
+      turnErrorRef.current = assistantTurnErrorMessage(event.code);
+      setPanelError(turnErrorRef.current);
       setLiveStatus("The assistant reported a turn error. Checking its final status.");
-      if (event.code === "provider_policy_changed") void reloadAfterPolicyChange(new AssistantClientError(safeTurnError(event.code), 409, event.code), true);
+      if (event.code === "provider_policy_changed") void reloadAfterPolicyChange(new AssistantClientError(assistantTurnErrorMessage(event.code), 409, event.code), true);
       if (event.code === "worker_unavailable" || event.code === "assistant_worker_unavailable" || event.code === "runtime_restarted") void refreshAssistantStatus(true, true);
     }
   }
@@ -1614,6 +1611,7 @@ export function AssistantPanel({
       const turn = asRecord(turnEnvelope.turn);
       if (typeof turn.id !== "string" || typeof turn.status !== "string") throw new Error("The assistant returned a malformed turn identifier.");
       terminalEventRef.current = null;
+      turnErrorRef.current = null;
       terminalTurnRef.current = { conversationId, turnId: turn.id };
       if (turnContext) setTurnContexts((current) => ({ ...current, [turn.id as string]: turnContext }));
       setMessages((current) => [...current, {
@@ -2238,7 +2236,6 @@ export function AssistantPanel({
               void connectToTurn(activeTurn, focusRequest);
             }}>Reconnect to response</button> : null}
             {busyTurn ? <button ref={cancelButtonRef} type="button" className={styles.cancel} onClick={(event) => void cancelTurn(event.currentTarget)} disabled={busy === "cancel"}>{busy === "cancel" ? "Cancelling…" : "Stop response"}</button> : null}
-            {streamState === "failed" ? <p className={styles.error} role="alert">The response did not finish. Review any action receipts and reopen the conversation to check the saved state.</p> : null}
             {!conversation && conversationState === "ready" ? <p className={styles.empty}>{renderStaticMessageWords("Start a conversation with a specific research question. The assistant does not trade or place orders.")}</p> : null}
           </div>
 

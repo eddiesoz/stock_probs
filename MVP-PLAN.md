@@ -6346,3 +6346,50 @@ E849 documentation evidence:
 | --- | --- |
 | Pre-edit authored-file baseline | Task `R-ASTRA-120`; UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; byte-identical copies in `/var/tmp/r12r/r120-e849-private-baseline-20261010T153300Z/`, directory mode `0700`, files mode `0600`. SHA-256: `AGENTS.md` `caa42add7284f5e0df20cdec1a0923b852ce68a7e836d04bee8eaf6a97b6a0a6`; `MVP-PLAN.md` `b9d2f854eccc1865fdb20457c7b0e99dbfe8310a006b2dfc9c0ceede60aeabac`; `MVP-ROADMAP.md` `3d4a65b97a6c0c00680fd5d70b229c9727141c8f5d7b8269fc188a5046d2f009`; `docs/operations/getting-started.md` `5721ee989e0d7361e6973028ee78c933823ec580537be3a56aec7e5bd8fd59b0`. |
 | Authored documentation checks | `.dev-venv/bin/python scripts/validate_docs.py` exited `0` (**Pass**, 9 categories, 14 topics, 8 project skill governance entries); `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` exited `0` (**Pass**, 154 mapped files); `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs/operations/getting-started.md` exited `0` (**Pass**). Documentation tests were not run. |
+
+
+### R-ASTRA-121 assistant access incident
+
+The user reported saved questions without answers and directed repair before continuing the
+approved seven-feature plan. Read-only production checks observed the existing tested release
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, schema 13, with app/assistant ready and invited
+rollout. Closed production diagnostics recorded two upstream HTTP 403 turn failures.
+
+Genuine native OpenCode V2.0.7 trials with synthetic account/context and approved tools failed
+for Space Bunny Free and a deliberately reviewed LongCat free-model comparison. Both classified
+the exact upstream `FreeTierError` as `free_tier_access_error`, with no answer chunks. The
+supplier's underlying eligibility decision is unproven. Failed conversation-purge assertions
+remain part of the local failed functional results. No production restart, model switch,
+provider-account setup, deployment, or email occurred.
+
+The local hotfix preserves safe provider failure copy through completion and saved-chat reopen;
+it adds the closed diagnostic class and repairs the test wrapper's deadline forwarding. It does
+not change provider eligibility, privacy consent, permissions, budgets, or fallback behavior.
+Independent selected diagnostic tests passed their declared synthetic scope. Parent UI checks
+passed four desktop/mobile Light/Dark cases; raw desktop axe incompletes remain separate failures
+of the strict criterion. An independent four-case browser attempt served another checkout because
+its worktree import/runtime overrides were omitted; its exit-1 and mismatched asset bindings are
+preserved as an invalidly bound attempt, not product acceptance. Corrected independent browser
+verification passed four theme/device cases after fixing the saved-context fixture.
+
+Private task receipts are under `/var/tmp/r12r/signal-ledger-assistant-fix-20261012/` on verified
+UUID `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`. Native fourth receipt SHA-256:
+`c45a9e5f9ff6679fcf745ff86e9e2db1e85a43e02dda627612bc85ebcc66859c`;
+reviewed alternative receipt:
+`2d201e2c2d51eb6445d2e298fe28d64babae9487e4ee28e0c6b0a65036f565f4`.
+A completed native answer and required release checks remain open. The seven-feature worktrees
+are preserved; release 1 has draft PR #7, release 2 has stacked draft PR #8, and release 3 has tested pure
+crossing/scoring drafts. These are not deployed capabilities. The existing 1 GB host, backups,
+and US$15 monthly total cap remain unchanged.
+
+
+The corrected independent hotfix run passed 4/4 browser cases, 12 selected backend regressions,
+26 Node contracts, typecheck, Ruff security and formatting. It verified the running hotfix package:
+52 served HTTP asset responses matched current files, with one expected redirect; all 53 local
+served/export pairs and 16 authored source bindings remained unchanged. Desktop Light/Dark raw
+axe each retained one incomplete and zero violations, while emulated mobile was 0/0. The strict
+zero-incomplete criterion remains **Fail**. The parent personally reviewed all four corrected
+captures and the integrated diff; receipt SHA-256
+`9988560d68b5d2971961fb6177eedc4fdec7c26052f26386860d1e1605eef251`.
+The independent receipt-only finalization remains separate from those observed terminal checks.
+No completed native answer or deployment is established by this synthetic evidence.

@@ -12,6 +12,19 @@ signed-in tabs and authentication state. Never clear user cookies, browser stora
 reset a test. Do not use production local-login flows or claim an MFA bypass; exercise authentication
 through development fixtures and isolated contexts.
 
+## Assistant access-failure checks
+
+Native verification must retain the original turn deadline through diagnostic wrappers. Exact
+`FreeTierError` responses map to the closed `free_tier_access_error` diagnostic class across the
+proxy, runtime, API, and probe; never retain raw provider bodies. A classified rejection is not a
+successful model answer. Test safe failure copy through terminal stream completion and saved-chat
+reopening, with the saved context matching the submitted context and no automatic retry.
+
+For an isolated worktree, set `PYTHONPATH` to its absolute `src` directory and set
+`STOCK_PROBS_BROWSER_RUNTIME` to a task-owned disposable directory. A shared editable environment
+can otherwise import another checkout. Bind actual served asset bytes as well as local staged
+files; a matching local export alone does not identify the running package.
+
 ## Reviewing incomplete contrast results
 
 Keep raw axe violations and incomplete results in the evidence. An incomplete result needs
