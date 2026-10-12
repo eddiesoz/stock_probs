@@ -174,3 +174,29 @@ evidence. Report an actual screen-reader gap separately; automated accessibility
 substitute for assistive-technology evidence.
 
 For endpoint details, see the [API reference](../reference/api.md).
+
+## Research thesis and comparison candidate
+
+R121 Release 1 is in progress. The candidate defaults to disabled; it is not part of the E850
+production release. When enabled for your account, Research exposes Theses and Tools exposes
+Compare. See the [R121 contract](../../MVP-PLAN.md#r-astra-121-seven-visible-feature-additions).
+
+A thesis stores your reasoning, risks, invalidation conditions, review date and selected evidence.
+Saving requires a deliberate action. Edits append revisions; an out-of-date editor must reload
+before saving. Attach only forecast event or assistant message IDs you have reviewed; inaccessible
+attachments are rejected. Archived theses retain their history.
+
+Compare accepts two to four distinct instruments and the supported daily-bar ranges. Requesting a
+comparison does not run forecasts. Saved snapshots reopen without chart-provider calls; Refresh
+captures new inputs. Unadjusted price statistics are not total return. Discontinuities suppress
+potentially misleading metrics. Each observation retains its provider and date. Weekly forecasts
+are separate explicit requests and preserve their own exact five-session targets.
+
+For an assistant draft, choose **Ask assistant to draft**, review the prompt and model privacy terms, and explicitly send the request. Select a saved assistant reply with **Use this reply as an editable thesis draft**. The draft copies at most 6,000 characters and keeps the selected excerpt as evidence. Review the text and choose **Save reviewed thesis**; opening a draft creates no saved thesis. The assistant remains optional, and an unavailable model does not prevent manual notes. **Record review** retains the reasoning and appends the confirmed review date to history. Use the export links to download your own notes and dated comparison evidence.
+
+Thesis JSON exports include the current cards and all retained revisions; CSV contains one row per
+revision with its evidence and instrument identity. A previously captured assistant excerpt remains
+part of thesis history after its original chat is deleted. Existing notes for an unchanged instrument
+can be edited and reviewed without fetching a new provider identity.
+
+Use **Reopen this thesis** for an authenticated link to a saved card. History shows each revision’s title, instrument, status, review dates, reasoning, risks, invalidation conditions, and evidence. Comparison legends identify observation gaps against the union of observed dates, without inventing exchange-calendar sessions. The exact-values disclosure has a keyboard-focusable scroll region and separate pagination controls on desktop and mobile.

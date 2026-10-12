@@ -25,7 +25,7 @@ from stock_probs.auth import (
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, HistoryFilters
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 OUTCOME_RECONSTRUCTION_LIMIT = 100
 HISTORY_EXPORT_LIMIT = 100
 INSTRUMENT_LIST_ITEM_LIMIT = 100
@@ -48,6 +48,7 @@ MIGRATION_SHA256 = {
     11: "6100174cc8a6ead5a8deb2c4437889be2f2d1609c5ce1f0bcc1fa16ac11a0f7c",
     12: "03bf4834c594e7e7704484e520202ff14a459d339397aefec2916b09a4fccd5c",
     13: "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b",
+    14: "0229c7713bd8d0fe5dfc2cc57d52052f71af4b4f417761175753287f3bf453ae",
 }
 
 

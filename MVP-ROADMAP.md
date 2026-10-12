@@ -1,5 +1,10 @@
 # Stock Probability MVP Roadmap
 
+R-ASTRA-121 implements seven approved visible features in four releases. Release 1 (theses and
+comparison) is **In progress** for implementation and local QA; Releases 2–4 and all R121 release
+acceptance remain **Pending**. See [the R121 contract](MVP-PLAN.md#r-astra-121-seven-visible-feature-additions).
+The approved designs are implementation references, not application captures or acceptance.
+
 R-ASTRA-120 merged baseline E839; current follow-on E841–E850. PR #1 merged at exact revision
 `6dc259e91cc8077b9264901bee3282167b9d05af` on `2026-10-10T06:25:51Z`. Its actual-host typed
 MCP rehearsal, schema-13 recovery, bounded combined 1 GB workload and current-image pending-search

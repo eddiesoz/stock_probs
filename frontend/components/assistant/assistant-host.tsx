@@ -29,6 +29,7 @@ function AssistantHostClient() {
   const [status, setStatus] = useState<AssistantStatus | null>(null);
   const [hostState, setHostState] = useState<HostState>("checking");
   const [open, setOpen] = useState(false);
+  const [initialPrompt, setInitialPrompt] = useState("");
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [pendingLocalHandoff, setPendingLocalHandoff] = useState<LocalControlsHandoff | null>(null);
   const pendingLocalHandoffRef = useRef<LocalControlsHandoff | null>(null);
@@ -186,10 +187,24 @@ function AssistantHostClient() {
     return () => { current = false; };
   }, [clearPendingLocalHandoff, contextRequest]);
 
+  useEffect(() => {
+    function draftRequest(event: Event) {
+      if (hostState !== "ready" || contextRequest?.route !== "/research/theses") return;
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (typeof detail !== "string" || detail.length > 8000) return;
+      setInitialPrompt(detail);
+      clearPendingLocalHandoff();
+      setOpen(true);
+    }
+    window.addEventListener("signal-ledger:thesis-draft-request", draftRequest);
+    return () => window.removeEventListener("signal-ledger:thesis-draft-request", draftRequest);
+  }, [hostState, contextRequest, clearPendingLocalHandoff]);
+
   function closePanel() {
     clearPendingLocalHandoff();
     setOpen(false);
     window.requestAnimationFrame(() => launcherRef.current?.focus());
+    setInitialPrompt("");
   }
 
   function handoffToLocalControls(targetId: "notes-heading" | "alerts-heading", expectedHref: string) {
@@ -231,6 +246,7 @@ function AssistantHostClient() {
           <AssistantPanel
             contextRequest={contextRequest}
             initialStatus={status}
+            initialPrompt={initialPrompt}
             onClose={closePanel}
             onLocalHandoff={handoffToLocalControls}
           />

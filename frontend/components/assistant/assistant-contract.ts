@@ -2,6 +2,8 @@ export type AssistantRoute =
   | "/"
   | "/overview"
   | "/research"
+  | "/research/theses"
+  | "/tools/compare"
   | "/tools"
   | "/tools/forecast"
   | "/tools/live-trading"
@@ -629,7 +631,7 @@ export class AssistantClientError extends Error {
 }
 
 const visibleRoutes = new Set<AssistantRoute>([
-  "/", "/overview", "/research", "/tools", "/tools/forecast", "/tools/live-trading", "/tools/markets", "/api-docs", "/account", "/admin",
+  "/", "/overview", "/research", "/research/theses", "/tools/compare", "/tools", "/tools/forecast", "/tools/live-trading", "/tools/markets", "/api-docs", "/account", "/admin",
 ]);
 
 const sensitiveRoutes = new Set(["/sign-in", "/invite", "/authenticator", "/passkey"]);
@@ -638,7 +640,7 @@ const providerPattern = identityLabelPattern;
 const exchangePattern = identityLabelPattern;
 const positiveIdPattern = /^[1-9]\d{0,9}$/;
 const workspaceRoutes = new Set<AssistantRoute>([
-  "/", "/overview", "/research", "/tools", "/tools/forecast", "/tools/live-trading", "/tools/markets",
+  "/", "/overview", "/research", "/research/theses", "/tools/compare", "/tools", "/tools/forecast", "/tools/live-trading", "/tools/markets",
 ]);
 const savedReferenceRoutes = new Set<AssistantRoute>([
   "/research", "/tools/forecast", "/tools/live-trading", "/tools/markets",

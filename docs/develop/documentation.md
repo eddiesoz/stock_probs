@@ -515,3 +515,9 @@ than a validator heuristic. These are static governance checks; metadata, the in
 allow-list, and `SKILL.md` frontmatter do not establish that a native loader discovered a skill.
 Native V2's directory-based auto-discovery is the loader boundary, and runtime discovery remains
 **Unavailable** in this harness.
+
+## Research workspace coverage
+
+The `research-workspaces` map rule binds thesis/comparison implementation and their fixtures to
+the dashboard, API, approved design and threat-model guides. Add matching rules as later R121
+releases introduce new record types. Candidate documentation does not establish deployment or QA.

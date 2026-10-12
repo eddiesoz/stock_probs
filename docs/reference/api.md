@@ -357,3 +357,33 @@ treat the loopback API as a general network service.
 
 For exact request and response schemas, use the OpenAPI document from the running revision.
 For user flow, see [dashboard usage](../usage/dashboard.md).
+
+## Research workspace candidate API
+
+R121 Release 1 is in progress and defaults disabled; no production acceptance follows.
+All routes use the current authenticated owner and existing CSRF/origin boundaries. Collections
+accept bounded `page`/`page_size` parameters (default 20, maximum 100).
+
+| Route | Candidate behavior |
+| --- | --- |
+| `GET /api/v1/research/features` | Owner-visible rollout availability. |
+| `GET/POST /api/v1/theses` | List or deliberately save a private thesis; creation needs a UUID idempotency key. |
+| `GET /api/v1/theses/{id}` | Reopen a private saved thesis without provider access. |
+| `PUT /api/v1/theses/{id}` | Append a reviewed revision; stale revision returns 409. |
+| `GET /api/v1/theses/draft?message_id={id}` | Open an owner-validated assistant excerpt as unsaved text; user messages are rejected. |
+| `POST /api/v1/theses/{id}/review` | Record an explicit review and next date as a new revision. |
+| `GET /api/v1/theses/export?format=csv` | Export every retained thesis revision, including evidence and identity; JSON includes current records and complete revision history from one owner snapshot. |
+| `GET /api/v1/theses/{id}/revisions` | Paginated immutable revision history. |
+| `POST /api/v1/comparisons/preview` | Capture provider-bound daily history for two to four instruments. |
+| `GET/POST /api/v1/comparisons` | List saved snapshots or save an owner-bound server preview with a UUID idempotency key. |
+| `GET /api/v1/comparisons/{id}` | Provider-free replay of a saved comparison. |
+| `GET /api/v1/comparisons/{id}/export?format=csv` | Export a dated metrics snapshot; JSON retains complete snapshot evidence. |
+
+Unknown owner fields and client-supplied comparison evidence are rejected. Cross-owner attachment
+or record IDs return unavailable. Previews expire after ten minutes. Candidate rollout is controlled
+by `STOCK_PROBS_RESEARCH_FEATURES_ENABLED` (default false) and
+`STOCK_PROBS_RESEARCH_FEATURES_CANARY_ONLY` (default true; admin-only when enabled).
+
+Research retention is bounded to 100 theses and 100 comparisons per owner, 1,000 revisions per thesis, 5 MiB of retained payloads per owner and 20 MiB globally. Limits include immutable revisions. Comparison previews reserve capacity before provider calls (four per owner, 32 globally) and release their slot on save or expiry. CSV cells use the existing spreadsheet-formula neutralizer. Full database backups retain thesis revisions and comparison evidence; exact release recovery acceptance remains pending.
+
+A thesis creation key is checked against a canonical request digest before provider identity resolution. An identical retry reopens the saved record during a provider outage; changed content with the same key returns 409. Explicitly attached assistant messages copy a bounded excerpt on save, including manual ID attachment. Revision history retains the complete fields and excerpt from each revision.

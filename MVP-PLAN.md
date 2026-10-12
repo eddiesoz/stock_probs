@@ -1,5 +1,182 @@
 # Stock Probability MVP Plan
 
+## R-ASTRA-121 seven visible feature additions
+
+The user approved the seven desktop/mobile design proposals and directed implementation on
+October 11, 2026. Preserve their layouts and the existing design tokens and
+Overview / Research / Tools navigation. Corrected mockups take precedence over initial drafts;
+fictional data, incidental labels, and logos are not product requirements. See the
+[approved feature designs](docs/develop/design-system.md#approved-seven-feature-designs).
+
+| Release | Complete user-facing scope | Current status |
+| --- | --- | --- |
+| 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | In progress; local implementation and selected checks only |
+| 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | Pending |
+| 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | Pending |
+| 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Pending |
+
+Transactions retain original currency/date and use decimal weighted-average book calculations.
+Opening positions may have unknown cost. Corrections append records; previews/imports are atomic;
+short positions and unsupported negative cash are rejected. CAD display is the default with USD
+available; indicative display FX never overwrites an actual exchange transaction's rate.
+Scenarios freeze holdings, quote and FX inputs and cannot mutate actual holdings. Report cards
+keep recorded outcomes separate from backtests and disclose pending/unavailable/disputed samples.
+Emails are off by default and require verified address plus explicit consent; uncertain submissions
+are not blindly retried. Background work is bounded, disabled independently, and absent from CLI
+one-shot commands. Headlines remain outside immutable forecast inputs. Assistant explanations
+require a user request and existing provider privacy consent; transaction commits remain manual.
+
+Each release requires its own reviewed PR, complete applicable canonical/browser/security/runtime
+checks, actual combined 1 GB acceptance and a PR-bound schema-compatible rollback retaining newly
+created records. Feature controls start disabled, then owner canary, then invited rollout.
+Unchanged evidence may be reused only at matching inputs. The existing 1 GB host, backups and
+US$15 monthly hosting total including tax remain unchanged. Broker sync, order execution,
+margin/short positions, tax filing, paid data subscriptions and autonomous AI briefs are excluded.
+No R121 production deployment, merge, rollback, rollout, or email has occurred.
+
+### R121 implementation checklist
+
+1. **In progress:** implement, independently verify and integrate Release 1.
+2. **Pending:** implement and verify Release 2.
+3. **Pending:** implement and verify Release 3.
+4. **Pending:** implement and verify Release 4.
+5. **Pending:** complete each release's exact-revision acceptance, recovery and publication.
+
+Historical R120 release/evidence below remains unchanged. R121 does not supersede E850's deployed
+product identity or claim new production observations.
+
+### R121 E1 local Release 1 implementation and first independent review
+
+The isolated managed worktree uses branch `codex/signal-ledger-research-r1` from
+`0fcededf436f1d0a601ebe0a5f70ae615dc8e587`; unrelated original-checkout skill/catalog edits remain separate.
+The candidate adds schema 14, disabled-by-default private thesis and comparison resources, explicit
+review/export controls, and an unsaved selected-reply drafting flow. Schema 14 is unshipped and its
+checksum was rebound during repairs; shipped migrations 1–13 remain unchanged.
+
+Independent QA at `2026-10-12T01:40:13Z`–`02:06:45Z` **Failed** acceptance on six feature gaps while
+its selected checks **Passed**: 14 research tests, 124 API tests, 87 persistence/backup tests, and
+8 desktop/emulated-mobile Light/Dark browser cases. Auth/CSRF/canary/logout revocation, raw SQLite
+REPLACE guards, signed backup verify/promote, and preview-reservation race checks passed their
+scopes. Receipt `/var/tmp/r12r/signal-ledger-r1-qa-20261012T014013Z/independent-qa-receipt.json`,
+SHA-256 `1f2089e30c7eb7ed2b2ec197be147c8e1abea2cec5cba0bc155146c3578e464c`.
+Its missing-PYTHONPATH browser setup failure and corrected 8-case Pass remain separate. The wider
+strict mypy command **Failed** with 87 errors and no baseline attribution; the two new modules and
+canonical backup/CLI selector **Passed**. An independent frontend build terminal was **Unavailable**.
+
+The six findings were provider-dependent creation retries, omitted missing-observation counts,
+missing direct thesis GET, incomplete rendered history, uncaptured manual assistant excerpts, and
+excessively tall expanded mobile exact-value tables. The parent applied a bounded request-hash
+lookup, direct owner GET/link, complete history, server-captured excerpts, visible gap counts,
+and a named scroll region plus capture-focus restoration. Fresh affected QA remains pending.
+Parent selected research checks now **Pass** 15 tests; the seventh approved frontend build/stage
+completed with exit 0 and 72 frontend contracts. These are selected local checks, not release or
+actual 1 GB acceptance. Earlier failed builder/browser attempts remain in private task artifacts.
+
+Release 2 accounting/scenario drafts live outside the checkout under the verified SD task directory.
+Nineteen fixed arithmetic cases and one draft-schema guard case passed; HTTP, persistence
+integration, imports, FX retrieval, UI and independent acceptance remain pending. This is not a
+completed Release 2 implementation. A read-only deployment MCP observation confirms the unchanged
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a` image/schema 13 ready, assistant invited, loopback-only;
+RAM/billing and owner-browser checks were not returned. No PR, merge, build image, deployment,
+rollout mutation, resize or email has occurred for R121. All four release gates remain open.
+
+### R121 E2 clipped-values diagnostic and fixture repair
+
+The parent fifth browser run **Failed** (exit 1, four passed/eight failed): four comparison
+states introduced raw contrast incompletes after a vertically clipped exact-values region,
+and four new negative-state cases used an ambiguous route-announcer alert locator and omitted
+intentional HTTP-failure declarations. The 86 prebound inputs were unchanged. Raw results remain
+in `/var/tmp/r12r/signal-ledger-features-20261011/browser-r1-fifth.log` and its unique terminal receipt;
+no accessibility waiver or aggregate Pass follows. The repair removes vertical clipping, uses
+five exact-value rows per page, scopes alert lookups to main, declares the exact two 503 GETs and
+one 422 POST per negative fixture, and gives export/reopen links 44-pixel targets. The eighth approved frontend build completed with exit 0 and 72 contracts; fresh
+browser verification remains pending at this source checkpoint. The root's cache-dependent broad
+import mypy attempt also failed on 26 auth/repository errors; its attribution is unproven. This is
+separate from the earlier independent fresh-cache selected-selector Pass. A new root
+`PYTHONPATH=src` fresh-cache strict run passed both research modules without suppressions.
+
+### R121 E3 repaired research verification and capture diagnosis
+
+Independent local QA **Passed** its declared frozen scope at base
+`0fcededf436f1d0a601ebe0a5f70ae615dc8e587`: 15 research tests, six selected API/OpenAPI/CSP tests,
+12 desktop/emulated-mobile browser cases and a separate two-case synthetic observation-gap UI
+check. Those browser states had zero raw axe violations and incompletes. Four geometry cases
+measured visible controls at least 44 CSS pixels. New-module strict mypy, scoped lint/security,
+raw SQLite immutability, owner/CSRF/revocation checks, and signed local backup retention passed.
+All pre/post pins and 55 served/export pairs matched; migrations 1–13 were unchanged.
+Receipt `/var/tmp/r12r/signal-ledger-r1-qa-repair-20261012T022802Z/independent-qa-receipt.json`,
+SHA-256 `cfb4e344dbcb8f7ce690951b806d877e4124fab753fabd24f4ae9a29dff96126`, released the freeze
+at its `2026-10-12T02:58:33Z` checkpoint. Prior Fail receipts remain intact. The wider 87-error mypy
+result remains Fail with attribution unproven; this does not become a full-app typing Pass.
+
+DOM measurements proved the apparent skip link in full-page post-interaction captures was offscreen
+and unfocused. Resetting document scroll to zero before capture removed the artifact without CSS
+masking. Eight supplemental captures retain their own hashes, and the original captures remain.
+Geometry receipt SHA-256 `f376c3ee7ea271ed8b5be00e180d7982cfe854b0e3d892b929a2b4e4c0e9f231`.
+Parent visual review of the Light desktop thesis, Dark mobile thesis, Dark desktop comparison and
+Light mobile comparison found the mobile table caption unnecessarily narrow; its source repair is
+recorded below. No production, physical-mobile, true-zoom, screen-reader, 1 GB, canonical or PR-bound
+rollback acceptance follows from E3.
+
+### R121 E4 final research export and mobile caption repair
+
+The parent added complete owner-only revision exports, provider-free edits for an unchanged
+instrument, and continued review/editing of unchanged captured excerpts after the original chat
+is deleted. Forged or newly attached excerpts still require a currently owned assistant message.
+One read snapshot supplies current cards and revision history; CSV fields retain formula safety.
+The 15-test research selection passed with the extended offline-edit, deleted-chat, complete-export
+and cross-owner assertions. Fresh strict mypy passed both research modules. Two newly authored SQL
+strings initially failed Ruff's line-length rule; the strings were split without query changes.
+
+The frontend now gives thesis detail sections the approved inner-card hierarchy and gives mobile
+table captions the available width. Capture code restores document scroll to zero after focusing
+main. The ninth approved `./scripts/build-frontend.sh` command exited 0 with 72 frontend contracts;
+fresh independent affected verification is pending at this checkpoint. E3 is retained only for its
+original bindings. No R121 PR or release acceptance is claimed yet.
+
+Separate unintegrated Release 2 drafts passed 19 fixed accounting/scenario cases, eight CSV cases,
+six coordinated SQLite store cases, and seven mocked daily FX-cache cases. A prior store test failed
+on UUID-dependent account ordering (33 passed/one failed); the corrected check uses account IDs.
+Its initial pre-run pin map was unavailable, and the subsequent six-case run was pinned unchanged.
+These drafts are outside the checkout, not installed migrations, API/UI implementations or Release 2
+acceptance. The public Bank of Canada endpoint returned a dated USD/CAD observation during a
+read-only shape check; that is neither portfolio runtime nor current valuation acceptance.
+
+### R121 E5 final-polish QA and isolated design captures
+
+Independent affected-source QA **Passed** 15 research tests, fresh two-module strict mypy,
+scoped Ruff/format/security checks, and the complete selected 12-case Light/Dark desktop/Pixel 7
+browser run. Its 16 whole-route axe analyses had zero violations and incompletes; 55 served/export
+pairs and frozen input pins matched. The captured-excerpt, full-export, offline-edit and owner
+boundaries passed. Capture fidelity separately **Failed** because successive cases accumulated
+records in the shared disposable fixture database. Receipt
+`/var/tmp/r12r/signal-ledger-r1-final-polish-qa-20261012T030717Z/independent-qa-receipt.json`,
+SHA-256 `cdcf8923abaf124b1ab72af31508537dffd2cee90776c6a2c2454575ff206fa4`.
+
+Four subsequent fresh-database capture invocations each exited 0 with three selected cases; they
+are four capture-only scopes, not a new combined functional aggregate. All eight success captures
+contained one thesis and one comparison. Independent visual review **Passed** hierarchy, inner
+cards, caption width, mobile stacking and placement against the two approved designs. Ports,
+processes, disposable runtimes and all 55 served/export bindings passed cleanup/integrity review.
+The earlier fidelity Fail and captures remain intact. Receipt
+`/var/tmp/r12r/signal-ledger-r1-clean-captures-20261012T031813Z/independent-capture-qa-receipt.json`,
+SHA-256 `4890fde91afe62d57338a30972fdf48ab3bc50662a0bea46e78cbf180b768c0b`, recorded at
+`2026-10-12T03:24:56.223500Z`. Physical mobile and full-app accessibility are not established.
+
+Parent integration review then added fail-closed comparison validation for extreme finite prices
+that overflow/underflow normalization, malformed timestamps and missing observation timezones.
+Five selected calculation cases passed; this narrow backend change is later than the two receipts
+above. Frontend sources and compiled assets are unchanged. Prior evidence keeps its original
+bindings; new-source canonical and independent affected verification remain pending.
+
+Private Release 2 preparation now includes atomic account/transaction storage, frozen scenarios,
+explicitly mapped CSV previews, and a persisted daily FX cache. Nineteen subsequent draft HTTP/store/
+scenario cases passed with unchanged pre/post pins; their owner callback is a fixture seam, not
+production auth acceptance. No Release 2 files or migration are integrated at this checkpoint.
+Canonical runtime preparation moved only task-owned links to an isolated venv and SD gate path;
+an initial cross-filesystem rename setup failure is retained. The original Python runtime is not
+modified. No R121 image, PR, merge, deployment, rollout, resize or email has occurred yet.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.

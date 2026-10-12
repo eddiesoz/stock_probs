@@ -56,6 +56,8 @@ const routeLabels: Record<AssistantContextRequest["route"], string> = {
   "/": "Forecast workspace",
   "/overview": "Overview",
   "/research": "Research",
+  "/research/theses": "Investment theses",
+  "/tools/compare": "Instrument comparison",
   "/tools": "Research tools",
   "/tools/forecast": "Forecast tool",
   "/tools/live-trading": "Live Trading tool",
@@ -469,11 +471,13 @@ function selectedContextRequest(request: AssistantContextRequest, includeSelecte
 export function AssistantPanel({
   contextRequest,
   initialStatus,
+  initialPrompt = "",
   onClose,
   onLocalHandoff,
 }: Readonly<{
   contextRequest: AssistantContextRequest;
   initialStatus: AssistantStatus;
+  initialPrompt?: string;
   onClose: () => void;
   onLocalHandoff: (target: "notes-heading" | "alerts-heading", expectedHref: string) => void;
 }>) {
@@ -541,7 +545,8 @@ export function AssistantPanel({
   const [titleDraft, setTitleDraft] = useState("");
   const [deletePhrase, setDeletePhrase] = useState("");
   const [showDelete, setShowDelete] = useState(false);
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(initialPrompt);
+  useEffect(() => { if (initialPrompt) setPrompt(initialPrompt); }, [initialPrompt]);
   const [draft, setDraft] = useState("");
   const [draftSources, setDraftSources] = useState<AssistantSource[]>([]);
   const [toolEvents, setToolEvents] = useState<AssistantToolEvent[]>([]);
@@ -2201,6 +2206,7 @@ export function AssistantPanel({
                     return <small>Context snapshot: {routeLabels[snapshot.route]}{snapshot.instrument ? ` · ${snapshot.instrument.symbol}` : ""}</small>;
                   })() : null}
                   {message.sources?.length ? <CitationList sources={message.sources} /> : null}
+                  {contextRequest.route === "/research/theses" && message.role === "assistant" && !busyTurn ? <a href={`/research/theses?assistant_message=${encodeURIComponent(message.id)}`}>Use this reply as an editable thesis draft</a> : null}
                 </li>
               ))}
               {activeTurn && draft !== "" ? <li className={styles.assistantMessage}><div className={styles.messageHeading}><strong>Ledger assistant</strong><span role="status">Streaming</span></div><AssistantAnswer text={draft} />{draftSources.length ? <CitationList sources={draftSources} /> : null}</li> : null}

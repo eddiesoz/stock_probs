@@ -122,6 +122,8 @@ class Settings:
     assistant_enabled: bool = False
     assistant_rollout_mode: str = "disabled"
     assistant_canary_github_ids: tuple[int, ...] = ()
+    research_features_enabled: bool = False
+    research_features_canary_only: bool = True
     invitation_mail: InvitationMailSettings | None = field(default=None, repr=False)
     bootstrap_username: str | None = None
     bootstrap_password: str | None = None
@@ -272,6 +274,12 @@ class Settings:
             assistant_enabled=assistant_enabled,
             assistant_rollout_mode=assistant_rollout_mode,
             assistant_canary_github_ids=assistant_canary_github_ids,
+            research_features_enabled=_environment_bool(
+                "STOCK_PROBS_RESEARCH_FEATURES_ENABLED", "false"
+            ),
+            research_features_canary_only=_environment_bool(
+                "STOCK_PROBS_RESEARCH_FEATURES_CANARY_ONLY", "true"
+            ),
             invitation_mail=InvitationMailSettings.from_env(),
             bootstrap_username=bootstrap_username,
             bootstrap_password=bootstrap_password,

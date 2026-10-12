@@ -104,6 +104,25 @@
         "docs/develop/testing.md",
         "docs/operations/getting-started.md"
       ]
+    },
+    {
+      "name": "research-workspaces",
+      "match": [
+        "src/stock_probs/research.py",
+        "src/stock_probs/research_api.py",
+        "src/stock_probs/migrations/014_research_workspaces.sql",
+        "frontend/components/research/**",
+        "frontend/app/research/theses/**",
+        "frontend/app/tools/compare/**",
+        "tests/test_research_workspaces.py",
+        "tools/browser/tests/research-workspaces.spec.js"
+      ],
+      "docs": [
+        "docs/usage/dashboard.md",
+        "docs/reference/api.md",
+        "docs/develop/design-system.md",
+        "docs/security/threat-model.md"
+      ]
     }
   ],
   "additional": [
