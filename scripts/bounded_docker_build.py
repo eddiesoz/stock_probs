@@ -2754,6 +2754,60 @@ def local_current_image() -> dict[str, str]:
     return {"tag": tag, "image_id": image_id, "revision": revision}
 
 
+@_ledger_serialized
+def select_local_current(expected_image_id: str, replacement_image_id: str) -> dict[str, object]:
+    """Select a retained verified image without deleting images or changing ledger roles."""
+    if (
+        any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None
+            for value in (expected_image_id, replacement_image_id)
+        )
+        or expected_image_id == replacement_image_id
+    ):
+        raise BuildError("local_current_transition_ids_invalid")
+    current = local_current_image()
+    if current["image_id"] != expected_image_id:
+        raise BuildError("local_current_transition_stale")
+    ledger = _ledger_read()
+    entries = ledger["entries"]
+    assert isinstance(entries, list)
+    selected = []
+    for image_id in (expected_image_id, replacement_image_id):
+        matches = [
+            row
+            for row in entries
+            if isinstance(row, dict)
+            and row.get("image_id") == image_id
+            and row.get("role") == "current"
+            and row.get("status") == "complete"
+        ]
+        if len(matches) != 1:
+            raise BuildError("local_current_transition_unregistered")
+        row = matches[0]
+        _managed_build_receipt(row)
+        _schema13_rehearsal_image_facts(
+            str(row["tag"]), image_id, str(row["revision"]), [str(row["tag"])]
+        )
+        selected.append(row)
+    replacement = selected[1]
+    _write_local_current(
+        str(replacement["tag"]),
+        replacement_image_id,
+        str(replacement["revision"]),
+        str(replacement["context_sha256"]),
+    )
+    return {
+        "schema": "r120-local-current-transition-v1",
+        "status": "selected",
+        "previous": current,
+        "current": {
+            key: replacement[key] for key in ("tag", "image_id", "revision", "context_sha256")
+        },
+        "images_removed": [],
+        "ledger_changed": False,
+    }
+
+
 def _arm64_compose_environment(
     *,
     task_id: str,
@@ -3052,6 +3106,8 @@ def main() -> int:
     parser.add_argument("--ack-arm64-cleanup", action="store_true")
     parser.add_argument("--registered-image-id", action="append", default=[])
     parser.add_argument("--local-current-image", action="store_true")
+    parser.add_argument("--select-local-current-image-id")
+    parser.add_argument("--expected-local-current-image-id")
     parser.add_argument("--local-image-build", action="store_true")
     parser.add_argument("--arm64-compose-build", action="store_true")
     parser.add_argument("--task-id")
@@ -3076,6 +3132,25 @@ def main() -> int:
     validate_user_state()
     if not os.access(SOCKET, os.W_OK):
         raise BuildError("docker_socket_group_access_unavailable")
+    transition_names = {"select_local_current_image_id", "expected_local_current_image_id"}
+    if any(getattr(args, name) is not None for name in transition_names):
+        if any(getattr(args, name) is None for name in transition_names) or any(
+            value != parser.get_default(name)
+            for name, value in vars(args).items()
+            if name not in transition_names
+        ):
+            parser.error("local current selection requires only expected and replacement image IDs")
+        try:
+            result = select_local_current(
+                args.expected_local_current_image_id, args.select_local_current_image_id
+            )
+        except BuildError as exc:
+            print(
+                json.dumps({"status": "failed", "stage": exc.code}, sort_keys=True), file=sys.stderr
+            )
+            return 1
+        print(json.dumps(result, sort_keys=True))
+        return 0
     if args.release_failed_inflight_reservation or args.failure_receipt_sha256 is not None:
         if (
             not args.release_failed_inflight_reservation

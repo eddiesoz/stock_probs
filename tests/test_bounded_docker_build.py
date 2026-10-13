@@ -3206,3 +3206,92 @@ def test_legacy_image_baseline_is_held_outside_three_managed_slots() -> None:
     conflicting[_entry(700)["tag"]] = "sha256:" + "f" * 64
     with pytest.raises(bounded.BuildError, match="conflicts_with_held_baseline"):
         bounded._expected_managed_inventory(ledger, conflicting)
+
+
+def _local_transition_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    state, _ = _test_ledger_paths(tmp_path, monkeypatch)
+    pointer = state / "local-current.json"
+    monkeypatch.setattr(bounded, "LOCAL_CURRENT_FILE", pointer)
+    rows = [_entry(1), _entry(2)]
+    monkeypatch.setattr(bounded, "setup_receipt", lambda: {})
+    monkeypatch.setattr(bounded, "_ledger_read", lambda: {"entries": rows})
+    monkeypatch.setattr(bounded, "_verify_ledger_inventory", lambda *_: None)
+    monkeypatch.setattr(bounded, "_native_platform", lambda: "linux/amd64")
+    monkeypatch.setattr(
+        bounded,
+        "checked",
+        lambda *_: f"{rows[0]['image_id']}|linux/amd64|{rows[0]['revision']}".encode(),
+    )
+    checks: list[str] = []
+    monkeypatch.setattr(
+        bounded, "_managed_build_receipt", lambda row: checks.append(str(row["image_id"]))
+    )
+    monkeypatch.setattr(bounded, "_schema13_rehearsal_image_facts", lambda *_: None)
+    bounded._write_local_current(
+        rows[0]["tag"], rows[0]["image_id"], rows[0]["revision"], rows[0]["context_sha256"]
+    )
+    return {"rows": rows, "pointer": pointer, "checks": checks, "before": pointer.read_bytes()}
+
+
+def test_local_current_transition_checks_both_receipts_and_preserves_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_transition_fixture(tmp_path, monkeypatch)
+    original = json.dumps(state["rows"], sort_keys=True)
+    first, second = state["rows"]
+    result = bounded.select_local_current(first["image_id"], second["image_id"])
+    assert result["images_removed"] == [] and result["ledger_changed"] is False
+    assert state["checks"] == [first["image_id"], second["image_id"]]
+    assert json.loads(state["pointer"].read_text())["image_id"] == second["image_id"]
+    assert json.dumps(state["rows"], sort_keys=True) == original
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "stale",
+        "same",
+        "malformed",
+        "missing",
+        "duplicate",
+        "recovery",
+        "reserved",
+        "receipt",
+        "metadata",
+        "write",
+    ],
+)
+def test_local_current_transition_fails_without_pointer_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    state = _local_transition_fixture(tmp_path, monkeypatch)
+    first, second = state["rows"]
+    expected, replacement = first["image_id"], second["image_id"]
+    if failure == "stale":
+        expected = "sha256:" + "3" * 64
+    elif failure == "same":
+        replacement = expected
+    elif failure == "malformed":
+        replacement = "short-id"
+    elif failure == "missing":
+        state["rows"].pop()
+    elif failure == "duplicate":
+        state["rows"].append(dict(second))
+    elif failure == "recovery":
+        second["role"] = "recovery"
+    elif failure == "reserved":
+        second["status"] = "reserved"
+    else:
+        name = {
+            "receipt": "_managed_build_receipt",
+            "metadata": "_schema13_rehearsal_image_facts",
+            "write": "_write_local_current",
+        }[failure]
+
+        def fail(*_: object) -> None:
+            raise bounded.BuildError("injected_failure")
+
+        monkeypatch.setattr(bounded, name, fail)
+    with pytest.raises(bounded.BuildError):
+        bounded.select_local_current(expected, replacement)
+    assert state["pointer"].read_bytes() == state["before"]

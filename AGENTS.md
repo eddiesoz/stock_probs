@@ -2294,3 +2294,10 @@ For R-ASTRA-121 restoration, the fixed candidate/recovery rehearsal targets PR #
 controller, bootstrap, installed helper and local verifier at that identity, with no arbitrary PR
 argument exposed through MCP. Preserve all exact repository, open/main-base/head, helper asset,
 private review-pin and image/archive/context/pair checks. PR #2 receipts remain historical.
+
+For the free-Zen assistant repair, a local-current pointer transition must use the bounded builder's
+expected-current and retained-replacement full image IDs. It validates both complete ledger rows,
+bound build receipts, and Docker identities under the ledger lock before atomic pointer selection.
+Selection neither removes an image nor authorizes cleanup: independently verify exact candidate
+ownership, release protection, tags, container references and bounded RootFS ancestry before any
+exact-ID removal and absence-verified retirement acknowledgement. Preserve the three-image bound.

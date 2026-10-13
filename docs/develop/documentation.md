@@ -19,6 +19,13 @@ resolve uncertain results with exact-node measurements, independent QA and paren
 review. See [contrast review](testing.md#reviewing-incomplete-contrast-results). A scoped manual
 resolution does not establish full application accessibility or change the raw automated result.
 
+Local image replacement evidence must distinguish selecting a retained current image from retiring
+an obsolete candidate. The bounded builder's typed selection compares the expected full image ID,
+verifies both ledger-bound receipts and Docker identities, and atomically updates only the local
+pointer. Document the private command receipt and keep subsequent provenance, protection, reference,
+RootFS, absence and retirement-acknowledgement evidence separate; selection alone is not cleanup
+acceptance or a product release. See [the local selection procedure](testing.md#selecting-a-retained-local-image).
+
 ## Codex project configuration
 
 Codex loads repository policy from root `AGENTS.md` and trusted-project settings from

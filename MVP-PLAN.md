@@ -6547,3 +6547,43 @@ pins remained unchanged. Receipt
 preserves the original scanner failure, parent import setup failure with unavailable standalone
 binding/time, and the reviewer's separate heredoc setup failure. Full final candidate/recovery
 archive scans and supervised native/runtime, actual 1 GB and release checks remain open.
+
+
+### R-ASTRA-121 E12 — normal supervised free answer and local retention guard
+
+The installed candidate `sha256:9767d4a2b37b07467232916c30328344111f8aae36880e6aaf7b85b575b303f3`,
+labelled at application head `1fe8780095bde058ded78605f3ebd9588c76b9ba`, started its normal
+supervisor and reported ready in a disposable local 768 MiB profile. No native receipt, readiness,
+managed guard or provider credential override was used. The attached two-owner functional command
+**Failed** overall at `2026-10-13T14:56:19Z`–`14:58:42Z`: owner 0 completed a genuine free
+Space Bunny answer (356 bytes) with one workspace-summary receipt in 50.862 seconds. Owner 1
+had a workspace-summary receipt but no answer/search/fetch source; polling failed with
+`transport_readtimeout` after 72.526 seconds. The cause is unproven. This establishes the declared
+normal supervised free-answer scope for owner 0, not two-owner reliability, search, actual combined
+1 GB, release or production acceptance. Four pre-run wrapper/helper/fixture inputs remained bound;
+owned container, network and volume cleanup passed. Result and terminal are retained under
+`/var/tmp/r12r/signal-ledger-assistant-fix-20261013-native-zen/supervised-free-01/`.
+
+A typed bounded-builder local selection operation compares the expected full current image ID and
+verifies both completed current-role rows, their bound build receipts and Docker identities under
+the ledger lock, then atomically selects a retained image. It deletes no images, changes no ledger
+roles, and preserves the three-image limit. Independent native-x86_64 review **Passed** 201 builder
+and 60 documentation tests, a private 32-case CLI exclusivity matrix, pointer replace-failure
+injection, Ruff/format and documentation checks. Receipt `independent-local-current-qa-20261013T1455Z/review.json`
+has SHA-256 `8bdfe16f8183a6fa528e6716825536b4d77714f3c587f2424cb14a08b55f5ce9`.
+All 11 bound inputs stayed unchanged. No selection or image retirement ran at this checkpoint.
+
+Two unexecuted private retirement drafts **Failed** independent review: the first used assertions
+that optimization could remove; the second directly wrote a final receipt after deletion and lacked
+safe publication recovery. Preserve both findings. A third prepared-publication/recovery draft is
+unexecuted and under review. The candidate remains protected by the local-current pointer; no image,
+ledger row or production state was removed or changed.
+
+Fresh official MCP 2.2 stdio initialization/list-tools **Passed** for all eight expected tool names
+and the current PR #9 rehearsal declaration, with zero tool invocations and source bindings under
+`pr9-sdk-discovery-02/`. The initial SDK wrapper failed on `serverInfo` versus the installed SDK's
+`server_info` serialization; its failure is retained separately. This discovery does not prove a
+mutating host operation, Codex app reload, recovery pair or release. Production remains the previously
+deployed `5ad2c3fddfce5a5a631b72cd832a53f24757c44a` image at schema 13; the free-Zen fix is not
+released. Normal two-owner/search/fetch, shutdown, canonical/security/browser acceptance, actual
+combined 1 GB, exact-PR recovery/rollback, owner canary and deployment gates remain open.

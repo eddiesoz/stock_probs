@@ -64,6 +64,19 @@ uses exact fixed image IDs only after provenance and reference checks, as descri
 [agent policy](../../AGENTS.md). Selected helper tests do not establish that a pair rehearsal ran;
 see the [R-ASTRA-120 ledger](../../MVP-PLAN.md) for the current scope.
 
+### Selecting a retained local image
+
+Before replacing a local candidate at the three-image retention limit, use
+`--expected-local-current-image-id sha256:<full-id> --select-local-current-image-id sha256:<full-id>`
+with the bounded builder. The operation locks the ledger, compares the existing pointer against the
+expected image, verifies both completed current-role rows and their build receipts, and verifies
+Docker image IDs, revision labels, platform, and exact tags before atomically selecting the retained
+replacement. It does not delete images, change ledger roles, increase the retention limit, or make
+an old candidate automatically eligible for deletion. A stale pointer or failed validation leaves
+the pointer unchanged. Record the command and result in a new private receipt. Subsequent exact-ID
+cleanup still requires independent provenance, protection, tag, container-reference and bounded
+RootFS review, followed by absence verification and the existing retirement acknowledgement.
+
 ### Schema-13 rehearsal image cleanup
 
 The rehearsal runner delegates cleanup of a generated recovery image to the bounded builder with
