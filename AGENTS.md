@@ -2301,3 +2301,9 @@ bound build receipts, and Docker identities under the ledger lock before atomic 
 Selection neither removes an image nor authorizes cleanup: independently verify exact candidate
 ownership, release protection, tags, container references and bounded RootFS ancestry before any
 exact-ID removal and absence-verified retirement acknowledgement. Preserve the three-image bound.
+
+For the PR #9 free-Zen repair, production rehearsal monitoring binds the observed deployed 5ad
+image at schema 13 separately from the historical da2764e schema-12 migration/recovery origin.
+Require matching live revision/image/schema in the host receipt and controller; preserve the
+existing memory reserves and actual 1 GB/resource/recovery gates. A correct source pin is not a
+host rehearsal, native reliability or deployment Pass.

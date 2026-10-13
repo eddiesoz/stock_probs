@@ -21,6 +21,11 @@ HOST = "45.79.180.32"
 USER = "signalops"
 REPOSITORY = "eddiesoz/stock_probs"
 PULL_NUMBER = 9
+PRODUCTION_BASELINE = {
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
+    "schema_version": 13,
+}
 HELPER_PATH = "/usr/local/libexec/signal-ledger-pr-rehearsal/host_helper.py"
 STATE_ROOT = "/var/lib/signal-ledger-pr-rehearsal"
 INCOMING_DIRECTORY = "/var/lib/signal-ledger-pr-rehearsal/incoming"
@@ -517,6 +522,16 @@ def _run_fixed(command: list[str], *, timeout: float, input_bytes: bytes | None 
     if len(result.stdout) > MAX_RESPONSE_BYTES:
         raise RehearsalError("fixed_operation_response_too_large")
     return result.stdout
+
+
+def _validated_production_baseline(value: object) -> dict[str, object]:
+    if (
+        not isinstance(value, dict)
+        or value != PRODUCTION_BASELINE
+        or type(value.get("schema_version")) is not int
+    ):
+        raise RehearsalError("host_response_invalid")
+    return dict(value)
 
 
 def _validated_resource_evidence(response: dict[str, object]) -> dict[str, object]:
@@ -1257,6 +1272,7 @@ def rehearse_pr_pair(
         or response.get("architecture") not in {"x86_64", "aarch64"}
     ):
         raise RehearsalError("host_response_invalid")
+    production_baseline = _validated_production_baseline(response.get("production_baseline"))
     resource_evidence = _validated_resource_evidence(response)
     return {
         "status": "pass",
@@ -1270,6 +1286,7 @@ def rehearse_pr_pair(
         "recovery_overlay_sha256": recovery_overlay_sha256,
         "pair_manifest_sha256": pair_manifest_sha256,
         "host_receipt": {
+            "production_baseline": production_baseline,
             **{
                 key: value
                 for key, value in response.items()
@@ -1282,6 +1299,7 @@ def rehearse_pr_pair(
                     "host_memavailable_before_kib",
                     "host_memavailable_after_kib",
                     "production_health_samples",
+                    "production_baseline",
                     "migration_backup_verified",
                     "post_migration_write_preserved",
                     "ownership_isolation_verified",

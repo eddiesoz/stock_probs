@@ -859,7 +859,7 @@ rehearsal receipt. It requires a clean revision matching exact `origin/main` and
 the candidate or rerun the local pair during publication.
 
 For a full local pair rehearsal, the optional boolean `--use-deployed-baseline-image` selects the
-centrally pinned deployed schema-12 baseline. Omit it to retain the default verified-archive rebuild.
+centrally pinned historical schema-12 migration origin. Omit it to retain the default verified-archive rebuild.
 The helper verifies the pinned immutable ID, `linux/amd64` platform, revision label, and a nonempty
 valid retained-tag list. The receipt's `schema12_base_image.mode` distinguishes
 `reused_exact_deployed_image` from `locally_rebuilt_from_verified_archive`. The reused protected
@@ -1053,3 +1053,14 @@ verification, rendered owner workspace, and functional invited-user acceptance r
 The free OpenCode restoration candidate requires a freshly bound executable scanner pin, backed
 by the exact official Bun public-span comparison. Verify both final archives with the reviewed
 checker before staging the PR9 pair; preserve earlier scanner failures and image identities.
+
+
+For the current PR #9 free-Zen repair, the host rehearsal's live production guard is pinned to
+revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13.
+This is separate from the historical schema-12 image used to rehearse migration and build the
+schema-compatible disabled recovery image. A rehearsal receipt must contain the exact live
+`production_baseline` binding, and the local controller rejects missing, stale, or malformed values.
+The 512 MiB start reserve, 128 MiB running reserve, fixed candidate/recovery limits, production
+health checks and separate actual combined 1 GB acceptance remain unchanged. These source checks
+are not evidence that a host pair ran or that the free-Zen repair was deployed.

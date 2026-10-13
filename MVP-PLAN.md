@@ -6587,3 +6587,58 @@ mutating host operation, Codex app reload, recovery pair or release. Production 
 deployed `5ad2c3fddfce5a5a631b72cd832a53f24757c44a` image at schema 13; the free-Zen fix is not
 released. Normal two-owner/search/fetch, shutdown, canonical/security/browser acceptance, actual
 combined 1 GB, exact-PR recovery/rollback, owner canary and deployment gates remain open.
+
+
+### R-ASTRA-121 E13 — supervised two-owner free-model functional pass
+
+The normal supervised candidate from E11 passed the parent-run local functional check at
+`2026-10-13T15:54:18.745468Z`–`15:57:11.622212Z`. Both simultaneous owners received genuine
+`opencode-zen/space-bunny-free` answers (428 and 1,041 bytes), matching workspace-summary
+receipts, seven native search sources and one approved guarded fetch source. Cross-owner and
+forged MCP requests returned 404; both conversation deletes returned 200 with no pending records.
+No provider credential, payment, readiness or managed-tool guard override was used.
+
+The five pre-run source pins stayed unchanged; owned container/network/volume cleanup passed.
+Retained sanitized stdout is 4,825 bytes, SHA-256
+`7a865c70d9d0a4224f7a7c7829f765937a8439115d34f488ac0767b526443ea5`.
+Evidence is under `supervised-free-07/` in the native restoration task root. Independent artifact
+review in `independent-recurring-identity-qa-35e58260-e0d9-4ba1-b405-4a1f1af2b7c8/independent-review-final.json`
+(SHA-256 `4e2c61c1475e58e8763c77a39b30bf56931f499a0fffa1db33f80cf05dff431e`)
+confirmed bindings and output integrity; it did not replay the model trial.
+
+This uses a local 768 MiB profile, before/after resource samples and a container-liveness/local
+memory-floor callback. Peak sampled cgroup memory was 692,928,512 bytes with zero sampled OOMs.
+It does not establish continuous production HTTP health, actual combined 1 GB, PR-pair/rollback,
+shutdown, canonical/security/accessibility, owner UI or release acceptance. Earlier trials remain
+failed or unavailable: free-02/03 setup timeouts; free-04 closed-stdin interactive-ack wrapper failure
+with unretained raw output; free-06 health-observer timeout before any retained native output.
+The corrected interactive driver passed its synthetic handshake before free-07. These observer and
+wrapper failures are not proof of a provider cause.
+
+A fresh read-only production inspect still reports the old 5ad application/image at schema 13,
+ready and loopback-only, with invited rollout. The release checker is being repaired to bind that
+live identity separately from its preserved schema-12 migration origin. Initial independent source
+review failed on missing recurring image/revision checks; the next review passed 19 focused and
+276 combined tests but found recursive monitoring when a slow identity Docker subprocess invokes
+the health callback again. That P2 finding remains preserved. A scoped identity-subprocess monitor
+flag repair retains deadlines/output/resource checks and awaits independent acceptance. No hotfix
+production deployment, account, paid-provider substitution, resize or email has occurred.
+
+
+The reentrancy repair subsequently passed independent source review, seven focused regressions,
+278 combined rehearsal tests (one live-Docker integration test deliberately deselected), Ruff,
+format/security/compilation and documentation checks. Receipt
+`independent-reentrancy-review-01/independent-review-final.json` has SHA-256
+`84ec03e9dac707688663b141ae7ee3c78b56b27e1d9a95b8b542998c20c4cff7`.
+Only the two identity Docker subprocesses disable their nested monitor callback; command/global
+deadlines and bounded output stay active. This is selected local checker acceptance, not a host trial.
+
+
+Typed local-current selection passed without deleting an image or changing ledger roles. After
+fresh exact ownership/tag/reference/RootFS checks, the independently reviewed retirement wrapper
+removed only the obsolete E11 candidate full image ID with `--no-prune`, verified image/tag absence,
+published its prepared receipt and acknowledged its ledger row. Execution receipt
+`candidate-retirement-execute-01/terminal.json` SHA-256 `4182bd7eccb8c5e9f7b69b5cdc7f83408f5f3294933fe8a7107bc0c6ef9b4db3` records exit 0
+at `2026-10-13T16:26:09.633616Z`–`16:27:00.037337Z` and unchanged wrapper/helper pins.
+The retained production image is now the local fallback; production service and protected images
+were untouched. This creates capacity for a fresh exact-head build; no new build Pass is inferred.

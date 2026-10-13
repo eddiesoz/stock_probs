@@ -27,6 +27,11 @@ from typing import TypedDict
 REPOSITORY = "eddiesoz/stock_probs"
 PULL_NUMBER = 9
 TASK_ID = "R-ASTRA-120"
+PRODUCTION_BASELINE = {
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
+    "schema_version": 13,
+}
 BASE_REVISION = "da2764e8477698fa7d686be93a4711e35478e802"
 BASE_IMAGE_ID = "sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1"
 BASE_ARCHIVE_SHA256 = "669f840a3141b0fb95ae248b5ea0799733b9e5b5b81e224d4637571c24d8f640"
@@ -435,6 +440,7 @@ def _run(
     input_bytes: bytes | None = None,
     maximum: int = 32_768,
     allow_failure: bool = False,
+    monitor_production: bool = True,
 ) -> subprocess.CompletedProcess[bytes]:
     """Run fixed argv with bounded output, a hard deadline, and no inherited credentials."""
     process: subprocess.Popen[bytes] | None = None
@@ -484,7 +490,7 @@ def _run(
                         process.wait(timeout=1)
                     raise RehearsalError("rehearsal_deadline_exceeded")
                 remaining = min(remaining, operation_remaining)
-            if MONITOR_ACTIVE and time.monotonic() >= next_health_check:
+            if MONITOR_ACTIVE and monitor_production and time.monotonic() >= next_health_check:
                 _check_production(PRODUCTION_SAMPLE_COUNT)
                 next_health_check = time.monotonic() + 5
             for key, _ in selector.select(min(remaining, 1.0 if MONITOR_ACTIVE else remaining)):
@@ -1368,14 +1374,20 @@ def _check_production(sample_count: list[int], *, startup: bool = False) -> int:
     floor = START_RESERVE_KIB if startup else RUN_RESERVE_KIB
     if available < floor:
         raise RehearsalError("host_memory_reserve_breached")
+    _production_identity()
     readiness = _readiness()
-    if readiness.get("status") != "ready" or readiness.get("schema_version") != 12:
+    if (
+        readiness.get("status") != "ready"
+        or type(readiness.get("schema_version")) is not int
+        or readiness.get("schema_version") != PRODUCTION_BASELINE["schema_version"]
+    ):
         raise RehearsalError("production_health_lost")
     sample_count[0] += 1
     return available
 
 
-def _production_container() -> None:
+def _production_identity() -> None:
+    # Identity probes are part of the health check; they must not recursively start another one.
     result = _run(
         [
             "/usr/bin/docker",
@@ -1388,6 +1400,7 @@ def _production_container() -> None:
             "{{.ID}}",
         ],
         timeout=10,
+        monitor_production=False,
     )
     identifiers = result.stdout.decode("ascii", errors="strict").splitlines()
     if len(identifiers) != 1 or re.fullmatch(r"[0-9a-f]{12,64}", identifiers[0]) is None:
@@ -1395,12 +1408,24 @@ def _production_container() -> None:
     template = (
         '{{.Image}}|{{.State.Status}}|{{index .Config.Labels "org.opencontainers.image.revision"}}'
     )
-    result = _run(["/usr/bin/docker", "inspect", "--format", template, identifiers[0]], timeout=10)
+    result = _run(
+        ["/usr/bin/docker", "inspect", "--format", template, identifiers[0]],
+        timeout=10,
+        monitor_production=False,
+    )
     values = result.stdout.decode("ascii", errors="strict").strip().split("|")
-    if values != [BASE_IMAGE_ID, "running", BASE_REVISION]:
+    if values != [PRODUCTION_BASELINE["image_id"], "running", PRODUCTION_BASELINE["revision"]]:
         raise RehearsalError("production_baseline_mismatch")
+
+
+def _production_container() -> None:
+    _production_identity()
     ready = _readiness()
-    if ready.get("status") != "ready" or ready.get("schema_version") != 12:
+    if (
+        ready.get("status") != "ready"
+        or type(ready.get("schema_version")) is not int
+        or ready.get("schema_version") != PRODUCTION_BASELINE["schema_version"]
+    ):
         raise RehearsalError("production_health_unavailable")
 
 
@@ -3639,6 +3664,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             "recovery_overlay_sha256": overlay_hash,
             "same_disposable_volume": True,
             "production_mutation": False,
+            "production_baseline": dict(PRODUCTION_BASELINE),
             "production_health_samples": sample_count[0],
             "host_memavailable_before_kib": host_memavailable_before_kib,
             "host_memavailable_after_kib": host_memavailable_after_kib,

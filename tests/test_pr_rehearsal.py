@@ -2776,7 +2776,12 @@ def test_production_headroom_floors_are_unchanged_and_fail_closed(monkeypatch) -
     assert host_helper.START_RESERVE_KIB == 512 * 1024
     assert host_helper.RUN_RESERVE_KIB == 128 * 1024
     monkeypatch.setattr(
-        host_helper, "_readiness", lambda: {"status": "ready", "schema_version": 12}
+        host_helper,
+        "_readiness",
+        lambda: {
+            "status": "ready",
+            "schema_version": host_helper.PRODUCTION_BASELINE["schema_version"],
+        },
     )
 
     monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB - 1)
@@ -3528,3 +3533,127 @@ def test_bounded_archive_reader_rejects_single_large_read_request() -> None:
     with pytest.raises(host_helper.RehearsalError, match="image_archive_read_request_limit"):
         reader.read(host_helper.MAX_ARCHIVE_READ + 1)
     assert source.calls == 0
+
+
+@pytest.mark.parametrize("schema", [12, 14, None, "13", 13.0, True])
+def test_live_production_guard_rejects_stale_or_unknown_schema(monkeypatch, schema):
+    monkeypatch.setattr(host_helper, "_production_identity", lambda: None)
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+    monkeypatch.setattr(
+        host_helper, "_readiness", lambda: {"status": "ready", "schema_version": schema}
+    )
+    samples = [0]
+    with pytest.raises(host_helper.RehearsalError, match="production_health_lost"):
+        host_helper._check_production(samples)
+    assert samples == [0]
+
+
+def test_live_production_identity_is_separate_from_migration_origin(monkeypatch):
+    baseline = host_helper.PRODUCTION_BASELINE
+    assert baseline == controller.PRODUCTION_BASELINE
+    assert baseline["schema_version"] == 13
+    assert baseline["revision"] != host_helper.BASE_REVISION
+    assert baseline["image_id"] != host_helper.BASE_IMAGE_ID
+    monkeypatch.setattr(
+        host_helper, "_readiness", lambda: {"status": "ready", "schema_version": 13}
+    )
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+    samples = [0]
+
+    def run(command, **kwargs):
+        assert kwargs.get("monitor_production") is False
+        output = (
+            "a" * 64
+            if command[1] == "ps"
+            else f"{baseline['image_id']}|running|{baseline['revision']}"
+        )
+        return CompletedProcess(command, 0, output.encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+    host_helper._check_production(samples)
+    assert samples == [1]
+    host_helper._production_container()
+
+
+@pytest.mark.parametrize("monitor_production", [False, True])
+def test_slow_identity_subprocess_does_not_reenter_health_guard(monkeypatch, monitor_production):
+    monkeypatch.setattr(host_helper, "MONITOR_ACTIVE", True)
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    ticks = iter([0.0, 0.0, 6.0, 6.0])
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: next(ticks, 6.0))
+    checks = []
+
+    def check(samples):
+        checks.append(samples)
+        raise host_helper.RehearsalError("nested_health_check")
+
+    monkeypatch.setattr(host_helper, "_check_production", check)
+    command = ["/usr/bin/printf", "identity"]
+    if monitor_production:
+        with pytest.raises(host_helper.RehearsalError, match="nested_health_check"):
+            host_helper._run(command, timeout=30, monitor_production=True)
+        assert len(checks) == 1
+    else:
+        result = host_helper._run(command, timeout=30, monitor_production=False)
+        assert result.stdout == b"identity"
+        assert checks == []
+
+
+@pytest.mark.parametrize(
+    "image,revision",
+    [(host_helper.BASE_IMAGE_ID, host_helper.BASE_REVISION), ("sha256:" + "f" * 64, "f" * 40)],
+)
+def test_live_production_identity_rejects_old_or_other_image(monkeypatch, image, revision):
+    def run(command, **kwargs):
+        output = "a" * 64 if command[1] == "ps" else f"{image}|running|{revision}"
+        return CompletedProcess(command, 0, output.encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._production_container()
+
+
+@pytest.mark.parametrize("change", ["missing", "old", "float", "extra", "image", "revision"])
+def test_host_receipt_rejects_invalid_live_production_binding(change):
+    value = dict(controller.PRODUCTION_BASELINE)
+    if change == "missing":
+        value.pop("schema_version")
+    elif change == "old":
+        value["schema_version"] = 12
+    elif change == "float":
+        value["schema_version"] = 13.0
+    elif change == "extra":
+        value["extra"] = True
+    else:
+        value["image_id" if change == "image" else "revision"] = "wrong"
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline(value)
+
+
+def test_host_receipt_accepts_only_pinned_live_baseline():
+    value = dict(controller.PRODUCTION_BASELINE)
+    assert controller._validated_production_baseline(value) == value
+
+
+@pytest.mark.parametrize("changed_field", ["image_id", "revision"])
+def test_recurring_production_guard_rejects_same_schema_replacement(monkeypatch, changed_field):
+    live = dict(host_helper.PRODUCTION_BASELINE)
+
+    def run(command, **kwargs):
+        output = (
+            "a" * 64 if command[1] == "ps" else f"{live['image_id']}|running|{live['revision']}"
+        )
+        return CompletedProcess(command, 0, output.encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+    monkeypatch.setattr(
+        host_helper, "_readiness", lambda: {"status": "ready", "schema_version": 13}
+    )
+    samples = [0]
+    host_helper._check_production(samples)
+    assert samples == [1]
+    live[changed_field] = "sha256:" + "f" * 64 if changed_field == "image_id" else "f" * 40
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._check_production(samples)
+    assert samples == [1]

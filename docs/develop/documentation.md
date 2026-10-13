@@ -534,3 +534,11 @@ If its wrapper supplies guard readiness, it does not verify production receipt e
 Only the installed root-owned, nonwritable receipt and matching binary can establish the normal
 managed-worker readiness path. Preserve failed baseline and guard-fixture attempts separately;
 never reconstruct a missing contemporaneous wrapper or source binding.
+
+
+The PR #9 rehearsal documents two distinct baselines: the current schema-13 production image
+observed by read-only inspection, and the historical schema-12 migration/recovery origin. Keep
+live production identity and health guards and their consumer receipt validation aligned with the
+exact observed deployment; do not replace the historical migration origin or infer current health
+from it. See [the operational procedure](../operations/getting-started.md) and the R-ASTRA-121
+MVP ledger for source and runtime evidence separately.
