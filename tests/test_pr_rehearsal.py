@@ -3528,3 +3528,335 @@ def test_bounded_archive_reader_rejects_single_large_read_request() -> None:
     with pytest.raises(host_helper.RehearsalError, match="image_archive_read_request_limit"):
         reader.read(host_helper.MAX_ARCHIVE_READ + 1)
     assert source.calls == 0
+
+
+def test_live_candidate_baseline_stays_separate_from_schema12_pair_seed(monkeypatch) -> None:
+    baseline = host_helper.PRODUCTION_BASELINE
+    assert baseline == controller.PRODUCTION_BASELINE
+    assert baseline == {
+        "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+        "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
+        "schema_version": 13,
+    }
+    assert host_helper.BASE_REVISION == "da2764e8477698fa7d686be93a4711e35478e802"
+    assert host_helper.BASE_IMAGE_ID == (
+        "sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1"
+    )
+    assert controller.DEPLOYED_BASELINE == {
+        "revision": host_helper.BASE_REVISION,
+        "image_id": host_helper.BASE_IMAGE_ID,
+        "archive_sha256": host_helper.BASE_ARCHIVE_SHA256,
+    }
+    monkeypatch.setattr(
+        host_helper, "_readiness", lambda: {"status": "ready", "schema_version": 13}
+    )
+    _mock_production_docker_identity(monkeypatch, baseline)
+    assert host_helper._production_container() == baseline
+
+
+def _mock_production_docker_identity(
+    monkeypatch,
+    identity: dict[str, object],
+    *,
+    port_bindings: dict[str, object] | None = None,
+) -> None:
+    container_id = "a" * 64
+
+    def run(command, **kwargs):
+        assert kwargs.get("monitor_production") is False
+        if command[1] == "ps":
+            output = container_id
+        elif command[3] == "{{json .HostConfig.PortBindings}}":
+            output = json.dumps(
+                port_bindings
+                if port_bindings is not None
+                else {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}
+            )
+        else:
+            output = f"{identity['image_id']}|running|{identity['revision']}"
+        return CompletedProcess(command, 0, output.encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+
+
+def test_recovery_baseline_requires_registered_image_record_and_loopback(monkeypatch) -> None:
+    baseline = host_helper.RECOVERY_PRODUCTION_BASELINE
+    monkeypatch.setattr(host_helper, "_recovery_record_matches", lambda: True)
+    monkeypatch.setattr(
+        host_helper,
+        "_readiness",
+        lambda: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+    )
+    _mock_production_docker_identity(monkeypatch, baseline)
+
+    observed = host_helper._production_container()
+
+    assert {key: observed[key] for key in baseline} == baseline
+    assert observed["container_id"] == "a" * 64
+    assert observed["container_revision"] == baseline["revision"]
+
+
+@pytest.mark.parametrize(
+    "port_bindings",
+    [
+        {"8000/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8000"}]},  # noqa: S104
+        {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}], "9000/tcp": []},
+    ],
+)
+def test_recovery_baseline_rejects_non_loopback_or_extra_port_bindings(monkeypatch, port_bindings):
+    monkeypatch.setattr(host_helper, "_recovery_record_matches", lambda: True)
+    _mock_production_docker_identity(
+        monkeypatch, host_helper.RECOVERY_PRODUCTION_BASELINE, port_bindings=port_bindings
+    )
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._production_identity()
+
+
+@pytest.mark.parametrize(
+    "assistant",
+    [
+        {"enabled": True, "status": "ready"},
+        {"enabled": False, "status": "starting"},
+        {"enabled": 0, "status": "disabled"},
+    ],
+)
+def test_recovery_baseline_requires_ready_disabled_assistant(monkeypatch, assistant):
+    monkeypatch.setattr(host_helper, "_recovery_record_matches", lambda: True)
+    _mock_production_docker_identity(monkeypatch, host_helper.RECOVERY_PRODUCTION_BASELINE)
+    monkeypatch.setattr(
+        host_helper,
+        "_readiness",
+        lambda: {"status": "ready", "schema_version": 13, "assistant": assistant},
+    )
+    with pytest.raises(host_helper.RehearsalError, match="production_health_unavailable"):
+        host_helper._production_container()
+
+
+@pytest.mark.parametrize(
+    "observed",
+    [
+        dict(host_helper.RECOVERY_PRODUCTION_BASELINE)
+        | {
+            "container_id": "b" * 64,
+            "container_revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+        },
+        dict(host_helper.PRODUCTION_BASELINE),
+    ],
+)
+def test_recurring_production_guard_rejects_baseline_change(monkeypatch, observed):
+    active_baseline = dict(host_helper.RECOVERY_PRODUCTION_BASELINE) | {
+        "container_id": "a" * 64,
+        "container_revision": host_helper.RECOVERY_PRODUCTION_BASELINE["revision"],
+    }
+    monkeypatch.setattr(host_helper, "ACTIVE_PRODUCTION_BASELINE", active_baseline)
+    monkeypatch.setattr(host_helper, "_production_identity", lambda: observed)
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+    samples = [0]
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._check_production(samples, startup=True)
+    assert samples == [0]
+
+
+def test_recovery_release_record_is_exact_and_compose_digest_bound(
+    tmp_path: Path, monkeypatch
+) -> None:
+    baseline = host_helper.RECOVERY_PRODUCTION_BASELINE
+    revision = baseline["revision"]
+    record = {
+        "transport": "github_release",
+        "release_role": "recovery",
+        "revision": revision,
+        "image_ref": f"signal-ledger:recovery-sha-{revision}",
+        "image_digest": baseline["archive_sha256"],
+        "archive_sha256": baseline["archive_sha256"],
+        "image_id": baseline["image_id"],
+        "archive_size": 103190644,
+        "platform": "linux/amd64",
+        "assistant_rollout_mode": "disabled",
+        "pair_manifest_sha256": baseline["pair_manifest_sha256"],
+        "migration_sha256": baseline["migration_sha256"],
+        "recovery_image_ref": f"signal-ledger:recovery-sha-{revision}",
+        "recovery_image_id": baseline["image_id"],
+        "recovery_archive_sha256": baseline["archive_sha256"],
+        "recovery_archive_size": 103190644,
+        "recovery_platform": "linux/amd64",
+        "recovery_schema_version": 13,
+        "recovery_base_revision": host_helper.BASE_REVISION,
+        "recovery_overlay_sha256": baseline["recovery_overlay_sha256"],
+        "compose_digest": baseline["compose_digest"],
+        "source_context_sha256": "9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb",
+        "candidate_image_id": host_helper.PRODUCTION_BASELINE["image_id"],
+        "candidate_archive_sha256": (
+            "99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5"
+        ),
+        "schema_version": 13,
+    }
+    release_root = tmp_path / "releases"
+    release_root.mkdir(mode=0o700)
+    record_path = tmp_path / "current.json"
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    record_path.chmod(0o600)
+    compose_path = release_root / f"{revision}.compose.yaml"
+    compose_path.write_bytes(b"bound recovery compose")
+    compose_path.chmod(0o600)
+    real_sha256 = host_helper.hashlib.sha256
+
+    class ExpectedComposeDigest:
+        def hexdigest(self) -> str:
+            return baseline["compose_digest"]
+
+    monkeypatch.setattr(host_helper, "PRODUCTION_CURRENT_RECORD", record_path)
+    monkeypatch.setattr(host_helper, "PRODUCTION_RELEASE_ROOT", release_root)
+    monkeypatch.setattr(
+        host_helper,
+        "_production_release_value",
+        lambda path, _maximum: path.read_bytes(),
+    )
+
+    def sha256(value=b""):
+        return ExpectedComposeDigest() if value == b"bound recovery compose" else real_sha256(value)
+
+    monkeypatch.setattr(host_helper.hashlib, "sha256", sha256)
+    assert host_helper._recovery_record_matches()
+
+    for field, invalid in (
+        ("release_role", "candidate"),
+        ("image_id", host_helper.PRODUCTION_BASELINE["image_id"]),
+        ("archive_sha256", "0" * 64),
+        ("pair_manifest_sha256", "0" * 64),
+        ("recovery_overlay_sha256", "0" * 64),
+        ("compose_digest", "0" * 64),
+        ("assistant_rollout_mode", "invited"),
+        ("schema_version", 12),
+    ):
+        changed = dict(record)
+        changed[field] = invalid
+        record_path.write_text(json.dumps(changed), encoding="utf-8")
+        assert not host_helper._recovery_record_matches(), field
+
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    compose_path.write_bytes(b"stale compose")
+    assert not host_helper._recovery_record_matches()
+
+
+def _recovery_baseline_receipt() -> dict[str, object]:
+    return {
+        **controller.RECOVERY_PRODUCTION_BASELINE,
+        "container_id": "a" * 64,
+        "container_revision": controller.RECOVERY_PRODUCTION_BASELINE["revision"],
+    }
+
+
+def test_mcp_receipt_accepts_exact_candidate_and_recovery_production_baselines() -> None:
+    assert controller._validated_production_baseline(dict(controller.PRODUCTION_BASELINE)) == (
+        controller.PRODUCTION_BASELINE
+    )
+    recovery = _recovery_baseline_receipt()
+    assert controller._validated_production_baseline(recovery) == recovery
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("role", "candidate"),
+        ("image_id", controller.PRODUCTION_BASELINE["image_id"]),
+        ("archive_sha256", "0" * 64),
+        ("pair_manifest_sha256", "0" * 64),
+        ("recovery_overlay_sha256", "0" * 64),
+        ("compose_digest", "0" * 64),
+        ("assistant_rollout_mode", "invited"),
+        ("assistant_enabled", True),
+        ("assistant_enabled", 0),
+        ("assistant_status", "ready"),
+        ("loopback_only", False),
+        ("schema_version", 12),
+        ("container_revision", "0" * 40),
+        ("container_id", "short"),
+    ],
+)
+def test_mcp_receipt_rejects_partial_or_mismatched_recovery_baseline(field, invalid) -> None:
+    value = _recovery_baseline_receipt()
+    value[field] = invalid
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline(value)
+
+
+def test_mcp_receipt_rejects_candidate_role_and_unknown_baseline() -> None:
+    candidate = dict(controller.PRODUCTION_BASELINE)
+    candidate["role"] = "candidate"
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline(candidate)
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline({"role": "unknown"})
+
+
+@pytest.mark.parametrize("monitor_production", [False, True])
+def test_identity_subprocess_can_bypass_recurring_health_guard(monkeypatch, monitor_production):
+    monkeypatch.setattr(host_helper, "MONITOR_ACTIVE", True)
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    ticks = iter([0.0, 0.0, 6.0, 6.0])
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: next(ticks, 6.0))
+    checks = []
+
+    def check(samples):
+        checks.append(samples)
+        raise host_helper.RehearsalError("nested_health_check")
+
+    monkeypatch.setattr(host_helper, "_check_production", check)
+    command = ["/usr/bin/printf", "identity"]
+    if monitor_production:
+        with pytest.raises(host_helper.RehearsalError, match="nested_health_check"):
+            host_helper._run(command, timeout=30, monitor_production=True)
+        assert len(checks) == 1
+    else:
+        result = host_helper._run(command, timeout=30, monitor_production=False)
+        assert result.stdout == b"identity"
+        assert checks == []
+
+
+@pytest.mark.parametrize(
+    ("phase", "floor"),
+    [("preflight", 524288), ("startup", 524288), ("monitor", 131072), ("final", 131072)],
+)
+def test_memory_reserve_diagnostic_preserves_exact_phase_and_floor(phase, floor):
+    error = host_helper._memory_reserve_failure(floor - 1, floor, phase)
+    assert error.code == "host_memory_reserve_breached"
+    assert controller._safe_host_failure_details(
+        {"status": "error", "code": error.code, "failure": error.details}
+    ) == {
+        "memory_reserve_failure": {
+            "memory_reserve_phase": phase,
+            "host_memavailable_kib": floor - 1,
+            "required_reserve_kib": floor,
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        {"memory_reserve_phase": "unknown", "host_memavailable_kib": 1, "required_reserve_kib": 2},
+        {
+            "memory_reserve_phase": "preflight",
+            "host_memavailable_kib": 1,
+            "required_reserve_kib": 131072,
+        },
+        {
+            "memory_reserve_phase": "monitor",
+            "host_memavailable_kib": True,
+            "required_reserve_kib": 131072,
+        },
+        {
+            "memory_reserve_phase": "monitor",
+            "host_memavailable_kib": 1,
+            "required_reserve_kib": 131072,
+            "extra": 1,
+        },
+    ],
+)
+def test_memory_reserve_diagnostic_rejects_untyped_or_unknown_facts(failure):
+    assert controller._safe_memory_reserve_failure(failure) is None

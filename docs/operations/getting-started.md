@@ -1056,3 +1056,20 @@ current-machine browser limitation; E61-E62 record the locally accepted repair a
 the current deployment; and E64 records Astra's no-P1/P2 live read-only review. Remote two-user/browser
 verification, rendered owner workspace, and functional invited-user acceptance remain pending or
 **Unavailable**; the current local application is untouched.
+
+
+### Current rollout repair and recovery preparation
+
+Operational PR #10's helper is installed and its disabled → owner-canary → invited transition
+passed on the unchanged 5ad application. The disabled host snapshot still missed the required
+startup reserve, so the new free-Zen application is not deployed. A fresh signed schema-13
+backup passed non-promoting verification inside the unchanged running container; no existing
+backup was removed. See [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup) for exact bindings and limitations.
+
+A possible temporary use of the registered app-only recovery image must first pass local
+compatibility and data continuity, exact recovery-role validation at both boundaries, signed
+backup verification and unchanged resource checks. Keep the existing volume and use only the
+typed recorded-image rollback. Before enabling the assistant again, restore the exact original
+candidate and verify disabled readiness, then use owner-canary followed by invited rollout.
+Recovery registration or historical disposable-volume evidence alone does not authorize treating
+it as a tested production baseline or a proven memory saving.

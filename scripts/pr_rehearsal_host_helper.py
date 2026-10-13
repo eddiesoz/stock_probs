@@ -27,6 +27,63 @@ from typing import TypedDict
 REPOSITORY = "eddiesoz/stock_probs"
 PULL_NUMBER = 2
 TASK_ID = "R-ASTRA-120"
+
+
+class ProductionBaseline(TypedDict):
+    revision: str
+    image_id: str
+    schema_version: int
+
+
+class RecoveryProductionBaselineFields(TypedDict):
+    role: str
+    revision: str
+    image_id: str
+    archive_sha256: str
+    pair_manifest_sha256: str
+    recovery_overlay_sha256: str
+    migration_sha256: str
+    compose_digest: str
+    schema_version: int
+    assistant_rollout_mode: str
+    assistant_enabled: bool
+    assistant_status: str
+    loopback_only: bool
+
+
+class RecoveryProductionBaseline(RecoveryProductionBaselineFields):
+    container_id: str
+    container_revision: str
+
+
+PRODUCTION_BASELINE: ProductionBaseline = {
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
+    "schema_version": 13,
+}
+RECOVERY_PRODUCTION_BASELINE: RecoveryProductionBaselineFields = {
+    "role": "recovery",
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "image_id": "sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f",
+    "archive_sha256": "082d04e065acfc1eb7db86358e40e20f937111f7d26901bd98b589521f8628c3",
+    "pair_manifest_sha256": "e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3",
+    "recovery_overlay_sha256": "d1df9215ecb99dc8dc45b06c5b4c0aede364be6e80c7701a6814225397dfecad",
+    "migration_sha256": "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b",
+    "compose_digest": "01028e5b02cc0eded5f7b5207950a54b5a111b169f2a60a4ae8abdc6dfdb92b0",
+    "schema_version": 13,
+    "assistant_rollout_mode": "disabled",
+    "assistant_enabled": False,
+    "assistant_status": "disabled",
+    "loopback_only": True,
+}
+PRODUCTION_STATE_ROOT = Path("/var/lib/signal-ledger")
+PRODUCTION_CURRENT_RECORD = PRODUCTION_STATE_ROOT / "current.json"
+PRODUCTION_RELEASE_ROOT = PRODUCTION_STATE_ROOT / "releases"
+MAX_PRODUCTION_RECORD_BYTES = 65_536
+MAX_PRODUCTION_COMPOSE_BYTES = 128 * 1024
+RECOVERY_CANDIDATE_ARCHIVE_SHA256 = (
+    "99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5"
+)
 BASE_REVISION = "da2764e8477698fa7d686be93a4711e35478e802"
 BASE_IMAGE_ID = "sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1"
 BASE_ARCHIVE_SHA256 = "669f840a3141b0fb95ae248b5ea0799733b9e5b5b81e224d4637571c24d8f640"
@@ -260,6 +317,7 @@ class _BoundedTarInfo(tarfile.TarInfo):
 OPERATION_DEADLINE: float | None = None
 MONITOR_ACTIVE = False
 PRODUCTION_SAMPLE_COUNT = [0]
+ACTIVE_PRODUCTION_BASELINE: dict[str, object] | None = None
 OPERATION_CONTAINERS: list[tuple[str, str, str, str]] = []
 
 
@@ -435,6 +493,7 @@ def _run(
     input_bytes: bytes | None = None,
     maximum: int = 32_768,
     allow_failure: bool = False,
+    monitor_production: bool = True,
 ) -> subprocess.CompletedProcess[bytes]:
     """Run fixed argv with bounded output, a hard deadline, and no inherited credentials."""
     process: subprocess.Popen[bytes] | None = None
@@ -484,7 +543,7 @@ def _run(
                         process.wait(timeout=1)
                     raise RehearsalError("rehearsal_deadline_exceeded")
                 remaining = min(remaining, operation_remaining)
-            if MONITOR_ACTIVE and time.monotonic() >= next_health_check:
+            if MONITOR_ACTIVE and monitor_production and time.monotonic() >= next_health_check:
                 _check_production(PRODUCTION_SAMPLE_COUNT)
                 next_health_check = time.monotonic() + 5
             for key, _ in selector.select(min(remaining, 1.0 if MONITOR_ACTIVE else remaining)):
@@ -1363,23 +1422,108 @@ def _readiness() -> dict[str, object]:
     return value
 
 
-def _check_production(sample_count: list[int], *, startup: bool = False) -> int:
-    available = _memavailable_kib()
-    floor = START_RESERVE_KIB if startup else RUN_RESERVE_KIB
-    if available < floor:
-        raise RehearsalError("host_memory_reserve_breached")
-    readiness = _readiness()
-    if readiness.get("status") != "ready" or readiness.get("schema_version") != 12:
-        raise RehearsalError("production_health_lost")
-    sample_count[0] += 1
-    return available
+def _production_release_value(path: Path, maximum: int) -> bytes:
+    try:
+        info = path.lstat()
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != 0
+            or stat.S_IMODE(info.st_mode) != 0o600
+            or not 1 <= info.st_size <= maximum
+        ):
+            raise RehearsalError("production_baseline_mismatch")
+        return _read_root_file(path, maximum)
+    except RehearsalError as exc:
+        if exc.code == "production_baseline_mismatch":
+            raise
+        raise RehearsalError("production_baseline_mismatch") from exc
+    except OSError as exc:
+        raise RehearsalError("production_baseline_mismatch") from exc
 
 
-def _production_container() -> None:
+def _recovery_record_matches() -> bool:
+    try:
+        record = json.loads(
+            _production_release_value(PRODUCTION_CURRENT_RECORD, MAX_PRODUCTION_RECORD_BYTES)
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, RehearsalError):
+        return False
+    if not isinstance(record, dict):
+        return False
+    revision = RECOVERY_PRODUCTION_BASELINE["revision"]
+    expected_recovery_ref = f"signal-ledger:recovery-sha-{revision}"
+    expected = {
+        "transport": "github_release",
+        "release_role": "recovery",
+        "revision": revision,
+        "image_ref": expected_recovery_ref,
+        "image_digest": RECOVERY_PRODUCTION_BASELINE["archive_sha256"],
+        "archive_sha256": RECOVERY_PRODUCTION_BASELINE["archive_sha256"],
+        "image_id": RECOVERY_PRODUCTION_BASELINE["image_id"],
+        "archive_size": 103190644,
+        "platform": "linux/amd64",
+        "assistant_rollout_mode": "disabled",
+        "pair_manifest_sha256": RECOVERY_PRODUCTION_BASELINE["pair_manifest_sha256"],
+        "migration_sha256": RECOVERY_PRODUCTION_BASELINE["migration_sha256"],
+        "recovery_image_ref": expected_recovery_ref,
+        "recovery_image_id": RECOVERY_PRODUCTION_BASELINE["image_id"],
+        "recovery_archive_sha256": RECOVERY_PRODUCTION_BASELINE["archive_sha256"],
+        "recovery_archive_size": 103190644,
+        "recovery_platform": "linux/amd64",
+        "recovery_schema_version": 13,
+        "recovery_base_revision": BASE_REVISION,
+        "recovery_overlay_sha256": RECOVERY_PRODUCTION_BASELINE["recovery_overlay_sha256"],
+        "compose_digest": RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+        "source_context_sha256": "9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb",
+        "candidate_image_id": PRODUCTION_BASELINE["image_id"],
+        "candidate_archive_sha256": RECOVERY_CANDIDATE_ARCHIVE_SHA256,
+    }
+    if (
+        any(record.get(key) != value for key, value in expected.items())
+        or type(record.get("schema_version")) is not int
+        or record.get("schema_version") != RECOVERY_PRODUCTION_BASELINE["schema_version"]
+        or type(record.get("archive_size")) is not int
+        or type(record.get("recovery_archive_size")) is not int
+        or type(record.get("recovery_schema_version")) is not int
+    ):
+        return False
+    snapshot = PRODUCTION_RELEASE_ROOT / f"{revision}.compose.yaml"
+    try:
+        compose = _production_release_value(snapshot, MAX_PRODUCTION_COMPOSE_BYTES)
+    except RehearsalError:
+        return False
+    return hashlib.sha256(compose).hexdigest() == RECOVERY_PRODUCTION_BASELINE["compose_digest"]
+
+
+def _recovery_port_bindings_match(container_id: str) -> bool:
+    try:
+        result = _run(
+            [
+                "/usr/bin/docker",
+                "inspect",
+                "--format",
+                "{{json .HostConfig.PortBindings}}",
+                container_id,
+            ],
+            timeout=10,
+            monitor_production=False,
+        )
+    except RehearsalError:
+        return False
+    try:
+        bindings = json.loads(result.stdout.decode("ascii", errors="strict"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return bindings == {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}
+
+
+def _production_identity() -> ProductionBaseline | RecoveryProductionBaseline:
+    # Identity probes are part of the health check; they must not recursively start another one.
     result = _run(
         [
             "/usr/bin/docker",
             "ps",
+            "--no-trunc",
             "--filter",
             "label=com.docker.compose.project=signal-ledger",
             "--filter",
@@ -1388,20 +1532,93 @@ def _production_container() -> None:
             "{{.ID}}",
         ],
         timeout=10,
+        monitor_production=False,
     )
     identifiers = result.stdout.decode("ascii", errors="strict").splitlines()
-    if len(identifiers) != 1 or re.fullmatch(r"[0-9a-f]{12,64}", identifiers[0]) is None:
+    if len(identifiers) != 1 or re.fullmatch(r"[0-9a-f]{64}", identifiers[0]) is None:
         raise RehearsalError("production_app_identity_unavailable")
+    container_id = identifiers[0]
     template = (
         '{{.Image}}|{{.State.Status}}|{{index .Config.Labels "org.opencontainers.image.revision"}}'
     )
-    result = _run(["/usr/bin/docker", "inspect", "--format", template, identifiers[0]], timeout=10)
+    result = _run(
+        ["/usr/bin/docker", "inspect", "--format", template, container_id],
+        timeout=10,
+        monitor_production=False,
+    )
     values = result.stdout.decode("ascii", errors="strict").strip().split("|")
-    if values != [BASE_IMAGE_ID, "running", BASE_REVISION]:
+    if values == [PRODUCTION_BASELINE["image_id"], "running", PRODUCTION_BASELINE["revision"]]:
+        return dict(PRODUCTION_BASELINE)
+    if (
+        values
+        != [
+            RECOVERY_PRODUCTION_BASELINE["image_id"],
+            "running",
+            RECOVERY_PRODUCTION_BASELINE["revision"],
+        ]
+        or not _recovery_record_matches()
+        or not _recovery_port_bindings_match(container_id)
+    ):
         raise RehearsalError("production_baseline_mismatch")
+    return RecoveryProductionBaseline(
+        **RECOVERY_PRODUCTION_BASELINE,
+        container_id=container_id,
+        container_revision=values[2],
+    )
+
+
+def _production_readiness_matches(
+    baseline: dict[str, object], readiness: dict[str, object]
+) -> bool:
+    if (
+        readiness.get("status") != "ready"
+        or type(readiness.get("schema_version")) is not int
+        or readiness.get("schema_version") != baseline["schema_version"]
+    ):
+        return False
+    if baseline == PRODUCTION_BASELINE:
+        return True
+    assistant = readiness.get("assistant")
+    return (
+        baseline.get("role") == "recovery"
+        and isinstance(assistant, dict)
+        and assistant.get("enabled") is False
+        and assistant.get("status") == "disabled"
+    )
+
+
+def _check_production(sample_count: list[int], *, startup: bool = False) -> int:
+    available = _memavailable_kib()
+    floor = START_RESERVE_KIB if startup else RUN_RESERVE_KIB
+    if available < floor:
+        raise _memory_reserve_failure(available, floor, "startup" if startup else "monitor")
+    baseline = _production_identity()
+    if ACTIVE_PRODUCTION_BASELINE is not None and baseline != ACTIVE_PRODUCTION_BASELINE:
+        raise RehearsalError("production_baseline_mismatch")
+    readiness = _readiness()
+    if not _production_readiness_matches(baseline, readiness):
+        raise RehearsalError("production_health_lost")
+    sample_count[0] += 1
+    return available
+
+
+def _memory_reserve_failure(available: int, floor: int, phase: str) -> RehearsalError:
+    return RehearsalError(
+        "host_memory_reserve_breached",
+        details={
+            "memory_reserve_phase": phase,
+            "host_memavailable_kib": available,
+            "required_reserve_kib": floor,
+        },
+    )
+
+
+def _production_container() -> ProductionBaseline | RecoveryProductionBaseline:
+    baseline = _production_identity()
     ready = _readiness()
-    if ready.get("status") != "ready" or ready.get("schema_version") != 12:
+    if not _production_readiness_matches(baseline, ready):
         raise RehearsalError("production_health_unavailable")
+    return baseline
 
 
 def _image_identity(image_id: str, revision: str) -> None:
@@ -3326,7 +3543,8 @@ def _validate_pre_migration_backup(value: object) -> dict[str, object]:
 
 
 def _run_pair(payload: dict[str, object]) -> dict[str, object]:
-    global MONITOR_ACTIVE, OPERATION_DEADLINE, PRODUCTION_SAMPLE_COUNT
+    global ACTIVE_PRODUCTION_BASELINE, MONITOR_ACTIVE, OPERATION_DEADLINE, PRODUCTION_SAMPLE_COUNT
+    ACTIVE_PRODUCTION_BASELINE = None
     if (
         payload.get("repository") != REPOSITORY
         or type(payload.get("pull_number")) is not int
@@ -3337,7 +3555,8 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
     pair_sha256 = _digest(payload.get("pair_manifest_sha256"), "pair_manifest_invalid")
     source_digests = _verify_installed_source(revision, pair_sha256)
     _verify_pull_request(revision)
-    _production_container()
+    production_baseline = _production_container()
+    ACTIVE_PRODUCTION_BASELINE = production_baseline
     candidate_id = _image_id(payload.get("candidate_image_id"), "candidate_image_id_invalid")
     recovery_id = _image_id(payload.get("recovery_image_id"), "recovery_image_id_invalid")
     candidate_context = _digest(
@@ -3355,7 +3574,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
     sample_count = [0]
     host_memtotal_before_kib, host_memavailable_before_kib = _host_memory_kib()
     if host_memavailable_before_kib < START_RESERVE_KIB:
-        raise RehearsalError("host_memory_reserve_breached")
+        raise _memory_reserve_failure(host_memavailable_before_kib, START_RESERVE_KIB, "preflight")
     _check_production(sample_count, startup=True)
     MONITOR_ACTIVE = True
     PRODUCTION_SAMPLE_COUNT = sample_count
@@ -3627,7 +3846,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
                 },
             )
         if host_memavailable_after_kib < RUN_RESERVE_KIB:
-            raise RehearsalError("host_memory_reserve_breached")
+            raise _memory_reserve_failure(host_memavailable_after_kib, RUN_RESERVE_KIB, "final")
         result_receipt = {
             "status": "pass",
             "reviewed_head_sha": revision,
@@ -3639,6 +3858,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             "recovery_overlay_sha256": overlay_hash,
             "same_disposable_volume": True,
             "production_mutation": False,
+            "production_baseline": dict(production_baseline),
             "production_health_samples": sample_count[0],
             "host_memavailable_before_kib": host_memavailable_before_kib,
             "host_memavailable_after_kib": host_memavailable_after_kib,

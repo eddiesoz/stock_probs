@@ -515,3 +515,10 @@ than a validator heuristic. These are static governance checks; metadata, the in
 allow-list, and `SKILL.md` frontmatter do not establish that a native loader discovered a skill.
 Native V2's directory-based auto-discovery is the loader boundary, and runtime discovery remains
 **Unavailable** in this harness.
+
+
+Rehearsal baseline changes require the mapped testing, configuration and operations pages plus
+`AGENTS.md`. Document the running candidate or recovery role separately from the immutable
+schema-12 pair seed; an exact image allowlist is a guard, not evidence that the image served
+production or met the resource floors. Keep source checks, local disposable compatibility, signed
+backup verification and actual-host observations separate in the [E19 ledger](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).

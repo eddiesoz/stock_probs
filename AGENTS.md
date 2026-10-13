@@ -2286,3 +2286,14 @@ only; finalization and guide acceptance remain pending. E390 confirms unchanged 
 through read-only MCP status. The **US$15 total monthly cap includes backups and taxes**;
 the existing 1 GB Linode and backups remain unchanged. Required native/provider, strict
 accessibility, actual capacity, PR-bound rollback, and release gates remain open.
+
+
+For R-ASTRA-121 rehearsal preparation, keep the running production identity separate from the
+schema-12 PR-pair fixture seed. A registered schema-13 recovery baseline must match its exact
+recovery role, image, archive, pair, overlay, migration, Compose and disabled-readiness bindings
+at both host and MCP boundaries; it is not the new PR's recovery asset. Retain the 512/128 MiB
+reserve floors and actual-host monitoring. Before a production image transition, verify a fresh
+signed schema-13 backup and the local compatibility/data-continuity scope, then prepare the
+exact typed restoration path. Backup verification must not rewrite the running rollout configuration,
+promote a restore, rotate trust state or remove existing artifacts. Source/profile evidence alone
+does not accept a production transition, memory saving, native fix, owner canary or release.
