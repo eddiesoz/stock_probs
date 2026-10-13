@@ -1369,11 +1369,23 @@ def _readiness() -> dict[str, object]:
     return value
 
 
+def _memory_reserve_failure(available: int, floor: int, phase: str) -> RehearsalError:
+    # Retain the existing failure and thresholds, with facts that distinguish the failing guard.
+    return RehearsalError(
+        "host_memory_reserve_breached",
+        details={
+            "memory_reserve_phase": phase,
+            "host_memavailable_kib": available,
+            "required_reserve_kib": floor,
+        },
+    )
+
+
 def _check_production(sample_count: list[int], *, startup: bool = False) -> int:
     available = _memavailable_kib()
     floor = START_RESERVE_KIB if startup else RUN_RESERVE_KIB
     if available < floor:
-        raise RehearsalError("host_memory_reserve_breached")
+        raise _memory_reserve_failure(available, floor, "startup" if startup else "monitor")
     _production_identity()
     readiness = _readiness()
     if (
@@ -3380,7 +3392,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
     sample_count = [0]
     host_memtotal_before_kib, host_memavailable_before_kib = _host_memory_kib()
     if host_memavailable_before_kib < START_RESERVE_KIB:
-        raise RehearsalError("host_memory_reserve_breached")
+        raise _memory_reserve_failure(host_memavailable_before_kib, START_RESERVE_KIB, "preflight")
     _check_production(sample_count, startup=True)
     MONITOR_ACTIVE = True
     PRODUCTION_SAMPLE_COUNT = sample_count
@@ -3652,7 +3664,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
                 },
             )
         if host_memavailable_after_kib < RUN_RESERVE_KIB:
-            raise RehearsalError("host_memory_reserve_breached")
+            raise _memory_reserve_failure(host_memavailable_after_kib, RUN_RESERVE_KIB, "final")
         result_receipt = {
             "status": "pass",
             "reviewed_head_sha": revision,

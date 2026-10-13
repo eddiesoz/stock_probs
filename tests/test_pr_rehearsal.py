@@ -3657,3 +3657,52 @@ def test_recurring_production_guard_rejects_same_schema_replacement(monkeypatch,
     with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
         host_helper._check_production(samples)
     assert samples == [1]
+
+
+@pytest.mark.parametrize(
+    ("phase", "floor"),
+    [("preflight", 524288), ("startup", 524288), ("monitor", 131072), ("final", 131072)],
+)
+def test_memory_reserve_failure_survives_the_exact_host_consumer_boundary(phase, floor):
+    error = host_helper._memory_reserve_failure(floor - 1, floor, phase)
+    assert error.code == "host_memory_reserve_breached"
+    projected = controller._safe_host_failure_details(
+        {"status": "error", "code": error.code, "failure": error.details}
+    )
+    assert projected == {"memory_reserve_failure": error.details}
+    assert (
+        controller._safe_host_failure_details(
+            {"status": "error", "code": "production_health_lost", "failure": error.details}
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        {"memory_reserve_phase": "provider error with raw account text"},
+        {"required_reserve_kib": 131072},
+        {"required_reserve_kib": "524288"},
+        {"host_memavailable_kib": True},
+        {"host_memavailable_kib": -1},
+        {"host_memavailable_kib": 524288},
+        {"host_memavailable_kib": 1 << 63},
+        {"host_memavailable_kib": 123.5},
+        {"host_memavailable_kib": "raw account text"},
+        {"provider_body": "raw account text"},
+    ],
+)
+def test_memory_reserve_projection_rejects_untrusted_or_nonfailure_readings(replacement):
+    evidence = {
+        "memory_reserve_phase": "preflight",
+        "host_memavailable_kib": 524287,
+        "required_reserve_kib": 524288,
+        **replacement,
+    }
+    assert (
+        controller._safe_host_failure_details(
+            {"status": "error", "code": "host_memory_reserve_breached", "failure": evidence}
+        )
+        is None
+    )

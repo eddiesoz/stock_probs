@@ -2307,3 +2307,10 @@ image at schema 13 separately from the historical da2764e schema-12 migration/re
 Require matching live revision/image/schema in the host receipt and controller; preserve the
 existing memory reserves and actual 1 GB/resource/recovery gates. A correct source pin is not a
 host rehearsal, native reliability or deployment Pass.
+
+
+For PR #9 reserve diagnosis, keep the existing 512 MiB startup and 128 MiB running guards.
+Project only the closed preflight/startup/monitor/final phase and strict numeric available/required
+KiB values. An earlier unclassified reserve failure or a later read-only RSS measurement is not
+proof of its phase or cause. Before another trial, bind the repaired checker and exact candidate;
+retain failed aggregates and restore verified production rollout after temporary maintenance.

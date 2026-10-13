@@ -1760,6 +1760,13 @@ test("assistant ignores delayed conversation, pagination, and stream responses a
 
 test("real FastAPI assistant flow keeps route-only context and reopens durable proposal and tool receipts", async ({ page, assistantApplication, browserDiagnostics }, testInfo) => {
   const origin = assistantApplication.url;
+  const startup = assistantApplication.logs().split("\n").map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).find((entry) => entry?.qa_stage === "fixture_started");
+  await testInfo.attach("real-flow-fixture-startup.json", {
+    body: Buffer.from(JSON.stringify(startup || { available: false }, null, 2)),
+    contentType: "application/json",
+  });
   await page.context().addCookies([
     { name: "signal_ledger_session", value: "browser-assistant-fixture-session-not-a-production-credential", url: origin, httpOnly: true, sameSite: "Lax" },
     { name: "signal_ledger_csrf", value: "browser-assistant-fixture-csrf-token-not-a-production-credential", url: origin, sameSite: "Lax" },
@@ -1875,8 +1882,39 @@ test("real FastAPI assistant flow keeps route-only context and reopens durable p
   try {
     await completion;
   } catch (error) {
+    // Failure evidence distinguishes a slow fixture from a completed turn whose UI lost its state.
+    const transcript = await panel.innerText();
+    const diagnostic = await page.evaluate(async (eventUrl) => {
+      if (!eventUrl) return { available: false };
+      const path = new URL(eventUrl).pathname.split("/turns/")[0];
+      const response = await fetch(path, { signal: AbortSignal.timeout(1500) });
+      if (!response.ok) return { available: false, status: response.status };
+      const data = await response.json();
+      return {
+        available: true,
+        turns: (data.turns || []).map((turn) => ({ status: turn.status })),
+        messages: (data.messages?.items || []).map((message) => ({ role: message.role, length: message.text?.length || 0 })),
+        events: (data.events?.items || []).map((event) => ({ type: event.type, status: event.data?.status })),
+      };
+    }, submitted.eventStreamUrl).catch(() => ({ available: false }));
+    await testInfo.attach("real-flow-completion-diagnostic.json", {
+      body: Buffer.from(JSON.stringify({
+        ...diagnostic,
+        hasAnswer: transcript.includes("Synthetic research response from the local browser fixture."),
+        hasCompletion: transcript.includes("Assistant response complete."),
+        hasProviderError: transcript.includes("The selected model provider could not answer."),
+        hasClosedTurnWarning: transcript.includes("The assistant turn ended without a completed answer."),
+      }, null, 2)),
+      contentType: "application/json",
+    });
     throw new Error(`${error instanceof Error ? error.message : "Assistant turn did not complete."}\nConversation errors ${JSON.stringify(conversationErrors)}\n${assistantApplication.logs()}`);
   }
+  await testInfo.attach("real-flow-runtime-checkpoints.json", {
+    body: Buffer.from(JSON.stringify(assistantApplication.logs().split("\n").map((line) => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter((entry) => ["fixture_started", "turn_started", "workspace_summary_received", "runtime_completed"].includes(entry?.qa_stage)), null, 2)),
+    contentType: "application/json",
+  });
   await expect.poll(() => eventStreamResponse).not.toBeNull();
   expect(eventStreamResponse).toMatchObject({
     url: submitted.eventStreamUrl,

@@ -1428,6 +1428,39 @@ def _safe_fixed_command_failure(value: object) -> dict[str, object] | None:
     return {"command_category": category, "exit_status": exit_status}
 
 
+def _safe_memory_reserve_failure(value: object) -> dict[str, object] | None:
+    """Accept only a closed guard phase and its below-threshold numeric reading."""
+    if not isinstance(value, dict) or set(value) != {
+        "memory_reserve_phase",
+        "host_memavailable_kib",
+        "required_reserve_kib",
+    }:
+        return None
+    phase = value.get("memory_reserve_phase")
+    available = value.get("host_memavailable_kib")
+    floor = value.get("required_reserve_kib")
+    floors = {
+        "preflight": START_RESERVE_KIB,
+        "startup": START_RESERVE_KIB,
+        "monitor": RUN_RESERVE_KIB,
+        "final": RUN_RESERVE_KIB,
+    }
+    if (
+        not isinstance(phase, str)
+        or phase not in floors
+        or type(available) is not int
+        or type(floor) is not int
+        or floor != floors[phase]
+        or not 0 <= available < floor
+    ):
+        return None
+    return {
+        "memory_reserve_phase": phase,
+        "host_memavailable_kib": available,
+        "required_reserve_kib": floor,
+    }
+
+
 def _safe_host_failure_details(response: dict[str, object]) -> dict[str, object] | None:
     """Keep the existing native projection and add only typed command/receipt facts."""
     details: dict[str, object] = {}
@@ -1438,6 +1471,10 @@ def _safe_host_failure_details(response: dict[str, object]) -> dict[str, object]
     command_failure = _safe_fixed_command_failure(failure)
     if command_failure is not None:
         details["fixed_command_failure"] = command_failure
+    if response.get("code") == "host_memory_reserve_breached":
+        reserve_failure = _safe_memory_reserve_failure(failure)
+        if reserve_failure is not None:
+            details["memory_reserve_failure"] = reserve_failure
     receipt_id = response.get("receipt_id")
     if isinstance(receipt_id, str) and re.fullmatch(r"[0-9a-f]{32}", receipt_id) is not None:
         details["host_receipt_id"] = receipt_id

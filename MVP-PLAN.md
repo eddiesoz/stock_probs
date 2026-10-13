@@ -6642,3 +6642,82 @@ published its prepared receipt and acknowledged its ledger row. Execution receip
 at `2026-10-13T16:26:09.633616Z`–`16:27:00.037337Z` and unchanged wrapper/helper pins.
 The retained production image is now the local fallback; production service and protected images
 were untouched. This creates capacity for a fresh exact-head build; no new build Pass is inferred.
+
+### R-ASTRA-121 E14 — frozen candidate gates and actual-host reserve failure
+
+The clean pushed application candidate `39d8bec95a2296ac9e6e942ee47bc7f783203eff`
+built as image `sha256:ea2daf8655bcb1979aef00c108d98e8b71c9cd4dd8a71242797a61812bab36f2`,
+with 149 application inputs bound to context
+`9f86b6fcddac74d6a60132c4afd0fd951a6ed51265bd2266fee0a101a7608ec0`.
+The installed root-owned 23-field receipt verified the guarded native binary B8; source/stage
+verification matched 52 maintained served/export pairs and the separately checked favicon.
+The same-immutable-image public Bun span extraction resolves E13's earlier missing installed-binary
+receipt digest attribution, without reconstructing its old receipt.
+
+The canonical command `TASK_ID=R-ASTRA-121 TMPDIR=/var/tmp/r12r PYTHONPATH=<hotfix>/src
+./scripts/local-gate.sh check` **Passed**, exit 0, at `2026-10-13T16:34:09.015536Z`–
+`17:05:45.645721Z`: 3,375 Python passes, four skips, four deselections, 85.68% coverage and 73
+frontend checks. All three required checks and completed JUnit were retained. Independent review
+of candidate/root receipt/canonical bindings is in `independent-release-artifact-audit-01/receipt.json`,
+SHA-256 `813156abb392d1920d41836de342191486f69a74f830d7cd9df387e61329aaa4`.
+The skips are separate opt-in native boundary/wire and Docker scopes, not acceptance of those gates.
+
+Current-image local active-search shutdown **Passed** its 768 MiB scope: pending research was
+cancelled before approval; six assistant APIs returned 503 while app readiness, private history and
+saved records were preserved. The driver ended at `active_scan_ack_invalid`, with zero approvals;
+no provider execution-count claim follows. The local migration/recovery pair **Passed** at
+`17:34:29.431482Z`–`17:40:29.670276Z`, preserving post-migration writes and verifying signed-reader
+backup integrity. Both exported archives passed the maintained credential/persistent-data scanner.
+The exact temporary recovery image was retired by its typed operation; protected images were kept.
+Independent runtime/artifact review is `independent-release-runtime-artifact-review-02/receipt.json`,
+SHA-256 `5483b6d241e1b91c6434582483e2af8bcf4fe7ad372e00f7d17143bf796c2837`.
+These are local scopes, not actual combined 1 GB or production rollout acceptance.
+
+Two current-PR official SDK host rehearsals **Failed** with `host_memory_reserve_breached`.
+The first retained the complete host failure before its caller hit an SDK `structuredContent`
+versus `structured_content` property error. The second used the corrected fields and explicit 022
+child mask. After the independently reviewed temporary in-place assistant disable, read-only
+MemAvailable was 534,064 KiB on the unchanged 984,564 KiB host, above the 524,288 KiB starting
+reserve. The second tool still failed. Exact host receipts `0528808ce829bb0d0f756cb34a4576a1` and
+`88df9696a0f7103cbb81948d21c8274d` retain no phase or observed reserve value; cause remains
+**Unproven**. Wrapper exit 0 is transport completion, not a rehearsal Pass.
+
+The exact previously accepted 5ad/image787/schema-13 production rollout was restored through
+`disabled -> owner_canary -> invited`, with each result and fresh inspect checking identity,
+mode, ready health and loopback-only exposure. Independent restore receipt has SHA-256
+`fb26c9f7d662090163c1ead656e4fe36c7655882c1ebead9d7135a32e5c5f387`.
+The restore-control preparation's earlier P2 failures remain preserved separately from its repaired
+static review. No hotfix deployment, resize, account, payment, email or budget change occurred.
+
+The first full browser command **Failed** at its 300-second suite/teardown limits: 61 completed
+passes and 139 unrun cases, with no individual unexpected or flaky result. Its report's `ok: true`
+does not override the failed command. Source/stage and owned process/port cleanup passed separately.
+The initial delivered receipt was later changed during supplemental binding publication; its earlier
+bytes are **Unavailable** and that publication failure remains recorded. The current corrected
+receipt is retained at SHA-256 `f6e640201b2ad40e8d8495e2bc11704a90b3764e3c0f46c42a1716c04904ddf0`.
+The separate full rerun at `18:19:12.219Z`–`18:35:28.293330Z` **Failed** with 196 passes,
+one failure, three expected skips, zero flaky results and exit 1. Its bounded 20-minute CLI
+allowance preserved case deadlines, one worker and zero retries. The real FastAPI assistant flow
+reported a pending turn at its five-second completion assertion; no cause is established.
+All 428 source bindings, 52 served/export pairs and favicon stayed unchanged. Independent receipt
+`full-browser-39d8-02/independent-browser-review-02.json` has SHA-256
+`e316ede123b17f91ea0fed025721b178dc73f6c9bde33aa16c0ea860438a968b`.
+A focused rerun passed 1/1 with the original deadlines, but its fixture startup output was discarded
+by the maintained stderr-only collector. Fixture-only checkpoints now use stderr. Independent focused verification passed 1/1 at
+`19:09:54.091331Z`–`19:10:12.520030Z` with the same five-second assertion and 30-second case
+deadline. It verified the actual hotfix module path, a workspace-summary HTTP 200, and runtime
+completion in about 0.652 seconds. Both fixture PIDs and ports were absent afterward. Browser
+terminal receipt SHA-256 is `7855d0a58fccae4a445ba689ee1396acd37e0c74545529e1c8f47add14277495`.
+The full failed aggregate and its unproven cause are preserved.
+
+The next checker diagnostic retains only a closed reserve phase and observed/required numeric KiB
+facts. Its 512 MiB startup and 128 MiB running guards remain unchanged. A read-only verified public
+helper preflight measured 27,324–28,744 KiB process RSS, but does not establish the earlier failure's
+phase or cause. Independent selected QA passed 15 threshold/phase/hostile-boundary cases and Ruff check/format;
+`independent-memory-browser-qa-02/memory-focused-terminal.json` has SHA-256
+`5f1103272cd778dc9dfa3abea0844d42ac40ebac942495de1dd12c1ec0902d87`.
+The initial bare-Ruff lookup and anchored browser selector failures remain setup failures. Fresh
+actual-host evidence remains required. Release,
+owner UI canary and all unresolved resource/security/accessibility gates remain open; physical mobile,
+actual screen reader and true zoom remain unavailable. The existing 1 GB host, backups and US$15
+monthly total including tax are unchanged.

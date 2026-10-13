@@ -664,6 +664,13 @@ was written, and no PR-pair rehearsal or remote operation is accepted. The lates
 eight operations. E767 later passed fresh-task discovery for this configuration; future configuration changes require a fresh Codex task to verify discovery. See [local metadata settings](../configure/local-configuration.md#local-pr-rehearsal-review-metadata)
 and [developer testing](../develop/testing.md#exact-pr-pair-review-pins).
 
+A `host_memory_reserve_breached` result blocks promotion. The diagnostic may include a closed
+`preflight`, `startup`, `monitor`, or `final` phase, `host_memavailable_kib`, and
+`required_reserve_kib`. Startup requires 524,288 KiB and running/final checks require 131,072 KiB.
+Preserve the failure receipt; use these facts to choose a concrete repair before retrying. A wrapper
+exit of zero establishes transport completion only. Temporary assistant maintenance must finish
+with fresh identity, health and rollout readback; it does not authorize a host resize or budget change.
+
 `refresh_operator_access(operator_ipv4_cidr)` is a separate maintenance action. It accepts one
 canonical IPv4 `/32` and constrains Terraform to the fixed `linode_firewall.signal_ledger` resource
 (firewall ID `177236117`) and its `ssh-operator` TCP port-22 rule, using the fixed external private
