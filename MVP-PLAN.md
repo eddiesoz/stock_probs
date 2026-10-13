@@ -6721,3 +6721,70 @@ actual-host evidence remains required. Release,
 owner UI canary and all unresolved resource/security/accessibility gates remain open; physical mobile,
 actual screen reader and true zoom remain unavailable. The existing 1 GB host, backups and US$15
 monthly total including tax are unchanged.
+
+### R-ASTRA-121 E15 — candidate rebuild, exact scanner binding and browser wait
+
+The clean pushed `1b3d9449a53a1fbd5160306f4a2d617a3f9effda` candidate built as
+`sha256:0cc52e8d60e017b7e73cb03fac54fb7ff3196894eb23e6abbf6b6e5f877ff27b`.
+Build and independent artifact review passed for 149 unchanged inputs and context
+`9f86b6fcddac74d6a60132c4afd0fd951a6ed51265bd2266fee0a101a7608ec0`;
+this is build/source scope. The previous ea2 candidate was independently checked and retired by
+its exact typed operation, retaining the checked archives and protected production images.
+The new local schema-12-to-13 migration/recovery pair passed, with post-migration records retained.
+It intentionally uses the historical da/d3 origin, separate from live 5ad/787/schema13 production.
+Pair manifest SHA-256 is `688f610aa7750eaa9689c9630ecbc682a3e59d7d74609900c84a90b637a00cf4`.
+
+The installed root-owned 23-field receipt validated, but the freshly compiled native executable
+had SHA-256 `9dd48571a16d00a4cc021b6eb85b5c347f2b965aaee96913fa24028b86cef955`.
+It differs from B8 despite identical source inputs. Twelve embedded random public build paths differ;
+normalizing those paths still leaves 4,554 different bytes, so no sole cause or reproducibility claim
+is made. The previous B8 native Pass is not re-labelled as 9dd runtime acceptance.
+
+The original scanner rejected the candidate with `credential_like_bytes`; recovery scan was not run.
+A separate same-image provenance extraction verified all four exact flagged spans against the
+checksum-pinned official Bun archive/binary. Only the compiled file's exact SHA exemption changed;
+path, size, spans and scanning of every other byte remain unchanged. Both actual archives then passed:
+candidate `eea136e2616c466128778f03378775179147c7b0f8d8a4adb616e7dae4a1ee81`, 202,158,958 bytes;
+recovery `4029a7217e8e52e50e726c4f904e52332ccc49c91fd394c4556330234631fa91`, 103,190,484 bytes.
+The initial malformed-image argument substitution attempt remains a setup failure with no container
+start. No actual-host attempt or production maintenance occurred at this checkpoint.
+
+Independent screenshot/trace review of the failed full browser run confirms pending at the last
+sample, then a completed answer/status in the later capture. The first completion time relative to
+the assertion timeout remains unavailable; the original receipt's ordering overclaim is corrected
+in a new supplemental receipt, not overwritten. A controlled six-second valid fixture response
+reproduced the original five-second assertion failure, with a running saved turn and completed
+workspace-summary tool. Teardown connection-refused errors remain separate. The completion poll
+now allows 15 seconds with shorter intervals inside the unchanged 30-second test case, one worker,
+and zero retries. This is test fidelity, not an application or provider latency fix.
+
+Independent scanner QA passed 15 selected tests, Ruff check/format and exact public Bun span
+provenance. Receipt `independent-scanner-browser-qa-01/independent-scanner-browser-qa-02.json`
+has SHA-256 `609997f0534618f0a3b3365a1e523bb0148f209c5bbe144ba53b484e198299ce`.
+The first positive browser run used Node 22.22.2 and retains that qualification. A separate direct
+pinned Node 22.19.0 run passed 1/1 at `2026-10-13T20:13:07.193Z`, with a valid response taking
+6.18124 seconds, actual hotfix fixture module, workspace HTTP 200, saved answer/proposal/tool receipt
+and confirmed theme handoff. Eleven source pins and 53 explicit served/export pairs stayed unchanged;
+owned processes, ports and scratch were absent afterward. Receipt
+`independent-scanner-browser-qa-01/independent-browser-positive-pinned-node-qa-03.json` has SHA-256
+`10368b6c324d1ed84dcd0242b1ebabeffc6a5f38ff67179ed78486f575a94a36`.
+
+A fresh native run on the exact 0cc image and 9dd executable **Passed** at
+`2026-10-13T20:05:45.763049Z`–`20:08:41.790556Z`. Genuine OpenCode
+`opencode-zen/space-bunny-free` completed two concurrent owners' answers (440 and 880 bytes),
+with matching model identities and two workspace summaries. The second owner approved seven native
+search sources and one guarded IANA fetch. Cross-owner and forged MCP calls returned 404; both
+conversation deletes returned 200 with zero pending. The 4,823-byte raw stdout has SHA-256
+`805b92b4c596658d39288df3a11b99f54029fe4a209ac3a3d8c469d770223213`.
+Independent artifact review passed all five source bindings and saved-result integrity, receipt
+`independent-scanner-browser-qa-01/independent-native08-artifact-qa-01.json`, SHA-256
+`7e715076b52d6b29454caa685381a6475f9503f1b44d6a9432309d1344f1e24e`.
+The local 768 MiB before/after sample peaked at 703,586,304 bytes with zero observed OOM events;
+it is not actual combined 1 GB acceptance or continuous health evidence. Two read-only startup
+observation timeouts preceded readiness; the launcher also emitted a nonfatal platform-library
+warning. No provider failure or specific latency cause follows. Wrapper cleanup reports Pass;
+independent exact Docker-object absence is Unavailable because the bound records omit exact IDs.
+
+The full 196/1/3 browser aggregate, current canonical, actual combined 1 GB, exact-PR rollback,
+owner canary and deployment gates remain open. Production is unchanged at the previously restored
+5ad/787 invited rollout; the 1 GB host, backups and US$15 total monthly cap remain unchanged.

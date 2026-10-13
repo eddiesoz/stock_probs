@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
 import os
@@ -238,6 +239,18 @@ class _Runtime:
             file=sys.stderr,
             flush=True,
         )
+        if prompt == "Explain this page without selected references":
+            # Exercise a valid asynchronous response beyond the former five-second poll.
+            print(
+                json.dumps({
+                    "qa_stage": "response_delay_started",
+                    "monotonic": time.monotonic(),
+                    "delay_seconds": 6,
+                }),
+                file=sys.stderr,
+                flush=True,
+            )
+            await asyncio.sleep(6)
         await emit({
             "type": "meta",
             "data": {

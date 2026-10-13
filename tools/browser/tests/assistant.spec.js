@@ -1878,7 +1878,7 @@ test("real FastAPI assistant flow keeps route-only context and reopens durable p
       && transcript.includes("Synthetic research response from the local browser fixture.")
       ? "completed"
       : "pending";
-  }).toBe("completed");
+  }, { timeout: 15_000, intervals: [100, 250, 500] }).toBe("completed");
   try {
     await completion;
   } catch (error) {
@@ -1912,7 +1912,7 @@ test("real FastAPI assistant flow keeps route-only context and reopens durable p
   await testInfo.attach("real-flow-runtime-checkpoints.json", {
     body: Buffer.from(JSON.stringify(assistantApplication.logs().split("\n").map((line) => {
       try { return JSON.parse(line); } catch { return null; }
-    }).filter((entry) => ["fixture_started", "turn_started", "workspace_summary_received", "runtime_completed"].includes(entry?.qa_stage)), null, 2)),
+    }).filter((entry) => ["fixture_started", "turn_started", "workspace_summary_received", "response_delay_started", "runtime_completed"].includes(entry?.qa_stage)), null, 2)),
     contentType: "application/json",
   });
   await expect.poll(() => eventStreamResponse).not.toBeNull();
