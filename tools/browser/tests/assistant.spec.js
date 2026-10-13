@@ -1865,7 +1865,7 @@ test("real FastAPI assistant flow keeps route-only context and reopens durable p
   }
   await expect(panel.getByText("current route", { exact: true })).toBeVisible();
   await expect(panel.getByText(/ACDC · STOCK · NMS · deterministic fixture/)).toHaveCount(0);
-  await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Explain this page without selected references");
+  await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Explain this page without selected references (delayed browser fixture)");
   await expect(panel.getByRole("button", { name: "Send question" })).toBeEnabled();
   await panel.getByRole("button", { name: "Send question" }).click();
   const completion = expect.poll(async () => {
@@ -2189,6 +2189,10 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
   await panel.getByRole("textbox", { name: "Ask about this page" }).fill("");
   await assertServerEndedStream(approval.eventPath);
   await expectAssistantAxeClean(page, testInfo, "approved-preview");
+  await testInfo.attach("assistant-approved-preview.png", {
+    body: await page.screenshot({ fullPage: false }),
+    contentType: "image/png",
+  });
 
   const staleContext = await requestPreview(
     "fixture webfetch stale context",

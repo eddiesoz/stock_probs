@@ -6788,3 +6788,65 @@ independent exact Docker-object absence is Unavailable because the bound records
 The full 196/1/3 browser aggregate, current canonical, actual combined 1 GB, exact-PR rollback,
 owner canary and deployment gates remain open. Production is unchanged at the previously restored
 5ad/787 invited rollout; the 1 GB host, backups and US$15 total monthly cap remain unchanged.
+
+### R-ASTRA-121 E16 — complete browser failure and scoped fixture repairs
+
+The clean pushed `9401573a92e49a6528b691284625937dc90c5d8d` full browser run **Failed**, exit 1,
+at `2026-10-13T20:25:28.323Z`–`20:43:45.962Z`: 194 passed, three failed, three skipped,
+zero flaky, 200 discovered. It used direct pinned Node 22.19.0 and Playwright 1.63.0, one worker,
+zero retries, 30-second cases and a 20-minute aggregate bound. All 149 candidate inputs, 428 source
+pins and 53 explicit served/export pairs stayed unchanged. Terminal receipt SHA-256 is
+`7796a5b05683d268afc63e3c7f986f9f106a4a7b55df2d8959c6b2c6bd662951`.
+
+The export failure's exact title is the desktop JSON case. Its saved error contains one unexpected
+turn-event GET abort beside the expected history-export.json abort. The initial QA shorthand
+called it CSV and counted two assistant stream aborts; the supplement corrects that observation.
+The event-stream metadata reports HTTP 200 and text/event-stream, without establishing that
+completion preceded cancellation. The export fixture omitted its existing diagnostics handoff.
+The parent supplied that argument; the maintained exact-one-request/response/terminal validation
+remains unchanged, without a blanket abort allowance.
+
+The desktop and mobile session-revocation cases failed because the parent's controlled six-second
+fixture delay also matched their shared prompt, while their preview assertion retained five seconds.
+This is a fixture regression, separate from the live native repair. The delayed-response test now
+uses a unique prompt, leaving the revocation prompt/deadlines unchanged. Both original delayed-turn
+real FastAPI cases passed in this aggregate. Exact owned source bytes were preserved before repairs.
+Independent direct pinned-Node verification **Passed** all eight affected desktop/mobile cases,
+with zero unexpected, skipped or flaky cases, 73.658 seconds of report duration and 75.15 seconds
+of process duration. All 428 source pins, 149 build inputs and 53 served/export pairs stayed
+unchanged; explicitly owned fixture/runner PIDs and ports were absent afterward. Receipt SHA-256
+is `b557907dd221513d84410333425b2151fdaa9c68078d8091d43f775b746f0a7f`.
+The initial stage-map preflight failure and two post-test receipt-writer setup failures remain
+preserved separately; no rerun promoted those errors. This failed aggregate is not relabelled Pass.
+
+The bounded audit of 28 attached raw axe snapshots reports zero violations and three incomplete
+color-contrast results on desktop context metadata (provider-failure Light/Dark and approved preview).
+The strict raw zero-incomplete criterion remains **Fail**. The supplement SHA-256 is
+`6063df485f0ac65deac09c266803277958ed4461c6f66e6bb7c833cbbfddd1eb`.
+The detail receipt SHA-256 is
+`9439a75ed86549c276db7cb21fe8603182ad4a0fa213dc638831353d74709402`;
+it verifies absence of the explicitly recorded runner/base and real-flow child PIDs/ports, without
+claiming a complete inventory of ephemeral processes. Independent static/screenshot investigation reports measured 6.1307:1 Light and 8.4505:1 Dark
+context text, visible without clipping/obstruction in both provider-failure captures. No approved-
+preview image was attached, so that visual review is Unavailable. Receipt SHA-256 is
+`d59676ff4379dbab01ecd8e1a20b42b6764f36117aca9843b87755a7a7ce1173`.
+The maintained test now attaches a PNG at the exact approved-preview axe checkpoint. A scoped
+three-desktop-state rerun remains pending; no UI change or strict raw-zero waiver is inferred.
+
+After independent conditional eligibility review and typed local fallback selection, a fresh
+retirement check passed at `20:34:59.539757Z`–`20:35:42.608469Z`. The reviewed typed operation
+removed only obsolete image `0cc52e8d60e017b7e73cb03fac54fb7ff3196894eb23e6abbf6b6e5f877ff27b`
+with --no-prune at `20:36:31.387900Z`–`20:37:36.941132Z`, acknowledged its ledger row and
+verified absence. Candidate/recovery archives remain retained. Independent post-removal readback
+passed exact image/tag/ledger/container-reference absence and protected 787/a9 presence; receipt
+SHA-256 is `8aac853b476d65917bf7c0c8af46bb5f29784808a5844824a7eb6644f9d94293`.
+The pointer-selection command lacks a contemporaneous private baseline; only observed selected
+state is independently verified, without reconstructing its execution timestamp. The first QA
+readback incorrectly expected the untagged a9 recovery image in the candidate ledger; its setup
+failure remains preserved separately from the corrected readback.
+
+No hotfix production deployment, resize, paid provider, new account or email occurred. The goal
+remains active with the free OpenCode restoration first, followed by all seven approved features.
+Production remains the restored 5ad/787/schema13 invited release. Existing 1 GB, backups and US$15
+monthly total including tax remain unchanged. Current canonical, actual-host combined resource,
+PR-bound recovery/rollback, accessibility and owner canary/deployment acceptance remain open.

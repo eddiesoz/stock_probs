@@ -239,7 +239,7 @@ class _Runtime:
             file=sys.stderr,
             flush=True,
         )
-        if prompt == "Explain this page without selected references":
+        if prompt == "Explain this page without selected references (delayed browser fixture)":
             # Exercise a valid asynchronous response beyond the former five-second poll.
             print(
                 json.dumps({
