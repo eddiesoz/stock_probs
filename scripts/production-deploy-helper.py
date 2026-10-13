@@ -1432,7 +1432,11 @@ def _image_has_recovery_entrypoint(image_ref: str) -> bool:
     ]
 
 
-def _health_check() -> dict[str, Any]:
+def _health_check(*, assistant_rollout_mode: str | None = None) -> dict[str, Any]:
+    """Wait within the existing budget for app health and the requested worker state."""
+
+    if assistant_rollout_mode is not None and assistant_rollout_mode not in ASSISTANT_ROLLOUT_MODES:
+        raise HostError("assistant_rollout_invalid")
     for _ in range(HEALTH_ATTEMPTS):
         try:
             result = _run(
@@ -1455,6 +1459,10 @@ def _health_check() -> dict[str, Any]:
                             "enabled": assistant["enabled"],
                             "status": assistant["status"],
                         }
+                    if assistant_rollout_mode is not None:
+                        _require_assistant_ready(
+                            health, assistant_rollout_mode, schema_version=schema
+                        )
                     return health
         except (HostError, json.JSONDecodeError, TypeError, ValueError):
             pass
@@ -2649,7 +2657,7 @@ def _set_assistant_rollout(
                     compose_file=compose_snapshot,
                     force_recreate=True,
                 )
-            health = _health_check()
+            health = _health_check(assistant_rollout_mode=mode)
             if health.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA:
                 raise HostError("readiness_schema_mismatch")
             _require_assistant_ready(health, mode, schema_version=ASSISTANT_MINIMUM_SCHEMA)
@@ -2680,7 +2688,7 @@ def _set_assistant_rollout(
                         compose_file=compose_snapshot,
                         force_recreate=True,
                     )
-                    disabled_health = _health_check()
+                    disabled_health = _health_check(assistant_rollout_mode="disabled")
                     if disabled_health.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA:
                         raise HostError("readiness_schema_mismatch")
                     _require_assistant_ready(

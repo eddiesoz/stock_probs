@@ -521,6 +521,14 @@ original exact bindings. Physical mobile, actual screen reader, true zoom, and P
 total cap including tax remain unchanged; no resize occurred. See
 [E850](MVP-PLAN.md#r-astra-120-e850-owner-canary-invited-rollout-and-release-notice).
 
+Assistant rollout controls must verify both application readiness and the requested worker health
+projection within the existing bounded health-check budget. A kill-command acknowledgment and
+application readiness alone do not establish the app's observed disabled state. Observe that
+transition without resending the kill request, keep exact image/schema/Compose and app-process
+identity checks, and retain fail-closed containment after the budget expires. Preserve operation
+errors and uncertain readbacks; inspect authoritative state before recovery or another mutation.
+A recovered old release does not establish candidate acceptance or explain a memory-reserve failure.
+
 For the remainder of R-ASTRA-120, serialize heavy local Docker builds, canonical gates, browser
 aggregates, and real provider/native trials; run independent source/documentation review in parallel. Reuse unchanged bound evidence
 and rerun affected scopes plus required release checks. Do not manufacture an aggregate Pass from
