@@ -6850,3 +6850,51 @@ remains active with the free OpenCode restoration first, followed by all seven a
 Production remains the restored 5ad/787/schema13 invited release. Existing 1 GB, backups and US$15
 monthly total including tax remain unchanged. Current canonical, actual-host combined resource,
 PR-bound recovery/rollback, accessibility and owner canary/deployment acceptance remain open.
+
+### R-ASTRA-121 E17 — raw accessibility retention and desktop visual review
+
+The scoped three-desktop-state command passed 3/3 at
+`2026-10-13T21:02:57.059Z`–`21:03:57.061Z`, with source/stage and enumerated cleanup matching.
+Receipt SHA-256 is `924a26762d65159daf385d72baa29fce15d33868219ffad876da97a21b9c18cc`.
+The existing WebFetch test uses a 180-second case-local override. Previous uniform
+“30-second cases” wording is qualified: 30 seconds is the CLI default, and existing case-local
+180-second overrides remain unchanged. No test deadline was widened by these repairs.
+
+The prior attachment helper kept counts and measurements but discarded full raw check arrays.
+Only that test helper was repaired to retain exact violations and incompletes, including any/all/
+none and failureSummary. Its fresh same-three-state run passed 3/3 at
+`2026-10-13T21:10:42.247Z`–`21:11:22.249Z`; all 149 build inputs and 53 served/export pairs
+stayed unchanged, with final runner/runtime/listener absence verified. Receipt SHA-256 is
+`bae86ed042e872c025c14230b2c0e2defbf07a5c7e5ec95391022b911d4799f0`.
+The list-only artifact directory and optional receipt-field setup failures happened before launch;
+one actual run followed. An immediate port-bind observation was transiently busy; a subsequent
+port-specific listener scan and fresh bind passed separately.
+
+Full raw data retains three serious color-contrast incompletes, each on
+`<small>Context snapshot: Overview</small>`, with elmPartiallyObscuring and a reason that the
+background cannot be determined due partial overlap. The check reports an indeterminate ratio
+of zero, expected 4.5:1, empty all/none arrays and no related nodes. These are incomplete
+classifications, not confirmed zero-contrast text. Cancelled-preview raw axe is 0/0.
+The measured audit reports 6.1307:1 Light/approved response and 8.4505:1 Dark, with visible,
+unclipped, in-viewport text ranges hit-tested on the target. The parent personally reviewed all
+three bound 1440x1000 PNGs and found the context label visible on a single visual line, without
+apparent foreground obstruction. Multiple measured text ranges are not multiple wrapped lines.
+Image SHA-256s are `e92708d611b0a987ed25602cd034a106f2a02b1320ff4e841a1f59286dd1ad45`,
+`e21372d4e9b19d46f09a99e729fabefd14d813d703288e5a1a1ee2665a7e9d3c`, and
+`919a65bdca28d11d9f6686586048abc3671b8ab325c20b6226277144a557e126`.
+The approved-response image shows the completed response, not a pending confirmation card.
+This is scoped manual visual evidence; strict raw zero-incomplete remains Fail and no full-app
+accessibility or WCAG claim follows. No speculative CSS/layout repair or waiver occurred.
+
+The unrelated Release 3 pure-draft review found pre-arm crossing and malformed evidence failures.
+Five new regressions reproduced the original failures, then the parent repair passed 30 pure tests;
+independent verification passed the same 30 on Python 3.11.15 at `21:13:40Z`–`21:13:41Z`.
+Independent receipt SHA-256 is
+`b7103b67fb65336eccc6014590a2ef07be5d995600abaef063256d11edf6f32c`.
+A persisted-resume branch is sound on source review but lacks a direct fixture. Evidence/result
+linkage and report-chart fields remain unresolved; persistence, scheduler, API and UI are unverified.
+These drafts remain in their separate checkout and are not part of the assistant image.
+
+The free-native restoration goal remains active. Current-image/native source bindings are retained
+honestly; mandatory current release/resource/recovery/rollback and owner UI/deployment gates remain
+open. Production, existing backups, the 1 GB host and US$15 monthly total are unchanged.

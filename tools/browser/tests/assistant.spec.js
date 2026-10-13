@@ -98,6 +98,14 @@ async function expectAssistantAxeClean(page, testInfo, scan) {
     body: Buffer.from(JSON.stringify(counts, null, 2)),
     contentType: "application/json",
   });
+  await testInfo.attach(`assistant-axe-raw-${scan}.json`, {
+    body: Buffer.from(JSON.stringify({
+      ...counts,
+      violations: results.violations,
+      incomplete: results.incomplete,
+    }, null, 2)),
+    contentType: "application/json",
+  });
   if (Array.isArray(results.incomplete) && results.incomplete.length > 0) {
     const incompleteNodes = results.incomplete.flatMap((rule) => (rule.nodes || []).map((node) => ({
       rule: rule.id,
