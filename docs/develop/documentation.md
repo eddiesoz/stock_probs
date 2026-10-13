@@ -515,3 +515,15 @@ than a validator heuristic. These are static governance checks; metadata, the in
 allow-list, and `SKILL.md` frontmatter do not establish that a native loader discovered a skill.
 Native V2's directory-based auto-discovery is the loader boundary, and runtime discovery remains
 **Unavailable** in this harness.
+
+
+## R-ASTRA-121 free OpenCode restoration evidence
+
+The free-only OpenCode restoration precedes the seven-feature releases. The documentation map
+covers the packaged native SDK declaration record, managed execution guards, provider consumers,
+and their regressions. Keep the user correction in `AGENTS.md` and outcomes in `MVP-PLAN.md`.
+A genuine free answer from an isolated application fixture is functional evidence for that fixture.
+If its wrapper supplies guard readiness, it does not verify production receipt enforcement.
+Only the installed root-owned, nonwritable receipt and matching binary can establish the normal
+managed-worker readiness path. Preserve failed baseline and guard-fixture attempts separately;
+never reconstruct a missing contemporaneous wrapper or source binding.

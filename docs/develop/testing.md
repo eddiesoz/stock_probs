@@ -581,3 +581,23 @@ for the full reconciliation and limitations.
 ARM64 checks must identify whether execution is native or QEMU/OCI-emulated. Emulation can
 exercise package, runtime, functional, build, and tool behavior; it cannot prove native
 resource performance. See the [MVP plan](../../MVP-PLAN.md) for current gate requirements.
+
+
+## Genuine free Zen restoration checks
+
+Compare the same official OpenCode binary, free model and prompt with its ordinary native tools
+and the application restrictions before attributing rejection to provider availability. R-ASTRA-121
+observed an ordinary built-in free answer, rejection with read/shell registrations removed, and
+success when genuine read/shell registrations were retained. This isolates the registration
+boundary for the tested model; it does not promise all free models or continuous availability.
+
+Verify the managed read/shell guards against actual compiled native tool calls with permission
+already allowed. Force calls only after the provider request declares the target tool; title requests
+can contain no tools and are not execution evidence. Check file-content leakage, shell side effects,
+and comment-only commands. Synthetic provider responses prove guard behavior, not Zen acceptance.
+Then test a real free answer through the application provider route and owner-scoped MCP.
+Record whether the fixture overrides readiness, and preserve exact pre-run bindings. A scratch
+binary owned by the developer fails the production receipt validator by design. Verify the normal
+installed root-owned artifact path in the current image before release. Keep native isolation,
+search/fetch, kill/restart, canonical, security, actual-host 1 GB and PR-bound recovery/rollback
+checks separate and mandatory. Reuse unchanged UI evidence only at its existing bindings.

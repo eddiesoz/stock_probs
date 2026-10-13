@@ -457,6 +457,15 @@ def _build_receipt(
         "webfetch_guard_sha256": opencode["webfetch_guard_sha256"],
         "mcp_tool_source_sha256": opencode["mcp_tool_sha256"],
         "mcp_tool_patched_sha256": opencode["mcp_tool_patched_sha256"],
+        **{
+            field: opencode[pin]
+            for field, pin in (
+                ("read_source_sha256", "read_sha256"),
+                ("read_patched_sha256", "read_patched_sha256"),
+                ("shell_source_sha256", "shell_sha256"),
+                ("shell_patched_sha256", "shell_patched_sha256"),
+            )
+        },
     }
     if patch_receipt != {
         **{"opencode_version": opencode["version"], "source_commit": opencode["source_commit"]},

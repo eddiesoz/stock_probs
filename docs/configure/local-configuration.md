@@ -234,3 +234,22 @@ expire active query history. See [backup and restore](../operations/backup-resto
 trust-key lifecycle, restore behavior, and exact managed-name constraint.
 
 Continue with [getting started](../operations/getting-started.md).
+
+
+## Free Zen native tool registration repair
+
+R-ASTRA-121 preserves genuine OpenCode V2 read and shell SDK registrations for reviewed Zen
+models while prohibiting their execution in Signal Ledger. The supervisor fixes
+`STOCK_PROBS_MANAGED_ASSISTANT=1` in the worker environment. Checksum-pinned native guards
+abort before filesystem access, shell parsing, or execution, including saved permission grants.
+The verified managed build must bind both original and patched read/shell source digests.
+The location and session rules change read/shell to `ask` only for Zen with verified guards;
+`execute`, edits, subagents and unrelated permissions remain denied. The application separately
+rejects unsupported permission events. This variable is fixed internal policy, not an operator
+option for enabling shell access.
+
+The provider route accepts the pinned SDK declarations only for an authorized Zen turn with
+verified native transport/guards. It preserves their actual descriptions and schemas. Missing,
+modified or unverified declarations fail closed. The current repair is a candidate: local real-Zen
+answers do not establish production rollout, installed-image readiness, or actual 1 GB acceptance.
+The existing host, backups and US$15 monthly cap remain fixed.

@@ -3182,6 +3182,11 @@ class OpenCodeV2Runtime:
         self._search_available[context.execution_id] = search_available
         return provider_ref
 
+    def restricted_native_tools_ready(self) -> bool:
+        """Report verified managed execution guards on the current native transport."""
+
+        return self._webfetch_guard_ready is True and self._transport_verified
+
     async def _create_session(
         self,
         context: AssistantTurnContext,
@@ -3228,6 +3233,16 @@ class OpenCodeV2Runtime:
             {"action": "skill", "resource": "*", "effect": "deny"},
             {"action": "plugins", "resource": "*", "effect": "deny"},
         ]
+        if self._webfetch_guard_ready is True:
+            model = self.catalog.get_model(context.model_id)
+            if model is not None and model.provider_id == "opencode-zen":
+                # The trusted native build forbids execution before either tool body.
+                # Ask keeps genuine SDK registrations; unsupported permission events
+                # separately remain rejected by the application bridge.
+                permissions.extend(
+                    {"action": action, "resource": "*", "effect": "ask"}
+                    for action in ("read", "shell")
+                )
         response = await self._request(
             "POST",
             "/api/session",

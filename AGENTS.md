@@ -61,6 +61,12 @@ Codex project-configuration changes and restart the OpenCode parent after OpenCo
 or profile changes before checking discovery. File presence, synchronization, or parsing does not
 prove runtime loading; no runtime-discovery pass is inferred.
 
+For this R-ASTRA-121 repair, the user explicitly requires genuine OpenCode with Zen free models.
+Investigate and repair the native integration before suggesting provider-account substitution.
+Free-only is the selected constraint; do not treat the earlier unanswered provider-choice prompt as
+a blocker or require a paid provider. A native binary running through a custom provider proxy is
+not proof of equivalence to the built-in Zen connection. Verify an actual completed answer.
+
 For R-ASTRA-121, repair the reported assistant non-response and verify a completed native model
 answer before claiming restoration, then continue the approved seven visible features. The incident
 does not cancel the feature plan. Error-message or diagnostic improvements alone are not restoration.

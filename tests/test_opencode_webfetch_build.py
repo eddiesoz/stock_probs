@@ -234,6 +234,10 @@ def test_native_build_receipt_has_the_exact_guarded_artifact_contract(tmp_path: 
         "webfetch_guard_sha256": opencode["webfetch_guard_sha256"],
         "mcp_tool_source_sha256": opencode["mcp_tool_sha256"],
         "mcp_tool_patched_sha256": opencode["mcp_tool_patched_sha256"],
+        "read_source_sha256": opencode["read_sha256"],
+        "read_patched_sha256": opencode["read_patched_sha256"],
+        "shell_source_sha256": opencode["shell_sha256"],
+        "shell_patched_sha256": opencode["shell_patched_sha256"],
     }
     oauth_receipt = {
         "oauth_broker_sha256": opencode["oauth_broker_sha256"],
@@ -267,6 +271,10 @@ def test_native_build_receipt_has_the_exact_guarded_artifact_contract(tmp_path: 
         "webfetch_guard_sha256",
         "mcp_tool_source_sha256",
         "mcp_tool_patched_sha256",
+        "read_source_sha256",
+        "read_patched_sha256",
+        "shell_source_sha256",
+        "shell_patched_sha256",
         "mcp_patch_script_sha256",
         "native_integration_test",
         "manifest_sha256",

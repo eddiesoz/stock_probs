@@ -6395,3 +6395,93 @@ The completed independent receipt SHA-256 is
 `9e26dda16e3bcb5264a60fbca275376ce3c45345f8553de89350bcabcbd3f174`, at
 `independent-hotfix-rerun-20261012T233437Z/independent-qa-receipt.json` under the private task root.
 No completed native answer or deployment is established by this synthetic evidence.
+
+
+### R-ASTRA-121 native free Zen restoration dependency
+
+The user's October 13 correction sets free-only genuine OpenCode as the required restoration path.
+An explicit active goal covers restoration followed by all seven approved visible features. The
+previous unanswered provider-account choice is superseded; error-message PR #9 is not restoration.
+
+1. Compare the deployed native request path with OpenCode V2's built-in Zen provider. Identify
+   differences in provider identity, native metadata, request transport, model catalog, and tool
+   registration using upstream source and isolated synthetic accounts.
+2. Run a bounded genuine built-in Zen baseline, preserving native tools and without introducing
+   fake client metadata or widening production shell/filesystem access. Contrast it with the
+   existing per-turn provider proxy to isolate the first actual difference that explains rejection.
+3. Repair the supported native path while preserving per-session authorization, privacy consent,
+   model exclusions, cancellation, provider limits, confirmation boundaries, and worker isolation.
+   Any available native filesystem tools remain within disposable synthetic data during diagnosis.
+4. Verify an actual completed free-model answer through the application, owner-specific MCP and
+   guarded search/fetch, failure recovery, and desktop/mobile UI. Run affected independent checks
+   and the required canonical, security, actual 1 GB, exact-PR recovery/rollback and canary gates.
+5. Release the assistant repair, then continue research/comparison draft PR #7, portfolio/ledger/
+   What-if draft PR #8, persistent alerts/report cards, and What changed/connected workflows.
+
+The current source starts OpenCode V2 but registers compatible chat as `assistant-proxy` with an
+opaque model alias and a local authorization bridge. Built-in Zen equivalence is unproven. The
+previous FreeTierError trials prove rejection of that path, not impossibility of free OpenCode use.
+Keep the existing 1 GB host, backups and US$15 monthly total cap, and the approved visible designs.
+
+
+### R-ASTRA-121 E10 — genuine free answer and native execution guards
+
+The same official V2.0.7 binary and Space Bunny Free model answered in an isolated built-in
+baseline without a credential or payment. Restrictive rules removing read/shell registrations
+returned the free-tier rejection; retaining both genuine registrations with execute denied answered.
+The repair retains those actual SDK definitions and injects checksum-pinned native guards before
+filesystem access or shell execution. Only verified Zen sessions register them; execute remains
+denied, and owner/policy/provider authorization stays in the application route.
+
+The compiled native build passed at `2026-10-13T12:26:52.508638Z`–`12:30:24.364535Z`.
+Binary SHA-256 is `44d4d8e0c3094a210ff832dadbc5fcdf302310bbfb8758572176b15b116c6d57`;
+manifest SHA-256 is `c1b9da7b0b75214ca3d4a76c8f06ce10ebaac586496bdc3635062388817c63a9`.
+Three compiled-native synthetic checks (`guard-read-03`, `guard-shell-write-03`, and
+`guard-shell-empty-03`) passed with read/shell permission already allowed, native guard errors,
+no sentinel-content leakage and no shell file created. Earlier fixtures incorrectly forced calls
+on title-generation requests without declarations and failed; preserve those attempts.
+
+The real application fixture `application-free-second` exited 0 at
+`2026-10-13T12:53:49.854115Z`–`12:54:14.025096Z`: Space Bunny Free completed a 545-byte
+answer and owner-scoped `workspace.summary`; two genuine provider requests each retained 15
+native/MCP tools, and conversation deletion returned 200 with cleared cache markers. Seven
+application/probe pre-run hashes stayed unchanged. Its wrapper checked the compiled digest and
+all fixed build fields, but supplied guard readiness and the binary location explicitly. The private
+wrapper itself lacks a pre-run digest. This is parent-observed real-free-model application
+functional evidence, **not** independent native acceptance, installed root-owned receipt enforcement,
+production restoration or actual 1 GB acceptance. The preceding application fixture failed before
+provider dispatch at the then-unrepaired API declaration consumer and remains preserved.
+
+Private artifacts are under `/var/tmp/r12r/signal-ledger-assistant-fix-20261013-native-zen/` on
+the verified SD mount: `native-build-01/`, the three `guard-*-03/` directories, and
+`application-free-second/{baseline,terminal,result}.json`. Independent review is separate.
+PR #9 is the restoration candidate; required installed-image, security, canonical, native/search/
+fetch/kill, actual-host resource, PR-bound rollback/recovery and owner canary gates remain open.
+No production deployment, payment, new account, resize or email occurred. The active goal still
+covers restoration followed by all seven approved features.
+
+
+Independent read-only E10 follow-up passed 41 selected tests, Ruff/format, compilation and exact
+native source/output/binary bindings. Receipt
+`independent-restricted-native-api-review-20261013T1306Z/receipt.json` SHA-256
+`8f22e869b99587a85f2e35fcb40066e80cecafb1085366e6c28dc8fb168a0027` preserves the
+installed-image and route-coverage gaps. The parent separately passed 110 focused tests with
+no errors, failures or skips, Ruff and documentation checks, and reviewed the integrated diff.
+Parent review receipt SHA-256 is
+`9d0fdff72e140c56f0f8dd45d0ed47d196c45f605eef507f87f3367241b22a4f`.
+A subsequent four-case FastAPI regression exercises the real route: verified Zen admission
+returns 200 with genuine declarations unchanged; readiness false, integer 1 and non-Zen policy
+return 422 without provider calls. The 22-test restricted-tool file passed; an initial import/order
+and format check failed and was repaired. Independent post-format review remains separate.
+
+
+The post-format independent route regression passed 22/22 tests including all four HTTP branches,
+Ruff and scoped format, with 19 source/import pins unchanged. Receipt
+`independent-route-regression-20261013T1309Z/receipt.json` SHA-256
+`ff249274c78537b95eb2272ddb2f40e4d9c1540d0414a8c349d3191b7bd96385` closes only the
+selected route-coverage gap. Its broad format check failed on unchanged `domain.py` and
+`provider.py`, which were left untouched. Installed-image/runtime acceptance remains open.
+All 14 native compiler/guard inputs still match their original build baseline; supplemental
+`native-build-input-reuse-01.json` SHA-256
+`b63dabe5e7c77d37ebdae972c837905536ea697d2b6f670494e45334b3ab0413` records that reuse.
+The new application image must bind the updated API and runtime rather than relabel that build.
