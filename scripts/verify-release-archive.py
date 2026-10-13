@@ -69,7 +69,7 @@ PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, str, tuple[tuple[int, int], ..
     # separately pinned; all nonmatching bytes and any additional matches remain scanned.
     "usr/local/bin/opencode": (
         212_784_608,
-        "c22fce743cf6ab15d056d5b589d1307fb5c05ed2129949bef5491af775c2c3ad",
+        "b8b97565c3a8cff3a6c46c7d22845864d0667bc2149527adfb958faba7c1733f",
         (
             (1_169_954, 1_169_988),
             (1_184_754, 1_184_859),

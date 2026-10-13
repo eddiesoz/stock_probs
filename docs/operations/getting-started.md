@@ -648,7 +648,7 @@ deploy(plan_id, revision, archive_sha256, image_id, pair_manifest_sha256)
 
 #### Review a PR pair before rehearsal
 
-For the fixed R-ASTRA-120 PR #2 pair, first build and verify the exact clean candidate/recovery
+For the fixed R-ASTRA-121 restoration PR #9 pair, first build and verify the exact clean candidate/recovery
 pair. Only then persist its local review pins with:
 
 ```bash
@@ -821,7 +821,7 @@ visible cancellation control is labeled “Stop response.” E679's copy/source-
 ### PR-head candidate image build helper
 
 The existing schema-13 rehearsal CLI now contains a fixed-source mode for a private local image
-from the exact clean, reviewed head of open PR #2. Set `REVIEWED_PR_HEAD` to that exact lowercase
+from the exact clean, reviewed head of open PR #9. Set `REVIEWED_PR_HEAD` to that exact lowercase
 40-character SHA and `PRIVATE_RECEIPT` to a private output path, then use these mode flags:
 
 ```bash
@@ -831,7 +831,7 @@ python3 scripts/rehearse_schema13.py \
   --receipt "$PRIVATE_RECEIPT"
 ```
 
-The helper verifies local `HEAD` and a clean worktree, the fixed PR-2/head/base relationship, and
+The helper verifies local `HEAD` and a clean worktree, the fixed PR-9/head/base relationship, and
 the reviewed SHA again around the build. It writes a mode-0600 JSON receipt. The local
 `linux/amd64` image is not published; every checked build filesystem must have at least 4 GiB free
 before build, and the helper stops if free space drops below 1 GiB. E678's original independent process-ownership source review **Failed** and remains preserved.
@@ -1048,3 +1048,8 @@ current-machine browser limitation; E61-E62 record the locally accepted repair a
 the current deployment; and E64 records Astra's no-P1/P2 live read-only review. Remote two-user/browser
 verification, rendered owner workspace, and functional invited-user acceptance remain pending or
 **Unavailable**; the current local application is untouched.
+
+
+The free OpenCode restoration candidate requires a freshly bound executable scanner pin, backed
+by the exact official Bun public-span comparison. Verify both final archives with the reviewed
+checker before staging the PR9 pair; preserve earlier scanner failures and image identities.

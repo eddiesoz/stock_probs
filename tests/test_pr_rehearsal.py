@@ -513,7 +513,7 @@ def test_bootstrap_accepts_bounded_realistic_open_pr_payload_over_16k(
 
         def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
             assert method == "GET"
-            assert path == "/repos/eddiesoz/stock_probs/pulls/2"
+            assert path == "/repos/eddiesoz/stock_probs/pulls/9"
             assert headers["Accept"] == "application/vnd.github+json"
 
         def getresponse(self) -> Response:
@@ -563,11 +563,11 @@ def test_controller_verifies_fixed_open_pr2_head(monkeypatch) -> None:
 
     assert requests[0][0:2] == (
         "GET",
-        f"/repos/{controller.REPOSITORY}/pulls/2",
+        f"/repos/{controller.REPOSITORY}/pulls/9",
     )
     assert receipt == {
         "repository": controller.REPOSITORY,
-        "pull_number": 2,
+        "pull_number": 9,
         "state": "open",
         "base": "main",
         "head_sha": revision,
@@ -609,7 +609,7 @@ def test_host_helper_verifies_fixed_open_pr2_head(monkeypatch) -> None:
 
     host_helper._verify_pull_request(revision)
 
-    assert requests == [("GET", f"/repos/{host_helper.REPOSITORY}/pulls/2")]
+    assert requests == [("GET", f"/repos/{host_helper.REPOSITORY}/pulls/9")]
 
 
 def test_bootstrap_install_requires_fixed_reviewed_manifest_digest() -> None:
@@ -768,7 +768,7 @@ def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
     installed_manifest = next(
         content for path, content, _mode in installed if path.name == "installed.json"
     )
-    assert json.loads(installed_manifest)["pull_number"] == 2
+    assert json.loads(installed_manifest)["pull_number"] == 9
     for _role, (_relative, staged_name, _maximum) in bootstrap.ASSETS.items():
         assert not (incoming / f"signal-ledger-pr1-{revision}-{staged_name}").exists()
         assert (incoming / staged_name).read_bytes() == b"legacy name must remain untouched"

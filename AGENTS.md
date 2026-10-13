@@ -2288,3 +2288,9 @@ only; finalization and guide acceptance remain pending. E390 confirms unchanged 
 through read-only MCP status. The **US$15 total monthly cap includes backups and taxes**;
 the existing 1 GB Linode and backups remain unchanged. Required native/provider, strict
 accessibility, actual capacity, PR-bound rollback, and release gates remain open.
+
+
+For R-ASTRA-121 restoration, the fixed candidate/recovery rehearsal targets PR #9. Keep the
+controller, bootstrap, installed helper and local verifier at that identity, with no arbitrary PR
+argument exposed through MCP. Preserve all exact repository, open/main-base/head, helper asset,
+private review-pin and image/archive/context/pair checks. PR #2 receipts remain historical.

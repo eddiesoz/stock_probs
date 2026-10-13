@@ -253,3 +253,10 @@ verified native transport/guards. It preserves their actual descriptions and sch
 modified or unverified declarations fail closed. The current repair is a candidate: local real-Zen
 answers do not establish production rollout, installed-image readiness, or actual 1 GB acceptance.
 The existing host, backups and US$15 monthly cap remain fixed.
+
+
+The current fixed restoration rehearsal target is PR #9. The operator cannot supply another PR
+number through MCP. Bootstrap, local verification and the installed helper must agree on that
+identity and the exact clean candidate head/pair. Earlier PR #2 receipts remain historical. A helper
+commit on PR #9 requires a new exact-head image label and pair, even if application context bytes
+are unchanged; never relabel the earlier image or claim unchanged helper/runtime acceptance.

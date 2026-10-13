@@ -452,7 +452,7 @@ R-ASTRA-120 remains **In progress**. E725's earlier full-browser failure remains
 ### PR-head candidate image build helper
 
 The existing schema-13 rehearsal CLI now has a fixed-source mode for building a private local
-image from the exact clean, reviewed head of open PR #2. Use only these mode flags:
+image from the exact clean, reviewed head of open PR #9. Use only these mode flags:
 
 ```bash
 python3 scripts/rehearse_schema13.py \
@@ -463,7 +463,7 @@ python3 scripts/rehearse_schema13.py \
 
 Set `REVIEWED_PR_HEAD` to the exact lowercase 40-character PR head SHA and `PRIVATE_RECEIPT` to a
 private output path. The helper checks that local `HEAD` is that SHA and the worktree is clean,
-validates the fixed PR-2/head/base relationship, rechecks the head around the build, and writes a
+validates the fixed PR-9/head/base relationship, rechecks the head around the build, and writes a
 mode-0600 JSON receipt. The build is local `linux/amd64`, is not published, and requires at least
 4 GiB free on every checked build filesystem; it aborts if free space drops below 1 GiB. E678's original independent process-ownership review **Failed** and remains historical. E683
 recorded builder checks, and E684 independently passed source/test QA (59/59, exit 0; 149 inputs
@@ -490,7 +490,7 @@ The fixed local review-pin command accepts only an explicit write request:
 python3 scripts/pin_pr_rehearsal_review.py --write
 ```
 
-Before writing, the helper reads the current commit, requires the exact clean PR-2 source, checks
+Before writing, the helper reads the current commit, requires the exact clean PR-9 source, checks
 its fixed candidate/recovery pair manifest and image/source digests, verifies the PR identity, and
 binds the pair to that same commit. It accepts no target, path, or credential arguments. The
 operator-local record is `$XDG_CONFIG_HOME/signal-ledger/rehearsal-review.json`; when
@@ -601,3 +601,9 @@ binary owned by the developer fails the production receipt validator by design. 
 installed root-owned artifact path in the current image before release. Keep native isolation,
 search/fetch, kill/restart, canonical, security, actual-host 1 GB and PR-bound recovery/rollback
 checks separate and mandatory. Reuse unchanged UI evidence only at its existing bindings.
+
+
+For the R-ASTRA-121 rebuilt native executable, refresh the scanner's exact file digest only after
+comparing every existing public match span against checksum-verified official Bun 1.4.2 bytes.
+Keep the path, size, offsets and all other bytes subject to their existing checks. A file-only scan
+or provenance comparison does not replace scans of the final candidate and recovery archives.

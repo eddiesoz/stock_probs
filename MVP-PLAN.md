@@ -6485,3 +6485,65 @@ All 14 native compiler/guard inputs still match their original build baseline; s
 `native-build-input-reuse-01.json` SHA-256
 `b63dabe5e7c77d37ebdae972c837905536ea697d2b6f670494e45334b3ab0413` records that reuse.
 The new application image must bind the updated API and runtime rather than relabel that build.
+
+
+### R-ASTRA-121 E11 — installed receipt and current-PR rehearsal binding
+
+Candidate image `sha256:9767d4a2b37b07467232916c30328344111f8aae36880e6aaf7b85b575b303f3`
+built from clean pushed `1fe8780095bde058ded78605f3ebd9588c76b9ba`, context
+`9f86b6fcddac74d6a60132c4afd0fd951a6ed51265bd2266fee0a101a7608ec0`, with unchanged source
+bindings. An isolated, network-none, read-only one-shot image check passed normal installed-receipt
+validation at `2026-10-13T13:30:28.418925Z`–`13:30:30.721523Z`: receipt UID 0/mode 0444,
+binary UID 0/mode 0755, all 23 fixed fields and actual binary validation passed; the owned container
+was absent after exit 0. It did not start the supervisor/application, call a model or verify 1 GB.
+
+The first build failed on Docker registry DNS. Its resolver contained no external nameservers.
+Restarting only the validated local BuildKit controller loaded the current host resolver and
+registry DNS succeeded. The second bounded build passed. Preserve the first failure; no Docker
+daemon, application or production restart occurred. Private receipts are `candidate-image-01/`,
+`builder-dns-restart-01.json`, `candidate-image-02/` and `installed-receipt-01/` under the native
+restoration task root. The public registry connectivity probe reached its expected unauthenticated
+401 response; its wget exit 1 is not a completed application/provider answer.
+
+Independent static release-path review identified the old fixed PR #2 gate and same-source
+bootstrap/helper trust chain. Receipt SHA-256
+`3055d22000deaceeefc33cacbedab70e87f77bd383bc090b16063449da7020b6` at
+`/var/tmp/r12r/signal-ledger-assistant-fix-20261013/release-path-audit-20261013T1327Z/receipt.json`
+records the audit, not network or runtime acceptance. The narrow source repair targets fixed PR #9
+through the same trust chain; all exact repository/open/main-base/head, no-follow review metadata,
+helper digest, SSH-target and immutable candidate/recovery/pair checks remain. No arbitrary PR
+selector is added. This helper-only change leaves application context bytes unchanged but requires
+a new exact-head image and pair before release; the prior image must not be relabelled. Focused
+checks and independent review of this binding repair are pending. The active goal remains open.
+
+
+The first fixed-PR9 source review failed on a missed candidate receipt consumer that still wrote
+`pull_request: 2` beside the PR9 verifier; its matching stale test expectation hid that mismatch.
+Receipt SHA-256 `5ab1749111691086f57e3130a575d81d15b7050681606beb220a74fba2a78e52`
+preserves the finding. The two-line repair then passed independent review and all 259 focused
+tests, Ruff/format, unchanged 24 source/import bindings, and unchanged before/after app context.
+Receipt `pr9-retarget-independent-qa-20261013T134028Z/independent-qa-receipt.json` under the
+October 13 task root has SHA-256
+`e0120d0cb1323920839bf773f2aac24b93ccc7aaf2947c3511cde515d6f53ebd`.
+
+The image-built native binary is
+`b8b97565c3a8cff3a6c46c7d22845864d0667bc2149527adfb958faba7c1733f` (212,784,608 bytes).
+The scanner correctly rejected it under the former exact executable digest. Fresh checksum-verified
+official Bun 1.4.2 archive/binary comparison proved all four public match spans identical at the
+original offsets. Receipt `public-bun-spans-02/receipt.json` SHA-256
+`775b9247341e7dc7bed348063cc7e56995ec86af0ac2a58d2892b9790eeefb85` records source/archive,
+full executable, size and per-span digests; no match strings or credentials were emitted. The first
+comparison wrapper failed at import setup before Docker or download; the corrected second wrapper
+has its contemporaneous wrapper baseline. Only the exact rebuilt executable digest changes in the
+scanner; path, size, spans, other public-source pins and credential patterns stay fixed. Selected
+scanner tests, actual file scan and independent recheck remain separate from full archive acceptance.
+
+
+The exact executable pin update passed independent local provenance/source review, all 23 archive
+tests, Ruff/security/format/diff checks, and an actual 212,784,608-byte file scan. All eight source
+pins remained unchanged. Receipt
+`independent-scanner-qa-20261013T1400Z/independent-qa-receipt.json` SHA-256
+`c355ca605aec4e8883782fc62e5752dee9e861399e38bdc1bf0fd49c0443f2e5` records the scope and
+preserves the original scanner failure, parent import setup failure with unavailable standalone
+binding/time, and the reviewer's separate heredoc setup failure. Full final candidate/recovery
+archive scans and supervised native/runtime, actual 1 GB and release checks remain open.
