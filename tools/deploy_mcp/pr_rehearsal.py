@@ -14,6 +14,7 @@ import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_DIRECTORY = REPOSITORY_ROOT / "test-results" / "assistant-r120-pr-pair"
@@ -21,11 +22,6 @@ HOST = "45.79.180.32"
 USER = "signalops"
 REPOSITORY = "eddiesoz/stock_probs"
 PULL_NUMBER = 9
-PRODUCTION_BASELINE = {
-    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
-    "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
-    "schema_version": 13,
-}
 HELPER_PATH = "/usr/local/libexec/signal-ledger-pr-rehearsal/host_helper.py"
 STATE_ROOT = "/var/lib/signal-ledger-pr-rehearsal"
 INCOMING_DIRECTORY = "/var/lib/signal-ledger-pr-rehearsal/incoming"
@@ -57,6 +53,55 @@ DEPLOYED_BASELINE = {
     "revision": "da2764e8477698fa7d686be93a4711e35478e802",
     "image_id": "sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1",
     "archive_sha256": "669f840a3141b0fb95ae248b5ea0799733b9e5b5b81e224d4637571c24d8f640",
+}
+
+
+class ProductionBaseline(TypedDict):
+    revision: str
+    image_id: str
+    schema_version: int
+
+
+class RecoveryProductionBaselineFields(TypedDict):
+    role: str
+    revision: str
+    image_id: str
+    archive_sha256: str
+    pair_manifest_sha256: str
+    recovery_overlay_sha256: str
+    migration_sha256: str
+    compose_digest: str
+    schema_version: int
+    assistant_rollout_mode: str
+    assistant_enabled: bool
+    assistant_status: str
+    loopback_only: bool
+
+
+class RecoveryProductionBaseline(RecoveryProductionBaselineFields):
+    container_id: str
+    container_revision: str
+
+
+PRODUCTION_BASELINE: ProductionBaseline = {
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
+    "schema_version": 13,
+}
+RECOVERY_PRODUCTION_BASELINE: RecoveryProductionBaselineFields = {
+    "role": "recovery",
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "image_id": "sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f",
+    "archive_sha256": "082d04e065acfc1eb7db86358e40e20f937111f7d26901bd98b589521f8628c3",
+    "pair_manifest_sha256": "e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3",
+    "recovery_overlay_sha256": "d1df9215ecb99dc8dc45b06c5b4c0aede364be6e80c7701a6814225397dfecad",
+    "migration_sha256": "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b",
+    "compose_digest": "01028e5b02cc0eded5f7b5207950a54b5a111b169f2a60a4ae8abdc6dfdb92b0",
+    "schema_version": 13,
+    "assistant_rollout_mode": "disabled",
+    "assistant_enabled": False,
+    "assistant_status": "disabled",
+    "loopback_only": True,
 }
 MIGRATION_SHA256 = "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b"
 SOURCE_ASSETS = {
@@ -525,10 +570,23 @@ def _run_fixed(command: list[str], *, timeout: float, input_bytes: bytes | None 
 
 
 def _validated_production_baseline(value: object) -> dict[str, object]:
+    if isinstance(value, dict) and value == PRODUCTION_BASELINE:
+        if type(value.get("schema_version")) is int:
+            return dict(value)
+        raise RehearsalError("host_response_invalid")
+    recovery_keys = {*RECOVERY_PRODUCTION_BASELINE, "container_id", "container_revision"}
     if (
         not isinstance(value, dict)
-        or value != PRODUCTION_BASELINE
+        or set(value) != recovery_keys
+        or any(value.get(key) != expected for key, expected in RECOVERY_PRODUCTION_BASELINE.items())
         or type(value.get("schema_version")) is not int
+        or type(value.get("assistant_enabled")) is not bool
+        or value.get("assistant_enabled") is not False
+        or type(value.get("loopback_only")) is not bool
+        or value.get("loopback_only") is not True
+        or not isinstance(value.get("container_id"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", value["container_id"]) is None
+        or value.get("container_revision") != RECOVERY_PRODUCTION_BASELINE["revision"]
     ):
         raise RehearsalError("host_response_invalid")
     return dict(value)

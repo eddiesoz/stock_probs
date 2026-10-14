@@ -549,3 +549,10 @@ readings; host and controller tests validate this boundary. Document actual host
 from local pair, native and canonical passes. Browser fixture checkpoints record only synthetic
 stage/status/timing and public module/process information, with no user prompts or capabilities.
 A focused browser pass does not replace a failed full aggregate. See the R-ASTRA-121 E14 ledger.
+
+
+Rehearsal baseline changes require the mapped testing, configuration and operations pages plus
+`AGENTS.md`. Document the running candidate or recovery role separately from the immutable
+schema-12 pair seed; an exact image allowlist is a guard, not evidence that the image served
+production or met the resource floors. Keep source checks, local disposable compatibility, signed
+backup verification and actual-host observations separate in the [E19 ledger](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).

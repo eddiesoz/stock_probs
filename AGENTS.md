@@ -2314,3 +2314,14 @@ Project only the closed preflight/startup/monitor/final phase and strict numeric
 KiB values. An earlier unclassified reserve failure or a later read-only RSS measurement is not
 proof of its phase or cause. Before another trial, bind the repaired checker and exact candidate;
 retain failed aggregates and restore verified production rollout after temporary maintenance.
+
+
+For R-ASTRA-121 rehearsal preparation, keep the running production identity separate from the
+schema-12 PR-pair fixture seed. A registered schema-13 recovery baseline must match its exact
+recovery role, image, archive, pair, overlay, migration, Compose and disabled-readiness bindings
+at both host and MCP boundaries; it is not the new PR's recovery asset. Retain the 512/128 MiB
+reserve floors and actual-host monitoring. Before a production image transition, verify a fresh
+signed schema-13 backup and the local compatibility/data-continuity scope, then prepare the
+exact typed restoration path. Backup verification must not rewrite the running rollout configuration,
+promote a restore, rotate trust state or remove existing artifacts. Source/profile evidence alone
+does not accept a production transition, memory saving, native fix, owner canary or release.

@@ -6898,3 +6898,171 @@ These drafts remain in their separate checkout and are not part of the assistant
 The free-native restoration goal remains active. Current-image/native source bindings are retained
 honestly; mandatory current release/resource/recovery/rollback and owner UI/deployment gates remain
 open. Production, existing backups, the 1 GB host and US$15 monthly total are unchanged.
+
+
+### R-ASTRA-121 E19 — installed rollout repair and signed schema-13 backup
+
+Operational PR #10 merged at `4cab5eac006704b2f1d7d957ac5f05f26adaed0a`. The guarded
+installer completed once; a separate root-owned, bounded, no-follow readback matched helper
+SHA-256 `57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915`,
+108,471 bytes, UID/GID 0 and mode 0750. The installed helper subsequently passed the actual
+disabled → owner-canary → invited sequence on the unchanged `5ad2c3f` / `78746f60` app,
+schema 13, with ready and loopback-only readbacks. Independent transition/memory artifact
+review **Passed** its declared consistency scope: receipt
+`postinstall-transition-memory-independent-6a7abe7a-d558-43dd-a812-62578f1119d7/independent-review.json`
+in the private task directory, SHA-256
+`feda458509af85aee7e2ee632fb443540cd86e501f01c1437462218ba015c627`.
+This supersedes E18's pending installation status; it does not erase the earlier failed disable.
+
+The disabled-state snapshot observed `MemAvailable=503808 KiB` against the unchanged
+`524288 KiB` startup floor. That gate **Failed**; the prepared candidate trial was **Skipped**.
+Per-process RSS observations do not identify a cause, prove a saving or accept the combined
+1 GB test. The previous invited service was restored; the application hotfix is not deployed.
+
+A fresh signed schema-13 backup was then created in the exact running 5ad container using
+the packaged one-shot CLI, and verified with the packaged signed-reader restore command
+without promotion. The operation avoided the deployment helper's runtime-file writer,
+held the deployment lock, checked exact source/image/schema/Compose/loopback bindings,
+and preserved existing backups. It completed with exit 0 at
+`2026-10-13T23:11:33.565017Z`–`23:11:38.980329Z`, returning `verified=true`, `promoted=false`,
+the same release record/container/PID and ready invited health. Backup
+`pre-recovery-5ad-schema13-20261013-backup01.spbackup` has SHA-256
+`f9a8a6811fdc2b25d330884f53da490970610da78e6edaca4ef4e74a24bb71ca`.
+Preflight found 28 managed backups; exactly one was added. No backup was removed or rotated.
+
+The first backup preparation **Failed** independent review on metadata binding and a possible
+initial signing-key creation path; it was never executed. The separate corrected preparation
+**Passed**: it pins the metadata before parsing and requires an existing managed backup.
+Execution artifacts are in `schema13-production-backup-02` under
+`/var/tmp/r12r/signal-ledger-assistant-fix-20261013-native-zen`. Independent execution-artifact
+review passed 18 checks, receipt
+`schema13-backup-independent-review-64ed0f42-8830-439b-b648-d799cd3262d3/review-execution-01.json`,
+SHA-256 `796797d20d760762b88c608a5cc8b4485080320dbee5ec09b66d06205836ff8a`.
+It verifies the remote signed-reader projection and unchanged local bindings; it did not copy
+backup bytes or perform a second cryptographic verification. The completion projection does
+not expose final CID/PID values for independent equality checks. Continuous health, OOM,
+resource, provider and native acceptance are not established by this backup.
+
+The separately registered 5ad app-only recovery image is being checked as a possible temporary
+rehearsal baseline. Its schema-13 local pair receipt is historical evidence, not current production
+compatibility or a proven memory benefit. The candidate checker separates its exact recovery
+role/image/archive/pair/overlay/Compose registration from the normal 5ad candidate and the
+unchanged da2764/d3 schema-12 pair seed. Local compatibility, independent checker QA and
+actual-host acceptance remain pending. No production image switch, hotfix promotion, new
+owner canary, feature release or email is claimed. The existing host, backups and US$15 monthly
+total remain fixed.
+
+
+### R-ASTRA-121 E20 — separate production baseline checker verification
+
+The operational checker candidate now separates the actual 5ad/image787/schema13 service from
+the unchanged da2764/image d3/schema12 pair fixture. A second exact baseline is limited to the
+registered 5ad app-only recovery image, with its recovery role, archive/pair/overlay/migration,
+Compose/source context, recorded candidate identity, running full container ID/revision,
+loopback binding and disabled-ready projection verified. Host and MCP validators agree;
+recurring checks freeze that baseline and retain the 512/128 MiB reserve floors.
+
+Independent source/security review found no P1/P2 in this selected scope. The first full tooling
+test file **Failed** at 216 passed/1 failed because a negative fixture compared the same candidate
+baseline with itself; it proceeded to an unmocked readiness check instead of testing an identity
+change. Preserve JUnit and review receipt
+`/var/tmp/r12r/r120-pr-rehearsal-independent-qa-d297c11c-407a-43b7-8f18-69e683ec5592/independent-review.json`,
+SHA-256 `96a5a355bb954ff5bc7d9dd21f5aa6b78b6ca2f9731e59b38edf01ee707853b5`.
+The test-only repair uses a full active recovery baseline: a different container ID and a candidate
+role now both constitute actual changes. Production source bytes were unchanged by that repair.
+
+Builder and independent full-file retests each **Passed** all 217 cases with zero skips. Independent
+JUnit spans `2026-10-13T23:25:07.857Z`–`23:25:12.343Z`, native x86_64, Python 3.11.15/pytest 9.1.1.
+It used explicit operational `PYTHONPATH` and `--noconftest`, because this tooling checkout has no
+staged Next bundle; it is not a normal frontend or canonical run. Scoped Ruff, security selection
+excluding test-assert S101, format and diff checks passed. Exact helper/MCP pins matched the
+prior source review and repaired test bytes stayed fixed. Receipt
+`/var/tmp/r12r/r120-rehearsal-fixture-retest-01/independent-retest.json`, SHA-256
+`b40906a3ced91eb09ec01d771b4f208f32b023d5155214425c1bf98f84e11481`.
+Initial missing-worktree-venv and bare-Ruff PATH attempts are retained as setup failures.
+
+Parent personally reviewed the integrated source/negative tests and the recovery-record producer.
+Parent receipt `parent-operational-baseline-review-01/receipt.json` in the private E19 task directory
+has SHA-256 `bf7a3ef8767e94b89679a2d0e3f217358949db856725658beede90a0e4f77fed`.
+Documentation validation passed (9 categories, 14 topics, 8 governance entries); completeness
+covered 154 files and explicit change-aware coverage covered nine changed paths with zero
+violations. A base/head-only check saw zero changed paths and is not the dirty-tree coverage
+evidence. Comment audit passed for 375 authored implementation files; its attempted help flag
+actually executed the audit. No application, frontend, native asset or schema changed.
+
+The operational main-line helper still targets historical PR #2. The hotfix PR #9 must integrate
+this checker with its own reviewed-head/pair/source bindings before a host trial. Local recovery
+compatibility has not passed: the initial a9 seeder incorrectly expected an assistant package,
+then the candidate-image seeder reached its aggregate fixture assertion and failed without
+component counts. Its read-only diagnostic could not open the fixture database. Exact owned
+fixture volume/network cleanup passed; no recovery app was launched. Receipt
+`/var/tmp/r12r/recovery-appimage-compat-20261013-01/independent-appcompat-qa-receipt-02.json`,
+SHA-256 `b7389be7896c74efd1ac4e0fb2edb5eff8b5be84b55d75e41c3a13e16e322ef2`.
+Those failures remain visible. A source-level review identifies the seeder's one-user assumption
+as inconsistent with migration 007's mandatory legacy-owner row plus its new synthetic member;
+actual component readback was not captured. A further bounded fixture repair is being prepared
+with component diagnostics and an explicit candidate/recovery image distinction. No production
+recovery switch, candidate host trial, resource acceptance or new application release follows.
+
+### R-ASTRA-121 E21 — recovery compatibility and integrated checker checkpoint
+
+At 2026-10-14T01:14:51Z–01:15:31Z, the disposable packet10 trial retained its synthetic
+schema-13 records and started the exact registered A9 recovery image. Its runtime-profile
+phase **Passed**, including the UID/GID drop, no-new-privileges, zero capabilities, read-only
+root, resource limits, loopback binding and actual tmpfs options. Health returned HTTP 200
+with `ok/stock-probs/v1`; readiness returned HTTP 200 with schema 13 and assistant disabled.
+Anonymous auth endpoints returned HTTP 200 and protected history/lists returned HTTP 401.
+The HTTP phase and aggregate **Failed** because the smoke expected anonymous `/` to return
+200, while the observed response was the source-defined 303 sign-in redirect. No redirect
+was followed. A successor must validate the exact relative sign-in target internally and
+request the fixed public sign-in page explicitly; compatibility acceptance remains pending.
+
+Packet10 terminal SHA-256 is
+`5d76aba6d6a30d1971ce5dcfbe7b59861e8b15684731839953fc2c30c1e7c655`;
+independent actual-artifact review is
+`821139f9b99e2d50e75e3945aa6f2b1f2703c59379c7cb9226e868d418a998f4`.
+The terminal cleanup **Failed** at the final socket bind with `EADDRINUSE`, after recorded
+owned-container, volume and network removals. A separate fresh read-only check **Passed**
+all absence checks, protected-image identity and socket binding; its receipt SHA-256 is
+`9c4fdd71655a159e7508489186fb7f6053e33831632f166cec5d202ad3f9f57f`.
+The original failure is retained and its cause remains **Unproven**.
+
+Operational PR #11's checker additions have been integrated locally into PR #9 with both
+fixed pull-number bindings preserved as 9. The schema-12 fixture seed and migration pin
+remain unchanged; the separate registered A9 production alternative retains its exact record,
+container, archive, pair, overlay, Compose, disabled-readiness and memory-floor guards. The
+already-installed PR #10 rollout-health polling repair is also present in this source tree.
+Parent selected tests **Passed** (311 passed, one opt-in local Docker check skipped), and
+Ruff check/format, documentation validation and diff checks passed. The parent test's
+contemporaneous pre-run current-source pins are **Unavailable**; a fresh independent run
+with pre/post pins remains required. No canonical, new-image, actual-host resource, PR-bound
+rollback, deployment, owner-canary or release acceptance follows from these selected checks.
+
+R3's strict persisted claim-owner repair separately **Passed** independent selected QA:
+17 tests, Ruff/security/format, and the supplied pins. Booleans, floats and strings cannot
+masquerade as integer owner IDs. Migration 016 remains an unregistered prototype and normal
+startup/API/scheduler integration remains pending. R2's fresh approved build/stage and selected
+browser results remain separate scoped evidence; no failed browser aggregate is relabelled.
+The live application remains 5ad/787/schema 13 on the existing 1 GB host, with backups and
+US$15 monthly total cap unchanged. No production image transition or feature release occurred.
+
+The first independently pinned integrated-operations run also **Passed** its 311 tests with one
+opt-in skip, but the overall integration review **Failed** because nine original hotfix regression
+functions were dropped during conflict resolution. Its receipt is
+`91ddef8db2bb7b080269d53115e8fbb47d7c87007d92bee499bdc5372c90721f`.
+The parent restored all nine functions, adapting only the stale-schema identity fixture to the
+new dictionary return contract, and removed a redundant identical baseline assignment. The
+restored selected tests **Passed** (36 passed, 215 deselected), with Ruff and format checks;
+receipt `628f2364283f118ff346d35739a955a305b773665b8ca1c8a81b5bae62ff31bc`.
+Independent verification of that repair is pending. The first review failure remains recorded.
+An explicit approved candidate-context comparison confirms all 149 application inputs remain
+unchanged at context `9f86b6fcddac74d6a60132c4afd0fd951a6ed51265bd2266fee0a101a7608ec0`;
+this permits scoped evidence reuse, but requires a newly bound image after the Git checkpoint.
+
+Independent repair recheck **Passed** at 2026-10-14T01:29:40Z–01:29:47Z: 345 tests passed,
+one opt-in check skipped, with Ruff/security/format and 36 project-import plus five owned-file
+pre/post bindings. All nine original functions match their earlier ASTs except the single
+reviewed identity-fixture adaptation, whose assertions are unchanged. Receipt:
+`4ee4f955ae92de4469bf6c0a56d49bc0b3fb22c82f5eb4c4150f2df40a6290e4`.
+The parent integrated review accepts this scoped Git/build checkpoint only; local sign-in,
+actual-host resource/recovery, mandatory canonical and exact-PR release gates remain open.

@@ -590,6 +590,7 @@ def test_assistant_rollout_is_bound_to_current_schema13_release_and_ordered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     helper = _helper()
+    original_health_check = helper._health_check
     revision = "a" * 40
     archive_sha256 = "b" * 64
     image_id = "sha256:" + "c" * 64
@@ -620,7 +621,8 @@ def test_assistant_rollout_is_bound_to_current_schema13_release_and_ordered(
             current.update(value)
             writes.append(dict(value))
 
-    def health_check() -> dict[str, object]:
+    def health_check(*, assistant_rollout_mode: str | None = None) -> dict[str, object]:
+        assert assistant_rollout_mode == runtime_modes[-1]
         enabled = runtime_modes[-1] != "disabled"
         return {
             "status": "ready",
@@ -678,6 +680,30 @@ def test_assistant_rollout_is_bound_to_current_schema13_release_and_ordered(
         archive_sha256=archive_sha256,
         image_id=image_id,
     )
+    observations = iter(
+        [
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": True, "status": "ready"},
+            },
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": False, "status": "disabled"},
+            },
+        ]
+    )
+    sleeps: list[float] = []
+    stopped: list[Path | None] = []
+    monkeypatch.setattr(helper, "_health_check", original_health_check)
+    monkeypatch.setattr(
+        helper,
+        "_run",
+        lambda *args, **kwargs: SimpleNamespace(stdout=json.dumps(next(observations)).encode()),
+    )
+    monkeypatch.setattr(helper.time, "sleep", sleeps.append)
+    monkeypatch.setattr(helper, "_stop_app", lambda path=None: stopped.append(path))
     killed = helper._set_assistant_rollout(
         "disabled",
         revision=revision,
@@ -696,6 +722,8 @@ def test_assistant_rollout_is_bound_to_current_schema13_release_and_ordered(
     assert all(call["force_recreate"] is True for call in compose_calls)
     assert all(call["compose_file"] == snapshot for call in compose_calls)
     assert kill_calls == ["1" * 64]
+    assert sleeps == [helper.HEALTH_DELAY_SECONDS]
+    assert stopped == []
 
 
 def test_in_place_kill_uses_only_the_fixed_nonroot_cli_vector(monkeypatch) -> None:
@@ -775,7 +803,8 @@ def test_assistant_rollout_readiness_failure_reverts_to_disabled(
         elif path == helper.FAILED_RECORD:
             failures.append(dict(value))
 
-    def health_check() -> dict[str, object]:
+    def health_check(*, assistant_rollout_mode: str | None = None) -> dict[str, object]:
+        assert assistant_rollout_mode == modes[-1]
         enabled = modes[-1] != "disabled"
         return {
             "status": "ready",
@@ -869,7 +898,7 @@ def test_disable_rollout_stops_app_when_kill_switch_cannot_be_verified(
     monkeypatch.setattr(
         helper,
         "_health_check",
-        lambda: {
+        lambda *, assistant_rollout_mode=None: {
             "status": "ready",
             "schema_version": 13,
             "assistant": {"enabled": True, "status": "ready"},
@@ -937,7 +966,7 @@ def test_in_place_disable_rejects_container_replacement_and_stops_app(
     monkeypatch.setattr(
         helper,
         "_health_check",
-        lambda: {
+        lambda *, assistant_rollout_mode=None: {
             "status": "ready",
             "schema_version": 13,
             "assistant": {"enabled": False, "status": "disabled"},
@@ -5243,3 +5272,69 @@ def test_verified_backup_rejects_unverified_or_promoting_restore_result(
         helper._verified_backup(image_ref, "a" * 40)
 
     assert calls == 2
+
+
+@pytest.mark.parametrize("mode", ["disabled", "owner_canary", "invited"])
+def test_rollout_health_waits_for_requested_projection_within_existing_budget(
+    mode: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    expected_enabled = mode != "disabled"
+    observations = iter(
+        [
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": not expected_enabled, "status": "starting"},
+            },
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {
+                    "enabled": expected_enabled,
+                    "status": "ready" if expected_enabled else "disabled",
+                },
+            },
+        ]
+    )
+    calls: list[tuple[list[str], int]] = []
+    sleeps: list[float] = []
+
+    def request(command: list[str], *, timeout: int) -> SimpleNamespace:
+        calls.append((command, timeout))
+        return SimpleNamespace(stdout=json.dumps(next(observations)).encode())
+
+    monkeypatch.setattr(helper, "_run", request)
+    monkeypatch.setattr(helper.time, "sleep", sleeps.append)
+    assert helper.HEALTH_ATTEMPTS == 30
+    assert helper.HEALTH_DELAY_SECONDS == 1.0
+    result = helper._health_check(assistant_rollout_mode=mode)
+    assert result["assistant"]["enabled"] is expected_enabled
+    assert len(calls) == 2 and all(timeout == 5 for _, timeout in calls)
+    assert sleeps == [1.0]
+
+
+@pytest.mark.parametrize(
+    "assistant", [None, {"enabled": 0, "status": "disabled"}, {"enabled": True, "status": "ready"}]
+)
+def test_rollout_health_missing_or_wrong_projection_remains_fail_closed(
+    assistant: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    calls: list[object] = []
+    sleeps: list[float] = []
+
+    def request(*args: object, **kwargs: object) -> SimpleNamespace:
+        calls.append(args)
+        return SimpleNamespace(
+            stdout=json.dumps(
+                {"status": "ready", "schema_version": 13, "assistant": assistant}
+            ).encode()
+        )
+
+    monkeypatch.setattr(helper, "HEALTH_ATTEMPTS", 2)
+    monkeypatch.setattr(helper, "_run", request)
+    monkeypatch.setattr(helper.time, "sleep", sleeps.append)
+    with pytest.raises(helper.HostError, match="readiness_failed"):
+        helper._health_check(assistant_rollout_mode="disabled")
+    assert len(calls) == 2 and sleeps == [1.0, 1.0]

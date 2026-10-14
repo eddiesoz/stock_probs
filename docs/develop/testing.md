@@ -620,3 +620,16 @@ For the R-ASTRA-121 rebuilt native executable, refresh the scanner's exact file 
 comparing every existing public match span against checksum-verified official Bun 1.4.2 bytes.
 Keep the path, size, offsets and all other bytes subject to their existing checks. A file-only scan
 or provenance comparison does not replace scans of the final candidate and recovery archives.
+
+
+### Candidate and recovery production baselines
+
+The candidate rehearsal checker distinguishes the running 5ad schema-13 app from the da2764/d3
+schema-12 migration fixture. Its recovery alternative requires the exact registered recovery role,
+image/archive, pair/overlay/migration, Compose snapshot, schema and disabled-ready projection at
+both host and MCP boundaries, with the running container and loopback binding checked again
+during monitoring. Negative fixtures must reject partial, mismatched, enabled and stale identities;
+the 512 MiB startup and 128 MiB running reserve remain mandatory. A synthetic checker test does
+not accept an image transition. Test the exact recovery image on disposable data and a user-defined
+bridge, retain post-migration records, and verify a fresh signed backup before an actual-host step.
+The current resource failure and backup scope are recorded in [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).

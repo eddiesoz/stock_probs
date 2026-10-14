@@ -260,3 +260,13 @@ number through MCP. Bootstrap, local verification and the installed helper must 
 identity and the exact clean candidate head/pair. Earlier PR #2 receipts remain historical. A helper
 commit on PR #9 requires a new exact-head image label and pair, even if application context bytes
 are unchanged; never relabel the earlier image or claim unchanged helper/runtime acceptance.
+
+
+### Rehearsal baseline identity
+
+The candidate rehearsal checker uses a separate fixed running-production identity; the schema-12
+PR-pair fixture remains unchanged. The registered schema-13 recovery alternative is an exact
+source allowlist with a disabled-ready requirement, not a configurable arbitrary image, archive
+or database. It does not lower the startup/running memory floors or replace the reviewed PR's
+candidate/recovery pair. Source presence does not prove host installation or production acceptance;
+see [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
