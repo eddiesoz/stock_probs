@@ -94,6 +94,12 @@ operation was invoked. Future configuration changes require another fresh Codex 
 and [getting started](../operations/getting-started.md#review-a-pr-pair-before-rehearsal) for the
 operator sequence.
 
+The PR #9 reserve checker uses a fixed, read-only startup observation of at most 30 seconds before
+the existing final memory and readiness checks; there is no environment variable to configure this
+wait. It preserves the 512 MiB startup and 128 MiB running floors and the 1,080-second absolute
+operation budget. E22's five-second wait is historical. E29's local source/test and parent reviews
+do not establish a host retry, deployed checker, native answer, or actual 1 GB acceptance.
+
 ## Authentication settings
 
 Authentication is disabled by default for the local development path. Production requires GitHub

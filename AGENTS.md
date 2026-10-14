@@ -2314,6 +2314,10 @@ Project only the closed preflight/startup/monitor/final phase and strict numeric
 KiB values. An earlier unclassified reserve failure or a later read-only RSS measurement is not
 proof of its phase or cause. Before another trial, bind the repaired checker and exact candidate;
 retain failed aggregates and restore verified production rollout after temporary maintenance.
+The current read-only startup observation is bounded at 30 seconds within the unchanged 1,080-second
+operation budget; do not relax either memory floor or promote a later above-floor sample to a pass
+for an earlier preflight failure. E22's five-second wait is historical; E29 records the reviewed
+source repair and its local scope, not a host retry or release acceptance.
 
 
 For R-ASTRA-121 rehearsal preparation, keep the running production identity separate from the

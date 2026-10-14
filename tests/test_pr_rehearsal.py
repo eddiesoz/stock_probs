@@ -650,7 +650,22 @@ def test_pr_rehearsal_bundle_installs_driver_that_uses_image_package() -> None:
     assets, hashes = controller._source_bundle()
     assert set(assets) == {"bootstrap", "host_helper", "seed", "driver"}
     assert hashes == {name: hashlib.sha256(content).hexdigest() for name, content in assets.items()}
+    assert hashes["host_helper"] == controller.HOST_HELPER_SOURCE_SHA256
     assert assets["driver"] == Path(__file__).with_name("native_assistant_probe.py").read_bytes()
+
+
+def test_pr_rehearsal_source_bundle_rejects_host_helper_digest_drift(monkeypatch) -> None:
+    read_regular_file = controller._read_regular_file
+    helper_path = controller.REPOSITORY_ROOT / controller.SOURCE_ASSETS["host_helper"][0]
+
+    def read_modified_helper(path: Path, *, maximum: int, label: str) -> bytes:
+        content = read_regular_file(path, maximum=maximum, label=label)
+        return content + b"\n" if path == helper_path else content
+
+    monkeypatch.setattr(controller, "_read_regular_file", read_modified_helper)
+
+    with pytest.raises(controller.RehearsalError, match="host_helper_source_digest_mismatch"):
+        controller._source_bundle()
 
 
 def test_source_upload_and_reviewed_bootstrap_share_the_sha_prefixed_names(
@@ -2909,6 +2924,254 @@ def test_start_reserve_timeout_uses_last_below_floor_sample(monkeypatch) -> None
     }
     assert len(samples) == 2
     assert now[0] == host_helper.START_RESERVE_SETTLE_SECONDS
+
+
+@pytest.mark.parametrize(
+    ("final_available", "identity_matches", "readiness_status", "expected_error"),
+    [
+        (host_helper.START_RESERVE_KIB, True, "ready", None),
+        (
+            host_helper.START_RESERVE_KIB - 1,
+            True,
+            "ready",
+            "host_memory_reserve_breached",
+        ),
+        (host_helper.START_RESERVE_KIB, False, "ready", "production_baseline_mismatch"),
+        (host_helper.START_RESERVE_KIB, True, "starting", "production_health_lost"),
+    ],
+)
+def test_late_startup_reserve_recovery_still_requires_final_guard(
+    monkeypatch, final_available, identity_matches, readiness_status, expected_error
+) -> None:
+    now = [0.0]
+    events = []
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(host_helper, "MAX_OPERATION_SECONDS", 1_080.0)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper,
+        "_release_completed_preflight_memory",
+        lambda: events.append("release"),
+    )
+
+    def sample_memory():
+        events.append(("sample", now[0]))
+        available = (
+            host_helper.START_RESERVE_KIB if now[0] >= 26.0 else host_helper.START_RESERVE_KIB - 64
+        )
+        return 1_000_000, available
+
+    monkeypatch.setattr(host_helper, "_host_memory_kib", sample_memory)
+    monkeypatch.setattr(
+        host_helper,
+        "_memavailable_kib",
+        lambda: (events.append("final_memory") or final_available),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_production_identity",
+        lambda: (
+            events.append("final_identity")
+            or (
+                dict(host_helper.PRODUCTION_BASELINE)
+                if identity_matches
+                else dict(host_helper.PRODUCTION_BASELINE) | {"revision": "f" * 40}
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_readiness",
+        lambda: (
+            events.append("final_readiness")
+            or {
+                "status": readiness_status,
+                "schema_version": host_helper.PRODUCTION_BASELINE["schema_version"],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "ACTIVE_PRODUCTION_BASELINE",
+        dict(host_helper.PRODUCTION_BASELINE),
+    )
+    sample_count = [0]
+
+    def advance(delay):
+        events.append(("sleep", delay, host_helper.OPERATION_DEADLINE))
+        now[0] += delay
+
+    monkeypatch.setattr(host_helper.time, "sleep", advance)
+
+    if expected_error is None:
+        assert host_helper._startup_preflight(sample_count) == (
+            1_000_000,
+            host_helper.START_RESERVE_KIB,
+        )
+        assert sample_count == [1]
+        assert host_helper.OPERATION_DEADLINE == 1_080.0
+    else:
+        with pytest.raises(host_helper.RehearsalError, match=expected_error):
+            host_helper._startup_preflight(sample_count)
+        assert sample_count == [0]
+        assert host_helper.OPERATION_DEADLINE is None
+
+    assert now[0] == 26.0
+    assert host_helper.START_RESERVE_KIB == 512 * 1024
+    assert host_helper.RUN_RESERVE_KIB == 128 * 1024
+    if final_available < host_helper.START_RESERVE_KIB:
+        assert events[-1:] == ["final_memory"]
+    elif not identity_matches:
+        assert events[-2:] == ["final_memory", "final_identity"]
+    else:
+        assert events[-3:] == ["final_memory", "final_identity", "final_readiness"]
+    assert all(
+        event[2] == 1_080.0 for event in events if isinstance(event, tuple) and event[0] == "sleep"
+    )
+
+
+def test_startup_preflight_rejects_invalid_initial_clock(monkeypatch) -> None:
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: float("nan"))
+    monkeypatch.setattr(
+        host_helper,
+        "_settle_start_reserve",
+        lambda: pytest.fail("invalid initial clock must abort before reserve sampling"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="rehearsal_clock_invalid"):
+        host_helper._startup_preflight([0])
+
+    assert host_helper.OPERATION_DEADLINE is None
+
+
+def test_sustained_startup_reserve_shortfall_expires_at_thirty_seconds(monkeypatch) -> None:
+    now = [0.0]
+    samples = []
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 1_080.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (samples.append(now[0]) or (1_000_000, host_helper.START_RESERVE_KIB - 1)),
+    )
+    monkeypatch.setattr(host_helper.time, "sleep", lambda delay: now.__setitem__(0, now[0] + delay))
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_reserve_breached") as error:
+        host_helper._settle_start_reserve()
+
+    assert host_helper.START_RESERVE_SETTLE_SECONDS == 30.0
+    assert now[0] == 30.0
+    assert len(samples) == 120
+    assert error.value.details == {
+        "memory_reserve_phase": "preflight",
+        "host_memavailable_kib": host_helper.START_RESERVE_KIB - 1,
+        "required_reserve_kib": host_helper.START_RESERVE_KIB,
+    }
+
+
+def test_start_reserve_below_run_floor_aborts_on_first_observation(monkeypatch) -> None:
+    samples = []
+    sleeps = []
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 1_080.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (samples.append(True) or (1_000_000, host_helper.RUN_RESERVE_KIB - 1)),
+    )
+    monkeypatch.setattr(host_helper.time, "sleep", lambda delay: sleeps.append(delay))
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_reserve_breached") as error:
+        host_helper._settle_start_reserve()
+
+    assert samples == [True]
+    assert sleeps == []
+    assert error.value.details == {
+        "memory_reserve_phase": "monitor",
+        "host_memavailable_kib": host_helper.RUN_RESERVE_KIB - 1,
+        "required_reserve_kib": host_helper.RUN_RESERVE_KIB,
+    }
+
+
+@pytest.mark.parametrize(
+    "sample",
+    [None, (1_000_000, True), (1_000, 1_001), (0, 0), (1_000, -1)],
+)
+def test_invalid_start_reserve_counter_sample_fails_closed(monkeypatch, sample) -> None:
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 1_080.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(host_helper, "_host_memory_kib", lambda: sample)
+    monkeypatch.setattr(
+        host_helper.time,
+        "sleep",
+        lambda _delay: pytest.fail("invalid memory counters must abort before sleeping"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_evidence_unavailable"):
+        host_helper._settle_start_reserve()
+
+
+def test_unavailable_start_reserve_counter_fails_closed(monkeypatch) -> None:
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 1_080.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (_ for _ in ()).throw(
+            host_helper.RehearsalError("host_memory_evidence_unavailable")
+        ),
+    )
+    monkeypatch.setattr(
+        host_helper.time,
+        "sleep",
+        lambda _delay: pytest.fail("unavailable memory counters must abort before sleeping"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_evidence_unavailable"):
+        host_helper._settle_start_reserve()
+
+
+@pytest.mark.parametrize(
+    "clock_values",
+    [[float("nan")], [float("inf")], [True], [1.0, 0.5]],
+)
+def test_invalid_start_reserve_clock_fails_closed(monkeypatch, clock_values) -> None:
+    values = iter(clock_values)
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 20.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: next(values))
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: pytest.fail("invalid clocks must be rejected before sampling counters"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="rehearsal_clock_invalid"):
+        host_helper._settle_start_reserve()
+
+
+def test_start_reserve_window_does_not_extend_a_shorter_operation_deadline(monkeypatch) -> None:
+    now = [0.0]
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 12.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (1_000_000, host_helper.START_RESERVE_KIB - 1),
+    )
+    monkeypatch.setattr(host_helper.time, "sleep", lambda delay: now.__setitem__(0, now[0] + delay))
+
+    with pytest.raises(host_helper.RehearsalError, match="rehearsal_deadline_exceeded"):
+        host_helper._settle_start_reserve()
+
+    assert now[0] == 12.0
+    assert host_helper.OPERATION_DEADLINE == 12.0
 
 
 def test_startup_preflight_returns_final_guard_availability_not_earlier_sample(monkeypatch) -> None:

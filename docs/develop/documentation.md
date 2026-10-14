@@ -112,6 +112,13 @@ local PR-pair helper
 in [developer testing](testing.md#exact-pr-pair-review-pins), [local configuration](../configure/local-configuration.md#local-pr-rehearsal-review-metadata),
 and [getting started](../operations/getting-started.md#review-a-pr-pair-before-rehearsal).
 
+The current PR #9 startup-reserve checker has a bounded 30-second read-only observation before its
+unchanged final guard. E22's five-second observation remains historical; the 512/128 MiB floors and
+1,080-second operation budget are unchanged. E29 records independent local source/test review and
+parent review, while a fresh host retry, image, native answer, and actual 1 GB acceptance remain
+unverified. Map coverage for this deployment-review path includes this guide, developer testing,
+local configuration, getting started, and the workflow policy in `AGENTS.md`.
+
 ### Source-bound build recovery
 
 For source-bound Docker work, preserve each owned source baseline as exact bytes plus SHA-256 before

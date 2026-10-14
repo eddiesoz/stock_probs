@@ -636,9 +636,15 @@ The current resource failure and backup scope are recorded in [E19](../../MVP-PL
 
 For the current R-ASTRA-121 helper, the startup operation budget begins before its bounded settle.
 On Linux/glibc, it collects completed Python allocations and calls process-local `malloc_trim(0)`,
-then samples host availability at 250 ms intervals for up to five seconds before the existing
+then samples host availability at 250 ms intervals for up to 30 seconds before the existing
 production/readiness guard records the final startup value. Unsupported allocator environments fail
-closed. The 512/128 MiB reserve floors and 1,080-second absolute budget do not change. E22 records
-an actual-host preflight **Fail** below the startup floor, followed by local helper QA **Pass** for
-the repair; no post-repair actual-host retry, native answer, or 1 GB acceptance is established.
-See [E22](../../MVP-PLAN.md#r-astra-121-e22-startup-reserve-preflight-repair-checkpoint).
+closed. This is fixed checker behavior, not an environment setting. The 512/128 MiB reserve floors
+and 1,080-second absolute budget do not change. E22's five-second observation is historical; the
+current bounded wait repair is E29. Independent source/unit/static QA passed 278 tests with one
+opt-in local-Docker test deselected, plus Ruff, Ruff security, format and diff checks at pinned
+source hashes; builder-selected 24 tests also passed with 255 deselected. Parent source review
+passed with no findings. The original preflight **Fail** at 517,480 KiB against the 524,288 KiB
+startup floor remains unchanged. T9 separately failed at 519,432 KiB; its twelve later above-floor
+observations do not change that result. No post-repair host retry, native answer, fresh image, or actual
+1 GB acceptance is established. See [E22](../../MVP-PLAN.md#r-astra-121-e22-startup-reserve-preflight-repair-checkpoint)
+and [E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-startup-wait-checker-checkpoint).

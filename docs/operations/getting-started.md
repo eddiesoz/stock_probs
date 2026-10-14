@@ -664,6 +664,12 @@ was written, and no PR-pair rehearsal or remote operation is accepted. The lates
 eight operations. E767 later passed fresh-task discovery for this configuration; future configuration changes require a fresh Codex task to verify discovery. See [local metadata settings](../configure/local-configuration.md#local-pr-rehearsal-review-metadata)
 and [developer testing](../develop/testing.md#exact-pr-pair-review-pins).
 
+The PR #9 checker may observe startup memory for up to 30 seconds at 250 ms intervals before its
+existing final identity, reserve, and readiness guard. This wait is bounded within the unchanged
+1,080-second operation budget; it does not relax the 512 MiB startup or 128 MiB running floors.
+E22's five-second setting is historical. E29 records local source/test and parent review only; do
+not treat it as a fresh host rehearsal, image, native answer, or actual 1 GB pass.
+
 A `host_memory_reserve_breached` result blocks promotion. The diagnostic may include a closed
 `preflight`, `startup`, `monitor`, or `final` phase, `host_memavailable_kib`, and
 `required_reserve_kib`. Startup requires 524,288 KiB and running/final checks require 131,072 KiB.

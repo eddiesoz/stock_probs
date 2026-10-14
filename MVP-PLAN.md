@@ -7110,3 +7110,52 @@ source, a newly bound current-head image and pair, canonical gate, actual-host 1
 acceptance, native runtime, and release gates remain pending. The approved objective remains a
 working genuine free-Zen OpenCode answer followed by all seven visible feature releases; E22 does
 not complete either dependency.
+
+### R-ASTRA-121 E29 — bounded startup-wait checker checkpoint
+
+The current source changes the read-only startup observation from the historical five seconds in
+E22 to a bounded 30 seconds, within the same 1,080-second absolute operation budget. The 512 MiB
+startup and 128 MiB running reserve floors, fail-closed counter/clock checks, final exact memory and
+production-identity/readiness guard, and no-side-effect-before-guard ordering remain unchanged. E22's
+517,480 KiB reading remains **Fail**. T9's startup guard also remains **Fail** at 519,432 KiB against
+the 524,288 KiB floor. Twelve later observations exceeded the floor, beginning at 26.016 seconds
+with 527,908 KiB available. These later readings are diagnostic only; they do not establish the original
+failure's cause, retroactively clear its preflight, or prove actual 1 GB acceptance. T9 artifact-only
+review passed 16 checks (receipt
+`/var/tmp/r12r/a9-memory-t9-actual-independent-qa-f02673dc-a7bc-419c-8dfa-f069275f1942/independent-actual-review-04.json`,
+SHA-256 `95b611bb8bbe6b69b72194960e9494d0243dc4e91e822c2c5efcf2180d8c2aaf`); its three harness
+failures remain historical.
+
+Builder-reported selected tests passed 24 with 255 deselected. Independent source/unit/static QA
+passed 278 tests with one opt-in local-Docker integration test deselected, plus Ruff, Ruff security,
+format, and diff checks. The independent receipt is
+`/var/tmp/r12r/pr9-startup-reserve-independent-qa-20261014-01/independent-receipt-01.json`,
+SHA-256 `d21ab84a5f7adc0a41a8a67c98baaad204d08535635ab147d2a30094a640ce64`; its binding supplement
+`binding-supplement-01.json` has SHA-256
+`f7e232ed535b7404eee9ae4c668805501c92d01a90fdcce8423f5d893940dab5` and confirms the subprocess
+resolved imports from the target worktree. The initial missing-test-filename setup error and initial
+parent import-path qualification issue remain preserved; the supplement resolves the latter for the
+recorded test subprocess. The three independently bound files were `scripts/pr_rehearsal_host_helper.py`
+(`e8bfc0bee1718449526d3f7ab04de6c083f819abf5c2eb9f3ef9cf9eadc9ae10`),
+`tools/deploy_mcp/pr_rehearsal.py`
+(`3916fe77b12ae5e20ce874e52cac1ae9d2b266b6a1f0a162d3b8ad4acc178778`), and
+`tests/test_pr_rehearsal.py`
+(`327abf2b93b34bf58ca96295fb997375764885d90624437d802300fc2780c4f5`). Parent integrated source
+review passed with no findings at `2026-10-14T11:32:36.730929Z`; receipt
+`/var/tmp/r12r/pr9-startup-parent-review-5f259f3f-a3d2-4379-8e28-60acf7dc6ff2/parent-review.json`,
+SHA-256 `dc4660f939aa5effa2bfc2f9c78634d7d3c2729a8ed756ec92655a495f4bd107`.
+
+No fresh image, installed-helper execution, host retry, native/provider run, actual combined 1 GB
+test, exact-PR rollback, or release acceptance is established. The genuine free-Zen answer through
+the application remains Priority 0; all seven visible features follow it. The existing host, backups,
+and US$15 monthly cap remain unchanged.
+
+The authored-guide update passed current-map documentation checks against
+`documentation-map.json` SHA-256 `8f657834c596f57fcab6fcc9e0176e6699589fb9ffcc14c266960ab708b6ed5d`:
+`scripts/validate_docs.py` **Passed** (9 categories, 14 topics, 8 governance entries) at
+`2026-10-14T11:34:35.107264Z`–`11:34:36.264563Z`; completeness **Passed** (177 mapped files) at
+`11:34:36.264595Z`–`11:34:36.694022Z`; coverage self-test **Passed** (26 cases) at
+`11:34:36.694051Z`–`11:34:39.936233Z`; change-aware coverage **Passed** at
+`11:34:40.043938Z`–`11:34:40.524269Z` (177 checked, 9 changed, no exemptions or violations); and
+staged/unstaged `git diff --check` **Passed** at `11:34:40.524306Z`–`11:34:40.611766Z`. Documentation
+pytest was not run. These are docs-scope checks only.

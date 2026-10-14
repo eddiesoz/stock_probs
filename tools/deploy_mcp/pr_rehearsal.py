@@ -110,6 +110,7 @@ SOURCE_ASSETS = {
     "seed": ("scripts/pr_rehearsal_seed.py", "seed.py", 64 * 1024),
     "driver": ("tests/native_assistant_probe.py", "native_driver.py", 2 * 1024 * 1024),
 }
+HOST_HELPER_SOURCE_SHA256 = "e8bfc0bee1718449526d3f7ab04de6c083f819abf5c2eb9f3ef9cf9eadc9ae10"
 
 
 class RehearsalError(Exception):
@@ -1176,8 +1177,11 @@ def _source_bundle() -> tuple[dict[str, bytes], dict[str, str]]:
             maximum=maximum,
             label="bootstrap_source",
         )
+        digest = hashlib.sha256(content).hexdigest()
+        if role == "host_helper" and digest != HOST_HELPER_SOURCE_SHA256:
+            raise RehearsalError("host_helper_source_digest_mismatch")
         assets[role] = content
-        hashes[role] = hashlib.sha256(content).hexdigest()
+        hashes[role] = digest
     return assets, hashes
 
 

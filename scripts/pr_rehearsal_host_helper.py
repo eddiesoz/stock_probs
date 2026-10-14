@@ -11,6 +11,7 @@ import gzip
 import hashlib
 import http.client
 import json
+import math
 import os
 import platform
 import pwd
@@ -119,7 +120,7 @@ CANDIDATE_MEMORY_LIMIT = 768 * 1024 * 1024
 RECOVERY_MEMORY_LIMIT = 384 * 1024 * 1024
 START_RESERVE_KIB = 512 * 1024
 RUN_RESERVE_KIB = 128 * 1024
-START_RESERVE_SETTLE_SECONDS = 5.0
+START_RESERVE_SETTLE_SECONDS = 30.0
 START_RESERVE_POLL_SECONDS = 0.25
 OOM_EVENT_COUNTERS = ("oom", "oom_kill", "oom_group_kill")
 CPU_STAT_COUNTERS = ("usage_usec", "nr_periods", "nr_throttled", "throttled_usec")
@@ -1642,19 +1643,54 @@ def _release_completed_preflight_memory() -> None:
         raise RehearsalError("preflight_memory_release_unavailable")
 
 
-def _settle_start_reserve() -> tuple[int, int]:
-    """Release completed allocations, then observe the unchanged startup reserve briefly."""
+def _is_finite_number(value: object) -> bool:
+    """Return whether a clock or duration is an exact finite int or float."""
 
-    if OPERATION_DEADLINE is None:
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def _bounded_monotonic(previous: float | None = None) -> float:
+    """Return a finite monotonic reading that does not move backwards."""
+
+    try:
+        value = time.monotonic()
+    except Exception as exc:
+        raise RehearsalError("rehearsal_clock_invalid") from exc
+    if not _is_finite_number(value) or (previous is not None and value < previous):
+        raise RehearsalError("rehearsal_clock_invalid")
+    return float(value)
+
+
+def _settle_start_reserve() -> tuple[int, int]:
+    """Wait at most 30 seconds for startup reserve while honoring the operation deadline."""
+
+    if not _is_finite_number(OPERATION_DEADLINE):
+        raise RehearsalError("rehearsal_deadline_unavailable")
+    if (
+        not _is_finite_number(START_RESERVE_SETTLE_SECONDS)
+        or START_RESERVE_SETTLE_SECONDS <= 0
+        or not _is_finite_number(START_RESERVE_POLL_SECONDS)
+        or START_RESERVE_POLL_SECONDS <= 0
+    ):
         raise RehearsalError("rehearsal_deadline_unavailable")
     _release_completed_preflight_memory()
+    started = _bounded_monotonic()
+    if started >= OPERATION_DEADLINE:
+        raise RehearsalError("rehearsal_deadline_exceeded")
     settle_deadline = min(
-        time.monotonic() + START_RESERVE_SETTLE_SECONDS,
+        started + START_RESERVE_SETTLE_SECONDS,
         OPERATION_DEADLINE,
     )
+    last_clock = started
     last_available: int | None = None
     while True:
-        now = time.monotonic()
+        now = _bounded_monotonic(last_clock)
+        last_clock = now
         if now >= OPERATION_DEADLINE:
             raise RehearsalError("rehearsal_deadline_exceeded")
         if now >= settle_deadline:
@@ -1662,11 +1698,24 @@ def _settle_start_reserve() -> tuple[int, int]:
                 raise RehearsalError("host_memory_settle_timeout")
             raise _memory_reserve_failure(last_available, START_RESERVE_KIB, "preflight")
 
-        memtotal_kib, available_kib = _host_memory_kib()
+        sample = _host_memory_kib()
+        if (
+            not isinstance(sample, tuple)
+            or len(sample) != 2
+            or type(sample[0]) is not int
+            or type(sample[1]) is not int
+            or not 0 < sample[0] <= MAX_RESOURCE_COUNTER_VALUE
+            or not 0 <= sample[1] <= sample[0]
+        ):
+            raise RehearsalError("host_memory_evidence_unavailable")
+        memtotal_kib, available_kib = sample
         last_available = available_kib
-        sampled_at = time.monotonic()
+        sampled_at = _bounded_monotonic(last_clock)
+        last_clock = sampled_at
         if sampled_at >= OPERATION_DEADLINE:
             raise RehearsalError("rehearsal_deadline_exceeded")
+        if available_kib < RUN_RESERVE_KIB:
+            raise _memory_reserve_failure(available_kib, RUN_RESERVE_KIB, "monitor")
         if sampled_at >= settle_deadline:
             if available_kib < START_RESERVE_KIB:
                 raise _memory_reserve_failure(available_kib, START_RESERVE_KIB, "preflight")
@@ -1674,21 +1723,28 @@ def _settle_start_reserve() -> tuple[int, int]:
         if available_kib >= START_RESERVE_KIB:
             return memtotal_kib, available_kib
 
-        time.sleep(
-            min(
-                START_RESERVE_POLL_SECONDS,
-                settle_deadline - sampled_at,
-                OPERATION_DEADLINE - sampled_at,
-            )
+        delay = min(
+            START_RESERVE_POLL_SECONDS,
+            settle_deadline - sampled_at,
+            OPERATION_DEADLINE - sampled_at,
         )
+        if not math.isfinite(delay) or delay <= 0:
+            raise RehearsalError("rehearsal_deadline_unavailable")
+        time.sleep(delay)
 
 
 def _startup_preflight(sample_count: list[int]) -> tuple[int, int]:
     """Bind the existing operation budget before settling, then keep the final guard."""
 
     global OPERATION_DEADLINE
-    OPERATION_DEADLINE = time.monotonic() + MAX_OPERATION_SECONDS
     try:
+        started = _bounded_monotonic()
+        if not _is_finite_number(MAX_OPERATION_SECONDS) or MAX_OPERATION_SECONDS <= 0:
+            raise RehearsalError("rehearsal_deadline_unavailable")
+        deadline = started + MAX_OPERATION_SECONDS
+        if not _is_finite_number(deadline) or deadline <= started:
+            raise RehearsalError("rehearsal_deadline_unavailable")
+        OPERATION_DEADLINE = deadline
         memtotal_kib, _settled_available_kib = _settle_start_reserve()
         startup_available_kib = _check_production(sample_count, startup=True)
         if (
