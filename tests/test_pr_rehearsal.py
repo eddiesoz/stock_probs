@@ -2793,6 +2793,329 @@ def test_production_headroom_floors_are_unchanged_and_fail_closed(monkeypatch) -
         host_helper._check_production([0])
 
 
+def test_preflight_memory_release_uses_linux_glibc_gc_then_one_trim(monkeypatch) -> None:
+    events = []
+
+    class FakeFunction:
+        argtypes = None
+        restype = None
+
+        def __call__(self, argument):
+            events.append(("trim", argument))
+            return 0
+
+    trim = FakeFunction()
+    monkeypatch.setattr(host_helper.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(host_helper.platform, "libc_ver", lambda: ("glibc", "2.39"))
+    monkeypatch.setattr(
+        host_helper.ctypes,
+        "CDLL",
+        lambda name, *, use_errno: (
+            events.append(("cdll", name, use_errno)) or SimpleNamespace(malloc_trim=trim)
+        ),
+    )
+    monkeypatch.setattr(
+        host_helper.gc, "collect", lambda generation: events.append(("gc", generation)) or 7
+    )
+
+    host_helper._release_completed_preflight_memory()
+
+    assert events == [
+        ("cdll", "libc.so.6", True),
+        ("gc", 2),
+        ("trim", 0),
+    ]
+    assert trim.argtypes == [host_helper.ctypes.c_size_t]
+    assert trim.restype is host_helper.ctypes.c_int
+
+
+def test_preflight_memory_release_fails_closed_without_linux_glibc_abi(monkeypatch) -> None:
+    monkeypatch.setattr(host_helper.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(host_helper.platform, "libc_ver", lambda: ("musl", "1.2"))
+    monkeypatch.setattr(
+        host_helper.gc,
+        "collect",
+        lambda _generation: pytest.fail("GC must not run when the fixed ABI is unavailable"),
+    )
+    monkeypatch.setattr(
+        host_helper.ctypes,
+        "CDLL",
+        lambda *_args, **_kwargs: pytest.fail("no fallback libc lookup is allowed"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="preflight_memory_release_unavailable"):
+        host_helper._release_completed_preflight_memory()
+
+
+def test_start_reserve_waits_briefly_for_a_real_512_mib_sample(monkeypatch) -> None:
+    events = []
+    now = [0.0]
+    samples = iter(
+        [
+            (1_000_000, host_helper.START_RESERVE_KIB - 64),
+            (1_000_000, host_helper.START_RESERVE_KIB),
+        ]
+    )
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 30.0)
+    monkeypatch.setattr(
+        host_helper, "_release_completed_preflight_memory", lambda: events.append("release")
+    )
+    monkeypatch.setattr(
+        host_helper, "_host_memory_kib", lambda: (events.append("sample") or next(samples))
+    )
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper.time,
+        "sleep",
+        lambda delay: (events.append(("sleep", delay)), now.__setitem__(0, now[0] + delay)),
+    )
+
+    assert host_helper._settle_start_reserve() == (1_000_000, host_helper.START_RESERVE_KIB)
+    assert events == [
+        "release",
+        "sample",
+        ("sleep", host_helper.START_RESERVE_POLL_SECONDS),
+        "sample",
+    ]
+    assert host_helper.START_RESERVE_KIB == 512 * 1024
+    assert host_helper.RUN_RESERVE_KIB == 128 * 1024
+
+
+def test_start_reserve_timeout_uses_last_below_floor_sample(monkeypatch) -> None:
+    now = [0.0]
+    samples = []
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 20.0)
+    monkeypatch.setattr(host_helper, "START_RESERVE_SETTLE_SECONDS", 0.5)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (samples.append(host_helper.START_RESERVE_KIB - 1) or (1_000_000, samples[-1])),
+    )
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper.time,
+        "sleep",
+        lambda delay: now.__setitem__(0, now[0] + delay),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_reserve_breached") as error:
+        host_helper._settle_start_reserve()
+
+    assert error.value.details == {
+        "memory_reserve_phase": "preflight",
+        "host_memavailable_kib": host_helper.START_RESERVE_KIB - 1,
+        "required_reserve_kib": host_helper.START_RESERVE_KIB,
+    }
+    assert len(samples) == 2
+    assert now[0] == host_helper.START_RESERVE_SETTLE_SECONDS
+
+
+def test_startup_preflight_returns_final_guard_availability_not_earlier_sample(monkeypatch) -> None:
+    events = []
+    settled = host_helper.START_RESERVE_KIB + 32
+    final_guard = host_helper.START_RESERVE_KIB + 96
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(host_helper, "MAX_OPERATION_SECONDS", 60.0)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: 10.0)
+    monkeypatch.setattr(
+        host_helper,
+        "_settle_start_reserve",
+        lambda: (events.append("settled") or (1_000_000, settled)),
+    )
+
+    def final_guard_check(sample_count, *, startup):
+        assert startup is True
+        assert host_helper.OPERATION_DEADLINE == 70.0
+        events.append("final_guard")
+        sample_count[0] += 1
+        return final_guard
+
+    monkeypatch.setattr(host_helper, "_check_production", final_guard_check)
+
+    assert host_helper._startup_preflight([0]) == (1_000_000, final_guard)
+    assert events == ["settled", "final_guard"]
+    assert host_helper.OPERATION_DEADLINE == 70.0
+
+
+def test_startup_preflight_rejects_missing_final_guard_sample(monkeypatch) -> None:
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(host_helper, "_settle_start_reserve", lambda: (1_000_000, 600_000))
+    monkeypatch.setattr(host_helper, "_check_production", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_evidence_unavailable"):
+        host_helper._startup_preflight([0])
+
+    assert host_helper.OPERATION_DEADLINE is None
+
+
+def test_startup_preflight_rejects_availability_above_settled_memtotal(monkeypatch) -> None:
+    memtotal_kib = 1_000_000
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(
+        host_helper,
+        "_settle_start_reserve",
+        lambda: (memtotal_kib, host_helper.START_RESERVE_KIB),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_check_production",
+        lambda *_args, **_kwargs: memtotal_kib + 1,
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_evidence_unavailable"):
+        host_helper._startup_preflight([0])
+
+    assert host_helper.OPERATION_DEADLINE is None
+
+
+def _valid_startup_preflight_payload() -> dict[str, object]:
+    return {
+        "repository": host_helper.REPOSITORY,
+        "pull_number": host_helper.PULL_NUMBER,
+        "reviewed_head_sha": "a" * 40,
+        "candidate_image_id": "sha256:" + "b" * 64,
+        "candidate_source_context_sha256": "c" * 64,
+        "recovery_image_id": "sha256:" + "d" * 64,
+        "recovery_source_context_sha256": "e" * 64,
+        "recovery_overlay_sha256": "f" * 64,
+        "pair_manifest_sha256": "1" * 64,
+        "candidate_archive_sha256": "2" * 64,
+        "recovery_archive_sha256": "3" * 64,
+    }
+
+
+def test_pair_checks_production_again_after_settled_memory_before_candidate_setup(
+    monkeypatch,
+) -> None:
+    events = []
+
+    def stop_at_second_guard(sample_count, *, startup):
+        assert startup is True
+        events.append(("final_guard", sample_count))
+        raise host_helper.RehearsalError("host_memory_reserve_breached")
+
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(
+        host_helper,
+        "_verify_installed_source",
+        lambda *_args: (events.append("source") or {}),
+    )
+    monkeypatch.setattr(
+        host_helper, "_verify_pull_request", lambda _revision: events.append("pull_request")
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_production_container",
+        lambda: (
+            events.append("production_identity_and_readiness")
+            or dict(host_helper.PRODUCTION_BASELINE)
+        ),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_release_completed_preflight_memory",
+        lambda: events.append("allocator_release"),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (
+            events.append("settled_memory_sample") or (1_000_000, host_helper.START_RESERVE_KIB)
+        ),
+    )
+    monkeypatch.setattr(host_helper, "_check_production", stop_at_second_guard)
+    monkeypatch.setattr(
+        host_helper,
+        "_verify_pair",
+        lambda *_args: pytest.fail("candidate setup must follow the final startup guard"),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_image_identity",
+        lambda *_args: pytest.fail("candidate image work must follow the final startup guard"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_reserve_breached"):
+        host_helper._run_pair(_valid_startup_preflight_payload())
+
+    assert [event if isinstance(event, str) else event[0] for event in events] == [
+        "source",
+        "pull_request",
+        "production_identity_and_readiness",
+        "allocator_release",
+        "settled_memory_sample",
+        "final_guard",
+    ]
+    assert host_helper.OPERATION_DEADLINE is None
+
+
+def test_pair_deadline_includes_memory_settle_and_expires_before_candidate_effects(
+    monkeypatch,
+) -> None:
+    now = [0.0]
+    events = []
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(host_helper, "MAX_OPERATION_SECONDS", 0.5)
+    monkeypatch.setattr(
+        host_helper,
+        "_verify_installed_source",
+        lambda *_args: (events.append("source") or {}),
+    )
+    monkeypatch.setattr(
+        host_helper, "_verify_pull_request", lambda _revision: events.append("pull_request")
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_production_container",
+        lambda: (events.append("production") or dict(host_helper.PRODUCTION_BASELINE)),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_release_completed_preflight_memory",
+        lambda: events.append("allocator_release"),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (events.append("memory_sample") or (1_000_000, host_helper.START_RESERVE_KIB - 1)),
+    )
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper.time,
+        "sleep",
+        lambda delay: (events.append(("sleep", delay)), now.__setitem__(0, now[0] + delay)),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_check_production",
+        lambda *_args, **_kwargs: pytest.fail("expired preflight must not reach the final guard"),
+    )
+    candidate_effects = {"_verify_pair", "_image_identity", "_load_image", "_start_app"}
+
+    def reject_candidate_call(*_args, _name, **_kwargs):
+        events.append(_name)
+        pytest.fail(f"expired preflight must not call {_name}")
+
+    for name in candidate_effects:
+        monkeypatch.setattr(
+            host_helper,
+            name,
+            lambda *_args, _name=name, **_kwargs: reject_candidate_call(
+                *_args, _name=_name, **_kwargs
+            ),
+        )
+
+    with pytest.raises(host_helper.RehearsalError, match="rehearsal_deadline_exceeded"):
+        host_helper._run_pair(_valid_startup_preflight_payload())
+
+    assert now[0] == host_helper.MAX_OPERATION_SECONDS
+    assert "allocator_release" in events
+    assert "memory_sample" in events
+    assert candidate_effects.isdisjoint(events)
+    assert host_helper.OPERATION_DEADLINE is None
+
+
 def test_invalid_container_role_fails_closed_for_resource_resolution() -> None:
     with pytest.raises(host_helper.RehearsalError, match="container_role_invalid"):
         host_helper._memory_limit_for_role("cli")

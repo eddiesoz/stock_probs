@@ -7066,3 +7066,47 @@ reviewed identity-fixture adaptation, whose assertions are unchanged. Receipt:
 `4ee4f955ae92de4469bf6c0a56d49bc0b3fb22c82f5eb4c4150f2df40a6290e4`.
 The parent integrated review accepts this scoped Git/build checkpoint only; local sign-in,
 actual-host resource/recovery, mandatory canonical and exact-PR release gates remain open.
+
+### R-ASTRA-121 E22 — startup-reserve preflight repair checkpoint
+
+Task `R-ASTRA-121`; the authorized T6/host07 actual-host rehearsal **Failed at preflight** on
+2026-10-14 (`2026-10-14T04:58:30.430046Z`–`04:59:04.569566Z`). Helper receipt ID
+`e36c9d7bf7e98ba59281b6faca658b14` reports 517,480 KiB available against the unchanged
+524,288 KiB startup floor, a shortfall of 6,808 KiB. It stopped before loading candidate/recovery
+images, creating rehearsal resources, or invoking the native model; there was no candidate trial or
+model/search/fetch call. The cause is **Unproven**.
+Independent review confirmed restoration to the original `5ad2c3f` / `78746f60`, schema 13,
+invited and ready, loopback-only service (receipt SHA-256
+`0531941abd7aa7d3c1a647f77a2853083c03f2dec01a49b640f49fb2910ff0ec`). A fresh read-only inspect
+at `2026-10-14T05:59:36Z` returned the same revision/image/schema, ready invited health and
+loopback boundary (SHA-256
+`8786422cd73ea72f3f9989488193f75004e6543e66ec020ad63b6acb736e2b66`).
+
+The parent-observed actual packet03 run measured approximately 5,012 KiB less process PSS and
+private-dirty memory after full garbage collection and Linux/glibc `malloc_trim(0)`; its immediate
+host `MemAvailable` sample stayed at 367,928 KiB. The run's `terminal.json` SHA-256 is
+`3aa6c0047d84777d1141e57d7b705f682c25ad6ae84c231459277c79ed06118b`. A separate independent
+review passed the diagnostic packet's static/source scope only (receipt SHA-256
+`9ad0278d499b81014a915d0868889fe0c583b843225322921d2f62ec5f3fb24c`); it did not independently
+review the actual host run. These process-local measurements do not explain the earlier host-reserve
+failure or demonstrate a 1 GB pass. The two earlier independent review
+failures on interim preflight-memory projection repairs remain **Failed** (repair 01 receipt
+`b2d20404410fce85cc6708da109bf596605fd1375274ab5786cfb6b766bb9b15`; repair 02 receipt
+`7768f0bed10e48785a19701bd0f298bc626d8f64be7e9259e4d545ec7b29d5fc`, review note
+`cf8b931e6ec7e5179efbf45c80e8daade162fe314fc18289ac056ddc189d18af`).
+
+The bounded repair releases only completed local verification allocations on Linux/glibc, observes
+the existing startup reserve for at most five seconds, then retains the final production/readiness
+check and reports its exact guarded availability. The original 512 MiB startup and 128 MiB running
+floors and 1,080-second absolute operation budget are unchanged. Independent repair 03 passed one
+targeted projection regression and the helper test file (259 passed; one opt-in Docker test
+deselected), with stable before/after pins for helper
+`f47b3ee2703248bc27d47b87d0c03b8df440158b0438b2fb99e8c7c2dadbc181` and tests
+`701e4ea90ee40f64a73d99f0e2f02f060dda3ac0e5bbe01bf63d4c166b30fbee`. Receipt
+`/var/tmp/r12r/signal-ledger-assistant-fix-20261013-native-zen/operational-resource-qa-repair03-01/receipt.json`,
+SHA-256 `993b54db3999eba674e5a24726fac36c1f8eacdbc2b2820807d0162e7dd31691`. Parent's narrow
+integrated source review passed. This is local helper/source evidence only: a retry on the repaired
+source, a newly bound current-head image and pair, canonical gate, actual-host 1 GB resource
+acceptance, native runtime, and release gates remain pending. The approved objective remains a
+working genuine free-Zen OpenCode answer followed by all seven visible feature releases; E22 does
+not complete either dependency.

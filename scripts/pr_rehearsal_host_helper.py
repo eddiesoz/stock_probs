@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import ctypes
 import fcntl
+import gc
 import grp
 import gzip
 import hashlib
@@ -117,6 +119,8 @@ CANDIDATE_MEMORY_LIMIT = 768 * 1024 * 1024
 RECOVERY_MEMORY_LIMIT = 384 * 1024 * 1024
 START_RESERVE_KIB = 512 * 1024
 RUN_RESERVE_KIB = 128 * 1024
+START_RESERVE_SETTLE_SECONDS = 5.0
+START_RESERVE_POLL_SECONDS = 0.25
 OOM_EVENT_COUNTERS = ("oom", "oom_kill", "oom_group_kill")
 CPU_STAT_COUNTERS = ("usage_usec", "nr_periods", "nr_throttled", "throttled_usec")
 
@@ -1611,6 +1615,92 @@ def _memory_reserve_failure(available: int, floor: int, phase: str) -> Rehearsal
             "required_reserve_kib": floor,
         },
     )
+
+
+def _release_completed_preflight_memory() -> None:
+    """Release only this process's completed verification allocations on Linux/glibc."""
+
+    try:
+        if not (platform.system() == "Linux" and platform.libc_ver()[0] == "glibc"):
+            raise RehearsalError("preflight_memory_release_unavailable")
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        malloc_trim = libc.malloc_trim
+        malloc_trim.argtypes = [ctypes.c_size_t]
+        malloc_trim.restype = ctypes.c_int
+        collected = gc.collect(2)
+        released = malloc_trim(0)
+    except RehearsalError:
+        raise
+    except Exception as exc:
+        raise RehearsalError("preflight_memory_release_unavailable") from exc
+    if (
+        type(collected) is not int
+        or collected < 0
+        or type(released) is not int
+        or released not in (0, 1)
+    ):
+        raise RehearsalError("preflight_memory_release_unavailable")
+
+
+def _settle_start_reserve() -> tuple[int, int]:
+    """Release completed allocations, then observe the unchanged startup reserve briefly."""
+
+    if OPERATION_DEADLINE is None:
+        raise RehearsalError("rehearsal_deadline_unavailable")
+    _release_completed_preflight_memory()
+    settle_deadline = min(
+        time.monotonic() + START_RESERVE_SETTLE_SECONDS,
+        OPERATION_DEADLINE,
+    )
+    last_available: int | None = None
+    while True:
+        now = time.monotonic()
+        if now >= OPERATION_DEADLINE:
+            raise RehearsalError("rehearsal_deadline_exceeded")
+        if now >= settle_deadline:
+            if last_available is None:
+                raise RehearsalError("host_memory_settle_timeout")
+            raise _memory_reserve_failure(last_available, START_RESERVE_KIB, "preflight")
+
+        memtotal_kib, available_kib = _host_memory_kib()
+        last_available = available_kib
+        sampled_at = time.monotonic()
+        if sampled_at >= OPERATION_DEADLINE:
+            raise RehearsalError("rehearsal_deadline_exceeded")
+        if sampled_at >= settle_deadline:
+            if available_kib < START_RESERVE_KIB:
+                raise _memory_reserve_failure(available_kib, START_RESERVE_KIB, "preflight")
+            raise RehearsalError("host_memory_settle_timeout")
+        if available_kib >= START_RESERVE_KIB:
+            return memtotal_kib, available_kib
+
+        time.sleep(
+            min(
+                START_RESERVE_POLL_SECONDS,
+                settle_deadline - sampled_at,
+                OPERATION_DEADLINE - sampled_at,
+            )
+        )
+
+
+def _startup_preflight(sample_count: list[int]) -> tuple[int, int]:
+    """Bind the existing operation budget before settling, then keep the final guard."""
+
+    global OPERATION_DEADLINE
+    OPERATION_DEADLINE = time.monotonic() + MAX_OPERATION_SECONDS
+    try:
+        memtotal_kib, _settled_available_kib = _settle_start_reserve()
+        startup_available_kib = _check_production(sample_count, startup=True)
+        if (
+            type(startup_available_kib) is not int
+            or startup_available_kib < START_RESERVE_KIB
+            or startup_available_kib > memtotal_kib
+        ):
+            raise RehearsalError("host_memory_evidence_unavailable")
+        return memtotal_kib, startup_available_kib
+    except BaseException:
+        OPERATION_DEADLINE = None
+        raise
 
 
 def _production_container() -> ProductionBaseline | RecoveryProductionBaseline:
@@ -3572,13 +3662,9 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
         raise RehearsalError("pair_archives_must_differ")
 
     sample_count = [0]
-    host_memtotal_before_kib, host_memavailable_before_kib = _host_memory_kib()
-    if host_memavailable_before_kib < START_RESERVE_KIB:
-        raise _memory_reserve_failure(host_memavailable_before_kib, START_RESERVE_KIB, "preflight")
-    _check_production(sample_count, startup=True)
+    host_memtotal_before_kib, host_memavailable_before_kib = _startup_preflight(sample_count)
     MONITOR_ACTIVE = True
     PRODUCTION_SAMPLE_COUNT = sample_count
-    OPERATION_DEADLINE = time.monotonic() + MAX_OPERATION_SECONDS
 
     run_id = secrets.token_hex(8)
     volume = f"signal-ledger-pr1-{revision[:8]}-{run_id}"

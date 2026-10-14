@@ -633,3 +633,12 @@ the 512 MiB startup and 128 MiB running reserve remain mandatory. A synthetic ch
 not accept an image transition. Test the exact recovery image on disposable data and a user-defined
 bridge, retain post-migration records, and verify a fresh signed backup before an actual-host step.
 The current resource failure and backup scope are recorded in [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+For the current R-ASTRA-121 helper, the startup operation budget begins before its bounded settle.
+On Linux/glibc, it collects completed Python allocations and calls process-local `malloc_trim(0)`,
+then samples host availability at 250 ms intervals for up to five seconds before the existing
+production/readiness guard records the final startup value. Unsupported allocator environments fail
+closed. The 512/128 MiB reserve floors and 1,080-second absolute budget do not change. E22 records
+an actual-host preflight **Fail** below the startup floor, followed by local helper QA **Pass** for
+the repair; no post-repair actual-host retry, native answer, or 1 GB acceptance is established.
+See [E22](../../MVP-PLAN.md#r-astra-121-e22-startup-reserve-preflight-repair-checkpoint).
