@@ -714,3 +714,17 @@ matched 49 pins and passed Ruff, security, format and diff checks. This tests a 
 hypothesis only: the prior OOM's install-versus-compile phase remains unproven, and no image build
 or native run has started. The initial temporary-path quota/policy setup failure and the initial
 independent umask omission remain preserved separately. See the [serial-install checkpoint](../../MVP-PLAN.md#r-astra-121-63b9-serial-install-diagnostic-checkpoint-2026-10-15).
+
+The resulting 12ed build subsequently failed with a cgroup OOM transition during native
+compilation. A continuous 78-row sampler and independently bound live worker establish the local
+1280 MiB RAM/768 MiB swap/one CPU/128 PID limits; the high-RSS argument category does not prove
+the executable or killed PID. Typed reservation reconciliation passed separately. Keep this failed
+build separate from native functional and actual production 1 GB acceptance, and obtain new
+discriminating evidence before another build. See the [12ed compilation checkpoint](../../MVP-PLAN.md#r-astra-121-12ed-native-compilation-oom-checkpoint-2026-10-15).
+
+The next native-build candidate fixes Bun's `--smol` mode only for the final build-script command
+and its child processes. Check that a host-supplied `BUN_OPTIONS` cannot alter that command's
+environment and that package installation/source tests retain their prior environment. The pinned
+Bun documentation describes a garbage-collection tradeoff rather than a hard memory cap. The
+embedded app build and final compiler still use the same source pins, arguments, targets and
+deadlines; a source test pass does not establish lower memory use or a successful image.

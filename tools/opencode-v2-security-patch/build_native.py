@@ -232,6 +232,39 @@ def _build_environment(work: Path, version: str) -> dict[str, str]:
     }
 
 
+def _native_compile_environment(work: Path, version: str) -> dict[str, str]:
+    """Use Bun's memory-conserving mode only for native compilation and its children."""
+    environment = _build_environment(work, version)
+    environment["BUN_OPTIONS"] = "--smol"
+    return environment
+
+
+def _run_native_compile(
+    *,
+    bun_executable: Path,
+    source_root: Path,
+    work: Path,
+    version: str,
+    build_target: str,
+    output_dir: Path,
+) -> None:
+    subprocess.run(  # noqa: S603 - fixed Bun compiler and fixed pinned source build script
+        [
+            str(bun_executable),
+            "run",
+            "packages/cli/script/build.ts",
+            "--single",
+            f"--target={build_target}",
+            f"--outdir={output_dir}",
+            "--skip-install",
+        ],
+        cwd=source_root,
+        env=_native_compile_environment(work, version),
+        check=True,
+        timeout=1800,
+    )
+
+
 class _AllowlistedRedirectHandler(urllib.request.HTTPRedirectHandler):
     def __init__(self) -> None:
         super().__init__()
@@ -753,20 +786,13 @@ def compile_for_target(
             )
             return receipt
         output_dir = work / "out"
-        subprocess.run(  # noqa: S603 - fixed Bun compiler and fixed pinned source build script
-            [
-                str(bun_executable),
-                "run",
-                "packages/cli/script/build.ts",
-                "--single",
-                f"--target={build_target}",
-                f"--outdir={output_dir}",
-                "--skip-install",
-            ],
-            cwd=extracted,
-            env=environment,
-            check=True,
-            timeout=1800,
+        _run_native_compile(
+            bun_executable=bun_executable,
+            source_root=extracted,
+            work=work,
+            version=str(opencode["version"]),
+            build_target=build_target,
+            output_dir=output_dir,
         )
         executable = output_dir / output_relative
         with executable.open("rb") as stream:

@@ -7449,3 +7449,77 @@ SHA-256 `bf3d0533154a48a4c7e8255ff0028e11f928ded7c288b7f90d7a6367d826f8ce`.
 No image build or native runtime check has started for this follow-up. The earlier 63b9 OOM remains
 **Failed** with cause **Unproven**; actual combined 1 GB, production and release acceptance remain
 open.
+
+### R-ASTRA-121 12ed native compilation OOM checkpoint (2026-10-15)
+
+The serial-install candidate at pushed PR #9 head
+`12edbdcef3a9caaf5ae44c6432462436cdf8854e` **Failed** the bounded local image build, exit 1,
+at `2026-10-15T20:31:01.742337Z`–`20:37:48.677849Z`. All 149 source inputs remained unchanged,
+bound to context `490983b91300f1392f66fab411286ee2671de9b9028e6513a93c2ca0d57054de`; no image
+was accepted. Native compilation was active shortly before the first observed cgroup OOM transition.
+The overall optional phase projection remains **Unavailable** (`malformed_frame`); it does not
+replace the primary failed build. Terminal receipt
+`/var/tmp/r12r/hotfix-12ed-manifests-build-w_92ooz5/build/terminal.json`, SHA-256
+`29a1c4b034b2ae617f35028b7f2cab38445d5318ee3ba235b8e5d2cac3d3ac24`; genuine failure receipt
+SHA-256 `87f3c14353c78ba1bb9ef5a71120a20abaacf099f738adb0d770d5ac89441a89`.
+
+Independent live resource binding **Passed** for its local build scope at
+`20:34:38.827996Z`–`20:34:40.135481Z`: the dependency worker's PID/start ticks and strict
+container-cgroup ancestry matched before and after the read. Effective ancestor limits were
+1280 MiB RAM, 768 MiB additional swap, one CPU and 128 PIDs. Receipt
+`/var/tmp/r12r/local-worker-resource-binding-qa-20261015T2033Z/read-only-worker-resource-binding-receipt.json`,
+SHA-256 `04b7c496dc937763cd26fe0bf7e43ce13a4556e0db5b2ffeb3d33f979f2e6a0e`.
+The continuous local sampler retained 78 rows. At `20:36:48.912073Z`, the root cgroup was at
+1,342,156,800 / 1,342,177,280 bytes and a process classified from its argument basename as
+`node_child` had 1,158,024 KiB RSS. The next sample at `20:36:54.297682Z` recorded `oom` and
+`oom_kill` increasing from zero to one. The actual executable and killed PID are **Unavailable**;
+the category does not distinguish Node from Bun compatibility behavior. This records local
+build memory pressure, not a proven victim, provider failure or actual combined 1 GB app acceptance.
+Independent historical analysis receipt
+`/var/tmp/r12r/local-worker-oom-phase-qa-20261015T2042Z/read-only-oom-phase-executable-receipt.json`,
+SHA-256 `d303e66f59da2950ef48dc8311da2056ca73503599118a9bd5b99b42ffa5765c`.
+
+The reviewed failure handler stopped the exact builder generation and verified its cgroup absent.
+Actual typed reservation reconciliation separately **Passed**, exit 0, retaining the prior two
+ledger rows at SHA-256 `36137c19d0ef581c5aeffb08de17cdc8eb955a0d535ff4393b3fe7ff76acabe3`.
+Terminal `/var/tmp/r12r/local-12ed-stopped-reconciliation-97c94j4e/terminal.json`, SHA-256
+`f3671ba37db08eeef564a492f20a9ac644321027e87ee416ce38034d2772ab05`; exclusive recovery receipt
+SHA-256 `fc347b0e5c143f7dd5a169d21c802b63767a474dc4f4826d82ec051ceb0334cf`.
+No native model trial, production mutation, deployment or release followed. The next build is held
+for a discriminating native compilation repair; the local memory profile and production budget
+remain unchanged.
+
+### R-ASTRA-121 build-only Bun memory mitigation checkpoint (2026-10-15)
+
+The next native-build candidate fixes `BUN_OPTIONS=--smol` for the final pinned Bun build-script
+command and its child processes. It ignores the host's value while keeping the install and selected
+source-test environments unchanged. The embedded app/Vite build runs under that command; the
+recorded PID chain places the earlier high-RSS child below the native compiler in the same exec
+cgroup. The historical executable and OOM victim remain **Unavailable**. This is a build-memory
+mitigation, not a new runtime flag, hard cap or verified image repair. All existing upstream source pins,
+targets, arguments, container limits and deadlines remain fixed.
+
+Builder-focused verification **Passed** 24 tests and configured Ruff/security/format/diff checks;
+receipt `/var/tmp/r12r/native-smol-postformat-check-dbbf569b83bd/receipt.json`, SHA-256
+`88fe1ae72e22a077d84a1ed9b3c6566ea264e8cdfce8e1765ee1d296068e5fb0`. The first format check's
+single-line wrapping failure and pre-format bytes are retained in the baseline packet; the final
+source is formatted. Official pinned Bun 1.4.2 documentation supports argument propagation and the
+more-frequent-GC/performance tradeoff; source receipt SHA-256
+`1b8a10d9384e7863bfdaeb584556f3c927b143292e90b9248be171f606bb3487` under that same packet.
+
+Independent verification separately **Passed** 24 tests, zero failures/errors/skips and two warnings
+at `2026-10-15T21:18:51.204945Z`–`21:18:53.897486Z`, with the normal conftest, explicit child
+umask 022, 30 imported project Python pins and stable supporting inputs. Ruff/security/format/diff
+checks passed. Receipt
+`/var/tmp/r12r/native-smol-independent-qa-20261015T211620Z/independent-qa-receipt.json`, SHA-256
+`80494c6dfd592e98c40ecacaf3ca37295a9ff97ed5a62adb09c45f8b327e6d78`; JUnit SHA-256
+`0d0f22134972f85aeba8fcd273032ab3cfd97473c15e11205d235e3b100e11f3`.
+Frozen build-source SHA-256 is `65d471d8f88aa730cff0d16db00798319bf3501628b3551f22092f3afc18efb8`;
+test SHA-256 is `75db8c124bd5f523d09d1616bc77f36d96020804466ee4fbdc22909ec539141b`.
+Parent personally reviewed the integrated launch/environment change, exact argument preservation,
+host-override rejection and test/receipt bindings with no remaining finding in this scope.
+
+No new Docker/native/provider run or production action is established by these checks. A fresh
+source-bound image, native functional result and all remaining release gates are still required.
+The failed 12ed build remains failed, and the existing 1 GB host, backups and US$15 monthly total
+cap are unchanged.

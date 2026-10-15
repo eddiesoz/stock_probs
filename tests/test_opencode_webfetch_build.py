@@ -185,6 +185,7 @@ def test_build_environment_does_not_inherit_credentials_or_project_overrides(
         "AWS_ACCESS_KEY_ID",
         "OPENCODE_DISABLE_PROJECT_CONFIG",
         "HTTPS_PROXY",
+        "BUN_OPTIONS",
     ):
         monkeypatch.setenv(name, "synthetic-secret-marker")
 
@@ -202,6 +203,51 @@ def test_build_environment_does_not_inherit_credentials_or_project_overrides(
         "HUSKY": "0",
     }
     assert "synthetic-secret-marker" not in repr(environment)
+
+
+def test_native_compile_launch_uses_fixed_smol_without_host_bun_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BUN_OPTIONS", "--preload=/host/injected.js")
+    captured: dict[str, object] = {}
+
+    def capture_run(command: list[str], **kwargs: object) -> None:
+        captured["command"] = command
+        captured.update(kwargs)
+
+    monkeypatch.setattr(build_native.subprocess, "run", capture_run)
+    work = tmp_path / "work"
+    source_root = tmp_path / "source"
+    output_dir = work / "out"
+    bun_executable = work / "bun"
+
+    build_native._run_native_compile(
+        bun_executable=bun_executable,
+        source_root=source_root,
+        work=work,
+        version="2.0.7",
+        build_target="opencode-linux-x64-baseline",
+        output_dir=output_dir,
+    )
+
+    assert captured == {
+        "command": [
+            str(bun_executable),
+            "run",
+            "packages/cli/script/build.ts",
+            "--single",
+            "--target=opencode-linux-x64-baseline",
+            f"--outdir={output_dir}",
+            "--skip-install",
+        ],
+        "cwd": source_root,
+        "env": {
+            **build_native._build_environment(work, "2.0.7"),
+            "BUN_OPTIONS": "--smol",
+        },
+        "check": True,
+        "timeout": 1800,
+    }
 
 
 def test_build_requires_private_caller_owned_temporary_directory(

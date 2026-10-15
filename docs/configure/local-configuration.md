@@ -32,6 +32,13 @@ two-user native run failed final-answer acceptance. A lower sampled peak does no
 causal improvement or the combined 1 GB resource gate. The US$15 monthly Linode cap includes
 tax and existing backups; the 1 GB plan and backups remain in place.
 
+The candidate native image builder separately fixes `BUN_OPTIONS=--smol` for the pinned Bun
+compilation command and its embedded app/Vite children. The strict build environment ignores the
+host's `BUN_OPTIONS`; dependency installation and selected source tests keep their existing build
+environment. This is fixed build behavior rather than a configurable application setting. It does
+not change the installed runtime flags, container limits or build deadlines, and needs a fresh
+image build before any reduction in build memory can be claimed.
+
 The current source also uses the native V2 build-agent system prompt to request concise final
 answers by default, preserving necessary caveats, citations, retrieval dates and user-requested
 detail. This is fixed product guidance, not an output-token override. Its latency effect remains
