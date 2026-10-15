@@ -72,6 +72,12 @@ with a bounded `/tmp`, dropped capabilities, `no-new-privileges`, `128` PIDs, `7
 `1.0` CPU, and three `10m` JSON log files. Compose defaults `STOCK_PROBS_PROVIDER` to `yahoo`;
 set it explicitly only when a deliberate local fixture run is required.
 
+If a local build fails, preserve its failure receipt and leave the retained in-flight reservation
+in place. A stopped Docker CLI may leave a BuildKit worker running. Use the reviewed
+[typed local-build recovery procedure](../develop/testing.md#bounded-local-docker-builds-and-worker-verification)
+to verify the exact owned builder, image absence and ledger before releasing that reservation.
+Do not delete the ledger row, prune Docker, or stop another application to retry.
+
 Stop the service without deleting its named volume:
 
 ```bash

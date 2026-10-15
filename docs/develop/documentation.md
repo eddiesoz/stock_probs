@@ -26,6 +26,12 @@ pointer. Document the private command receipt and keep subsequent provenance, pr
 RootFS, absence and retirement-acknowledgement evidence separate; selection alone is not cleanup
 acceptance or a product release. See [the local selection procedure](testing.md#selecting-a-retained-local-image).
 
+For a local-build failure, record the primary error, CLI cancellation, actual builder/worker
+state, reservation state and receipt publication separately. A missing historical BuildKit result
+is Unavailable even when fresh history and image inventory show absence. Typed external-observation
+reconciliation is a distinct recovery scope; it does not turn the failed build into a success.
+See [the local-build recovery procedure](testing.md#bounded-local-docker-builds-and-worker-verification).
+
 ## Codex project configuration
 
 Codex loads repository policy from root `AGENTS.md` and trusted-project settings from

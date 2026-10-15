@@ -7218,3 +7218,42 @@ security, exact-PR rollback and release gates remain open. No paid provider, res
 rollout or email occurred for this source repair. The existing 1 GB host, backups and US$15
 monthly total cap remain fixed. Genuine free-Zen OpenCode restoration remains Priority 0 before
 the four visible-feature releases.
+
+
+### R-ASTRA-121 E33 — local build failure and reservation recovery
+
+The first 09f candidate build **Failed** at metadata resolution after the owned builder's stale
+resolver could not resolve the registry. An exact owned-builder restart restored a bounded DNS
+lookup. The second build **Failed** with `fixed_command_unavailable_or_timeout` at
+16:48:02–17:03:47 UTC on 2026-10-15; its 149 application inputs were unchanged. A Next build
+worker survived CLI cancellation. Its precise timeout cause remains **Unproven**; resource
+pressure is an observation, not a diagnosis. No candidate image was accepted.
+
+Parent readback bound that worker to the exact owned builder, then stopped only that container.
+The worker disappeared, the unrelated local application was unchanged and the ledger was retained.
+A restart solely for history inspection found no running or current-window history row and no
+exact candidate tag. Historical BuildKit terminal evidence for the second build remains
+**Unavailable**. Cancellation receipt SHA-256 is
+`1af20f33a58b958397aad5e36f38dc1c1393b46a20561b799a17351a2318e1d0`; settled readback is
+`6cf4edaab79c939a9e4b48e5c179d238781bbe0ee464995ddbc43408062aa46f`, both under
+`/var/tmp/r12r/hotfix-09f-failed-remote-worker-preflight-ivl_7aso`.
+
+The local-builder repair retains genuine bounded failure receipts and verifies the exact builder
+start generation before backend cancellation. Its typed local-reservation recovery accepts genuine
+managed-local failures or separately typed external observations, without forging PR receipts.
+Fresh history, exact inventory, ledger consistency and complete exclusive receipt publication are
+required; uncertainty retains the reservation. Independent source/mock QA **Passed** 221 tests,
+Ruff, format and diff checks with no P1/P2 finding. Receipt
+`/var/tmp/r12r/localbuild-qa-20261015-oSUkcq/independent-review.json` has SHA-256
+`b8a1bf30694e995a552601d0550e91dc346bd3b1e39eb084081c05e9231c1d17`. Parent integrated
+source/evidence review found no blocker for this scoped operation.
+
+The actual typed external-observation reconciliation then **Passed** with exit 0. It removed
+only the one local placeholder reservation, leaving two protected/completed ledger entries. The
+operation's fresh history/inventory checks and exclusive receipt are recorded in
+`/var/tmp/r12r/local-inflight-parent-reconciliation-5f576nm4/terminal-and-readback.json`, SHA-256
+`8a058b5fc93b2ff2a1e6492abbb444a62947347f65f39a9ddf724174bc81ed5e`; reconciliation receipt
+SHA-256 is `959b556c8f544d7a7bac45fab64673bbab3410b2525640ecefcd4785ff67e8fa`. This is local
+reservation recovery, not image, native-provider, actual 1 GB, rollback or release acceptance.
+A new image and the required release checks remain pending. Production, existing backups, the
+1 GB host and US$15 monthly total cap are unchanged; no deployment, rollout or email occurred.

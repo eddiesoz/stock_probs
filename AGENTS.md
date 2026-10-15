@@ -158,7 +158,12 @@ assignments, runtime acceptance paths, or release gates.
   reviewed typed recovery operation. Recovery receipt publication must fail closed on write errors:
   a partial exclusive-create file is not a valid receipt and must not be manually removed or
   treated as a released reservation. Retry only after reviewed recovery reconciles the receipt and
-  ledger safely.
+  ledger safely. For local-build failures, retain a bounded failure receipt and the exact in-flight
+  row; cancelling the Docker CLI alone does not prove its BuildKit worker stopped. Stop only the
+  setup-bound builder container at the captured start generation, then verify it stopped. Reconcile
+  a local reservation only through `--reconcile-local-inflight-reservation`, using its genuine
+  local failure receipt or separately typed terminal/cancellation/readback observations. Missing
+  historical BuildKit results remain Unavailable; never fabricate a managed failure receipt.
 - Before formatting or relocating removable storage, make a backup on an independent filesystem
   and verify its checksum, byte count, complete file/member inventory, and metadata before
   formatting. Mount the replacement filesystem by UUID. Require both Docker and containerd to

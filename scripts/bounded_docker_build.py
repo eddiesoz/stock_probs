@@ -58,6 +58,13 @@ BUILDER_NETWORK_OWNER_LABEL = "io.signal-ledger.r120-bounded-builder"
 BUILDER_NETWORK_OWNER_VALUE = "r120-bounded"
 BUILDX_LISTING_MAX_BYTES = 65536
 BUILDX_LISTING_TIMEOUT = 30
+LOCAL_OBSERVATION_MAX_BYTES = 262144
+LOCAL_BUILDKIT_STOP_GRACE_SECONDS = 5
+LOCAL_BUILDKIT_STOP_TIMEOUT_SECONDS = 15
+LOCAL_FAILURE_SCHEMA = "r120-bounded-local-build-failure-v1"
+LOCAL_RECONCILIATION_SCHEMA = "r120-bounded-local-inflight-reconciliation-v1"
+LOCAL_OBSERVATION_ROOT = Path("/var") / "tmp" / "r12r"
+LOCAL_OBSERVATION_UUID = "54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e"
 _SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES = 8 * 1024 * 1024
 _SCHEMA13_ROOTFS_MAX_LAYERS = 128
 _SCHEMA13_ROOTFS_CHUNK_SIZE = 32
@@ -105,6 +112,11 @@ class BuildError(Exception):
     def __init__(self, code: str):
         super().__init__(code)
         self.code = code
+        self.secondary_errors: list[str] = []
+
+    def add_secondary(self, code: str) -> None:
+        if re.fullmatch(r"[a-z0-9_]{1,96}", code) is not None:
+            self.secondary_errors.append(code)
 
 
 _LEDGER_THREAD_GUARD = threading.RLock()
@@ -761,6 +773,135 @@ def inspect_builder(data: dict[str, object]) -> None:
     if active_config_sha != data.get("active_buildkit_config_sha256"):
         raise BuildError("active_buildkit_config_changed")
     verify_cache_volume(data, cid)
+
+
+def _builder_generation(data: dict[str, object]) -> dict[str, object]:
+    """Read the exact builder container identity and current start generation."""
+    container_id = data.get("builder_container_id")
+    image_id = data.get("buildkit_image_id")
+    if (
+        not isinstance(container_id, str)
+        or re.fullmatch(r"[0-9a-f]{64}", container_id) is None
+        or not isinstance(image_id, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None
+    ):
+        raise BuildError("local_builder_generation_identity_invalid")
+    fmt = (
+        "{{.Id}}|{{.Name}}|{{.Image}}|{{.Created}}|{{.State.StartedAt}}|"
+        "{{.RestartCount}}|{{.State.Running}}|{{.State.Pid}}"
+    )
+    try:
+        fields = (
+            checked([DOCKER, "container", "inspect", "--format", fmt, container_id], timeout=10)
+            .decode("ascii", "strict")
+            .strip()
+            .split("|")
+        )
+    except UnicodeDecodeError as exc:
+        raise BuildError("local_builder_generation_invalid") from exc
+    if len(fields) != 8:
+        raise BuildError("local_builder_generation_invalid")
+    observed_id, name, observed_image, created, started, restart_text, running_text, pid_text = (
+        fields
+    )
+    try:
+        _parse_buildkit_utc(created)
+        _parse_buildkit_utc(started)
+    except BuildError as exc:
+        raise BuildError("local_builder_generation_invalid") from exc
+    if (
+        observed_id != container_id
+        or name != CONTAINER_NAME
+        or observed_image != image_id
+        or restart_text.isdecimal() is False
+        or running_text not in {"true", "false"}
+        or pid_text.isdecimal() is False
+    ):
+        raise BuildError("local_builder_generation_invalid")
+    pid = int(pid_text)
+    running = running_text == "true"
+    if (running and pid <= 0) or (not running and pid != 0):
+        raise BuildError("local_builder_generation_invalid")
+    return {
+        "container_id": observed_id,
+        "name": name,
+        "image_id": observed_image,
+        "created": created,
+        "started": started,
+        "restart_count": int(restart_text),
+        "running": running,
+        "pid": pid,
+    }
+
+
+def _same_builder_generation(before: dict[str, object], after: dict[str, object]) -> bool:
+    identity_fields = (
+        "container_id",
+        "name",
+        "image_id",
+        "created",
+        "started",
+        "restart_count",
+    )
+    return all(before.get(field) == after.get(field) for field in identity_fields)
+
+
+def _stop_owned_builder_after_local_failure(
+    setup: dict[str, object], expected_generation: dict[str, object]
+) -> dict[str, object]:
+    """Stop only the verified builder instance captured immediately before a local build."""
+    current = _builder_generation(setup)
+    if not _same_builder_generation(expected_generation, current):
+        raise BuildError("local_builder_generation_changed")
+    if current["running"] is not True:
+        return {
+            "status": "verified_stopped_same_generation",
+            "builder_container_id": current["container_id"],
+            "generation": {
+                key: expected_generation[key] for key in ("created", "started", "restart_count")
+            },
+            "stop_grace_seconds": LOCAL_BUILDKIT_STOP_GRACE_SECONDS,
+        }
+
+    inspect_builder(setup)
+    checked_generation = _builder_generation(setup)
+    if not _same_builder_generation(expected_generation, checked_generation):
+        raise BuildError("local_builder_generation_changed")
+    if checked_generation["running"] is not True:
+        raise BuildError("local_builder_state_changed_before_stop")
+
+    stop_error: BuildError | None = None
+    try:
+        checked(
+            [
+                DOCKER,
+                "container",
+                "stop",
+                "--time",
+                str(LOCAL_BUILDKIT_STOP_GRACE_SECONDS),
+                str(expected_generation["container_id"]),
+            ],
+            timeout=LOCAL_BUILDKIT_STOP_TIMEOUT_SECONDS,
+        )
+    except BuildError as exc:
+        stop_error = exc
+
+    stopped = _builder_generation(setup)
+    if not _same_builder_generation(expected_generation, stopped):
+        raise BuildError("local_builder_generation_changed_after_stop") from stop_error
+    if stopped["running"] is not False or stopped["pid"] != 0:
+        raise BuildError("local_builder_stop_unverified") from stop_error
+    return {
+        "status": "verified_stopped_same_generation",
+        "builder_container_id": stopped["container_id"],
+        "generation": {
+            key: expected_generation[key] for key in ("created", "started", "restart_count")
+        },
+        "stop_grace_seconds": LOCAL_BUILDKIT_STOP_GRACE_SECONDS,
+        "stop_command_result": "completed"
+        if stop_error is None
+        else "unavailable_but_state_verified",
+    }
 
 
 def verify_builder_network(data: dict[str, object], container_id: str) -> None:
@@ -1482,6 +1623,26 @@ def _expected_managed_inventory(
     return expected
 
 
+def _verify_local_inflight_inventory(
+    ledger: dict[str, object],
+    setup: dict[str, object],
+    *,
+    tag: str,
+    revision: str,
+    context_hash: str,
+) -> None:
+    """Verify a retained local reservation without treating its placeholder as a loaded image."""
+    row = _validate_local_inflight_identity(
+        ledger, tag=tag, revision=revision, context_hash=context_hash
+    )
+    entries = ledger.get("entries")
+    legacy = setup.get("legacy_task_image_inventory")
+    if not isinstance(entries, list) or not isinstance(legacy, dict):
+        raise BuildError("candidate_ledger_invalid")
+    remaining = [candidate for candidate in entries if candidate is not row]
+    _verify_ledger_inventory({"schema": LEDGER_SCHEMA, "entries": remaining}, setup)
+
+
 def _verify_ledger_inventory(ledger: dict[str, object], setup: dict[str, object]) -> None:
     entries = ledger["entries"]
     assert isinstance(entries, list)
@@ -1702,6 +1863,757 @@ def _failed_buildkit_history_record(
     return verify_failed_buildkit_history(
         raw, build_started=build_started, build_finished=build_finished
     )
+
+
+def _read_local_observation_bytes(path: Path, expected_sha256: str) -> bytes:
+    """Read one bounded private task artifact without following path links."""
+    root = LOCAL_OBSERVATION_ROOT
+    if (
+        not path.is_absolute()
+        or not path.is_relative_to(root)
+        or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None
+    ):
+        raise BuildError("local_reconciliation_observation_path_invalid")
+    try:
+        root_info = root.lstat()
+    except OSError as exc:
+        raise BuildError("local_reconciliation_observation_unavailable") from exc
+    if (
+        not stat.S_ISDIR(root_info.st_mode)
+        or root_info.st_uid != USER.pw_uid
+        or root_info.st_mode & 0o077
+    ):
+        raise BuildError("local_reconciliation_observation_path_invalid")
+    _verify_local_observation_mount(root)
+    parent = path.parent
+    components = parent.relative_to(root).parts
+    current = root
+    for component in components:
+        current = current / component
+        try:
+            info = current.lstat()
+        except OSError as exc:
+            raise BuildError("local_reconciliation_observation_unavailable") from exc
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != USER.pw_uid or info.st_mode & 0o077:
+            raise BuildError("local_reconciliation_observation_path_invalid")
+    raw = _read_private_file(
+        path,
+        owner_uid=USER.pw_uid,
+        max_bytes=LOCAL_OBSERVATION_MAX_BYTES,
+        error_code="local_reconciliation_observation_unavailable",
+    )
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise BuildError("local_reconciliation_observation_sha256_mismatch")
+    return raw
+
+
+def _verify_local_observation_mount(root: Path) -> None:
+    try:
+        observed = (
+            checked([FINDMNT, "-n", "-o", "UUID", "--target", str(root)], timeout=10)
+            .decode("ascii", "strict")
+            .strip()
+            .lower()
+        )
+    except (BuildError, UnicodeDecodeError) as exc:
+        raise BuildError("local_reconciliation_observation_mount_unavailable") from exc
+    if observed != LOCAL_OBSERVATION_UUID:
+        raise BuildError("local_reconciliation_observation_mount_mismatch")
+
+
+def _read_local_observation(path: Path, expected_sha256: str) -> tuple[dict[str, object], bytes]:
+    raw = _read_local_observation_bytes(path, expected_sha256)
+    try:
+        document = json.loads(
+            raw,
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+        raise BuildError("local_reconciliation_observation_invalid") from exc
+    if not isinstance(document, dict):
+        raise BuildError("local_reconciliation_observation_invalid")
+    return document, raw
+
+
+def _parse_local_history_snapshot(
+    raw: bytes, *, terminal_started: datetime, settled_at: datetime
+) -> tuple[int, int]:
+    if not raw or len(raw) > BUILDX_LISTING_MAX_BYTES:
+        raise BuildError("local_reconciliation_history_invalid")
+    try:
+        lines = raw.decode("utf-8", "strict").split("\n")
+    except UnicodeDecodeError as exc:
+        raise BuildError("local_reconciliation_history_invalid") from exc
+    if lines[-1] == "":
+        lines.pop()
+    fields = {
+        "cached_steps",
+        "completed_at",
+        "completed_steps",
+        "created_at",
+        "name",
+        "ref",
+        "status",
+        "total_steps",
+    }
+    if not lines or len(lines) > 64 or any(not line or line.strip() != line for line in lines):
+        raise BuildError("local_reconciliation_history_invalid")
+    seen_refs: set[str] = set()
+    terminal_statuses = {"completed", "error", "canceled", "cancelled"}
+    in_window = 0
+    for line in lines:
+        if len(line) > 16384:
+            raise BuildError("local_reconciliation_history_invalid")
+        try:
+            row = json.loads(
+                line,
+                object_pairs_hook=_unique_json_object,
+                parse_constant=_reject_json_constant,
+            )
+        except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+            raise BuildError("local_reconciliation_history_invalid") from exc
+        if not isinstance(row, dict) or set(row) != fields:
+            raise BuildError("local_reconciliation_history_invalid")
+        ref = row.get("ref")
+        name = row.get("name")
+        status = row.get("status")
+        if (
+            not isinstance(ref, str)
+            or BUILDX_HISTORY_REF_PATTERN.fullmatch(ref) is None
+            or ref in seen_refs
+            or not isinstance(name, str)
+            or re.fullmatch(r"[A-Za-z0-9._/-]{1,128}", name) is None
+            or not isinstance(status, str)
+        ):
+            raise BuildError("local_reconciliation_history_invalid")
+        seen_refs.add(ref)
+        if status.casefold() not in terminal_statuses:
+            raise BuildError("local_reconciliation_buildkit_worker_active")
+        created = _parse_buildkit_utc(row.get("created_at"))
+        completed = _parse_buildkit_utc(row.get("completed_at"))
+        completed_steps = row.get("completed_steps")
+        cached_steps = row.get("cached_steps")
+        total_steps = row.get("total_steps")
+        if (
+            completed < created
+            or completed > settled_at
+            or not all(
+                isinstance(value, int) and not isinstance(value, bool)
+                for value in (completed_steps, cached_steps, total_steps)
+            )
+            or not 0 <= cached_steps <= completed_steps <= total_steps <= BUILDX_HISTORY_STEP_LIMIT
+        ):
+            raise BuildError("local_reconciliation_history_invalid")
+        if terminal_started <= created <= settled_at:
+            in_window += 1
+    return len(lines), in_window
+
+
+def _assert_no_running_buildkit_history() -> dict[str, object]:
+    raw = _capture_bounded_stdout(
+        [
+            DOCKER,
+            "buildx",
+            "history",
+            "ls",
+            "--builder",
+            BUILDER,
+            "--no-trunc",
+            "--format",
+            "json",
+        ],
+        max_bytes=BUILDX_LISTING_MAX_BYTES,
+        timeout=BUILDX_LISTING_TIMEOUT,
+    )
+    now = datetime.now(UTC)
+    count, active_count = _parse_local_history_snapshot(raw, terminal_started=now, settled_at=now)
+    if active_count:
+        raise BuildError("local_reconciliation_buildkit_worker_active")
+    return {"row_count": count, "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def _builder_status_line(document: dict[str, object], key: str) -> tuple[str, str, int]:
+    record = document.get(key)
+    if not isinstance(record, dict) or record.get("exit_code") != 0:
+        raise BuildError("local_reconciliation_builder_observation_invalid")
+    output = record.get("stdout")
+    if not isinstance(output, str) or len(output) > 4096:
+        raise BuildError("local_reconciliation_builder_observation_invalid")
+    lines = output.splitlines()
+    if len(lines) != 1:
+        raise BuildError("local_reconciliation_builder_observation_invalid")
+    fields = lines[0].split("|")
+    if len(fields) < 3 or not re.fullmatch(r"[0-9a-f]{64}", fields[0]) or not fields[2].isdecimal():
+        raise BuildError("local_reconciliation_builder_observation_invalid")
+    return fields[0], fields[1], int(fields[2])
+
+
+def _builder_status_fields(document: dict[str, object], key: str) -> list[str]:
+    record = document.get(key)
+    if not isinstance(record, dict) or record.get("exit_code") != 0:
+        raise BuildError("local_reconciliation_builder_observation_invalid")
+    output = record.get("stdout")
+    if not isinstance(output, str) or len(output) > 4096:
+        raise BuildError("local_reconciliation_builder_observation_invalid")
+    lines = output.splitlines()
+    if len(lines) != 1:
+        raise BuildError("local_reconciliation_builder_observation_invalid")
+    return lines[0].split("|")
+
+
+def _validate_orphan_observations(
+    *,
+    tag: str,
+    revision: str,
+    context_hash: str,
+    setup: dict[str, object],
+    terminal: dict[str, object],
+    terminal_sha256: str,
+    preflight: dict[str, object],
+    preflight_sha256: str,
+    cancellation: dict[str, object],
+    settled: dict[str, object],
+    settled_sha256: str,
+    cancellation_sha256: str,
+    settled_path: Path,
+) -> dict[str, object]:
+    if (
+        terminal.get("command") != ["./scripts/local-compose.sh", "build"]
+        or terminal.get("exit_code") != 1
+        or terminal.get("source_unchanged") is not True
+        or terminal.get("reason") is not None
+        or not isinstance(terminal.get("log_sha256"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", str(terminal.get("log_sha256"))) is None
+        or type(terminal.get("log_bytes")) is not int
+        or not 0 <= terminal["log_bytes"] <= 65536
+    ):
+        raise BuildError("local_reconciliation_terminal_mismatch")
+    terminal_started = _parse_buildkit_utc(terminal.get("started"))
+    terminal_finished = _parse_buildkit_utc(terminal.get("finished"))
+    source_after = terminal.get("source_after")
+    if (
+        terminal_finished < terminal_started
+        or not isinstance(source_after, dict)
+        or source_after.get("context_sha256") != context_hash
+        or not isinstance(source_after.get("files"), dict)
+        or not source_after["files"]
+        or len(source_after["files"]) > 4096
+    ):
+        raise BuildError("local_reconciliation_terminal_mismatch")
+    source_files = source_after["files"]
+    if any(
+        not isinstance(path, str)
+        or Path(path).is_absolute()
+        or ".." in Path(path).parts
+        or not isinstance(digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        for path, digest in source_files.items()
+    ):
+        raise BuildError("local_reconciliation_terminal_mismatch")
+
+    build_result = preflight.get("build_result")
+    preflight_time = _parse_buildkit_utc(preflight.get("recorded_at"))
+    if (
+        preflight.get("kind") != "read_only_failed_build_worker_preflight"
+        or preflight.get("mutation") != "none"
+        or preflight.get("build_terminal_sha256") != terminal_sha256
+        or preflight.get("source_context_sha256") != context_hash
+        or type(preflight.get("source_inputs")) is not int
+        or preflight.get("source_inputs") != len(source_files)
+        or not isinstance(build_result, dict)
+        or build_result.get("started") != terminal.get("started")
+        or build_result.get("finished") != terminal.get("finished")
+        or build_result.get("exit_code") != terminal.get("exit_code")
+        or build_result.get("source_unchanged") is not True
+        or build_result.get("log_sha256") != terminal.get("log_sha256")
+        or build_result.get("log_bytes") != terminal.get("log_bytes")
+        or preflight_time < terminal_finished
+    ):
+        raise BuildError("local_reconciliation_preflight_mismatch")
+    preflight_ledger_sha = preflight.get("ledger_sha256")
+    preflight_ledger = preflight.get("ledger")
+    if (
+        not isinstance(preflight_ledger_sha, str)
+        or re.fullmatch(r"[0-9a-f]{64}", preflight_ledger_sha) is None
+        or not isinstance(preflight_ledger, dict)
+        or preflight_ledger.get("schema") != LEDGER_SCHEMA
+        or not isinstance(preflight_ledger.get("entries"), list)
+    ):
+        raise BuildError("local_reconciliation_preflight_mismatch")
+    preflight_row = _validate_local_inflight_identity(
+        preflight_ledger, tag=tag, revision=revision, context_hash=context_hash
+    )
+
+    builder_id = setup.get("builder_container_id")
+    if not isinstance(builder_id, str) or re.fullmatch(r"[0-9a-f]{64}", builder_id) is None:
+        raise BuildError("local_reconciliation_builder_identity_invalid")
+    builder_inspect = preflight.get("builder_inspect")
+    if not isinstance(builder_inspect, dict):
+        raise BuildError("local_reconciliation_preflight_mismatch")
+    preflight_builder_id, preflight_builder_state, preflight_builder_pid = _builder_status_line(
+        {"builder": builder_inspect}, "builder"
+    )
+    if (
+        preflight_builder_id != builder_id
+        or preflight_builder_state != "running"
+        or preflight_builder_pid <= 0
+    ):
+        raise BuildError("local_reconciliation_builder_identity_invalid")
+
+    processes = preflight.get("processes")
+    if not isinstance(processes, list) or not processes or len(processes) > 256:
+        raise BuildError("local_reconciliation_worker_observation_invalid")
+    workers: list[dict[str, object]] = []
+    for process in processes:
+        if not isinstance(process, dict):
+            raise BuildError("local_reconciliation_worker_observation_invalid")
+        process_status = process.get("status")
+        if (
+            isinstance(process_status, dict)
+            and isinstance(process_status.get("Name"), str)
+            and process_status["Name"].startswith("next-build")
+        ):
+            workers.append(process)
+    if len(workers) != 1:
+        raise BuildError("local_reconciliation_worker_observation_invalid")
+    worker_pid = workers[0].get("pid")
+    worker_cgroup = workers[0].get("cgroup")
+    if (
+        type(worker_pid) is not int
+        or worker_pid <= 0
+        or not isinstance(worker_cgroup, str)
+        or not worker_cgroup.startswith(f"0::/system.slice/docker-{builder_id}.scope/buildkit/")
+        or len(worker_cgroup) > 2048
+    ):
+        raise BuildError("local_reconciliation_worker_identity_invalid")
+
+    cancel_started = _parse_buildkit_utc(cancellation.get("started"))
+    cancel_finished = _parse_buildkit_utc(cancellation.get("finished"))
+    if (
+        cancellation.get("kind") != "exact_owned_failed_build_cancellation"
+        or cancellation.get("preflight_sha256") != preflight_sha256
+        or cancellation.get("builder_id") != builder_id
+        or cancellation.get(f"owned_worker_{worker_pid}_absent") is not True
+        or cancellation.get("unrelated_app_unchanged") is not True
+        or cancellation.get("ledger_unchanged") is not True
+        or cancellation.get("no_image_cache_or_ledger_mutation") is not True
+        or cancel_started < preflight_time
+        or cancel_finished < cancel_started
+    ):
+        raise BuildError("local_reconciliation_cancellation_mismatch")
+    before_id, before_state, before_pid = _builder_status_line(cancellation, "builder_before")
+    after_id, after_state, after_pid = _builder_status_line(cancellation, "builder_after")
+    before_fields = _builder_status_fields(cancellation, "builder_before")
+    after_fields = _builder_status_fields(cancellation, "builder_after")
+    preflight_fields = _builder_status_fields({"builder": builder_inspect}, "builder")
+    stop_result = cancellation.get("stop_result")
+    if (
+        before_id != builder_id
+        or before_state != "running"
+        or before_pid <= 0
+        or after_id != builder_id
+        or after_state != "exited"
+        or after_pid != 0
+        or not isinstance(stop_result, dict)
+        or stop_result.get("exit_code") != 0
+        or cancellation.get("unrelated_app_before") != cancellation.get("unrelated_app_after")
+        or len(before_fields) != 7
+        or len(after_fields) != 7
+        or len(preflight_fields) != 6
+        or before_fields[0] != after_fields[0]
+        or before_fields[3:] != after_fields[3:]
+        or before_fields[0] != preflight_fields[0]
+        or before_fields[5] != preflight_fields[5]
+        or before_fields[6] != setup.get("buildkit_image_id")
+    ):
+        raise BuildError("local_reconciliation_cancellation_mismatch")
+
+    settled_at = _parse_buildkit_utc(settled.get("recorded_at"))
+    history = settled.get("history")
+    exact_tag = settled.get("exact_tag_inventory")
+    if (
+        settled.get("kind") != "post_cancellation_read_only_history_and_exact_tag"
+        or settled.get("mutation") != "none"
+        or settled.get("ledger_sha256") != preflight_ledger_sha
+        or settled.get("ledger_entries") != len(preflight_ledger["entries"])
+        or not isinstance(history, dict)
+        or not isinstance(exact_tag, dict)
+        or exact_tag.get("tag") != tag
+        or exact_tag.get("absent") is not True
+        or exact_tag.get("stdout") != ""
+        or settled_at < cancel_finished
+    ):
+        raise BuildError("local_reconciliation_settled_readback_mismatch")
+    history_path = history.get("path")
+    history_sha256 = history.get("sha256")
+    history_bytes = history.get("bytes")
+    if (
+        not isinstance(history_path, str)
+        or not isinstance(history_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", history_sha256) is None
+        or type(history_bytes) is not int
+        or not 1 <= history_bytes <= BUILDX_LISTING_MAX_BYTES
+        or history.get("current_window_rows") != []
+        or history.get("running_rows") != []
+    ):
+        raise BuildError("local_reconciliation_settled_readback_mismatch")
+    history_raw = _read_local_observation_bytes(Path(history_path), history_sha256)
+    if len(history_raw) != history_bytes:
+        raise BuildError("local_reconciliation_history_invalid")
+    history_count, window_count = _parse_local_history_snapshot(
+        history_raw, terminal_started=terminal_started, settled_at=settled_at
+    )
+    if history_count != history.get("row_count") or window_count != 0:
+        raise BuildError("local_reconciliation_history_window_mismatch")
+
+    return {
+        "terminal_sha256": terminal_sha256,
+        "preflight_sha256": preflight_sha256,
+        "cancellation_sha256": cancellation_sha256,
+        "settled_sha256": settled_sha256,
+        "history_sha256": history_sha256,
+        "history_row_count": history_count,
+        "terminal_started_utc": terminal_started.isoformat(),
+        "terminal_finished_utc": terminal_finished.isoformat(),
+        "preflight_recorded_utc": preflight_time.isoformat(),
+        "cancellation_finished_utc": cancel_finished.isoformat(),
+        "settled_recorded_utc": settled_at.isoformat(),
+        "builder_container_id": builder_id,
+        "observed_worker_pid": worker_pid,
+        "inflight_row": preflight_row,
+        "settled_path": str(settled_path),
+    }
+
+
+@_ledger_serialized
+def _reconcile_local_inflight_reservation(
+    *,
+    tag: str,
+    revision: str,
+    context_hash: str,
+    role: str,
+    local_failure_receipt_sha256: str | None = None,
+    terminal_observation: Path | None = None,
+    terminal_sha256: str | None = None,
+    preflight_observation: Path | None = None,
+    preflight_sha256: str | None = None,
+    cancellation_observation: Path | None = None,
+    cancellation_sha256: str | None = None,
+    settled_observation: Path | None = None,
+    settled_sha256: str | None = None,
+) -> dict[str, object]:
+    """Remove one proven local-build reservation without treating it as a PR failure."""
+    if role != "current":
+        raise BuildError("local_inflight_role_invalid")
+    local_mode = local_failure_receipt_sha256 is not None
+    external_values = (
+        terminal_observation,
+        terminal_sha256,
+        preflight_observation,
+        preflight_sha256,
+        cancellation_observation,
+        cancellation_sha256,
+        settled_observation,
+        settled_sha256,
+    )
+    external_mode = all(value is not None for value in external_values)
+    any_external_value = any(value is not None for value in external_values)
+    if local_mode == external_mode or any_external_value != external_mode:
+        raise BuildError("local_reconciliation_evidence_mode_invalid")
+    if external_mode:
+        _verify_local_observation_mount(LOCAL_OBSERVATION_ROOT)
+
+    setup, setup_sha256 = _current_setup_receipt_sha256()
+    ledger = _ledger_read(allow_inflight=True)
+    row = _validate_local_inflight_identity(
+        ledger, tag=tag, revision=revision, context_hash=context_hash
+    )
+    before_ledger_raw = _read_private_file(
+        LEDGER_FILE,
+        owner_uid=USER.pw_uid,
+        max_bytes=4 * 1024 * 1024,
+        error_code="candidate_ledger_invalid",
+    )
+    before_ledger_sha256 = hashlib.sha256(before_ledger_raw).hexdigest()
+    if not isinstance(setup.get("legacy_task_image_inventory"), dict):
+        raise BuildError("setup_legacy_inventory_invalid")
+
+    evidence: dict[str, object]
+    evidence_sha256: str
+    if local_mode:
+        if re.fullmatch(r"[0-9a-f]{64}", str(local_failure_receipt_sha256)) is None:
+            raise BuildError("local_reconciliation_failure_receipt_sha256_invalid")
+        run_dir = _failed_candidate_run_directory(revision, tag, context_hash)
+        raw = _read_private_file(
+            run_dir / "local-failure.json",
+            owner_uid=USER.pw_uid,
+            max_bytes=LOCAL_OBSERVATION_MAX_BYTES,
+            error_code="local_reconciliation_failure_receipt_unavailable",
+        )
+        if hashlib.sha256(raw).hexdigest() != local_failure_receipt_sha256:
+            raise BuildError("local_reconciliation_failure_receipt_sha256_mismatch")
+        try:
+            failure = json.loads(
+                raw,
+                object_pairs_hook=_unique_json_object,
+                parse_constant=_reject_json_constant,
+            )
+        except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+            raise BuildError("local_reconciliation_failure_receipt_invalid") from exc
+        backend = failure.get("backend_cancellation") if isinstance(failure, dict) else None
+        builder_before = (
+            failure.get("builder_generation_before") if isinstance(failure, dict) else None
+        )
+        failure_finished = (
+            _parse_buildkit_utc(failure.get("finished_utc")) if isinstance(failure, dict) else None
+        )
+        if (
+            not isinstance(failure, dict)
+            or failure.get("schema") != LOCAL_FAILURE_SCHEMA
+            or failure.get("status") != "failed"
+            or failure.get("tag") != tag
+            or failure.get("revision") != revision
+            or failure.get("context_sha256") != context_hash
+            or failure.get("role") != role
+            or failure.get("builder") != BUILDER
+            or failure.get("setup_receipt_sha256") != setup_sha256
+            or failure.get("ledger_reservation_retained") is not True
+            or failure.get("reservation_verification_error") is not None
+            or failure.get("failure_cause") != "unproven"
+            or failure.get("local_tag_and_placeholder_absent") is not True
+            or failure.get("remaining_inventory_matches") is not True
+            or failure.get("reservation_ledger_sha256") != before_ledger_sha256
+            or failure.get("failure_ledger_sha256") != before_ledger_sha256
+            or not isinstance(backend, dict)
+            or backend.get("status") != "verified_stopped_same_generation"
+            or not isinstance(builder_before, dict)
+            or backend.get("builder_container_id") != builder_before.get("container_id")
+            or backend.get("stop_grace_seconds") != LOCAL_BUILDKIT_STOP_GRACE_SECONDS
+            or failure_finished is None
+            or failure_finished > datetime.now(UTC)
+        ):
+            raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
+        backend_generation = backend.get("generation")
+        if (
+            set(builder_before)
+            != {
+                "container_id",
+                "name",
+                "image_id",
+                "created",
+                "started",
+                "restart_count",
+                "running",
+                "pid",
+            }
+            or builder_before.get("name") != CONTAINER_NAME
+            or builder_before.get("image_id") != setup.get("buildkit_image_id")
+            or builder_before.get("container_id") != setup.get("builder_container_id")
+            or not isinstance(builder_before.get("container_id"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", str(builder_before.get("container_id"))) is None
+            or type(builder_before.get("restart_count")) is not int
+            or builder_before.get("restart_count", -1) < 0
+        ):
+            raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
+        _parse_buildkit_utc(builder_before.get("created"))
+        _parse_buildkit_utc(builder_before.get("started"))
+        if (
+            not isinstance(backend_generation, dict)
+            or builder_before.get("running") is not True
+            or type(builder_before.get("pid")) is not int
+            or builder_before.get("pid", 0) <= 0
+            or any(
+                builder_before.get(source_field) != backend_generation.get(target_field)
+                for source_field, target_field in (
+                    ("created", "created"),
+                    ("started", "started"),
+                    ("restart_count", "restart_count"),
+                )
+            )
+        ):
+            raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
+        evidence = {
+            "mode": "local_failure_receipt",
+            "failure_receipt_sha256": local_failure_receipt_sha256,
+            "failure_finished_utc": failure_finished.isoformat(),
+            "primary_error_code": failure.get("primary_error_code"),
+            "backend_cancellation": backend,
+        }
+        evidence_sha256 = str(local_failure_receipt_sha256)
+    else:
+        if any(value is None for value in external_values):
+            raise BuildError("local_reconciliation_evidence_mode_invalid")
+        if (
+            terminal_observation is None
+            or terminal_sha256 is None
+            or preflight_observation is None
+            or preflight_sha256 is None
+            or cancellation_observation is None
+            or cancellation_sha256 is None
+            or settled_observation is None
+            or settled_sha256 is None
+        ):
+            raise BuildError("local_reconciliation_evidence_mode_invalid")
+        terminal, _terminal_raw = _read_local_observation(terminal_observation, terminal_sha256)
+        preflight, _preflight_raw = _read_local_observation(preflight_observation, preflight_sha256)
+        cancellation, _cancellation_raw = _read_local_observation(
+            cancellation_observation, cancellation_sha256
+        )
+        settled, _settled_raw = _read_local_observation(settled_observation, settled_sha256)
+        evidence = _validate_orphan_observations(
+            tag=tag,
+            revision=revision,
+            context_hash=context_hash,
+            setup=setup,
+            terminal=terminal,
+            terminal_sha256=terminal_sha256,
+            preflight=preflight,
+            preflight_sha256=preflight_sha256,
+            cancellation=cancellation,
+            cancellation_sha256=cancellation_sha256,
+            settled=settled,
+            settled_sha256=settled_sha256,
+            settled_path=settled_observation,
+        )
+        if preflight.get("ledger_sha256") != before_ledger_sha256:
+            raise BuildError("local_reconciliation_ledger_binding_mismatch")
+        preflight_ledger = preflight.get("ledger")
+        preflight_row = _validate_local_inflight_identity(
+            preflight_ledger, tag=tag, revision=revision, context_hash=context_hash
+        )
+        if preflight_row != row:
+            raise BuildError("local_reconciliation_ledger_binding_mismatch")
+        evidence["mode"] = "external_terminal_and_readback"
+        evidence_sha256 = hashlib.sha256(
+            json.dumps(
+                {
+                    "terminal": terminal_sha256,
+                    "preflight": preflight_sha256,
+                    "cancellation": cancellation_sha256,
+                    "settled": settled_sha256,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+
+    generation = _builder_generation(setup)
+    if (
+        generation.get("container_id") != setup.get("builder_container_id")
+        or generation.get("image_id") != setup.get("buildkit_image_id")
+        or generation.get("name") != CONTAINER_NAME
+    ):
+        raise BuildError("local_reconciliation_builder_identity_invalid")
+    live_history = _assert_no_running_buildkit_history()
+    inventory = _image_inventory()
+    all_image_ids = _all_image_ids()
+    if tag in inventory or row["image_id"] in all_image_ids:
+        raise BuildError("local_reconciliation_candidate_image_still_present")
+    entries = ledger.get("entries")
+    if not isinstance(entries, list):
+        raise BuildError("candidate_ledger_invalid")
+    remaining_entries = [candidate for candidate in entries if candidate is not row]
+    remaining_ledger: dict[str, object] = {
+        "schema": LEDGER_SCHEMA,
+        "entries": remaining_entries,
+    }
+    legacy = setup["legacy_task_image_inventory"]
+    expected_inventory = _expected_managed_inventory(remaining_ledger, legacy)
+    if inventory != expected_inventory:
+        raise BuildError("local_reconciliation_inventory_mismatch")
+    _verify_ledger_inventory(remaining_ledger, setup)
+
+    run_dir = _failed_candidate_run_directory(revision, tag, context_hash)
+    recovery_path = run_dir / f"local-inflight-reconciliation-{evidence_sha256}.json"
+    if os.path.lexists(recovery_path):
+        raise BuildError("local_reconciliation_receipt_already_exists")
+    receipt: dict[str, object] = {
+        "schema": LOCAL_RECONCILIATION_SCHEMA,
+        "status": "local_inflight_reconciled",
+        "tag": tag,
+        "revision": revision,
+        "context_sha256": context_hash,
+        "role": role,
+        "inflight_image_id": row["image_id"],
+        "setup_receipt_sha256": setup_sha256,
+        "pre_reconciliation_ledger_sha256": before_ledger_sha256,
+        "external_evidence": evidence,
+        "current_builder": {
+            key: generation[key]
+            for key in (
+                "container_id",
+                "created",
+                "started",
+                "restart_count",
+                "running",
+                "pid",
+            )
+        },
+        "current_buildkit_history": live_history,
+        "current_managed_inventory_sha256": hashlib.sha256(
+            json.dumps(inventory, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "cause": "unproven",
+        "reconciled_utc": datetime.now(UTC).isoformat(),
+    }
+    temporary: Path | None = None
+    temporary_identity: tuple[int, int] | None = None
+    try:
+        temporary, temporary_identity, receipt_sha256, receipt_size = _prepare_receipt_publication(
+            recovery_path, receipt
+        )
+        if _ledger_file_sha256() != before_ledger_sha256:
+            raise BuildError("local_reconciliation_ledger_changed_before_write")
+        _atomic_json(LEDGER_FILE, remaining_ledger)
+        try:
+            committed_ledger = _ledger_read()
+            if committed_ledger != remaining_ledger:
+                raise BuildError("local_reconciliation_ledger_commit_mismatch")
+            _verify_ledger_inventory(committed_ledger, setup)
+            if temporary is None or temporary_identity is None:
+                raise BuildError("local_reconciliation_receipt_temporary_invalid")
+            _publish_receipt_no_replace(temporary, recovery_path, temporary_identity, receipt_size)
+        except (BuildError, OSError) as publish_error:
+            try:
+                _atomic_json(LEDGER_FILE, ledger)
+                if _ledger_file_sha256() != before_ledger_sha256:
+                    raise BuildError("local_reconciliation_ledger_rollback_unverified")
+                _verify_local_inflight_inventory(
+                    ledger,
+                    setup,
+                    tag=tag,
+                    revision=revision,
+                    context_hash=context_hash,
+                )
+            except (BuildError, OSError) as rollback_error:
+                failure = BuildError("local_reconciliation_commit_and_rollback_failed")
+                if isinstance(publish_error, BuildError):
+                    failure.add_secondary(publish_error.code)
+                else:
+                    failure.add_secondary("local_reconciliation_receipt_publish_failed")
+                if isinstance(rollback_error, BuildError):
+                    failure.add_secondary(rollback_error.code)
+                else:
+                    failure.add_secondary("local_reconciliation_ledger_rollback_failed")
+                raise failure from publish_error
+            if isinstance(publish_error, BuildError):
+                raise publish_error
+            raise BuildError("local_reconciliation_receipt_publish_failed") from publish_error
+    except OSError as exc:
+        raise BuildError("local_reconciliation_receipt_write_failed") from exc
+    finally:
+        if temporary is not None and temporary_identity is not None:
+            _unlink_owned_receipt_temporary(temporary, temporary_identity)
+    return {
+        "status": "local_inflight_reconciled",
+        "tag": tag,
+        "revision": revision,
+        "context_sha256": context_hash,
+        "evidence_sha256": evidence_sha256,
+        "reconciliation_receipt": str(recovery_path),
+        "reconciliation_receipt_sha256": receipt_sha256,
+    }
 
 
 @_ledger_serialized
@@ -2281,28 +3193,136 @@ def _complete_managed_image(
     )
 
 
-@_ledger_serialized
-def _discard_unloaded_local_reservation(tag: str, revision: str, setup: dict[str, object]) -> None:
-    ledger = _ledger_read(allow_inflight=True)
-    entries = ledger["entries"]
-    assert isinstance(entries, list)
-    rows = [
-        row
-        for row in entries
-        if isinstance(row, dict) and row.get("tag") == tag and row.get("revision") == revision
-    ]
-    if not rows:
-        return
+def _local_inflight_rows(ledger: dict[str, object]) -> list[dict[str, object]]:
+    entries = ledger.get("entries")
+    if not isinstance(entries, list):
+        raise BuildError("candidate_ledger_invalid")
+    return [row for row in entries if isinstance(row, dict) and row.get("status") == "inflight"]
+
+
+def _validate_local_inflight_identity(
+    ledger: dict[str, object], *, tag: str, revision: str, context_hash: str
+) -> dict[str, object]:
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", revision) is None
+        or re.fullmatch(r"[0-9a-f]{64}", context_hash) is None
+        or re.fullmatch(
+            rf"stock-probs:local-{re.escape(revision[:12])}-{re.escape(context_hash[:12])}-[0-9a-f]{{12}}",
+            tag,
+        )
+        is None
+    ):
+        raise BuildError("local_inflight_identity_invalid")
+    rows = _local_inflight_rows(ledger)
+    matches = [row for row in rows if row.get("tag") == tag]
     if (
         len(rows) != 1
-        or rows[0].get("status") != "inflight"
-        or rows[0].get("role") != "current"
-        or tag in _image_inventory()
+        or len(matches) != 1
+        or set(matches[0]) != {"image_id", "tag", "revision", "context_sha256", "role", "status"}
+        or matches[0].get("image_id") != _reservation_image_id(tag)
+        or matches[0].get("revision") != revision
+        or matches[0].get("context_sha256") != context_hash
+        or matches[0].get("role") != "current"
     ):
-        return
-    ledger["entries"] = [row for row in entries if row is not rows[0]]
-    _atomic_json(LEDGER_FILE, ledger)
-    _verify_ledger_inventory(ledger, setup)
+        raise BuildError("local_inflight_ledger_binding_mismatch")
+    return matches[0]
+
+
+def _ledger_file_sha256() -> str:
+    raw = _read_private_file(
+        LEDGER_FILE,
+        owner_uid=USER.pw_uid,
+        max_bytes=4 * 1024 * 1024,
+        error_code="candidate_ledger_invalid",
+    )
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _record_local_build_failure(
+    *,
+    run_dir: Path,
+    tag: str,
+    revision: str,
+    context_hash: str,
+    setup_sha256: str | None,
+    reservation_ledger_sha256: str,
+    started_utc: str,
+    build_started_utc: str | None,
+    build_completed: bool,
+    primary_error_code: str,
+    secondary_errors: list[str],
+    builder_generation: dict[str, object] | None,
+    backend_cancellation: dict[str, object],
+) -> str:
+    """Publish bounded failure facts without releasing an in-flight reservation."""
+    ledger_retained = False
+    reservation_error: str | None = None
+    failure_ledger_sha256: str | None = None
+    tag_absent: bool | None = None
+    inventory_matches_remaining: bool | None = None
+    try:
+        with _candidate_ledger_lock():
+            ledger = _ledger_read(allow_inflight=True)
+            row = _validate_local_inflight_identity(
+                ledger, tag=tag, revision=revision, context_hash=context_hash
+            )
+            failure_ledger_sha256 = _ledger_file_sha256()
+            if failure_ledger_sha256 != reservation_ledger_sha256:
+                raise BuildError("local_inflight_ledger_changed_during_build")
+            ledger_retained = True
+            setup = setup_receipt()
+            legacy = setup.get("legacy_task_image_inventory")
+            if not isinstance(legacy, dict):
+                raise BuildError("setup_legacy_inventory_invalid")
+            inventory = _image_inventory()
+            all_image_ids = _all_image_ids()
+            tag_absent = tag not in inventory and row["image_id"] not in all_image_ids
+            remaining = [candidate for candidate in ledger["entries"] if candidate is not row]
+            remaining_ledger = {"schema": LEDGER_SCHEMA, "entries": remaining}
+            inventory_matches_remaining = inventory == _expected_managed_inventory(
+                remaining_ledger, legacy
+            )
+    except BuildError as exc:
+        reservation_error = exc.code
+        secondary_errors.append(exc.code)
+
+    payload: dict[str, object] = {
+        "schema": LOCAL_FAILURE_SCHEMA,
+        "status": "failed",
+        "tag": tag,
+        "revision": revision,
+        "context_sha256": context_hash,
+        "role": "current",
+        "builder": BUILDER,
+        "setup_receipt_sha256": setup_sha256,
+        "reservation_ledger_sha256": reservation_ledger_sha256,
+        "failure_ledger_sha256": failure_ledger_sha256,
+        "ledger_reservation_retained": ledger_retained,
+        "reservation_verification_error": reservation_error,
+        "local_tag_and_placeholder_absent": tag_absent,
+        "remaining_inventory_matches": inventory_matches_remaining,
+        "run_started_utc": started_utc,
+        "build_started_utc": build_started_utc,
+        "build_completed": build_completed,
+        "finished_utc": datetime.now(UTC).isoformat(),
+        "primary_error_code": primary_error_code,
+        "secondary_error_codes": list(secondary_errors),
+        "builder_generation_before": builder_generation,
+        "backend_cancellation": backend_cancellation,
+        "failure_cause": "unproven",
+    }
+    receipt_path = run_dir / "local-failure.json"
+    temporary: Path | None = None
+    identity: tuple[int, int] | None = None
+    try:
+        temporary, identity, digest, size = _prepare_receipt_publication(receipt_path, payload)
+        _publish_receipt_no_replace(temporary, receipt_path, identity, size)
+        return digest
+    except OSError as exc:
+        raise BuildError("local_failure_receipt_write_failed") from exc
+    finally:
+        if temporary is not None and identity is not None:
+            _unlink_owned_receipt_temporary(temporary, identity)
 
 
 @_ledger_serialized
@@ -2623,8 +3643,24 @@ def build_local_image() -> dict[str, str]:
             check_space(space_paths, MIN_FREE)
             run_dir = _managed_run_dir(revision, tag, context_hash)
             ledger = _reserve_managed_tags(setup, (tag,), revision, context_hash, "current")
+        reservation_ledger_sha256 = ""
+        setup_sha256: str | None = None
+        run_started_utc = datetime.now(UTC).isoformat()
+        build_started_utc: str | None = None
+        builder_generation: dict[str, object] | None = None
+        build_attempt_started = False
+        build_completed = False
+        backend_cancellation: dict[str, object] = {"status": "not_started"}
         try:
+            reservation_ledger_sha256 = _ledger_file_sha256()
+            setup, setup_sha256 = _current_setup_receipt_sha256()
+            inspect_builder(setup)
+            builder_generation = _builder_generation(setup)
+            if builder_generation["running"] is not True:
+                raise BuildError("local_builder_not_running_before_build")
             command = _local_buildx_argv(tag, revision, expected_platform, context, iidfile)
+            build_started_utc = datetime.now(UTC).isoformat()
+            build_attempt_started = True
             _run_bounded_build(
                 command,
                 expected_uuid=expected_uuid,
@@ -2633,6 +3669,7 @@ def build_local_image() -> dict[str, str]:
                 env=ENV,
                 timeout=TIMEOUT,
             )
+            build_completed = True
             try:
                 image_id = iidfile.read_text(encoding="ascii").strip()
             except OSError as exc:
@@ -2665,8 +3702,69 @@ def build_local_image() -> dict[str, str]:
                 )
                 _verify_ledger_inventory(ledger, setup)
                 _write_local_current(tag, image_id, revision, context_hash)
-        except BuildError:
-            _discard_unloaded_local_reservation(tag, revision, setup)
+        except BaseException as primary_error:
+            if isinstance(primary_error, BuildError):
+                primary_error_code = primary_error.code
+            elif isinstance(primary_error, KeyboardInterrupt):
+                primary_error_code = "local_build_interrupted"
+            else:
+                primary_error_code = "local_build_unexpected_exception"
+            secondary_errors: list[str] = []
+            backend_may_be_active = (
+                build_attempt_started
+                and not build_completed
+                and primary_error_code != "bounded_build_command_start_failed"
+            )
+            if backend_may_be_active:
+                try:
+                    current_setup, current_setup_sha256 = _current_setup_receipt_sha256()
+                    if current_setup_sha256 != setup_sha256:
+                        raise BuildError("local_builder_setup_receipt_changed")
+                    if builder_generation is None:
+                        raise BuildError("local_builder_generation_unavailable")
+                    with _candidate_ledger_lock():
+                        ledger = _ledger_read(allow_inflight=True)
+                        _validate_local_inflight_identity(
+                            ledger, tag=tag, revision=revision, context_hash=context_hash
+                        )
+                    backend_cancellation = _stop_owned_builder_after_local_failure(
+                        current_setup, builder_generation
+                    )
+                except BuildError as cancellation_error:
+                    backend_cancellation = {
+                        "status": "unverified",
+                        "error_code": cancellation_error.code,
+                    }
+                    secondary_errors.append(cancellation_error.code)
+            try:
+                failure_receipt_sha256 = _record_local_build_failure(
+                    run_dir=run_dir,
+                    tag=tag,
+                    revision=revision,
+                    context_hash=context_hash,
+                    setup_sha256=setup_sha256,
+                    reservation_ledger_sha256=reservation_ledger_sha256,
+                    started_utc=run_started_utc,
+                    build_started_utc=build_started_utc,
+                    build_completed=build_completed,
+                    primary_error_code=primary_error_code,
+                    secondary_errors=secondary_errors,
+                    builder_generation=builder_generation,
+                    backend_cancellation=backend_cancellation,
+                )
+                if isinstance(primary_error, BuildError):
+                    primary_error.local_failure_receipt_path = str(run_dir / "local-failure.json")
+                    primary_error.local_failure_receipt_sha256 = failure_receipt_sha256
+            except (BuildError, OSError) as receipt_error:
+                receipt_error_code = (
+                    receipt_error.code
+                    if isinstance(receipt_error, BuildError)
+                    else "local_failure_receipt_write_failed"
+                )
+                secondary_errors.append(receipt_error_code)
+            if isinstance(primary_error, BuildError):
+                for error_code in secondary_errors:
+                    primary_error.add_secondary(error_code)
             raise
     return {
         "status": "built",
@@ -3100,6 +4198,16 @@ def main() -> int:
     parser.add_argument("--ack-retirement-receipt", type=Path)
     parser.add_argument("--release-failed-inflight-reservation", action="store_true")
     parser.add_argument("--failure-receipt-sha256")
+    parser.add_argument("--reconcile-local-inflight-reservation", action="store_true")
+    parser.add_argument("--local-failure-receipt-sha256")
+    parser.add_argument("--terminal-observation", type=Path)
+    parser.add_argument("--terminal-observation-sha256")
+    parser.add_argument("--preflight-observation", type=Path)
+    parser.add_argument("--preflight-observation-sha256")
+    parser.add_argument("--cancellation-observation", type=Path)
+    parser.add_argument("--cancellation-observation-sha256")
+    parser.add_argument("--settled-observation", type=Path)
+    parser.add_argument("--settled-observation-sha256")
     parser.add_argument("--retire-schema13-rehearsal-tag")
     parser.add_argument("--retire-schema13-rehearsal-image-id")
     parser.add_argument("--plan-arm64-cleanup", action="store_true")
@@ -3151,6 +4259,94 @@ def main() -> int:
             return 1
         print(json.dumps(result, sort_keys=True))
         return 0
+    local_reconciliation_names = {
+        "reconcile_local_inflight_reservation",
+        "local_failure_receipt_sha256",
+        "terminal_observation",
+        "terminal_observation_sha256",
+        "preflight_observation",
+        "preflight_observation_sha256",
+        "cancellation_observation",
+        "cancellation_observation_sha256",
+        "settled_observation",
+        "settled_observation_sha256",
+        "tag",
+        "revision",
+        "context_sha256",
+        "role",
+    }
+    local_evidence_names = local_reconciliation_names - {
+        "reconcile_local_inflight_reservation",
+        "tag",
+        "revision",
+        "context_sha256",
+        "role",
+    }
+    local_reconciliation_requested = args.reconcile_local_inflight_reservation or any(
+        getattr(args, name) is not None for name in local_evidence_names
+    )
+    if local_reconciliation_requested:
+        if not args.reconcile_local_inflight_reservation or any(
+            value != parser.get_default(name)
+            for name, value in vars(args).items()
+            if name not in local_reconciliation_names
+        ):
+            parser.error(
+                "local in-flight reconciliation requires only its explicit evidence and identity"
+            )
+        if (
+            args.tag is None
+            or args.revision is None
+            or args.context_sha256 is None
+            or args.role != "current"
+        ):
+            parser.error("local in-flight reconciliation requires the exact current local identity")
+        local_evidence = args.local_failure_receipt_sha256 is not None
+        external_fields = (
+            args.terminal_observation,
+            args.terminal_observation_sha256,
+            args.preflight_observation,
+            args.preflight_observation_sha256,
+            args.cancellation_observation,
+            args.cancellation_observation_sha256,
+            args.settled_observation,
+            args.settled_observation_sha256,
+        )
+        external_complete = all(value is not None for value in external_fields)
+        if (
+            local_evidence == external_complete
+            or any(value is not None for value in external_fields) != external_complete
+        ):
+            parser.error("local in-flight reconciliation requires one complete evidence mode")
+        try:
+            result = _reconcile_local_inflight_reservation(
+                tag=args.tag,
+                revision=args.revision,
+                context_hash=args.context_sha256,
+                role=args.role,
+                local_failure_receipt_sha256=args.local_failure_receipt_sha256,
+                terminal_observation=args.terminal_observation,
+                terminal_sha256=args.terminal_observation_sha256,
+                preflight_observation=args.preflight_observation,
+                preflight_sha256=args.preflight_observation_sha256,
+                cancellation_observation=args.cancellation_observation,
+                cancellation_sha256=args.cancellation_observation_sha256,
+                settled_observation=args.settled_observation,
+                settled_sha256=args.settled_observation_sha256,
+            )
+        except BuildError as exc:
+            failure: dict[str, object] = {"status": "failed", "stage": exc.code}
+            if exc.secondary_errors:
+                failure["secondary_errors"] = exc.secondary_errors
+            print(
+                json.dumps(failure, sort_keys=True),
+                file=sys.stderr,
+            )
+            return 1
+        print(json.dumps(result, sort_keys=True))
+        return 0
+    if args.reconcile_local_inflight_reservation:
+        parser.error("local in-flight reconciliation requires the exact current local identity")
     if args.release_failed_inflight_reservation or args.failure_receipt_sha256 is not None:
         if (
             not args.release_failed_inflight_reservation
@@ -3758,8 +4954,15 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except BuildError as exc:
-        print(
-            json.dumps({"status": "failed", "stage": exc.code}, sort_keys=True),
-            file=sys.stderr,
-        )
+        failure: dict[str, object] = {"status": "failed", "stage": exc.code}
+        if exc.secondary_errors:
+            failure["secondary_errors"] = exc.secondary_errors
+        receipt_path = getattr(exc, "local_failure_receipt_path", None)
+        receipt_sha256 = getattr(exc, "local_failure_receipt_sha256", None)
+        if isinstance(receipt_path, str) and isinstance(receipt_sha256, str):
+            failure["local_failure_receipt"] = {
+                "path": receipt_path,
+                "sha256": receipt_sha256,
+            }
+        print(json.dumps(failure, sort_keys=True), file=sys.stderr)
         raise SystemExit(1) from exc

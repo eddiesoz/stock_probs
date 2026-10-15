@@ -120,6 +120,22 @@ for exact bindings and status.
 
 ## Bounded local Docker builds and worker verification
 
+A failed local build retains its exact in-flight ledger row and publishes bounded failure facts.
+CLI process-group cancellation does not establish that a remote BuildKit `RUN` stopped. The
+failure handler checks the setup-bound full container ID, start generation, configuration and
+ownership before stopping only that builder; an uncertain stop or receipt write keeps recovery
+held. Preserve the primary build error separately from cleanup errors.
+
+Use the typed `--reconcile-local-inflight-reservation` operation in
+`scripts/bounded_docker_build.py` with the exact local tag, revision, context digest and current
+role. Supply either the genuine local-failure receipt digest or all four separately hashed
+terminal, worker-preflight, cancellation and settled observations. External observations must
+remain private on the verified SD mount. The operation rechecks current history, tag/full-ID
+absence, protected inventory and ledger consistency before publishing an exclusive complete
+receipt and removing only the reservation. A publication error restores the ledger; missing
+historical BuildKit terminal evidence stays Unavailable. Never use the PR-failure mode, edit the
+ledger manually, or reconstruct a missing failure receipt. See [E33](../../MVP-PLAN.md#r-astra-121-e33-local-build-failure-and-reservation-recovery).
+
 Use `./scripts/local-compose.sh build` or `./scripts/local-compose.sh up --build -d` for local
 root-Compose builds. The launcher performs the bounded build; `compose.yaml` intentionally has no
 build context and requires its explicit local-image pointer. Keep at least 4 GiB free before an
