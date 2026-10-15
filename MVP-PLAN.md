@@ -7159,3 +7159,62 @@ The authored-guide update passed current-map documentation checks against
 `11:34:40.043938Z`–`11:34:40.524269Z` (177 checked, 9 changed, no exemptions or violations); and
 staged/unstaged `git diff --check` **Passed** at `11:34:40.524306Z`–`11:34:40.611766Z`. Documentation
 pytest was not run. These are docs-scope checks only.
+
+### R-ASTRA-121 E32 — lazy provider startup and host reserve checkpoint
+
+T13's actual-host trial on 2026-10-15 **Failed** before SDK, model or MCP execution. Thirty
+startup observations over 30 seconds ranged from 505,900 to 513,712 KiB against the unchanged
+524,288 KiB floor. The exact original 5ad/787, schema-13, invited-ready service was observed
+restored; restoration is not guaranteed by that observation. The trial terminal SHA-256 is
+`eaa9bb1cd65a0f4a0521704854fa39e2b8318dd5eaa5eeb313ea3338bea41ed8`; independent artifact
+integrity review `1d4ee0747f2ad11bd98110e0d1b8eb70ea92f192ddd956906cc309676a0bdb42` accepts
+the failed result's bindings, not native or actual 1 GB acceptance. Its packet is
+`/var/tmp/r12r/a9-pr9-native-t13-2882c487-a620-490b-88a2-ee9126925006`.
+
+The subsequent source repair defers the constant-name Yahoo and curl imports until their
+market-data/news operations. Fixture and Yahoo-configured application startup remain free of
+those dependencies. Missing dependencies produce fixed `provider_unavailable` errors; only an
+explicit `provider_busy` response uses the capacity message in both API and headline client.
+The local import-only PSS delta fell from 76,295 to 6,630 KiB, approximately 68 MiB less. This is
+not a host availability measurement, a runtime-provider test, or a cause for the earlier failure.
+The implementation receipt is `2b4899c8797ddd493ca0aa418e5ddd2507bfc78ac823f3f9de54e437a248a01b`;
+the news-client supplement `fc6cbf303a7ef0defffb614b544276d397316532ceb54088bb50fbec6e6b9618`
+corrects the initial mistaken claim that no frontend news client existed.
+
+Independent focused QA **Passed** with no P1/P2 finding at 16:09:34–16:12:05 UTC: 54 provider,
+market and fresh-interpreter tests; 19 API news tests with 106 deselected; 11 news-service tests;
+and one Node contract executing the actual headline function. Ruff, security selection, format,
+JavaScript syntax and diff checks passed. The original receipt is
+`/var/tmp/r12r/lazy-news-independent-20261015T160800Z/independent-final-receipt.json`, SHA-256
+`a945da00c67aff4aa1a53667928d09357b578a574f1c915697a7f48c03178a82`.
+Its incorrect root-level JUnit count projection is preserved; supplement
+`58311df72ca3bb7be18f4b391974cf434c9c42708538eb9da8a7c2f2bbbcabfa` confirms nested-suite
+counts of 54, 19 and 11 with no failures, errors or skips. Tests used Python 3.11.15, Node
+22.22.2, SD temporary storage and child umask `022`; no external provider or host call ran.
+
+The full approved `./scripts/build-frontend.sh` path **Passed** in a source-bound SD checkout at
+16:09:51–16:11:58 UTC: typecheck, production build and 74 frontend checks. All 88 inputs were
+unchanged; all 53 served/export pairs matched. Terminal SHA-256:
+`19668f1f176e8aaa33a36750d1d32d7ca91fba3519360836d666eb533bef4131`. The worktree's sole stale
+generated export asset was aligned after preserving its prior bytes; the served files already
+matched the fresh build. Alignment receipt `8a4991ab9207a9604d56242aac75ccb83f396baf2b504fea75fe2fa3c0030f41`
+records the same 53 pairs without claiming a second build. Artifacts are under
+`/var/tmp/r12r/hotfix-lazy-full-frontend-8e5864ce-2ae1-4ef2-beec-e4d8012693c6`.
+
+The new recovery-overlay source pins both the unchanged da276 provider and the reviewed lazy
+replacement, rejects drift before replacement, and includes the provider in its six-file overlay
+manifest. It retains the fixed migration, readiness and UID/capability contracts and the historic
+recovery API; it does not copy candidate API code into the base. Builder and independent scoped
+checks each **Passed** 12 tests with 347 deselected and two existing warnings, plus Ruff,
+security, format and diff checks. Independent receipt
+`/var/tmp/r12r/recovery-overlay-independent-20261015T161925Z/independent-receipt.json`, SHA-256
+`598fcc2a0091e660ae8eeb5018aac503b96520826bc82799c3b0336b0fe41476`, binds 15 unchanged inputs.
+This prepares a new recovery image; none was built or activated during those checks.
+
+The old bd30 image/pair and earlier focused eight-case browser result retain their original
+bindings; they cannot accept this changed source. A fresh candidate and recovery overlay/image,
+independent recovery review, real native functional check, actual combined 1 GB test, canonical,
+security, exact-PR rollback and release gates remain open. No paid provider, resize, deployment,
+rollout or email occurred for this source repair. The existing 1 GB host, backups and US$15
+monthly total cap remain fixed. Genuine free-Zen OpenCode restoration remains Priority 0 before
+the four visible-feature releases.

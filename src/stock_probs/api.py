@@ -4625,10 +4625,21 @@ def create_app(
         try:
             return cast(dict[str, Any], app.state.service.news(query.symbol, limit=query.limit))
         except DomainError as exc:
+            if exc.status_code == 503:
+                if exc.code == "provider_busy":
+                    public_error = (
+                        "provider_busy",
+                        "News retrieval capacity is busy; try again shortly.",
+                    )
+                else:
+                    public_error = (
+                        "provider_unavailable",
+                        "The news provider is temporarily unavailable.",
+                    )
+                raise DomainError(*public_error, status_code=503) from None
             public_error = {
                 422: ("validation_error", "Request validation failed."),
                 502: ("provider_unavailable", "The news provider is temporarily unavailable."),
-                503: ("provider_busy", "News retrieval capacity is busy; try again shortly."),
             }.get(exc.status_code)
             if public_error is None:
                 raise

@@ -1094,3 +1094,10 @@ typed recorded-image rollback. Before enabling the assistant again, restore the 
 candidate and verify disabled readiness, then use owner-canary followed by invited rollout.
 Recovery registration or historical disposable-volume evidence alone does not authorize treating
 it as a tested production baseline or a proven memory saving.
+
+The current source defers Yahoo market-data and news dependency imports until the respective
+request. This reduces measured local cold-start allocations; a real provider request still loads
+its dependencies and requires the existing resource checks. T13 stopped below the startup reserve
+before OpenCode ran. A fresh recovery overlay, image and compatibility evidence are required before
+another baseline trial; the original recovery image remains protected. See
+[E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint).

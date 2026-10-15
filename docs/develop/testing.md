@@ -645,6 +645,14 @@ opt-in local-Docker test deselected, plus Ruff, Ruff security, format and diff c
 source hashes; builder-selected 24 tests also passed with 255 deselected. Parent source review
 passed with no findings. The original preflight **Fail** at 517,480 KiB against the 524,288 KiB
 startup floor remains unchanged. T9 separately failed at 519,432 KiB; its twelve later above-floor
-observations do not change that result. No post-repair host retry, native answer, fresh image, or actual
-1 GB acceptance is established. See [E22](../../MVP-PLAN.md#r-astra-121-e22-startup-reserve-preflight-repair-checkpoint)
+observations do not change that result. Those E29 checks did not establish a post-repair host retry,
+native answer, fresh image or actual 1 GB acceptance. See [E22](../../MVP-PLAN.md#r-astra-121-e22-startup-reserve-preflight-repair-checkpoint)
 and [E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-startup-wait-checker-checkpoint).
+
+The later T13 trial still failed its startup reserve before the SDK or model ran. The subsequent
+lazy-provider repair has independent focused checks for fresh-process startup without Yahoo,
+pandas, NumPy or curl imports, guarded fixture requests, on-demand synthetic provider calls,
+dependency failures, safe API errors and the actual headline client's busy/unavailable branches.
+The approved frontend build and stage passed in a source-bound checkout. These checks do not
+replace current-image native, actual-host resource, recovery, canonical or release acceptance.
+See [E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint).

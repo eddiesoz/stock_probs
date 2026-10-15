@@ -2329,3 +2329,10 @@ signed schema-13 backup and the local compatibility/data-continuity scope, then 
 exact typed restoration path. Backup verification must not rewrite the running rollout configuration,
 promote a restore, rotate trust state or remove existing artifacts. Source/profile evidence alone
 does not accept a production transition, memory saving, native fix, owner canary or release.
+
+For the R-ASTRA-121 startup repair, load Yahoo's optional clients only at their market/news call
+sites. Keep fixture and normal application startup free of those imports; do not prewarm them to
+hide a dependency failure. Distinguish explicit `provider_busy` from sanitized
+`provider_unavailable` through the API and headline clients. Local cold-import savings do not
+establish host capacity. A changed recovery overlay requires its own newly bound image and pair;
+retain the original registered recovery image and the unchanged 512/128 MiB reserve guards.
