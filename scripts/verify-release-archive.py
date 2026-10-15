@@ -187,14 +187,19 @@ def verify_image_archive(path: Path) -> dict[str, object]:
                     raise ArchiveError("archive_size_invalid")
                 digest.update(chunk)
         manifest: object | None = None
+        manifest_bytes: bytes | None = None
+        archive_member_names: set[str] = set()
         with tarfile.open(path, mode="r:gz") as archive:
             for member_count, member in enumerate(archive, start=1):
                 if member_count > MAX_ARCHIVE_MEMBERS:
                     raise ArchiveError("archive_member_limit")
                 if not _safe_member_name(member.name):
                     raise ArchiveError("archive_member_invalid")
+                if member.name in archive_member_names:
+                    raise ArchiveError("archive_member_duplicate")
+                archive_member_names.add(member.name)
                 if member.name == "manifest.json":
-                    if manifest is not None or not member.isfile():
+                    if not member.isfile():
                         raise ArchiveError("image_manifest_invalid")
                     if member.size > MAX_MANIFEST_BYTES:
                         raise ArchiveError("image_manifest_too_large")
@@ -202,14 +207,24 @@ def verify_image_archive(path: Path) -> dict[str, object]:
                     if manifest_stream is None:
                         raise ArchiveError("image_manifest_unreadable")
                     with manifest_stream:
-                        manifest = json.load(manifest_stream)
-            if manifest is None:
+                        manifest_bytes = manifest_stream.read(MAX_MANIFEST_BYTES + 1)
+                    if len(manifest_bytes) != member.size:
+                        raise ArchiveError("image_manifest_unreadable")
+            if manifest_bytes is None:
                 raise ArchiveError("image_manifest_missing")
+            manifest = json.loads(manifest_bytes)
             if not isinstance(manifest, list) or len(manifest) != 1:
                 raise ArchiveError("image_manifest_invalid")
             entry = manifest[0]
             if not isinstance(entry, dict):
                 raise ArchiveError("image_manifest_invalid")
+            config_name = entry.get("Config")
+            if (
+                not isinstance(config_name, str)
+                or not _safe_member_name(config_name)
+                or config_name == "manifest.json"
+            ):
+                raise ArchiveError("image_config_name_invalid")
             layers = entry.get("Layers")
             if not isinstance(layers, list) or not layers:
                 raise ArchiveError("image_layers_missing")
@@ -222,25 +237,50 @@ def verify_image_archive(path: Path) -> dict[str, object]:
                 if layer_name in layer_names:
                     raise ArchiveError("image_layer_name_invalid")
                 layer_names.add(layer_name)
+            if config_name in layer_names:
+                raise ArchiveError("image_config_name_invalid")
 
         found_layers: set[str] = set()
-        total_layer_bytes = 0
+        found_config = False
+        total_payload_bytes = 0
+        archive_member_names.clear()
         with tarfile.open(path, mode="r:gz") as archive:
-            for member in archive:
-                if member.name not in layer_names:
+            for member_count, member in enumerate(archive, start=1):
+                if member_count > MAX_ARCHIVE_MEMBERS:
+                    raise ArchiveError("archive_member_limit")
+                if not _safe_member_name(member.name):
+                    raise ArchiveError("archive_member_invalid")
+                if member.name in archive_member_names:
+                    raise ArchiveError("archive_member_duplicate")
+                archive_member_names.add(member.name)
+                if DATA_PATH.search(member.name):
+                    raise ArchiveError("persistent_data_path")
+                if SECRET_PATH.search(member.name):
+                    raise ArchiveError("credential_like_path")
+                if member.isdir():
                     continue
-                if member.name in found_layers or not member.isfile():
-                    raise ArchiveError("image_layer_invalid")
+                if not member.isfile():
+                    raise ArchiveError("archive_member_type_invalid")
                 if member.size > MAX_ARCHIVE_BYTES:
-                    raise ArchiveError("image_layer_too_large")
-                layer_stream = archive.extractfile(member)
-                if layer_stream is None:
-                    raise ArchiveError("image_layer_unreadable")
-                with layer_stream:
-                    total_layer_bytes += _scan_layer(layer_stream)
-                found_layers.add(member.name)
-                if total_layer_bytes > MAX_ARCHIVE_BYTES:
-                    raise ArchiveError("image_layers_too_large")
+                    raise ArchiveError("archive_member_too_large")
+                member_stream = archive.extractfile(member)
+                if member_stream is None:
+                    raise ArchiveError("archive_member_unreadable")
+                with member_stream:
+                    if member.name in layer_names:
+                        scanned_bytes = _scan_layer(member_stream)
+                        found_layers.add(member.name)
+                    else:
+                        scanned_bytes = _scan_stream(member_stream)
+                        if scanned_bytes != member.size:
+                            raise ArchiveError("archive_member_size_mismatch")
+                        if member.name == config_name:
+                            found_config = True
+                total_payload_bytes += scanned_bytes
+                if total_payload_bytes > MAX_ARCHIVE_BYTES:
+                    raise ArchiveError("archive_payload_too_large")
+        if not found_config:
+            raise ArchiveError("image_config_missing")
         if found_layers != layer_names:
             raise ArchiveError("image_layer_missing")
     except ArchiveError:

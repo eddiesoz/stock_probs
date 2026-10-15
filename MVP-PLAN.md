@@ -7159,3 +7159,41 @@ The authored-guide update passed current-map documentation checks against
 `11:34:40.043938Z`–`11:34:40.524269Z` (177 checked, 9 changed, no exemptions or violations); and
 staged/unstaged `git diff --check` **Passed** at `11:34:40.524306Z`–`11:34:40.611766Z`. Documentation
 pytest was not run. These are docs-scope checks only.
+
+
+### R-ASTRA-121 E30 — complete archive-member credential coverage
+
+Independent source review found that the previous scanner inspected nested Layers but skipped the
+Docker Config and other outer payloads. A synthetic Config-only token archive incorrectly passed;
+that P1 finding remains **Fail** for the previous source. The repair scans the manifest, referenced
+Config and every regular outer member, rejects duplicate names and unsupported member types, and
+retains bounded payload scanning and the exact public-source exceptions within nested layers.
+
+Builder and independent focused tests **Passed** 27 cases, with Ruff, format, security and diff
+checks. The original Config-only reproducer and an additional manifest-only token are rejected.
+Independent receipt: `/var/tmp/r12r/archive-scanner-independent-qa-d7cd6936-f0c5-4222-acd3-6bdf5f53269a/independent-supplement-v2.json`,
+SHA-256 `4ad3bbbbd49092ce955e9d2aed109574c9e1a385f0b42394ac6506d1d01a4685`.
+The initial supplemental receipt used noncanonical status strings; it is preserved and superseded
+by the vocabulary-corrected v2. These are offline checks, not provider or release acceptance.
+
+Both existing image08/pair07 archives **Passed** a new scan with the repaired scanner:
+candidate `30368f7288de125da9d46d2789a8faf4da9b4b188d41ba40054f79a252ca55be`
+and recovery `984abf8545bffe2563e6e64649221bc9713634b0facfd0f53c520a266d4b0e30`.
+Receipt: `/var/tmp/r12r/pr9-covered-archive-scans-63007c02-342e-499f-b578-145357b0e01b/receipt.json`.
+Scanner SHA-256 `df0799934f1c4478ef9f48519cfe24318ab20d7751874b79d164d680874d8b69` and
+focused test SHA-256 `59c5623338c015e68d743cf9ee4a304ed5f25ac43b032fbb65df31080443dadf`
+were transferred byte for byte to a separate checker worktree. The two original candidate files
+were restored to their recorded baseline, leaving application PR #9 clean at `bd30e42`;
+no image was rebuilt or relabelled. Transfer receipt:
+`/var/tmp/r12r/archive-scanner-exact-transfer-67631bb4-983d-4a89-a330-7fe491dc2606/terminal.json`.
+The image08 source, staged frontend and pair evidence retain their original bindings.
+
+The T10 live trial was never executed. Its independent source review **Failed** on local SDK-child
+shutdown and remote-helper restoration fencing; T10 review receipt
+`/var/tmp/r12r/t10-t11-scanner-qa-final-29a6eb2a-a444-4184-b833-f3a76997c08f/independent-qa-receipt.json`, SHA-256
+`17cedc8b538cac3d7b0893f97b8c747d5059dfe0730f564cba1352ec9e74f7d1`.
+The T11 successor is held for independent review. Neither packet establishes current native,
+authenticated UI, actual combined 1 GB, rollback, deployment or release acceptance. The genuine
+free-Zen repair remains Priority 0 before the seven visible feature releases. No resize, email or
+production mutation occurred in this checker scope; the existing backups and US$15 monthly cap
+including tax are unchanged.
