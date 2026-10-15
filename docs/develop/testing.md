@@ -130,10 +130,14 @@ Use the typed `--reconcile-local-inflight-reservation` operation in
 `scripts/bounded_docker_build.py` with the exact local tag, revision, context digest and current
 role. Supply either the genuine local-failure receipt digest or all four separately hashed
 terminal, worker-preflight, cancellation and settled observations. External observations must
-remain private on the verified SD mount. The operation rechecks current history, tag/full-ID
-absence, protected inventory and ledger consistency before publishing an exclusive complete
-receipt and removing only the reservation. A publication error restores the ledger; missing
-historical BuildKit terminal evidence stays Unavailable. Never use the PR-failure mode, edit the
+remain private on the verified SD mount. External-observation mode rechecks current history.
+Genuine-local-failure mode instead requires fresh proof of the same stopped builder generation,
+PID zero and an absent or empty bounded descendant cgroup, so history inspection cannot restart
+the builder before that proof. Both modes require fresh tag/full-ID absence, protected inventory
+and ledger consistency. A complete private receipt is staged before ledger commit/verification
+and exclusive publication; a publication error restores the ledger. Missing historical BuildKit
+terminal evidence stays Unavailable, and observed historical negative facts are rejected.
+Never use the PR-failure mode, edit the
 ledger manually, or reconstruct a missing failure receipt. See [E33](../../MVP-PLAN.md#r-astra-121-e33-local-build-failure-and-reservation-recovery).
 
 Use `./scripts/local-compose.sh build` or `./scripts/local-compose.sh up --build -d` for local
@@ -638,6 +642,18 @@ Keep the path, size, offsets and all other bytes subject to their existing check
 or provenance comparison does not replace scans of the final candidate and recovery archives.
 
 
+### Local build phase observations
+
+The local image build now requests Buildx raw JSON progress only for its opt-in observer. A
+bounded background reader discards raw logs and records coarse allowlisted build phases,
+completion/cache/error flags and elapsed durations in a genuine failure receipt. Unknown vertex
+names are counted without saving their text; later recognized phases remain available as a
+partial observation. Frame, byte, vertex and artifact limits stop parsing while the reader keeps
+draining. Reader failure, closure or publication does not replace the primary build result.
+The original 900-second deadline, disk/mount checks, cancellation and separate ARM Compose path
+remain unchanged.
+Unit tests do not establish the next actual build's phase or cause.
+
 ### Candidate and recovery production baselines
 
 The candidate rehearsal checker distinguishes the running 5ad schema-13 app from the da2764/d3
@@ -672,3 +688,13 @@ dependency failures, safe API errors and the actual headline client's busy/unava
 The approved frontend build and stage passed in a source-bound checkout. These checks do not
 replace current-image native, actual-host resource, recovery, canonical or release acceptance.
 See [E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint).
+
+The third production-baseline source shape is specifically `temporary_recovery`, not a release or
+the retained A9 recovery role. It requires the separately approved fixed 6359 manifest, matching
+operation/current records, exact Docker image/tag/platform/revision and loopback identity, ready
+assistant-disabled state, and the completed 512 MiB startup-floor phase. Monitoring compares the
+whole accepted identity again. The independent 332-test and 52-case selected passes cover mocked
+consumer/source behavior only; the image, dynamic approval and host transition remain unbound.
+The later local cancellation/reconciliation repair passed 238 tests under explicit child umask
+022; its actual typed reservation recovery is recorded at
+[E34](../../MVP-PLAN.md#r-astra-121-e34-6359-build-failure-and-stopped-generation-recovery).

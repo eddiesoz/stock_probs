@@ -7257,3 +7257,134 @@ SHA-256 is `959b556c8f544d7a7bac45fab64673bbab3410b2525640ecefcd4785ff67e8fa`. T
 reservation recovery, not image, native-provider, actual 1 GB, rollback or release acceptance.
 A new image and the required release checks remain pending. Production, existing backups, the
 1 GB host and US$15 monthly total cap are unchanged; no deployment, rollout or email occurred.
+
+### R-ASTRA-121 E34 — 6359 build failure and stopped-generation recovery
+
+The local candidate build at pushed revision `63597953c9d1ab387563dadfe705b78a2861a426`
+**Failed** at `2026-10-15T17:50:41.255Z`–`18:07:21.795Z`, without an accepted image. All 149
+application inputs remained bound to context
+`019783e161f8153ef088c596c329183de3cdf585ace0dd5fbdfcd10fe3ac4e15`.
+The primary error was `bounded_build_timeout_cancel_unverified`; two secondary bounded-command
+failures and unavailable inventory facts remain in the genuine failure receipt, SHA-256
+`30eb22190ebcfcec69204d246b9342eda0c6db78357bf4ca7e1f879107ad0b85`.
+Build terminal `/var/tmp/r12r/hotfix-6359-manifests-and-build-jghdb7hp/build/terminal.json` has
+SHA-256 `e7a4c7aa3d7764362a118efe0d948714be5b5bc4a98bb98c324c167bbd0465b4`.
+The owned native-build process chain survived CLI cancellation. Observed memory/I/O pressure and
+zero OOM counters do not prove its cause. Parent normally stopped only the exact owned builder,
+verified the workers absent and unrelated application unchanged; cancellation receipt
+`4906d5c290a00deef96422abe0ef48be0733386e244f1729d9a763e8b9481f61` remains preserved.
+
+The source repair removes full Buildx/inside-container health checks from pre-stop verification.
+It rechecks fixed ownership/profile/config/network/cache and start generation, normally stops
+only that builder, and verifies same-generation stopped/PID-zero and bounded absent/empty cgroup
+facts. It preserves stop-command errors even when later state is verified. Genuine historical
+uncertainty can be reconciled only with fresh proof, exact tag/placeholder absence, protected
+inventory, ledger compare-and-swap and complete exclusive receipt publication with rollback.
+Historical false/present facts remain rejected; no historical result is rewritten.
+
+Independent source/mock review **Passed** the full 238-test file and a separate 19-case selected
+negative/rollback scope. Its initial 0002-mask result is retained. The explicit-022 full-file
+supplement **Passed** 238 tests, zero failures/errors/skips and two warnings at
+`2026-10-15T18:45:28.534857Z`–`18:45:33.760262Z`, with unchanged source/test/conftest pins.
+Receipt `/var/tmp/r12r/pr9-builder-repair-independent-qa-20261015T1844Z-umask022/supplemental-qa-count-correction.json`,
+SHA-256 `f36d3c22a7a9640bfe0e982908d1310a8a9bb6666eceab943da971a4e6b989a1`.
+The first supplement's empty top-level JUnit projection and corrected nested counts are both
+retained. Builder optional strict mypy remains **Fail** (222 diagnostics versus 231 on its saved
+baseline, zero newly normalized diagnostics); this is not a typing aggregate Pass.
+
+Parent integrated review and the actual typed genuine-failure reconciliation **Passed**. It
+removed only the placeholder reservation, taking three ledger rows to two, with the full image
+inventory, stopped builder and unrelated app unchanged. Terminal/readback
+`/var/tmp/r12r/local-6359-stopped-reconciliation-j6zormfi/terminal-and-readback.json`, SHA-256
+`fcff1b47224dcced0cf7a93e88a5e72eca55dacfc279116b25c84bbf0a5b1e57`; exclusive managed recovery
+receipt SHA-256 `c20ed27b30dbffbd3f9eb523af7a2f57faf2c85be0e8f9ca588290c879ea111c`.
+The builder was then normally restarted solely for read-only history. An initial history command
+failed without retained stderr; a later bounded diagnostic succeeded with 43 terminal rows and
+no 6359 build row. History projection SHA-256
+`a4f8c7589faef2472a013f2418d700439719e3daf91a8d8fb4a135a3c45e5192` under
+`/var/tmp/r12r/local-6359-history-after-recovery-0ua89esn` does not establish why the first read or
+the build failed. Historical phase/terminal evidence remains **Unavailable**. The 15 tracked
+Dockerfile/native-build inputs are identical to the prior successful bd30 source; comparison
+receipt `647540c32dbdd245ef192398011dff9f0017d36e950307cae33018fd2758a13e` is source identity only.
+A bounded live-phase diagnostic is being designed before another build.
+
+Separately, the host/MCP consumer's explicit temporary-recovery baseline passed independent 332
+full-file and 52 selected rejection tests. It binds the fixed 6359 provenance and approved
+root-owned records to actual image/tag/platform/revision, loopback and ready disabled-assistant
+state; existing candidate/A9 shapes remain distinct. Independent receipt
+`/var/tmp/r12r/pr9-temporary-baseline-qa-20261015T1836Z/independent-review-receipt.json`, SHA-256
+`afe787cb85180643a4e3699205f77140a00ebfb749e9765d65d857e4bf5a9884`; parent review
+`8afb582f1e54783b0303f9e8b9202d90a5e998f1cc7555f22c43365fbc099d19`. Strict security lint with
+test assertions included failed only S101; the configured test-assertion exclusion passed. This
+does not establish fresh running-MCP loading, an approved/built temporary image or a host action.
+The cooperating ops helper's continuous-reserve gap remains open pending its separate repair.
+Fresh read-only deployment `status` and `inspect` still report exact 5ad/787/schema 13, invited
+rollout, ready app/assistant and loopback-only publication. The old October 13 failed-rollout
+record is retained separately; it does not override the fresh ready health projection. Receipt
+`/var/tmp/r12r/r121-production-readonly-w1ltgzaq/receipt.json`, SHA-256
+`6f3cdce63bebd81a459f798e67a979e20a01e8ed3301718926abde2c673a35f9`. No model turn was run.
+No production deployment, native trial, resize, rollout or email occurred. The existing 1 GB
+host, backups and US$15 monthly total cap remain fixed; genuine free-Zen restoration remains
+Priority 0 before the seven visible-feature releases.
+
+### R-ASTRA-121 E35 — bounded local build phase diagnostic
+
+The local-build-only observer requests raw JSON progress from the pinned Buildx v0.30.1 /
+BuildKit v0.26.1 protocol. A background bounded reader drains stderr without placing parsing on
+the deadline loop. It retains only coarse allowlisted phase enums, completion/cache/error flags
+and elapsed durations in the genuine failure receipt. Raw names, digests, commands, URLs, log
+data and warning/error text are discarded. Unknown vertices are counted and skipped; a partial
+projection can retain later recognized native/frontend phases. These coarse phases do not expose
+the inner steps of chained native or frontend commands.
+
+Raw bytes, frame size/count, array/vertex count and artifact size are capped; after a parser cap
+or failure, the reader drains without further parsing. EOF, bounded join/close and late-write
+checks preserve the primary build result. The 900-second build deadline, disk/mount floors,
+cancellation, separate ARM Compose path and immutable previous failure receipts are unchanged.
+No application, native build recipe or frontend source was changed by this diagnostic.
+
+Builder selected tests **Passed** 20 cases and the complete owned file **Passed** 255, with zero
+failures/errors/skips; configured Ruff, format and scoped diff checks passed. Earlier fixture
+failures remain preserved. Receipt
+`/var/tmp/r12r/hotfix-build-phase-observer-c2a84056-a5f0-4995-bfcb-2c11e5dafbe8/final-receipt.json`,
+SHA-256 `89b91f1ca1e2b1a5bde5a73cac150de5d1351cae654736ea0929866f874946e3`.
+Frozen checker SHA-256 `ad5c2e12b0ce77b7b676155a71c45e3d7089a1b2b437e832cdfdd6822baa5f75`;
+test SHA-256 `6276c8fcc872f8c71ba3c8a8d2b1019b7c334bf7eb603d88e675ffeeb0c6c006`.
+Independent tests **Passed** the same 20 selected and 255 complete cases with unchanged 37
+source/import pins, but complete pinned-schema review **Failed**: valid optional
+`progressGroup.weak` was not allowed. The initial QA receipt's zero-count JUnit projection was
+preserved and corrected in a separate nested-suite-count supplement. Corrected test receipt
+SHA-256 `f72bff0bfb8022bc1b0adced5ab08d394cce342fb28c4ffa13cddcab1088ae99`; static receipt
+`0ca8856deee4a3d7eca22307a60602a735d44a58b4c707bde202b86e2e31f534`, under
+`/var/tmp/r12r/hotfix-build-observer-independent-qa-20261015T192246Z-ad60880a`.
+Actual stream occurrence of the upstream field is **Unavailable**; no build cause follows.
+
+The narrow repair accepts the optional field only as a strict boolean and still discards group
+metadata. Builder selected tests **Passed** 7 cases and the complete file **Passed** 258, with
+zero failures/errors/skips; configured static checks passed after preserving an initial test-line
+formatting failure. Receipt
+`/var/tmp/r12r/hotfix-progress-weak-881f972a-dcee-45b3-8e88-690064dc5c60/final-receipt.json`,
+SHA-256 `123bc3616faeca41d50f4d8525f6c877691f4aab1a2dcc9e89514cd534a6845f`.
+Current checker SHA-256 `d6440d3557f88447a219f6b688c9a03f3c079b4e4ccbd362a1360245b850776c`;
+test SHA-256 `848fc6da0ff6f0ac08f9097342cf1c7575aaf1328a715c5136aad34fd14bad9b`.
+Narrow independent repair QA **Passed** 13 selected shared-conftest tests, configured Ruff/format
+and scoped diff checks, with the genuine 53-file stage and unchanged current source pins.
+Its first supplemental behavior comparison **Failed** because it also compared the incoming-byte
+counter, which correctly grows with the additional JSON field. The corrected probe excluded only
+that diagnostic counter and **Passed** boolean acceptance, malformed/unknown-field rejection,
+metadata exclusion and unchanged primary phase/status results. The original receipt is retained:
+`/var/tmp/r12r/hotfix-progress-weak-independent-qa-bsx3c77y/independent-qa-receipt.json`, SHA-256
+`4129d223b9c3af5b5114ccfb9718f695f1b317afa42695ca066baef22c92f7b6`.
+Corrected receipt
+`/var/tmp/r12r/hotfix-progress-weak-independent-followup-ft5fv11b/independent-followup-receipt.json`,
+SHA-256 `23ca0921fc0b4a8bc626c03e4c457a00b5b0b83d20d79e341b299c1075d2b61e`.
+Parent personally reviewed the integrated optional observer, bounded drain/close, failure result,
+record compatibility and strict optional-field repair with no remaining finding in that scope.
+The existing 238-test recovery and 332/52 temporary-consumer evidence is reused only for unchanged
+inputs. The six-document audit passed validator, 177-file completeness, explicit 11-path coverage
+and scoped diff checks before this final result paragraph; audit receipt SHA-256
+`a4908b193c689af81095bc3a0b411006fc27074995655b8392bd59d6b1f0bbbb` under
+`/var/tmp/r12r/R-ASTRA-121-doc-audit-nxz65l7l`.
+No new build was launched for these results, and the next actual build phase and failure cause remain
+**Unavailable** and **Unproven** respectively. Production, the existing 1 GB host, backups and
+US$15 cap are unchanged.

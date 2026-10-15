@@ -77,6 +77,11 @@ in place. A stopped Docker CLI may leave a BuildKit worker running. Use the revi
 [typed local-build recovery procedure](../develop/testing.md#bounded-local-docker-builds-and-worker-verification)
 to verify the exact owned builder, image absence and ledger before releasing that reservation.
 Do not delete the ledger row, prune Docker, or stop another application to retry.
+For genuine uncertain local failures, preserve the original receipt and keep the exact builder
+stopped until the typed operation has captured its unchanged start generation and cgroup absence.
+The completed operation releases only the reservation; it neither accepts the failed build nor
+creates an image. Restarting the owned idle builder afterward for bounded diagnostic reads is a
+separate recorded action. See [E34](../../MVP-PLAN.md#r-astra-121-e34-6359-build-failure-and-stopped-generation-recovery).
 
 Stop the service without deleting its named volume:
 

@@ -26,7 +26,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import ParamSpec, TypeVar
+from typing import BinaryIO, ParamSpec, TypeVar
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_STATE = Path("/var/lib/stock-probs/r120-buildkit-v1")
@@ -61,8 +61,84 @@ BUILDX_LISTING_TIMEOUT = 30
 LOCAL_OBSERVATION_MAX_BYTES = 262144
 LOCAL_BUILDKIT_STOP_GRACE_SECONDS = 5
 LOCAL_BUILDKIT_STOP_TIMEOUT_SECONDS = 15
+LOCAL_BUILDKIT_STOP_QUERY_TIMEOUT_SECONDS = 3
+LOCAL_BUILDKIT_CGROUP_SYSTEM_SLICE = Path("/sys/fs/cgroup/system.slice")
+LOCAL_BUILDKIT_CGROUP_MAX_DEPTH = 16
+LOCAL_BUILDKIT_CGROUP_MAX_ENTRIES = 1024
+LOCAL_BUILDKIT_CGROUP_MAX_PIDS = 4096
 LOCAL_FAILURE_SCHEMA = "r120-bounded-local-build-failure-v1"
 LOCAL_RECONCILIATION_SCHEMA = "r120-bounded-local-inflight-reconciliation-v1"
+LOCAL_BUILD_PHASE_SCHEMA = "r120-bounded-local-build-phase-v1"
+LOCAL_BUILD_PHASE_MAX_RAW_BYTES = 4 * 1024 * 1024
+LOCAL_BUILD_PHASE_MAX_LINE_BYTES = 16 * 1024
+LOCAL_BUILD_PHASE_MAX_FRAMES = 65536
+LOCAL_BUILD_PHASE_MAX_VERTICES = 128
+LOCAL_BUILD_PHASE_MAX_SKIPPED_VERTICES = 65_535
+LOCAL_BUILD_PHASE_MAX_ARRAY_ITEMS = 256
+LOCAL_BUILD_PHASE_MAX_ARTIFACT_BYTES = 64 * 1024
+LOCAL_BUILD_PHASE_READ_CHUNK_BYTES = 8192
+LOCAL_BUILD_PHASE_READER_JOIN_SECONDS = 0.25
+LOCAL_BUILD_PHASE_READER_FINAL_JOIN_SECONDS = 0.1
+LOCAL_BUILD_PHASE_MAX_INSTRUCTION_BYTES = 4096
+LOCAL_BUILD_PHASE_MAX_VERTEX_DURATION_MS = 900_000
+LOCAL_BUILD_PHASE_STAGES = {
+    "opencode-amd64": "native_base_image",
+    "opencode-arm64": "native_base_image",
+    "opencode-assets": "native_asset_stage",
+    "opencode-patched-builder": "native_builder_stage",
+    "frontend-builder": "frontend_stage",
+    "builder": "python_package_stage",
+    "stage-6": "runtime_stage",
+}
+LOCAL_BUILD_PHASE_INTERNAL_NAMES = {
+    "[internal] load build definition from Dockerfile": "dockerfile_definition",
+    "[internal] load .dockerignore": "build_policy",
+    "[internal] load build context": "source_context",
+}
+LOCAL_BUILD_PHASE_TOP_FIELDS = {"vertexes", "statuses", "logs", "warnings"}
+LOCAL_BUILD_PHASE_VERTEX_FIELDS = {
+    "digest",
+    "inputs",
+    "name",
+    "started",
+    "completed",
+    "cached",
+    "error",
+    "progressGroup",
+}
+LOCAL_BUILD_PHASE_ARRAY_FIELDS = {
+    "statuses": {
+        "vertex",
+        "id",
+        "name",
+        "current",
+        "total",
+        "timestamp",
+        "started",
+        "completed",
+        "units",
+    },
+    "logs": {"vertex", "stream", "data", "timestamp"},
+    "warnings": {
+        "vertex",
+        "level",
+        "short",
+        "detail",
+        "url",
+        "sourceInfo",
+        "range",
+    },
+}
+LOCAL_BUILD_PHASE_PATTERN = re.compile(
+    r"^\[(?P<stage>[a-z0-9][a-z0-9-]{0,63}) "
+    r"(?P<step>[1-9][0-9]{0,2})/(?P<count>[1-9][0-9]{0,2})\] "
+    r"(?P<opcode>[A-Z]+)(?: (?P<instruction>.*))?$"
+)
+LOCAL_BUILD_PHASE_DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
+LOCAL_BUILD_PHASE_TIMESTAMP_PATTERN = re.compile(
+    r"(?P<base>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})"
+    r"(?:\.(?P<fraction>[0-9]{1,9}))?(?P<zone>Z|[+-][0-9]{2}:[0-9]{2})"
+)
 LOCAL_OBSERVATION_ROOT = Path("/var") / "tmp" / "r12r"
 LOCAL_OBSERVATION_UUID = "54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e"
 _SCHEMA13_ROOTFS_INVENTORY_MAX_BYTES = 8 * 1024 * 1024
@@ -775,7 +851,7 @@ def inspect_builder(data: dict[str, object]) -> None:
     verify_cache_volume(data, cid)
 
 
-def _builder_generation(data: dict[str, object]) -> dict[str, object]:
+def _builder_generation(data: dict[str, object], *, timeout: float = 10) -> dict[str, object]:
     """Read the exact builder container identity and current start generation."""
     container_id = data.get("builder_container_id")
     image_id = data.get("buildkit_image_id")
@@ -792,7 +868,10 @@ def _builder_generation(data: dict[str, object]) -> dict[str, object]:
     )
     try:
         fields = (
-            checked([DOCKER, "container", "inspect", "--format", fmt, container_id], timeout=10)
+            checked(
+                [DOCKER, "container", "inspect", "--format", fmt, container_id],
+                timeout=timeout,
+            )
             .decode("ascii", "strict")
             .strip()
             .split("|")
@@ -846,65 +925,309 @@ def _same_builder_generation(before: dict[str, object], after: dict[str, object]
     return all(before.get(field) == after.get(field) for field in identity_fields)
 
 
+def _cleanup_timeout(
+    deadline: float, maximum: float = LOCAL_BUILDKIT_STOP_QUERY_TIMEOUT_SECONDS
+) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise BuildError("local_builder_stop_deadline_exceeded")
+    return min(maximum, remaining)
+
+
+def _cleanup_checked(
+    argv: list[str],
+    deadline: float,
+    *,
+    maximum: float = LOCAL_BUILDKIT_STOP_QUERY_TIMEOUT_SECONDS,
+) -> bytes:
+    return checked(argv, timeout=_cleanup_timeout(deadline, maximum))
+
+
+def _verify_builder_stop_target(
+    setup: dict[str, object], expected_generation: dict[str, object], deadline: float
+) -> None:
+    """Recheck the setup-pinned host configuration and exact builder profile without exec."""
+    container_id = expected_generation.get("container_id")
+    if not isinstance(container_id, str) or re.fullmatch(r"[0-9a-f]{64}", container_id) is None:
+        raise BuildError("local_builder_generation_identity_invalid")
+    fmt = "|".join(
+        (
+            "{{.Id}}",
+            "{{.Name}}",
+            "{{.Image}}",
+            "{{.HostConfig.Memory}}",
+            "{{.HostConfig.MemorySwap}}",
+            "{{.HostConfig.CpuQuota}}",
+            "{{.HostConfig.CpuPeriod}}",
+            "{{.HostConfig.PidsLimit}}",
+            "{{.State.Running}}",
+            "{{.State.Pid}}",
+            "{{.Created}}",
+            "{{.State.StartedAt}}",
+            "{{.RestartCount}}",
+        )
+    )
+    try:
+        fields = (
+            _cleanup_checked(
+                [DOCKER, "container", "inspect", "--format", fmt, container_id], deadline
+            )
+            .decode("ascii", "strict")
+            .strip()
+            .split("|")
+        )
+    except UnicodeDecodeError as exc:
+        raise BuildError("local_builder_profile_invalid") from exc
+    profile = {
+        "id": container_id,
+        "name": CONTAINER_NAME,
+        "image": setup.get("buildkit_image_id"),
+        "memory": str(MEMORY),
+        "swap": str(SWAP),
+        "quota": str(CPU_QUOTA),
+        "period": str(CPU_PERIOD),
+        "pids": str(PIDS_LIMIT),
+        "running": "true" if expected_generation.get("running") is True else "false",
+        "pid": str(expected_generation.get("pid")),
+        "created": expected_generation.get("created"),
+        "started": expected_generation.get("started"),
+        "restart_count": str(expected_generation.get("restart_count")),
+    }
+    if len(fields) != len(profile) or dict(zip(profile, fields, strict=True)) != profile:
+        raise BuildError("local_builder_profile_changed")
+
+    if verify_installed_config() != CONFIG_SHA:
+        raise BuildError("local_builder_config_pin_changed")
+    try:
+        config_bytes = CONFIG_FILE.read_bytes()
+    except OSError as exc:
+        raise BuildError("local_builder_config_unavailable") from exc
+    active_config_sha = setup.get("active_buildkit_config_sha256")
+    if (
+        sha(CONFIG_FILE) != CONFIG_SHA
+        or setup.get("buildkit_config_sha256") != CONFIG_SHA
+        or setup.get("active_buildkit_config_semantically_verified") is not True
+        or not isinstance(active_config_sha, str)
+        or re.fullmatch(r"[0-9a-f]{64}", active_config_sha) is None
+        or not config_bytes
+    ):
+        raise BuildError("local_builder_config_pin_changed")
+
+    def command(argv: list[str]) -> bytes:
+        return _cleanup_checked(argv, deadline)
+
+    verify_builder_network(setup, container_id, check=command)
+    verify_cache_volume(setup, container_id, check=command)
+
+
+def _local_buildkit_cgroup_proof(container_id: str) -> dict[str, object]:
+    """Prove that the exact builder cgroup is absent or has no process/thread descendants."""
+    if re.fullmatch(r"[0-9a-f]{64}", container_id) is None:
+        raise BuildError("local_reconciliation_builder_identity_invalid")
+    system_slice = LOCAL_BUILDKIT_CGROUP_SYSTEM_SLICE
+    current = Path(system_slice.anchor)
+    for part in system_slice.parts[1:]:
+        current = current / part
+        try:
+            metadata = current.lstat()
+        except OSError as exc:
+            raise BuildError("local_reconciliation_cgroup_metadata_unavailable") from exc
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            raise BuildError("local_reconciliation_cgroup_metadata_invalid")
+
+    scope = system_slice / f"docker-{container_id}.scope"
+    try:
+        scope_metadata = scope.lstat()
+    except FileNotFoundError:
+        return {
+            "status": "absent",
+            "scope_path": str(scope),
+            "directories_scanned": 0,
+            "entries_scanned": 0,
+            "process_ids_observed": 0,
+        }
+    except OSError as exc:
+        raise BuildError("local_reconciliation_cgroup_metadata_unavailable") from exc
+    if stat.S_ISLNK(scope_metadata.st_mode) or not stat.S_ISDIR(scope_metadata.st_mode):
+        raise BuildError("local_reconciliation_cgroup_metadata_invalid")
+
+    pending: list[tuple[Path, int]] = [(scope, 0)]
+    directories_scanned = 0
+    entries_scanned = 0
+    process_ids_observed = 0
+    while pending:
+        directory, depth = pending.pop()
+        if depth > LOCAL_BUILDKIT_CGROUP_MAX_DEPTH:
+            raise BuildError("local_reconciliation_cgroup_depth_exceeded")
+        try:
+            directory_metadata = directory.lstat()
+        except OSError as exc:
+            raise BuildError("local_reconciliation_cgroup_metadata_unavailable") from exc
+        if stat.S_ISLNK(directory_metadata.st_mode) or not stat.S_ISDIR(directory_metadata.st_mode):
+            raise BuildError("local_reconciliation_cgroup_metadata_invalid")
+        directories_scanned += 1
+        if directories_scanned > LOCAL_BUILDKIT_CGROUP_MAX_ENTRIES:
+            raise BuildError("local_reconciliation_cgroup_entries_exceeded")
+        for filename in ("cgroup.procs", "cgroup.threads"):
+            task_file = directory / filename
+            try:
+                descriptor = os.open(
+                    task_file,
+                    os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+                )
+                with os.fdopen(descriptor, "rb") as stream:
+                    task_metadata = os.fstat(stream.fileno())
+                    if not stat.S_ISREG(task_metadata.st_mode):
+                        raise BuildError("local_reconciliation_cgroup_metadata_invalid")
+                    raw = stream.read(65537)
+            except BuildError:
+                raise
+            except OSError as exc:
+                raise BuildError("local_reconciliation_cgroup_metadata_unavailable") from exc
+            if len(raw) > 65536:
+                raise BuildError("local_reconciliation_cgroup_entries_exceeded")
+            try:
+                lines = raw.decode("ascii", "strict").splitlines()
+            except UnicodeDecodeError as exc:
+                raise BuildError("local_reconciliation_cgroup_metadata_invalid") from exc
+            if any(
+                len(line) > 10 or not line.isdecimal() or line.startswith("0") or int(line) <= 0
+                for line in lines
+            ):
+                raise BuildError("local_reconciliation_cgroup_metadata_invalid")
+            process_ids_observed += len(lines)
+            if process_ids_observed > LOCAL_BUILDKIT_CGROUP_MAX_PIDS:
+                raise BuildError("local_reconciliation_cgroup_entries_exceeded")
+            if lines:
+                raise BuildError("local_reconciliation_buildkit_worker_active")
+
+        try:
+            with os.scandir(directory) as children:
+                for child in children:
+                    entries_scanned += 1
+                    if entries_scanned > LOCAL_BUILDKIT_CGROUP_MAX_ENTRIES:
+                        raise BuildError("local_reconciliation_cgroup_entries_exceeded")
+                    metadata = child.stat(follow_symlinks=False)
+                    if stat.S_ISLNK(metadata.st_mode):
+                        raise BuildError("local_reconciliation_cgroup_metadata_invalid")
+                    if stat.S_ISDIR(metadata.st_mode):
+                        pending.append((Path(child.path), depth + 1))
+                    elif not stat.S_ISREG(metadata.st_mode):
+                        raise BuildError("local_reconciliation_cgroup_metadata_invalid")
+        except BuildError:
+            raise
+        except OSError as exc:
+            raise BuildError("local_reconciliation_cgroup_metadata_unavailable") from exc
+
+    return {
+        "status": "empty",
+        "scope_path": str(scope),
+        "directories_scanned": directories_scanned,
+        "entries_scanned": entries_scanned,
+        "process_ids_observed": process_ids_observed,
+    }
+
+
+def _verify_local_stopped_builder(
+    setup: dict[str, object], expected_generation: dict[str, object]
+) -> dict[str, object]:
+    """Bind fresh stopped-builder and empty-cgroup evidence to one setup generation."""
+    deadline = time.monotonic() + LOCAL_BUILDKIT_STOP_TIMEOUT_SECONDS
+    before = _builder_generation(setup, timeout=_cleanup_timeout(deadline, 10))
+    if (
+        not _same_builder_generation(expected_generation, before)
+        or before.get("running") is not False
+        or before.get("pid") != 0
+    ):
+        raise BuildError("local_reconciliation_builder_generation_unverified")
+    _verify_builder_stop_target(setup, before, deadline)
+    cgroup_proof = _local_buildkit_cgroup_proof(str(before["container_id"]))
+    after = _builder_generation(setup, timeout=_cleanup_timeout(deadline, 5))
+    if (
+        not _same_builder_generation(before, after)
+        or after.get("running") is not False
+        or after.get("pid") != 0
+    ):
+        raise BuildError("local_reconciliation_builder_generation_unverified")
+    return {
+        "status": "verified_stopped_same_generation",
+        "builder_container_id": after["container_id"],
+        "current_generation": after,
+        "generation": {key: after[key] for key in ("created", "started", "restart_count")},
+        "worker_cgroup": cgroup_proof,
+    }
+
+
 def _stop_owned_builder_after_local_failure(
     setup: dict[str, object], expected_generation: dict[str, object]
 ) -> dict[str, object]:
     """Stop only the verified builder instance captured immediately before a local build."""
-    current = _builder_generation(setup)
+    deadline = time.monotonic() + LOCAL_BUILDKIT_STOP_TIMEOUT_SECONDS
+    current = _builder_generation(setup, timeout=_cleanup_timeout(deadline, 10))
     if not _same_builder_generation(expected_generation, current):
         raise BuildError("local_builder_generation_changed")
-    if current["running"] is not True:
-        return {
-            "status": "verified_stopped_same_generation",
-            "builder_container_id": current["container_id"],
-            "generation": {
-                key: expected_generation[key] for key in ("created", "started", "restart_count")
-            },
-            "stop_grace_seconds": LOCAL_BUILDKIT_STOP_GRACE_SECONDS,
-        }
-
-    inspect_builder(setup)
-    checked_generation = _builder_generation(setup)
+    _verify_builder_stop_target(setup, current, deadline)
+    checked_generation = _builder_generation(setup, timeout=_cleanup_timeout(deadline, 5))
     if not _same_builder_generation(expected_generation, checked_generation):
         raise BuildError("local_builder_generation_changed")
-    if checked_generation["running"] is not True:
+    if (
+        checked_generation["running"] is not current["running"]
+        or checked_generation["pid"] != current["pid"]
+    ):
         raise BuildError("local_builder_state_changed_before_stop")
 
     stop_error: BuildError | None = None
-    try:
-        checked(
-            [
-                DOCKER,
-                "container",
-                "stop",
-                "--time",
-                str(LOCAL_BUILDKIT_STOP_GRACE_SECONDS),
-                str(expected_generation["container_id"]),
-            ],
-            timeout=LOCAL_BUILDKIT_STOP_TIMEOUT_SECONDS,
-        )
-    except BuildError as exc:
-        stop_error = exc
+    stop_attempted = checked_generation["running"] is True
+    if stop_attempted:
+        try:
+            _cleanup_checked(
+                [
+                    DOCKER,
+                    "container",
+                    "stop",
+                    "--time",
+                    str(LOCAL_BUILDKIT_STOP_GRACE_SECONDS),
+                    str(expected_generation["container_id"]),
+                ],
+                deadline,
+                maximum=LOCAL_BUILDKIT_STOP_TIMEOUT_SECONDS,
+            )
+        except BuildError as exc:
+            stop_error = exc
 
-    stopped = _builder_generation(setup)
+    stopped = _builder_generation(setup, timeout=_cleanup_timeout(deadline, 5))
     if not _same_builder_generation(expected_generation, stopped):
         raise BuildError("local_builder_generation_changed_after_stop") from stop_error
     if stopped["running"] is not False or stopped["pid"] != 0:
         raise BuildError("local_builder_stop_unverified") from stop_error
-    return {
+    cgroup_proof = _local_buildkit_cgroup_proof(str(stopped["container_id"]))
+    result: dict[str, object] = {
         "status": "verified_stopped_same_generation",
         "builder_container_id": stopped["container_id"],
         "generation": {
             key: expected_generation[key] for key in ("created", "started", "restart_count")
         },
         "stop_grace_seconds": LOCAL_BUILDKIT_STOP_GRACE_SECONDS,
-        "stop_command_result": "completed"
-        if stop_error is None
-        else "unavailable_but_state_verified",
+        "worker_cgroup": cgroup_proof,
+        "stop_command_result": (
+            "unavailable_but_state_verified"
+            if stop_error is not None
+            else "completed"
+            if stop_attempted
+            else "already_stopped"
+        ),
     }
+    if stop_error is not None:
+        result["stop_error_code"] = stop_error.code
+    return result
 
 
-def verify_builder_network(data: dict[str, object], container_id: str) -> None:
+def verify_builder_network(
+    data: dict[str, object],
+    container_id: str,
+    *,
+    check: Callable[[list[str]], bytes] | None = None,
+) -> None:
     proof = data.get("worker_step_cgroup_proof")
     if (
         re.fullmatch(r"[0-9a-f]{64}", container_id) is None
@@ -925,7 +1248,8 @@ def verify_builder_network(data: dict[str, object], container_id: str) -> None:
         "{{range $name, $network := .NetworkSettings.Networks}}"
         '{{$name}}|{{$network.NetworkID}}{{"\\n"}}{{end}}'
     )
-    attached_raw = checked(
+    command = checked if check is None else check
+    attached_raw = command(
         [DOCKER, "container", "inspect", "--format", attached_format, container_id]
     )
     try:
@@ -944,7 +1268,7 @@ def verify_builder_network(data: dict[str, object], container_id: str) -> None:
     )
     try:
         network_fields = (
-            checked([DOCKER, "network", "inspect", "--format", network_format, BUILDER_NETWORK])
+            command([DOCKER, "network", "inspect", "--format", network_format, BUILDER_NETWORK])
             .decode("ascii", "strict")
             .strip()
             .split("|", maxsplit=6)
@@ -974,8 +1298,14 @@ def verify_builder_network(data: dict[str, object], container_id: str) -> None:
         raise BuildError("builder_network_identity_mismatch")
 
 
-def verify_cache_volume(data: dict[str, object], container_id: str) -> None:
-    raw_mounts = checked(
+def verify_cache_volume(
+    data: dict[str, object],
+    container_id: str,
+    *,
+    check: Callable[[list[str]], bytes] | None = None,
+) -> None:
+    command = checked if check is None else check
+    raw_mounts = command(
         [DOCKER, "container", "inspect", "--format", "{{json .Mounts}}", container_id]
     )
     try:
@@ -999,7 +1329,7 @@ def verify_cache_volume(data: dict[str, object], container_id: str) -> None:
     ):
         raise BuildError("buildkit_state_volume_identity_mismatch")
     volume = (
-        checked(
+        command(
             [
                 DOCKER,
                 "volume",
@@ -1038,7 +1368,7 @@ def verify_cache_volume(data: dict[str, object], container_id: str) -> None:
     ):
         raise BuildError("buildkit_state_volume_outside_or_changed")
     observed_uuid = (
-        checked([FINDMNT, "-n", "-o", "UUID", "--target", str(root)])
+        command([FINDMNT, "-n", "-o", "UUID", "--target", str(root)])
         .decode("ascii", "strict")
         .strip()
         .lower()
@@ -2379,19 +2709,34 @@ def _reconcile_local_inflight_reservation(
             or failure.get("builder") != BUILDER
             or failure.get("setup_receipt_sha256") != setup_sha256
             or failure.get("ledger_reservation_retained") is not True
-            or failure.get("reservation_verification_error") is not None
             or failure.get("failure_cause") != "unproven"
-            or failure.get("local_tag_and_placeholder_absent") is not True
-            or failure.get("remaining_inventory_matches") is not True
             or failure.get("reservation_ledger_sha256") != before_ledger_sha256
             or failure.get("failure_ledger_sha256") != before_ledger_sha256
+            or failure.get("build_completed") is not False
             or not isinstance(backend, dict)
-            or backend.get("status") != "verified_stopped_same_generation"
             or not isinstance(builder_before, dict)
-            or backend.get("builder_container_id") != builder_before.get("container_id")
-            or backend.get("stop_grace_seconds") != LOCAL_BUILDKIT_STOP_GRACE_SECONDS
             or failure_finished is None
             or failure_finished > datetime.now(UTC)
+        ):
+            raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
+        historical_tag_absent = failure.get("local_tag_and_placeholder_absent")
+        historical_inventory_matches = failure.get("remaining_inventory_matches")
+        reservation_error = failure.get("reservation_verification_error")
+        backend_status = backend.get("status")
+        if (
+            not (
+                historical_tag_absent is None
+                or (type(historical_tag_absent) is bool and historical_tag_absent is True)
+            )
+            or not (
+                historical_inventory_matches is None
+                or (
+                    type(historical_inventory_matches) is bool
+                    and historical_inventory_matches is True
+                )
+            )
+            or reservation_error not in (None, "fixed_command_unavailable_or_timeout")
+            or backend_status not in {"verified_stopped_same_generation", "unverified"}
         ):
             raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
         backend_generation = backend.get("generation")
@@ -2419,26 +2764,53 @@ def _reconcile_local_inflight_reservation(
         _parse_buildkit_utc(builder_before.get("created"))
         _parse_buildkit_utc(builder_before.get("started"))
         if (
-            not isinstance(backend_generation, dict)
-            or builder_before.get("running") is not True
+            builder_before.get("running") is not True
             or type(builder_before.get("pid")) is not int
             or builder_before.get("pid", 0) <= 0
-            or any(
-                builder_before.get(source_field) != backend_generation.get(target_field)
-                for source_field, target_field in (
-                    ("created", "created"),
-                    ("started", "started"),
-                    ("restart_count", "restart_count"),
-                )
-            )
         ):
             raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
+        if backend_status == "verified_stopped_same_generation":
+            if (
+                backend.get("builder_container_id") != builder_before.get("container_id")
+                or backend.get("stop_grace_seconds") != LOCAL_BUILDKIT_STOP_GRACE_SECONDS
+                or not isinstance(backend_generation, dict)
+                or any(
+                    builder_before.get(source_field) != backend_generation.get(target_field)
+                    for source_field, target_field in (
+                        ("created", "created"),
+                        ("started", "started"),
+                        ("restart_count", "restart_count"),
+                    )
+                )
+            ):
+                raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
+        elif (
+            backend.get("error_code") != "fixed_command_unavailable_or_timeout"
+            or reservation_error != "fixed_command_unavailable_or_timeout"
+            or failure.get("primary_error_code") != "bounded_build_timeout_cancel_unverified"
+        ):
+            raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
+        if backend_status == "unverified":
+            secondary_errors = failure.get("secondary_error_codes")
+            if (
+                not isinstance(secondary_errors, list)
+                or not secondary_errors
+                or any(
+                    error != "fixed_command_unavailable_or_timeout" for error in secondary_errors
+                )
+            ):
+                raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
         evidence = {
             "mode": "local_failure_receipt",
             "failure_receipt_sha256": local_failure_receipt_sha256,
             "failure_finished_utc": failure_finished.isoformat(),
             "primary_error_code": failure.get("primary_error_code"),
             "backend_cancellation": backend,
+            "historical_buildkit_terminal": "unavailable",
+            "historical_tag_absence": "passed" if historical_tag_absent is True else "unavailable",
+            "historical_inventory_match": "passed"
+            if historical_inventory_matches is True
+            else "unavailable",
         }
         evidence_sha256 = str(local_failure_receipt_sha256)
     else:
@@ -2498,14 +2870,27 @@ def _reconcile_local_inflight_reservation(
             ).encode()
         ).hexdigest()
 
-    generation = _builder_generation(setup)
-    if (
-        generation.get("container_id") != setup.get("builder_container_id")
-        or generation.get("image_id") != setup.get("buildkit_image_id")
-        or generation.get("name") != CONTAINER_NAME
-    ):
-        raise BuildError("local_reconciliation_builder_identity_invalid")
-    live_history = _assert_no_running_buildkit_history()
+    if local_mode:
+        if not isinstance(builder_before, dict):
+            raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
+        fresh_stop = _verify_local_stopped_builder(setup, builder_before)
+        generation = fresh_stop["current_generation"]
+        if not isinstance(generation, dict):
+            raise BuildError("local_reconciliation_builder_identity_invalid")
+        evidence["fresh_stopped_backend"] = fresh_stop
+        live_history: dict[str, object] = {
+            "status": "unavailable_backend_stopped",
+            "historical_terminal": "unavailable",
+        }
+    else:
+        generation = _builder_generation(setup)
+        if (
+            generation.get("container_id") != setup.get("builder_container_id")
+            or generation.get("image_id") != setup.get("buildkit_image_id")
+            or generation.get("name") != CONTAINER_NAME
+        ):
+            raise BuildError("local_reconciliation_builder_identity_invalid")
+        live_history = _assert_no_running_buildkit_history()
     inventory = _image_inventory()
     all_image_ids = _all_image_ids()
     if tag in inventory or row["image_id"] in all_image_ids:
@@ -2523,6 +2908,16 @@ def _reconcile_local_inflight_reservation(
     if inventory != expected_inventory:
         raise BuildError("local_reconciliation_inventory_mismatch")
     _verify_ledger_inventory(remaining_ledger, setup)
+    if local_mode:
+        evidence["fresh_inventory"] = {
+            "ledger_sha256": before_ledger_sha256,
+            "exact_tag_absent": tag not in inventory,
+            "placeholder_image_id_absent": row["image_id"] not in all_image_ids,
+            "protected_inventory_matches": True,
+            "inventory_sha256": hashlib.sha256(
+                json.dumps(inventory, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+        }
 
     run_dir = _failed_candidate_run_directory(revision, tag, context_hash)
     recovery_path = run_dir / f"local-inflight-reconciliation-{evidence_sha256}.json"
@@ -3253,6 +3648,7 @@ def _record_local_build_failure(
     secondary_errors: list[str],
     builder_generation: dict[str, object] | None,
     backend_cancellation: dict[str, object],
+    phase_observation: dict[str, object] | None = None,
 ) -> str:
     """Publish bounded failure facts without releasing an in-flight reservation."""
     ledger_retained = False
@@ -3311,6 +3707,8 @@ def _record_local_build_failure(
         "backend_cancellation": backend_cancellation,
         "failure_cause": "unproven",
     }
+    if phase_observation is not None:
+        payload["build_phase_observation"] = phase_observation
     receipt_path = run_dir / "local-failure.json"
     temporary: Path | None = None
     identity: tuple[int, int] | None = None
@@ -3393,16 +3791,22 @@ def _native_platform() -> str:
 
 
 def _local_buildx_argv(
-    tag: str, revision: str, platform_name: str, context: Path, iidfile: Path
+    tag: str,
+    revision: str,
+    platform_name: str,
+    context: Path,
+    iidfile: Path,
+    rawjson_progress: bool = False,
 ) -> list[str]:
     if (
         not _safe_tag(tag)
         or not tag.startswith("stock-probs:local-")
         or re.fullmatch(r"[0-9a-f]{40}", revision) is None
         or platform_name not in {"linux/amd64", "linux/arm64"}
+        or type(rawjson_progress) is not bool
     ):
         raise BuildError("local_build_identity_invalid")
-    return [
+    command = [
         DOCKER,
         "buildx",
         "build",
@@ -3416,9 +3820,11 @@ def _local_buildx_argv(
         str(iidfile),
         "--tag",
         tag,
-        "--load",
-        str(context),
     ]
+    if rawjson_progress:
+        command.extend(("--progress=rawjson",))
+    command.extend(("--load", str(context)))
+    return command
 
 
 def _arm64_compose_argv(project: str, compose_file: Path) -> list[str]:
@@ -3450,6 +3856,499 @@ def _render_arm64_compose(compose_text: str, context: Path) -> str:
     return compose_text.replace("context: ..", f'context: "{context}"')
 
 
+def _build_phase_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate_json_key")
+        result[key] = value
+    return result
+
+
+def _build_phase_time(value: object) -> datetime | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > 40:
+        raise ValueError("invalid_vertex_clock")
+    match = LOCAL_BUILD_PHASE_TIMESTAMP_PATTERN.fullmatch(value)
+    if match is None:
+        raise ValueError("invalid_vertex_clock")
+    fraction = match.group("fraction")
+    fractional = f".{fraction[:6].ljust(6, '0')}" if fraction is not None else ""
+    zone = "+00:00" if match.group("zone") == "Z" else match.group("zone")
+    try:
+        parsed = datetime.fromisoformat(f"{match.group('base')}{fractional}{zone}")
+    except ValueError as exc:
+        raise ValueError("invalid_vertex_clock") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("invalid_vertex_clock")
+    return parsed.astimezone(UTC)
+
+
+def _build_phase_name(name: str) -> str | None:
+    internal = LOCAL_BUILD_PHASE_INTERNAL_NAMES.get(name)
+    if internal is not None:
+        return internal
+    if name.startswith("[internal] load metadata for "):
+        return "base_image_metadata"
+
+    match = LOCAL_BUILD_PHASE_PATTERN.fullmatch(name)
+    if match is None:
+        return None
+    stage = match.group("stage")
+    if stage not in LOCAL_BUILD_PHASE_STAGES:
+        return None
+    opcode = match.group("opcode")
+    instruction = match.group("instruction") or ""
+    if len(instruction.encode("utf-8", "strict")) > LOCAL_BUILD_PHASE_MAX_INSTRUCTION_BYTES:
+        return None
+    if opcode == "FROM":
+        return "base_image_stage"
+    if opcode == "COPY":
+        return "stage_copy"
+    if opcode in {"ARG", "ENV", "WORKDIR"}:
+        return "stage_setup"
+    if (
+        opcode
+        in {
+            "CMD",
+            "ENTRYPOINT",
+            "EXPOSE",
+            "HEALTHCHECK",
+            "LABEL",
+            "USER",
+        }
+        and stage == "stage-6"
+    ):
+        return "runtime_configuration"
+    if opcode != "RUN":
+        return None
+
+    if stage == "opencode-patched-builder":
+        if instruction.startswith("python /patch/build_native.py "):
+            return "native_builder_run"
+        if instruction.startswith("install --directory --owner=0 --group=0 --mode=0700 /build-tmp"):
+            return "native_builder_setup_run"
+        return None
+    if stage == "frontend-builder":
+        if (
+            instruction
+            == "npm run typecheck && npm run build && npm run test -- --test-concurrency=1"
+        ):
+            return "frontend_checks_run"
+        if instruction == "npm ci":
+            return "frontend_dependency_setup_run"
+        if instruction.startswith("mkdir -p /static-next/tools"):
+            return "frontend_export_run"
+        return None
+    if stage == "opencode-assets":
+        if instruction.startswith("mkdir -p /assets/") or instruction.startswith("mkdir -p /out "):
+            return "native_asset_run"
+        return None
+    if stage == "builder" and instruction.startswith("python -m pip wheel "):
+        return "python_package_run"
+    if stage == "stage-6" and instruction.startswith(
+        ("python -m pip uninstall ", "install --directory ", "chown ")
+    ):
+        return "runtime_image_run"
+    return None
+
+
+class _LocalBuildPhaseObserver:
+    """Drain bounded local Buildx JSON without placing output work in the monitor loop."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._stream: BinaryIO | None = None
+        self._thread: threading.Thread | None = None
+        self._buffer = bytearray()
+        self._raw_bytes_read = 0
+        self._frames_read = 0
+        self._vertices: dict[str, dict[str, object]] = {}
+        self._skipped_vertices = 0
+        self._skipped_vertices_truncated = False
+        self._reason_code: str | None = None
+        self._reader_eof = False
+        self._attached = False
+        self._closed = False
+        self._finalized = False
+
+    @property
+    def attached(self) -> bool:
+        return self._attached
+
+    def attach(self, stream: BinaryIO) -> None:
+        if self._attached or self._finalized:
+            raise RuntimeError("phase_reader_state_invalid")
+        self._stream = stream
+        os.set_blocking(stream.fileno(), False)
+        self._thread = threading.Thread(
+            target=self._read,
+            name="bounded-local-build-phase-reader",
+            daemon=True,
+        )
+        self._thread.start()
+        self._attached = True
+
+    def _set_reason(self, reason_code: str) -> None:
+        with self._lock:
+            if not self._closed and self._reason_code is None:
+                self._reason_code = reason_code
+                self._buffer.clear()
+
+    def _read(self) -> None:
+        stream = self._stream
+        if stream is None:
+            self._set_reason("reader_stream_unavailable")
+            return
+        selector: selectors.BaseSelector | None = None
+        try:
+            selector = selectors.DefaultSelector()
+            selector.register(stream, selectors.EVENT_READ)
+            while not self._stop.is_set():
+                events = selector.select(timeout=0.05)
+                if not events:
+                    continue
+                try:
+                    chunk = os.read(stream.fileno(), LOCAL_BUILD_PHASE_READ_CHUNK_BYTES)
+                except BlockingIOError:
+                    continue
+                except OSError:
+                    self._set_reason("reader_stream_error")
+                    with suppress(OSError, ValueError):
+                        stream.close()
+                    return
+                if not chunk:
+                    with self._lock:
+                        self._reader_eof = True
+                        if self._buffer and self._reason_code is None:
+                            self._reason_code = "unterminated_frame"
+                            self._buffer.clear()
+                    return
+                self._consume(chunk)
+        except BaseException:
+            self._set_reason("reader_failed")
+            self._drain_discard(stream)
+        finally:
+            if selector is not None:
+                with suppress(Exception):
+                    selector.close()
+
+    def _drain_discard(self, stream: BinaryIO) -> None:
+        """Keep the child pipe moving after an observer fault without parsing further bytes."""
+        while not self._stop.is_set():
+            try:
+                chunk = os.read(stream.fileno(), LOCAL_BUILD_PHASE_READ_CHUNK_BYTES)
+            except BlockingIOError:
+                time.sleep(0.01)
+                continue
+            except OSError:
+                with suppress(OSError, ValueError):
+                    stream.close()
+                return
+            if not chunk:
+                with self._lock:
+                    self._reader_eof = True
+                return
+            with self._lock:
+                if self._closed:
+                    return
+                self._raw_bytes_read = min(
+                    LOCAL_BUILD_PHASE_MAX_RAW_BYTES,
+                    self._raw_bytes_read + len(chunk),
+                )
+
+    def _consume(self, chunk: bytes) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            remaining = LOCAL_BUILD_PHASE_MAX_RAW_BYTES - self._raw_bytes_read
+            if remaining <= 0:
+                if self._reason_code is None:
+                    self._reason_code = "raw_byte_limit"
+                return
+            accepted = chunk[:remaining]
+            self._raw_bytes_read += len(accepted)
+            if self._reason_code is not None:
+                return
+
+        offset = 0
+        while offset < len(accepted):
+            newline = accepted.find(b"\n", offset)
+            if newline < 0:
+                fragment = accepted[offset:]
+                with self._lock:
+                    if self._closed or self._reason_code is not None:
+                        return
+                    self._buffer.extend(fragment)
+                    if len(self._buffer) > LOCAL_BUILD_PHASE_MAX_LINE_BYTES:
+                        self._reason_code = "line_byte_limit"
+                        self._buffer.clear()
+                break
+
+            fragment = accepted[offset:newline]
+            with self._lock:
+                if self._closed or self._reason_code is not None:
+                    return
+                self._buffer.extend(fragment)
+                line = bytes(self._buffer)
+                self._buffer.clear()
+                if len(line) > LOCAL_BUILD_PHASE_MAX_LINE_BYTES:
+                    self._reason_code = "line_byte_limit"
+                    return
+                self._frames_read += 1
+                if self._frames_read > LOCAL_BUILD_PHASE_MAX_FRAMES:
+                    self._reason_code = "frame_limit"
+                    return
+            self._consume_frame(line)
+            offset = newline + 1
+
+        if len(chunk) > len(accepted):
+            self._set_reason("raw_byte_limit")
+
+    def _consume_frame(self, line: bytes) -> None:
+        if not line:
+            self._set_reason("malformed_frame")
+            return
+        try:
+            document = json.loads(
+                line.decode("utf-8", "strict"),
+                object_pairs_hook=_build_phase_object,
+                parse_constant=lambda _value: (_ for _ in ()).throw(ValueError("invalid_number")),
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
+            self._set_reason("malformed_frame")
+            return
+        if not isinstance(document, dict) or not set(document).issubset(
+            LOCAL_BUILD_PHASE_TOP_FIELDS
+        ):
+            self._set_reason("unknown_or_invalid_frame")
+            return
+
+        vertices = document.get("vertexes", [])
+        if not isinstance(vertices, list) or len(vertices) > LOCAL_BUILD_PHASE_MAX_ARRAY_ITEMS:
+            self._set_reason("array_limit_or_shape")
+            return
+        for field, allowed_fields in LOCAL_BUILD_PHASE_ARRAY_FIELDS.items():
+            rows = document.get(field, [])
+            if not isinstance(rows, list) or len(rows) > LOCAL_BUILD_PHASE_MAX_ARRAY_ITEMS:
+                self._set_reason("array_limit_or_shape")
+                return
+            if any(
+                not isinstance(item, dict) or not set(item).issubset(allowed_fields)
+                for item in rows
+            ):
+                self._set_reason("unknown_or_invalid_frame")
+                return
+
+        for vertex in vertices:
+            if not isinstance(vertex, dict) or not set(vertex).issubset(
+                LOCAL_BUILD_PHASE_VERTEX_FIELDS
+            ):
+                self._set_reason("unknown_or_invalid_vertex")
+                return
+            digest = vertex.get("digest")
+            name = vertex.get("name")
+            if (
+                not isinstance(digest, str)
+                or LOCAL_BUILD_PHASE_DIGEST_PATTERN.fullmatch(digest) is None
+                or not isinstance(name, str)
+                or len(name.encode("utf-8", "strict")) > LOCAL_BUILD_PHASE_MAX_INSTRUCTION_BYTES
+            ):
+                self._set_reason("invalid_vertex_identity")
+                return
+            phase = _build_phase_name(name)
+
+            inputs = vertex.get("inputs", [])
+            if (
+                not isinstance(inputs, list)
+                or len(inputs) > LOCAL_BUILD_PHASE_MAX_ARRAY_ITEMS
+                or any(
+                    not isinstance(item, str)
+                    or LOCAL_BUILD_PHASE_DIGEST_PATTERN.fullmatch(item) is None
+                    for item in inputs
+                )
+            ):
+                self._set_reason("invalid_vertex_inputs")
+                return
+            if "progressGroup" in vertex and vertex["progressGroup"] is not None:
+                if not isinstance(vertex["progressGroup"], dict):
+                    self._set_reason("invalid_vertex_progress_group")
+                    return
+                progress_group = vertex["progressGroup"]
+                if not set(progress_group).issubset({"id", "name", "weak"}):
+                    self._set_reason("unknown_vertex_progress_group")
+                    return
+                if "weak" in progress_group and type(progress_group["weak"]) is not bool:
+                    self._set_reason("invalid_vertex_progress_group")
+                    return
+
+            try:
+                started_at = _build_phase_time(vertex.get("started"))
+                completed_at = _build_phase_time(vertex.get("completed"))
+            except ValueError:
+                self._set_reason("invalid_vertex_clock")
+                return
+            if (completed_at is not None and started_at is None) or (
+                completed_at is not None and started_at is not None and completed_at < started_at
+            ):
+                self._set_reason("invalid_vertex_clock")
+                return
+            elapsed_ms: int | None = None
+            if completed_at is not None and started_at is not None:
+                elapsed_ms = int((completed_at - started_at).total_seconds() * 1000)
+                if elapsed_ms < 0 or elapsed_ms > LOCAL_BUILD_PHASE_MAX_VERTEX_DURATION_MS:
+                    self._set_reason("invalid_vertex_clock")
+                    return
+
+            cached = vertex.get("cached", False)
+            error = vertex.get("error")
+            if type(cached) is not bool or (error is not None and not isinstance(error, str)):
+                self._set_reason("invalid_vertex_state")
+                return
+            if isinstance(error, str) and len(error.encode("utf-8", "strict")) > 4096:
+                self._set_reason("invalid_vertex_state")
+                return
+
+            with self._lock:
+                if self._closed or self._reason_code is not None:
+                    return
+                if phase is None:
+                    self._skipped_vertices += 1
+                    if self._skipped_vertices > LOCAL_BUILD_PHASE_MAX_SKIPPED_VERTICES:
+                        self._skipped_vertices = LOCAL_BUILD_PHASE_MAX_SKIPPED_VERTICES
+                        self._skipped_vertices_truncated = True
+                    continue
+                prior = self._vertices.get(digest)
+                if prior is None and len(self._vertices) >= LOCAL_BUILD_PHASE_MAX_VERTICES:
+                    self._reason_code = "vertex_limit"
+                    return
+                if prior is not None and prior.get("phase") != phase:
+                    self._reason_code = "vertex_identity_changed"
+                    return
+                ordinal = int(prior["ordinal"]) if prior is not None else len(self._vertices) + 1
+                self._vertices[digest] = {
+                    "phase": phase,
+                    "ordinal": ordinal,
+                    "started": started_at is not None or bool(prior and prior["started"]),
+                    "completed": completed_at is not None or bool(prior and prior["completed"]),
+                    "cached": cached or bool(prior and prior["cached"]),
+                    "error": bool(error) or bool(prior and prior["error"]),
+                    "elapsed_ms": elapsed_ms
+                    if elapsed_ms is not None
+                    else (prior or {}).get("elapsed_ms"),
+                }
+
+        if self._artifact_size_exceeded():
+            self._set_reason("artifact_size_limit")
+
+    def _artifact_size_exceeded(self) -> bool:
+        with self._lock:
+            projection = self._projection_locked(status="available", reason_code=None)
+        try:
+            return (
+                len((json.dumps(projection, sort_keys=True, separators=(",", ":")) + "\n").encode())
+                > LOCAL_BUILD_PHASE_MAX_ARTIFACT_BYTES
+            )
+        except (TypeError, ValueError):
+            return True
+
+    def finish(self) -> None:
+        try:
+            if not self._attached or self._finalized:
+                return
+            thread = self._thread
+            if thread is None:
+                self._set_reason("reader_thread_unavailable")
+                self._finalized = True
+                return
+            thread.join(timeout=LOCAL_BUILD_PHASE_READER_JOIN_SECONDS)
+            with self._lock:
+                self._closed = True
+                if not self._reader_eof and self._reason_code is None:
+                    self._reason_code = "reader_eof_unobserved"
+            self._stop.set()
+            stream = self._stream
+            if stream is not None:
+                with suppress(OSError, ValueError):
+                    stream.close()
+            thread.join(timeout=LOCAL_BUILD_PHASE_READER_FINAL_JOIN_SECONDS)
+            if thread.is_alive():
+                with self._lock:
+                    if self._reason_code is None:
+                        self._reason_code = "reader_join_timeout"
+        except BaseException:
+            with suppress(BaseException):
+                self._set_reason("reader_finalize_failed")
+                self._stop.set()
+                self._closed = True
+        finally:
+            self._finalized = True
+
+    def _projection_locked(self, *, status: str, reason_code: str | None) -> dict[str, object]:
+        phases = sorted(self._vertices.values(), key=lambda phase: int(phase["ordinal"]))
+        return {
+            "schema": LOCAL_BUILD_PHASE_SCHEMA,
+            "status": status,
+            "reason_code": reason_code,
+            "frames_read": min(self._frames_read, LOCAL_BUILD_PHASE_MAX_FRAMES),
+            "raw_bytes_read": min(self._raw_bytes_read, LOCAL_BUILD_PHASE_MAX_RAW_BYTES),
+            "vertices_observed": len(phases),
+            "unknown_vertices_skipped": self._skipped_vertices,
+            "unknown_vertices_truncated": self._skipped_vertices_truncated,
+            "phases": phases,
+        }
+
+    def snapshot(self) -> dict[str, object] | None:
+        try:
+            if not self._attached:
+                return None
+            if not self._finalized:
+                self.finish()
+            with self._lock:
+                reason_code = self._reason_code
+                if reason_code is None and self._skipped_vertices:
+                    reason_code = "unknown_vertices_skipped"
+                if reason_code is None and not self._vertices:
+                    reason_code = "no_progress_vertices"
+                if self._reason_code is not None or not self._vertices:
+                    status = "unavailable"
+                elif self._skipped_vertices:
+                    status = "partial"
+                else:
+                    status = "available"
+                projection = self._projection_locked(status=status, reason_code=reason_code)
+            raw = (json.dumps(projection, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        except BaseException:
+            return {
+                "schema": LOCAL_BUILD_PHASE_SCHEMA,
+                "status": "unavailable",
+                "reason_code": "observer_snapshot_failed",
+                "frames_read": 0,
+                "raw_bytes_read": 0,
+                "vertices_observed": 0,
+                "unknown_vertices_skipped": 0,
+                "unknown_vertices_truncated": False,
+                "phases": [],
+            }
+        if len(raw) > LOCAL_BUILD_PHASE_MAX_ARTIFACT_BYTES:
+            return {
+                "schema": LOCAL_BUILD_PHASE_SCHEMA,
+                "status": "unavailable",
+                "reason_code": "artifact_size_limit",
+                "frames_read": min(self._frames_read, LOCAL_BUILD_PHASE_MAX_FRAMES),
+                "raw_bytes_read": min(self._raw_bytes_read, LOCAL_BUILD_PHASE_MAX_RAW_BYTES),
+                "vertices_observed": 0,
+                "unknown_vertices_skipped": min(
+                    self._skipped_vertices, LOCAL_BUILD_PHASE_MAX_SKIPPED_VERTICES
+                ),
+                "unknown_vertices_truncated": self._skipped_vertices_truncated,
+                "phases": [],
+            }
+        return projection
+
+
 def _run_bounded_build(
     command: list[str],
     *,
@@ -3458,6 +4357,7 @@ def _run_bounded_build(
     space_paths: tuple[Path, ...],
     env: dict[str, str],
     timeout: int,
+    phase_observer: _LocalBuildPhaseObserver | None = None,
 ) -> None:
     try:
         process = subprocess.Popen(  # noqa: S603 - Fixed command vector, no shell.
@@ -3466,12 +4366,28 @@ def _run_bounded_build(
             env=env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE if phase_observer is not None else subprocess.DEVNULL,
             shell=False,
             start_new_session=True,
         )
     except OSError as exc:
         raise BuildError("bounded_build_command_start_failed") from exc
+
+    if phase_observer is not None:
+        try:
+            if process.stderr is None:
+                raise RuntimeError("phase_reader_stream_unavailable")
+            phase_observer.attach(process.stderr)
+        except BaseException as exc:
+            if not cancel(process):
+                if process.stderr is not None:
+                    with suppress(OSError, ValueError):
+                        process.stderr.close()
+                raise BuildError("bounded_build_phase_reader_start_cancel_unverified") from exc
+            if process.stderr is not None:
+                with suppress(OSError, ValueError):
+                    process.stderr.close()
+            raise BuildError("bounded_build_phase_reader_start_failed") from exc
 
     started = time.monotonic()
     deadline = started + timeout
@@ -3546,6 +4462,8 @@ def _run_bounded_build(
         raise BuildError("bounded_build_interrupted") from exc
     finally:
         signal.signal(signal.SIGTERM, original_term_handler)
+        if phase_observer is not None:
+            phase_observer.finish()
 
     if return_code == 0:
         try:
@@ -3651,6 +4569,7 @@ def build_local_image() -> dict[str, str]:
         build_attempt_started = False
         build_completed = False
         backend_cancellation: dict[str, object] = {"status": "not_started"}
+        phase_observer = _LocalBuildPhaseObserver()
         try:
             reservation_ledger_sha256 = _ledger_file_sha256()
             setup, setup_sha256 = _current_setup_receipt_sha256()
@@ -3658,7 +4577,7 @@ def build_local_image() -> dict[str, str]:
             builder_generation = _builder_generation(setup)
             if builder_generation["running"] is not True:
                 raise BuildError("local_builder_not_running_before_build")
-            command = _local_buildx_argv(tag, revision, expected_platform, context, iidfile)
+            command = _local_buildx_argv(tag, revision, expected_platform, context, iidfile, True)
             build_started_utc = datetime.now(UTC).isoformat()
             build_attempt_started = True
             _run_bounded_build(
@@ -3668,6 +4587,7 @@ def build_local_image() -> dict[str, str]:
                 space_paths=space_paths,
                 env=ENV,
                 timeout=TIMEOUT,
+                phase_observer=phase_observer,
             )
             build_completed = True
             try:
@@ -3730,6 +4650,14 @@ def build_local_image() -> dict[str, str]:
                     backend_cancellation = _stop_owned_builder_after_local_failure(
                         current_setup, builder_generation
                     )
+                    stop_error_code = backend_cancellation.get("stop_error_code")
+                    if stop_error_code is not None:
+                        if (
+                            not isinstance(stop_error_code, str)
+                            or re.fullmatch(r"[a-z0-9_]{1,96}", stop_error_code) is None
+                        ):
+                            raise BuildError("local_builder_stop_error_code_invalid")
+                        secondary_errors.append(stop_error_code)
                 except BuildError as cancellation_error:
                     backend_cancellation = {
                         "status": "unverified",
@@ -3751,6 +4679,7 @@ def build_local_image() -> dict[str, str]:
                     secondary_errors=secondary_errors,
                     builder_generation=builder_generation,
                     backend_cancellation=backend_cancellation,
+                    phase_observation=phase_observer.snapshot(),
                 )
                 if isinstance(primary_error, BuildError):
                     primary_error.local_failure_receipt_path = str(run_dir / "local-failure.json")

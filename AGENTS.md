@@ -2,6 +2,13 @@
 
 ## Codex project workflow
 
+For the R121 local build repair, preserve uncertain historical failure facts. Release a failed
+local reservation only through the reviewed typed operation with fresh setup-bound stopped
+generation/cgroup and protected-inventory evidence. Do not restart that builder before collecting
+the stopped-generation proof. A separately approved temporary production baseline remains a
+distinct operation kind; its source checks do not authorize an unbuilt image or establish that
+the running MCP server loaded the change. The existing 512/128 MiB floors remain fixed.
+
 Codex uses this root `AGENTS.md` for repository policy. Its project configuration is
 `.codex/config.toml`, its three scoped subagents are `.codex/agents/luna-build.toml`,
 `luna-qa.toml`, and `luna-docs.toml`, and its repository skills are in `.agents/skills/`.

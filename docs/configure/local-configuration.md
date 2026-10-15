@@ -270,6 +270,14 @@ are unchanged; never relabel the earlier image or claim unchanged helper/runtime
 
 ### Rehearsal baseline identity
 
+The candidate source also recognizes a separately approved `temporary_recovery` baseline. It is
+fixed to the reviewed 6359 source/overlay and schema 13, and requires bounded root-owned approval,
+manifest, operation and current-state records to match the actual image/container and ready
+assistant-disabled projection. Only the completed startup-floor phase admits a rehearsal; the
+512 MiB startup and 128 MiB running floors remain unchanged. This is neither a configuration
+shortcut nor a retained-release identity. Current source/mock passes do not show that the running
+MCP process loaded this consumer or that a temporary image was built, approved or started.
+
 The candidate rehearsal checker uses a separate fixed running-production identity; the schema-12
 PR-pair fixture remains unchanged. The registered schema-13 recovery alternative is an exact
 source allowlist with a disabled-ready requirement, not a configurable arbitrary image, archive

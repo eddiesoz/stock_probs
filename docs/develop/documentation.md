@@ -30,7 +30,20 @@ For a local-build failure, record the primary error, CLI cancellation, actual bu
 state, reservation state and receipt publication separately. A missing historical BuildKit result
 is Unavailable even when fresh history and image inventory show absence. Typed external-observation
 reconciliation is a distinct recovery scope; it does not turn the failed build into a success.
+The genuine-local-failure mode can use fresh proof of the same stopped builder generation and an
+absent/empty bounded cgroup when historical cancellation or history is unavailable. Historical
+false facts still fail closed. Keep that local recovery separate from the temporary production
+baseline's approval/manifest/current-record and host/MCP schema checks; static consumer agreement
+does not prove installation, image availability or a host transition.
 See [the local-build recovery procedure](testing.md#bounded-local-docker-builds-and-worker-verification).
+
+## Local build phase evidence
+
+For the local-build phase observer, publish only its bounded sanitized projection. Raw BuildKit
+vertex names, commands, URLs, digests, logs and warning/error payloads are not evidence artifacts.
+Keep partial or unavailable observations separate from the primary build failure and its cause;
+never infer a successful build from parser tests. The reader uses the pinned Buildx/BuildKit JSON
+shape and leaves existing build deadlines and failure recovery in force.
 
 ## Codex project configuration
 
