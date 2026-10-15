@@ -1,6 +1,6 @@
 ---
 title: "API reference"
-description: "Versioned FastAPI endpoint inventory for workspace instruments, quotes, charts, lists, forecasts, current news, immutable history, outcomes, exports, backups, restores, and local documentation."
+description: "Versioned FastAPI endpoint inventory for workspace instruments, portfolios, monitoring, forecasts, current news, immutable history, exports, backups, restores, and local documentation."
 ---
 
 # API reference
@@ -35,6 +35,69 @@ and saved baselines/scenarios retain their original inputs.
 | `GET/POST /api/v1/scenarios` | Paginated saved scenarios; explicit creation requires an owned baseline, assumptions and UUID key. |
 | `GET /api/v1/scenarios/{id}` | Reopen original scenario inputs and result. |
 | `GET /api/v1/scenarios/{id}/export` | JSON containing the scenario and its owned frozen baseline. |
+
+## R121 Release 3 monitoring API candidate
+
+The following routes describe the R121 R3 application candidate, not a production availability
+promise. This checkout registers candidate schema 18, including notification-address verification
+and delivery records. The authenticated feature response reports whether monitoring is enabled,
+whether a rule can be armed, the intended 900-second check cadence, and whether email is configured
+and available. Monitoring, scheduler, and email controls default off, so email is unavailable by
+default. The candidate reuses the application SMTP transport; configuration and source wiring do
+not prove that an address was verified or a message delivered. Do not treat this candidate as a
+production feature. Each user record derives its
+owner from the active session rather than a request field. Authenticated mutations also require
+the application CSRF token described below. The administrator-control authorization boundary has a
+current unsafe finding; its mutation route is not accepted for use or rollout until the repair passes
+independent review.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/monitoring/features` | Report monitoring capability and whether the scheduler can arm a rule; this is not a live-price guarantee. |
+| `GET` | `/api/v1/notification-addresses` | Read the authenticated owner's verification-address state without returning the address in preference projections. |
+| `POST` | `/api/v1/notification-address-verifications` | Begin address verification through the configured delivery path. |
+| `POST` | `/api/v1/notification-address-verifications/regenerate` | Explicitly request a replacement verification message. |
+| `GET` | `/api/v1/notification-address-verifications/current` | Read the current owner's verification status. |
+| `GET` | `/api/v1/notification-address-verifications/{verification_id}` | Read an owned verification status by ID. |
+| `POST` | `/api/v1/notification-addresses/select` | Select an explicitly verified address for notifications. |
+| `POST` | `/api/v1/notification-address-verifications/confirm` | Confirm a verification challenge. |
+| `GET` | `/api/v1/admin/monitoring/control` | Read the persisted administrator monitoring switch. |
+| `PUT` | `/api/v1/admin/monitoring/control` | Intended to change the persisted switch with expected revision, administrator role, and fresh TOTP step-up; current control-boundary review is unsafe and this route is not accepted for use. |
+| `GET` / `POST` | `/api/v1/alerts` | List bounded owner rules or create one with `Idempotency-Key`; the first valid quote establishes a baseline and cannot trigger. |
+| `GET` / `PATCH` | `/api/v1/alerts/{alert_id}` | Read or revision-check an owned rule. Editing a live rule requests a fresh baseline. |
+| `DELETE` | `/api/v1/alerts/{alert_id}` | Currently returns `503 MONITORING_DELETE_UNAVAILABLE` to preserve immutable history. |
+| `POST` | `/api/v1/alerts/{alert_id}/pause` or `/resume` | Pause an owned rule or start a new arming generation, with expected revision. |
+| `GET` | `/api/v1/notifications` | Read bounded owner-scoped notifications with cursor pagination. |
+| `PUT` | `/api/v1/notifications/{notification_id}/read` | Change read state with expected revision. |
+| `GET` / `PUT` | `/api/v1/notification-preferences` | Read or revision-update email/digest preferences; returns only whether an address is configured, never the address. |
+| `GET` | `/api/v1/report-cards` | Read a bounded page of recorded outcomes with optional symbol and horizon filters. |
+| `GET` / `POST` | `/api/v1/report-cards/{result_id}/reviews` | Read review history or append a confirmed/disputed review with expected revision. |
+| `GET` | `/api/v1/monitoring/export` | Export selected bounded monitoring-history sections as JSON or formula-safe CSV. |
+
+Alert create requires an `Idempotency-Key` UUID. Alert edits, pause/resume actions, notification
+read-state updates, preference changes, and manual outcome reviews use expected revisions; stale
+updates return a conflict rather than overwriting newer state. Collection pages are bounded and
+owner-filtered. API response projections exclude notification addresses and mail transport state.
+The existing SMTP transport and persisted outbox are connected in the local candidate. Sending
+still requires verified-address state, explicit opt-in, and enabled configuration; queued or
+accepted work is not proof of mailbox delivery. No live SMTP submission or delivery has been
+verified. The 15-minute cadence is a target; checks can be delayed or unavailable, and a crossing
+between observations may be missed.
+
+The earlier 24-case browser aggregate remains **Fail** (21 failures, 3 unrun); its retest is
+pending, and axe was unavailable in that run. Independent schema-18 repository/restore-guard
+review passed 12 selected checks. Repaired application integration passed 23 independent checks
+against the real staged app using local fixtures; this did not exercise production MFA or SMTP.
+The approved full frontend build/stage passed npm CI, typecheck, Next build and 88 Node tests; all
+65 served/export pairs matched with 113 source bindings at that build snapshot; `repository.py` has
+since changed, so the whole current source tree is not bound to that stage. Independent selected UI
+source review passed 16 Node/scoped TypeScript checks with no actionable P1/P2 finding, but was not a
+browser run and left lost-response GET reconciliation/explicit replacement testing open. Live-provider,
+browser/axe, complete security, backup/recovery, host-resource, rollback,
+canary, and release acceptance remain open. The optional whole-package mypy diagnostic reported
+233 errors across 17 files; that is not the canonical local-gate mypy selector, which checks
+`backup.py` and `cli.py`. Selected later repository/type repairs are recorded in E29/E30, but no
+current canonical pass is inferred. See the [R-ASTRA-121 R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15) for exact receipts and limits.
 
 Preview transport is bounded to 256 KiB only on the two transaction/import preview paths; CSV text
 itself is at most 64 KiB. Ordinary request limits remain unchanged. Previews reserve four slots per
@@ -451,9 +514,12 @@ existing `/api/v1/news` endpoint remains an explicit current-headline request; t
 ephemeral context and are not added to a frozen briefing or forecast. No digest, assistant handoff,
 scheduler, background news request, email, or provider operation is wired into saved-snapshot
 creation. The existing `/api/v1/history-export.csv` and `.json` routes export search history only;
-an owner-filtered saved-briefing export is pending. Selected builder checks passed 98 tests with two
-warnings; an independent selection also passed 98 tests, but its receipt preserves failed input-
-manifest and then-current documentation/source-comment checks and is not an aggregate acceptance.
+an owner-filtered HTTP/workspace export is pending. Isolated saved-briefing export primitives have
+a separate five-test independent Pass; they expose no HTTP route. Historical E31 builder and
+independent selections passed 98 tests each, with failed manifest/comment checks preserved. The
+later cumulative source passed 184 selected builder tests and a separate 12-test independent
+selection, including returned and published validation envelopes. None is an aggregate acceptance.
 Full backup/export and recovery verification, R4 frontend build/stage, browser, accessibility, and
 release checks remain open. See
-[R-ASTRA-121 E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).
+[the cumulative R4 checkpoint](../../MVP-PLAN.md#r-astra-121-r4-cumulative-integration-checkpoint-2026-10-15)
+and historical [E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).

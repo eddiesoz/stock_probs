@@ -22,7 +22,7 @@ from functools import partial
 from html.parser import HTMLParser
 from inspect import signature
 from pathlib import Path
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, Protocol, cast
 from urllib.parse import ParseResult, quote, urlparse
 from uuid import uuid4
 
@@ -59,7 +59,12 @@ from stock_probs.config import Settings
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, DomainError, normalize_symbol
 from stock_probs.invitation_mail import send_invitation_email
 from stock_probs.provider import FixtureProvider, MarketDataProvider, YahooProvider
-from stock_probs.repository import SCHEMA_VERSION, Repository, RepositoryError
+from stock_probs.repository import (
+    _NOTIFICATION_RESTORE_EFFECT_TABLES,
+    SCHEMA_VERSION,
+    Repository,
+    RepositoryError,
+)
 from stock_probs.schemas import (
     AuthEmailInvitationRequest,
     AuthEmailInvitationResponse,
@@ -312,6 +317,24 @@ class QuoteItemResponse(ApiResponse):
 
 class QuotesResponse(ApiResponse):
     items: list[QuoteItemResponse] = Field(max_length=20)
+
+
+class MonitoringRuntime(Protocol):
+    """Expose the lifecycle and status used by the normal monitoring application."""
+
+    async def start(self) -> None: ...
+
+    async def close(self) -> None: ...
+
+    def status(self) -> Mapping[str, bool]: ...
+
+
+class MonitoringControlRequest(BaseModel):
+    """The administrator's independent persisted scheduler switch uses revision checks."""
+
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(strict=True, ge=1, le=2**63 - 1)
+    enabled: StrictBool
 
 
 class CapturedBarResponse(ApiResponse):
@@ -1371,6 +1394,14 @@ class BackupCountsResponse(ApiResponse):
     market_data_snapshots: int
     probability_results: int
     outcome_observations: int
+    monitoring_rules: int | None = None
+    monitoring_rule_revisions: int | None = None
+    price_observations: int | None = None
+    in_app_notifications: int | None = None
+    notification_reads: int | None = None
+    outcome_evidence: int | None = None
+    outcome_reviews: int | None = None
+    email_preferences: int | None = None
 
 
 class BackupCreatedResponse(ApiResponse):
@@ -1448,6 +1479,14 @@ _PUBLIC_BACKUP_COUNT_FIELDS = {
     "market_data_snapshots": "forecast_inputs",
     "probability_results": "forecast_results",
     "outcome_observations": "outcomes",
+    "monitoring_rules": "price_alerts",
+    "monitoring_rule_revisions": "price_alert_revisions",
+    "price_observations": "price_alert_observations",
+    "in_app_notifications": "notifications",
+    "notification_reads": "notification_read_events",
+    "outcome_evidence": "collected_outcome_evidence",
+    "outcome_reviews": "forecast_outcome_reviews",
+    "email_preferences": "notification_preferences",
 }
 
 
@@ -1457,6 +1496,7 @@ def _public_backup_counts(counts: dict[str, int]) -> dict[str, int]:
     return {
         public_name: counts[internal_name]
         for public_name, internal_name in _PUBLIC_BACKUP_COUNT_FIELDS.items()
+        if internal_name in counts
     }
 
 
@@ -1556,6 +1596,38 @@ def _documented_errors(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     }
 
 
+def _document_safe_validation_errors(app: FastAPI) -> None:
+    """Describe FastAPI's generated 422s with the same safe envelope the app returns."""
+
+    original_openapi = app.openapi
+    normalized = False
+
+    def openapi_with_safe_validation_errors() -> dict[str, Any]:
+        nonlocal normalized
+        schema = original_openapi()
+        if not normalized:
+            for path_item in schema.get("paths", {}).values():
+                if not isinstance(path_item, dict):
+                    continue
+                for operation in path_item.values():
+                    if not isinstance(operation, dict):
+                        continue
+                    response = operation.get("responses", {}).get("422")
+                    if not isinstance(response, dict):
+                        continue
+                    media = response.get("content", {}).get("application/json")
+                    if not isinstance(media, dict) or media.get("schema") != {
+                        "$ref": "#/components/schemas/HTTPValidationError"
+                    }:
+                        continue
+                    media["schema"] = {"$ref": "#/components/schemas/ErrorEnvelope"}
+                    response["description"] = "The request or domain input is invalid."
+            normalized = True
+        return schema
+
+    app.openapi = openapi_with_safe_validation_errors
+
+
 class _RestoreRequestGate:
     """Stop new database requests and drain existing ones before promotion."""
 
@@ -1623,6 +1695,8 @@ WORKSPACE_PAGE_ROUTES = (
     "/overview/transactions",
     "/overview/what-changed",
     "/tools/what-if",
+    "/notifications",
+    "/research/report-card",
     "/sign-in",
     "/invite",
     "/passkey",
@@ -2420,6 +2494,7 @@ _RESTORE_SECURITY_TABLES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "locked_until",
         ),
     ),
+    *tuple((table, columns) for table, columns, _ in _NOTIFICATION_RESTORE_EFFECT_TABLES),
     (
         "assistant_model_consents",
         (
@@ -2433,10 +2508,14 @@ _RESTORE_SECURITY_TABLES: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
 )
+_RESTORE_SECURITY_ORDER_COLUMNS = {
+    **{table: order_column for table, _, order_column in _NOTIFICATION_RESTORE_EFFECT_TABLES},
+    "totp_attempt_throttles": "user_id",
+}
 
 
 def _restore_security_digest(path: Path) -> str:
-    """Fingerprint account and authenticator state without exposing its secret values."""
+    """Fingerprint account security and irreversible monitoring delivery effects."""
 
     try:
         connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
@@ -2457,7 +2536,7 @@ def _restore_security_digest(path: Path) -> str:
                         state.append((table, []))
                         continue
                 quoted_columns = ", ".join(columns)
-                order_column = "user_id" if table == "totp_attempt_throttles" else "id"
+                order_column = _RESTORE_SECURITY_ORDER_COLUMNS.get(table, "id")
                 rows = connection.execute(
                     f"SELECT {quoted_columns} FROM {table} ORDER BY {order_column}"  # noqa: S608
                 ).fetchall()
@@ -3058,6 +3137,7 @@ def create_app(
     assistant_runtime: object | None = None,
     assistant_catalog: object | None = None,
     assistant_providers: object | None = None,
+    monitoring_runtime: MonitoringRuntime | None = None,
 ) -> FastAPI:
     """Build an injectable app so all deterministic tests use temporary SQLite files."""
 
@@ -3074,6 +3154,57 @@ def create_app(
         (lambda: fixture_now) if fixture_now is not None else (lambda: datetime.now(UTC))
     )
     service = ForecastService(repository, selected_provider, selected_clock)
+    from stock_probs.monitoring_store import MonitoringStore
+
+    monitoring_store = MonitoringStore(
+        repository, admin_only=config.monitoring_features_canary_only
+    )
+    from stock_probs.notification_address_store import NotificationAddressStore
+
+    notification_address_store = NotificationAddressStore(monitoring_store)
+    notification_verification = None
+    if config.monitoring_email_enabled:
+        from stock_probs.notification_verification import NotificationVerificationService
+
+        notification_verification = NotificationVerificationService(
+            notification_address_store,
+            settings=config.invitation_mail,
+            public_origin=config.auth_public_origin,
+            clock=selected_clock,
+        )
+    notification_delivery = None
+    if config.monitoring_email_delivery_configured:
+        from stock_probs.notification_delivery import NotificationDeliveryConsumer
+
+        notification_delivery = NotificationDeliveryConsumer(
+            monitoring_store,
+            settings=config.invitation_mail,
+            public_origin=config.auth_public_origin,
+            clock=selected_clock,
+        )
+    selected_monitoring_runtime = monitoring_runtime
+    if (
+        selected_monitoring_runtime is None
+        and config.monitoring_features_enabled
+        and config.monitoring_scheduler_enabled
+    ):
+        from stock_probs.monitoring_scheduler import MonitoringScheduler
+        from stock_probs.outcome_collection import DailyOutcomeCollector
+        from stock_probs.outcome_collection_store import OutcomeCollectionStore
+
+        selected_monitoring_runtime = MonitoringScheduler(
+            monitoring_store,
+            service,
+            notification_delivery=notification_delivery,
+            clock=selected_clock,
+            outcome_collector=DailyOutcomeCollector(
+                OutcomeCollectionStore(
+                    repository, admin_only=config.monitoring_features_canary_only
+                ),
+                service,
+                completion_clock=selected_clock,
+            ),
+        )
     backups = BackupManager(repository, config.backup_dir)
     auth_manager = AuthManager(
         auth_store if auth_store is not None else repository,
@@ -3147,6 +3278,8 @@ def create_app(
         "/tools/live-trading": next_dir / "tools" / "live-trading.html",
         "/tools/markets": next_dir / "tools" / "markets.html",
         "/research/theses": next_dir / "research" / "theses.html",
+        "/research/report-card": next_dir / "research" / "report-card.html",
+        "/notifications": next_dir / "notifications.html",
         "/tools/compare": next_dir / "tools" / "compare.html",
         "/overview/transactions": next_dir / "overview" / "transactions.html",
         "/overview/what-changed": next_dir / "overview" / "what-changed.html",
@@ -3187,6 +3320,8 @@ def create_app(
             "/account",
             "/admin",
             "/research/theses",
+            "/research/report-card",
+            "/notifications",
             "/tools/compare",
             "/overview/transactions",
             "/overview/what-changed",
@@ -3224,11 +3359,28 @@ def create_app(
                 role="member",
             )
         application.state.ready = True
+        monitoring_attempted = False
         try:
             await assistant_service.start()
+            if (
+                config.monitoring_features_enabled
+                and config.monitoring_scheduler_enabled
+                and selected_monitoring_runtime is not None
+            ):
+                monitoring_attempted = True
+                try:
+                    await selected_monitoring_runtime.start()
+                except Exception:
+                    # A monitoring startup failure cannot remove access to saved user records.
+                    logger.warning("monitoring_start_failed")
             yield
         finally:
             application.state.ready = False
+            if monitoring_attempted and selected_monitoring_runtime is not None:
+                try:
+                    await selected_monitoring_runtime.close()
+                except Exception:
+                    logger.warning("monitoring_close_failed")
             await assistant_service.close()
 
     app = FastAPI(
@@ -3245,6 +3397,11 @@ def create_app(
     app.state.backups = backups
     app.state.auth = auth_manager
     app.state.assistant = assistant_service
+    app.state.monitoring = selected_monitoring_runtime
+    app.state.monitoring_store = monitoring_store
+    app.state.notification_address_store = notification_address_store
+    app.state.notification_verification = notification_verification
+    app.state.notification_delivery = notification_delivery
     app.state.ready = False
     app.add_middleware(
         LocalSecurityMiddleware,
@@ -4489,9 +4646,184 @@ def create_app(
             csrf_guard=briefing_csrf_guard,
             feature_enabled=briefing_feature_guard,
             canary_allowed=briefing_canary_guard,
+        )
+    )
+
+    from stock_probs.monitoring_api import create_monitoring_router
+    from stock_probs.monitoring_store import MonitoringConflictError, MonitoringStoreError
+
+    def monitoring_enabled(request: Request) -> bool:
+        """Restrict the initial monitoring canary to an authenticated administrator."""
+        context = getattr(request.state, "auth_context", None)
+        return config.monitoring_features_enabled and (
+            not config.monitoring_features_canary_only
+            or (context is not None and context.user.role == "admin")
+        )
+
+    def monitoring_owner(request: Request) -> int | None:
+        """Resolve ownership before enforcing the feature control on every resource route."""
+        owner = _owner_user_id(request)
+        if not monitoring_enabled(request):
+            raise DomainError(
+                "monitoring_features_disabled",
+                "These monitoring features are not enabled for this account.",
+                status_code=503,
+            )
+        return owner
+
+    def monitoring_arm_available() -> bool:
+        """A configured rule can arm only while both independent worker controls permit it."""
+        if not config.monitoring_scheduler_enabled or selected_monitoring_runtime is None:
+            return False
+        try:
+            return (
+                selected_monitoring_runtime.status().get("running") is True
+                and monitoring_store.get_control()["enabled"] is True
+            )
+        except (sqlite3.Error, MonitoringStoreError, AttributeError, RuntimeError):
+            return False
+
+    def monitoring_email_available() -> bool:
+        """Report only configured, running alert delivery with the shared control enabled."""
+        if (
+            not config.monitoring_email_delivery_configured
+            or selected_monitoring_runtime is None
+            or getattr(selected_monitoring_runtime, "notification_delivery", None) is None
+        ):
+            return False
+        try:
+            return monitoring_arm_available()
+        except Exception:
+            return False
+
+    @app.get("/api/v1/monitoring/features")
+    def monitoring_features(request: Request) -> dict[str, object]:
+        _owner_user_id(request)
+        enabled = monitoring_enabled(request)
+        return {
+            "enabled": enabled,
+            "release": 3,
+            "features": ["alerts", "notifications", "report-card"] if enabled else [],
+            "can_arm": enabled and monitoring_arm_available(),
+            "email_available": enabled and monitoring_email_available(),
+            "price_check_interval_seconds": 900,
+            "reported_at": selected_clock().isoformat(),
+        }
+
+    @app.get("/api/v1/admin/monitoring/control")
+    def monitoring_control(request: Request) -> dict[str, object]:
+        _auth_context(request, role="admin")
+        return monitoring_store.get_control()
+
+    @app.put("/api/v1/admin/monitoring/control")
+    def change_monitoring_control(
+        payload: MonitoringControlRequest, request: Request
+    ) -> dict[str, object]:
+        _auth_context(request, role="admin", step_up=True)
+        try:
+            return monitoring_store.set_control(
+                payload.expected_revision, payload.enabled, selected_clock()
+            )
+        except MonitoringConflictError as error:
+            raise DomainError(
+                "revision_conflict", "Reload the monitoring control before saving.", status_code=409
+            ) from error
+        except MonitoringStoreError as error:
+            raise DomainError(
+                "monitoring_unavailable", "The monitoring control is unavailable.", status_code=503
+            ) from error
+
+    app.include_router(
+        create_monitoring_router(
+            monitoring_store,
+            monitoring_owner,
+            selected_clock,
+            arm_available=monitoring_arm_available,
+            email_available=monitoring_email_available,
+        )
+    )
+
+    from stock_probs.notification_address_api import create_notification_address_router
+
+    def notification_owner_id(request: Request) -> int | None:
+        """Return only the identity authenticated by middleware; mutation guard checks CSRF."""
+        context = getattr(request.state, "auth_context", None)
+        return context.user.id if isinstance(context, AuthContext) else None
+
+    def notification_mutation_allowed(request: Request, owner: int) -> bool:
+        """Bind address operations to the active session owner, CSRF token, and canary."""
+        if not auth_manager.enabled or not monitoring_enabled(request):
+            return False
+        try:
+            context = _auth_context(request)
+        except AuthError:
+            return False
+        return context.user.id == owner
+
+    app.include_router(
+        create_notification_address_router(
+            notification_address_store,
+            notification_owner_id,
+            notification_mutation_allowed,
+            email_enabled=config.monitoring_email_transport_available,
+            service=notification_verification,
             clock=selected_clock,
         )
     )
+
+    from stock_probs.report_api import create_report_router
+    from stock_probs.report_store import ReportCardStore
+
+    app.include_router(
+        create_report_router(
+            ReportCardStore(repository),
+            monitoring_owner,
+            enabled=config.monitoring_features_enabled,
+            clock=selected_clock,
+        )
+    )
+
+    from stock_probs.history_export import (
+        HistoryExportError,
+        build_owner_history_export,
+        serialize_owner_history_csv,
+        serialize_owner_history_json,
+    )
+
+    @app.get("/api/v1/monitoring/export")
+    def monitoring_export(
+        request: Request,
+        sections: Annotated[
+            list[Literal["notifications", "rules", "reviews", "evidence", "preferences"]],
+            Query(min_length=1, max_length=5),
+        ],
+        format: Literal["json", "csv"] = "json",
+        limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    ) -> Response:
+        owner = monitoring_owner(request)
+        if owner is None:
+            raise AuthenticationRequired()
+        try:
+            projection = build_owner_history_export(
+                repository, owner, sections, generated_at=selected_clock(), limit=limit
+            )
+            body = (
+                serialize_owner_history_csv(projection, safe_cell=_safe_csv_cell)
+                if format == "csv"
+                else serialize_owner_history_json(projection)
+            )
+        except HistoryExportError as error:
+            raise DomainError(
+                "monitoring_export_unavailable", "This export is unavailable.", status_code=503
+            ) from error
+        return Response(
+            body,
+            media_type="text/csv" if format == "csv" else "application/json",
+            headers={
+                "Content-Disposition": f'attachment; filename="monitoring-history.{format}"',
+                "Cache-Control": "no-store",
+            },
+        )
 
     def flattened_list_items(
         kind: str | None, owner_user_id: int | None = None
@@ -5276,6 +5608,7 @@ def create_app(
         "/api/v1/operations/backups",
         status_code=201,
         response_model=BackupCreatedResponse,
+        response_model_exclude_unset=True,
         responses=_documented_errors(400, 403, 405, 411, 413, 422, 500, 503),
     )
     def create_backup(request: Request, payload: BackupRequest) -> dict[str, Any]:
@@ -5439,6 +5772,7 @@ def create_app(
     )
 
     app.mount("/_next", StaticFiles(directory=next_dir / "_next"), name="next-assets")
+    _document_safe_validation_errors(app)
     return app
 
 

@@ -1,8 +1,7 @@
-"""Standalone, owner-guarded HTTP routes for saved personal briefings.
+"""Owner-guarded HTTP routes for saved personal briefings.
 
-The router is intentionally not installed by the application factory. The application integration
-must provide its authenticated owner resolver, active-account guard, CSRF guard, feature gate, and
-canary gate before these routes are exposed.
+The application factory mounts this router with authenticated owner, active-account, CSRF, feature,
+and canary callbacks before exposing its routes.
 """
 
 from __future__ import annotations

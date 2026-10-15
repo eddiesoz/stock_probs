@@ -3,6 +3,8 @@ import { AuthControls } from "./auth-controls";
 import { SelectedInstrumentStatus, WorkspaceLink } from "./workspace-link";
 import { ComparisonLink } from "./research/feature-nav";
 import { WhatIfLink } from "./portfolio/feature-nav";
+import { NotificationsLink } from "./monitoring/feature-nav";
+import monitoringStyles from "./monitoring/monitoring-navigation.module.css";
 
 // Fixed route order and labels keep the primary workspace navigation predictable.
 const primaryItems = [
@@ -40,7 +42,7 @@ export function WorkspaceNav({ current }: Readonly<{ current: "overview" | "rese
                 </WorkspaceLink>
               ))}
             </nav>
-            <Settings />
+            <div className={monitoringStyles.actions}><NotificationsLink /><Settings /></div>
             <AuthControls />
           </div>
         </div>

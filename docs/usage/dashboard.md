@@ -71,6 +71,16 @@ The shared navigation exposes these routes:
 | `/tools/live-trading` | Inspect provider-labelled quote context for manual holdings; no orders. |
 | `/tools/markets` | Maintain a watchlist, filter quote snapshots, and inspect a daily chart. |
 
+The R121 Release 3 candidate adds `/notifications` for server-owned alert rules and the persistent
+notification inbox, and `/research/report-card` for recorded forecast outcomes. The R3 checkout
+registers candidate schema 18, but these routes and data are not part of the deployed production
+release. Monitoring, scheduler, and email controls default off; canary availability is a separate
+administrator-controlled setting whose authorization boundary remains under review. A visible route
+or saved record does not show that background checks or delivery are active. The candidate includes
+verified-address onboarding and a persisted SMTP outbox using the existing application transport,
+but email requires verification, explicit opt-in, and enabled configuration. No live SMTP delivery
+has been verified.
+
 The root `/` remains the original forecast-and-ledger surface: it provides instrument lookup,
 the legacy two-horizon comparison, immutable history, current-headline disclosure, and saved or
 fresh-analysis actions. Opening a workspace route with a selected symbol only restores context;
@@ -87,10 +97,29 @@ always disclose provider, as-of time, state, and any delay.
 
 On **Live Trading**, the page can edit a bounded `SYMBOL: quantity` portfolio draft, select a
 returned quote, save browser-local notes, and create active-page-only price thresholds. Notes are
-not sent to the server; alerts have no scheduler or delivery path. The page has no order controls,
-brokerage connection, execution endpoint, or live-trading guarantee. Market depth is explicitly
-unavailable: no `/api/v1/market-depth` endpoint exists, no bid/ask rows are fabricated, and Nasdaq
-TotalView or exchange-depth entitlement is not claimed.
+not sent to the server; its thresholds have no scheduler or delivery path. They are distinct from
+the R121 candidate's owner-specific, persisted alert rules in `/notifications`. When that candidate
+is enabled, creating or resuming a rule first requests an initial price observation. The rule stays
+**Arming** until that observation is recorded; the baseline itself cannot trigger an alert. A later
+valid observation can trigger **Above** or **Below**. Repeating rules continue after the instrument
+returns across the threshold. Price checks target a 15-minute cadence only while the background
+worker and provider are available, so crossings between observations can be missed. Inspect the
+provider, currency, observation time, and stale/unavailable state before relying on an alert. Email
+delivery is off by default. The candidate SMTP/outbox wiring is present, but no live SMTP
+submission or mailbox delivery has been verified. The page has no order controls, brokerage connection, execution
+endpoint, or live-trading guarantee. Market depth is explicitly unavailable: no
+`/api/v1/market-depth` endpoint exists, no
+bid/ask rows are fabricated, and Nasdaq TotalView or exchange-depth entitlement is not claimed.
+
+The candidate `/research/report-card` groups saved forecasts by outcome status, including scored,
+pending, unavailable, disputed, and incomparable items. Read each metric with its model, horizon,
+sample count, and denominator; an absent or incomparable outcome is not a success. Direction
+accuracy uses the highest-probability class and excludes ties. The inclusive 80% interval metric
+counts endpoints as covered. Manual review appends a confirmed or disputed record; it does not edit
+the original forecast or earlier evidence. Automatic daily-outcome collection is wired to the R3 candidate scheduler, but live provider
+collection remains unverified. The original 24-case browser aggregate failed before route checks
+(21 failures, 3 unrun); route registration was repaired, and the browser rerun remains pending.
+Axe was unavailable in the original run. See the [R-ASTRA-121 R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
 
 On **Markets**, choose `5d`, `1mo`, `3mo`, `6mo`, or `1y` for the selected chart. The chart response
 uses daily bars (`interval=1d`); it is bounded provider context, not an intraday or real-time feed.

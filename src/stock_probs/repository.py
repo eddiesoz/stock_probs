@@ -631,7 +631,7 @@ class Repository:
         return parsed.astimezone(UTC)
 
     @staticmethod
-    def _require_token_hash(value: str, field: str) -> str:
+    def _require_token_hash(value: object, field: str) -> str:
         """Validate an opaque SHA-256 token digest without accepting raw session material."""
 
         if (
@@ -1283,6 +1283,7 @@ class Repository:
         invited_by_value = fields.get("invited_by", fields.get("invited_by_user_id"))
         token_hash = fields.get("code_hash", fields.get("token_hash"))
         github_login = fields.get("github_login")
+        email_hash_value = fields.get("email_hash")
         if (github_value is not None and type(github_value) is not int) or type(
             invited_by_value
         ) is not int:
@@ -1294,9 +1295,7 @@ class Repository:
         result = self.create_invitation(
             github_user_id=github_value,
             github_login=github_login if isinstance(github_login, str) else None,
-            email_hash=(
-                fields.get("email_hash") if isinstance(fields.get("email_hash"), str) else None
-            ),
+            email_hash=email_hash_value if isinstance(email_hash_value, str) else None,
             token_hash=token_hash,
             invited_by_user_id=invited_by_value,
             expires_at=expires_at,
@@ -1996,7 +1995,7 @@ class Repository:
         expected_factor_id: int | None = None,
         origin_token_hash: str | None = None,
         replace: bool = False,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """Store an enrollment bound to the current factor generation and live origin."""
 
         if type(user_id) is not int or user_id < 1:

@@ -18,7 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 from uvicorn.protocols.http import h11_impl
 
-from stock_probs.api import create_app
+from stock_probs.api import BackupCountsResponse, _public_backup_counts, create_app
 from stock_probs.auth import SESSION_COOKIE_NAME
 from stock_probs.backup import BackupError
 from stock_probs.config import Settings
@@ -235,6 +235,51 @@ def test_openapi_uses_concrete_success_and_safe_error_schemas(client):
         "counts",
     }
     assert schemas["RestoreResponse"]["required"] == ["verified", "promoted", "counts"]
+
+
+def test_mounted_router_validation_errors_match_the_published_safe_envelope(settings):
+    """Portfolio and monitoring validation share the global documented error contract."""
+
+    protected = replace(
+        settings,
+        auth_mode="local",
+        auth_session_secret="validation-contract-fixture-session-secret",  # noqa: S106
+        auth_public_origin="http://testserver",
+        bootstrap_username="validation-admin",
+        bootstrap_password="validation-admin-fixture-password",  # noqa: S106
+        portfolio_features_enabled=True,
+        portfolio_features_canary_only=False,
+        monitoring_features_enabled=True,
+        monitoring_features_canary_only=False,
+    )
+    application = create_app(protected, FixtureProvider())
+    with TestClient(application) as client:
+        login = client.post(
+            "/api/v1/auth/local/login",
+            json={"username": "validation-admin", "password": "validation-admin-fixture-password"},
+        )
+        assert login.status_code == 200, login.text
+        contract = client.get("/api/v1/openapi.json").json()
+        cases = (
+            (
+                "/api/v1/portfolio/accounts",
+                "get",
+                client.get("/api/v1/portfolio/accounts?page=0"),
+            ),
+            (
+                "/api/v1/alerts",
+                "get",
+                client.get("/api/v1/alerts?limit=0"),
+            ),
+        )
+        for path, method, response in cases:
+            assert response.status_code == 422, (
+                f"{path} returned {response.status_code}: {response.text}"
+            )
+            assert response.json()["error"]["code"] == "validation_error"
+            assert contract["paths"][path][method]["responses"]["422"]["content"][
+                "application/json"
+            ]["schema"] == {"$ref": "#/components/schemas/ErrorEnvelope"}
 
 
 def test_openapi_descriptions_use_only_public_product_language(client):
@@ -564,6 +609,9 @@ def test_workspace_static_pages_have_exact_local_routes(client):
         "/tools/forecast",
         "/tools/live-trading",
         "/tools/markets",
+        "/notifications",
+        "/research/report-card",
+        "/overview/what-changed",
     }
 
     assert workspace_routes <= routes.keys()
@@ -572,6 +620,41 @@ def test_workspace_static_pages_have_exact_local_routes(client):
     }
     published = client.get("/api/v1/openapi.json").json()["paths"]
     assert workspace_routes.isdisjoint(published)
+
+
+@pytest.mark.parametrize("path", ["/notifications", "/research/report-card"])
+def test_monitoring_workspace_serves_the_exported_document(client, path):
+    """The visible feature routes serve staged HTML and retain their method boundary."""
+    response = client.get(path)
+    document = Path(__file__).parents[1] / "src/stock_probs/static/next" / (path[1:] + ".html")
+    scripts = list(_SCRIPT.finditer(response.text))
+    inline_hashes = {
+        f"'sha256-{base64.b64encode(hashlib.sha256(script['text'].encode()).digest()).decode()}'"
+        for script in scripts
+        if _SCRIPT_SRC.search(script["attrs"]) is None
+    }
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.content == document.read_bytes()
+    policy = response.headers["content-security-policy"]
+    script_sources = next(
+        directive.removeprefix("script-src ").split()
+        for directive in map(str.strip, policy.split(";"))
+        if directive.startswith("script-src ")
+    )
+    assert set(script_sources) == {"'self'", *inline_hashes}
+    assert "'unsafe-inline'" not in policy
+    assert "'unsafe-eval'" not in policy
+    external_scripts = {
+        source["src"]
+        for script in scripts
+        if (source := _SCRIPT_SRC.search(script["attrs"])) is not None
+    }
+    assert external_scripts
+    for source in external_scripts:
+        assert source.startswith("/") and not source.startswith("//")
+        assert client.get(source).status_code == 200
+    assert client.post(path).status_code == 405
 
 
 @pytest.mark.parametrize("path", ["/", "/api-docs", "/api/v1/docs"])
@@ -2452,6 +2535,14 @@ def test_backup_and_restore_successes_expose_only_api_neutral_integrity_fields(c
         "market_data_snapshots": 1,
         "probability_results": 2,
         "outcome_observations": 0,
+        "monitoring_rules": 0,
+        "monitoring_rule_revisions": 0,
+        "price_observations": 0,
+        "in_app_notifications": 0,
+        "notification_reads": 0,
+        "outcome_evidence": 0,
+        "outcome_reviews": 0,
+        "email_preferences": 0,
     }
     assert created.json()["counts"] == expected_counts
     assert restored.json()["counts"] == expected_counts
@@ -2495,11 +2586,49 @@ def test_backup_count_schema_and_all_success_responses_hide_internal_identifiers
         "forecast_inputs",
         "forecast_results",
         "outcomes",
+        "monitoring_control",
+        "notification_addresses",
+        "notification_preferences",
+        "price_alerts",
+        "price_alert_revisions",
+        "monitoring_owner_queue",
+        "monitoring_jobs",
+        "price_alert_observations",
+        "notifications",
+        "notification_read_events",
+        "notification_outbox",
+        "notification_outbox_attempts",
+        "collected_outcome_evidence",
+        "forecast_outcome_reviews",
     }
 
     assert [response.status_code for response in responses] == [201, 200, 200]
-    assert all(identifier not in schemas_and_responses for identifier in internal_identifiers)
+    assert all(
+        f'"{identifier}"' not in schemas_and_responses for identifier in internal_identifiers
+    )
     assert [sum(response.json()["counts"].values()) for response in responses] == [5, 5, 5]
+
+
+def test_legacy_backup_count_projection_does_not_invent_monitoring_fields():
+    legacy = {
+        "search_events": 3,
+        "forecast_runs": 1,
+        "forecast_inputs": 1,
+        "forecast_results": 2,
+        "outcomes": 0,
+    }
+
+    projected = _public_backup_counts(legacy)
+    model = BackupCountsResponse.model_validate(projected)
+
+    assert projected == {
+        "searches": 3,
+        "forecast_analyses": 1,
+        "market_data_snapshots": 1,
+        "probability_results": 2,
+        "outcome_observations": 0,
+    }
+    assert model.model_dump(exclude_unset=True) == projected
 
 
 def test_backup_and_repository_failures_are_stable_safe_and_correlated(

@@ -131,6 +131,7 @@ class Settings:
     monitoring_scheduler_enabled: bool = False
     briefing_features_enabled: bool = False
     briefing_features_canary_only: bool = True
+    monitoring_email_enabled: bool = False
     invitation_mail: InvitationMailSettings | None = field(default=None, repr=False)
     bootstrap_username: str | None = None
     bootstrap_password: str | None = None
@@ -308,6 +309,9 @@ class Settings:
             briefing_features_canary_only=_environment_bool(
                 "STOCK_PROBS_BRIEFING_FEATURES_CANARY_ONLY", "true"
             ),
+            monitoring_email_enabled=_environment_bool(
+                "STOCK_PROBS_MONITORING_EMAIL_ENABLED", "false"
+            ),
             invitation_mail=InvitationMailSettings.from_env(),
             bootstrap_username=bootstrap_username,
             bootstrap_password=bootstrap_password,
@@ -321,6 +325,26 @@ class Settings:
         """Report whether a complete SMTP invitation configuration is available."""
 
         return self.invitation_mail is not None
+
+    @property
+    def monitoring_email_transport_available(self) -> bool:
+        """Require explicit opt-in, validated SMTP settings, and a public link origin."""
+
+        return (
+            self.monitoring_email_enabled
+            and self.invitation_mail is not None
+            and self.auth_public_origin is not None
+        )
+
+    @property
+    def monitoring_email_delivery_configured(self) -> bool:
+        """Report whether the normal monitoring scheduler may dispatch alert email."""
+
+        return (
+            self.monitoring_features_enabled
+            and self.monitoring_scheduler_enabled
+            and self.monitoring_email_transport_available
+        )
 
     def auth_settings(self) -> AuthSettings:
         """Return validated auth settings without exposing secrets in logs or responses."""

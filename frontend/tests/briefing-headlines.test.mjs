@@ -125,8 +125,8 @@ test("news requests use only the authenticated local API path and pass cancellat
   assert.equal(new URL(calls[0].path, "https://app.example").origin, "https://app.example");
 });
 
-test("news request maps provider, capacity, session, service, and network failures distinctly", async () => {
-  for (const [status, kind] of [[502, "provider_unavailable"], [503, "provider_busy"], [401, "authorization"], [403, "authorization"]]) {
+test("news request distinguishes provider, capacity, session, service, and network failures", async () => {
+  for (const [status, kind] of [[502, "provider_unavailable"], [401, "authorization"], [403, "authorization"]]) {
     const client = createCurrentHeadlinesClient(async () => new Response("ignored", { status }));
     await assert.rejects(client.getCurrent({ symbol: "ACDC" }), (error) => {
       assert.ok(error instanceof HeadlinesRequestError);
@@ -135,6 +135,40 @@ test("news request maps provider, capacity, session, service, and network failur
       return true;
     });
   }
+  for (const [code, kind] of [["provider_busy", "provider_busy"], ["provider_unavailable", "provider_unavailable"]]) {
+    const client = createCurrentHeadlinesClient(async () => new Response(JSON.stringify({
+      error: { code, message: "private upstream diagnostic" },
+    }), { status: 503, headers: { "Content-Type": "application/json" } }));
+    await assert.rejects(client.getCurrent({ symbol: "ACDC" }), (error) => {
+      assert.ok(error instanceof HeadlinesRequestError);
+      assert.equal(error.kind, kind);
+      assert.equal(error.status, 503);
+      assert.equal(error.message.includes("private upstream diagnostic"), false);
+      return true;
+    });
+  }
+  const malformed503 = createCurrentHeadlinesClient(async () => new Response("not-json", { status: 503 }));
+  await assert.rejects(malformed503.getCurrent({ symbol: "ACDC" }), (error) => {
+    assert.equal(error.kind, "provider_unavailable");
+    assert.equal(error.status, 503);
+    return true;
+  });
+  let oversizedBodyCancelled = false;
+  const oversized503 = createCurrentHeadlinesClient(async () => ({
+    ok: false,
+    status: 503,
+    headers: new Headers({ "Content-Length": String(256 * 1024 + 1) }),
+    body: new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode("{}")); },
+      cancel() { oversizedBodyCancelled = true; },
+    }),
+  }));
+  await assert.rejects(oversized503.getCurrent({ symbol: "ACDC" }), (error) => {
+    assert.equal(error.kind, "provider_unavailable");
+    assert.equal(error.status, 503);
+    return true;
+  });
+  assert.equal(oversizedBodyCancelled, true);
   const rejected = createCurrentHeadlinesClient(async () => new Response("ignored", { status: 429 }));
   await assert.rejects(rejected.getCurrent({ symbol: "ACDC" }), (error) => error.kind === "rejected");
   const offline = createCurrentHeadlinesClient(async () => { throw new TypeError("offline"); });

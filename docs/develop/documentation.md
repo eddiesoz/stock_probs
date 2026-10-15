@@ -280,6 +280,22 @@ python3 scripts/check-doc-coverage-self-test.py
 The change-aware checker and self-test do not install hooks or mutate Git. A deliberate exception
 is explicit (`Doc-Gate: exempt`), not inferred from a builder report or an unavailable check.
 
+R121 workspace source changes use the `research-workspaces`, `portfolio-ledger-workspaces`, and
+`monitoring-workspaces` rules in the root map. The `monitoring-workspaces` map matches the R3 registered candidate migration at
+`src/stock_probs/migrations/018_notification_address_delivery.sql` along with its source, asset, and
+test paths. It requires dashboard, API, design system, testing, and threat-model guides. Current
+authored-documentation validator and completeness results belong to their recorded input bindings;
+change-aware results are recorded in the R3 checkpoint. The cumulative R4 checkout registers
+`src/stock_probs/migrations/019_personal_briefings.sql` at schema 19. Its same-byte draft copy is
+retained historical source, not an unregistered migration. See the
+[R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
+
+The cumulative briefing rule also matches `briefing_*.py` and `test_briefing_*.py`, including the
+isolated saved-snapshot export module and tests. Their presence does not establish an HTTP export
+route. Use the final combined dirty-path set for coverage, and keep the selected backend and
+documentation results separate from frontend, browser, canonical and release gates. See the
+[R4 cumulative checkpoint](../../MVP-PLAN.md#r-astra-121-r4-cumulative-integration-checkpoint-2026-10-15).
+
 The current documentation map includes a narrow `deployment-review-pins` rule for
 `scripts/pin_pr_rehearsal_review.py` and its fixed review-pin source contract in
 `tools/deploy_mcp/pr_rehearsal.py`. It requires `docs/develop/documentation.md`,
@@ -312,7 +328,10 @@ this page, [developer testing](testing.md), and [getting started](../operations/
 the separate workflow-policy rule requires `AGENTS.md`. Keep this path coverage aligned as the
 local build command contract changes. Record current runtime acceptance in the task ledger and
 reflect operational status in the operations/testing guides; the map describes source coverage, not
-runtime acceptance. The optional `prebuilt-release` publisher mode uses the completed schema-13
+runtime acceptance. R121's Dockerfile also keeps an explicit static-page list in sync with each
+Next.js export and recursively copies its `/_next` asset tree; release-specific counts and acceptance
+limits are recorded in [getting started](../operations/getting-started.md). The optional
+`prebuilt-release` publisher mode uses the completed schema-13
 pair receipt and fixed revision-named artifacts; keep its verification and release prerequisites
 documented in the operations and testing guides when changing that contract.
 Archive-scanner changes also require the testing and operations guides to describe the fixed
@@ -534,17 +553,19 @@ releases introduce new record types. Candidate documentation does not establish 
 
 For R121 portfolio changes, reconcile the portfolio-ledger-workspaces map entry with the dashboard, API, design and threat-model guides. Preserve native amounts, partial-valuation wording, unknown costs and the separation between simulated and committed transactions. A full SQLite archive retains the new tables; a local restore test does not establish an exact-PR recovery-image or actual-host rollback gate.
 
-The R4 `personal-briefing-draft` map rule covers the briefing API/config/repository/backup and
-backend modules, briefing tests, migrations 018/019 and the retained draft copy, the
-`/overview/what-changed` route, briefing components, and `frontend/tests/briefing-client.test.mjs`.
-It requires dashboard, API, design, testing, and threat-model guides; the additional
-`workflow-policy` rule requires `AGENTS.md` and this guide for map-policy changes. The map still
-includes `frontend/tests/briefing-headlines.test.mjs` and
-`frontend/tests/briefing-private-lifecycle.test.mjs`; the builder updated the map to SHA-256
-`e2b247dd06bfebfd8bbfa5a7e430c855f9cebd6086d6cdadb54a1d10c05bb452`. The map JSON is builder-
-owned and was not edited by this documentation task. A configured rule does not itself establish
-complete change-aware coverage; require the combined dirty-path check for the current worktree
-before claiming that gate. R4's registered migration is a candidate schema change, not production
-state; exact recovery, owner-filtered export, browser, and release acceptance remain separate
-requirements. See
-[R-ASTRA-121 E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).
+The R3 `monitoring-workspaces` rule covers notification, scheduler, address-verification, outcome,
+and report-card sources and tests; its registered delivery migration is
+`src/stock_probs/migrations/018_notification_address_delivery.sql`. An earlier R3 map snapshot
+pointed at the address-delivery file under `migration_drafts/`, so the combined map must retain the
+registered path. The R4 `personal-briefing-draft` rule covers its API/config/repository/backup and
+briefing modules, migrations 018/019 and the retained draft copy, the `/overview/what-changed`
+route/components, and all three briefing client, headline, and private-lifecycle test paths. R4
+requires the dashboard, API, design, testing, and threat-model guides; workflow-policy changes also
+require `AGENTS.md` and this guide. The R4 pre-merge map snapshot at E31 had SHA-256
+`e2b247dd06bfebfd8bbfa5a7e430c855f9cebd6086d6cdadb54a1d10c05bb452`; it is not the identity of
+the combined map under merge. The map JSON is builder-owned and was not edited here. The merged map
+and full dirty-path coverage must be reviewed after its conflict is resolved; map presence alone
+does not establish coverage, runtime, or release acceptance. R4's registered migration is
+candidate state, not production; exact recovery, owner-filtered export, browser, and release
+acceptance remain separate requirements. See the [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15)
+and [R4 E31 checkpoint](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).

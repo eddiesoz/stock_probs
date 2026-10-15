@@ -199,12 +199,30 @@ export function createCurrentHeadlinesClient(apiFetch) {
         throw new HeadlinesRequestError("unreachable");
       }
       if (!response.ok) {
-        try { await response.body?.cancel(); } catch {}
         if (response.status === 401 || response.status === 403) {
+          try { await response.body?.cancel(); } catch {}
           throw new HeadlinesRequestError("authorization", response.status);
         }
-        if (response.status === 502) throw new HeadlinesRequestError("provider_unavailable", 502);
-        if (response.status === 503) throw new HeadlinesRequestError("provider_busy", 503);
+        if (response.status === 502) {
+          try { await response.body?.cancel(); } catch {}
+          throw new HeadlinesRequestError("provider_unavailable", 502);
+        }
+        if (response.status === 503) {
+          let errorBody;
+          try {
+            errorBody = await readBoundedJson(response);
+          } catch {
+            throw new HeadlinesRequestError("provider_unavailable", 503);
+          }
+          const code = isRecord(errorBody) && isRecord(errorBody.error)
+            ? errorBody.error.code
+            : null;
+          throw new HeadlinesRequestError(
+            code === "provider_busy" ? "provider_busy" : "provider_unavailable",
+            503,
+          );
+        }
+        try { await response.body?.cancel(); } catch {}
         throw new HeadlinesRequestError("rejected", response.status);
       }
       return projectCurrentNews(await readBoundedJson(response), symbol, limit);

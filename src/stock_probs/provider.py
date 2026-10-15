@@ -11,6 +11,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta
 from importlib import import_module
 from importlib.resources import files
+from numbers import Real
 from typing import Any, Protocol, cast
 from zoneinfo import ZoneInfo
 
@@ -26,6 +27,12 @@ from stock_probs.domain import (
     normalize_lookup_query,
     normalize_symbol,
     scheduled_session_close,
+)
+from stock_probs.outcome_collection import (
+    ADJUSTMENT_BASIS,
+    CorporateActionCheck,
+    DailyOutcomeSeries,
+    OutcomeSourceUnavailable,
 )
 
 
@@ -51,6 +58,9 @@ FIXTURE_PROVIDER_NAME = "deterministic fixture"
 YAHOO_INTRADAY_ARCHIVE_APPROXIMATE_DAYS = 60
 MAX_NEWS_RESULTS = 10
 MAX_NEWS_BODY_BYTES = 256 * 1024
+MAX_DAILY_OUTCOME_SPAN = timedelta(days=200)
+MAX_DAILY_OUTCOME_ROWS = 256
+MAX_DAILY_OUTCOME_SESSIONS = 64
 YAHOO_NEWS_URL = "https://query2.finance.yahoo.com/v1/finance/search"
 CHART_RANGES = ("5d", "1mo", "3mo", "6mo", "1y")
 CHART_RANGE_DAYS = {
@@ -84,9 +94,7 @@ CANADIAN_FIXTURE_IDENTITIES = (
 class MarketDataProvider(Protocol):
     """Narrow provider boundary keeps deterministic tests out of transport internals."""
 
-    def lookup(
-        self, query: str, limit: int, now: datetime
-    ) -> tuple[InstrumentIdentity, ...]: ...
+    def lookup(self, query: str, limit: int, now: datetime) -> tuple[InstrumentIdentity, ...]: ...
 
     def fetch(self, symbol: str, asset_type: str, now: datetime) -> MarketData: ...
 
@@ -94,9 +102,7 @@ class MarketDataProvider(Protocol):
         self, symbol: str, asset_type: str, cutoff: datetime, now: datetime
     ) -> MarketData: ...
 
-    def fetch_news(
-        self, symbol: str, limit: int = 5, now: datetime | None = None
-    ) -> NewsData: ...
+    def fetch_news(self, symbol: str, limit: int = 5, now: datetime | None = None) -> NewsData: ...
 
     def quote_snapshot(
         self, symbol: str, asset_type: str, now: datetime | None = None
@@ -110,6 +116,16 @@ class MarketDataProvider(Protocol):
         *,
         range: str = "1mo",
     ) -> HistoricalBarSeries: ...
+
+    def fetch_daily_outcome_series(
+        self,
+        symbol: str,
+        asset_type: str,
+        origin_at: datetime,
+        target_at: datetime,
+        now: datetime,
+    ) -> DailyOutcomeSeries: ...
+
 
 class YahooProvider:
     """Translate bounded yfinance history calls into the provider-neutral contract."""
@@ -149,9 +165,12 @@ class YahooProvider:
         period: str | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
+        actions: bool = False,
     ) -> Any:
         if (period is None) == (start is None or end is None):
             raise ValueError("history requires either period or complete start/end bounds")
+        if type(actions) is not bool:
+            raise ValueError("history action inspection must be boolean")
         bounds: dict[str, object] = (
             {"period": period} if period is not None else {"start": start, "end": end}
         )
@@ -161,7 +180,7 @@ class YahooProvider:
                 **bounds,
                 interval=interval,
                 prepost=False,
-                actions=False,
+                actions=actions,
                 auto_adjust=False,
                 repair=False,
                 timeout=self.timeout,
@@ -174,9 +193,7 @@ class YahooProvider:
                 status_code=502,
             ) from exc
 
-    def _history_from_bounds(
-        self, ticker: Any, *, interval: str, bounds: dict[str, object]
-    ) -> Any:
+    def _history_from_bounds(self, ticker: Any, *, interval: str, bounds: dict[str, object]) -> Any:
         """Narrow dynamic query metadata before passing it to the typed provider boundary."""
 
         period = bounds.get("period")
@@ -188,9 +205,7 @@ class YahooProvider:
             raise ValueError("historical provider bounds require datetime start and end")
         return self._history(ticker, interval=interval, start=start, end=end)
 
-    def fetch_news(
-        self, symbol: str, limit: int = 5, now: datetime | None = None
-    ) -> NewsData:
+    def fetch_news(self, symbol: str, limit: int = 5, now: datetime | None = None) -> NewsData:
         """Fetch one bounded Yahoo search payload without yfinance's shared sessions."""
 
         normalized_symbol = normalize_symbol(symbol)
@@ -330,9 +345,7 @@ class YahooProvider:
                 )
             try:
                 published_at = (
-                    datetime.fromtimestamp(float(published), UTC)
-                    if published is not None
-                    else None
+                    datetime.fromtimestamp(float(published), UTC) if published is not None else None
                 )
                 item = NewsItem(
                     id=item_id,
@@ -376,9 +389,7 @@ class YahooProvider:
         quote_type = _metadata_text(
             fallback.get("quoteType") or metadata.get("instrumentType"), "quote type", 24
         ).upper()
-        asset_type = {"equity": "stock", "stock": "stock", "etf": "etf"}.get(
-            quote_type.lower()
-        )
+        asset_type = {"equity": "stock", "stock": "stock", "etf": "etf"}.get(quote_type.lower())
         if asset_type is None:
             raise DomainError(
                 "unsupported_asset",
@@ -480,9 +491,7 @@ class YahooProvider:
             # candidate completes identity without using Ticker.info or metadata cache misses.
             frame = self._history(ticker, period="5d", interval="1d")
             metadata = self._metadata_from_bounded_history(ticker, frame)
-            identity = self._identity_from_metadata(
-                metadata, self._response_time(), fallback=quote
-            )
+            identity = self._identity_from_metadata(metadata, self._response_time(), fallback=quote)
             searched_asset_type = "etf" if quote_type == "ETF" else "stock"
             if (
                 identity.canonical_symbol != searched_symbol
@@ -595,9 +604,7 @@ class YahooProvider:
         )
         reference_at = now.astimezone(UTC) if now is not None else response_at
         bars = tuple(
-            bar
-            for bar in self._timed_bars(frame, 60)
-            if bar.end.astimezone(UTC) <= reference_at
+            bar for bar in self._timed_bars(frame, 60) if bar.end.astimezone(UTC) <= reference_at
         )
         if not bars:
             raise DomainError(
@@ -605,9 +612,7 @@ class YahooProvider:
                 "Yahoo Finance returned no usable quote price.",
                 status_code=502,
             )
-        delayed, delay_minutes, label = _delay_disclosure(
-            metadata, subject="Yahoo Finance quote"
-        )
+        delayed, delay_minutes, label = _delay_disclosure(metadata, subject="Yahoo Finance quote")
         rows = tuple(frame.iterrows())
         opens = [_optional_positive(row.get("Open")) for _, row in rows]
         highs = [_optional_positive(row.get("High")) for _, row in rows]
@@ -637,9 +642,7 @@ class YahooProvider:
         )
         change = change if change is None or math.isfinite(change) else None
         change_percent = (
-            change_percent
-            if change_percent is None or math.isfinite(change_percent)
-            else None
+            change_percent if change_percent is None or math.isfinite(change_percent) else None
         )
         return QuoteSnapshot(
             symbol=identity.canonical_symbol,
@@ -687,9 +690,7 @@ class YahooProvider:
                 "Yahoo Finance returned no usable chart bars.",
                 status_code=502,
             )
-        delayed, delay_minutes, label = _delay_disclosure(
-            metadata, subject="Yahoo Finance chart"
-        )
+        delayed, delay_minutes, label = _delay_disclosure(metadata, subject="Yahoo Finance chart")
         return HistoricalBarSeries(
             symbol=identity.canonical_symbol,
             range=requested_range,
@@ -701,6 +702,229 @@ class YahooProvider:
             delayed=delayed,
             delay_minutes=delay_minutes if delayed else None,
             label=label,
+        )
+
+    @staticmethod
+    def _outcome_action_events(
+        frame: Any, asset_type: str, timezone: str, origin_at: datetime, target_at: datetime
+    ) -> tuple[object, ...]:
+        """Require explicit finite action columns before an empty event set can mean clear."""
+
+        columns = getattr(frame, "columns", None)
+        if columns is None:
+            raise OutcomeSourceUnavailable("corporate_action_unknown")
+        try:
+            available_columns = set(columns)
+        except TypeError as error:
+            raise OutcomeSourceUnavailable("corporate_action_unknown") from error
+        required_columns = {"Dividends", "Stock Splits"}
+        if asset_type == "etf":
+            required_columns.add("Capital Gains")
+        if not required_columns.issubset(available_columns):
+            raise OutcomeSourceUnavailable("corporate_action_unknown")
+
+        zone = ZoneInfo(timezone)
+        start_day = origin_at.astimezone(zone).date()
+        end_day = target_at.astimezone(zone).date()
+        events: list[object] = []
+        try:
+            rows = frame.iterrows()
+            for raw_timestamp, row in rows:
+                timestamp = raw_timestamp.to_pydatetime()
+                action_day = (
+                    timestamp.astimezone(zone).date()
+                    if timestamp.tzinfo is not None
+                    else timestamp.date()
+                )
+                if not start_day <= action_day <= end_day:
+                    continue
+                nonzero: list[str] = []
+                for name in sorted(required_columns):
+                    raw_value = row.get(name)
+                    if isinstance(raw_value, bool) or not isinstance(raw_value, Real):
+                        raise OutcomeSourceUnavailable("corporate_action_unknown")
+                    try:
+                        value = float(raw_value)
+                    except (TypeError, ValueError, OverflowError) as error:
+                        raise OutcomeSourceUnavailable("corporate_action_unknown") from error
+                    if not math.isfinite(value):
+                        raise OutcomeSourceUnavailable("corporate_action_unknown")
+                    if value != 0.0:
+                        nonzero.append(name)
+                if nonzero:
+                    events.append({"date": action_day.isoformat(), "types": tuple(nonzero)})
+        except OutcomeSourceUnavailable:
+            raise
+        except Exception as error:
+            raise OutcomeSourceUnavailable("corporate_action_unknown") from error
+        if len(events) > 100:
+            raise OutcomeSourceUnavailable("corporate_action_unknown")
+        return tuple(events)
+
+    def fetch_daily_outcome_series(
+        self,
+        symbol: str,
+        asset_type: str,
+        origin_at: datetime,
+        target_at: datetime,
+        now: datetime,
+    ) -> DailyOutcomeSeries:
+        """Fetch exact unadjusted daily closes and a separate bounded actions audit."""
+
+        if not isinstance(asset_type, str) or asset_type not in {"stock", "etf"}:
+            raise OutcomeSourceUnavailable("series_incomplete")
+        if not isinstance(symbol, str):
+            raise OutcomeSourceUnavailable("series_incomplete")
+        try:
+            requested_symbol = normalize_symbol(symbol)
+        except DomainError as error:
+            raise OutcomeSourceUnavailable("series_incomplete") from error
+
+        def utc_instant(value: object) -> datetime:
+            if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+                raise OutcomeSourceUnavailable("series_incomplete")
+            return value.astimezone(UTC)
+
+        origin_utc = utc_instant(origin_at)
+        target_utc = utc_instant(target_at)
+        now_utc = utc_instant(now)
+        span = target_utc - origin_utc
+        if target_utc <= origin_utc or target_utc > now_utc or span > MAX_DAILY_OUTCOME_SPAN:
+            raise OutcomeSourceUnavailable("series_incomplete")
+
+        start = origin_utc - timedelta(days=1)
+        end = target_utc + timedelta(days=1)
+        try:
+            ticker = yf.Ticker(requested_symbol)
+            price_frame = self._history(
+                ticker,
+                interval="1d",
+                start=start,
+                end=end,
+                actions=False,
+            )
+            action_frame = self._history(
+                ticker,
+                interval="1d",
+                start=start,
+                end=end,
+                actions=True,
+            )
+        except Exception as error:
+            raise OutcomeSourceUnavailable("provider_unavailable") from error
+
+        try:
+            price_rows = len(price_frame.index)
+            action_rows = len(action_frame.index)
+        except (AttributeError, TypeError) as error:
+            raise OutcomeSourceUnavailable("series_incomplete") from error
+        if (
+            price_rows == 0
+            or action_rows == 0
+            or price_rows > MAX_DAILY_OUTCOME_ROWS
+            or action_rows > MAX_DAILY_OUTCOME_ROWS
+        ):
+            raise OutcomeSourceUnavailable("series_incomplete")
+
+        try:
+            response_at = self._response_time()
+            price_metadata = self._metadata_from_bounded_history(ticker, price_frame)
+            action_metadata = self._metadata_from_bounded_history(ticker, action_frame)
+            price_identity = self._identity_from_metadata(price_metadata, response_at)
+            action_identity = self._identity_from_metadata(action_metadata, response_at)
+        except Exception as error:
+            raise OutcomeSourceUnavailable("provider_unavailable") from error
+        if (
+            price_identity.provider != YAHOO_PROVIDER_NAME
+            or action_identity.provider != YAHOO_PROVIDER_NAME
+            or price_identity.canonical_symbol != requested_symbol
+            or action_identity.canonical_symbol != requested_symbol
+            or price_identity.asset_type != asset_type
+            or action_identity.asset_type != asset_type
+            or price_identity.currency != action_identity.currency
+            or price_identity.timezone != action_identity.timezone
+            or price_metadata.get("dataGranularity") != "1d"
+            or action_metadata.get("dataGranularity") != "1d"
+            or any(
+                getattr(price_identity, field) != getattr(action_identity, field)
+                for field in (
+                    "display_name",
+                    "company_name",
+                    "exchange",
+                    "quote_type",
+                )
+            )
+        ):
+            raise OutcomeSourceUnavailable("series_incomplete")
+        if response_at < target_utc or response_at > now_utc:
+            raise OutcomeSourceUnavailable("series_incomplete")
+
+        try:
+            zone = ZoneInfo(price_identity.timezone)
+            origin_local = origin_utc.astimezone(zone)
+            target_local = target_utc.astimezone(zone)
+            if (
+                scheduled_session_close(origin_local.date(), price_identity.timezone)
+                != origin_local
+                or scheduled_session_close(target_local.date(), price_identity.timezone)
+                != target_local
+            ):
+                raise OutcomeSourceUnavailable("series_incomplete")
+            price_bars = tuple(
+                bar
+                for bar in self._daily_bars(price_frame, price_identity.timezone)
+                if origin_utc <= bar.timestamp.astimezone(UTC) <= target_utc
+            )
+            action_bars = tuple(
+                bar
+                for bar in self._daily_bars(action_frame, action_identity.timezone)
+                if origin_utc <= bar.timestamp.astimezone(UTC) <= target_utc
+            )
+            expected_closes = []
+            session_day = origin_local.date()
+            while session_day <= target_local.date():
+                close = scheduled_session_close(session_day, price_identity.timezone)
+                if close is not None and origin_utc <= close.astimezone(UTC) <= target_utc:
+                    expected_closes.append(close.astimezone(UTC))
+                session_day += timedelta(days=1)
+        except OutcomeSourceUnavailable:
+            raise
+        except Exception as error:
+            raise OutcomeSourceUnavailable("series_incomplete") from error
+        if (
+            not 2 <= len(expected_closes) <= MAX_DAILY_OUTCOME_SESSIONS
+            or tuple(bar.timestamp.astimezone(UTC) for bar in price_bars) != tuple(expected_closes)
+            or tuple(bar.timestamp.astimezone(UTC) for bar in action_bars) != tuple(expected_closes)
+            or tuple(bar.close for bar in price_bars) != tuple(bar.close for bar in action_bars)
+            or len(price_bars) != len(action_bars)
+        ):
+            raise OutcomeSourceUnavailable("series_incomplete")
+        events = self._outcome_action_events(
+            action_frame,
+            asset_type,
+            price_identity.timezone,
+            origin_utc,
+            target_utc,
+        )
+        return DailyOutcomeSeries(
+            provider=price_identity.provider,
+            symbol=price_identity.canonical_symbol,
+            currency=price_identity.currency,
+            adjustment_basis=ADJUSTMENT_BASIS,
+            requested_from=origin_utc,
+            requested_through=target_utc,
+            as_of=response_at,
+            complete=True,
+            bars=price_bars,
+            corporate_actions=CorporateActionCheck(
+                provider=price_identity.provider,
+                symbol=price_identity.canonical_symbol,
+                currency=price_identity.currency,
+                from_timestamp=origin_utc,
+                through_timestamp=target_utc,
+                complete=True,
+                events=events,
+            ),
         )
 
     @staticmethod
@@ -816,9 +1040,7 @@ class YahooProvider:
             )
         # Capture the per-call cache before the next history request replaces it.
         daily_meta = self._metadata_from_bounded_history(ticker, daily_frame)
-        intraday_frame = self._history_from_bounds(
-            ticker, interval="5m", bounds=intraday_bounds
-        )
+        intraday_frame = self._history_from_bounds(ticker, interval="5m", bounds=intraday_bounds)
         if intraday_frame.empty:
             raise DomainError(
                 "symbol_not_found",
@@ -977,6 +1199,18 @@ class FixtureProvider:
             )
         return captured.astimezone(UTC)
 
+    def fetch_daily_outcome_series(
+        self,
+        symbol: str,
+        asset_type: str,
+        origin_at: datetime,
+        target_at: datetime,
+        now: datetime,
+    ) -> DailyOutcomeSeries:
+        """Decline real-source evidence because fixtures cannot certify corporate actions."""
+
+        raise OutcomeSourceUnavailable("corporate_action_unknown")
+
     @staticmethod
     def _payloads() -> tuple[dict[str, Any], ...]:
         payloads = tuple(
@@ -1059,9 +1293,7 @@ class FixtureProvider:
             matches.append(((rank, identity.canonical_symbol), identity))
         return tuple(identity for _, identity in sorted(matches)[:limit])
 
-    def fetch(
-        self, symbol: str, asset_type: str, now: datetime | None = None
-    ) -> MarketData:
+    def fetch(self, symbol: str, asset_type: str, now: datetime | None = None) -> MarketData:
         now = self._time(now, "request")
         if asset_type not in {"stock", "etf"}:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
@@ -1088,9 +1320,7 @@ class FixtureProvider:
                 "The deterministic fixture has no instrument with that symbol.",
                 status_code=404,
             )
-        payload = next(
-            item for item in self._payloads() if str(item["symbol"]) == base_symbol
-        )
+        payload = next(item for item in self._payloads() if str(item["symbol"]) == base_symbol)
         if payload["asset_type"] != asset_type:
             raise DomainError(
                 "asset_type_mismatch",
@@ -1120,9 +1350,7 @@ class FixtureProvider:
                 close = price * (
                     1.0 + session_index * 0.001 + index * 0.00012 + ((index % 7) - 3) * 0.00003
                 )
-                intraday.append(
-                    Bar(start + timedelta(minutes=5 * index), round(close, 6), 300)
-                )
+                intraday.append(Bar(start + timedelta(minutes=5 * index), round(close, 6), 300))
         # Mirror the live adapter: a deterministic response ends at the exact completed-bar cutoff.
         intraday = [bar for bar in intraday if bar.end.astimezone(UTC) <= now.astimezone(UTC)]
         if normalized_symbol == "STALE":
@@ -1182,9 +1410,7 @@ class FixtureProvider:
             },
         )
 
-    def fetch_news(
-        self, symbol: str, limit: int = 5, now: datetime | None = None
-    ) -> NewsData:
+    def fetch_news(self, symbol: str, limit: int = 5, now: datetime | None = None) -> NewsData:
         """Return checked-in current headlines without touching forecast fixture data."""
 
         normalized_symbol = normalize_symbol(symbol)
@@ -1240,9 +1466,7 @@ class FixtureProvider:
         zone = ZoneInfo(data.timezone)
         latest_day = latest.timestamp.astimezone(zone).date()
         session = [
-            bar
-            for bar in data.intraday
-            if bar.timestamp.astimezone(zone).date() == latest_day
+            bar for bar in data.intraday if bar.timestamp.astimezone(zone).date() == latest_day
         ]
         previous = next(
             (bar.close for bar in reversed(data.daily) if bar.timestamp < latest.timestamp),
@@ -1287,9 +1511,7 @@ class FixtureProvider:
             bars = data.daily[-5:]
         else:
             cutoff = requested_at - timedelta(days=CHART_RANGE_DAYS[requested_range])
-            bars = tuple(
-                bar for bar in data.daily if bar.timestamp.astimezone(UTC) >= cutoff
-            )
+            bars = tuple(bar for bar in data.daily if bar.timestamp.astimezone(UTC) >= cutoff)
         if not bars:
             raise DomainError(
                 "chart_range_unavailable",
@@ -1419,9 +1641,7 @@ def _optional_volume(value: Any) -> int | None:
     return int(number) if valid else None
 
 
-def _delay_disclosure(
-    metadata: Mapping[str, Any], *, subject: str
-) -> tuple[bool, int | None, str]:
+def _delay_disclosure(metadata: Mapping[str, Any], *, subject: str) -> tuple[bool, int | None, str]:
     """Report Yahoo's delay field without turning missing metadata into a live claim."""
 
     value = metadata.get("exchangeDataDelayedBy")
