@@ -14,9 +14,13 @@ source and current release evidence. For browser or capture claims, follow the [
 evidence procedure](testing.md#binding-browser-evidence-to-the-served-frontend) so the evidence
 matches the bundle FastAPI actually serves.
 
-For R-ASTRA-121 migration changes, record the current schema and the recovery image's compatible
-schema separately. The historical schema-13 rehearsal retains its default contract; selecting a
-new schema in a generated verifier changes only that verifier's exact assertions. See the
+For R-ASTRA-121 migration changes, record each checkout's registered schema and its recovery
+image's compatible schema separately. R4 registers candidate schema 19, including migrations 018
+and 019; the byte-identical `migration_drafts/019_personal_briefings.sql` is a retained source copy,
+not an unregistered migration. The separate R3 checkout registers its own candidate schema 18.
+Neither local state changes production, which remains at schema 13, or proves rollback. The
+historical schema-13 rehearsal retains its default contract; selecting a new schema in a generated
+verifier changes only that verifier's exact assertions. See the
 [migration rehearsal boundary](testing.md#named-schema-verification-boundary) and the R121 ledger
 in `MVP-PLAN.md`. Do not describe a selected test as image or production rollback acceptance.
 
@@ -529,3 +533,18 @@ the dashboard, API, approved design and threat-model guides. Add matching rules 
 releases introduce new record types. Candidate documentation does not establish deployment or QA.
 
 For R121 portfolio changes, reconcile the portfolio-ledger-workspaces map entry with the dashboard, API, design and threat-model guides. Preserve native amounts, partial-valuation wording, unknown costs and the separation between simulated and committed transactions. A full SQLite archive retains the new tables; a local restore test does not establish an exact-PR recovery-image or actual-host rollback gate.
+
+The R4 `personal-briefing-draft` map rule covers the briefing API/config/repository/backup and
+backend modules, briefing tests, migrations 018/019 and the retained draft copy, the
+`/overview/what-changed` route, briefing components, and `frontend/tests/briefing-client.test.mjs`.
+It requires dashboard, API, design, testing, and threat-model guides; the additional
+`workflow-policy` rule requires `AGENTS.md` and this guide for map-policy changes. The map still
+includes `frontend/tests/briefing-headlines.test.mjs` and
+`frontend/tests/briefing-private-lifecycle.test.mjs`; the builder updated the map to SHA-256
+`e2b247dd06bfebfd8bbfa5a7e430c855f9cebd6086d6cdadb54a1d10c05bb452`. The map JSON is builder-
+owned and was not edited by this documentation task. A configured rule does not itself establish
+complete change-aware coverage; require the combined dirty-path check for the current worktree
+before claiming that gate. R4's registered migration is a candidate schema change, not production
+state; exact recovery, owner-filtered export, browser, and release acceptance remain separate
+requirements. See
+[R-ASTRA-121 E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).

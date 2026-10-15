@@ -25,7 +25,7 @@ from stock_probs.auth import (
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, HistoryFilters
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 19
 OUTCOME_RECONSTRUCTION_LIMIT = 100
 HISTORY_EXPORT_LIMIT = 100
 INSTRUMENT_LIST_ITEM_LIMIT = 100
@@ -50,11 +50,15 @@ MIGRATION_SHA256 = {
     13: "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b",
     14: "0229c7713bd8d0fe5dfc2cc57d52052f71af4b4f417761175753287f3bf453ae",
     15: "3c0377042fc4650628c2b913464eef333469a19fcadfe4f19fbf40b357700487",
+    16: "5e8505d115879cc5bd8db465b1afb213b7f7b07b008d264c28b0e373f30a03a7",
+    17: "05d217d29f4c4f5befec771d6644b4fbf7d814fb3748075d75e5d6ab32d63442",
+    18: "c152435ddf599a0715478e5863e5a2d2cd14b72fde5eca8d9a73900ff4981a63",
+    19: "2334afa27679ea0c980f97e48897b8c043c2c390290c301618af72ca3019cb86",
 }
 
 
-class _RepresentativeStorageCounts(TypedDict):
-    """Private physical-row counts used for backup integrity, not domain/API vocabulary."""
+class _LegacyRepresentativeStorageCounts(TypedDict):
+    """Schema 1-15 physical counts retained for signed historical manifests."""
 
     search_events: int
     forecast_runs: int
@@ -63,23 +67,303 @@ class _RepresentativeStorageCounts(TypedDict):
     outcomes: int
 
 
+class _CurrentRepresentativeStorageCounts(_LegacyRepresentativeStorageCounts):
+    """Schema-16/17 counts include monitoring records and protected delivery effects."""
+
+    monitoring_control: int
+    notification_addresses: int
+    notification_preferences: int
+    price_alerts: int
+    price_alert_revisions: int
+    monitoring_owner_queue: int
+    monitoring_jobs: int
+    price_alert_observations: int
+    notifications: int
+    notification_read_events: int
+    notification_outbox: int
+    notification_outbox_attempts: int
+    collected_outcome_evidence: int
+    forecast_outcome_reviews: int
+
+
+class _Schema18RepresentativeStorageCounts(_CurrentRepresentativeStorageCounts):
+    """Schema-18 counts add persisted notification-address verification records."""
+
+    notification_address_verifications: int
+    notification_address_verification_recipients: int
+    notification_address_verification_events: int
+
+
+class _Schema19RepresentativeStorageCounts(_Schema18RepresentativeStorageCounts):
+    """Schema-19 counts add owner-scoped briefing history and preferences."""
+
+    briefing_preferences: int
+    briefing_price_observations: int
+    briefing_snapshots: int
+    briefing_visit_anchors: int
+
+
+_RepresentativeStorageCounts = (
+    _LegacyRepresentativeStorageCounts
+    | _CurrentRepresentativeStorageCounts
+    | _Schema18RepresentativeStorageCounts
+    | _Schema19RepresentativeStorageCounts
+)
+
 # Keep the SQL allowlist and authenticated manifest shape on one persistence-owned contract.
-_REPRESENTATIVE_STORAGE_TABLES: Final = (
+_LEGACY_REPRESENTATIVE_STORAGE_TABLES: Final = (
     "search_events",
     "forecast_runs",
     "forecast_inputs",
     "forecast_results",
     "outcomes",
 )
-_REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_REPRESENTATIVE_STORAGE_TABLES)
+_MONITORING_STORAGE_TABLES: Final = (
+    "monitoring_control",
+    "notification_addresses",
+    "notification_preferences",
+    "price_alerts",
+    "price_alert_revisions",
+    "monitoring_owner_queue",
+    "monitoring_jobs",
+    "price_alert_observations",
+    "notifications",
+    "notification_read_events",
+    "notification_outbox",
+    "notification_outbox_attempts",
+    "collected_outcome_evidence",
+    "forecast_outcome_reviews",
+)
+_NOTIFICATION_ADDRESS_STORAGE_TABLES: Final = (
+    "notification_address_verifications",
+    "notification_address_verification_recipients",
+    "notification_address_verification_events",
+)
+_BRIEFING_STORAGE_TABLES: Final = (
+    "briefing_preferences",
+    "briefing_price_observations",
+    "briefing_snapshots",
+    "briefing_visit_anchors",
+)
+_NOTIFICATION_RESTORE_EFFECT_TABLES: Final = (
+    (
+        "monitoring_control",
+        ("id", "enabled", "revision", "queue_sequence", "updated_at"),
+        "id",
+    ),
+    (
+        "notification_addresses",
+        (
+            "id",
+            "owner_user_id",
+            "address",
+            "challenge_hash",
+            "challenge_expires_at",
+            "challenge_attempts",
+            "verified_at",
+            "created_at",
+        ),
+        "id",
+    ),
+    (
+        "notification_preferences",
+        (
+            "owner_user_id",
+            "revision",
+            "address_id",
+            "alert_email",
+            "digest_email",
+            "digest_time",
+            "digest_timezone",
+            "updated_at",
+        ),
+        "owner_user_id",
+    ),
+    (
+        "notification_outbox",
+        (
+            "id",
+            "owner_user_id",
+            "notification_id",
+            "delivery_version",
+            "preference_revision",
+            "job_id",
+            "dedupe_sha256",
+            "address_id",
+            "kind",
+            "payload_json",
+            "state",
+            "attempts",
+            "attempt_revision",
+            "attempt_id",
+            "revision",
+            "next_attempt_at",
+            "lease_token",
+            "lease_until",
+            "submission_started_at",
+            "created_at",
+            "submitted_at",
+            "completed_at",
+            "transitioned_at",
+            "failure_code",
+        ),
+        "id",
+    ),
+    (
+        "notification_outbox_attempts",
+        (
+            "event_id",
+            "outbox_id",
+            "owner_user_id",
+            "attempt_id",
+            "attempt_revision",
+            "revision",
+            "event_kind",
+            "occurred_at",
+            "failure_code",
+        ),
+        "event_id",
+    ),
+    (
+        "notification_address_verifications",
+        (
+            "id",
+            "owner_user_id",
+            "address_id",
+            "idempotency_sha256",
+            "request_sha256",
+            "token_sha256",
+            "state",
+            "revision",
+            "attempts",
+            "requested_at",
+            "expires_at",
+            "submission_started_at",
+            "accepted_at",
+            "completed_at",
+            "failure_code",
+            "invalidated_at",
+        ),
+        "id",
+    ),
+    (
+        "notification_address_verification_recipients",
+        ("verification_id", "owner_user_id", "address", "created_at", "expires_at"),
+        "verification_id",
+    ),
+    (
+        "notification_address_verification_events",
+        (
+            "event_id",
+            "verification_id",
+            "owner_user_id",
+            "revision",
+            "event_kind",
+            "occurred_at",
+            "failure_code",
+        ),
+        "event_id",
+    ),
+)
+_BRIEFING_RESTORE_EFFECT_TABLES: Final = (
+    (
+        "briefing_preferences",
+        ("owner_user_id", "revision", "threshold_bps", "updated_at"),
+        "owner_user_id, revision",
+    ),
+    (
+        "briefing_price_observations",
+        (
+            "owner_user_id",
+            "source_ref",
+            "payload_sha256",
+            "symbol",
+            "asset_type",
+            "provider",
+            "currency",
+            "price_text",
+            "observed_at",
+            "received_at",
+            "state",
+            "reason",
+            "created_at",
+        ),
+        "owner_user_id, source_ref",
+    ),
+    (
+        "briefing_snapshots",
+        (
+            "id",
+            "owner_user_id",
+            "idempotency_key",
+            "request_sha256",
+            "window",
+            "baseline_at",
+            "observed_as_of",
+            "baseline_anchor_revision",
+            "preference_revision",
+            "threshold_bps",
+            "payload_json",
+            "created_at",
+        ),
+        "owner_user_id, created_at, id",
+    ),
+    (
+        "briefing_visit_anchors",
+        ("owner_user_id", "revision", "snapshot_id", "baseline_at", "visited_at"),
+        "owner_user_id, revision",
+    ),
+)
+_SCHEMA16_REPRESENTATIVE_STORAGE_TABLES: Final = (
+    *_LEGACY_REPRESENTATIVE_STORAGE_TABLES,
+    *_MONITORING_STORAGE_TABLES,
+)
+_SCHEMA18_REPRESENTATIVE_STORAGE_TABLES: Final = (
+    *_SCHEMA16_REPRESENTATIVE_STORAGE_TABLES,
+    *_NOTIFICATION_ADDRESS_STORAGE_TABLES,
+)
+_SCHEMA19_REPRESENTATIVE_STORAGE_TABLES: Final = (
+    *_SCHEMA18_REPRESENTATIVE_STORAGE_TABLES,
+    *_BRIEFING_STORAGE_TABLES,
+)
+_LEGACY_REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_LEGACY_REPRESENTATIVE_STORAGE_TABLES)
+_CURRENT_REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_SCHEMA16_REPRESENTATIVE_STORAGE_TABLES)
+_SCHEMA18_REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_SCHEMA18_REPRESENTATIVE_STORAGE_TABLES)
+_SCHEMA19_REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_SCHEMA19_REPRESENTATIVE_STORAGE_TABLES)
 
 
-def _is_representative_storage_counts(value: object) -> TypeGuard[_RepresentativeStorageCounts]:
-    """Validate exact internal table keys and non-negative, non-boolean physical row counts."""
+def _representative_storage_tables(schema_version: int) -> tuple[str, ...]:
+    """Choose only tables available in the declared database schema."""
 
+    if type(schema_version) is not int or not 1 <= schema_version <= SCHEMA_VERSION:
+        raise ValueError("schema_version is invalid")
+    if schema_version < 16:
+        return _LEGACY_REPRESENTATIVE_STORAGE_TABLES
+    if schema_version < 18:
+        return _SCHEMA16_REPRESENTATIVE_STORAGE_TABLES
+    if schema_version < 19:
+        return _SCHEMA18_REPRESENTATIVE_STORAGE_TABLES
+    return _SCHEMA19_REPRESENTATIVE_STORAGE_TABLES
+
+
+def _is_representative_storage_counts(
+    value: object, schema_version: int
+) -> TypeGuard[_RepresentativeStorageCounts]:
+    """Validate exact schema-versioned keys and non-negative physical row counts."""
+
+    if type(schema_version) is not int or not 1 <= schema_version <= SCHEMA_VERSION:
+        return False
+    if schema_version < 16:
+        expected = _LEGACY_REPRESENTATIVE_STORAGE_KEYS
+    elif schema_version < 18:
+        expected = _CURRENT_REPRESENTATIVE_STORAGE_KEYS
+    elif schema_version < 19:
+        expected = _SCHEMA18_REPRESENTATIVE_STORAGE_KEYS
+    else:
+        expected = _SCHEMA19_REPRESENTATIVE_STORAGE_KEYS
     return (
         isinstance(value, dict)
-        and set(value) == _REPRESENTATIVE_STORAGE_KEYS
+        and set(value) == expected
         and all(type(count) is int and count >= 0 for count in value.values())
     )
 
@@ -3901,7 +4185,7 @@ class Repository:
     def representative_counts(
         self, database_path: Path | None = None
     ) -> _RepresentativeStorageCounts:
-        """Count fixed internal storage tables; these keys are not domain record vocabulary."""
+        """Count fixed internal tables using the staging database's recorded schema version."""
 
         path = database_path or self.database_path
         # Staging databases are private to backup code; only the active canonical path shares
@@ -3917,13 +4201,21 @@ class Repository:
             connection: sqlite3.Connection | None = None
             try:
                 connection = sqlite3.connect(path)
+                version_row = connection.execute(
+                    "SELECT MAX(version) FROM schema_migrations"
+                ).fetchone()
+                if version_row is None or type(version_row[0]) is not int:
+                    raise RepositoryDatabaseError(
+                        "representative counts require a migrated database"
+                    )
+                tables = _representative_storage_tables(version_row[0])
                 counts = {
                     table: int(
                         connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # noqa: S608
                     )
-                    for table in _REPRESENTATIVE_STORAGE_TABLES
+                    for table in tables
                 }
-                # Construction from the fixed allowlist narrows this beyond dict[str, int].
+                # Construction from the fixed schema-versioned allowlist narrows this cast.
                 return cast(_RepresentativeStorageCounts, counts)
             except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
                 raise RepositoryOperationalError(

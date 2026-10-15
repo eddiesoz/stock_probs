@@ -578,3 +578,63 @@ for the full reconciliation and limitations.
 ARM64 checks must identify whether execution is native or QEMU/OCI-emulated. Emulation can
 exercise package, runtime, functional, build, and tool behavior; it cannot prove native
 resource performance. See the [MVP plan](../../MVP-PLAN.md) for current gate requirements.
+
+## R121 Release 4 briefing implementation verification
+
+The R4 candidate now registers schema 19 and migrations 018/019; migration 019 at
+`src/stock_probs/migrations/019_personal_briefings.sql` is byte-identical to the retained draft
+copy. Production remains on the earlier release. The application mounts the briefing store,
+service, and repository-backed sources. Routes use the authenticated session owner, reject legacy
+owner fallback, verify persisted active status, and require CSRF for writes. The feature flag is
+false by default and canary-only by default; the canary admits admins. Briefing actions remain
+gated while those controls are off.
+
+The final builder receipt passed 98 selected API/application/schema/backup/domain/service/source/
+store tests with two warnings, plus Ruff check and format across ten assigned Python files. Its
+first 93-pass/five-failure test attempt is preserved as a stale fixture/schema expectation
+diagnostic; the corrected selected run passed. Receipt
+`/var/tmp/r12r/r4-backend-mount-3956a7bc-5434-4b73-9e3c-234777e46769/builder-final-receipt.json`,
+SHA-256 `358f841197367d842c7301c97d0b2174aa187b99c90914d5ef1e0c34b51a8a04`. Independent backend
+QA remains **Pending**; this is not the canonical gate, full backup/export acceptance, or release
+acceptance.
+
+Independent frontend source/unit QA passed 11 headline/privacy/private-lifecycle Node tests, 15
+briefing-client Node tests, and a scoped strict no-emit TypeScript check. The reviewed source scope
+had no P1/P2 findings. Receipt
+`/var/tmp/r12r/r4-private-lifecycle-independent-sQJfx8/independent-final-receipt.json`, SHA-256
+`ab9a08a36840acbbb54c0ef65fca4d0e676df5de5f0b7f636e000496fe4f5cbf`. It explicitly tests same-origin
+news requests, stale-operation suppression, clearing private state on authorization failure,
+same-key/body retry after an uncertain create, and explicit reload after a 409. The rendered
+browser/React race check was **Skipped**; a full frontend build and screenshot comparison to the
+approved design have not occurred. A later builder presentation freeze removes the duplicate
+count-only row and uses four primary cards with an expandable lead saved item. Its diff is
+`/var/tmp/r12r/r4-presentation-ts-retry-20261015T153536Z-pxpgm7t4/source-freeze.diff`, SHA-256
+`bc103cdfcae2eee65e90ab194adbd753792caeac4667bf484def399b7eb38f21`; freeze receipt SHA-256 is
+`3798c81c910395eab55ebcee0aa9e468ccb0b963265becdfad18d662e788e569`. Builder checks passed the
+11 headline/lifecycle and 15 client tests plus scoped strict TypeScript on the frozen source. The
+current workspace and stylesheet hashes are `6167528613e1ff6f22da1a6ea169d8b800351f9bc784e60fc518f4dff998c86e`
+and `aedb3d38ae20cc1ed4934c031f1662a7893bea6e12d3c0305b1878ce12edf84d`. This source-level check
+does not establish rendered parity; full R4 build/stage, browser, and mockup comparison remain
+pending.
+
+Current headlines are requested only by an explicit user action through `/api/v1/news`. They stay
+ephemeral and outside saved briefing and forecast evidence. Saved snapshot creation reads bounded
+persisted records; it does not run the news/provider path. Briefing-state reports headline, digest,
+and assistant availability as false. Digest, assistant handoffs, scheduled jobs, automatic news,
+SMTP, and other provider execution remain unwired.
+
+The approved static stage is the earlier R3 64-file export and contains no R4
+`/overview/what-changed` page; `GET /overview/what-changed` returned 404 against that stage. This is
+a missing static page observation, not an API authentication result. No R4 build/stage, served-file
+parity, browser, or visual result is inferred. The existing CSV/JSON history endpoints export search
+history only. An owner-filtered saved-briefing export is still pending; do not treat those endpoints
+as an export for briefing snapshots.
+
+The current map at SHA-256
+`e2b247dd06bfebfd8bbfa5a7e430c855f9cebd6086d6cdadb54a1d10c05bb452` includes the backend,
+migration, route/page/component, and all three briefing test paths, including the headline and
+private-lifecycle tests. Mapping configuration alone does not establish current complete or
+change-aware coverage; use the combined dirty-path command and inspect its result before claiming
+that gate.
+See [R-ASTRA-121 E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint)
+and the earlier [E29 adapter review](../../MVP-PLAN.md#r-astra-121-e29-release-4-briefing-source-adapter-review).

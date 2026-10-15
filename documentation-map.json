@@ -142,6 +142,33 @@
         "docs/develop/design-system.md",
         "docs/security/threat-model.md"
       ]
+    },
+    {
+      "name": "personal-briefing-draft",
+      "match": [
+        "src/stock_probs/api.py",
+        "src/stock_probs/config.py",
+        "src/stock_probs/repository.py",
+        "src/stock_probs/backup.py",
+        "src/stock_probs/briefing_*.py",
+        "tests/test_briefing_*.py",
+        "tests/test_repository_backup.py",
+        "src/stock_probs/migrations/018_notification_address_delivery.sql",
+        "src/stock_probs/migrations/019_personal_briefings.sql",
+        "src/stock_probs/migration_drafts/019_personal_briefings.sql",
+        "frontend/app/overview/what-changed/**",
+        "frontend/components/briefing/**",
+        "frontend/tests/briefing-client.test.mjs",
+        "frontend/tests/briefing-headlines.test.mjs",
+        "frontend/tests/briefing-private-lifecycle.test.mjs"
+      ],
+      "docs": [
+        "docs/usage/dashboard.md",
+        "docs/reference/api.md",
+        "docs/develop/design-system.md",
+        "docs/develop/testing.md",
+        "docs/security/threat-model.md"
+      ]
     }
   ],
   "additional": [

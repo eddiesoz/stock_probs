@@ -3,8 +3,35 @@
 For R-ASTRA-121, preserve the user-approved seven feature mockups and the existing design system;
 corrected designs take precedence. Use phased, reviewed releases and retain owner isolation,
 explicit confirmation, schema-compatible data-preserving rollback and the existing 1 GB/US$15 cap.
-The research-workspace documentation-map entry binds new code and fixtures to the dashboard, API,
-design and threat-model guides; documentation presence does not establish acceptance.
+The `research-workspaces`, `portfolio-ledger-workspaces`, and `personal-briefing-draft` rules in
+`documentation-map.json` bind source and fixture paths to their required authored guides. The
+briefing rule also requires the testing guide. The current R4 rule
+covers the briefing API, backend modules, registered migrations, route/page/components, and the
+client, headline, and private-lifecycle tests. Its current SHA-256 is
+`e2b247dd06bfebfd8bbfa5a7e430c855f9cebd6086d6cdadb54a1d10c05bb452`. A map entry does not by
+itself establish complete change-aware coverage; require the combined check for the complete dirty
+path set before claiming that gate. Documentation presence and coverage do not establish runtime or
+release acceptance.
+This R4 checkout registers candidate schema 19, including migration
+`src/stock_probs/migrations/019_personal_briefings.sql`. The same-byte
+`src/stock_probs/migration_drafts/019_personal_briefings.sql` is retained as a draft/source copy; it
+does not mean migration 019 is unregistered. The mounted briefing API derives owner identity from
+the active session, rejects legacy-owner fallback, verifies active status, requires CSRF for writes,
+and is disabled by default with admin-only canary gating. This is candidate source integration,
+not a production API or release acceptance. The current approved staged static export is the R3
+64-file stage and has no R4 `overview/what-changed` page; the authenticated route observation
+returned 404 for `GET /overview/what-changed`. This is a missing static page in the R3 stage, not an
+API authentication result. No R4 build/stage, browser/design, production, export, or rollback
+acceptance is claimed. The separate R3 checkout has its own registered schema-18 monitoring candidate; do not
+transfer its registration or evidence to R4.
+For R-ASTRA-121, Priority 0 is a genuine OpenCode V2 `opencode-zen/space-bunny-free`
+answer through the application, with the intended native MCP/search/fetch path. Do not replace it
+with a compatible endpoint or paid provider. Local success is not deployment acceptance. The T9
+512 MiB startup reserve guard remains **Fail** at 519,432 KiB versus 524,288 KiB; the bounded
+30-second startup-wait checker repair is in progress within the existing 1,080-second budget and
+must retain the existing 512 MiB and 128 MiB floors and final guard. Do not promote source presence
+to a checker, host, native, or release Pass.
+
 Keep historical schema-13 rehearsal defaults and receipts intact. A named-schema verifier check
 does not establish a new schema-compatible recovery image, actual-host rollback, or release gate.
 

@@ -9,13 +9,24 @@ Start the local app, open its loopback URL, and wait for the system status to re
 The local workspace keeps portfolio context, recorded research, and bounded market tools separate;
 it is not a brokerage or order-entry system.
 
+## R121 personal briefing status
+
+The approved **What changed?** design has a mounted, default-off schema-19 backend candidate, but
+the current staged dashboard is the earlier R3 export and does not contain the R4
+`/overview/what-changed` page. The authenticated page request returned 404, so users cannot yet use
+the proposed briefing screen. Current headlines are requested only by an explicit action; they stay
+ephemeral and do not alter a saved briefing or forecast. Digest, assistant handoffs, scheduled work,
+and automatic news remain unavailable. The candidate checks passed their selected scopes, but the
+R4 frontend build/stage, rendered design comparison, browser, accessibility, owner-filtered export,
+and production/release checks are still pending. See
+[R-ASTRA-121 E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).
+
 ## Ledger assistant status
 
-The Ledger assistant is an R-ASTRA-120 candidate and is not available in the current production
-release. Production remains at schema 12 with the assistant disabled. Its acceptance work remains
-in progress; see the [assistant visual guide](../develop/design-system.md) for the design and the
-[authoritative R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
-for current evidence and open gates.
+The requested genuine OpenCode V2 `opencode-zen/space-bunny-free` assistant through the app is
+R121 Priority 0 and is not accepted as a deployed fix. The T9 terminal records restoration to the
+prior schema-13 revision/image; its startup reserve check remains failed, and independent artifact
+review did not perform a live post-audit reinspection. See the [R121 E28 checkpoint](../../MVP-PLAN.md#r-astra-121-e28-map-rebind-and-current-release-status) and the [assistant visual guide](../develop/design-system.md). A prior local two-owner OpenCode/Zen result does not establish production behavior.
 
 ### Planned assistant handoff on mobile
 

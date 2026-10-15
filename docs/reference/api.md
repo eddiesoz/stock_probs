@@ -428,3 +428,32 @@ by `STOCK_PROBS_RESEARCH_FEATURES_ENABLED` (default false) and
 Research retention is bounded to 100 theses and 100 comparisons per owner, 1,000 revisions per thesis, 5 MiB of retained payloads per owner and 20 MiB globally. Limits include immutable revisions. Comparison previews reserve capacity before provider calls (four per owner, 32 globally) and release their slot on save or expiry. CSV cells use the existing spreadsheet-formula neutralizer. Full database backups retain thesis revisions and comparison evidence; exact release recovery acceptance remains pending.
 
 A thesis creation key is checked against a canonical request digest before provider identity resolution. An identical retry reopens the saved record during a provider outage; changed content with the same key returns 409. Explicitly attached assistant messages copy a bounded excerpt on save, including manual ID attachment. Revision history retains the complete fields and excerpt from each revision.
+
+## R121 Release 4 briefing API status
+
+R4 registers candidate schema 19 and mounts these authenticated routes. Every request derives its
+owner from the active session; legacy-owner fallback is rejected, persisted account activity is
+checked, and writes require CSRF protection. Feature access is disabled by default and canary-only
+by default; enabling canary access is restricted to admins. Production remains on the existing
+schema-13 release, so this candidate is not a production API or release acceptance.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/briefing-state` | Return feature availability to an authenticated active owner. |
+| `GET` | `/api/v1/briefings` | List the owner's saved snapshots with bounded pagination. |
+| `GET` | `/api/v1/briefings/{snapshot_id}` | Read one owned immutable snapshot. |
+| `POST` | `/api/v1/briefings` | Create a saved snapshot with a canonical `Idempotency-Key`; gated. |
+| `PATCH` | `/api/v1/briefing-preference` | Change the owner's briefing preference; CSRF and feature gates apply. |
+| `POST` | `/api/v1/briefings/{snapshot_id}/visits` | Record a visit for an owned snapshot; CSRF and feature gates apply. |
+
+The state response currently reports headlines, digest, and assistant availability as false. The
+existing `/api/v1/news` endpoint remains an explicit current-headline request; those results are
+ephemeral context and are not added to a frozen briefing or forecast. No digest, assistant handoff,
+scheduler, background news request, email, or provider operation is wired into saved-snapshot
+creation. The existing `/api/v1/history-export.csv` and `.json` routes export search history only;
+an owner-filtered saved-briefing export is pending. Selected builder checks passed 98 tests with two
+warnings; an independent selection also passed 98 tests, but its receipt preserves failed input-
+manifest and then-current documentation/source-comment checks and is not an aggregate acceptance.
+Full backup/export and recovery verification, R4 frontend build/stage, browser, accessibility, and
+release checks remain open. See
+[R-ASTRA-121 E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).

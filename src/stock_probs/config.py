@@ -126,6 +126,11 @@ class Settings:
     research_features_canary_only: bool = True
     portfolio_features_enabled: bool = False
     portfolio_features_canary_only: bool = True
+    monitoring_features_enabled: bool = False
+    monitoring_features_canary_only: bool = True
+    monitoring_scheduler_enabled: bool = False
+    briefing_features_enabled: bool = False
+    briefing_features_canary_only: bool = True
     invitation_mail: InvitationMailSettings | None = field(default=None, repr=False)
     bootstrap_username: str | None = None
     bootstrap_password: str | None = None
@@ -287,6 +292,21 @@ class Settings:
             ),
             portfolio_features_canary_only=_environment_bool(
                 "STOCK_PROBS_PORTFOLIO_FEATURES_CANARY_ONLY", "true"
+            ),
+            monitoring_features_enabled=_environment_bool(
+                "STOCK_PROBS_MONITORING_FEATURES_ENABLED", "false"
+            ),
+            monitoring_features_canary_only=_environment_bool(
+                "STOCK_PROBS_MONITORING_FEATURES_CANARY_ONLY", "true"
+            ),
+            monitoring_scheduler_enabled=_environment_bool(
+                "STOCK_PROBS_MONITORING_SCHEDULER_ENABLED", "false"
+            ),
+            briefing_features_enabled=_environment_bool(
+                "STOCK_PROBS_BRIEFING_FEATURES_ENABLED", "false"
+            ),
+            briefing_features_canary_only=_environment_bool(
+                "STOCK_PROBS_BRIEFING_FEATURES_CANARY_ONLY", "true"
             ),
             invitation_mail=InvitationMailSettings.from_env(),
             bootstrap_username=bootstrap_username,

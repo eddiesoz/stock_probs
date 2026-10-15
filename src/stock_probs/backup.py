@@ -26,6 +26,8 @@ from typing import Any, TypeVar
 
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.repository import (
+    _BRIEFING_RESTORE_EFFECT_TABLES,
+    _NOTIFICATION_RESTORE_EFFECT_TABLES,
     SCHEMA_VERSION,
     Repository,
     _is_representative_storage_counts,
@@ -260,10 +262,7 @@ class BackupManager:
             try:
                 descriptor = os.open(
                     self.trust_key_path,
-                    os.O_WRONLY
-                    | os.O_CREAT
-                    | os.O_EXCL
-                    | getattr(os, "O_NOFOLLOW", 0),
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
                     0o600,
                 )
             except FileExistsError:
@@ -367,9 +366,7 @@ class BackupManager:
         # Directory fsync makes rename/link metadata durable on Linux after a sudden power loss.
         descriptor = os.open(
             path,
-            os.O_RDONLY
-            | getattr(os, "O_DIRECTORY", 0)
-            | getattr(os, "O_NOFOLLOW", 0),
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
         )
         try:
             os.fsync(descriptor)
@@ -381,6 +378,67 @@ class BackupManager:
             return self.repository.representative_counts(path)
         except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
             raise BackupError("Artifact representative-count verification failed.") from exc
+
+    @staticmethod
+    def _restore_effect_digest(
+        path: Path, tables: tuple[tuple[str, tuple[str, ...], str], ...], label: str
+    ) -> str:
+        """Fingerprint a fixed allowlist of irreversible state using a read-only connection."""
+
+        try:
+            connection = sqlite3.connect(
+                f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=5.0
+            )
+            try:
+                connection.execute("PRAGMA query_only = ON")
+                state: list[tuple[str, list[tuple[object, ...]]]] = []
+                for table, columns, order_column in tables:
+                    selected = ", ".join(columns)
+                    rows = connection.execute(
+                        f"SELECT {selected} FROM {table} ORDER BY {order_column}"  # noqa: S608
+                    ).fetchall()
+                    state.append((table, [tuple(row) for row in rows]))
+            finally:
+                connection.close()
+            canonical = json.dumps(state, separators=(",", ":"), ensure_ascii=True)
+            return hashlib.sha256(canonical.encode()).hexdigest()
+        except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
+            raise BackupError(f"{label} state could not be compared safely for restore.") from exc
+
+    def _require_notification_effect_match(self, staged_database: Path) -> None:
+        """Refuse snapshots that would rewind notification consent or delivery effects."""
+
+        active_digest = self._restore_effect_digest(
+            self.repository.database_path,
+            _NOTIFICATION_RESTORE_EFFECT_TABLES,
+            "Notification delivery",
+        )
+        staged_digest = self._restore_effect_digest(
+            staged_database,
+            _NOTIFICATION_RESTORE_EFFECT_TABLES,
+            "Notification delivery",
+        )
+        if not hmac.compare_digest(active_digest, staged_digest):
+            raise BackupError(
+                "Restore would change notification consent, address verification, "
+                "or delivery history."
+            )
+
+    def _require_briefing_state_match(self, staged_database: Path) -> None:
+        """Refuse snapshots that would rewind owner-created briefing records."""
+
+        active_digest = self._restore_effect_digest(
+            self.repository.database_path,
+            _BRIEFING_RESTORE_EFFECT_TABLES,
+            "Briefing history",
+        )
+        staged_digest = self._restore_effect_digest(
+            staged_database,
+            _BRIEFING_RESTORE_EFFECT_TABLES,
+            "Briefing history",
+        )
+        if not hmac.compare_digest(active_digest, staged_digest):
+            raise BackupError("Restore would change saved briefing history.")
 
     def _online_snapshot(self, snapshot: Path) -> None:
         """Use SQLite's consistent online API with a callback-enforced wall-clock bound."""
@@ -546,9 +604,7 @@ class BackupManager:
                 newest_name, newest_manifest = max(
                     manifests, key=lambda item: datetime.fromisoformat(item[1]["created_at"])
                 )
-                _, _, staging = self._verify_unlocked(
-                    newest_name, require_active_schema=False
-                )
+                _, _, staging = self._verify_unlocked(newest_name, require_active_schema=False)
                 staging.cleanup()
                 _check_deadline()
                 age_seconds = (
@@ -589,9 +645,7 @@ class BackupManager:
             with zipfile.ZipFile(artifact, "r") as archive:
                 entries = archive.infolist()
                 self._validate_zip_entries(entries, directory_offset)
-                manifest_info = next(
-                    info for info in entries if info.filename == "manifest.json"
-                )
+                manifest_info = next(info for info in entries if info.filename == "manifest.json")
                 if not 0 < manifest_info.file_size <= MAX_MANIFEST_BYTES:
                     raise BackupError("Artifact manifest exceeds the restore limit.")
                 with archive.open(manifest_info) as source:
@@ -665,7 +719,7 @@ class BackupManager:
         ):
             raise BackupError("Artifact database size is invalid.")
         counts = manifest["counts"]
-        if not _is_representative_storage_counts(counts):
+        if not _is_representative_storage_counts(counts, manifest["schema_version"]):
             raise BackupError("Artifact representative counts are invalid.")
         try:
             created_at = datetime.fromisoformat(manifest["created_at"])
@@ -871,9 +925,10 @@ class BackupManager:
         managed = self._managed_backups()
         new_key = secrets.token_bytes(TRUST_KEY_BYTES)
         try:
-            with self.repository.exclusive(), tempfile.TemporaryDirectory(
-                dir=self.backup_dir
-            ) as directory:
+            with (
+                self.repository.exclusive(),
+                tempfile.TemporaryDirectory(dir=self.backup_dir) as directory,
+            ):
                 staging_root = Path(directory)
                 replacements = staging_root / "replacements"
                 originals = staging_root / "originals"
@@ -972,9 +1027,7 @@ class BackupManager:
         """Return one safe error if bounded database coordination cannot be acquired."""
 
         try:
-            return _run_with_deadline(
-                lambda: self._restore_coordinated(name, promote=promote)
-            )
+            return _run_with_deadline(lambda: self._restore_coordinated(name, promote=promote))
         except BackupError as exc:
             exc._mark_restore_failure()
             raise
@@ -1001,6 +1054,8 @@ class BackupManager:
                 }
                 if not promote:
                     return response
+                self._require_notification_effect_match(staged_database)
+                self._require_briefing_state_match(staged_database)
                 current = self.repository.database_path
                 rollback = current.with_suffix(".pre-restore.sqlite3")
                 if rollback.exists() or rollback.is_symlink():
@@ -1024,9 +1079,7 @@ class BackupManager:
                 self._sync_file(rollback_temporary)
                 # A rollback is useful only after proving its copied pages and rows match active.
                 active_counts = self._counts(current)
-                self._integrity(
-                    rollback_temporary, expected_schema=manifest["schema_sha256"]
-                )
+                self._integrity(rollback_temporary, expected_schema=manifest["schema_sha256"])
                 if self._counts(rollback_temporary) != active_counts:
                     raise BackupError("Restore rollback staging failed verification.")
                 os.replace(rollback_temporary, rollback)

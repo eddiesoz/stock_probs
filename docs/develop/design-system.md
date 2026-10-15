@@ -302,6 +302,19 @@ portfolio, comparison, briefing and what-if images replace their initial drafts.
 
 ![Approved briefing design proposal; fictional data.](../design/features/briefing.png)
 
+The briefing image remains an approved visual proposal, not a screenshot or acceptance capture.
+Release 4 now has a mounted, default-off schema-19 backend candidate. Frontend source and unit checks
+passed for headline/privacy/lifecycle and request/error handling, but the R4 page has not been built
+or staged; the current R3 stage has no `/overview/what-changed` page. The full approved build-and-
+stage path, rendered desktop/mobile comparison to this mockup, both-theme review, browser QA, and
+accessibility checks remain pending. A later presentation-source freeze removes a duplicate
+count-only row and places four primary cards in the main row; the lead saved item expands to the
+remaining records, and headline retrieval remains explicit. This source layout has not been
+independently rendered or compared to the approved desktop/mobile images. Preserve the Overview /
+Research / Tools navigation, teal accents, neutral surfaces, current theme tokens, card hierarchy,
+and stacked mobile layout. See
+[R-ASTRA-121 E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).
+
 ![Approved what if design proposal; fictional data.](../design/features/what-if.png)
 
 

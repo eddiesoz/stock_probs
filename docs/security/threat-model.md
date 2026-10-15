@@ -21,6 +21,26 @@ restore check is separate from schema-compatible image recovery and exact-PR rol
 controls default off, with an administrator-only canary option. Full independent security and
 production acceptance remain required before rollout.
 
+## R121 Release 4 briefing candidate boundary
+
+R4 registers candidate schema 19 and mounts briefing routes behind the application session. Routes
+derive owner identity from the authenticated session, reject legacy-owner fallback, check that the
+persisted account is active, and require CSRF for writes. Feature access is false by default and
+canary-only by default; the admin check guards canary access. These are candidate-source controls,
+not evidence of production deployment or independent security acceptance. The existing production
+release remains at schema 13.
+
+Builder and independent selected backend suites passed 98 tests each for application/session,
+schema/backup, and briefing contracts; the independent receipt also preserves failed input-manifest
+and then-current documentation/source-comment checks, so it is not an aggregate acceptance. The
+owner-filtered saved-briefing export and schema-compatible image/PR rollback with post-migration
+records have not been accepted. Existing CSV/JSON history export remains limited to search history.
+The current headlines request is explicit and ephemeral; it does not update saved briefing or
+forecast evidence. Digest delivery, scheduled news, and assistant handoffs are not wired. Complete
+independent security, full backup/recovery, rendered browser, and production checks remain pending.
+See
+[R-ASTRA-121 E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).
+
 Signal Ledger has two supported security modes. Development may use a local bootstrap account on
 loopback; production is an invite-only multi-user deployment behind a Cloudflare Tunnel. The
 production image binds the app to the host loopback interface, uses GitHub's authorization-code

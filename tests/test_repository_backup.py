@@ -337,6 +337,27 @@ def test_success_repeat_failure_matrix_appends_exactly_one_event_each(settings):
         "forecast_inputs": 1,
         "forecast_results": 2,
         "outcomes": 0,
+        "monitoring_control": 1,
+        "notification_addresses": 0,
+        "notification_preferences": 0,
+        "price_alerts": 0,
+        "price_alert_revisions": 0,
+        "monitoring_owner_queue": 0,
+        "monitoring_jobs": 0,
+        "price_alert_observations": 0,
+        "notifications": 0,
+        "notification_read_events": 0,
+        "notification_outbox": 0,
+        "notification_outbox_attempts": 0,
+        "collected_outcome_evidence": 0,
+        "forecast_outcome_reviews": 0,
+        "notification_address_verifications": 0,
+        "notification_address_verification_recipients": 0,
+        "notification_address_verification_events": 0,
+        "briefing_preferences": 0,
+        "briefing_price_observations": 0,
+        "briefing_snapshots": 0,
+        "briefing_visit_anchors": 0,
     }
 
 
@@ -360,6 +381,27 @@ def test_backup_representative_counts_are_internal_physical_row_semantics(settin
         "forecast_inputs": 1,
         "forecast_results": 2,
         "outcomes": 1,
+        "monitoring_control": 1,
+        "notification_addresses": 0,
+        "notification_preferences": 0,
+        "price_alerts": 0,
+        "price_alert_revisions": 0,
+        "monitoring_owner_queue": 0,
+        "monitoring_jobs": 0,
+        "price_alert_observations": 0,
+        "notifications": 0,
+        "notification_read_events": 0,
+        "notification_outbox": 0,
+        "notification_outbox_attempts": 0,
+        "collected_outcome_evidence": 0,
+        "forecast_outcome_reviews": 0,
+        "notification_address_verifications": 0,
+        "notification_address_verification_recipients": 0,
+        "notification_address_verification_events": 0,
+        "briefing_preferences": 0,
+        "briefing_price_observations": 0,
+        "briefing_snapshots": 0,
+        "briefing_visit_anchors": 0,
     }
 
     manager = BackupManager(repository, settings.backup_dir)
@@ -392,7 +434,9 @@ def test_failed_event_insert_rolls_back_new_input_and_results(settings):
             analysis_kind="not-a-real-analysis",
         )
 
-    assert all(value == 0 for value in repository.representative_counts().values())
+    counts = repository.representative_counts()
+    assert counts["monitoring_control"] == 1
+    assert all(value == 0 for table, value in counts.items() if table != "monitoring_control")
 
 
 def test_new_forecast_write_requires_cardinality_matching_the_input(settings):
@@ -412,7 +456,9 @@ def test_new_forecast_write_requires_cardinality_matching_the_input(settings):
             completed_at=NOW,
         )
 
-    assert all(value == 0 for value in repository.representative_counts().values())
+    counts = repository.representative_counts()
+    assert counts["monitoring_control"] == 1
+    assert all(value == 0 for table, value in counts.items() if table != "monitoring_control")
 
 
 def test_repeated_provider_failures_are_audited_without_forecast_records(settings):
