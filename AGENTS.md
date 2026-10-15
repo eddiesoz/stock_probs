@@ -3,8 +3,20 @@
 For R-ASTRA-121, preserve the user-approved seven feature mockups and the existing design system;
 corrected designs take precedence. Use phased, reviewed releases and retain owner isolation,
 explicit confirmation, schema-compatible data-preserving rollback and the existing 1 GB/US$15 cap.
-The research-workspace documentation-map entry binds new code and fixtures to the dashboard, API,
-design and threat-model guides; documentation presence does not establish acceptance.
+The `research-workspaces`, `portfolio-ledger-workspaces`, and `monitoring-workspaces` rules in
+`documentation-map.json` bind their source and fixture paths to the dashboard, API, design, and
+threat-model guides; monitoring paths also require the testing guide, including the notification
+implementation and test path families. Keep those mappings current. Documentation presence and
+coverage do not establish runtime or release acceptance.
+For R-ASTRA-121, Priority 0 is a genuine OpenCode V2 `opencode-zen/space-bunny-free`
+answer through the application, with the intended native MCP/search/fetch path. Do not replace it
+with a compatible endpoint or paid provider. Local success is not deployment acceptance. The T9
+512 MiB startup reserve guard remains **Fail** at 519,432 KiB versus 524,288 KiB; the bounded
+30-second startup-wait checker repair is in progress within the existing 1,080-second budget and
+must retain the existing 512 MiB and 128 MiB floors and final guard. Do not promote source presence
+to a checker, host, native, or release Pass.
+
+The R3 checkout now registers candidate schema 18 with `src/stock_probs/migrations/018_notification_address_delivery.sql`; this is local candidate state, not production schema or proof of email delivery. The approved 88-test frontend build and 65-pair stage match their recorded earlier inputs only; `repository.py` has since changed, so they do not bind the whole current R3 tree. Selected UI source QA passed 16 checks, but browser behavior and lost-response GET reconciliation/explicit replacement tests remain open. R4 is a separate schema-17 checkout whose `019_personal_briefings.sql` remains an unregistered draft. Keep branch-specific evidence distinct and do not describe either candidate as a deployed feature.
 Keep historical schema-13 rehearsal defaults and receipts intact. A named-schema verifier check
 does not establish a new schema-compatible recovery image, actual-host rollback, or release gate.
 

@@ -304,6 +304,40 @@ portfolio, comparison, briefing and what-if images replace their initial drafts.
 
 ![Approved what if design proposal; fictional data.](../design/features/what-if.png)
 
+### Notifications and report-card workspace contracts
+
+Use the approved alerts and forecast-report-card proposals above as the layout references for the
+R121 Release 3 candidate. Keep the existing Overview / Research / Tools navigation, surface tokens,
+card hierarchy, typography, and Light, Dark, and System themes. Do not copy generated sample dates,
+prices, brands, or decorative labels as product requirements.
+
+On desktop, keep alert rules, inbox entries, and report rows easy to scan within the approved card
+and table hierarchy. At narrow widths, stack records into readable cards and keep each action within
+the viewport; do not make users scroll a wide table sideways to pause, resume, or mark a notification
+read. Show the rule's currency, threshold, last valid observation, provider timestamp, and state.
+An `arming` rule must not look active until its baseline is ready. Use explicit text for watching,
+paused, triggered, stale, and unavailable states; color is supplemental.
+
+Keep report counts for scored, pending, unavailable, disputed, and incomparable outcomes separate.
+Pair metrics with their horizon, model/version and denominator, and give every chart a text summary
+or data equivalent. Label recorded outcomes separately from historical backtests. An unavailable
+provider or incomplete sample must not render as a success.
+
+Loading, empty, error, unavailable, and ready states retain the same route hierarchy. Keep focus
+visible, announce meaningful status changes without stealing focus, provide at least 44 CSS-pixel
+controls, respect reduced motion, and preserve text contrast in both themes. The approved images
+are design proposals, not browser evidence. The verified-address mail flow remains an unregistered backend draft with no accepted address-entry UI or delivery path; keep the approved inbox/alert layout as the visual reference and do not present email controls as available. The first 24-case desktop/mobile run failed before
+workspace assertions because its isolated API route registry omitted both new paths; axe was
+unavailable. Root route registration has selected independent staged-application integration coverage, but no
+post-fix browser rerun has been accepted. The notification-email UI source freeze passed 16 builder
+tests; the full frontend build/stage passed 88 Node tests and verified all 65 served/export pairs at
+its then-bound 113-source snapshot. The backend-typing worker has since changed `repository.py`, so
+that stage does not bind the whole current tree. Independent selected UI source review passed 16
+Node/scoped TypeScript checks with no actionable P1/P2 finding, but was not browser QA and left the
+lost-response GET reconciliation/explicit replacement test gap open. R121 still requires desktop/mobile captures and
+whole-route keyboard, accessibility, theme, provider, security, and release checks; see the
+[R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
+
 
 ### Portfolio tool navigation on narrow screens
 

@@ -319,4 +319,37 @@ exports.test = base.test.extend({
       await application.stop();
     }
   },
+  monitoringApplication: async ({}, use, testInfo) => {
+    const application = await launchApplication(
+      testInfo,
+      "monitoring-runtime",
+      (port) => [path.join(root, "tools/browser/monitoring_qa_server.py"), "--port", String(port)],
+      "Monitoring browser fixture",
+      {
+        STOCK_PROBS_ENV: "test",
+        STOCK_PROBS_PROVIDER: "fixture",
+        STOCK_PROBS_FIXTURE_NOW: "2025-01-10T22:03:00+00:00",
+        STOCK_PROBS_AUTH_MODE: "local",
+        STOCK_PROBS_MONITORING_FEATURES_ENABLED: "true",
+        STOCK_PROBS_MONITORING_FEATURES_CANARY_ONLY: "true",
+        STOCK_PROBS_MONITORING_SCHEDULER_ENABLED: "true",
+      },
+    );
+    async function signIn(page) {
+      await page.goto(`${application.url}/sign-in?next=%2Foverview`);
+      await base.expect(page.getByText("Sign in", { exact: true })).toBeVisible();
+      await page.getByLabel("Local account", { exact: true }).fill("monitoring-browser-admin");
+      const port = new URL(application.url).port;
+      await page.getByLabel("Password", { exact: true }).fill(`monitoring-local-fixture:${port}:not-a-secret`);
+      await page.getByRole("button", { name: "Use local account", exact: true }).click();
+      await page.waitForURL(value => value.origin === new URL(application.url).origin && value.pathname === "/overview");
+      const session = await page.request.get(`${application.url}/api/v1/auth/session`);
+      base.expect(session.ok(), "the ordinary local fixture login must establish its session").toBe(true);
+    }
+    try {
+      await use({ url: application.url, logs: application.logs, signIn });
+    } finally {
+      await application.stop();
+    }
+  },
 });

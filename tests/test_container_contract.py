@@ -1,6 +1,9 @@
 """Static checks keep the local container boundary secure and persistence-safe."""
 
-from pathlib import Path
+import ast
+import shlex
+from collections import Counter
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_IMAGE = (
@@ -10,6 +13,82 @@ NODE_IMAGE = (
     "node:22.19.0-bookworm-slim@sha256:"
     "4a4884e8a44826194dff92ba316264f392056cbe243dcc9fd3551e71cea02b90"
 )
+
+
+def _frontend_page_exports() -> tuple[str, ...]:
+    """Read the page inventory from the frontend export producer."""
+    module = ast.parse((ROOT / "scripts/build_frontend.py").read_text())
+    for statement in module.body:
+        targets = statement.targets if isinstance(statement, ast.Assign) else []
+        if any(isinstance(target, ast.Name) and target.id == "PAGES" for target in targets):
+            pages = ast.literal_eval(statement.value)
+            assert isinstance(pages, tuple)
+            assert all(isinstance(page, str) for page in pages)
+            return pages
+    raise AssertionError("scripts/build_frontend.py does not define a literal PAGES tuple")
+
+
+def _docker_run_commands(stage: str) -> list[str]:
+    """Join Docker RUN continuations so the shell copy commands can be inspected."""
+    lines = stage.splitlines()
+    commands: list[str] = []
+    line_index = 0
+    while line_index < len(lines):
+        line = lines[line_index]
+        if line.startswith("RUN "):
+            parts = [line[4:].rstrip()]
+            while parts[-1].endswith("\\"):
+                parts[-1] = parts[-1][:-1].rstrip()
+                line_index += 1
+                assert line_index < len(lines), "Docker RUN instruction ends in a continuation"
+                parts.append(lines[line_index].strip())
+            commands.append(" ".join(parts))
+        line_index += 1
+    return commands
+
+
+def _docker_html_copy_map(stage: str) -> Counter[tuple[str, str]]:
+    """Resolve every frontend-stage HTML copy from its export path to its image path."""
+    copies: Counter[tuple[str, str]] = Counter()
+    for command in _docker_run_commands(stage):
+        lexer = shlex.shlex(command, posix=True, punctuation_chars="&")
+        lexer.whitespace_split = True
+        segments: list[list[str]] = [[]]
+        for piece in lexer:
+            if piece == "&&":
+                segments.append([])
+            else:
+                segments[-1].append(piece)
+
+        for segment in segments:
+            if not segment or segment[0] != "cp":
+                continue
+            operands = [operand for operand in segment[1:] if not operand.startswith("-")]
+            if len(operands) < 2:
+                continue
+            sources, destination = operands[:-1], operands[-1]
+            for source in sources:
+                source_path = PurePosixPath(source)
+                if source_path.suffix != ".html":
+                    continue
+                try:
+                    page = source_path.relative_to(PurePosixPath("out")).as_posix()
+                except ValueError:
+                    page = source_path.as_posix()
+
+                destination_path = PurePosixPath(destination)
+                if len(sources) > 1 or destination.endswith("/"):
+                    resolved_destination = destination_path / source_path.name
+                else:
+                    resolved_destination = destination_path
+                try:
+                    image_page = resolved_destination.relative_to(
+                        PurePosixPath("/static-next")
+                    ).as_posix()
+                except ValueError:
+                    image_page = resolved_destination.as_posix()
+                copies[(page, image_page)] += 1
+    return copies
 
 
 def test_image_is_pinned_wheel_installed_non_root_and_exec_form() -> None:
@@ -103,7 +182,7 @@ def test_opencode_library_assets_keep_their_selected_architecture_paths() -> Non
 
 
 def test_next_export_is_built_with_pinned_node_but_runtime_is_python_only() -> None:
-    """Node builds the export without crossing into the final Python stage."""
+    """The Python package receives exactly the pages selected by the export producer."""
 
     dockerfile = (ROOT / "Dockerfile").read_text()
     frontend_stage, python_stages = dockerfile.split(f"FROM {PYTHON_IMAGE}", maxsplit=1)
@@ -114,19 +193,22 @@ def test_next_export_is_built_with_pinned_node_but_runtime_is_python_only() -> N
     assert "RUN npm ci" in frontend_stage
     assert "COPY frontend/ ./" in frontend_stage
     assert "RUN npm run typecheck && npm run build && npm run test" in frontend_stage
-    retained_export = (
-        "RUN mkdir -p /static-next/tools \\\n"
-        "    && cp out/index.html out/api-docs.html out/overview.html out/research.html "
-        "out/tools.html \\\n"
-        "       out/sign-in.html out/invite.html out/passkey.html "
-        "out/authenticator.html out/account.html "
-        "out/admin.html /static-next/ \\\n"
-        "    && cp out/tools/forecast.html out/tools/live-trading.html out/tools/markets.html "
-        "/static-next/tools/ \\\n"
-        "    && cp -R out/_next /static-next/"
+
+    pages = _frontend_page_exports()
+    assert len(pages) == len(set(pages))
+    expected_copies = Counter((page, page) for page in pages)
+    actual_copies = _docker_html_copy_map(frontend_stage)
+    assert actual_copies == expected_copies, (
+        "Docker HTML copy map must match scripts/build_frontend.py PAGES exactly; "
+        f"missing={expected_copies - actual_copies}, "
+        f"extra={actual_copies - expected_copies}"
     )
-    assert retained_export in frontend_stage
+    frontend_run_commands = " ".join(_docker_run_commands(frontend_stage))
+    assert "&& cp -R out/_next /static-next/" in frontend_run_commands, (
+        "Docker frontend stage must preserve the Next.js static asset tree"
+    )
     assert all(name not in frontend_stage for name in (".txt", "404", "_not-found"))
+
     export_copy = "COPY --from=frontend-builder /static-next ./src/stock_probs/static/next"
     assert python_stages.index(export_copy) < python_stages.index("python -m pip wheel")
     assert "COPY --from=frontend-builder /build/frontend/out" not in dockerfile

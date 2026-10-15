@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -10,12 +11,23 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from importlib.resources import files
+from uuid import uuid4
 
 import pytest
 
 import stock_probs.repository as repository_module
 from stock_probs.backup import BackupError, BackupManager
 from stock_probs.domain import DomainError, calculate_forecasts
+from stock_probs.history_export import (
+    build_owner_history_export,
+    serialize_owner_history_csv,
+    serialize_owner_history_json,
+)
+from stock_probs.monitoring_store import MonitoringStore
+from stock_probs.notification_address_store import (
+    NotificationAddressStore,
+    NotificationAddressUnavailable,
+)
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import SCHEMA_VERSION, Repository, RepositoryError
 from stock_probs.service import ForecastService
@@ -145,6 +157,31 @@ def test_migration_rejects_changed_shipped_sql_before_database_work(settings, mo
     """Checksum mismatch forces a new migration rather than accepting edited history."""
 
     monkeypatch.setitem(repository_module.MIGRATION_SHA256, 2, "0" * 64)
+
+    with pytest.raises(sqlite3.DatabaseError, match="immutable checksum"):
+        Repository(settings.database_path).migrate()
+    assert not settings.database_path.exists()
+
+
+def test_migration_016_is_checksum_pinned_before_database_work(settings, monkeypatch):
+    """The newly registered monitoring DDL must match its reviewed immutable pin."""
+
+    migration = files("stock_probs.migrations").joinpath("016_monitoring_and_report_cards.sql")
+    expected = hashlib.sha256(migration.read_bytes()).hexdigest()
+    assert repository_module.MIGRATION_SHA256[16] == expected
+    monkeypatch.setitem(repository_module.MIGRATION_SHA256, 16, "0" * 64)
+
+    with pytest.raises(sqlite3.DatabaseError, match="immutable checksum"):
+        Repository(settings.database_path).migrate()
+    assert not settings.database_path.exists()
+
+
+def test_migration_018_is_checksum_pinned_before_database_work(settings, monkeypatch):
+    migration = files("stock_probs.migrations").joinpath("018_notification_address_delivery.sql")
+    expected = "c152435ddf599a0715478e5863e5a2d2cd14b72fde5eca8d9a73900ff4981a63"
+    assert hashlib.sha256(migration.read_bytes()).hexdigest() == expected
+    assert repository_module.MIGRATION_SHA256[18] == expected
+    monkeypatch.setitem(repository_module.MIGRATION_SHA256, 18, "0" * 64)
 
     with pytest.raises(sqlite3.DatabaseError, match="immutable checksum"):
         Repository(settings.database_path).migrate()
@@ -337,6 +374,23 @@ def test_success_repeat_failure_matrix_appends_exactly_one_event_each(settings):
         "forecast_inputs": 1,
         "forecast_results": 2,
         "outcomes": 0,
+        "monitoring_control": 1,
+        "notification_addresses": 0,
+        "notification_preferences": 0,
+        "price_alerts": 0,
+        "price_alert_revisions": 0,
+        "monitoring_owner_queue": 0,
+        "monitoring_jobs": 0,
+        "price_alert_observations": 0,
+        "notifications": 0,
+        "notification_read_events": 0,
+        "notification_outbox": 0,
+        "notification_outbox_attempts": 0,
+        "collected_outcome_evidence": 0,
+        "forecast_outcome_reviews": 0,
+        "notification_address_verifications": 0,
+        "notification_address_verification_recipients": 0,
+        "notification_address_verification_events": 0,
     }
 
 
@@ -360,6 +414,23 @@ def test_backup_representative_counts_are_internal_physical_row_semantics(settin
         "forecast_inputs": 1,
         "forecast_results": 2,
         "outcomes": 1,
+        "monitoring_control": 1,
+        "notification_addresses": 0,
+        "notification_preferences": 0,
+        "price_alerts": 0,
+        "price_alert_revisions": 0,
+        "monitoring_owner_queue": 0,
+        "monitoring_jobs": 0,
+        "price_alert_observations": 0,
+        "notifications": 0,
+        "notification_read_events": 0,
+        "notification_outbox": 0,
+        "notification_outbox_attempts": 0,
+        "collected_outcome_evidence": 0,
+        "forecast_outcome_reviews": 0,
+        "notification_address_verifications": 0,
+        "notification_address_verification_recipients": 0,
+        "notification_address_verification_events": 0,
     }
 
     manager = BackupManager(repository, settings.backup_dir)
@@ -371,6 +442,395 @@ def test_backup_representative_counts_are_internal_physical_row_semantics(settin
         assert set(expected).isdisjoint({"events", "runs", "inputs", "results", "forecasts"})
     finally:
         staging.cleanup()
+
+
+def test_v15_signed_backup_manifest_keeps_legacy_counts_without_synthetic_fields(
+    settings, tmp_path, monkeypatch
+):
+    """A historical signed manifest retains exactly its schema-15 integrity count keys."""
+
+    migrations = tmp_path / "v15-migrations"
+    migrations.mkdir()
+    for migration in sorted(files("stock_probs.migrations").iterdir(), key=lambda item: item.name):
+        if migration.name.endswith(".sql") and int(migration.name[:3]) <= 15:
+            (migrations / migration.name).write_bytes(migration.read_bytes())
+    original_files = repository_module.files
+
+    def v15_resources(package: str):
+        return migrations if package == "stock_probs.migrations" else original_files(package)
+
+    with monkeypatch.context() as schema15:
+        schema15.setattr(repository_module, "files", v15_resources)
+        schema15.setattr(repository_module, "SCHEMA_VERSION", 15)
+        repository = Repository(settings.database_path)
+        repository.migrate()
+        manager = BackupManager(repository, settings.backup_dir)
+        created = manager.create("signed-v15.spbackup", schema_version=15)
+        manifest, _, staging = manager._verify_unlocked(
+            created["name"], require_active_schema=False
+        )
+        try:
+            legacy_keys = {
+                "search_events",
+                "forecast_runs",
+                "forecast_inputs",
+                "forecast_results",
+                "outcomes",
+            }
+            assert manifest["schema_version"] == 15
+            assert set(manifest["counts"]) == legacy_keys
+            assert repository.representative_counts() == manifest["counts"]
+        finally:
+            staging.cleanup()
+
+    # The current schema-18 reader still accepts the old signed manifest without fabricating
+    # schema-16+ or schema-18 table counts.
+    manifest, _, staging = manager._verify_unlocked(created["name"], require_active_schema=False)
+    try:
+        assert manifest["schema_version"] == 15
+        assert set(manifest["counts"]) == legacy_keys
+    finally:
+        staging.cleanup()
+
+
+def test_v17_signed_backup_keeps_its_count_shape_and_cannot_promote_over_v18(
+    settings, tmp_path, monkeypatch
+):
+    current_repository, _service_instance = _service(settings)
+    current_manager = BackupManager(current_repository, settings.backup_dir)
+    migrations = tmp_path / "v17-migrations"
+    migrations.mkdir()
+    for migration in sorted(files("stock_probs.migrations").iterdir(), key=lambda item: item.name):
+        if migration.name.endswith(".sql") and int(migration.name[:3]) <= 17:
+            (migrations / migration.name).write_bytes(migration.read_bytes())
+    original_files = repository_module.files
+    older_database = tmp_path / "schema17" / "older.sqlite3"
+    older_database.parent.mkdir()
+
+    def v17_resources(package: str):
+        return migrations if package == "stock_probs.migrations" else original_files(package)
+
+    with monkeypatch.context() as version17:
+        version17.setattr(repository_module, "files", v17_resources)
+        version17.setattr(repository_module, "SCHEMA_VERSION", 17)
+        older_repository = Repository(older_database)
+        older_repository.migrate()
+        older_manager = BackupManager(older_repository, settings.backup_dir)
+        created = older_manager.create("signed-v17.spbackup", schema_version=17)
+        manifest, _, staging = older_manager._verify_unlocked(
+            created["name"], require_active_schema=False
+        )
+        try:
+            expected = set(repository_module._SCHEMA16_REPRESENTATIVE_STORAGE_TABLES)
+            assert manifest["schema_version"] == 17
+            assert set(manifest["counts"]) == expected
+            assert "notification_address_verifications" not in manifest["counts"]
+        finally:
+            staging.cleanup()
+
+    before = hashlib.sha256(settings.database_path.read_bytes()).hexdigest()
+    with pytest.raises(BackupError, match="schema version 17.*schema version 18"):
+        current_manager.restore(created["name"], promote=True)
+    assert hashlib.sha256(settings.database_path.read_bytes()).hexdigest() == before
+    assert not settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
+
+
+def test_schema18_backup_preserves_address_effects_and_rejects_older_snapshot(settings):
+    repository, _service_instance = _service(settings)
+    owner_two_id = repository.create_user(
+        github_user_id=2042,
+        login="backup-address-owner-two",
+        display_name="Backup address owner two",
+        password_hash=None,
+        created_at=NOW,
+    )["id"]
+    monitoring = MonitoringStore(repository)
+    control = monitoring.get_control()
+    monitoring.set_control(control["revision"], True, NOW)
+    store = NotificationAddressStore(monitoring)
+
+    owner_one_address = "owner-one-private@example.invalid"
+    owner_two_old_address = "owner-two-obsolete@example.invalid"
+    owner_one = store.request_verification(OWNER_USER_ID, owner_one_address, str(uuid4()), NOW)
+    owner_two = store.request_verification(owner_two_id, owner_two_old_address, str(uuid4()), NOW)
+    assert owner_one._code is not None
+    assert owner_two._code is not None
+    with pytest.raises(NotificationAddressUnavailable):
+        store.get_status(owner_two_id, owner_one.verification_id, NOW)
+
+    manager = BackupManager(repository, settings.backup_dir)
+    before_submission = manager.create("schema18-before-address-effects.spbackup")
+    manifest, staged_database, staging = manager.verify(before_submission["name"])
+    try:
+        new_tables = {
+            "notification_address_verifications": 2,
+            "notification_address_verification_recipients": 2,
+            "notification_address_verification_events": 2,
+        }
+        assert manifest["schema_version"] == 18
+        assert {name: manifest["counts"][name] for name in new_tables} == new_tables
+        assert (settings.backup_dir / before_submission["name"]).stat().st_mode & 0o777 == 0o600
+        with sqlite3.connect(staged_database) as connection:
+            assert {
+                "notification_address_verifications": connection.execute(
+                    "SELECT COUNT(*) FROM notification_address_verifications"
+                ).fetchone()[0],
+                "notification_address_verification_recipients": connection.execute(
+                    "SELECT COUNT(*) FROM notification_address_verification_recipients"
+                ).fetchone()[0],
+                "notification_address_verification_events": connection.execute(
+                    "SELECT COUNT(*) FROM notification_address_verification_events"
+                ).fetchone()[0],
+            } == new_tables
+            persisted_code_hash = connection.execute(
+                "SELECT token_sha256 FROM notification_address_verifications WHERE id=?",
+                (owner_one.verification_id,),
+            ).fetchone()[0]
+            assert persisted_code_hash != owner_one._code
+        public_manifest = json.dumps(manifest, sort_keys=True)
+        for private_value in (owner_one_address, owner_two_old_address, owner_one._code):
+            assert private_value not in public_manifest
+    finally:
+        staging.cleanup()
+
+    started = store.mark_submission_started(
+        OWNER_USER_ID, owner_one.verification_id, owner_one.revision, owner_one._code, NOW
+    )
+    accepted = store.finish_submission(
+        OWNER_USER_ID,
+        owner_one.verification_id,
+        "accepted",
+        NOW + timedelta(seconds=1),
+    )
+    verified = store.verify_code(
+        OWNER_USER_ID,
+        owner_one.verification_id,
+        owner_one._code,
+        accepted.revision,
+        NOW + timedelta(seconds=2),
+    )
+    assert started.state == "submitting"
+    assert verified["verified"] is True
+    current_preferences = monitoring.get_notification_preferences(OWNER_USER_ID)
+    selected = store.select_verified_address(
+        OWNER_USER_ID,
+        verified["address_id"],
+        current_preferences["revision"],
+        NOW + timedelta(seconds=3),
+    )
+    assert selected["address_id"] == verified["address_id"]
+    assert selected["alert_email"] is False and selected["digest_email"] is False
+
+    replacement_address = "owner-two-current@example.invalid"
+    replacement = store.request_verification(
+        owner_two_id,
+        replacement_address,
+        str(uuid4()),
+        NOW + timedelta(seconds=4),
+        supersedes_verification_id=owner_two.verification_id,
+        expected_revision=owner_two.revision,
+    )
+    assert replacement.state == "queued"
+    assert store.get_status(owner_two_id, owner_two.verification_id, NOW).state == "superseded"
+    with repository.connect() as connection:
+        assert (
+            connection.execute(
+                "SELECT 1 FROM notification_address_verification_recipients "
+                "WHERE verification_id=?",
+                (owner_two.verification_id,),
+            ).fetchone()
+            is None
+        )
+        stored_request_hashes = {
+            row[0]
+            for row in connection.execute(
+                "SELECT request_sha256 FROM notification_address_verifications"
+            ).fetchall()
+        }
+        stored_token_hashes = {
+            row[0]
+            for row in connection.execute(
+                "SELECT token_sha256 FROM notification_address_verifications"
+            ).fetchall()
+        }
+
+    projection = build_owner_history_export(
+        repository,
+        OWNER_USER_ID,
+        ["notifications", "rules", "reviews", "evidence", "preferences"],
+        generated_at=NOW + timedelta(seconds=5),
+    )
+    json_export = serialize_owner_history_json(projection)
+    csv_export = serialize_owner_history_csv(
+        projection, safe_cell=lambda value: "" if value is None else str(value)
+    )
+    for private_value in (
+        owner_one_address,
+        owner_two_old_address,
+        replacement_address,
+        owner_one._code,
+        owner_two._code,
+        *stored_request_hashes,
+        *stored_token_hashes,
+    ):
+        assert private_value not in json_export
+        assert private_value not in csv_export
+
+    before_digest = manager._notification_effect_digest(settings.database_path)
+    with pytest.raises(BackupError, match="change notification consent.*delivery history"):
+        manager.restore(before_submission["name"], promote=True)
+    assert manager._notification_effect_digest(settings.database_path) == before_digest
+    assert not settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
+
+    exact = manager.create("schema18-address-effects.spbackup")
+    promoted = manager.restore(exact["name"], promote=True)
+    assert promoted["promoted"] is True
+    assert manager._notification_effect_digest(settings.database_path) == before_digest
+    assert store.get_current_status(owner_two_id, NOW + timedelta(seconds=5)).verification_id == (
+        replacement.verification_id
+    )
+    assert (
+        monitoring.get_notification_preferences(OWNER_USER_ID)["address_id"]
+        == (verified["address_id"])
+    )
+    assert (
+        store.get_status(OWNER_USER_ID, owner_one.verification_id, NOW + timedelta(seconds=5)).state
+        == "verified"
+    )
+    assert store.get_status(owner_two_id, owner_two.verification_id, NOW).state == "superseded"
+    with repository.connect() as connection:
+        assert (
+            connection.execute(
+                "SELECT 1 FROM notification_address_verification_recipients "
+                "WHERE verification_id=?",
+                (owner_two.verification_id,),
+            ).fetchone()
+            is None
+        )
+    with pytest.raises(NotificationAddressUnavailable):
+        store.get_status(OWNER_USER_ID, replacement.verification_id, NOW)
+
+
+@pytest.mark.parametrize("outcome", ["accepted", "uncertain"])
+def test_restore_refuses_to_erase_submitted_notification_delivery_history(settings, outcome):
+    """An older snapshot cannot erase a later accepted or ambiguous SMTP submission."""
+
+    repository, _ = _service(settings)
+    store = MonitoringStore(repository)
+    now = NOW
+    notification_id = str(uuid4())
+    address_id = str(uuid4())
+    with repository.connect() as connection:
+        connection.execute(
+            "INSERT INTO notifications(id,owner_user_id,dedupe_sha256,kind,payload_json,"
+            "created_at) VALUES (?,?,?,'price_alert',?,?)",
+            (
+                notification_id,
+                OWNER_USER_ID,
+                "a" * 64,
+                '{"symbol":"SPY","threshold":"100"}',
+                now.isoformat(),
+            ),
+        )
+        connection.execute(
+            "INSERT INTO notification_addresses(id,owner_user_id,address,verified_at,created_at) "
+            "VALUES (?,?,?,?,?)",
+            (
+                address_id,
+                OWNER_USER_ID,
+                "fixture@example.invalid",
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+        connection.execute(
+            "UPDATE monitoring_control SET enabled=1,revision=revision+1,updated_at=? WHERE id=1",
+            (now.isoformat(),),
+        )
+        connection.commit()
+    preferences = store.get_notification_preferences(OWNER_USER_ID)
+    preferences = store.set_notification_preferences(
+        OWNER_USER_ID,
+        preferences["revision"],
+        alert_email=True,
+        digest_email=False,
+        address_id=address_id,
+        now=now,
+    )
+    queued = store.enqueue_notification_outbox(
+        OWNER_USER_ID,
+        notification_id,
+        preferences["revision"],
+        now=now,
+    )
+    manager = BackupManager(repository, settings.backup_dir)
+    created = manager.create("before-email-acceptance.spbackup")
+
+    claim = store.claim_due_notification_outbox(
+        "restore-test-worker", now, limit=1, lease_seconds=30
+    )[0]
+    submission = store.mark_notification_outbox_submission_started(
+        OWNER_USER_ID, claim, now + timedelta(seconds=1)
+    )
+    finalized = store.finalize_notification_outbox(
+        OWNER_USER_ID,
+        submission,
+        outcome,
+        now + timedelta(seconds=2),
+        failure_code=None if outcome == "accepted" else "smtp_outcome_unknown",
+    )
+    assert finalized["state"] == outcome
+    before = manager._notification_effect_digest(repository.database_path)
+    with pytest.raises(BackupError, match="change notification consent"):
+        manager.restore(created["name"], promote=True)
+
+    assert manager._notification_effect_digest(repository.database_path) == before
+    assert repository.representative_counts()["notification_outbox"] == 1
+    with repository.connect() as connection:
+        row = connection.execute(
+            "SELECT state,submitted_at FROM notification_outbox WHERE id=?", (queued["id"],)
+        ).fetchone()
+        assert tuple(row) == (
+            outcome,
+            (
+                (now + timedelta(seconds=2))
+                .isoformat(timespec="microseconds")
+                .replace("+00:00", "Z")
+                if outcome == "accepted"
+                else None
+            ),
+        )
+    exact = manager.create(f"matching-{outcome}.spbackup")
+    promoted = manager.restore(exact["name"], promote=True)
+    assert promoted["promoted"] is True
+    assert manager._notification_effect_digest(repository.database_path) == before
+    assert not settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
+
+
+def test_restore_fails_before_staging_when_notification_effect_comparison_is_unavailable(
+    settings, monkeypatch
+):
+    """An unavailable authority comparison rejects promotion before staging any DB swap."""
+
+    repository, service = _service(settings)
+    service.search("ACDC", "stock", owner_user_id=OWNER_USER_ID)
+    manager = BackupManager(repository, settings.backup_dir)
+    created = manager.create("comparison-unavailable.spbackup")
+    before = hashlib.sha256(settings.database_path.read_bytes()).hexdigest()
+
+    def unavailable(_path):
+        raise BackupError("Notification delivery state could not be compared safely for restore.")
+
+    def staging_must_not_run(*_args, **_kwargs):
+        pytest.fail("comparison must complete before promotion staging")
+
+    monkeypatch.setattr(manager, "_notification_effect_digest", unavailable)
+    monkeypatch.setattr(manager, "_stage_promotion", staging_must_not_run)
+    with pytest.raises(BackupError, match="could not be compared safely"):
+        manager.restore(created["name"], promote=True)
+
+    assert hashlib.sha256(settings.database_path.read_bytes()).hexdigest() == before
+    assert not settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
 
 
 def test_failed_event_insert_rolls_back_new_input_and_results(settings):
@@ -392,7 +852,17 @@ def test_failed_event_insert_rolls_back_new_input_and_results(settings):
             analysis_kind="not-a-real-analysis",
         )
 
-    assert all(value == 0 for value in repository.representative_counts().values())
+    counts = repository.representative_counts()
+    assert all(
+        counts[name] == 0
+        for name in (
+            "search_events",
+            "forecast_runs",
+            "forecast_inputs",
+            "forecast_results",
+            "outcomes",
+        )
+    )
 
 
 def test_new_forecast_write_requires_cardinality_matching_the_input(settings):
@@ -412,7 +882,17 @@ def test_new_forecast_write_requires_cardinality_matching_the_input(settings):
             completed_at=NOW,
         )
 
-    assert all(value == 0 for value in repository.representative_counts().values())
+    counts = repository.representative_counts()
+    assert all(
+        counts[name] == 0
+        for name in (
+            "search_events",
+            "forecast_runs",
+            "forecast_inputs",
+            "forecast_results",
+            "outcomes",
+        )
+    )
 
 
 def test_repeated_provider_failures_are_audited_without_forecast_records(settings):

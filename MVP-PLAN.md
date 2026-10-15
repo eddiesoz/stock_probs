@@ -8,12 +8,19 @@ Overview / Research / Tools navigation. Corrected mockups take precedence over i
 fictional data, incidental labels, and logos are not product requirements. See the
 [approved feature designs](docs/develop/design-system.md#approved-seven-feature-designs).
 
+**Priority 0 / first release dependency:** restore and verify the assistant through the app with
+genuine OpenCode V2 `opencode-zen/space-bunny-free`, including the intended native MCP/search/fetch
+flow. Do not substitute a merely compatible endpoint, paid provider, or account-based service. A
+previous local two-owner functional run is scoped evidence only; the latest actual-host memory
+preflight still failed its reserve guard and the original production deployment was restored. This
+dependency must pass before the first R121 feature release; no deployed assistant fix is claimed.
+
 | Release | Complete user-facing scope | Current status |
 | --- | --- | --- |
 | 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | In progress; local implementation and selected checks only |
 | 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | In progress in a separate managed checkout; no release acceptance |
-| 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | Pending |
-| 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Pending |
+| 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | In progress in the R3 checkout; candidate schema 18 is registered; selected integration, UI-source and repository typing scopes pass; the three-file typing repair and follow-up preference fixture received selected independent and parent review, while the earlier 32-test failure remains recorded; the earlier build/stage does not bind changed repository source; browser, canonical and release acceptance remain open |
+| 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Separate R4 schema-17 checkout: isolated API draft (44 checks), source/domain/service review (32 independent checks plus scoped static checks), and UI-source repair (15 scoped checks); not built or integrated; migration 019, route/session wiring, browser and release acceptance remain open |
 
 Transactions retain original currency/date and use decimal weighted-average book calculations.
 Opening positions may have unknown cost. Corrections append records; previews/imports are atomic;
@@ -38,9 +45,51 @@ No R121 production deployment, merge, rollback, rollout, or email has occurred.
 
 1. **In progress:** implement, independently verify and integrate Release 1.
 2. **In progress:** implement and verify Release 2 in an isolated checkout.
-3. **Pending:** implement and verify Release 3.
-4. **Pending:** implement and verify Release 4.
+3. **In progress:** implement and verify Release 3; integrated and release acceptance remain pending.
+4. **In progress:** isolated Release 4 API draft and UI-source repair only; UI build/integration and release checks remain pending.
 5. **Pending:** complete each release's exact-revision acceptance, recovery and publication.
+
+### R-ASTRA-121 R3 current monitoring checkpoint (2026-10-15)
+
+The R3 checkout registers schema 18 for verified notification-address delivery. This is candidate
+schema state only; production remains on the existing schema-13 release, with no R121 deployment,
+rollout, or email delivery. Monitoring, scheduler, and email controls default off. The scheduler is
+owned by normal application startup and is not started by one-shot CLI commands. The independent
+review of the administrator control boundary remains unsafe; canary and release acceptance remain
+blocked on its repair and review.
+
+The schema-18 repository/restore-guard review passed 12 selected checks (receipt
+`/var/tmp/r12r/r3-schema18-independent-qa-20261014-NovGAi/independent-review-receipt.json`,
+SHA-256 `16b5634d6d707291d26ee7d238024c66005b57878925cd04af4d8c306eb190ac`). The repaired
+application integration passed 23 independent checks against a real staged application
+(`/var/tmp/r12r/r3-notification-application-independent-qa-a4b478fc-fae6-43c0-8f07-007cb8d93bca/independent-receipt.json`,
+SHA-256 `2aa3ea39f6837c52388fa539f0b377ca667feeb5d0a50a88176a65096a5a427f`). These use local
+fixtures; they do not verify production MFA or SMTP delivery.
+
+The notification-address UI source freeze passed 16 builder tests, and independent selected UI source QA later passed 16 Node/scoped TypeScript checks with no actionable P1/P2 findings. Its receipt `/var/tmp/r12r/r3-notification-ui-independent-20261015T131240Z-6b0a/source-review.json` has SHA-256 `1cb904b5b1b1a834af486e53714fca52456a8ad964fa838cd4e7ecbbd2041666`. This was source review only, not browser QA; it identified a missing test for lost-response GET reconciliation and explicit replacement behavior, which remains open. The source-freeze receipt
+(`/var/tmp/r12r/r3-notification-ui-source-freeze-36c82c10-b41b-4c3f-81bf-46ab25d4d593/source-freeze-receipt.json`,
+SHA-256 `43e7b6fe11be346d3a7afa5f3c2618248e6afa9cd2f12c66859dc72c0e7ede15`) is superseded for
+build/stage scope by the following approved full build. At its recorded input snapshot, the full frontend build/stage passed npm CI, typecheck, Next build,
+88 Node tests, and verified all 65 staged/export file pairs (61 Next files plus four authored assets)
+with 113 bound source inputs unchanged. The backend-typing worker has since changed `repository.py`;
+this historical build does not bind the whole current R3 source tree, and browser checks must wait for
+a fresh approved build/stage. Terminal receipt
+`/var/tmp/r12r/r3-notification-fullstage-ff23a282-a506-4128-91fa-0959601581a7/terminal.json`
+SHA-256 `8e566c7456499130fbf824fb4628c76fa50c64ffc22b3b5662a8d6fbd10f329c`; explicit inventory
+supplement `/var/tmp/r12r/r3-notification-fullstage-ff23a282-a506-4128-91fa-0959601581a7/complete-stage-supplement.json`
+SHA-256 `6b208f2ab9680e98082793912cfcd47b841411bb13c30db129c79f36d853c2d2`. The first terminal
+compared 62 pairs; the supplement verifies the complete 65-pair inventory. An initial supplement
+setup rejected an empty Next build directory; the corrected inventory preserved that setup note
+and did not run a new build. Independent UI source review passed only its selected Node/TypeScript/source scope; the browser,
+lost-response GET/reconciliation, and explicit replacement tests remain pending. The current documentation map now includes the
+registered candidate migration path. Documentation validator, completeness, and combined dirty-path
+coverage results are recorded below. No browser/axe, live SMTP, real delivery, full security,
+production backup/recovery, host resource, rollback, canary, or release acceptance is claimed. The
+original 24-case browser aggregate remains failed and was not rerun; the repository mypy baseline
+still reports six repository and 20 app errors. Authored-doc validation passed (9 categories, 14
+topics, 8 governance entries); completeness checked 202 mapped files and one combined change-aware
+run passed across 72 dirty paths. `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md
+docs` passed. `/home/james/repos/stock_probs/.dev-venv/bin/python -m pytest --noconftest -p no:cacheprovider -o addopts='' tests/test_docs_validation.py -q` passed 60 tests in 148.22 seconds for R3. The earlier system-Python attempt failed at setup because that interpreter lacked pytest; it did not establish pytest unavailability in the project environment. Two initial coverage-wrapper attempts failed before invoking the checker because the wrapper argument parser received an embedded NUL; the corrected aggregate command passed.
 
 Historical R120 release/evidence below remains unchanged. R121 does not supersede E850's deployed
 product identity or claim new production observations.
@@ -321,6 +370,571 @@ Overview’s five-row rendering with ten-row page advances. Receipt
 SHA-256 `4adbd7d8ed98f07a7df4f81c9e9b3b4c2ef8f039b97608dcaa7a501904a901ee`. Its separate browser
 addendum verified parent artifacts without replay. The narrow pagination repair now requests five
 rows and exposes View all transactions; a rendered mapped-CSV/pagination regression remains pending.
+
+### R121 E10 Release 3 implementation checkpoint
+
+Task `R-ASTRA-121`; this Release 3 documentation checkpoint is `R-ASTRA-121-R3-docs`.
+Implementation is underway in the Release 3 managed worktree, observed at dirty
+`HEAD` `75cf57a74746d29dd3f72185e7cb68a3861c8454`. The candidate contains schema 16 monitoring
+and report-card storage, bounded owner-scoped API modules, a lifespan-owned price scheduler, JSON
+and CSV history export, and Notifications and Forecast report-card workspace components. Source
+integration is in progress; no R3 integrated API, normal-startup, canonical, browser, image,
+production, or release acceptance is established. Email delivery and automatic forecast-outcome
+collection are not implemented. The durable store supports outbox states, but the feature endpoint
+reports email unavailable until verification, opt-in, and a sender are connected.
+
+Alert creation and resume queue an initial snapshot in the same transaction as the rule revision.
+The rule remains in `arming` until a valid baseline observation is persisted; that baseline cannot
+trigger a notification. Only a later valid threshold crossing can trigger one. Successful price
+checks schedule the next observation 15 minutes later, and the worker starts from application
+lifespan only after database migration and only when both the feature and scheduler controls are
+enabled. Feature access and scheduler settings default off, canary-only access defaults to
+administrators, and the independent persisted job switch defaults off. This candidate behavior has
+not yet passed a normal application integration check.
+
+Scoped component evidence currently includes:
+
+- The report-card scorer passed 49 focused independent cases with Ruff, security, and format checks
+  for its evidence-validation and scoring scope. Receipt
+  `/var/tmp/r12r/r3-report-cards-independent-qa-20261014T031707Z-6424c5f3/receipt.json`,
+  SHA-256 `e09270fa79cc1488289a961910f548d16f8ec31bce3d815041724202b68dc11e`.
+- The alert/outbox store passed its focused independent state-machine scope (40 tests plus a direct
+  uncertain-submission SQL check; the store subset included 34 cases). Receipt
+  `/var/tmp/r12r/r3-outbox-qa-20261014T030800Z/final-review.json`, SHA-256
+  `29330349714167d432d9d4e04cdd276435d9ccb9cdbb1b69e9577588afa1ece2`.
+- The scheduler/store independent run passed 53 focused cases. Receipt
+  `/var/tmp/r12r/r3-scheduler-store-independent-qa-20261014/independent-final-01.json`,
+  SHA-256 `0fcf282010a216d1b2b448dd1b07577aafa687a69834ffc2701f1bd5e3096578`. This does not establish
+  normal application startup or live provider monitoring.
+- Migration, backup/restore, and export integration passed 21 focused independent cases with
+  lint, security, format, and diff checks. The runner used a test-only static-file setup shim;
+  population of all 14 new tables in one positive backup fixture remains **Unavailable**. Receipt
+  `/var/tmp/r12r/r3-restore-export-integrated-qa-20261014T0402Z/independent-restore-export-integration-qa-01.json`,
+  SHA-256 `3b513ce8469a5e5fb7d49d8f872fe1741dd0ca922e54f4e49c11b42f11617154`.
+- The report-card malformed-response repair passed its 18-case independent component projection
+  review. Receipt
+  `/var/tmp/r12r/r3-reportcard-malformed-independent-20261014-050836/independent-rereview.json`,
+  SHA-256 `cd2054ef6c2c33763ecb79b44babdc12d8f88d17ba95f5a2b2f40072d887edfd`. Its component passed
+  TypeScript and PostCSS checks, but parent route wrappers changed afterward; those wrappers and
+  rendered desktop/mobile states remain pending verification. Builder receipt
+  `/var/tmp/r12r/monitoring-ui-malformed-repair-20261014-7c00d351-3cb5-4196-9539-37ca99f1a94c/final-qa-repair-receipt.json`,
+  SHA-256 `d9c916a244ffae952bc1796d92f02c3d00921e6d3299468b990e4adffa74a8d1`.
+
+The first selected Monitoring API run passed nine tests, then independent source review **Failed**
+on mixed-offset timestamp ordering and an uncaught deeply nested JSON response that could become
+HTTP 500. Failure receipt
+`/var/tmp/r12r/report-api-r3-independent-45fbaf42-ffca-4fb2-9283-b246b95474ef/final-independent-receipt.json`,
+SHA-256 `5022b4ef3e02526df2283f4e6bfa995d244c7f4550021b85c1bc14fc04c6424d`. The builder's
+UTC-normalization/deep-JSON repair reported 64 selected cases passing at
+`2026-10-14T05:35:40Z`–`05:35:45Z`; its artifact path is
+`/var/tmp/r12r/report-api-r3-repair-20261014T220000Z/final-independent-repair-224900.txt`,
+SHA-256 `49353796cf3190c3bd429080d0a644db76bd31f635eaf408b15f988e0fc014b7`. Despite its filename,
+this is builder-lane evidence, not independent QA. Independent re-review and the normal
+application integration run remain pending.
+
+The release's automatic outcome collector, verified-address workflow, SMTP outbox consumer, full
+backup fixture, assistant handoffs, and final UI route/accessibility checks remain pending. Strict
+release requirements continue to include the approved desktop/mobile designs, authenticated
+owner isolation, security and canonical checks, actual combined 1 GB host evidence, schema-compatible
+PR-bound rollback retaining post-migration data, and the ordered owner canary/invited rollout.
+This R3 worktree has not changed production. The T6 terminal below records restoration to the
+original schema-13 image and invited mode; a fresh independent post-T6 production readback remains
+pending.
+
+The separately scoped assistant repair remains a draft PR. Its local genuine OpenCode Zen functional
+run passed, but the actual-host T6 rehearsal **Failed** at the 512 MiB startup reserve before any
+model call: the helper measured `517,480 KiB` available against `524,288 KiB` required. Its terminal
+is
+`/var/tmp/r12r/signal-ledger-assistant-fix-20261013-native-zen/host-transition-06-dc2208f7-b9f6-4fb6-bb4d-2e201161ecf2/terminal.json`,
+SHA-256 `6292a600ccc44827fc529e9cd1efc1cec2d5ce8a01b2342f25f97527e856c89e`; the receipt records
+restoration to revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13, invited
+mode. This is not R3 runtime or release acceptance.
+
+R121 E10 documentation evidence:
+
+| Check | Task and observed result |
+| --- | --- |
+| Pre-edit documentation baseline | Task `R-ASTRA-121-R3-docs`; native x86_64; dirty pre-change `HEAD` `75cf57a74746d29dd3f72185e7cb68a3861c8454`; UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; private baseline directory `/var/tmp/r12r/r3-docs-implementation-20261014T053446Z/` mode `0700`, files mode `0600`. Manifest SHA-256 `0b36128f065a649142682ffb3565d951b13ec5cd8bf9bd2c3670e55f73026135`; `MVP-PLAN.md` `2d3c055e458a992e3b78a7b19362aa57adfa4157325baebc46087eebff9927b4`; `docs/develop/index.md` `746a681e6d7f38e598fd35b3ddbdf27741d24a7e7cb6ffc19d552c74ff337c4b`; `docs/develop/testing.md` byte copy `/var/tmp/r12r/r3-docs-implementation-20261014T053446Z/testing-md-before-edit.md`, SHA-256 `2825fc96b8f64cf276266d89897814927ba478ad0d73791214465457e8d977cf`. `docs/develop/workspaces.md` did not exist before edits. |
+| Initial topic-page validation | **Fail**: a first draft added `docs/develop/workspaces.md`, which the existing documentation topic allowlist rejected as unexpected. The new page was removed and its concise developer contract moved into existing `docs/develop/testing.md`; no validator/configuration file was changed. |
+| Worktree-local validator attempt | **Unavailable**: `.dev-venv/bin/python scripts/validate_docs.py` exited `127` because this worktree has no `.dev-venv`. |
+| Authored-documentation validator | **Pass**: `/home/james/repos/stock_probs/.dev-venv/bin/python scripts/validate_docs.py` exited `0`; 9 categories, 14 topics, and 8 project skill governance entries. |
+| Documentation completeness | **Pass**: `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` exited `0`, checking 190 mapped files. |
+| R3 change-aware coverage | Existing-map check exited `0`, 190 mapped files and 13 explicit changed inputs; **R3 coverage remains Pending** because the current map has no Release 3 source rule and ignores unmatched paths. The parent owns that later map update. |
+| Documentation diff | **Pass**: `git diff --check -- MVP-PLAN.md docs/develop/index.md docs/develop/testing.md` exited `0`. |
+
+
+### R-ASTRA-121 E23 — current Release 3 integration checkpoint
+
+Task `R-ASTRA-121`; this checkpoint is scoped to the local Release 3 worktree at dirty `HEAD`
+`75cf57a74746d29dd3f72185e7cb68a3861c8454` (`codex/signal-ledger-monitoring-r3`). This records
+the earlier source-integration state; E24 below supersedes only later wiring and review status. It does not
+supersede or duplicate the separately tracked assistant-hotfix checkpoint. Schema-16 migration
+bytes remain unchanged at SHA-256 `5e8505d115879cc5bd8db465b1afb213b7f7b07b008d264c28b0e373f30a03a7`.
+New `017_outcome_owner_replace_guard.sql` is SHA-256
+`05d217d29f4c4f5befec771d6644b4fbf7d814fb3748075d75e5d6ab32d63442`; it preserves prior
+migrations 001–016 and adds a `BEFORE INSERT` guard that rejects an existing outcome-owner mapping
+before SQLite `INSERT OR REPLACE` can replace it. The independent eight-case migration check
+**Passed** (receipt SHA-256
+`f8579e0b0dd7a7a2394b700d71c38d331b491f8d214800b297e39fb163703635`). The original P2 finding on
+raw `REPLACE` remains preserved; this migration check does not establish full backup recovery.
+
+Selected report-card/store/API checks remain scoped. Earlier API/store checks passed 64 cases;
+provenance review passed 51 cases and strict typing. A 17-case normal-app/lifecycle run and an administrator CSRF probe passed their declared scope
+(receipt SHA-256 `f0d78782b2f34460d81f866a245efcbaed3272e35cd5b327c4db72fce836a213`), while an
+idempotency P2 finding was retained. The follow-up API/store repair and probe passed 51 selected
+cases (receipt SHA-256
+`2b1cf5cc34c02161b1c48f2fc3f86738cde79e8d98ef50f4ae0115de731776e7`). A separate 115-case QA
+artifact has duplicate attribution, so it cannot substantiate 115 unique passing cases (receipt
+SHA-256 `cc50d9e3384702b2027ceabc68d3f94a8b1c06041c901b8311635f367b549e8b`). The outcome
+collector's completion, safe target horizon and insert-ID checks passed 26 independent cases
+(receipt SHA-256 `5c77fedcc92b4eb17b67dc3f4012f29166cba11048c2606ca725ac69b374a2c2`). A 76-case
+provider run passed in the builder lane and its source review passed (receipt SHA-256
+`e30d9b22677281c78f3d019f968bb5c8bdf39089c5e8cf310e8c3776afc0a9ff`). This is not an
+independent 76-case rerun or live-provider acceptance. At this E23 checkpoint, provider collection
+and scheduler-clock wiring remained pending; E24 below records subsequent source integration and
+the still-open live-provider gate.
+
+The approved frontend build-and-stage path passed on an SD-backed copy bound to 113 R3 source
+inputs: exit 0, 80 frontend checks and 64 staged/export pairs at
+`2026-10-14T07:24:12.004977Z`–`07:25:33.119439Z`. Source-baseline manifest SHA-256 is
+`c720c49f1eb53e57e8d3169e48d7b7b952c56b09d42920b18785a625a1baba3f`; terminal
+`/var/tmp/r12r/r3-frontend-full-stage-cbae0106-c26b-4df8-b523-933979f4975f/terminal.json` SHA-256
+`953f9f7350343bc0a0c88d21a3e0ed531daddfb1e2ff38888eaeca9207ad2680`. This bound build does not
+establish that the application serves those assets or provide browser, accessibility, or production
+acceptance.
+
+The separate assistant-hotfix T8 actual-host startup check **Failed** at
+`2026-10-14T07:10:09.670056Z`–`07:10:57.044905Z`: it observed 515,068 KiB against the unchanged
+524,288 KiB floor (shortfall 9,220 KiB) and stopped at preflight. Candidate/model execution and the
+actual combined 1 GB check were **Skipped**. Independent artifact review passed its saved-terminal,
+pin-binding and restoration scope at `07:22:17.129224Z`–`07:22:17.192140Z`; the final saved readback
+showed original revision `5ad2c3f` / image `78746f60`, schema 13, ready, invited, loopback-only.
+`restoration_guaranteed=false` remains recorded and no new live query was made during that review.
+T8 terminal SHA-256 is `8bb28e35c3aefef3140f14e9574658135129db8e94e4517df94416afaf597189`; independent
+review SHA-256 is `6e48636f4755880a5261ad382926e27df000c0fb2a9448f36a6f6c55c18ea842`. The hotfix remains
+undeployed. The approved objective remains
+**In progress**: first obtain a genuine free-Zen OpenCode answer through the application, then ship
+all seven visible features in four releases.
+
+At E23, Release 3 still lacked verified-address onboarding and an SMTP outbox consumer; live
+scheduled price checks and automatic forecast publication were not accepted. Full
+private-route/authentication and security review, current browser/theme/mobile/accessibility
+evidence, the current canonical gate, actual combined 1 GB host checks, complete populated
+backup/recovery, exact-PR rollback, and rollout remained **Pending**. At that checkpoint, the
+documentation map had no Release 3 source rule and ignored unmatched paths; E24 records the later
+map addition and current source-coverage status.
+
+E23 documentation evidence: the pre-edit copies are in
+`/var/tmp/r12r/r3-current-docs-20261014T0728Z/`, UUID-verified SD mount
+`54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`, directory mode `0700`, files mode `0600`, manifest SHA-256
+`46594b215856fc120861cb8d1197fb7872fdb83a6fe91e62510e9eb556853bdb`; pre-edit `MVP-PLAN.md`
+SHA-256 `19a5d7dd003a9c63dacae6b3402ca4118c71d7bbc8a959fad76a8a634d68890e` and
+`docs/develop/testing.md` SHA-256 `10d26806ec4189cfc522f9847a39c144c220afce9e3c49146bb1b2c31eb6f092`.
+The authored-doc validator **Passed** (9 categories, 14 topics, 8 governance entries); coverage
+completeness and explicit coverage for the two changed documentation files **Passed** (190 mapped
+files); `git diff --check` **Passed**. These docs checks do not close the missing R3 source-map rule.
+The post-change documentation checksum review and integrated checkpoint remain pending with the
+coordinator; this entry is the scoped docs-lane report, not a release acceptance.
+
+### R-ASTRA-121 E24 — Release 3 scheduler and outcome integration
+
+Task `R-ASTRA-121`; E24 supplements the E23 Release 3 checkpoint. The scheduler and daily-outcome
+collector are now wired through the application lifespan to the shared provider service, completion
+clock, cancellation check, and administrator-only canary gate. This is implementation and selected
+local evidence, not live-provider, security, release, or deployment acceptance.
+
+The builder's scoped scheduler/store/collector run passed 89 tests, Ruff, format, and selected strict
+typing checks (receipt SHA-256
+`317ff662d6f7edb2d630765311e2b370f8cda00cf2498e7f241369cd81e5a116`,
+`/var/tmp/r12r/outcome-scheduler-integration-01/builder-receipt-followup-01.json`). A parent-run
+synthetic application/API lifecycle selection passed 21 tests (terminal SHA-256
+`9337397cdb0f5c0cd72f733c645875e6e11192812324b313f4e243bd64ddc5b1`,
+`/var/tmp/r12r/r3-parent-runtime-wiring-20261014-01/test-terminal-01.json`); the test harness used
+an in-memory static-file shim and did not verify the served bundle or a browser. Independent QA's
+focused scheduler/store/application suite passed 101 tests between
+`2026-10-14T07:58:45.168560Z` and `08:01:11.321402Z` (terminal SHA-256
+`1aa1e46dffa4a7e4dae7c488bea2b570856600527e12c460a23383d4b69c869c`). The overall independent
+integration review remains **Held**: a separate pre-provider administrator-demotion test **Failed**
+because provider work was still reached (terminal SHA-256
+`ed38c3bd57a7cc5a5a150cc0b45ffd60130d960986a3e07dec4ccce8ec12472a`). At this initial E24 review,
+strict typing also found three API runtime diagnostics for scheduler `start`, `close`, and
+`status` (review terminal SHA-256
+`2057e5f96d5cfe026dc45b8a4379b227ee6513333dd8222beafb3abab621668b`). The later scoped typing
+follow-up below removes those three diagnostics; the administrator-revocation finding and
+independent integration re-review remain unresolved. No live provider call or scheduled production
+check is claimed.
+
+The plain current-candidate canonical-target typing diagnostic reported 242 errors; comparison
+against inherited/pre-existing findings remains unresolved. No full canonical gate was run, so
+canonical status is **Pending**, not Pass. A separate full frontend build-and-stage run passed its
+declared scope: 113 R3 source inputs, 80 frontend checks, and 64 served/export file pairs. The
+terminal is `/var/tmp/r12r/r3-frontend-full-stage-cbae0106-c26b-4df8-b523-933979f4975f/terminal.json`
+(SHA-256 `953f9f7350343bc0a0c88d21a3e0ed531daddfb1e2ff38888eaeca9207ad2680`); source baseline
+manifest SHA-256 is `c720c49f1eb53e57e8d3169e48d7b7b952c56b09d42920b18785a625a1baba3f`. Independent
+saved-build review matched 113 pins, all 64 pairs, and 80 checks (receipt SHA-256
+`020270b84238eaf050599f26f5538f6a0c2b538fcab349fd628686950aa15927`), qualified because the
+build used a shared Node symlink on a writable host mount. No immutable-runtime or browser
+acceptance follows. The 24-case desktop/mobile browser matrix is prepared but **Not run**.
+
+The separate assistant hotfix remains outside the R3 branch and is still undeployed. Its T8
+actual-host startup preflight **Failed** at the 512 MiB reserve (`515,068 KiB` available against
+`524,288 KiB`); candidate/model execution and the actual combined 1 GB check were **Skipped**.
+The saved final readback and independent T8 review are recorded in E23; they showed restoration to
+the existing schema-13 image `sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`,
+invited mode, ready and loopback-only, with `restoration_guaranteed=false` and no new live query.
+A later passive-profile packet review **Failed** its metadata and byte/execution binding; a
+successor packet was prepared, but no further host call occurred. This is not a fixed deployment or
+an R3 result.
+
+The current root map now includes `monitoring-workspaces`: 29 source/test patterns mapped to five
+authored guides, plus `workflow-policy` coverage for `AGENTS.md`. The map SHA-256 is
+`9bea8dc98a8951d66165623ea301431a9eda22f297cf73692499f07d8382b27a`. Its pre-edit copy is
+`/var/tmp/r12r/r3-source-documentation-map-20261014-01/documentation-map.before.json` (SHA-256
+`2624caf94d7e89d6a7837dedb734d94c9194ec0a96424803ac6749eb7002a110`); the baseline metadata is
+SHA-256 `dc03313b475cb45ad38de83118b96d87135195a8c8eb8833dfae290dabf4e719`. Source presence, map
+coverage, the frontend build, and scoped tests do not close the independent review, current
+canonical, security, provider, populated backup/recovery, rollback, browser/accessibility, actual
+1 GB, or release gates.
+
+#### E24 follow-up — schema 17 and scoped typing discriminator
+
+The current Release 3 candidate is at schema 17. This updates the current release-table status;
+E10's schema-16 observation and E23's earlier schema-16 status remain historical checkpoints.
+Migration 17's selected migration check remains the only schema check recorded here; backup
+recovery and release acceptance remain pending.
+
+A new `MonitoringRuntime` protocol cleared the three newly introduced API runtime typing
+diagnostics for scheduler `start`, `close`, and `status`. The explicit-config API diagnostic now
+exits 1 with 17 remaining errors and zero of those three new diagnostics (terminal SHA-256
+`392325eafff6c42c6a531299c6becb9d6f4f79fe4c857ce26db8812633679f29`,
+`/var/tmp/r12r/r3-api-runtime-protocol-20261014-01/terminal.json`); the reviewed API source pin is
+SHA-256 `69e038f22e94d065e231cc9ecbbf03bfd46fdf10555ef72b5cd726d454cf8153`. This is a scoped
+diagnostic **Fail**, not a typing or canonical Pass. An explicit-config, no-incremental diagnostic
+of the unchanged selected hotfix baseline exited 1 with 228 errors in 14 files (terminal SHA-256
+`dfc5707536cc82c5e4c39770950a600056f9f7b8f907f70f8d2b8e2665e5fbc9`, raw-log SHA-256
+`26feb16234e8d96d1d216b17c1900a8200364ce54250cdb1cfec81d68a920065`, 47,793 bytes; six pins
+unchanged). The earlier plain R3 canonical-target typing diagnostic reported 242 errors. The
+selected hotfix baseline confirms inherited typing debt exists, but the differing diagnostic scopes
+do not assign every R3 error; neither diagnostic is a complete canonical gate. No full canonical
+command was run, and independent review of the `MonitoringRuntime` protocol repair remains pending.
+
+The failed pre-provider administrator-demotion reproduction remains preserved. Its repair is in
+progress and independent re-review has not yet accepted it; the prior failure is not erased by the
+typing improvement. The goal tracker currently reports **Blocked** while feature work and diagnosis
+continue; this plan's implementation status remains **In progress**, and production/release gates
+remain **Blocked**. No completion, deployment, live provider, or production acceptance is inferred.
+
+E24 documentation evidence: exact pre-edit copies of the eight authored baseline files are in
+`/var/tmp/r12r/r3-docs-expanded-20261014T080603Z/` on the UUID-verified SD mount
+`54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; directory mode `0700`, files mode `0600`, child umask
+`0022`, manifest SHA-256 `a57f9a14cd77209ffc602e4016dadb5e991fe759c639618b495883fc7fd4ba02`. The exact
+pre-edit file hashes are in that manifest. Final authored-doc validation and tracked/untracked
+change-aware coverage passed for the current checkpoint. `.dev-venv/bin/python
+scripts/validate_docs.py` reported 9 categories, 14 topics, and 8 project-skill governance entries;
+`python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` checked 202 mapped
+files; change-aware coverage with `--base HEAD` and every current tracked/untracked path checked
+the same 202 mapped files against 61 changed inputs (39 added/untracked). The isolated coverage
+self-test passed 26 cases and scoped `git diff --check` exited 0. No documentation pytest, product
+tests, browser run, canonical gate, or release check was run by this documentation lane.
+
+### R-ASTRA-121 E25 — dispatch repair, route and host diagnostics
+
+Task `R-ASTRA-121`; E25 supplements E24 with later selected evidence and preserves all E24 and
+browser results as historical checkpoints. Independent review of the near-dispatch authorization
+repair **Passed** its declared scope: the preserved admin-demotion reproduction passed 1/1, with
+zero provider calls and no saved outcome; dispatch/control/lease/completion selectors passed 11/11;
+application lifecycle and protocol injection passed 12/12. The review confirmed a fresh owner,
+forecast, target and permission read immediately before provider dispatch, with cancellation checks
+around that read. It does not lock authorization for the full network request or cover a role change
+after the last check. Strict current-API mypy remains **Fail** at 17 errors, though none are the
+repaired `MonitoringRuntime` `start`/`close`/`status` diagnostics; collector mypy, Ruff, security,
+and format checks passed their selected scopes. Receipt
+`/var/tmp/r12r/r3-outcome-dispatch-rereview-20261014-29d1bb1c-5762-49e7-8bff-0dda86aaf43b/independent-repair-rereview-receipt.json`, SHA-256
+`f78896911c4c95a5792cd0f46ba7cbd8cf815a257e4193e71fdf8c69491da243`. This resolves the exact
+preserved regression only; it does not clear the separate administrator-control boundary finding,
+live-provider acceptance, or full security review. The review bound 26 files and retained migration
+001–017 pins.
+
+The first 24-case desktop/emulated-mobile browser run **Failed**: 21 cases failed, three did not
+run, and two errors occurred outside tests. The isolated app fixture returned 404 for
+`/notifications` and `/research/report-card` because its cloned route registry omitted both paths;
+axe was **Unavailable** because no axe capture ran. Exact root/clone source and 64 served/export
+bindings matched after the run, and owned cleanup passed. Receipt
+`/var/tmp/r12r/r3-monitoring-browser-20261014-9d89cdb5-a254-4eac-9086-2be5da5424c3/independent-receipt.json`, SHA-256
+`6fcdfe7184552ad3e9c32cfc859b88e31b0d780376a9699cac83c90d3ce1d8f5`. Root route registration was
+added afterward. A separate staged route/API review passed its four route/document cases, two
+unauthenticated/admin boundary cases, and an 11-route per-page script-hash diagnostic. Its aggregate
+CSP regression test **Failed** (one case): the test compared a union of hashes from 11 routes with
+each route's intentionally route-specific policy. A separate root-directory pytest invocation
+returned exit 4 without JUnit and is **Unavailable**; the checkout existed on subsequent bounded
+inspection, and the cause is **Unproven**. This review did not rerun the browser. Receipt
+`/var/tmp/r12r/r3-api-routes-independent-508c5b6f-714b-4ae3-a26f-b97a95bdd5e1/independent-final-receipt.json`, SHA-256
+`75abb37964939c439455979f1f9a0b4a6d1a7bbc1d9bf0473a560b85153bd47e`. Its 113 frontend inputs
+and 64 staged/export pairs matched; current root/clone API, API test, and conftest copies matched.
+One disclosed monitoring browser-spec difference remained among 99 prior backend/browser inputs.
+The test-only CSP repair is awaiting independent QA. The
+24-case browser retest and whole-route accessibility result remain pending, not accepted.
+
+Parent source review found a separate image-packaging gap in the current Dockerfile copy list: it
+includes the legacy base pages and three Tools pages, but omits the Release 1 thesis/comparison,
+Release 2 transactions/what-if, and Release 3 notifications/report-card pages. This is a source-only
+observation; no image was built and no packaged-route behavior is accepted. A separate builder
+repair is pending to add explicit copy lists and focused source contracts. The verified 64
+frontend export/served pairs remain valid for their original stage inputs, but do not establish
+that these six pages enter a candidate image.
+
+Assistant-hotfix footprint work remains diagnostic only. Independent artifact review of passive
+actual profile 06 **Passed** saved-artifact identity and integrity checks for one ordinary
+read-only process on the existing production image `sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, revision
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, schema 13. It performed no host replay, transition,
+candidate, native/model run, Docker action, or combined 1 GB check; current rollout mode and network
+binding were unavailable. The observed roughly 7 MiB residual helper PSS does not establish the
+cause of T8's startup-reserve failure. Receipt
+`/var/tmp/r12r/preflight-footprint-actual-06-independent-qa-01/independent-artifact-review.json`, SHA-256
+`8bf46c1c87a7c71deda8b990db1217bd1e1fc57d55f8be19a7c5ef8496a74ce5`.
+
+Prototype 07 changed no application source and is not a host result. In nine paired local-fixture
+samples, its post-trim median PSS was 12,380 KiB versus 14,056 KiB for baseline (1,676 KiB lower);
+at check completion the medians were 18,799 versus 19,109 KiB (310 KiB lower). This small synthetic
+reduction neither explains nor repairs the startup reserve shortfall. Matrix
+`/var/tmp/r12r/preflight-footprint-prototype-07-f8403523-ee49-421a-985b-83224b15eb53/matrix-result-02.json`, SHA-256
+`c8839efca287c0bf85b3028d26875075836207a91439834ed7673611b3ff9ab1`.
+
+The separate hotfix T8 preflight remains **Failed** at 515,068 KiB available against its unchanged
+524,288 KiB floor. Candidate/model execution and combined 1 GB acceptance were **Skipped**; the
+saved restoration review found the prior invited, ready, loopback-only schema-13 image, and no hotfix
+deployment or later service transition/native trial is recorded. See the E23 T8 terminal/review bindings above.
+The SMTP outbox consumer is still missing and email remains unavailable; an atomic-outbox repair and
+the CSP test fix are authorized but pending independent QA. The administrator-control authorization
+boundary remains unsafe and its repair is pending. The goal tracker reports **Blocked** while the
+R3 feature work remains **In progress**; production and release acceptance remain **Blocked**.
+These diagnostics do not complete the goal or establish deployment, release, or user acceptance.
+
+The current root documentation map extends `monitoring-workspaces` from 29 to 31 patterns by adding
+`src/stock_probs/notification_*.py` and `tests/test_notification_*.py`; the same five authored
+guides remain required. Current map SHA-256 is
+`36672283c7112de0002899600737498453a1083385e4896e179e099362360c69`. Its exact pre-extension
+copy is `/var/tmp/r12r/r3-notification-docmap-20261014-01/documentation-map.before.json`, SHA-256
+`9bea8dc98a8951d66165623ea301431a9eda22f297cf73692499f07d8382b27a`; the earlier 29-pattern
+checkpoint remains historical. This is documentation-coverage policy evidence, not feature or
+release acceptance.
+
+E25 documentation evidence: the exact pre-edit eight-file state matched the prior E24 final SHA-256
+values and was copied before editing to `/var/tmp/r12r/r3-docs-e25-20261014T090940Z/` on the
+UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; directory mode `0700`, files mode
+`0600`, child umask `0022`. Manifest SHA-256
+`fa3869b813d84e940a75675f20e30f9f7b9d88ff3923481b2632d0b840581dd6`; it records byte counts and
+individual hashes for `AGENTS.md`, `MVP-PLAN.md`, `docs/develop/documentation.md`,
+`docs/develop/testing.md`, `docs/usage/dashboard.md`, `docs/reference/api.md`,
+`docs/develop/design-system.md`, and `docs/security/threat-model.md`. Current docs validation and
+change-aware coverage passed after edits: the validator reported 9 categories, 14 topics, and 8
+project-skill governance entries; completeness checked 202 mapped files; the change-aware run
+checked all 63 current tracked/untracked inputs (41 added/untracked) against those 202 mapped files;
+the isolated map self-test passed 26 cases, and scoped `git diff --check` exited 0. No documentation
+pytest, product tests, browser retry, canonical gate, host operation, or release check was run by
+this documentation lane.
+
+### R-ASTRA-121 E26 — outbox review and static-page packaging
+
+Task `R-ASTRA-121`; E26 supplements E25 and preserves its browser failure, CSP aggregate failure,
+and T8 preflight failure. The independent outbox/CSP review receipt is
+`/var/tmp/r12r/r3-outbox-independent-9061965d-5d5e-4a34-92ab-e7a9276c2ec3/final-independent-receipt-20261014T0938Z.json`,
+SHA-256 `1c4ef4fb240462d548bde29c5f1e1b7673bf95eda8d8302a8e3ed6e31030bd53`; its overall result is
+**Fail**. Focused checks passed for 19 delivery cases, 23 outbox-store/control cases, three served
+document routes, the one per-page CSP assertion, delivery-module strict typing, and selected Ruff
+checks. The preserved pre-provider demotion reproduction remains a separate selected **Pass**.
+Strict typing for the newly added `monitoring_store.py` **Failed** with five `no-any-return`
+diagnostics; they are current-scope errors, not inherited baseline debt. Independent source review
+found two P2 liveness gaps: consumer cancellation is not observed at batch/submit boundaries, and a
+global-control change during SMTP preparation can leave a stale-claim conflict at iteration time.
+The consumer is not called by the application or scheduler; `/api/v1/monitoring/features` still
+reports `email_available: false`. No SMTP endpoint was contacted and no email was sent. The repair
+is in progress and independent rereview is pending; this receipt does not establish a live delivery
+path or email availability.
+
+Packaging source evidence is recorded in
+`/var/tmp/r12r/signal-ledger-packaging-independent-qa-20261014-01/independent-final-receipt.json`,
+SHA-256 `d9bbf780ef4879707ba2f33039da5608e061fcd06ffc4e75f49e10661c0093db`. The three reviewed
+Dockerfiles enumerate 16, 18, and 20 exported HTML pages for Releases 1, 2, and 3 respectively and
+include the recursive `/_next` asset copy. The initial independent 21-test source selection passed,
+but review reproduced a P2 because its assertion did not catch omission of the asset-copy clause;
+that finding remains preserved. The R3 test selection used `--noconftest` because generated
+frontend static output was absent in that worktree, so normal app setup was unavailable. A
+builder-only guard repair then passed seven focused tests per
+worktree and confirmed that an omitted asset-copy command triggers the expected assertion. Test
+SHA-256 `fc446ba7c2008766f660d4d2a0f9eafcce347e38d57fab3ad502112637d85d34`; supplemental receipt
+`/var/tmp/r12r/signal-ledger-packaging-guardfix-zymcgk3d/supplemental-guardfix-receipt.json`, SHA-256
+`2cca0dc40e255e79f188425512e5fbf806624d897806d9971e686d073f44ca2c`. Independent rereview of that
+guard repair is pending. No Docker image, packaged-route, browser, runtime, host, or production
+acceptance follows from the source/test results; the 64 frontend export/served pairs remain bound
+only to their original stage inputs. The hotfix remains undeployed, the 1 GB host and budget remain
+unchanged, and the approved feature goal remains unfinished and **Blocked** while R3 implementation
+is **In progress**.
+
+E26 documentation changes were made from exact pre-edit copies in
+`/var/tmp/r12r/r121-docs-e26-20261014T094452Z/` on UUID-verified SD mount
+`54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; child umask `0022`, directory modes `0700`, and files
+`0600`. The 15-file baseline manifest SHA-256 is
+`3d59b49fab1767dd1c8c8203cdca1bbedfa0579de8bec562573e1104343666e2`. The R1 and R2 branches each
+changed their three Docker-map destination guides; R3 changed the eight owned Release 3 guides plus
+the operations guide. Documentation validator passed in all three worktrees (9 categories, 14
+topics, 8 skill entries); self-test passed 26 cases and scoped `git diff --check` passed in each.
+R1 completeness/change-aware checked 166 mapped files and 5 changed inputs; R2 checked 190 mapped
+files and 5 changed inputs; R3 checked 202 mapped files and all 66 current tracked/untracked inputs
+(25 tracked-diff, 41 untracked). No documentation pytest, product test, browser run, Docker image,
+host action, or release check was run by this documentation lane.
+
+### R-ASTRA-121 E27 — assistant priority and current release checkpoint
+
+Task `R-ASTRA-121`; this checkpoint preserves the earlier failures and records the current
+implementation boundary across the feature worktrees. Priority 0 is the genuine OpenCode V2
+`opencode-zen/space-bunny-free` assistant working through the application. Previously bound local
+functional evidence returned answers for two owners and exercised native MCP, search, and guarded
+fetch. That local run is not deployment evidence; no compatible-endpoint or paid-provider
+substitute is accepted for this dependency.
+
+The assistant-hotfix T9 actual-host attempt was memory-only. Its terminal is
+`/var/tmp/r12r/a9-memory-t9-pathbinding-5d5a7a51-6516-4080-a7e7-74d5a205ce90/receipts/terminal.json`,
+SHA-256 `404d4ef13d011499de3d063db8e23aded34250abc6d0718ca52f0ab4da58e75a`. The terminal's
+**Pass** applies only to its bounded diagnostic/restoration scope. The unchanged 512 MiB reserve
+guard **Failed** at `519,432 KiB`, `4,856 KiB` below its `524,288 KiB` floor; the earlier
+pre-helper observation was `538,552 KiB`. Helper PSS was `13,803`→`25,183`→`21,311 KiB` after GC;
+the A9 cgroup stayed at `180,125,696` bytes, while `MemAvailable` was `527,908 KiB` near 26
+seconds and `526,940`–`527,156 KiB` thereafter. These measurements do not establish cause or
+retroactively pass the reserve guard. Independent review of the actual artifact is pending.
+The terminal records restoration to the original deployed revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`,
+image `sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13,
+ready, invited, loopback-only. No source transfer, asset deployment, new candidate, native/model/provider
+execution, new backup, resize, or email occurred.
+
+Packaging alignment now explicitly covers Release 1/2/3 Docker pages and Next assets. Independent
+QA passed seven focused tests per branch plus the omitted-copy mutation; receipt
+`/var/tmp/r12r/signal-ledger-packaging-guardfix-independent-qa-RgHDL6/independent-guardfix-receipt.json`,
+SHA-256 `e1366c46b1ed929e6a93091f782833ee0e96ed0c944420d7878fca344da5c356`; parent source review
+SHA-256 `1c719a7f4d8df4d78fa6c3ae5ffce81325caff6adc25ae14ed06c33bf72bfdcd`. This is source/test
+packaging evidence only; it provides no new image, frontend build, served-route, or browser result.
+
+The narrow alert-mail consumer cancellation review passed its selected scope, but the consumer is
+still unwired. Verified-address draft 018 remains unregistered and unwired: the earlier 20-test,
+five-gap failure is preserved; the repaired 23-test builder run passed, then independent review
+found a P2 in current-challenge UUID ordering. A two-test correction is awaiting independent
+rereview. Email remains unavailable and no live email was sent. Release 4 is an isolated backend
+draft: the initial 27-test builder run passed, independent review found threshold-rounding,
+retained-history-bound, and final session/canary revalidation gaps, and the builder's repair passed
+36 tests. Receipt `/var/tmp/r12r/r4-briefing-repair-hn1jjN/builder-repair-receipt.json`, SHA-256
+`957a1b0bc52ee51556a1d782a493557e924b4719045729f186e30355577c0f4b`; independent repair review
+remains pending. Draft 019 is unregistered. No Release 4 UI, API, headline, digest, handoff, backup,
+or export integration is established.
+
+The first 24-case R3 browser aggregate remains **Fail**; selected affected route/CSP checks passed,
+but the full browser rerun is held. Full-import typing diagnostics remain scoped **Fail**, so no
+current canonical Pass is claimed. Draft PRs 7/8 and canonical, security, resource, populated
+recovery, exact-PR rollback, owner-canary, invited rollout, and release gates remain open. The
+existing 1 GB host, backups, and US$15 monthly cap are unchanged. The feature goal remains blocked
+on release gates; this documentation checkpoint does not change its goal status.
+
+E27 pre-edit copies of both plans were captured under `/var/tmp/r12r/r121-e27-docs-20261014T111200Z/`
+on UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; directory mode `0700`, files
+`0600`, child umask `0022`. Manifest SHA-256
+`565e65ccfbdb741e44e9a7c166afbb370f633a0e408a6b28b73a3eb1d8d98081`; R3 pre-edit `MVP-PLAN.md`
+SHA-256 `704316fddca19e26543cd6bb698525c6fd4217f65c994ad8af17d9ad74b2718c`, R4 pre-edit plan
+SHA-256 `2d3c055e458a992e3b78a7b19362aa57adfa4157325baebc46087eebff9927b4`.
+
+E27 documentation validation **Passed**: `scripts/validate_docs.py` reported 9 categories, 14
+topics, and 8 project-skill governance entries; completeness checked 202 mapped files; the
+isolated coverage self-test passed 26 cases; and scoped `git diff --check` exited 0. Change-aware
+coverage passed with no violations across all 71 current R3 tracked-diff/untracked inputs. The
+same checks passed in the R4 worktree: 190 mapped files and all 12 current tracked-diff/untracked
+inputs, with no violations. These were authored-documentation checks only; no documentation
+pytest, product test, frontend build, browser run, canonical gate, host call, or release check was
+run by this documentation lane.
+
+### R-ASTRA-121 E28 map rebind and current release status
+
+Task `R-ASTRA-121`; this supplements E27 without changing its historical documentation-check result.
+The parent map-edit receipt is `/var/tmp/r12r/briefing-docmap-baseline-49ae874c-c476-458a-b325-f0a632af60ef/map-edit-receipt.json`, SHA-256 `f73e17d4a9920778b926eda6c537f76e65ba4966c3ea9ecf42e7500584f55f24`. It preserves an initial pre-write setup failure; the corrected map update is recorded separately. R3's old map SHA-256 `36672283c7112de0002899600737498453a1083385e4896e179e099362360c69` now maps the exact unregistered `migration_drafts/018_notification_address_delivery.sql` path in the 32-pattern `monitoring-workspaces` rule. Current R3 map SHA-256 is `922dc1946505eedea99aeda5f02a70ae0be1608ba189c4299e7a7b6aabb027cc`. R4's old map SHA-256 `2624caf94d7e89d6a7837dedb734d94c9194ec0a96424803ac6749eb7002a110` now has a three-pattern `personal-briefing-draft` rule for source, test, and migration-draft paths; current SHA-256 is `542a4b0ff7397a3554ccc25bac19c54922803991021739f5a1371ad7ba1de098`. Both rules require five authored guides; R4 map-policy edits also require `AGENTS.md` and this documentation guide. E27's earlier documentation passes remain tied to the maps in their original check window and do not prove coverage of these revisions.
+
+Independent actual-artifact QA of the T9 memory-only host observation **Passed** 16 checks; receipt `/var/tmp/r12r/a9-memory-t9-actual-independent-qa-f02673dc-a7bc-419c-8dfa-f069275f1942/independent-actual-review-04.json`, SHA-256 `95b611bb8bbe6b69b72194960e9494d0243dc4e91e822c2c5efcf2180d8c2aaf`. The three earlier harness failures remain preserved. This review does not change the startup reserve guard **Fail** at `519,432 KiB` versus `524,288 KiB`. A later observation above the floor from about 26 seconds does not establish the cause, retroactively pass the preflight, or prove the combined 1 GB gate. The receipt's restoration projection shows the prior revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image `sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13, invited, ready, loopback-only. No live post-audit reinspection occurred. No source/assets were transferred; no new candidate, native/model/provider execution, backup, resize, or email occurred.
+
+The 30-second read-only startup-wait checker repair is in progress within the existing 1,080-second absolute budget and unchanged 512 MiB and 128 MiB floors/final guard. Source presence alone is not a checker, host, native, or release Pass. Genuine local OpenCode V2 `opencode-zen/space-bunny-free` evidence for two owners with MCP/native search/fetch remains scoped local evidence; restoring that exact provider through the application is Priority 0 and the first R121 release dependency. No deployed assistant fix is claimed.
+
+Release 3's notification-address draft 018 remains unregistered. The narrow consumer-cancellation review passed its selected scope, but delivery is unwired and `email_available` remains false. After the 23-case builder pass, independent review found a P2 in current-challenge UUID ordering; its two-case repair awaits independent QA. No SMTP request or email was sent. Release 4's isolated backend repair independently **Passed** 36 focused tests, full-import typing, Ruff, and 302 history-point cases; receipt `/var/tmp/r12r/r4-repair-independent-qa-20261014/independent-receipt.json`, SHA-256 `5472b64853294b67d3600aeb56599ef575c8da6ff49e99b72828d14faa68c9b8`. Preserve the earlier independent P2 review (`44affdda` prefix) as historical. Draft 019 remains unregistered; no frontend/API/headlines/digest/handoffs/backup/export integration, runtime, or release acceptance is established.
+
+R3's first 24-case browser aggregate **Failed** and remains preserved; selected route/CSP checks do not replace the held full browser rerun. Full-import typing diagnostics remain a scoped **Fail**, so no current canonical Pass is claimed. R1/R2 draft PRs 7/8, security, actual combined 1 GB, populated recovery, exact-PR rollback, owner canary, invited rollout, and release gates remain open. The existing 1 GB host, backups and US$15 monthly cap are unchanged. The feature goal remains blocked on production gates.
+
+E28 documentation baselines were captured before edits under `/var/tmp/r12r/r121-e28-docs-20261014T111900Z/` on the UUID-verified SD mount; the 16-file manifest SHA-256 is `0ea24eccc36134f9f040971e6611903682b5c154dc9bcae40abef9d291127f79` (directory `0700`, files `0600`, child umask `0022`).
+
+After the parent updated the maps, final documentation checks used current R3 map SHA-256 `922dc1946505eedea99aeda5f02a70ae0be1608ba189c4299e7a7b6aabb027cc`: validator **Passed** (9 categories, 14 topics, 8 governance entries) at `2026-10-14T11:26:02.774774Z`–`11:26:03.965299Z`; completeness **Passed** (202 mapped files) at `11:26:03.965330Z`–`11:26:04.515027Z`; coverage self-test **Passed** (26 cases) at `11:26:04.515058Z`–`11:26:07.869974Z`; change-aware coverage **Passed** at `11:26:07.959586Z`–`11:26:08.626924Z` (202 checked, 71 changed, no exemptions or violations); and unstaged and staged `git diff --check` both **Passed** at `11:26:08.626956Z`–`11:26:08.710734Z`. The 71 changed inputs comprised 25 tracked-diff and 46 untracked inputs. An earlier validator attempt **Failed** on incorrect E28 fragment links; after correcting the heading, final runs passed. Documentation pytest was not run. These checks establish documentation-map coverage only, not product or release acceptance.
+
+### R-ASTRA-121 E29 — R3 repository typing and diagnostic follow-up
+
+Task `R-ASTRA-121`; this R3 supplement records selected typing evidence without changing the earlier
+failed browser aggregate or treating scoped checks as a canonical gate. Independent QA **Passed**
+the exact three-change `repository.py` typing repair at dirty HEAD
+`75cf57a74746d29dd3f72185e7cb68a3861c8454`, bound file SHA-256
+`a833d146487c32636e059d5085689e1e2b550e6f8488d7160f2a84e6182ac09e`: 22 selected auth-repository tests passed (two
+restore-security snapshot tests were deselected because the checkout had no staged static export),
+two schema-18 backup guards passed, fresh no-incremental mypy passed for `repository.py`, and
+Ruff check/format plus scoped diff check passed. Parent integrated review **Passed** the same exact
+source/evidence scope. Independent receipt
+`/var/tmp/r12r/r3-repository-typing-independent-20261015T133545Z-5c21/receipt.json`, SHA-256
+`dd19c34cffc1d5152d0075e86b61349c78ea76b463ae47ec959f99b5e1f9de73`; parent review
+`/var/tmp/r12r/r3-repository-typing-parent-7e218d83-a198-4a18-bf82-c029e528b072/review.json`,
+SHA-256 `211414302984e3ca7a8b5fe69f355bd1cfd720381974b3433f0c782ae998135c`.
+
+A separate broad optional package-wide mypy diagnostic remains **Fail** at 233 diagnostics across
+17 files. This is not the canonical local-gate mypy selector, which targets `backup.py` and
+`cli.py` (local-gate 212); no current canonical result is inferred from the broad diagnostic. A
+later builder-only three-file repair reduced its selected `history_export.py`, `monitoring_api.py`,
+and `provider.py` mypy diagnostics from six to zero and passed its selected Ruff, security, and
+format checks. Its initial focused pytest command **Failed**: 31 passed, one failed, with two
+warnings. The failed notification-preference assertion (expected HTTP 200, received 503) was also
+reproduced against the pre-edit baseline, so it is preserved as a pre-existing test failure rather
+than attributed to that repair. Independent QA first ran the same 32-test selection and reproduced
+the preference-test failure; rerunning with that test deselected passed the other 31 tests. Selected
+mypy, Ruff, security, and format checks also passed. Receipt
+`/var/tmp/r12r/r3-typefix-independent-qa-20261015T1418Z-4bec0c44-1e43-4e50-905b-177cc30914f6/final-independent-receipt.json`,
+SHA-256 `26f40b3a56cf3590fdfb7e89df70b5b5896c2d2b04503d5c9e44b9dae45b0d2e`. E30 later records the
+test-only fixture update and its independent module pass; no aggregate is formed from those
+selections. Builder receipt
+`/var/tmp/r12r/r3-mypy-minrepair-20261015T140153Z-963b4169-e3a4-4507-b856-a691c5818db2/final-receipt.json`,
+SHA-256 `2d71255bfe19b5f19f5f6aed61ac2e861b04979108c0c52b57635d08363065c5`.
+
+The prior 88-Node/65-pair stage remains bound to its earlier 113-source snapshot and does not bind
+the changed repository source. The full browser rerun, fresh current-source build/stage, canonical
+gate, security, resource, recovery, rollback, canary, and release checks remain open. No live
+provider/SMTP, production, or release result is claimed.
+
+### R-ASTRA-121 E30 — R3 notification-preference fixture follow-up
+
+Task `R-ASTRA-121`; a test-only repair changed
+`tests/test_monitoring_api.py` from SHA-256
+`9a40ca6a444874cf1daae7a4c3daa0b4ceadf6f73435b3db6abce348296e6af1` to
+`8d6e6a03fa12d4b7343789e1ae3a2d76f8c7cd2a8388c30a79979c4901546409`; the pinned application
+sources were unchanged. It explicitly injects email capability for positive opt-in, expects
+unavailable opt-in to return 503 without changing preference state, and checks that opt-out works
+while delivery capability is unavailable. Builder checks passed: the focused module has 10 tests
+passing with two warnings, and Ruff check, security, and format checks passed. Before the fixture
+edit, the selected test reproduced its stale expected-200/observed-503 assertion. Builder receipt
+`/var/tmp/r12r/r3-monitoring-pref-fixture-repair-20261015T1430Z-0ffebba4-d15d-48cd-b30d-8d213d122c91/final-receipt.json`,
+SHA-256 `dbcc8942c44f9f806119cb5a894548ff8433a556d434ac1a6369bea6beb898ed`.
+
+Independent QA **Passed** the same 10-test module with two warnings, Ruff check/security/format,
+48 module-origin checks against the approved clone, and exact source-pin checks. The QA used the
+clone-first in-process origin guard; the builder's relative `import_guard` path was absent from the
+retained scratch, so that literal guard was not reused. Receipt
+`/var/tmp/r12r/r3-monitoring-pref-independent-qa-20261015-7a492ac5-3a9a-4463-9074-78cc39e4cc1b/independent-qa-receipt.json`,
+SHA-256 `9f9199b9058570e6eeefdb4eac2b20f9619051a5646e9dfd95905e593988abcb`. This supersedes only
+the focused preference-test result in E29; E29's pre-edit failure remains historical. No SMTP,
+provider, host, browser, Docker, frontend build, canonical gate, or release acceptance occurred.
+
+Parent integrated source/evidence review **Passed** for the three typing files and the updated
+test fixture, bound to their exact hashes; it did not execute another test run or combine the
+separate selections into an aggregate. Review receipt
+`/var/tmp/r12r/r3-typing-preferences-parent-review-de562b0b-dcd2-4355-b1e9-b048ab5f4a05/review.json`,
+SHA-256 `8b7829fe98e64a685465122b389089f174ef8fa0f2a6d28fb674f6a8c6210411`. No browser, SMTP,
+native, Docker, production, or release acceptance occurred.
 
 ## Status And Scope
 

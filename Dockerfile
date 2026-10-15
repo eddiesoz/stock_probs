@@ -53,10 +53,14 @@ COPY frontend/ ./
 # Frontend contract tests inspect the legacy dashboard and shared theme initializer.
 COPY src/stock_probs/static/app.js src/stock_probs/static/theme.js /build/src/stock_probs/static/
 RUN npm run typecheck && npm run build && npm run test -- --test-concurrency=1
-RUN mkdir -p /static-next/tools \
+RUN mkdir -p /static-next/overview /static-next/research /static-next/tools \
     && cp out/index.html out/api-docs.html out/overview.html out/research.html out/tools.html \
-       out/sign-in.html out/invite.html out/passkey.html out/authenticator.html out/account.html out/admin.html /static-next/ \
-    && cp out/tools/forecast.html out/tools/live-trading.html out/tools/markets.html /static-next/tools/ \
+       out/notifications.html out/sign-in.html out/invite.html out/passkey.html out/authenticator.html \
+       out/account.html out/admin.html /static-next/ \
+    && cp out/tools/forecast.html out/tools/live-trading.html out/tools/markets.html \
+       out/tools/compare.html out/tools/what-if.html /static-next/tools/ \
+    && cp out/research/theses.html out/research/report-card.html /static-next/research/ \
+    && cp out/overview/transactions.html /static-next/overview/ \
     && cp -R out/_next /static-next/
 
 # Build wheels separately so Node, compilers, and package indexes are absent from runtime.

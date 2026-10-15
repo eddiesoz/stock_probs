@@ -21,6 +21,8 @@ PAGES = (
     "tools/live-trading.html",
     "tools/markets.html",
     "research/theses.html",
+    "research/report-card.html",
+    "notifications.html",
     "tools/compare.html",
     "overview/transactions.html",
     "tools/what-if.html",

@@ -276,6 +276,15 @@ python3 scripts/check-doc-coverage-self-test.py
 The change-aware checker and self-test do not install hooks or mutate Git. A deliberate exception
 is explicit (`Doc-Gate: exempt`), not inferred from a builder report or an unavailable check.
 
+R121 workspace source changes use the `research-workspaces`, `portfolio-ledger-workspaces`, and
+`monitoring-workspaces` rules in the root map. The `monitoring-workspaces` map matches the R3 registered candidate migration at
+`src/stock_probs/migrations/018_notification_address_delivery.sql` along with its source, asset, and
+test paths. It requires dashboard, API, design system, testing, and threat-model guides. Current
+authored-documentation validator and completeness checks pass; change-aware results are recorded in
+the R3 checkpoint. R4 is separate: its `019_personal_briefings.sql` remains an unregistered
+schema-17 draft. See the
+[R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
+
 The current documentation map includes a narrow `deployment-review-pins` rule for
 `scripts/pin_pr_rehearsal_review.py` and its fixed review-pin source contract in
 `tools/deploy_mcp/pr_rehearsal.py`. It requires `docs/develop/documentation.md`,
@@ -308,7 +317,10 @@ this page, [developer testing](testing.md), and [getting started](../operations/
 the separate workflow-policy rule requires `AGENTS.md`. Keep this path coverage aligned as the
 local build command contract changes. Record current runtime acceptance in the task ledger and
 reflect operational status in the operations/testing guides; the map describes source coverage, not
-runtime acceptance. The optional `prebuilt-release` publisher mode uses the completed schema-13
+runtime acceptance. R121's Dockerfile also keeps an explicit static-page list in sync with each
+Next.js export and recursively copies its `/_next` asset tree; release-specific counts and acceptance
+limits are recorded in [getting started](../operations/getting-started.md). The optional
+`prebuilt-release` publisher mode uses the completed schema-13
 pair receipt and fixed revision-named artifacts; keep its verification and release prerequisites
 documented in the operations and testing guides when changing that contract.
 Archive-scanner changes also require the testing and operations guides to describe the fixed
@@ -529,3 +541,11 @@ the dashboard, API, approved design and threat-model guides. Add matching rules 
 releases introduce new record types. Candidate documentation does not establish deployment or QA.
 
 For R121 portfolio changes, reconcile the portfolio-ledger-workspaces map entry with the dashboard, API, design and threat-model guides. Preserve native amounts, partial-valuation wording, unknown costs and the separation between simulated and committed transactions. A full SQLite archive retains the new tables; a local restore test does not establish an exact-PR recovery-image or actual-host rollback gate.
+
+The `monitoring-workspaces` mapping previously named the R3 address-delivery file under
+`migration_drafts/`; the R3 checkout now registers candidate schema 18 at
+`src/stock_probs/migrations/018_notification_address_delivery.sql`. Reconcile the map path with its
+maintainer before claiming documentation completeness; this authoring update does not edit the map
+or establish coverage. Its required guides remain dashboard, API, design system, testing, and
+threat model. R4 is separate: its `019_personal_briefings.sql` is still an unregistered schema-17
+draft. See the [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
