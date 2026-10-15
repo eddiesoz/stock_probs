@@ -354,13 +354,27 @@ def test_native_binary_target_rejects_unknown_architecture() -> None:
         build_native.target_name("s390x")
 
 
-def test_build_install_is_filtered_to_app_cli_and_required_cpu_variants() -> None:
+def test_build_install_serializes_scripts_and_keeps_pinned_filters_and_architecture() -> None:
     amd64 = build_native.install_arguments(target_arch="amd64", build_arch="amd64")
     arm64_cross = build_native.install_arguments(target_arch="arm64", build_arch="amd64")
 
-    assert "--os=linux" in amd64
-    assert "--cpu=x64" in amd64
-    assert "--filter=@opencode/cli" in amd64
-    assert "--filter=@opencode/app" in amd64
-    assert "--cpu=*" in arm64_cross
-    assert all("darwin" not in item and "win32" not in item for item in arm64_cross)
+    assert amd64 == [
+        "install",
+        "--frozen-lockfile",
+        "--os=linux",
+        "--cpu=x64",
+        "--filter=@opencode/cli",
+        "--filter=@opencode/app",
+        "--network-concurrency=8",
+        "--concurrent-scripts=1",
+    ]
+    assert arm64_cross == [
+        "install",
+        "--frozen-lockfile",
+        "--os=linux",
+        "--cpu=*",
+        "--filter=@opencode/cli",
+        "--filter=@opencode/app",
+        "--network-concurrency=8",
+        "--concurrent-scripts=1",
+    ]

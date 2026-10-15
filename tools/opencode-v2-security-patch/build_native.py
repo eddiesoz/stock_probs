@@ -544,7 +544,7 @@ def install_arguments(*, target_arch: str, build_arch: str) -> list[str]:
         "--filter=@opencode/cli",
         "--filter=@opencode/app",
         "--network-concurrency=8",
-        "--concurrent-scripts=2",
+        "--concurrent-scripts=1",
     ]
 
 

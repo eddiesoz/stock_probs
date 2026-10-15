@@ -7388,3 +7388,64 @@ and scoped diff checks before this final result paragraph; audit receipt SHA-256
 No new build was launched for these results, and the next actual build phase and failure cause remain
 **Unavailable** and **Unproven** respectively. Production, the existing 1 GB host, backups and
 US$15 cap are unchanged.
+
+### R-ASTRA-121 local 63b9 OOM build and recovery checkpoint (2026-10-15)
+
+The bounded local build `./scripts/local-compose.sh build` on pushed PR #9 head
+`63b9da6dd27cbbed1cb973cb5d5442753e285b4f` **Failed** with exit 1 at
+`2026-10-15T19:37:48.916Z`–`19:44:39.630Z`. All 149 application inputs remained unchanged; no
+candidate image was accepted. The bounded phase observer recorded an error in the native `RUN`
+phase after 372,347 ms; its optional overall phase projection is **Unavailable** because of a
+`malformed_frame`. Docker's safe post-exit state reported `OOMKilled=true` at
+`19:44:25.353Z`. Whether this came from the container memory limit or host pressure is **Unproven**.
+
+The supplemental sanitized resource receipt is not an overall QA pass: it records a first broad
+Docker-inspection scope deviation (**Fail** for operator compliance; not a product finding) and no
+live PID-to-strict-container-cgroup binding, so effective worker limits are **Unavailable**. The
+bounded sampler ended after 16 complete samples, its last at `19:39:05.192Z`, more than five
+minutes before the builder exited; the last sample's event counters were zero and do not explain the
+OOM. The sampler process later exited 143. Journal receipt
+`/var/tmp/r12r/local-63b9-owned-oom-journal-4e6srq6h/receipt.json`, SHA-256
+`2f1a1a0d3a270a849245854437263393945a64868142420e69aaee541b733d74`, records the separate
+journal observation as **Unavailable**. No continuous memory or causal claim follows. Sanitized follow-up receipt
+`/var/tmp/r12r/local-build-worker-qa-UAQgPZ/supplemental-sanitized-resource-findings.json`,
+SHA-256 `a78d7861c6bb94c23bad40735774336785fd4d6aef25cdc0b560a349d3b2982f`; the initial broad
+inspection result is excluded from acceptance. Build terminal
+`/var/tmp/r12r/hotfix-63b9-manifests-build-e1d94qd6/build/terminal.json`, SHA-256
+`e1955ae30c3eca18c7839732a14c0458a1851194430e27734b5bc05e814fda6f`.
+
+A separate actual typed stopped-generation reservation reconciliation **Passed** at
+`2026-10-15T19:52:18.337Z`–`19:52:30.297Z`, exit 0. It removed only the failed placeholder
+reservation, leaving two retained ledger rows; the resulting ledger SHA-256 is
+`36137c19d0ef581c5aeffb08de17cdc8eb955a0d535ff4393b3fe7ff76acabe3`. Terminal
+`/var/tmp/r12r/local-63b9-stopped-reconciliation-6tvw6yyz/terminal.json`, SHA-256
+`7844f776885f2ffc1cb61b5cb6a6fe5722d9068e964cc21c458bdbee3cd51a88`. This recovery does not
+repair or supersede the failed build and did not clean images, application data, or caches. Related
+PR #11 is pushed at `235bf4beea1292fd92d891088186598f4fd70042`. No native assistant rerun,
+production mutation, deployment, actual combined 1 GB acceptance, or release occurred.
+
+### R-ASTRA-121 63b9 serial-install diagnostic checkpoint (2026-10-15)
+
+A local follow-up changes the Dockerfile package-install parallelism argument from 2 to 1 on the
+failed 63b9 build path. This tests only the hypothesis that fewer concurrent install workers may
+reduce build-time memory pressure. It does not establish whether the earlier OOM occurred during
+package installation or compilation; no heap/profile evidence or production effect is claimed.
+The source and regression-test SHA-256 values are
+`0b6572b151b355e612cd0080a5f3f3a416b46a73634d1dab79b003165e5fa6dc` and
+`72ed7ec4f271b8a1b46f5b1f6dee7f6c522c63e3a5f9d014b5ca338a16d73bc1`.
+
+Builder-selected checks **Passed** 23 tests; receipt
+`/var/tmp/r12r/native-install-serial-fullfile-4okudm48/receipt.json`, SHA-256
+`5187c9281495f9d8fc0f4b075aa3025a51e048056ecb98391d014b94a35b9d5d`. Independent selected QA
+also **Passed** 23 tests, 49 source pins, Ruff, security, format and diff checks at
+`2026-10-15T20:09:13.128159Z`–`20:09:17.302575Z`; receipt
+`/var/tmp/r12r/native-install-serial-independent-qa-verified-20261015T200913Z-0879b483/qa-receipt.json`,
+SHA-256 `d6680fd50ed7bd6628a2927c4168b86bde34e7678c200c0d5ab79474f566aa92`. An earlier independent
+attempt did not explicitly bind child umask and is not acceptance; the later rerun used 022. The
+initial builder attempt's temporary-path quota/policy deviation remains preserved as a setup
+failure, not a product defect: `/var/tmp/r12r/native-install-serial-checks-ivpva8hk/receipt.json`,
+SHA-256 `bf3d0533154a48a4c7e8255ff0028e11f928ded7c288b7f90d7a6367d826f8ce`.
+
+No image build or native runtime check has started for this follow-up. The earlier 63b9 OOM remains
+**Failed** with cause **Unproven**; actual combined 1 GB, production and release acceptance remain
+open.

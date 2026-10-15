@@ -698,3 +698,19 @@ consumer/source behavior only; the image, dynamic approval and host transition r
 The later local cancellation/reconciliation repair passed 238 tests under explicit child umask
 022; its actual typed reservation recovery is recorded at
 [E34](../../MVP-PLAN.md#r-astra-121-e34-6359-build-failure-and-stopped-generation-recovery).
+
+The later local build on pushed PR #9 head `63b9da6dd27cbbed1cb973cb5d5442753e285b4f`
+**Failed** with Docker `OOMKilled=true`; all 149 application inputs stayed bound and no image was
+accepted. The bounded resource sampler ended before the container exit, and no PID-to-strict-cgroup
+binding was available, so worker limits and the specific OOM cause remain **Unavailable** and
+**Unproven**. Typed reservation reconciliation separately **Passed**, retaining two ledger rows.
+This is recovery evidence, not a build or actual 1 GB resource pass. See the [63b9 build and
+recovery checkpoint](../../MVP-PLAN.md#r-astra-121-local-63b9-oom-build-and-recovery-checkpoint-2026-10-15)
+for exact receipts and limitations.
+
+A subsequent local Dockerfile diagnostic reduced the package-install parallelism argument from 2
+to 1. Builder and independent selected scopes each passed 23 tests; the independent review also
+matched 49 pins and passed Ruff, security, format and diff checks. This tests a memory-reduction
+hypothesis only: the prior OOM's install-versus-compile phase remains unproven, and no image build
+or native run has started. The initial temporary-path quota/policy setup failure and the initial
+independent umask omission remain preserved separately. See the [serial-install checkpoint](../../MVP-PLAN.md#r-astra-121-63b9-serial-install-diagnostic-checkpoint-2026-10-15).
