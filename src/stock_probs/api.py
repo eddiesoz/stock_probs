@@ -1596,6 +1596,38 @@ def _documented_errors(*status_codes: int) -> dict[int | str, dict[str, Any]]:
     }
 
 
+def _document_safe_validation_errors(app: FastAPI) -> None:
+    """Describe FastAPI's generated 422s with the same safe envelope the app returns."""
+
+    original_openapi = app.openapi
+    normalized = False
+
+    def openapi_with_safe_validation_errors() -> dict[str, Any]:
+        nonlocal normalized
+        schema = original_openapi()
+        if not normalized:
+            for path_item in schema.get("paths", {}).values():
+                if not isinstance(path_item, dict):
+                    continue
+                for operation in path_item.values():
+                    if not isinstance(operation, dict):
+                        continue
+                    response = operation.get("responses", {}).get("422")
+                    if not isinstance(response, dict):
+                        continue
+                    media = response.get("content", {}).get("application/json")
+                    if not isinstance(media, dict) or media.get("schema") != {
+                        "$ref": "#/components/schemas/HTTPValidationError"
+                    }:
+                        continue
+                    media["schema"] = {"$ref": "#/components/schemas/ErrorEnvelope"}
+                    response["description"] = "The request or domain input is invalid."
+            normalized = True
+        return schema
+
+    app.openapi = openapi_with_safe_validation_errors
+
+
 class _RestoreRequestGate:
     """Stop new database requests and drain existing ones before promotion."""
 
@@ -1661,6 +1693,7 @@ WORKSPACE_PAGE_ROUTES = (
     "/research/theses",
     "/tools/compare",
     "/overview/transactions",
+    "/overview/what-changed",
     "/tools/what-if",
     "/notifications",
     "/research/report-card",
@@ -1823,6 +1856,7 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
             "/research/theses",
             "/tools/compare",
             "/overview/transactions",
+            "/overview/what-changed",
             "/tools/what-if",
             "/account",
             "/admin",
@@ -3248,6 +3282,7 @@ def create_app(
         "/notifications": next_dir / "notifications.html",
         "/tools/compare": next_dir / "tools" / "compare.html",
         "/overview/transactions": next_dir / "overview" / "transactions.html",
+        "/overview/what-changed": next_dir / "overview" / "what-changed.html",
         "/tools/what-if": next_dir / "tools" / "what-if.html",
         "/sign-in": next_dir / "sign-in.html",
         "/invite": next_dir / "invite.html",
@@ -3289,6 +3324,7 @@ def create_app(
             "/notifications",
             "/tools/compare",
             "/overview/transactions",
+            "/overview/what-changed",
             "/tools/what-if",
         )
         if workspace_pages[route].is_file()
@@ -4560,6 +4596,59 @@ def create_app(
         portfolio_market,
     )
 
+    from stock_probs.briefing_api import create_briefing_router
+    from stock_probs.briefing_service import BriefingService
+    from stock_probs.briefing_sources import RepositoryBriefingSources
+    from stock_probs.briefing_store import BriefingStore
+
+    briefing_sources = RepositoryBriefingSources(repository)
+    briefing_store = BriefingStore(repository)
+
+    def briefing_active_owner(owner_user_id: int) -> bool:
+        """Return literal active status for a persisted owner identity."""
+
+        record = repository.auth_get_user_by_id(owner_user_id)
+        return record is not None and record.get("active") is True
+
+    briefing_service = BriefingService(
+        briefing_store,
+        price_source=briefing_sources,
+        outcome_source=briefing_sources,
+        alert_source=briefing_sources,
+        thesis_source=briefing_sources,
+        owner_authorizer=briefing_active_owner,
+        clock=selected_clock,
+    )
+
+    def briefing_owner_for_request(request: Request) -> int:
+        """Require the authenticated session; legacy-owner fallback is not allowed here."""
+
+        return _auth_context(request).user.id
+
+    def briefing_csrf_guard(request: Request) -> bool:
+        _auth_context(request)
+        return True
+
+    def briefing_feature_guard(request: Request) -> bool:
+        _auth_context(request)
+        return config.briefing_features_enabled
+
+    def briefing_canary_guard(request: Request) -> bool:
+        context = _auth_context(request)
+        return not config.briefing_features_canary_only or context.user.role == "admin"
+
+    app.state.briefings = briefing_service
+    app.include_router(
+        create_briefing_router(
+            briefing_service,
+            owner_for_request=briefing_owner_for_request,
+            active_owner=briefing_active_owner,
+            csrf_guard=briefing_csrf_guard,
+            feature_enabled=briefing_feature_guard,
+            canary_allowed=briefing_canary_guard,
+        )
+    )
+
     from stock_probs.monitoring_api import create_monitoring_router
     from stock_probs.monitoring_store import MonitoringConflictError, MonitoringStoreError
 
@@ -5683,6 +5772,7 @@ def create_app(
     )
 
     app.mount("/_next", StaticFiles(directory=next_dir / "_next"), name="next-assets")
+    _document_safe_validation_errors(app)
     return app
 
 

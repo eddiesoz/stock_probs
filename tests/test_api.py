@@ -237,6 +237,51 @@ def test_openapi_uses_concrete_success_and_safe_error_schemas(client):
     assert schemas["RestoreResponse"]["required"] == ["verified", "promoted", "counts"]
 
 
+def test_mounted_router_validation_errors_match_the_published_safe_envelope(settings):
+    """Portfolio and monitoring validation share the global documented error contract."""
+
+    protected = replace(
+        settings,
+        auth_mode="local",
+        auth_session_secret="validation-contract-fixture-session-secret",  # noqa: S106
+        auth_public_origin="http://testserver",
+        bootstrap_username="validation-admin",
+        bootstrap_password="validation-admin-fixture-password",  # noqa: S106
+        portfolio_features_enabled=True,
+        portfolio_features_canary_only=False,
+        monitoring_features_enabled=True,
+        monitoring_features_canary_only=False,
+    )
+    application = create_app(protected, FixtureProvider())
+    with TestClient(application) as client:
+        login = client.post(
+            "/api/v1/auth/local/login",
+            json={"username": "validation-admin", "password": "validation-admin-fixture-password"},
+        )
+        assert login.status_code == 200, login.text
+        contract = client.get("/api/v1/openapi.json").json()
+        cases = (
+            (
+                "/api/v1/portfolio/accounts",
+                "get",
+                client.get("/api/v1/portfolio/accounts?page=0"),
+            ),
+            (
+                "/api/v1/alerts",
+                "get",
+                client.get("/api/v1/alerts?limit=0"),
+            ),
+        )
+        for path, method, response in cases:
+            assert response.status_code == 422, (
+                f"{path} returned {response.status_code}: {response.text}"
+            )
+            assert response.json()["error"]["code"] == "validation_error"
+            assert contract["paths"][path][method]["responses"]["422"]["content"][
+                "application/json"
+            ]["schema"] == {"$ref": "#/components/schemas/ErrorEnvelope"}
+
+
 def test_openapi_descriptions_use_only_public_product_language(client):
     """Generated prose must describe behavior without naming implementation machinery."""
 
@@ -566,6 +611,7 @@ def test_workspace_static_pages_have_exact_local_routes(client):
         "/tools/markets",
         "/notifications",
         "/research/report-card",
+        "/overview/what-changed",
     }
 
     assert workspace_routes <= routes.keys()

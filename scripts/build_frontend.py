@@ -25,6 +25,7 @@ PAGES = (
     "notifications.html",
     "tools/compare.html",
     "overview/transactions.html",
+    "overview/what-changed.html",
     "tools/what-if.html",
     "sign-in.html",
     "invite.html",

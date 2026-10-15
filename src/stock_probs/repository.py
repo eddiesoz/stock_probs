@@ -25,7 +25,7 @@ from stock_probs.auth import (
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, HistoryFilters
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 OUTCOME_RECONSTRUCTION_LIMIT = 100
 HISTORY_EXPORT_LIMIT = 100
 INSTRUMENT_LIST_ITEM_LIMIT = 100
@@ -53,6 +53,7 @@ MIGRATION_SHA256 = {
     16: "5e8505d115879cc5bd8db465b1afb213b7f7b07b008d264c28b0e373f30a03a7",
     17: "05d217d29f4c4f5befec771d6644b4fbf7d814fb3748075d75e5d6ab32d63442",
     18: "c152435ddf599a0715478e5863e5a2d2cd14b72fde5eca8d9a73900ff4981a63",
+    19: "2334afa27679ea0c980f97e48897b8c043c2c390290c301618af72ca3019cb86",
 }
 
 
@@ -67,7 +68,7 @@ class _LegacyRepresentativeStorageCounts(TypedDict):
 
 
 class _CurrentRepresentativeStorageCounts(_LegacyRepresentativeStorageCounts):
-    """Schema-16 and -17 counts include monitoring records and delivery effects."""
+    """Schema-16/17 counts include monitoring records and protected delivery effects."""
 
     monitoring_control: int
     notification_addresses: int
@@ -86,17 +87,27 @@ class _CurrentRepresentativeStorageCounts(_LegacyRepresentativeStorageCounts):
 
 
 class _Schema18RepresentativeStorageCounts(_CurrentRepresentativeStorageCounts):
-    """Schema-18 counts include address-verification records and redaction state."""
+    """Schema-18 counts add persisted notification-address verification records."""
 
     notification_address_verifications: int
     notification_address_verification_recipients: int
     notification_address_verification_events: int
 
 
+class _Schema19RepresentativeStorageCounts(_Schema18RepresentativeStorageCounts):
+    """Schema-19 counts add owner-scoped briefing history and preferences."""
+
+    briefing_preferences: int
+    briefing_price_observations: int
+    briefing_snapshots: int
+    briefing_visit_anchors: int
+
+
 _RepresentativeStorageCounts = (
     _LegacyRepresentativeStorageCounts
     | _CurrentRepresentativeStorageCounts
     | _Schema18RepresentativeStorageCounts
+    | _Schema19RepresentativeStorageCounts
 )
 
 # Keep the SQL allowlist and authenticated manifest shape on one persistence-owned contract.
@@ -128,9 +139,11 @@ _NOTIFICATION_ADDRESS_STORAGE_TABLES: Final = (
     "notification_address_verification_recipients",
     "notification_address_verification_events",
 )
-_SCHEMA16_REPRESENTATIVE_STORAGE_TABLES: Final = (
-    *_LEGACY_REPRESENTATIVE_STORAGE_TABLES,
-    *_MONITORING_STORAGE_TABLES,
+_BRIEFING_STORAGE_TABLES: Final = (
+    "briefing_preferences",
+    "briefing_price_observations",
+    "briefing_snapshots",
+    "briefing_visit_anchors",
 )
 _NOTIFICATION_RESTORE_EFFECT_TABLES: Final = (
     (
@@ -252,13 +265,71 @@ _NOTIFICATION_RESTORE_EFFECT_TABLES: Final = (
         "event_id",
     ),
 )
+_BRIEFING_RESTORE_EFFECT_TABLES: Final = (
+    (
+        "briefing_preferences",
+        ("owner_user_id", "revision", "threshold_bps", "updated_at"),
+        "owner_user_id, revision",
+    ),
+    (
+        "briefing_price_observations",
+        (
+            "owner_user_id",
+            "source_ref",
+            "payload_sha256",
+            "symbol",
+            "asset_type",
+            "provider",
+            "currency",
+            "price_text",
+            "observed_at",
+            "received_at",
+            "state",
+            "reason",
+            "created_at",
+        ),
+        "owner_user_id, source_ref",
+    ),
+    (
+        "briefing_snapshots",
+        (
+            "id",
+            "owner_user_id",
+            "idempotency_key",
+            "request_sha256",
+            "window",
+            "baseline_at",
+            "observed_as_of",
+            "baseline_anchor_revision",
+            "preference_revision",
+            "threshold_bps",
+            "payload_json",
+            "created_at",
+        ),
+        "owner_user_id, created_at, id",
+    ),
+    (
+        "briefing_visit_anchors",
+        ("owner_user_id", "revision", "snapshot_id", "baseline_at", "visited_at"),
+        "owner_user_id, revision",
+    ),
+)
+_SCHEMA16_REPRESENTATIVE_STORAGE_TABLES: Final = (
+    *_LEGACY_REPRESENTATIVE_STORAGE_TABLES,
+    *_MONITORING_STORAGE_TABLES,
+)
 _SCHEMA18_REPRESENTATIVE_STORAGE_TABLES: Final = (
     *_SCHEMA16_REPRESENTATIVE_STORAGE_TABLES,
     *_NOTIFICATION_ADDRESS_STORAGE_TABLES,
 )
+_SCHEMA19_REPRESENTATIVE_STORAGE_TABLES: Final = (
+    *_SCHEMA18_REPRESENTATIVE_STORAGE_TABLES,
+    *_BRIEFING_STORAGE_TABLES,
+)
 _LEGACY_REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_LEGACY_REPRESENTATIVE_STORAGE_TABLES)
 _CURRENT_REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_SCHEMA16_REPRESENTATIVE_STORAGE_TABLES)
 _SCHEMA18_REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_SCHEMA18_REPRESENTATIVE_STORAGE_TABLES)
+_SCHEMA19_REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_SCHEMA19_REPRESENTATIVE_STORAGE_TABLES)
 
 
 def _representative_storage_tables(schema_version: int) -> tuple[str, ...]:
@@ -270,7 +341,9 @@ def _representative_storage_tables(schema_version: int) -> tuple[str, ...]:
         return _LEGACY_REPRESENTATIVE_STORAGE_TABLES
     if schema_version < 18:
         return _SCHEMA16_REPRESENTATIVE_STORAGE_TABLES
-    return _SCHEMA18_REPRESENTATIVE_STORAGE_TABLES
+    if schema_version < 19:
+        return _SCHEMA18_REPRESENTATIVE_STORAGE_TABLES
+    return _SCHEMA19_REPRESENTATIVE_STORAGE_TABLES
 
 
 def _is_representative_storage_counts(
@@ -284,8 +357,10 @@ def _is_representative_storage_counts(
         expected = _LEGACY_REPRESENTATIVE_STORAGE_KEYS
     elif schema_version < 18:
         expected = _CURRENT_REPRESENTATIVE_STORAGE_KEYS
-    else:
+    elif schema_version < 19:
         expected = _SCHEMA18_REPRESENTATIVE_STORAGE_KEYS
+    else:
+        expected = _SCHEMA19_REPRESENTATIVE_STORAGE_KEYS
     return (
         isinstance(value, dict)
         and set(value) == expected

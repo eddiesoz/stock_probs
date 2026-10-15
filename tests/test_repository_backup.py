@@ -44,6 +44,16 @@ def _service(settings):
     return repository, ForecastService(repository, FixtureProvider(), lambda: NOW)
 
 
+def _notification_effect_digest(manager: BackupManager, path):
+    """Use the unified restore fingerprint for the fixed notification effect set."""
+
+    return manager._restore_effect_digest(
+        path,
+        repository_module._NOTIFICATION_RESTORE_EFFECT_TABLES,
+        "Notification delivery",
+    )
+
+
 def test_clean_migration_is_idempotent_and_records_version(settings):
     repository = Repository(settings.database_path)
     repository.migrate()
@@ -391,6 +401,10 @@ def test_success_repeat_failure_matrix_appends_exactly_one_event_each(settings):
         "notification_address_verifications": 0,
         "notification_address_verification_recipients": 0,
         "notification_address_verification_events": 0,
+        "briefing_preferences": 0,
+        "briefing_price_observations": 0,
+        "briefing_snapshots": 0,
+        "briefing_visit_anchors": 0,
     }
 
 
@@ -431,6 +445,10 @@ def test_backup_representative_counts_are_internal_physical_row_semantics(settin
         "notification_address_verifications": 0,
         "notification_address_verification_recipients": 0,
         "notification_address_verification_events": 0,
+        "briefing_preferences": 0,
+        "briefing_price_observations": 0,
+        "briefing_snapshots": 0,
+        "briefing_visit_anchors": 0,
     }
 
     manager = BackupManager(repository, settings.backup_dir)
@@ -483,8 +501,8 @@ def test_v15_signed_backup_manifest_keeps_legacy_counts_without_synthetic_fields
         finally:
             staging.cleanup()
 
-    # The current schema-18 reader still accepts the old signed manifest without fabricating
-    # schema-16+ or schema-18 table counts.
+    # The current schema-19 reader still accepts the old signed manifest without fabricating
+    # schema-16+ counts.
     manifest, _, staging = manager._verify_unlocked(created["name"], require_active_schema=False)
     try:
         assert manifest["schema_version"] == 15
@@ -493,7 +511,7 @@ def test_v15_signed_backup_manifest_keeps_legacy_counts_without_synthetic_fields
         staging.cleanup()
 
 
-def test_v17_signed_backup_keeps_its_count_shape_and_cannot_promote_over_v18(
+def test_v17_signed_backup_keeps_its_count_shape_and_cannot_promote_over_v19(
     settings, tmp_path, monkeypatch
 ):
     current_repository, _service_instance = _service(settings)
@@ -529,13 +547,13 @@ def test_v17_signed_backup_keeps_its_count_shape_and_cannot_promote_over_v18(
             staging.cleanup()
 
     before = hashlib.sha256(settings.database_path.read_bytes()).hexdigest()
-    with pytest.raises(BackupError, match="schema version 17.*schema version 18"):
+    with pytest.raises(BackupError, match=rf"schema version 17.*schema version {SCHEMA_VERSION}"):
         current_manager.restore(created["name"], promote=True)
     assert hashlib.sha256(settings.database_path.read_bytes()).hexdigest() == before
     assert not settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
 
 
-def test_schema18_backup_preserves_address_effects_and_rejects_older_snapshot(settings):
+def test_schema19_backup_preserves_address_effects_and_rejects_rewind_snapshot(settings):
     repository, _service_instance = _service(settings)
     owner_two_id = repository.create_user(
         github_user_id=2042,
@@ -559,7 +577,7 @@ def test_schema18_backup_preserves_address_effects_and_rejects_older_snapshot(se
         store.get_status(owner_two_id, owner_one.verification_id, NOW)
 
     manager = BackupManager(repository, settings.backup_dir)
-    before_submission = manager.create("schema18-before-address-effects.spbackup")
+    before_submission = manager.create("schema19-before-address-effects.spbackup")
     manifest, staged_database, staging = manager.verify(before_submission["name"])
     try:
         new_tables = {
@@ -567,8 +585,17 @@ def test_schema18_backup_preserves_address_effects_and_rejects_older_snapshot(se
             "notification_address_verification_recipients": 2,
             "notification_address_verification_events": 2,
         }
-        assert manifest["schema_version"] == 18
+        assert manifest["schema_version"] == SCHEMA_VERSION == 19
         assert {name: manifest["counts"][name] for name in new_tables} == new_tables
+        briefing_tables = {
+            "briefing_preferences",
+            "briefing_price_observations",
+            "briefing_snapshots",
+            "briefing_visit_anchors",
+        }
+        assert {name: manifest["counts"][name] for name in briefing_tables} == dict.fromkeys(
+            briefing_tables, 0
+        )
         assert (settings.backup_dir / before_submission["name"]).stat().st_mode & 0o777 == 0o600
         with sqlite3.connect(staged_database) as connection:
             assert {
@@ -676,16 +703,16 @@ def test_schema18_backup_preserves_address_effects_and_rejects_older_snapshot(se
         assert private_value not in json_export
         assert private_value not in csv_export
 
-    before_digest = manager._notification_effect_digest(settings.database_path)
+    before_digest = _notification_effect_digest(manager, settings.database_path)
     with pytest.raises(BackupError, match="change notification consent.*delivery history"):
         manager.restore(before_submission["name"], promote=True)
-    assert manager._notification_effect_digest(settings.database_path) == before_digest
+    assert _notification_effect_digest(manager, settings.database_path) == before_digest
     assert not settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
 
-    exact = manager.create("schema18-address-effects.spbackup")
+    exact = manager.create("schema19-address-effects.spbackup")
     promoted = manager.restore(exact["name"], promote=True)
     assert promoted["promoted"] is True
-    assert manager._notification_effect_digest(settings.database_path) == before_digest
+    assert _notification_effect_digest(manager, settings.database_path) == before_digest
     assert store.get_current_status(owner_two_id, NOW + timedelta(seconds=5)).verification_id == (
         replacement.verification_id
     )
@@ -780,11 +807,11 @@ def test_restore_refuses_to_erase_submitted_notification_delivery_history(settin
         failure_code=None if outcome == "accepted" else "smtp_outcome_unknown",
     )
     assert finalized["state"] == outcome
-    before = manager._notification_effect_digest(repository.database_path)
+    before = _notification_effect_digest(manager, repository.database_path)
     with pytest.raises(BackupError, match="change notification consent"):
         manager.restore(created["name"], promote=True)
 
-    assert manager._notification_effect_digest(repository.database_path) == before
+    assert _notification_effect_digest(manager, repository.database_path) == before
     assert repository.representative_counts()["notification_outbox"] == 1
     with repository.connect() as connection:
         row = connection.execute(
@@ -803,7 +830,7 @@ def test_restore_refuses_to_erase_submitted_notification_delivery_history(settin
     exact = manager.create(f"matching-{outcome}.spbackup")
     promoted = manager.restore(exact["name"], promote=True)
     assert promoted["promoted"] is True
-    assert manager._notification_effect_digest(repository.database_path) == before
+    assert _notification_effect_digest(manager, repository.database_path) == before
     assert not settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
 
 
@@ -818,13 +845,13 @@ def test_restore_fails_before_staging_when_notification_effect_comparison_is_una
     created = manager.create("comparison-unavailable.spbackup")
     before = hashlib.sha256(settings.database_path.read_bytes()).hexdigest()
 
-    def unavailable(_path):
+    def unavailable(_path, _tables, _label):
         raise BackupError("Notification delivery state could not be compared safely for restore.")
 
     def staging_must_not_run(*_args, **_kwargs):
         pytest.fail("comparison must complete before promotion staging")
 
-    monkeypatch.setattr(manager, "_notification_effect_digest", unavailable)
+    monkeypatch.setattr(manager, "_restore_effect_digest", unavailable)
     monkeypatch.setattr(manager, "_stage_promotion", staging_must_not_run)
     with pytest.raises(BackupError, match="could not be compared safely"):
         manager.restore(created["name"], promote=True)
@@ -853,16 +880,8 @@ def test_failed_event_insert_rolls_back_new_input_and_results(settings):
         )
 
     counts = repository.representative_counts()
-    assert all(
-        counts[name] == 0
-        for name in (
-            "search_events",
-            "forecast_runs",
-            "forecast_inputs",
-            "forecast_results",
-            "outcomes",
-        )
-    )
+    assert counts["monitoring_control"] == 1
+    assert all(value == 0 for table, value in counts.items() if table != "monitoring_control")
 
 
 def test_new_forecast_write_requires_cardinality_matching_the_input(settings):
@@ -883,16 +902,8 @@ def test_new_forecast_write_requires_cardinality_matching_the_input(settings):
         )
 
     counts = repository.representative_counts()
-    assert all(
-        counts[name] == 0
-        for name in (
-            "search_events",
-            "forecast_runs",
-            "forecast_inputs",
-            "forecast_results",
-            "outcomes",
-        )
-    )
+    assert counts["monitoring_control"] == 1
+    assert all(value == 0 for table, value in counts.items() if table != "monitoring_control")
 
 
 def test_repeated_provider_failures_are_audited_without_forecast_records(settings):

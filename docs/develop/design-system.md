@@ -302,6 +302,19 @@ portfolio, comparison, briefing and what-if images replace their initial drafts.
 
 ![Approved briefing design proposal; fictional data.](../design/features/briefing.png)
 
+The briefing image remains an approved visual proposal, not a screenshot or acceptance capture.
+Release 4 now has a mounted, default-off schema-19 backend candidate. Frontend source and unit checks
+passed for headline/privacy/lifecycle and request/error handling, but the R4 page has not been built
+or staged; the current R3 stage has no `/overview/what-changed` page. The full approved build-and-
+stage path, rendered desktop/mobile comparison to this mockup, both-theme review, browser QA, and
+accessibility checks remain pending. A later presentation-source freeze removes a duplicate
+count-only row and places four primary cards in the main row; the lead saved item expands to the
+remaining records, and headline retrieval remains explicit. This source layout has not been
+independently rendered or compared to the approved desktop/mobile images. Preserve the Overview /
+Research / Tools navigation, teal accents, neutral surfaces, current theme tokens, card hierarchy,
+and stacked mobile layout. See
+[R-ASTRA-121 E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).
+
 ![Approved what if design proposal; fictional data.](../design/features/what-if.png)
 
 ### Notifications and report-card workspace contracts
@@ -326,7 +339,11 @@ provider or incomplete sample must not render as a success.
 Loading, empty, error, unavailable, and ready states retain the same route hierarchy. Keep focus
 visible, announce meaningful status changes without stealing focus, provide at least 44 CSS-pixel
 controls, respect reduced motion, and preserve text contrast in both themes. The approved images
-are design proposals, not browser evidence. The verified-address mail flow remains an unregistered backend draft with no accepted address-entry UI or delivery path; keep the approved inbox/alert layout as the visual reference and do not present email controls as available. The first 24-case desktop/mobile run failed before
+are design proposals, not browser evidence. The verified-address workflow and persisted SMTP
+outbox are wired in the R3 schema-18 candidate, but email remains disabled by default, no live
+submission or mailbox delivery is verified, and address UI has not passed browser acceptance. Keep
+the approved inbox/alert layout as the visual reference and do not present email delivery as
+available. The first 24-case desktop/mobile run failed before
 workspace assertions because its isolated API route registry omitted both new paths; axe was
 unavailable. Root route registration has selected independent staged-application integration coverage, but no
 post-fix browser rerun has been accepted. The notification-email UI source freeze passed 16 builder

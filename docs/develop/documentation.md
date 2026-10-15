@@ -14,9 +14,13 @@ source and current release evidence. For browser or capture claims, follow the [
 evidence procedure](testing.md#binding-browser-evidence-to-the-served-frontend) so the evidence
 matches the bundle FastAPI actually serves.
 
-For R-ASTRA-121 migration changes, record the current schema and the recovery image's compatible
-schema separately. The historical schema-13 rehearsal retains its default contract; selecting a
-new schema in a generated verifier changes only that verifier's exact assertions. See the
+For R-ASTRA-121 migration changes, record each checkout's registered schema and its recovery
+image's compatible schema separately. R4 registers candidate schema 19, including migrations 018
+and 019; the byte-identical `migration_drafts/019_personal_briefings.sql` is a retained source copy,
+not an unregistered migration. The separate R3 checkout registers its own candidate schema 18.
+Neither local state changes production, which remains at schema 13, or proves rollback. The
+historical schema-13 rehearsal retains its default contract; selecting a new schema in a generated
+verifier changes only that verifier's exact assertions. See the
 [migration rehearsal boundary](testing.md#named-schema-verification-boundary) and the R121 ledger
 in `MVP-PLAN.md`. Do not describe a selected test as image or production rollback acceptance.
 
@@ -280,10 +284,17 @@ R121 workspace source changes use the `research-workspaces`, `portfolio-ledger-w
 `monitoring-workspaces` rules in the root map. The `monitoring-workspaces` map matches the R3 registered candidate migration at
 `src/stock_probs/migrations/018_notification_address_delivery.sql` along with its source, asset, and
 test paths. It requires dashboard, API, design system, testing, and threat-model guides. Current
-authored-documentation validator and completeness checks pass; change-aware results are recorded in
-the R3 checkpoint. R4 is separate: its `019_personal_briefings.sql` remains an unregistered
-schema-17 draft. See the
+authored-documentation validator and completeness results belong to their recorded input bindings;
+change-aware results are recorded in the R3 checkpoint. The cumulative R4 checkout registers
+`src/stock_probs/migrations/019_personal_briefings.sql` at schema 19. Its same-byte draft copy is
+retained historical source, not an unregistered migration. See the
 [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
+
+The cumulative briefing rule also matches `briefing_*.py` and `test_briefing_*.py`, including the
+isolated saved-snapshot export module and tests. Their presence does not establish an HTTP export
+route. Use the final combined dirty-path set for coverage, and keep the selected backend and
+documentation results separate from frontend, browser, canonical and release gates. See the
+[R4 cumulative checkpoint](../../MVP-PLAN.md#r-astra-121-r4-cumulative-integration-checkpoint-2026-10-15).
 
 The current documentation map includes a narrow `deployment-review-pins` rule for
 `scripts/pin_pr_rehearsal_review.py` and its fixed review-pin source contract in
@@ -542,10 +553,19 @@ releases introduce new record types. Candidate documentation does not establish 
 
 For R121 portfolio changes, reconcile the portfolio-ledger-workspaces map entry with the dashboard, API, design and threat-model guides. Preserve native amounts, partial-valuation wording, unknown costs and the separation between simulated and committed transactions. A full SQLite archive retains the new tables; a local restore test does not establish an exact-PR recovery-image or actual-host rollback gate.
 
-The `monitoring-workspaces` mapping previously named the R3 address-delivery file under
-`migration_drafts/`; the R3 checkout now registers candidate schema 18 at
-`src/stock_probs/migrations/018_notification_address_delivery.sql`. Reconcile the map path with its
-maintainer before claiming documentation completeness; this authoring update does not edit the map
-or establish coverage. Its required guides remain dashboard, API, design system, testing, and
-threat model. R4 is separate: its `019_personal_briefings.sql` is still an unregistered schema-17
-draft. See the [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
+The R3 `monitoring-workspaces` rule covers notification, scheduler, address-verification, outcome,
+and report-card sources and tests; its registered delivery migration is
+`src/stock_probs/migrations/018_notification_address_delivery.sql`. An earlier R3 map snapshot
+pointed at the address-delivery file under `migration_drafts/`, so the combined map must retain the
+registered path. The R4 `personal-briefing-draft` rule covers its API/config/repository/backup and
+briefing modules, migrations 018/019 and the retained draft copy, the `/overview/what-changed`
+route/components, and all three briefing client, headline, and private-lifecycle test paths. R4
+requires the dashboard, API, design, testing, and threat-model guides; workflow-policy changes also
+require `AGENTS.md` and this guide. The R4 pre-merge map snapshot at E31 had SHA-256
+`e2b247dd06bfebfd8bbfa5a7e430c855f9cebd6086d6cdadb54a1d10c05bb452`; it is not the identity of
+the combined map under merge. The map JSON is builder-owned and was not edited here. The merged map
+and full dirty-path coverage must be reviewed after its conflict is resolved; map presence alone
+does not establish coverage, runtime, or release acceptance. R4's registered migration is
+candidate state, not production; exact recovery, owner-filtered export, browser, and release
+acceptance remain separate requirements. See the [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15)
+and [R4 E31 checkpoint](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).

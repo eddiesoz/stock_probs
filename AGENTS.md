@@ -3,20 +3,47 @@
 For R-ASTRA-121, preserve the user-approved seven feature mockups and the existing design system;
 corrected designs take precedence. Use phased, reviewed releases and retain owner isolation,
 explicit confirmation, schema-compatible data-preserving rollback and the existing 1 GB/US$15 cap.
-The `research-workspaces`, `portfolio-ledger-workspaces`, and `monitoring-workspaces` rules in
-`documentation-map.json` bind their source and fixture paths to the dashboard, API, design, and
-threat-model guides; monitoring paths also require the testing guide, including the notification
-implementation and test path families. Keep those mappings current. Documentation presence and
-coverage do not establish runtime or release acceptance.
+The `research-workspaces`, `portfolio-ledger-workspaces`, `monitoring-workspaces`, and
+`personal-briefing-draft` rules in `documentation-map.json` bind feature source and fixture paths to
+their required authored guides. Monitoring paths require the dashboard, API, design, testing, and
+threat-model guides. The R4 briefing rule covers its API/backend, registered migrations, route and
+components, and client, headline, and private-lifecycle tests; workflow-policy changes also require
+this file and `docs/develop/documentation.md`. Keep both releases' mappings aligned with their
+registered source paths and tests. The R4 map snapshot at E31 had SHA-256
+`e2b247dd06bfebfd8bbfa5a7e430c855f9cebd6086d6cdadb54a1d10c05bb452`; the R3 merge changes that
+snapshot, so it is not the current combined-map identity. A mapping or documentation check does
+not by itself establish complete change-aware coverage, runtime behavior, or release acceptance;
+require a check bound to the complete dirty path set before claiming coverage.
+
+The R4 checkout registers candidate schema 19, including migration
+`src/stock_probs/migrations/019_personal_briefings.sql`. The same-byte
+`src/stock_probs/migration_drafts/019_personal_briefings.sql` is retained as a source copy; it does
+not mean migration 019 is unregistered. The mounted briefing API derives ownership from the active
+session, rejects legacy-owner fallback, verifies active status, requires CSRF for writes, and is
+disabled by default with admin-only canary gating. This is candidate source integration, not a
+production API or release acceptance. The corrected complete R3 stage inventory has 65 files;
+it contains no R4 `/overview/what-changed` page. Its 404 was a missing static page, not an API
+authentication result. Combined candidate checks passed 184 selected builder tests and a separate
+12-test independent selection; neither is a canonical or rendered R4 acceptance result. Keep the
+R3 schema-18 release and the cumulative R4 schema-19 candidate distinct. Saved-briefing export
+primitives have no HTTP or workspace integration yet. No R4 build/stage, browser/design,
+production, downloadable-export, or rollback acceptance is claimed.
 For R-ASTRA-121, Priority 0 is a genuine OpenCode V2 `opencode-zen/space-bunny-free`
 answer through the application, with the intended native MCP/search/fetch path. Do not replace it
 with a compatible endpoint or paid provider. Local success is not deployment acceptance. The T9
-512 MiB startup reserve guard remains **Fail** at 519,432 KiB versus 524,288 KiB; the bounded
-30-second startup-wait checker repair is in progress within the existing 1,080-second budget and
-must retain the existing 512 MiB and 128 MiB floors and final guard. Do not promote source presence
-to a checker, host, native, or release Pass.
+512 MiB startup reserve observation at 519,432 KiB versus 524,288 KiB is historical failed evidence.
+Keep the existing 512 MiB and 128 MiB floors and the final guard. The separate assistant hotfix
+still requires its current image, native, host-resource, recovery, and release checks; R4 results
+do not close those gates. Do not promote source presence to a checker, host, native, or release Pass.
 
-The R3 checkout now registers candidate schema 18 with `src/stock_probs/migrations/018_notification_address_delivery.sql`; this is local candidate state, not production schema or proof of email delivery. The approved 88-test frontend build and 65-pair stage match their recorded earlier inputs only; `repository.py` has since changed, so they do not bind the whole current R3 tree. Selected UI source QA passed 16 checks, but browser behavior and lost-response GET reconciliation/explicit replacement tests remain open. R4 is a separate schema-17 checkout whose `019_personal_briefings.sql` remains an unregistered draft. Keep branch-specific evidence distinct and do not describe either candidate as a deployed feature.
+The R3 checkout registers candidate schema 18 with
+`src/stock_probs/migrations/018_notification_address_delivery.sql`; this is local candidate state,
+not production schema or proof of email delivery. Its selected repository/restore, staged-app,
+notification UI, and typing checks have scoped results; the earlier 88-test frontend build and
+65-pair stage do not bind later `repository.py` changes. Browser coverage, lost-response GET
+reconciliation, and explicit replacement tests remain open. An earlier R3 checkpoint described R4
+as a schema-17 unmounted draft; E31 supersedes that R4 status with registered candidate schema 19
+and mounted backend routes. Neither candidate is a deployed feature.
 Keep historical schema-13 rehearsal defaults and receipts intact. A named-schema verifier check
 does not establish a new schema-compatible recovery image, actual-host rollback, or release gate.
 

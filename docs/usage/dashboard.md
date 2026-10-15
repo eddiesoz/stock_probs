@@ -9,6 +9,18 @@ Start the local app, open its loopback URL, and wait for the system status to re
 The local workspace keeps portfolio context, recorded research, and bounded market tools separate;
 it is not a brokerage or order-entry system.
 
+## R121 personal briefing status
+
+The approved **What changed?** design has a mounted, default-off schema-19 backend candidate, but
+the current staged dashboard is the earlier R3 export and does not contain the R4
+`/overview/what-changed` page. The authenticated page request returned 404, so users cannot yet use
+the proposed briefing screen. Current headlines are requested only by an explicit action; they stay
+ephemeral and do not alter a saved briefing or forecast. Digest, assistant handoffs, scheduled work,
+and automatic news remain unavailable. The candidate checks passed their selected scopes, but the
+R4 frontend build/stage, rendered design comparison, browser, accessibility, owner-filtered export,
+and production/release checks are still pending. See
+[R-ASTRA-121 E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).
+
 ## Ledger assistant status
 
 The requested genuine OpenCode V2 `opencode-zen/space-bunny-free` assistant through the app is

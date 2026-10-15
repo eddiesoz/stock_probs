@@ -60,7 +60,7 @@ RUN mkdir -p /static-next/overview /static-next/research /static-next/tools \
     && cp out/tools/forecast.html out/tools/live-trading.html out/tools/markets.html \
        out/tools/compare.html out/tools/what-if.html /static-next/tools/ \
     && cp out/research/theses.html out/research/report-card.html /static-next/research/ \
-    && cp out/overview/transactions.html /static-next/overview/ \
+    && cp out/overview/transactions.html out/overview/what-changed.html /static-next/overview/ \
     && cp -R out/_next /static-next/
 
 # Build wheels separately so Node, compilers, and package indexes are absent from runtime.

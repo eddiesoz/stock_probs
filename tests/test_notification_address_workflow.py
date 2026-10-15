@@ -39,14 +39,14 @@ from stock_probs.repository import Repository
 
 ROOT = Path(__file__).parents[1]
 MIGRATION_DIR = ROOT / "src/stock_probs/migrations"
-DRAFT_018 = ROOT / "src/stock_probs/migration_drafts/018_notification_address_delivery.sql"
+SCHEMA_018 = MIGRATION_DIR / "018_notification_address_delivery.sql"
 NOW = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
 WRONG_CODE = "Z" * 43
 
 
 @pytest.fixture
 def address_context(tmp_path, monkeypatch):
-    """Create exact registered migrations 001-017 plus the explicitly applied draft 018."""
+    """Create the historical 001-017 base, then apply the exact registered schema-18 SQL."""
 
     registered = tmp_path / "registered-migrations-001-017"
     registered.mkdir(mode=0o700)
@@ -61,10 +61,13 @@ def address_context(tmp_path, monkeypatch):
         return original_files(package)
 
     monkeypatch.setattr(repository_module, "files", migration_resources)
+    # Preserve the historical schema-18 draft fixture as the 1–17 base. The active package
+    # now registers schema 19, which includes notification migration 018 and briefing 019.
+    monkeypatch.setattr(repository_module, "SCHEMA_VERSION", 17)
     repository = Repository(tmp_path / "notification-address.sqlite3")
     repository.migrate()
     with repository.connect() as connection:
-        connection.executescript(DRAFT_018.read_text(encoding="utf-8"))
+        connection.executescript(SCHEMA_018.read_text(encoding="utf-8"))
         connection.commit()
     repository.create_user(
         github_user_id=9401,

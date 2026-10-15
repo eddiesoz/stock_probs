@@ -129,6 +129,8 @@ class Settings:
     monitoring_features_enabled: bool = False
     monitoring_features_canary_only: bool = True
     monitoring_scheduler_enabled: bool = False
+    briefing_features_enabled: bool = False
+    briefing_features_canary_only: bool = True
     monitoring_email_enabled: bool = False
     invitation_mail: InvitationMailSettings | None = field(default=None, repr=False)
     bootstrap_username: str | None = None
@@ -301,6 +303,12 @@ class Settings:
             monitoring_scheduler_enabled=_environment_bool(
                 "STOCK_PROBS_MONITORING_SCHEDULER_ENABLED", "false"
             ),
+            briefing_features_enabled=_environment_bool(
+                "STOCK_PROBS_BRIEFING_FEATURES_ENABLED", "false"
+            ),
+            briefing_features_canary_only=_environment_bool(
+                "STOCK_PROBS_BRIEFING_FEATURES_CANARY_ONLY", "true"
+            ),
             monitoring_email_enabled=_environment_bool(
                 "STOCK_PROBS_MONITORING_EMAIL_ENABLED", "false"
             ),
@@ -320,7 +328,7 @@ class Settings:
 
     @property
     def monitoring_email_transport_available(self) -> bool:
-        """Require explicit feature opt-in, validated SMTP settings, and a public link origin."""
+        """Require explicit opt-in, validated SMTP settings, and a public link origin."""
 
         return (
             self.monitoring_email_enabled

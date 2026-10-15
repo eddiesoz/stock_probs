@@ -26,6 +26,7 @@ from typing import Any, TypeVar
 
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.repository import (
+    _BRIEFING_RESTORE_EFFECT_TABLES,
     _NOTIFICATION_RESTORE_EFFECT_TABLES,
     SCHEMA_VERSION,
     Repository,
@@ -379,8 +380,10 @@ class BackupManager:
             raise BackupError("Artifact representative-count verification failed.") from exc
 
     @staticmethod
-    def _notification_effect_digest(path: Path) -> str:
-        """Fingerprint only delivery authorization and irreversible submission state."""
+    def _restore_effect_digest(
+        path: Path, tables: tuple[tuple[str, tuple[str, ...], str], ...], label: str
+    ) -> str:
+        """Fingerprint a fixed allowlist of irreversible state using a read-only connection."""
 
         try:
             connection = sqlite3.connect(
@@ -389,7 +392,7 @@ class BackupManager:
             try:
                 connection.execute("PRAGMA query_only = ON")
                 state: list[tuple[str, list[tuple[object, ...]]]] = []
-                for table, columns, order_column in _NOTIFICATION_RESTORE_EFFECT_TABLES:
+                for table, columns, order_column in tables:
                     selected = ", ".join(columns)
                     rows = connection.execute(
                         f"SELECT {selected} FROM {table} ORDER BY {order_column}"  # noqa: S608
@@ -400,20 +403,42 @@ class BackupManager:
             canonical = json.dumps(state, separators=(",", ":"), ensure_ascii=True)
             return hashlib.sha256(canonical.encode()).hexdigest()
         except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
-            raise BackupError(
-                "Notification delivery state could not be compared safely for restore."
-            ) from exc
+            raise BackupError(f"{label} state could not be compared safely for restore.") from exc
 
     def _require_notification_effect_match(self, staged_database: Path) -> None:
-        """Refuse snapshots that would rewind email consent or transport effects."""
+        """Refuse snapshots that would rewind notification consent or delivery effects."""
 
-        active_digest = self._notification_effect_digest(self.repository.database_path)
-        staged_digest = self._notification_effect_digest(staged_database)
+        active_digest = self._restore_effect_digest(
+            self.repository.database_path,
+            _NOTIFICATION_RESTORE_EFFECT_TABLES,
+            "Notification delivery",
+        )
+        staged_digest = self._restore_effect_digest(
+            staged_database,
+            _NOTIFICATION_RESTORE_EFFECT_TABLES,
+            "Notification delivery",
+        )
         if not hmac.compare_digest(active_digest, staged_digest):
             raise BackupError(
                 "Restore would change notification consent, address verification, "
                 "or delivery history."
             )
+
+    def _require_briefing_state_match(self, staged_database: Path) -> None:
+        """Refuse snapshots that would rewind owner-created briefing records."""
+
+        active_digest = self._restore_effect_digest(
+            self.repository.database_path,
+            _BRIEFING_RESTORE_EFFECT_TABLES,
+            "Briefing history",
+        )
+        staged_digest = self._restore_effect_digest(
+            staged_database,
+            _BRIEFING_RESTORE_EFFECT_TABLES,
+            "Briefing history",
+        )
+        if not hmac.compare_digest(active_digest, staged_digest):
+            raise BackupError("Restore would change saved briefing history.")
 
     def _online_snapshot(self, snapshot: Path) -> None:
         """Use SQLite's consistent online API with a callback-enforced wall-clock bound."""
@@ -1030,6 +1055,7 @@ class BackupManager:
                 if not promote:
                     return response
                 self._require_notification_effect_match(staged_database)
+                self._require_briefing_state_match(staged_database)
                 current = self.repository.database_path
                 rollback = current.with_suffix(".pre-restore.sqlite3")
                 if rollback.exists() or rollback.is_symlink():

@@ -1,4 +1,4 @@
-"""Schema 17 makes outcome ownership immutable across SQLite REPLACE settings."""
+"""Schema 17's outcome ownership guard survives later registered migrations."""
 
 from __future__ import annotations
 
@@ -105,8 +105,9 @@ def _insert_second_user(repository: Repository) -> None:
         )
 
 
-def test_schema_17_clean_creation_and_16_upgrade_match_with_one_backup_hook(tmp_path, monkeypatch):
-    assert SCHEMA_VERSION == 17
+def test_schema_19_clean_creation_and_16_upgrade_match_with_one_backup_hook(tmp_path, monkeypatch):
+    assert SCHEMA_VERSION == 19
+    # Start before schema 17, then let the current registry apply every remaining migration.
     upgraded = _create_schema_16(
         tmp_path / "upgrade.sqlite3", tmp_path / "schema-16-migrations", monkeypatch
     )
@@ -136,7 +137,7 @@ def test_schema_17_clean_creation_and_16_upgrade_match_with_one_backup_hook(tmp_
         assert [
             row[0]
             for row in connection.execute("SELECT version FROM schema_migrations ORDER BY version")
-        ] == list(range(1, 18))
+        ] == list(range(1, SCHEMA_VERSION + 1))
         assert (
             tuple(
                 connection.execute(

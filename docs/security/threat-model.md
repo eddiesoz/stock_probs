@@ -44,16 +44,16 @@ narrow dispatch result.
 
 Notification API views expose the observed threshold crossing, price, currency, provider, time, and
 read state. They omit recipient addresses and transport details. Preference views expose only
-`address_configured`, not the address or its identifier. The R3 schema-18 candidate adds verified
-address onboarding and connects the persisted SMTP outbox to the existing application mail
-transport. Feature, scheduler, and email controls default off; verified address plus explicit opt-in
-and enabled configuration are required. No live SMTP submission, verification email, or mailbox
-delivery has been observed. The earlier outbox P2 findings and failed independent review remain
-historical; later 12-check repository/restore-guard review and 23-check staged-application
+`address_configured`, not the address or its identifier. The R3 schema-18 candidate registers
+verified-address onboarding and connects the persisted SMTP outbox to the existing application
+mail transport. Feature, scheduler, and email controls default off; verified address plus explicit
+opt-in and enabled configuration are required. No live SMTP submission, verification email, or
+mailbox delivery has been observed. The earlier outbox P2 findings and failed independent review
+remain historical; later 12-check repository/restore-guard review and 23-check staged-application
 integration pass only those selected local-fixture scopes. Independent selected UI source review
-passed 16 Node/scoped TypeScript checks with no actionable P1/P2 finding; it did not exercise a browser
-and left lost-response GET reconciliation and explicit replacement testing open. Full security
-acceptance remains pending.
+passed 16 Node/scoped TypeScript checks with no actionable P1/P2 finding; it did not exercise a
+browser and left lost-response GET reconciliation and explicit replacement testing open. Full
+security acceptance remains pending.
 
 Private backup archives carry SQLite data and a signature for integrity; do not describe the archive
 as encrypted. Selected restore guards passed their declared local scope, but live backup inspection,
@@ -62,6 +62,31 @@ The report card reads immutable forecasts and appended outcomes/reviews. It does
 rewrite forecasts or fold historical backtests into recorded-outcome metrics. Full populated backup
 recovery, live provider checks, browser isolation, and the complete security review remain pending.
 See the [R-ASTRA-121 R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
+
+## R121 Release 4 briefing candidate boundary
+
+R4 registers candidate schema 19 and mounts briefing routes behind the application session. Routes
+derive owner identity from the authenticated session, reject legacy-owner fallback, check that the
+persisted account is active, and require CSRF for writes. Feature access is false by default and
+canary-only by default; the admin check guards canary access. These are candidate-source controls,
+not evidence of production deployment or independent security acceptance. The existing production
+release remains at schema 13.
+
+Historical E31 builder and independent backend selections passed 98 tests each; the independent
+receipt preserves failed manifest/comment checks. The later cumulative source passed 184 selected
+builder tests and a separate 12-test independent selection. Independent export-core tests passed
+five cases for the supported store-validated, active-owner snapshot path, privacy projection and
+bounded deterministic JSON/CSV with formula neutralization. Standalone serializers do not promise
+complete per-field domain validation of arbitrary mappings. No HTTP/workspace export route exists
+yet. None of these selections is an aggregate or independent complete-security acceptance.
+Schema-compatible image/PR rollback with post-migration records remains unaccepted. Existing
+CSV/JSON history endpoints remain limited to search history.
+The current headlines request is explicit and ephemeral; it does not update saved briefing or
+forecast evidence. Digest delivery, scheduled news, and assistant handoffs are not wired. Complete
+independent security, full backup/recovery, rendered browser, and production checks remain pending.
+See
+[the cumulative R4 checkpoint](../../MVP-PLAN.md#r-astra-121-r4-cumulative-integration-checkpoint-2026-10-15)
+and historical [E31](../../MVP-PLAN.md#r-astra-121-e31-r4-schema-19-briefing-mount-and-headlinesession-safety-checkpoint).
 
 Signal Ledger has two supported security modes. Development may use a local bootstrap account on
 loopback; production is an invite-only multi-user deployment behind a Cloudflare Tunnel. The
