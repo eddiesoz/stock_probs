@@ -2,6 +2,13 @@
 
 ## Codex project workflow
 
+For R121 temporary recovery, keep the fixed approval, image manifest, operation phase and current
+record distinct from a retained release. Require the verified backup and exact image/process
+profile before transition. Carry the existing 128 MiB reserve through archive inspection and
+every nested Compose/Docker wait; require the unchanged 512 MiB startup floor before admitting
+the rehearsal. Source/mock checks do not prove installed helper behavior or authorize an unbuilt
+temporary image. Preserve uncertainty and the original release/recovery identities.
+
 Codex uses this root `AGENTS.md` for repository policy. Its project configuration is
 `.codex/config.toml`, its three scoped subagents are `.codex/agents/luna-build.toml`,
 `luna-qa.toml`, and `luna-docs.toml`, and its repository skills are in `.agents/skills/`.

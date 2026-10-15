@@ -1945,7 +1945,11 @@ def test_rollback_rejects_actual_schema_before_starting_old_code(
     monkeypatch.setattr(helper, "RELEASE_ROOT", tmp_path)
     monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
     monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
-    monkeypatch.setattr(helper, "_read_json", lambda _: release)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: None if path == helper.TEMPORARY_RECOVERY_OPERATION else release,
+    )
     monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _: tmp_path / "compose")
     monkeypatch.setattr(helper, "_database_schema", lambda _: 8)
     monkeypatch.setattr(helper, "_compose_digest", lambda: release["compose_digest"])
@@ -2031,7 +2035,11 @@ def test_rollback_rejects_compose_drift_before_schema_probe(
     monkeypatch.setattr(helper, "RELEASE_ROOT", tmp_path)
     monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
     monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
-    monkeypatch.setattr(helper, "_read_json", lambda _: release)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: None if path == helper.TEMPORARY_RECOVERY_OPERATION else release,
+    )
     snapshot = helper._compose_snapshot_path(revision)
     snapshot.write_bytes(b"services: {app: {image: drifted}}\n")
     snapshot.chmod(0o600)
@@ -2077,7 +2085,11 @@ def test_rollback_rejects_loaded_image_before_schema_probe(
     monkeypatch.setattr(helper, "RELEASE_ROOT", tmp_path)
     monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
     monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
-    monkeypatch.setattr(helper, "_read_json", lambda _: release)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: None if path == helper.TEMPORARY_RECOVERY_OPERATION else release,
+    )
     monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _: None)
     monkeypatch.setattr(helper, "_image_id", lambda _: "sha256:" + "3" * 64)
     monkeypatch.setattr(
@@ -5338,3 +5350,655 @@ def test_rollout_health_missing_or_wrong_projection_remains_fail_closed(
     with pytest.raises(helper.HostError, match="readiness_failed"):
         helper._health_check(assistant_rollout_mode="disabled")
     assert len(calls) == 2 and sleeps == [1.0, 1.0]
+
+
+def test_temporary_profile_passes_reserve_to_both_identity_waits(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    container_id = "a" * 64
+    image_id = "sha256:" + "b" * 64
+    reserve_kib = helper.TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB
+    assert reserve_kib == 131_072
+    identity_format = "{{.Id}}|{{.State.Pid}}|{{.State.Running}}"
+    profile = "|".join(
+        (
+            container_id,
+            image_id,
+            "4321",
+            "true",
+            "true",
+            "null",
+            "0:0",
+            json.dumps(["no-new-privileges:true"]),
+            json.dumps(["ALL"]),
+            json.dumps(["SETUID", "SETGID"]),
+            json.dumps({"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}),
+            str(768 * 1024 * 1024),
+            str(1_000_000_000),
+            "128",
+        )
+    )
+    commands: list[tuple[list[str], float, int | None]] = []
+    process_profiles: list[tuple[str, int, str, int | None]] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        timeout: float,
+        cwd: Path | None = None,
+        memory_reserve_kib: int | None = None,
+    ) -> SimpleNamespace:
+        del cwd
+        commands.append((command, timeout, memory_reserve_kib))
+        if command[:2] == ["docker", "compose"]:
+            return SimpleNamespace(stdout=f"{container_id}\n")
+        if command[1] == "inspect" and command[3] == identity_format:
+            return SimpleNamespace(stdout=f"{container_id}|4321|true\n")
+        return SimpleNamespace(stdout=f"{profile}\n")
+
+    def assert_process_profile(
+        actual_container_id: str,
+        init_pid: int,
+        process_profile: str,
+        *,
+        memory_reserve_kib: int | None = None,
+    ) -> None:
+        process_profiles.append(
+            (actual_container_id, init_pid, process_profile, memory_reserve_kib)
+        )
+
+    monkeypatch.setattr(helper, "_run", fake_run)
+    monkeypatch.setattr(helper, "_assert_container_process_profile", assert_process_profile)
+
+    result = helper._assert_temporary_container_profile(
+        tmp_path / "compose.yaml",
+        expected_image_id=image_id,
+        process_profile="temporary_app_pid1",
+        memory_reserve_kib=reserve_kib,
+    )
+
+    assert result == container_id
+    assert len(commands) == 3
+    assert commands[0][0][-5:] == ["ps", "--status", "running", "--quiet", "app"]
+    assert commands[0][1:] == (20, reserve_kib)
+    assert commands[1][0][:3] == ["docker", "inspect", "--format"]
+    assert commands[1][0][3] == identity_format
+    assert commands[1][1:] == (10, reserve_kib)
+    assert commands[2][0][:3] == ["docker", "inspect", "--format"]
+    assert commands[2][1:] == (15, reserve_kib)
+    assert process_profiles == [(container_id, 4321, "temporary_app_pid1", reserve_kib)]
+
+
+def test_app_container_identity_omits_none_reserve_for_legacy_command_seams(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    container_id = "c" * 64
+    calls: list[tuple[str, float]] = []
+
+    def legacy_compose(*arguments: str, timeout: float, compose_file: Path | None = None) -> str:
+        assert compose_file == tmp_path / "compose.yaml"
+        calls.append(("compose", timeout))
+        assert arguments == ("ps", "--status", "running", "--quiet", "app")
+        return container_id
+
+    def legacy_run(command: list[str], *, timeout: float) -> SimpleNamespace:
+        calls.append(("run", timeout))
+        assert command[1] == "inspect"
+        return SimpleNamespace(stdout=f"{container_id}|4321|true\n")
+
+    monkeypatch.setattr(helper, "_compose", legacy_compose)
+    monkeypatch.setattr(helper, "_run", legacy_run)
+
+    assert helper._app_container_identity(tmp_path / "compose.yaml") == (container_id, 4321)
+    assert calls == [("compose", 20), ("run", 10)]
+
+
+def test_temporary_profile_omits_none_reserve_for_legacy_identity_mock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    container_id = "d" * 64
+    image_id = "sha256:" + "e" * 64
+    profile = "|".join(
+        (
+            container_id,
+            image_id,
+            "4321",
+            "true",
+            "true",
+            "null",
+            "0:0",
+            json.dumps(["no-new-privileges:true"]),
+            json.dumps(["ALL"]),
+            json.dumps(["SETUID", "SETGID"]),
+            json.dumps({"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}),
+            str(768 * 1024 * 1024),
+            str(1_000_000_000),
+            "128",
+        )
+    )
+    run_timeouts: list[float] = []
+
+    def legacy_identity(snapshot: Path) -> tuple[str, int]:
+        assert snapshot == tmp_path / "compose.yaml"
+        return container_id, 4321
+
+    def legacy_run(command: list[str], *, timeout: float) -> SimpleNamespace:
+        run_timeouts.append(timeout)
+        assert command[1] == "inspect"
+        return SimpleNamespace(stdout=f"{profile}\n")
+
+    monkeypatch.setattr(helper, "_app_container_identity", legacy_identity)
+    monkeypatch.setattr(helper, "_run", legacy_run)
+    monkeypatch.setattr(helper, "_assert_container_process_profile", lambda *_args, **_kwargs: None)
+
+    assert (
+        helper._assert_temporary_container_profile(
+            tmp_path / "compose.yaml",
+            expected_image_id=image_id,
+            process_profile="temporary_app_pid1",
+        )
+        == container_id
+    )
+    assert run_timeouts == [15]
+
+
+def _temporary_recovery_test_manifest(helper) -> dict[str, Any]:
+    return {
+        "format_version": 1,
+        "kind": "temporary_recovery",
+        "built_or_published": True,
+        "source_revision": helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "source_manifest_sha256": helper.TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "base_revision": helper.PAIR_BASE_REVISION,
+        "base_source_archive_sha256": helper.TEMPORARY_RECOVERY_BASE_ARCHIVE_SHA256,
+        "base_source_context_sha256": helper.TEMPORARY_RECOVERY_BASE_CONTEXT_SHA256,
+        "source_context_sha256": helper.TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "migration_sha256": helper.PAIR_MIGRATION_SHA256,
+        "overlay_sha256": helper.TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "overlay_files": dict(helper.TEMPORARY_RECOVERY_FILE_SHA256),
+        "schema_version": 13,
+        "image": {
+            "archive_sha256": "d" * 64,
+            "archive_size": 1234,
+            "image_id": "sha256:" + "c" * 64,
+            "platform": "linux/amd64",
+            "image_revision": helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+            "repo_tag": (
+                "signal-ledger:temporary-recovery-build-"
+                f"{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+            ),
+            "entrypoint": ["python", "-m", "stock_probs.recovery_supervisor"],
+            "command": helper.TEMPORARY_RECOVERY_COMMAND,
+        },
+    }
+
+
+def _install_temporary_recovery_fakes(
+    monkeypatch: pytest.MonkeyPatch,
+    helper,
+    tmp_path: Path,
+    *,
+    available_kib: int = 600_000,
+    memory_failure_call: int | None = None,
+) -> tuple[dict[Path, dict[str, Any]], list[tuple[object, ...]], dict[str, str]]:
+    original = {
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+        "image_ref": helper._local_image_ref(helper.PRODUCTION_PREDECESSOR_REVISION),
+        "image_digest": "b" * 64,
+        "archive_sha256": "b" * 64,
+        "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "platform": "linux/amd64",
+        "archive_size": 2345,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "assistant_rollout_mode": "invited",
+    }
+    state: dict[Path, dict[str, Any]] = {helper.CURRENT_RECORD: original}
+    events: list[tuple[object, ...]] = []
+    tags: dict[str, str] = {}
+    memory_calls = 0
+    manifest = _temporary_recovery_test_manifest(helper)
+    manifest_sha256 = "e" * 64
+
+    def clone(value: dict[str, Any]) -> dict[str, Any]:
+        return json.loads(json.dumps(value))
+
+    def read_json(path: Path) -> dict[str, Any] | None:
+        value = state.get(path)
+        return clone(value) if value is not None else None
+
+    def write_json(path: Path, value: dict[str, Any]) -> None:
+        events.append(("write", path, value.get("phase"), value.get("operation_id")))
+        state[path] = clone(value)
+
+    def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        if command[1:3] == ["load", "--input"]:
+            tags[manifest["image"]["repo_tag"]] = manifest["image"]["image_id"]
+            events.append(("docker_load",))
+        elif command[1] == "tag":
+            tags[command[3]] = command[2]
+            events.append(("docker_tag", command[3]))
+        return SimpleNamespace(stdout="loaded\n")
+
+    def fake_phase(operation: dict[str, Any], phase: str, **updates: object) -> None:
+        operation.update(updates)
+        operation["phase"] = phase
+        write_json(helper.TEMPORARY_RECOVERY_OPERATION, operation)
+
+    def fake_memory_available() -> int:
+        nonlocal memory_calls
+        memory_calls += 1
+        events.append(("memory", memory_calls))
+        if memory_calls == memory_failure_call:
+            return 100_000
+        return available_kib
+
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_read_json", read_json)
+    monkeypatch.setattr(helper, "_write_json", write_json)
+    monkeypatch.setattr(helper, "_audit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(helper, "_write_temporary_recovery_phase", fake_phase)
+    monkeypatch.setattr(
+        helper,
+        "_temporary_compose_snapshot",
+        lambda _current, **_kwargs: tmp_path / "compose",
+    )
+    monkeypatch.setattr(helper, "_assert_protected_production_images", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        helper, "_assert_temporary_recovery_source_health", lambda _current, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        helper, "_assert_temporary_container_profile", lambda *_args, **_kwargs: "cid"
+    )
+    monkeypatch.setattr(
+        helper, "_load_temporary_recovery_authorization", lambda: (manifest, manifest_sha256)
+    )
+    monkeypatch.setattr(
+        helper,
+        "_assert_temporary_recovery_archive",
+        lambda _manifest, **_kwargs: None,
+    )
+    monkeypatch.setattr(helper, "_temporary_archive_stage_id", lambda _manifest, **_kwargs: None)
+    monkeypatch.setattr(
+        helper,
+        "_temporary_image_reference_id",
+        lambda image_ref, **_kwargs: tags.get(image_ref),
+    )
+    monkeypatch.setattr(helper, "_assert_temporary_image", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(helper, "_memory_available_kib", fake_memory_available)
+    monkeypatch.setattr(
+        helper,
+        "_verified_backup",
+        lambda *_args, **_kwargs: {
+            "trigger": "pre_deploy",
+            "name": "pre-deploy-5ad2c3fddfce5a5a-01234567.spbackup",
+            "sha256": "f" * 64,
+            "schema_version": 13,
+            "verified": True,
+        },
+    )
+    monkeypatch.setattr(helper, "_database_schema", lambda *_args, **_kwargs: 13)
+    monkeypatch.setattr(
+        helper, "_runtime_file", lambda *args, **kwargs: events.append(("runtime", *args))
+    )
+    monkeypatch.setattr(helper, "_stop_app", lambda *_args, **_kwargs: events.append(("stop_app",)))
+    monkeypatch.setattr(
+        helper,
+        "_compose_up",
+        lambda record, **_kwargs: events.append(
+            ("compose_up", record.get("operation_kind"), record.get("image_id"))
+        )
+        or "",
+    )
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda **_kwargs: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+    )
+    monkeypatch.setattr(helper, "_run", fake_run)
+    return state, events, tags
+
+
+def test_temporary_recovery_start_records_phases_and_observes_512_mib_floor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+
+    result = helper._start_temporary_recovery()
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    current = state[helper.CURRENT_RECORD]
+    assert result["result"] == "temporary_recovery_ready"
+    assert result["start_admission_allowed"] is True
+    assert result["startup_floor_kib"] == 512 * 1024
+    assert operation["phase"] == "startup_floor_passed"
+    assert operation["operation_kind"] == "temporary_recovery"
+    assert operation["image_id"] == "sha256:" + "c" * 64
+    assert operation["source_revision"] == helper.TEMPORARY_RECOVERY_SOURCE_REVISION
+    assert operation["backup"]["verified"] is True
+    assert operation["backup"]["promoted"] is False
+    assert current["operation_kind"] == "temporary_recovery"
+    assert current["assistant_rollout_mode"] == "disabled"
+    assert current["revision"] == helper.TEMPORARY_RECOVERY_SOURCE_REVISION
+    assert tags[current["image_ref"]] == current["image_id"]
+    status = helper._state_summary()
+    assert status["current"]["operation_kind"] == "temporary_recovery"
+    assert status["temporary_recovery"]["operation_id"] == result["operation_id"]
+    assert status["temporary_recovery"]["phase"] == "startup_floor_passed"
+    loading_phase_index = next(
+        index
+        for index, event in enumerate(events)
+        if event[0] == "write"
+        and event[1] == helper.TEMPORARY_RECOVERY_OPERATION
+        and event[2] == "loading_archive"
+    )
+    tagging_phase_index = next(
+        index
+        for index, event in enumerate(events)
+        if event[0] == "write"
+        and event[1] == helper.TEMPORARY_RECOVERY_OPERATION
+        and event[2] == "tagging_image"
+    )
+    starting_phase_index = next(
+        index
+        for index, event in enumerate(events)
+        if event[0] == "write"
+        and event[1] == helper.TEMPORARY_RECOVERY_OPERATION
+        and event[2] == "starting_temporary_app"
+    )
+    assert loading_phase_index < next(
+        index for index, event in enumerate(events) if event[0] == "docker_load"
+    )
+    assert tagging_phase_index < next(
+        index for index, event in enumerate(events) if event[0] == "docker_tag"
+    )
+    assert starting_phase_index < next(
+        index for index, event in enumerate(events) if event[0] == "compose_up"
+    )
+
+
+def test_temporary_recovery_start_below_floor_keeps_native_admission_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, _events, _tags = _install_temporary_recovery_fakes(
+        monkeypatch, helper, tmp_path, available_kib=200_000
+    )
+
+    result = helper._start_temporary_recovery()
+
+    assert result["result"] == "temporary_recovery_ready_startup_floor_unmet"
+    assert result["start_admission_allowed"] is False
+    assert state[helper.TEMPORARY_RECOVERY_OPERATION]["phase"] == "startup_floor_unmet"
+    assert state[helper.CURRENT_RECORD]["operation_kind"] == "temporary_recovery"
+
+
+def test_temporary_recovery_start_refuses_transition_below_128_mib_reserve(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags = _install_temporary_recovery_fakes(
+        monkeypatch, helper, tmp_path, available_kib=100_000
+    )
+
+    with pytest.raises(helper.HostError, match="host_memory_reserve_breached"):
+        helper._start_temporary_recovery()
+
+    assert helper.TEMPORARY_RECOVERY_OPERATION not in state
+    assert not any(
+        event[0] in {"docker_load", "docker_tag", "stop_app", "compose_up"} for event in events
+    )
+
+
+def test_temporary_recovery_archive_reserve_failure_precedes_all_image_and_service_mutations(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    archive_reserves: list[int | None] = []
+    stage_calls: list[object] = []
+
+    def reject_archive(_manifest: dict[str, Any], *, memory_reserve_kib: int | None = None) -> None:
+        archive_reserves.append(memory_reserve_kib)
+        raise helper.HostError("host_memory_reserve_breached")
+
+    monkeypatch.setattr(helper, "_assert_temporary_recovery_archive", reject_archive)
+    monkeypatch.setattr(
+        helper,
+        "_temporary_archive_stage_id",
+        lambda *_args, **_kwargs: stage_calls.append("called"),
+    )
+
+    with pytest.raises(helper.HostError, match="host_memory_reserve_breached"):
+        helper._start_temporary_recovery()
+
+    assert archive_reserves == [helper.TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB]
+    assert not stage_calls
+    assert helper.TEMPORARY_RECOVERY_OPERATION not in state
+    assert state[helper.CURRENT_RECORD]["image_id"] == helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    assert not any(
+        event[0] in {"docker_load", "docker_tag", "stop_app", "compose_up"} for event in events
+    )
+
+
+def test_temporary_recovery_start_keeps_backup_verification_fail_before_app_stop(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    monkeypatch.setattr(
+        helper,
+        "_verified_backup",
+        lambda *_args, **_kwargs: {
+            "trigger": "pre_deploy",
+            "name": "pre-deploy-5ad2c3fddfce5a5a-01234567.spbackup",
+            "sha256": "f" * 64,
+            "schema_version": 13,
+            "verified": False,
+        },
+    )
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_backup_unverified"):
+        helper._start_temporary_recovery()
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    assert operation["phase"] == "verifying_backup"
+    assert operation["failure_code"] == "temporary_recovery_backup_unverified"
+    assert not any(event[0] in {"stop_app", "compose_up"} for event in events)
+
+
+def test_temporary_recovery_preserves_phase_if_128_mib_reserve_breaches_mid_transition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags = _install_temporary_recovery_fakes(
+        monkeypatch, helper, tmp_path, memory_failure_call=13
+    )
+
+    with pytest.raises(helper.HostError, match="host_memory_reserve_breached"):
+        helper._start_temporary_recovery()
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    assert operation["phase"] == "verifying_temporary_app"
+    assert operation["failure_code"] == "host_memory_reserve_breached"
+    assert state[helper.CURRENT_RECORD]["operation_kind"] == "temporary_recovery"
+    assert any(event[0] == "compose_up" for event in events)
+    with pytest.raises(helper.HostError, match="temporary_recovery_active"):
+        helper._ensure_no_active_temporary_recovery()
+
+
+def test_temporary_recovery_kills_blocking_child_and_retains_loading_phase_on_reserve_breach(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    real_run = helper._run
+    state, events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    ordinary_run = helper._run
+    pid_file = tmp_path / "blocking-child.pid"
+    reserve_kib = helper.TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB
+    samples = [0]
+
+    def breach_during_child() -> int:
+        samples[0] += 1
+        if samples[0] <= 2:
+            return reserve_kib + 1
+        deadline = time.monotonic() + 1
+        while not pid_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        return reserve_kib - 1
+
+    def run_with_blocking_load(command: list[str], **kwargs: object) -> SimpleNamespace:
+        if command[1:3] == ["load", "--input"]:
+            events.append(("docker_load_started",))
+            monkeypatch.setattr(helper, "_memory_available_kib", breach_during_child)
+            code = (
+                "import os,pathlib,sys,time; "
+                "pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(30)"
+            )
+            real_run(
+                [sys.executable, "-c", code, str(pid_file)],
+                timeout=10,
+                memory_reserve_kib=reserve_kib,
+            )
+            raise AssertionError("reserve breach should cancel the in-flight load child")
+        return ordinary_run(command, **kwargs)
+
+    monkeypatch.setattr(helper, "_run", run_with_blocking_load)
+
+    with pytest.raises(helper.HostError, match="host_memory_reserve_breached"):
+        helper._start_temporary_recovery()
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    assert operation["phase"] == "loading_archive"
+    assert operation["failure_code"] == "host_memory_reserve_breached"
+    assert state[helper.CURRENT_RECORD]["image_id"] == helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    assert any(event[0] == "docker_load_started" for event in events)
+    assert not any(event[0] in {"docker_tag", "stop_app", "compose_up"} for event in events)
+    child_pid = int(pid_file.read_text(encoding="ascii"))
+    with pytest.raises(ProcessLookupError):
+        os.kill(child_pid, 0)
+    with pytest.raises(helper.HostError, match="temporary_recovery_active"):
+        helper._ensure_no_active_temporary_recovery()
+
+
+def test_temporary_recovery_restore_returns_original_disabled_and_retains_terminal_record(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    started = helper._start_temporary_recovery()
+
+    result = helper._restore_temporary_recovery(started["operation_id"])
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    current = state[helper.CURRENT_RECORD]
+    assert result["result"] == "temporary_recovery_restored"
+    assert operation["phase"] == "restored"
+    assert current["image_id"] == helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    assert current["revision"] == helper.PRODUCTION_PREDECESSOR_REVISION
+    assert current["assistant_rollout_mode"] == "disabled"
+    assert current["temporary_recovery_restored_operation_id"] == started["operation_id"]
+    assert sum(event[0] == "compose_up" for event in events) == 2
+    helper._ensure_no_active_temporary_recovery()
+
+
+def test_temporary_recovery_restore_failure_preserves_active_phase_and_blocks_release_actions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, _events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    started = helper._start_temporary_recovery()
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda **_kwargs: (_ for _ in ()).throw(helper.HostError("readiness_failed")),
+    )
+
+    with pytest.raises(helper.HostError, match="readiness_failed"):
+        helper._restore_temporary_recovery(started["operation_id"])
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    assert operation["phase"] == "verifying_original_app"
+    assert operation["failure_code"] == "readiness_failed"
+    with pytest.raises(helper.HostError, match="temporary_recovery_active"):
+        helper._ensure_no_active_temporary_recovery()
+
+
+@pytest.mark.parametrize(
+    "operation", ["plan_deploy", "deploy", "rollback", "set_assistant_rollout"]
+)
+def test_ordinary_release_mutations_fail_closed_while_temporary_recovery_is_active(
+    operation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    operation_id = "a" * 32
+    active = {
+        "operation_kind": "temporary_recovery",
+        "operation_id": operation_id,
+        "phase": "startup_floor_passed",
+        "source_revision": helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "source_manifest_sha256": helper.TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "source_context_sha256": helper.TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "base_revision": helper.PAIR_BASE_REVISION,
+        "migration_sha256": helper.PAIR_MIGRATION_SHA256,
+        "overlay_sha256": helper.TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "original_compose_revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+        "image_id": "sha256:" + "c" * 64,
+        "image_ref": f"{helper.LOCAL_IMAGE_REPOSITORY}:temporary-recovery-{operation_id}",
+        "archive_sha256": "d" * 64,
+        "archive_size": 1234,
+        "manifest_sha256": "e" * 64,
+        "original_record": {},
+    }
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: active if path == helper.TEMPORARY_RECOVERY_OPERATION else None,
+    )
+    action = {
+        "plan_deploy": lambda: helper._plan_deploy("a" * 40, "b" * 64),
+        "deploy": lambda: helper._deploy("a" * 32, "a" * 40, "b" * 64),
+        "rollback": lambda: helper._rollback("a" * 40),
+        "set_assistant_rollout": lambda: helper._set_assistant_rollout(
+            "disabled", revision="a" * 40, archive_sha256="b" * 64, image_id="sha256:" + "c" * 64
+        ),
+    }[operation]
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_active"):
+        action()
+
+
+def test_temporary_recovery_protocol_accepts_only_typed_start_and_restore_payloads() -> None:
+    helper = _helper()
+    operation, payload = helper._parse_request(
+        b'{"operation":"start_temporary_recovery","payload":{}}'
+    )
+    assert (operation, payload) == ("start_temporary_recovery", {})
+    with pytest.raises(helper.HostError, match="payload_invalid"):
+        helper._parse_request(
+            b'{"operation":"start_temporary_recovery","payload":{"archive_path":"/tmp/x"}}'
+        )
+    operation, payload = helper._parse_request(
+        json.dumps(
+            {
+                "operation": "restore_temporary_recovery",
+                "payload": {"operation_id": "a" * 32},
+            }
+        ).encode()
+    )
+    assert operation == "restore_temporary_recovery"
+    assert payload["operation_id"] == "a" * 32

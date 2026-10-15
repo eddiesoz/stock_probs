@@ -102,6 +102,19 @@ deployment, local GitHub Release publication (with GHCR as an explicit compatibi
 Terraform-managed Linode host, and closed-until-canary Cloudflare Tunnel use the production
 procedure below. Do not copy development bootstrap credentials into a production environment.
 
+## Temporary recovery candidate
+
+The candidate production helper also has separately approved temporary-recovery start and restore
+operations. These accept only the fixed reviewed image/overlay and root-owned approval records;
+they are not a general image or command interface. Start requires the exact retained release and
+recovery identities plus signed-reader verification of a fresh backup. The temporary service stays
+assistant-disabled, preserves the database, and must reach the existing 512 MiB startup floor
+before a rehearsal can use it. Archive work and all container inspection/start/health waits retain
+the 128 MiB running reserve. A failed or uncertain transition remains held for reviewed recovery.
+Restore uses its exact operation identity and verifies the original disabled service. Source
+presence alone does not establish installation, an approved available image, or successful host
+execution; see [the verification procedure](../develop/testing.md#temporary-recovery-baseline-checks).
+
 ## Local Docker storage on removable media
 
 Use this procedure for operator-owned local Docker and build storage. It does not migrate the

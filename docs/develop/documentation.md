@@ -19,6 +19,14 @@ resolve uncertain results with exact-node measurements, independent QA and paren
 review. See [contrast review](testing.md#reviewing-incomplete-contrast-results). A scoped manual
 resolution does not establish full application accessibility or change the raw automated result.
 
+## Temporary recovery evidence
+
+Temporary-recovery evidence must bind the approved image manifest, current/operation records,
+signed-reader backup verification and the exact source/profiles. Keep source agreement, archive
+validation, actual host transition and restoration as separate results. Document missing stage or
+import-path setup failures separately from a corrected test run; mocked reserve checks do not
+establish actual-host capacity. See [temporary recovery checks](testing.md#temporary-recovery-baseline-checks).
+
 ## Codex project configuration
 
 Codex loads repository policy from root `AGENTS.md` and trusted-project settings from

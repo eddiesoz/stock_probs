@@ -6513,3 +6513,56 @@ as inconsistent with migration 007's mandatory legacy-owner row plus its new syn
 actual component readback was not captured. A further bounded fixture repair is being prepared
 with component diagnostics and an explicit candidate/recovery image distinction. No production
 recovery switch, candidate host trial, resource acceptance or new application release follows.
+
+### R-ASTRA-121 temporary baseline reserve propagation (2026-10-15)
+
+The temporary-recovery source remains a distinct fixed schema-13 operation, bound to the 6359
+overlay, root-owned approval/manifest/current/phase records, retained 5ad release and A9 recovery
+identities, verified signed-reader backup, private loopback service and disabled assistant. No
+temporary image has been built/approved or started on the host. The US$15 monthly total cap,
+existing 1 GB host and backups remain fixed.
+
+The cooperative archive guard's selected builder scope passed 150 tests with one opt-in Docker
+skip; receipt `/var/tmp/r12r/temporary-recovery-coop-checks-20261015-dn2a6ymq/final-focused-check-receipt.json`,
+SHA-256 `610d8e45f160f0c533af426f9dd71cc780e4b5b290777f670e3e2ca841d0522e`.
+This did not close the full continuous-reserve gate: parent and independent source review found
+that temporary container-profile inspection dropped the 128 MiB reserve through the nested
+20-second Compose lookup and 10-second Docker inspection. Preserve that P2 failure separately.
+
+The narrow repair forwards the existing optional reserve through both identity commands using
+the shared adapter; calls without a reserve retain their legacy shape. Only the helper and its
+focused test file changed. Frozen helper SHA-256
+`0fc11ffe75b15babfaf9496f1ffbd87bad78b6dc5bc3463756ddd8be2aa2aefa`; test SHA-256
+`7284ff67ace563b03ed25cd12e24d99766500666470eedcd6c99e581a38df245`.
+The release-image test file remains unchanged at
+`ccd28b078dbce37122debf3c5ca3fdb0701d1b3d63140fd44c35125282af240e`.
+
+The first normal pytest command **Failed** during conftest/app import because the staged `_next`
+directory was unavailable; it collected no tests and produced no completed JUnit. Its receipt
+`/var/tmp/r12r/ops-reserve-propagation-final-c5b6296919d947fe8e2d67eadcc686dc/run-receipt.json`,
+SHA-256 `7c52beac885641cc6642eaae01aa1099beb4d19966b8619ff33248c77540d543`, is retained.
+The corrected environment used a source-bound SD clone and the previously built, byte-verified
+53-file frontend stage with normal conftest and child umask 022. Builder helper tests reported
+111 passed, 1 skipped; configured Ruff, security, format and scoped diff checks passed.
+Receipt `/var/tmp/r12r/ops-reserve-propagation-rerun-2cd359a3-f0e6-4579-b17f-342cd68ced60/rerun-receipt.json`,
+SHA-256 `6fffadbc4cdfbfbc0e36423ecd81c9558f56da51387b623fb6ecce0f076893eb`.
+Independent combined helper QA **Passed** 153 cases with one expected opt-in Docker skip, zero
+failures/errors, at `2026-10-15T19:24:08.711794Z`–`19:24:18.952670Z`. Both helper files ran
+together with normal conftest, the verified 53-file stage, Python 3.11.15 and child umask 022.
+Configured Ruff, security and format checks passed, and all three code/test pins were unchanged.
+Receipt `/var/tmp/r12r/ops-reserve-propagation-independent-qa-v76vogm3/independent-qa-receipt.json`,
+SHA-256 `2fd1136c5290dacb56e317ad859c3c413e7942579f80613d0644d943344f4b7d`; source review
+supplement SHA-256 `ce4ddeb1aa27a4a56e4db97425ef417425588b6320118536454bd42979d5d229`.
+The prior revision's continuous-reserve P2 remains a historical **Fail**; no live archive/host
+compatibility is inferred. Parent personally reviewed the integrated approval, image identity,
+archive, backup, phase, service-profile, start/restore and nested-reserve paths with no remaining
+finding in that source scope.
+
+The read-only five-document audit passed claim/link review, validator, 154-file completeness,
+explicit eight-path change-aware coverage and scoped diff checks. Shared audit receipt
+`/var/tmp/r12r/R-ASTRA-121-doc-audit-nxz65l7l/audit-checks.json`, SHA-256
+`a4908b193c689af81095bc3a0b411006fc27074995655b8392bd59d6b1f0bbbb`; manual review SHA-256
+`45a0d0c567af2e3e3892840ddd1cadcecb07a37692e6359ddf10de8f4c82e27f`.
+The final count wording and completed-QA paragraph were added afterward; the final changed-file
+scan/checkpoint remains separate. No host, Docker, provider, installation, restoration, deployment
+or release acceptance follows from these mocks. Actual host, canonical and recovery gates remain open.

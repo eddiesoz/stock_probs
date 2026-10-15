@@ -570,6 +570,27 @@ exercise package, runtime, functional, build, and tool behavior; it cannot prove
 resource performance. See the [MVP plan](../../MVP-PLAN.md) for current gate requirements.
 
 
+### Temporary recovery baseline checks
+
+The operational candidate adds a distinct `temporary_recovery` baseline for the fixed schema-13
+6359 recovery overlay. Approval, manifest, operation and current records must agree with the exact
+image/tag/platform/revision, Compose identity, private loopback binding and assistant-disabled
+readiness. Require a separately verified signed-reader backup; the operation does not promote a
+database restore or substitute the temporary image for the retained release/recovery identities.
+
+Archive validation remains metadata-only and bounded. Its cooperative guard checks the unchanged
+128 MiB host reserve while hashing, reading headers and scanning the archive, with a 60-second
+whole-operation budget and a 0.25-second cooperative check interval. Both nested container-identity
+commands, the 20-second Compose lookup and 10-second Docker inspection, must use the same reserve
+monitor. Legacy calls without a reserve keep their existing invocation shape. The 512 MiB startup
+floor is checked only after the temporary disabled service is ready and before rehearsal admission.
+
+Test archive variants, unsafe/mismatched identities, cancellation, low reserve during each wait,
+stale approval/phase records and the original disabled-service restoration path. Use normal
+repository conftest with a genuine staged frontend and a source-bound import path. Static/mock
+passes are neither actual archive/image acceptance nor a successful host transition. Current
+results are recorded in the [MVP plan](../../MVP-PLAN.md).
+
 ### Candidate and recovery production baselines
 
 The candidate rehearsal checker distinguishes the running 5ad schema-13 app from the da2764/d3
