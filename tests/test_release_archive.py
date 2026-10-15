@@ -38,7 +38,13 @@ def _tar_bytes(files: dict[str, bytes]) -> bytes:
 
 
 # Preserve Docker's nested layer archive so verification covers paths without extracting files.
-def _docker_archive(tmp_path: Path, layer_files: dict[str, bytes]) -> Path:
+def _docker_archive(
+    tmp_path: Path,
+    layer_files: dict[str, bytes],
+    *,
+    config_contents: bytes = b"{}",
+    extra_members: tuple[tuple[str, bytes], ...] = (),
+) -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
     layer = _tar_bytes(layer_files)
     manifest = json.dumps(
@@ -48,7 +54,9 @@ def _docker_archive(tmp_path: Path, layer_files: dict[str, bytes]) -> Path:
     with tarfile.open(path, mode="w:gz") as archive:
         for name, contents in (
             ("manifest.json", manifest),
+            ("config.json", config_contents),
             ("layer/layer.tar", layer),
+            *extra_members,
         ):
             member = tarfile.TarInfo(name)
             member.size = len(contents)
@@ -407,6 +415,64 @@ def test_release_archive_verifier_accepts_clean_bounded_single_image(tmp_path: P
     assert result["archive_size"] == archive.stat().st_size
     assert result["layer_count"] == 1
     assert len(result["archive_sha256"]) == 64
+
+
+def test_release_archive_verifier_scans_manifest_referenced_config(
+    tmp_path: Path,
+) -> None:
+    token = b"sk-" + b"C" * 24
+    archive = _docker_archive(
+        tmp_path,
+        {"app.py": b"print('safe')"},
+        config_contents=b'{"config":{"Env":["OPENAI_API_KEY=' + token + b'"]}}',
+    )
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(archive)
+
+
+def test_release_archive_verifier_scans_non_layer_outer_members(
+    tmp_path: Path,
+) -> None:
+    token = b"ghp_" + b"D" * 24
+    archive = _docker_archive(
+        tmp_path,
+        {"app.py": b"print('safe')"},
+        config_contents=b'{"config":{"Env":[]}}',
+        extra_members=(("repositories", b"image:tag -> " + token),),
+    )
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(archive)
+
+
+def test_release_archive_verifier_rejects_duplicate_outer_members(
+    tmp_path: Path,
+) -> None:
+    archive = _docker_archive(
+        tmp_path,
+        {"app.py": b"print('safe')"},
+        extra_members=(("config.json", b"{}"),),
+    )
+
+    with pytest.raises(verifier.ArchiveError, match="archive_member_duplicate"):
+        verifier.verify_image_archive(archive)
+
+
+def test_release_archive_verifier_accepts_benign_config_and_extra_outer_member(
+    tmp_path: Path,
+) -> None:
+    archive = _docker_archive(
+        tmp_path,
+        {"app.py": b"print('safe')"},
+        config_contents=b'{"config":{"Env":["MODE=local"]}}',
+        extra_members=(("repositories", b'{"signal-ledger":["latest"]}'),),
+    )
+
+    result = verifier.verify_image_archive(archive)
+
+    assert result["status"] == "pass"
+    assert result["layer_count"] == 1
 
 
 def _spdx_test_source() -> tuple[bytes, tuple[tuple[int, int], ...]]:

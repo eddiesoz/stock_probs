@@ -488,6 +488,10 @@ context digest to the same reviewed PR head SHA. The optional `prebuilt-release`
 checks and publishes that exact completed pair, preserving its original rehearsal receipt and
 requiring a clean revision that matches exact `origin/main`. Publication is separate from QA;
 it does not satisfy the actual-host, rollback, canary, or rollout gates.
+Archive regressions must cover credentials placed only in Config, manifest or other outer members,
+duplicate names, missing Config and non-file outer members. Scan all regular outer payloads under
+the same aggregate decompression bound, as well as nested layer contents; historical layer-only
+checks are insufficient for complete archive acceptance.
 The shared archive scanner must reject altered pinned source, extra token-like bytes, alternate
 paths and word-adjacent tokens. Each provenance-verified exception is restricted to its exact
 digest, size, path and match spans; exercise both candidate and recovery archives. The fixed

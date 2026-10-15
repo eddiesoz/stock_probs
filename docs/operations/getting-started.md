@@ -526,6 +526,9 @@ pair manifest, and `signal-ledger-pair-receipt-<reviewed-sha>.json` in the priva
 image, schema, backup, recovery, and archive bindings before publication; it retains archive and
 metadata screening and download verification. This option does not establish release approval or
 replace the required actual-host rehearsal, owner canary, and rollout gates.
+Candidate and recovery scans include the Docker manifest, referenced Config, every regular outer
+member and nested layer contents. Duplicate outer names, missing Config, unsupported outer member
+types and credential-like content fail closed. No container or image is loaded by this scan.
 Candidate and recovery archive scans share one maintained verifier. Its narrowly reviewed public
 artifact exceptions require an exact source digest, size, path and match spans for each
 individually verified dependency file. The custom-built harness uses only spans verified against

@@ -558,6 +558,8 @@ Historical R-ASTRA-120 E820: The clean `6efcf212` canonical local gate passed wi
 
 Never overwrite a delivered evidence receipt; record supplemental facts in a new uniquely named receipt.
 
+Image-archive credential verification must scan the Docker manifest, referenced Config, all regular outer archive members, and nested layer contents. Keep exact public-source exceptions confined to their reviewed layer paths, sizes, digests and match spans. A historical layer-only scan does not establish complete archive coverage.
+
 Exclude generated build caches from release source fingerprints. After a packaging-only or test-fixture repair, reuse checks whose exact implementation and asset inputs are unchanged; rerun the affected scope and mandatory release gates. A changed fingerprint requires a newly bound image, not relabelling an earlier image.
 
 R-ASTRA-120 candidate source exposes eight deployment MCP operations: `inspect`, `plan_deploy`,

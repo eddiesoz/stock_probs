@@ -319,6 +319,9 @@ reflect operational status in the operations/testing guides; the map describes s
 runtime acceptance. The optional `prebuilt-release` publisher mode uses the completed schema-13
 pair receipt and fixed revision-named artifacts; keep its verification and release prerequisites
 documented in the operations and testing guides when changing that contract.
+The `release-archive-credential-coverage` map rule covers the shared verifier and its tests;
+workflow-policy coverage additionally requires `AGENTS.md`. The scan covers the Docker manifest,
+referenced Config, all regular outer archive members and nested layer contents.
 Archive-scanner changes also require the testing and operations guides to describe the fixed
 individually provenance-bound artifact exceptions and retained credential checks. Capture and diagnosis allowlists, genuine
 pre-snapshots, and immutable receipts follow the root agent policy.
