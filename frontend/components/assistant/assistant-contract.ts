@@ -149,6 +149,39 @@ export type AssistantConversationDetail = {
   events?: { items: Array<{ turn_id: string; sequence: number; type: string; data: Record<string, unknown>; created_at: string }>; page: number; page_size: number; total: number };
 };
 
+export function assistantTurnErrorMessage(code: string): string {
+  const messages: Record<string, string> = {
+    provider_unavailable: "The selected model provider could not answer. Check Providers for access or choose another approved model. Your question was saved.",
+    provider_policy_changed: "The model policy changed. Review the current privacy terms before continuing.",
+    turn_timeout: "The response reached its time limit.",
+    turn_cancelled: "The response was cancelled.",
+    runtime_restarted: "The assistant stopped during a service restart.",
+    tool_failed: "An approved research step could not finish.",
+    tool_unavailable: "An approved research step is currently unavailable.",
+    worker_unavailable: "The assistant worker is unavailable.",
+    assistant_worker_unavailable: "The assistant worker is unavailable.",
+    invalid_runtime_event: "The response could not be safely displayed.",
+  };
+  return Object.hasOwn(messages, code) ? messages[code] : "The assistant could not complete this turn.";
+}
+
+export function savedAssistantTurnFailure(detail: AssistantConversationDetail): string | null {
+  const latest = (Array.isArray(detail.turns) ? detail.turns : []).reduce<AssistantTurn | null>((current, turn) => {
+    const timestamp = Date.parse(turn.created_at);
+    return Number.isFinite(timestamp) && (!current || timestamp > Date.parse(current.created_at)) ? turn : current;
+  }, null);
+  if (!latest || !["failed", "timed_out"].includes(latest.status)) return null;
+  const items = detail.events?.items;
+  const failure = (Array.isArray(items) ? items : []).find((event) => {
+    const value = event as unknown as Record<string, unknown>;
+    return value.turn_id === latest.id && value.type === "error";
+  });
+  const code = failure?.data?.code;
+  return typeof code === "string" ? assistantTurnErrorMessage(code)
+    : latest.status === "timed_out" ? assistantTurnErrorMessage("turn_timeout")
+    : "The assistant could not complete this turn.";
+}
+
 export type AssistantSavedAction = {
   action_id: string;
   action_type: string;

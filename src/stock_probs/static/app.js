@@ -505,8 +505,8 @@ async function loadNews(content, symbol, limit = 5) {
     if (error.name === "AbortError" && timedOut) {
       retry("unreachable", "The headline request timed out. Check the local service and try again.");
     } else if (error.name === "AbortError") return;
-    else if (error.status === 503) retry("busy", "Headline capacity is busy. Try again shortly.");
-    else if (error.status === 502) retry("unavailable", "The headline provider is unavailable and no cached headlines exist.");
+    else if (error.status === 503 && error.code === "provider_busy") retry("busy", "Headline capacity is busy. Try again shortly.");
+    else if (error.status === 503 || error.status === 502) retry("unavailable", "The headline provider is unavailable and no cached headlines exist.");
     else if (error instanceof TypeError) retry("unreachable", "The local service is unreachable. Start it and try again.");
     else retry("unavailable", error.message);
   } finally {

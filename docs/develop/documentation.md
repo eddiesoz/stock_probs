@@ -102,6 +102,33 @@ validation/upload/readback from the production consumer's installed-helper and e
 No live publication, installation, runtime, host, or release acceptance follows. See
 [E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-hotfix-publisher-review-and-flow-separation).
 
+
+Local image replacement evidence must distinguish selecting a retained current image from retiring
+an obsolete candidate. The bounded builder's typed selection compares the expected full image ID,
+verifies both ledger-bound receipts and Docker identities, and atomically updates only the local
+pointer. Document the private command receipt and keep subsequent provenance, protection, reference,
+RootFS, absence and retirement-acknowledgement evidence separate; selection alone is not cleanup
+acceptance or a product release. See [the local selection procedure](testing.md#selecting-a-retained-local-image).
+
+For a local-build failure, record the primary error, CLI cancellation, actual builder/worker
+state, reservation state and receipt publication separately. A missing historical BuildKit result
+is Unavailable even when fresh history and image inventory show absence. Typed external-observation
+reconciliation is a distinct recovery scope; it does not turn the failed build into a success.
+The genuine-local-failure mode can use fresh proof of the same stopped builder generation and an
+absent/empty bounded cgroup when historical cancellation or history is unavailable. Historical
+false facts still fail closed. Keep that local recovery separate from the temporary production
+baseline's approval/manifest/current-record and host/MCP schema checks; static consumer agreement
+does not prove installation, image availability or a host transition.
+See [the local-build recovery procedure](testing.md#bounded-local-docker-builds-and-worker-verification).
+
+## Local build phase evidence
+
+For the local-build phase observer, publish only its bounded sanitized projection. Raw BuildKit
+vertex names, commands, URLs, digests, logs and warning/error payloads are not evidence artifacts.
+Keep partial or unavailable observations separate from the primary build failure and its cause;
+never infer a successful build from parser tests. The reader uses the pinned Buildx/BuildKit JSON
+shape and leaves existing build deadlines and failure recovery in force.
+
 ## Codex project configuration
 
 Codex loads repository policy from root `AGENTS.md` and trusted-project settings from
@@ -187,6 +214,13 @@ local PR-pair helper
 `python3 scripts/pin_pr_rehearsal_review.py --write` and its fixed metadata contract are described
 in [developer testing](testing.md#exact-pr-pair-review-pins), [local configuration](../configure/local-configuration.md#local-pr-rehearsal-review-metadata),
 and [getting started](../operations/getting-started.md#review-a-pr-pair-before-rehearsal).
+
+The current PR #9 startup-reserve checker has a bounded 30-second read-only observation before its
+unchanged final guard. E22's five-second observation remains historical; the 512/128 MiB floors and
+1,080-second operation budget are unchanged. E29 records independent local source/test review and
+parent review, while a fresh host retry, image, native answer, and actual 1 GB acceptance remain
+unverified. Map coverage for this deployment-review path includes this guide, developer testing,
+local configuration, getting started, and the workflow policy in `AGENTS.md`.
 
 ### Source-bound build recovery
 
@@ -389,13 +423,16 @@ runtime acceptance. The optional `prebuilt-release` publisher mode uses the comp
 pair receipt and fixed revision-named artifacts; keep its verification and release prerequisites
 documented in the operations and testing guides when changing that contract.
 The `release-archive-credential-coverage` rule maps the shared archive scanner and its tests to
-this page, the testing guide, and the operations guide; the additional workflow-policy rule also
-requires `AGENTS.md`. Keep the documented coverage aligned with scanning the manifest, referenced
+this page, the testing guide, and the operations guide; the additional workflow-policy rule also requires
+`AGENTS.md`. Keep the documented coverage aligned with scanning the manifest, referenced
 Config, every regular outer member, and nested layer contents under one decompressed-byte bound.
-Exceptions require exact public provenance, path, size, digest and match spans. Capture and
-diagnosis allowlists, genuine pre-snapshots, and immutable receipts follow the root agent policy.
-The merged application PR #1 is historical evidence. The current fixed rehearsal binding moves
-to follow-on PR #2, retaining exact repository, open state, main base and reviewed-head checks.
+Exceptions require exact public provenance, path, size, digest and match spans. Archive-scanner
+changes require the testing and operations guides to describe individually provenance-bound
+exceptions and retained credential checks. Capture and diagnosis allowlists, genuine pre-snapshots,
+and immutable receipts follow the root agent policy.
+The merged application PR #1 and follow-on PR #2 are historical. The current fixed rehearsal
+binding targets restoration PR #9, retaining exact repository, open-state, main-base, and reviewed-
+head checks.
 A prose statement here does not replace a passing completeness and change-aware
 coverage check.
 
@@ -603,8 +640,41 @@ Native V2's directory-based auto-discovery is the loader boundary, and runtime d
 **Unavailable** in this harness.
 
 
+## R-ASTRA-121 free OpenCode restoration evidence
+
+The free-only OpenCode restoration precedes the seven-feature releases. The documentation map
+covers the packaged native SDK declaration record, managed execution guards, provider consumers,
+and their regressions. Keep the user correction in `AGENTS.md` and outcomes in `MVP-PLAN.md`.
+A genuine free answer from an isolated application fixture is functional evidence for that fixture.
+If its wrapper supplies guard readiness, it does not verify production receipt enforcement.
+Only the installed root-owned, nonwritable receipt and matching binary can establish the normal
+managed-worker readiness path. Preserve failed baseline and guard-fixture attempts separately;
+never reconstruct a missing contemporaneous wrapper or source binding.
+
+
+The PR #9 rehearsal documents two distinct baselines: the current schema-13 production image
+observed by read-only inspection, and the historical schema-12 migration/recovery origin. Keep
+live production identity and health guards and their consumer receipt validation aligned with the
+exact observed deployment; do not replace the historical migration origin or infer current health
+from it. See [the operational procedure](../operations/getting-started.md) and the R-ASTRA-121
+MVP ledger for source and runtime evidence separately.
+
+
+PR #9 checker diagnostics retain only the closed reserve phase and below-threshold numeric KiB
+readings; host and controller tests validate this boundary. Document actual host failures separately
+from local pair, native and canonical passes. Browser fixture checkpoints record only synthetic
+stage/status/timing and public module/process information, with no user prompts or capabilities.
+A focused browser pass does not replace a failed full aggregate. See the R-ASTRA-121 E14 ledger.
+
+
 Rehearsal baseline changes require the mapped testing, configuration and operations pages plus
 `AGENTS.md`. Document the running candidate or recovery role separately from the immutable
 schema-12 pair seed; an exact image allowlist is a guard, not evidence that the image served
 production or met the resource floors. Keep source checks, local disposable compatibility, signed
 backup verification and actual-host observations separate in the [E19 ledger](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+The lazy-provider startup repair is documented in the API, testing and operations guides and
+[E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint). Preserve
+its local import-memory and focused QA scope separately from the failed host startup guard.
+Changed recovery-overlay bytes require fresh image/pair bindings; an earlier image cannot inherit
+the source repair or the new frontend build result.

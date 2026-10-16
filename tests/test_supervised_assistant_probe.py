@@ -39,6 +39,47 @@ sys.modules[NATIVE_SPEC.name] = native_probe
 NATIVE_SPEC.loader.exec_module(native_probe)
 
 
+@pytest.mark.parametrize("deadline", [None, 1234.5])
+def test_live_probe_preserves_location_verification_deadline(deadline: float | None) -> None:
+    """Instrumentation must not prevent native dispatch or remove its deadline."""
+
+    tree = ast.parse(NATIVE_MODULE_PATH.read_text(encoding="utf-8"))
+    wrapper = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "traced_verify_location"
+    )
+    calls: list[tuple[object, str, object, float | None]] = []
+    context = type("Context", (), {"execution_id": "probe-execution"})()
+    descriptor = object()
+
+    async def original_verify(
+        actual_context: object,
+        directory: str,
+        actual_descriptor: object,
+        *,
+        turn_deadline: float | None,
+    ) -> dict[str, str]:
+        calls.append((actual_context, directory, actual_descriptor, turn_deadline))
+        return {"id": "assistant-selected", "providerID": "opencode"}
+
+    namespace: dict[str, object] = {
+        "trace": {},
+        "location_root": Path("/synthetic-locations"),
+        "original_verify": original_verify,
+    }
+    module = ast.fix_missing_locations(ast.Module(body=[wrapper], type_ignores=[]))
+    exec(compile(module, str(NATIVE_MODULE_PATH), "exec"), namespace)  # noqa: S102
+    result = asyncio.run(
+        namespace["traced_verify_location"](
+            context, "/synthetic-locations/probe-execution", descriptor, turn_deadline=deadline
+        )
+    )
+    assert result == {"id": "assistant-selected", "providerID": "opencode"}
+    assert calls == [(context, "/synthetic-locations/probe-execution", descriptor, deadline)]
+    assert namespace["trace"]["location_verify_directory_matches"] is True
+
+
 def test_native_probe_defers_mcp_service_import_until_synthetic_tool_use() -> None:
     """Attached-mode import stays light while synthetic modes keep the exact app schemas."""
 
@@ -1973,7 +2014,10 @@ def test_native_timing_v4_projects_closed_403_header_classes() -> None:
     assert "challenge token=" not in encoded
 
 
-def test_native_timing_v4_projects_error_type_class_without_header_classes() -> None:
+@pytest.mark.parametrize("error_type_class", ["region_error", "free_tier_access_error"])
+def test_native_timing_v4_projects_error_type_class_without_header_classes(
+    error_type_class: str,
+) -> None:
     payload = _native_timing_v4_payload()
     requests = payload["provider_requests"]
     assert isinstance(requests, list)
@@ -1983,7 +2027,7 @@ def test_native_timing_v4_projects_error_type_class_without_header_classes() -> 
             "stage": "upstream_stream",
             "error_code": "provider_upstream_unavailable",
             "http_status": 403,
-            "provider_error_type_class": "region_error",
+            "provider_error_type_class": error_type_class,
         },
     )
 
@@ -1997,7 +2041,7 @@ def test_native_timing_v4_projects_error_type_class_without_header_classes() -> 
             "stage": "upstream_stream",
             "error_code": "provider_upstream_unavailable",
             "http_status": 403,
-            "provider_error_type_class": "region_error",
+            "provider_error_type_class": error_type_class,
         }
     ]
     assert "execution_id" not in json.dumps(projection)

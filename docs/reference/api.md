@@ -346,9 +346,11 @@ a non-empty cached entry no older than 30 minutes was returned; in that case
 suppression does not make expired or empty data eligible for stale fallback.
 
 Status `200` covers a current/fresh result, a successful empty result, or a stale fallback.
-Invalid query input returns `422`, provider failure without eligible cache returns `502`, and
-the single news retrieval slot being occupied returns `503`. Empty news is a successful
-response and never returns `404`.
+Invalid query input returns `422`. Provider failures without eligible cache return `502`, or
+`503` with `provider_unavailable` when a required provider dependency cannot load. Only the
+occupied retrieval slot returns `503` with `provider_busy`. These responses use fixed public
+messages, and the headline client distinguishes capacity from unavailability. Empty news is a
+successful response and never returns `404`.
 
 Validation, domain, provider, persistence, and unexpected failures use sanitized JSON error
 envelopes. Provider internals, SQL text, credentials, and database paths are not public API

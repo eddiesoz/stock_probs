@@ -6348,6 +6348,557 @@ E849 documentation evidence:
 | Authored documentation checks | `.dev-venv/bin/python scripts/validate_docs.py` exited `0` (**Pass**, 9 categories, 14 topics, 8 project skill governance entries); `python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` exited `0` (**Pass**, 154 mapped files); `git diff --check -- AGENTS.md MVP-PLAN.md MVP-ROADMAP.md docs/operations/getting-started.md` exited `0` (**Pass**). Documentation tests were not run. |
 
 
+### R-ASTRA-121 assistant access incident
+
+The user reported saved questions without answers and directed repair before continuing the
+approved seven-feature plan. Read-only production checks observed the existing tested release
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, schema 13, with app/assistant ready and invited
+rollout. Closed production diagnostics recorded two upstream HTTP 403 turn failures.
+
+Genuine native OpenCode V2.0.7 trials with synthetic account/context and approved tools failed
+for Space Bunny Free and a deliberately reviewed LongCat free-model comparison. Both classified
+the exact upstream `FreeTierError` as `free_tier_access_error`, with no answer chunks. The
+supplier's underlying eligibility decision is unproven. Failed conversation-purge assertions
+remain part of the local failed functional results. No production restart, model switch,
+provider-account setup, deployment, or email occurred.
+
+The local hotfix preserves safe provider failure copy through completion and saved-chat reopen;
+it adds the closed diagnostic class and repairs the test wrapper's deadline forwarding. It does
+not change provider eligibility, privacy consent, permissions, budgets, or fallback behavior.
+Independent selected diagnostic tests passed their declared synthetic scope. Parent UI checks
+passed four desktop/mobile Light/Dark cases; raw desktop axe incompletes remain separate failures
+of the strict criterion. An independent four-case browser attempt served another checkout because
+its worktree import/runtime overrides were omitted; its exit-1 and mismatched asset bindings are
+preserved as an invalidly bound attempt, not product acceptance. Corrected independent browser
+verification passed four theme/device cases after fixing the saved-context fixture.
+
+Private task receipts are under `/var/tmp/r12r/signal-ledger-assistant-fix-20261012/` on verified
+UUID `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`. Native fourth receipt SHA-256:
+`c45a9e5f9ff6679fcf745ff86e9e2db1e85a43e02dda627612bc85ebcc66859c`;
+reviewed alternative receipt:
+`2d201e2c2d51eb6445d2e298fe28d64babae9487e4ee28e0c6b0a65036f565f4`.
+A completed native answer and required release checks remain open. The seven-feature worktrees
+are preserved; release 1 has draft PR #7, release 2 has stacked draft PR #8, and release 3 has tested pure
+crossing/scoring drafts. These are not deployed capabilities. The existing 1 GB host, backups,
+and US$15 monthly total cap remain unchanged.
+
+
+The corrected independent hotfix run passed 4/4 browser cases, 12 selected backend regressions,
+26 Node contracts, typecheck, Ruff security and formatting. It verified the running hotfix package:
+52 served HTTP asset responses matched current files, with one expected redirect; all 53 local
+served/export pairs and 16 authored source bindings remained unchanged. Desktop Light/Dark raw
+axe each retained one incomplete and zero violations, while emulated mobile was 0/0. The strict
+zero-incomplete criterion remains **Fail**. The parent personally reviewed all four corrected
+captures and the integrated diff; receipt SHA-256
+`9988560d68b5d2971961fb6177eedc4fdec7c26052f26386860d1e1605eef251`.
+The completed independent receipt SHA-256 is
+`9e26dda16e3bcb5264a60fbca275376ce3c45345f8553de89350bcabcbd3f174`, at
+`independent-hotfix-rerun-20261012T233437Z/independent-qa-receipt.json` under the private task root.
+No completed native answer or deployment is established by this synthetic evidence.
+
+
+### R-ASTRA-121 native free Zen restoration dependency
+
+The user's October 13 correction sets free-only genuine OpenCode as the required restoration path.
+An explicit active goal covers restoration followed by all seven approved visible features. The
+previous unanswered provider-account choice is superseded; error-message PR #9 is not restoration.
+
+1. Compare the deployed native request path with OpenCode V2's built-in Zen provider. Identify
+   differences in provider identity, native metadata, request transport, model catalog, and tool
+   registration using upstream source and isolated synthetic accounts.
+2. Run a bounded genuine built-in Zen baseline, preserving native tools and without introducing
+   fake client metadata or widening production shell/filesystem access. Contrast it with the
+   existing per-turn provider proxy to isolate the first actual difference that explains rejection.
+3. Repair the supported native path while preserving per-session authorization, privacy consent,
+   model exclusions, cancellation, provider limits, confirmation boundaries, and worker isolation.
+   Any available native filesystem tools remain within disposable synthetic data during diagnosis.
+4. Verify an actual completed free-model answer through the application, owner-specific MCP and
+   guarded search/fetch, failure recovery, and desktop/mobile UI. Run affected independent checks
+   and the required canonical, security, actual 1 GB, exact-PR recovery/rollback and canary gates.
+5. Release the assistant repair, then continue research/comparison draft PR #7, portfolio/ledger/
+   What-if draft PR #8, persistent alerts/report cards, and What changed/connected workflows.
+
+The current source starts OpenCode V2 but registers compatible chat as `assistant-proxy` with an
+opaque model alias and a local authorization bridge. Built-in Zen equivalence is unproven. The
+previous FreeTierError trials prove rejection of that path, not impossibility of free OpenCode use.
+Keep the existing 1 GB host, backups and US$15 monthly total cap, and the approved visible designs.
+
+
+### R-ASTRA-121 E10 — genuine free answer and native execution guards
+
+The same official V2.0.7 binary and Space Bunny Free model answered in an isolated built-in
+baseline without a credential or payment. Restrictive rules removing read/shell registrations
+returned the free-tier rejection; retaining both genuine registrations with execute denied answered.
+The repair retains those actual SDK definitions and injects checksum-pinned native guards before
+filesystem access or shell execution. Only verified Zen sessions register them; execute remains
+denied, and owner/policy/provider authorization stays in the application route.
+
+The compiled native build passed at `2026-10-13T12:26:52.508638Z`–`12:30:24.364535Z`.
+Binary SHA-256 is `44d4d8e0c3094a210ff832dadbc5fcdf302310bbfb8758572176b15b116c6d57`;
+manifest SHA-256 is `c1b9da7b0b75214ca3d4a76c8f06ce10ebaac586496bdc3635062388817c63a9`.
+Three compiled-native synthetic checks (`guard-read-03`, `guard-shell-write-03`, and
+`guard-shell-empty-03`) passed with read/shell permission already allowed, native guard errors,
+no sentinel-content leakage and no shell file created. Earlier fixtures incorrectly forced calls
+on title-generation requests without declarations and failed; preserve those attempts.
+
+The real application fixture `application-free-second` exited 0 at
+`2026-10-13T12:53:49.854115Z`–`12:54:14.025096Z`: Space Bunny Free completed a 545-byte
+answer and owner-scoped `workspace.summary`; two genuine provider requests each retained 15
+native/MCP tools, and conversation deletion returned 200 with cleared cache markers. Seven
+application/probe pre-run hashes stayed unchanged. Its wrapper checked the compiled digest and
+all fixed build fields, but supplied guard readiness and the binary location explicitly. The private
+wrapper itself lacks a pre-run digest. This is parent-observed real-free-model application
+functional evidence, **not** independent native acceptance, installed root-owned receipt enforcement,
+production restoration or actual 1 GB acceptance. The preceding application fixture failed before
+provider dispatch at the then-unrepaired API declaration consumer and remains preserved.
+
+Private artifacts are under `/var/tmp/r12r/signal-ledger-assistant-fix-20261013-native-zen/` on
+the verified SD mount: `native-build-01/`, the three `guard-*-03/` directories, and
+`application-free-second/{baseline,terminal,result}.json`. Independent review is separate.
+PR #9 is the restoration candidate; required installed-image, security, canonical, native/search/
+fetch/kill, actual-host resource, PR-bound rollback/recovery and owner canary gates remain open.
+No production deployment, payment, new account, resize or email occurred. The active goal still
+covers restoration followed by all seven approved features.
+
+
+Independent read-only E10 follow-up passed 41 selected tests, Ruff/format, compilation and exact
+native source/output/binary bindings. Receipt
+`independent-restricted-native-api-review-20261013T1306Z/receipt.json` SHA-256
+`8f22e869b99587a85f2e35fcb40066e80cecafb1085366e6c28dc8fb168a0027` preserves the
+installed-image and route-coverage gaps. The parent separately passed 110 focused tests with
+no errors, failures or skips, Ruff and documentation checks, and reviewed the integrated diff.
+Parent review receipt SHA-256 is
+`9d0fdff72e140c56f0f8dd45d0ed47d196c45f605eef507f87f3367241b22a4f`.
+A subsequent four-case FastAPI regression exercises the real route: verified Zen admission
+returns 200 with genuine declarations unchanged; readiness false, integer 1 and non-Zen policy
+return 422 without provider calls. The 22-test restricted-tool file passed; an initial import/order
+and format check failed and was repaired. Independent post-format review remains separate.
+
+
+The post-format independent route regression passed 22/22 tests including all four HTTP branches,
+Ruff and scoped format, with 19 source/import pins unchanged. Receipt
+`independent-route-regression-20261013T1309Z/receipt.json` SHA-256
+`ff249274c78537b95eb2272ddb2f40e4d9c1540d0414a8c349d3191b7bd96385` closes only the
+selected route-coverage gap. Its broad format check failed on unchanged `domain.py` and
+`provider.py`, which were left untouched. Installed-image/runtime acceptance remains open.
+All 14 native compiler/guard inputs still match their original build baseline; supplemental
+`native-build-input-reuse-01.json` SHA-256
+`b63dabe5e7c77d37ebdae972c837905536ea697d2b6f670494e45334b3ab0413` records that reuse.
+The new application image must bind the updated API and runtime rather than relabel that build.
+
+
+### R-ASTRA-121 E11 — installed receipt and current-PR rehearsal binding
+
+Candidate image `sha256:9767d4a2b37b07467232916c30328344111f8aae36880e6aaf7b85b575b303f3`
+built from clean pushed `1fe8780095bde058ded78605f3ebd9588c76b9ba`, context
+`9f86b6fcddac74d6a60132c4afd0fd951a6ed51265bd2266fee0a101a7608ec0`, with unchanged source
+bindings. An isolated, network-none, read-only one-shot image check passed normal installed-receipt
+validation at `2026-10-13T13:30:28.418925Z`–`13:30:30.721523Z`: receipt UID 0/mode 0444,
+binary UID 0/mode 0755, all 23 fixed fields and actual binary validation passed; the owned container
+was absent after exit 0. It did not start the supervisor/application, call a model or verify 1 GB.
+
+The first build failed on Docker registry DNS. Its resolver contained no external nameservers.
+Restarting only the validated local BuildKit controller loaded the current host resolver and
+registry DNS succeeded. The second bounded build passed. Preserve the first failure; no Docker
+daemon, application or production restart occurred. Private receipts are `candidate-image-01/`,
+`builder-dns-restart-01.json`, `candidate-image-02/` and `installed-receipt-01/` under the native
+restoration task root. The public registry connectivity probe reached its expected unauthenticated
+401 response; its wget exit 1 is not a completed application/provider answer.
+
+Independent static release-path review identified the old fixed PR #2 gate and same-source
+bootstrap/helper trust chain. Receipt SHA-256
+`3055d22000deaceeefc33cacbedab70e87f77bd383bc090b16063449da7020b6` at
+`/var/tmp/r12r/signal-ledger-assistant-fix-20261013/release-path-audit-20261013T1327Z/receipt.json`
+records the audit, not network or runtime acceptance. The narrow source repair targets fixed PR #9
+through the same trust chain; all exact repository/open/main-base/head, no-follow review metadata,
+helper digest, SSH-target and immutable candidate/recovery/pair checks remain. No arbitrary PR
+selector is added. This helper-only change leaves application context bytes unchanged but requires
+a new exact-head image and pair before release; the prior image must not be relabelled. Focused
+checks and independent review of this binding repair are pending. The active goal remains open.
+
+
+The first fixed-PR9 source review failed on a missed candidate receipt consumer that still wrote
+`pull_request: 2` beside the PR9 verifier; its matching stale test expectation hid that mismatch.
+Receipt SHA-256 `5ab1749111691086f57e3130a575d81d15b7050681606beb220a74fba2a78e52`
+preserves the finding. The two-line repair then passed independent review and all 259 focused
+tests, Ruff/format, unchanged 24 source/import bindings, and unchanged before/after app context.
+Receipt `pr9-retarget-independent-qa-20261013T134028Z/independent-qa-receipt.json` under the
+October 13 task root has SHA-256
+`e0120d0cb1323920839bf773f2aac24b93ccc7aaf2947c3511cde515d6f53ebd`.
+
+The image-built native binary is
+`b8b97565c3a8cff3a6c46c7d22845864d0667bc2149527adfb958faba7c1733f` (212,784,608 bytes).
+The scanner correctly rejected it under the former exact executable digest. Fresh checksum-verified
+official Bun 1.4.2 archive/binary comparison proved all four public match spans identical at the
+original offsets. Receipt `public-bun-spans-02/receipt.json` SHA-256
+`775b9247341e7dc7bed348063cc7e56995ec86af0ac2a58d2892b9790eeefb85` records source/archive,
+full executable, size and per-span digests; no match strings or credentials were emitted. The first
+comparison wrapper failed at import setup before Docker or download; the corrected second wrapper
+has its contemporaneous wrapper baseline. Only the exact rebuilt executable digest changes in the
+scanner; path, size, spans, other public-source pins and credential patterns stay fixed. Selected
+scanner tests, actual file scan and independent recheck remain separate from full archive acceptance.
+
+
+The exact executable pin update passed independent local provenance/source review, all 23 archive
+tests, Ruff/security/format/diff checks, and an actual 212,784,608-byte file scan. All eight source
+pins remained unchanged. Receipt
+`independent-scanner-qa-20261013T1400Z/independent-qa-receipt.json` SHA-256
+`c355ca605aec4e8883782fc62e5752dee9e861399e38bdc1bf0fd49c0443f2e5` records the scope and
+preserves the original scanner failure, parent import setup failure with unavailable standalone
+binding/time, and the reviewer's separate heredoc setup failure. Full final candidate/recovery
+archive scans and supervised native/runtime, actual 1 GB and release checks remain open.
+
+
+### R-ASTRA-121 E12 — normal supervised free answer and local retention guard
+
+The installed candidate `sha256:9767d4a2b37b07467232916c30328344111f8aae36880e6aaf7b85b575b303f3`,
+labelled at application head `1fe8780095bde058ded78605f3ebd9588c76b9ba`, started its normal
+supervisor and reported ready in a disposable local 768 MiB profile. No native receipt, readiness,
+managed guard or provider credential override was used. The attached two-owner functional command
+**Failed** overall at `2026-10-13T14:56:19Z`–`14:58:42Z`: owner 0 completed a genuine free
+Space Bunny answer (356 bytes) with one workspace-summary receipt in 50.862 seconds. Owner 1
+had a workspace-summary receipt but no answer/search/fetch source; polling failed with
+`transport_readtimeout` after 72.526 seconds. The cause is unproven. This establishes the declared
+normal supervised free-answer scope for owner 0, not two-owner reliability, search, actual combined
+1 GB, release or production acceptance. Four pre-run wrapper/helper/fixture inputs remained bound;
+owned container, network and volume cleanup passed. Result and terminal are retained under
+`/var/tmp/r12r/signal-ledger-assistant-fix-20261013-native-zen/supervised-free-01/`.
+
+A typed bounded-builder local selection operation compares the expected full current image ID and
+verifies both completed current-role rows, their bound build receipts and Docker identities under
+the ledger lock, then atomically selects a retained image. It deletes no images, changes no ledger
+roles, and preserves the three-image limit. Independent native-x86_64 review **Passed** 201 builder
+and 60 documentation tests, a private 32-case CLI exclusivity matrix, pointer replace-failure
+injection, Ruff/format and documentation checks. Receipt `independent-local-current-qa-20261013T1455Z/review.json`
+has SHA-256 `8bdfe16f8183a6fa528e6716825536b4d77714f3c587f2424cb14a08b55f5ce9`.
+All 11 bound inputs stayed unchanged. No selection or image retirement ran at this checkpoint.
+
+Two unexecuted private retirement drafts **Failed** independent review: the first used assertions
+that optimization could remove; the second directly wrote a final receipt after deletion and lacked
+safe publication recovery. Preserve both findings. A third prepared-publication/recovery draft is
+unexecuted and under review. The candidate remains protected by the local-current pointer; no image,
+ledger row or production state was removed or changed.
+
+Fresh official MCP 2.2 stdio initialization/list-tools **Passed** for all eight expected tool names
+and the current PR #9 rehearsal declaration, with zero tool invocations and source bindings under
+`pr9-sdk-discovery-02/`. The initial SDK wrapper failed on `serverInfo` versus the installed SDK's
+`server_info` serialization; its failure is retained separately. This discovery does not prove a
+mutating host operation, Codex app reload, recovery pair or release. Production remains the previously
+deployed `5ad2c3fddfce5a5a631b72cd832a53f24757c44a` image at schema 13; the free-Zen fix is not
+released. Normal two-owner/search/fetch, shutdown, canonical/security/browser acceptance, actual
+combined 1 GB, exact-PR recovery/rollback, owner canary and deployment gates remain open.
+
+
+### R-ASTRA-121 E13 — supervised two-owner free-model functional pass
+
+The normal supervised candidate from E11 passed the parent-run local functional check at
+`2026-10-13T15:54:18.745468Z`–`15:57:11.622212Z`. Both simultaneous owners received genuine
+`opencode-zen/space-bunny-free` answers (428 and 1,041 bytes), matching workspace-summary
+receipts, seven native search sources and one approved guarded fetch source. Cross-owner and
+forged MCP requests returned 404; both conversation deletes returned 200 with no pending records.
+No provider credential, payment, readiness or managed-tool guard override was used.
+
+The five pre-run source pins stayed unchanged; owned container/network/volume cleanup passed.
+Retained sanitized stdout is 4,825 bytes, SHA-256
+`7a865c70d9d0a4224f7a7c7829f765937a8439115d34f488ac0767b526443ea5`.
+Evidence is under `supervised-free-07/` in the native restoration task root. Independent artifact
+review in `independent-recurring-identity-qa-35e58260-e0d9-4ba1-b405-4a1f1af2b7c8/independent-review-final.json`
+(SHA-256 `4e2c61c1475e58e8763c77a39b30bf56931f499a0fffa1db33f80cf05dff431e`)
+confirmed bindings and output integrity; it did not replay the model trial.
+
+This uses a local 768 MiB profile, before/after resource samples and a container-liveness/local
+memory-floor callback. Peak sampled cgroup memory was 692,928,512 bytes with zero sampled OOMs.
+It does not establish continuous production HTTP health, actual combined 1 GB, PR-pair/rollback,
+shutdown, canonical/security/accessibility, owner UI or release acceptance. Earlier trials remain
+failed or unavailable: free-02/03 setup timeouts; free-04 closed-stdin interactive-ack wrapper failure
+with unretained raw output; free-06 health-observer timeout before any retained native output.
+The corrected interactive driver passed its synthetic handshake before free-07. These observer and
+wrapper failures are not proof of a provider cause.
+
+A fresh read-only production inspect still reports the old 5ad application/image at schema 13,
+ready and loopback-only, with invited rollout. The release checker is being repaired to bind that
+live identity separately from its preserved schema-12 migration origin. Initial independent source
+review failed on missing recurring image/revision checks; the next review passed 19 focused and
+276 combined tests but found recursive monitoring when a slow identity Docker subprocess invokes
+the health callback again. That P2 finding remains preserved. A scoped identity-subprocess monitor
+flag repair retains deadlines/output/resource checks and awaits independent acceptance. No hotfix
+production deployment, account, paid-provider substitution, resize or email has occurred.
+
+
+The reentrancy repair subsequently passed independent source review, seven focused regressions,
+278 combined rehearsal tests (one live-Docker integration test deliberately deselected), Ruff,
+format/security/compilation and documentation checks. Receipt
+`independent-reentrancy-review-01/independent-review-final.json` has SHA-256
+`84ec03e9dac707688663b141ae7ee3c78b56b27e1d9a95b8b542998c20c4cff7`.
+Only the two identity Docker subprocesses disable their nested monitor callback; command/global
+deadlines and bounded output stay active. This is selected local checker acceptance, not a host trial.
+
+
+Typed local-current selection passed without deleting an image or changing ledger roles. After
+fresh exact ownership/tag/reference/RootFS checks, the independently reviewed retirement wrapper
+removed only the obsolete E11 candidate full image ID with `--no-prune`, verified image/tag absence,
+published its prepared receipt and acknowledged its ledger row. Execution receipt
+`candidate-retirement-execute-01/terminal.json` SHA-256 `4182bd7eccb8c5e9f7b69b5cdc7f83408f5f3294933fe8a7107bc0c6ef9b4db3` records exit 0
+at `2026-10-13T16:26:09.633616Z`–`16:27:00.037337Z` and unchanged wrapper/helper pins.
+The retained production image is now the local fallback; production service and protected images
+were untouched. This creates capacity for a fresh exact-head build; no new build Pass is inferred.
+
+### R-ASTRA-121 E14 — frozen candidate gates and actual-host reserve failure
+
+The clean pushed application candidate `39d8bec95a2296ac9e6e942ee47bc7f783203eff`
+built as image `sha256:ea2daf8655bcb1979aef00c108d98e8b71c9cd4dd8a71242797a61812bab36f2`,
+with 149 application inputs bound to context
+`9f86b6fcddac74d6a60132c4afd0fd951a6ed51265bd2266fee0a101a7608ec0`.
+The installed root-owned 23-field receipt verified the guarded native binary B8; source/stage
+verification matched 52 maintained served/export pairs and the separately checked favicon.
+The same-immutable-image public Bun span extraction resolves E13's earlier missing installed-binary
+receipt digest attribution, without reconstructing its old receipt.
+
+The canonical command `TASK_ID=R-ASTRA-121 TMPDIR=/var/tmp/r12r PYTHONPATH=<hotfix>/src
+./scripts/local-gate.sh check` **Passed**, exit 0, at `2026-10-13T16:34:09.015536Z`–
+`17:05:45.645721Z`: 3,375 Python passes, four skips, four deselections, 85.68% coverage and 73
+frontend checks. All three required checks and completed JUnit were retained. Independent review
+of candidate/root receipt/canonical bindings is in `independent-release-artifact-audit-01/receipt.json`,
+SHA-256 `813156abb392d1920d41836de342191486f69a74f830d7cd9df387e61329aaa4`.
+The skips are separate opt-in native boundary/wire and Docker scopes, not acceptance of those gates.
+
+Current-image local active-search shutdown **Passed** its 768 MiB scope: pending research was
+cancelled before approval; six assistant APIs returned 503 while app readiness, private history and
+saved records were preserved. The driver ended at `active_scan_ack_invalid`, with zero approvals;
+no provider execution-count claim follows. The local migration/recovery pair **Passed** at
+`17:34:29.431482Z`–`17:40:29.670276Z`, preserving post-migration writes and verifying signed-reader
+backup integrity. Both exported archives passed the maintained credential/persistent-data scanner.
+The exact temporary recovery image was retired by its typed operation; protected images were kept.
+Independent runtime/artifact review is `independent-release-runtime-artifact-review-02/receipt.json`,
+SHA-256 `5483b6d241e1b91c6434582483e2af8bcf4fe7ad372e00f7d17143bf796c2837`.
+These are local scopes, not actual combined 1 GB or production rollout acceptance.
+
+Two current-PR official SDK host rehearsals **Failed** with `host_memory_reserve_breached`.
+The first retained the complete host failure before its caller hit an SDK `structuredContent`
+versus `structured_content` property error. The second used the corrected fields and explicit 022
+child mask. After the independently reviewed temporary in-place assistant disable, read-only
+MemAvailable was 534,064 KiB on the unchanged 984,564 KiB host, above the 524,288 KiB starting
+reserve. The second tool still failed. Exact host receipts `0528808ce829bb0d0f756cb34a4576a1` and
+`88df9696a0f7103cbb81948d21c8274d` retain no phase or observed reserve value; cause remains
+**Unproven**. Wrapper exit 0 is transport completion, not a rehearsal Pass.
+
+The exact previously accepted 5ad/image787/schema-13 production rollout was restored through
+`disabled -> owner_canary -> invited`, with each result and fresh inspect checking identity,
+mode, ready health and loopback-only exposure. Independent restore receipt has SHA-256
+`fb26c9f7d662090163c1ead656e4fe36c7655882c1ebead9d7135a32e5c5f387`.
+The restore-control preparation's earlier P2 failures remain preserved separately from its repaired
+static review. No hotfix deployment, resize, account, payment, email or budget change occurred.
+
+The first full browser command **Failed** at its 300-second suite/teardown limits: 61 completed
+passes and 139 unrun cases, with no individual unexpected or flaky result. Its report's `ok: true`
+does not override the failed command. Source/stage and owned process/port cleanup passed separately.
+The initial delivered receipt was later changed during supplemental binding publication; its earlier
+bytes are **Unavailable** and that publication failure remains recorded. The current corrected
+receipt is retained at SHA-256 `f6e640201b2ad40e8d8495e2bc11704a90b3764e3c0f46c42a1716c04904ddf0`.
+The separate full rerun at `18:19:12.219Z`–`18:35:28.293330Z` **Failed** with 196 passes,
+one failure, three expected skips, zero flaky results and exit 1. Its bounded 20-minute CLI
+allowance preserved case deadlines, one worker and zero retries. The real FastAPI assistant flow
+reported a pending turn at its five-second completion assertion; no cause is established.
+All 428 source bindings, 52 served/export pairs and favicon stayed unchanged. Independent receipt
+`full-browser-39d8-02/independent-browser-review-02.json` has SHA-256
+`e316ede123b17f91ea0fed025721b178dc73f6c9bde33aa16c0ea860438a968b`.
+A focused rerun passed 1/1 with the original deadlines, but its fixture startup output was discarded
+by the maintained stderr-only collector. Fixture-only checkpoints now use stderr. Independent focused verification passed 1/1 at
+`19:09:54.091331Z`–`19:10:12.520030Z` with the same five-second assertion and 30-second case
+deadline. It verified the actual hotfix module path, a workspace-summary HTTP 200, and runtime
+completion in about 0.652 seconds. Both fixture PIDs and ports were absent afterward. Browser
+terminal receipt SHA-256 is `7855d0a58fccae4a445ba689ee1396acd37e0c74545529e1c8f47add14277495`.
+The full failed aggregate and its unproven cause are preserved.
+
+The next checker diagnostic retains only a closed reserve phase and observed/required numeric KiB
+facts. Its 512 MiB startup and 128 MiB running guards remain unchanged. A read-only verified public
+helper preflight measured 27,324–28,744 KiB process RSS, but does not establish the earlier failure's
+phase or cause. Independent selected QA passed 15 threshold/phase/hostile-boundary cases and Ruff check/format;
+`independent-memory-browser-qa-02/memory-focused-terminal.json` has SHA-256
+`5f1103272cd778dc9dfa3abea0844d42ac40ebac942495de1dd12c1ec0902d87`.
+The initial bare-Ruff lookup and anchored browser selector failures remain setup failures. Fresh
+actual-host evidence remains required. Release,
+owner UI canary and all unresolved resource/security/accessibility gates remain open; physical mobile,
+actual screen reader and true zoom remain unavailable. The existing 1 GB host, backups and US$15
+monthly total including tax are unchanged.
+
+### R-ASTRA-121 E15 — candidate rebuild, exact scanner binding and browser wait
+
+The clean pushed `1b3d9449a53a1fbd5160306f4a2d617a3f9effda` candidate built as
+`sha256:0cc52e8d60e017b7e73cb03fac54fb7ff3196894eb23e6abbf6b6e5f877ff27b`.
+Build and independent artifact review passed for 149 unchanged inputs and context
+`9f86b6fcddac74d6a60132c4afd0fd951a6ed51265bd2266fee0a101a7608ec0`;
+this is build/source scope. The previous ea2 candidate was independently checked and retired by
+its exact typed operation, retaining the checked archives and protected production images.
+The new local schema-12-to-13 migration/recovery pair passed, with post-migration records retained.
+It intentionally uses the historical da/d3 origin, separate from live 5ad/787/schema13 production.
+Pair manifest SHA-256 is `688f610aa7750eaa9689c9630ecbc682a3e59d7d74609900c84a90b637a00cf4`.
+
+The installed root-owned 23-field receipt validated, but the freshly compiled native executable
+had SHA-256 `9dd48571a16d00a4cc021b6eb85b5c347f2b965aaee96913fa24028b86cef955`.
+It differs from B8 despite identical source inputs. Twelve embedded random public build paths differ;
+normalizing those paths still leaves 4,554 different bytes, so no sole cause or reproducibility claim
+is made. The previous B8 native Pass is not re-labelled as 9dd runtime acceptance.
+
+The original scanner rejected the candidate with `credential_like_bytes`; recovery scan was not run.
+A separate same-image provenance extraction verified all four exact flagged spans against the
+checksum-pinned official Bun archive/binary. Only the compiled file's exact SHA exemption changed;
+path, size, spans and scanning of every other byte remain unchanged. Both actual archives then passed:
+candidate `eea136e2616c466128778f03378775179147c7b0f8d8a4adb616e7dae4a1ee81`, 202,158,958 bytes;
+recovery `4029a7217e8e52e50e726c4f904e52332ccc49c91fd394c4556330234631fa91`, 103,190,484 bytes.
+The initial malformed-image argument substitution attempt remains a setup failure with no container
+start. No actual-host attempt or production maintenance occurred at this checkpoint.
+
+Independent screenshot/trace review of the failed full browser run confirms pending at the last
+sample, then a completed answer/status in the later capture. The first completion time relative to
+the assertion timeout remains unavailable; the original receipt's ordering overclaim is corrected
+in a new supplemental receipt, not overwritten. A controlled six-second valid fixture response
+reproduced the original five-second assertion failure, with a running saved turn and completed
+workspace-summary tool. Teardown connection-refused errors remain separate. The completion poll
+now allows 15 seconds with shorter intervals inside the unchanged 30-second test case, one worker,
+and zero retries. This is test fidelity, not an application or provider latency fix.
+
+Independent scanner QA passed 15 selected tests, Ruff check/format and exact public Bun span
+provenance. Receipt `independent-scanner-browser-qa-01/independent-scanner-browser-qa-02.json`
+has SHA-256 `609997f0534618f0a3b3365a1e523bb0148f209c5bbe144ba53b484e198299ce`.
+The first positive browser run used Node 22.22.2 and retains that qualification. A separate direct
+pinned Node 22.19.0 run passed 1/1 at `2026-10-13T20:13:07.193Z`, with a valid response taking
+6.18124 seconds, actual hotfix fixture module, workspace HTTP 200, saved answer/proposal/tool receipt
+and confirmed theme handoff. Eleven source pins and 53 explicit served/export pairs stayed unchanged;
+owned processes, ports and scratch were absent afterward. Receipt
+`independent-scanner-browser-qa-01/independent-browser-positive-pinned-node-qa-03.json` has SHA-256
+`10368b6c324d1ed84dcd0242b1ebabeffc6a5f38ff67179ed78486f575a94a36`.
+
+A fresh native run on the exact 0cc image and 9dd executable **Passed** at
+`2026-10-13T20:05:45.763049Z`–`20:08:41.790556Z`. Genuine OpenCode
+`opencode-zen/space-bunny-free` completed two concurrent owners' answers (440 and 880 bytes),
+with matching model identities and two workspace summaries. The second owner approved seven native
+search sources and one guarded IANA fetch. Cross-owner and forged MCP calls returned 404; both
+conversation deletes returned 200 with zero pending. The 4,823-byte raw stdout has SHA-256
+`805b92b4c596658d39288df3a11b99f54029fe4a209ac3a3d8c469d770223213`.
+Independent artifact review passed all five source bindings and saved-result integrity, receipt
+`independent-scanner-browser-qa-01/independent-native08-artifact-qa-01.json`, SHA-256
+`7e715076b52d6b29454caa685381a6475f9503f1b44d6a9432309d1344f1e24e`.
+The local 768 MiB before/after sample peaked at 703,586,304 bytes with zero observed OOM events;
+it is not actual combined 1 GB acceptance or continuous health evidence. Two read-only startup
+observation timeouts preceded readiness; the launcher also emitted a nonfatal platform-library
+warning. No provider failure or specific latency cause follows. Wrapper cleanup reports Pass;
+independent exact Docker-object absence is Unavailable because the bound records omit exact IDs.
+
+The full 196/1/3 browser aggregate, current canonical, actual combined 1 GB, exact-PR rollback,
+owner canary and deployment gates remain open. Production is unchanged at the previously restored
+5ad/787 invited rollout; the 1 GB host, backups and US$15 total monthly cap remain unchanged.
+
+### R-ASTRA-121 E16 — complete browser failure and scoped fixture repairs
+
+The clean pushed `9401573a92e49a6528b691284625937dc90c5d8d` full browser run **Failed**, exit 1,
+at `2026-10-13T20:25:28.323Z`–`20:43:45.962Z`: 194 passed, three failed, three skipped,
+zero flaky, 200 discovered. It used direct pinned Node 22.19.0 and Playwright 1.63.0, one worker,
+zero retries, 30-second cases and a 20-minute aggregate bound. All 149 candidate inputs, 428 source
+pins and 53 explicit served/export pairs stayed unchanged. Terminal receipt SHA-256 is
+`7796a5b05683d268afc63e3c7f986f9f106a4a7b55df2d8959c6b2c6bd662951`.
+
+The export failure's exact title is the desktop JSON case. Its saved error contains one unexpected
+turn-event GET abort beside the expected history-export.json abort. The initial QA shorthand
+called it CSV and counted two assistant stream aborts; the supplement corrects that observation.
+The event-stream metadata reports HTTP 200 and text/event-stream, without establishing that
+completion preceded cancellation. The export fixture omitted its existing diagnostics handoff.
+The parent supplied that argument; the maintained exact-one-request/response/terminal validation
+remains unchanged, without a blanket abort allowance.
+
+The desktop and mobile session-revocation cases failed because the parent's controlled six-second
+fixture delay also matched their shared prompt, while their preview assertion retained five seconds.
+This is a fixture regression, separate from the live native repair. The delayed-response test now
+uses a unique prompt, leaving the revocation prompt/deadlines unchanged. Both original delayed-turn
+real FastAPI cases passed in this aggregate. Exact owned source bytes were preserved before repairs.
+Independent direct pinned-Node verification **Passed** all eight affected desktop/mobile cases,
+with zero unexpected, skipped or flaky cases, 73.658 seconds of report duration and 75.15 seconds
+of process duration. All 428 source pins, 149 build inputs and 53 served/export pairs stayed
+unchanged; explicitly owned fixture/runner PIDs and ports were absent afterward. Receipt SHA-256
+is `b557907dd221513d84410333425b2151fdaa9c68078d8091d43f775b746f0a7f`.
+The initial stage-map preflight failure and two post-test receipt-writer setup failures remain
+preserved separately; no rerun promoted those errors. This failed aggregate is not relabelled Pass.
+
+The bounded audit of 28 attached raw axe snapshots reports zero violations and three incomplete
+color-contrast results on desktop context metadata (provider-failure Light/Dark and approved preview).
+The strict raw zero-incomplete criterion remains **Fail**. The supplement SHA-256 is
+`6063df485f0ac65deac09c266803277958ed4461c6f66e6bb7c833cbbfddd1eb`.
+The detail receipt SHA-256 is
+`9439a75ed86549c276db7cb21fe8603182ad4a0fa213dc638831353d74709402`;
+it verifies absence of the explicitly recorded runner/base and real-flow child PIDs/ports, without
+claiming a complete inventory of ephemeral processes. Independent static/screenshot investigation reports measured 6.1307:1 Light and 8.4505:1 Dark
+context text, visible without clipping/obstruction in both provider-failure captures. No approved-
+preview image was attached, so that visual review is Unavailable. Receipt SHA-256 is
+`d59676ff4379dbab01ecd8e1a20b42b6764f36117aca9843b87755a7a7ce1173`.
+The maintained test now attaches a PNG at the exact approved-preview axe checkpoint. A scoped
+three-desktop-state rerun remains pending; no UI change or strict raw-zero waiver is inferred.
+
+After independent conditional eligibility review and typed local fallback selection, a fresh
+retirement check passed at `20:34:59.539757Z`–`20:35:42.608469Z`. The reviewed typed operation
+removed only obsolete image `0cc52e8d60e017b7e73cb03fac54fb7ff3196894eb23e6abbf6b6e5f877ff27b`
+with --no-prune at `20:36:31.387900Z`–`20:37:36.941132Z`, acknowledged its ledger row and
+verified absence. Candidate/recovery archives remain retained. Independent post-removal readback
+passed exact image/tag/ledger/container-reference absence and protected 787/a9 presence; receipt
+SHA-256 is `8aac853b476d65917bf7c0c8af46bb5f29784808a5844824a7eb6644f9d94293`.
+The pointer-selection command lacks a contemporaneous private baseline; only observed selected
+state is independently verified, without reconstructing its execution timestamp. The first QA
+readback incorrectly expected the untagged a9 recovery image in the candidate ledger; its setup
+failure remains preserved separately from the corrected readback.
+
+No hotfix production deployment, resize, paid provider, new account or email occurred. The goal
+remains active with the free OpenCode restoration first, followed by all seven approved features.
+Production remains the restored 5ad/787/schema13 invited release. Existing 1 GB, backups and US$15
+monthly total including tax remain unchanged. Current canonical, actual-host combined resource,
+PR-bound recovery/rollback, accessibility and owner canary/deployment acceptance remain open.
+
+### R-ASTRA-121 E17 — raw accessibility retention and desktop visual review
+
+The scoped three-desktop-state command passed 3/3 at
+`2026-10-13T21:02:57.059Z`–`21:03:57.061Z`, with source/stage and enumerated cleanup matching.
+Receipt SHA-256 is `924a26762d65159daf385d72baa29fce15d33868219ffad876da97a21b9c18cc`.
+The existing WebFetch test uses a 180-second case-local override. Previous uniform
+“30-second cases” wording is qualified: 30 seconds is the CLI default, and existing case-local
+180-second overrides remain unchanged. No test deadline was widened by these repairs.
+
+The prior attachment helper kept counts and measurements but discarded full raw check arrays.
+Only that test helper was repaired to retain exact violations and incompletes, including any/all/
+none and failureSummary. Its fresh same-three-state run passed 3/3 at
+`2026-10-13T21:10:42.247Z`–`21:11:22.249Z`; all 149 build inputs and 53 served/export pairs
+stayed unchanged, with final runner/runtime/listener absence verified. Receipt SHA-256 is
+`bae86ed042e872c025c14230b2c0e2defbf07a5c7e5ec95391022b911d4799f0`.
+The list-only artifact directory and optional receipt-field setup failures happened before launch;
+one actual run followed. An immediate port-bind observation was transiently busy; a subsequent
+port-specific listener scan and fresh bind passed separately.
+
+Full raw data retains three serious color-contrast incompletes, each on
+`<small>Context snapshot: Overview</small>`, with elmPartiallyObscuring and a reason that the
+background cannot be determined due partial overlap. The check reports an indeterminate ratio
+of zero, expected 4.5:1, empty all/none arrays and no related nodes. These are incomplete
+classifications, not confirmed zero-contrast text. Cancelled-preview raw axe is 0/0.
+The measured audit reports 6.1307:1 Light/approved response and 8.4505:1 Dark, with visible,
+unclipped, in-viewport text ranges hit-tested on the target. The parent personally reviewed all
+three bound 1440x1000 PNGs and found the context label visible on a single visual line, without
+apparent foreground obstruction. Multiple measured text ranges are not multiple wrapped lines.
+Image SHA-256s are `e92708d611b0a987ed25602cd034a106f2a02b1320ff4e841a1f59286dd1ad45`,
+`e21372d4e9b19d46f09a99e729fabefd14d813d703288e5a1a1ee2665a7e9d3c`, and
+`919a65bdca28d11d9f6686586048abc3671b8ab325c20b6226277144a557e126`.
+The approved-response image shows the completed response, not a pending confirmation card.
+This is scoped manual visual evidence; strict raw zero-incomplete remains Fail and no full-app
+accessibility or WCAG claim follows. No speculative CSS/layout repair or waiver occurred.
+
+The unrelated Release 3 pure-draft review found pre-arm crossing and malformed evidence failures.
+Five new regressions reproduced the original failures, then the parent repair passed 30 pure tests;
+independent verification passed the same 30 on Python 3.11.15 at `21:13:40Z`–`21:13:41Z`.
+Independent receipt SHA-256 is
+`b7103b67fb65336eccc6014590a2ef07be5d995600abaef063256d11edf6f32c`.
+A persisted-resume branch is sound on source review but lacks a direct fixture. Evidence/result
+linkage and report-chart fields remain unresolved; persistence, scheduler, API and UI are unverified.
+These drafts remain in their separate checkout and are not part of the assistant image.
+
+The free-native restoration goal remains active. Current-image/native source bindings are retained
+honestly; mandatory current release/resource/recovery/rollback and owner UI/deployment gates remain
+open. Production, existing backups, the 1 GB host and US$15 monthly total are unchanged.
+
 ### R-ASTRA-121 E18 — rollout observation failure and bounded state verification
 
 The free-Zen restoration remains the first dependency before the seven visible feature additions.
@@ -6513,6 +7064,593 @@ as inconsistent with migration 007's mandatory legacy-owner row plus its new syn
 actual component readback was not captured. A further bounded fixture repair is being prepared
 with component diagnostics and an explicit candidate/recovery image distinction. No production
 recovery switch, candidate host trial, resource acceptance or new application release follows.
+
+The following restoration and local-build records are separate from the PR #11 helper ledger and retain their own task-scoped evidence.
+
+### R-ASTRA-121 E21 — recovery compatibility and integrated checker checkpoint
+
+At 2026-10-14T01:14:51Z–01:15:31Z, the disposable packet10 trial retained its synthetic
+schema-13 records and started the exact registered A9 recovery image. Its runtime-profile
+phase **Passed**, including the UID/GID drop, no-new-privileges, zero capabilities, read-only
+root, resource limits, loopback binding and actual tmpfs options. Health returned HTTP 200
+with `ok/stock-probs/v1`; readiness returned HTTP 200 with schema 13 and assistant disabled.
+Anonymous auth endpoints returned HTTP 200 and protected history/lists returned HTTP 401.
+The HTTP phase and aggregate **Failed** because the smoke expected anonymous `/` to return
+200, while the observed response was the source-defined 303 sign-in redirect. No redirect
+was followed. A successor must validate the exact relative sign-in target internally and
+request the fixed public sign-in page explicitly; compatibility acceptance remains pending.
+
+Packet10 terminal SHA-256 is
+`5d76aba6d6a30d1971ce5dcfbe7b59861e8b15684731839953fc2c30c1e7c655`;
+independent actual-artifact review is
+`821139f9b99e2d50e75e3945aa6f2b1f2703c59379c7cb9226e868d418a998f4`.
+The terminal cleanup **Failed** at the final socket bind with `EADDRINUSE`, after recorded
+owned-container, volume and network removals. A separate fresh read-only check **Passed**
+all absence checks, protected-image identity and socket binding; its receipt SHA-256 is
+`9c4fdd71655a159e7508489186fb7f6053e33831632f166cec5d202ad3f9f57f`.
+The original failure is retained and its cause remains **Unproven**.
+
+Operational PR #11's checker additions have been integrated locally into PR #9 with both
+fixed pull-number bindings preserved as 9. The schema-12 fixture seed and migration pin
+remain unchanged; the separate registered A9 production alternative retains its exact record,
+container, archive, pair, overlay, Compose, disabled-readiness and memory-floor guards. The
+already-installed PR #10 rollout-health polling repair is also present in this source tree.
+Parent selected tests **Passed** (311 passed, one opt-in local Docker check skipped), and
+Ruff check/format, documentation validation and diff checks passed. The parent test's
+contemporaneous pre-run current-source pins are **Unavailable**; a fresh independent run
+with pre/post pins remains required. No canonical, new-image, actual-host resource, PR-bound
+rollback, deployment, owner-canary or release acceptance follows from these selected checks.
+
+R3's strict persisted claim-owner repair separately **Passed** independent selected QA:
+17 tests, Ruff/security/format, and the supplied pins. Booleans, floats and strings cannot
+masquerade as integer owner IDs. Migration 016 remains an unregistered prototype and normal
+startup/API/scheduler integration remains pending. R2's fresh approved build/stage and selected
+browser results remain separate scoped evidence; no failed browser aggregate is relabelled.
+The live application remains 5ad/787/schema 13 on the existing 1 GB host, with backups and
+US$15 monthly total cap unchanged. No production image transition or feature release occurred.
+
+The first independently pinned integrated-operations run also **Passed** its 311 tests with one
+opt-in skip, but the overall integration review **Failed** because nine original hotfix regression
+functions were dropped during conflict resolution. Its receipt is
+`91ddef8db2bb7b080269d53115e8fbb47d7c87007d92bee499bdc5372c90721f`.
+The parent restored all nine functions, adapting only the stale-schema identity fixture to the
+new dictionary return contract, and removed a redundant identical baseline assignment. The
+restored selected tests **Passed** (36 passed, 215 deselected), with Ruff and format checks;
+receipt `628f2364283f118ff346d35739a955a305b773665b8ca1c8a81b5bae62ff31bc`.
+Independent verification of that repair is pending. The first review failure remains recorded.
+An explicit approved candidate-context comparison confirms all 149 application inputs remain
+unchanged at context `9f86b6fcddac74d6a60132c4afd0fd951a6ed51265bd2266fee0a101a7608ec0`;
+this permits scoped evidence reuse, but requires a newly bound image after the Git checkpoint.
+
+Independent repair recheck **Passed** at 2026-10-14T01:29:40Z–01:29:47Z: 345 tests passed,
+one opt-in check skipped, with Ruff/security/format and 36 project-import plus five owned-file
+pre/post bindings. All nine original functions match their earlier ASTs except the single
+reviewed identity-fixture adaptation, whose assertions are unchanged. Receipt:
+`4ee4f955ae92de4469bf6c0a56d49bc0b3fb22c82f5eb4c4150f2df40a6290e4`.
+The parent integrated review accepts this scoped Git/build checkpoint only; local sign-in,
+actual-host resource/recovery, mandatory canonical and exact-PR release gates remain open.
+
+### R-ASTRA-121 E22 — startup-reserve preflight repair checkpoint
+
+Task `R-ASTRA-121`; the authorized T6/host07 actual-host rehearsal **Failed at preflight** on
+2026-10-14 (`2026-10-14T04:58:30.430046Z`–`04:59:04.569566Z`). Helper receipt ID
+`e36c9d7bf7e98ba59281b6faca658b14` reports 517,480 KiB available against the unchanged
+524,288 KiB startup floor, a shortfall of 6,808 KiB. It stopped before loading candidate/recovery
+images, creating rehearsal resources, or invoking the native model; there was no candidate trial or
+model/search/fetch call. The cause is **Unproven**.
+Independent review confirmed restoration to the original `5ad2c3f` / `78746f60`, schema 13,
+invited and ready, loopback-only service (receipt SHA-256
+`0531941abd7aa7d3c1a647f77a2853083c03f2dec01a49b640f49fb2910ff0ec`). A fresh read-only inspect
+at `2026-10-14T05:59:36Z` returned the same revision/image/schema, ready invited health and
+loopback boundary (SHA-256
+`8786422cd73ea72f3f9989488193f75004e6543e66ec020ad63b6acb736e2b66`).
+
+The parent-observed actual packet03 run measured approximately 5,012 KiB less process PSS and
+private-dirty memory after full garbage collection and Linux/glibc `malloc_trim(0)`; its immediate
+host `MemAvailable` sample stayed at 367,928 KiB. The run's `terminal.json` SHA-256 is
+`3aa6c0047d84777d1141e57d7b705f682c25ad6ae84c231459277c79ed06118b`. A separate independent
+review passed the diagnostic packet's static/source scope only (receipt SHA-256
+`9ad0278d499b81014a915d0868889fe0c583b843225322921d2f62ec5f3fb24c`); it did not independently
+review the actual host run. These process-local measurements do not explain the earlier host-reserve
+failure or demonstrate a 1 GB pass. The two earlier independent review
+failures on interim preflight-memory projection repairs remain **Failed** (repair 01 receipt
+`b2d20404410fce85cc6708da109bf596605fd1375274ab5786cfb6b766bb9b15`; repair 02 receipt
+`7768f0bed10e48785a19701bd0f298bc626d8f64be7e9259e4d545ec7b29d5fc`, review note
+`cf8b931e6ec7e5179efbf45c80e8daade162fe314fc18289ac056ddc189d18af`).
+
+The bounded repair releases only completed local verification allocations on Linux/glibc, observes
+the existing startup reserve for at most five seconds, then retains the final production/readiness
+check and reports its exact guarded availability. The original 512 MiB startup and 128 MiB running
+floors and 1,080-second absolute operation budget are unchanged. Independent repair 03 passed one
+targeted projection regression and the helper test file (259 passed; one opt-in Docker test
+deselected), with stable before/after pins for helper
+`f47b3ee2703248bc27d47b87d0c03b8df440158b0438b2fb99e8c7c2dadbc181` and tests
+`701e4ea90ee40f64a73d99f0e2f02f060dda3ac0e5bbe01bf63d4c166b30fbee`. Receipt
+`/var/tmp/r12r/signal-ledger-assistant-fix-20261013-native-zen/operational-resource-qa-repair03-01/receipt.json`,
+SHA-256 `993b54db3999eba674e5a24726fac36c1f8eacdbc2b2820807d0162e7dd31691`. Parent's narrow
+integrated source review passed. This is local helper/source evidence only: a retry on the repaired
+source, a newly bound current-head image and pair, canonical gate, actual-host 1 GB resource
+acceptance, native runtime, and release gates remain pending. The approved objective remains a
+working genuine free-Zen OpenCode answer followed by all seven visible feature releases; E22 does
+not complete either dependency.
+
+### R-ASTRA-121 E29 — bounded startup-wait checker checkpoint
+
+The current source changes the read-only startup observation from the historical five seconds in
+E22 to a bounded 30 seconds, within the same 1,080-second absolute operation budget. The 512 MiB
+startup and 128 MiB running reserve floors, fail-closed counter/clock checks, final exact memory and
+production-identity/readiness guard, and no-side-effect-before-guard ordering remain unchanged. E22's
+517,480 KiB reading remains **Fail**. T9's startup guard also remains **Fail** at 519,432 KiB against
+the 524,288 KiB floor. Twelve later observations exceeded the floor, beginning at 26.016 seconds
+with 527,908 KiB available. These later readings are diagnostic only; they do not establish the original
+failure's cause, retroactively clear its preflight, or prove actual 1 GB acceptance. T9 artifact-only
+review passed 16 checks (receipt
+`/var/tmp/r12r/a9-memory-t9-actual-independent-qa-f02673dc-a7bc-419c-8dfa-f069275f1942/independent-actual-review-04.json`,
+SHA-256 `95b611bb8bbe6b69b72194960e9494d0243dc4e91e822c2c5efcf2180d8c2aaf`); its three harness
+failures remain historical.
+
+Builder-reported selected tests passed 24 with 255 deselected. Independent source/unit/static QA
+passed 278 tests with one opt-in local-Docker integration test deselected, plus Ruff, Ruff security,
+format, and diff checks. The independent receipt is
+`/var/tmp/r12r/pr9-startup-reserve-independent-qa-20261014-01/independent-receipt-01.json`,
+SHA-256 `d21ab84a5f7adc0a41a8a67c98baaad204d08535635ab147d2a30094a640ce64`; its binding supplement
+`binding-supplement-01.json` has SHA-256
+`f7e232ed535b7404eee9ae4c668805501c92d01a90fdcce8423f5d893940dab5` and confirms the subprocess
+resolved imports from the target worktree. The initial missing-test-filename setup error and initial
+parent import-path qualification issue remain preserved; the supplement resolves the latter for the
+recorded test subprocess. The three independently bound files were `scripts/pr_rehearsal_host_helper.py`
+(`e8bfc0bee1718449526d3f7ab04de6c083f819abf5c2eb9f3ef9cf9eadc9ae10`),
+`tools/deploy_mcp/pr_rehearsal.py`
+(`3916fe77b12ae5e20ce874e52cac1ae9d2b266b6a1f0a162d3b8ad4acc178778`), and
+`tests/test_pr_rehearsal.py`
+(`327abf2b93b34bf58ca96295fb997375764885d90624437d802300fc2780c4f5`). Parent integrated source
+review passed with no findings at `2026-10-14T11:32:36.730929Z`; receipt
+`/var/tmp/r12r/pr9-startup-parent-review-5f259f3f-a3d2-4379-8e28-60acf7dc6ff2/parent-review.json`,
+SHA-256 `dc4660f939aa5effa2bfc2f9c78634d7d3c2729a8ed756ec92655a495f4bd107`.
+
+No fresh image, installed-helper execution, host retry, native/provider run, actual combined 1 GB
+test, exact-PR rollback, or release acceptance is established. The genuine free-Zen answer through
+the application remains Priority 0; all seven visible features follow it. The existing host, backups,
+and US$15 monthly cap remain unchanged.
+
+The authored-guide update passed current-map documentation checks against
+`documentation-map.json` SHA-256 `8f657834c596f57fcab6fcc9e0176e6699589fb9ffcc14c266960ab708b6ed5d`:
+`scripts/validate_docs.py` **Passed** (9 categories, 14 topics, 8 governance entries) at
+`2026-10-14T11:34:35.107264Z`–`11:34:36.264563Z`; completeness **Passed** (177 mapped files) at
+`11:34:36.264595Z`–`11:34:36.694022Z`; coverage self-test **Passed** (26 cases) at
+`11:34:36.694051Z`–`11:34:39.936233Z`; change-aware coverage **Passed** at
+`11:34:40.043938Z`–`11:34:40.524269Z` (177 checked, 9 changed, no exemptions or violations); and
+staged/unstaged `git diff --check` **Passed** at `11:34:40.524306Z`–`11:34:40.611766Z`. Documentation
+pytest was not run. These are docs-scope checks only.
+
+### R-ASTRA-121 E32 — lazy provider startup and host reserve checkpoint
+
+T13's actual-host trial on 2026-10-15 **Failed** before SDK, model or MCP execution. Thirty
+startup observations over 30 seconds ranged from 505,900 to 513,712 KiB against the unchanged
+524,288 KiB floor. The exact original 5ad/787, schema-13, invited-ready service was observed
+restored; restoration is not guaranteed by that observation. The trial terminal SHA-256 is
+`eaa9bb1cd65a0f4a0521704854fa39e2b8318dd5eaa5eeb313ea3338bea41ed8`; independent artifact
+integrity review `1d4ee0747f2ad11bd98110e0d1b8eb70ea92f192ddd956906cc309676a0bdb42` accepts
+the failed result's bindings, not native or actual 1 GB acceptance. Its packet is
+`/var/tmp/r12r/a9-pr9-native-t13-2882c487-a620-490b-88a2-ee9126925006`.
+
+The subsequent source repair defers the constant-name Yahoo and curl imports until their
+market-data/news operations. Fixture and Yahoo-configured application startup remain free of
+those dependencies. Missing dependencies produce fixed `provider_unavailable` errors; only an
+explicit `provider_busy` response uses the capacity message in both API and headline client.
+The local import-only PSS delta fell from 76,295 to 6,630 KiB, approximately 68 MiB less. This is
+not a host availability measurement, a runtime-provider test, or a cause for the earlier failure.
+The implementation receipt is `2b4899c8797ddd493ca0aa418e5ddd2507bfc78ac823f3f9de54e437a248a01b`;
+the news-client supplement `fc6cbf303a7ef0defffb614b544276d397316532ceb54088bb50fbec6e6b9618`
+corrects the initial mistaken claim that no frontend news client existed.
+
+Independent focused QA **Passed** with no P1/P2 finding at 16:09:34–16:12:05 UTC: 54 provider,
+market and fresh-interpreter tests; 19 API news tests with 106 deselected; 11 news-service tests;
+and one Node contract executing the actual headline function. Ruff, security selection, format,
+JavaScript syntax and diff checks passed. The original receipt is
+`/var/tmp/r12r/lazy-news-independent-20261015T160800Z/independent-final-receipt.json`, SHA-256
+`a945da00c67aff4aa1a53667928d09357b578a574f1c915697a7f48c03178a82`.
+Its incorrect root-level JUnit count projection is preserved; supplement
+`58311df72ca3bb7be18f4b391974cf434c9c42708538eb9da8a7c2f2bbbcabfa` confirms nested-suite
+counts of 54, 19 and 11 with no failures, errors or skips. Tests used Python 3.11.15, Node
+22.22.2, SD temporary storage and child umask `022`; no external provider or host call ran.
+
+The full approved `./scripts/build-frontend.sh` path **Passed** in a source-bound SD checkout at
+16:09:51–16:11:58 UTC: typecheck, production build and 74 frontend checks. All 88 inputs were
+unchanged; all 53 served/export pairs matched. Terminal SHA-256:
+`19668f1f176e8aaa33a36750d1d32d7ca91fba3519360836d666eb533bef4131`. The worktree's sole stale
+generated export asset was aligned after preserving its prior bytes; the served files already
+matched the fresh build. Alignment receipt `8a4991ab9207a9604d56242aac75ccb83f396baf2b504fea75fe2fa3c0030f41`
+records the same 53 pairs without claiming a second build. Artifacts are under
+`/var/tmp/r12r/hotfix-lazy-full-frontend-8e5864ce-2ae1-4ef2-beec-e4d8012693c6`.
+
+The new recovery-overlay source pins both the unchanged da276 provider and the reviewed lazy
+replacement, rejects drift before replacement, and includes the provider in its six-file overlay
+manifest. It retains the fixed migration, readiness and UID/capability contracts and the historic
+recovery API; it does not copy candidate API code into the base. Builder and independent scoped
+checks each **Passed** 12 tests with 347 deselected and two existing warnings, plus Ruff,
+security, format and diff checks. Independent receipt
+`/var/tmp/r12r/recovery-overlay-independent-20261015T161925Z/independent-receipt.json`, SHA-256
+`598fcc2a0091e660ae8eeb5018aac503b96520826bc82799c3b0336b0fe41476`, binds 15 unchanged inputs.
+This prepares a new recovery image; none was built or activated during those checks.
+
+The old bd30 image/pair and earlier focused eight-case browser result retain their original
+bindings; they cannot accept this changed source. A fresh candidate and recovery overlay/image,
+independent recovery review, real native functional check, actual combined 1 GB test, canonical,
+security, exact-PR rollback and release gates remain open. No paid provider, resize, deployment,
+rollout or email occurred for this source repair. The existing 1 GB host, backups and US$15
+monthly total cap remain fixed. Genuine free-Zen OpenCode restoration remains Priority 0 before
+the four visible-feature releases.
+
+
+### R-ASTRA-121 E33 — local build failure and reservation recovery
+
+The first 09f candidate build **Failed** at metadata resolution after the owned builder's stale
+resolver could not resolve the registry. An exact owned-builder restart restored a bounded DNS
+lookup. The second build **Failed** with `fixed_command_unavailable_or_timeout` at
+16:48:02–17:03:47 UTC on 2026-10-15; its 149 application inputs were unchanged. A Next build
+worker survived CLI cancellation. Its precise timeout cause remains **Unproven**; resource
+pressure is an observation, not a diagnosis. No candidate image was accepted.
+
+Parent readback bound that worker to the exact owned builder, then stopped only that container.
+The worker disappeared, the unrelated local application was unchanged and the ledger was retained.
+A restart solely for history inspection found no running or current-window history row and no
+exact candidate tag. Historical BuildKit terminal evidence for the second build remains
+**Unavailable**. Cancellation receipt SHA-256 is
+`1af20f33a58b958397aad5e36f38dc1c1393b46a20561b799a17351a2318e1d0`; settled readback is
+`6cf4edaab79c939a9e4b48e5c179d238781bbe0ee464995ddbc43408062aa46f`, both under
+`/var/tmp/r12r/hotfix-09f-failed-remote-worker-preflight-ivl_7aso`.
+
+The local-builder repair retains genuine bounded failure receipts and verifies the exact builder
+start generation before backend cancellation. Its typed local-reservation recovery accepts genuine
+managed-local failures or separately typed external observations, without forging PR receipts.
+Fresh history, exact inventory, ledger consistency and complete exclusive receipt publication are
+required; uncertainty retains the reservation. Independent source/mock QA **Passed** 221 tests,
+Ruff, format and diff checks with no P1/P2 finding. Receipt
+`/var/tmp/r12r/localbuild-qa-20261015-oSUkcq/independent-review.json` has SHA-256
+`b8a1bf30694e995a552601d0550e91dc346bd3b1e39eb084081c05e9231c1d17`. Parent integrated
+source/evidence review found no blocker for this scoped operation.
+
+The actual typed external-observation reconciliation then **Passed** with exit 0. It removed
+only the one local placeholder reservation, leaving two protected/completed ledger entries. The
+operation's fresh history/inventory checks and exclusive receipt are recorded in
+`/var/tmp/r12r/local-inflight-parent-reconciliation-5f576nm4/terminal-and-readback.json`, SHA-256
+`8a058b5fc93b2ff2a1e6492abbb444a62947347f65f39a9ddf724174bc81ed5e`; reconciliation receipt
+SHA-256 is `959b556c8f544d7a7bac45fab64673bbab3410b2525640ecefcd4785ff67e8fa`. This is local
+reservation recovery, not image, native-provider, actual 1 GB, rollback or release acceptance.
+A new image and the required release checks remain pending. Production, existing backups, the
+1 GB host and US$15 monthly total cap are unchanged; no deployment, rollout or email occurred.
+
+### R-ASTRA-121 E34 — 6359 build failure and stopped-generation recovery
+
+The local candidate build at pushed revision `63597953c9d1ab387563dadfe705b78a2861a426`
+**Failed** at `2026-10-15T17:50:41.255Z`–`18:07:21.795Z`, without an accepted image. All 149
+application inputs remained bound to context
+`019783e161f8153ef088c596c329183de3cdf585ace0dd5fbdfcd10fe3ac4e15`.
+The primary error was `bounded_build_timeout_cancel_unverified`; two secondary bounded-command
+failures and unavailable inventory facts remain in the genuine failure receipt, SHA-256
+`30eb22190ebcfcec69204d246b9342eda0c6db78357bf4ca7e1f879107ad0b85`.
+Build terminal `/var/tmp/r12r/hotfix-6359-manifests-and-build-jghdb7hp/build/terminal.json` has
+SHA-256 `e7a4c7aa3d7764362a118efe0d948714be5b5bc4a98bb98c324c167bbd0465b4`.
+The owned native-build process chain survived CLI cancellation. Observed memory/I/O pressure and
+zero OOM counters do not prove its cause. Parent normally stopped only the exact owned builder,
+verified the workers absent and unrelated application unchanged; cancellation receipt
+`4906d5c290a00deef96422abe0ef48be0733386e244f1729d9a763e8b9481f61` remains preserved.
+
+The source repair removes full Buildx/inside-container health checks from pre-stop verification.
+It rechecks fixed ownership/profile/config/network/cache and start generation, normally stops
+only that builder, and verifies same-generation stopped/PID-zero and bounded absent/empty cgroup
+facts. It preserves stop-command errors even when later state is verified. Genuine historical
+uncertainty can be reconciled only with fresh proof, exact tag/placeholder absence, protected
+inventory, ledger compare-and-swap and complete exclusive receipt publication with rollback.
+Historical false/present facts remain rejected; no historical result is rewritten.
+
+Independent source/mock review **Passed** the full 238-test file and a separate 19-case selected
+negative/rollback scope. Its initial 0002-mask result is retained. The explicit-022 full-file
+supplement **Passed** 238 tests, zero failures/errors/skips and two warnings at
+`2026-10-15T18:45:28.534857Z`–`18:45:33.760262Z`, with unchanged source/test/conftest pins.
+Receipt `/var/tmp/r12r/pr9-builder-repair-independent-qa-20261015T1844Z-umask022/supplemental-qa-count-correction.json`,
+SHA-256 `f36d3c22a7a9640bfe0e982908d1310a8a9bb6666eceab943da971a4e6b989a1`.
+The first supplement's empty top-level JUnit projection and corrected nested counts are both
+retained. Builder optional strict mypy remains **Fail** (222 diagnostics versus 231 on its saved
+baseline, zero newly normalized diagnostics); this is not a typing aggregate Pass.
+
+Parent integrated review and the actual typed genuine-failure reconciliation **Passed**. It
+removed only the placeholder reservation, taking three ledger rows to two, with the full image
+inventory, stopped builder and unrelated app unchanged. Terminal/readback
+`/var/tmp/r12r/local-6359-stopped-reconciliation-j6zormfi/terminal-and-readback.json`, SHA-256
+`fcff1b47224dcced0cf7a93e88a5e72eca55dacfc279116b25c84bbf0a5b1e57`; exclusive managed recovery
+receipt SHA-256 `c20ed27b30dbffbd3f9eb523af7a2f57faf2c85be0e8f9ca588290c879ea111c`.
+The builder was then normally restarted solely for read-only history. An initial history command
+failed without retained stderr; a later bounded diagnostic succeeded with 43 terminal rows and
+no 6359 build row. History projection SHA-256
+`a4f8c7589faef2472a013f2418d700439719e3daf91a8d8fb4a135a3c45e5192` under
+`/var/tmp/r12r/local-6359-history-after-recovery-0ua89esn` does not establish why the first read or
+the build failed. Historical phase/terminal evidence remains **Unavailable**. The 15 tracked
+Dockerfile/native-build inputs are identical to the prior successful bd30 source; comparison
+receipt `647540c32dbdd245ef192398011dff9f0017d36e950307cae33018fd2758a13e` is source identity only.
+A bounded live-phase diagnostic is being designed before another build.
+
+Separately, the host/MCP consumer's explicit temporary-recovery baseline passed independent 332
+full-file and 52 selected rejection tests. It binds the fixed 6359 provenance and approved
+root-owned records to actual image/tag/platform/revision, loopback and ready disabled-assistant
+state; existing candidate/A9 shapes remain distinct. Independent receipt
+`/var/tmp/r12r/pr9-temporary-baseline-qa-20261015T1836Z/independent-review-receipt.json`, SHA-256
+`afe787cb85180643a4e3699205f77140a00ebfb749e9765d65d857e4bf5a9884`; parent review
+`8afb582f1e54783b0303f9e8b9202d90a5e998f1cc7555f22c43365fbc099d19`. Strict security lint with
+test assertions included failed only S101; the configured test-assertion exclusion passed. This
+does not establish fresh running-MCP loading, an approved/built temporary image or a host action.
+The cooperating ops helper's continuous-reserve gap remains open pending its separate repair.
+Fresh read-only deployment `status` and `inspect` still report exact 5ad/787/schema 13, invited
+rollout, ready app/assistant and loopback-only publication. The old October 13 failed-rollout
+record is retained separately; it does not override the fresh ready health projection. Receipt
+`/var/tmp/r12r/r121-production-readonly-w1ltgzaq/receipt.json`, SHA-256
+`6f3cdce63bebd81a459f798e67a979e20a01e8ed3301718926abde2c673a35f9`. No model turn was run.
+No production deployment, native trial, resize, rollout or email occurred. The existing 1 GB
+host, backups and US$15 monthly total cap remain fixed; genuine free-Zen restoration remains
+Priority 0 before the seven visible-feature releases.
+
+### R-ASTRA-121 E35 — bounded local build phase diagnostic
+
+The local-build-only observer requests raw JSON progress from the pinned Buildx v0.30.1 /
+BuildKit v0.26.1 protocol. A background bounded reader drains stderr without placing parsing on
+the deadline loop. It retains only coarse allowlisted phase enums, completion/cache/error flags
+and elapsed durations in the genuine failure receipt. Raw names, digests, commands, URLs, log
+data and warning/error text are discarded. Unknown vertices are counted and skipped; a partial
+projection can retain later recognized native/frontend phases. These coarse phases do not expose
+the inner steps of chained native or frontend commands.
+
+Raw bytes, frame size/count, array/vertex count and artifact size are capped; after a parser cap
+or failure, the reader drains without further parsing. EOF, bounded join/close and late-write
+checks preserve the primary build result. The 900-second build deadline, disk/mount floors,
+cancellation, separate ARM Compose path and immutable previous failure receipts are unchanged.
+No application, native build recipe or frontend source was changed by this diagnostic.
+
+Builder selected tests **Passed** 20 cases and the complete owned file **Passed** 255, with zero
+failures/errors/skips; configured Ruff, format and scoped diff checks passed. Earlier fixture
+failures remain preserved. Receipt
+`/var/tmp/r12r/hotfix-build-phase-observer-c2a84056-a5f0-4995-bfcb-2c11e5dafbe8/final-receipt.json`,
+SHA-256 `89b91f1ca1e2b1a5bde5a73cac150de5d1351cae654736ea0929866f874946e3`.
+Frozen checker SHA-256 `ad5c2e12b0ce77b7b676155a71c45e3d7089a1b2b437e832cdfdd6822baa5f75`;
+test SHA-256 `6276c8fcc872f8c71ba3c8a8d2b1019b7c334bf7eb603d88e675ffeeb0c6c006`.
+Independent tests **Passed** the same 20 selected and 255 complete cases with unchanged 37
+source/import pins, but complete pinned-schema review **Failed**: valid optional
+`progressGroup.weak` was not allowed. The initial QA receipt's zero-count JUnit projection was
+preserved and corrected in a separate nested-suite-count supplement. Corrected test receipt
+SHA-256 `f72bff0bfb8022bc1b0adced5ab08d394cce342fb28c4ffa13cddcab1088ae99`; static receipt
+`0ca8856deee4a3d7eca22307a60602a735d44a58b4c707bde202b86e2e31f534`, under
+`/var/tmp/r12r/hotfix-build-observer-independent-qa-20261015T192246Z-ad60880a`.
+Actual stream occurrence of the upstream field is **Unavailable**; no build cause follows.
+
+The narrow repair accepts the optional field only as a strict boolean and still discards group
+metadata. Builder selected tests **Passed** 7 cases and the complete file **Passed** 258, with
+zero failures/errors/skips; configured static checks passed after preserving an initial test-line
+formatting failure. Receipt
+`/var/tmp/r12r/hotfix-progress-weak-881f972a-dcee-45b3-8e88-690064dc5c60/final-receipt.json`,
+SHA-256 `123bc3616faeca41d50f4d8525f6c877691f4aab1a2dcc9e89514cd534a6845f`.
+Current checker SHA-256 `d6440d3557f88447a219f6b688c9a03f3c079b4e4ccbd362a1360245b850776c`;
+test SHA-256 `848fc6da0ff6f0ac08f9097342cf1c7575aaf1328a715c5136aad34fd14bad9b`.
+Narrow independent repair QA **Passed** 13 selected shared-conftest tests, configured Ruff/format
+and scoped diff checks, with the genuine 53-file stage and unchanged current source pins.
+Its first supplemental behavior comparison **Failed** because it also compared the incoming-byte
+counter, which correctly grows with the additional JSON field. The corrected probe excluded only
+that diagnostic counter and **Passed** boolean acceptance, malformed/unknown-field rejection,
+metadata exclusion and unchanged primary phase/status results. The original receipt is retained:
+`/var/tmp/r12r/hotfix-progress-weak-independent-qa-bsx3c77y/independent-qa-receipt.json`, SHA-256
+`4129d223b9c3af5b5114ccfb9718f695f1b317afa42695ca066baef22c92f7b6`.
+Corrected receipt
+`/var/tmp/r12r/hotfix-progress-weak-independent-followup-ft5fv11b/independent-followup-receipt.json`,
+SHA-256 `23ca0921fc0b4a8bc626c03e4c457a00b5b0b83d20d79e341b299c1075d2b61e`.
+Parent personally reviewed the integrated optional observer, bounded drain/close, failure result,
+record compatibility and strict optional-field repair with no remaining finding in that scope.
+The existing 238-test recovery and 332/52 temporary-consumer evidence is reused only for unchanged
+inputs. The six-document audit passed validator, 177-file completeness, explicit 11-path coverage
+and scoped diff checks before this final result paragraph; audit receipt SHA-256
+`a4908b193c689af81095bc3a0b411006fc27074995655b8392bd59d6b1f0bbbb` under
+`/var/tmp/r12r/R-ASTRA-121-doc-audit-nxz65l7l`.
+No new build was launched for these results, and the next actual build phase and failure cause remain
+**Unavailable** and **Unproven** respectively. Production, the existing 1 GB host, backups and
+US$15 cap are unchanged.
+
+### R-ASTRA-121 local 63b9 OOM build and recovery checkpoint (2026-10-15)
+
+The bounded local build `./scripts/local-compose.sh build` on pushed PR #9 head
+`63b9da6dd27cbbed1cb973cb5d5442753e285b4f` **Failed** with exit 1 at
+`2026-10-15T19:37:48.916Z`–`19:44:39.630Z`. All 149 application inputs remained unchanged; no
+candidate image was accepted. The bounded phase observer recorded an error in the native `RUN`
+phase after 372,347 ms; its optional overall phase projection is **Unavailable** because of a
+`malformed_frame`. Docker's safe post-exit state reported `OOMKilled=true` at
+`19:44:25.353Z`. Whether this came from the container memory limit or host pressure is **Unproven**.
+
+The supplemental sanitized resource receipt is not an overall QA pass: it records a first broad
+Docker-inspection scope deviation (**Fail** for operator compliance; not a product finding) and no
+live PID-to-strict-container-cgroup binding, so effective worker limits are **Unavailable**. The
+bounded sampler ended after 16 complete samples, its last at `19:39:05.192Z`, more than five
+minutes before the builder exited; the last sample's event counters were zero and do not explain the
+OOM. The sampler process later exited 143. Journal receipt
+`/var/tmp/r12r/local-63b9-owned-oom-journal-4e6srq6h/receipt.json`, SHA-256
+`2f1a1a0d3a270a849245854437263393945a64868142420e69aaee541b733d74`, records the separate
+journal observation as **Unavailable**. No continuous memory or causal claim follows. Sanitized follow-up receipt
+`/var/tmp/r12r/local-build-worker-qa-UAQgPZ/supplemental-sanitized-resource-findings.json`,
+SHA-256 `a78d7861c6bb94c23bad40735774336785fd4d6aef25cdc0b560a349d3b2982f`; the initial broad
+inspection result is excluded from acceptance. Build terminal
+`/var/tmp/r12r/hotfix-63b9-manifests-build-e1d94qd6/build/terminal.json`, SHA-256
+`e1955ae30c3eca18c7839732a14c0458a1851194430e27734b5bc05e814fda6f`.
+
+A separate actual typed stopped-generation reservation reconciliation **Passed** at
+`2026-10-15T19:52:18.337Z`–`19:52:30.297Z`, exit 0. It removed only the failed placeholder
+reservation, leaving two retained ledger rows; the resulting ledger SHA-256 is
+`36137c19d0ef581c5aeffb08de17cdc8eb955a0d535ff4393b3fe7ff76acabe3`. Terminal
+`/var/tmp/r12r/local-63b9-stopped-reconciliation-6tvw6yyz/terminal.json`, SHA-256
+`7844f776885f2ffc1cb61b5cb6a6fe5722d9068e964cc21c458bdbee3cd51a88`. This recovery does not
+repair or supersede the failed build and did not clean images, application data, or caches. Related
+PR #11 is pushed at `235bf4beea1292fd92d891088186598f4fd70042`. No native assistant rerun,
+production mutation, deployment, actual combined 1 GB acceptance, or release occurred.
+
+### R-ASTRA-121 63b9 serial-install diagnostic checkpoint (2026-10-15)
+
+A local follow-up changes the Dockerfile package-install parallelism argument from 2 to 1 on the
+failed 63b9 build path. This tests only the hypothesis that fewer concurrent install workers may
+reduce build-time memory pressure. It does not establish whether the earlier OOM occurred during
+package installation or compilation; no heap/profile evidence or production effect is claimed.
+The source and regression-test SHA-256 values are
+`0b6572b151b355e612cd0080a5f3f3a416b46a73634d1dab79b003165e5fa6dc` and
+`72ed7ec4f271b8a1b46f5b1f6dee7f6c522c63e3a5f9d014b5ca338a16d73bc1`.
+
+Builder-selected checks **Passed** 23 tests; receipt
+`/var/tmp/r12r/native-install-serial-fullfile-4okudm48/receipt.json`, SHA-256
+`5187c9281495f9d8fc0f4b075aa3025a51e048056ecb98391d014b94a35b9d5d`. Independent selected QA
+also **Passed** 23 tests, 49 source pins, Ruff, security, format and diff checks at
+`2026-10-15T20:09:13.128159Z`–`20:09:17.302575Z`; receipt
+`/var/tmp/r12r/native-install-serial-independent-qa-verified-20261015T200913Z-0879b483/qa-receipt.json`,
+SHA-256 `d6680fd50ed7bd6628a2927c4168b86bde34e7678c200c0d5ab79474f566aa92`. An earlier independent
+attempt did not explicitly bind child umask and is not acceptance; the later rerun used 022. The
+initial builder attempt's temporary-path quota/policy deviation remains preserved as a setup
+failure, not a product defect: `/var/tmp/r12r/native-install-serial-checks-ivpva8hk/receipt.json`,
+SHA-256 `bf3d0533154a48a4c7e8255ff0028e11f928ded7c288b7f90d7a6367d826f8ce`.
+
+No image build or native runtime check has started for this follow-up. The earlier 63b9 OOM remains
+**Failed** with cause **Unproven**; actual combined 1 GB, production and release acceptance remain
+open.
+
+### R-ASTRA-121 12ed native compilation OOM checkpoint (2026-10-15)
+
+The serial-install candidate at pushed PR #9 head
+`12edbdcef3a9caaf5ae44c6432462436cdf8854e` **Failed** the bounded local image build, exit 1,
+at `2026-10-15T20:31:01.742337Z`–`20:37:48.677849Z`. All 149 source inputs remained unchanged,
+bound to context `490983b91300f1392f66fab411286ee2671de9b9028e6513a93c2ca0d57054de`; no image
+was accepted. Native compilation was active shortly before the first observed cgroup OOM transition.
+The overall optional phase projection remains **Unavailable** (`malformed_frame`); it does not
+replace the primary failed build. Terminal receipt
+`/var/tmp/r12r/hotfix-12ed-manifests-build-w_92ooz5/build/terminal.json`, SHA-256
+`29a1c4b034b2ae617f35028b7f2cab38445d5318ee3ba235b8e5d2cac3d3ac24`; genuine failure receipt
+SHA-256 `87f3c14353c78ba1bb9ef5a71120a20abaacf099f738adb0d770d5ac89441a89`.
+
+Independent live resource binding **Passed** for its local build scope at
+`20:34:38.827996Z`–`20:34:40.135481Z`: the dependency worker's PID/start ticks and strict
+container-cgroup ancestry matched before and after the read. Effective ancestor limits were
+1280 MiB RAM, 768 MiB additional swap, one CPU and 128 PIDs. Receipt
+`/var/tmp/r12r/local-worker-resource-binding-qa-20261015T2033Z/read-only-worker-resource-binding-receipt.json`,
+SHA-256 `04b7c496dc937763cd26fe0bf7e43ce13a4556e0db5b2ffeb3d33f979f2e6a0e`.
+The continuous local sampler retained 78 rows. At `20:36:48.912073Z`, the root cgroup was at
+1,342,156,800 / 1,342,177,280 bytes and a process classified from its argument basename as
+`node_child` had 1,158,024 KiB RSS. The next sample at `20:36:54.297682Z` recorded `oom` and
+`oom_kill` increasing from zero to one. The actual executable and killed PID are **Unavailable**;
+the category does not distinguish Node from Bun compatibility behavior. This records local
+build memory pressure, not a proven victim, provider failure or actual combined 1 GB app acceptance.
+Independent historical analysis receipt
+`/var/tmp/r12r/local-worker-oom-phase-qa-20261015T2042Z/read-only-oom-phase-executable-receipt.json`,
+SHA-256 `d303e66f59da2950ef48dc8311da2056ca73503599118a9bd5b99b42ffa5765c`.
+
+The reviewed failure handler stopped the exact builder generation and verified its cgroup absent.
+Actual typed reservation reconciliation separately **Passed**, exit 0, retaining the prior two
+ledger rows at SHA-256 `36137c19d0ef581c5aeffb08de17cdc8eb955a0d535ff4393b3fe7ff76acabe3`.
+Terminal `/var/tmp/r12r/local-12ed-stopped-reconciliation-97c94j4e/terminal.json`, SHA-256
+`f3671ba37db08eeef564a492f20a9ac644321027e87ee416ce38034d2772ab05`; exclusive recovery receipt
+SHA-256 `fc347b0e5c143f7dd5a169d21c802b63767a474dc4f4826d82ec051ceb0334cf`.
+No native model trial, production mutation, deployment or release followed. The next build is held
+for a discriminating native compilation repair; the local memory profile and production budget
+remain unchanged.
+
+### R-ASTRA-121 build-only Bun memory mitigation checkpoint (2026-10-15)
+
+The next native-build candidate fixes `BUN_OPTIONS=--smol` for the final pinned Bun build-script
+command and its child processes. It ignores the host's value while keeping the install and selected
+source-test environments unchanged. The embedded app/Vite build runs under that command; the
+recorded PID chain places the earlier high-RSS child below the native compiler in the same exec
+cgroup. The historical executable and OOM victim remain **Unavailable**. This is a build-memory
+mitigation, not a new runtime flag, hard cap or verified image repair. All existing upstream source pins,
+targets, arguments, container limits and deadlines remain fixed.
+
+Builder-focused verification **Passed** 24 tests and configured Ruff/security/format/diff checks;
+receipt `/var/tmp/r12r/native-smol-postformat-check-dbbf569b83bd/receipt.json`, SHA-256
+`88fe1ae72e22a077d84a1ed9b3c6566ea264e8cdfce8e1765ee1d296068e5fb0`. The first format check's
+single-line wrapping failure and pre-format bytes are retained in the baseline packet; the final
+source is formatted. Official pinned Bun 1.4.2 documentation supports argument propagation and the
+more-frequent-GC/performance tradeoff; source receipt SHA-256
+`1b8a10d9384e7863bfdaeb584556f3c927b143292e90b9248be171f606bb3487` under that same packet.
+
+Independent verification separately **Passed** 24 tests, zero failures/errors/skips and two warnings
+at `2026-10-15T21:18:51.204945Z`–`21:18:53.897486Z`, with the normal conftest, explicit child
+umask 022, 30 imported project Python pins and stable supporting inputs. Ruff/security/format/diff
+checks passed. Receipt
+`/var/tmp/r12r/native-smol-independent-qa-20261015T211620Z/independent-qa-receipt.json`, SHA-256
+`80494c6dfd592e98c40ecacaf3ca37295a9ff97ed5a62adb09c45f8b327e6d78`; JUnit SHA-256
+`0d0f22134972f85aeba8fcd273032ab3cfd97473c15e11205d235e3b100e11f3`.
+Frozen build-source SHA-256 is `65d471d8f88aa730cff0d16db00798319bf3501628b3551f22092f3afc18efb8`;
+test SHA-256 is `75db8c124bd5f523d09d1616bc77f36d96020804466ee4fbdc22909ec539141b`.
+Parent personally reviewed the integrated launch/environment change, exact argument preservation,
+host-override rejection and test/receipt bindings with no remaining finding in this scope.
+
+No new Docker/native/provider run or production action is established by these checks. A fresh
+source-bound image, native functional result and all remaining release gates are still required.
+The failed 12ed build remains failed, and the existing 1 GB host, backups and US$15 monthly total
+cap are unchanged.
+
+### R-ASTRA-121 V21 paired restricted-tool diagnostic (2026-10-16)
+
+The V21 compiled-native diagnostic **Passed for one paired synthetic read/shell guard scope** on
+the retained D282 `linux/amd64` image. The native receipt identifies task `R-ASTRA-120`, scope
+`one_synthetic_restricted_native_read_shell_guard_fixture`, and terminal session `26103` (exit 0,
+`2026-10-16T07:49:19.720427Z`–`07:49:36.402796Z`). All nine paired checks and 24 native profile
+guards passed: the unmanaged positive control read its sentinel and created its shell marker;
+the managed phase rejected both calls with no permission events, child processes, sentinel
+disclosure, or marker. Parent terminal/integrity review passed, and independent Astra review
+passed receipt identity, source-pin, chronology, and cleanup integrity without rerunning the trial.
+The native receipt SHA-256 is
+`44e41f3613614164bcc3c3234ba9570e1268125611d7a8b4bcbd008ae7fa8e31`; parent integrity receipt
+SHA-256 is `c0f56f035b8fd1c63b8d239dc887428add4cbb8b6be990612c9c23738de71d6f`; independent review
+receipt SHA-256 is `060132b037fdf8d6fdc92f045178ed7d85f2fa958141ac7d5b224e5d261888ad`.
+
+V20 remains **Failed** for its sole `shell.guard_message_matches` predicate. The actual persisted
+message bytes and hash remain **Unavailable**. A pinned-primary-source review established that
+the native error serializer unwraps the inner shell guard error, so V21 narrowed its fixture's
+expected message to that source-confirmed inner guard literal; the discarded V20 message was not
+reconstructed. The source diagnosis receipt is
+`/var/tmp/r12r/d282-astra-v20-trial-source-review-20261016T072037Z/review-receipt.json`, SHA-256
+`6f00ea199e934d2616021a2d52e8b7dd4e586c87f09aca3b17eb10f580008cb9`.
+
+This run used network-none and a local 768 MiB limit. It is synthetic guard evidence, not a new
+real-Zen model/search run, actual combined 1 GB acceptance, production check, or release gate.
+The current assistant worktree's three UI/test edits then passed the approved full frontend
+build-and-stage path, exit 0, with 74 frontend checks and 88 unchanged source inputs at
+`2026-10-16T08:02:38.014466Z`–`08:04:32.861505Z`. The bounded build terminal receipt is
+`/var/tmp/r12r/pr9-frontend-build-prep-6be9e74d-47ff-48ec-81a0-6da8353a61b3/parent-build-19302cf8-b0f0-4427-8980-c1aa2ff924b9/terminal.json`, SHA-256
+`fbaf622121f0a73d96c795e0ad6238131c98639e06090fea29f5f854d900ee48`. Parent copyback verified
+53 served/export pairs in the assistant worktree; receipt
+`parent-stage-copyback.json`, SHA-256
+`de4650b8f798196dbfec7552d32fb7fedec9014e47cd2acaf28d1d576cd254fb`. Browser and axe follow-up
+remain **Pending**; the build does not accept either scope.
+
+Separate fresh GitHub readbacks confirmed PR #11 at
+`6071a9f6110f5b93cd8f680c88b30c56252771cc` (receipt SHA-256
+`38bdfb1de0d3e4d99ed2b153a726a2c51f32f62bd73d32016d31630165c6bd10`), and PR #7 at
+`b6f2dee9b79fb13821a1b11aa8fc81ad22aae923` plus PR #13 at
+`4ef153bebff7796c334d93105b94cede1b05d1dc` (combined readback receipt SHA-256
+`ae60544dd0da217d8786e3c67cde6caa6ac6b10653ca2d08f42714775d4e0345`). These are pushed open
+draft review branches, not merges. The latest read-only production inspect, bounded by
+`2026-10-16T06:44:09Z` and `06:45:03Z`, reported revision
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, schema 13, invited rollout, ready app and assistant,
+and loopback-only; receipt SHA-256
+`e92985772d90dc2861642fe5bea24a347ece096e02d3966eb5e60560db7e387f`. The inspect also retains
+the separate October 13 `assistant_disable_unverified` failed-rollout record; the ready current
+projection does not erase that history. No image publication, deployment, helper installation,
+rollout, or email occurred. The existing 1 GB host, backups, and US$15 monthly cap remain unchanged.
+
+Subsequent independent current-stage browser checks passed in two scoped invocations: 10/10
+at `2026-10-16T08:07:08Z`–`08:09:15Z`, then 6/6 saved-chat caption cases at
+`08:10:36Z`–`08:11:17Z`, with no failures, errors, skips, flaky cases, or retries. The first
+invocation covered both projects' contrast, news terminal states, exact-URL WebFetch preview and
+approval, and explicit forecast submission; the second covered provider failure in both themes
+and storage quota on desktop and emulated mobile. All 14 preserved raw axe snapshots had zero
+violations and zero incomplete results. Parent screenshot review covered provider-failure captions
+in Light/Dark on desktop/mobile, with readable text and visible controls; no new CSS/layout change
+was made. These are scoped checks, not a replacement for the historical failed full aggregate.
+JUnit SHA-256 values are `b874b4a3f883c20c0b59edfd44abd9f9feb2e498bd4f3cd4bf2c4f5dc167bbd9`
+and `5e369d4df8c6bd004d2013a0378a6d4d09f0554212697288514ae73a021304e1`, respectively.
+All 53 served/export pairs remained matched, and the isolated fixture processes, ports, and
+owned runtime cleanup passed independent review. Full browser/accessibility and remaining
+resource/recovery/release gates remain open.
 
 ### R-ASTRA-121 temporary baseline reserve propagation (2026-10-15)
 

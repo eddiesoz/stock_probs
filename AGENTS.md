@@ -9,6 +9,14 @@ every nested Compose/Docker wait; require the unchanged 512 MiB startup floor be
 the rehearsal. Source/mock checks do not prove installed helper behavior or authorize an unbuilt
 temporary image. Preserve uncertainty and the original release/recovery identities.
 
+
+For the R121 local build repair, preserve uncertain historical failure facts. Release a failed
+local reservation only through the reviewed typed operation with fresh setup-bound stopped
+generation/cgroup and protected-inventory evidence. Do not restart that builder before collecting
+the stopped-generation proof. A separately approved temporary production baseline remains a
+distinct operation kind; its source checks do not authorize an unbuilt image or establish that
+the running MCP server loaded the change. The existing 512/128 MiB floors remain fixed.
+
 Codex uses this root `AGENTS.md` for repository policy. Its project configuration is
 `.codex/config.toml`, its three scoped subagents are `.codex/agents/luna-build.toml`,
 `luna-qa.toml`, and `luna-docs.toml`, and its repository skills are in `.agents/skills/`.
@@ -67,6 +75,16 @@ the default roles or authorize Astra subagents on other tasks. Start a fresh Cod
 Codex project-configuration changes and restart the OpenCode parent after OpenCode configuration
 or profile changes before checking discovery. File presence, synchronization, or parsing does not
 prove runtime loading; no runtime-discovery pass is inferred.
+
+For this R-ASTRA-121 repair, the user explicitly requires genuine OpenCode with Zen free models.
+Investigate and repair the native integration before suggesting provider-account substitution.
+Free-only is the selected constraint; do not treat the earlier unanswered provider-choice prompt as
+a blocker or require a paid provider. A native binary running through a custom provider proxy is
+not proof of equivalence to the built-in Zen connection. Verify an actual completed answer.
+
+For R-ASTRA-121, repair the reported assistant non-response and verify a completed native model
+answer before claiming restoration, then continue the approved seven visible features. The incident
+does not cancel the feature plan. Error-message or diagnostic improvements alone are not restoration.
 
 ## Current operational baseline: native OpenCode V2
 
@@ -155,7 +173,12 @@ assignments, runtime acceptance paths, or release gates.
   reviewed typed recovery operation. Recovery receipt publication must fail closed on write errors:
   a partial exclusive-create file is not a valid receipt and must not be manually removed or
   treated as a released reservation. Retry only after reviewed recovery reconciles the receipt and
-  ledger safely.
+  ledger safely. For local-build failures, retain a bounded failure receipt and the exact in-flight
+  row; cancelling the Docker CLI alone does not prove its BuildKit worker stopped. Stop only the
+  setup-bound builder container at the captured start generation, then verify it stopped. Reconcile
+  a local reservation only through `--reconcile-local-inflight-reservation`, using its genuine
+  local failure receipt or separately typed terminal/cancellation/readback observations. Missing
+  historical BuildKit results remain Unavailable; never fabricate a managed failure receipt.
 - Before formatting or relocating removable storage, make a backup on an independent filesystem
   and verify its checksum, byte count, complete file/member inventory, and metadata before
   formatting. Mount the replacement filesystem by UUID. Require both Docker and containerd to
@@ -2295,6 +2318,36 @@ the existing 1 GB Linode and backups remain unchanged. Required native/provider,
 accessibility, actual capacity, PR-bound rollback, and release gates remain open.
 
 
+For R-ASTRA-121 restoration, the fixed candidate/recovery rehearsal targets PR #9. Keep the
+controller, bootstrap, installed helper and local verifier at that identity, with no arbitrary PR
+argument exposed through MCP. Preserve all exact repository, open/main-base/head, helper asset,
+private review-pin and image/archive/context/pair checks. PR #2 receipts remain historical.
+
+For the free-Zen assistant repair, a local-current pointer transition must use the bounded builder's
+expected-current and retained-replacement full image IDs. It validates both complete ledger rows,
+bound build receipts, and Docker identities under the ledger lock before atomic pointer selection.
+Selection neither removes an image nor authorizes cleanup: independently verify exact candidate
+ownership, release protection, tags, container references and bounded RootFS ancestry before any
+exact-ID removal and absence-verified retirement acknowledgement. Preserve the three-image bound.
+
+For the PR #9 free-Zen repair, production rehearsal monitoring binds the observed deployed 5ad
+image at schema 13 separately from the historical da2764e schema-12 migration/recovery origin.
+Require matching live revision/image/schema in the host receipt and controller; preserve the
+existing memory reserves and actual 1 GB/resource/recovery gates. A correct source pin is not a
+host rehearsal, native reliability or deployment Pass.
+
+
+For PR #9 reserve diagnosis, keep the existing 512 MiB startup and 128 MiB running guards.
+Project only the closed preflight/startup/monitor/final phase and strict numeric available/required
+KiB values. An earlier unclassified reserve failure or a later read-only RSS measurement is not
+proof of its phase or cause. Before another trial, bind the repaired checker and exact candidate;
+retain failed aggregates and restore verified production rollout after temporary maintenance.
+The current read-only startup observation is bounded at 30 seconds within the unchanged 1,080-second
+operation budget; do not relax either memory floor or promote a later above-floor sample to a pass
+for an earlier preflight failure. E22's five-second wait is historical; E29 records the reviewed
+source repair and its local scope, not a host retry or release acceptance.
+
+
 For R-ASTRA-121 rehearsal preparation, keep the running production identity separate from the
 schema-12 PR-pair fixture seed. A registered schema-13 recovery baseline must match its exact
 recovery role, image, archive, pair, overlay, migration, Compose and disabled-readiness bindings
@@ -2433,3 +2486,18 @@ is retained separately, and only the test file was rerun under `0022`. The full 
 aggregate failed with 195 passed, two failed and three expected skips; source/stage stayed bound
 and the 24 raw axe attachments were clean. No provider, runtime, resource, publication, or
 release acceptance follows. See the [current F6 ledger](MVP-PLAN.md#f6-pr9-candidate-build-archive-scan-and-parity-checkpoint-2026-10-16).
+
+
+For the R-ASTRA-121 startup repair, load Yahoo's optional clients only at their market/news call
+sites. Keep fixture and normal application startup free of those imports; do not prewarm them to
+hide a dependency failure. Distinguish explicit `provider_busy` from sanitized
+`provider_unavailable` through the API and headline clients. Local cold-import savings do not
+establish host capacity. A changed recovery overlay requires its own newly bound image and pair;
+retain the original registered recovery image and the unchanged 512/128 MiB reserve guards.
+
+For the R-ASTRA-121 restricted native-tool diagnostic, preserve V20's persisted-shell-message
+expectation failure separately from V21's paired synthetic guard **Pass**. V21 is network-none,
+local 768 MiB evidence; it does not establish real free-Zen/model behavior, actual 1 GB resource
+acceptance, or release readiness. Keep its exact scope, receipts, and the pending current-source
+browser checks in `MVP-PLAN.md`; the approved frontend build/stage pass does not accept browser,
+axe, native-provider, resource, or release scopes.

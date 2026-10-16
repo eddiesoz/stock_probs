@@ -98,6 +98,14 @@ async function expectAssistantAxeClean(page, testInfo, scan) {
     body: Buffer.from(JSON.stringify(counts, null, 2)),
     contentType: "application/json",
   });
+  await testInfo.attach(`assistant-axe-raw-${scan}.json`, {
+    body: Buffer.from(JSON.stringify({
+      ...counts,
+      violations: results.violations,
+      incomplete: results.incomplete,
+    }, null, 2)),
+    contentType: "application/json",
+  });
   if (Array.isArray(results.incomplete) && results.incomplete.length > 0) {
     const incompleteNodes = results.incomplete.flatMap((rule) => (rule.nodes || []).map((node) => ({
       rule: rule.id,
@@ -342,6 +350,72 @@ function conversationDetail() {
     turns: [{ id: "turn-1", status: "completed", model_id: model.id, policy_version: model.policy_version, context_version: context.context_version, context, created_at: "2025-01-10T17:00:00Z", completed_at: "2025-01-10T17:01:00Z", actions: [] }],
     actions: [],
   };
+}
+
+for (const theme of ["light", "dark"]) {
+  test(`assistant preserves provider failure after completion and saved-chat reopening in ${theme}`, async ({ page }, testInfo) => {
+  await page.addInitScript((value) => localStorage.setItem("stock-probs.theme", value), theme);
+  let submitted = false;
+  let submittedContext = null;
+  let created = false;
+  let detailReads = 0;
+  let turnPosts = 0;
+  const summary = { id: "conversation-provider-failure", title: "Provider access check", revision: 1,
+    created_at: "2025-01-10T17:00:00Z", updated_at: "2025-01-10T17:01:00Z" };
+  const failure = "The selected model provider could not answer. Check Providers for access or choose another approved model. Your question was saved.";
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({ status: 200, contentType: "application/json",
+    body: JSON.stringify({ authenticated: true, user: { id: 1, role: "admin" }, csrf_token: "fixture-csrf" }) }));
+  await page.route("**/api/v1/assistant/**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    const fulfill = (body, statusCode = 200) => route.fulfill({ status: statusCode, contentType: "application/json", body: JSON.stringify(body) });
+    if (pathname.endsWith("/status")) return fulfill(status);
+    if (pathname.endsWith("/models")) return fulfill({ items: [model] });
+    if (pathname.endsWith("/context")) return fulfill({ context: { ...context, route: "/overview" }, preview: { summary: "Overview", fields: ["page route only"] } });
+    if (pathname.endsWith("/conversations") && request.method() === "GET") return fulfill({ items: created ? [summary] : [], page: 1, page_size: 20, total: created ? 1 : 0 });
+    if (pathname.endsWith("/conversations") && request.method() === "POST") {
+      created = true;
+      return fulfill({ conversation: summary }, 201);
+    }
+    if (pathname.endsWith("/turns") && request.method() === "POST") {
+      turnPosts += 1;
+      submittedContext = request.postDataJSON().context;
+      submitted = true;
+      return fulfill({ turn: { id: "turn-provider-failure", status: "running" } }, 202);
+    }
+    if (pathname.endsWith("/events")) {
+      const events = [[1, "error", { code: "provider_unavailable", message: "UNTRUSTED_PROVIDER_BODY" }],
+        [2, "complete", { status: "failed", assistant_message_id: null }]];
+      return route.fulfill({ status: 200, contentType: "text/event-stream", body: events.map(([id, type, data]) => `id: ${id}\nevent: ${type}\ndata: ${JSON.stringify(data)}\n\n`).join("") });
+    }
+    if (pathname.endsWith("/conversation-provider-failure") && request.method() === "GET") {
+      detailReads += 1;
+      return fulfill({ conversation: { ...summary, delete_confirmation_phrase: "DELETE failure" },
+        messages: { items: submitted ? [{ id: "user-failure", seq: 1, turn_id: "turn-provider-failure", role: "user", text: "Synthetic provider check", created_at: summary.updated_at }] : [], page: 1, page_size: 50, total: submitted ? 1 : 0 },
+        turns: submitted ? [{ id: "turn-provider-failure", status: "failed", model_id: model.id, policy_version: model.policy_version, context: submittedContext, created_at: summary.updated_at }] : [],
+        events: { items: submitted ? [{ turn_id: "turn-provider-failure", type: "error", sequence: 1, data: { code: "provider_unavailable", message: "UNTRUSTED_PROVIDER_BODY" }, created_at: summary.updated_at }] : [], page: 1, page_size: 100, total: submitted ? 1 : 0 },
+        actions: [], action_pagination: { page: 1, page_size: 100, total: 0 } });
+    }
+    throw new Error(`Unexpected assistant failure fixture route: ${request.method()} ${pathname}`);
+  });
+  await page.goto("/overview");
+  await page.getByRole("button", { name: "Open Ledger assistant" }).click();
+  const panel = page.getByTestId("assistant-panel");
+  await chooseFixtureModel(panel);
+  await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Synthetic provider check");
+  await panel.getByRole("button", { name: "Send question" }).click();
+  await expect.poll(() => detailReads).toBeGreaterThan(0);
+  await expectAssistantLiveStatus(panel, failure);
+  await expect(panel.getByText("Synthetic provider check", { exact: true })).toBeVisible();
+  await expect(panel.getByText("UNTRUSTED_PROVIDER_BODY", { exact: true })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Open conversation history" }).click();
+  await panel.getByRole("button", { name: /Provider access check/ }).click();
+  await expect.poll(() => detailReads).toBeGreaterThan(1);
+  await expectAssistantLiveStatus(panel, failure);
+  expect(turnPosts).toBe(1);
+  await expectAssistantAxeClean(page, testInfo, `provider-failure-${theme}`);
+  await testInfo.attach(`provider-failure-${theme}.png`, { body: await page.screenshot({ fullPage: true, scale: "css" }), contentType: "image/png" });
+  });
 }
 
 test("assistant desktop/mobile widget keeps a structured saved answer readable and applies only a confirmed typed theme action", async ({ page }, testInfo) => {
@@ -1694,6 +1768,13 @@ test("assistant ignores delayed conversation, pagination, and stream responses a
 
 test("real FastAPI assistant flow keeps route-only context and reopens durable proposal and tool receipts", async ({ page, assistantApplication, browserDiagnostics }, testInfo) => {
   const origin = assistantApplication.url;
+  const startup = assistantApplication.logs().split("\n").map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).find((entry) => entry?.qa_stage === "fixture_started");
+  await testInfo.attach("real-flow-fixture-startup.json", {
+    body: Buffer.from(JSON.stringify(startup || { available: false }, null, 2)),
+    contentType: "application/json",
+  });
   await page.context().addCookies([
     { name: "signal_ledger_session", value: "browser-assistant-fixture-session-not-a-production-credential", url: origin, httpOnly: true, sameSite: "Lax" },
     { name: "signal_ledger_csrf", value: "browser-assistant-fixture-csrf-token-not-a-production-credential", url: origin, sameSite: "Lax" },
@@ -1792,7 +1873,7 @@ test("real FastAPI assistant flow keeps route-only context and reopens durable p
   }
   await expect(panel.getByText("current route", { exact: true })).toBeVisible();
   await expect(panel.getByText(/ACDC · STOCK · NMS · deterministic fixture/)).toHaveCount(0);
-  await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Explain this page without selected references");
+  await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Explain this page without selected references (delayed browser fixture)");
   await expect(panel.getByRole("button", { name: "Send question" })).toBeEnabled();
   await panel.getByRole("button", { name: "Send question" }).click();
   const completion = expect.poll(async () => {
@@ -1805,12 +1886,43 @@ test("real FastAPI assistant flow keeps route-only context and reopens durable p
       && transcript.includes("Synthetic research response from the local browser fixture.")
       ? "completed"
       : "pending";
-  }).toBe("completed");
+  }, { timeout: 15_000, intervals: [100, 250, 500] }).toBe("completed");
   try {
     await completion;
   } catch (error) {
+    // Failure evidence distinguishes a slow fixture from a completed turn whose UI lost its state.
+    const transcript = await panel.innerText();
+    const diagnostic = await page.evaluate(async (eventUrl) => {
+      if (!eventUrl) return { available: false };
+      const path = new URL(eventUrl).pathname.split("/turns/")[0];
+      const response = await fetch(path, { signal: AbortSignal.timeout(1500) });
+      if (!response.ok) return { available: false, status: response.status };
+      const data = await response.json();
+      return {
+        available: true,
+        turns: (data.turns || []).map((turn) => ({ status: turn.status })),
+        messages: (data.messages?.items || []).map((message) => ({ role: message.role, length: message.text?.length || 0 })),
+        events: (data.events?.items || []).map((event) => ({ type: event.type, status: event.data?.status })),
+      };
+    }, submitted.eventStreamUrl).catch(() => ({ available: false }));
+    await testInfo.attach("real-flow-completion-diagnostic.json", {
+      body: Buffer.from(JSON.stringify({
+        ...diagnostic,
+        hasAnswer: transcript.includes("Synthetic research response from the local browser fixture."),
+        hasCompletion: transcript.includes("Assistant response complete."),
+        hasProviderError: transcript.includes("The selected model provider could not answer."),
+        hasClosedTurnWarning: transcript.includes("The assistant turn ended without a completed answer."),
+      }, null, 2)),
+      contentType: "application/json",
+    });
     throw new Error(`${error instanceof Error ? error.message : "Assistant turn did not complete."}\nConversation errors ${JSON.stringify(conversationErrors)}\n${assistantApplication.logs()}`);
   }
+  await testInfo.attach("real-flow-runtime-checkpoints.json", {
+    body: Buffer.from(JSON.stringify(assistantApplication.logs().split("\n").map((line) => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter((entry) => ["fixture_started", "turn_started", "workspace_summary_received", "response_delay_started", "runtime_completed"].includes(entry?.qa_stage)), null, 2)),
+    contentType: "application/json",
+  });
   await expect.poll(() => eventStreamResponse).not.toBeNull();
   expect(eventStreamResponse).toMatchObject({
     url: submitted.eventStreamUrl,
@@ -2085,6 +2197,10 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
   await panel.getByRole("textbox", { name: "Ask about this page" }).fill("");
   await assertServerEndedStream(approval.eventPath);
   await expectAssistantAxeClean(page, testInfo, "approved-preview");
+  await testInfo.attach("assistant-approved-preview.png", {
+    body: await page.screenshot({ fullPage: false }),
+    contentType: "image/png",
+  });
 
   const staleContext = await requestPreview(
     "fixture webfetch stale context",

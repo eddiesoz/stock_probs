@@ -7,6 +7,8 @@ import {
   assistantContextUrl,
   assistantHistoryDestination,
   assistantErrorMessage,
+  assistantTurnErrorMessage,
+  savedAssistantTurnFailure,
   assistantApiPath,
   assistantTurnContext,
   consumeAssistantStream,
@@ -18,6 +20,24 @@ import {
   safeTermsUrl,
 } from "./assistant-contract.ts";
 import { parseAssistantAnswer } from "./assistant-answer-model.ts";
+
+test("saved failed turns retain a safe provider recovery message", () => {
+  const message = assistantTurnErrorMessage("provider_unavailable");
+  assert.match(message, /Check Providers/);
+  assert.match(message, /question was saved/);
+  for (const code of ["<img src=x>", "__proto__", "toString"]) {
+    assert.equal(assistantTurnErrorMessage(code), "The assistant could not complete this turn.");
+  }
+  const detail = {
+    turns: [{ id: "old", status: "completed", created_at: "2025-01-10T17:00:00Z" },
+      { id: "new", status: "failed", created_at: "2025-01-10T17:01:00Z" }],
+    events: { items: [{ turn_id: "new", type: "error", data: { code: "provider_unavailable", message: "UNTRUSTED_BODY" } }] },
+  };
+  assert.equal(savedAssistantTurnFailure(detail), message);
+  assert.equal(savedAssistantTurnFailure({ ...detail, turns: [...detail.turns, { id: "next", status: "completed", created_at: "2025-01-10T17:02:00Z" }] }), null);
+  assert.equal(savedAssistantTurnFailure({ ...detail, events: { items: [{ turn_id: "old", type: "error", data: { code: "provider_unavailable" } }] } }), "The assistant could not complete this turn.");
+  assert.equal(savedAssistantTurnFailure({ turns: [], events: { items: [] } }), null);
+});
 
 test("provider controls share themed 44px targets and preserve destructive and forced-color overrides", async () => {
   const css = await readFile(new URL("./assistant-provider-settings.module.css", import.meta.url), "utf8");
@@ -119,7 +139,7 @@ test("static assistant empty and disclaimer text use neutral word spans", async 
     assert.deepEqual(actual, expected, message);
     assert.equal(actual.map((part) => part.text).join(""), message);
   }
-  assert.equal((panel.match(/renderStaticMessageWords\(/g) ?? []).length, 4);
+  assert.equal((panel.match(/renderStaticMessageWords\(/g) ?? []).length, 5);
   assert.ok(panel.includes('<p id="assistant-disclaimer">{renderStaticMessageWords("Research only. Answers can be wrong; no trades are placed.")}</p>'));
   assert.ok(panel.includes('aria-describedby="assistant-disclaimer"'));
 });

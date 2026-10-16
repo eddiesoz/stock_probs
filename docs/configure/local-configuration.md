@@ -32,6 +32,13 @@ two-user native run failed final-answer acceptance. A lower sampled peak does no
 causal improvement or the combined 1 GB resource gate. The US$15 monthly Linode cap includes
 tax and existing backups; the 1 GB plan and backups remain in place.
 
+The candidate native image builder separately fixes `BUN_OPTIONS=--smol` for the pinned Bun
+compilation command and its embedded app/Vite children. The strict build environment ignores the
+host's `BUN_OPTIONS`; dependency installation and selected source tests keep their existing build
+environment. This is fixed build behavior rather than a configurable application setting. It does
+not change the installed runtime flags, container limits or build deadlines, and needs a fresh
+image build before any reduction in build memory can be claimed.
+
 The current source also uses the native V2 build-agent system prompt to request concise final
 answers by default, preserving necessary caveats, citations, retrieval dates and user-requested
 detail. This is fixed product guidance, not an output-token override. Its latency effect remains
@@ -93,6 +100,12 @@ operation was invoked. Future configuration changes require another fresh Codex 
 [developer testing guide](../develop/testing.md#exact-pr-pair-review-pins) for the command contract
 and [getting started](../operations/getting-started.md#review-a-pr-pair-before-rehearsal) for the
 operator sequence.
+
+The PR #9 reserve checker uses a fixed, read-only startup observation of at most 30 seconds before
+the existing final memory and readiness checks; there is no environment variable to configure this
+wait. It preserves the 512 MiB startup and 128 MiB running floors and the 1,080-second absolute
+operation budget. E22's five-second wait is historical. E29's local source/test and parent reviews
+do not establish a host retry, deployed checker, native answer, or actual 1 GB acceptance.
 
 ## Authentication settings
 
@@ -236,7 +249,41 @@ trust-key lifecycle, restore behavior, and exact managed-name constraint.
 Continue with [getting started](../operations/getting-started.md).
 
 
+## Free Zen native tool registration repair
+
+R-ASTRA-121 preserves genuine OpenCode V2 read and shell SDK registrations for reviewed Zen
+models while prohibiting their execution in Signal Ledger. The supervisor fixes
+`STOCK_PROBS_MANAGED_ASSISTANT=1` in the worker environment. Checksum-pinned native guards
+abort before filesystem access, shell parsing, or execution, including saved permission grants.
+The verified managed build must bind both original and patched read/shell source digests.
+The location and session rules change read/shell to `ask` only for Zen with verified guards;
+`execute`, edits, subagents and unrelated permissions remain denied. The application separately
+rejects unsupported permission events. This variable is fixed internal policy, not an operator
+option for enabling shell access.
+
+The provider route accepts the pinned SDK declarations only for an authorized Zen turn with
+verified native transport/guards. It preserves their actual descriptions and schemas. Missing,
+modified or unverified declarations fail closed. The current repair is a candidate: local real-Zen
+answers do not establish production rollout, installed-image readiness, or actual 1 GB acceptance.
+The existing host, backups and US$15 monthly cap remain fixed.
+
+
+The current fixed restoration rehearsal target is PR #9. The operator cannot supply another PR
+number through MCP. Bootstrap, local verification and the installed helper must agree on that
+identity and the exact clean candidate head/pair. Earlier PR #2 receipts remain historical. A helper
+commit on PR #9 requires a new exact-head image label and pair, even if application context bytes
+are unchanged; never relabel the earlier image or claim unchanged helper/runtime acceptance.
+
+
 ### Rehearsal baseline identity
+
+The candidate source also recognizes a separately approved `temporary_recovery` baseline. It is
+fixed to the reviewed 6359 source/overlay and schema 13, and requires bounded root-owned approval,
+manifest, operation and current-state records to match the actual image/container and ready
+assistant-disabled projection. Only the completed startup-floor phase admits a rehearsal; the
+512 MiB startup and 128 MiB running floors remain unchanged. This is neither a configuration
+shortcut nor a retained-release identity. Current source/mock passes do not show that the running
+MCP process loaded this consumer or that a temporary image was built, approved or started.
 
 The candidate rehearsal checker uses a separate fixed running-production identity; the schema-12
 PR-pair fixture remains unchanged. The registered schema-13 recovery alternative is an exact

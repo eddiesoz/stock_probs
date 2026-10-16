@@ -694,6 +694,7 @@ for (const format of ["csv", "json"]) {
     browserDiagnostics.expectRequestAborts({ method: "GET", path: destination.path });
     const state = await installFeatureHarness(page, {
       route: "/",
+      browserDiagnostics,
       scenarios: [actionScenario({
         actionType: `history.export.${format}`,
         title: `Download the filtered ${format.toUpperCase()} export`,

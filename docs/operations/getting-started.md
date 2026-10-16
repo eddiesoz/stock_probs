@@ -72,6 +72,17 @@ with a bounded `/tmp`, dropped capabilities, `no-new-privileges`, `128` PIDs, `7
 `1.0` CPU, and three `10m` JSON log files. Compose defaults `STOCK_PROBS_PROVIDER` to `yahoo`;
 set it explicitly only when a deliberate local fixture run is required.
 
+If a local build fails, preserve its failure receipt and leave the retained in-flight reservation
+in place. A stopped Docker CLI may leave a BuildKit worker running. Use the reviewed
+[typed local-build recovery procedure](../develop/testing.md#bounded-local-docker-builds-and-worker-verification)
+to verify the exact owned builder, image absence and ledger before releasing that reservation.
+Do not delete the ledger row, prune Docker, or stop another application to retry.
+For genuine uncertain local failures, preserve the original receipt and keep the exact builder
+stopped until the typed operation has captured its unchanged start generation and cgroup absence.
+The completed operation releases only the reservation; it neither accepts the failed build nor
+creates an image. Restarting the owned idle builder afterward for bounded diagnostic reads is a
+separate recorded action. See [E34](../../MVP-PLAN.md#r-astra-121-e34-6359-build-failure-and-stopped-generation-recovery).
+
 Stop the service without deleting its named volume:
 
 ```bash
@@ -664,7 +675,7 @@ deploy(plan_id, revision, archive_sha256, image_id, pair_manifest_sha256)
 
 #### Review a PR pair before rehearsal
 
-For the fixed R-ASTRA-120 PR #2 pair, first build and verify the exact clean candidate/recovery
+For the fixed R-ASTRA-121 restoration PR #9 pair, first build and verify the exact clean candidate/recovery
 pair. Only then persist its local review pins with:
 
 ```bash
@@ -679,6 +690,19 @@ preparation step, not a deployment. The E741 candidate command was not executed,
 was written, and no PR-pair rehearsal or remote operation is accepted. The latest config text names
 eight operations. E767 later passed fresh-task discovery for this configuration; future configuration changes require a fresh Codex task to verify discovery. See [local metadata settings](../configure/local-configuration.md#local-pr-rehearsal-review-metadata)
 and [developer testing](../develop/testing.md#exact-pr-pair-review-pins).
+
+The PR #9 checker may observe startup memory for up to 30 seconds at 250 ms intervals before its
+existing final identity, reserve, and readiness guard. This wait is bounded within the unchanged
+1,080-second operation budget; it does not relax the 512 MiB startup or 128 MiB running floors.
+E22's five-second setting is historical. E29 records local source/test and parent review only; do
+not treat it as a fresh host rehearsal, image, native answer, or actual 1 GB pass.
+
+A `host_memory_reserve_breached` result blocks promotion. The diagnostic may include a closed
+`preflight`, `startup`, `monitor`, or `final` phase, `host_memavailable_kib`, and
+`required_reserve_kib`. Startup requires 524,288 KiB and running/final checks require 131,072 KiB.
+Preserve the failure receipt; use these facts to choose a concrete repair before retrying. A wrapper
+exit of zero establishes transport completion only. Temporary assistant maintenance must finish
+with fresh identity, health and rollout readback; it does not authorize a host resize or budget change.
 
 `refresh_operator_access(operator_ipv4_cidr)` is a separate maintenance action. It accepts one
 canonical IPv4 `/32` and constrains Terraform to the fixed `linode_firewall.signal_ledger` resource
@@ -837,7 +861,7 @@ visible cancellation control is labeled “Stop response.” E679's copy/source-
 ### PR-head candidate image build helper
 
 The existing schema-13 rehearsal CLI now contains a fixed-source mode for a private local image
-from the exact clean, reviewed head of open PR #2. Set `REVIEWED_PR_HEAD` to that exact lowercase
+from the exact clean, reviewed head of open PR #9. Set `REVIEWED_PR_HEAD` to that exact lowercase
 40-character SHA and `PRIVATE_RECEIPT` to a private output path, then use these mode flags:
 
 ```bash
@@ -847,7 +871,7 @@ python3 scripts/rehearse_schema13.py \
   --receipt "$PRIVATE_RECEIPT"
 ```
 
-The helper verifies local `HEAD` and a clean worktree, the fixed PR-2/head/base relationship, and
+The helper verifies local `HEAD` and a clean worktree, the fixed PR-9/head/base relationship, and
 the reviewed SHA again around the build. It writes a mode-0600 JSON receipt. The local
 `linux/amd64` image is not published; every checked build filesystem must have at least 4 GiB free
 before build, and the helper stops if free space drops below 1 GiB. E678's original independent process-ownership source review **Failed** and remains preserved.
@@ -883,7 +907,7 @@ rehearsal receipt. It requires a clean revision matching exact `origin/main` and
 the candidate or rerun the local pair during publication.
 
 For a full local pair rehearsal, the optional boolean `--use-deployed-baseline-image` selects the
-centrally pinned deployed schema-12 baseline. Omit it to retain the default verified-archive rebuild.
+centrally pinned historical schema-12 migration origin. Omit it to retain the default verified-archive rebuild.
 The helper verifies the pinned immutable ID, `linux/amd64` platform, revision label, and a nonempty
 valid retained-tag list. The receipt's `schema12_base_image.mode` distinguishes
 `reused_exact_deployed_image` from `locally_rebuilt_from_verified_archive`. The reused protected
@@ -1074,6 +1098,22 @@ verification, rendered owner workspace, and functional invited-user acceptance r
 **Unavailable**; the current local application is untouched.
 
 
+The free OpenCode restoration candidate requires a freshly bound executable scanner pin, backed
+by the exact official Bun public-span comparison. Verify both final archives with the reviewed
+checker before staging the PR9 pair; preserve earlier scanner failures and image identities.
+
+
+For the current PR #9 free-Zen repair, the host rehearsal's live production guard is pinned to
+revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13.
+This is separate from the historical schema-12 image used to rehearse migration and build the
+schema-compatible disabled recovery image. A rehearsal receipt must contain the exact live
+`production_baseline` binding, and the local controller rejects missing, stale, or malformed values.
+The 512 MiB start reserve, 128 MiB running reserve, fixed candidate/recovery limits, production
+health checks and separate actual combined 1 GB acceptance remain unchanged. These source checks
+are not evidence that a host pair ran or that the free-Zen repair was deployed.
+
+
 ### Current rollout repair and recovery preparation
 
 Operational PR #10's helper is installed and its disabled → owner-canary → invited transition
@@ -1171,3 +1211,10 @@ typed recorded-image rollback. Before enabling the assistant again, restore the 
 candidate and verify disabled readiness, then use owner-canary followed by invited rollout.
 Recovery registration or historical disposable-volume evidence alone does not authorize treating
 it as a tested production baseline or a proven memory saving.
+
+The current source defers Yahoo market-data and news dependency imports until the respective
+request. This reduces measured local cold-start allocations; a real provider request still loads
+its dependencies and requires the existing resource checks. T13 stopped below the startup reserve
+before OpenCode ran. A fresh recovery overlay, image and compatibility evidence are required before
+another baseline trial; the original recovery image remains protected. See
+[E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint).

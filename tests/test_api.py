@@ -917,6 +917,7 @@ def test_news_rejects_invalid_unknown_and_duplicate_query_fields(client, monkeyp
     [
         ("provider_unavailable", "provider_unavailable", 502),
         ("provider_news_invalid", "provider_unavailable", 502),
+        ("provider_unavailable", "provider_unavailable", 503),
         ("provider_busy", "provider_busy", 503),
     ],
 )
@@ -936,6 +937,14 @@ def test_news_preserves_safe_provider_statuses(
 
     assert response.status_code == status
     assert response.json()["error"]["code"] == public_code
+    if public_code == "provider_busy":
+        assert response.json()["error"]["message"] == (
+            "News retrieval capacity is busy; try again shortly."
+        )
+    else:
+        assert response.json()["error"]["message"] == (
+            "The news provider is temporarily unavailable."
+        )
     assert "upstream.invalid" not in response.text
     assert "/home/user" not in response.text
 

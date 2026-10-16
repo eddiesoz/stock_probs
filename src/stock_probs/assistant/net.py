@@ -28,7 +28,15 @@ _PROVIDER_403_CONTENT_TYPE_CLASSES = frozenset(
 )
 _PROVIDER_403_CF_MITIGATED_CLASSES = frozenset({"challenge", "absent", "other"})
 _PROVIDER_403_ERROR_TYPE_CLASSES = frozenset(
-    {"region_error", "data_policy_error", "free_usage_limit_error", "other", "malformed", "unknown"}
+    {
+        "region_error",
+        "data_policy_error",
+        "free_usage_limit_error",
+        "free_tier_access_error",
+        "other",
+        "malformed",
+        "unknown",
+    }
 )
 _PROVIDER_RESPONSE_FAILURE_PHASES = frozenset(
     {
@@ -45,6 +53,7 @@ _PROVIDER_403_ERROR_TYPE_MAP = {
     "RegionError": "region_error",
     "DataPolicyError": "data_policy_error",
     "FreeUsageLimitError": "free_usage_limit_error",
+    "FreeTierError": "free_tier_access_error",
 }
 _PROVIDER_403_JSON_BODY_MAX_BYTES = 4096
 _PROVIDER_403_DIAGNOSTIC_TIMEOUT_SECONDS = 1.0

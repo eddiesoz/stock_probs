@@ -22,7 +22,13 @@
     "oauth_broker_test_sha256": "698c4c823b73c1116674ebf5bafe36b720a5ccb4a3c59219ae00bebff4825a65",
     "oauth_callback_sha256": "5d54f79e89bf817fbe955ffee0ca0f00aac79d3b4480abd86c6947beea038bfb",
     "oauth_callback_test_sha256": "f525007a53d097ab52711926382fcfc4d32786bafef5f035a87629a9202384df",
-    "oauth_transformed_source_set_sha256": "6c4a0831b9109a9d2af7b896f4871949110e0cfab125ee72b681a692bba40136"
+    "oauth_transformed_source_set_sha256": "6c4a0831b9109a9d2af7b896f4871949110e0cfab125ee72b681a692bba40136",
+    "read_path": "packages/core/src/tool/plugin/read.ts",
+    "read_sha256": "ebada576cde856bf058886e024d9cfee4cd1462fe5cd8102339fff098d7ee1e6",
+    "read_patched_sha256": "a01a2d8564451977b7a27eda549de87b51e396f6c7bbd287b957659f6bc8b04c",
+    "shell_path": "packages/core/src/tool/plugin/shell.ts",
+    "shell_sha256": "464b69e511f47d41a4ae307b746bc39fafcc198d967ebe1e70b7e805c64169da",
+    "shell_patched_sha256": "f3366116a1b371fa820880959e8d36aa91e6838580712e0edc1a215a15e3b960"
   },
   "bun": {
     "version": "1.4.2",
