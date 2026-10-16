@@ -4046,6 +4046,15 @@ def _native_failure_projection(value: object) -> dict[str, object]:
 
     if not isinstance(value, dict):
         return {"failure_stage": "result_unavailable", "missing_conditions": []}
+    safe_error_code = value.get("safe_error_code")
+    if "safe_error_code" in value and (
+        not isinstance(safe_error_code, str)
+        or re.fullmatch(r"[a-z][a-z0-9_]{0,79}", safe_error_code) is None
+    ):
+        raise RehearsalError("native_failure_diagnostic_invalid")
+    http_status = value.get("http_status")
+    if http_status is not None and (type(http_status) is not int or not 100 <= http_status <= 599):
+        raise RehearsalError("native_failure_diagnostic_invalid")
     stage = value.get("failure_stage")
     missing = value.get("missing_conditions")
     if not isinstance(stage, str) or stage not in _NATIVE_FAILURE_STAGES:
@@ -4156,6 +4165,10 @@ def _native_failure_projection(value: object) -> dict[str, object]:
         numeric = value.get(key)
         if type(numeric) is int and 0 <= numeric <= 10_000:
             projected[key] = numeric
+    if isinstance(safe_error_code, str):
+        projected["safe_error_code"] = safe_error_code
+    if type(http_status) is int:
+        projected["http_status"] = http_status
     return projected
 
 

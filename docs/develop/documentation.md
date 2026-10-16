@@ -709,3 +709,28 @@ intermediate receipt and sidecar pins before upgrading, and retain a failed-upgr
 The identity parser must follow the actual subprocess producer's text contract. See the
 [F6 runtime/helper checkpoint](../../MVP-PLAN.md#r-astra-121-f6-native-results-and-deployment-helper-repair-2026-10-16)
 for scoped evidence; source/unit checks do not establish installed-helper or host acceptance.
+
+The subsequent PR #11 V7 host trial **Failed** at `admin_step_up` before either owner's model,
+turn, or tool activity. Its bounded receipt omitted the safe error code and HTTP status, so the
+specific cause remains **Unproven**. Source inspection confirms a fresh TOTP value is generated
+immediately before the step-up POST; this rules out only the stale-precomputed-code hypothesis. The
+pair phase failed, while restore, the recorded owner-canary-to-invited setting phases, and final
+5ad/schema-13 readiness passed for that trial. These operational phases do not deploy a new
+application release or establish an owner canary answer. See the
+[V7 and backup-retention checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v7-host-trial-and-backup-retention-checkpoint-2026-10-16).
+
+The managed backup pool reached the 32-artifact limit. One archive was verified without promotion,
+independently copied opaquely to the approved SD volume, and moved with `NOREPLACE` into the
+same-volume retained-backup directory. The post-move readback observed 31 active artifacts and
+the retained archive; a later host trial created another backup, so that earlier count is not a
+current inventory. The signed-reader, copy, move, and receipt-integrity results are recorded in the
+plan. Key rotation and retirement remain held by task policy until that archive is re-admitted,
+verified, coordinated into rotation, and its independent copies are rebound; this is not an
+automatic application guard. Independent QA of the bounded failure-projection repair passed 14
+JUnit cases and its scoped lint/format/diff checks on the verified SD mount; the original misplaced
+builder run retains its storage-compliance failure. The repaired retention utility passed independent source/test QA with 26 cases and its configured,
+security, and format checks; the earlier three-finding review remains preserved. That QA did not execute the production move, which has a
+separate one-shot receipt and readback review. Neither source QA nor receipt-chain review establishes
+native/runtime or release acceptance. The existing 1 GB host, backups, and US$15 monthly cap remain
+in force, and the native/resource, exact-PR recovery, browser, canonical, guide, canary, and release
+gates remain open.

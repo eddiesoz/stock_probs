@@ -2546,3 +2546,20 @@ before replacement. Keep the original recovery backup immutable, and compensate 
 to the exact pre-install helper and receipt together. Identity-parser regressions must exercise the
 real subprocess producer and its declared text/bytes contract; mocked bytes cannot establish a
 text-producing runtime path. Preserve unchanged application evidence only at its original bindings.
+
+
+For the R-ASTRA-121 PR11 V7 follow-on, preserve the actual-host `admin_step_up` failure separately
+from accepted local free-Zen answers. The host receipt recorded both owners as not started, with no
+model event, answer, turn, or search; the specific cause remains unproven because the bounded
+diagnostic projection omitted its safe error code and HTTP status. Source inspection showed that each
+TOTP value is generated immediately before its POST, which rules out a stale precomputed-code
+explanation but does not establish the failure cause. The task-scoped backup procedure moved one
+signed-verified archive after an opaque SD copy and used a same-volume `NOREPLACE` move. The
+31-artifact inventory was observed immediately after that move only; a later trial created another
+backup, so require a fresh inventory before stating the current count. Keep key rotation and retirement
+on hold until the retained archive is re-admitted under the existing locks, verified, included in
+coordinated rotation, and independent copies are rebound. This is operator policy, not an application
+guard. CLI verification may perform existing same-schema SQL initialization and permission-metadata
+hardening; do not describe it as strict zero-write. Preserve the failed V7 pair and open native, actual
+1 GB, rollback, browser, canonical, guide, canary, and release gates in the [R-ASTRA-121
+ledger](MVP-PLAN.md).

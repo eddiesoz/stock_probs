@@ -8925,3 +8925,137 @@ actual-host startup preflight **Fail** at 467,908 KiB versus
 524,288 KiB and its exact 5ad restoration review; no new 6359 host transition occurred. The existing
 1 GB host, backups and US$15 monthly cap remain unchanged. No app deployment, merge, resize, rollout,
 release or email occurred.
+
+### R-ASTRA-121 PR11 V7 host trial and backup-retention checkpoint (2026-10-16)
+
+The free OpenCode Zen application candidate remains the clean PR #9 head
+`f6a51d5c821e6b1ab7974a94f4ff795da10130bc`, image
+`sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196`. Its previously
+accepted real two-owner local free-Zen answers, native search, and guarded fetch remain local
+functional evidence for that exact image and do not establish an actual-host answer. No application
+source, image, or feature release changed in this checkpoint.
+
+The fresh V7 rehearsal entry and test were source-bound to
+`dd7_f6_flow_entry_v7.py` SHA-256
+`aafac5d3a95e3248b0b8ef22675fc78dd376c62cfff59a246f41d97e186c7f99` and
+`test_dd7_f6_flow_entry_v7.py` SHA-256
+`a262e9b0f1fbc2d768810e56d2463b7baa85d25e0e09a77ddb2a35e8d7f46139`. Parent and independent
+static reviews passed their declared source bindings; the independent review is
+`/var/tmp/r12r/dd7-f6-v6-adapter-prep-da3e39cb-a1ed-47db-9805-fc059f4d8238/runtime-v7-after-retention-a22aa7ce/reviews/independent.json`, SHA-256
+`e965e72e21941896715cb749024e0966ceaee8eb847b35612b0420d35fcdce09`. The test scope was 16
+focused cases; those checks do not substitute for the actual-host workflow result.
+
+One actual-host V7 attempt ran under
+`dd7-f6-host-flow-v7-a22aa7ce.service`. Its captured terminal records exit status 1, no restart,
+and no automatic retry. The overall workflow **Failed** because the temporary pair phase **Failed**;
+the restore phase **Passed**, and the recorded `owner_canary` then `invited` rollout-setting phases
+and final readback **Passed** for that trial. The `owner_canary` setting phase was not an authenticated
+owner-answer canary. The failure stage was `admin_step_up`: both owners
+were `not_started`, with zero selected-model events, assistant answers, search sources, or issued
+turns. Correlated host-receipt readback is
+`parent-actual-failure-receipt-readback.json`, SHA-256
+`b051760824eab75abc65c795eba578ec96b3ac6cae427d030c13a4f4a84ed0d9`; it explicitly is not the
+missing original RPC capture. Parent terminal
+`parent-actual-terminal-before-retirement.json` is SHA-256
+`ce6f437e178201c8e35ab63ae5c466016d2d6094f77ef283091ef9e5b69e8c9a`. The safe diagnostic
+projection omitted its optional error code and HTTP status, so the specific cause remains
+**Unproven**. Source inspection shows a fresh TOTP value is generated immediately before the
+step-up POST, ruling out only the stale precomputed-code hypothesis. A narrow checker repair now
+preserves an optional bounded slug matching `[a-z][a-z0-9_]{0,79}` and an exact integer HTTP status
+from 100 through 599, without retaining a raw response body, cookie, or TOTP. The builder reported
+13 focused tests **Passed**. Independent QA **Passed** 14 JUnit cases (0 failures, errors, or skips)
+for the bounded projection and privacy scope on the UUID-verified SD mount; its receipt is
+`/var/tmp/r12r/pr11-projection-independent-qa-20261016T2302Z/independent-qa-receipt.json`, SHA-256
+`68caf3f745248918e95ef78d36dba6d8928c7e82547519c64395a2f61404a450`, with exact-command supplement
+SHA-256 `fb9a68c65651750462766d5ce4e2baa745e4db1312e873148c3a8e78f60aff68` and JUnit SHA-256
+`203c57710d89513ba7ef59bb482426a6465536f69272b8d6ba3a1d939fdbcf47`. The six source pins are
+host helper `5bf55b2433597d9b958eeecd01933c11b41f37a513d7921f10321812be70f1f4`, controller
+`94fd6a15cc4616e3e00583ccb97949b9aea30be4bb23e9f7049083dd5c0a7192`, native probe
+`5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10`, supervised probe
+`7d3d55064307cd9142c1c2e4a12c202b6d5926802a08ee787978e02996078aaa`, tests
+`8e5823f2b66b6afe873fc2f67351069407f648f2364f5a599db2ebe15db4ee39` and
+`3b5d96ca49f7d2e5fe5588159403659a8d44694d88b1cc475469596e22af08e9`. Configured Ruff security,
+format, and diff checks passed. The original builder scratch was created outside the approved SD
+mount; its complete bytes, 13 members, and metadata were verified after relocation to
+`/var/tmp/r12r/pr11-native-failure-projection-2240-relocated-22e1f385`. The original run's
+storage-compliance result remains **Fail**. Independent QA used a separate private packet on the
+verified SD mount; it does not relabel the original failure and establishes no host/runtime repair
+or cause.
+
+A production CLI attempt had already confirmed the managed-backup limit of 32 and refused to
+create another backup. No archive was deleted and the cap was not raised. One exact candidate,
+`pre-native-a5-schema13-20261014-backup02.spbackup` (744,415 bytes; SHA-256
+`24512058dc9c4811938ec0b1de38b65d93fd452e143736a8f6f4a5ea1353ca2b`), was verified by the signed
+reader without promotion and copied opaquely to the UUID-verified SD volume. The signed-reader
+result SHA-256 is `cd89ee49bf91f72168fe17333ef251b2da33c7a8061939b6bee18a87099d69f9`; the durable
+independent-copy result is `985bd02166a2c9bf4622c9c005a4bd78f7af6114bfee4189b3688efb7c7b2e4`.
+The opaque-copy code did not parse archive members or access the trust key; the signed-reader CLI
+used the existing trust boundary and did not expose a key value. An independent artifact-chain
+review passed its declared scope at
+`/var/tmp/r12r/retained-backup-copy-independent-review-20261016T223624Z/independent-review.json`,
+SHA-256 `7563d2db9fee781cddf2e790909d127734b95404da0bec12e3ed7d3ce80880de`.
+
+After a scoped source review and one-shot admission, the archive was moved on the same production
+volume with atomic `NOREPLACE` semantics into `retained-backups-r120`. The immediate readback
+**Passed** at `2026-10-16T22:43:29.444702Z`: 31 active artifacts, the exact one retained archive,
+the other 31 inventory rows unchanged, the active temporary-operation record absent, schema 13,
+invited, ready, and the previous current/failed record identities unchanged. Readback receipt
+`/var/tmp/r12r/backup-slot-retention-115cd508-59b3-432a-ac47-87e5453a933d/parent-actual-post-retention-readback.json`, SHA-256
+`1855ff94cb52c4bbed02980d9de36b764b326c91ed76f39ead048b2bf5b8f1c2`; independent integrity
+review SHA-256 `86bb52764edb1e0822280cd290f08f4400674226ff2083274a01438ad02e79b2` passed its listed
+receipt, input-binding, inventory, and chronology checks. It recorded a separate limitation that
+the opaque SD copy was hashed with `Path.read_bytes()` rather than a streaming read.
+The initial retention-source review reported three findings and **Failed**; its receipt hash was
+not supplied. Three repairs passed, but the second source review still **Failed** overall because of a
+dictionary-key reference gap (SHA-256
+`8ce7ddb3d30a38c5db9ff11f16294fc09f24518fd4454ffccf587874388ca5dd`). Later independent source/test
+QA **Passed** 26 cases, with configured/security Ruff and format checks also passing;
+source `retain_one_backup.py` SHA-256 `3d0f02573e04e6b170805e3e8759f0f48dbf982dd2ddad6ab27450e6a86b1e24`,
+test `test_retain_one_backup.py` SHA-256 `912b8eea4e34578bd6f09d04dc40015be0867ce7341c0fbe17540c7c2815d89b`. Receipt
+`/var/tmp/r12r/backup-retention-independent-qa-66f10463-8d67-46a9-a51c-54ac26e90b1d/independent-key-scan-review.json`, SHA-256
+`ae4f10f8d274e48c18eb848f7a7846bdb8320ebcd2b9439bcb09fe87535e5378`; its attribution supplement
+SHA-256 `0e7f84507bcc26d330338ecbb542ddcef6d5e343c3893f6730c7392ef0f522ec` confirms that the checks
+used Python 3.11.15. An initial Ruff invocation failed because of option placement; the corrected
+security, configured lint, and format commands passed. These source checks did not run the production
+move. The successful move and receipt-integrity review do not erase the earlier failure or establish
+actual-host resource or release acceptance.
+
+The durable `_R120-KEY-ROTATION-HOLD.json` marker is operator/task policy, not an application guard.
+It holds both trust-key rotation and retirement until the exact retained archive is re-admitted
+under the existing locks, signed-verified, included in a coordinated rotation, and the independent
+copies are rebound. The independent SD copy alone cannot recover the archive if both the production
+filesystem and trust key are lost. The copying and moving code did not read, export, or change key
+contents; the signed-reader CLI used the existing trust boundary without exposing the key. The
+31-active count is historical to the immediate post-move readback: the subsequent V7 rehearsal
+created another backup, and a fresh current inventory is still required. The existing same-schema CLI preflight may perform
+idempotent SQL initialization and permission-metadata hardening; it is not strict zero-write
+verification. No new schema transition or backup promotion was performed.
+
+The fresh post-trial read-only status/inspect receipt
+`/var/tmp/r12r/dd7-f6-v6-adapter-prep-da3e39cb-a1ed-47db-9805-fc059f4d8238/runtime-v7-after-retention-a22aa7ce/parent-fresh-restored-production-readback.json`, SHA-256
+`af95f0b45af32df19ba0e3d34a75781ebea7289f5085463b4f452fb7b7a844b7`, completed at
+`2026-10-16T22:57:23.401298Z`. It confirmed the existing app revision
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13, invited
+rollout, ready app/assistant status, and loopback-only boundary. It also retained the prior failed
+`assistant_disable_unverified` record; it is not a successful free-Zen answer or release acceptance.
+
+Actual 1 GB/native/resource acceptance, exact-PR recovery and rollback, final browser and canonical
+aggregates, final guide, owner answer canary, and release gates remain open. The seven visible
+features stay after the assistant fix in their approved sequence. The existing 1 GB host, backups,
+and US$15 monthly total cap including tax remain unchanged. No application-release deployment,
+merge, resize, email, or release occurred.
+
+The authored-documentation checkpoint started at worktree `e1c6b178ace4d3501f69e32ec828e255b4c75142`.
+Before editing, byte-identical copies of `AGENTS.md`, `MVP-PLAN.md`,
+`docs/develop/documentation.md`, and `docs/operations/backup-restore.md` were preserved on the
+UUID-verified SD volume in `/var/tmp/r12r/pr11-docs-v7-705bdc1a84bd4eaeac6e835235d03726/`;
+baseline manifest SHA-256 is `7c51ba7252e1c8ee10f4fde2cd704dcf6982775f84f00484301f15ea7a4e63dd`.
+The first validator invocation, `.dev-venv/bin/python scripts/validate_docs.py`, **Failed before
+execution** (exit 127) because the worktree has no `.dev-venv`. The corrected command
+`/home/james/repos/stock_probs/.dev-venv/bin/python3.11 scripts/validate_docs.py` **Passed** with
+9 categories, 14 topics, and 8 governance entries. Documentation coverage **Passed** for 181 mapped
+files; change-aware coverage **Passed** for the four authored paths and three already-modified
+PR11 source/test paths; the coverage self-test **Passed** 26 cases; and scoped `git diff --check`
+**Passed**. These checks ran with umask `022`. No application tests, build, host action, Git index,
+commit, or remote operation was performed for this documentation update.

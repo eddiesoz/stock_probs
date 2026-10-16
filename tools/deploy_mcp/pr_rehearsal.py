@@ -2192,6 +2192,8 @@ def _safe_native_failure(value: object) -> dict[str, object] | None:
         "cross_owner_conversation_status",
         "forged_internal_mcp_status",
         "builtin_search_source_count",
+        "safe_error_code",
+        "http_status",
     }:
         return None
     stage = value.get("failure_stage")
@@ -2204,10 +2206,23 @@ def _safe_native_failure(value: object) -> dict[str, object] | None:
         or any(item not in _SAFE_NATIVE_FAILURE_CONDITIONS for item in missing)
     ):
         return None
+    safe_error_code = value.get("safe_error_code")
+    if "safe_error_code" in value and (
+        not isinstance(safe_error_code, str)
+        or re.fullmatch(r"[a-z][a-z0-9_]{0,79}", safe_error_code) is None
+    ):
+        return None
+    http_status = value.get("http_status")
+    if http_status is not None and (type(http_status) is not int or not 100 <= http_status <= 599):
+        return None
     result: dict[str, object] = {
         "failure_stage": stage,
         "missing_conditions": missing,
     }
+    if isinstance(safe_error_code, str):
+        result["safe_error_code"] = safe_error_code
+    if type(http_status) is int:
+        result["http_status"] = http_status
     owners = value.get("owners")
     if owners is not None:
         if not isinstance(owners, list) or len(owners) > 2:

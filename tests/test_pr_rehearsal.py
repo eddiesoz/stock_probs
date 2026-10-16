@@ -6224,6 +6224,89 @@ def test_controller_failure_projection_keeps_closed_turn_error_stage_and_owner_e
     assert rejected is None
 
 
+def test_native_failure_projection_preserves_bounded_top_level_diagnostics() -> None:
+    private_sentinel = "PRIVATE_COOKIE_SENTINEL"
+    raw = {
+        "failure_stage": "admin_step_up",
+        "missing_conditions": [],
+        "safe_error_code": "native_driver_failed",
+        "http_status": 503,
+        "response_body": private_sentinel,
+    }
+
+    host_projection = host_helper._native_failure_projection(raw)
+    public_projection = controller._safe_native_failure(host_projection)
+
+    expected = {
+        "failure_stage": "admin_step_up",
+        "missing_conditions": [],
+        "safe_error_code": "native_driver_failed",
+        "http_status": 503,
+    }
+    assert host_projection == expected
+    assert public_projection == expected
+    assert controller._safe_host_failure_details(
+        {
+            "status": "error",
+            "code": "native_workload_incomplete",
+            "failure": host_projection,
+        }
+    ) == {"failure": expected}
+    assert private_sentinel not in json.dumps(host_projection)
+    assert private_sentinel not in json.dumps(public_projection)
+
+
+def test_native_failure_projection_keeps_legacy_receipts_without_optional_diagnostics() -> None:
+    legacy = {"failure_stage": "admin_step_up", "missing_conditions": []}
+
+    host_projection = host_helper._native_failure_projection(legacy)
+
+    assert host_projection == legacy
+    assert controller._safe_native_failure(host_projection) == legacy
+    future_code = "future_native_driver_error_17"
+    assert controller._safe_native_failure({**legacy, "safe_error_code": future_code}) == {
+        **legacy,
+        "safe_error_code": future_code,
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_value"),
+    [
+        ("safe_error_code", "Native-Driver-Failed"),
+        ("safe_error_code", 503),
+        ("http_status", True),
+        ("http_status", 99),
+        ("http_status", 600),
+    ],
+)
+def test_native_failure_projection_rejects_malformed_top_level_diagnostics(
+    field: str, invalid_value: object
+) -> None:
+    raw = {"failure_stage": "admin_step_up", "missing_conditions": [], field: invalid_value}
+
+    with pytest.raises(host_helper.RehearsalError, match="native_failure_diagnostic_invalid"):
+        host_helper._native_failure_projection(raw)
+    assert controller._safe_native_failure(raw) is None
+
+
+def test_native_failure_projection_rejects_private_error_text_without_echoing_it() -> None:
+    private_sentinel = "private prompt and cookie must not be returned"
+    raw = {
+        "failure_stage": "admin_step_up",
+        "missing_conditions": [],
+        "safe_error_code": private_sentinel,
+    }
+
+    with pytest.raises(host_helper.RehearsalError) as failure:
+        host_helper._native_failure_projection(raw)
+    public_projection = controller._safe_native_failure(raw)
+
+    assert private_sentinel not in str(failure.value)
+    assert public_projection is None
+    assert private_sentinel not in json.dumps(public_projection)
+
+
 def _write_docker_archive(
     path: Path,
     image_id: str,
