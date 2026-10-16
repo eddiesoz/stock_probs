@@ -1,6 +1,6 @@
 ---
 title: "Threat model"
-description: "Threats and controls for loopback HTTP, untrusted requests, Yahoo market/news data, SQLite state, exports, and managed backup artifacts."
+description: "Threats and controls for authenticated workspaces, monitoring jobs, untrusted requests, SQLite state, exports, and managed backups."
 ---
 
 # Threat model
@@ -20,6 +20,48 @@ no ledger/import commit tool. Whole-database signed backups retain new tables; a
 restore check is separate from schema-compatible image recovery and exact-PR rollback. Feature
 controls default off, with an administrator-only canary option. Full independent security and
 production acceptance remain required before rollout.
+
+## R121 Release 3 monitoring and report-card candidate
+
+Alert rules, notifications, notification preferences, and outcome reviews are private owner data.
+Their routes resolve the owner from the authenticated session, reject identity fields in request
+bodies, bound pages and payloads, and use revisions for mutable state. Alert creation also requires
+an idempotency key. The initial price sample establishes the alert baseline and cannot trigger it;
+only a later valid observation may cross the threshold. This limits false first-observation alerts,
+but the 15-minute scheduler cadence can miss a crossing between checks.
+
+The candidate scheduler shares the application provider service and its request controls. Its
+persisted jobs use bounded leases and cancellation-aware processing; normal application service is
+intended to remain available when monitoring is disabled or unavailable. In the R3 checkout,
+schema 18 is registered as candidate state; feature, scheduler, and email controls default off. Monitoring feature access
+and job processing are separately gated; the intended administrator control mutation requires a
+fresh TOTP step-up. Independent re-review now passes the preserved pre-provider role-revocation
+reproduction: demotion before dispatch resulted in zero provider calls and no stored outcome. This
+check revalidates immediately before dispatch and does not cover revocation after that final check.
+A separate administrator-control authorization boundary is characterized as unsafe; its repair and
+independent review remain pending. Do not treat the canary control as safe to enable based on the
+narrow dispatch result.
+
+Notification API views expose the observed threshold crossing, price, currency, provider, time, and
+read state. They omit recipient addresses and transport details. Preference views expose only
+`address_configured`, not the address or its identifier. The R3 schema-18 candidate adds verified
+address onboarding and connects the persisted SMTP outbox to the existing application mail
+transport. Feature, scheduler, and email controls default off; verified address plus explicit opt-in
+and enabled configuration are required. No live SMTP submission, verification email, or mailbox
+delivery has been observed. The earlier outbox P2 findings and failed independent review remain
+historical; later 12-check repository/restore-guard review and 23-check staged-application
+integration pass only those selected local-fixture scopes. Independent selected UI source review
+passed 16 Node/scoped TypeScript checks with no actionable P1/P2 finding; it did not exercise a browser
+and left lost-response GET reconciliation and explicit replacement testing open. Full security
+acceptance remains pending.
+
+Private backup archives carry SQLite data and a signature for integrity; do not describe the archive
+as encrypted. Selected restore guards passed their declared local scope, but live backup inspection,
+real restore, and delivery recovery remain unverified.
+The report card reads immutable forecasts and appended outcomes/reviews. It does not
+rewrite forecasts or fold historical backtests into recorded-outcome metrics. Full populated backup
+recovery, live provider checks, browser isolation, and the complete security review remain pending.
+See the [R-ASTRA-121 R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
 
 Signal Ledger has two supported security modes. Development may use a local bootstrap account on
 loopback; production is an invite-only multi-user deployment behind a Cloudflare Tunnel. The

@@ -531,6 +531,72 @@ evidence and opt-in ACDC/SPY live-news probes remain separate from the determini
 their command, environment, UTC, revision, result, and provider availability, and never convert an
 unavailable live run into a pass.
 
+## Monitoring and forecast outcome workspaces
+
+Release 3 adds the Notifications workspace at `/notifications` and the forecast report card at
+`/research/report-card`. Their current contract and acceptance status are tracked in the
+[current R121 Release 3 checkpoint](../../MVP-PLAN.md#r-astra-121-e26-outbox-review-and-static-page-packaging); source
+presence and selected checks do not establish a deployed feature.
+
+Authenticated routes derive ownership from the active session and use bounded pages and revision
+checks. Creating or resuming an alert stores its initial-snapshot job with the rule. The rule stays
+in `arming` until a valid baseline arrives; that observation cannot trigger a notification. A later
+valid observation must cross the threshold, so treat an alert as active only when its baseline is
+ready and its state is `watching`. Deletion remains unavailable until immutable history can be
+preserved.
+
+The R3 candidate wires one bounded application-lifespan scheduler to the shared provider service
+and outcome collector. Feature access, scheduler startup, persisted job processing, and email default
+off; one-shot CLI operations do not start the worker. A local application startup failure is
+intended not to disable normal service. The separate administrator-control boundary remains unsafe
+and is not accepted for canary or rollout. The original 24-case browser aggregate failed (21
+failures, 3 unrun) before route checks, with axe unavailable; the repaired-route browser rerun is
+pending. The independent repository-typing review passed its 22-test auth-repository selection,
+two schema-18 backup guards, fresh `repository.py` mypy, and scoped Ruff/format checks; two
+additional restore-security tests were deselected because the worktree lacked staged static assets.
+A separate optional whole-package mypy diagnostic remains **Fail** at 233 errors across 17 files;
+the canonical local-gate mypy selector covers `backup.py` and `cli.py`, so do not attribute that
+broad result to the canonical gate. The later three-file typing repair passed selected
+mypy/Ruff/security/format checks. Its initial 32-test run remains **Fail** with one preference
+failure, reproduced against the pre-edit baseline. Independent QA reran the selection excluding
+that test: 31 passed. A later test-only fixture update passed the 10-test monitoring API module
+and scoped Ruff checks in builder and independent QA; parent source/evidence review passed for the
+three typing files and fixture at exact hashes. This supersedes only the focused preference-test
+result; no aggregate is formed from these selections. See the
+[R3 preference-fixture follow-up](../../MVP-PLAN.md#r-astra-121-e30-r3-notification-preference-fixture-follow-up) and
+[R3 typing follow-up](../../MVP-PLAN.md#r-astra-121-e29-r3-repository-typing-and-diagnostic-follow-up)
+and [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
+The initial packaging review reproduced an assertion gap for omitting the shared `/_next` asset
+copy. Current R1/R2/R3 Dockerfiles enumerate 16/18/20 exported HTML pages and recursively copy
+`out/_next`. A builder-only guard repair passed seven focused cases per worktree and the omitted-
+asset mutation now triggers the expected assertion; independent rereview remains pending. No image
+was built, so stage parity and source checks do not prove packaged-route behavior.
+
+Report cards score recorded outcomes against immutable forecasts, keep backtests separate, and
+show scored, pending, unavailable, disputed, and incomparable samples with their model, horizon,
+and denominator. Direction scoring excludes tied highest-probability classes; 80% interval coverage
+includes endpoints. Five-minute outcomes require supported observations or explicit manual review.
+The collector behavior has selected test coverage; independent schema-18 repository/restore-guard
+review passed 12 checks, and repaired application integration passed 23 independent checks against
+a real staged app using local fixtures. These checks do not verify live provider collection or
+production MFA. See the [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
+
+Migrations 16 and 17 hold the monitoring records and immutable outcome-owner guard. The R3
+checkout registers migration 018 for verified-address delivery as candidate schema 18; this is not
+production schema. The repository/restore-guard independent review passed 12 selected checks. The
+bounded owner export excludes notification addresses, verification challenges, outbox payloads,
+leases, and worker jobs; CSV output uses formula-safe serialization. The existing SMTP transport
+and persisted outbox are wired in the candidate, but email defaults off and no live submission or
+delivery was verified. The full frontend build/stage passed 88 Node tests and verified all 65 served/export pairs at its
+then-bound 113-source snapshot. The backend-typing worker has since changed `repository.py`, so this
+does not bind the whole current tree. Independent selected UI source review passed 16 Node/scoped
+TypeScript checks with no actionable P1/P2 finding; it was not browser QA and left lost-response GET
+reconciliation and explicit replacement tests pending. The initial full-stage inventory check compared 62
+pairs before a corrected explicit inventory verified all 65; an initial supplement setup failure is
+preserved in the plan. See the [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
+
+The assistant hotfix T9 artifact-only review passed 16 checks, but the unchanged startup reserve guard remains failed at 519,432 KiB against 524,288 KiB. The later above-floor observation does not establish the guard, cause, or actual 1 GB acceptance; there was no live service reinspection after artifact review. See the [R121 E28 checkpoint](../../MVP-PLAN.md#r-astra-121-e28-map-rebind-and-current-release-status).
+
 ## Historical application gate receipt (preserved)
 
 Any Ponytail wording in this receipt is historical and does not describe a current check.

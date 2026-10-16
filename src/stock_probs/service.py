@@ -22,6 +22,7 @@ from stock_probs.domain import (
     normalize_lookup_query,
     normalize_symbol,
 )
+from stock_probs.outcome_collection import DailyOutcomeSeries, OutcomeSourceUnavailable
 from stock_probs.provider import MAX_LOOKUP_RESULTS, MAX_NEWS_RESULTS, MarketDataProvider
 from stock_probs.repository import Repository
 
@@ -263,6 +264,34 @@ class ForecastService:
             ).as_dict(),
             "The chart provider failed unexpectedly.",
         )
+
+    def fetch_daily_outcome_series(
+        self,
+        symbol: str,
+        asset_type: str,
+        origin_at: datetime,
+        target_at: datetime,
+        now: datetime,
+    ) -> DailyOutcomeSeries:
+        """Run the complete trusted outcome read under the shared provider capacity slot."""
+
+        fetch = getattr(self.provider, "fetch_daily_outcome_series", None)
+        if not callable(fetch):
+            raise OutcomeSourceUnavailable("corporate_action_unknown")
+        if not self.provider_slots.acquire(timeout=1.0):
+            raise OutcomeSourceUnavailable("provider_unavailable")
+        try:
+            try:
+                series = fetch(symbol, asset_type, origin_at, target_at, now)
+            except OutcomeSourceUnavailable:
+                raise
+            except Exception as exc:
+                raise OutcomeSourceUnavailable("provider_unavailable") from exc
+        finally:
+            self.provider_slots.release()
+        if not isinstance(series, DailyOutcomeSeries):
+            raise OutcomeSourceUnavailable("series_incomplete")
+        return series
 
     def _provider_capability(
         self,

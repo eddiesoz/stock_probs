@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from importlib.resources import files
+from uuid import uuid4
 
 import pytest
 
@@ -1347,6 +1348,48 @@ def test_restore_security_snapshot_includes_private_email_invite_binding(tmp_pat
         )
 
     assert _restore_security_digest(snapshot) != expected
+
+
+def test_restore_security_snapshot_includes_notification_verification_and_optin_state(tmp_path):
+    """Promotion protection binds private notification identity and explicit consent."""
+
+    from stock_probs.api import _restore_security_digest
+
+    repository = _repository(tmp_path)
+    address_id = str(uuid4())
+    with repository.connect() as connection:
+        connection.execute(
+            "INSERT INTO notification_addresses"
+            "(id,owner_user_id,address,challenge_hash,challenge_expires_at,verified_at,created_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (
+                address_id,
+                repository.legacy_owner_id(),
+                "restore-fixture@example.invalid",
+                _digest("private-verification-challenge"),
+                NOW.isoformat(),
+                NOW.isoformat(),
+                NOW.isoformat(),
+            ),
+        )
+        connection.execute(
+            "INSERT INTO notification_preferences"
+            "(owner_user_id,revision,address_id,alert_email,digest_email,updated_at) "
+            "VALUES (?,1,?,1,0,?)",
+            (repository.legacy_owner_id(), address_id, NOW.isoformat()),
+        )
+        connection.commit()
+    snapshot = tmp_path / "notification-security-snapshot.sqlite3"
+    snapshot.write_bytes(repository.database_path.read_bytes())
+    before = _restore_security_digest(snapshot)
+
+    with sqlite3.connect(snapshot) as connection:
+        connection.execute(
+            "UPDATE notification_preferences SET revision=2,alert_email=0 WHERE owner_user_id=?",
+            (repository.legacy_owner_id(),),
+        )
+
+    assert _restore_security_digest(snapshot) != before
 
 
 def test_legacy_owner_claim_is_one_time_and_preserves_sidecars(tmp_path):
