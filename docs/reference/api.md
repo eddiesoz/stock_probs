@@ -12,7 +12,7 @@ dependency-free local pointer is `/api/v1/docs`.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | Process health and API version. |
-| `GET` | `/api/v1/readiness` | Migration-backed readiness, schema version, and selected provider. |
+| `GET` | `/api/v1/readiness` | Migration-backed readiness, schema version, selected provider, assistant state, and global Research rollout mode. |
 | `GET` | `/api/v1/instruments` | Bounded company/symbol lookup (`query`, optional `limit` up to 5) with complete selectable identity. |
 | `GET` | `/api/v1/quotes` | Provider-labelled quote snapshots for one comma-separated batch of up to 20 normalized symbols. |
 | `GET` | `/api/v1/bars` | One symbol's bounded daily chart for `range=5d`, `1mo`, `3mo`, `6mo`, or `1y`; the response interval is fixed at `1d`. |
@@ -59,6 +59,16 @@ OAuth start/callback and anonymous invitation-redemption routes use their browse
 flow. Invitation creation, listing, and email submission require an administrator; session listing
 and revocation are limited to the signed-in user's own sessions. The HTTP API has no invitation
 revocation route; invitations expire and can be redeemed once.
+
+`GET /api/v1/readiness` returns `200` when the application is ready, with `status`,
+`schema_version`, `provider`, `assistant: {enabled, status}`, and
+`research: {enabled, rollout_mode}`. The strict boolean `research.enabled` is false only for
+`rollout_mode: "disabled"`; the rollout mode is `disabled`, `owner_canary`, or `invited`.
+This public Research block reports global rollout configuration, not quote/provider health,
+authenticated canary membership, or per-user access. A `503` means application startup or
+maintenance has not reached readiness. Use the signed-in `GET /api/v1/research/features` response
+for the current account's availability; existing authorization on Research data routes remains in
+force.
 
 ## R-ASTRA-120 assistant API
 
@@ -366,7 +376,7 @@ accept bounded `page`/`page_size` parameters (default 20, maximum 100).
 
 | Route | Candidate behavior |
 | --- | --- |
-| `GET /api/v1/research/features` | Owner-visible rollout availability. |
+| `GET /api/v1/research/features` | Signed-in account's Research availability under the existing authorization rules. |
 | `GET/POST /api/v1/theses` | List or deliberately save a private thesis; creation needs a UUID idempotency key. |
 | `GET /api/v1/theses/{id}` | Reopen a private saved thesis without provider access. |
 | `PUT /api/v1/theses/{id}` | Append a reviewed revision; stale revision returns 409. |

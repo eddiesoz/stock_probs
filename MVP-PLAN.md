@@ -347,6 +347,46 @@ disabled before any release. Never restore a schema-13 backup over schema-14 use
 [R1 overlay testing scope](docs/develop/testing.md#r1-schema-14-recovery-overlay-scope) and
 [operator boundary](docs/operations/getting-started.md#r1-schema-14-source-only-recovery-overlay).
 
+### R-ASTRA-121 R1 PR7 research readiness contract (2026-10-16)
+
+`GET /api/v1/readiness` now exposes the global Research rollout configuration as
+`research: {enabled: StrictBool, rollout_mode: "disabled" | "owner_canary" | "invited"}`, derived
+from the existing feature-enabled and canary-only settings. This is independent of assistant
+status. It does not report quote/provider health, authenticated canary membership, or per-user
+Research access; existing signed-in availability and data authorization remain in force.
+
+Task `R1 PR7 research readiness` builder-selected JUnit evidence reports 9 tests with zero
+failures, errors, or skips, plus a separate startup-readiness check with 1 test and zero
+failures, errors, or skips. The focused result is recorded at
+`/var/tmp/r12r/R1-PR7-readiness-baseline-20261016T165938Z/focused-readiness-junit.xml`
+(SHA-256 `5ea3032588bce34c4630f9f5cdda3477c759cb32169ba700d0296418286916af`); the separate
+startup check is `startup-readiness-junit.xml` (SHA-256
+`ea29952969b76e88cef18e811d5626ce3a5895f37a005e016a1e9184cd5750fb`). The packet manifest is
+SHA-256 `312db90b1f9b42e4acde5af6b72793a94bdfdd819ee51d83f656bd1dd1635580`; it preserves
+pre-edit source/test baselines, not run-time source pins. The builder packet's run-time source
+identity and terminal exit receipt are **Unavailable**. Independent QA was **Pending** at this
+checkpoint. No canonical aggregate result is established here; deployment and rollout were not
+performed. This does not establish release acceptance.
+
+### R-ASTRA-121 R1 PR7 independent readiness QA (2026-10-16)
+
+Independent QA **Passed with no findings** for its focused scope at dirty revision
+`158ae157f65516728b2f7f1371bfbb28b877a102`, native x86_64/Python 3.11.15, from
+`2026-10-16T17:12:15.289192Z` to `17:17:07.237881Z`. The corrected API/workspace selection passed
+9 tests and the separate startup fail-closed check passed 1 test; both runs exited 0 with zero
+failures, errors, or skips. The review verified the strict three-mode global response, unchanged
+Research authorization, assistant-failure isolation, and no account-specific fields in public
+readiness. The exact three dirty source/test hashes matched before and after review, and 51
+allowlisted staged paths matched; Ruff, Ruff security, Ruff format, and scoped diff checks passed.
+Two earlier QA harness setup attempts failed before pytest and were corrected; neither was an
+application failure. The full API suite/canonical aggregate, browser, Docker, live provider,
+server, network, production, and host checks were **Skipped**; no frontend build or rollout was
+performed. This receipt is distinct from and does not amend the builder packet's earlier missing
+run-time source pins or terminal receipt, which remain **Unavailable**. Receipt
+`/var/tmp/r12r/R1-PR7-independent-qa-f93f35ab-b67c-44c4-bde1-fad0a9acf405/independent-qa-receipt.json`,
+SHA-256 `1f80c3a4184b8962d2ba93f77ffb9baf2afc1a7589fbecdd5c661421e8157ddd`. Release acceptance
+remains open.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.

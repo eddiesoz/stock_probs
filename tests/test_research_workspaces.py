@@ -86,6 +86,10 @@ def test_creation_key_replays_and_conflicting_body_does_not_duplicate(research_c
 
 def test_disabled_feature_and_canary_fail_closed(settings):
     with TestClient(create_app(settings, FixtureProvider(), lambda: NOW)) as client:
+        assert client.get("/api/v1/readiness").json()["research"] == {
+            "enabled": False,
+            "rollout_mode": "disabled",
+        }
         assert client.get("/api/v1/research/features").json()["enabled"] is False
         assert client.post("/api/v1/theses", json=thesis()).status_code == 503
 
@@ -323,13 +327,19 @@ def test_research_records_survive_signed_backup_restore(settings):
     assert store.get(1, "comparisons", comparison["id"]) == comparison
 
 
-def test_authenticated_owner_csrf_and_member_isolation(settings):
+@pytest.mark.parametrize(
+    ("canary_only", "expected_rollout_mode", "member_enabled"),
+    [(False, "invited", True), (True, "owner_canary", False)],
+)
+def test_authenticated_owner_csrf_and_member_isolation(
+    settings, canary_only, expected_rollout_mode, member_enabled
+):
     configured = replace(
         settings,
         auth_mode="local",
         auth_public_origin="http://testserver",
         research_features_enabled=True,
-        research_features_canary_only=False,
+        research_features_canary_only=canary_only,
         bootstrap_username="owner",
         bootstrap_password="research-development-owner-password",  # noqa: S106
         bootstrap_member_username="member",
@@ -337,12 +347,20 @@ def test_authenticated_owner_csrf_and_member_isolation(settings):
     )  # noqa: S106
     app = create_app(configured, FixtureProvider(), lambda: NOW)
     with TestClient(app) as owner:
+        readiness = owner.get("/api/v1/readiness")
+        assert readiness.status_code == 200
+        assert readiness.json()["research"] == {
+            "enabled": True,
+            "rollout_mode": expected_rollout_mode,
+        }
+        assert "user" not in readiness.json() and "owner_user_id" not in readiness.json()
         assert owner.get("/api/v1/theses").status_code == 401
         login = owner.post(
             "/api/v1/auth/local/login",
             json={"username": "owner", "password": "research-development-owner-password"},
         )
         assert login.status_code == 200, login.text
+        assert owner.get("/api/v1/research/features").json()["enabled"] is True
         assert owner.post("/api/v1/theses", json=thesis()).status_code == 403
         item = owner.post(
             "/api/v1/theses", json=thesis(), headers={"x-csrf-token": login.json()["csrf_token"]}
@@ -354,6 +372,18 @@ def test_authenticated_owner_csrf_and_member_isolation(settings):
                 json={"username": "member", "password": "research-development-member-password"},
             )
             assert member_login.status_code == 200, member_login.text
+            assert member.get("/api/v1/research/features").json()["enabled"] is member_enabled
+            if not member_enabled:
+                assert member.get("/api/v1/theses").status_code == 503
+                assert (
+                    member.post(
+                        "/api/v1/theses",
+                        json=thesis(),
+                        headers={"x-csrf-token": member_login.json()["csrf_token"]},
+                    ).status_code
+                    == 503
+                )
+                return
             assert member.get("/api/v1/theses").json()["total"] == 0
             assert member.get("/api/v1/theses/export?format=json").json()["revisions"] == []
             assert member.get(f"/api/v1/theses/{item.json()['id']}/revisions").status_code == 404

@@ -62,6 +62,18 @@ or inspect a recovery image or accept a schema-13→14 host pair. Keep same-volu
 post-migration record retention, and actual host/release checks pending. See the
 [R1 overlay ledger](../../MVP-PLAN.md#r-astra-121-r1-schema-14-source-only-recovery-overlay-checkpoint-2026-10-16).
 
+### R1 research readiness contract
+
+The readiness tests cover the closed OpenAPI schema, global mapping to `disabled`, `owner_canary`,
+or `invited`, the absence of account identifiers, and application readiness when the assistant
+worker is unavailable. Research-workspace tests separately verify that the signed-in availability
+route and data authorization still enforce the existing canary rules. The public readiness mode is
+not proof of account access or provider health. Independent QA later passed the 9-case API/workspace
+selection and a separate startup case with exact before/after source/test pins; the earlier builder
+packet still lacks run-time source pins. Neither result is a full API, canonical, browser, provider,
+or deployment acceptance. See the [R1 readiness evidence](../../MVP-PLAN.md#r-astra-121-r1-pr7-independent-readiness-qa-2026-10-16)
+for the exact receipt and scope.
+
 For a full schema-12-to-13 pair rehearsal, `--use-deployed-baseline-image` is an optional boolean
 that selects the centrally pinned deployed schema-12 image. It is accepted only in full-rehearsal
 mode; the default still rebuilds the base image from the verified archive. Before reuse, the helper

@@ -272,11 +272,19 @@ class AssistantReadinessResponse(ApiResponse):
     status: Literal["disabled", "starting", "ready", "unavailable", "stopped"]
 
 
+class ResearchReadinessResponse(ApiResponse):
+    """Expose the global research rollout mode without account-specific access details."""
+
+    enabled: StrictBool
+    rollout_mode: Literal["disabled", "owner_canary", "invited"]
+
+
 class ReadinessResponse(ApiResponse):
     status: Literal["ready"]
     schema_version: int
     provider: str
     assistant: AssistantReadinessResponse
+    research: ResearchReadinessResponse
 
 
 class QuoteItemResponse(ApiResponse):
@@ -4339,6 +4347,12 @@ def create_app(
             else "unavailable"
         )
         assistant_enabled = config.assistant_enabled and not assistant_service.operator_disabled
+        if not config.research_features_enabled:
+            research_rollout_mode = "disabled"
+        elif config.research_features_canary_only:
+            research_rollout_mode = "owner_canary"
+        else:
+            research_rollout_mode = "invited"
         return {
             "status": "ready",
             "schema_version": SCHEMA_VERSION,
@@ -4346,6 +4360,10 @@ def create_app(
             "assistant": {
                 "enabled": assistant_enabled,
                 "status": assistant_status if config.assistant_enabled else "disabled",
+            },
+            "research": {
+                "enabled": research_rollout_mode != "disabled",
+                "rollout_mode": research_rollout_mode,
             },
         }
 
