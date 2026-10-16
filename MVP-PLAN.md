@@ -7207,3 +7207,41 @@ release was created or read back in this run; no helper installation, actual-hos
 current native run, actual combined 1 GB test, recovery/rollback, production change, or release
 acceptance is established. The 512 MiB startup reserve, existing 1 GB host, backups, and US$15
 monthly total cap remain unchanged.
+
+
+### R-ASTRA-121 E30 — pushed publisher checkpoint
+
+The clean pushed source checkpoint is `1f03dab9c5a7cf2a7248ef69d3c71ced53781ff0`. PR #11 is
+[open and draft](https://github.com/eddiesoz/stock_probs/pull/11), titled “Add native assistant
+recovery checks and safe hotfix publication.” The exact title, body, state, and head readback passed;
+its receipt is `/var/tmp/r12r/pr11-publish-checkpoint-78ikf1x4/receipt.json`, SHA-256
+`d2a7359a691975a7a7826f7019432c49f248c2cec786872ea5262536ee3aa354`. Its pre-push coverage
+terminal reported 156 mapped files and 19 changed files passing; separate hook stdout was not
+persisted. The receipt records that no package manifest is bound to this new head.
+
+The parent source review **Passed** five scoped static checks on the publisher, helper, transport
+module, tests, and documentation-map pins; it ran no runtime or publication operation. Receipt
+`/var/tmp/r12r/pr11-parent-transport-static-tan3izeg/receipt.json`, SHA-256
+`dd50faf23cae6e251e91108742d993c0300cf795c47606903fd2e7f30f054e09`, records the exact six
+source/test/map hashes. Independent transport QA **Passed** 21/21 tests, zero failures or skips,
+and Ruff check/format at `2026-10-16T05:40:28Z`–`05:40:33Z`. That run's receipt records prior
+revision `d0236e56f88489b63e2a3f3164cdd77158df02b2`; its transport module and test hashes match
+the files in the pushed E30 source checkpoint. JUnit SHA-256 is
+`17767fa28891d9ea5434e0ea2f61e9aa9ff208911eb2d237c0509d00a2a2b4a0`; independent receipt
+`/var/tmp/r12r/pr11-hotfix-finalwait-baseline-20261016T053616Z-c2865668-e54f-43a2-a8ee-7425a5d5fc04/independent-finalwait-a1cafad4-2b33-4b8f-89b5-87bbf9f2faae/independent-qa-receipt.json`
+has SHA-256 `01d554ade4b52d2a1dd49e58525737e38f76cf1a07a5f03ca855e9d8af579899`.
+
+E28's mocked scan/upload TOCTOU failure and E29's intermediate unbounded-wait finding remain
+historical failures; the final transport pass records their scoped repairs without erasing them.
+This checkpoint does not establish archive publication or readback, production-helper
+installation, merge, host/native/resource acceptance, pair rehearsal, rollback, deployment,
+rollout, or release. The D282 application source remains frozen; the separate UI repair and
+restricted native security diagnostic remain pending. The latest recorded production inspect is
+`/var/tmp/r12r/pr11-7c3-publication-package-kc0fap10/posthost-production-inspect.json`, SHA-256
+`440ef7968b598e0daaccc5ab2105c5d479feef19b8db7d5b4e02761c345d801c`. It reports revision
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13, invited
+rollout, assistant and app ready, and loopback-only. Its exact invocation time is unavailable; the
+receipt creation time is not the invocation time. It retains the earlier
+`assistant_disable_unverified` failure. E30 includes no fresh inspect or production action. No email
+or release notice occurred.

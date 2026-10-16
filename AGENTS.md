@@ -2387,3 +2387,13 @@ checks downloaded bytes; only the production consumer checks the root-owned inst
 and expected pair digest before deriving a helper-head URL. No live publication, installation,
 host/native rehearsal, actual 1 GB acceptance, production change, or release is claimed. See
 [E29](MVP-PLAN.md#r-astra-121-e29-bounded-hotfix-publisher-review-and-flow-separation).
+
+E30 records clean pushed PR #11 at `1f03dab9c5a7cf2a7248ef69d3c71ced53781ff0`, open/draft with
+the title and body readback bound to that head. Parent static review passed; the independent
+transport suite passed 21/21 with no skips, and its transport source/test pins match the pushed
+checkpoint. E28's TOCTOU failure and E29's intermediate unbounded-wait finding remain preserved.
+No archive publication, helper installation, host/native/resource/pair/rollback check, deployment,
+rollout, or release is established. The D282 UI repair and restricted native security diagnostic
+remain pending; no fresh production inspect was made. The latest recorded inspect remains the 5ad
+schema-13 invited, ready, loopback-only observation; its exact invocation time is unavailable. See
+[E30](MVP-PLAN.md#r-astra-121-e30-pushed-publisher-checkpoint).
