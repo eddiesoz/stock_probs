@@ -40,12 +40,12 @@ LAYER_NAME = re.compile(r"(?:(?:[^/]+/)*layer\.tar|blobs/sha256/[0-9a-f]{64})")
 # heuristic classifies as `sk-` tokens. Each exemption is bound to one exact file path, size,
 # SHA-256 and match span. The public wheel/member hashes and the Bun comparison are recorded in
 # the task QA receipt; this table is not a path-, package-, or content-category-wide exemption.
-PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, str, tuple[tuple[int, int], ...]]] = {
+PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, frozenset[str], tuple[tuple[int, int], ...]]] = {
     # Peewee 4.5.1's PyPI METADATA README link (official wheel SHA-256
     # dbbdc93e9be08d1df49ceed48dc5d609bfeda6112848086f1f6c1f1debe70975).
     "usr/local/lib/python3.11/site-packages/peewee-4.5.1.dist-info/METADATA": (
         10_627,
-        "ec0d94c2e24185782acd93a9df566abc44ce8a9c60265a1d414de090e5421fba",
+        frozenset({"ec0d94c2e24185782acd93a9df566abc44ce8a9c60265a1d414de090e5421fba"}),
         ((9_835, 9_880),),
     ),
     # Setuptools 79.0.1 is part of the pinned Python builder base. Its official PyPI wheel
@@ -53,7 +53,7 @@ PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, str, tuple[tuple[int, int], ..
     # SPDX exception source.
     "usr/local/lib/python3.11/site-packages/setuptools/_vendor/packaging/licenses/_spdx.py": (
         48_398,
-        "a009b5ced3c5c25b2608a7bb94002cbff38839f4b57160eef5b34191ebbeda7b",
+        frozenset({"a009b5ced3c5c25b2608a7bb94002cbff38839f4b57160eef5b34191ebbeda7b"}),
         ((42_650, 42_680), (42_697, 42_727)),
     ),
     # packaging 26.3's official PyPI wheel (SHA-256
@@ -61,15 +61,22 @@ PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, str, tuple[tuple[int, int], ..
     # exception identifiers at these exact spans.
     "usr/local/lib/python3.11/site-packages/packaging/licenses/_spdx.py": (
         51_122,
-        "596ec35e2ca0ebcba9fd8343ff0a51625af548786257815f24b41f7e08613314",
+        frozenset({"596ec35e2ca0ebcba9fd8343ff0a51625af548786257815f24b41f7e08613314"}),
         ((44_773, 44_803), (44_820, 44_850)),
     ),
-    # The exact `sk-` match spans in the fixed OpenCode executable have identical offsets and
-    # per-span digests in the official pinned Bun 1.4.2 binary. The compiled file's own digest is
-    # separately pinned; all nonmatching bytes and any additional matches remain scanned.
+    # The two added release-pair binaries share four public spans with official Bun 1.4.2.
+    # Their span digests match this pinned provenance receipt:
+    # 775b9247341e7dc7bed348063cc7e56995ec86af0ac2a58d2892b9790eeefb85.
+    # Keep the earlier accepted digest; every other byte and added match remains scanned.
     "usr/local/bin/opencode": (
         212_784_608,
-        "c22fce743cf6ab15d056d5b589d1307fb5c05ed2129949bef5491af775c2c3ad",
+        frozenset(
+            {
+                "9dd48571a16d00a4cc021b6eb85b5c347f2b965aaee96913fa24028b86cef955",
+                "dc6d6963ce86d02f265d6e630417f835ef8732feacfaaecd0c3cd8a2b82e7a98",
+                "c22fce743cf6ab15d056d5b589d1307fb5c05ed2129949bef5491af775c2c3ad",
+            }
+        ),
         (
             (1_169_954, 1_169_988),
             (1_184_754, 1_184_859),
@@ -97,11 +104,11 @@ def _scan_stream(
     stream: object,
     *,
     exempt_spans: tuple[tuple[int, int], ...] = (),
-    expected_sha256: str | None = None,
+    expected_sha256s: frozenset[str] | None = None,
 ) -> int:
     tail = b""
     scanned = 0
-    digest = hashlib.sha256() if expected_sha256 is not None else None
+    digest = hashlib.sha256() if expected_sha256s is not None else None
     seen_exempt_spans: set[tuple[int, int]] = set()
     expected_exempt_spans = set(exempt_spans)
     while True:
@@ -109,7 +116,7 @@ def _scan_stream(
         if not chunk:
             if seen_exempt_spans != expected_exempt_spans:
                 raise ArchiveError("allowlisted_source_match_missing")
-            if digest is not None and digest.hexdigest() != expected_sha256:
+            if digest is not None and digest.hexdigest() not in expected_sha256s:
                 raise ArchiveError("credential_like_bytes")
             return scanned
         scanned += len(chunk)
@@ -135,11 +142,11 @@ def _scan_member(name: str, stream: object, size: int) -> int:
     source_pin = PINNED_PUBLIC_MATCH_SOURCES.get(name)
     if source_pin is None or size != source_pin[0]:
         return _scan_stream(stream)
-    _, expected_sha256, exempt_spans = source_pin
+    _, expected_sha256s, exempt_spans = source_pin
     return _scan_stream(
         stream,
         exempt_spans=exempt_spans,
-        expected_sha256=expected_sha256,
+        expected_sha256s=expected_sha256s,
     )
 
 
@@ -187,14 +194,19 @@ def verify_image_archive(path: Path) -> dict[str, object]:
                     raise ArchiveError("archive_size_invalid")
                 digest.update(chunk)
         manifest: object | None = None
+        manifest_bytes: bytes | None = None
+        archive_member_names: set[str] = set()
         with tarfile.open(path, mode="r:gz") as archive:
             for member_count, member in enumerate(archive, start=1):
                 if member_count > MAX_ARCHIVE_MEMBERS:
                     raise ArchiveError("archive_member_limit")
                 if not _safe_member_name(member.name):
                     raise ArchiveError("archive_member_invalid")
+                if member.name in archive_member_names:
+                    raise ArchiveError("archive_member_duplicate")
+                archive_member_names.add(member.name)
                 if member.name == "manifest.json":
-                    if manifest is not None or not member.isfile():
+                    if not member.isfile():
                         raise ArchiveError("image_manifest_invalid")
                     if member.size > MAX_MANIFEST_BYTES:
                         raise ArchiveError("image_manifest_too_large")
@@ -202,14 +214,24 @@ def verify_image_archive(path: Path) -> dict[str, object]:
                     if manifest_stream is None:
                         raise ArchiveError("image_manifest_unreadable")
                     with manifest_stream:
-                        manifest = json.load(manifest_stream)
-            if manifest is None:
+                        manifest_bytes = manifest_stream.read(MAX_MANIFEST_BYTES + 1)
+                    if len(manifest_bytes) != member.size:
+                        raise ArchiveError("image_manifest_unreadable")
+            if manifest_bytes is None:
                 raise ArchiveError("image_manifest_missing")
+            manifest = json.loads(manifest_bytes)
             if not isinstance(manifest, list) or len(manifest) != 1:
                 raise ArchiveError("image_manifest_invalid")
             entry = manifest[0]
             if not isinstance(entry, dict):
                 raise ArchiveError("image_manifest_invalid")
+            config_name = entry.get("Config")
+            if (
+                not isinstance(config_name, str)
+                or not _safe_member_name(config_name)
+                or config_name == "manifest.json"
+            ):
+                raise ArchiveError("image_config_name_invalid")
             layers = entry.get("Layers")
             if not isinstance(layers, list) or not layers:
                 raise ArchiveError("image_layers_missing")
@@ -222,25 +244,50 @@ def verify_image_archive(path: Path) -> dict[str, object]:
                 if layer_name in layer_names:
                     raise ArchiveError("image_layer_name_invalid")
                 layer_names.add(layer_name)
+            if config_name in layer_names:
+                raise ArchiveError("image_config_name_invalid")
 
         found_layers: set[str] = set()
-        total_layer_bytes = 0
+        found_config = False
+        total_payload_bytes = 0
+        archive_member_names.clear()
         with tarfile.open(path, mode="r:gz") as archive:
-            for member in archive:
-                if member.name not in layer_names:
+            for member_count, member in enumerate(archive, start=1):
+                if member_count > MAX_ARCHIVE_MEMBERS:
+                    raise ArchiveError("archive_member_limit")
+                if not _safe_member_name(member.name):
+                    raise ArchiveError("archive_member_invalid")
+                if member.name in archive_member_names:
+                    raise ArchiveError("archive_member_duplicate")
+                archive_member_names.add(member.name)
+                if DATA_PATH.search(member.name):
+                    raise ArchiveError("persistent_data_path")
+                if SECRET_PATH.search(member.name):
+                    raise ArchiveError("credential_like_path")
+                if member.isdir():
                     continue
-                if member.name in found_layers or not member.isfile():
-                    raise ArchiveError("image_layer_invalid")
+                if not member.isfile():
+                    raise ArchiveError("archive_member_type_invalid")
                 if member.size > MAX_ARCHIVE_BYTES:
-                    raise ArchiveError("image_layer_too_large")
-                layer_stream = archive.extractfile(member)
-                if layer_stream is None:
-                    raise ArchiveError("image_layer_unreadable")
-                with layer_stream:
-                    total_layer_bytes += _scan_layer(layer_stream)
-                found_layers.add(member.name)
-                if total_layer_bytes > MAX_ARCHIVE_BYTES:
-                    raise ArchiveError("image_layers_too_large")
+                    raise ArchiveError("archive_member_too_large")
+                member_stream = archive.extractfile(member)
+                if member_stream is None:
+                    raise ArchiveError("archive_member_unreadable")
+                with member_stream:
+                    if member.name in layer_names:
+                        scanned_bytes = _scan_layer(member_stream)
+                        found_layers.add(member.name)
+                    else:
+                        scanned_bytes = _scan_stream(member_stream)
+                        if scanned_bytes != member.size:
+                            raise ArchiveError("archive_member_size_mismatch")
+                        if member.name == config_name:
+                            found_config = True
+                total_payload_bytes += scanned_bytes
+                if total_payload_bytes > MAX_ARCHIVE_BYTES:
+                    raise ArchiveError("archive_payload_too_large")
+        if not found_config:
+            raise ArchiveError("image_config_missing")
         if found_layers != layer_names:
             raise ArchiveError("image_layer_missing")
     except ArchiveError:

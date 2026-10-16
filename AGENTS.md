@@ -2397,3 +2397,9 @@ rollout, or release is established. The D282 UI repair and restricted native sec
 remain pending; no fresh production inspect was made. The latest recorded inspect remains the 5ad
 schema-13 invited, ready, loopback-only observation; its exact invocation time is unavailable. See
 [E30](MVP-PLAN.md#r-astra-121-e30-pushed-publisher-checkpoint).
+
+For the R-ASTRA-121 PR11 scanner integration, retain scanning of the manifest, referenced Config,
+every regular outer archive member, and nested layer contents, including private keys and
+persistent-data paths. A public-byte exemption requires the exact path, size, full digest and
+match spans; never exempt all Config values or an entire file. The pre-merge host-pair helper's
+separate reserve/deadline-aware recovery verifier remains unchanged.

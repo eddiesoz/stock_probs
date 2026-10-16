@@ -513,9 +513,12 @@ builds and publishes the default GitHub Release transport:
 
 The script builds a Linux `amd64` image, creates the revision-named local tag
 `signal-ledger-<reviewed-sha>` and release asset `signal-ledger-image-<reviewed-sha>.tar.gz`, scans
-the archive for credential-like material, publishes through `gh release create`, then downloads
-the asset again and verifies its archive SHA-256, Docker image ID, revision label, platform, and
-size. The script treats the revision-named asset as immutable during this workflow, but GitHub
+the manifest, referenced Config, every regular outer member, and nested layer contents for
+credential-like material and persistent data under one decompressed-byte bound. Duplicate,
+missing, unsafe or unsupported members fail closed. Only exact public-provenance path, size,
+digest and match spans are exempt; other bytes, environment values and private keys remain
+scanned. The script publishes through `gh release create`, then downloads the asset again and
+verifies its archive SHA-256, Docker image ID, revision label, platform, and size. The script treats the revision-named asset as immutable during this workflow, but GitHub
 does not enforce asset immutability. Set `SIGNAL_LEDGER_IMAGE_PUBLISH_MODE=ghcr` only for the
 explicit compatibility transport; GHCR is not the default. Local-to-GitHub publication is
 completed for reviewed revision `3bc85ed6c6b8b56386da32e532e4a79c5f74b6dd`; the verified asset is

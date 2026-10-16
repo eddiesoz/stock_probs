@@ -106,6 +106,18 @@
         "docs/develop/testing.md",
         "docs/operations/getting-started.md"
       ]
+    },
+    {
+      "name": "release-archive-credential-coverage",
+      "match": [
+        "scripts/verify-release-archive.py",
+        "tests/test_release_archive.py"
+      ],
+      "docs": [
+        "docs/develop/documentation.md",
+        "docs/develop/testing.md",
+        "docs/operations/getting-started.md"
+      ]
     }
   ],
   "additional": [
@@ -146,7 +158,9 @@
         "tests/test_production_deploy_helper.py",
         "tests/test_schema13_rehearsal.py",
         "tests/test_setup_builder_inventory.py",
-        "tests/test_setup_builder_space_guard.py"
+        "tests/test_setup_builder_space_guard.py",
+        "scripts/verify-release-archive.py",
+        "tests/test_release_archive.py"
       ],
       "docs": [
         "AGENTS.md"

@@ -7245,3 +7245,62 @@ rollout, assistant and app ready, and loopback-only. Its exact invocation time i
 receipt creation time is not the invocation time. It retains the earlier
 `assistant_disable_unverified` failure. E30 includes no fresh inspect or production action. No email
 or release notice occurred.
+
+### R-ASTRA-121 PR11 archive scanner integration (2026-10-16)
+
+The helper/publisher branch is integrating only the exact scanner and test files already reviewed
+in PR #12. The scanner digest `314179e4b41d34c0f060867c1868b36b13528cd1567da938f5f72b401b617163`
+already matches the hotfix transport's required pin; the branch's older scanner made that path
+fail closed before publication. The scanner CLI and successful JSON contract are preserved. No
+publisher, transport, production helper, or pre-merge host-pair recovery verifier change is needed.
+The documentation map and matching guides now describe outer/Config/layer coverage, shared byte
+bounds, fail-closed member validation, and exact provenance exceptions. The builder repaired only
+`tests/test_production_deploy_helper.py`: its synthetic archive now includes the benign outer
+`config.json` member required by the manifest, and its publisher-mode expectation matches the five
+supported modes. The initial combined result of 33 passed and 3 failed remains preserved. On the
+repaired test source, the three focused publisher regressions passed (3/3), and the combined archive,
+transport, and publisher selection passed (36/36); Ruff security checks, Ruff format, and the scoped
+diff check also passed. The scanner still matches the exact transport pin. Receipt
+`/var/tmp/r12r/pr11-helper-archive-fixture-4da161b7-ade5-4156-9c55-916b0d44af9d/fixture-repair-receipt.json`
+has SHA-256 `17ac698fe82bdcad8ffd857dddda1229845380fcd91d09875fe2fb992e77510e`. It records scanner
+SHA-256 `314179e4b41d34c0f060867c1868b36b13528cd1567da938f5f72b401b617163`, unchanged transport and
+publisher caller hashes, and `tests/test_release_archive.py` SHA-256
+`e03305cbd3a8c11248d11328de92e1de365877da22f2ec882fd3f27880264943` in both worktrees. The receipt
+also notes that a supplied comparison digest differed by one character; it does not indicate a
+change to that test file. Independent QA initially failed before collection because the worktree
+lacked generated `static/next/_next`, which `tests/conftest.py` requires while importing the app.
+The reviewer then ran the selected 36 tests with `--noconftest -p no:cacheprovider`; all 36 passed.
+The scanner/pin equality, Ruff security check, Ruff format check, and scoped diff check also passed.
+However, independent `ruff check` **Failed** on E501 at
+`tests/test_production_deploy_helper.py:2101` (117 characters against the 100-character limit).
+Therefore the selected-test subcheck passed but the overall independent QA did not. Its captured
+logs are in `/var/tmp/r12r/pr11-archive-scanner-qa.IgA8vNhD/`; the failed standard pytest setup and
+lint result remain preserved. The subsequent builder repair wraps only the long assertion into
+adjacent string literals, preserving its complete AST value. Independent re-review **Passed** the
+exact one-file delta, all three affected tests, explicit-config Ruff lint/security/format, diff,
+and unchanged scanner/default-pin checks. Its receipt is
+`/var/tmp/r12r/pr11-e501-independent-qa-20261016T085500Z-7b8a4d/independent-qa-receipt.json`,
+SHA-256 `a175ba2d4b383d646bd781387bebd878322ee6c944caecde8b86c2636d314f7f`.
+The final helper-test SHA-256 is
+`7bc2a84044784f10b133e7a8e4eaa3808b5455bb1eeeac3250ece5473f765806`.
+The unchanged scanner, archive tests, transport and publisher retain the independent 36-test
+result at their original bindings; only the three affected helper tests were rerun. An accidental
+duplicate diagnostic command was not counted as additional gate evidence. This is synthetic test
+and static-check evidence only: no Docker, network, publication, production, or full-suite acceptance ran. The
+publisher, transport, production helper, and separate pre-merge reserve/deadline-aware recovery
+verifier remain unchanged. Actual publication is held pending the clean exact-`origin/main` PR #9
+merge/source requirements; no installation, host-pair rehearsal, rollback, deployment, canary,
+rollout, or release is established.
+
+Separately, clean pushed assistant PR #9 head `f6a51d5c821e6b1ab7974a94f4ff795da10130bc`
+preserves the reviewed D282 runtime implementation while adding the context-caption and news-fixture
+follow-ups. The old local D282 candidate image was retired through the reviewed exact-ID
+`--no-prune` operation after preserving its verified single-link archive, selecting retained 5ad
+through the typed local pointer operation, and passing fresh independent preconditions. Independent
+poststate review confirmed the exact D282 tag/image/reference absent, two retained valid managed
+images (5ad and bd30), and the local pointer at 5ad. The poststate receipt is
+`/var/tmp/r12r/d282-retirement-independent-poststate-20261016T0834Z-9e86a553-1ef9-4ca3-8059-cee5131f399e/independent-poststate-review.json`,
+SHA-256 `1137ea91f2070ac283819cc3098caaa3819153112f00ec9345bd798c224a940b`.
+No container, production, release-asset, deployment or rollout operation followed from this local
+retirement. A replacement source-bound image and actual native/resource/recovery/rollback and
+release gates remain required. The 1 GB host, backups and US$15 monthly total cap are unchanged.

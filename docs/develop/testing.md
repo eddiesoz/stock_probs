@@ -462,9 +462,12 @@ context digest to the same reviewed PR head SHA. The optional `prebuilt-release`
 checks and publishes that exact completed pair, preserving its original rehearsal receipt and
 requiring a clean revision that matches exact `origin/main`. Publication is separate from QA;
 it does not satisfy the actual-host, rollback, canary, or rollout gates.
-The shared archive scanner must reject altered pinned source, extra token-like bytes, alternate
-paths and word-adjacent tokens. Each provenance-verified exception is restricted to its exact
-digest, size, path and match spans; exercise both candidate and recovery archives. The fixed
+The shared archive scanner checks the manifest, its referenced Config, every regular outer
+archive member, and nested layer contents under an aggregate decompressed-byte bound. Tests must
+reject duplicate or missing members, unsupported member types, unsafe paths, persistent data,
+private keys, credential-like environment values and word-adjacent tokens. Each public-provenance exception is
+restricted to the exact path, size, digest and match spans; altered source or extra token-like
+bytes still fail. Exercise both candidate and recovery archives. The fixed
 compiled harness is custom-source-pinned; its exempt spans are verified against the pinned public
 Bun binary, not an official unmodified OpenCode binary. No whole-file waiver is permitted.
 
