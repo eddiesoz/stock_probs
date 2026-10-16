@@ -2196,7 +2196,7 @@ export function AssistantPanel({
                   {message.role === "assistant" ? <AssistantAnswer text={message.text} /> : <p>{message.text}</p>}
       {message.turn_id && turnContexts[message.turn_id] ? (() => {
                     const snapshot = turnContexts[message.turn_id];
-                    return <small>Context snapshot: {routeLabels[snapshot.route]}{snapshot.instrument ? ` · ${snapshot.instrument.symbol}` : ""}</small>;
+                    return <small>{renderStaticMessageWords(`Context snapshot: ${routeLabels[snapshot.route]}${snapshot.instrument ? ` · ${snapshot.instrument.symbol}` : ""}`)}</small>;
                   })() : null}
                   {message.sources?.length ? <CitationList sources={message.sources} /> : null}
                 </li>

@@ -139,7 +139,7 @@ test("static assistant empty and disclaimer text use neutral word spans", async 
     assert.deepEqual(actual, expected, message);
     assert.equal(actual.map((part) => part.text).join(""), message);
   }
-  assert.equal((panel.match(/renderStaticMessageWords\(/g) ?? []).length, 4);
+  assert.equal((panel.match(/renderStaticMessageWords\(/g) ?? []).length, 5);
   assert.ok(panel.includes('<p id="assistant-disclaimer">{renderStaticMessageWords("Research only. Answers can be wrong; no trades are placed.")}</p>'));
   assert.ok(panel.includes('aria-describedby="assistant-disclaimer"'));
 });

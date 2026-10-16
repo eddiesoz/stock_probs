@@ -7523,3 +7523,68 @@ No new Docker/native/provider run or production action is established by these c
 source-bound image, native functional result and all remaining release gates are still required.
 The failed 12ed build remains failed, and the existing 1 GB host, backups and US$15 monthly total
 cap are unchanged.
+
+### R-ASTRA-121 V21 paired restricted-tool diagnostic (2026-10-16)
+
+The V21 compiled-native diagnostic **Passed for one paired synthetic read/shell guard scope** on
+the retained D282 `linux/amd64` image. The native receipt identifies task `R-ASTRA-120`, scope
+`one_synthetic_restricted_native_read_shell_guard_fixture`, and terminal session `26103` (exit 0,
+`2026-10-16T07:49:19.720427Z`–`07:49:36.402796Z`). All nine paired checks and 24 native profile
+guards passed: the unmanaged positive control read its sentinel and created its shell marker;
+the managed phase rejected both calls with no permission events, child processes, sentinel
+disclosure, or marker. Parent terminal/integrity review passed, and independent Astra review
+passed receipt identity, source-pin, chronology, and cleanup integrity without rerunning the trial.
+The native receipt SHA-256 is
+`44e41f3613614164bcc3c3234ba9570e1268125611d7a8b4bcbd008ae7fa8e31`; parent integrity receipt
+SHA-256 is `c0f56f035b8fd1c63b8d239dc887428add4cbb8b6be990612c9c23738de71d6f`; independent review
+receipt SHA-256 is `060132b037fdf8d6fdc92f045178ed7d85f2fa958141ac7d5b224e5d261888ad`.
+
+V20 remains **Failed** for its sole `shell.guard_message_matches` predicate. The actual persisted
+message bytes and hash remain **Unavailable**. A pinned-primary-source review established that
+the native error serializer unwraps the inner shell guard error, so V21 narrowed its fixture's
+expected message to that source-confirmed inner guard literal; the discarded V20 message was not
+reconstructed. The source diagnosis receipt is
+`/var/tmp/r12r/d282-astra-v20-trial-source-review-20261016T072037Z/review-receipt.json`, SHA-256
+`6f00ea199e934d2616021a2d52e8b7dd4e586c87f09aca3b17eb10f580008cb9`.
+
+This run used network-none and a local 768 MiB limit. It is synthetic guard evidence, not a new
+real-Zen model/search run, actual combined 1 GB acceptance, production check, or release gate.
+The current assistant worktree's three UI/test edits then passed the approved full frontend
+build-and-stage path, exit 0, with 74 frontend checks and 88 unchanged source inputs at
+`2026-10-16T08:02:38.014466Z`–`08:04:32.861505Z`. The bounded build terminal receipt is
+`/var/tmp/r12r/pr9-frontend-build-prep-6be9e74d-47ff-48ec-81a0-6da8353a61b3/parent-build-19302cf8-b0f0-4427-8980-c1aa2ff924b9/terminal.json`, SHA-256
+`fbaf622121f0a73d96c795e0ad6238131c98639e06090fea29f5f854d900ee48`. Parent copyback verified
+53 served/export pairs in the assistant worktree; receipt
+`parent-stage-copyback.json`, SHA-256
+`de4650b8f798196dbfec7552d32fb7fedec9014e47cd2acaf28d1d576cd254fb`. Browser and axe follow-up
+remain **Pending**; the build does not accept either scope.
+
+Separate fresh GitHub readbacks confirmed PR #11 at
+`6071a9f6110f5b93cd8f680c88b30c56252771cc` (receipt SHA-256
+`38bdfb1de0d3e4d99ed2b153a726a2c51f32f62bd73d32016d31630165c6bd10`), and PR #7 at
+`b6f2dee9b79fb13821a1b11aa8fc81ad22aae923` plus PR #13 at
+`4ef153bebff7796c334d93105b94cede1b05d1dc` (combined readback receipt SHA-256
+`ae60544dd0da217d8786e3c67cde6caa6ac6b10653ca2d08f42714775d4e0345`). These are pushed open
+draft review branches, not merges. The latest read-only production inspect, bounded by
+`2026-10-16T06:44:09Z` and `06:45:03Z`, reported revision
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, schema 13, invited rollout, ready app and assistant,
+and loopback-only; receipt SHA-256
+`e92985772d90dc2861642fe5bea24a347ece096e02d3966eb5e60560db7e387f`. The inspect also retains
+the separate October 13 `assistant_disable_unverified` failed-rollout record; the ready current
+projection does not erase that history. No image publication, deployment, helper installation,
+rollout, or email occurred. The existing 1 GB host, backups, and US$15 monthly cap remain unchanged.
+
+Subsequent independent current-stage browser checks passed in two scoped invocations: 10/10
+at `2026-10-16T08:07:08Z`–`08:09:15Z`, then 6/6 saved-chat caption cases at
+`08:10:36Z`–`08:11:17Z`, with no failures, errors, skips, flaky cases, or retries. The first
+invocation covered both projects' contrast, news terminal states, exact-URL WebFetch preview and
+approval, and explicit forecast submission; the second covered provider failure in both themes
+and storage quota on desktop and emulated mobile. All 14 preserved raw axe snapshots had zero
+violations and zero incomplete results. Parent screenshot review covered provider-failure captions
+in Light/Dark on desktop/mobile, with readable text and visible controls; no new CSS/layout change
+was made. These are scoped checks, not a replacement for the historical failed full aggregate.
+JUnit SHA-256 values are `b874b4a3f883c20c0b59edfd44abd9f9feb2e498bd4f3cd4bf2c4f5dc167bbd9`
+and `5e369d4df8c6bd004d2013a0378a6d4d09f0554212697288514ae73a021304e1`, respectively.
+All 53 served/export pairs remained matched, and the isolated fixture processes, ports, and
+owned runtime cleanup passed independent review. Full browser/accessibility and remaining
+resource/recovery/release gates remain open.

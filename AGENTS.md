@@ -2348,3 +2348,10 @@ hide a dependency failure. Distinguish explicit `provider_busy` from sanitized
 `provider_unavailable` through the API and headline clients. Local cold-import savings do not
 establish host capacity. A changed recovery overlay requires its own newly bound image and pair;
 retain the original registered recovery image and the unchanged 512/128 MiB reserve guards.
+
+For the R-ASTRA-121 restricted native-tool diagnostic, preserve V20's persisted-shell-message
+expectation failure separately from V21's paired synthetic guard **Pass**. V21 is network-none,
+local 768 MiB evidence; it does not establish real free-Zen/model behavior, actual 1 GB resource
+acceptance, or release readiness. Keep its exact scope, receipts, and the pending current-source
+browser checks in `MVP-PLAN.md`; the approved frontend build/stage pass does not accept browser,
+axe, native-provider, resource, or release scopes.
