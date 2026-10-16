@@ -676,8 +676,15 @@ backup verification and actual-host observations separate in the [E19 ledger](..
 For the current PR #11 follow-on, coverage also spans the exact 6359 temporary-recovery consumer
 and the known 67723 installed-helper receipt. Update `AGENTS.md`, this page, testing, operations and
 the MVP ledger together. Keep the retained 5ad/A9 identities, immutable original helper backup,
-build-only image result, source/mock QA, actual-host preflight and restoration as separate facts; a
-build does not establish temporary-image runtime or host acceptance. See the [PR #11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-temporary-recovery-consumer-and-installer-receipt-checkpoint-2026-10-16).
+source/mock QA, actual-host preflight and restoration as separate facts; a build does not establish
+host acceptance. The later c408 helper install/readback, local 6359 fixture profile, archive scan,
+and actual archive-parser failure have separate scopes. The exact-tag/canonical-alias parser repair
+passed 56 selected tests and the retained-archive smoke, with `fstat.st_uid` mocked; actual
+root-owned admission and host transition remain unavailable. Preserve the prior failed QA receipt.
+The full F6 aggregate remains failed at 195/2/3, with two raw-axe attachments unavailable out of
+24; the focused four-case follow-up passed for its selected desktop/mobile and four raw-axe snapshot
+scope only. See the [latest PR11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-installed-helper-local-6359-profile-and-archive-parser-checkpoint-2026-10-16)
+and the [initial consumer/install checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-temporary-recovery-consumer-and-installer-receipt-checkpoint-2026-10-16).
 
 The lazy-provider startup repair is documented in the API, testing and operations guides and
 [E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint). Preserve

@@ -745,12 +745,16 @@ def _assert_temporary_recovery_archive(
 
         def scan_archive(
             capture_names: set[str],
-        ) -> tuple[dict[str, tuple[str, int]], dict[str, bytes]]:
+            *,
+            digest_names: set[str] | None = None,
+        ) -> tuple[dict[str, tuple[str, int]], dict[str, bytes], dict[str, tuple[str, int]]]:
+            selected_digests = digest_names or set()
             check_verification_budget()
             os.lseek(archive_fd, 0, os.SEEK_SET)
             check_verification_budget()
             entries: dict[str, tuple[str, int]] = {}
             captured: dict[str, bytes] = {}
+            digests: dict[str, tuple[str, int]] = {}
             total_member_bytes = 0
             try:
                 with (
@@ -784,17 +788,40 @@ def _assert_temporary_recovery_archive(
                                     raise HostError("temporary_recovery_archive_invalid")
                                 entry = ("file", member.size)
                             entries[name] = entry
-                            if name not in capture_names:
+                            if name not in capture_names and name not in selected_digests:
+                                continue
+                            if entry[0] != "file":
+                                raise HostError("temporary_recovery_archive_invalid")
+                            source = archive.extractfile(member)
+                            if source is None:
+                                raise HostError("temporary_recovery_archive_invalid")
+                            if name in selected_digests:
+                                content_digest = hashlib.sha256()
+                                content_size = 0
+                                with source:
+                                    while content_size < entry[1]:
+                                        check_verification_budget()
+                                        chunk = source.read(
+                                            min(
+                                                MAX_TEMPORARY_ARCHIVE_READ_BYTES,
+                                                entry[1] - content_size,
+                                            )
+                                        )
+                                        check_verification_budget()
+                                        if not chunk:
+                                            break
+                                        content_digest.update(chunk)
+                                        content_size += len(chunk)
+                                if content_size != entry[1]:
+                                    raise HostError("temporary_recovery_archive_invalid")
+                                digests[name] = (content_digest.hexdigest(), content_size)
                                 continue
                             limit = (
                                 16
                                 if name.endswith("/VERSION")
                                 else MAX_TEMPORARY_ARCHIVE_MANIFEST_BYTES
                             )
-                            if entry[0] != "file" or entry[1] > limit:
-                                raise HostError("temporary_recovery_archive_invalid")
-                            source = archive.extractfile(member)
-                            if source is None:
+                            if entry[1] > limit:
                                 raise HostError("temporary_recovery_archive_invalid")
                             with source:
                                 check_verification_budget()
@@ -807,10 +834,10 @@ def _assert_temporary_recovery_archive(
                 raise
             except (OSError, EOFError, gzip.BadGzipFile, tarfile.TarError, ValueError) as exc:
                 raise HostError("temporary_recovery_archive_invalid") from exc
-            return entries, captured
+            return entries, captured, digests
 
         try:
-            entries, metadata_members = scan_archive(
+            entries, metadata_members, _ = scan_archive(
                 {"manifest.json", "oci-layout", "index.json", "repositories"}
             )
             raw = metadata_members.get("manifest.json")
@@ -863,7 +890,7 @@ def _assert_temporary_recovery_archive(
                 raise HostError("temporary_recovery_archive_invalid") from exc
 
         if oci_present:
-            if "repositories" in files or config_path != f"blobs/sha256/{expected_id}":
+            if "repositories" in files:
                 raise HostError("temporary_recovery_archive_invalid")
             layout = parsed_json("oci-layout")
             index = parsed_json("index.json")
@@ -888,24 +915,44 @@ def _assert_temporary_recovery_archive(
                 or descriptor.get("mediaType") != "application/vnd.oci.image.manifest.v1+json"
                 or not isinstance(descriptor.get("digest"), str)
                 or re.fullmatch(r"sha256:[0-9a-f]{64}", descriptor["digest"]) is None
+                or descriptor["digest"] != f"sha256:{expected_id}"
                 or type(descriptor.get("size")) is not int
                 or not 1 <= descriptor["size"] <= MAX_TEMPORARY_ARCHIVE_MANIFEST_BYTES
             ):
                 raise HostError("temporary_recovery_archive_invalid")
             annotations = descriptor.get("annotations")
+            expected_repo_tag = manifest["image"]["repo_tag"]
+            expected_containerd_names = {expected_repo_tag}
+            if expected_repo_tag.rpartition(":")[0] == "signal-ledger":
+                expected_containerd_names.add(f"docker.io/library/{expected_repo_tag}")
             if "annotations" in descriptor:
                 if (
                     not isinstance(annotations, dict)
                     or not annotations
                     or set(annotations)
                     - {
+                        "io.containerd.image.name",
                         "org.opencontainers.image.created",
                         "org.opencontainers.image.ref.name",
                     }
                     or (
                         "org.opencontainers.image.ref.name" in annotations
-                        and annotations["org.opencontainers.image.ref.name"]
-                        != manifest["image"]["repo_tag"]
+                        and (
+                            not isinstance(annotations["org.opencontainers.image.ref.name"], str)
+                            or annotations["org.opencontainers.image.ref.name"]
+                            not in (
+                                manifest["image"]["repo_tag"],
+                                manifest["image"]["repo_tag"].rsplit(":", 1)[1],
+                            )
+                        )
+                    )
+                    or (
+                        "io.containerd.image.name" in annotations
+                        and (
+                            not isinstance(annotations["io.containerd.image.name"], str)
+                            or annotations["io.containerd.image.name"]
+                            not in expected_containerd_names
+                        )
                     )
                 ):
                     raise HostError("temporary_recovery_archive_invalid")
@@ -934,7 +981,11 @@ def _assert_temporary_recovery_archive(
             image_manifest_path = f"blobs/sha256/{image_manifest_hex}"
             if entries.get(image_manifest_path) != ("file", descriptor["size"]):
                 raise HostError("temporary_recovery_archive_invalid")
-            second_entries, second_metadata = scan_archive({image_manifest_path})
+            if config_path == image_manifest_path:
+                raise HostError("temporary_recovery_archive_invalid")
+            second_entries, second_metadata, second_digests = scan_archive(
+                {image_manifest_path}, digest_names={config_path}
+            )
             if entries != second_entries:
                 raise HostError("temporary_recovery_archive_invalid")
             image_manifest_raw = second_metadata.get(image_manifest_path)
@@ -957,14 +1008,25 @@ def _assert_temporary_recovery_archive(
             ):
                 raise HostError("temporary_recovery_archive_invalid")
             config_descriptor = image_manifest["config"]
+            config_digest = (
+                config_descriptor.get("digest") if isinstance(config_descriptor, dict) else None
+            )
+            config_digest_match = (
+                re.fullmatch(r"sha256:([0-9a-f]{64})", config_digest)
+                if isinstance(config_digest, str)
+                else None
+            )
+            config_digest_hex = config_digest_match.group(1) if config_digest_match else None
             if (
                 not isinstance(config_descriptor, dict)
                 or set(config_descriptor) != {"mediaType", "digest", "size"}
                 or config_descriptor.get("mediaType") != "application/vnd.oci.image.config.v1+json"
-                or config_descriptor.get("digest") != f"sha256:{expected_id}"
+                or config_digest_hex is None
+                or config_path != f"blobs/sha256/{config_digest_hex}"
                 or type(config_descriptor.get("size")) is not int
                 or not 1 <= config_descriptor["size"] <= MAX_TEMPORARY_ARCHIVE_MEMBER_BYTES
                 or entries.get(config_path) != ("file", config_descriptor["size"])
+                or second_digests.get(config_path) != (config_digest_hex, config_descriptor["size"])
             ):
                 raise HostError("temporary_recovery_archive_invalid")
             layer_descriptors = image_manifest.get("layers")
@@ -1053,7 +1115,7 @@ def _assert_temporary_recovery_archive(
                     raise HostError("temporary_recovery_archive_invalid")
             if files != expected_files or directories != expected_directories:
                 raise HostError("temporary_recovery_archive_invalid")
-            second_entries, versions = scan_archive(version_names)
+            second_entries, versions, _version_digests = scan_archive(version_names)
             if entries != second_entries or any(
                 versions.get(name) not in {b"1.0", b"1.0\n"} for name in version_names
             ):

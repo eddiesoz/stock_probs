@@ -8745,3 +8745,98 @@ was authorized. These source/mock results and the failed preflight do not establ
 installation, temporary-image behavior, combined 1 GB resources, rollback, deployment, release, or
 email acceptance. The 1 GB host, existing backups, and US$15 monthly cap are unchanged; no merge,
 resize, deployment, rollout, or email occurred.
+
+### R-ASTRA-121 PR11 installed helper, local 6359 profile and archive-parser checkpoint (2026-10-16)
+
+The PR11 operational helper upgrade **Passed** its installation scope at head
+`c408e9143143c4d71d0bb3a363e6f05f2c8dc221`, finishing `2026-10-16T17:51:21.697270Z`. The install
+terminal is `/var/tmp/r12r/pr11-c408e91-install-3e5ce9eb-5c6b-4ca6-8c67-490e9e4854de/install-terminal.json`,
+SHA-256 `4a4664c858e8b09c9fccf68d2fbcc26fb81117b7999e2b89bdf8aaf90364eba5`. It records installed=true,
+no app restart, and no rehearsal start. The first post-install read-only query **Failed** at exit 1
+because it requested the nonexistent duplicate sidecar
+`/usr/local/libexec/signal-ledger-pr-rehearsal/production-deploy-helper.py`; preserve receipt
+`post-install-remote-files.json`, SHA-256
+`22152b802a770653589341a6899f38b5ed92b477d9992750b0d5cd7392e201e8`. The corrected readback
+passed at exit 0 and is preserved as `post-install-remote-files-v2.json`, SHA-256
+`6ece555e5699802e8d3c4b61505106418e62d85de527b1fb02f260073f61aad9`. It records the root-owned
+global deploy helper, three root-owned runtime sidecars (`host_helper.py`, `seed.py`, and
+`native_driver.py`), the installed receipt, and the immutable original helper backup; the global
+helper is not a fourth runtime sidecar. Independent audit of the parent-provided v2 snapshot
+**Passed** its declared comparison scope at `18:15:42Z`, with readback exit 0 and the original
+helper backup 108,471 bytes, mode `0600`, SHA-256
+`57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915`; audit receipt
+`/var/tmp/r12r/pr11-independent-qa-3631ac24-a59d-4524-8d7a-0e3dcc8d5a6e/independent-final-review.json`,
+SHA-256 `d0f77843e07566207efa0afb906ceb56d65455089c45bd35fbc35e9f16075d19`. This is a comparison
+against retained parent readback, not an independent SSH replay or a before/after immutability check.
+
+Read-only fixed-controller inspect at `2026-10-16T17:53:09.568331Z` retained the original app image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, revision
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, schema 13, invited rollout, ready status and
+loopback-only boundary; pre-deploy and pre-migration backups remained verified. The inspect receipt
+is `/var/tmp/r12r/pr11-c408e91-install-3e5ce9eb-5c6b-4ca6-8c67-490e9e4854de/post-install-fixed-controller-inspect.json`,
+SHA-256 `ab661d6b22084b5828b4d700832caedc78aade40d74c6fa079fcfe9f3f5460fd`. No app deployment,
+restart, or rehearsal occurred.
+
+The `6359` source context `964d7ca16ac1733c031780fc5dd3c271461489cc58cb9a653371cb060b26baa9`
+produced Linux/amd64 image `sha256:893788c137d1956f590c9bee0ee078e06af52ad0a52a47b870bcc0f4c169fe6b`
+with revision label `63597953c9d1ab387563dadfe705b78a2861a426`. Build identity **Passed**; official
+receipt `/home/james/.local/state/stock-probs/r120-buildkit-v1/build-runs/f6a51d5c821e6b1ab7974a94f4ff795da10130bc/536cccfceaa54296af93acbed6f6837184270281079c615ad880dac75856ffd4/build-receipt.json`
+has SHA-256 `8f0bd002398c74920e8ff52c305b6ac0d146ae2b6e52062b5bf16ee67115bb41`.
+A fresh disposable local fixture/profile **Passed** on that exact image at
+`17:45:50Z`–`17:46:15Z`: schema 13 ready with assistant disabled and fixture provider, Linux profile
+read-only/network-none/no-new-privileges at UID/GID 10001 with the bounded 768 MiB container
+profile, and exact container/volume cleanup. Receipt
+`/var/tmp/r12r/temporary6359-local-profile-1a0d8e8e-450c-4eed-8750-a76ccd0551a0/runtime-result.json`,
+SHA-256 `ad91f9bb6d60e3df6008060f9bf01455074fa993b1395eb0a291d8022da99f4b`. This is local fixture
+evidence, not actual-host resource or native-provider acceptance.
+
+Archive creation **Passed** for that image: 103,190,259 compressed bytes, SHA-256
+`b161702bcb308e654932ae2e07feeeb849c0017294a8b4f1d25f18b63cb16216`; manifest SHA-256
+`1087643705572bc18626387a2d1a6f9330e999e9b71e717f004de256279c2641`. The bounded credential/data
+scan exited 0 over the seven-layer archive. Parent scanner terminal
+`/var/tmp/r12r/temporary6359-archive-9681f830-9e77-4fcd-8254-818187144fcf/parent-scanner-terminal.json`
+has SHA-256 `697923c642ad52a75cb62e5ea4f57e1b77b5f5514a4c2a597680e9ec772ee47f`. Manifest
+validation passed only for its closed-schema/source/image scope; its approval remains Pending,
+and root-owned host staging, archive admission and temporary host transition have not occurred.
+
+Independent QA first **Failed** the installed integration/checker scope despite 46 focused
+helper/bootstrap tests passing (0 skipped), Ruff, format and diff checks passing. That archived
+review's retained-archive parser smoke **Failed** at `2026-10-16T18:13:43.579Z`: image
+`sha256:893788c137d1956f590c9bee0ee078e06af52ad0a52a47b870bcc0f4c169fe6b` was rejected before
+approval because the OCI index's `io.containerd.image.name` value is the exact canonical
+`docker.io/library/signal-ledger:temporary-recovery-build-63597953c9d1` alias, while the first
+identity repair accepted only `created`/`ref.name` annotations. That first repair's 46-test Pass did
+not exercise this production-format annotation. Preserve that failure as receipt
+`/var/tmp/r12r/pr11-independent-qa-3631ac24-a59d-4524-8d7a-0e3dcc8d5a6e/independent-final-review.json`,
+SHA-256 `d0f77843e07566207efa0afb906ceb56d65455089c45bd35fbc35e9f16075d19`.
+
+The exact manifest-tag/canonical-alias repair now **Passed** independent local affected-scope QA
+on expected source head `c408e9143143c4d71d0bb3a363e6f05f2c8dc221` at
+`2026-10-16T18:22:56.087918Z`–`18:23:02.514398Z`: 56 focused tests passed, zero failures/errors/skips;
+the retained actual archive parser smoke passed on the exact image/archive above. Its selection
+excluded the direct-Docker fixture. Review receipt
+`/var/tmp/r12r/pr11-annotation-qa-3d7fe373-e754-44ee-8016-c53517955eaf/independent-review-correction.json`
+has SHA-256 `1ad37ff523e8d9cb62d5dfedf3e0a31d39180e061f8e7de086a0eed642d05045`. The 39 pre-pinned,
+35 loaded Python files and 36 dynamic helper-loader events remained bound. The smoke mocked only
+`fstat.st_uid` and used a 128 MiB reserve; actual root-owned archive admission remains **Unavailable**.
+No Docker/container, SSH, host, app, provider, browser or canonical aggregate ran; host staging,
+approval and temporary transition remain pending. Builder-reported syntax/security/Ruff/format/diff
+checks passed separately, not as independent reruns.
+
+The full F6 browser aggregate remains **Fail** at 195 passed, two failed and three expected skips;
+the fixture-readiness/navigation timeout causes remain **Unproven**. Raw axe attachments are
+**Unavailable**: 22 of 24 expected were retained and two are missing. Independent review receipt
+`/var/tmp/r12r/f6-full200-after-host-prep-7084c40c-9d93-4f31-88d7-9417cca4ddd2/independent-actual-run-review-v3.json`,
+SHA-256 `3a4e93ec29dc9161036d0e38b09c99313f8a1332a181d55131e71fd015a97503`. A separate focused
+four-case browser follow-up **Passed** at `2026-10-16T18:18:23.111Z`–`18:20:13.686Z`: exact-target
+preview approval/decline and accessible navigation/explicit forecast submission passed on desktop
+and mobile Chromium; four attached raw-axe snapshots had zero violations and zero incompletes.
+The run retained 88 frontend inputs, 53 served/export pairs, 520 copy files and four overlays;
+exact unit/process/port cleanup passed. Receipt
+`/var/tmp/r12r/f6-focused-browser-4case-c22468ea-076e-499f-8341-dde5229df446/parent-preflight-repair-bcbfc56a-70fc-4247-8318-4da383dae0a0/final-explicit-receipt.json`
+has SHA-256 `a6838ccc83a32aa0edb94f2c0c8bb3f821955d354b36354e50f4afaadb0f8dac`. This selected run
+does not repair the failed full aggregate or establish whole-app accessibility. Preserve the earlier
+actual-host startup preflight **Fail** at 467,908 KiB versus
+524,288 KiB and its exact 5ad restoration review; no new 6359 host transition occurred. The existing
+1 GB host, backups and US$15 monthly cap remain unchanged. No app deployment, merge, resize, rollout,
+release or email occurred.

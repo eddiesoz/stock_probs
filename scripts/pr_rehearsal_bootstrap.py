@@ -86,6 +86,31 @@ KNOWN_INSTALLED_67723_INSTALL_MANIFEST = {
     "helper_source_contract": HELPER_SOURCE_CONTRACT,
     "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
 }
+# The c408e914 PR11 source refresh retained the same production-helper bytes as
+# 67723, but its installed receipt binds a newer reviewed bundle and sidecars.
+KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256 = (
+    "85ea6568514188b37c6b6f7b93dc902cf7003836b60983255e4a0337fc575371"
+)
+KNOWN_INSTALLED_C408_REVIEWED_HEAD_SHA = "c408e9143143c4d71d0bb3a363e6f05f2c8dc221"
+KNOWN_INSTALLED_C408_PAIR_MANIFEST_SHA256 = (
+    "73bb45b1f03f59eccde7972aa9550ea97882f61d0810a21fdba65c3c676f74ee"
+)
+KNOWN_INSTALLED_C408_INSTALLED_FILES = {
+    "host_helper.py": "383719bfd2700adcc76e662b15774ca3e32dd87f61b77a9fe65ff2458f6f6a8c",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_C408_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_C408_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_C408_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_C408_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -455,7 +480,10 @@ def _prepare_previous_production_helper(
         current_digest = hashlib.sha256(current).hexdigest()
         if current_digest == KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256:
             _require_installed_manifest(KNOWN_INTERMEDIATE_INSTALL_MANIFEST)
-        elif current_digest == KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256:
+        elif current_digest in {
+            KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256,
+            KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256,
+        }:
             # Source-only upgrades can retain identical helper bytes while their
             # installed receipt still binds the previous reviewed source bundle.
             # Accept only the exact known installed receipt or the exact candidate
@@ -463,7 +491,10 @@ def _prepare_previous_production_helper(
             try:
                 _require_installed_manifest(candidate_manifest_fields)
             except InstallError:
-                _require_installed_manifest(KNOWN_INSTALLED_67723_INSTALL_MANIFEST)
+                try:
+                    _require_installed_manifest(KNOWN_INSTALLED_67723_INSTALL_MANIFEST)
+                except InstallError:
+                    _require_installed_manifest(KNOWN_INSTALLED_C408_INSTALL_MANIFEST)
         elif current_digest == candidate_digest:
             _require_installed_manifest(candidate_manifest_fields)
         elif current_digest != PREVIOUS_PRODUCTION_HELPER_SHA256:

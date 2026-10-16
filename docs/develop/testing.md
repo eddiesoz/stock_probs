@@ -915,7 +915,26 @@ bootstrap tests with the direct-Docker test explicitly deselected; it did not ve
 file reads. It did not include a dedicated negative test for an unknown top-level manifest key;
 rejection was confirmed by source inspection only. The builder's separate 311-test Pass included
 that Docker integration test, and the earlier blanket no-Docker report was corrected. No helper
-install or host check has yet verified the candidate. Re-run host checks on the newly packaged
-helper revision; unchanged F6 app/image checks retain only their existing input bindings. See the
+install or host check had yet verified the candidate at that checkpoint. Re-run host checks on the
+newly packaged helper revision; unchanged F6 app/image checks retain only their existing input bindings. See the
 [F6 runtime/helper checkpoint](../../MVP-PLAN.md#r-astra-121-f6-native-results-and-deployment-helper-repair-2026-10-16)
 for the preserved failures, scoped results and open release gates.
+
+The later PR11 install used helper head `c408e9143143c4d71d0bb3a363e6f05f2c8dc221` and completed
+at `2026-10-16T17:51:21Z`; the app was not restarted and rehearsal did not start. The first
+post-install readback failed on a duplicate nonexistent sidecar path; the corrected snapshot and
+independent comparison passed for the global deploy helper, three runtime sidecars, installed
+receipt, modes and immutable original helper backup. Read-only inspect still showed the original 5ad
+schema-13 image invited, ready and loopback-only. The 6359 image passed a disposable local 768 MiB
+fixture/profile check with exact cleanup, archive creation and credential/data scan. These are
+local-only results: there is no actual-host 6359 staging, approval or transition. The retained
+archive initially failed the production parser on Docker's canonical `io.containerd.image.name`
+alias. The exact-tag/canonical-alias repair later passed 56 independent focused tests and the
+retained-archive parser smoke; the smoke mocked `fstat.st_uid` and did not test actual root-owned
+admission. Direct Docker integration was skipped. After independent artifact review and exact helper
+installation, stage the fixed root-owned files and manifest-bound approval. The typed temporary
+recovery protocol then verifies actual archive admission before changing the application. The full F6 200-case aggregate remains **Fail**
+(195 passed, two failed, three expected skips); two of 24 raw-axe attachments are missing, so that
+attachment result is **Unavailable**. A separate focused four-case desktop/mobile follow-up passed
+with four raw-axe snapshots containing zero violations/incompletes; it does not replace the failed
+aggregate. See the [latest PR11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-installed-helper-local-6359-profile-and-archive-parser-checkpoint-2026-10-16).

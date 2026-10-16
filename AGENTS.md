@@ -18,6 +18,20 @@ retain the immutable `57b88adc…` original helper backup and restore the exact 
 receipt together after failure. Source/mock passes and build preparation do not establish installed
 host behavior or transition acceptance.
 
+At the latest PR11 checkpoint, helper head `c408e914` was installed at 17:51Z without restarting
+the app or starting a rehearsal. The first readback failed on a duplicate nonexistent sidecar path;
+the corrected readback and its independent comparison passed for the root-owned global helper,
+three runtime sidecars, installed receipt and immutable original backup. Production remained the
+invited, ready, loopback-only 5ad schema-13 image. The 6359 image, local fixture profile, archive
+creation and seven-layer scan do not establish root-owned admission or a host transition.
+The first actual archive parse failed on Docker's canonical `io.containerd.image.name` alias. The
+exact-tag/canonical-alias repair now passes 56 selected tests and the retained-archive parser smoke;
+the smoke mocked only `fstat.st_uid` and used a 128 MiB reserve, so actual root-owned admission and
+host transition remain unavailable. Preserve the earlier failed QA receipt. The full F6 browser
+aggregate remains Fail (195 passed, two failed, three skipped; two of 24 raw-axe attachments
+missing). A separate focused four-case desktop/mobile follow-up passed with four clean raw-axe
+snapshots; it does not replace the failed aggregate or establish full accessibility acceptance.
+
 
 For the R121 local build repair, preserve uncertain historical failure facts. Release a failed
 local reservation only through the reviewed typed operation with fresh setup-bound stopped

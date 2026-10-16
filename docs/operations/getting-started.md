@@ -1251,7 +1251,22 @@ before OpenCode ran. A fresh recovery overlay, image and compatibility evidence 
 another baseline trial; the original recovery image remains protected. See
 [E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint).
 
-The current PR #11 helper-upgrade candidate accepts only the exact known 67723 root-owned receipt
-and sidecar hashes; live root-owned reads and installation remain **Unavailable**. Helper
-installation does not deploy an application image or satisfy host resource, recovery or rollback
-checks. See the [PR #11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-temporary-recovery-consumer-and-installer-receipt-checkpoint-2026-10-16).
+The PR #11 helper was installed from reviewed helper head
+`c408e9143143c4d71d0bb3a363e6f05f2c8dc221` at `2026-10-16T17:51:21Z`. The retained readback and
+independent comparison matched root ownership, modes and all sidecar pins; the original helper
+backup remains mode `0600`, SHA-256
+`57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915`. Installation did not restart
+the application or start a rehearsal. Read-only inspect retained the exact 5ad image and schema 13,
+invited rollout, ready status and loopback boundary; no app deployment occurred.
+
+The 6359 image passed its build identity, disposable local 768 MiB fixture/profile, exact archive
+creation and seven-layer credential/data scan scopes. The profile's readiness used a fixture
+provider with the assistant disabled and exact container/volume cleanup. This does not establish
+real-host staging, approval, transition, combined 1 GB resources or production/recovery acceptance.
+The exact-tag/canonical-alias parser repair passed 56 selected independent tests and the retained
+archive smoke; the smoke mocked `fstat.st_uid`, so actual root-owned archive admission is still
+**Unavailable** and direct Docker integration was skipped. Preserve the earlier parser rejection.
+After independent artifact review and exact helper installation, stage the fixed root-owned archive,
+manifest and manifest-bound approval. Use the typed temporary recovery protocol to verify actual
+root-owned admission before the transition; retain the outcome and exact 5ad restoration evidence. See the [latest PR11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-installed-helper-local-6359-profile-and-archive-parser-checkpoint-2026-10-16)
+for receipts and limits.

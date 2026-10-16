@@ -3108,15 +3108,12 @@ def _known_677_install_fixture(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> tuple[bytes, bytes, Path, dict[str, object], dict[Path, bytes]]:
-    """Build the exact 67723 receipt shape with deterministic sidecar bytes."""
+    """Build the fixed 67723 receipt shape with synthetic installed file bytes."""
 
     original = b"immutable original helper fixture for 67723 receipt"
     original_digest = hashlib.sha256(original).hexdigest()
-    workspace = Path(__file__).resolve().parents[1]
-    helper = (workspace / "scripts/production-deploy-helper.py").read_bytes()
-    assert hashlib.sha256(helper).hexdigest() == (
-        "85ea6568514188b37c6b6f7b93dc902cf7003836b60983255e4a0337fc575371"
-    )
+    helper = b"installed helper bytes for known-receipt unit tests"
+    helper_digest = hashlib.sha256(helper).hexdigest()
 
     production_helper = tmp_path / "libexec" / "signal-ledger-deploy-helper"
     production_helper.parent.mkdir()
@@ -3143,6 +3140,7 @@ def _known_677_install_fixture(
         path.chmod(0o750 if installed_name == "host_helper.py" else 0o640)
         installed_sidecars[path] = content
         expected_files[installed_name] = hashlib.sha256(content).hexdigest()
+    expected_files["production-deploy-helper.py"] = helper_digest
     expected_fields["files"] = expected_files
     expected_fields["previous_production_helper_sha256"] = original_digest
     manifest_path.write_bytes(_installed_manifest_bytes(expected_fields))
@@ -3154,11 +3152,34 @@ def _known_677_install_fixture(
     monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER_SHA256", original_digest)
     monkeypatch.setattr(bootstrap, "INSTALL_ROOT", install_root)
     monkeypatch.setattr(bootstrap, "INSTALLED_MANIFEST", manifest_path)
-    # The full installed receipt is pinned in production. Sidecar bytes here are
-    # synthetic, so bind this fixture's hashes while preserving its real source pins.
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256", helper_digest)
+    # Production pins are asserted by the tests; fixture bytes model receipt matching only.
     monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_67723_INSTALL_MANIFEST", expected_fields)
     monkeypatch.setattr(bootstrap, "_read_fixed_root_file", _read_temp_root_file)
     return original, helper, manifest_path, expected_fields, installed_sidecars
+
+
+def _known_c408_install_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[bytes, bytes, Path, dict[str, object], dict[Path, bytes]]:
+    """Build the exact c408 receipt shape with synthetic installed file bytes."""
+    original, helper, manifest_path, _prior_fields, sidecars = _known_677_install_fixture(
+        monkeypatch, tmp_path
+    )
+    expected_fields = dict(bootstrap.KNOWN_INSTALLED_C408_INSTALL_MANIFEST)
+    expected_files = dict(expected_fields["files"])
+    for path, contents in sidecars.items():
+        expected_files[path.name] = hashlib.sha256(contents).hexdigest()
+    helper_digest = hashlib.sha256(helper).hexdigest()
+    expected_files["production-deploy-helper.py"] = helper_digest
+    expected_fields["files"] = expected_files
+    expected_fields["previous_production_helper_sha256"] = hashlib.sha256(original).hexdigest()
+    manifest_path.write_bytes(_installed_manifest_bytes(expected_fields))
+    manifest_path.chmod(0o640)
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256", helper_digest)
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_C408_INSTALL_MANIFEST", expected_fields)
+    return original, helper, manifest_path, expected_fields, sidecars
 
 
 def test_bootstrap_accepts_exact_67723_install_during_same_helper_source_upgrade(
@@ -3270,6 +3291,106 @@ def test_bootstrap_rejects_drifted_67723_install_receipt(
     assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
 
 
+def test_bootstrap_accepts_exact_c408_install_during_same_helper_source_upgrade(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    assert bootstrap.KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256 == (
+        "85ea6568514188b37c6b6f7b93dc902cf7003836b60983255e4a0337fc575371"
+    )
+    assert bootstrap.KNOWN_INSTALLED_C408_REVIEWED_HEAD_SHA == (
+        "c408e9143143c4d71d0bb3a363e6f05f2c8dc221"
+    )
+    assert bootstrap.KNOWN_INSTALLED_C408_PAIR_MANIFEST_SHA256 == (
+        "73bb45b1f03f59eccde7972aa9550ea97882f61d0810a21fdba65c3c676f74ee"
+    )
+    assert bootstrap.KNOWN_INSTALLED_C408_INSTALLED_FILES == {
+        "host_helper.py": "383719bfd2700adcc76e662b15774ca3e32dd87f61b77a9fe65ff2458f6f6a8c",
+        "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+        "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+        "production-deploy-helper.py": bootstrap.KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256,
+    }
+    assert bootstrap.KNOWN_INSTALLED_C408_INSTALL_MANIFEST == {
+        "format_version": 1,
+        "repository": bootstrap.REPOSITORY,
+        "pull_number": bootstrap.HELPER_SOURCE_PR_NUMBER,
+        "reviewed_head_sha": bootstrap.KNOWN_INSTALLED_C408_REVIEWED_HEAD_SHA,
+        "reviewed_pair_manifest_sha256": bootstrap.KNOWN_INSTALLED_C408_PAIR_MANIFEST_SHA256,
+        "files": bootstrap.KNOWN_INSTALLED_C408_INSTALLED_FILES,
+        "helper_source_contract": bootstrap.HELPER_SOURCE_CONTRACT,
+        "previous_production_helper_sha256": (
+            "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+        ),
+    }
+    original, helper, manifest_path, old_fields, old_sidecars = _known_c408_install_fixture(
+        monkeypatch, tmp_path
+    )
+    old_manifest = manifest_path.read_bytes()
+    candidate_fields = dict(old_fields)
+    candidate_fields["reviewed_head_sha"] = "a" * 40
+    candidate_fields["reviewed_pair_manifest_sha256"] = "b" * 64
+
+    assert bootstrap._prepare_previous_production_helper(
+        helper,
+        candidate_manifest_fields=candidate_fields,
+    ) == (helper, bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256)
+    assert manifest_path.read_bytes() == old_manifest
+    assert {path: path.read_bytes() for path in old_sidecars} == old_sidecars
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    ["head", "pair", "files", "contract", "predecessor", "duplicate", "missing", "mode", "sidecar"],
+)
+def test_bootstrap_rejects_drifted_c408_install_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    malformation: str,
+) -> None:
+    original, helper, manifest_path, expected_fields, old_sidecars = _known_c408_install_fixture(
+        monkeypatch, tmp_path
+    )
+    malformed = dict(expected_fields)
+    malformed_files = dict(expected_fields["files"])
+    malformed["files"] = malformed_files
+    if malformation == "head":
+        malformed["reviewed_head_sha"] = "f" * 40
+    elif malformation == "pair":
+        malformed["reviewed_pair_manifest_sha256"] = "f" * 64
+    elif malformation == "files":
+        malformed_files["native_driver.py"] = "f" * 64
+    elif malformation == "contract":
+        malformed["helper_source_contract"] = "wrong-contract"
+    elif malformation == "predecessor":
+        malformed["previous_production_helper_sha256"] = "f" * 64
+    if malformation == "missing":
+        manifest_path.unlink()
+    else:
+        raw = _installed_manifest_bytes(malformed)
+        if malformation == "duplicate":
+            raw = b'{"format_version":1,' + raw[1:]
+        manifest_path.write_bytes(raw)
+        manifest_path.chmod(0o644 if malformation == "mode" else 0o640)
+    if malformation == "sidecar":
+        path = next(path for path in old_sidecars if path.name == "native_driver.py")
+        path.write_bytes(b"unreviewed source drift")
+        path.chmod(0o640)
+
+    with pytest.raises(bootstrap.InstallError, match="production_helper_manifest_mismatch"):
+        bootstrap._prepare_previous_production_helper(
+            helper,
+            candidate_manifest_fields={
+                **expected_fields,
+                "reviewed_head_sha": "a" * 40,
+                "reviewed_pair_manifest_sha256": "b" * 64,
+            },
+        )
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
+
+
 @pytest.mark.parametrize("drift", ["current-helper", "backup-bytes", "backup-mode"])
 def test_bootstrap_rejects_67723_helper_or_immutable_backup_drift(
     monkeypatch: pytest.MonkeyPatch,
@@ -3314,6 +3435,8 @@ def test_bootstrap_source_only_upgrade_compensates_and_retries_exact_67723_recei
         relative: (workspace / relative).read_bytes()
         for relative, _name, _maximum in bootstrap.ASSETS.values()
     }
+    candidate_helper = sources["scripts/production-deploy-helper.py"]
+    assert helper != candidate_helper
     revision = "a" * 40
     pair_digest = "b" * 64
     asset_hashes: dict[str, str] = {}
@@ -3370,7 +3493,7 @@ def test_bootstrap_source_only_upgrade_compensates_and_retries_exact_67723_recei
     result = bootstrap.install(payload)
     assert result["status"] == "installed"
     assert result["reviewed_head_sha"] == revision
-    assert bootstrap.PRODUCTION_HELPER.read_bytes() == helper
+    assert bootstrap.PRODUCTION_HELPER.read_bytes() == candidate_helper
     assert manifest_path.read_bytes() != prior_manifest
     assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
     assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
@@ -3378,7 +3501,7 @@ def test_bootstrap_source_only_upgrade_compensates_and_retries_exact_67723_recei
     stage_sources()
     retry = bootstrap.install(payload)
     assert retry == result
-    assert bootstrap.PRODUCTION_HELPER.read_bytes() == helper
+    assert bootstrap.PRODUCTION_HELPER.read_bytes() == candidate_helper
     assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
     assert old_fields["reviewed_head_sha"] == bootstrap.KNOWN_INSTALLED_67723_REVIEWED_HEAD_SHA
 

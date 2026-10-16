@@ -204,6 +204,376 @@ def _helper():
     return module
 
 
+_OMIT_CONTAINERD_IMAGE_NAME = object()
+
+
+def _temporary_recovery_oci_archive(
+    path: Path,
+    tag: str,
+    *,
+    config_bytes: bytes | None = None,
+    stored_config_bytes: bytes | None = None,
+    config_descriptor_digest: str | None = None,
+    ref_name: str | None = None,
+    containerd_image_name: object = _OMIT_CONTAINERD_IMAGE_NAME,
+    extra_annotations: dict[str, object] | None = None,
+    layer_payloads: tuple[bytes, ...] = (b"opaque layer bytes",),
+    docker_layer_count: int | None = None,
+    root_tags: list[str] | None = None,
+) -> tuple[bytes, str, str]:
+    """Build a bounded OCI save with distinct image-manifest and config digests."""
+    config = config_bytes if config_bytes is not None else b'{"architecture":"amd64","os":"linux"}'
+    stored_config = stored_config_bytes if stored_config_bytes is not None else config
+    config_hash = hashlib.sha256(config).hexdigest()
+    config_path = f"blobs/sha256/{config_hash}"
+    layer_descriptors: list[dict[str, object]] = []
+    layer_paths: list[str] = []
+    for payload in layer_payloads:
+        layer_hash = hashlib.sha256(payload).hexdigest()
+        layer_descriptors.append(
+            {
+                "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                "digest": f"sha256:{layer_hash}",
+                "size": len(payload),
+            }
+        )
+        layer_paths.append(f"blobs/sha256/{layer_hash}")
+    image_manifest = json.dumps(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": {
+                "mediaType": "application/vnd.oci.image.config.v1+json",
+                "digest": (
+                    config_descriptor_digest
+                    if config_descriptor_digest is not None
+                    else f"sha256:{config_hash}"
+                ),
+                "size": len(config),
+            },
+            "layers": layer_descriptors,
+        },
+        separators=(",", ":"),
+    ).encode()
+    image_manifest_digest = hashlib.sha256(image_manifest).hexdigest()
+    image_manifest_path = f"blobs/sha256/{image_manifest_digest}"
+    tag_name = tag.rsplit(":", 1)[1]
+    annotations: dict[str, object] = {
+        "org.opencontainers.image.created": "2025-09-15T00:00:00Z",
+        "org.opencontainers.image.ref.name": (ref_name if ref_name is not None else tag_name),
+    }
+    if containerd_image_name is not _OMIT_CONTAINERD_IMAGE_NAME:
+        annotations["io.containerd.image.name"] = containerd_image_name
+    if extra_annotations is not None:
+        annotations.update(extra_annotations)
+    descriptor = {
+        "digest": f"sha256:{image_manifest_digest}",
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "size": len(image_manifest),
+        "annotations": annotations,
+        "platform": {"os": "linux", "architecture": "amd64"},
+    }
+    index = {
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "manifests": [descriptor],
+    }
+    selected_docker_layers = layer_paths[:docker_layer_count]
+    docker_manifest = [
+        {
+            "Config": config_path,
+            "RepoTags": root_tags if root_tags is not None else [tag],
+            "Layers": selected_docker_layers,
+        }
+    ]
+    members: dict[str, bytes | None] = {
+        "blobs/": None,
+        "blobs/sha256/": None,
+        image_manifest_path: image_manifest,
+        config_path: stored_config,
+        **dict(zip(layer_paths, layer_payloads, strict=True)),
+        "index.json": json.dumps(index, separators=(",", ":")).encode(),
+        "oci-layout": b'{"imageLayoutVersion":"1.0.0"}',
+        "manifest.json": json.dumps(docker_manifest, separators=(",", ":")).encode(),
+    }
+    with tarfile.open(path, mode="w:gz") as archive:
+        for name, contents in members.items():
+            member = tarfile.TarInfo(name)
+            if contents is None:
+                member.type = tarfile.DIRTYPE
+                archive.addfile(member)
+            else:
+                member.size = len(contents)
+                archive.addfile(member, io.BytesIO(contents))
+    return path.read_bytes(), f"sha256:{image_manifest_digest}", config_hash
+
+
+def _temporary_recovery_legacy_archive(path: Path, tag: str, image_id: str) -> bytes:
+    """Build a minimal legacy Docker save to cover the unchanged archive branch."""
+    _repository, tag_name = tag.rsplit(":", 1)
+    layer_id = "b" * 64
+    members: dict[str, bytes | None] = {
+        "manifest.json": json.dumps(
+            [
+                {
+                    "Config": f"{image_id.removeprefix('sha256:')}.json",
+                    "RepoTags": [tag],
+                    "Layers": [f"{layer_id}/layer.tar"],
+                }
+            ],
+            separators=(",", ":"),
+        ).encode(),
+        "repositories": json.dumps(
+            {_repository: {tag_name: layer_id}}, separators=(",", ":")
+        ).encode(),
+        f"{image_id.removeprefix('sha256:')}.json": b"{}",
+        layer_id: None,
+        f"{layer_id}/VERSION": b"1.0\n",
+        f"{layer_id}/json": b"{}",
+        f"{layer_id}/layer.tar": b"",
+    }
+    with tarfile.open(path, mode="w:gz") as archive:
+        for name, contents in members.items():
+            member = tarfile.TarInfo(name)
+            if contents is None:
+                member.type = tarfile.DIRTYPE
+                archive.addfile(member)
+            else:
+                member.size = len(contents)
+                archive.addfile(member, io.BytesIO(contents))
+    return path.read_bytes()
+
+
+def _mark_archive_owner_root_for_parser_unit_test(
+    monkeypatch: pytest.MonkeyPatch, helper: Any
+) -> None:
+    """Mock root ownership only to exercise archive parsing, not host admission."""
+    real_fstat = os.fstat
+
+    def parser_fstat(descriptor: int) -> SimpleNamespace:
+        result = real_fstat(descriptor)
+        return SimpleNamespace(
+            st_mode=result.st_mode,
+            st_uid=0,
+            st_nlink=result.st_nlink,
+            st_size=result.st_size,
+            st_dev=result.st_dev,
+            st_ino=result.st_ino,
+            st_mtime_ns=result.st_mtime_ns,
+            st_ctime_ns=result.st_ctime_ns,
+        )
+
+    monkeypatch.setattr(helper.os, "fstat", parser_fstat)
+
+
+def test_temporary_oci_parser_binds_manifest_and_config_in_one_bounded_rescan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Exercise OCI parsing; mocked root admission is not host-file acceptance evidence."""
+    helper = _helper()
+    archive_path = tmp_path / "temporary-oci-image.tar.gz"
+    tag = f"signal-ledger:temporary-recovery-build-{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+    config = b'{"architecture":"amd64","os":"linux","fixture":"' + b"x" * 70_000 + b'"}'
+    raw, image_id, config_hash = _temporary_recovery_oci_archive(
+        archive_path, tag, config_bytes=config
+    )
+    assert image_id != f"sha256:{config_hash}"
+    archive_path.chmod(0o600)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
+    _mark_archive_owner_root_for_parser_unit_test(monkeypatch, helper)
+    manifest = {
+        "image": {
+            "archive_sha256": hashlib.sha256(raw).hexdigest(),
+            "archive_size": len(raw),
+            "image_id": image_id,
+            "repo_tag": tag,
+        }
+    }
+    real_lseek = helper.os.lseek
+    scans = 0
+
+    def count_archive_scans(descriptor: int, offset: int, whence: int) -> int:
+        nonlocal scans
+        result = real_lseek(descriptor, offset, whence)
+        if offset == 0 and whence == os.SEEK_SET:
+            scans += 1
+        return result
+
+    monkeypatch.setattr(helper.os, "lseek", count_archive_scans)
+    helper._assert_temporary_recovery_archive(manifest)
+
+    assert scans == 2
+
+
+@pytest.mark.parametrize("canonical_containerd_name", [False, True])
+def test_temporary_oci_parser_accepts_only_exact_containerd_exporter_names(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    canonical_containerd_name: bool,
+) -> None:
+    """Accept the exact receipt tag or Docker's canonical library name for that tag."""
+    helper = _helper()
+    archive_path = tmp_path / "temporary-oci-containerd-name.tar.gz"
+    tag = f"signal-ledger:temporary-recovery-build-{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+    expected_name = f"docker.io/library/{tag}" if canonical_containerd_name else tag
+    raw, image_id, _config_hash = _temporary_recovery_oci_archive(
+        archive_path, tag, containerd_image_name=expected_name
+    )
+    archive_path.chmod(0o600)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
+    _mark_archive_owner_root_for_parser_unit_test(monkeypatch, helper)
+
+    helper._assert_temporary_recovery_archive(
+        {
+            "image": {
+                "archive_sha256": hashlib.sha256(raw).hexdigest(),
+                "archive_size": len(raw),
+                "image_id": image_id,
+                "repo_tag": tag,
+            }
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    [
+        "wrong_registry",
+        "wrong_library",
+        "wrong_repository",
+        "wrong_tag",
+        "extra_path_component",
+        "extra_tag_component",
+        "non_string",
+        "unknown_annotation",
+    ],
+)
+def test_temporary_oci_parser_rejects_containerd_annotation_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    invalid_case: str,
+) -> None:
+    """Reject registry, repository, tag, type, and annotation-key drift."""
+    helper = _helper()
+    archive_path = tmp_path / f"temporary-oci-containerd-{invalid_case}.tar.gz"
+    tag = f"signal-ledger:temporary-recovery-build-{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+    suffix = tag.rsplit(":", 1)[1]
+    expected_containerd_name: object = f"docker.io/library/{tag}"
+    extra_annotations = None
+    if invalid_case == "wrong_registry":
+        expected_containerd_name = f"registry.example/library/{tag}"
+    elif invalid_case == "wrong_library":
+        expected_containerd_name = f"docker.io/other/{tag}"
+    elif invalid_case == "wrong_repository":
+        expected_containerd_name = f"docker.io/library/other:{suffix}"
+    elif invalid_case == "wrong_tag":
+        expected_containerd_name = "docker.io/library/signal-ledger:unapproved"
+    elif invalid_case == "extra_path_component":
+        expected_containerd_name = f"docker.io/library/extra/{tag}"
+    elif invalid_case == "extra_tag_component":
+        expected_containerd_name = f"docker.io/library/{tag}/extra"
+    elif invalid_case == "non_string":
+        expected_containerd_name = None
+    elif invalid_case == "unknown_annotation":
+        extra_annotations = {"org.example.unapproved": "x"}
+    raw, image_id, _config_hash = _temporary_recovery_oci_archive(
+        archive_path,
+        tag,
+        containerd_image_name=expected_containerd_name,
+        extra_annotations=extra_annotations,
+    )
+    archive_path.chmod(0o600)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
+    _mark_archive_owner_root_for_parser_unit_test(monkeypatch, helper)
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_archive_invalid"):
+        helper._assert_temporary_recovery_archive(
+            {
+                "image": {
+                    "archive_sha256": hashlib.sha256(raw).hexdigest(),
+                    "archive_size": len(raw),
+                    "image_id": image_id,
+                    "repo_tag": tag,
+                }
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    [
+        "index_image_id",
+        "config_descriptor_digest",
+        "config_bytes",
+        "index_tag",
+        "root_tag",
+        "extra_layer",
+    ],
+)
+def test_temporary_oci_parser_rejects_image_config_and_tag_drift(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, invalid_case: str
+) -> None:
+    """Reject OCI identity drift while exercising only the bounded parser path."""
+    helper = _helper()
+    archive_path = tmp_path / f"temporary-oci-{invalid_case}.tar.gz"
+    tag = f"signal-ledger:temporary-recovery-build-{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+    options: dict[str, object] = {}
+    expected_image_id: str | None = None
+    if invalid_case == "config_descriptor_digest":
+        options["config_descriptor_digest"] = "sha256:" + "f" * 64
+    elif invalid_case == "config_bytes":
+        options["stored_config_bytes"] = b'{"architecture":"arm64","os":"linux"}'
+    elif invalid_case == "index_tag":
+        options["ref_name"] = "signal-ledger:unapproved"
+    elif invalid_case == "root_tag":
+        options["root_tags"] = [tag.rsplit(":", 1)[1]]
+    elif invalid_case == "extra_layer":
+        options["layer_payloads"] = (b"first layer", b"unbound second layer")
+        options["docker_layer_count"] = 1
+    raw, image_id, _config_hash = _temporary_recovery_oci_archive(archive_path, tag, **options)
+    if invalid_case == "index_image_id":
+        expected_image_id = "sha256:" + "e" * 64
+    archive_path.chmod(0o600)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
+    _mark_archive_owner_root_for_parser_unit_test(monkeypatch, helper)
+    manifest = {
+        "image": {
+            "archive_sha256": hashlib.sha256(raw).hexdigest(),
+            "archive_size": len(raw),
+            "image_id": expected_image_id or image_id,
+            "repo_tag": tag,
+        }
+    }
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_archive_invalid"):
+        helper._assert_temporary_recovery_archive(manifest)
+
+
+def test_temporary_legacy_docker_archive_remains_accepted_by_bounded_parser(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Keep the legacy Docker save path covered; mocked root admission is parser-only."""
+    helper = _helper()
+    archive_path = tmp_path / "temporary-legacy-image.tar.gz"
+    image_id = "sha256:" + "a" * 64
+    tag = f"signal-ledger:temporary-recovery-build-{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+    raw = _temporary_recovery_legacy_archive(archive_path, tag, image_id)
+    archive_path.chmod(0o600)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
+    _mark_archive_owner_root_for_parser_unit_test(monkeypatch, helper)
+    manifest = {
+        "image": {
+            "archive_sha256": hashlib.sha256(raw).hexdigest(),
+            "archive_size": len(raw),
+            "image_id": image_id,
+            "repo_tag": tag,
+        }
+    }
+
+    helper._assert_temporary_recovery_archive(manifest)
+
+
 @pytest.mark.parametrize(
     ("output", "has_explicit_compose", "expected"),
     [
