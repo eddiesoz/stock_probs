@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from importlib.resources import files
+from uuid import uuid4
 
 import pytest
 
@@ -18,6 +19,7 @@ from stock_probs.backup import BackupError, BackupManager
 from stock_probs.domain import DomainError, calculate_forecasts
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import SCHEMA_VERSION, Repository, RepositoryError
+from stock_probs.research import ResearchStore
 from stock_probs.service import ForecastService
 
 NOW = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
@@ -367,10 +369,79 @@ def test_backup_representative_counts_are_internal_physical_row_semantics(settin
     manifest, _, staging = manager.verify(created["name"])
     try:
         assert repository.representative_counts() == expected
-        assert manifest["counts"] == expected
+        assert manifest["format_version"] == 2
+        assert manifest["counts"] == {
+            **expected,
+            "research_theses": 0,
+            "research_thesis_revisions": 0,
+            "research_comparisons": 0,
+        }
         assert set(expected).isdisjoint({"events", "runs", "inputs", "results", "forecasts"})
     finally:
         staging.cleanup()
+
+
+def test_schema_fourteen_backup_verifies_research_rows_before_and_after_restore(settings):
+    """A signed v2 backup checks every thesis revision and saved comparison row."""
+
+    repository = Repository(settings.database_path)
+    repository.migrate()
+    research = ResearchStore(repository)
+    thesis = research.save_thesis(
+        OWNER_USER_ID,
+        {
+            "symbol": "SPY",
+            "asset_type": "etf",
+            "title": "Long-term thesis",
+            "reasoning": "Initial reasoning",
+            "risks": "Concentration",
+            "invalidation": "Mandate changes",
+            "evidence": [],
+        },
+        NOW,
+    )
+    thesis = research.save_thesis(
+        OWNER_USER_ID,
+        {**thesis["data"], "reasoning": "Reviewed reasoning"},
+        NOW,
+        thesis_id=thesis["id"],
+        revision=1,
+    )
+    comparison = research.save_comparison(
+        OWNER_USER_ID,
+        str(uuid4()),
+        {"captured_at": NOW.isoformat(), "instruments": [{"symbol": "SPY"}]},
+        NOW,
+    )
+    manager = BackupManager(repository, settings.backup_dir)
+
+    artifact = manager.create("research-counts-v2.spbackup")
+    manifest, snapshot, staging = manager.verify(artifact["name"])
+    try:
+        expected_research_counts = {
+            "research_theses": 1,
+            "research_thesis_revisions": 2,
+            "research_comparisons": 1,
+        }
+        assert artifact["format_version"] == manifest["format_version"] == 2
+        assert {key: manifest["counts"][key] for key in expected_research_counts} == (
+            expected_research_counts
+        )
+        snapshot_research = ResearchStore(Repository(snapshot))
+        assert snapshot_research.get(OWNER_USER_ID, "theses", thesis["id"]) == thesis
+        assert snapshot_research.revisions(OWNER_USER_ID, thesis["id"], 1, 10)["total"] == 2
+        assert snapshot_research.get(OWNER_USER_ID, "comparisons", comparison["id"]) == comparison
+    finally:
+        staging.cleanup()
+
+    restored = manager.restore(artifact["name"], promote=True)
+    assert restored["promoted"] is True
+    assert restored["counts"]["research_theses"] == 1
+    assert restored["counts"]["research_thesis_revisions"] == 2
+    assert restored["counts"]["research_comparisons"] == 1
+    assert research.get(OWNER_USER_ID, "theses", thesis["id"]) == thesis
+    assert research.revisions(OWNER_USER_ID, thesis["id"], 1, 10)["total"] == 2
+    assert research.get(OWNER_USER_ID, "comparisons", comparison["id"]) == comparison
 
 
 def test_failed_event_insert_rolls_back_new_input_and_results(settings):
@@ -1058,8 +1129,8 @@ def test_failed_restore_serializes_second_repository_write_and_preserves_active_
         assert release.wait(timeout=5)
         return candidate
 
-    def fail_promoted_counts(path):
-        counts = original_counts(path)
+    def fail_promoted_counts(path, format_version=1):
+        counts = original_counts(path, format_version)
         if (
             path == settings.database_path
             and settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
@@ -1175,10 +1246,11 @@ def test_backup_error_keeps_injected_path_detail_out_of_public_structure(setting
     manager = BackupManager(repository, settings.backup_dir)
     sensitive = "/srv/private/stock.sqlite3 authorization=do-not-publish"
 
-    def fail_counts(path):
+    def fail_counts(path, *, format_version):
+        assert format_version in {1, 2}
         raise OSError(sensitive)
 
-    monkeypatch.setattr(repository, "representative_counts", fail_counts)
+    monkeypatch.setattr(repository, "backup_counts", fail_counts)
     with pytest.raises(BackupError, match="representative-count") as failure:
         manager._counts(settings.database_path)
 

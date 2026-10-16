@@ -39,6 +39,15 @@ globally prune, or remove protected release images or application data. This pro
 authorize a resize above the US$15 monthly total cap including backups and tax. The root
 [agent policy](../../AGENTS.md) is authoritative.
 
+### R1 schema-14 backup and restore scope
+
+The R1 backup-count and authenticated-stage integrity repair passed a focused independent run of
+97 tests with no failures, errors, or skips, plus its bound static checks and parent integrated
+source/evidence review. The earlier independent post-authentication staging-mutation finding
+remains recorded as a failure; the later checks establish only the repaired backup/restore/CLI
+scope. Schema-compatible recovery-image, post-migration data-retention pair, and research-rollout
+binding verification remain pending. See the [R-ASTRA-121 evidence](../../MVP-PLAN.md#r-astra-121-r1-schema-14-backup-count-and-staged-integrity-follow-up-2026-10-16).
+
 For a full schema-12-to-13 pair rehearsal, `--use-deployed-baseline-image` is an optional boolean
 that selects the centrally pinned deployed schema-12 image. It is accepted only in full-rehearsal
 mode; the default still rebuilds the base image from the verified archive. Before reuse, the helper

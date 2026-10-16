@@ -218,6 +218,98 @@ retains its declared bindings. Current candidate canonical, image/runtime/securi
 1 GB, exact-PR post-migration rollback, canary and invited-user gates remain open. No R121 merge,
 deployment, rollout, resize or email occurred. The existing host, backups and US$15 total cap remain.
 
+### R-ASTRA-121 schema-14 recovery and research-rollout compatibility gap (2026-10-16)
+
+A read-only source trace **Passed for its inspection scope** but found R1's current recovery and
+deployment contracts incompatible with the unshipped schema-14 thesis/comparison data. The review
+finished at `2026-10-16T09:19:28.304445Z` in dirty worktree revision
+`b6f2dee9b79fb13821a1b11aa8fc81ad22aae923` on branch `codex/signal-ledger-research-r1`. Overall
+schema-14 recovery/deployment compatibility is **Fail**: existing production and PR-pair helpers
+are bound to schema 13/migration 12→13 and do not prove same-schema-14 recovery or retention of
+post-migration research records. Receipt
+`/var/tmp/r12r/r121-r1-recovery-gap-a39b70c6-4d97-46e7-8923-730947196f3f/review-receipt.json`,
+SHA-256 `a976ca51e1af4ded4a86bdbce676bc6be2eeba36e0c7d890ec6c7982d6be05c4`.
+
+Migration 014's exact bytes match registered schema-14 checksum
+`0229c7713bd8d0fe5dfc2cc57d52052f71af4b4f417761175753287f3bf453ae`. However, the existing
+version-1 backup manifest counts only the earlier five tables and omits
+`research_theses`, `research_thesis_revisions`, and `research_comparisons`. Its restore path
+requires the backup schema to equal active schema 14, so prior schema-13 backups remain verifiable
+but cannot be restored into the active schema-14 candidate. The current typed rollout surface only
+controls assistant rollout; it does not provide an independent research-feature rollout bound to
+the schema-14 candidate and recovery pair. Runtime flags remain disabled by default/admin canary.
+
+Before claiming R1 release recovery acceptance, add and verify a separate schema-14 pair contract
+that pins base 13, target 14, migration-014 checksum, candidate identity, and same-schema-14
+recovery while retaining the schema-13 contract. Build the recovery image from the reviewed
+schema-13 baseline plus migration 014 and the repository schema pin, with runtime and research
+feature controls disabled; verify it opens the migrated database without restore or down-migration.
+Add a typed research-rollout control (disabled → owner/admin canary → invited) bound to that exact
+candidate/pair and independent of assistant rollout. Version the backup/count contract to include
+the three research tables while continuing to verify existing schema-13/v1 artifacts, or bind exact
+post-migration counts and content digests in the recovery receipt. Finally, exercise a disposable
+13→14 pair: verify the pre-backup, create a thesis with two revisions and a comparison after
+migration, force candidate failure, recover on the same schema-14 volume without restoring, and
+verify row/content/owner digests and reads/exports after candidate re-entry; also verify that the
+old schema-13 backup remains verifiable but is rejected for schema-14 restore.
+
+No tests ran in this read-only review. Docker/build, host/runtime, migration execution, backup or
+restore, rollout, deployment, Git mutation, and release acceptance were not performed. This gap
+does not change the historical schema-13 contract or any prior schema-13 evidence; R1's release,
+host/resource, deployment, and recovery gates remain open.
+
+### R-ASTRA-121 R1 schema-14 backup-count and staged-integrity follow-up (2026-10-16)
+
+This follow-up closes only the versioned backup-count and authenticated-stage integrity items
+from the preceding review. The overall schema-14 recovery/research-rollout gap remains open.
+
+The initial independent stage-anchor diagnostic **Failed** at dirty revision
+`b6f2dee9b79fb13821a1b11aa8fc81ad22aae923`: its signed legacy-v1/schema-14 fixture could be
+modified after `_verify_unlocked` authenticated the extracted database and before promotion,
+and the mutated bytes were promoted. The receipt records
+`promoted_post_verification_mutation=true` and 49 unchanged source/import/migration inputs:
+`/var/tmp/r12r/r1-backup-stage-anchor-20261016T1508Z-d72f1a8c/diagnostic-receipt.json`,
+SHA-256 `19312d1ef92cbec36b23aafd8d2319b874e3b0ec41715dd043dbf81f67923c2f`. The regression's
+pre-repair failure remains preserved. An earlier independent run using Python 3.14 and missing its
+terminal record is **Unavailable**; the malformed-UUID reproduction and Ruff syntax/setup attempt
+**Failed** before acceptance. None is counted as a successful check.
+
+The repaired focused reproduction **Passed** with exit 0: staged-byte mutation was rejected with
+`Staged database checksum does not match its authenticated manifest.`, without changing the active
+database. Receipt `/var/tmp/r12r/r1-backup-stage-anchor-retest-20261016T1520Z-82f9b721/reproduction-receipt.json`,
+SHA-256 `793ebc68d0de8f311e327d3cf4392bc8bf801ae76101af2392c374e2106c9441`. Independent QA then
+**Passed** the declared backup/restore/CLI scope on native x86_64 with Python 3.11.15 and child
+umask `022`: `tests/test_repository_backup.py`, `tests/test_backup_automation.py`, and
+`tests/test_backup_cli.py` completed with actual exit 0 and JUnit `97` tests, `0` failures,
+`0` errors, and `0` skips from `2026-10-16T15:20:26.215020Z` to
+`2026-10-16T15:23:29.346581Z`. Its 49-file source/import/migration closure matched before and after.
+Terminal receipt `/var/tmp/r12r/r1-backup-stage-anchor-independent-20261016T1520Z-c9142ab6/terminal-receipt.json`,
+SHA-256 `75e5a88c136583b503e0c59b8ecbc2427aaef0f327de560ebfe697c91e4c0947`; JUnit SHA-256
+`3fb2497cc1fdd330b0e0cdaedf12cf8df8f7df57784557c08af9ad1ac716bc40`. The separate static
+receipt **Passed** Ruff check, Ruff security, Ruff format, and diff check with exit 0 at
+`2026-10-16T15:24:03.231308Z` (SHA-256
+`863579996453b94e51e9b4c1b43b2aa09a48871b392906964272a209881103b9`).
+
+The parent integrated source/evidence review **Passed** at `2026-10-16T15:25:34.265403Z` with no
+test rerun. It verified the five current backup/repository/test pins against independent QA and
+reviewed the format and restore invariants; receipt
+`/var/tmp/r12r/r1-backup-parent-integrated-review-5b25a22b-ed8d-4d53-8994-541b3ede2eff/parent-review.json`,
+SHA-256 `4b2e0511498c5442f6a3550c28a1889ef97a3c264ad6020248347295d8ee524e`.
+
+Schema 14 uses explicit backup count format v2, adding `research_theses`,
+`research_thesis_revisions`, and `research_comparisons`; the existing five-key
+`representative_counts` interface is retained. Signed legacy v1/schema-14 artifacts continue to
+verify against their original five-table count shape and authenticated whole-database checksum.
+Restore now checks staged bytes and the copied candidate against the authenticated manifest before
+promotion, then rechecks the promoted database. Rollback validation uses the active schema's full
+counts and whole-file checksum independently of the incoming legacy count format.
+
+This is scoped backup acceptance only. The schema-compatible recovery image, post-migration
+schema-14 data-retention pair, and research-rollout binding remain pending, including recovery of
+thesis revisions and comparison content after candidate failure. No migration execution, image
+build, host operation, deployment, rollout, or release acceptance is claimed; the R1 canonical,
+security, recovery, and release gates remain open.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.
