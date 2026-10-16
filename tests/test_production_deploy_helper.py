@@ -6103,6 +6103,125 @@ def test_app_container_identity_omits_none_reserve_for_legacy_command_seams(
     assert calls == [("compose", 20), ("run", 10)]
 
 
+def _write_printf_docker_fixture(tmp_path: Path, output: str) -> Path:
+    """Create a local Docker executable fixture that emits fixed inspect text via printf."""
+
+    executable = tmp_path / "docker"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import os\n"
+        f"os.execv('/usr/bin/printf', ['/usr/bin/printf', '%s', {output!r}])\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o700)
+    return executable
+
+
+def test_live_app_identity_consumes_text_stdout_from_real_bounded_runner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Parse real _run text output without weakening the ASCII identity contract."""
+
+    helper = _helper()
+    container_id = "a" * 64
+    image_id = "sha256:" + "b" * 64
+    revision = "c" * 40
+    bindings = {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}
+    mounts = [
+        {
+            "Type": "volume",
+            "Name": "signal-ledger_signal-ledger-data",
+            "Destination": "/data",
+            "RW": True,
+        }
+    ]
+    output = "|".join((image_id, "running", revision, json.dumps(bindings), json.dumps(mounts)))
+    _write_printf_docker_fixture(tmp_path, output)
+    monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
+    compose_calls: list[tuple[tuple[str, ...], float, Path | None]] = []
+
+    def fake_compose(*arguments: str, timeout: float, compose_file: Path | None = None) -> str:
+        compose_calls.append((arguments, timeout, compose_file))
+        return container_id
+
+    monkeypatch.setattr(helper, "_compose", fake_compose)
+
+    identity = helper._live_app_identity(tmp_path / "compose.yaml")
+
+    assert compose_calls == [
+        (("ps", "--status", "running", "--quiet", "app"), 20, tmp_path / "compose.yaml")
+    ]
+    assert identity == {
+        "container_id": container_id,
+        "image_id": image_id,
+        "container_status": "running",
+        "revision": revision,
+        "loopback_verified": True,
+        "data_volume": "signal-ledger_signal-ledger-data",
+        "data_volume_mount_valid": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "sha256:" + "b" * 64 + "|runnïng|" + "c" * 40 + "|{}|[]",
+        "sha256:" + "b" * 64 + "|running|" + "c" * 40 + "|not-json|[]",
+    ],
+    ids=["non-ascii", "malformed-port-bindings-json"],
+)
+def test_live_app_identity_rejects_non_ascii_and_malformed_structured_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, output: str
+) -> None:
+    """Keep strict ASCII and JSON failures inside the fixed fail-closed error."""
+
+    helper = _helper()
+    _write_printf_docker_fixture(tmp_path, output)
+    monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
+    monkeypatch.setattr(
+        helper,
+        "_compose",
+        lambda *_arguments, **_kwargs: "a" * 64,
+    )
+
+    with pytest.raises(helper.HostError, match="maintenance_app_identity_unavailable"):
+        helper._live_app_identity(tmp_path / "compose.yaml")
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        (
+            b"sha256:"
+            + b"b" * 64
+            + b"|running|"
+            + b"c" * 40
+            + b'|{"8000/tcp":[{"HostIp":"127.0.0.1","HostPort":"8000"}]}'
+            + b'|[{"Type":"volume","Name":"signal-ledger_signal-ledger-data",'
+            + b'"Destination":"/data","RW":true}]'
+        ),
+        None,
+        123,
+    ],
+    ids=["valid-structured-bytes", "none", "integer"],
+)
+def test_live_app_identity_rejects_non_text_run_stdout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stdout: object
+) -> None:
+    """Reject any producer type outside the bounded runner's CompletedProcess[str] contract."""
+
+    helper = _helper()
+    monkeypatch.setattr(helper, "_compose", lambda *_arguments, **_kwargs: "a" * 64)
+    monkeypatch.setattr(
+        helper,
+        "_run",
+        lambda *_arguments, **_kwargs: SimpleNamespace(stdout=stdout),
+    )
+
+    with pytest.raises(helper.HostError, match="maintenance_app_identity_unavailable"):
+        helper._live_app_identity(tmp_path / "compose.yaml")
+
+
 def test_temporary_profile_omits_none_reserve_for_legacy_identity_mock(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

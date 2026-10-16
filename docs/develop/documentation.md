@@ -678,3 +678,10 @@ The lazy-provider startup repair is documented in the API, testing and operation
 its local import-memory and focused QA scope separately from the failed host startup guard.
 Changed recovery-overlay bytes require fresh image/pair bindings; an earlier image cannot inherit
 the source repair or the new frontend build result.
+
+The PR #11 helper-upgrade contract keeps the immutable original helper backup separate from the
+pre-install helper used for compensation. Document both identities, require the exact reviewed
+intermediate receipt and sidecar pins before upgrading, and retain a failed-upgrade/retry test.
+The identity parser must follow the actual subprocess producer's text contract. See the
+[F6 runtime/helper checkpoint](../../MVP-PLAN.md#r-astra-121-f6-native-results-and-deployment-helper-repair-2026-10-16)
+for scoped evidence; source/unit checks do not establish installed-helper or host acceptance.

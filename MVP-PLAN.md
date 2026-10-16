@@ -8560,3 +8560,110 @@ review passed its exact scope, receipt SHA-256
 aggregate remains **Failed** at 195 passed, two failed and three expected skips; those two causes
 remain unproven. No full aggregate, current-image native/provider, host/resource, recovery, rollback,
 deployment, or release acceptance follows from the focused result.
+
+
+#### R-ASTRA-121 F6 native results and deployment-helper repair (2026-10-16)
+
+The frozen PR #9 candidate remains `f6a51d5c821e6b1ab7974a94f4ff795da10130bc`, image
+`sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196`.
+A local two-owner functional run completed both answers with the real
+`opencode-zen/space-bunny-free` model, owner-scoped workspace reads, seven native search sources,
+and one approved exact-URL fetch. Both conversation deletes returned 200. Independent retained
+result and cleanup review passed; receipt
+`/var/tmp/r12r/f6-native-functional-independent-qa-20261016T1433Z/qa-receipt.json`, SHA-256
+`8aaad8fbed29d0f4306ff1f5141614607908a88da02f0816ab209c66522e306e`.
+The outer service terminal was not captured before reaping and remains **Unavailable**; the
+completed native assertions and result are the accepted scope, not an inferred service exit.
+
+The separate pending-search kill run exited 0 and preserved application readiness, process
+identity, private history and two saved records, while disabling six assistant endpoints and
+removing worker processes/cache. Independent review receipt
+`/var/tmp/r12r/f6-active-kill-independent-qa-20261016T1435Z/qa-receipt.json`, SHA-256
+`dbbf5c16fbb5276ef662052a2acf415e57441305c266369a7da90614bcc784ed`.
+Its active-search scan acknowledgement was false; no provider execution-count claim follows.
+Both runs used local 768 MiB containers, not the actual combined 1 GB host. The local image
+selection was restored to the original 5ad image after exact owned cleanup.
+
+The later complete browser run **Failed** at 195 passed, two unexpected outcomes and three
+expected skips, with zero flaky or unrun cases. The two failures were a five-second forecast POST
+timeout and a saved-result view remaining busy after a successful detail response. Their causes
+remain **Unproven**. All 391 source, 25 browser and 53 served/export bindings remained unchanged;
+24 raw axe attachments covering 28 declared scopes had zero violations and incompletes.
+Independent review receipt
+`/var/tmp/r12r/f6-full200-browser-independent-qa-20261016T1504Z/qa-receipt.json`, SHA-256
+`4c340673f0b360f4c34731e0c8c5b61f6bd211332f4af14ba0c16ae0d8ae5872`.
+Read-only diagnosis is recorded separately at
+`/var/tmp/r12r/f6-full200-diagnosis-final-20261016T1519Z-v2/diagnosis-receipt.json`, SHA-256
+`800f68245497b79c9c01523d8da103a073a8a3bd82beccd721b5757189c05573`.
+These scoped accessibility results do not establish full WCAG, physical-mobile or screen-reader
+acceptance, and focused cases cannot replace the failed aggregate.
+
+One bounded actual-host disable diagnostic **Failed**, exit 2, at 15:01:46–15:01:52 UTC. Its
+initial status SSH call exited 0; the disable SSH call exited 1 with a safely projected
+`AttributeError` in the pinned helper path. The result was uncertain, so no automatic retry or
+restore occurred. Independent artifact review receipt
+`/var/tmp/r12r/cebe-diagnostic-live-artifact-qa-roavyxlm/artifact-qa-receipt.json`, SHA-256
+`3db3e68232abd7b42bd5451df7e70722d01791b6bfcb06a53a42cb314eb56017`.
+A later read-only original-5ad controller inspection confirmed the original revision/image,
+schema 13, invited rollout, ready app/assistant and loopback boundary; receipt
+`/var/tmp/r12r/cebe-diagnostic-parent-execution-1bdd17e8-f474-4a29-80be-7e8f6f8b6112/post-diagnostic-readonly-inspect.json`,
+SHA-256 `344af6d69a8be46d7c6733e9e44f51324d1f6b7eb3d6525193af43d122744d17`.
+That later current-state observation is distinct from the uncertain disable result.
+
+Source review and a local reproduction using the real `_run` producer found a concrete type
+mismatch: the producer returns text, but `_live_app_identity` called `stdout.decode`. The narrow
+repair requires text and validates strict ASCII before parsing the existing identity fields;
+bytes, missing values, malformed JSON and non-ASCII still fail closed. Independent QA passed
+177 tests with one existing opt-in Docker skip, six focused cases, Ruff/security/format and diff
+checks, with 34 unchanged source/import bindings. Receipt
+`/var/tmp/r12r/cebe-live-helper-qa-m6x487mh/independent-qa-receipt.json`, SHA-256
+`11b5da549cef485430655dbdd666ec57f398361af0ccb595409440d4b43d659d`.
+Helper source SHA-256 is `85ea6568514188b37c6b6f7b93dc902cf7003836b60983255e4a0337fc575371`;
+test SHA-256 is `f6b7cc4a4dc2c3573181717fcf1e1127738a0a2799df1559afeb4c766b496ef3`.
+This reproduces and repairs the local source defect; fresh installed-helper execution is still
+required to establish the remote outcome.
+
+The bootstrap upgrade repair accepts only the exact reviewed intermediate helper, receipt and
+sidecar pins. It retains the immutable original backup and compensates a failed upgrade to the
+exact pre-install helper and receipt. The builder test result is **Pass**: its actual terminal
+exit was 0 and JUnit recorded 311 tests, 0 failures, 0 errors, and 0 skips. A supplemental
+reporting correction **Failed** the earlier blanket “no Docker effects” statement, not that test
+result: `test_local_docker_integration_transfers_into_exact_restricted_tmpfs_profile` launched one
+restricted disposable container, transferred and read back a fixture as UID/GID 10001, rejected an
+invalid digest, then ran `docker rm --force` with exit 0. The exact container ID was not retained
+and remains **Unavailable**; the cleanup command result is not exact-ID absence verification.
+Correction receipt `/var/tmp/r12r/cebe-pr-rehearsal-bootstrap-transaction-b21e8cf6-21af-4f93-8d2e-76890029b6a6/full-rehearsal-reporting-correction-20261016T1529Z.json`, SHA-256
+`4b70f0db8bfb16471dbf45e9f18e64cde8b3e44e4ef5697a6cac4fc35f1d454b`. A later parent read-only
+`docker ps -a --no-trunc --filter name=signal-ledger-pr1-stdin-fixture- --format '{{.ID}} {{.Names}} {{.Status}}'`
+returned exit 0 and no matching rows at `2026-10-16T15:31:42.604256Z`; this bounded prefix
+snapshot is not an exact historical container-ID check.
+
+Independent PR #11 QA then **Passed** the declared selected scope on native x86_64/Linux, Python
+3.11.15, child umask `0022`, from `2026-10-16T15:29:37Z` to `15:29:44Z`: 310 tests, 0 failures,
+0 errors, 0 skips, with Ruff check/security, Ruff format, and diff checks all exit 0. Its command
+explicitly deselected the direct-Docker image-inspect/container-invocation test, and 58
+source/import inputs were unchanged. Receipt
+`/var/tmp/r12r/cebe-bootstrap-qa-p_6lgwi6/independent-pr11-bootstrap-qa.json`, SHA-256
+`5d465bb7d15d735913a1f50bfb9f24d232c4cce8de8b101c3b593f47881ad22e`; JUnit SHA-256
+`ff9ec6f736349f95e501137bf8fc7057ca433c4a35206e24fc697cc9343b75d2`. The reviewed source/test
+pins were `scripts/pr_rehearsal_bootstrap.py`
+`3f11e516d89cbf288751eb5fae835466adea9f442c2384654e22351218a04a1c` and
+`tests/test_pr_rehearsal.py`
+`30a61c5aa8a825be1e370df421de20504cd817b74b363c5418868d691acfa32d`, alongside the helper/test
+pins above; the imported closure remained 58/58 unchanged. QA found no blocking source defect in
+the reviewed transaction. It did not include a dedicated negative regression for an unknown
+top-level installed-manifest key; rejection was confirmed by source inspection only. Its root-file
+fixtures were monkeypatched, so live root-owned filesystem behavior remains unverified. No Docker,
+SSH, network, live host, remote state, production install, or recovery operation ran in this
+independent QA.
+
+The parent integrated operational-helper source/evidence review **Passed** at
+`2026-10-16T15:31:42.625868Z`, matching the four current Python pins and independent QA/JUnit
+evidence without rerunning tests. Receipt
+`/var/tmp/r12r/pr11-helper-parent-integrated-review-4e9bd33b-8390-4989-8564-0f0d7e1106fe/parent-review.json`,
+SHA-256 `09c4620220dac833f1cdecbb31fdbf948f7a59472d8575ae77653ff2a12ad800`. This review did not
+install the helper, use SSH, build an image, or modify production. The repaired helper remains
+uninstalled. Fresh helper-revision packaging, installed-helper and actual-host native/resource/
+pair/rollback checks, current canonical and complete browser acceptance, deployment, and owner
+canary remain open. No candidate deployment, merge, resize, or email occurred. The 1 GB host,
+existing backups, and US$15 monthly total cap remain unchanged.

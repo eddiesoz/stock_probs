@@ -2594,10 +2594,14 @@ def _live_app_identity(compose_snapshot: Path) -> dict[str, Any]:
         timeout=10,
     )
     try:
-        parts = result.stdout.decode("ascii", errors="strict").strip().split("|", 4)
+        stdout = result.stdout
+        if type(stdout) is not str:
+            raise HostError("maintenance_app_identity_unavailable")
+        stdout.encode("ascii", errors="strict")
+        parts = stdout.strip().split("|", 4)
         bindings = json.loads(parts[3])
         mounts = json.loads(parts[4])
-    except (UnicodeDecodeError, json.JSONDecodeError, IndexError) as exc:
+    except (UnicodeEncodeError, json.JSONDecodeError, IndexError) as exc:
         raise HostError("maintenance_app_identity_unavailable") from exc
     if len(parts) != 5 or IMAGE_ID_PATTERN.fullmatch(parts[0]) is None:
         raise HostError("maintenance_app_identity_unavailable")

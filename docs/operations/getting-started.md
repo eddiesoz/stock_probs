@@ -1235,3 +1235,12 @@ its dependencies and requires the existing resource checks. T13 stopped below th
 before OpenCode ran. A fresh recovery overlay, image and compatibility evidence are required before
 another baseline trial; the original recovery image remains protected. See
 [E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint).
+
+For the scoped PR #11 helper-upgrade candidate, the install path accepts the reviewed intermediate
+helper only with its exact root-owned receipt, sidecar hashes and required permissions. It keeps
+the immutable original helper backup; a failed upgrade restores the exact pre-install helper and
+receipt together. Do not delete a recovery backup or edit a receipt to bypass drift rejection.
+This documents the candidate's source contract; it has not been installed, and live root-owned
+file behavior remains unverified. Helper installation does not deploy an application image or
+satisfy host resource, recovery or rollback checks. See the
+[current helper checkpoint](../../MVP-PLAN.md#r-astra-121-f6-native-results-and-deployment-helper-repair-2026-10-16).

@@ -2447,7 +2447,7 @@ def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
     monkeypatch.setattr(
         bootstrap,
         "_prepare_previous_production_helper",
-        lambda _candidate: (
+        lambda _candidate, **_kwargs: (
             b"known prior helper",
             bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256,
         ),
@@ -2673,9 +2673,9 @@ def test_bootstrap_install_manifest_failure_reports_rollback_state_and_preserves
         temporary.chmod(mode)
         temporary.replace(path)
 
-    def prepare_previous_helper(_candidate: bytes) -> tuple[bytes, str]:
+    def prepare_previous_helper(_candidate: bytes, **_kwargs: object) -> tuple[bytes, str]:
         atomic_write(backup_path, prior_helper, 0o600)
-        return prior_helper, hashlib.sha256(prior_helper).hexdigest()
+        return prior_helper, bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256
 
     def read_fixed_root_file(path: Path, maximum: int, mode: int) -> bytes:
         metadata = path.lstat()
@@ -2713,6 +2713,33 @@ def test_bootstrap_install_manifest_failure_reports_rollback_state_and_preserves
         assert {path: path.read_bytes() for path in old_files} == old_files
 
 
+def _installed_manifest_bytes(fields: dict[str, object]) -> bytes:
+    return (
+        json.dumps(
+            {**fields, "installed_at": "2026-10-16T12:00:00Z"},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode()
+
+
+def _read_temp_root_file(path: Path, maximum: int, mode: int) -> bytes:
+    """Mirror root-file shape/mode checks for unprivileged temporary fixtures."""
+
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise bootstrap.InstallError("production_helper_file_unavailable") from exc
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_IMODE(metadata.st_mode) != mode
+        or not 1 <= metadata.st_size <= maximum
+    ):
+        raise bootstrap.InstallError("production_helper_file_unsafe")
+    return path.read_bytes()
+
+
 def test_bootstrap_retains_exact_predecessor_helper_and_rejects_drift(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2722,56 +2749,358 @@ def test_bootstrap_retains_exact_predecessor_helper_and_rejects_drift(
     previous_digest = hashlib.sha256(previous).hexdigest()
     helper_path = tmp_path / "signal-ledger-deploy-helper"
     backup_path = tmp_path / "previous-production-deploy-helper.py"
+    manifest_path = tmp_path / "installed.json"
     helper_path.write_bytes(previous)
     helper_path.chmod(0o750)
     monkeypatch.setattr(bootstrap, "PRODUCTION_HELPER", helper_path)
     monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER", backup_path)
+    monkeypatch.setattr(bootstrap, "INSTALLED_MANIFEST", manifest_path)
     monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER_SIZE", len(previous))
     monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER_SHA256", previous_digest)
 
     writes: list[tuple[Path, int]] = []
-
-    def read_fixed(path: Path, maximum: int, mode: int) -> bytes:
-        assert path in {helper_path, backup_path}
-        assert 0 < path.stat().st_size <= maximum
-        assert stat.S_IMODE(path.stat().st_mode) == mode
-        return path.read_bytes()
 
     def atomic_write(path: Path, content: bytes, mode: int) -> None:
         path.write_bytes(content)
         path.chmod(mode)
         writes.append((path, mode))
 
-    monkeypatch.setattr(bootstrap, "_read_fixed_root_file", read_fixed)
+    monkeypatch.setattr(bootstrap, "_read_fixed_root_file", _read_temp_root_file)
     monkeypatch.setattr(bootstrap, "_atomic_root_file", atomic_write)
-
-    assert bootstrap._prepare_previous_production_helper(candidate) == (
-        previous,
-        previous_digest,
-    )
+    assert bootstrap._prepare_previous_production_helper(
+        candidate,
+        candidate_manifest_fields={},
+    ) == (previous, previous_digest)
     assert backup_path.read_bytes() == previous
     assert stat.S_IMODE(backup_path.stat().st_mode) == 0o600
     assert writes == [(backup_path, 0o600)]
 
-    helper_path.write_bytes(candidate)
-    helper_path.chmod(0o750)
-    assert bootstrap._prepare_previous_production_helper(candidate) == (
-        previous,
-        previous_digest,
-    )
+    assert bootstrap._prepare_previous_production_helper(
+        candidate,
+        candidate_manifest_fields={},
+    ) == (previous, previous_digest)
     assert writes == [(backup_path, 0o600)]
 
     helper_path.write_bytes(b"unreviewed helper drift")
     helper_path.chmod(0o750)
     with pytest.raises(bootstrap.InstallError, match="production_helper_drift"):
-        bootstrap._prepare_previous_production_helper(candidate)
+        bootstrap._prepare_previous_production_helper(
+            candidate,
+            candidate_manifest_fields={},
+        )
     assert writes == [(backup_path, 0o600)]
 
     backup_path.write_bytes(b"tampered predecessor")
     backup_path.chmod(0o600)
     with pytest.raises(bootstrap.InstallError, match="production_helper_backup_mismatch"):
-        bootstrap._prepare_previous_production_helper(candidate)
+        bootstrap._prepare_previous_production_helper(
+            candidate,
+            candidate_manifest_fields={},
+        )
     assert writes == [(backup_path, 0o600)]
+
+
+def _intermediate_helper_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[bytes, bytes, bytes, Path, Path, dict[str, object]]:
+    original = b"immutable original helper fixture"
+    intermediate = b"known intermediate helper fixture"
+    candidate = b"new reviewed helper fixture"
+    original_digest = hashlib.sha256(original).hexdigest()
+    intermediate_digest = hashlib.sha256(intermediate).hexdigest()
+    helper_path = tmp_path / "production-deploy-helper.py"
+    backup_path = tmp_path / "previous-production-deploy-helper.py"
+    install_root = tmp_path / "installed"
+    install_root.mkdir()
+    manifest_path = install_root / "installed.json"
+    helper_path.write_bytes(intermediate)
+    helper_path.chmod(0o750)
+    backup_path.write_bytes(original)
+    backup_path.chmod(0o600)
+    expected_fields = dict(bootstrap.KNOWN_INTERMEDIATE_INSTALL_MANIFEST)
+    expected_files: dict[str, str] = {}
+    for name in bootstrap.KNOWN_INTERMEDIATE_INSTALLED_FILES:
+        content = intermediate if name == "production-deploy-helper.py" else f"old {name}".encode()
+        expected_files[name] = hashlib.sha256(content).hexdigest()
+        if name == "production-deploy-helper.py":
+            continue
+        installed_path = install_root / name
+        installed_path.write_bytes(content)
+        installed_path.chmod(0o750 if name == "host_helper.py" else 0o640)
+    expected_fields["files"] = expected_files
+    monkeypatch.setattr(bootstrap, "PRODUCTION_HELPER", helper_path)
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER", backup_path)
+    monkeypatch.setattr(bootstrap, "INSTALL_ROOT", install_root)
+    monkeypatch.setattr(bootstrap, "INSTALLED_MANIFEST", manifest_path)
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER_SIZE", len(original))
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER_SHA256", original_digest)
+    monkeypatch.setattr(
+        bootstrap,
+        "KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256",
+        intermediate_digest,
+    )
+    monkeypatch.setattr(bootstrap, "KNOWN_INTERMEDIATE_INSTALL_MANIFEST", expected_fields)
+    monkeypatch.setattr(bootstrap, "_read_fixed_root_file", _read_temp_root_file)
+    return original, intermediate, candidate, helper_path, backup_path, expected_fields
+
+
+def test_bootstrap_accepts_exact_known_intermediate_helper_install_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    assert bootstrap.KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256 == (
+        "0d65ad8f1fa9825b1e4a964fa112f49b87a08ed415a8e5ce67802549045f6cd8"
+    )
+    assert bootstrap.KNOWN_INTERMEDIATE_REVIEWED_HEAD_SHA == (
+        "cebe3870a62d3d433baaeba45845cf59ebb1e9bc"
+    )
+    assert bootstrap.KNOWN_INTERMEDIATE_PAIR_MANIFEST_SHA256 == (
+        "6346e9d8d1f0ecb64e7ec1fa81a6b8cf56ee8e752ded7199219ae1a204bdf90c"
+    )
+    original, intermediate, candidate, helper_path, backup_path, expected_fields = (
+        _intermediate_helper_fixture(monkeypatch, tmp_path)
+    )
+    original_digest = hashlib.sha256(original).hexdigest()
+    manifest_path = bootstrap.INSTALLED_MANIFEST
+    manifest_path.write_bytes(_installed_manifest_bytes(expected_fields))
+    manifest_path.chmod(0o640)
+
+    assert bootstrap._prepare_previous_production_helper(
+        candidate,
+        candidate_manifest_fields={},
+    ) == (intermediate, original_digest)
+    assert backup_path.read_bytes() == original
+    assert hashlib.sha256(backup_path.read_bytes()).hexdigest() == original_digest
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    [
+        "head",
+        "pair",
+        "file",
+        "contract",
+        "predecessor",
+        "duplicate",
+        "mode",
+        "sidecar",
+        "sidecar-mode",
+        "helper-mode",
+        "backup-mode",
+        "missing",
+    ],
+)
+def test_bootstrap_rejects_malformed_known_intermediate_install_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    malformation: str,
+) -> None:
+    original, _intermediate, candidate, _helper_path, backup_path, expected_fields = (
+        _intermediate_helper_fixture(monkeypatch, tmp_path)
+    )
+    expected_manifest_path = bootstrap.INSTALLED_MANIFEST
+    malformed_fields = dict(expected_fields)
+    malformed_files = dict(expected_fields["files"])
+    malformed_fields["files"] = malformed_files
+    if malformation == "head":
+        malformed_fields["reviewed_head_sha"] = "f" * 40
+    elif malformation == "pair":
+        malformed_fields["reviewed_pair_manifest_sha256"] = "f" * 64
+    elif malformation == "file":
+        malformed_files["seed.py"] = "f" * 64
+    elif malformation == "contract":
+        malformed_fields["helper_source_contract"] = "wrong-contract"
+    elif malformation == "predecessor":
+        malformed_fields["previous_production_helper_sha256"] = "f" * 64
+    if malformation != "missing":
+        manifest = _installed_manifest_bytes(malformed_fields)
+        if malformation == "duplicate":
+            manifest = b'{"format_version":1,' + manifest[1:]
+        expected_manifest_path.write_bytes(manifest)
+        expected_manifest_path.chmod(0o644 if malformation == "mode" else 0o640)
+    else:
+        expected_manifest_path.unlink(missing_ok=True)
+    if malformation == "sidecar":
+        (bootstrap.INSTALL_ROOT / "seed.py").write_bytes(b"unreviewed sidecar drift")
+        (bootstrap.INSTALL_ROOT / "seed.py").chmod(0o640)
+    elif malformation == "sidecar-mode":
+        (bootstrap.INSTALL_ROOT / "host_helper.py").chmod(0o640)
+    elif malformation == "helper-mode":
+        bootstrap.PRODUCTION_HELPER.chmod(0o755)
+    elif malformation == "backup-mode":
+        backup_path.chmod(0o640)
+    expected_error = (
+        "production_helper_file_unsafe"
+        if malformation in {"helper-mode", "backup-mode"}
+        else "production_helper_manifest_mismatch"
+    )
+    with pytest.raises(bootstrap.InstallError, match=expected_error):
+        bootstrap._prepare_previous_production_helper(
+            candidate,
+            candidate_manifest_fields={},
+        )
+    assert backup_path.read_bytes() == original
+    assert hashlib.sha256(backup_path.read_bytes()).hexdigest() == (
+        bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256
+    )
+
+
+def test_bootstrap_upgrade_restores_exact_intermediate_then_allows_exact_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    revision = "f" * 40
+    pair_digest = "a" * 64
+    incoming = tmp_path / "incoming"
+    incoming.mkdir()
+    install_root = tmp_path / "installed"
+    install_root.mkdir()
+    state_root = tmp_path / "state"
+    production_helper = tmp_path / "libexec" / "production-deploy-helper.py"
+    production_helper.parent.mkdir()
+    backup_path = state_root / "previous-production-deploy-helper.py"
+    state_root.mkdir()
+    manifest_path = install_root / "installed.json"
+    original = b"immutable original helper fixture"
+    intermediate = b"known intermediate helper fixture"
+    candidate = b"new reviewed helper fixture"
+    production_helper.write_bytes(intermediate)
+    production_helper.chmod(0o750)
+    backup_path.write_bytes(original)
+    backup_path.chmod(0o600)
+
+    old_manifest_files: dict[str, str] = {}
+    old_sidecars: dict[Path, bytes] = {}
+    sources: dict[str, bytes] = {}
+    asset_hashes: dict[str, str] = {}
+    for role, (relative, staged_name, _maximum) in bootstrap.ASSETS.items():
+        if role == "production_helper":
+            content = candidate
+        else:
+            content = f"candidate bytes for {role}".encode()
+        sources[relative] = content
+        asset_hashes[role] = hashlib.sha256(content).hexdigest()
+        (incoming / f"signal-ledger-pr1-{revision}-{staged_name}").write_bytes(content)
+        if role == "bootstrap":
+            continue
+        installed_name = staged_name
+        if role != "production_helper":
+            old_content = f"old {role}".encode()
+            sidecar_path = install_root / installed_name
+            sidecar_path.write_bytes(old_content)
+            sidecar_path.chmod(0o750 if role == "host_helper" else 0o640)
+            old_sidecars[sidecar_path] = old_content
+            old_manifest_files[installed_name] = hashlib.sha256(old_content).hexdigest()
+    old_manifest_files["production-deploy-helper.py"] = hashlib.sha256(intermediate).hexdigest()
+    old_manifest_fields = dict(bootstrap.KNOWN_INTERMEDIATE_INSTALL_MANIFEST)
+    old_manifest_fields["reviewed_head_sha"] = bootstrap.KNOWN_INTERMEDIATE_REVIEWED_HEAD_SHA
+    old_manifest_fields["reviewed_pair_manifest_sha256"] = (
+        bootstrap.KNOWN_INTERMEDIATE_PAIR_MANIFEST_SHA256
+    )
+    old_manifest_fields["files"] = old_manifest_files
+    manifest_path.write_bytes(_installed_manifest_bytes(old_manifest_fields))
+    manifest_path.chmod(0o640)
+
+    monkeypatch.setattr(bootstrap, "INCOMING", incoming)
+    monkeypatch.setattr(bootstrap, "STATE_ROOT", state_root)
+    monkeypatch.setattr(bootstrap, "INSTALL_ROOT", install_root)
+    monkeypatch.setattr(bootstrap, "INSTALLED_MANIFEST", manifest_path)
+    monkeypatch.setattr(bootstrap, "PRODUCTION_HELPER", production_helper)
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER", backup_path)
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER_SIZE", len(original))
+    monkeypatch.setattr(
+        bootstrap,
+        "PREVIOUS_PRODUCTION_HELPER_SHA256",
+        hashlib.sha256(original).hexdigest(),
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256",
+        hashlib.sha256(intermediate).hexdigest(),
+    )
+    monkeypatch.setattr(bootstrap, "KNOWN_INTERMEDIATE_INSTALL_MANIFEST", old_manifest_fields)
+    monkeypatch.setattr(bootstrap, "_read_fixed_root_file", _read_temp_root_file)
+    monkeypatch.setattr(bootstrap, "_install_locks", nullcontext)
+    monkeypatch.setattr(bootstrap, "_safe_directory", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bootstrap, "_safe_incoming_directory", lambda: None)
+    monkeypatch.setattr(bootstrap, "_check_root_directory", lambda *_args: None)
+    monkeypatch.setattr(bootstrap, "_verify_pull_request", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        bootstrap,
+        "_fetch_reviewed_source",
+        lambda _revision, relative, _maximum: sources[relative],
+    )
+    prior_manifest = manifest_path.read_bytes()
+    failed_first_manifest_write = False
+
+    def atomic_write(path: Path, contents: bytes, mode: int) -> None:
+        nonlocal failed_first_manifest_write
+        if path == manifest_path and contents != prior_manifest and not failed_first_manifest_write:
+            failed_first_manifest_write = True
+            raise OSError("simulated receipt publication failure")
+        temporary = path.with_name(f".{path.name}.test-tmp")
+        temporary.write_bytes(contents)
+        temporary.chmod(mode)
+        temporary.replace(path)
+
+    monkeypatch.setattr(bootstrap, "_atomic_root_file", atomic_write)
+    payload = {
+        "reviewed_head_sha": revision,
+        "reviewed_pair_manifest_sha256": pair_digest,
+        "asset_sha256": asset_hashes,
+        "helper_source_contract": bootstrap.HELPER_SOURCE_CONTRACT,
+    }
+    with pytest.raises(bootstrap.InstallError, match="sidecar_install_failed"):
+        bootstrap.install(payload)
+    assert failed_first_manifest_write is True
+    assert production_helper.read_bytes() == intermediate
+    assert manifest_path.read_bytes() == prior_manifest
+    assert {path: path.read_bytes() for path in old_sidecars} == old_sidecars
+    assert backup_path.read_bytes() == original
+    assert stat.S_IMODE(backup_path.stat().st_mode) == 0o600
+
+    result = bootstrap.install(payload)
+    assert result["status"] == "installed"
+    assert production_helper.read_bytes() == candidate
+    assert hashlib.sha256(backup_path.read_bytes()).hexdigest() == (
+        bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256
+    )
+    assert stat.S_IMODE(backup_path.stat().st_mode) == 0o600
+    completed_manifest = manifest_path.read_bytes()
+    candidate_fields: dict[str, object] = {
+        "format_version": 1,
+        "repository": bootstrap.REPOSITORY,
+        "pull_number": bootstrap.HELPER_SOURCE_PR_NUMBER,
+        "reviewed_head_sha": revision,
+        "reviewed_pair_manifest_sha256": pair_digest,
+        "files": {
+            installed_name: asset_hashes[role]
+            for role, (_relative, installed_name, _maximum) in bootstrap.ASSETS.items()
+            if role != "bootstrap"
+        },
+        "helper_source_contract": bootstrap.HELPER_SOURCE_CONTRACT,
+        "previous_production_helper_sha256": bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256,
+    }
+    manifest_path.write_bytes(b'{"partial":true}\n')
+    manifest_path.chmod(0o640)
+    with pytest.raises(bootstrap.InstallError, match="production_helper_manifest_mismatch"):
+        bootstrap._prepare_previous_production_helper(
+            candidate,
+            candidate_manifest_fields=candidate_fields,
+        )
+    assert production_helper.read_bytes() == candidate
+    manifest_path.write_bytes(completed_manifest)
+    manifest_path.chmod(0o640)
+    for _role, (relative, staged_name, _maximum) in bootstrap.ASSETS.items():
+        (incoming / f"signal-ledger-pr1-{revision}-{staged_name}").write_bytes(sources[relative])
+
+    result = bootstrap.install(payload)
+    assert result["status"] == "installed"
+    assert production_helper.read_bytes() == candidate
+    assert hashlib.sha256(backup_path.read_bytes()).hexdigest() == (
+        bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256
+    )
 
 
 @pytest.mark.parametrize(

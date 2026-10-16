@@ -37,6 +37,29 @@ PREVIOUS_PRODUCTION_HELPER_SIZE = 108_471
 PREVIOUS_PRODUCTION_HELPER_SHA256 = (
     "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
 )
+KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256 = (
+    "0d65ad8f1fa9825b1e4a964fa112f49b87a08ed415a8e5ce67802549045f6cd8"
+)
+KNOWN_INTERMEDIATE_REVIEWED_HEAD_SHA = "cebe3870a62d3d433baaeba45845cf59ebb1e9bc"
+KNOWN_INTERMEDIATE_PAIR_MANIFEST_SHA256 = (
+    "6346e9d8d1f0ecb64e7ec1fa81a6b8cf56ee8e752ded7199219ae1a204bdf90c"
+)
+KNOWN_INTERMEDIATE_INSTALLED_FILES = {
+    "host_helper.py": "c2929e6d129cc56eeb21d3dcec7be484345e9d39ff1ed910dcb16901d62faf76",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INTERMEDIATE_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INTERMEDIATE_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INTERMEDIATE_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INTERMEDIATE_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -62,6 +85,19 @@ class InstallError(Exception):
     def __init__(self, code: str) -> None:
         self.code = code
         super().__init__(code)
+
+
+class _DuplicateManifestKey(ValueError):
+    """Reject duplicate keys before interpreting a trusted install receipt."""
+
+
+def _manifest_object_without_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateManifestKey
+        result[key] = value
+    return result
 
 
 def _safe_directory(path: Path, mode: int, *, create: bool, group: str | None = None) -> None:
@@ -312,30 +348,92 @@ def _read_fixed_root_file(path: Path, maximum: int, mode: int) -> bytes:
     return contents
 
 
-def _prepare_previous_production_helper(candidate: bytes) -> tuple[bytes, str]:
-    """Preserve only the exact known installed helper before the first replacement."""
+def _valid_installed_at(value: object) -> bool:
+    if type(value) is not str or not value.endswith("Z"):
+        return False
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        return False
+    return (
+        parsed.utcoffset() == UTC.utcoffset(None)
+        and parsed.isoformat().replace("+00:00", "Z") == value
+    )
 
-    if hashlib.sha256(candidate).hexdigest() == PREVIOUS_PRODUCTION_HELPER_SHA256:
+
+def _require_installed_manifest(expected_fields: dict[str, object]) -> None:
+    """Require one exact root-owned install receipt apart from its generated timestamp."""
+
+    try:
+        raw = _read_fixed_root_file(INSTALLED_MANIFEST, 8192, 0o640)
+    except InstallError as exc:
+        raise InstallError("production_helper_manifest_mismatch") from exc
+    try:
+        value: object = json.loads(raw, object_pairs_hook=_manifest_object_without_duplicates)
+    except (UnicodeDecodeError, json.JSONDecodeError, _DuplicateManifestKey, RecursionError) as exc:
+        raise InstallError("production_helper_manifest_mismatch") from exc
+    if (
+        type(value) is not dict
+        or set(value) != set(expected_fields) | {"installed_at"}
+        or not _valid_installed_at(value.get("installed_at"))
+    ):
+        raise InstallError("production_helper_manifest_mismatch")
+    for key, expected in expected_fields.items():
+        actual = value[key]
+        if type(actual) is not type(expected) or actual != expected:
+            raise InstallError("production_helper_manifest_mismatch")
+        if type(expected) is dict and any(
+            type(name) is not str or type(digest) is not str for name, digest in actual.items()
+        ):
+            raise InstallError("production_helper_manifest_mismatch")
+    installed_files = value["files"]
+    for role, (_relative, installed_name, maximum) in ASSETS.items():
+        if role == "bootstrap":
+            continue
+        path = PRODUCTION_HELPER if role == "production_helper" else INSTALL_ROOT / installed_name
+        mode = 0o750 if role in {"host_helper", "production_helper"} else 0o640
+        try:
+            contents = _read_fixed_root_file(path, maximum, mode)
+        except InstallError as exc:
+            raise InstallError("production_helper_manifest_mismatch") from exc
+        if hashlib.sha256(contents).hexdigest() != installed_files[installed_name]:
+            raise InstallError("production_helper_manifest_mismatch")
+
+
+def _prepare_previous_production_helper(
+    candidate: bytes,
+    *,
+    candidate_manifest_fields: dict[str, object],
+) -> tuple[bytes, str]:
+    """Validate the prior helper state and return exact transaction rollback bytes."""
+
+    candidate_digest = hashlib.sha256(candidate).hexdigest()
+    if candidate_digest in {
+        PREVIOUS_PRODUCTION_HELPER_SHA256,
+        KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256,
+    }:
         raise InstallError("production_helper_candidate_is_previous")
     backup_exists = PREVIOUS_PRODUCTION_HELPER.exists() or PREVIOUS_PRODUCTION_HELPER.is_symlink()
     if backup_exists:
-        previous = _read_fixed_root_file(
+        immutable_backup = _read_fixed_root_file(
             PREVIOUS_PRODUCTION_HELPER,
             PRODUCTION_HELPER_MAX_BYTES,
             0o600,
         )
         if (
-            len(previous) != PREVIOUS_PRODUCTION_HELPER_SIZE
-            or hashlib.sha256(previous).hexdigest() != PREVIOUS_PRODUCTION_HELPER_SHA256
+            len(immutable_backup) != PREVIOUS_PRODUCTION_HELPER_SIZE
+            or hashlib.sha256(immutable_backup).hexdigest() != PREVIOUS_PRODUCTION_HELPER_SHA256
         ):
             raise InstallError("production_helper_backup_mismatch")
         current = _read_fixed_root_file(PRODUCTION_HELPER, PRODUCTION_HELPER_MAX_BYTES, 0o750)
-        if hashlib.sha256(current).hexdigest() not in {
-            PREVIOUS_PRODUCTION_HELPER_SHA256,
-            hashlib.sha256(candidate).hexdigest(),
-        }:
+        current_digest = hashlib.sha256(current).hexdigest()
+        if current_digest == KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256:
+            _require_installed_manifest(KNOWN_INTERMEDIATE_INSTALL_MANIFEST)
+        elif current_digest == candidate_digest:
+            _require_installed_manifest(candidate_manifest_fields)
+        elif current_digest != PREVIOUS_PRODUCTION_HELPER_SHA256:
             raise InstallError("production_helper_drift")
-        return previous, PREVIOUS_PRODUCTION_HELPER_SHA256
+        return current, PREVIOUS_PRODUCTION_HELPER_SHA256
 
     previous = _read_fixed_root_file(PRODUCTION_HELPER, PRODUCTION_HELPER_MAX_BYTES, 0o750)
     digest = hashlib.sha256(previous).hexdigest()
@@ -415,6 +513,25 @@ def install(payload: object) -> dict[str, object]:
             raise InstallError("asset_source_mismatch")
         contents[key] = local
         verified[key] = digest
+    receipt_fields: dict[str, object] = {
+        "format_version": 1,
+        "repository": REPOSITORY,
+        "pull_number": helper_source_pull_number,
+        "reviewed_head_sha": revision,
+        "reviewed_pair_manifest_sha256": pair_manifest_digest,
+        "files": {
+            installed_name: verified[key]
+            for key, (_relative, installed_name, _maximum) in selected_assets.items()
+            if key != "bootstrap"
+        },
+    }
+    if helper_source_contract is not None:
+        receipt_fields.update(
+            {
+                "helper_source_contract": helper_source_contract,
+                "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+            }
+        )
 
     def installed_path(key: str) -> Path:
         if key == "production_helper":
@@ -440,8 +557,10 @@ def install(payload: object) -> dict[str, object]:
         old_manifest = previous_file(INSTALLED_MANIFEST, maximum=8192, mode=0o640)
         try:
             if helper_source_contract is not None:
+                assert "production_helper" in contents
                 previous_helper, previous_helper_digest = _prepare_previous_production_helper(
-                    contents["production_helper"]
+                    contents["production_helper"],
+                    candidate_manifest_fields=receipt_fields,
                 )
             for key, (_relative, installed_name, _maximum) in selected_assets.items():
                 if key == "bootstrap" or key == "production_helper":
@@ -461,21 +580,11 @@ def install(payload: object) -> dict[str, object]:
                     helper_replacement_started = True
                     _atomic_root_file(PRODUCTION_HELPER, contents["production_helper"], 0o750)
 
-            receipt: dict[str, object] = {
-                "format_version": 1,
-                "repository": REPOSITORY,
-                "pull_number": helper_source_pull_number,
-                "reviewed_head_sha": revision,
-                "reviewed_pair_manifest_sha256": pair_manifest_digest,
-                "files": {
-                    installed_name: verified[key]
-                    for key, (_relative, installed_name, _maximum) in selected_assets.items()
-                    if key != "bootstrap"
-                },
+            receipt = {
+                **receipt_fields,
                 "installed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             }
             if helper_source_contract is not None:
-                receipt["helper_source_contract"] = helper_source_contract
                 assert previous_helper_digest is not None
                 receipt["previous_production_helper_sha256"] = previous_helper_digest
             _atomic_root_file(

@@ -891,3 +891,19 @@ environment and that package installation/source tests retain their prior enviro
 Bun documentation describes a garbage-collection tradeoff rather than a hard memory cap. The
 embedded app build and final compiler still use the same source pins, arguments, targets and
 deadlines; a source test pass does not establish lower memory use or a successful image.
+
+
+For the PR #11 helper-upgrade candidate, `_run` returns text. Identity parsing must validate that
+text as strict ASCII without calling `decode`; exercise the real producer in regression fixtures.
+The candidate's install path requires the exact root-owned install receipt and sidecar hashes/modes,
+plus the immutable original helper backup. A failed upgrade restores the exact pre-install helper
+and receipt together. Keep the original backup unchanged; do not compensate an intermediate
+upgrade with original-helper bytes and a newer receipt. Independent QA passed 310 selected
+bootstrap tests with the direct-Docker test explicitly deselected; it did not verify live root-owned
+file reads. It did not include a dedicated negative test for an unknown top-level manifest key;
+rejection was confirmed by source inspection only. The builder's separate 311-test Pass included
+that Docker integration test, and the earlier blanket no-Docker report was corrected. No helper
+install or host check has yet verified the candidate. Re-run host checks on the newly packaged
+helper revision; unchanged F6 app/image checks retain only their existing input bindings. See the
+[F6 runtime/helper checkpoint](../../MVP-PLAN.md#r-astra-121-f6-native-results-and-deployment-helper-repair-2026-10-16)
+for the preserved failures, scoped results and open release gates.

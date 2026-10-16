@@ -2510,3 +2510,9 @@ local 768 MiB evidence; it does not establish real free-Zen/model behavior, actu
 acceptance, or release readiness. Keep its exact scope, receipts, and the pending current-source
 browser checks in `MVP-PLAN.md`; the approved frontend build/stage pass does not accept browser,
 axe, native-provider, resource, or release scopes.
+
+For operational-helper upgrades, verify the exact installed helper, receipt and sidecar identities
+before replacement. Keep the original recovery backup immutable, and compensate a failed upgrade
+to the exact pre-install helper and receipt together. Identity-parser regressions must exercise the
+real subprocess producer and its declared text/bytes contract; mocked bytes cannot establish a
+text-producing runtime path. Preserve unchanged application evidence only at its original bindings.
