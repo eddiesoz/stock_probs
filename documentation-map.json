@@ -123,6 +123,25 @@
         "docs/develop/design-system.md",
         "docs/security/threat-model.md"
       ]
+    },
+    {
+      "name": "portfolio-ledger-workspaces",
+      "match": [
+        "src/stock_probs/portfolio_*.py",
+        "src/stock_probs/migrations/015_portfolio_ledger.sql",
+        "frontend/components/portfolio/**",
+        "frontend/app/overview/transactions/**",
+        "frontend/app/tools/what-if/**",
+        "tests/test_portfolio_*.py",
+        "tools/browser/tests/portfolio-workspaces.spec.js",
+        "tools/browser/tests/tools-navigation.spec.js"
+      ],
+      "docs": [
+        "docs/usage/dashboard.md",
+        "docs/reference/api.md",
+        "docs/develop/design-system.md",
+        "docs/security/threat-model.md"
+      ]
     }
   ],
   "additional": [

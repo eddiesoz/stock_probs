@@ -2,6 +2,7 @@ import { Settings } from "../app/settings";
 import { AuthControls } from "./auth-controls";
 import { SelectedInstrumentStatus, WorkspaceLink } from "./workspace-link";
 import { ComparisonLink } from "./research/feature-nav";
+import { WhatIfLink } from "./portfolio/feature-nav";
 
 // Fixed route order and labels keep the primary workspace navigation predictable.
 const primaryItems = [
@@ -49,13 +50,14 @@ export function WorkspaceNav({ current }: Readonly<{ current: "overview" | "rese
   );
 }
 
-export function ToolsNav({ current }: Readonly<{ current?: "forecast" | "live-trading" | "markets" | "compare" }>) {
+export function ToolsNav({ current }: Readonly<{ current?: "forecast" | "live-trading" | "markets" | "compare" | "what-if" }>) {
   return (
-    <nav className="section-nav" aria-label="Tools">
+    <nav className="section-nav tool-nav" aria-label="Tools">
       {toolItems.map(([path, label]) => (
         <WorkspaceLink key={path} path={path} current={current ? path === `/tools/${current}` : undefined}>{label}</WorkspaceLink>
       ))}
       <ComparisonLink />
+      <WhatIfLink current={current === "what-if"} />
     </nav>
   );
 }

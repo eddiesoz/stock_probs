@@ -5,6 +5,22 @@ description: "Threats and controls for loopback HTTP, untrusted requests, Yahoo 
 
 # Threat model
 
+The R121 portfolio candidate derives every owner from the active session. Private account,
+transaction, baseline, scenario and conversion lookups reject cross-owner identifiers. SQLite
+transactions recheck active ownership, revisions and archive boundaries at commit. Imports are
+bounded, mapped and entirely validated before atomic insertion; durable creation keys and explicit
+duplicate approval prevent retry-created records. Append-only SQL guards preserve original ledger
+and snapshot data. Stored labels/text are rendered as text, and CSV exports neutralize formulas.
+
+Market data cannot change book transactions. Explicit valuation freezes bounded quotes and dated
+FX; missing currency, quote or FX inputs prevent a complete-total claim. Bank of Canada retrieval
+uses a fixed HTTPS URL without redirects, proxies or an access key. Saved scenarios reuse their
+original owned baseline and never create trades. The assistant may open workspace routes but has
+no ledger/import commit tool. Whole-database signed backups retain new tables; a local signed
+restore check is separate from schema-compatible image recovery and exact-PR rollback. Feature
+controls default off, with an administrator-only canary option. Full independent security and
+production acceptance remain required before rollout.
+
 Signal Ledger has two supported security modes. Development may use a local bootstrap account on
 loopback; production is an invite-only multi-user deployment behind a Cloudflare Tunnel. The
 production image binds the app to the host loopback interface, uses GitHub's authorization-code

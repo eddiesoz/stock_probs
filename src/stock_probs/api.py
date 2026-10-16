@@ -1620,6 +1620,8 @@ WORKSPACE_PAGE_ROUTES = (
     "/tools/markets",
     "/research/theses",
     "/tools/compare",
+    "/overview/transactions",
+    "/tools/what-if",
     "/sign-in",
     "/invite",
     "/passkey",
@@ -1778,6 +1780,8 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
             "/tools/markets",
             "/research/theses",
             "/tools/compare",
+            "/overview/transactions",
+            "/tools/what-if",
             "/account",
             "/admin",
         }
@@ -2209,7 +2213,20 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
             )
             or native_provider_query_allowed
         )
-        max_bytes = _ASSISTANT_PROVIDER_PROXY_MAX_BYTES if proxy_request else self.max_request_bytes
+        portfolio_preview = (
+            request.method == "POST"
+            and request_query == ""
+            and request_path
+            in {
+                "/api/v1/portfolio/imports/preview",
+                "/api/v1/portfolio/transactions/preview",
+            }
+        )
+        max_bytes = (
+            _ASSISTANT_PROVIDER_PROXY_MAX_BYTES
+            if proxy_request or portfolio_preview
+            else self.max_request_bytes
+        )
         if declared_size > max_bytes:
             message = "Request body exceeds the local API limit."
             request_id = self._audit_transport_rejection(
@@ -3129,6 +3146,8 @@ def create_app(
         "/tools/markets": next_dir / "tools" / "markets.html",
         "/research/theses": next_dir / "research" / "theses.html",
         "/tools/compare": next_dir / "tools" / "compare.html",
+        "/overview/transactions": next_dir / "overview" / "transactions.html",
+        "/tools/what-if": next_dir / "tools" / "what-if.html",
         "/sign-in": next_dir / "sign-in.html",
         "/invite": next_dir / "invite.html",
         "/passkey": next_dir / "passkey.html",
@@ -3166,6 +3185,8 @@ def create_app(
             "/admin",
             "/research/theses",
             "/tools/compare",
+            "/overview/transactions",
+            "/tools/what-if",
         )
         if workspace_pages[route].is_file()
     }
@@ -4381,6 +4402,37 @@ def create_app(
         selected_clock,
         _documented_errors,
         _safe_csv_cell,
+    )
+
+    from stock_probs.portfolio_api import install_ledger_routes
+    from stock_probs.portfolio_fx import FixtureIndicativeFX, IndicativeFX
+    from stock_probs.portfolio_market import PortfolioMarket
+    from stock_probs.portfolio_store import PortfolioStore
+
+    portfolio_store = PortfolioStore(repository)
+    portfolio_market = PortfolioMarket(
+        portfolio_store,
+        service.quote_snapshot,
+        FixtureIndicativeFX() if config.provider == "fixture" else IndicativeFX(repository),
+        selected_clock,
+    )
+
+    def portfolio_enabled(request: Request) -> bool:
+        """Use the authenticated administrator role for the initial owner canary."""
+        context = getattr(request.state, "auth_context", None)
+        return config.portfolio_features_enabled and (
+            not config.portfolio_features_canary_only
+            or (context is not None and context.user.role == "admin")
+        )
+
+    install_ledger_routes(
+        app,
+        portfolio_store,
+        _owner_user_id,
+        selected_clock,
+        portfolio_enabled,
+        _safe_csv_cell,
+        portfolio_market,
     )
 
     def flattened_list_items(

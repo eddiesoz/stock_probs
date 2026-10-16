@@ -58,6 +58,8 @@ const routeLabels: Record<AssistantContextRequest["route"], string> = {
   "/research": "Research",
   "/research/theses": "Investment theses",
   "/tools/compare": "Instrument comparison",
+  "/overview/transactions": "Transaction ledger",
+  "/tools/what-if": "Portfolio what-if",
   "/tools": "Research tools",
   "/tools/forecast": "Forecast tool",
   "/tools/live-trading": "Live Trading tool",

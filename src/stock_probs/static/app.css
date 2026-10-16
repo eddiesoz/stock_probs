@@ -47,6 +47,8 @@ strong,.comparison-stat,.probability-bar,.forecast-meta,.details-table,.history-
 .ledger-mark i:nth-child(1){height:7px}.ledger-mark i:nth-child(2){height:15px}.ledger-mark i:nth-child(3){height:11px}
 .section-nav{display:flex;align-items:center;min-width:0}
 .section-nav{gap:.5rem}
+.tool-nav{max-width:100%;flex-wrap:wrap}
+.tool-nav a{flex:0 0 auto}
 .section-nav a{display:flex;align-items:center;justify-content:center;gap:.35rem;min-height:44px;padding:0 .65rem;border-bottom:2px solid transparent;color:var(--muted);font-size:.82rem;font-weight:600;text-decoration:none;white-space:nowrap}
 .section-nav a:hover{color:var(--text)}
 .section-nav a[aria-current="page"]{border-bottom-color:var(--accent);color:var(--text);font-weight:750}

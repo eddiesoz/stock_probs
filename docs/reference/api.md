@@ -9,6 +9,47 @@ Application data is served below `/api/v1`. The browser uses this boundary exclu
 FastAPI publishes the machine-readable contract at `/api/v1/openapi.json`; the
 dependency-free local pointer is `/api/v1/docs`.
 
+R121 portfolio endpoints below describe a disabled local candidate, not the current production
+release. Every write requires the authenticated owner and CSRF protection. Ownership never comes
+from request payloads. Ledger amounts are decimal strings, dates are original ISO calendar dates,
+and saved baselines/scenarios retain their original inputs.
+
+| Resource | Contract |
+| --- | --- |
+| `GET /api/v1/portfolio/features` | Authenticated rollout availability; no quote request. |
+| `GET/POST /api/v1/portfolio/accounts` | Paginated private accounts; creation requires a UUID idempotency key. |
+| `PUT /api/v1/portfolio/accounts/{id}` | Label/type/archive change with exact revision. |
+| `GET /api/v1/portfolio/balances` | Derived native ledger balances and account revisions; no provider call. |
+| `GET /api/v1/portfolio/transactions` | Paginated append-only records, optionally filtered by owned account. |
+| `POST /api/v1/portfolio/transactions/preview` | Validate up to 200 rows and return before/after balances; no ledger write. |
+| `GET /api/v1/portfolio/imports/template.csv` | Documented UTF-8 template; blank opening cost means unknown. |
+| `POST /api/v1/portfolio/imports/preview` | Explicit column-to-field mapping, complete validation and duplicate detection. |
+| `GET /api/v1/portfolio/manual-holdings` | Read original legacy context for a deliberate opening-position conversion. |
+| `POST /api/v1/portfolio/manual-holdings/preview` | Selected holdings require original currency; costs stay unknown. |
+| `POST /api/v1/portfolio/transactions` | Commit the owned unexpired preview with a UUID key and explicitly approved duplicate IDs; atomic revision checks. |
+| `GET /api/v1/portfolio/transactions/export?format=csv` | Complete retained private history; CSV formula safety. JSON also includes accounts. |
+| `POST /api/v1/portfolio/valuation` | Explicit dated quote/FX collection; CAD/USD display and optional owned account filter. |
+| `GET/POST /api/v1/portfolio/snapshots` | List or deliberately freeze a baseline; POST uses a UUID key and optional additional instruments. |
+| `GET /api/v1/portfolio/snapshots/{id}` | Reopen immutable owned inputs without provider calls. |
+| `POST /api/v1/portfolio/snapshots/{id}/simulate` | Deterministic price/FX shocks and cash-funded hypothetical allocations, with no transaction mutation. |
+| `GET/POST /api/v1/scenarios` | Paginated saved scenarios; explicit creation requires an owned baseline, assumptions and UUID key. |
+| `GET /api/v1/scenarios/{id}` | Reopen original scenario inputs and result. |
+| `GET /api/v1/scenarios/{id}/export` | JSON containing the scenario and its owned frozen baseline. |
+
+Preview transport is bounded to 256 KiB only on the two transaction/import preview paths; CSV text
+itself is at most 64 KiB. Ordinary request limits remain unchanged. Previews reserve four slots per
+owner and 32 globally for at most ten minutes. Commit retries survive a consumed preview or
+restart through the durable original key and receipt; another key cannot silently duplicate a
+committed import. Account revisions reject changes between preview and commit.
+
+Retention is bounded to 20 accounts, 5,000 transaction records, 100 baselines and 100 scenarios per
+owner, with 5 MiB retained portfolio payloads per owner and 20 MiB globally. Quote collection admits
+one active request per owner and two globally, and uses the existing shared provider limit. Bank of
+Canada indicative USD/CAD retrieval uses a fixed HTTPS endpoint, bounded response/deadline and one
+persisted attempt per day. Prior dated rates disclose a failed refresh; rates older than 30 days are
+unavailable. Unsupported currency conversion remains explicitly unavailable. Actual exchange
+paid/received amounts remain immutable native records.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | Process health and API version. |

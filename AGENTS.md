@@ -8,6 +8,10 @@ design and threat-model guides; documentation presence does not establish accept
 Keep historical schema-13 rehearsal defaults and receipts intact. A named-schema verifier check
 does not establish a new schema-compatible recovery image, actual-host rollback, or release gate.
 
+The R121 portfolio ledger is a separate owner-specific book record from legacy manual holdings.
+Conversion requires explicit original currencies and a reviewed opening-position commit; unknown costs
+remain unknown. Saved scenario baselines never silently refresh or change real transactions.
+
 ## Codex project workflow
 
 Codex uses this root `AGENTS.md` for repository policy. Its project configuration is
