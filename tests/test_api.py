@@ -64,8 +64,17 @@ def test_health_readiness_and_security_headers(client):
     readiness = client.get("/api/v1/readiness")
 
     assert health.json() == {"status": "ok", "service": "stock-probs", "api_version": "v1"}
+    assert set(readiness.json()) == {
+        "status",
+        "schema_version",
+        "provider",
+        "assistant",
+        "research",
+    }
     assert readiness.json()["schema_version"] == SCHEMA_VERSION
     assert readiness.json()["assistant"] == {"enabled": False, "status": "disabled"}
+    assert readiness.json()["research"] == {"enabled": False, "rollout_mode": "disabled"}
+    assert "user" not in readiness.json() and "owner_user_id" not in readiness.json()
     assert "default-src 'self'" in health.headers["content-security-policy"]
     assert health.headers["x-content-type-options"] == "nosniff"
     assert health.headers["x-frame-options"] == "DENY"
@@ -75,6 +84,40 @@ def test_health_readiness_and_security_headers(client):
     assert "/api/v1/operations/restores" in contract["paths"]
     assert all(path.startswith("/api/v1/") for path in contract["paths"])
     assert "database_path" not in str(contract) and "backup_dir" not in str(contract)
+
+
+@pytest.mark.parametrize(
+    ("enabled", "canary_only", "expected_mode"),
+    [
+        (False, True, "disabled"),
+        (True, True, "owner_canary"),
+        (True, False, "invited"),
+    ],
+)
+def test_readiness_reports_strict_global_research_rollout_mode(
+    settings, enabled, canary_only, expected_mode
+):
+    configured = replace(
+        settings,
+        research_features_enabled=enabled,
+        research_features_canary_only=canary_only,
+    )
+    with TestClient(create_app(configured, FixtureProvider())) as isolated:
+        response = isolated.get("/api/v1/readiness")
+
+    assert response.status_code == 200
+    assert response.json()["research"] == {
+        "enabled": expected_mode != "disabled",
+        "rollout_mode": expected_mode,
+    }
+    assert set(response.json()) == {
+        "status",
+        "schema_version",
+        "provider",
+        "assistant",
+        "research",
+    }
+    assert response.json()["status"] == "ready"
 
 
 def test_worker_unavailability_does_not_fail_application_readiness(settings):
@@ -180,6 +223,20 @@ def test_openapi_uses_concrete_success_and_safe_error_schemas(client):
     assert set(csv_success["content"]) == {"text/csv"}
     assert contract["components"]["schemas"]["ErrorEnvelope"]["required"] == ["error"]
     schemas = contract["components"]["schemas"]
+    readiness = schemas["ReadinessResponse"]
+    assert readiness["properties"]["research"] == {
+        "$ref": "#/components/schemas/ResearchReadinessResponse"
+    }
+    assert readiness["additionalProperties"] is False
+    research_readiness = schemas["ResearchReadinessResponse"]
+    assert research_readiness["required"] == ["enabled", "rollout_mode"]
+    assert research_readiness["additionalProperties"] is False
+    assert research_readiness["properties"]["enabled"] == {"type": "boolean", "title": "Enabled"}
+    assert research_readiness["properties"]["rollout_mode"]["enum"] == [
+        "disabled",
+        "owner_canary",
+        "invited",
+    ]
     for name in ("OriginalRollingForecastResultResponse", "RecordedRollingForecastResultResponse"):
         rolling_properties = schemas[name]["properties"]
         assert rolling_properties["magnitude_intervals"]["anyOf"][0]["items"] == {

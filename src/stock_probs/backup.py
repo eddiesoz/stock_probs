@@ -28,8 +28,7 @@ from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.repository import (
     SCHEMA_VERSION,
     Repository,
-    _is_representative_storage_counts,
-    _RepresentativeStorageCounts,
+    _is_backup_storage_counts,
 )
 
 ARTIFACT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\.spbackup$")
@@ -260,10 +259,7 @@ class BackupManager:
             try:
                 descriptor = os.open(
                     self.trust_key_path,
-                    os.O_WRONLY
-                    | os.O_CREAT
-                    | os.O_EXCL
-                    | getattr(os, "O_NOFOLLOW", 0),
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
                     0o600,
                 )
             except FileExistsError:
@@ -367,20 +363,24 @@ class BackupManager:
         # Directory fsync makes rename/link metadata durable on Linux after a sudden power loss.
         descriptor = os.open(
             path,
-            os.O_RDONLY
-            | getattr(os, "O_DIRECTORY", 0)
-            | getattr(os, "O_NOFOLLOW", 0),
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
         )
         try:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
 
-    def _counts(self, path: Path) -> _RepresentativeStorageCounts:
+    def _counts(self, path: Path, format_version: int = 1) -> dict[str, int]:
         try:
-            return self.repository.representative_counts(path)
+            return self.repository.backup_counts(path, format_version=format_version)
         except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
             raise BackupError("Artifact representative-count verification failed.") from exc
+
+    @staticmethod
+    def _count_format_for_schema(schema_version: int) -> int:
+        """Select the complete storage-count contract available to this schema."""
+
+        return 2 if schema_version >= 14 else 1
 
     def _online_snapshot(self, snapshot: Path) -> None:
         """Use SQLite's consistent online API with a callback-enforced wall-clock bound."""
@@ -467,11 +467,12 @@ class BackupManager:
                 ensure_private_file(snapshot)
                 schema_checksum = self._integrity(snapshot, expected_version=schema_version)
                 _check_deadline()
-                counts = self._counts(snapshot)
+                format_version = 2 if schema_version >= 14 else 1
+                counts = self._counts(snapshot, format_version)
                 _check_deadline()
                 manifest = {
                     "format": "stock-probs-backup",
-                    "format_version": 1,
+                    "format_version": format_version,
                     "schema_version": schema_version,
                     "schema_sha256": schema_checksum,
                     "created_at": datetime.now(UTC).isoformat(),
@@ -546,9 +547,7 @@ class BackupManager:
                 newest_name, newest_manifest = max(
                     manifests, key=lambda item: datetime.fromisoformat(item[1]["created_at"])
                 )
-                _, _, staging = self._verify_unlocked(
-                    newest_name, require_active_schema=False
-                )
+                _, _, staging = self._verify_unlocked(newest_name, require_active_schema=False)
                 staging.cleanup()
                 _check_deadline()
                 age_seconds = (
@@ -589,9 +588,7 @@ class BackupManager:
             with zipfile.ZipFile(artifact, "r") as archive:
                 entries = archive.infolist()
                 self._validate_zip_entries(entries, directory_offset)
-                manifest_info = next(
-                    info for info in entries if info.filename == "manifest.json"
-                )
+                manifest_info = next(info for info in entries if info.filename == "manifest.json")
                 if not 0 < manifest_info.file_size <= MAX_MANIFEST_BYTES:
                     raise BackupError("Artifact manifest exceeds the restore limit.")
                 with archive.open(manifest_info) as source:
@@ -642,9 +639,10 @@ class BackupManager:
         if (
             manifest["format"] != "stock-probs-backup"
             or type(manifest["format_version"]) is not int
-            or manifest["format_version"] != 1
+            or manifest["format_version"] not in {1, 2}
             or type(manifest["schema_version"]) is not int
             or not 1 <= manifest["schema_version"] <= SCHEMA_VERSION
+            or (manifest["format_version"] == 2 and manifest["schema_version"] < 14)
         ):
             raise BackupError("Artifact format or schema version is incompatible.")
         if not isinstance(manifest["schema_sha256"], str) or not SHA256_PATTERN.fullmatch(
@@ -665,7 +663,7 @@ class BackupManager:
         ):
             raise BackupError("Artifact database size is invalid.")
         counts = manifest["counts"]
-        if not _is_representative_storage_counts(counts):
+        if not _is_backup_storage_counts(counts, manifest["format_version"]):
             raise BackupError("Artifact representative counts are invalid.")
         try:
             created_at = datetime.fromisoformat(manifest["created_at"])
@@ -821,7 +819,7 @@ class BackupManager:
                 )
                 if active_schema != schema:
                     raise BackupError("Artifact failed schema compatibility checks.")
-            if self._counts(database) != manifest["counts"]:
+            if self._counts(database, manifest["format_version"]) != manifest["counts"]:
                 raise BackupError("Artifact representative counts do not match its manifest.")
             _check_deadline()
             return manifest, database, staging
@@ -871,9 +869,10 @@ class BackupManager:
         managed = self._managed_backups()
         new_key = secrets.token_bytes(TRUST_KEY_BYTES)
         try:
-            with self.repository.exclusive(), tempfile.TemporaryDirectory(
-                dir=self.backup_dir
-            ) as directory:
+            with (
+                self.repository.exclusive(),
+                tempfile.TemporaryDirectory(dir=self.backup_dir) as directory,
+            ):
                 staging_root = Path(directory)
                 replacements = staging_root / "replacements"
                 originals = staging_root / "originals"
@@ -948,7 +947,7 @@ class BackupManager:
 
     def _stage_promotion(
         self, staged_database: Path, current: Path, manifest: dict[str, Any]
-    ) -> Path:
+    ) -> tuple[Path, dict[str, int]]:
         """Copy into the database filesystem and reverify before touching the active name."""
 
         descriptor, candidate_name = tempfile.mkstemp(
@@ -957,13 +956,25 @@ class BackupManager:
         os.close(descriptor)
         candidate = Path(candidate_name)
         try:
+            if self._checksum(staged_database) != manifest["database_sha256"]:
+                raise BackupError(
+                    "Staged database checksum does not match its authenticated manifest."
+                )
             shutil.copyfile(staged_database, candidate)
             candidate.chmod(0o600)
             self._sync_file(candidate)
+            if self._checksum(candidate) != manifest["database_sha256"]:
+                raise BackupError(
+                    "Staged database copy checksum does not match its authenticated manifest."
+                )
             self._integrity(candidate, expected_schema=manifest["schema_sha256"])
-            if self._counts(candidate) != manifest["counts"]:
+            # A signed legacy v1/schema-14 manifest authenticates the full database but carries
+            # only the old five counts. Verify schema-14 copies with the complete v2 row set.
+            count_format = self._count_format_for_schema(manifest["schema_version"])
+            staged_counts = self._counts(staged_database, count_format)
+            if self._counts(candidate, count_format) != staged_counts:
                 raise BackupError("Staged database failed representative-count verification.")
-            return candidate
+            return candidate, staged_counts
         except Exception:
             candidate.unlink(missing_ok=True)
             raise
@@ -972,9 +983,7 @@ class BackupManager:
         """Return one safe error if bounded database coordination cannot be acquired."""
 
         try:
-            return _run_with_deadline(
-                lambda: self._restore_coordinated(name, promote=promote)
-            )
+            return _run_with_deadline(lambda: self._restore_coordinated(name, promote=promote))
         except BackupError as exc:
             exc._mark_restore_failure()
             raise
@@ -1007,7 +1016,7 @@ class BackupManager:
                     raise BackupError(
                         "A prior restore rollback file exists; resolve it before promotion."
                     )
-                candidate = self._stage_promotion(staged_database, current, manifest)
+                candidate, staged_counts = self._stage_promotion(staged_database, current, manifest)
                 # Checkpoint while the old active file still owns its name and remains usable.
                 with self.repository.connect() as connection:
                     connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -1023,11 +1032,15 @@ class BackupManager:
                 rollback_temporary.chmod(0o600)
                 self._sync_file(rollback_temporary)
                 # A rollback is useful only after proving its copied pages and rows match active.
-                active_counts = self._counts(current)
-                self._integrity(
-                    rollback_temporary, expected_schema=manifest["schema_sha256"]
-                )
-                if self._counts(rollback_temporary) != active_counts:
+                active_count_format = self._count_format_for_schema(SCHEMA_VERSION)
+                active_schema = self._integrity(current, expected_version=SCHEMA_VERSION)
+                active_counts = self._counts(current, active_count_format)
+                active_database_sha256 = self._checksum(current)
+                self._integrity(rollback_temporary, expected_schema=active_schema)
+                if (
+                    self._counts(rollback_temporary, active_count_format) != active_counts
+                    or self._checksum(rollback_temporary) != active_database_sha256
+                ):
                     raise BackupError("Restore rollback staging failed verification.")
                 os.replace(rollback_temporary, rollback)
                 rollback_temporary = None
@@ -1038,18 +1051,33 @@ class BackupManager:
                     candidate = None
                     self._sync_directory(current.parent)
                     self._integrity(current, expected_schema=manifest["schema_sha256"])
-                    if self._counts(current) != manifest["counts"]:
+                    promoted_counts = self._counts(
+                        current, self._count_format_for_schema(manifest["schema_version"])
+                    )
+                    if (
+                        promoted_counts != staged_counts
+                        or self._checksum(current) != manifest["database_sha256"]
+                    ):
                         raise BackupError(
-                            "Promoted database failed representative-count verification."
+                            "Promoted database failed checksum or representative-count "
+                            "verification."
                         )
                 except Exception as promotion_error:
                     # Atomic rollback restores the prior active bytes after any post-swap failure.
                     try:
                         os.replace(rollback, current)
                         self._sync_directory(current.parent)
-                    except OSError as rollback_error:
+                        self._integrity(current, expected_schema=active_schema)
+                        if (
+                            self._counts(current, active_count_format) != active_counts
+                            or self._checksum(current) != active_database_sha256
+                        ):
+                            raise BackupError(
+                                "Restored active database failed rollback verification."
+                            )
+                    except Exception as rollback_error:
                         raise BackupError(
-                            "Restore promotion failed; preserved rollback could not be promoted."
+                            "Restore rollback failed verification."
                         ) from rollback_error
                     if isinstance(promotion_error, BackupError):
                         raise promotion_error

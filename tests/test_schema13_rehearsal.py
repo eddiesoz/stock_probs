@@ -26,9 +26,23 @@ from stock_probs.auth import CSRF_COOKIE_NAME
 from stock_probs.backup import BackupError, BackupManager
 from stock_probs.config import Settings
 from stock_probs.provider import FixtureProvider
-from stock_probs.repository import Repository
+from stock_probs.repository import SCHEMA_VERSION, Repository
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_named_verification_schema_preserves_historical_default_and_rejects_unknown() -> None:
+    """A v14 check must reject v13 readiness rather than loosen the schema equality guard."""
+    historical = rehearsal._verification_source()
+    current = rehearsal._verification_source(14)
+    assert 'readiness_body.get("schema_version") == 13' in historical
+    assert 'readiness_body.get("schema_version") == 14' in current
+    assert "versions == list(range(1, 15))" in current
+    assert 'consent_manifest["schema_version"] == 14' in current
+    assert rehearsal._verification_source(13) == historical
+    for value in (12, 16, True, "14"):
+        with pytest.raises(rehearsal.RehearsalError, match="unsupported verification schema"):
+            rehearsal._verification_source(value)
 
 
 def _make_source_tree(root: Path) -> tuple[Path, Path]:
@@ -696,7 +710,7 @@ def test_generated_candidate_verifier_uses_real_local_login_csrf_cookie_contract
 def test_generated_candidate_owner_and_http_verification_runs_against_two_local_users(
     tmp_path: Path,
 ) -> None:
-    source = rehearsal._verification_source()
+    source = rehearsal._verification_source(SCHEMA_VERSION)
     parsed = ast.parse(source)
     names = {
         "VerificationFailure",
@@ -836,7 +850,7 @@ def test_generated_candidate_owner_and_http_verification_runs_against_two_local_
     assert result == {
         "stage": "candidate",
         "assistant_tables": {"assistant_conversations": 1, "assistant_model_consents": 0},
-        "schema_versions": list(range(1, 14)),
+        "schema_versions": list(range(1, SCHEMA_VERSION + 1)),
     }
     internal_failure = generated_namespace["_internal_failure"]
     assert internal_failure("assistant_owner_boundary", KeyError("synthetic private text")) == (
@@ -888,7 +902,7 @@ def test_schema12_backup_authentication_is_offline_after_schema13_and_cli_restor
             row[0]
             for row in connection.execute("SELECT version FROM schema_migrations ORDER BY version")
         ]
-    assert versions == list(range(1, 14))
+    assert versions == list(range(1, SCHEMA_VERSION + 1))
 
     historical = rehearsal._verify_historical_backup_without_promotion(
         manager, backup_name, expected_schema=12
@@ -898,7 +912,9 @@ def test_schema12_backup_authentication_is_offline_after_schema13_and_cli_restor
         "schema_version": 12,
         "integrity_verified": True,
     }
-    with pytest.raises(BackupError, match="cannot be restored over active schema version 13"):
+    with pytest.raises(
+        BackupError, match=f"cannot be restored over active schema version {SCHEMA_VERSION}"
+    ):
         manager.restore(backup_name, promote=False)
 
     environment = {
@@ -936,13 +952,13 @@ def test_schema12_backup_authentication_is_offline_after_schema13_and_cli_restor
         timeout=30,
     )
     assert cli.returncode == 2
-    assert "cannot be restored over active schema version 13" in cli.stderr
+    assert f"cannot be restored over active schema version {SCHEMA_VERSION}" in cli.stderr
     with sqlite3.connect(database_path) as connection:
         final_versions = [
             row[0]
             for row in connection.execute("SELECT version FROM schema_migrations ORDER BY version")
         ]
-    assert final_versions == list(range(1, 14))
+    assert final_versions == list(range(1, SCHEMA_VERSION + 1))
 
 
 def test_source_copy_skips_env_without_opening_and_rejects_links_before_copy(

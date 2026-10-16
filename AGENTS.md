@@ -1,5 +1,23 @@
 # Agent Rules
 
+For R-ASTRA-121, preserve the user-approved seven feature mockups and the existing design system;
+corrected designs take precedence. Use phased, reviewed releases and retain owner isolation,
+explicit confirmation, schema-compatible data-preserving rollback and the existing 1 GB/US$15 cap.
+The research-workspace documentation-map entry binds new code and fixtures to the dashboard, API,
+design and threat-model guides; documentation presence does not establish acceptance.
+Keep historical schema-13 rehearsal defaults and receipts intact. A named-schema verifier check
+does not establish a new schema-compatible recovery image, actual-host rollback, or release gate.
+The R1 schema-14 recovery overlay is source preparation only: it materializes the pinned 5ad
+schema-13 repository version/registry and migration 014, not an application image. Its read-only
+compatibility reader checks required tables, critical columns, and contiguous schema versions; it
+does not prove exact SQL constraints or persisted migration digests. Manifest rollout fields
+describe intended source
+controls, not effective runtime flags. Before release, independently inspect the recovery image
+and verify assistant, research, automatic rollout, and schema-13 backup promotion are disabled;
+rehearse same-volume schema-14 recovery without restore or down-migration and verify post-migration
+records remain. Never restore a schema-13 backup over schema-14 user data. See the R1 overlay
+checkpoint in `MVP-PLAN.md` and its scoped testing notes.
+
 ## Codex project workflow
 
 Codex uses this root `AGENTS.md` for repository policy. Its project configuration is

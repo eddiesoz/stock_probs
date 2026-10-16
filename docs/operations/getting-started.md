@@ -28,6 +28,16 @@ or release evidence. FastAPI remains the only production server and `/api/v1` re
 application-data boundary. The Docker path uses Node in a build-only stage and copies the staged
 static files into the Python wheel; Node is not part of the runtime image.
 
+The R1 Dockerfile source explicitly lists 16 generated HTML pages, including the Theses
+and Compare workspaces, and recursively copies the shared `out/_next` asset tree. Keep
+both aligned with the export when routes change. Independent static-copy QA on
+2026-10-16 passed one selected source test per R1/R2/R3 worktree and the disposable
+baseline copies; it rejected a missing `out/_next` copy and a missing `out/admin.html`
+mapping. Page counts and source closures were 16/18/20 and 38/45/59 unchanged inputs.
+This is source-level contract evidence only: no Docker image, packaged-route,
+served/export parity, or runtime behavior was verified. See the [scoped QA
+record](../develop/testing.md#bounded-local-docker-builds-and-worker-verification).
+
 The default provider is Yahoo Finance and requires network availability. For a repeatable
 offline-oriented development run, use the fixture settings in
 [local configuration](../configure/local-configuration.md). Startup creates the private data
@@ -635,6 +645,19 @@ The normal sequence is:
 ```text
 inspect → plan_deploy(main revision, release archive SHA, image ID) → deploy(plan) → status
 ```
+
+#### R1 schema-14 source-only recovery overlay
+
+The R1 recovery-overlay generator is a private source-preparation path for the pinned 5ad schema-13
+registry/version and migration 014. It is not an application image, a selected helper check is not
+a schema-13→14 pair rehearsal, and manifest rollout fields do not prove effective runtime
+controls. Before release, inspect the actual recovery image and verify assistant, research, and
+automatic rollout are disabled and schema-13 backup promotion is disabled. Rehearse migration and
+failure recovery on the same schema-14 volume without restoring or down-migrating; verify
+post-migration theses, revisions, and comparisons remain. A schema-13 backup may remain verifiable
+for its original schema, but must never be restored over schema-14 user data. The image, host-pair,
+and release checks remain pending; see the
+[R1 evidence ledger](../../MVP-PLAN.md#r-astra-121-r1-schema-14-source-only-recovery-overlay-checkpoint-2026-10-16).
 
 For schema-13 GitHub-release deployments, supply `pair_manifest_sha256` from the exact revision's
 `signal-ledger-pair-<revision>.json` manifest to both calls. The MCP schema declares this field

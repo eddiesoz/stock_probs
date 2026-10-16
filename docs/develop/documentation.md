@@ -14,6 +14,20 @@ source and current release evidence. For browser or capture claims, follow the [
 evidence procedure](testing.md#binding-browser-evidence-to-the-served-frontend) so the evidence
 matches the bundle FastAPI actually serves.
 
+For R-ASTRA-121 migration changes, record the current schema and the recovery image's compatible
+schema separately. The historical schema-13 rehearsal retains its default contract; selecting a
+new schema in a generated verifier changes only that verifier's exact assertions. See the
+[migration rehearsal boundary](testing.md#named-schema-verification-boundary) and the R121 ledger
+in `MVP-PLAN.md`. Do not describe a selected test as image or production rollback acceptance.
+The `research-recovery-overlay` documentation-map rule binds its generator, manifest, and focused
+test to this guide, [developer testing](testing.md#r1-schema-14-recovery-overlay-scope), and the
+[operator procedure](../operations/getting-started.md#r1-schema-14-source-only-recovery-overlay).
+Describe this R1 overlay only as source preparation: its manifest controls are intended launch
+metadata, and its compatibility reader does not prove effective runtime flags, exact SQL
+constraints, or persisted migration digests. Link to the
+[R1 evidence ledger](../../MVP-PLAN.md#r-astra-121-r1-schema-14-source-only-recovery-overlay-checkpoint-2026-10-16)
+for its failures, selected passes, and still-pending recovery gates.
+
 Contrast evidence follows the root `AGENTS.md` rule: retain raw axe results and separately
 resolve uncertain results with exact-node measurements, independent QA and parent screenshot
 review. See [contrast review](testing.md#reviewing-incomplete-contrast-results). A scoped manual
@@ -302,7 +316,10 @@ this page, [developer testing](testing.md), and [getting started](../operations/
 the separate workflow-policy rule requires `AGENTS.md`. Keep this path coverage aligned as the
 local build command contract changes. Record current runtime acceptance in the task ledger and
 reflect operational status in the operations/testing guides; the map describes source coverage, not
-runtime acceptance. The optional `prebuilt-release` publisher mode uses the completed schema-13
+runtime acceptance. This R1 source set explicitly lists 16 generated HTML pages in its Dockerfile
+and recursively copies the shared `out/_next` asset tree. Keep that package contract aligned with
+the export and describe it in the mapped operations/testing guides; source lists do not prove image
+contents. The optional `prebuilt-release` publisher mode uses the completed schema-13
 pair receipt and fixed revision-named artifacts; keep its verification and release prerequisites
 documented in the operations and testing guides when changing that contract.
 Archive-scanner changes also require the testing and operations guides to describe the fixed
@@ -515,3 +532,9 @@ than a validator heuristic. These are static governance checks; metadata, the in
 allow-list, and `SKILL.md` frontmatter do not establish that a native loader discovered a skill.
 Native V2's directory-based auto-discovery is the loader boundary, and runtime discovery remains
 **Unavailable** in this harness.
+
+## Research workspace coverage
+
+The `research-workspaces` map rule binds thesis/comparison implementation and their fixtures to
+the dashboard, API, approved design and threat-model guides. Add matching rules as later R121
+releases introduce new record types. Candidate documentation does not establish deployment or QA.

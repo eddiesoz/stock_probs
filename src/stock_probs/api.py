@@ -272,11 +272,19 @@ class AssistantReadinessResponse(ApiResponse):
     status: Literal["disabled", "starting", "ready", "unavailable", "stopped"]
 
 
+class ResearchReadinessResponse(ApiResponse):
+    """Expose the global research rollout mode without account-specific access details."""
+
+    enabled: StrictBool
+    rollout_mode: Literal["disabled", "owner_canary", "invited"]
+
+
 class ReadinessResponse(ApiResponse):
     status: Literal["ready"]
     schema_version: int
     provider: str
     assistant: AssistantReadinessResponse
+    research: ResearchReadinessResponse
 
 
 class QuoteItemResponse(ApiResponse):
@@ -1618,6 +1626,8 @@ WORKSPACE_PAGE_ROUTES = (
     "/tools/forecast",
     "/tools/live-trading",
     "/tools/markets",
+    "/research/theses",
+    "/tools/compare",
     "/sign-in",
     "/invite",
     "/passkey",
@@ -1774,6 +1784,8 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
             "/tools/forecast",
             "/tools/live-trading",
             "/tools/markets",
+            "/research/theses",
+            "/tools/compare",
             "/account",
             "/admin",
         }
@@ -3123,6 +3135,8 @@ def create_app(
         "/tools/forecast": next_dir / "tools" / "forecast.html",
         "/tools/live-trading": next_dir / "tools" / "live-trading.html",
         "/tools/markets": next_dir / "tools" / "markets.html",
+        "/research/theses": next_dir / "research" / "theses.html",
+        "/tools/compare": next_dir / "tools" / "compare.html",
         "/sign-in": next_dir / "sign-in.html",
         "/invite": next_dir / "invite.html",
         "/passkey": next_dir / "passkey.html",
@@ -3158,6 +3172,8 @@ def create_app(
             "/authenticator",
             "/account",
             "/admin",
+            "/research/theses",
+            "/tools/compare",
         )
         if workspace_pages[route].is_file()
     }
@@ -4331,6 +4347,12 @@ def create_app(
             else "unavailable"
         )
         assistant_enabled = config.assistant_enabled and not assistant_service.operator_disabled
+        if not config.research_features_enabled:
+            research_rollout_mode = "disabled"
+        elif config.research_features_canary_only:
+            research_rollout_mode = "owner_canary"
+        else:
+            research_rollout_mode = "invited"
         return {
             "status": "ready",
             "schema_version": SCHEMA_VERSION,
@@ -4338,6 +4360,10 @@ def create_app(
             "assistant": {
                 "enabled": assistant_enabled,
                 "status": assistant_status if config.assistant_enabled else "disabled",
+            },
+            "research": {
+                "enabled": research_rollout_mode != "disabled",
+                "rollout_mode": research_rollout_mode,
             },
         }
 
@@ -4361,6 +4387,19 @@ def create_app(
                 status_code=422,
             )
         return cast(dict[str, Any], identity)
+
+    from stock_probs.research_api import install_research_routes
+
+    install_research_routes(
+        app,
+        config,
+        service,
+        _owner_user_id,
+        market_identity,
+        selected_clock,
+        _documented_errors,
+        _safe_csv_cell,
+    )
 
     def flattened_list_items(
         kind: str | None, owner_user_id: int | None = None

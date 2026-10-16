@@ -234,3 +234,9 @@ expire active query history. See [backup and restore](../operations/backup-resto
 trust-key lifecycle, restore behavior, and exact managed-name constraint.
 
 Continue with [getting started](../operations/getting-started.md).
+
+## R121 research candidate controls
+
+`STOCK_PROBS_RESEARCH_FEATURES_ENABLED=false` keeps the candidate disabled by default.
+When enabled, `STOCK_PROBS_RESEARCH_FEATURES_CANARY_ONLY=true` restricts access to authenticated
+administrators. These flags do not change assistant rollout or establish release acceptance.

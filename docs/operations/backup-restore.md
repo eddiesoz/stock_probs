@@ -49,6 +49,8 @@ newest and suppress a current-schema due backup until it reaches
 when the newest artifact is at least that interval old. The default is `86400` seconds; supported
 values are `60` through `2678400`. Any automatic-backup failure aborts startup.
 
+## Restore and promotion
+
 Restore defaults to non-destructive verification:
 
 ```bash
@@ -68,6 +70,21 @@ inspection, and checks SQLite integrity, foreign keys, migrations, schema, and c
 `--promote`, it also verifies the staged candidate, atomically swaps it into place, and rechecks
 the active database's integrity and representative counts before reporting success; a failed
 post-swap check restores the verified rollback copy.
+
+### R1 candidate: schema-14 backup compatibility
+
+The R1 schema-14 candidate versions its representative-count contract. Format v2 adds counts for
+`research_theses`, `research_thesis_revisions`, and `research_comparisons` while retaining the
+existing five-key `representative_counts` interface. Signed legacy format-v1 artifacts, including
+schema-14 artifacts, remain verifiable against their original five-table count shape and the
+authenticated whole-database checksum.
+
+During candidate restore, the staged database and its promotion copy are checked against the
+authenticated manifest checksum before promotion; the promoted database is checked again, and
+rollback validation uses full active-schema counts plus a whole-file checksum. These changes have
+passed scoped R1 backup QA but do not establish the schema-compatible recovery image or the
+post-migration schema-14 data-retention rehearsal or research-rollout binding. They are candidate
+evidence, not a claim that the R1 release is available. See the [R-ASTRA-121 evidence](../../MVP-PLAN.md#r-astra-121-r1-schema-14-backup-count-and-staged-integrity-follow-up-2026-10-16).
 
 An existing `.pre-restore.sqlite3` rollback file blocks promotion only; verification without
 `--promote` still works. After a successful promotion, failure to remove the retained rollback is

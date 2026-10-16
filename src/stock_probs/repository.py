@@ -25,7 +25,7 @@ from stock_probs.auth import (
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, HistoryFilters
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 OUTCOME_RECONSTRUCTION_LIMIT = 100
 HISTORY_EXPORT_LIMIT = 100
 INSTRUMENT_LIST_ITEM_LIMIT = 100
@@ -48,6 +48,7 @@ MIGRATION_SHA256 = {
     11: "6100174cc8a6ead5a8deb2c4437889be2f2d1609c5ce1f0bcc1fa16ac11a0f7c",
     12: "03bf4834c594e7e7704484e520202ff14a459d339397aefec2916b09a4fccd5c",
     13: "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b",
+    14: "0229c7713bd8d0fe5dfc2cc57d52052f71af4b4f417761175753287f3bf453ae",
 }
 
 
@@ -61,7 +62,7 @@ class _RepresentativeStorageCounts(TypedDict):
     outcomes: int
 
 
-# Keep the SQL allowlist and authenticated manifest shape on one persistence-owned contract.
+# Keep each SQL allowlist and authenticated manifest shape on one persistence-owned contract.
 _REPRESENTATIVE_STORAGE_TABLES: Final = (
     "search_events",
     "forecast_runs",
@@ -70,6 +71,17 @@ _REPRESENTATIVE_STORAGE_TABLES: Final = (
     "outcomes",
 )
 _REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_REPRESENTATIVE_STORAGE_TABLES)
+_RESEARCH_BACKUP_STORAGE_TABLES: Final = (
+    *_REPRESENTATIVE_STORAGE_TABLES,
+    "research_theses",
+    "research_thesis_revisions",
+    "research_comparisons",
+)
+_BACKUP_STORAGE_TABLES_BY_FORMAT: Final = {
+    1: _REPRESENTATIVE_STORAGE_TABLES,
+    2: _RESEARCH_BACKUP_STORAGE_TABLES,
+}
+_RESEARCH_BACKUP_STORAGE_KEYS: Final = frozenset(_RESEARCH_BACKUP_STORAGE_TABLES)
 
 
 def _is_representative_storage_counts(value: object) -> TypeGuard[_RepresentativeStorageCounts]:
@@ -80,6 +92,26 @@ def _is_representative_storage_counts(value: object) -> TypeGuard[_Representativ
         and set(value) == _REPRESENTATIVE_STORAGE_KEYS
         and all(type(count) is int and count >= 0 for count in value.values())
     )
+
+
+def _is_research_backup_storage_counts(value: object) -> bool:
+    """Validate the schema-14 backup count shape without relaxing legacy v1 checks."""
+
+    return (
+        isinstance(value, dict)
+        and set(value) == _RESEARCH_BACKUP_STORAGE_KEYS
+        and all(type(count) is int and count >= 0 for count in value.values())
+    )
+
+
+def _is_backup_storage_counts(value: object, format_version: int) -> bool:
+    """Validate one exact signed-manifest count shape selected by its format version."""
+
+    if format_version == 1:
+        return _is_representative_storage_counts(value)
+    if format_version == 2:
+        return _is_research_backup_storage_counts(value)
+    return False
 
 
 # Repository and backup objects for one database must coordinate around atomic restore. The
@@ -3901,7 +3933,26 @@ class Repository:
     ) -> _RepresentativeStorageCounts:
         """Count fixed internal storage tables; these keys are not domain record vocabulary."""
 
-        path = database_path or self.database_path
+        counts = self._count_storage_tables(
+            database_path or self.database_path, _REPRESENTATIVE_STORAGE_TABLES
+        )
+        return cast(_RepresentativeStorageCounts, counts)
+
+    def backup_counts(
+        self, database_path: Path | None = None, *, format_version: int
+    ) -> dict[str, int]:
+        """Count the fixed tables required by one signed backup format version."""
+
+        if type(format_version) is not int:
+            raise RepositoryOperationalError("Backup count format is invalid.")
+        tables = _BACKUP_STORAGE_TABLES_BY_FORMAT.get(format_version)
+        if tables is None:
+            raise RepositoryOperationalError("Backup count format is unsupported.")
+        return self._count_storage_tables(database_path or self.database_path, tables)
+
+    def _count_storage_tables(self, path: Path, tables: tuple[str, ...]) -> dict[str, int]:
+        """Count an internal code-owned table list under the canonical promotion lock."""
+
         # Staging databases are private to backup code; only the active canonical path shares
         # the promotion lock with independent repository and manager instances.
         try:
@@ -3919,10 +3970,9 @@ class Repository:
                     table: int(
                         connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # noqa: S608
                     )
-                    for table in _REPRESENTATIVE_STORAGE_TABLES
+                    for table in tables
                 }
-                # Construction from the fixed allowlist narrows this beyond dict[str, int].
-                return cast(_RepresentativeStorageCounts, counts)
+                return counts
             except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
                 raise RepositoryOperationalError(
                     "Representative database counts could not be read."

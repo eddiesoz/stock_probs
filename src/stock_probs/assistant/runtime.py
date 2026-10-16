@@ -468,6 +468,16 @@ _NATIVE_HTTP_STATUS_TEXT = re.compile(
     re.IGNORECASE,
 )
 _ROUTE_HELP = {
+    "/research/theses": (
+        "Theses are private investment reasoning with evidence, risks and invalidation conditions. "
+        "Draft only when asked. The user can deliberately select a saved reply as an editable "
+        "thesis draft and must save it in the workspace. Never claim a thesis was saved or revised."
+    ),
+    "/tools/compare": (
+        "Compare two to four instruments using unadjusted daily bars. Missing observations and "
+        "corporate actions can make metrics unavailable. Saved comparisons are dated snapshots; "
+        "refreshing creates new observations. Forecasts require a separate explicit submission."
+    ),
     "/": (
         "The home and overview workspace summarizes saved research and owner-held portfolio "
         "or watchlist items. Read those only when the user asks about them."

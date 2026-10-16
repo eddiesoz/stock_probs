@@ -1,5 +1,392 @@
 # Stock Probability MVP Plan
 
+## R-ASTRA-121 seven visible feature additions
+
+The user approved the seven desktop/mobile design proposals and directed implementation on
+October 11, 2026. Preserve their layouts and the existing design tokens and
+Overview / Research / Tools navigation. Corrected mockups take precedence over initial drafts;
+fictional data, incidental labels, and logos are not product requirements. See the
+[approved feature designs](docs/develop/design-system.md#approved-seven-feature-designs).
+
+| Release | Complete user-facing scope | Current status |
+| --- | --- | --- |
+| 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | In progress; local implementation and selected checks only |
+| 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | In progress in a separate managed checkout; no release acceptance |
+| 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | Pending |
+| 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Pending |
+
+Transactions retain original currency/date and use decimal weighted-average book calculations.
+Opening positions may have unknown cost. Corrections append records; previews/imports are atomic;
+short positions and unsupported negative cash are rejected. CAD display is the default with USD
+available; indicative display FX never overwrites an actual exchange transaction's rate.
+Scenarios freeze holdings, quote and FX inputs and cannot mutate actual holdings. Report cards
+keep recorded outcomes separate from backtests and disclose pending/unavailable/disputed samples.
+Emails are off by default and require verified address plus explicit consent; uncertain submissions
+are not blindly retried. Background work is bounded, disabled independently, and absent from CLI
+one-shot commands. Headlines remain outside immutable forecast inputs. Assistant explanations
+require a user request and existing provider privacy consent; transaction commits remain manual.
+
+Each release requires its own reviewed PR, complete applicable canonical/browser/security/runtime
+checks, actual combined 1 GB acceptance and a PR-bound schema-compatible rollback retaining newly
+created records. Feature controls start disabled, then owner canary, then invited rollout.
+Unchanged evidence may be reused only at matching inputs. The existing 1 GB host, backups and
+US$15 monthly hosting total including tax remain unchanged. Broker sync, order execution,
+margin/short positions, tax filing, paid data subscriptions and autonomous AI briefs are excluded.
+No R121 production deployment, merge, rollback, rollout, or email has occurred.
+
+### R121 implementation checklist
+
+1. **In progress:** implement, independently verify and integrate Release 1.
+2. **In progress:** implement and verify Release 2 in an isolated checkout.
+3. **Pending:** implement and verify Release 3.
+4. **Pending:** implement and verify Release 4.
+5. **Pending:** complete each release's exact-revision acceptance, recovery and publication.
+
+Historical R120 release/evidence below remains unchanged. R121 does not supersede E850's deployed
+product identity or claim new production observations.
+
+### R121 E1 local Release 1 implementation and first independent review
+
+The isolated managed worktree uses branch `codex/signal-ledger-research-r1` from
+`0fcededf436f1d0a601ebe0a5f70ae615dc8e587`; unrelated original-checkout skill/catalog edits remain separate.
+The candidate adds schema 14, disabled-by-default private thesis and comparison resources, explicit
+review/export controls, and an unsaved selected-reply drafting flow. Schema 14 is unshipped and its
+checksum was rebound during repairs; shipped migrations 1–13 remain unchanged.
+
+Independent QA at `2026-10-12T01:40:13Z`–`02:06:45Z` **Failed** acceptance on six feature gaps while
+its selected checks **Passed**: 14 research tests, 124 API tests, 87 persistence/backup tests, and
+8 desktop/emulated-mobile Light/Dark browser cases. Auth/CSRF/canary/logout revocation, raw SQLite
+REPLACE guards, signed backup verify/promote, and preview-reservation race checks passed their
+scopes. Receipt `/var/tmp/r12r/signal-ledger-r1-qa-20261012T014013Z/independent-qa-receipt.json`,
+SHA-256 `1f2089e30c7eb7ed2b2ec197be147c8e1abea2cec5cba0bc155146c3578e464c`.
+Its missing-PYTHONPATH browser setup failure and corrected 8-case Pass remain separate. The wider
+strict mypy command **Failed** with 87 errors and no baseline attribution; the two new modules and
+canonical backup/CLI selector **Passed**. An independent frontend build terminal was **Unavailable**.
+
+The six findings were provider-dependent creation retries, omitted missing-observation counts,
+missing direct thesis GET, incomplete rendered history, uncaptured manual assistant excerpts, and
+excessively tall expanded mobile exact-value tables. The parent applied a bounded request-hash
+lookup, direct owner GET/link, complete history, server-captured excerpts, visible gap counts,
+and a named scroll region plus capture-focus restoration. Fresh affected QA remains pending.
+Parent selected research checks now **Pass** 15 tests; the seventh approved frontend build/stage
+completed with exit 0 and 72 frontend contracts. These are selected local checks, not release or
+actual 1 GB acceptance. Earlier failed builder/browser attempts remain in private task artifacts.
+
+Release 2 accounting/scenario drafts live outside the checkout under the verified SD task directory.
+Nineteen fixed arithmetic cases and one draft-schema guard case passed; HTTP, persistence
+integration, imports, FX retrieval, UI and independent acceptance remain pending. This is not a
+completed Release 2 implementation. A read-only deployment MCP observation confirms the unchanged
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a` image/schema 13 ready, assistant invited, loopback-only;
+RAM/billing and owner-browser checks were not returned. No PR, merge, build image, deployment,
+rollout mutation, resize or email has occurred for R121. All four release gates remain open.
+
+### R121 E2 clipped-values diagnostic and fixture repair
+
+The parent fifth browser run **Failed** (exit 1, four passed/eight failed): four comparison
+states introduced raw contrast incompletes after a vertically clipped exact-values region,
+and four new negative-state cases used an ambiguous route-announcer alert locator and omitted
+intentional HTTP-failure declarations. The 86 prebound inputs were unchanged. Raw results remain
+in `/var/tmp/r12r/signal-ledger-features-20261011/browser-r1-fifth.log` and its unique terminal receipt;
+no accessibility waiver or aggregate Pass follows. The repair removes vertical clipping, uses
+five exact-value rows per page, scopes alert lookups to main, declares the exact two 503 GETs and
+one 422 POST per negative fixture, and gives export/reopen links 44-pixel targets. The eighth approved frontend build completed with exit 0 and 72 contracts; fresh
+browser verification remains pending at this source checkpoint. The root's cache-dependent broad
+import mypy attempt also failed on 26 auth/repository errors; its attribution is unproven. This is
+separate from the earlier independent fresh-cache selected-selector Pass. A new root
+`PYTHONPATH=src` fresh-cache strict run passed both research modules without suppressions.
+
+### R121 E3 repaired research verification and capture diagnosis
+
+Independent local QA **Passed** its declared frozen scope at base
+`0fcededf436f1d0a601ebe0a5f70ae615dc8e587`: 15 research tests, six selected API/OpenAPI/CSP tests,
+12 desktop/emulated-mobile browser cases and a separate two-case synthetic observation-gap UI
+check. Those browser states had zero raw axe violations and incompletes. Four geometry cases
+measured visible controls at least 44 CSS pixels. New-module strict mypy, scoped lint/security,
+raw SQLite immutability, owner/CSRF/revocation checks, and signed local backup retention passed.
+All pre/post pins and 55 served/export pairs matched; migrations 1–13 were unchanged.
+Receipt `/var/tmp/r12r/signal-ledger-r1-qa-repair-20261012T022802Z/independent-qa-receipt.json`,
+SHA-256 `cfb4e344dbcb8f7ce690951b806d877e4124fab753fabd24f4ae9a29dff96126`, released the freeze
+at its `2026-10-12T02:58:33Z` checkpoint. Prior Fail receipts remain intact. The wider 87-error mypy
+result remains Fail with attribution unproven; this does not become a full-app typing Pass.
+
+DOM measurements proved the apparent skip link in full-page post-interaction captures was offscreen
+and unfocused. Resetting document scroll to zero before capture removed the artifact without CSS
+masking. Eight supplemental captures retain their own hashes, and the original captures remain.
+Geometry receipt SHA-256 `f376c3ee7ea271ed8b5be00e180d7982cfe854b0e3d892b929a2b4e4c0e9f231`.
+Parent visual review of the Light desktop thesis, Dark mobile thesis, Dark desktop comparison and
+Light mobile comparison found the mobile table caption unnecessarily narrow; its source repair is
+recorded below. No production, physical-mobile, true-zoom, screen-reader, 1 GB, canonical or PR-bound
+rollback acceptance follows from E3.
+
+### R121 E4 final research export and mobile caption repair
+
+The parent added complete owner-only revision exports, provider-free edits for an unchanged
+instrument, and continued review/editing of unchanged captured excerpts after the original chat
+is deleted. Forged or newly attached excerpts still require a currently owned assistant message.
+One read snapshot supplies current cards and revision history; CSV fields retain formula safety.
+The 15-test research selection passed with the extended offline-edit, deleted-chat, complete-export
+and cross-owner assertions. Fresh strict mypy passed both research modules. Two newly authored SQL
+strings initially failed Ruff's line-length rule; the strings were split without query changes.
+
+The frontend now gives thesis detail sections the approved inner-card hierarchy and gives mobile
+table captions the available width. Capture code restores document scroll to zero after focusing
+main. The ninth approved `./scripts/build-frontend.sh` command exited 0 with 72 frontend contracts;
+fresh independent affected verification is pending at this checkpoint. E3 is retained only for its
+original bindings. No R121 PR or release acceptance is claimed yet.
+
+Separate unintegrated Release 2 drafts passed 19 fixed accounting/scenario cases, eight CSV cases,
+six coordinated SQLite store cases, and seven mocked daily FX-cache cases. A prior store test failed
+on UUID-dependent account ordering (33 passed/one failed); the corrected check uses account IDs.
+Its initial pre-run pin map was unavailable, and the subsequent six-case run was pinned unchanged.
+These drafts are outside the checkout, not installed migrations, API/UI implementations or Release 2
+acceptance. The public Bank of Canada endpoint returned a dated USD/CAD observation during a
+read-only shape check; that is neither portfolio runtime nor current valuation acceptance.
+
+### R121 E5 final-polish QA and isolated design captures
+
+Independent affected-source QA **Passed** 15 research tests, fresh two-module strict mypy,
+scoped Ruff/format/security checks, and the complete selected 12-case Light/Dark desktop/Pixel 7
+browser run. Its 16 whole-route axe analyses had zero violations and incompletes; 55 served/export
+pairs and frozen input pins matched. The captured-excerpt, full-export, offline-edit and owner
+boundaries passed. Capture fidelity separately **Failed** because successive cases accumulated
+records in the shared disposable fixture database. Receipt
+`/var/tmp/r12r/signal-ledger-r1-final-polish-qa-20261012T030717Z/independent-qa-receipt.json`,
+SHA-256 `cdcf8923abaf124b1ab72af31508537dffd2cee90776c6a2c2454575ff206fa4`.
+
+Four subsequent fresh-database capture invocations each exited 0 with three selected cases; they
+are four capture-only scopes, not a new combined functional aggregate. All eight success captures
+contained one thesis and one comparison. Independent visual review **Passed** hierarchy, inner
+cards, caption width, mobile stacking and placement against the two approved designs. Ports,
+processes, disposable runtimes and all 55 served/export bindings passed cleanup/integrity review.
+The earlier fidelity Fail and captures remain intact. Receipt
+`/var/tmp/r12r/signal-ledger-r1-clean-captures-20261012T031813Z/independent-capture-qa-receipt.json`,
+SHA-256 `4890fde91afe62d57338a30972fdf48ab3bc50662a0bea46e78cbf180b768c0b`, recorded at
+`2026-10-12T03:24:56.223500Z`. Physical mobile and full-app accessibility are not established.
+
+Parent integration review then added fail-closed comparison validation for extreme finite prices
+that overflow/underflow normalization, malformed timestamps and missing observation timezones.
+Five selected calculation cases passed; this narrow backend change is later than the two receipts
+above. Frontend sources and compiled assets are unchanged. Prior evidence keeps its original
+bindings; new-source canonical and independent affected verification remain pending.
+
+Private Release 2 preparation now includes atomic account/transaction storage, frozen scenarios,
+explicitly mapped CSV previews, and a persisted daily FX cache. Nineteen subsequent draft HTTP/store/
+scenario cases passed with unchanged pre/post pins; their owner callback is a fixture seam, not
+production auth acceptance. No Release 2 files or migration are integrated at this checkpoint.
+Canonical runtime preparation moved only task-owned links to an isolated venv and SD gate path;
+an initial cross-filesystem rename setup failure is retained. The original Python runtime is not
+modified. No R121 image, PR, merge, deployment, rollout, resize or email has occurred yet.
+
+### R121 E6 draft PR, complete canonical failure and selected schema repair
+
+Release 1 was committed and pushed at `ecb55ff3c78883cd58756c9f7fd14293b597cfe8` and opened as
+[draft PR #7](https://github.com/eddiesoz/stock_probs/pull/7); it remains unmerged. Parent review
+covered the integrated diff and all eight isolated Light/Dark desktop/mobile-emulated success
+captures against the two approved mockups. A later independent five-case calculation check
+**Passed** normalization overflow/underflow, malformed/ambiguous provider timestamps and ordinary
+price-change/volatility/drawdown math. Receipt
+`/var/tmp/r12r/signal-ledger-r1-calc-confirm-20261012T034411Z/independent-calc-api-qa-receipt.json`,
+SHA-256 `44cae405dc55c0fd5e03ae2f4ffdf52a371958470295217023ef443f7fe2d29a`.
+
+The first complete canonical command **Failed**, exit 1, at this clean pushed revision on native
+x86_64/Python 3.11.15: `PYTHONPATH=<R1>/src TMPDIR=/var/tmp/r12r UV_CACHE_DIR=<task>/uv-cache
+UV_LINK_MODE=symlink TASK_ID=R-ASTRA-121 ./scripts/local-gate.sh check`, from
+`2026-10-12T03:41:17Z` to `04:14:04Z`. It recorded 3,328 passes, four failures, four skips,
+four deselections, 100 warnings and 85.77% coverage. Documentation and frontend completed;
+Python did not, so the required three-check contract was unsatisfied. All 387 source pins,
+55 served/export pairs, HEAD and clean Git status matched. Canonical receipt
+`test-results/local-gates/R-ASTRA-121-20261012T034117Z/evidence.json`, SHA-256
+`e8ca1116a6a6842b7c9645f043e3cf9171d1f57473871517b293d1be7815d0bd`; JUnit SHA-256
+`aa5e43f73ba015b41030a96f0527962cd4e898bd59d6446d4b11ca2a767170cf`.
+Independent integrity review retained **Fail**; exact owned process/temp cleanup is
+**Unavailable**, with four failure-cited pytest directories still present. Receipt
+`/var/tmp/r12r/signal-ledger-r1-canonical-first-audit-20261012T041745Z-dfce497b/independent-canonical-first-audit.json`,
+SHA-256 `d31a7767128e3cc10341a452ad3eb7f659f802e953b6396155ef523952986cbc`.
+
+All four failures pinned schema 13 while the current repository uses schema 14. The repair binds
+current-repository assertions to `SCHEMA_VERSION` and permits exact named-schema generated checks,
+while retaining the historical default and old-schema restore rejection. The initial selected
+repair run **Failed** four passes/one remaining stale error-message regex; its corrected rerun and
+independent verification **Passed** five selected tests. Independent generated 13/14/15 checks,
+Ruff/security/format and 387 unchanged pins also passed at `2026-10-12T04:27:44.599733Z`–
+`04:27:59.026253Z`, child umask `022`. Receipt
+`/var/tmp/r12r/signal-ledger-r1-schema-repair-independent-qa-20261012T042744Z-3e76b3cb/independent-qa-receipt.json`,
+SHA-256 `4b28c1d624a4671cf3fff67153e9e72b5a1e815a8ebf847d4f1b26dd58c423f6`.
+These selected results do not replace the failed canonical aggregate or establish a schema-14
+recovery image. Application/UI bytes are unchanged by the schema-check repair; earlier evidence
+retains its declared bindings. Current candidate canonical, image/runtime/security, actual combined
+1 GB, exact-PR post-migration rollback, canary and invited-user gates remain open. No R121 merge,
+deployment, rollout, resize or email occurred. The existing host, backups and US$15 total cap remain.
+
+### R-ASTRA-121 schema-14 recovery and research-rollout compatibility gap (2026-10-16)
+
+A read-only source trace **Passed for its inspection scope** but found R1's current recovery and
+deployment contracts incompatible with the unshipped schema-14 thesis/comparison data. The review
+finished at `2026-10-16T09:19:28.304445Z` in dirty worktree revision
+`b6f2dee9b79fb13821a1b11aa8fc81ad22aae923` on branch `codex/signal-ledger-research-r1`. Overall
+schema-14 recovery/deployment compatibility is **Fail**: existing production and PR-pair helpers
+are bound to schema 13/migration 12→13 and do not prove same-schema-14 recovery or retention of
+post-migration research records. Receipt
+`/var/tmp/r12r/r121-r1-recovery-gap-a39b70c6-4d97-46e7-8923-730947196f3f/review-receipt.json`,
+SHA-256 `a976ca51e1af4ded4a86bdbce676bc6be2eeba36e0c7d890ec6c7982d6be05c4`.
+
+Migration 014's exact bytes match registered schema-14 checksum
+`0229c7713bd8d0fe5dfc2cc57d52052f71af4b4f417761175753287f3bf453ae`. However, the existing
+version-1 backup manifest counts only the earlier five tables and omits
+`research_theses`, `research_thesis_revisions`, and `research_comparisons`. Its restore path
+requires the backup schema to equal active schema 14, so prior schema-13 backups remain verifiable
+but cannot be restored into the active schema-14 candidate. The current typed rollout surface only
+controls assistant rollout; it does not provide an independent research-feature rollout bound to
+the schema-14 candidate and recovery pair. Runtime flags remain disabled by default/admin canary.
+
+Before claiming R1 release recovery acceptance, add and verify a separate schema-14 pair contract
+that pins base 13, target 14, migration-014 checksum, candidate identity, and same-schema-14
+recovery while retaining the schema-13 contract. Build the recovery image from the reviewed
+schema-13 baseline plus migration 014 and the repository schema pin, with runtime and research
+feature controls disabled; verify it opens the migrated database without restore or down-migration.
+Add a typed research-rollout control (disabled → owner/admin canary → invited) bound to that exact
+candidate/pair and independent of assistant rollout. Version the backup/count contract to include
+the three research tables while continuing to verify existing schema-13/v1 artifacts, or bind exact
+post-migration counts and content digests in the recovery receipt. Finally, exercise a disposable
+13→14 pair: verify the pre-backup, create a thesis with two revisions and a comparison after
+migration, force candidate failure, recover on the same schema-14 volume without restoring, and
+verify row/content/owner digests and reads/exports after candidate re-entry; also verify that the
+old schema-13 backup remains verifiable but is rejected for schema-14 restore.
+
+No tests ran in this read-only review. Docker/build, host/runtime, migration execution, backup or
+restore, rollout, deployment, Git mutation, and release acceptance were not performed. This gap
+does not change the historical schema-13 contract or any prior schema-13 evidence; R1's release,
+host/resource, deployment, and recovery gates remain open.
+
+### R-ASTRA-121 R1 schema-14 backup-count and staged-integrity follow-up (2026-10-16)
+
+This follow-up closes only the versioned backup-count and authenticated-stage integrity items
+from the preceding review. The overall schema-14 recovery/research-rollout gap remains open.
+
+The initial independent stage-anchor diagnostic **Failed** at dirty revision
+`b6f2dee9b79fb13821a1b11aa8fc81ad22aae923`: its signed legacy-v1/schema-14 fixture could be
+modified after `_verify_unlocked` authenticated the extracted database and before promotion,
+and the mutated bytes were promoted. The receipt records
+`promoted_post_verification_mutation=true` and 49 unchanged source/import/migration inputs:
+`/var/tmp/r12r/r1-backup-stage-anchor-20261016T1508Z-d72f1a8c/diagnostic-receipt.json`,
+SHA-256 `19312d1ef92cbec36b23aafd8d2319b874e3b0ec41715dd043dbf81f67923c2f`. The regression's
+pre-repair failure remains preserved. An earlier independent run using Python 3.14 and missing its
+terminal record is **Unavailable**; the malformed-UUID reproduction and Ruff syntax/setup attempt
+**Failed** before acceptance. None is counted as a successful check.
+
+The repaired focused reproduction **Passed** with exit 0: staged-byte mutation was rejected with
+`Staged database checksum does not match its authenticated manifest.`, without changing the active
+database. Receipt `/var/tmp/r12r/r1-backup-stage-anchor-retest-20261016T1520Z-82f9b721/reproduction-receipt.json`,
+SHA-256 `793ebc68d0de8f311e327d3cf4392bc8bf801ae76101af2392c374e2106c9441`. Independent QA then
+**Passed** the declared backup/restore/CLI scope on native x86_64 with Python 3.11.15 and child
+umask `022`: `tests/test_repository_backup.py`, `tests/test_backup_automation.py`, and
+`tests/test_backup_cli.py` completed with actual exit 0 and JUnit `97` tests, `0` failures,
+`0` errors, and `0` skips from `2026-10-16T15:20:26.215020Z` to
+`2026-10-16T15:23:29.346581Z`. Its 49-file source/import/migration closure matched before and after.
+Terminal receipt `/var/tmp/r12r/r1-backup-stage-anchor-independent-20261016T1520Z-c9142ab6/terminal-receipt.json`,
+SHA-256 `75e5a88c136583b503e0c59b8ecbc2427aaef0f327de560ebfe697c91e4c0947`; JUnit SHA-256
+`3fb2497cc1fdd330b0e0cdaedf12cf8df8f7df57784557c08af9ad1ac716bc40`. The separate static
+receipt **Passed** Ruff check, Ruff security, Ruff format, and diff check with exit 0 at
+`2026-10-16T15:24:03.231308Z` (SHA-256
+`863579996453b94e51e9b4c1b43b2aa09a48871b392906964272a209881103b9`).
+
+The parent integrated source/evidence review **Passed** at `2026-10-16T15:25:34.265403Z` with no
+test rerun. It verified the five current backup/repository/test pins against independent QA and
+reviewed the format and restore invariants; receipt
+`/var/tmp/r12r/r1-backup-parent-integrated-review-5b25a22b-ed8d-4d53-8994-541b3ede2eff/parent-review.json`,
+SHA-256 `4b2e0511498c5442f6a3550c28a1889ef97a3c264ad6020248347295d8ee524e`.
+
+Schema 14 uses explicit backup count format v2, adding `research_theses`,
+`research_thesis_revisions`, and `research_comparisons`; the existing five-key
+`representative_counts` interface is retained. Signed legacy v1/schema-14 artifacts continue to
+verify against their original five-table count shape and authenticated whole-database checksum.
+Restore now checks staged bytes and the copied candidate against the authenticated manifest before
+promotion, then rechecks the promoted database. Rollback validation uses the active schema's full
+counts and whole-file checksum independently of the incoming legacy count format.
+
+This is scoped backup acceptance only. The schema-compatible recovery image, post-migration
+schema-14 data-retention pair, and research-rollout binding remain pending, including recovery of
+thesis revisions and comparison content after candidate failure. No migration execution, image
+build, host operation, deployment, rollout, or release acceptance is claimed; the R1 canonical,
+security, recovery, and release gates remain open.
+
+### R-ASTRA-121 R1 schema-14 source-only recovery-overlay checkpoint (2026-10-16)
+
+The initial independent task, `R1 schema14 recovery overlay independent source QA`, **Failed**:
+the reader accepted a malformed schema-14 database missing `users` and `forecast_runs`. Receipt
+`/var/tmp/r12r/r1-schema14-recovery-overlay-f19d82c-20261016/independent-qa-20261016T160445Z-fe09078c/independent-qa-receipt.json`,
+SHA-256 `30bc98cf0146773046246ddc3e63ef1a87145166a45f8f36964f604f085e05e7`. A later independent
+read-only QA run passed seven focused tests and the corrected malformed-database rejection, but
+its aggregate **Failed** because one generated intermediate `src` directory was mode `0755`; its
+initial malformed-fixture invocation was **Unavailable** due to a harness environment-variable
+setup error. Preserve that receipt at
+`/var/tmp/r12r/r1-schema14-independent-qa-20261016T1616Z-t2gJSw/independent-qa-final-receipt.json`,
+SHA-256 `699974436afec6c215f38bf49e8e1d19a9829b2248662361e5689dda3d0bf8fa`.
+
+The subsequent task, `R1 schema-14 recovery overlay permissions repair independent QA`, **Passed**
+its focused scope: seven tests, zero failures/errors/skips, actual child exit 0; generated overlay
+directories were `0700` and files `0600`, and 24 source/import pins were unchanged. It reused the
+prior malformed-database rejection because the directory-mode repair did not change reader
+semantics. Python 3.11.15 ran on native x86_64 with child umask `022`. Receipt
+`/var/tmp/r12r/r1-schema14-permission-qa-20261016T1622Z-5gjAid/independent-qa-final-receipt.json`,
+SHA-256 `50e781b235fd20d5d6114823321ff77df6ad3b5e96e0a59c40dafc3b436e3707`. Parent integrated
+source/evidence review **Passed** without rerunning tests; it verified the source pins and
+limitations in receipt
+`/var/tmp/r12r/r1-overlay-parent-final-review-148d1517-08de-4191-950f-af0df676c3fb/parent-review.json`,
+SHA-256 `3e04eafff120605da90cb7fa144fbd0e53f23503f000265cf87a0a2a0e8e73fc`.
+
+This overlay materializes only the pinned 5ad schema-13 repository version/registry, migration
+014, and its manifest. The compatibility reader opens SQLite read-only and checks required tables,
+critical columns, and contiguous versions 1–14; it does not authenticate arbitrary SQL constraints
+or persisted migration digests. Manifest disabled-control fields specify intended launch contract,
+not effective image/runtime flags. This remains source-only preparation: recovery-image control
+inspection, the actual schema-13-to-14 pair, same-schema-14 recovery without restoring or
+down-migrating, post-migration record retention, and host/release acceptance are pending. Verify
+the actual recovery image has assistant/research/automatic rollout and schema-13 backup promotion
+disabled before any release. Never restore a schema-13 backup over schema-14 user data. See the
+[R1 overlay testing scope](docs/develop/testing.md#r1-schema-14-recovery-overlay-scope) and
+[operator boundary](docs/operations/getting-started.md#r1-schema-14-source-only-recovery-overlay).
+
+### R-ASTRA-121 R1 PR7 research readiness contract (2026-10-16)
+
+`GET /api/v1/readiness` now exposes the global Research rollout configuration as
+`research: {enabled: StrictBool, rollout_mode: "disabled" | "owner_canary" | "invited"}`, derived
+from the existing feature-enabled and canary-only settings. This is independent of assistant
+status. It does not report quote/provider health, authenticated canary membership, or per-user
+Research access; existing signed-in availability and data authorization remain in force.
+
+Task `R1 PR7 research readiness` builder-selected JUnit evidence reports 9 tests with zero
+failures, errors, or skips, plus a separate startup-readiness check with 1 test and zero
+failures, errors, or skips. The focused result is recorded at
+`/var/tmp/r12r/R1-PR7-readiness-baseline-20261016T165938Z/focused-readiness-junit.xml`
+(SHA-256 `5ea3032588bce34c4630f9f5cdda3477c759cb32169ba700d0296418286916af`); the separate
+startup check is `startup-readiness-junit.xml` (SHA-256
+`ea29952969b76e88cef18e811d5626ce3a5895f37a005e016a1e9184cd5750fb`). The packet manifest is
+SHA-256 `312db90b1f9b42e4acde5af6b72793a94bdfdd819ee51d83f656bd1dd1635580`; it preserves
+pre-edit source/test baselines, not run-time source pins. The builder packet's run-time source
+identity and terminal exit receipt are **Unavailable**. Independent QA was **Pending** at this
+checkpoint. No canonical aggregate result is established here; deployment and rollout were not
+performed. This does not establish release acceptance.
+
+### R-ASTRA-121 R1 PR7 independent readiness QA (2026-10-16)
+
+Independent QA **Passed with no findings** for its focused scope at dirty revision
+`158ae157f65516728b2f7f1371bfbb28b877a102`, native x86_64/Python 3.11.15, from
+`2026-10-16T17:12:15.289192Z` to `17:17:07.237881Z`. The corrected API/workspace selection passed
+9 tests and the separate startup fail-closed check passed 1 test; both runs exited 0 with zero
+failures, errors, or skips. The review verified the strict three-mode global response, unchanged
+Research authorization, assistant-failure isolation, and no account-specific fields in public
+readiness. The exact three dirty source/test hashes matched before and after review, and 51
+allowlisted staged paths matched; Ruff, Ruff security, Ruff format, and scoped diff checks passed.
+Two earlier QA harness setup attempts failed before pytest and were corrected; neither was an
+application failure. The full API suite/canonical aggregate, browser, Docker, live provider,
+server, network, production, and host checks were **Skipped**; no frontend build or rollout was
+performed. This receipt is distinct from and does not amend the builder packet's earlier missing
+run-time source pins or terminal receipt, which remain **Unavailable**. Receipt
+`/var/tmp/r12r/R1-PR7-independent-qa-f93f35ab-b67c-44c4-bde1-fad0a9acf405/independent-qa-receipt.json`,
+SHA-256 `1f80c3a4184b8962d2ba93f77ffb9baf2afc1a7589fbecdd5c661421e8157ddd`. Release acceptance
+remains open.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.

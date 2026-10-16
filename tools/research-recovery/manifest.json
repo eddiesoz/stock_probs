@@ -1,0 +1,31 @@
+{
+  "format_version": 1,
+  "baseline": {
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "schema_version": 13,
+    "repository_path": "src/stock_probs/repository.py",
+    "repository_git_blob_sha1": "86994c12f8694ef882f7f4eaa76d4d420c8ec1f6",
+    "repository_sha256": "435cae9ef43e7c4b4596238b03a5acdea747625c79554f1816e96af732cc0f86"
+  },
+  "migration": {
+    "from_schema": 13,
+    "to_schema": 14,
+    "source_path": "src/stock_probs/migrations/014_research_workspaces.sql",
+    "target_path": "src/stock_probs/migrations/014_research_workspaces.sql",
+    "sha256": "0229c7713bd8d0fe5dfc2cc57d52052f71af4b4f417761175753287f3bf453ae"
+  },
+  "overlay": {
+    "source_paths": [
+      "src/stock_probs/repository.py",
+      "src/stock_probs/migrations/014_research_workspaces.sql"
+    ],
+    "repository_sha256": "10f5553d5d1e46e3d62899d79501d59ad08cbfaf1a2ac1755464f287680759ec",
+    "sha256": "8305782c24de6ad539b15e3dda4bfd3982010052013cac9b2d29086d31019520"
+  },
+  "controls": {
+    "assistant_enabled": false,
+    "research_features_enabled": false,
+    "automatic_pair_rollout_enabled": false,
+    "schema13_backup_promotion_enabled": false
+  }
+}

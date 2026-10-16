@@ -39,6 +39,41 @@ globally prune, or remove protected release images or application data. This pro
 authorize a resize above the US$15 monthly total cap including backups and tax. The root
 [agent policy](../../AGENTS.md) is authoritative.
 
+### R1 schema-14 backup and restore scope
+
+The R1 backup-count and authenticated-stage integrity repair passed a focused independent run of
+97 tests with no failures, errors, or skips, plus its bound static checks and parent integrated
+source/evidence review. The earlier independent post-authentication staging-mutation finding
+remains recorded as a failure; the later checks establish only the repaired backup/restore/CLI
+scope. Schema-compatible recovery-image, post-migration data-retention pair, and research-rollout
+binding verification remain pending. See the [R-ASTRA-121 evidence](../../MVP-PLAN.md#r-astra-121-r1-schema-14-backup-count-and-staged-integrity-follow-up-2026-10-16).
+
+### R1 schema-14 recovery overlay scope
+
+The latest independent overlay QA passed seven focused tests, exact malformed-database rejection
+(reused from the immediately preceding reader check), and private output-mode checks; parent
+integrated source/evidence review passed without rerunning tests. Earlier independent findings remain
+visible: the first reader accepted a database missing core tables, and the next aggregate failed on
+an intermediate directory mode after its focused tests passed. The current reader checks required
+tables, critical columns, and contiguous versions, not arbitrary SQL constraints or persisted
+migration digests. The overlay contains the pinned schema registry/version and migration 014; its
+manifest describes intended controls, not effective image/runtime flags. These checks do not build
+or inspect a recovery image or accept a schema-13→14 host pair. Keep same-volume schema-14 recovery,
+post-migration record retention, and actual host/release checks pending. See the
+[R1 overlay ledger](../../MVP-PLAN.md#r-astra-121-r1-schema-14-source-only-recovery-overlay-checkpoint-2026-10-16).
+
+### R1 research readiness contract
+
+The readiness tests cover the closed OpenAPI schema, global mapping to `disabled`, `owner_canary`,
+or `invited`, the absence of account identifiers, and application readiness when the assistant
+worker is unavailable. Research-workspace tests separately verify that the signed-in availability
+route and data authorization still enforce the existing canary rules. The public readiness mode is
+not proof of account access or provider health. Independent QA later passed the 9-case API/workspace
+selection and a separate startup case with exact before/after source/test pins; the earlier builder
+packet still lacks run-time source pins. Neither result is a full API, canonical, browser, provider,
+or deployment acceptance. See the [R1 readiness evidence](../../MVP-PLAN.md#r-astra-121-r1-pr7-independent-readiness-qa-2026-10-16)
+for the exact receipt and scope.
+
 For a full schema-12-to-13 pair rehearsal, `--use-deployed-baseline-image` is an optional boolean
 that selects the centrally pinned deployed schema-12 image. It is accepted only in full-rehearsal
 mode; the default still rebuilds the base image from the verified archive. Before reuse, the helper
@@ -100,6 +135,22 @@ build context and requires its explicit local-image pointer. Keep at least 4 GiB
 owned build and stop below 1 GiB. BuildKit's configured 4 GiB maximum-used setting is a periodic
 garbage-collection target, not an instantaneous cache quota. See the [local storage procedure](../operations/getting-started.md#local-docker-storage-on-removable-media)
 for UUID mounts, backups, cache relocation, and present/absent-medium guards.
+
+R121 packaging: the explicit 16/18/20 generated-page lists and recursive `out/_next`
+copy are independently checked by one selected static contract test per R1/R2/R3
+worktree (1/1 each; zero failures, errors, or skips; UTC windows 15:35:28–15:35:34,
+15:35:28–15:35:35, and 15:36:02–15:36:03 respectively), not by the full seven-test
+module. The earlier 21-case selection exposed an assertion gap; the builder repair's
+seven-test-per-worktree result remains separate. Independent QA passed each disposable
+baseline copy and rejected both removal of the `out/_next` copy and omission of the
+`out/admin.html` mapping. Source closures stayed unchanged at R1 38, R2 45, and R3 59
+inputs. R3's default pytest (15:35:28–15:35:35 UTC) and `--confcutdir` attempt
+(15:35:52–15:35:56 UTC) failed setup with exit 4 before collection because
+`tests/conftest.py` imports the app while staged `out/_next` is absent; the selected
+pure-static test then passed with `--noconftest` and no fixtures. No Docker image/build,
+served/export parity, browser, or runtime result follows. Receipt
+`/var/tmp/r12r/static-export-copy-qa-097qf2ie/independent-static-copy-guards-qa.json`,
+SHA-256 `4f14106dcbb09f48544f42d736e476719b57c3e1b4f07324c9b74c46a52cd5e9`.
 
 Before claiming bounded-build acceptance, bind the setup receipt to the selected controller,
 inspect its limits, and prove the actual build worker runs beneath the expected bounded container
@@ -435,6 +486,16 @@ For a future PR-head run, first use a fresh verified build receipt and set `REVI
 This is the required module invocation for that PR-bound probe. E775 passed builder source-preparation checks (417 tests passed, 2 explicitly deselected, no failures, errors, or skips); E777 independently passed its source/test scope (417 passed, 2 deselected, 2 warnings, Ruff check/format/diff, and four stable pins). Neither ran Docker or runtime checks. Before runtime acceptance, the trusted local caller and parent must verify the maintained build-receipt SHA and its exact immutable image, context, and PR revision, then recheck the reviewed pair manifest. The PR revision is a local CLI argument, not an MCP input; the default local-source mode remains unchanged.
 
 R-ASTRA-120 remains **In progress**. E725's earlier full-browser failure remains preserved. E765 later passed 191 cases with 3 expected skips and no failures; its four maintained assistant-panel axe snapshots were 0 violations/0 incomplete, which does not establish full-app accessibility. E767 passed fresh-task discovery of all eight tools and one read-only `status` call. E721 security results cover only the selected synthetic scope. No current-image kill, native/provider runtime, full security, or release acceptance is established. See the [authoritative ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact history and receipts.
+
+### Named schema verification boundary
+
+`scripts/rehearse_schema13.py` retains its historical schema-12-to-13 main path and recovery
+overlay. Its `_verification_source(schema_version=13)` accepts named schemas 13, 14 and 15 for
+selected generated-verifier checks, preserving exact readiness/consent equality and contiguous
+migration history. The default generated source remains byte-identical to the historical version.
+This parameter does not change the main rehearsal, deployed-image binding, or recovery overlay.
+Each new feature migration still requires a current-schema recovery image and an exact-PR
+rollback rehearsal retaining post-migration feature records before release acceptance.
 
 ### PR-head candidate image build helper
 

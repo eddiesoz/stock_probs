@@ -123,13 +123,16 @@ def test_disposable_schema12_migration_backup_preserves_new_schema13_writes(tmp_
 
     manager, receipt = cli._migration_operations(settings)
 
-    assert SCHEMA_VERSION == 13
+    assert SCHEMA_VERSION >= 13
     assert receipt is not None
     assert receipt["trigger"] == "pre_migration"
     assert receipt["schema_version"] == 12
     assert receipt["verified"] is True
     with repository.connect() as connection:
-        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 13
+        assert (
+            connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+            == SCHEMA_VERSION
+        )
         assert [
             row[0] for row in connection.execute("SELECT request_id FROM search_events ORDER BY id")
         ] == ["before-schema13"]
@@ -164,7 +167,10 @@ def test_disposable_schema12_migration_backup_preserves_new_schema13_writes(tmp_
         completed_at=datetime(2026, 10, 4, tzinfo=UTC),
     )
     with repository.connect() as connection:
-        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 13
+        assert (
+            connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+            == SCHEMA_VERSION
+        )
         assert [
             row[0] for row in connection.execute("SELECT request_id FROM search_events ORDER BY id")
         ] == ["before-schema13", "after-schema13"]

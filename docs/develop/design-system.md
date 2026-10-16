@@ -269,3 +269,25 @@ distinct. A concept image establishes the approved visual direction only; a curr
 shows only the captured baseline; neither proves a running implementation or acceptance result.
 
 [Back to Develop](index.md)
+
+## Approved seven-feature designs
+
+The user approved these planning images on October 11, 2026. They are design proposals with
+fictional data, not screenshots or QA of shipped behavior. Keep the existing surface tokens,
+card hierarchy, three-section navigation and mobile stacking. Use semantic controls and chart
+text equivalents; incidental generated labels and company logos are not required. Corrected
+portfolio, comparison, briefing and what-if images replace their initial drafts.
+
+![Approved alerts design proposal; fictional data.](../design/features/alerts.png)
+
+![Approved theses design proposal; fictional data.](../design/features/theses.png)
+
+![Approved report card design proposal; fictional data.](../design/features/report-card.png)
+
+![Approved portfolio design proposal; fictional data.](../design/features/portfolio.png)
+
+![Approved compare design proposal; fictional data.](../design/features/compare.png)
+
+![Approved briefing design proposal; fictional data.](../design/features/briefing.png)
+
+![Approved what if design proposal; fictional data.](../design/features/what-if.png)

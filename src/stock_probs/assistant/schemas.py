@@ -23,6 +23,8 @@ AssistantRoute: TypeAlias = Literal[
     "/",
     "/overview",
     "/research",
+    "/research/theses",
+    "/tools/compare",
     "/tools",
     "/tools/forecast",
     "/tools/markets",
