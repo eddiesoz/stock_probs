@@ -150,6 +150,26 @@ def test_partial_inputs_never_publish_a_complete_total_or_allocation():
     assert missing_fx["missing_inputs"] == [{"symbol": "SPY", "reason": "fx_unavailable"}]
 
 
+def test_missing_fx_for_nonzero_cash_keeps_total_and_allocations_unavailable():
+    book = {
+        "cash": [
+            {"account_id": "tfsa", "currency": "CAD", "amount": "100"},
+            {"account_id": "tfsa", "currency": "USD", "amount": "25"},
+        ],
+        "positions": [],
+        "realized": [],
+    }
+
+    result = valuation(book, [], {})
+
+    assert not result["complete"]
+    assert result["total_value"] is None
+    assert Decimal(result["known_subtotal"]) == Decimal("100")
+    assert result["cash_value"] is None
+    assert result["missing_inputs"] == [{"symbol": "USD", "reason": "fx_unavailable"}]
+    assert all(row["allocation_percent"] is None for row in result["cash"])
+
+
 def test_cash_funded_reallocation_retains_value_before_shocks():
     frozen = baseline()
     result = simulate(
@@ -173,6 +193,32 @@ def test_cash_funded_reallocation_retains_value_before_shocks():
                 ]
             },
         )
+
+
+def test_multiple_reallocations_cannot_overspend_shared_cash():
+    frozen = baseline()
+    original = deepcopy(frozen)
+    reallocations = [
+        {
+            "account_id": "tfsa",
+            "symbol": "SHOP.TO",
+            "asset_type": "stock",
+            "amount": "1300",
+            "funding_currency": "CAD",
+        },
+        {
+            "account_id": "tfsa",
+            "symbol": "SHOP.TO",
+            "asset_type": "stock",
+            "amount": "1300",
+            "funding_currency": "CAD",
+        },
+    ]
+
+    with pytest.raises(LedgerError, match="existing selected-currency cash"):
+        simulate(frozen, {"reallocations": reallocations})
+
+    assert frozen == original
 
 
 def test_cad_cash_can_fund_usd_instrument_at_frozen_indicative_fx_then_shocks():

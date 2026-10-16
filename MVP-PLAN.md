@@ -322,6 +322,34 @@ SHA-256 `4adbd7d8ed98f07a7df4f81c9e9b3b4c2ef8f039b97608dcaa7a501904a901ee`. Its 
 addendum verified parent artifacts without replay. The narrow pagination repair now requests five
 rows and exposes View all transactions; a rendered mapped-CSV/pagination regression remains pending.
 
+### R2-CASH-01 accounting and scenario regression acceptance
+
+At revision `67588168d21c3b97ece9bd4d761634361d5faa74` on
+`codex/signal-ledger-portfolio-r2`, three regression cases were added only to
+`tests/test_portfolio_scenarios.py` and `tests/test_portfolio_store.py`; the parent reviewed both
+test diffs. They cover missing FX for nonzero USD cash keeping total value and allocations
+unavailable, correction preview remaining read-only until that same preview is committed while
+retaining both audit rows, and cumulative hypothetical reallocations rejecting shared-cash
+overspend without mutating the frozen baseline. Test-diff SHA-256:
+`28b8b56e8e2f0afa185fee01bf705c3bce329db7bb261b833dc6bee96d1e7eb7`.
+
+Independent QA task `/root/r2_cash_correction_regression_qa`
+**Passed** the exact two-module command below at revision
+`67588168d21c3b97ece9bd4d761634361d5faa74`, on native x86_64, from
+`2026-10-16T21:24:05Z` to `21:24:26Z`. The JUnit reports 23 tests, zero failures, errors, or
+skips; all 30 pre/post pins were unchanged.
+
+```bash
+umask 022; PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:. TMPDIR=/var/tmp/r12r/r2-accounting-independent-qa-20261016T212310Z/tmp ./.dev-venv/bin/python -m pytest -q -p no:cacheprovider --junitxml=/var/tmp/r12r/r2-accounting-independent-qa-20261016T212310Z/modules-junit.xml tests/test_portfolio_scenarios.py tests/test_portfolio_store.py
+```
+
+Independent QA receipt `/var/tmp/r12r/r2-accounting-independent-qa-20261016T212310Z/independent-qa-receipt.json`, SHA-256
+`7afc32a185ef693a38de280c9de5087ad728c1253fb30aee038f635140680e67`; JUnit SHA-256
+`90b9fb9ca33cc94089099c407c9fe80062bc347c9f9144c66947a55fccfa35f4`. This is scoped local test
+evidence only. The application-wide canonical gate, browser, security aggregate, Docker/build, live
+provider, host/network, email, backup/recovery, and release checks were not run; Release 2 release
+acceptance remains open.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.

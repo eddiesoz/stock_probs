@@ -385,6 +385,22 @@ Node remains build-only in the container, while the candidate OpenCode/Bun assis
 privately in that same application container. Keep native runtime checks separate from static
 frontend and synthetic fixture checks.
 
+### R121 Release 2 portfolio accounting and scenario regressions
+
+Run the focused ledger and what-if regression modules with:
+
+```bash
+.dev-venv/bin/python -m pytest -q tests/test_portfolio_scenarios.py tests/test_portfolio_store.py
+```
+
+These cases cover partial valuation when nonzero cash lacks FX, read-only correction previews and
+audit-row retention after committing the same preview, and aggregate what-if cash bounds with an
+unchanged frozen baseline after rejection. The recorded 23-test independent pass is scoped to these
+modules; it does not establish application-wide, browser, backend-runtime, backup/recovery, or
+release acceptance. See the
+[R2-CASH-01 checkpoint](../../MVP-PLAN.md#r2-cash-01-accounting-and-scenario-regression-acceptance)
+for its exact command, receipts, and limitations.
+
 ## Assistant verification (`R-ASTRA-120`)
 
 Use focused checks to isolate their boundaries. `tests/test_assistant_delete_session_boundary.py`

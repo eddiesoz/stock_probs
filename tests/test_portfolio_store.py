@@ -158,6 +158,40 @@ def test_append_replacement_transfer_recalculates_both_accounts_and_keeps_audit_
         assert connection.execute("SELECT count(*) FROM portfolio_transactions").fetchone()[0] == 3
 
 
+def test_correction_preview_is_read_only_until_that_preview_is_committed(store):
+    account = create_account(store)
+    original = row(account, "deposit", amount="100")
+    commit(store, [original])
+
+    correction = row(account, "deposit", amount="200", replaces=original.id)
+    preview = store.preview(1, [correction])
+    assert preview["before"]["cash"][0]["amount"] == "100"
+    assert preview["after"]["cash"][0]["amount"] == "200"
+    assert store.balances(1)["cash"][0]["amount"] == "100"
+    before_rows = store.transactions(1, 1, 100)
+    assert before_rows["total"] == 1
+    assert before_rows["items"][0]["id"] == original.id
+    assert not before_rows["items"][0]["superseded"]
+
+    receipt = store.commit(
+        1,
+        str(uuid4()),
+        str(uuid4()),
+        [correction],
+        preview["account_revisions"],
+        set(),
+        NOW,
+    )
+
+    assert receipt["balances"]["cash"][0]["amount"] == "200"
+    assert store.balances(1)["cash"][0]["amount"] == "200"
+    rows = store.transactions(1, 1, 100)
+    assert rows["total"] == 2
+    by_id = {item["id"]: item for item in rows["items"]}
+    assert by_id[original.id]["superseded"]
+    assert not by_id[correction.id]["superseded"]
+
+
 def test_storage_limit_fails_before_any_batch_or_transaction_write(store, monkeypatch):
     account = create_account(store)
     rows = [row(account, "deposit", amount="100")]

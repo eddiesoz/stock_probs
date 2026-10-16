@@ -21,6 +21,15 @@ restore check is separate from schema-compatible image recovery and exact-PR rol
 controls default off, with an administrator-only canary option. Full independent security and
 production acceptance remain required before rollout.
 
+For Release 2 accounting, nonzero cash without display FX keeps total value, cash value and
+allocations unavailable; the known subtotal includes only convertible inputs. A correction
+preview is read-only until that same preview is committed, and commit retains the original
+transaction as superseded alongside its correction. What-if reallocations share one cash balance
+across the frozen scenario; aggregate overspend is rejected without changing the baseline.
+`R2-CASH-01` independently passed 23 local regression tests covering these boundaries. That
+selected result is not a full security or release assessment; see the
+[R2-CASH-01 checkpoint](../../MVP-PLAN.md#r2-cash-01-accounting-and-scenario-regression-acceptance).
+
 Signal Ledger has two supported security modes. Development may use a local bootstrap account on
 loopback; production is an invite-only multi-user deployment behind a Cloudflare Tunnel. The
 production image binds the app to the host loopback interface, uses GitHub's authorization-code
