@@ -531,9 +531,13 @@ member and nested layer contents. Duplicate outer names, missing Config, unsuppo
 types and credential-like content fail closed. No container or image is loaded by this scan.
 Candidate and recovery archive scans share one maintained verifier. Its narrowly reviewed public
 artifact exceptions require an exact source digest, size, path and match spans for each
-individually verified dependency file. The custom-built harness uses only spans verified against
-the pinned public Bun binary. Changed files and all other credential-like bytes still fail closed;
-no whole-file waiver or relaxed word-adjacent detection is allowed.
+individually verified dependency file. The OpenCode executable exception is limited to one exact
+archive member, fixed size, three reviewed full-file digests and four unchanged public spans; the
+cached official Bun comparison supports those span hashes only, not whole-binary identity or
+OpenCode provenance. See [E31](../../MVP-PLAN.md#r-astra-121-e31-opencode-archive-scanner-variants)
+for the pins and evidence. Changed files and all other credential-like bytes still fail closed; no
+whole-file waiver or relaxed word-adjacent detection is allowed. E31's private archive-scan passes
+do not establish publication or actual-host/release acceptance.
 
 
 ### Prepare the host

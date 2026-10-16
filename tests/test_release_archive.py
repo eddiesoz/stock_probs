@@ -498,7 +498,7 @@ def _configure_spdx_test_allowlist(
         {
             "vendor/licenses/_spdx.py": (
                 len(contents),
-                hashlib.sha256(contents).hexdigest(),
+                frozenset({hashlib.sha256(contents).hexdigest()}),
                 spans,
             )
         },
@@ -516,6 +516,44 @@ def test_release_archive_verifier_allows_only_pinned_spdx_match_spans(
     result = verifier.verify_image_archive(archive)
 
     assert result["status"] == "pass"
+
+
+def test_release_archive_verifier_allows_only_exact_pinned_file_variants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first, spans = _spdx_test_source()
+    second = first[:-23] + b"y" * 23
+    assert len(first) == len(second)
+    digests = frozenset({hashlib.sha256(first).hexdigest(), hashlib.sha256(second).hexdigest()})
+    monkeypatch.setattr(
+        verifier,
+        "PINNED_PUBLIC_MATCH_SOURCES",
+        {"vendor/licenses/_spdx.py": (len(first), digests, spans)},
+    )
+
+    for contents in (first, second):
+        archive = _docker_archive(tmp_path, {"vendor/licenses/_spdx.py": contents})
+        assert verifier.verify_image_archive(archive)["status"] == "pass"
+
+
+def test_release_archive_verifier_pins_exact_opencode_variants() -> None:
+    size, digests, spans = verifier.PINNED_PUBLIC_MATCH_SOURCES["usr/local/bin/opencode"]
+
+    assert size == 212_784_608
+    assert digests == frozenset(
+        {
+            "9dd48571a16d00a4cc021b6eb85b5c347f2b965aaee96913fa24028b86cef955",
+            "dc6d6963ce86d02f265d6e630417f835ef8732feacfaaecd0c3cd8a2b82e7a98",
+            "c22fce743cf6ab15d056d5b589d1307fb5c05ed2129949bef5491af775c2c3ad",
+        }
+    )
+    assert spans == (
+        (1_169_954, 1_169_988),
+        (1_184_754, 1_184_859),
+        (16_825_067, 16_825_502),
+        (16_849_344, 16_852_808),
+    )
 
 
 def test_release_archive_verifier_rejects_spdx_file_with_added_match(
@@ -547,6 +585,34 @@ def test_release_archive_verifier_rejects_spdx_digest_mismatch(
         verifier.verify_image_archive(archive)
 
 
+def test_release_archive_verifier_rejects_pinned_source_size_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    _configure_spdx_test_allowlist(monkeypatch, contents, spans)
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier._scan_member(
+            "vendor/licenses/_spdx.py",
+            io.BytesIO(contents),
+            len(contents) + 1,
+        )
+
+
+def test_release_archive_verifier_rejects_malformed_source_digest_pin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    monkeypatch.setattr(
+        verifier,
+        "PINNED_PUBLIC_MATCH_SOURCES",
+        {"vendor/licenses/_spdx.py": (len(contents), frozenset({"invalid"}), spans)},
+    )
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier._scan_member("vendor/licenses/_spdx.py", io.BytesIO(contents), len(contents))
+
+
 def test_release_archive_verifier_rejects_added_match_with_updated_source_digest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -562,7 +628,7 @@ def test_release_archive_verifier_rejects_added_match_with_updated_source_digest
         {
             "vendor/licenses/_spdx.py": (
                 len(changed),
-                hashlib.sha256(changed).hexdigest(),
+                frozenset({hashlib.sha256(changed).hexdigest()}),
                 spans,
             )
         },
@@ -595,7 +661,7 @@ def test_release_archive_verifier_pinned_spans_cross_stream_chunks(
         {
             "vendor/licenses/_spdx.py": (
                 size,
-                hashlib.sha256(source).hexdigest(),
+                frozenset({hashlib.sha256(source).hexdigest()}),
                 spans,
             )
         },

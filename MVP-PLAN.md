@@ -7197,3 +7197,58 @@ authenticated UI, actual combined 1 GB, rollback, deployment or release acceptan
 free-Zen repair remains Priority 0 before the seven visible feature releases. No resize, email or
 production mutation occurred in this checker scope; the existing backups and US$15 monthly cap
 including tax are unchanged.
+
+### R-ASTRA-121 E31 — OpenCode archive-scanner variants
+
+The PR #12 source extends the existing exact-public-span exception for the single archive member
+`usr/local/bin/opencode`, fixed at 212,784,608 bytes. Its reviewed full-file SHA-256 variants are:
+
+- Previously accepted: `9dd48571a16d00a4cc021b6eb85b5c347f2b965aaee96913fa24028b86cef955`.
+- D282 candidate: `dc6d6963ce86d02f265d6e630417f835ef8732feacfaaecd0c3cd8a2b82e7a98`.
+- 5ad recovery: `c22fce743cf6ab15d056d5b589d1307fb5c05ed2129949bef5491af775c2c3ad`.
+
+All three variants retain exactly four unchanged public match spans (end-exclusive offsets):
+`[1169954,1169988)` SHA-256 `0e6d0e32c5eeaf651b4bc69c8c3e6ae75d6520ed66798def46318bf21b1b8aa9`;
+`[1184754,1184859)` SHA-256 `021c1672c0255c71fab15a7686a08d41c94091c5f21f4642098d32a66e2dec0d`;
+`[16825067,16825502)` SHA-256 `97d1f090200af0f209caa57835d56efaf01e343599e423d31286d8ea060ee495`; and
+`[16849344,16852808)` SHA-256 `0e4fbf7053975627cd47dae8e1501a8bfd086e646afe469466078eace4729579`.
+The cached official Bun 1.4.2 receipt
+`/var/tmp/r12r/signal-ledger-assistant-fix-20261013-native-zen/public-bun-spans-02/receipt.json`
+(SHA-256 `775b9247341e7dc7bed348063cc7e56995ec86af0ac2a58d2892b9790eeefb85`) supports comparison of
+these four span hashes only. It does not establish whole-file Bun identity or the provenance of the
+OpenCode executable. The exact path, size, digests and span set remain required; all other bytes and
+credential-like matches continue to be scanned.
+
+The previous strict scanner (`df0799934f1c4478ef9f48519cfe24318ab20d7751874b79d164d680874d8b69`)
+scanned the two actual candidate/recovery archives and failed closed with `credential_like_bytes`.
+The failure receipt is `/var/tmp/r12r/pr11-7c3-publication-package-kc0fap10/archive-scan-terminal.json`
+(SHA-256 `0a954db8ec88e711367debb72f1f9a944cefe8cceae0c13429c0eb59d7d3e6d9`). That result remains
+preserved; metadata localized the matching spans to the exact OpenCode member, which is not evidence
+of an actual credential incident. The source and test bindings for the bounded follow-up are
+`scripts/verify-release-archive.py` SHA-256
+`314179e4b41d34c0f060867c1868b36b13528cd1567da938f5f72b401b617163` and
+`tests/test_release_archive.py` SHA-256
+`e03305cbd3a8c11248d11328de92e1de365877da22f2ec882fd3f27880264943`.
+
+The builder receipt `/var/tmp/r12r/pr12-opencode-variants-961cczhh/scanner-variant-qa-receipt.json`
+(SHA-256 `f81d627c0c0ce9eb59ff97d889bb5cd2b2b51bf1dc463400ba07d42aec06dfa5`) reports 31 focused
+passes plus static checks. Its first direct pytest setup failed before collection because staged
+frontend assets were absent in that worktree; the isolated actual test entrypoint passed. Independent
+selected QA passed 26 tests with five deselected, plus Ruff, format and diff checks; receipt
+`/var/tmp/r12r/pr12-opencode-variants-independent-20261016T0324Z-ac18d49c-2c7e-49f6-9264-a11f7158f9b1/independent-review.json`
+(SHA-256 `a5e11a9f62722f6d74015b8bded7397d5fabba002850625b876770999cb6613c`). Parent source/evidence
+review passed for its declared scope and performed one bounded scan per archive; receipt
+`/var/tmp/r12r/pr11-7c3-publication-package-kc0fap10/archive-v2-parent-review.json`
+(SHA-256 `c0868694b517e85b7b26f98caad563a2a5da134dd3ddcac435a0c920f7a4c9bd`).
+
+The updated private scans passed for candidate archive
+`signal-ledger-image-d282d696937f279ca4af4c38341f82a8af7afb6d.tar.gz` (202,159,985 bytes; SHA-256
+`6b30af17fadf8ffd5af104c7f557c767edee1200551b8f8ef7dc3e932cf7acc7`) and recovery archive
+`signal-ledger-image-5ad2c3fddfce5a5a631b72cd832a53f24757c44a.tar.gz` (202,156,038 bytes; SHA-256
+`99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5`). Terminal receipt
+`/var/tmp/r12r/pr11-7c3-publication-package-kc0fap10/archive-scan-v2-terminal.json` has SHA-256
+`f943f4dde64802a80956d8242387237cfb5df2d2319be231cabc139a1b917688`; the recorded source pins stayed
+unchanged. These private scan passes are not archive publication, actual-host rehearsal, rollback,
+deployment or release acceptance. The separate actual-host trial is outside this evidence checkpoint; no result from it is
+recorded here. The existing 1 GB host, backups and US$15 monthly
+cap remain unchanged; no merge, deployment or email is claimed.

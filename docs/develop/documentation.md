@@ -560,6 +560,11 @@ from local pair, native and canonical passes. Browser fixture checkpoints record
 stage/status/timing and public module/process information, with no user prompts or capabilities.
 A focused browser pass does not replace a failed full aggregate. See the R-ASTRA-121 E14 ledger.
 
+For the archive-scanner variant checkpoint, document the exact public-span exception and keep its
+cached Bun comparison separate from claims about the OpenCode binary as a whole. E31 records the
+source pins, preserved strict-scan failures, private candidate/recovery scan passes, and remaining
+publication and host gates in the [MVP plan](../../MVP-PLAN.md#r-astra-121-e31-opencode-archive-scanner-variants).
+
 
 Rehearsal baseline changes require the mapped testing, configuration and operations pages plus
 `AGENTS.md`. Document the running candidate or recovery role separately from the immutable

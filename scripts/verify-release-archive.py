@@ -40,12 +40,12 @@ LAYER_NAME = re.compile(r"(?:(?:[^/]+/)*layer\.tar|blobs/sha256/[0-9a-f]{64})")
 # heuristic classifies as `sk-` tokens. Each exemption is bound to one exact file path, size,
 # SHA-256 and match span. The public wheel/member hashes and the Bun comparison are recorded in
 # the task QA receipt; this table is not a path-, package-, or content-category-wide exemption.
-PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, str, tuple[tuple[int, int], ...]]] = {
+PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, frozenset[str], tuple[tuple[int, int], ...]]] = {
     # Peewee 4.5.1's PyPI METADATA README link (official wheel SHA-256
     # dbbdc93e9be08d1df49ceed48dc5d609bfeda6112848086f1f6c1f1debe70975).
     "usr/local/lib/python3.11/site-packages/peewee-4.5.1.dist-info/METADATA": (
         10_627,
-        "ec0d94c2e24185782acd93a9df566abc44ce8a9c60265a1d414de090e5421fba",
+        frozenset({"ec0d94c2e24185782acd93a9df566abc44ce8a9c60265a1d414de090e5421fba"}),
         ((9_835, 9_880),),
     ),
     # Setuptools 79.0.1 is part of the pinned Python builder base. Its official PyPI wheel
@@ -53,7 +53,7 @@ PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, str, tuple[tuple[int, int], ..
     # SPDX exception source.
     "usr/local/lib/python3.11/site-packages/setuptools/_vendor/packaging/licenses/_spdx.py": (
         48_398,
-        "a009b5ced3c5c25b2608a7bb94002cbff38839f4b57160eef5b34191ebbeda7b",
+        frozenset({"a009b5ced3c5c25b2608a7bb94002cbff38839f4b57160eef5b34191ebbeda7b"}),
         ((42_650, 42_680), (42_697, 42_727)),
     ),
     # packaging 26.3's official PyPI wheel (SHA-256
@@ -61,15 +61,22 @@ PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, str, tuple[tuple[int, int], ..
     # exception identifiers at these exact spans.
     "usr/local/lib/python3.11/site-packages/packaging/licenses/_spdx.py": (
         51_122,
-        "596ec35e2ca0ebcba9fd8343ff0a51625af548786257815f24b41f7e08613314",
+        frozenset({"596ec35e2ca0ebcba9fd8343ff0a51625af548786257815f24b41f7e08613314"}),
         ((44_773, 44_803), (44_820, 44_850)),
     ),
-    # The exact `sk-` match spans in the fixed OpenCode executable have identical offsets and
-    # per-span digests in the official pinned Bun 1.4.2 binary. The compiled file's own digest is
-    # separately pinned; all nonmatching bytes and any additional matches remain scanned.
+    # The two added release-pair binaries share four public spans with official Bun 1.4.2.
+    # Their span digests match this pinned provenance receipt:
+    # 775b9247341e7dc7bed348063cc7e56995ec86af0ac2a58d2892b9790eeefb85.
+    # Keep the earlier accepted digest; every other byte and added match remains scanned.
     "usr/local/bin/opencode": (
         212_784_608,
-        "9dd48571a16d00a4cc021b6eb85b5c347f2b965aaee96913fa24028b86cef955",
+        frozenset(
+            {
+                "9dd48571a16d00a4cc021b6eb85b5c347f2b965aaee96913fa24028b86cef955",
+                "dc6d6963ce86d02f265d6e630417f835ef8732feacfaaecd0c3cd8a2b82e7a98",
+                "c22fce743cf6ab15d056d5b589d1307fb5c05ed2129949bef5491af775c2c3ad",
+            }
+        ),
         (
             (1_169_954, 1_169_988),
             (1_184_754, 1_184_859),
@@ -97,11 +104,11 @@ def _scan_stream(
     stream: object,
     *,
     exempt_spans: tuple[tuple[int, int], ...] = (),
-    expected_sha256: str | None = None,
+    expected_sha256s: frozenset[str] | None = None,
 ) -> int:
     tail = b""
     scanned = 0
-    digest = hashlib.sha256() if expected_sha256 is not None else None
+    digest = hashlib.sha256() if expected_sha256s is not None else None
     seen_exempt_spans: set[tuple[int, int]] = set()
     expected_exempt_spans = set(exempt_spans)
     while True:
@@ -109,7 +116,7 @@ def _scan_stream(
         if not chunk:
             if seen_exempt_spans != expected_exempt_spans:
                 raise ArchiveError("allowlisted_source_match_missing")
-            if digest is not None and digest.hexdigest() != expected_sha256:
+            if digest is not None and digest.hexdigest() not in expected_sha256s:
                 raise ArchiveError("credential_like_bytes")
             return scanned
         scanned += len(chunk)
@@ -135,11 +142,11 @@ def _scan_member(name: str, stream: object, size: int) -> int:
     source_pin = PINNED_PUBLIC_MATCH_SOURCES.get(name)
     if source_pin is None or size != source_pin[0]:
         return _scan_stream(stream)
-    _, expected_sha256, exempt_spans = source_pin
+    _, expected_sha256s, exempt_spans = source_pin
     return _scan_stream(
         stream,
         exempt_spans=exempt_spans,
-        expected_sha256=expected_sha256,
+        expected_sha256s=expected_sha256s,
     )
 
 

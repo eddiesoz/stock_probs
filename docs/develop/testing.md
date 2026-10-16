@@ -620,10 +620,15 @@ search/fetch, kill/restart, canonical, security, actual-host 1 GB and PR-bound r
 checks separate and mandatory. Reuse unchanged UI evidence only at its existing bindings.
 
 
-For the R-ASTRA-121 rebuilt native executable, refresh the scanner's exact file digest only after
-comparing every existing public match span against checksum-verified official Bun 1.4.2 bytes.
-Keep the path, size, offsets and all other bytes subject to their existing checks. A file-only scan
-or provenance comparison does not replace scans of the final candidate and recovery archives.
+For the PR #12 scanner update, the OpenCode exception remains bound to the exact member
+`usr/local/bin/opencode`, its fixed size, three explicit full-file SHA-256 variants, and four exact
+public match spans. The earlier accepted digest remains in the set. The cached official Bun 1.4.2
+receipt confirms those four span hashes only; it does not prove whole-binary identity or the
+provenance of OpenCode. All bytes outside those exact spans, additional matches, alternate paths,
+and the rest of each archive remain subject to scanning. E31 records the exact offsets, hashes,
+source pins, and scan receipts. Both private archive scans passed with the updated source, while the
+previous strict-scanner failures remain preserved. These results are not archive publication or
+actual-host, rollback, deployment, or release acceptance.
 
 
 ### Candidate and recovery production baselines

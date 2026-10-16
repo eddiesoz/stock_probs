@@ -2331,3 +2331,10 @@ signed schema-13 backup and the local compatibility/data-continuity scope, then 
 exact typed restoration path. Backup verification must not rewrite the running rollout configuration,
 promote a restore, rotate trust state or remove existing artifacts. Source/profile evidence alone
 does not accept a production transition, memory saving, native fix, owner canary or release.
+
+For the PR #12 archive-scanner variants, keep the OpenCode exception bounded to its one exact
+archive member, size, three reviewed full-file digests, and four unchanged public match spans; all
+other bytes and matches remain scanned. The cached official Bun receipt supports only those span
+comparisons, not whole-binary identity or OpenCode provenance. E31 records the preserved strict-scan
+failures and later private candidate/recovery scan passes. Those scans do not establish public
+publication, an actual-host rehearsal, rollback, deployment or release acceptance.
