@@ -428,6 +428,7 @@ def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
     for item, mapped in zip(series, mappings, strict=True):
         dates = sorted(day for day in mapped if common[0] <= day <= common[-1])
         prices = [mapped[day] for day in dates]
+        missing_observations = len(union_dates - set(dates))
         normalized = [mapped[day] / mapped[common[0]] * 100 for day in common]
         if any(not math.isfinite(value) or value <= 0 for value in normalized):
             raise DomainError(
@@ -462,14 +463,14 @@ def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
                 "sample_count": len(prices),
                 "excluded_chart_sessions": len(dates) - len(common),
                 "common_sample_count": len(common),
-                "missing_observations": len(union_dates - set(dates)),
+                "missing_observations": missing_observations,
                 "normalized": [
                     {"date": day, "value": value}
                     for day, value in zip(common, normalized, strict=True)
                 ],
                 "price_change": None if discontinuity else prices[-1] / prices[0] - 1,
                 "volatility": None
-                if discontinuity or len(returns) < 2
+                if discontinuity or missing_observations > 0 or len(returns) < 2
                 else statistics.stdev(returns) * math.sqrt(252),
                 "max_drawdown": None if discontinuity else drawdown,
                 "quality": "discontinuity_detected" if discontinuity else "unadjusted_price_only",

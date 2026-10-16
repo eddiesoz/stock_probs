@@ -172,6 +172,30 @@ def test_normalization_drawdown_and_discontinuity_are_honest():
         compare_series([series("A", [100]), series("B", [200])])
 
 
+def test_annualized_volatility_requires_complete_observed_sessions():
+    complete = compare_series(
+        [
+            series("A", [100, 102, 98, 105, 107]),
+            series("B", [200, 205, 199, 210, 207]),
+        ]
+    )
+    complete_items = {item["symbol"]: item for item in complete["instruments"]}
+    assert complete_items["B"]["missing_observations"] == 0
+    assert complete_items["B"]["volatility"] is not None
+
+    gap = series("B", [200, 205, 199, 210, 207])
+    gap["bars"].pop(1)
+    result = compare_series([series("A", [100, 102, 98, 105, 107]), gap])
+    items = {item["symbol"]: item for item in result["instruments"]}
+
+    assert items["B"]["missing_observations"] == 1
+    assert items["B"]["volatility"] is None
+    assert items["B"]["price_change"] == pytest.approx(207 / 200 - 1)
+    assert items["B"]["max_drawdown"] is not None
+    assert items["A"]["missing_observations"] == 0
+    assert items["A"]["volatility"] is not None
+
+
 @pytest.mark.parametrize("prices", [[1e-308, 1e308], [1e308, 1e-308]])
 def test_extreme_provider_prices_do_not_produce_nonfinite_chart_values(prices):
     with pytest.raises(DomainError, match="normalized safely") as caught:
