@@ -734,3 +734,16 @@ separate one-shot receipt and readback review. Neither source QA nor receipt-cha
 native/runtime or release acceptance. The existing 1 GB host, backups, and US$15 monthly cap remain
 in force, and the native/resource, exact-PR recovery, browser, canonical, guide, canary, and release
 gates remain open.
+
+
+The pushed PR11 diagnostic-projection commit `d6064e68026a5315e6f03337ad78ba74e7ff6c2e` passed
+packaging with the F6 and 5ad archives unchanged; installation was not invoked. Independent
+readiness review failed because the installed helper matched the candidate digest but its generic
+identical-digest branch rejected the exact prior E1/556 receipt. Source review corrected the preliminary DD7-branch attribution for the readiness failure: the
+independent receipt identifies rejection in the generic identical-digest branch. Separately, the
+builder-reported pre-edit DD7 test-fixture failure had stale current-source hashes; its raw artifact
+is **Unavailable**, with no independent reproduction or reconstructed baseline. The scoped builder repair passed 22 focused tests, and independent QA passed 22 tests with zero
+failures, errors, or skips. Review confirmed exact E1 constants against the actual `d040d87b`
+receipt and the known-E1/exact-candidate receipt rule; its synthetic DD7 sidecars do not establish
+real historical-DD7 reinstall acceptance. No host install or runtime was exercised. The a6 journal archival and 32-artifact readback
+passed separately. See the [d6064e6 bootstrap-readiness checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-d6064e6-bootstrap-readiness-checkpoint-2026-10-16).

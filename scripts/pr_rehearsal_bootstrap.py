@@ -135,6 +135,30 @@ KNOWN_INSTALLED_DD7_INSTALL_MANIFEST = {
     "helper_source_contract": HELPER_SOURCE_CONTRACT,
     "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
 }
+# Exact PR11 helper installation verified before the e1c6b17 source refresh.
+KNOWN_INSTALLED_E1C6B17_PRODUCTION_HELPER_SHA256 = (
+    "4411def05a0cf757eef859b257d403d1c05eeed44c5c4265b86cb9905e1de730"
+)
+KNOWN_INSTALLED_E1C6B17_REVIEWED_HEAD_SHA = "e1c6b178ace4d3501f69e32ec828e255b4c75142"
+KNOWN_INSTALLED_E1C6B17_PAIR_MANIFEST_SHA256 = (
+    "556a6dc79ba320560225838842aed5be3b1c1968f724812f52ac3d7129df2371"
+)
+KNOWN_INSTALLED_E1C6B17_INSTALLED_FILES = {
+    "host_helper.py": "383719bfd2700adcc76e662b15774ca3e32dd87f61b77a9fe65ff2458f6f6a8c",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_E1C6B17_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_E1C6B17_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_E1C6B17_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_E1C6B17_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -506,6 +530,14 @@ def _prepare_previous_production_helper(
             _require_installed_manifest(KNOWN_INTERMEDIATE_INSTALL_MANIFEST)
         elif current_digest == KNOWN_INSTALLED_DD7_PRODUCTION_HELPER_SHA256:
             _require_installed_manifest(KNOWN_INSTALLED_DD7_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_E1C6B17_PRODUCTION_HELPER_SHA256:
+            if current_digest == candidate_digest:
+                try:
+                    _require_installed_manifest(candidate_manifest_fields)
+                except InstallError:
+                    _require_installed_manifest(KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
+            else:
+                _require_installed_manifest(KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
         elif current_digest in {
             KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256,
             KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256,

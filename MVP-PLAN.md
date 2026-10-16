@@ -9059,3 +9059,57 @@ files; change-aware coverage **Passed** for the four authored paths and three al
 PR11 source/test paths; the coverage self-test **Passed** 26 cases; and scoped `git diff --check`
 **Passed**. These checks ran with umask `022`. No application tests, build, host action, Git index,
 commit, or remote operation was performed for this documentation update.
+
+
+### R-ASTRA-121 PR11 d6064e6 bootstrap-readiness checkpoint (2026-10-16)
+
+The diagnostic-projection repair was pushed at `d6064e68026a5315e6f03337ad78ba74e7ff6c2e`.
+Packaging **Passed** with the existing F6 and 5ad archives unchanged; the bound parent terminal is
+`/var/tmp/r12r/pr11-d6064e6-package-98c536a3-e2f6-423c-8a3b-f6af8238a733/parent-actual-terminal-before-retirement.json`, SHA-256
+`edae5556197b5a5112fecc7e386d861c179032e75317b658192fb57be88b428c`. No helper installation was
+invoked, and a later bootstrap repair may change the full candidate head.
+
+Independent install-readiness QA **Failed**: the installed helper identity `4411` matched the
+candidate digest, but the generic identical-digest branch required a new candidate receipt and
+rejected the exact prior E1/556 receipt. The parent's preliminary DD7-branch attribution for this readiness failure was corrected by
+source review: the independent receipt shows rejection in the generic identical-digest candidate
+branch, not the DD7 branch. Separately, the builder reported a pre-edit DD7 test-fixture failure
+from stale current-source hashes; its raw failure artifact is **Unavailable**, so no independent
+reproduction or baseline reconstruction is claimed. Receipt
+`/var/tmp/r12r/pr11-d6064e6-install-independent-qa-20261016T2323Z/independent-review-receipt.json`, SHA-256
+`dfafe35865ded1ffafa0b861c69c349795bcd9c49d3740aeafbef4fe0cccc6f0`. The scoped builder repair accepts either the exact known E1 receipt or the exact candidate receipt
+for the same helper; no broad readiness or install acceptance follows. Builder verification **Passed**
+22 focused tests on source `scripts/pr_rehearsal_bootstrap.py` SHA-256
+`6562045ea23cff5dde5088724bc15fe094707663f6f2c57de9a5c94abba423d4` and test
+`tests/test_pr_rehearsal.py` SHA-256
+`a5534006a06c1cf3e22876250dfa3440eceac21d4f19789da86d9d84f05fbf1a`; JUnit SHA-256
+`9f18e5c5250ce2457f8471e1ebbb1bf1fa4de67dff89f189fa93abb046cec7bc` in packet
+`/var/tmp/r12r/pr11-bootstrap-e1-retry-repair-20261016-94d8a1da-ec7b-4bba-8ee1-364969a6de5c`.
+Independent bootstrap QA **Passed** 22 tests with zero failures, errors, or skips; configured and
+security Ruff, format, and diff checks also passed. Receipt
+`/var/tmp/r12r/pr11-bootstrap-e1-independent-qa-20261016T2327Z/independent-review-receipt.json`, SHA-256
+`83139b3be442d04863d0cfcabbfb044aff469566858ae8b56a3b02e63f9e5ff8`. Its exact E1 constants
+match the actual `d040d87b` receipt; it accepts only the known E1 or exact candidate receipt for the
+same helper and rejects altered or unknown receipts, preserving rollback/retry behavior. The DD7
+fixture uses synthetic sidecars; real historical-DD7 reinstall acceptance is not established. No
+host install or runtime was exercised. The trace in the earlier readiness-QA packet at
+`/var/tmp/r12r/pr11-d6064e6-install-independent-qa-20261016T2323Z/totp-step-up-source-trace.json`
+(SHA-256 `e807107ac23e4d4fb1874f856d430e8d87b7f6e583f8c2e8ede93b37e927b0cf`) records seed counter `-1`
+and a fresh TOTP code immediately before POST, ruling out the fixture stale/replay hypothesis only;
+the actual V7 `admin_step_up` cause remains **Unproven**.
+
+The first a6 archive payload was rejected locally because it omitted `schema_version: 1`; no host
+action occurred. Corrected V2 QA passed 13 cases, then the exact restored a6 journal was archived
+with `NOREPLACE`; the one-shot actual result **Passed** at
+`/var/tmp/r12r/temporary-op-a6-archive-c522381c-0a66-462a-a403-9d9fa3a5370b/parent-actual-one-shot-result.json`, SHA-256
+`a96a129c1718baccdb68f45a61fd126c3f89d4d65203993561d6aceb26e06853`. Fresh inventory
+`/var/tmp/r12r/post-a6-archive-inventory-7827788d-179d-48a4-b87a-a16d22034b13/actual-readback.json`, SHA-256
+`6ac7169752602e322b88f0b82862aa4cb89f06f5b2d0f7145050393dcb951569`, confirms 32 active
+artifacts and both completed journals. No second backup copy or move has occurred. A separate
+read-only root/profile/artifact check **Passed** and confirmed the original 5ad app, invited rollout,
+schema 13 and ready state: `/var/tmp/r12r/next-trial-root-readback-f7db6924-b63a-4a1b-8210-408c4efe774b/actual-readback.json`, SHA-256
+`03c5f67efdf1493c637657254f88371baeeee4e6cb4c9aececdc6f6fb5d53249`.
+
+The V7 pair remains **Failed** and its specific cause remains **Unproven**. Native, actual 1 GB,
+rollback, browser, canonical, guide, owner-canary, and release gates remain open. No application
+deployment, merge, email, or resize occurred.

@@ -3186,26 +3186,10 @@ def _known_dd7_install_fixture(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> tuple[bytes, bytes, Path, dict[str, object], dict[Path, bytes]]:
-    """Build a DD7 install receipt with a fixed backup and isolated sidecar files."""
+    """Build a DD7 install receipt with synthetic sidecars and a fixed backup."""
     original, helper, manifest_path, _prior_fields, sidecars = _known_677_install_fixture(
         monkeypatch, tmp_path
     )
-    repository_root = Path(__file__).parents[1]
-    source_paths = {
-        "host_helper.py": "scripts/pr_rehearsal_host_helper.py",
-        "seed.py": "scripts/pr_rehearsal_seed.py",
-        "native_driver.py": "tests/native_assistant_probe.py",
-    }
-    for installed_name, source_name in source_paths.items():
-        path = next(path for path in sidecars if path.name == installed_name)
-        contents = (repository_root / source_name).read_bytes()
-        assert (
-            hashlib.sha256(contents).hexdigest()
-            == bootstrap.KNOWN_INSTALLED_DD7_INSTALLED_FILES[installed_name]
-        )
-        path.write_bytes(contents)
-        path.chmod(0o750 if installed_name == "host_helper.py" else 0o640)
-        sidecars[path] = contents
     expected_fields = dict(bootstrap.KNOWN_INSTALLED_DD7_INSTALL_MANIFEST)
     expected_files = dict(expected_fields["files"])
     for path, contents in sidecars.items():
@@ -3218,6 +3202,39 @@ def _known_dd7_install_fixture(
     manifest_path.chmod(0o640)
     monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_DD7_PRODUCTION_HELPER_SHA256", helper_digest)
     monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_DD7_INSTALL_MANIFEST", expected_fields)
+    return original, helper, manifest_path, expected_fields, sidecars
+
+
+def _known_e1c6b17_install_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    installed_helper: bytes | None = None,
+) -> tuple[bytes, bytes, Path, dict[str, object], dict[Path, bytes]]:
+    """Build an E1 receipt with isolated sidecars and its immutable backup."""
+    original, helper, manifest_path, _prior_fields, sidecars = _known_677_install_fixture(
+        monkeypatch, tmp_path
+    )
+    if installed_helper is not None:
+        helper = installed_helper
+        bootstrap.PRODUCTION_HELPER.write_bytes(helper)
+        bootstrap.PRODUCTION_HELPER.chmod(0o750)
+    expected_fields = dict(bootstrap.KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
+    expected_files = dict(expected_fields["files"])
+    for path, contents in sidecars.items():
+        expected_files[path.name] = hashlib.sha256(contents).hexdigest()
+    helper_digest = hashlib.sha256(helper).hexdigest()
+    expected_files["production-deploy-helper.py"] = helper_digest
+    expected_fields["files"] = expected_files
+    expected_fields["previous_production_helper_sha256"] = hashlib.sha256(original).hexdigest()
+    manifest_path.write_bytes(_installed_manifest_bytes(expected_fields))
+    manifest_path.chmod(0o640)
+    monkeypatch.setattr(
+        bootstrap,
+        "KNOWN_INSTALLED_E1C6B17_PRODUCTION_HELPER_SHA256",
+        helper_digest,
+    )
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST", expected_fields)
     return original, helper, manifest_path, expected_fields, sidecars
 
 
@@ -3259,6 +3276,142 @@ def test_bootstrap_accepts_exact_dd7_install_and_preserves_immutable_backup(
     backup = bootstrap.PREVIOUS_PRODUCTION_HELPER
     assert backup.read_bytes() == original
     assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+
+
+def test_bootstrap_accepts_exact_e1c6b17_install_and_preserves_immutable_backup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    assert bootstrap.KNOWN_INSTALLED_E1C6B17_PRODUCTION_HELPER_SHA256 == (
+        "4411def05a0cf757eef859b257d403d1c05eeed44c5c4265b86cb9905e1de730"
+    )
+    assert bootstrap.KNOWN_INSTALLED_E1C6B17_REVIEWED_HEAD_SHA == (
+        "e1c6b178ace4d3501f69e32ec828e255b4c75142"
+    )
+    assert bootstrap.KNOWN_INSTALLED_E1C6B17_PAIR_MANIFEST_SHA256 == (
+        "556a6dc79ba320560225838842aed5be3b1c1968f724812f52ac3d7129df2371"
+    )
+    assert bootstrap.KNOWN_INSTALLED_E1C6B17_INSTALLED_FILES == {
+        "host_helper.py": "383719bfd2700adcc76e662b15774ca3e32dd87f61b77a9fe65ff2458f6f6a8c",
+        "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+        "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+        "production-deploy-helper.py": bootstrap.KNOWN_INSTALLED_E1C6B17_PRODUCTION_HELPER_SHA256,
+    }
+    assert bootstrap.KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST == {
+        "format_version": 1,
+        "repository": bootstrap.REPOSITORY,
+        "pull_number": bootstrap.HELPER_SOURCE_PR_NUMBER,
+        "reviewed_head_sha": bootstrap.KNOWN_INSTALLED_E1C6B17_REVIEWED_HEAD_SHA,
+        "reviewed_pair_manifest_sha256": (bootstrap.KNOWN_INSTALLED_E1C6B17_PAIR_MANIFEST_SHA256),
+        "files": bootstrap.KNOWN_INSTALLED_E1C6B17_INSTALLED_FILES,
+        "helper_source_contract": bootstrap.HELPER_SOURCE_CONTRACT,
+        "previous_production_helper_sha256": (
+            "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+        ),
+    }
+    original, helper, manifest_path, old_fields, old_sidecars = _known_e1c6b17_install_fixture(
+        monkeypatch, tmp_path
+    )
+    old_manifest = manifest_path.read_bytes()
+    candidate_fields = {**old_fields, "reviewed_head_sha": "a" * 40}
+    candidate_fields["reviewed_pair_manifest_sha256"] = "b" * 64
+
+    assert bootstrap._prepare_previous_production_helper(
+        helper,
+        candidate_manifest_fields=candidate_fields,
+    ) == (helper, bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256)
+    assert manifest_path.read_bytes() == old_manifest
+    assert {path: path.read_bytes() for path in old_sidecars} == old_sidecars
+    backup = bootstrap.PREVIOUS_PRODUCTION_HELPER
+    assert backup.read_bytes() == original
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+
+
+def test_bootstrap_accepts_exact_candidate_receipt_for_same_e1c6b17_helper_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    original, helper, manifest_path, old_fields, old_sidecars = _known_e1c6b17_install_fixture(
+        monkeypatch, tmp_path
+    )
+    candidate_fields = {**old_fields, "reviewed_head_sha": "a" * 40}
+    candidate_fields["reviewed_pair_manifest_sha256"] = "b" * 64
+    manifest_path.write_bytes(_installed_manifest_bytes(candidate_fields))
+    manifest_path.chmod(0o640)
+    candidate_manifest = manifest_path.read_bytes()
+
+    assert bootstrap._prepare_previous_production_helper(
+        helper,
+        candidate_manifest_fields=candidate_fields,
+    ) == (helper, bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256)
+    assert manifest_path.read_bytes() == candidate_manifest
+    assert {path: path.read_bytes() for path in old_sidecars} == old_sidecars
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    [
+        "head",
+        "pair",
+        "files",
+        "contract",
+        "predecessor",
+        "duplicate",
+        "missing",
+        "mode",
+        "sidecar",
+        "unknown",
+    ],
+)
+def test_bootstrap_rejects_unknown_or_drifted_e1c6b17_install_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    malformation: str,
+) -> None:
+    original, helper, manifest_path, expected_fields, old_sidecars = _known_e1c6b17_install_fixture(
+        monkeypatch, tmp_path
+    )
+    malformed = dict(expected_fields)
+    malformed_files = dict(expected_fields["files"])
+    malformed["files"] = malformed_files
+    if malformation == "head":
+        malformed["reviewed_head_sha"] = "f" * 40
+    elif malformation == "pair":
+        malformed["reviewed_pair_manifest_sha256"] = "f" * 64
+    elif malformation == "files":
+        malformed_files["native_driver.py"] = "f" * 64
+    elif malformation == "contract":
+        malformed["helper_source_contract"] = "wrong-contract"
+    elif malformation == "predecessor":
+        malformed["previous_production_helper_sha256"] = "f" * 64
+    elif malformation == "unknown":
+        malformed["unreviewed"] = True
+    if malformation == "missing":
+        manifest_path.unlink()
+    else:
+        raw = _installed_manifest_bytes(malformed)
+        if malformation == "duplicate":
+            raw = b'{"format_version":1,' + raw[1:]
+        manifest_path.write_bytes(raw)
+        manifest_path.chmod(0o644 if malformation == "mode" else 0o640)
+    if malformation == "sidecar":
+        path = next(path for path in old_sidecars if path.name == "native_driver.py")
+        path.write_bytes(b"unreviewed E1 source drift")
+        path.chmod(0o640)
+
+    with pytest.raises(bootstrap.InstallError, match="production_helper_manifest_mismatch"):
+        bootstrap._prepare_previous_production_helper(
+            helper,
+            candidate_manifest_fields={
+                **expected_fields,
+                "reviewed_head_sha": "a" * 40,
+                "reviewed_pair_manifest_sha256": "b" * 64,
+            },
+        )
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
 
 
 @pytest.mark.parametrize(
@@ -3628,6 +3781,95 @@ def test_bootstrap_source_only_upgrade_compensates_and_retries_exact_67723_recei
     assert bootstrap.PRODUCTION_HELPER.read_bytes() == candidate_helper
     assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
     assert old_fields["reviewed_head_sha"] == bootstrap.KNOWN_INSTALLED_67723_REVIEWED_HEAD_SHA
+
+
+def test_bootstrap_e1_same_helper_source_refresh_rolls_back_and_retries_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = Path(__file__).resolve().parents[1]
+    sources = {
+        relative: (workspace / relative).read_bytes()
+        for relative, _name, _maximum in bootstrap.ASSETS.values()
+    }
+    candidate_helper = sources["scripts/production-deploy-helper.py"]
+    assert hashlib.sha256(candidate_helper).hexdigest() == (
+        bootstrap.KNOWN_INSTALLED_E1C6B17_PRODUCTION_HELPER_SHA256
+    )
+    original, helper, manifest_path, old_fields, old_sidecars = _known_e1c6b17_install_fixture(
+        monkeypatch, tmp_path, installed_helper=candidate_helper
+    )
+    assert helper == candidate_helper
+    incoming = tmp_path / "incoming"
+    incoming.mkdir()
+    state_root = bootstrap.PREVIOUS_PRODUCTION_HELPER.parent
+    revision = "a" * 40
+    pair_digest = "b" * 64
+    asset_hashes: dict[str, str] = {}
+
+    def stage_sources() -> None:
+        for role, (relative, staged_name, _maximum) in bootstrap.ASSETS.items():
+            content = sources[relative]
+            asset_hashes[role] = hashlib.sha256(content).hexdigest()
+            (incoming / f"signal-ledger-pr1-{revision}-{staged_name}").write_bytes(content)
+
+    stage_sources()
+    monkeypatch.setattr(bootstrap, "INCOMING", incoming)
+    monkeypatch.setattr(bootstrap, "STATE_ROOT", state_root)
+    monkeypatch.setattr(bootstrap, "_install_locks", nullcontext)
+    monkeypatch.setattr(bootstrap, "_safe_directory", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bootstrap, "_safe_incoming_directory", lambda: None)
+    monkeypatch.setattr(bootstrap, "_check_root_directory", lambda *_args: None)
+    monkeypatch.setattr(bootstrap, "_verify_pull_request", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        bootstrap,
+        "_fetch_reviewed_source",
+        lambda _revision, relative, _maximum: sources[relative],
+    )
+    prior_manifest = manifest_path.read_bytes()
+    prior_sidecars = dict(old_sidecars)
+    fail_receipt_once = True
+
+    def atomic_write(path: Path, contents: bytes, mode: int) -> None:
+        nonlocal fail_receipt_once
+        if path == manifest_path and contents != prior_manifest and fail_receipt_once:
+            fail_receipt_once = False
+            raise OSError("simulated installed receipt publication failure")
+        temporary = path.with_name(f".{path.name}.test-tmp")
+        temporary.write_bytes(contents)
+        temporary.chmod(mode)
+        temporary.replace(path)
+
+    monkeypatch.setattr(bootstrap, "_atomic_root_file", atomic_write)
+    payload = {
+        "reviewed_head_sha": revision,
+        "reviewed_pair_manifest_sha256": pair_digest,
+        "asset_sha256": asset_hashes,
+        "helper_source_contract": bootstrap.HELPER_SOURCE_CONTRACT,
+    }
+
+    with pytest.raises(bootstrap.InstallError, match="sidecar_install_failed"):
+        bootstrap.install(payload)
+    assert manifest_path.read_bytes() == prior_manifest
+    assert {path: path.read_bytes() for path in prior_sidecars} == prior_sidecars
+    assert bootstrap.PRODUCTION_HELPER.read_bytes() == helper
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
+
+    result = bootstrap.install(payload)
+    assert result["status"] == "installed"
+    assert result["reviewed_head_sha"] == revision
+    assert bootstrap.PRODUCTION_HELPER.read_bytes() == candidate_helper
+    assert manifest_path.read_bytes() != prior_manifest
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
+
+    stage_sources()
+    retry = bootstrap.install(payload)
+    assert retry == result
+    assert bootstrap.PRODUCTION_HELPER.read_bytes() == candidate_helper
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert old_fields["reviewed_head_sha"] == bootstrap.KNOWN_INSTALLED_E1C6B17_REVIEWED_HEAD_SHA
 
 
 @pytest.mark.parametrize(

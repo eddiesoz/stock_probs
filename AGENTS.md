@@ -2563,3 +2563,15 @@ guard. CLI verification may perform existing same-schema SQL initialization and 
 hardening; do not describe it as strict zero-write. Preserve the failed V7 pair and open native, actual
 1 GB, rollback, browser, canonical, guide, canary, and release gates in the [R-ASTRA-121
 ledger](MVP-PLAN.md).
+
+
+For the PR11 bootstrap retry, distinguish a matching installed-helper digest from candidate-receipt
+admission. Preserve the exact E1/556 receipt and candidate bindings; accept either that exact E1 receipt or
+the exact candidate receipt for the same helper. Obtain independent QA before any readiness or install
+claim. The independent 22-test QA passed only the exact receipt-rule and synthetic-sidecar scope;
+it does not establish host readiness, installation, or real historical-DD7 reinstall acceptance. Keep
+the initial payload rejection for missing `schema_version: 1` separate from the later passed NOREPLACE
+archival and fresh inventory. Distinguish the corrected source attribution for readiness from the
+builder-reported pre-edit DD7 fixture failure; if its raw artifact is unavailable, do not claim
+independent reproduction or reconstruct its baseline. A failed V7 `admin_step_up` remains
+cause-unproven; the fresh-code trace rules out only the stale/replay hypothesis.
