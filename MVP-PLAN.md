@@ -936,6 +936,29 @@ separate selections into an aggregate. Review receipt
 SHA-256 `8b7829fe98e64a685465122b389089f174ef8fa0f2a6d28fb674f6a8c6210411`. No browser, SMTP,
 native, Docker, production, or release acceptance occurred.
 
+
+### R-ASTRA-121 E31 — independent static-page packaging guard QA
+
+Task `R-ASTRA-121`; independent source-level QA **Passed** one selected static-copy test in
+each R1/R2/R3 worktree (1/1 each, zero failures/errors/skips), not the full seven-test module.
+The windows were R1 2026-10-16T15:35:28Z–15:35:34Z, R2
+2026-10-16T15:35:28Z–15:35:35Z, and R3 2026-10-16T15:36:02Z–15:36:03Z. Disposable baseline
+copies passed; removing the recursive `out/_next` copy or omitting the `out/admin.html`
+mapping was rejected. Page counts were 16/18/20 and the unchanged source closures were 38/45/59
+inputs.
+
+R3's default pytest attempt **Failed setup** at 15:35:28Z–15:35:35Z; a `--confcutdir`
+retry also **Failed setup** at 15:35:52Z–15:35:56Z (both exit 4 before collection) because
+`tests/conftest.py` imported the app while staged `out/_next` was absent. The selected
+fixture-free test then **Passed** with `--noconftest`. These setup failures remain recorded.
+This evidence covers only the static source-copy contract: no Docker image/build, served/export
+parity, browser, or runtime acceptance occurred. Parent scoped source/evidence review passed
+without a test rerun; receipt `/var/tmp/r12r/static-copy-parent-review-021b2670-73b4-4641-aec9-bf5d71f40ab5/parent-review.json`, SHA-256
+`ef976dda11037b6256cdf2cad89bc34af95b8728360c84b2e1e7068c71765044`.
+
+Receipt `/var/tmp/r12r/static-export-copy-qa-097qf2ie/independent-static-copy-guards-qa.json`,
+SHA-256 `4f14106dcbb09f48544f42d736e476719b57c3e1b4f07324c9b74c46a52cd5e9`.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.

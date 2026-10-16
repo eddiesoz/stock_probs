@@ -28,12 +28,17 @@ or release evidence. FastAPI remains the only production server and `/api/v1` re
 application-data boundary. The Docker path uses Node in a build-only stage and copies the staged
 static files into the Python wheel; Node is not part of the runtime image.
 
-The R3 Dockerfile source explicitly lists 20 generated HTML pages, including `/notifications` and
-`/research/report-card`, and recursively copies the shared `out/_next` asset tree. Keep both the
-page list and asset copy aligned with the export when routes change. The scoped R121 review found a
-gap in the original asset-copy test; its builder repair and omitted-asset mutation passed, while
-independent re-review and a Docker image build remain pending. A generated or served route alone
-does not prove that a container image contains it.
+The R3 Dockerfile source explicitly lists 20 generated HTML pages, including
+`/notifications` and `/research/report-card`, and recursively copies the shared
+`out/_next` asset tree. Keep both aligned with the export when routes change.
+Independent static-copy QA on 2026-10-16 passed one selected source test per R1/R2/R3
+worktree and the disposable baseline copies; it rejected a missing `out/_next` copy and
+a missing `out/admin.html` mapping. Page counts and source closures were 16/18/20 and
+38/45/59 unchanged inputs. R3's default and `--confcutdir` attempts failed setup because
+staged `out/_next` was absent; the selected pure-static test passed with `--noconftest`
+and no fixtures. This is source-level contract evidence only: no Docker image,
+packaged-route, served/export parity, or runtime behavior was verified. See the [scoped
+QA record](../develop/testing.md#bounded-local-docker-builds-and-worker-verification).
 
 The default provider is Yahoo Finance and requires network availability. For a repeatable
 offline-oriented development run, use the fixture settings in

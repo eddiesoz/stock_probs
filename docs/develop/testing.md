@@ -566,11 +566,21 @@ result; no aggregate is formed from these selections. See the
 [R3 preference-fixture follow-up](../../MVP-PLAN.md#r-astra-121-e30-r3-notification-preference-fixture-follow-up) and
 [R3 typing follow-up](../../MVP-PLAN.md#r-astra-121-e29-r3-repository-typing-and-diagnostic-follow-up)
 and [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
-The initial packaging review reproduced an assertion gap for omitting the shared `/_next` asset
-copy. Current R1/R2/R3 Dockerfiles enumerate 16/18/20 exported HTML pages and recursively copy
-`out/_next`. A builder-only guard repair passed seven focused cases per worktree and the omitted-
-asset mutation now triggers the expected assertion; independent rereview remains pending. No image
-was built, so stage parity and source checks do not prove packaged-route behavior.
+R121 packaging: the explicit 16/18/20 generated-page lists and recursive `out/_next`
+copy are independently checked by one selected static contract test per R1/R2/R3
+worktree (1/1 each; zero failures, errors, or skips; UTC windows 15:35:28–15:35:34,
+15:35:28–15:35:35, and 15:36:02–15:36:03 respectively), not by the full seven-test
+module. The earlier 21-case selection exposed an assertion gap; the builder repair's
+seven-test-per-worktree result remains separate. Independent QA passed each disposable
+baseline copy and rejected both removal of the `out/_next` copy and omission of the
+`out/admin.html` mapping. Source closures stayed unchanged at R1 38, R2 45, and R3 59
+inputs. R3's default pytest (15:35:28–15:35:35 UTC) and `--confcutdir` attempt
+(15:35:52–15:35:56 UTC) failed setup with exit 4 before collection because
+`tests/conftest.py` imports the app while staged `out/_next` is absent; the selected
+pure-static test then passed with `--noconftest` and no fixtures. No Docker image/build,
+served/export parity, browser, or runtime result follows. Receipt
+`/var/tmp/r12r/static-export-copy-qa-097qf2ie/independent-static-copy-guards-qa.json`,
+SHA-256 `4f14106dcbb09f48544f42d736e476719b57c3e1b4f07324c9b74c46a52cd5e9`.
 
 Report cards score recorded outcomes against immutable forecasts, keep backtests separate, and
 show scored, pending, unavailable, disputed, and incomparable samples with their model, horizon,
