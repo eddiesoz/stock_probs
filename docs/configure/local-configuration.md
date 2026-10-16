@@ -309,3 +309,22 @@ plus its bound input/static checks. This narrow review does not establish a full
 installation, host, production, recovery, resource, or release acceptance; the publication-locator
 gap remains open. Preserve E25 and E26 as separate historical evidence. See
 [E27](../../MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).
+
+At the E28 checkpoint, PR #11's artifact transport remained on hold: independent QA reproduced a
+mocked scan/upload TOCTOU race even though the corrected selected counts were 17 transport and 18
+helper tests passed.
+The required repair at that checkpoint was to stage verified private copies and scan and upload
+those same copies; final tests and independent review were pending. Its proposed sequence conflated
+publisher validation with the production consumer's installed-helper identity check; E29 corrects
+the distinction below. No install, deployment, live publication, or native acceptance was
+established. See
+[E28](../../MVP-PLAN.md#r-astra-121-e28-pushed-pr-checkpoint-and-hotfix-transport-finding).
+
+E29 supersedes that pending status for the scoped local source review: independent QA passed 21
+transport tests and Ruff check/format after the private-snapshot and bounded-wait repairs. These
+checks did not run publication or installation. The local publisher validates clean exact
+`origin/main` source and its fixed package, stages verified private copies, scans/uploads those same
+copies, and verifies downloaded readback. The root-owned installed-helper record and expected pair
+digest are checked by the production consumer before it derives the helper-head pair URL; the local
+publisher does not check remote installation metadata. See
+[E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-hotfix-publisher-review-and-flow-separation).

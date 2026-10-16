@@ -7125,3 +7125,85 @@ No actual installer, maintenance, Docker, native assistant, provider, host, prod
 canary, or resource acceptance ran. The publication-locator gap and actual combined 1 GB,
 PR-bound rollback, deployment, owner-canary, and release gates remain open. No public readiness is
 claimed; the existing 1 GB host, backups, and US$15 monthly total cap remain unchanged.
+
+
+### R-ASTRA-121 E28 — pushed PR checkpoint and hotfix transport finding
+
+The clean pushed head is `d0236e56f88489b63e2a3f3164cdd77158df02b2`. Draft PR #11 is titled
+[“Add native assistant recovery checks and safe maintenance”](https://github.com/eddiesoz/stock_probs/pull/11).
+The exact PR title/body readback **Passed** at `2026-10-16T05:07:44.608796Z`; its receipt
+`/var/tmp/r12r/pr11-d023-pushed-checkpoint-7qss9jh7/receipt.json` has SHA-256
+`ef3b9e4c573b85b83172f829e6788ceb8793a105e7c48aa925697491cd07764f`. The readback binds the PR to
+the pushed head and records the body digest. No helper installation or deployment occurred.
+
+The reviewed candidate transport defines two artifact modes. `hotfix-candidate` selects only the
+existing D282 archive through the image-tag namespace. `hotfix-pair` derives a helper-head namespace only
+from a v2 manifest after exact D282 and 5ad asset readbacks. The original 5ad schema-13 recovery
+input is the `image-5ad` artifact; it is not the older `recovery-5ad` archive. E28's description
+incorrectly attached the production consumer's root-owned installed-helper record and expected
+pair-digest check to publisher tag derivation; E29 corrects that flow.
+A parent read-only GitHub observation during this task saw the D282 tag return 404 while the 5ad
+tag existed. There is no dedicated receipt or exact observation time for that query, so it is not
+artifact-validation or publication acceptance.
+
+Independent transport QA **Failed overall** on a reproducible TOCTOU finding. Its corrected
+append-only count receipt records 17 focused transport tests and 18 selected helper tests passed,
+with the scoped Ruff, format, security, and shell-syntax checks passing. The original QA receipt
+`/var/tmp/r12r/pr11-hotfix-transport-independent-qa-20261016T052226Z-b27237bf/independent-final-receipt.json`
+has SHA-256 `232ecf1be55b4ad82c8e84a16f6f2718941cfb1d7bdc10730c43464baef75b79`; count correction
+`independent-final-count-correction.json` has SHA-256
+`448b79e02c93ca461c43b61a7d16b1aeb17eb01504177640496b1f5183491ac1` and was created at
+`2026-10-16T05:26:14.149532Z`. The corrected v4 mocked race reproduction ran at
+`05:25:31.756576Z`–`05:25:31.877497Z`: a same-UID fixture mutation after scanning and before release
+creation caused different bytes to be uploaded; readback then failed while the immutable candidate
+release remained in the mock. No network or Docker call occurred. The first three race-harness
+attempts failed during setup before assertions; those remain preserved. Live archive scanning and
+GitHub publication were **Unavailable**, and browser/accessibility checks were **Skipped**.
+
+At the E28 checkpoint, a builder repair was in progress to stage private byte-verified copies
+before scanning and uploading those same copies. Its final tests and independent re-review were
+**Pending**. The source carrying the expected PR12 scanner pin was not integrated at this checkpoint,
+so actual publisher execution was **Unavailable**. The proposed E28 sequence incorrectly combined
+the production consumer's installed-helper identity check with local publisher tag derivation; E29
+records the corrected role separation and later scoped QA. E28's hold remains the status of that
+checkpoint only. A publisher pass remains separate from mandatory native-assistant acceptance and
+cannot be promoted to release acceptance.
+
+E28 records no install, host maintenance, production change, or deployment. E24–E27 failures and
+scoped passes remain unchanged. The 512 MiB startup reserve is unchanged; actual combined 1 GB,
+PR-bound recovery/rollback, native, publication, and release gates remain open. The existing 1 GB
+host, backups, and US$15 monthly cap are unchanged; no release or public readiness is claimed.
+
+
+### R-ASTRA-121 E29 — bounded hotfix publisher review and flow separation
+
+E29 preserves E28's failed mocked TOCTOU review and records the repair sequence separately. An
+intermediate snapshot-copy version passed 20/20 selected independent tests; that review found a
+second P2 because the final `process.wait` had no deadline. The later repair bounds that wait.
+Independent QA then **Passed** 21/21 transport tests with zero failures or skips and passed Ruff
+check and format. The exact review ran `2026-10-16T05:40:28Z`–`05:40:33Z`; JUnit SHA-256 is
+`17767fa28891d9ea5434e0ea2f61e9aa9ff208911eb2d237c0509d00a2a2b4a0`. Its receipt
+`/var/tmp/r12r/pr11-hotfix-finalwait-baseline-20261016T053616Z-c2865668-e54f-43a2-a8ee-7425a5d5fc04/independent-finalwait-a1cafad4-2b33-4b8f-89b5-87bbf9f2faae/independent-qa-receipt.json`
+has SHA-256 `01d554ade4b52d2a1dd49e58525737e38f76cf1a07a5f03ca855e9d8af579899`. The reviewed
+working-tree pins were `scripts/hotfix_release_transport.py`
+`38e9882c3be7ab3663d74a0a9edd24875241f5416ea7ad18765de9835d556ad8` and
+`tests/test_hotfix_release_transport.py`
+`fffe5ca9995ed1ac54318aeaad7e4b264fbaeaa65895cb032e2ae7e463c25f0f`.
+The parent static/source review also **Passed** five static checks on the helper/module diff and
+tests; it invoked no runtime. Its receipt is
+`/var/tmp/r12r/pr11-parent-transport-static-tan3izeg/receipt.json`, SHA-256
+`dd50faf23cae6e251e91108742d993c0300cf795c47606903fd2e7f30f054e09`.
+
+Keep the local publisher and production consumer as separate trust boundaries. The local publisher
+validates the clean exact `origin/main` source and fixed package, creates private verified copies,
+scans and uploads those same copies, and downloads them again for byte-identity readback. It does
+not read or require a remote installed-helper identity record. The production consumer separately
+checks its root-owned installed-helper record and the caller's expected pair-manifest digest before
+deriving the helper-head pair-release URL. E28's earlier proposed publisher sequence conflated
+these roles; this note corrects that procedure without rewriting E28's historical finding.
+
+This is scoped independent source/test review, not a live publication or installation result. No
+release was created or read back in this run; no helper installation, actual-host rehearsal,
+current native run, actual combined 1 GB test, recovery/rollback, production change, or release
+acceptance is established. The 512 MiB startup reserve, existing 1 GB host, backups, and US$15
+monthly total cap remain unchanged.

@@ -87,6 +87,21 @@ finding and E26's test-only supplement remain historical; installation, host, pr
 resource, and publication-locator gates remain open. See
 [E27](../../MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).
 
+E28 records the pushed PR #11 draft at `d0236e56f88489b63e2a3f3164cdd77158df02b2`. Independent
+transport QA **Failed overall** on a reproduced mocked TOCTOU race, despite the separately corrected
+17 transport and 18 helper test counts and passing static checks. At that checkpoint, the private-
+copy repair's final tests and independent re-review remained pending; live scanning/publication was
+unavailable. At that checkpoint, the new transport source review remained pending. The
+authored-documentation validator, completeness check, and scoped change-aware check passed. See
+[E28](../../MVP-PLAN.md#r-astra-121-e28-pushed-pr-checkpoint-and-hotfix-transport-finding).
+
+E29 records the later bounded-final-wait repair and independent scoped pass: 21/21 transport tests,
+Ruff check, and format. E28's failed TOCTOU review and the intermediate snapshot-copy review's
+unbounded-wait finding remain historical. The docs now distinguish local publisher snapshot
+validation/upload/readback from the production consumer's installed-helper and expected-pair check.
+No live publication, installation, runtime, host, or release acceptance follows. See
+[E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-hotfix-publisher-review-and-flow-separation).
+
 ## Codex project configuration
 
 Codex loads repository policy from root `AGENTS.md` and trusted-project settings from

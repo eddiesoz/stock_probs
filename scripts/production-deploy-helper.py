@@ -69,6 +69,7 @@ GITHUB_RELEASE_ARCHIVE_PREFIX = "signal-ledger-image-"
 GITHUB_RELEASE_ARCHIVE_SUFFIX = ".tar.gz"
 GITHUB_RELEASE_RECOVERY_PREFIX = "signal-ledger-recovery-"
 GITHUB_RELEASE_PAIR_PREFIX = "signal-ledger-pair-"
+GITHUB_HOTFIX_PAIR_TAG_PREFIX = "signal-ledger-hotfix-pair-"
 GITHUB_RELEASE_TRANSPORT = "github_release"
 LOCAL_IMAGE_REPOSITORY = "signal-ledger"
 PAIR_MANIFEST_VERSION = 1
@@ -269,6 +270,28 @@ def _release_asset_url(revision: str, role: str) -> str:
 
     name = _release_asset_name(revision, role)
     tag = f"{GITHUB_RELEASE_TAG_PREFIX}{revision}"
+    return f"https://github.com/{GITHUB_RELEASE_REPOSITORY}/releases/download/{tag}/{name}"
+
+
+def _hotfix_pair_release_tag(helper_revision: str) -> str:
+    """Derive the helper-head namespace used only by the fixed schema-13 hotfix pair."""
+
+    _validate_revision(helper_revision)
+    return f"{GITHUB_HOTFIX_PAIR_TAG_PREFIX}{helper_revision}"
+
+
+def _hotfix_pair_asset_name(helper_revision: str) -> str:
+    """Return the helper-head-bound schema-13 hotfix pair filename."""
+
+    _validate_revision(helper_revision)
+    return f"{GITHUB_RELEASE_PAIR_PREFIX}{helper_revision}.json"
+
+
+def _hotfix_pair_asset_url(helper_revision: str) -> str:
+    """Build the fixed pair URL without changing normal revision-scoped release URLs."""
+
+    tag = _hotfix_pair_release_tag(helper_revision)
+    name = _hotfix_pair_asset_name(helper_revision)
     return f"https://github.com/{GITHUB_RELEASE_REPOSITORY}/releases/download/{tag}/{name}"
 
 
@@ -1656,11 +1679,30 @@ def _download_release_archive(revision: str) -> Path:
 def _download_release_asset(revision: str, role: str) -> Path:
     """Download exactly one revision-derived immutable release asset."""
 
+    return _download_fixed_release_asset(
+        _release_asset_url(revision, role),
+        role=role,
+        identity=revision,
+    )
+
+
+def _download_hotfix_pair_asset(helper_revision: str) -> Path:
+    """Download the fixed hotfix pair from its separately reviewed helper-head release."""
+
+    return _download_fixed_release_asset(
+        _hotfix_pair_asset_url(helper_revision),
+        role="pair",
+        identity=helper_revision,
+    )
+
+
+def _download_fixed_release_asset(url: str, *, role: str, identity: str) -> Path:
+    """Download one fixed-name GitHub asset into the private release directory."""
+
     _safe_mode(RELEASE_ROOT, 0o750)
-    _release_asset_name(revision, role)
     asset_limit = 65_536 if role == "pair" else MAX_RELEASE_ARCHIVE_BYTES
     suffix = ".json" if role == "pair" else ".tar.gz"
-    temporary = RELEASE_ROOT / f".{role}-{revision}-{secrets.token_hex(8)}{suffix}"
+    temporary = RELEASE_ROOT / f".{role}-{identity}-{secrets.token_hex(8)}{suffix}"
     try:
         descriptor = os.open(
             temporary,
@@ -1689,7 +1731,7 @@ def _download_release_asset(revision: str, role: str) -> Path:
                 str(asset_limit),
                 "--output",
                 str(temporary),
-                _release_asset_url(revision, role),
+                url,
             ],
             timeout=RELEASE_DOWNLOAD_TIMEOUT_SECONDS + 30,
         )
@@ -2064,8 +2106,13 @@ def _reviewed_hotfix_helper_revision(pair_manifest_sha256: str) -> str:
     return value["reviewed_head_sha"]
 
 
-def _read_installed_maintenance_helper() -> str:
+def _read_installed_maintenance_helper(
+    expected_pair_manifest_sha256: str | None = None,
+) -> str:
     """Verify the fixed PR11 installation, running helper bytes, and retained predecessor."""
+
+    if expected_pair_manifest_sha256 is not None:
+        _validate_digest(expected_pair_manifest_sha256)
 
     try:
         info = HOTFIX_HELPER_INSTALL_RECORD.lstat()
@@ -2138,6 +2185,10 @@ def _read_installed_maintenance_helper() -> str:
         or REVISION_PATTERN.fullmatch(value["reviewed_head_sha"]) is None
         or not isinstance(value.get("reviewed_pair_manifest_sha256"), str)
         or DIGEST_PATTERN.fullmatch(value["reviewed_pair_manifest_sha256"]) is None
+        or (
+            expected_pair_manifest_sha256 is not None
+            and value.get("reviewed_pair_manifest_sha256") != expected_pair_manifest_sha256
+        )
         or value.get("previous_production_helper_sha256") != PREVIOUS_PRODUCTION_HELPER_SHA256
         or not isinstance(value.get("files"), dict)
         or set(value["files"]) != expected_files
@@ -2230,7 +2281,11 @@ def _load_release_pair(
         or not 1 <= candidate_archive_size <= MAX_RELEASE_ARCHIVE_BYTES
     ):
         raise HostError("candidate_archive_size_invalid")
-    pair_path = _download_release_asset(revision, "pair")
+    if revision == HOTFIX_CANDIDATE_REVISION:
+        helper_revision = _read_installed_maintenance_helper(expected_manifest_sha256)
+        pair_path = _download_hotfix_pair_asset(helper_revision)
+    else:
+        pair_path = _download_release_asset(revision, "pair")
     try:
         metadata = pair_path.lstat()
         if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):

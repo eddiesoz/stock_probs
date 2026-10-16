@@ -24,6 +24,14 @@ if [[ "$REMOTE_MAIN" != "$REVISION" ]]; then
   exit 2
 fi
 
+if [[ "$PUBLISH_MODE" == "hotfix-candidate" || "$PUBLISH_MODE" == "hotfix-pair" ]]; then
+  command -v python3 >/dev/null || {
+    printf 'Python 3 is required for fixed hotfix publication.\n' >&2
+    exit 4
+  }
+  exec python3 scripts/hotfix_release_transport.py "$PUBLISH_MODE" "$REVISION"
+fi
+
 if [[ "$PUBLISH_MODE" == "release" || "$PUBLISH_MODE" == "prebuilt-release" ]]; then
   command -v gh >/dev/null || {
     printf 'The GitHub CLI is required for release publication.\n' >&2
@@ -38,7 +46,7 @@ if [[ "$PUBLISH_MODE" == "release" || "$PUBLISH_MODE" == "prebuilt-release" ]]; 
     exit 4
   fi
 elif [[ "$PUBLISH_MODE" != "ghcr" ]]; then
-  printf 'SIGNAL_LEDGER_IMAGE_PUBLISH_MODE must be release, prebuilt-release, or ghcr.\n' >&2
+  printf 'SIGNAL_LEDGER_IMAGE_PUBLISH_MODE must be release, prebuilt-release, ghcr, hotfix-candidate, or hotfix-pair.\n' >&2
   exit 2
 fi
 

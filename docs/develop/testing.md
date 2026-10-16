@@ -690,3 +690,18 @@ builder and focused independent results, not a combined full-suite claim. E25's 
 E26's test-only supplement remain historical. No actual installation, host, production, recovery,
 or resource acceptance ran. See
 [E27](../../MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).
+
+E28's independent QA **Failed overall** on the mocked archive scan/upload race. An append-only
+count correction records 17 transport and 18 helper tests passing; those scoped passes do not
+override the finding. The first three race-harness attempts failed during setup, and the corrected
+v4 reproduction exposed the defect. Final tests and independent re-review for the private-copy
+repair were pending at that checkpoint; live publication and native acceptance were not run. See
+[E28](../../MVP-PLAN.md#r-astra-121-e28-pushed-pr-checkpoint-and-hotfix-transport-finding).
+
+E29 preserves that failure and records the later independent re-review: the intermediate private-
+snapshot version passed 20/20 but exposed an unbounded final `process.wait`; after a bounded-wait
+repair, the exact transport suite passed 21/21 with no skips or failures, and Ruff check/format
+passed. The review window was `2026-10-16T05:40:28Z`–`05:40:33Z`; see the receipt and pin hashes in
+[E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-hotfix-publisher-review-and-flow-separation).
+These are independent source/test results only, not live publication, installation, runtime,
+production, or release acceptance.

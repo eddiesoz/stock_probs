@@ -1139,6 +1139,28 @@ authorize installation or a host/production transition; recovery, resource, publ
 and release gates remain open. E25 and E26 retain their earlier scopes. See
 [E27](../../MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).
 
+E28 recorded a publication hold after independent QA reproduced a mocked scan/upload TOCTOU race.
+Its proposed operator sequence combined the local publisher with the production consumer's
+installed-helper check; E29 clarifies that these are separate steps. E28's failed review remains
+historical. See
+[E28](../../MVP-PLAN.md#r-astra-121-e28-pushed-pr-checkpoint-and-hotfix-transport-finding).
+
+For local hotfix publication, the publisher first validates clean exact `origin/main` source and
+the fixed package, including the exact D282 and 5ad artifacts and format-2 manifest. It creates
+private byte-verified snapshots, scans those copies, uploads those same copies, then downloads and
+compares the published bytes with their expected digests. The 5ad schema-13 recovery input is the
+`image-5ad` artifact, not the older `recovery-5ad` archive. The local publisher does not inspect a
+remote installed-helper record.
+
+The production consumer has a separate identity gate: before deriving a helper-head pair-release
+URL, it verifies its root-owned installed-helper record against the caller's expected pair-manifest
+digest. Do not treat this consumer check as a publisher prerequisite or as proof that a local
+publication succeeded. E29's independent source/test review passed 21/21 transport tests and Ruff
+check/format after the private-copy and bounded-final-wait repairs, but the publisher was not run
+against GitHub and no release was created or read back. Installation, native assistant acceptance,
+host rehearsal, actual 1 GB resources, and release acceptance remain open. See
+[E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-hotfix-publisher-review-and-flow-separation).
+
 A possible temporary use of the registered app-only recovery image must first pass local
 compatibility and data continuity, exact recovery-role validation at both boundaries, signed
 backup verification and unchanged resource checks. Keep the existing volume and use only the

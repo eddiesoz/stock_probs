@@ -2370,3 +2370,20 @@ and its pinned input/static scope. E25's coverage failure and E26's test-only su
 historical. This is a narrow re-review, not a full security audit or operational acceptance; actual
 installation, host, production, recovery, resource, publication-locator, and release gates remain
 open. See [E27](MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).
+
+E28 records the clean pushed PR #11 draft at `d0236e56f88489b63e2a3f3164cdd77158df02b2` and a
+separate failed independent transport review. The corrected test-count supplement reports 17
+transport and 18 helper tests passed, but a mocked same-UID scan/upload mutation reproduced a
+TOCTOU defect; live publication was unavailable. At that checkpoint, a private-copy builder repair
+and independent re-review remained pending. No install or deployment occurred; native acceptance
+remains a separate gate. See
+[E28](MVP-PLAN.md#r-astra-121-e28-pushed-pr-checkpoint-and-hotfix-transport-finding).
+
+E29's later independent review passed 21/21 transport tests and scoped Ruff checks after a separate
+bounded-final-wait repair; the intermediate 20/20 snapshot-copy review and its unbounded-wait P2
+remain recorded in the plan. Distinguish local publication from production consumption: the
+publisher validates the clean source/package, scans and uploads private verified snapshots, and
+checks downloaded bytes; only the production consumer checks the root-owned installed-helper record
+and expected pair digest before deriving a helper-head URL. No live publication, installation,
+host/native rehearsal, actual 1 GB acceptance, production change, or release is claimed. See
+[E29](MVP-PLAN.md#r-astra-121-e29-bounded-hotfix-publisher-review-and-flow-separation).

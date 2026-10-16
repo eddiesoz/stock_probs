@@ -1640,6 +1640,19 @@ def test_release_asset_location_is_derived_from_revision() -> None:
     with pytest.raises(helper.HostError, match="revision_invalid"):
         helper._release_archive_url("main")
 
+    assert helper._hotfix_pair_release_tag(revision) == f"signal-ledger-hotfix-pair-{revision}"
+    assert helper._hotfix_pair_asset_name(revision) == f"signal-ledger-pair-{revision}.json"
+    assert helper._hotfix_pair_asset_url(revision) == (
+        "https://github.com/eddiesoz/stock_probs/releases/download/"
+        f"signal-ledger-hotfix-pair-{revision}/signal-ledger-pair-{revision}.json"
+    )
+    assert helper._release_asset_url(revision, "pair") == (
+        "https://github.com/eddiesoz/stock_probs/releases/download/"
+        f"signal-ledger-{revision}/signal-ledger-pair-{revision}.json"
+    )
+    with pytest.raises(helper.HostError, match="revision_invalid"):
+        helper._hotfix_pair_asset_url("main")
+
 
 def test_release_archive_hashes_before_loading_and_records_image_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -6919,12 +6932,14 @@ def test_installed_maintenance_helper_requires_its_exact_root_recorded_bytes(
     monkeypatch.setattr(Path, "lstat", projected_lstat)
     monkeypatch.setattr(helper.os, "fstat", projected_fstat)
 
-    assert helper._read_installed_maintenance_helper() == revision
+    assert helper._read_installed_maintenance_helper(pair_digest) == revision
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        helper._read_installed_maintenance_helper("e" * 64)
 
     helper_path.write_bytes(b"changed helper bytes")
     helper_path.chmod(0o750)
     with pytest.raises(helper.HostError, match="hotfix_helper_digest_mismatch"):
-        helper._read_installed_maintenance_helper()
+        helper._read_installed_maintenance_helper(pair_digest)
 
 
 @pytest.mark.parametrize(
@@ -7085,8 +7100,13 @@ def test_hotfix_pair_load_keeps_the_recovery_asset_under_its_original_release(
     calls = []
     monkeypatch.setattr(
         helper,
-        "_download_release_asset",
-        lambda revision, role: calls.append((revision, role)) or path,
+        "_read_installed_maintenance_helper",
+        lambda expected: calls.append(("install", expected)) or "a" * 40,
+    )
+    monkeypatch.setattr(
+        helper,
+        "_download_hotfix_pair_asset",
+        lambda revision: calls.append(("pair", revision)) or path,
     )
     original = helper._load_release_archive
     monkeypatch.setattr(
@@ -7111,7 +7131,8 @@ def test_hotfix_pair_load_keeps_the_recovery_asset_under_its_original_release(
         candidate_archive_size=1024,
     )
     assert calls == [
-        (helper.HOTFIX_CANDIDATE_REVISION, "pair"),
+        ("install", hashlib.sha256(raw).hexdigest()),
+        ("pair", "a" * 40),
         (
             helper.PRODUCTION_PREDECESSOR_REVISION,
             helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
@@ -7122,6 +7143,36 @@ def test_hotfix_pair_load_keeps_the_recovery_asset_under_its_original_release(
         helper.PRODUCTION_PREDECESSOR_REVISION
     )
     assert not path.exists()
+
+
+def test_hotfix_pair_load_rejects_install_record_before_downloading_pair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    calls: list[str] = []
+
+    def reject_install(expected: str) -> str:
+        calls.append(expected)
+        raise helper.HostError("hotfix_helper_provenance_mismatch")
+
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", reject_install)
+    monkeypatch.setattr(
+        helper,
+        "_download_hotfix_pair_asset",
+        lambda revision: pytest.fail(
+            f"pair download happened before install validation: {revision}"
+        ),
+    )
+
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        helper._load_release_pair(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "f" * 64,
+            "c" * 64,
+            helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            candidate_archive_size=1024,
+        )
+    assert calls == ["f" * 64]
 
 
 @pytest.mark.parametrize(
