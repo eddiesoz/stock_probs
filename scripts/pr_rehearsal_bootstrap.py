@@ -17,6 +17,8 @@ from pathlib import Path
 
 REPOSITORY = "eddiesoz/stock_probs"
 PULL_NUMBER = 2
+HELPER_SOURCE_PR_NUMBER = 11
+HELPER_SOURCE_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOST = "raw.githubusercontent.com"
 INCOMING = Path("/var/lib/signal-ledger-pr-rehearsal/incoming")
 INSTALL_ROOT = Path("/usr/local/libexec/signal-ledger-pr-rehearsal")
@@ -117,12 +119,14 @@ def _staged_asset_path(revision: str, role: str) -> Path:
     return INCOMING / f"signal-ledger-pr1-{revision}-{staged_name}"
 
 
-def _verify_pull_request(revision: str) -> None:
+def _verify_pull_request(revision: str, *, pull_number: int = PULL_NUMBER) -> None:
+    if type(pull_number) is not int or pull_number not in {PULL_NUMBER, HELPER_SOURCE_PR_NUMBER}:
+        raise InstallError("reviewed_pr_invalid")
     connection = http.client.HTTPSConnection("api.github.com", timeout=10)
     try:
         connection.request(
             "GET",
-            f"/repos/{REPOSITORY}/pulls/{PULL_NUMBER}",
+            f"/repos/{REPOSITORY}/pulls/{pull_number}",
             headers={
                 "Accept": "application/vnd.github+json",
                 "User-Agent": "signal-ledger-r120-pr-rehearsal-bootstrap",
@@ -209,11 +213,23 @@ def _atomic_root_file(path: Path, contents: bytes, mode: int) -> None:
 
 
 def install(payload: object) -> dict[str, object]:
-    if not isinstance(payload, dict) or set(payload) != {
+    base_keys = {
         "reviewed_head_sha",
         "reviewed_pair_manifest_sha256",
         "asset_sha256",
-    }:
+    }
+    if not isinstance(payload, dict):
+        raise InstallError("payload_invalid")
+    if set(payload) == base_keys:
+        helper_source_contract = None
+        helper_source_pull_number = PULL_NUMBER
+    elif (
+        set(payload) == base_keys | {"helper_source_contract"}
+        and payload.get("helper_source_contract") == HELPER_SOURCE_CONTRACT
+    ):
+        helper_source_contract = HELPER_SOURCE_CONTRACT
+        helper_source_pull_number = HELPER_SOURCE_PR_NUMBER
+    else:
         raise InstallError("payload_invalid")
     revision = payload.get("reviewed_head_sha")
     pair_manifest_digest = payload.get("reviewed_pair_manifest_sha256")
@@ -238,7 +254,7 @@ def install(payload: object) -> dict[str, object]:
         _safe_directory(INSTALL_ROOT, 0o750, create=False)
     else:
         _safe_directory(INSTALL_ROOT, 0o750, create=True)
-    _verify_pull_request(revision)
+    _verify_pull_request(revision, pull_number=helper_source_pull_number)
 
     verified: dict[str, str] = {}
     contents: dict[str, bytes] = {}
@@ -260,10 +276,10 @@ def install(payload: object) -> dict[str, object]:
             INSTALL_ROOT / installed_name, contents[key], 0o750 if key == "host_helper" else 0o640
         )
 
-    receipt = {
+    receipt: dict[str, object] = {
         "format_version": 1,
         "repository": REPOSITORY,
-        "pull_number": PULL_NUMBER,
+        "pull_number": helper_source_pull_number,
         "reviewed_head_sha": revision,
         "reviewed_pair_manifest_sha256": pair_manifest_digest,
         "files": {
@@ -273,6 +289,8 @@ def install(payload: object) -> dict[str, object]:
         },
         "installed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
+    if helper_source_contract is not None:
+        receipt["helper_source_contract"] = helper_source_contract
     _atomic_root_file(
         INSTALLED_MANIFEST,
         (json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n").encode(),
@@ -280,12 +298,16 @@ def install(payload: object) -> dict[str, object]:
     )
     for key in ASSETS:
         _staged_asset_path(revision, key).unlink(missing_ok=True)
-    return {
+    result: dict[str, object] = {
         "status": "installed",
         "reviewed_head_sha": revision,
         "reviewed_pair_manifest_sha256": pair_manifest_digest,
         "asset_sha256": verified,
     }
+    if helper_source_contract is not None:
+        result["pull_number"] = helper_source_pull_number
+        result["helper_source_contract"] = helper_source_contract
+    return result
 
 
 def main() -> int:

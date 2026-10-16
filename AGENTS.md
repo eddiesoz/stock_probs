@@ -2304,3 +2304,22 @@ signed schema-13 backup and the local compatibility/data-continuity scope, then 
 exact typed restoration path. Backup verification must not rewrite the running rollout configuration,
 promote a restore, rotate trust state or remove existing artifacts. Source/profile evidence alone
 does not accept a production transition, memory saving, native fix, owner canary or release.
+
+For the separate R-ASTRA-121 operational-helper PR #11 candidate, preserve the additive format-2
+`schema13_same_schema_hotfix_v1` identity: helper source PR #11, application candidate PR #9, and
+the original 5ad schema-13 production release as the recovery artifact. This contract is a 13-to-13
+transition with no migrations, database restore, or recovery overlay; do not substitute the A9
+app-only recovery image. Keep the historical PR #2 format-1 schema-12-to-13 pair unchanged. The
+format-2 recovery check observes the normal shipped supervisor/image with the assistant worker
+disabled and no OpenCode process; it does not assert that the executable or package is absent. A
+format-2 applied-state copy must retain `recovery_contract`, `helper_source_revision`,
+`recovery_source_context_sha256`, and `recovery_prior_pair_manifest_sha256`, and rollback must be
+tested after that persisted state is reloaded. A builder or selected source/test pass does not
+establish independent QA, publication, installation, host execution, deployment, rollout, or release
+acceptance. Preserve failed local profile diagnostics even when a later selected source/test check
+passes, and keep independent profile QA, host execution, pair rehearsal, and release status distinct.
+The latest independent process-profile QA and local original-image diagnostic passed their declared
+scopes. E22 independently reviewed the local diagnostic receipt and passed its bounded scope; that
+review did not rerun tests or start a container. Actual-host/pair acceptance remains pending. Record
+exact evidence in [E21](MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint)
+and [E22](MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic).

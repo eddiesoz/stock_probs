@@ -9,6 +9,7 @@ import json
 import os
 import runpy
 import sqlite3
+import stat
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -1420,6 +1421,17 @@ def test_fixed_pr_verifier_uses_only_the_approved_api_endpoint_and_head(
     rehearsal._verify_reviewed_pr(repository, reviewed_sha)
     assert requests[0][0:2] == ("GET", "/repos/eddiesoz/stock_probs/pulls/2")
 
+    requests.clear()
+    rehearsal._verify_reviewed_pr(
+        repository,
+        reviewed_sha,
+        rehearsal.HELPER_SOURCE_PR_NUMBER,
+    )
+    assert requests[0][0:2] == (
+        "GET",
+        f"/repos/eddiesoz/stock_probs/pulls/{rehearsal.HELPER_SOURCE_PR_NUMBER}",
+    )
+
     payload["head"]["sha"] = "c" * 40
     with pytest.raises(rehearsal.RehearsalError, match="reviewed_pr_mismatch"):
         rehearsal._verify_reviewed_pr(repository, reviewed_sha)
@@ -1940,3 +1952,143 @@ def test_deployed_baseline_flag_is_rejected_outside_full_rehearsal(
     failure = json.loads(capsys.readouterr().err)
     assert failure["status"] == "fail"
     assert "only valid for a full rehearsal" in failure["reason"]
+
+
+def test_fixed_hotfix_build_receipt_accepts_only_the_pinned_image_and_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = {
+        "status": "built",
+        "build_kind": "local",
+        "candidate_role": "current",
+        "context_sha256": rehearsal.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "image_id": rehearsal.HOTFIX_CANDIDATE_IMAGE_ID,
+        "platform": "linux/amd64",
+        "revision_label": rehearsal.HOTFIX_CANDIDATE_REVISION,
+        "schema": "r120-bounded-image-build-v1",
+        "source_head": rehearsal.HOTFIX_CANDIDATE_REVISION,
+        "stage": "complete",
+    }
+    raw = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+    receipt_path = tmp_path / "build-receipt.json"
+    receipt_path.write_bytes(raw)
+    receipt_path.chmod(0o600)
+    monkeypatch.setattr(rehearsal, "HOTFIX_BUILD_RECEIPT_PATH", receipt_path)
+    monkeypatch.setattr(rehearsal, "HOTFIX_BUILD_RECEIPT_SHA256", hashlib.sha256(raw).hexdigest())
+
+    assert rehearsal._read_fixed_hotfix_build_receipt()["image_id"] == (
+        rehearsal.HOTFIX_CANDIDATE_IMAGE_ID
+    )
+
+
+def test_fixed_hotfix_recovery_archive_requires_exact_digest_and_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = b"exact prior production image archive"
+    path = tmp_path / f"signal-ledger-image-{rehearsal.HOTFIX_RECOVERY_REVISION}.tar.gz"
+    path.write_bytes(archive)
+    path.chmod(0o600)
+    monkeypatch.setattr(
+        rehearsal, "HOTFIX_RECOVERY_ARCHIVE_SHA256", hashlib.sha256(archive).hexdigest()
+    )
+    monkeypatch.setattr(rehearsal, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(archive))
+
+    assert rehearsal._verify_fixed_hotfix_recovery_archive(tmp_path) == (
+        hashlib.sha256(archive).hexdigest(),
+        len(archive),
+    )
+
+    monkeypatch.setattr(rehearsal, "HOTFIX_RECOVERY_ARCHIVE_SHA256", "0" * 64)
+    with pytest.raises(
+        rehearsal.RehearsalError, match="fixed_hotfix_recovery_archive_digest_mismatch"
+    ):
+        rehearsal._verify_fixed_hotfix_recovery_archive(tmp_path)
+
+
+def test_prepare_schema13_hotfix_pair_emits_explicit_no_migration_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reviewed_helper_sha = "a" * 40
+    artifact_directory = tmp_path / "private-pair"
+    artifact_directory.mkdir(mode=0o700)
+    artifact_directory.chmod(0o700)
+    recovery_archive = b"pinned 5ad source image"
+    recovery_path = artifact_directory / (
+        f"signal-ledger-image-{rehearsal.HOTFIX_RECOVERY_REVISION}.tar.gz"
+    )
+    recovery_path.write_bytes(recovery_archive)
+    recovery_path.chmod(0o600)
+    candidate_archive = b"pinned d282 source image"
+    receipt = {"image_id": rehearsal.HOTFIX_CANDIDATE_IMAGE_ID}
+    monkeypatch.setattr(rehearsal, "_verify_local_pr_head", lambda *_args: None)
+    verified_pr_numbers: list[int] = []
+
+    def verify_reviewed_pr(_root: Path, _sha: str, pull_number: int = 2) -> None:
+        verified_pr_numbers.append(pull_number)
+
+    monkeypatch.setattr(rehearsal, "_verify_reviewed_pr", verify_reviewed_pr)
+    monkeypatch.setattr(rehearsal, "_read_fixed_hotfix_build_receipt", lambda: receipt)
+    monkeypatch.setattr(rehearsal, "_docker_environment", lambda _path: {})
+    monkeypatch.setattr(
+        rehearsal,
+        "_verify_candidate_image",
+        lambda image_id, context, _env, **_kwargs: {
+            "id": image_id,
+            "architecture": "linux/amd64",
+            "source_context_sha256": context,
+            "revision_label": "pinned",
+        },
+    )
+    monkeypatch.setattr(rehearsal, "_image_platform", lambda *_args: "linux/amd64")
+
+    def save(image_id: str, path: Path, _env: dict[str, str]) -> tuple[str, int]:
+        assert image_id == rehearsal.HOTFIX_CANDIDATE_IMAGE_ID
+        path.write_bytes(candidate_archive)
+        path.chmod(0o600)
+        return hashlib.sha256(candidate_archive).hexdigest(), len(candidate_archive)
+
+    monkeypatch.setattr(rehearsal, "_save_image_archive", save)
+    monkeypatch.setattr(
+        rehearsal,
+        "HOTFIX_RECOVERY_ARCHIVE_SHA256",
+        hashlib.sha256(recovery_archive).hexdigest(),
+    )
+    monkeypatch.setattr(rehearsal, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(recovery_archive))
+
+    result = rehearsal.prepare_schema13_hotfix_pair(
+        REPOSITORY_ROOT,
+        reviewed_helper_sha,
+        artifact_directory,
+    )
+
+    manifest_path = artifact_directory / result["manifest_name"]
+    manifest = json.loads(manifest_path.read_bytes())
+    assert stat.S_IMODE(manifest_path.stat().st_mode) == 0o600
+    assert manifest["contract"] == rehearsal.HOTFIX_CONTRACT
+    assert verified_pr_numbers == [rehearsal.HELPER_SOURCE_PR_NUMBER]
+    assert manifest["helper_source"] == {
+        "pull_number": rehearsal.HELPER_SOURCE_PR_NUMBER,
+        "revision": reviewed_helper_sha,
+    }
+    assert manifest["candidate"]["pull_number"] == rehearsal.HOTFIX_PR_NUMBER
+    assert manifest["candidate"]["revision"] == rehearsal.HOTFIX_CANDIDATE_REVISION
+    assert manifest["recovery"]["revision"] == rehearsal.HOTFIX_RECOVERY_REVISION
+    assert manifest["recovery"]["image_id"] == rehearsal.HOTFIX_RECOVERY_IMAGE_ID
+    assert manifest["recovery"]["prior_pair_manifest_sha256"] == (
+        rehearsal.HOTFIX_PRIOR_PAIR_MANIFEST_SHA256
+    )
+    assert manifest["recovery_overlay"] == {
+        "kind": "none",
+        "sha256": rehearsal.HOTFIX_EMPTY_OVERLAY_SHA256,
+    }
+    assert manifest["transition"] == {
+        "from_schema": 13,
+        "to_schema": 13,
+        "migrations": [],
+        "restore": False,
+    }
+    assert result["migration_commands"] == 0
+    assert result["restore_commands"] == 0

@@ -22,6 +22,23 @@ HOST = "45.79.180.32"
 USER = "signalops"
 REPOSITORY = "eddiesoz/stock_probs"
 PULL_NUMBER = 2
+HELPER_SOURCE_PR_NUMBER = 11
+HOTFIX_PR_NUMBER = 9
+HOTFIX_CONTRACT = "schema13_same_schema_hotfix_v1"
+HOTFIX_CANDIDATE_REVISION = "d282d696937f279ca4af4c38341f82a8af7afb6d"
+HOTFIX_CANDIDATE_IMAGE_ID = (
+    "sha256:ba607be79055ee3a09d916e51788135590e7e0ead8f0922aa78128c478644c03"
+)
+HOTFIX_CANDIDATE_CONTEXT_SHA256 = "c2135215d9a96c37841190ff611b49d48e7a08ca88ad073ebcf1973a7abc86a9"
+HOTFIX_BUILD_RECEIPT_SHA256 = "bb808883d862aafe8851bfeffc75fa3140866e72e770420699db0f11a4377608"
+HOTFIX_RECOVERY_ARCHIVE_SHA256 = "99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5"
+HOTFIX_RECOVERY_ARCHIVE_SIZE = 202_156_038
+HOTFIX_RECOVERY_CONTEXT_SHA256 = "9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb"
+HOTFIX_PRIOR_PAIR_MANIFEST_SHA256 = (
+    "e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3"
+)
+HOTFIX_EMPTY_OVERLAY_SHA256 = hashlib.sha256(b"[]").hexdigest()
+HOTFIX_RECOVERY_KIND = "previous_production_candidate"
 HELPER_PATH = "/usr/local/libexec/signal-ledger-pr-rehearsal/host_helper.py"
 STATE_ROOT = "/var/lib/signal-ledger-pr-rehearsal"
 INCOMING_DIRECTORY = "/var/lib/signal-ledger-pr-rehearsal/incoming"
@@ -800,6 +817,114 @@ def verify_pull_request(reviewed_head_sha: str) -> dict[str, object]:
     }
 
 
+def verify_helper_source_pull_request(reviewed_head_sha: str) -> dict[str, object]:
+    """Require PR #11 to remain open, based on main, at the reviewed helper SHA."""
+
+    if REVISION.fullmatch(reviewed_head_sha) is None:
+        raise RehearsalError("reviewed_pr_head_invalid")
+    connection = http.client.HTTPSConnection("api.github.com", timeout=10)
+    try:
+        connection.request(
+            "GET",
+            f"/repos/{REPOSITORY}/pulls/{HELPER_SOURCE_PR_NUMBER}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "signal-ledger-r120-pr-rehearsal",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        response = connection.getresponse()
+        if response.status != 200:
+            raise RehearsalError("helper_source_pr_unavailable")
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+    except (OSError, TimeoutError, http.client.HTTPException) as exc:
+        raise RehearsalError("helper_source_pr_unavailable") from exc
+    finally:
+        connection.close()
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise RehearsalError("helper_source_pr_response_too_large")
+    try:
+        payload: object = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RehearsalError("helper_source_pr_response_invalid") from exc
+    if not isinstance(payload, dict):
+        raise RehearsalError("helper_source_pr_response_invalid")
+    base = payload.get("base")
+    head = payload.get("head")
+    source_repository = head.get("repo") if isinstance(head, dict) else None
+    if (
+        payload.get("state") != "open"
+        or not isinstance(base, dict)
+        or base.get("ref") != "main"
+        or not isinstance(head, dict)
+        or head.get("sha") != reviewed_head_sha
+        or not isinstance(source_repository, dict)
+        or source_repository.get("full_name") != REPOSITORY
+    ):
+        raise RehearsalError("helper_source_pr_mismatch")
+    return {
+        "repository": REPOSITORY,
+        "pull_number": HELPER_SOURCE_PR_NUMBER,
+        "state": "open",
+        "base": "main",
+        "head_sha": reviewed_head_sha,
+        "draft": payload.get("draft") is True,
+    }
+
+
+def verify_hotfix_pull_request() -> dict[str, object]:
+    """Require the fixed PR #9 hotfix candidate to remain open at its accepted image head."""
+
+    connection = http.client.HTTPSConnection("api.github.com", timeout=10)
+    try:
+        connection.request(
+            "GET",
+            f"/repos/{REPOSITORY}/pulls/{HOTFIX_PR_NUMBER}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "signal-ledger-r120-pr-rehearsal",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        response = connection.getresponse()
+        if response.status != 200:
+            raise RehearsalError("hotfix_pr_unavailable")
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+    except (OSError, TimeoutError, http.client.HTTPException) as exc:
+        raise RehearsalError("hotfix_pr_unavailable") from exc
+    finally:
+        connection.close()
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise RehearsalError("hotfix_pr_response_too_large")
+    try:
+        payload: object = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RehearsalError("hotfix_pr_response_invalid") from exc
+    if not isinstance(payload, dict):
+        raise RehearsalError("hotfix_pr_response_invalid")
+    base = payload.get("base")
+    head = payload.get("head")
+    source_repository = head.get("repo") if isinstance(head, dict) else None
+    if (
+        payload.get("state") != "open"
+        or not isinstance(base, dict)
+        or base.get("ref") != "main"
+        or not isinstance(head, dict)
+        or head.get("sha") != HOTFIX_CANDIDATE_REVISION
+        or not isinstance(source_repository, dict)
+        or source_repository.get("full_name") != REPOSITORY
+    ):
+        raise RehearsalError("hotfix_pr_mismatch")
+    return {
+        "repository": REPOSITORY,
+        "pull_number": HOTFIX_PR_NUMBER,
+        "state": "open",
+        "base": "main",
+        "head_sha": HOTFIX_CANDIDATE_REVISION,
+        "draft": payload.get("draft") is True,
+    }
+
+
 def _read_regular_file(path: Path, *, maximum: int, label: str) -> bytes:
     """Read one fixed artifact only after rejecting links, special files, and size drift."""
 
@@ -819,6 +944,155 @@ def _read_regular_file(path: Path, *, maximum: int, label: str) -> bytes:
     if len(data) != metadata.st_size or len(data) > maximum:
         raise RehearsalError(f"{label}_changed")
     return data
+
+
+def _hotfix_pair_asset_names(reviewed_head_sha: str) -> dict[str, str]:
+    """Return the fixed, versioned source archive names for the schema-13 hotfix pair."""
+
+    return {
+        "candidate": f"signal-ledger-image-{HOTFIX_CANDIDATE_REVISION}.tar.gz",
+        "recovery": f"signal-ledger-image-{PRODUCTION_BASELINE['revision']}.tar.gz",
+        "manifest": f"signal-ledger-pair-{reviewed_head_sha}.json",
+    }
+
+
+def _artifact_pair_hotfix(
+    reviewed_head_sha: str,
+    *,
+    manifest: object,
+    manifest_bytes: bytes,
+    candidate_image_id: str,
+    candidate_source_context_sha256: str,
+    recovery_image_id: str,
+    recovery_source_context_sha256: str,
+    recovery_overlay_sha256: str,
+) -> tuple[dict[str, object], dict[str, bytes]]:
+    """Validate the additive same-schema contract against fixed candidate and recovery pins."""
+
+    names = _hotfix_pair_asset_names(reviewed_head_sha)
+    try:
+        candidate_archive = _read_regular_file(
+            ARTIFACT_DIRECTORY / names["candidate"],
+            maximum=MAX_ARCHIVE_BYTES,
+            label="candidate_asset",
+        )
+        recovery_archive = _read_regular_file(
+            ARTIFACT_DIRECTORY / names["recovery"],
+            maximum=MAX_ARCHIVE_BYTES,
+            label="recovery_asset",
+        )
+    except RehearsalError:
+        raise
+
+    if not isinstance(manifest, dict):
+        raise RehearsalError("pair_manifest_invalid")
+    candidate = manifest.get("candidate")
+    recovery = manifest.get("recovery")
+    helper_source = manifest.get("helper_source")
+    transition = manifest.get("transition")
+    overlay = manifest.get("recovery_overlay")
+    expected = (
+        set(manifest)
+        == {
+            "format_version",
+            "contract",
+            "repository",
+            "revision",
+            "helper_source",
+            "candidate",
+            "recovery",
+            "transition",
+            "recovery_overlay",
+        }
+        and type(manifest.get("format_version")) is int
+        and manifest.get("format_version") == 2
+        and manifest.get("contract") == HOTFIX_CONTRACT
+        and manifest.get("repository") == REPOSITORY
+        and manifest.get("revision") == reviewed_head_sha
+        and isinstance(helper_source, dict)
+        and set(helper_source) == {"pull_number", "revision"}
+        and type(helper_source.get("pull_number")) is int
+        and helper_source.get("pull_number") == HELPER_SOURCE_PR_NUMBER
+        and helper_source.get("revision") == reviewed_head_sha
+        and isinstance(candidate, dict)
+        and set(candidate)
+        == {
+            "asset",
+            "archive_sha256",
+            "archive_size",
+            "image_id",
+            "platform",
+            "pull_number",
+            "revision",
+            "schema_version",
+            "source_context_sha256",
+            "build_receipt_sha256",
+        }
+        and candidate.get("asset") == names["candidate"]
+        and candidate.get("archive_sha256") == hashlib.sha256(candidate_archive).hexdigest()
+        and type(candidate.get("archive_size")) is int
+        and candidate.get("archive_size") == len(candidate_archive)
+        and candidate.get("image_id") == HOTFIX_CANDIDATE_IMAGE_ID == candidate_image_id
+        and candidate.get("platform") == "linux/amd64"
+        and type(candidate.get("pull_number")) is int
+        and candidate.get("pull_number") == HOTFIX_PR_NUMBER
+        and candidate.get("revision") == HOTFIX_CANDIDATE_REVISION
+        and type(candidate.get("schema_version")) is int
+        and candidate.get("schema_version") == 13
+        and candidate.get("source_context_sha256")
+        == HOTFIX_CANDIDATE_CONTEXT_SHA256
+        == candidate_source_context_sha256
+        and candidate.get("build_receipt_sha256") == HOTFIX_BUILD_RECEIPT_SHA256
+        and isinstance(recovery, dict)
+        and set(recovery)
+        == {
+            "asset",
+            "archive_sha256",
+            "archive_size",
+            "image_id",
+            "platform",
+            "revision",
+            "schema_version",
+            "source_context_sha256",
+            "kind",
+            "prior_pair_manifest_sha256",
+            "assistant_rollout_mode",
+        }
+        and recovery.get("asset") == names["recovery"]
+        and recovery.get("archive_sha256") == HOTFIX_RECOVERY_ARCHIVE_SHA256
+        and hashlib.sha256(recovery_archive).hexdigest() == HOTFIX_RECOVERY_ARCHIVE_SHA256
+        and type(recovery.get("archive_size")) is int
+        and recovery.get("archive_size") == HOTFIX_RECOVERY_ARCHIVE_SIZE == len(recovery_archive)
+        and recovery.get("image_id") == PRODUCTION_BASELINE["image_id"] == recovery_image_id
+        and recovery.get("platform") == "linux/amd64"
+        and recovery.get("revision") == PRODUCTION_BASELINE["revision"]
+        and type(recovery.get("schema_version")) is int
+        and recovery.get("schema_version") == PRODUCTION_BASELINE["schema_version"] == 13
+        and recovery.get("source_context_sha256")
+        == HOTFIX_RECOVERY_CONTEXT_SHA256
+        == recovery_source_context_sha256
+        and recovery.get("kind") == HOTFIX_RECOVERY_KIND
+        and recovery.get("prior_pair_manifest_sha256") == HOTFIX_PRIOR_PAIR_MANIFEST_SHA256
+        and recovery.get("assistant_rollout_mode") == "invited"
+        and isinstance(transition, dict)
+        and transition
+        == {
+            "from_schema": 13,
+            "to_schema": 13,
+            "migrations": [],
+            "restore": False,
+        }
+        and isinstance(overlay, dict)
+        and overlay == {"kind": "none", "sha256": HOTFIX_EMPTY_OVERLAY_SHA256}
+        and recovery_overlay_sha256 == HOTFIX_EMPTY_OVERLAY_SHA256
+    )
+    if not expected:
+        raise RehearsalError("pair_manifest_identity_mismatch")
+    return manifest, {
+        "manifest": manifest_bytes,
+        "candidate": candidate_archive,
+        "recovery": recovery_archive,
+    }
 
 
 def _artifact_pair(
@@ -851,28 +1125,48 @@ def _artifact_pair(
         raise RehearsalError("pair_assets_unavailable") from exc
     if not stat.S_ISDIR(directory_info.st_mode) or stat.S_ISLNK(directory_info.st_mode):
         raise RehearsalError("pair_assets_unsafe")
-    names = {
-        "candidate": f"signal-ledger-image-{reviewed_head_sha}.tar.gz",
-        "recovery": f"signal-ledger-recovery-{reviewed_head_sha}.tar.gz",
-        "manifest": f"signal-ledger-pair-{reviewed_head_sha}.json",
-    }
-    assets = {
-        role: _read_regular_file(
-            ARTIFACT_DIRECTORY / name,
-            maximum=MAX_MANIFEST_BYTES if role == "manifest" else MAX_ARCHIVE_BYTES,
-            label=f"{role}_asset",
-        )
-        for role, name in names.items()
-    }
-    manifest_bytes = assets["manifest"]
+    manifest_name = f"signal-ledger-pair-{reviewed_head_sha}.json"
+    manifest_bytes = _read_regular_file(
+        ARTIFACT_DIRECTORY / manifest_name,
+        maximum=MAX_MANIFEST_BYTES,
+        label="manifest_asset",
+    )
     if hashlib.sha256(manifest_bytes).hexdigest() != pair_manifest_sha256:
         raise RehearsalError("pair_manifest_digest_mismatch")
     try:
         manifest: object = json.loads(manifest_bytes)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RehearsalError("pair_manifest_invalid") from exc
+    if isinstance(manifest, dict) and manifest.get("format_version") == 2:
+        return _artifact_pair_hotfix(
+            reviewed_head_sha,
+            manifest=manifest,
+            manifest_bytes=manifest_bytes,
+            candidate_image_id=candidate_image_id,
+            candidate_source_context_sha256=candidate_source_context_sha256,
+            recovery_image_id=recovery_image_id,
+            recovery_source_context_sha256=recovery_source_context_sha256,
+            recovery_overlay_sha256=recovery_overlay_sha256,
+        )
     if not isinstance(manifest, dict):
         raise RehearsalError("pair_manifest_invalid")
+    names = {
+        "candidate": f"signal-ledger-image-{reviewed_head_sha}.tar.gz",
+        "recovery": f"signal-ledger-recovery-{reviewed_head_sha}.tar.gz",
+        "manifest": manifest_name,
+    }
+    assets = {"manifest": manifest_bytes}
+    assets.update(
+        {
+            role: _read_regular_file(
+                ARTIFACT_DIRECTORY / name,
+                maximum=MAX_ARCHIVE_BYTES,
+                label=f"{role}_asset",
+            )
+            for role, name in names.items()
+            if role != "manifest"
+        }
+    )
     candidate = manifest.get("candidate")
     recovery = manifest.get("recovery")
     migration = manifest.get("migration")
@@ -927,7 +1221,7 @@ def _artifact_pair(
 
 
 def write_review_pins_from_current_pair() -> dict[str, str]:
-    """Verify the current clean PR #2 pair and persist its two public review pins."""
+    """Verify the current pair's fixed helper PR and persist its two public review pins."""
 
     environment_pins = _environment_review_pins()
     metadata_pins = _read_review_metadata()
@@ -976,7 +1270,14 @@ def write_review_pins_from_current_pair() -> dict[str, str]:
         candidate.get("source_context_sha256") if isinstance(candidate, dict) else None
     )
     recovery_context = recovery.get("source_context_sha256") if isinstance(recovery, dict) else None
-    overlay = recovery.get("overlay_sha256") if isinstance(recovery, dict) else None
+    overlay_value = manifest_value.get("recovery_overlay")
+    overlay = (
+        overlay_value.get("sha256")
+        if isinstance(overlay_value, dict)
+        else recovery.get("overlay_sha256")
+        if isinstance(recovery, dict)
+        else None
+    )
     candidate_image_id = candidate.get("image_id") if isinstance(candidate, dict) else None
     recovery_image_id = recovery.get("image_id") if isinstance(recovery, dict) else None
     if (
@@ -993,13 +1294,6 @@ def write_review_pins_from_current_pair() -> dict[str, str]:
     if environment_pins is not None and environment_pins != proposed_pins:
         raise RehearsalError("review_pins_disagree")
 
-    _verify_local_reviewed_source(
-        reviewed_head_sha,
-        candidate_source_context_sha256=candidate_context,
-        recovery_source_context_sha256=recovery_context,
-        recovery_overlay_sha256=overlay,
-    )
-    verify_pull_request(reviewed_head_sha)
     _artifact_pair(
         reviewed_head_sha,
         candidate_image_id=candidate_image_id,
@@ -1009,6 +1303,18 @@ def write_review_pins_from_current_pair() -> dict[str, str]:
         recovery_overlay_sha256=overlay,
         pair_manifest_sha256=pair_manifest_sha256,
     )
+    if manifest_value.get("format_version") == 2:
+        _verify_local_helper_checkout(reviewed_head_sha)
+        verify_helper_source_pull_request(reviewed_head_sha)
+        verify_hotfix_pull_request()
+    else:
+        _verify_local_reviewed_source(
+            reviewed_head_sha,
+            candidate_source_context_sha256=candidate_context,
+            recovery_source_context_sha256=recovery_context,
+            recovery_overlay_sha256=overlay,
+        )
+        verify_pull_request(reviewed_head_sha)
     _write_review_metadata(*proposed_pins)
     return {
         "reviewed_pr_head_sha": reviewed_head_sha,
@@ -1077,6 +1383,42 @@ def _verify_local_reviewed_source(
         or overlay_digest != recovery_overlay_sha256
     ):
         raise RehearsalError("reviewed_source_context_mismatch")
+
+
+def _verify_local_helper_checkout(reviewed_head_sha: str) -> None:
+    """Verify the exact clean PR #11 helper checkout, separate from PR #9 image pins."""
+
+    head = (
+        _run_fixed(
+            ["/usr/bin/git", "-C", str(REPOSITORY_ROOT), "rev-parse", "--verify", "HEAD^{commit}"],
+            timeout=15,
+        )
+        .decode("ascii", errors="strict")
+        .strip()
+    )
+    origin = (
+        _run_fixed(
+            ["/usr/bin/git", "-C", str(REPOSITORY_ROOT), "remote", "get-url", "origin"],
+            timeout=15,
+        )
+        .decode("utf-8", errors="strict")
+        .strip()
+    )
+    changes = _run_fixed(
+        [
+            "/usr/bin/git",
+            "-C",
+            str(REPOSITORY_ROOT),
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+        ],
+        timeout=15,
+    )
+    if head != reviewed_head_sha or origin != "https://github.com/eddiesoz/stock_probs.git":
+        raise RehearsalError("reviewed_local_source_mismatch")
+    if changes:
+        raise RehearsalError("reviewed_local_source_dirty")
 
 
 def _ssh_prefix(config: RehearsalConfig) -> list[str]:
@@ -1198,16 +1540,23 @@ def _stage_source_bundle(
     pair_manifest_sha256: str,
     assets: dict[str, bytes],
     hashes: dict[str, str],
+    *,
+    helper_source_contract: str | None = None,
 ) -> None:
+    if helper_source_contract is not None and helper_source_contract != HOTFIX_CONTRACT:
+        raise RehearsalError("helper_source_contract_invalid")
     names = _source_stage_names(revision)
     _stage_named_assets(config, names, assets)
+    payload: dict[str, object] = {
+        "reviewed_head_sha": revision,
+        "reviewed_pair_manifest_sha256": pair_manifest_sha256,
+        "asset_sha256": hashes,
+    }
+    if helper_source_contract is not None:
+        payload["helper_source_contract"] = helper_source_contract
     request = {
         "operation": "install",
-        "payload": {
-            "reviewed_head_sha": revision,
-            "reviewed_pair_manifest_sha256": pair_manifest_sha256,
-            "asset_sha256": hashes,
-        },
+        "payload": payload,
     }
     encoded = json.dumps(request, separators=(",", ":"), allow_nan=False).encode("utf-8")
     bootstrap_path = f"{INCOMING_DIRECTORY}/{names['bootstrap']}"
@@ -1226,6 +1575,13 @@ def _stage_source_bundle(
         or response.get("reviewed_head_sha") != revision
         or response.get("reviewed_pair_manifest_sha256") != pair_manifest_sha256
         or response.get("asset_sha256") != hashes
+        or (
+            helper_source_contract is not None
+            and (
+                response.get("pull_number") != HELPER_SOURCE_PR_NUMBER
+                or response.get("helper_source_contract") != helper_source_contract
+            )
+        )
     ):
         raise RehearsalError("bootstrap_install_failed")
 
@@ -1240,20 +1596,13 @@ def rehearse_pr_pair(
     recovery_overlay_sha256: str,
     pair_manifest_sha256: str,
 ) -> dict[str, object]:
-    """Run only the fixed PR #2 disposable pair rehearsal through the operator helper."""
+    """Run the fixed v1 PR #2 or v2 PR #11 pair through the operator helper."""
 
     config = RehearsalConfig.from_env()
     if reviewed_head_sha != config.reviewed_head_sha:
         raise RehearsalError("reviewed_pr_head_mismatch")
     if pair_manifest_sha256 != config.reviewed_pair_manifest_sha256:
         raise RehearsalError("reviewed_pair_manifest_mismatch")
-    pr_receipt = verify_pull_request(reviewed_head_sha)
-    _verify_local_reviewed_source(
-        reviewed_head_sha,
-        candidate_source_context_sha256=candidate_source_context_sha256,
-        recovery_source_context_sha256=recovery_source_context_sha256,
-        recovery_overlay_sha256=recovery_overlay_sha256,
-    )
     manifest, assets = _artifact_pair(
         reviewed_head_sha,
         candidate_image_id=candidate_image_id,
@@ -1263,6 +1612,21 @@ def rehearse_pr_pair(
         recovery_overlay_sha256=recovery_overlay_sha256,
         pair_manifest_sha256=pair_manifest_sha256,
     )
+    helper_source_receipt: dict[str, object] | None = None
+    pr_receipt: dict[str, object] | None = None
+    hotfix_pr_receipt: dict[str, object] | None = None
+    if manifest.get("format_version") == 2:
+        _verify_local_helper_checkout(reviewed_head_sha)
+        helper_source_receipt = verify_helper_source_pull_request(reviewed_head_sha)
+        hotfix_pr_receipt = verify_hotfix_pull_request()
+    else:
+        pr_receipt = verify_pull_request(reviewed_head_sha)
+        _verify_local_reviewed_source(
+            reviewed_head_sha,
+            candidate_source_context_sha256=candidate_source_context_sha256,
+            recovery_source_context_sha256=recovery_source_context_sha256,
+            recovery_overlay_sha256=recovery_overlay_sha256,
+        )
     source_assets, source_hashes = _source_bundle()
     _ensure_incoming_directories(config)
     try:
@@ -1272,6 +1636,9 @@ def rehearse_pr_pair(
             pair_manifest_sha256,
             source_assets,
             source_hashes,
+            helper_source_contract=(
+                HOTFIX_CONTRACT if manifest.get("format_version") == 2 else None
+            ),
         )
         _stage_assets(config, reviewed_head_sha, assets)
     except RehearsalError:
@@ -1281,7 +1648,9 @@ def rehearse_pr_pair(
         "operation": "rehearse_pr_pair",
         "payload": {
             "repository": REPOSITORY,
-            "pull_number": PULL_NUMBER,
+            "pull_number": (
+                HELPER_SOURCE_PR_NUMBER if manifest.get("format_version") == 2 else PULL_NUMBER
+            ),
             "reviewed_head_sha": reviewed_head_sha,
             "candidate_image_id": candidate_image_id,
             "candidate_source_context_sha256": candidate_source_context_sha256,
@@ -1315,7 +1684,7 @@ def rehearse_pr_pair(
             code = "host_rehearsal_failed"
         details = _safe_host_failure_details(response)
         raise RehearsalError(code, details=details)
-    if (
+    common_response_valid = (
         response.get("reviewed_head_sha") != reviewed_head_sha
         or response.get("pair_manifest_sha256") != pair_manifest_sha256
         or response.get("candidate_image_id") != candidate_image_id
@@ -1326,16 +1695,47 @@ def rehearse_pr_pair(
         or response.get("recovery_container_removed") is not True
         or response.get("volume_removed") is not True
         or response.get("images_retained") is not True
-        or response.get("recovery_process_isolation_verified") is not True
         or response.get("architecture") not in {"x86_64", "aarch64"}
+    )
+    if common_response_valid:
+        raise RehearsalError("host_response_invalid")
+    if manifest.get("format_version") == 2 and (
+        response.get("schema13_same_schema_verified") is not True
+        or type(response.get("migration_commands_executed")) is not int
+        or response.get("migration_commands_executed") != 0
+        or type(response.get("restore_commands_executed")) is not int
+        or response.get("restore_commands_executed") != 0
+        or response.get("post_start_write_preserved") is not True
+        or type(response.get("schema_after_recovery")) is not int
+        or response.get("schema_after_recovery") != 13
+        or response.get("production_assistant_enabled") is not True
+        or response.get("recovery_process_isolation_verified") is not True
+        or hotfix_pr_receipt is None
+    ):
+        raise RehearsalError("host_response_invalid")
+    if manifest.get("format_version") == 1 and (
+        response.get("recovery_process_isolation_verified") is not True
     ):
         raise RehearsalError("host_response_invalid")
     production_baseline = _validated_production_baseline(response.get("production_baseline"))
+    if manifest.get("format_version") == 2 and production_baseline != PRODUCTION_BASELINE:
+        raise RehearsalError("host_response_invalid")
     resource_evidence = _validated_resource_evidence(response)
-    return {
+    result: dict[str, object] = {
         "status": "pass",
-        "rehearsal": "pr_bound_schema13_pair",
-        "pull_request": pr_receipt,
+        "rehearsal": (
+            "pr_bound_schema13_same_schema_hotfix"
+            if manifest.get("format_version") == 2
+            else "pr_bound_schema13_pair"
+        ),
+        "pull_request": (
+            {
+                "helper_source": helper_source_receipt,
+                "hotfix_candidate": hotfix_pr_receipt,
+            }
+            if manifest.get("format_version") == 2
+            else pr_receipt
+        ),
         "reviewed_head_sha": reviewed_head_sha,
         "candidate_image_id": candidate_image_id,
         "candidate_source_context_sha256": candidate_source_context_sha256,
@@ -1359,6 +1759,12 @@ def rehearse_pr_pair(
                     "production_health_samples",
                     "migration_backup_verified",
                     "post_migration_write_preserved",
+                    "schema13_same_schema_verified",
+                    "migration_commands_executed",
+                    "restore_commands_executed",
+                    "post_start_write_preserved",
+                    "schema_after_recovery",
+                    "production_assistant_enabled",
                     "ownership_isolation_verified",
                     "restore_guard_verified",
                     "recovery_process_isolation_verified",
@@ -1375,6 +1781,9 @@ def rehearse_pr_pair(
             **resource_evidence,
         },
     }
+    if manifest.get("format_version") == 2:
+        result["hotfix_candidate_pull_number"] = HOTFIX_PR_NUMBER
+    return result
 
 
 _SAFE_NATIVE_FAILURE_STAGES = {

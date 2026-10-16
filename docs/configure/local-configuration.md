@@ -244,3 +244,25 @@ source allowlist with a disabled-ready requirement, not a configurable arbitrary
 or database. It does not lower the startup/running memory floors or replace the reviewed PR's
 candidate/recovery pair. Source presence does not prove host installation or production acceptance;
 see [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+### Same-schema hotfix contract
+
+The separate R-ASTRA-121 operational-helper PR #11 candidate adds a format-2
+`schema13_same_schema_hotfix_v1` contract. It binds helper source PR #11, application candidate PR
+#9, and the original 5ad schema-13 production artifact as the recovery identity; it keeps schema 13
+on both sides and declares no migrations, restore, or recovery overlay. The installed PR #10 helper
+and historical PR #2 format-1 schema-12-to-13 pair remain separate. The format-2 recovery check
+expects the normal shipped supervisor/image with its assistant worker disabled and no OpenCode
+process, not removal of an executable or package. The current helper's independent selected
+source/test review passed 162 tests with one opt-in Docker test skipped and 266 stable bindings;
+its installed production metadata remains unavailable on the local host. The local recovery profile
+diagnostic against the original 5ad image failed on observed supervisor and app command shapes. A
+focused repair passed 33 synthetic tests. The follow-up independent process-profile QA passed
+360 tests with one direct-Docker test deselected, and a local original-image diagnostic passed. The
+bounded diagnostic receipt then passed independent offline review in E22; the reviewer did not rerun
+tests or start a container, and effective CPU/PID/swap/tmpfs limits were not all inspected. PR #11
+remains a candidate pending v2 packaging and required host checks. See the
+[E21 contract and status](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint)
+and [E22 review](../../MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic)
+for exact findings and receipts. Applied-state persistence and helper-revision substitution
+passed their selected synthetic review; neither establishes installation or production acceptance.

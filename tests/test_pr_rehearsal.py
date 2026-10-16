@@ -7,11 +7,13 @@ import io
 import json
 import os
 import re
+import runpy
 import secrets
 import stat
 import subprocess
 import sys
 import tarfile
+from contextlib import nullcontext
 from pathlib import Path
 from subprocess import CompletedProcess
 from types import SimpleNamespace
@@ -50,6 +52,57 @@ def _review_pin_test_environment(monkeypatch, tmp_path: Path) -> Path:
     monkeypatch.delenv(controller.REVIEW_HEAD_ENV, raising=False)
     monkeypatch.delenv(controller.REVIEW_PAIR_ENV, raising=False)
     return config_home
+
+
+def _hotfix_pair_manifest(
+    reviewed_head: str,
+    candidate_archive: bytes,
+    recovery_archive: bytes,
+) -> dict[str, object]:
+    candidate_name = f"signal-ledger-image-{controller.HOTFIX_CANDIDATE_REVISION}.tar.gz"
+    recovery_name = f"signal-ledger-image-{controller.PRODUCTION_BASELINE['revision']}.tar.gz"
+    return {
+        "format_version": 2,
+        "contract": controller.HOTFIX_CONTRACT,
+        "repository": controller.REPOSITORY,
+        "revision": reviewed_head,
+        "helper_source": {
+            "pull_number": controller.HELPER_SOURCE_PR_NUMBER,
+            "revision": reviewed_head,
+        },
+        "candidate": {
+            "asset": candidate_name,
+            "archive_sha256": hashlib.sha256(candidate_archive).hexdigest(),
+            "archive_size": len(candidate_archive),
+            "image_id": controller.HOTFIX_CANDIDATE_IMAGE_ID,
+            "platform": "linux/amd64",
+            "pull_number": controller.HOTFIX_PR_NUMBER,
+            "revision": controller.HOTFIX_CANDIDATE_REVISION,
+            "schema_version": 13,
+            "source_context_sha256": controller.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            "build_receipt_sha256": controller.HOTFIX_BUILD_RECEIPT_SHA256,
+        },
+        "recovery": {
+            "asset": recovery_name,
+            "archive_sha256": hashlib.sha256(recovery_archive).hexdigest(),
+            "archive_size": len(recovery_archive),
+            "image_id": controller.PRODUCTION_BASELINE["image_id"],
+            "platform": "linux/amd64",
+            "revision": controller.PRODUCTION_BASELINE["revision"],
+            "schema_version": 13,
+            "source_context_sha256": controller.HOTFIX_RECOVERY_CONTEXT_SHA256,
+            "kind": controller.HOTFIX_RECOVERY_KIND,
+            "prior_pair_manifest_sha256": controller.HOTFIX_PRIOR_PAIR_MANIFEST_SHA256,
+            "assistant_rollout_mode": "invited",
+        },
+        "transition": {
+            "from_schema": 13,
+            "to_schema": 13,
+            "migrations": [],
+            "restore": False,
+        },
+        "recovery_overlay": {"kind": "none", "sha256": controller.HOTFIX_EMPTY_OVERLAY_SHA256},
+    }
 
 
 def _owned_network_inspect_output(
@@ -113,6 +166,52 @@ def _app_profile_inspect_output(
     return ("|".join(fields) + "\n").encode()
 
 
+def _host_hotfix_manifest(
+    helper_revision: str,
+    candidate_archive: bytes,
+    recovery_archive: bytes,
+) -> dict[str, object]:
+    return {
+        "format_version": 2,
+        "contract": host_helper.HOTFIX_CONTRACT,
+        "repository": host_helper.REPOSITORY,
+        "revision": helper_revision,
+        "helper_source": {
+            "pull_number": host_helper.HELPER_SOURCE_PR_NUMBER,
+            "revision": helper_revision,
+        },
+        "candidate": {
+            "asset": f"signal-ledger-image-{host_helper.HOTFIX_CANDIDATE_REVISION}.tar.gz",
+            "archive_sha256": hashlib.sha256(candidate_archive).hexdigest(),
+            "archive_size": len(candidate_archive),
+            "image_id": host_helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            "platform": "linux/amd64",
+            "pull_number": host_helper.HOTFIX_PR_NUMBER,
+            "revision": host_helper.HOTFIX_CANDIDATE_REVISION,
+            "schema_version": 13,
+            "source_context_sha256": host_helper.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            "build_receipt_sha256": host_helper.HOTFIX_BUILD_RECEIPT_SHA256,
+        },
+        "recovery": {
+            "asset": (
+                f"signal-ledger-image-{host_helper.HOTFIX_RECOVERY_BASELINE['revision']}.tar.gz"
+            ),
+            "archive_sha256": hashlib.sha256(recovery_archive).hexdigest(),
+            "archive_size": len(recovery_archive),
+            "image_id": host_helper.HOTFIX_RECOVERY_BASELINE["image_id"],
+            "platform": "linux/amd64",
+            "revision": host_helper.HOTFIX_RECOVERY_BASELINE["revision"],
+            "schema_version": 13,
+            "source_context_sha256": host_helper.HOTFIX_RECOVERY_CONTEXT_SHA256,
+            "kind": host_helper.HOTFIX_RECOVERY_KIND,
+            "prior_pair_manifest_sha256": host_helper.HOTFIX_PRIOR_PAIR_MANIFEST_SHA256,
+            "assistant_rollout_mode": "invited",
+        },
+        "transition": {"from_schema": 13, "to_schema": 13, "migrations": [], "restore": False},
+        "recovery_overlay": {"kind": "none", "sha256": host_helper.HOTFIX_EMPTY_OVERLAY_SHA256},
+    }
+
+
 def test_installed_helper_path_matches_bootstrap_asset_name() -> None:
     installed = bootstrap.ASSETS["host_helper"][1]
     assert Path(controller.HELPER_PATH).name == installed
@@ -131,6 +230,1072 @@ def test_pair_migration_pins_match_the_unreleased_migration_file() -> None:
     assert source_digest == schema13.MIGRATION_013_SHA256
     assert source_digest == host_helper.MIGRATION_SHA256
     assert source_digest == controller.MIGRATION_SHA256
+
+
+def test_schema13_hotfix_pair_accepts_exact_pr9_candidate_and_5ad_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reviewed_head = "a" * 40
+    candidate_archive = b"synthetic PR9 OCI archive"
+    recovery_archive = b"synthetic 5ad OCI archive"
+    recovery_digest = hashlib.sha256(recovery_archive).hexdigest()
+    monkeypatch.setattr(controller, "HOTFIX_RECOVERY_ARCHIVE_SHA256", recovery_digest)
+    monkeypatch.setattr(controller, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(recovery_archive))
+    tmp_path.chmod(0o700)
+    (tmp_path / f"signal-ledger-image-{controller.HOTFIX_CANDIDATE_REVISION}.tar.gz").write_bytes(
+        candidate_archive
+    )
+    (
+        tmp_path / f"signal-ledger-image-{controller.PRODUCTION_BASELINE['revision']}.tar.gz"
+    ).write_bytes(recovery_archive)
+    manifest = _hotfix_pair_manifest(reviewed_head, candidate_archive, recovery_archive)
+    manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    (tmp_path / f"signal-ledger-pair-{reviewed_head}.json").write_bytes(manifest_bytes)
+    monkeypatch.setattr(controller, "ARTIFACT_DIRECTORY", tmp_path)
+
+    verified_manifest, assets = controller._artifact_pair(
+        reviewed_head,
+        candidate_image_id=controller.HOTFIX_CANDIDATE_IMAGE_ID,
+        candidate_source_context_sha256=controller.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        recovery_image_id=controller.PRODUCTION_BASELINE["image_id"],
+        recovery_source_context_sha256=controller.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        recovery_overlay_sha256=controller.HOTFIX_EMPTY_OVERLAY_SHA256,
+        pair_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+    )
+
+    assert verified_manifest["contract"] == controller.HOTFIX_CONTRACT
+    assert assets["candidate"] == candidate_archive
+    assert assets["recovery"] == recovery_archive
+
+
+def test_schema12_to_13_v1_pair_manifest_remains_accepted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reviewed_head = "a" * 40
+    candidate_context = "b" * 64
+    recovery_context = "c" * 64
+    overlay_sha256 = "d" * 64
+    candidate_image_id = "sha256:" + "e" * 64
+    recovery_image_id = "sha256:" + "f" * 64
+    candidate_archive = b"existing schema12-to-13 candidate archive"
+    recovery_archive = b"existing schema13 recovery archive"
+    candidate_name = f"signal-ledger-image-{reviewed_head}.tar.gz"
+    recovery_name = f"signal-ledger-recovery-{reviewed_head}.tar.gz"
+    (tmp_path / candidate_name).write_bytes(candidate_archive)
+    (tmp_path / recovery_name).write_bytes(recovery_archive)
+    manifest = {
+        "format_version": 1,
+        "repository": controller.REPOSITORY,
+        "revision": reviewed_head,
+        "source_context_sha256": candidate_context,
+        "migration": {
+            "from_schema": 12,
+            "to_schema": 13,
+            "sha256": controller.MIGRATION_SHA256,
+        },
+        "candidate": {
+            "asset": candidate_name,
+            "image_id": candidate_image_id,
+            "archive_sha256": hashlib.sha256(candidate_archive).hexdigest(),
+            "archive_size": len(candidate_archive),
+            "platform": "linux/amd64",
+            "revision": reviewed_head,
+            "schema_version": 13,
+            "source_context_sha256": candidate_context,
+        },
+        "recovery": {
+            "asset": recovery_name,
+            "image_id": recovery_image_id,
+            "archive_sha256": hashlib.sha256(recovery_archive).hexdigest(),
+            "archive_size": len(recovery_archive),
+            "platform": "linux/amd64",
+            "revision": reviewed_head,
+            "schema_version": 13,
+            "assistant_enabled": False,
+            "source_context_sha256": recovery_context,
+            "base_revision": controller.DEPLOYED_BASELINE["revision"],
+            "base_image_id": controller.DEPLOYED_BASELINE["image_id"],
+            "base_archive_sha256": controller.DEPLOYED_BASELINE["archive_sha256"],
+            "overlay_sha256": overlay_sha256,
+            "migration_sha256": controller.MIGRATION_SHA256,
+        },
+    }
+    manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    manifest_path = tmp_path / f"signal-ledger-pair-{reviewed_head}.json"
+    manifest_path.write_bytes(manifest_bytes)
+    monkeypatch.setattr(controller, "ARTIFACT_DIRECTORY", tmp_path)
+
+    verified, assets = controller._artifact_pair(
+        reviewed_head,
+        candidate_image_id=candidate_image_id,
+        candidate_source_context_sha256=candidate_context,
+        recovery_image_id=recovery_image_id,
+        recovery_source_context_sha256=recovery_context,
+        recovery_overlay_sha256=overlay_sha256,
+        pair_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+    )
+
+    assert verified["format_version"] == 1
+    assert assets == {
+        "manifest": manifest_bytes,
+        "candidate": candidate_archive,
+        "recovery": recovery_archive,
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["wrong_helper_pr", "wrong_candidate_pr", "migration", "old_recovery_image"],
+)
+def test_schema13_hotfix_pair_rejects_wrong_candidate_or_transition_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    reviewed_head = "a" * 40
+    candidate_archive = b"synthetic PR9 OCI archive"
+    recovery_archive = b"synthetic 5ad OCI archive"
+    monkeypatch.setattr(
+        controller, "HOTFIX_RECOVERY_ARCHIVE_SHA256", hashlib.sha256(recovery_archive).hexdigest()
+    )
+    monkeypatch.setattr(controller, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(recovery_archive))
+    manifest = _hotfix_pair_manifest(reviewed_head, candidate_archive, recovery_archive)
+    if mutation == "wrong_helper_pr":
+        manifest["helper_source"]["pull_number"] = controller.PULL_NUMBER
+    elif mutation == "wrong_candidate_pr":
+        manifest["candidate"]["pull_number"] = 11
+    elif mutation == "migration":
+        manifest["transition"]["migrations"] = [controller.MIGRATION_SHA256]
+    else:
+        manifest["recovery"]["image_id"] = controller.RECOVERY_PRODUCTION_BASELINE["image_id"]
+    manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    (tmp_path / f"signal-ledger-image-{controller.HOTFIX_CANDIDATE_REVISION}.tar.gz").write_bytes(
+        candidate_archive
+    )
+    (
+        tmp_path / f"signal-ledger-image-{controller.PRODUCTION_BASELINE['revision']}.tar.gz"
+    ).write_bytes(recovery_archive)
+    (tmp_path / f"signal-ledger-pair-{reviewed_head}.json").write_bytes(manifest_bytes)
+    monkeypatch.setattr(controller, "ARTIFACT_DIRECTORY", tmp_path)
+
+    with pytest.raises(controller.RehearsalError, match="pair_manifest_identity_mismatch"):
+        controller._artifact_pair(
+            reviewed_head,
+            candidate_image_id=controller.HOTFIX_CANDIDATE_IMAGE_ID,
+            candidate_source_context_sha256=controller.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            recovery_image_id=controller.PRODUCTION_BASELINE["image_id"],
+            recovery_source_context_sha256=controller.HOTFIX_RECOVERY_CONTEXT_SHA256,
+            recovery_overlay_sha256=controller.HOTFIX_EMPTY_OVERLAY_SHA256,
+            pair_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+        )
+
+
+def test_hotfix_pull_request_gate_uses_fixed_pr9_and_exact_candidate_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response_body = json.dumps(
+        {
+            "state": "open",
+            "base": {"ref": "main"},
+            "head": {
+                "sha": controller.HOTFIX_CANDIDATE_REVISION,
+                "repo": {"full_name": controller.REPOSITORY},
+            },
+            "draft": False,
+        }
+    ).encode()
+    calls: list[tuple[str, str]] = []
+
+    class Response:
+        status = 200
+
+        def read(self, _maximum: int) -> bytes:
+            return response_body
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            assert headers["Accept"] == "application/vnd.github+json"
+            calls.append((method, path))
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(controller.http.client, "HTTPSConnection", Connection)
+
+    receipt = controller.verify_hotfix_pull_request()
+
+    assert calls == [("GET", f"/repos/{controller.REPOSITORY}/pulls/9")]
+    assert receipt["head_sha"] == controller.HOTFIX_CANDIDATE_REVISION
+    assert receipt["pull_number"] == 9
+
+
+def test_host_v2_pair_manifest_stages_exact_candidate_and_previous_production_images(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper_revision = "a" * 40
+    candidate_archive = b"candidate-oci-archive"
+    recovery_archive = b"previous-production-oci-archive"
+    recovery_digest = hashlib.sha256(recovery_archive).hexdigest()
+    monkeypatch.setattr(host_helper, "HOTFIX_RECOVERY_ARCHIVE_SHA256", recovery_digest)
+    monkeypatch.setattr(host_helper, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(recovery_archive))
+    manifest = _host_hotfix_manifest(helper_revision, candidate_archive, recovery_archive)
+    manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    candidate_digest = hashlib.sha256(candidate_archive).hexdigest()
+    staged: list[tuple[str, str, str]] = []
+
+    monkeypatch.setattr(host_helper, "_read_small_asset", lambda *_args: manifest_bytes)
+
+    def stage(name: str, **kwargs):
+        staged.append((name, kwargs["image_id"], kwargs["revision"]))
+        size = len(candidate_archive) if kwargs["role"] == "candidate" else len(recovery_archive)
+        digest = candidate_digest if kwargs["role"] == "candidate" else recovery_digest
+        return host_helper.StagedArchive(
+            Path(f"/{kwargs['role']}.tar.gz"), digest, size, kwargs["image_id"]
+        )
+
+    monkeypatch.setattr(host_helper, "_stage_asset", stage)
+    payload = {
+        "candidate_image_id": host_helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        "candidate_source_context_sha256": host_helper.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "recovery_image_id": host_helper.HOTFIX_RECOVERY_BASELINE["image_id"],
+        "recovery_source_context_sha256": host_helper.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        "recovery_overlay_sha256": host_helper.HOTFIX_EMPTY_OVERLAY_SHA256,
+        "pair_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "candidate_archive_sha256": candidate_digest,
+        "recovery_archive_sha256": recovery_digest,
+    }
+
+    result_manifest, staged_archives = host_helper._verify_pair(payload, helper_revision)
+
+    assert result_manifest["contract"] == host_helper.HOTFIX_CONTRACT
+    assert set(staged_archives) == {"candidate", "recovery"}
+    assert staged == [
+        (
+            f"signal-ledger-pr1-{helper_revision}-candidate.tar.gz",
+            host_helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            host_helper.HOTFIX_CANDIDATE_REVISION,
+        ),
+        (
+            f"signal-ledger-pr1-{helper_revision}-recovery.tar.gz",
+            host_helper.HOTFIX_RECOVERY_BASELINE["image_id"],
+            host_helper.HOTFIX_RECOVERY_BASELINE["revision"],
+        ),
+    ]
+
+
+@pytest.mark.parametrize("mutation", ["wrong_helper_pr", "old_recovery_image"])
+def test_host_v2_pair_rejects_identity_mismatch_before_staging(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    helper_revision = "a" * 40
+    candidate_archive = b"candidate-oci-archive"
+    recovery_archive = b"previous-production-oci-archive"
+    recovery_digest = hashlib.sha256(recovery_archive).hexdigest()
+    monkeypatch.setattr(host_helper, "HOTFIX_RECOVERY_ARCHIVE_SHA256", recovery_digest)
+    monkeypatch.setattr(host_helper, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(recovery_archive))
+    manifest = _host_hotfix_manifest(helper_revision, candidate_archive, recovery_archive)
+    if mutation == "wrong_helper_pr":
+        manifest["helper_source"]["pull_number"] = host_helper.PULL_NUMBER
+    else:
+        manifest["recovery"]["image_id"] = host_helper.RECOVERY_PRODUCTION_BASELINE["image_id"]
+    manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    stage_calls: list[str] = []
+    monkeypatch.setattr(host_helper, "_read_small_asset", lambda *_args: manifest_bytes)
+    monkeypatch.setattr(
+        host_helper,
+        "_stage_asset",
+        lambda name, **_kwargs: stage_calls.append(name),
+    )
+    payload = {
+        "candidate_image_id": host_helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        "candidate_source_context_sha256": host_helper.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "recovery_image_id": host_helper.HOTFIX_RECOVERY_BASELINE["image_id"],
+        "recovery_source_context_sha256": host_helper.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        "recovery_overlay_sha256": host_helper.HOTFIX_EMPTY_OVERLAY_SHA256,
+        "pair_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "candidate_archive_sha256": hashlib.sha256(candidate_archive).hexdigest(),
+        "recovery_archive_sha256": recovery_digest,
+    }
+
+    with pytest.raises(host_helper.RehearsalError, match="pair_manifest_identity_mismatch"):
+        host_helper._verify_pair(payload, helper_revision)
+    assert stage_calls == []
+
+
+@pytest.mark.parametrize(
+    "raw", [b'{"format_version":2,"format_version":2}', b'{"format_version":true}']
+)
+def test_host_pair_version_probe_rejects_duplicate_or_untyped_version(
+    monkeypatch: pytest.MonkeyPatch,
+    raw: bytes,
+) -> None:
+    monkeypatch.setattr(host_helper, "_read_small_asset", lambda *_args: raw)
+    payload = {
+        "reviewed_head_sha": "a" * 40,
+        "pair_manifest_sha256": hashlib.sha256(raw).hexdigest(),
+    }
+    with pytest.raises(host_helper.RehearsalError, match="pair_manifest_invalid"):
+        host_helper._pair_manifest_version(payload)
+
+
+def test_host_pair_dispatch_keeps_v1_schema_migration_runner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {"reviewed_head_sha": "a" * 40}
+    expected = {"status": "legacy-v1"}
+    monkeypatch.setattr(host_helper, "_pair_manifest_version", lambda _payload: 1)
+    monkeypatch.setattr(
+        host_helper, "_run_pair_v1", lambda observed: expected if observed is payload else {}
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_run_pair_v2",
+        lambda _payload: pytest.fail("v1 dispatch must keep the migration runner"),
+    )
+
+    assert host_helper._run_pair(payload) == expected
+
+
+def test_recovery_process_profile_preserves_v1_and_supports_pinned_v2_supervisor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probes: list[str] = []
+    v1_result = {
+        "uid": 10001,
+        "gid": 10001,
+        "cap_eff": 0,
+        "cap_prm": 0,
+        "cap_bnd": 192,
+        "no_new_privileges": True,
+        "tmp_writable": True,
+        "worker_home_private": True,
+        "native_worker_absent": True,
+    }
+    v2_result = {
+        **v1_result,
+        "container_supervisor_present": True,
+        "opencode_binary_present": True,
+        "assistant_package_present": True,
+        "assistant_disabled_readiness": True,
+        "pid1_supervisor_verified": True,
+        "app_wrapper_identity_verified": True,
+        "app_process_identity_verified": True,
+        "process_inventory_bounded": True,
+    }
+
+    def run(command: list[str], **_kwargs: object) -> CompletedProcess[bytes]:
+        probe = command[-1]
+        probes.append(probe)
+        result = v2_result if "assistant_disabled_readiness" in probe else v1_result
+        return CompletedProcess(command, 0, json.dumps(result).encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+
+    assert host_helper._recovery_process_profile("a" * 64)["native_worker_absent"] is True
+    assert (
+        host_helper._recovery_process_profile("b" * 64, same_schema_hotfix=True)[
+            "container_supervisor_present"
+        ]
+        is True
+    )
+    assert "assert not pathlib.Path('/usr/local/bin/opencode').exists()" in probes[0]
+    assert "find_spec('stock_probs.assistant') is None" in probes[0]
+    assert "stock_probs.container_supervisor" not in probes[0]
+    assert probes[1] == host_helper._recovery_process_profile_probe_v2()
+
+
+@pytest.mark.parametrize("cap_bnd", [0, 256])
+def test_v2_recovery_process_profile_rejects_unexpected_reported_bound_capabilities(
+    monkeypatch: pytest.MonkeyPatch,
+    cap_bnd: int,
+) -> None:
+    profile = {
+        "uid": 10001,
+        "gid": 10001,
+        "cap_eff": 0,
+        "cap_prm": 0,
+        "cap_bnd": cap_bnd,
+        "no_new_privileges": True,
+        "tmp_writable": True,
+        "worker_home_private": True,
+        "native_worker_absent": True,
+        "container_supervisor_present": True,
+        "opencode_binary_present": True,
+        "assistant_package_present": True,
+        "assistant_disabled_readiness": True,
+        "pid1_supervisor_verified": True,
+        "app_wrapper_identity_verified": True,
+        "app_process_identity_verified": True,
+        "process_inventory_bounded": True,
+    }
+
+    def run(command: list[str], **_kwargs: object) -> CompletedProcess[bytes]:
+        return CompletedProcess(command, 0, json.dumps(profile).encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+
+    with pytest.raises(host_helper.RehearsalError, match="recovery_process_identity_invalid"):
+        host_helper._recovery_process_profile("a" * 64, same_schema_hotfix=True)
+
+
+def _profile_proc_status(
+    uid: int | tuple[int, int, int, int],
+    gid: int | tuple[int, int, int, int],
+    *,
+    ppid: int,
+    cap_eff: int,
+    cap_prm: int,
+    cap_bnd: int = 192,
+    no_new_privileges: int = 1,
+) -> str:
+    uid_values = (uid,) * 4 if isinstance(uid, int) else uid
+    gid_values = (gid,) * 4 if isinstance(gid, int) else gid
+    return (
+        f"Uid:\t{' '.join(str(value) for value in uid_values)}\n"
+        f"Gid:\t{' '.join(str(value) for value in gid_values)}\n"
+        f"PPid:\t{ppid}\n"
+        f"CapEff:\t{cap_eff:016x}\nCapPrm:\t{cap_prm:016x}\n"
+        f"CapBnd:\t{cap_bnd:016x}\nNoNewPrivs:\t{no_new_privileges}\n"
+    )
+
+
+def _write_profile_proc(
+    proc_root: Path,
+    pid: int,
+    command: tuple[str, ...],
+    *,
+    uid: int | tuple[int, int, int, int],
+    gid: int | tuple[int, int, int, int],
+    ppid: int | None = None,
+    cap_eff: int = 0,
+    cap_prm: int = 0,
+    cap_bnd: int = 192,
+    no_new_privileges: int = 1,
+) -> Path:
+    process_path = proc_root / str(pid)
+    process_path.mkdir(exist_ok=True)
+    if ppid is None:
+        ppid = {1: 0, 101: 1, 102: 101}.get(pid, 1)
+    (process_path / "status").write_text(
+        _profile_proc_status(
+            uid,
+            gid,
+            ppid=ppid,
+            cap_eff=cap_eff,
+            cap_prm=cap_prm,
+            cap_bnd=cap_bnd,
+            no_new_privileges=no_new_privileges,
+        ),
+        encoding="ascii",
+    )
+    (process_path / "cmdline").write_bytes(b"\0".join(item.encode() for item in command) + b"\0")
+    return process_path
+
+
+def _execute_generated_v2_recovery_probe(
+    tmp_path: Path,
+    scenario: str = "valid",
+) -> dict[str, object]:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    root = tmp_path / "image-root"
+    opencode = root / "usr/local/bin/opencode"
+    opencode.parent.mkdir(parents=True)
+    opencode.write_bytes(b"pinned image binary fixture")
+    (root / "tmp").mkdir()
+    (root / "run/assistant-worker-home").mkdir(parents=True)
+
+    pid1_command = (
+        "python",
+        "-m",
+        "stock_probs.container_supervisor",
+        "serve",
+        "--host",
+        "0.0.0.0",  # noqa: S104 - listener remains inside the container
+        "--port",
+        "8000",
+        "--allow-non-loopback",
+    )
+    app_wrapper_command = (
+        "/usr/local/bin/python",
+        "-m",
+        "stock_probs.container_supervisor",
+        "--child",
+        "app",
+    )
+    app_command = (
+        "/usr/local/bin/python",
+        "/usr/local/bin/stock-probs",
+        "serve",
+        "--host",
+        "0.0.0.0",  # noqa: S104 - binds internally; published host port stays loopback-only
+        "--port",
+        "8000",
+        "--allow-non-loopback",
+    )
+    _write_profile_proc(
+        proc_root,
+        1,
+        pid1_command,
+        uid=0,
+        gid=0,
+        ppid=0,
+        cap_eff=192,
+        cap_prm=192,
+    )
+    app_wrapper = _write_profile_proc(
+        proc_root,
+        101,
+        app_wrapper_command,
+        uid=10001,
+        gid=10001,
+        ppid=1,
+    )
+    app_process = _write_profile_proc(
+        proc_root,
+        102,
+        app_command,
+        uid=10001,
+        gid=10001,
+        ppid=101,
+    )
+    _write_profile_proc(
+        proc_root,
+        900,
+        ("/usr/local/bin/python", "-c", "profile probe"),
+        uid=10001,
+        gid=10001,
+    )
+
+    if scenario == "wrong-wrapper-parent":
+        _write_profile_proc(
+            proc_root,
+            101,
+            app_wrapper_command,
+            uid=10001,
+            gid=10001,
+            ppid=900,
+        )
+    elif scenario == "wrong-app-parent":
+        _write_profile_proc(
+            proc_root,
+            102,
+            app_command,
+            uid=10001,
+            gid=10001,
+            ppid=1,
+        )
+    elif scenario == "missing-ppid":
+        status_path = proc_root / "102" / "status"
+        status = status_path.read_text(encoding="ascii")
+        expected = "PPid:\t101\n"
+        assert status.count(expected) == 1
+        status_path.write_text(status.replace(expected, "", 1), encoding="ascii")
+    elif scenario == "duplicate-ppid":
+        status_path = proc_root / "102" / "status"
+        with status_path.open("a", encoding="ascii") as status_file:
+            status_file.write("PPid:\t101\n")
+    elif scenario == "pid1-missing-serve":
+        _write_profile_proc(
+            proc_root,
+            1,
+            pid1_command[:3],
+            uid=0,
+            gid=0,
+            ppid=0,
+            cap_eff=192,
+            cap_prm=192,
+        )
+    elif scenario == "pid1-mutated-serve-args":
+        _write_profile_proc(
+            proc_root,
+            1,
+            (*pid1_command[:-3], "9000", "--allow-non-loopback"),
+            uid=0,
+            gid=0,
+            ppid=0,
+            cap_eff=192,
+            cap_prm=192,
+        )
+    elif scenario == "wrong-app-interpreter":
+        _write_profile_proc(
+            proc_root,
+            102,
+            ("/usr/bin/python", *app_command[1:]),
+            uid=10001,
+            gid=10001,
+            ppid=101,
+        )
+    elif scenario == "wrong-app-script":
+        _write_profile_proc(
+            proc_root,
+            102,
+            (app_command[0], "/usr/local/bin/stock-probs-other", *app_command[2:]),
+            uid=10001,
+            gid=10001,
+            ppid=101,
+        )
+    elif scenario == "root-app":
+        _write_profile_proc(
+            proc_root,
+            102,
+            tuple((app_process / "cmdline").read_bytes().decode().split("\0")[:-1]),
+            uid=0,
+            gid=0,
+        )
+    elif scenario == "extra-app-caps":
+        _write_profile_proc(
+            proc_root,
+            101,
+            tuple((app_wrapper / "cmdline").read_bytes().decode().split("\0")[:-1]),
+            uid=10001,
+            gid=10001,
+            ppid=1,
+            cap_prm=64,
+        )
+    elif scenario == "root-app-wrapper":
+        _write_profile_proc(
+            proc_root,
+            101,
+            tuple((app_wrapper / "cmdline").read_bytes().decode().split("\0")[:-1]),
+            uid=0,
+            gid=0,
+        )
+    elif scenario == "extra-app-process-caps":
+        _write_profile_proc(
+            proc_root,
+            102,
+            tuple((app_process / "cmdline").read_bytes().decode().split("\0")[:-1]),
+            uid=10001,
+            gid=10001,
+            ppid=101,
+            cap_eff=64,
+        )
+    elif scenario == "app-identity-fields":
+        _write_profile_proc(
+            proc_root,
+            102,
+            tuple((app_process / "cmdline").read_bytes().decode().split("\0")[:-1]),
+            uid=(10001, 10001, 0, 10001),
+            gid=10001,
+            ppid=101,
+        )
+    elif scenario == "app-no-new-privileges":
+        _write_profile_proc(
+            proc_root,
+            102,
+            tuple((app_process / "cmdline").read_bytes().decode().split("\0")[:-1]),
+            uid=10001,
+            gid=10001,
+            ppid=101,
+            no_new_privileges=0,
+        )
+    elif scenario == "missing-app":
+        for child in app_process.iterdir():
+            child.unlink()
+        app_process.rmdir()
+    elif scenario == "running-worker":
+        _write_profile_proc(
+            proc_root,
+            103,
+            (
+                "/usr/local/bin/python",
+                "-m",
+                "stock_probs.container_supervisor",
+                "--child",
+                "worker",
+            ),
+            uid=10002,
+            gid=10002,
+        )
+    elif scenario == "running-opencode":
+        _write_profile_proc(
+            proc_root,
+            103,
+            (
+                "/usr/local/bin/opencode",
+                "serve",
+                "--hostname",
+                "127.0.0.1",
+                "--port",
+                "4097",
+            ),
+            uid=10002,
+            gid=10002,
+        )
+    elif scenario == "bad-pid1":
+        _write_profile_proc(
+            proc_root,
+            1,
+            pid1_command,
+            uid=0,
+            gid=0,
+            ppid=0,
+            cap_eff=192,
+            cap_prm=192,
+            cap_bnd=256,
+        )
+    elif scenario == "bad-pid1-identity":
+        _write_profile_proc(
+            proc_root,
+            1,
+            pid1_command,
+            uid=10001,
+            gid=10001,
+            cap_eff=192,
+            cap_prm=192,
+        )
+    elif scenario == "extra-app-bound-caps":
+        _write_profile_proc(
+            proc_root,
+            102,
+            tuple((app_process / "cmdline").read_bytes().decode().split("\0")[:-1]),
+            uid=10001,
+            gid=10001,
+            ppid=101,
+            cap_bnd=256,
+        )
+    elif scenario == "unknown-root-process":
+        _write_profile_proc(
+            proc_root,
+            103,
+            ("/bin/sh", "-c", "id"),
+            uid=0,
+            gid=0,
+        )
+    elif scenario == "oversized-process-table":
+        for pid in range(1000, 1125):
+            (proc_root / str(pid)).mkdir()
+    elif scenario == "oversized-cmdline":
+        process_path = _write_profile_proc(
+            proc_root,
+            103,
+            ("/bin/sh", "-c", "id"),
+            uid=10001,
+            gid=10001,
+        )
+        (process_path / "cmdline").write_bytes(b"x" * 8193)
+    elif scenario == "oversized-status":
+        process_path = _write_profile_proc(
+            proc_root,
+            103,
+            ("/bin/sh", "-c", "id"),
+            uid=10001,
+            gid=10001,
+        )
+        with (process_path / "status").open("ab") as status_file:
+            status_file.write(b"x" * 8193)
+    elif scenario == "missing-opencode":
+        opencode.unlink()
+
+    readiness_payload: dict[str, object] = {
+        "status": "ready",
+        "schema_version": 13,
+        "assistant": {"enabled": False, "status": "disabled"},
+    }
+    if scenario == "assistant-enabled":
+        readiness_payload["assistant"] = {"enabled": True, "status": "ready"}
+    readiness_bytes = json.dumps(readiness_payload).encode()
+
+    def find_module(name: str) -> object | None:
+        return (
+            object()
+            if name in {"stock_probs.assistant", "stock_probs.container_supervisor"}
+            else None
+        )
+
+    def open_readiness(url: str, *, timeout: int):
+        assert url == "http://127.0.0.1:8000/api/v1/readiness"
+        assert timeout == 2
+        return nullcontext(SimpleNamespace(read=lambda limit: readiness_bytes[:limit]))
+
+    def write_marker(filesystem_root: Path, area: str, name: str) -> None:
+        if area == "worker_home" and scenario != "worker-home-writable":
+            raise PermissionError
+        target = filesystem_root / ("tmp" if area == "tmp" else "run/assistant-worker-home") / name
+        target.open("x", encoding="ascii").close()
+        if area == "worker_home":
+            return
+        if scenario == "tmp-readonly":
+            target.unlink()
+            raise PermissionError
+
+    def remove_marker(filesystem_root: Path, area: str, name: str) -> None:
+        target = filesystem_root / ("tmp" if area == "tmp" else "run/assistant-worker-home") / name
+        target.unlink()
+
+    probe_path = tmp_path / "generated-profile-probe.py"
+    probe_path.write_text(host_helper._recovery_process_profile_probe_v2(), encoding="utf-8")
+    namespace = runpy.run_path(str(probe_path), run_name="recovery_profile_fixture")
+    collector = namespace["_collect_recovery_profile"]
+    assert callable(collector)
+    return collector(
+        proc_root,
+        root,
+        900,
+        "/usr/local/bin/python",
+        find_module,
+        open_readiness,
+        write_marker,
+        remove_marker,
+    )
+
+
+def test_v2_generated_recovery_probe_validates_synthetic_process_topology(
+    tmp_path: Path,
+) -> None:
+    profile = _execute_generated_v2_recovery_probe(tmp_path)
+
+    assert profile["pid1_supervisor_verified"] is True
+    assert profile["app_wrapper_identity_verified"] is True
+    assert profile["app_process_identity_verified"] is True
+    assert profile["process_inventory_bounded"] is True
+    assert profile["native_worker_absent"] is True
+    assert profile["assistant_disabled_readiness"] is True
+    assert profile["worker_home_private"] is True
+    assert profile["tmp_writable"] is True
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "wrong-wrapper-parent",
+        "wrong-app-parent",
+        "missing-ppid",
+        "duplicate-ppid",
+        "pid1-missing-serve",
+        "pid1-mutated-serve-args",
+        "wrong-app-interpreter",
+        "wrong-app-script",
+        "root-app",
+        "root-app-wrapper",
+        "extra-app-caps",
+        "extra-app-process-caps",
+        "app-identity-fields",
+        "app-no-new-privileges",
+        "missing-app",
+        "running-worker",
+        "running-opencode",
+        "bad-pid1",
+        "bad-pid1-identity",
+        "extra-app-bound-caps",
+        "unknown-root-process",
+        "oversized-process-table",
+        "oversized-cmdline",
+        "oversized-status",
+        "missing-opencode",
+        "assistant-enabled",
+        "worker-home-writable",
+        "tmp-readonly",
+    ],
+)
+def test_v2_generated_recovery_probe_rejects_unsafe_synthetic_topologies(
+    tmp_path: Path,
+    scenario: str,
+) -> None:
+    with pytest.raises((AssertionError, PermissionError)):
+        _execute_generated_v2_recovery_probe(tmp_path, scenario)
+
+
+def test_v2_runner_writes_after_candidate_start_then_reads_with_same_schema_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper_revision = "a" * 40
+    candidate_archive = b"candidate-oci-archive"
+    recovery_archive = b"previous-production-oci-archive"
+    candidate_hash = hashlib.sha256(candidate_archive).hexdigest()
+    recovery_hash = hashlib.sha256(recovery_archive).hexdigest()
+    monkeypatch.setattr(host_helper, "HOTFIX_RECOVERY_ARCHIVE_SHA256", recovery_hash)
+    monkeypatch.setattr(host_helper, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(recovery_archive))
+    manifest = _host_hotfix_manifest(helper_revision, candidate_archive, recovery_archive)
+    manifest_hash = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    candidate_staged = host_helper.StagedArchive(
+        Path("/not-created/candidate.tar.gz"),
+        candidate_hash,
+        len(candidate_archive),
+        host_helper.HOTFIX_CANDIDATE_IMAGE_ID,
+    )
+    recovery_staged = host_helper.StagedArchive(
+        Path("/not-created/recovery.tar.gz"),
+        recovery_hash,
+        len(recovery_archive),
+        host_helper.HOTFIX_RECOVERY_BASELINE["image_id"],
+    )
+    sample = {
+        "limit": host_helper.CANDIDATE_MEMORY_LIMIT,
+        "peak": 1024,
+        "oom_events": {name: 0 for name in host_helper.OOM_EVENT_COUNTERS},
+        "cpu_stat": {name: 1 for name in host_helper.CPU_STAT_COUNTERS},
+    }
+    production_checks: list[bool] = []
+    starts: list[tuple[str, str, bool, str, str | None, str]] = []
+    removed: list[str] = []
+    events: list[str] = []
+    load_revisions: list[str] = []
+    snapshot_value = {
+        "marker_present": True,
+        "sha256": "d" * 64,
+        "security_state_sha256": "e" * 64,
+    }
+    monkeypatch.setattr(
+        host_helper,
+        "_verify_installed_source",
+        lambda *_args, **_kwargs: {"seed.py": "f" * 64},
+    )
+    monkeypatch.setattr(host_helper, "_verify_helper_source_pull_request", lambda _revision: None)
+    monkeypatch.setattr(host_helper, "_verify_hotfix_pull_request", lambda: None)
+    monkeypatch.setattr(
+        host_helper, "_production_container", lambda: dict(host_helper.PRODUCTION_BASELINE)
+    )
+    monkeypatch.setattr(host_helper, "_host_memory_kib", lambda: (8 * 1024 * 1024, 2 * 1024 * 1024))
+    monkeypatch.setattr(
+        host_helper,
+        "_check_production",
+        lambda _samples, **kwargs: production_checks.append(kwargs.get("startup", False))
+        or 2 * 1024 * 1024,
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_verify_pair",
+        lambda *_args: (manifest, {"candidate": candidate_staged, "recovery": recovery_staged}),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_load_image",
+        lambda revision, _role, _image, _archive: load_revisions.append(revision),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_run",
+        lambda command, **_kwargs: CompletedProcess(command, 0, (command[-1] + "\n").encode(), b""),
+    )
+    monkeypatch.setattr(host_helper, "_verify_volume", lambda *_args: None)
+    monkeypatch.setattr(host_helper, "_create_candidate_network", lambda *_args: "c" * 64)
+
+    def start_app(image_id, volume, name, **kwargs):
+        role = kwargs["role"]
+        assert kwargs["assistant_enabled"] is False
+        container = "a" * 64 if role == "candidate" else "b" * 64
+        starts.append(
+            (image_id, role, kwargs["assistant_enabled"], name, kwargs["network"], volume)
+        )
+        events.append(f"start:{role}")
+        return container
+
+    monkeypatch.setattr(host_helper, "_start_app", start_app)
+    monkeypatch.setattr(host_helper, "_memory_usage", lambda *_args, **_kwargs: sample)
+    monkeypatch.setattr(
+        host_helper,
+        "_wait_ready",
+        lambda _container, **kwargs: events.append(f"ready:{kwargs['enabled']}"),
+    )
+    monkeypatch.setattr(host_helper, "_copy_probe_files", lambda *_args: None)
+    monkeypatch.setattr(
+        host_helper,
+        "_seed",
+        lambda _container: {"synthetic_user_ids": [11, 12]},
+    )
+
+    def fixture(_container: str, operation: str, request: dict[str, object]):
+        events.append(operation)
+        return {"request_id": "marker-1"} if operation == "marker" else dict(snapshot_value)
+
+    monkeypatch.setattr(host_helper, "_seed_operation", fixture)
+    monkeypatch.setattr(host_helper, "_schema_version", lambda image, *_args, **_kwargs: 13)
+    monkeypatch.setattr(
+        host_helper,
+        "_recovery_process_profile",
+        lambda _container, **kwargs: {
+            "uid": 10001,
+            "gid": 10001,
+            "cap_eff": 0,
+            "cap_prm": 0,
+            "cap_bnd": 192,
+            "no_new_privileges": True,
+            "worker_home_private": True,
+            "native_worker_absent": True,
+            "tmp_writable": True,
+            "container_supervisor_present": kwargs.get("same_schema_hotfix") is True,
+            "opencode_binary_present": kwargs.get("same_schema_hotfix") is True,
+            "assistant_package_present": kwargs.get("same_schema_hotfix") is True,
+            "assistant_disabled_readiness": kwargs.get("same_schema_hotfix") is True,
+            "pid1_supervisor_verified": kwargs.get("same_schema_hotfix") is True,
+            "app_wrapper_identity_verified": kwargs.get("same_schema_hotfix") is True,
+            "app_process_identity_verified": kwargs.get("same_schema_hotfix") is True,
+            "process_inventory_bounded": kwargs.get("same_schema_hotfix") is True,
+        },
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_remove_owned_container",
+        lambda name, *_args: (removed.append(name), events.append(f"remove:{name}")),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_cleanup_network_before_volume",
+        lambda **_kwargs: (True, True),
+    )
+    monkeypatch.setattr(host_helper, "_cleanup_assets", lambda *_args: None)
+    monkeypatch.setattr(
+        host_helper,
+        "_volume_cli",
+        lambda *_args, **_kwargs: pytest.fail(
+            "same-schema rehearsal must not invoke migration or restore"
+        ),
+    )
+    payload = {
+        "repository": host_helper.REPOSITORY,
+        "pull_number": host_helper.HELPER_SOURCE_PR_NUMBER,
+        "reviewed_head_sha": helper_revision,
+        "candidate_image_id": host_helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        "candidate_source_context_sha256": host_helper.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "recovery_image_id": host_helper.HOTFIX_RECOVERY_BASELINE["image_id"],
+        "recovery_source_context_sha256": host_helper.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        "recovery_overlay_sha256": host_helper.HOTFIX_EMPTY_OVERLAY_SHA256,
+        "pair_manifest_sha256": manifest_hash,
+        "candidate_archive_sha256": candidate_hash,
+        "recovery_archive_sha256": recovery_hash,
+    }
+
+    result = host_helper._run_pair_v2(payload)
+
+    assert [row[0] for row in starts] == [
+        host_helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        host_helper.HOTFIX_RECOVERY_BASELINE["image_id"],
+    ]
+    assert [row[1] for row in starts] == ["candidate", "recovery"]
+    assert starts[0][4] == host_helper._candidate_network_name(starts[0][5])
+    assert starts[1][4] == "none"
+    assert starts[0][5] == starts[1][5]
+    assert load_revisions == [
+        host_helper.HOTFIX_CANDIDATE_REVISION,
+        host_helper.HOTFIX_RECOVERY_BASELINE["revision"],
+    ]
+    assert events.index("marker") > events.index("ready:False")
+    assert events.index(f"remove:{starts[0][3]}") < events.index("start:recovery")
+    assert result["same_disposable_volume"] is True
+    assert result["production_mutation"] is False
+    assert result["schema13_same_schema_verified"] is True
+    assert result["migration_commands_executed"] == 0
+    assert result["restore_commands_executed"] == 0
+    assert result["post_start_write_preserved"] is True
+    assert result["schema_after_recovery"] == 13
+    assert result["recovery_process_isolation_verified"] is True
+    assert result["volume_removed"] is True
+    assert result["images_retained"] is True
+    assert production_checks[0] is True
 
 
 def test_forged_pair_manifest_digest_is_rejected_before_any_remote_call(
@@ -457,7 +1622,7 @@ def test_review_pin_cli_verifies_current_pair_before_writing_metadata(
     metadata_file = (
         config_home / controller.REVIEW_METADATA_DIRECTORY / controller.REVIEW_METADATA_FILENAME
     )
-    assert calls == ["source", "pull_request", "pair"]
+    assert calls == ["pair", "source", "pull_request"]
     assert controller._read_review_metadata() == (
         revision,
         hashlib.sha256(manifest_bytes).hexdigest(),
@@ -468,6 +1633,172 @@ def test_review_pin_cli_verifies_current_pair_before_writing_metadata(
         "reviewed_pr_head_sha": revision,
         "status": "written",
     }
+
+
+def test_v2_review_pins_use_helper_pr11_and_candidate_pr9_without_pr2(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    revision = "a" * 40
+    manifest = {
+        "format_version": 2,
+        "revision": revision,
+        "candidate": {
+            "image_id": controller.HOTFIX_CANDIDATE_IMAGE_ID,
+            "source_context_sha256": controller.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        },
+        "recovery": {
+            "image_id": controller.PRODUCTION_BASELINE["image_id"],
+            "source_context_sha256": controller.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        },
+        "recovery_overlay": {"sha256": controller.HOTFIX_EMPTY_OVERLAY_SHA256},
+    }
+    manifest_bytes = json.dumps(manifest, separators=(",", ":")).encode()
+    events: list[str] = []
+    monkeypatch.setattr(controller, "_environment_review_pins", lambda: None)
+    monkeypatch.setattr(controller, "_read_review_metadata", lambda: None)
+    monkeypatch.setattr(
+        controller,
+        "_run_fixed",
+        lambda *_args, **_kwargs: (revision + "\n").encode(),
+    )
+    monkeypatch.setattr(controller, "_read_regular_file", lambda *_args, **_kwargs: manifest_bytes)
+    monkeypatch.setattr(
+        controller,
+        "_artifact_pair",
+        lambda *_args, **_kwargs: events.append("manifest-v2"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_verify_local_helper_checkout",
+        lambda _revision: events.append("clean-helper-checkout"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "verify_helper_source_pull_request",
+        lambda _revision: events.append("helper-pr11"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "verify_hotfix_pull_request",
+        lambda: events.append("candidate-pr9"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "verify_pull_request",
+        lambda *_args: pytest.fail("v2 must not gate helper source through PR #2"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_write_review_metadata",
+        lambda *_args: events.append("write-review-pins"),
+    )
+
+    result = controller.write_review_pins_from_current_pair()
+
+    assert events == [
+        "manifest-v2",
+        "clean-helper-checkout",
+        "helper-pr11",
+        "candidate-pr9",
+        "write-review-pins",
+    ]
+    assert result == {
+        "reviewed_pr_head_sha": revision,
+        "reviewed_pair_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+    }
+
+
+@pytest.mark.parametrize(("format_version", "expected_pull_number"), [(1, 2), (2, 11)])
+def test_controller_pair_dispatch_keeps_v1_pr2_and_v2_pr11(
+    monkeypatch: pytest.MonkeyPatch,
+    format_version: int,
+    expected_pull_number: int,
+) -> None:
+    revision = "a" * 40
+    pair_digest = "b" * 64
+    manifest: dict[str, object] = {
+        "format_version": format_version,
+        "candidate": {"archive_sha256": "c" * 64},
+        "recovery": {"archive_sha256": "d" * 64},
+    }
+    config = controller.RehearsalConfig(
+        Path("/unused/identity"),
+        Path("/unused/known-hosts"),
+        revision,
+        pair_digest,
+    )
+    events: list[object] = []
+    monkeypatch.setattr(
+        controller.RehearsalConfig,
+        "from_env",
+        classmethod(lambda _cls: config),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_artifact_pair",
+        lambda *_args, **_kwargs: (manifest, {"manifest": b"m", "candidate": b"c"}),
+    )
+    monkeypatch.setattr(controller, "verify_pull_request", lambda _sha: events.append("pr2"))
+    monkeypatch.setattr(
+        controller,
+        "verify_helper_source_pull_request",
+        lambda _sha: events.append("pr11"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "verify_hotfix_pull_request",
+        lambda: events.append("pr9"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_verify_local_helper_checkout",
+        lambda _sha: events.append("helper-checkout"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_verify_local_reviewed_source",
+        lambda *_args, **_kwargs: events.append("v1-source-check"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_source_bundle",
+        lambda: ({"bootstrap": b"b"}, {"bootstrap": "e" * 64}),
+    )
+    monkeypatch.setattr(controller, "_ensure_incoming_directories", lambda _config: None)
+    monkeypatch.setattr(
+        controller,
+        "_stage_source_bundle",
+        lambda *_args, **kwargs: events.append(("source-stage", kwargs["helper_source_contract"])),
+    )
+    monkeypatch.setattr(controller, "_stage_assets", lambda *_args: events.append("asset-stage"))
+    monkeypatch.setattr(controller, "_cleanup_staged_assets", lambda *_args: None)
+    monkeypatch.setattr(controller, "_ssh_prefix", lambda _config: ["ssh"])
+
+    def stop_at_host(command: list[str], **kwargs: object) -> bytes:
+        request = json.loads(kwargs["input_bytes"])
+        events.append(("host-payload", request["payload"]["pull_number"]))
+        raise controller.RehearsalError("fixture_host_boundary")
+
+    monkeypatch.setattr(controller, "_run_fixed", stop_at_host)
+
+    with pytest.raises(controller.RehearsalError, match="fixture_host_boundary"):
+        controller.rehearse_pr_pair(
+            reviewed_head_sha=revision,
+            candidate_image_id="sha256:" + "1" * 64,
+            candidate_source_context_sha256="2" * 64,
+            recovery_image_id="sha256:" + "3" * 64,
+            recovery_source_context_sha256="4" * 64,
+            recovery_overlay_sha256="5" * 64,
+            pair_manifest_sha256=pair_digest,
+        )
+
+    expected_contract = controller.HOTFIX_CONTRACT if format_version == 2 else None
+    assert ("source-stage", expected_contract) in events
+    assert ("host-payload", expected_pull_number) in events
+    if format_version == 1:
+        assert "pr2" in events and "pr11" not in events and "pr9" not in events
+    else:
+        assert "pr11" in events and "pr9" in events and "pr2" not in events
 
 
 def test_review_pin_cli_rejects_path_arguments(
@@ -575,6 +1906,91 @@ def test_controller_verifies_fixed_open_pr2_head(monkeypatch) -> None:
     }
 
 
+def test_controller_verifies_fixed_open_pr11_helper_head(monkeypatch) -> None:
+    revision = "a" * 40
+    payload = {
+        "state": "open",
+        "draft": True,
+        "base": {"ref": "main"},
+        "head": {"sha": revision, "repo": {"full_name": controller.REPOSITORY}},
+    }
+    requests: list[tuple[str, str]] = []
+
+    class Response:
+        status = 200
+
+        def read(self, size: int) -> bytes:
+            assert size == controller.MAX_RESPONSE_BYTES + 1
+            return json.dumps(payload).encode()
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            requests.append((method, path))
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(controller.http.client, "HTTPSConnection", Connection)
+
+    receipt = controller.verify_helper_source_pull_request(revision)
+
+    assert requests == [
+        ("GET", f"/repos/{controller.REPOSITORY}/pulls/11"),
+    ]
+    assert receipt["pull_number"] == 11
+    assert receipt["head_sha"] == revision
+
+
+def test_bootstrap_helper_contract_selects_only_fixed_pr11(monkeypatch) -> None:
+    revision = "a" * 40
+    payload = {
+        "state": "open",
+        "base": {"ref": "main"},
+        "head": {"sha": revision, "repo": {"full_name": bootstrap.REPOSITORY}},
+    }
+    requests: list[tuple[str, str]] = []
+
+    class Response:
+        status = 200
+
+        def read(self, size: int) -> bytes:
+            assert size == bootstrap.RESPONSE_LIMIT + 1
+            return json.dumps(payload).encode()
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            requests.append((method, path))
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(bootstrap.http.client, "HTTPSConnection", Connection)
+
+    bootstrap._verify_pull_request(
+        revision,
+        pull_number=bootstrap.HELPER_SOURCE_PR_NUMBER,
+    )
+    assert requests == [("GET", f"/repos/{bootstrap.REPOSITORY}/pulls/11")]
+    with pytest.raises(bootstrap.InstallError, match="reviewed_pr_invalid"):
+        bootstrap._verify_pull_request(revision, pull_number=3)
+    with pytest.raises(bootstrap.InstallError, match="reviewed_pr_mismatch"):
+        bootstrap._verify_pull_request("b" * 40, pull_number=11)
+
+
 def test_host_helper_verifies_fixed_open_pr2_head(monkeypatch) -> None:
     revision = "a" * 40
     payload = {
@@ -610,6 +2026,151 @@ def test_host_helper_verifies_fixed_open_pr2_head(monkeypatch) -> None:
     host_helper._verify_pull_request(revision)
 
     assert requests == [("GET", f"/repos/{host_helper.REPOSITORY}/pulls/2")]
+
+
+def test_host_helper_verifies_fixed_open_pr11_helper_head(monkeypatch) -> None:
+    revision = "a" * 40
+    payload = {
+        "state": "open",
+        "base": {"ref": "main"},
+        "head": {"sha": revision, "repo": {"full_name": host_helper.REPOSITORY}},
+    }
+    requests: list[tuple[str, str]] = []
+
+    class Response:
+        status = 200
+
+        def read(self, size: int) -> bytes:
+            assert size == host_helper.MAX_PR_RESPONSE + 1
+            return json.dumps(payload).encode()
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            requests.append((method, path))
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(host_helper.http.client, "HTTPSConnection", Connection)
+
+    host_helper._verify_helper_source_pull_request(revision)
+
+    assert requests == [("GET", f"/repos/{host_helper.REPOSITORY}/pulls/11")]
+
+
+def test_host_installed_manifest_binds_v1_pr2_and_v2_pr11_separately(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    revision = "a" * 40
+    pair_digest = "b" * 64
+    source_files = {name: f"installed {name}".encode() for name in host_helper.INSTALLED_FILES}
+    manifest: dict[str, object] = {
+        "format_version": 1,
+        "repository": host_helper.REPOSITORY,
+        "pull_number": host_helper.PULL_NUMBER,
+        "reviewed_head_sha": revision,
+        "reviewed_pair_manifest_sha256": pair_digest,
+        "files": {
+            name: hashlib.sha256(contents).hexdigest() for name, contents in source_files.items()
+        },
+        "installed_at": "2026-10-16T00:00:00Z",
+    }
+
+    def read_root_file(path: Path, _maximum: int) -> bytes:
+        if path == host_helper.INSTALLED_MANIFEST:
+            return json.dumps(manifest).encode()
+        return source_files[path.name]
+
+    monkeypatch.setattr(host_helper, "_read_root_file", read_root_file)
+
+    assert host_helper._verify_installed_source(revision, pair_digest) == manifest["files"]
+
+    manifest["pull_number"] = host_helper.HELPER_SOURCE_PR_NUMBER
+    manifest["helper_source_contract"] = host_helper.HOTFIX_CONTRACT
+    assert (
+        host_helper._verify_installed_source(
+            revision,
+            pair_digest,
+            helper_source_contract=host_helper.HOTFIX_CONTRACT,
+        )
+        == manifest["files"]
+    )
+
+    manifest["pull_number"] = host_helper.PULL_NUMBER
+    with pytest.raises(host_helper.RehearsalError, match="installed_manifest_mismatch"):
+        host_helper._verify_installed_source(
+            revision,
+            pair_digest,
+            helper_source_contract=host_helper.HOTFIX_CONTRACT,
+        )
+    with pytest.raises(host_helper.RehearsalError, match="installed_manifest_mismatch"):
+        host_helper._verify_installed_source(
+            revision,
+            pair_digest,
+            helper_source_contract="pull=11",
+        )
+
+
+def test_host_v1_and_v2_runner_keep_disjoint_fixed_helper_pull_numbers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, object]] = []
+
+    def installed_source(revision: str, pair_digest: str, **kwargs: object) -> dict[str, str]:
+        events.append(("installed", kwargs.get("helper_source_contract")))
+        return {"host_helper.py": "a" * 64}
+
+    def helper_pr(revision: str) -> None:
+        events.append(("helper_pr11", revision))
+
+    def candidate_pr() -> None:
+        events.append(("candidate_pr9", None))
+
+    def stop_before_runtime() -> dict[str, object]:
+        raise RuntimeError("stop before any runtime work")
+
+    monkeypatch.setattr(host_helper, "_verify_installed_source", installed_source)
+    monkeypatch.setattr(host_helper, "_verify_helper_source_pull_request", helper_pr)
+    monkeypatch.setattr(host_helper, "_verify_hotfix_pull_request", candidate_pr)
+    monkeypatch.setattr(host_helper, "_production_container", stop_before_runtime)
+    common = {
+        "repository": host_helper.REPOSITORY,
+        "reviewed_head_sha": "c" * 40,
+        "pair_manifest_sha256": "d" * 64,
+    }
+
+    with pytest.raises(host_helper.RehearsalError, match="fixed_pull_request_mismatch"):
+        host_helper._run_pair_v2({**common, "pull_number": host_helper.PULL_NUMBER})
+    assert events == []
+
+    with pytest.raises(RuntimeError, match="stop before any runtime work"):
+        host_helper._run_pair_v2({**common, "pull_number": host_helper.HELPER_SOURCE_PR_NUMBER})
+    assert events == [
+        ("installed", host_helper.HOTFIX_CONTRACT),
+        ("helper_pr11", "c" * 40),
+        ("candidate_pr9", None),
+    ]
+
+    events.clear()
+    monkeypatch.setattr(
+        host_helper,
+        "_verify_pull_request",
+        lambda revision: events.append(("legacy_pr2", revision))
+        or (_ for _ in ()).throw(RuntimeError("stop after v1 PR gate")),
+    )
+    with pytest.raises(host_helper.RehearsalError, match="fixed_pull_request_mismatch"):
+        host_helper._run_pair_v1({**common, "pull_number": host_helper.HELPER_SOURCE_PR_NUMBER})
+    assert events == []
+    with pytest.raises(RuntimeError, match="stop after v1 PR gate"):
+        host_helper._run_pair_v1({**common, "pull_number": host_helper.PULL_NUMBER})
+    assert events == [("installed", None), ("legacy_pr2", "c" * 40)]
 
 
 def test_bootstrap_install_requires_fixed_reviewed_manifest_digest() -> None:
@@ -653,8 +2214,10 @@ def test_pr_rehearsal_bundle_installs_driver_that_uses_image_package() -> None:
     assert assets["driver"] == Path(__file__).with_name("native_assistant_probe.py").read_bytes()
 
 
+@pytest.mark.parametrize("helper_source_contract", [None, controller.HOTFIX_CONTRACT])
 def test_source_upload_and_reviewed_bootstrap_share_the_sha_prefixed_names(
     monkeypatch,
+    helper_source_contract: str | None,
 ) -> None:
     revision = "a" * 40
     pair_digest = "b" * 64
@@ -683,19 +2246,28 @@ def test_source_upload_and_reviewed_bootstrap_share_the_sha_prefixed_names(
         captured.append((command, input_bytes))
         request = json.loads(input_bytes)
         payload = request["payload"]
-        return json.dumps(
-            {
-                "status": "installed",
-                "reviewed_head_sha": payload["reviewed_head_sha"],
-                "reviewed_pair_manifest_sha256": payload["reviewed_pair_manifest_sha256"],
-                "asset_sha256": payload["asset_sha256"],
-            }
-        ).encode()
+        response = {
+            "status": "installed",
+            "reviewed_head_sha": payload["reviewed_head_sha"],
+            "reviewed_pair_manifest_sha256": payload["reviewed_pair_manifest_sha256"],
+            "asset_sha256": payload["asset_sha256"],
+        }
+        if "helper_source_contract" in payload:
+            response["helper_source_contract"] = payload["helper_source_contract"]
+            response["pull_number"] = controller.HELPER_SOURCE_PR_NUMBER
+        return json.dumps(response).encode()
 
     monkeypatch.setattr(controller, "_run_fixed", fake_run_fixed)
     assets = {role: f"{role} source".encode() for role in names}
     hashes = {role: hashlib.sha256(data).hexdigest() for role, data in assets.items()}
-    controller._stage_source_bundle(config, revision, pair_digest, assets, hashes)
+    controller._stage_source_bundle(
+        config,
+        revision,
+        pair_digest,
+        assets,
+        hashes,
+        helper_source_contract=helper_source_contract,
+    )
 
     assert staged == [names]
     command, input_bytes = captured[0]
@@ -705,14 +2277,25 @@ def test_source_upload_and_reviewed_bootstrap_share_the_sha_prefixed_names(
     request = json.loads(input_bytes)
     assert request["payload"]["reviewed_head_sha"] == revision
     assert request["payload"]["asset_sha256"] == hashes
+    if helper_source_contract is None:
+        assert "helper_source_contract" not in request["payload"]
+    else:
+        assert request["payload"]["helper_source_contract"] == helper_source_contract
     with pytest.raises(controller.RehearsalError, match="reviewed_pr_head_invalid"):
         controller._source_stage_names("../bootstrap.py")
     with pytest.raises(bootstrap.InstallError, match="bootstrap_asset_name_invalid"):
         bootstrap._staged_asset_path(revision, "../../bootstrap.py")
 
 
+@pytest.mark.parametrize(
+    ("helper_source_contract", "expected_pull_number"),
+    [(None, 2), (bootstrap.HELPER_SOURCE_CONTRACT, 11)],
+)
 def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
-    monkeypatch, tmp_path: Path
+    monkeypatch,
+    tmp_path: Path,
+    helper_source_contract: str | None,
+    expected_pull_number: int,
 ) -> None:
     revision = "c" * 40
     incoming = tmp_path / "incoming"
@@ -737,7 +2320,12 @@ def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
     monkeypatch.setattr(bootstrap, "_safe_directory", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(bootstrap, "_safe_incoming_directory", lambda: None)
     monkeypatch.setattr(bootstrap, "_check_root_directory", lambda *_args: None)
-    monkeypatch.setattr(bootstrap, "_verify_pull_request", lambda _revision: None)
+    verified_pull_numbers: list[int] = []
+
+    def verify_pull_request(_revision: str, *, pull_number: int) -> None:
+        verified_pull_numbers.append(pull_number)
+
+    monkeypatch.setattr(bootstrap, "_verify_pull_request", verify_pull_request)
     monkeypatch.setattr(
         bootstrap,
         "_fetch_reviewed_source",
@@ -749,16 +2337,18 @@ def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
         lambda path, content, mode: installed.append((path, content, mode)),
     )
 
-    result = bootstrap.install(
-        {
-            "reviewed_head_sha": revision,
-            "reviewed_pair_manifest_sha256": "d" * 64,
-            "asset_sha256": hashes,
-        }
-    )
+    payload = {
+        "reviewed_head_sha": revision,
+        "reviewed_pair_manifest_sha256": "d" * 64,
+        "asset_sha256": hashes,
+    }
+    if helper_source_contract is not None:
+        payload["helper_source_contract"] = helper_source_contract
+    result = bootstrap.install(payload)
 
     assert result["status"] == "installed"
     assert result["asset_sha256"] == hashes
+    assert verified_pull_numbers == [expected_pull_number]
     assert {path.name for path, _content, _mode in installed} == {
         "host_helper.py",
         "seed.py",
@@ -768,10 +2358,79 @@ def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
     installed_manifest = next(
         content for path, content, _mode in installed if path.name == "installed.json"
     )
-    assert json.loads(installed_manifest)["pull_number"] == 2
+    receipt = json.loads(installed_manifest)
+    assert receipt["pull_number"] == expected_pull_number
+    if helper_source_contract is None:
+        assert "helper_source_contract" not in receipt
+        assert "pull_number" not in result
+    else:
+        assert receipt["helper_source_contract"] == helper_source_contract
+        assert result["helper_source_contract"] == helper_source_contract
+        assert result["pull_number"] == expected_pull_number
     for _role, (_relative, staged_name, _maximum) in bootstrap.ASSETS.items():
         assert not (incoming / f"signal-ledger-pr1-{revision}-{staged_name}").exists()
         assert (incoming / staged_name).read_bytes() == b"legacy name must remain untouched"
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"helper_source_contract": "pr=11"},
+        {"helper_source_contract": bootstrap.HELPER_SOURCE_CONTRACT, "pull_number": 11},
+    ],
+)
+def test_bootstrap_rejects_arbitrary_helper_identity_payload(
+    extra: dict[str, object],
+) -> None:
+    payload: dict[str, object] = {
+        "reviewed_head_sha": "a" * 40,
+        "reviewed_pair_manifest_sha256": "b" * 64,
+        "asset_sha256": {name: "c" * 64 for name in bootstrap.ASSETS},
+        **extra,
+    }
+    with pytest.raises(bootstrap.InstallError, match="payload_invalid"):
+        bootstrap.install(payload)
+
+
+def test_controller_rejects_bootstrap_install_receipt_for_wrong_helper_pr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    revision = "a" * 40
+    config = controller.RehearsalConfig(
+        Path("/unused/identity"),
+        Path("/unused/known-hosts"),
+        revision,
+        "b" * 64,
+    )
+    monkeypatch.setattr(
+        controller, "_source_stage_names", lambda _revision: {"bootstrap": "bootstrap.py"}
+    )
+    monkeypatch.setattr(controller, "_stage_named_assets", lambda *_args: None)
+    monkeypatch.setattr(controller, "_ssh_prefix", lambda _config: ["ssh"])
+    monkeypatch.setattr(
+        controller,
+        "_run_fixed",
+        lambda *_args, **_kwargs: json.dumps(
+            {
+                "status": "installed",
+                "reviewed_head_sha": revision,
+                "reviewed_pair_manifest_sha256": "b" * 64,
+                "asset_sha256": {"bootstrap": "c" * 64},
+                "pull_number": controller.PULL_NUMBER,
+                "helper_source_contract": controller.HOTFIX_CONTRACT,
+            }
+        ).encode(),
+    )
+
+    with pytest.raises(controller.RehearsalError, match="bootstrap_install_failed"):
+        controller._stage_source_bundle(
+            config,
+            revision,
+            "b" * 64,
+            {"bootstrap": b"bootstrap"},
+            {"bootstrap": "c" * 64},
+            helper_source_contract=controller.HOTFIX_CONTRACT,
+        )
 
 
 def test_host_cleanup_removes_only_the_exact_reviewed_sha_asset_namespace(
@@ -2786,6 +4445,61 @@ def test_production_headroom_floors_are_unchanged_and_fail_closed(monkeypatch) -
     monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.RUN_RESERVE_KIB - 1)
     with pytest.raises(host_helper.RehearsalError, match="host_memory_reserve_breached"):
         host_helper._check_production([0])
+
+
+def test_hotfix_production_guard_requires_ready_enabled_loopback_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = dict(host_helper.PRODUCTION_BASELINE)
+    monkeypatch.setattr(host_helper, "HOTFIX_OPERATION_ACTIVE", True)
+    monkeypatch.setattr(host_helper, "ACTIVE_PRODUCTION_BASELINE", baseline)
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+    monkeypatch.setattr(host_helper, "_production_identity", lambda: baseline)
+    monkeypatch.setattr(
+        host_helper,
+        "_readiness",
+        lambda: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": True, "status": "ready"},
+        },
+    )
+    monkeypatch.setattr(host_helper, "_production_loopback_matches", lambda: True)
+    samples = [0]
+
+    assert host_helper._check_production(samples, startup=True) == host_helper.START_RESERVE_KIB
+    assert samples == [1]
+
+
+@pytest.mark.parametrize(
+    ("assistant", "loopback"),
+    [
+        ({"enabled": False, "status": "ready"}, True),
+        ({"enabled": True, "status": "disabled"}, True),
+        ({"enabled": True, "status": "ready"}, False),
+    ],
+)
+def test_hotfix_production_guard_fails_closed_on_assistant_or_loopback_change(
+    monkeypatch: pytest.MonkeyPatch,
+    assistant: dict[str, object],
+    loopback: bool,
+) -> None:
+    baseline = dict(host_helper.PRODUCTION_BASELINE)
+    monkeypatch.setattr(host_helper, "HOTFIX_OPERATION_ACTIVE", True)
+    monkeypatch.setattr(host_helper, "ACTIVE_PRODUCTION_BASELINE", baseline)
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+    monkeypatch.setattr(host_helper, "_production_identity", lambda: baseline)
+    monkeypatch.setattr(
+        host_helper,
+        "_readiness",
+        lambda: {"status": "ready", "schema_version": 13, "assistant": assistant},
+    )
+    monkeypatch.setattr(host_helper, "_production_loopback_matches", lambda: loopback)
+    samples = [0]
+
+    with pytest.raises(host_helper.RehearsalError, match="hotfix_production_boundary_changed"):
+        host_helper._check_production(samples, startup=True)
+    assert samples == [0]
 
 
 def test_invalid_container_role_fails_closed_for_resource_resolution() -> None:

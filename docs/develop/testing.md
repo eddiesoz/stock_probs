@@ -602,3 +602,47 @@ the 512 MiB startup and 128 MiB running reserve remain mandatory. A synthetic ch
 not accept an image transition. Test the exact recovery image on disposable data and a user-defined
 bridge, retain post-migration records, and verify a fresh signed backup before an actual-host step.
 The current resource failure and backup scope are recorded in [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+### Format-2 schema-13 hotfix pair
+
+The additive `format_version: 2` contract `schema13_same_schema_hotfix_v1` keeps three identities
+separate:
+
+- **Helper source:** PR #11 at the reviewed helper revision.
+- **Application candidate:** PR #9, revision `d282d696937f279ca4af4c38341f82a8af7afb6d`, image
+  `sha256:ba607be79055ee3a09d916e51788135590e7e0ead8f0922aa78128c478644c03`, source context
+  `c2135215d9a96c37841190ff611b49d48e7a08ca88ad073ebcf1973a7abc86a9`, and build receipt SHA-256
+  `bb808883d862aafe8851bfeffc75fa3140866e72e770420699db0f11a4377608`.
+- **Recovery artifact:** Original production revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`,
+  image `sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, release image
+  archive SHA-256 `99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5`
+  (202,156,038 bytes),
+  source context `9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb`, and prior pair
+  SHA-256 `e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3`.
+
+The transition is schema 13 to schema 13, with `migrations: []`, `restore: false`, and
+`recovery_overlay.kind: "none"`; its overlay digest is SHA-256 of the canonical empty JSON array
+`[]`. Do not use the separately registered A9 app-only recovery image for this pair. The format-2
+recovery check tests the normal shipped supervisor/image with the assistant worker disabled and no
+OpenCode process. It does not require the executable or package to be absent. Keep the historical
+format-1 PR #2 schema-12-to-13 contract and its app-only absence assertion unchanged. See the
+[E21 ledger](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint)
+for the exact QA and release status. Current helper source/test QA passed 162 tests with one
+opt-in Docker skip and 266 stable bindings; its production-installed metadata was mocked because
+the fixed installed record is absent locally. Manifest validation or focused tests alone are not a
+pair rehearsal, archive publication, host execution, installation, or rollback acceptance.
+
+For v2 rollback, persist and reload `recovery_contract`, `helper_source_revision`,
+`recovery_source_context_sha256`, and `recovery_prior_pair_manifest_sha256` in the applied record,
+then exercise rollback from that reloaded state. If the copy step drops those fields, recovery can
+fall through to the format-1 path and fail when its migration value is `None`. The independent P2 finding, before-fix reproduction, and repaired selected-test result are recorded
+in E21. The applied-state persistence and coordinated helper-revision findings passed independent
+synthetic review. The first local 5ad profile check failed and remains recorded; the repair then
+passed independent process-profile QA (360 passed, one direct-Docker test deselected) and a local
+original-image profile diagnostic. R-ASTRA-121 E22 independently passed review of that bounded
+local diagnostic receipt without rerunning tests or starting a container. Effective CPU/PID/swap/
+tmpfs limits were not all independently inspected; this does not establish actual-host, combined
+1 GB, pair, or rollback acceptance. The earlier profile and reviewer-setup failures remain in the
+[E21 ledger](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint)
+and [E22 review](../../MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic).
+Do not combine these scopes into actual-host pair or rollback acceptance.

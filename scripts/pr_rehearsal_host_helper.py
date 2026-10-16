@@ -26,6 +26,23 @@ from typing import TypedDict
 
 REPOSITORY = "eddiesoz/stock_probs"
 PULL_NUMBER = 2
+HELPER_SOURCE_PR_NUMBER = 11
+HOTFIX_PR_NUMBER = 9
+HOTFIX_CONTRACT = "schema13_same_schema_hotfix_v1"
+HOTFIX_CANDIDATE_REVISION = "d282d696937f279ca4af4c38341f82a8af7afb6d"
+HOTFIX_CANDIDATE_IMAGE_ID = (
+    "sha256:ba607be79055ee3a09d916e51788135590e7e0ead8f0922aa78128c478644c03"
+)
+HOTFIX_CANDIDATE_CONTEXT_SHA256 = "c2135215d9a96c37841190ff611b49d48e7a08ca88ad073ebcf1973a7abc86a9"
+HOTFIX_BUILD_RECEIPT_SHA256 = "bb808883d862aafe8851bfeffc75fa3140866e72e770420699db0f11a4377608"
+HOTFIX_RECOVERY_ARCHIVE_SHA256 = "99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5"
+HOTFIX_RECOVERY_ARCHIVE_SIZE = 202_156_038
+HOTFIX_RECOVERY_CONTEXT_SHA256 = "9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb"
+HOTFIX_PRIOR_PAIR_MANIFEST_SHA256 = (
+    "e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3"
+)
+HOTFIX_EMPTY_OVERLAY_SHA256 = hashlib.sha256(b"[]").hexdigest()
+HOTFIX_RECOVERY_KIND = "previous_production_candidate"
 TASK_ID = "R-ASTRA-120"
 
 
@@ -59,6 +76,14 @@ class RecoveryProductionBaseline(RecoveryProductionBaselineFields):
 PRODUCTION_BASELINE: ProductionBaseline = {
     "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
     "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
+    "schema_version": 13,
+}
+HOTFIX_RECOVERY_BASELINE = {
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
+    "archive_sha256": HOTFIX_RECOVERY_ARCHIVE_SHA256,
+    "archive_size": HOTFIX_RECOVERY_ARCHIVE_SIZE,
+    "source_context_sha256": HOTFIX_RECOVERY_CONTEXT_SHA256,
     "schema_version": 13,
 }
 RECOVERY_PRODUCTION_BASELINE: RecoveryProductionBaselineFields = {
@@ -316,6 +341,7 @@ class _BoundedTarInfo(tarfile.TarInfo):
 
 OPERATION_DEADLINE: float | None = None
 MONITOR_ACTIVE = False
+HOTFIX_OPERATION_ACTIVE = False
 PRODUCTION_SAMPLE_COUNT = [0]
 ACTIVE_PRODUCTION_BASELINE: dict[str, object] | None = None
 OPERATION_CONTAINERS: list[tuple[str, str, str, str]] = []
@@ -792,28 +818,128 @@ def _verify_pull_request(revision: str) -> None:
         raise RehearsalError("reviewed_pr_mismatch")
 
 
-def _verify_installed_source(revision: str, pair_manifest_sha256: str) -> dict[str, str]:
+def _verify_hotfix_pull_request() -> None:
+    """Require the fixed PR #9 candidate head independently of the helper source gate."""
+
+    connection = http.client.HTTPSConnection("api.github.com", timeout=10)
+    try:
+        connection.request(
+            "GET",
+            f"/repos/{REPOSITORY}/pulls/{HOTFIX_PR_NUMBER}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "signal-ledger-pr-rehearsal",
+            },
+        )
+        response = connection.getresponse()
+        raw = response.read(MAX_PR_RESPONSE + 1)
+        if response.status != 200 or len(raw) > MAX_PR_RESPONSE:
+            raise RehearsalError("hotfix_pr_unavailable")
+    except (OSError, TimeoutError, http.client.HTTPException) as exc:
+        raise RehearsalError("hotfix_pr_unavailable") from exc
+    finally:
+        connection.close()
+    try:
+        pr: object = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RehearsalError("hotfix_pr_invalid") from exc
+    if not isinstance(pr, dict):
+        raise RehearsalError("hotfix_pr_invalid")
+    base, head = pr.get("base"), pr.get("head")
+    repo = head.get("repo") if isinstance(head, dict) else None
+    if (
+        pr.get("state") != "open"
+        or not isinstance(base, dict)
+        or base.get("ref") != "main"
+        or not isinstance(head, dict)
+        or head.get("sha") != HOTFIX_CANDIDATE_REVISION
+        or not isinstance(repo, dict)
+        or repo.get("full_name") != REPOSITORY
+    ):
+        raise RehearsalError("hotfix_pr_mismatch")
+
+
+def _verify_helper_source_pull_request(revision: str) -> None:
+    """Require the fixed PR #11 helper head independently of the PR #9 image."""
+
+    connection = http.client.HTTPSConnection("api.github.com", timeout=10)
+    try:
+        connection.request(
+            "GET",
+            f"/repos/{REPOSITORY}/pulls/{HELPER_SOURCE_PR_NUMBER}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "signal-ledger-pr-rehearsal",
+            },
+        )
+        response = connection.getresponse()
+        raw = response.read(MAX_PR_RESPONSE + 1)
+        if response.status != 200 or len(raw) > MAX_PR_RESPONSE:
+            raise RehearsalError("helper_source_pr_unavailable")
+    except (OSError, TimeoutError, http.client.HTTPException) as exc:
+        raise RehearsalError("helper_source_pr_unavailable") from exc
+    finally:
+        connection.close()
+    try:
+        pr: object = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RehearsalError("helper_source_pr_invalid") from exc
+    if not isinstance(pr, dict):
+        raise RehearsalError("helper_source_pr_invalid")
+    base, head = pr.get("base"), pr.get("head")
+    repo = head.get("repo") if isinstance(head, dict) else None
+    if (
+        pr.get("state") != "open"
+        or not isinstance(base, dict)
+        or base.get("ref") != "main"
+        or not isinstance(head, dict)
+        or head.get("sha") != revision
+        or not isinstance(repo, dict)
+        or repo.get("full_name") != REPOSITORY
+    ):
+        raise RehearsalError("helper_source_pr_mismatch")
+
+
+def _verify_installed_source(
+    revision: str,
+    pair_manifest_sha256: str,
+    *,
+    helper_source_contract: str | None = None,
+) -> dict[str, str]:
+    if helper_source_contract is None:
+        helper_source_pull_number = PULL_NUMBER
+    elif helper_source_contract == HOTFIX_CONTRACT:
+        helper_source_pull_number = HELPER_SOURCE_PR_NUMBER
+    else:
+        raise RehearsalError("installed_manifest_mismatch")
     raw = _read_root_file(INSTALLED_MANIFEST, 8192)
     try:
         value: object = json.loads(raw)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RehearsalError("installed_manifest_invalid") from exc
+    expected_keys = {
+        "format_version",
+        "repository",
+        "pull_number",
+        "reviewed_head_sha",
+        "reviewed_pair_manifest_sha256",
+        "files",
+        "installed_at",
+    }
+    if helper_source_contract is not None:
+        expected_keys.add("helper_source_contract")
     expected_files = INSTALLED_FILES
     if (
         not isinstance(value, dict)
-        or set(value)
-        != {
-            "format_version",
-            "repository",
-            "pull_number",
-            "reviewed_head_sha",
-            "reviewed_pair_manifest_sha256",
-            "files",
-            "installed_at",
-        }
+        or set(value) != expected_keys
         or value.get("format_version") != 1
         or value.get("repository") != REPOSITORY
-        or value.get("pull_number") != PULL_NUMBER
+        or type(value.get("pull_number")) is not int
+        or value.get("pull_number") != helper_source_pull_number
+        or (
+            helper_source_contract is not None
+            and value.get("helper_source_contract") != helper_source_contract
+        )
         or value.get("reviewed_head_sha") != revision
         or value.get("reviewed_pair_manifest_sha256") != pair_manifest_sha256
         or not isinstance(value.get("files"), dict)
@@ -1196,11 +1322,20 @@ def _verify_pair(
     if not isinstance(manifest_bytes, bytes):
         raise RehearsalError("pair_manifest_invalid")
     try:
-        manifest: object = json.loads(manifest_bytes)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        manifest: object = json.loads(manifest_bytes, object_pairs_hook=_strict_object_pairs)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise RehearsalError("pair_manifest_invalid") from exc
     if not isinstance(manifest, dict):
         raise RehearsalError("pair_manifest_invalid")
+    if manifest.get("format_version") == 2:
+        return _verify_hotfix_pair(
+            payload,
+            revision,
+            manifest,
+            manifest_bytes,
+            candidate_hash=candidate_hash,
+            recovery_hash=recovery_hash,
+        )
     candidate, recovery, migration = (
         manifest.get("candidate"),
         manifest.get("recovery"),
@@ -1307,6 +1442,194 @@ def _verify_pair(
         recovery_archive.path.unlink(missing_ok=True)
         raise RehearsalError("pair_asset_size_mismatch")
     return manifest, {"candidate": candidate_archive, "recovery": recovery_archive}
+
+
+def _strict_object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Reject duplicate manifest keys before version-specific identity checks."""
+
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate manifest key")
+        result[key] = value
+    return result
+
+
+def _verify_hotfix_pair(
+    payload: dict[str, object],
+    helper_revision: str,
+    manifest: dict[str, object],
+    manifest_bytes: bytes,
+    *,
+    candidate_hash: str,
+    recovery_hash: str,
+) -> tuple[dict[str, object], dict[str, StagedArchive]]:
+    """Validate and stage the fixed PR #9 image against the exact prior production image."""
+
+    candidate_id = _image_id(payload.get("candidate_image_id"), "candidate_image_id_invalid")
+    recovery_id = _image_id(payload.get("recovery_image_id"), "recovery_image_id_invalid")
+    candidate_context = _digest(
+        payload.get("candidate_source_context_sha256"), "candidate_context_invalid"
+    )
+    recovery_context = _digest(
+        payload.get("recovery_source_context_sha256"), "recovery_context_invalid"
+    )
+    overlay_hash = _digest(payload.get("recovery_overlay_sha256"), "recovery_overlay_invalid")
+    manifest_hash = _digest(payload.get("pair_manifest_sha256"), "pair_manifest_invalid")
+    if hashlib.sha256(manifest_bytes).hexdigest() != manifest_hash:
+        raise RehearsalError("pair_manifest_digest_mismatch")
+
+    candidate = manifest.get("candidate")
+    recovery = manifest.get("recovery")
+    helper_source = manifest.get("helper_source")
+    transition = manifest.get("transition")
+    overlay = manifest.get("recovery_overlay")
+    candidate_asset = f"signal-ledger-image-{HOTFIX_CANDIDATE_REVISION}.tar.gz"
+    recovery_asset = f"signal-ledger-image-{HOTFIX_RECOVERY_BASELINE['revision']}.tar.gz"
+    valid = (
+        set(manifest)
+        == {
+            "format_version",
+            "contract",
+            "repository",
+            "revision",
+            "helper_source",
+            "candidate",
+            "recovery",
+            "transition",
+            "recovery_overlay",
+        }
+        and type(manifest.get("format_version")) is int
+        and manifest.get("format_version") == 2
+        and manifest.get("contract") == HOTFIX_CONTRACT
+        and manifest.get("repository") == REPOSITORY
+        and manifest.get("revision") == helper_revision
+        and isinstance(helper_source, dict)
+        and set(helper_source) == {"pull_number", "revision"}
+        and type(helper_source.get("pull_number")) is int
+        and helper_source.get("pull_number") == HELPER_SOURCE_PR_NUMBER
+        and helper_source.get("revision") == helper_revision
+        and isinstance(candidate, dict)
+        and set(candidate)
+        == {
+            "asset",
+            "archive_sha256",
+            "archive_size",
+            "image_id",
+            "platform",
+            "pull_number",
+            "revision",
+            "schema_version",
+            "source_context_sha256",
+            "build_receipt_sha256",
+        }
+        and candidate.get("asset") == candidate_asset
+        and candidate.get("archive_sha256") == candidate_hash
+        and type(candidate.get("archive_size")) is int
+        and 1 <= candidate.get("archive_size", 0) <= MAX_ARCHIVE
+        and candidate.get("image_id") == HOTFIX_CANDIDATE_IMAGE_ID == candidate_id
+        and candidate.get("platform") == "linux/amd64"
+        and type(candidate.get("pull_number")) is int
+        and candidate.get("pull_number") == HOTFIX_PR_NUMBER
+        and candidate.get("revision") == HOTFIX_CANDIDATE_REVISION
+        and type(candidate.get("schema_version")) is int
+        and candidate.get("schema_version") == 13
+        and candidate.get("source_context_sha256")
+        == HOTFIX_CANDIDATE_CONTEXT_SHA256
+        == candidate_context
+        and candidate.get("build_receipt_sha256") == HOTFIX_BUILD_RECEIPT_SHA256
+        and isinstance(recovery, dict)
+        and set(recovery)
+        == {
+            "asset",
+            "archive_sha256",
+            "archive_size",
+            "image_id",
+            "platform",
+            "revision",
+            "schema_version",
+            "source_context_sha256",
+            "kind",
+            "prior_pair_manifest_sha256",
+            "assistant_rollout_mode",
+        }
+        and recovery.get("asset") == recovery_asset
+        and recovery.get("archive_sha256") == HOTFIX_RECOVERY_ARCHIVE_SHA256 == recovery_hash
+        and type(recovery.get("archive_size")) is int
+        and recovery.get("archive_size") == HOTFIX_RECOVERY_ARCHIVE_SIZE
+        and recovery.get("image_id") == HOTFIX_RECOVERY_BASELINE["image_id"] == recovery_id
+        and recovery.get("platform") == "linux/amd64"
+        and recovery.get("revision") == HOTFIX_RECOVERY_BASELINE["revision"]
+        and type(recovery.get("schema_version")) is int
+        and recovery.get("schema_version") == 13
+        and recovery.get("source_context_sha256")
+        == HOTFIX_RECOVERY_CONTEXT_SHA256
+        == recovery_context
+        and recovery.get("kind") == HOTFIX_RECOVERY_KIND
+        and recovery.get("prior_pair_manifest_sha256") == HOTFIX_PRIOR_PAIR_MANIFEST_SHA256
+        and recovery.get("assistant_rollout_mode") == "invited"
+        and isinstance(transition, dict)
+        and transition == {"from_schema": 13, "to_schema": 13, "migrations": [], "restore": False}
+        and isinstance(overlay, dict)
+        and overlay == {"kind": "none", "sha256": HOTFIX_EMPTY_OVERLAY_SHA256}
+        and overlay_hash == HOTFIX_EMPTY_OVERLAY_SHA256
+        and payload.get("candidate_archive_sha256") == candidate_hash
+        and payload.get("recovery_archive_sha256") == recovery_hash
+    )
+    if not valid:
+        raise RehearsalError("pair_manifest_identity_mismatch")
+    incoming_names = {
+        "candidate": f"signal-ledger-pr1-{helper_revision}-candidate.tar.gz",
+        "recovery": f"signal-ledger-pr1-{helper_revision}-recovery.tar.gz",
+    }
+    candidate_archive: StagedArchive | None = None
+    try:
+        candidate_archive = _stage_asset(
+            incoming_names["candidate"],
+            maximum=MAX_ARCHIVE,
+            expected_digest=candidate_hash,
+            role="candidate",
+            image_id=candidate_id,
+            revision=HOTFIX_CANDIDATE_REVISION,
+        )
+        recovery_archive = _stage_asset(
+            incoming_names["recovery"],
+            maximum=MAX_ARCHIVE,
+            expected_digest=recovery_hash,
+            role="recovery",
+            image_id=recovery_id,
+            revision=HOTFIX_RECOVERY_BASELINE["revision"],
+        )
+    except BaseException:
+        if candidate_archive is not None:
+            candidate_archive.path.unlink(missing_ok=True)
+        raise
+    if candidate_archive.size != candidate.get(
+        "archive_size"
+    ) or recovery_archive.size != recovery.get("archive_size"):
+        candidate_archive.path.unlink(missing_ok=True)
+        recovery_archive.path.unlink(missing_ok=True)
+        raise RehearsalError("pair_asset_size_mismatch")
+    return manifest, {"candidate": candidate_archive, "recovery": recovery_archive}
+
+
+def _pair_manifest_version(payload: dict[str, object]) -> int:
+    """Read only the bounded staged manifest to select the strict v1 or v2 contract."""
+
+    revision = _revision(payload.get("reviewed_head_sha"))
+    pair_hash = _digest(payload.get("pair_manifest_sha256"), "pair_manifest_invalid")
+    name = f"signal-ledger-pr1-{revision}-pair.json"
+    raw = _read_small_asset(name, 65_536, pair_hash)
+    try:
+        manifest: object = json.loads(raw, object_pairs_hook=_strict_object_pairs)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RehearsalError("pair_manifest_invalid") from exc
+    if not isinstance(manifest, dict) or type(manifest.get("format_version")) is not int:
+        raise RehearsalError("pair_manifest_invalid")
+    version = manifest["format_version"]
+    if version not in {1, 2}:
+        raise RehearsalError("pair_manifest_version_unsupported")
+    return version
 
 
 def _parse_meminfo_kib(raw: bytes) -> tuple[int, int]:
@@ -1587,6 +1910,33 @@ def _production_readiness_matches(
     )
 
 
+def _production_loopback_matches() -> bool:
+    """Require the one fixed Compose app to retain its loopback-only published port."""
+
+    try:
+        result = _run(
+            [
+                "/usr/bin/docker",
+                "ps",
+                "--no-trunc",
+                "--filter",
+                "label=com.docker.compose.project=signal-ledger",
+                "--filter",
+                "label=com.docker.compose.service=app",
+                "--format",
+                "{{.ID}}",
+            ],
+            timeout=10,
+            monitor_production=False,
+        )
+        identifiers = result.stdout.decode("ascii", errors="strict").splitlines()
+    except (RehearsalError, UnicodeDecodeError):
+        return False
+    if len(identifiers) != 1 or CONTAINER_ID_RE.fullmatch(identifiers[0]) is None:
+        return False
+    return _recovery_port_bindings_match(identifiers[0])
+
+
 def _check_production(sample_count: list[int], *, startup: bool = False) -> int:
     available = _memavailable_kib()
     floor = START_RESERVE_KIB if startup else RUN_RESERVE_KIB
@@ -1598,6 +1948,16 @@ def _check_production(sample_count: list[int], *, startup: bool = False) -> int:
     readiness = _readiness()
     if not _production_readiness_matches(baseline, readiness):
         raise RehearsalError("production_health_lost")
+    if HOTFIX_OPERATION_ACTIVE:
+        assistant = readiness.get("assistant")
+        if (
+            baseline != PRODUCTION_BASELINE
+            or not isinstance(assistant, dict)
+            or assistant.get("enabled") is not True
+            or assistant.get("status") != "ready"
+            or not _production_loopback_matches()
+        ):
+            raise RehearsalError("hotfix_production_boundary_changed")
     sample_count[0] += 1
     return available
 
@@ -3469,8 +3829,265 @@ def _remove_owned_container(
         raise RehearsalError("container_removal_unverified")
 
 
-def _recovery_process_profile(container: str) -> dict[str, object]:
-    probe = """import importlib.util
+def _recovery_process_profile_probe_v2() -> str:
+    """Build the v2 probe that verifies the pinned container's exact process topology."""
+    return r"""import importlib.util
+import json
+import os
+import pathlib
+import sys
+import urllib.request
+
+MAX_PROCESS_COUNT = 128
+MAX_PROCESS_FILE_BYTES = 8192
+PID1_COMMAND = (
+    "-m", "stock_probs.container_supervisor", "serve", "--host", "0.0.0.0", "--port", "8000",
+    "--allow-non-loopback",
+)
+APP_WRAPPER_COMMAND = ("-m", "stock_probs.container_supervisor", "--child", "app")
+WORKER_WRAPPER_COMMAND = ("-m", "stock_probs.container_supervisor", "--child", "worker")
+APP_COMMAND = (
+    "/usr/local/bin/python",
+    "/usr/local/bin/stock-probs",
+    "serve",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "8000",
+    "--allow-non-loopback",
+)
+WORKER_COMMAND = (
+    "/usr/local/bin/opencode", "serve", "--hostname", "127.0.0.1", "--port", "4097",
+)
+
+
+def _status_fields(process_path):
+    required = {"Uid", "Gid", "PPid", "CapEff", "CapPrm", "CapBnd", "NoNewPrivs"}
+    fields = {}
+    raw = _read_process_file(process_path.joinpath("status"))
+    for line in raw.decode("ascii", errors="strict").splitlines():
+        key, separator, value = line.partition(":")
+        if separator and key in required:
+            if key in fields:
+                raise AssertionError("duplicate process status field")
+            fields[key] = value.strip()
+    if fields.keys() != required:
+        raise AssertionError("incomplete process status")
+    uid = tuple(int(value, 10) for value in fields["Uid"].split())
+    gid = tuple(int(value, 10) for value in fields["Gid"].split())
+    if len(uid) != 4 or len(gid) != 4:
+        raise AssertionError("incomplete process identity")
+    return {
+        "ppid": int(fields["PPid"], 10),
+        "uid": uid,
+        "gid": gid,
+        "cap_eff": int(fields["CapEff"], 16),
+        "cap_prm": int(fields["CapPrm"], 16),
+        "cap_bnd": int(fields["CapBnd"], 16),
+        "no_new_privileges": fields["NoNewPrivs"] == "1",
+    }
+
+
+def _command(process_path):
+    raw = _read_process_file(process_path.joinpath("cmdline"))
+    return tuple(part.decode("utf-8", errors="strict") for part in raw.split(b"\0") if part)
+
+
+def _read_process_file(path):
+    with path.open("rb") as stream:
+        raw = stream.read(MAX_PROCESS_FILE_BYTES + 1)
+    if len(raw) > MAX_PROCESS_FILE_BYTES:
+        raise AssertionError("process metadata exceeds fixed byte limit")
+    return raw
+
+
+def _assert_identity(record, uid, gid, cap_eff, cap_prm, cap_bnd):
+    if (
+        record["uid"] != (uid, uid, uid, uid)
+        or record["gid"] != (gid, gid, gid, gid)
+        or record["cap_eff"] != cap_eff
+        or record["cap_prm"] != cap_prm
+        or record["cap_bnd"] != cap_bnd
+        or record["no_new_privileges"] is not True
+    ):
+        raise AssertionError("process identity or capability profile mismatch")
+
+
+def _write_marker(filesystem_root, area, name):
+    directories = {
+        "tmp": ("tmp",),
+        "worker_home": ("run", "assistant-worker-home"),
+    }
+    if area not in directories:
+        raise AssertionError("unknown probe marker location")
+    marker = filesystem_root.joinpath(*directories[area], name)
+    with marker.open("x", encoding="ascii") as stream:
+        stream.write("ok")
+
+
+def _remove_marker(filesystem_root, area, name):
+    directories = {
+        "tmp": ("tmp",),
+        "worker_home": ("run", "assistant-worker-home"),
+    }
+    if area not in directories:
+        raise AssertionError("unknown probe marker location")
+    filesystem_root.joinpath(*directories[area], name).unlink()
+
+
+def _collect_recovery_profile(
+    proc_root,
+    filesystem_root,
+    local_pid,
+    python_executable,
+    find_module,
+    open_readiness,
+    write_marker,
+    remove_marker,
+):
+    process_paths = []
+    for process_path in proc_root.iterdir():
+        if not process_path.name.isdecimal():
+            continue
+        if len(process_paths) >= MAX_PROCESS_COUNT:
+            raise AssertionError("process inventory exceeds fixed limit")
+        process_paths.append(process_path)
+
+    records = []
+    local_pid_seen = False
+    for process_path in process_paths:
+        pid = int(process_path.name, 10)
+        if pid == local_pid:
+            local_pid_seen = True
+            continue
+        records.append({
+            "pid": pid,
+            "command": _command(process_path),
+            **_status_fields(process_path),
+        })
+
+    if not local_pid_seen:
+        raise AssertionError("probe process is missing from bounded process inventory")
+
+    pid1 = None
+    app_wrappers = []
+    app_processes = []
+    for record in records:
+        command = record["command"]
+        if command == (python_executable, *WORKER_WRAPPER_COMMAND) or command == WORKER_COMMAND:
+            raise AssertionError("assistant worker process is running")
+        if record["pid"] == 1:
+            if command not in (("python", *PID1_COMMAND), (python_executable, *PID1_COMMAND)):
+                raise AssertionError("pid1 is not the container supervisor")
+            _assert_identity(record, 0, 0, 192, 192, 192)
+            pid1 = record
+        elif command == (python_executable, *APP_WRAPPER_COMMAND):
+            _assert_identity(record, 10001, 10001, 0, 0, 192)
+            app_wrappers.append(record)
+        elif command == APP_COMMAND:
+            _assert_identity(record, 10001, 10001, 0, 0, 192)
+            app_processes.append(record)
+        else:
+            raise AssertionError("unexpected process in recovery container")
+
+    if pid1 is None or len(app_wrappers) != 1 or len(app_processes) != 1:
+        raise AssertionError("expected root supervisor and one unprivileged app chain")
+    app_wrapper = app_wrappers[0]
+    app_process = app_processes[0]
+    if (
+        pid1["ppid"] != 0
+        or app_wrapper["ppid"] != pid1["pid"]
+        or app_process["ppid"] != app_wrapper["pid"]
+    ):
+        raise AssertionError("application process ancestry does not match root supervisor chain")
+
+    opencode_binary_present = filesystem_root.joinpath(
+        "usr", "local", "bin", "opencode"
+    ).is_file()
+    assistant_package_present = find_module("stock_probs.assistant") is not None
+    supervisor_package_present = find_module("stock_probs.container_supervisor") is not None
+    if (
+        not opencode_binary_present
+        or not assistant_package_present
+        or not supervisor_package_present
+    ):
+        raise AssertionError("pinned assistant image contents are incomplete")
+
+    with open_readiness("http://127.0.0.1:8000/api/v1/readiness", timeout=2) as response:
+        readiness_bytes = response.read(16385)
+    if len(readiness_bytes) > 16384:
+        raise AssertionError("readiness response exceeds fixed limit")
+    readiness = json.loads(readiness_bytes)
+    assistant = readiness.get("assistant") if isinstance(readiness, dict) else None
+    if (
+        not isinstance(readiness, dict)
+        or readiness.get("status") != "ready"
+        or readiness.get("schema_version") != 13
+        or not isinstance(assistant, dict)
+        or assistant.get("enabled") is not False
+        or assistant.get("status") != "disabled"
+    ):
+        raise AssertionError("schema-13 recovery readiness is not assistant-disabled")
+
+    write_marker(filesystem_root, "tmp", "recovery-write-check")
+    remove_marker(filesystem_root, "tmp", "recovery-write-check")
+    try:
+        write_marker(filesystem_root, "worker_home", "recovery-write-check")
+    except PermissionError:
+        worker_home_private = True
+    else:
+        remove_marker(filesystem_root, "worker_home", "recovery-write-check")
+        raise AssertionError("worker home is writable by the app identity")
+
+    return {
+        "uid": 10001,
+        "gid": 10001,
+        "cap_eff": 0,
+        "cap_prm": 0,
+        "cap_bnd": 192,
+        "no_new_privileges": True,
+        "tmp_writable": True,
+        "worker_home_private": worker_home_private,
+        "native_worker_absent": True,
+        "container_supervisor_present": True,
+        "opencode_binary_present": True,
+        "assistant_package_present": True,
+        "assistant_disabled_readiness": True,
+        "pid1_supervisor_verified": True,
+        "app_wrapper_identity_verified": True,
+        "app_process_identity_verified": True,
+        "process_inventory_bounded": True,
+    }
+
+
+def _main():
+    result = _collect_recovery_profile(
+        pathlib.Path("/proc"),
+        pathlib.Path("/"),
+        os.getpid(),
+        sys.executable,
+        importlib.util.find_spec,
+        urllib.request.urlopen,
+        _write_marker,
+        _remove_marker,
+    )
+    print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    _main()
+"""
+
+
+def _recovery_process_profile(
+    container: str,
+    *,
+    same_schema_hotfix: bool = False,
+) -> dict[str, object]:
+    if same_schema_hotfix:
+        probe = _recovery_process_profile_probe_v2()
+    else:
+        probe = """import importlib.util
 import json
 import pathlib
 
@@ -3512,10 +4129,24 @@ print(json.dumps({'uid': 10001, 'gid': 10001, 'cap_eff': 0, 'cap_prm': 0,
         or value.get("gid") != 10001
         or value.get("cap_eff") != 0
         or value.get("cap_prm") != 0
+        or value.get("cap_bnd") != 192
         or value.get("no_new_privileges") is not True
         or value.get("tmp_writable") is not True
         or value.get("worker_home_private") is not True
         or value.get("native_worker_absent") is not True
+        or (
+            same_schema_hotfix
+            and (
+                value.get("container_supervisor_present") is not True
+                or value.get("opencode_binary_present") is not True
+                or value.get("assistant_package_present") is not True
+                or value.get("assistant_disabled_readiness") is not True
+                or value.get("pid1_supervisor_verified") is not True
+                or value.get("app_wrapper_identity_verified") is not True
+                or value.get("app_process_identity_verified") is not True
+                or value.get("process_inventory_bounded") is not True
+            )
+        )
     ):
         raise RehearsalError("recovery_process_identity_invalid")
     return value
@@ -3542,7 +4173,7 @@ def _validate_pre_migration_backup(value: object) -> dict[str, object]:
     return {"name": name, "sha256": backup["sha256"], "schema_version": 12, "verified": True}
 
 
-def _run_pair(payload: dict[str, object]) -> dict[str, object]:
+def _run_pair_v1(payload: dict[str, object]) -> dict[str, object]:
     global ACTIVE_PRODUCTION_BASELINE, MONITOR_ACTIVE, OPERATION_DEADLINE, PRODUCTION_SAMPLE_COUNT
     ACTIVE_PRODUCTION_BASELINE = None
     if (
@@ -3959,6 +4590,389 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
         finally:
             MONITOR_ACTIVE = False
             OPERATION_DEADLINE = None
+        if cleanup_error is not None:
+            if primary_exception is None:
+                raise RehearsalError(cleanup_error)
+            _record_cleanup_failure(primary_exception, cleanup_error)
+    if result_receipt is None:
+        raise RehearsalError("rehearsal_result_missing")
+    result_receipt["volume_removed"] = volume_removed
+    result_receipt["candidate_container_removed"] = candidate_removed
+    result_receipt["recovery_container_removed"] = recovery_removed
+    return result_receipt
+
+
+def _run_pair(payload: dict[str, object]) -> dict[str, object]:
+    """Dispatch exact v1 migration rehearsal or additive v2 same-schema hotfix rehearsal."""
+
+    version = _pair_manifest_version(payload)
+    if version == 1:
+        return _run_pair_v1(payload)
+    if version == 2:
+        return _run_pair_v2(payload)
+    raise RehearsalError("pair_manifest_version_unsupported")
+
+
+def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
+    """Run the fixed schema-13 image pair without migration, downgrade, or backup restore."""
+
+    global ACTIVE_PRODUCTION_BASELINE, HOTFIX_OPERATION_ACTIVE, MONITOR_ACTIVE
+    global OPERATION_DEADLINE, PRODUCTION_SAMPLE_COUNT
+    ACTIVE_PRODUCTION_BASELINE = None
+    HOTFIX_OPERATION_ACTIVE = False
+    if (
+        payload.get("repository") != REPOSITORY
+        or type(payload.get("pull_number")) is not int
+        or payload.get("pull_number") != HELPER_SOURCE_PR_NUMBER
+    ):
+        raise RehearsalError("fixed_pull_request_mismatch")
+    revision = _revision(payload.get("reviewed_head_sha"))
+    pair_sha256 = _digest(payload.get("pair_manifest_sha256"), "pair_manifest_invalid")
+    source_digests = _verify_installed_source(
+        revision,
+        pair_sha256,
+        helper_source_contract=HOTFIX_CONTRACT,
+    )
+    _verify_helper_source_pull_request(revision)
+    _verify_hotfix_pull_request()
+    production_baseline = _production_container()
+    if production_baseline != PRODUCTION_BASELINE:
+        raise RehearsalError("hotfix_production_baseline_mismatch")
+    candidate_id = _image_id(payload.get("candidate_image_id"), "candidate_image_id_invalid")
+    recovery_id = _image_id(payload.get("recovery_image_id"), "recovery_image_id_invalid")
+    candidate_context = _digest(
+        payload.get("candidate_source_context_sha256"), "candidate_context_invalid"
+    )
+    recovery_context = _digest(
+        payload.get("recovery_source_context_sha256"), "recovery_context_invalid"
+    )
+    overlay_hash = _digest(payload.get("recovery_overlay_sha256"), "recovery_overlay_invalid")
+    candidate_hash = _digest(payload.get("candidate_archive_sha256"), "candidate_archive_invalid")
+    recovery_hash = _digest(payload.get("recovery_archive_sha256"), "recovery_archive_invalid")
+    if candidate_hash == recovery_hash:
+        raise RehearsalError("pair_archives_must_differ")
+
+    sample_count = [0]
+    host_memtotal_before_kib, host_memavailable_before_kib = _host_memory_kib()
+    if host_memavailable_before_kib < START_RESERVE_KIB:
+        raise _memory_reserve_failure(host_memavailable_before_kib, START_RESERVE_KIB, "preflight")
+    ACTIVE_PRODUCTION_BASELINE = dict(production_baseline)
+    HOTFIX_OPERATION_ACTIVE = True
+    MONITOR_ACTIVE = True
+    PRODUCTION_SAMPLE_COUNT = sample_count
+    OPERATION_DEADLINE = time.monotonic() + MAX_OPERATION_SECONDS
+    run_id = secrets.token_hex(8)
+    volume = f"signal-ledger-pr1-{revision[:8]}-{run_id}"
+    candidate_name = f"{volume}-candidate"
+    recovery_name = f"{volume}-recovery"
+    candidate_network = _candidate_network_name(volume)
+    staged: dict[str, StagedArchive] = {}
+    containers: list[str] = []
+    volume_created = False
+    network_created = False
+    candidate_network_id: str | None = None
+    candidate_removed = False
+    recovery_removed = False
+    volume_removed = False
+    result_receipt: dict[str, object] | None = None
+    primary_exception: BaseException | None = None
+    started = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    try:
+        _check_production(sample_count, startup=True)
+        manifest, staged = _verify_pair(payload, revision)
+        if manifest.get("format_version") != 2:
+            raise RehearsalError("pair_manifest_version_mismatch")
+        candidate_manifest = manifest.get("candidate")
+        recovery_manifest = manifest.get("recovery")
+        if (
+            not isinstance(candidate_manifest, dict)
+            or not isinstance(recovery_manifest, dict)
+            or candidate_manifest.get("revision") != HOTFIX_CANDIDATE_REVISION
+            or recovery_manifest.get("revision") != HOTFIX_RECOVERY_BASELINE["revision"]
+            or candidate_manifest.get("build_receipt_sha256") != HOTFIX_BUILD_RECEIPT_SHA256
+        ):
+            raise RehearsalError("pair_manifest_identity_mismatch")
+
+        _load_image(
+            HOTFIX_CANDIDATE_REVISION,
+            "candidate",
+            candidate_id,
+            staged["candidate"],
+        )
+        _load_image(
+            HOTFIX_RECOVERY_BASELINE["revision"],
+            "recovery",
+            recovery_id,
+            staged["recovery"],
+        )
+        volume_created = True
+        volume_created_result = _run(
+            [
+                "/usr/bin/docker",
+                "volume",
+                "create",
+                "--label",
+                "org.stock-probs.pr-rehearsal=true",
+                "--label",
+                f"org.stock-probs.pr-rehearsal.head={revision}",
+                "--label",
+                f"org.stock-probs.pr-rehearsal.pair={pair_sha256}",
+                volume,
+            ],
+            timeout=15,
+        )
+        if volume_created_result.stdout.decode("ascii", errors="strict").strip() != volume:
+            raise RehearsalError("disposable_volume_creation_invalid")
+        _verify_volume(volume, revision, pair_sha256)
+
+        network_created = True
+        candidate_network_id = _create_candidate_network(
+            candidate_network, revision, pair_sha256, volume
+        )
+        containers.append(candidate_name)
+        candidate_container = _start_app(
+            candidate_id,
+            volume,
+            candidate_name,
+            assistant_enabled=False,
+            network=candidate_network,
+            network_id=candidate_network_id,
+            run_id=run_id,
+            reviewed_head_sha=revision,
+            pair_manifest_sha256=pair_sha256,
+            role="candidate",
+        )
+        candidate_memory_baseline = _memory_usage(candidate_container)
+        _oom_event_evidence(candidate_memory_baseline, candidate_memory_baseline, role="candidate")
+        _cpu_stat_evidence(candidate_memory_baseline, candidate_memory_baseline, role="candidate")
+        _wait_ready(candidate_container, enabled=False, sample_count=sample_count)
+        _copy_probe_files(candidate_container, source_digests)
+        seeded = _seed(candidate_container)
+        user_ids = seeded.get("synthetic_user_ids")
+        if (
+            not isinstance(user_ids, list)
+            or len(user_ids) != 2
+            or any(type(user_id) is not int or user_id < 1 for user_id in user_ids)
+        ):
+            raise RehearsalError("synthetic_identity_invalid")
+        marker = _seed_operation(
+            candidate_container,
+            "marker",
+            {"user_id": user_ids[0], "revision": HOTFIX_CANDIDATE_REVISION},
+        )
+        request_id = marker.get("request_id")
+        if not isinstance(request_id, str) or not 1 <= len(request_id) <= 96:
+            raise RehearsalError("post_start_write_failed")
+        candidate_snapshot = _seed_operation(
+            candidate_container, "snapshot", {"request_id": request_id}
+        )
+        if (
+            candidate_snapshot.get("marker_present") is not True
+            or _schema_version(
+                candidate_id, volume, revision=revision, pair_manifest_sha256=pair_sha256
+            )
+            != 13
+        ):
+            raise RehearsalError("candidate_schema13_start_or_write_failed")
+        candidate_memory_final = _memory_usage(candidate_container)
+        candidate_oom_evidence = _oom_event_evidence(
+            candidate_memory_baseline, candidate_memory_final, role="candidate"
+        )
+        candidate_cpu_evidence = _cpu_stat_evidence(
+            candidate_memory_baseline, candidate_memory_final, role="candidate"
+        )
+        _remove_owned_container(candidate_name, revision, pair_sha256, volume)
+        containers.remove(candidate_name)
+        candidate_removed = True
+
+        containers.append(recovery_name)
+        recovery_container = _start_app(
+            recovery_id,
+            volume,
+            recovery_name,
+            assistant_enabled=False,
+            network="none",
+            network_id=None,
+            run_id=run_id,
+            reviewed_head_sha=revision,
+            pair_manifest_sha256=pair_sha256,
+            role="recovery",
+        )
+        recovery_memory_baseline = _memory_usage(recovery_container, expected_role="recovery")
+        _oom_event_evidence(recovery_memory_baseline, recovery_memory_baseline, role="recovery")
+        _cpu_stat_evidence(recovery_memory_baseline, recovery_memory_baseline, role="recovery")
+        _wait_ready(recovery_container, enabled=False, sample_count=sample_count)
+        _copy_probe_files(recovery_container, source_digests)
+        process_profile = _recovery_process_profile(
+            recovery_container,
+            same_schema_hotfix=True,
+        )
+        recovery_snapshot = _seed_operation(
+            recovery_container, "snapshot", {"request_id": request_id}
+        )
+        if (
+            recovery_snapshot.get("marker_present") is not True
+            or recovery_snapshot.get("sha256") != candidate_snapshot.get("sha256")
+            or recovery_snapshot.get("security_state_sha256")
+            != candidate_snapshot.get("security_state_sha256")
+            or _schema_version(
+                recovery_id, volume, revision=revision, pair_manifest_sha256=pair_sha256
+            )
+            != 13
+        ):
+            raise RehearsalError("same_schema_write_not_preserved")
+        recovery_memory_final = _memory_usage(recovery_container, expected_role="recovery")
+        recovery_oom_evidence = _oom_event_evidence(
+            recovery_memory_baseline, recovery_memory_final, role="recovery"
+        )
+        recovery_cpu_evidence = _cpu_stat_evidence(
+            recovery_memory_baseline, recovery_memory_final, role="recovery"
+        )
+        _remove_owned_container(recovery_name, revision, pair_sha256, volume)
+        containers.remove(recovery_name)
+        recovery_removed = True
+
+        _verify_volume(volume, revision, pair_sha256)
+        _check_production(sample_count)
+        host_memtotal_after_kib, host_memavailable_after_kib = _host_memory_kib()
+        if host_memtotal_after_kib != host_memtotal_before_kib:
+            raise RehearsalError("host_memory_capacity_changed")
+        if host_memavailable_after_kib < RUN_RESERVE_KIB:
+            raise _memory_reserve_failure(host_memavailable_after_kib, RUN_RESERVE_KIB, "final")
+        result_receipt = {
+            "status": "pass",
+            "contract": HOTFIX_CONTRACT,
+            "reviewed_head_sha": revision,
+            "pair_manifest_sha256": pair_sha256,
+            "candidate_image_id": candidate_id,
+            "candidate_revision": HOTFIX_CANDIDATE_REVISION,
+            "candidate_source_context_sha256": candidate_context,
+            "candidate_build_receipt_sha256": HOTFIX_BUILD_RECEIPT_SHA256,
+            "recovery_image_id": recovery_id,
+            "recovery_revision": HOTFIX_RECOVERY_BASELINE["revision"],
+            "recovery_source_context_sha256": recovery_context,
+            "recovery_overlay_sha256": overlay_hash,
+            "same_disposable_volume": True,
+            "production_mutation": False,
+            "production_baseline": dict(production_baseline),
+            "production_assistant_enabled": True,
+            "production_health_samples": sample_count[0],
+            "host_memavailable_before_kib": host_memavailable_before_kib,
+            "host_memavailable_after_kib": host_memavailable_after_kib,
+            "host_memory_capacity_evidence": {
+                "complete": True,
+                "unit": "kib",
+                "memtotal_before": host_memtotal_before_kib,
+                "memtotal_after": host_memtotal_after_kib,
+                "stable": True,
+            },
+            "candidate_memory_peak_bytes": candidate_memory_final["peak"],
+            "candidate_memory_limit_bytes": candidate_memory_final["limit"],
+            "candidate_oom_event_evidence": candidate_oom_evidence,
+            "candidate_cpu_stat_evidence": candidate_cpu_evidence,
+            "recovery_memory_peak_bytes": recovery_memory_final["peak"],
+            "recovery_memory_limit_bytes": recovery_memory_final["limit"],
+            "recovery_oom_event_evidence": recovery_oom_evidence,
+            "recovery_cpu_stat_evidence": recovery_cpu_evidence,
+            "oom_event_evidence_complete": True,
+            "zero_oom_events_verified": True,
+            "schema13_same_schema_verified": True,
+            "schema_after_recovery": 13,
+            "migration_commands_executed": 0,
+            "restore_commands_executed": 0,
+            "post_start_write_preserved": True,
+            "recovery_process_isolation_verified": (
+                process_profile.get("worker_home_private") is True
+                and process_profile.get("native_worker_absent") is True
+                and process_profile.get("tmp_writable") is True
+                and process_profile.get("uid") == 10001
+                and process_profile.get("gid") == 10001
+                and process_profile.get("cap_eff") == 0
+                and process_profile.get("cap_prm") == 0
+                and process_profile.get("cap_bnd") == 192
+                and process_profile.get("no_new_privileges") is True
+                and process_profile.get("container_supervisor_present") is True
+                and process_profile.get("opencode_binary_present") is True
+                and process_profile.get("assistant_package_present") is True
+                and process_profile.get("assistant_disabled_readiness") is True
+                and process_profile.get("pid1_supervisor_verified") is True
+                and process_profile.get("app_wrapper_identity_verified") is True
+                and process_profile.get("app_process_identity_verified") is True
+                and process_profile.get("process_inventory_bounded") is True
+            ),
+            "architecture": platform.machine(),
+            "candidate_container_removed": candidate_removed,
+            "recovery_container_removed": recovery_removed,
+            "volume_removed": False,
+            "images_retained": True,
+            "started_at": started,
+            "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+    except BaseException as exc:
+        primary_exception = exc
+        raise
+    finally:
+        cleanup_error: str | None = None
+        containers_removed = True
+        try:
+            for container_name in reversed(containers):
+                try:
+                    _remove_owned_container(container_name, revision, pair_sha256, volume)
+                    containers.remove(container_name)
+                    if container_name == candidate_name:
+                        candidate_removed = True
+                    elif container_name == recovery_name:
+                        recovery_removed = True
+                except (RehearsalError, OSError, ValueError, TypeError, KeyError):
+                    containers_removed = False
+                    cleanup_error = cleanup_error or "container_removal_unverified"
+            for container_name, container_volume, container_revision, container_pair in reversed(
+                OPERATION_CONTAINERS
+            ):
+                try:
+                    _remove_owned_container(
+                        container_name, container_revision, container_pair, container_volume
+                    )
+                    OPERATION_CONTAINERS.remove(
+                        (container_name, container_volume, container_revision, container_pair)
+                    )
+                except (RehearsalError, OSError, ValueError, TypeError, KeyError):
+                    containers_removed = False
+                    cleanup_error = cleanup_error or "cli_container_removal_unverified"
+            if containers_removed:
+                try:
+                    _network_removed, volume_removed = _cleanup_network_before_volume(
+                        containers_removed=True,
+                        network_name=candidate_network,
+                        network_id=candidate_network_id,
+                        network_created=network_created,
+                        revision=revision,
+                        pair_sha256=pair_sha256,
+                        volume=volume,
+                        volume_created=volume_created,
+                    )
+                except (RehearsalError, OSError, ValueError, TypeError, KeyError):
+                    cleanup_error = cleanup_error or "network_or_volume_removal_unverified"
+            elif volume_created or network_created:
+                cleanup_error = cleanup_error or "disposable_volume_retained_for_running_container"
+            for archive in staged.values():
+                try:
+                    info = archive.path.lstat()
+                    if stat.S_ISREG(info.st_mode) and info.st_uid == 0:
+                        archive.path.unlink(missing_ok=True)
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    cleanup_error = cleanup_error or "staged_archive_cleanup_unverified"
+            try:
+                _cleanup_assets(revision)
+            except (RehearsalError, OSError, ValueError, TypeError, KeyError):
+                cleanup_error = cleanup_error or "asset_cleanup_unverified"
+        finally:
+            HOTFIX_OPERATION_ACTIVE = False
+            MONITOR_ACTIVE = False
+            OPERATION_DEADLINE = None
+            ACTIVE_PRODUCTION_BASELINE = None
         if cleanup_error is not None:
             if primary_exception is None:
                 raise RehearsalError(cleanup_error)

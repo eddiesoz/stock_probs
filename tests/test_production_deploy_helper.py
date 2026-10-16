@@ -6002,3 +6002,583 @@ def test_temporary_recovery_protocol_accepts_only_typed_start_and_restore_payloa
     )
     assert operation == "restore_temporary_recovery"
     assert payload["operation_id"] == "a" * 32
+
+
+def _hotfix_release_manifest(helper: Any) -> dict[str, Any]:
+    """Represent the reviewed PR11 helper, PR9 candidate and original production artifact."""
+
+    return {
+        "format_version": 2,
+        "contract": "schema13_same_schema_hotfix_v1",
+        "repository": "eddiesoz/stock_probs",
+        "revision": "a" * 40,
+        "helper_source": {"pull_number": 11, "revision": "a" * 40},
+        "candidate": {
+            "asset": helper._release_archive_name(helper.HOTFIX_CANDIDATE_REVISION),
+            "archive_sha256": "c" * 64,
+            "archive_size": 1024,
+            "image_id": helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            "platform": "linux/amd64",
+            "pull_number": 9,
+            "revision": helper.HOTFIX_CANDIDATE_REVISION,
+            "schema_version": 13,
+            "source_context_sha256": helper.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            "build_receipt_sha256": helper.HOTFIX_BUILD_RECEIPT_SHA256,
+        },
+        "recovery": {
+            "asset": helper._release_archive_name(helper.PRODUCTION_PREDECESSOR_REVISION),
+            "archive_sha256": helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+            "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "platform": "linux/amd64",
+            "revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+            "schema_version": 13,
+            "source_context_sha256": helper.HOTFIX_RECOVERY_CONTEXT_SHA256,
+            "kind": "previous_production_candidate",
+            "prior_pair_manifest_sha256": helper.HOTFIX_PRIOR_PAIR_SHA256,
+            "assistant_rollout_mode": "invited",
+        },
+        "transition": {"from_schema": 13, "to_schema": 13, "migrations": [], "restore": False},
+        "recovery_overlay": {"kind": "none", "sha256": hashlib.sha256(b"[]").hexdigest()},
+    }
+
+
+def _validate_hotfix_release(helper: Any, manifest: dict[str, Any]) -> dict[str, Any]:
+    return helper._validate_release_pair_manifest(
+        manifest,
+        revision=helper.HOTFIX_CANDIDATE_REVISION,
+        candidate_archive_sha256="c" * 64,
+        candidate_archive_size=1024,
+        candidate_image_id=helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        facts={
+            "--hotfix-helper-source": "a" * 40,
+            "--source-context-manifest": {
+                "source_context_sha256": helper.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            },
+        },
+    )
+
+
+def test_hotfix_release_pair_retains_distinct_helper_candidate_and_recovery_revisions() -> None:
+    helper = _helper()
+    manifest = _hotfix_release_manifest(helper)
+    assert _validate_hotfix_release(helper, manifest) is manifest
+    assert (
+        len(
+            {
+                manifest["revision"],
+                manifest["candidate"]["revision"],
+                manifest["recovery"]["revision"],
+            }
+        )
+        == 3
+    )
+    assert manifest["transition"]["migrations"] == []
+    assert manifest["transition"]["restore"] is False
+
+
+def test_hotfix_pair_parser_rejects_duplicate_nested_identity_keys() -> None:
+    helper = _helper()
+    with pytest.raises(ValueError, match="duplicate release pair key"):
+        json.loads(
+            '{"helper_source":{"pull_number":2,"pull_number":11}}',
+            object_pairs_hook=helper._unique_release_pair_object,
+        )
+
+
+def test_hotfix_pair_rejects_coordinated_helper_revision_substitution() -> None:
+    helper = _helper()
+    manifest = _hotfix_release_manifest(helper)
+    manifest["revision"] = manifest["helper_source"]["revision"] = "b" * 40
+    with pytest.raises(helper.HostError, match="release_pair_hotfix_identity_invalid"):
+        _validate_hotfix_release(helper, manifest)
+
+
+def _read_hotfix_install_fixture(
+    helper: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    value: object,
+    *,
+    uid: int = 0,
+    mode: int = 0o640,
+) -> str:
+    path = tmp_path / "installed.json"
+    path.write_bytes(value if isinstance(value, bytes) else json.dumps(value).encode())
+    path.chmod(mode)
+    monkeypatch.setattr(helper, "HOTFIX_HELPER_INSTALL_RECORD", path)
+    original_fstat = os.fstat
+    fields = ("st_dev", "st_ino", "st_mode", "st_gid", "st_size", "st_mtime_ns", "st_ctime_ns")
+
+    def projected_owner(descriptor: int) -> SimpleNamespace:
+        observed = original_fstat(descriptor)
+        return SimpleNamespace(st_uid=uid, **{name: getattr(observed, name) for name in fields})
+
+    with monkeypatch.context() as ownership:
+        ownership.setattr(helper.os, "fstat", projected_owner)
+        return helper._reviewed_hotfix_helper_revision("f" * 64)
+
+
+def _hotfix_install_metadata(helper: Any) -> dict[str, Any]:
+    return {
+        "format_version": 1,
+        "repository": helper.PAIR_REPOSITORY,
+        "pull_number": 11,
+        "helper_source_contract": helper.HOTFIX_PAIR_CONTRACT,
+        "reviewed_head_sha": "a" * 40,
+        "reviewed_pair_manifest_sha256": "f" * 64,
+    }
+
+
+def test_hotfix_helper_revision_comes_from_the_matching_root_bootstrap_record(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    assert (
+        _read_hotfix_install_fixture(
+            helper, monkeypatch, tmp_path, _hotfix_install_metadata(helper)
+        )
+        == "a" * 40
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("format_version", 1.0),
+        ("repository", "unrelated/repository"),
+        ("pull_number", 2),
+        ("pull_number", 11.0),
+        ("helper_source_contract", None),
+        ("reviewed_pair_manifest_sha256", "e" * 64),
+        ("reviewed_head_sha", "unreviewed"),
+    ],
+)
+def test_hotfix_helper_provenance_rejects_foreign_or_legacy_bootstrap_record(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    field: str,
+    value: Any,
+) -> None:
+    helper = _helper()
+    metadata = _hotfix_install_metadata(helper)
+    metadata[field] = value
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        _read_hotfix_install_fixture(helper, monkeypatch, tmp_path, metadata)
+
+
+@pytest.mark.parametrize("uid,mode", [(10001, 0o640), (0, 0o660), (0, 0o642)])
+def test_hotfix_helper_provenance_rejects_untrusted_file_ownership_or_write_permissions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    uid: int,
+    mode: int,
+) -> None:
+    helper = _helper()
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_unsafe"):
+        _read_hotfix_install_fixture(
+            helper, monkeypatch, tmp_path, _hotfix_install_metadata(helper), uid=uid, mode=mode
+        )
+
+
+def test_hotfix_helper_provenance_rejects_symlink_duplicate_keys_and_oversized_record(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    target = tmp_path / "target.json"
+    target.write_text("{}")
+    link = tmp_path / "installed-link.json"
+    link.symlink_to(target)
+    monkeypatch.setattr(helper, "HOTFIX_HELPER_INSTALL_RECORD", link)
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_unavailable"):
+        helper._reviewed_hotfix_helper_revision("f" * 64)
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_invalid"):
+        _read_hotfix_install_fixture(
+            helper, monkeypatch, tmp_path, b'{"pull_number":2,"pull_number":11}'
+        )
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_unsafe"):
+        _read_hotfix_install_fixture(helper, monkeypatch, tmp_path, b" " * 8193)
+
+
+def test_hotfix_helper_provenance_rejects_a_special_file_without_waiting_for_a_writer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    fifo = tmp_path / "installed-fifo"
+    os.mkfifo(fifo, 0o600)
+    monkeypatch.setattr(helper, "HOTFIX_HELPER_INSTALL_RECORD", fifo)
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_unsafe"):
+        helper._reviewed_hotfix_helper_revision("f" * 64)
+
+
+@pytest.mark.parametrize(
+    "section,field,value",
+    [
+        ("helper_source", "pull_number", 2),
+        ("helper_source", "revision", "b" * 40),
+        ("candidate", "pull_number", 11),
+        ("candidate", "revision", "a" * 40),
+        ("candidate", "archive_sha256", "d" * 64),
+        ("candidate", "archive_size", 1024.0),
+        ("candidate", "build_receipt_sha256", "d" * 64),
+        (
+            "recovery",
+            "image_id",
+            "sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f",
+        ),
+        ("recovery", "revision", "a" * 40),
+        ("recovery", "archive_sha256", "d" * 64),
+        ("recovery", "schema_version", 13.0),
+        ("transition", "from_schema", 12),
+        ("transition", "to_schema", 14),
+        ("transition", "migrations", ["013_assistant_conversations.sql"]),
+        ("transition", "restore", True),
+        ("transition", "restore", 0),
+        ("recovery_overlay", "kind", "migration"),
+        ("recovery_overlay", "sha256", "d" * 64),
+    ],
+)
+def test_hotfix_release_pair_rejects_identity_schema_or_overlay_substitution(
+    section: str, field: str, value: Any
+) -> None:
+    helper = _helper()
+    manifest = _hotfix_release_manifest(helper)
+    manifest[section][field] = value
+    with pytest.raises(helper.HostError, match="release_pair_"):
+        _validate_hotfix_release(helper, manifest)
+
+
+def _hotfix_release_record(helper: Any, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    monkeypatch.setattr(
+        helper,
+        "_load_release_archive",
+        lambda *args: (
+            helper._local_image_ref(helper.PRODUCTION_PREDECESSOR_REVISION),
+            helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "linux/amd64",
+            13,
+            helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        ),
+    )
+    monkeypatch.setattr(helper, "_image_has_recovery_entrypoint", lambda *args, **kwargs: True)
+    record = _schema13_release_record(helper)
+    record.update(
+        revision=helper.HOTFIX_CANDIDATE_REVISION,
+        image_ref=helper._local_image_ref(helper.HOTFIX_CANDIDATE_REVISION),
+        image_id=helper.HOTFIX_CANDIDATE_IMAGE_ID,
+    )
+    record.update(helper._load_hotfix_release_recovery(_hotfix_release_manifest(helper), "f" * 64))
+    return record
+
+
+def test_hotfix_release_load_uses_the_original_production_archive_and_entrypoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    _hotfix_release_record(helper, monkeypatch)
+    calls = []
+    original = helper._load_release_archive
+    monkeypatch.setattr(
+        helper, "_load_release_archive", lambda *args: calls.append(args) or original(*args)
+    )
+    monkeypatch.setattr(
+        helper,
+        "_image_has_recovery_entrypoint",
+        lambda ref, **kwargs: calls.append((ref, kwargs)) or True,
+    )
+    result = helper._load_hotfix_release_recovery(_hotfix_release_manifest(helper), "f" * 64)
+    assert calls == [
+        (
+            helper.PRODUCTION_PREDECESSOR_REVISION,
+            helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        ),
+        (helper._local_image_ref(helper.PRODUCTION_PREDECESSOR_REVISION), {"managed": True}),
+    ]
+    assert result["migration_sha256"] is None
+    assert result["recovery_base_revision"] == helper.PRODUCTION_PREDECESSOR_REVISION
+
+
+def test_hotfix_recovery_validation_rechecks_actual_original_image_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    record = _hotfix_release_record(helper, monkeypatch)
+    monkeypatch.setattr(helper, "_image_id", lambda ref: helper.PRODUCTION_PREDECESSOR_IMAGE_ID)
+    monkeypatch.setattr(
+        helper, "_image_revision", lambda ref: helper.PRODUCTION_PREDECESSOR_REVISION
+    )
+    monkeypatch.setattr(helper, "_image_platform", lambda ref: "linux/amd64")
+    monkeypatch.setattr(helper, "_image_schema", lambda ref: 13)
+    helper._assert_loaded_recovery_image(record)
+    monkeypatch.setattr(helper, "_image_revision", lambda ref: helper.HOTFIX_CANDIDATE_REVISION)
+    with pytest.raises(helper.HostError, match="recovery_image_contract_mismatch"):
+        helper._assert_loaded_recovery_image(record)
+
+
+def test_hotfix_recovery_preserves_data_without_migrations_and_reports_actual_source_revision(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    record = _hotfix_release_record(helper, monkeypatch)
+    observed = _install_schema13_rollback_mocks(helper, monkeypatch, tmp_path, record)
+    monkeypatch.setattr(
+        helper,
+        "_run_migrations",
+        lambda *args, **kwargs: pytest.fail("same-schema recovery must not run migrations"),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_run",
+        lambda *args, **kwargs: pytest.fail("recovery test must not execute external commands"),
+    )
+    result = helper._rollback_to_recorded_recovery(
+        record["revision"],
+        record,
+        record["recovery_image_id"],
+        observed["compose_snapshot"],
+    )
+    current = observed["persisted"][helper.CURRENT_RECORD]
+    assert result["revision"] == current["revision"] == helper.PRODUCTION_PREDECESSOR_REVISION
+    assert result["image_id"] == current["image_id"] == helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    assert current["candidate_release_revision"] == helper.HOTFIX_CANDIDATE_REVISION
+    assert current["source_context_sha256"] == helper.HOTFIX_RECOVERY_CONTEXT_SHA256
+    assert current["candidate_source_context_sha256"] == helper.HOTFIX_CANDIDATE_CONTEXT_SHA256
+    assert current["assistant_rollout_mode"] == "disabled"
+    assert [event[0] for event in observed["events"]].count("stop") == 1
+    assert [event for event in observed["events"] if event[0] == "runtime"] == [
+        ("runtime", (helper._local_image_ref(helper.PRODUCTION_PREDECESSOR_REVISION), "disabled")),
+    ]
+    helper._assert_image_record(current)
+    with pytest.raises(helper.HostError, match="recovery_image_record_invalid"):
+        helper._assert_image_record({**current, "revision": helper.HOTFIX_CANDIDATE_REVISION})
+
+
+def test_hotfix_pair_load_keeps_the_recovery_asset_under_its_original_release(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    _hotfix_release_record(helper, monkeypatch)
+    manifest = _hotfix_release_manifest(helper)
+    raw = json.dumps(manifest).encode()
+    path = tmp_path / "pair.json"
+    path.write_bytes(raw)
+    calls = []
+    monkeypatch.setattr(
+        helper,
+        "_download_release_asset",
+        lambda revision, role: calls.append((revision, role)) or path,
+    )
+    original = helper._load_release_archive
+    monkeypatch.setattr(
+        helper, "_load_release_archive", lambda *args: calls.append(args) or original(*args)
+    )
+    monkeypatch.setattr(
+        helper,
+        "_release_pair_source_facts",
+        lambda: {
+            "--source-context-manifest": {
+                "source_context_sha256": helper.HOTFIX_CANDIDATE_CONTEXT_SHA256
+            }
+        },
+    )
+    monkeypatch.setattr(helper, "_reviewed_hotfix_helper_revision", lambda pair_sha: "a" * 40)
+    monkeypatch.setattr(helper, "_run", lambda *args, **kwargs: pytest.fail("external command"))
+    result = helper._load_release_pair(
+        helper.HOTFIX_CANDIDATE_REVISION,
+        hashlib.sha256(raw).hexdigest(),
+        "c" * 64,
+        helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        candidate_archive_size=1024,
+    )
+    assert calls == [
+        (helper.HOTFIX_CANDIDATE_REVISION, "pair"),
+        (
+            helper.PRODUCTION_PREDECESSOR_REVISION,
+            helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        ),
+    ]
+    assert result["recovery_image_ref"] == helper._local_image_ref(
+        helper.PRODUCTION_PREDECESSOR_REVISION
+    )
+    assert not path.exists()
+
+
+@pytest.mark.parametrize(
+    "module,managed,expected",
+    [
+        ("stock_probs.recovery_supervisor", False, True),
+        ("stock_probs.recovery_supervisor", True, False),
+        ("stock_probs.container_supervisor", True, True),
+        ("stock_probs.container_supervisor", False, False),
+        ("stock_probs.cli", True, False),
+    ],
+)
+def test_hotfix_recovery_entrypoint_is_explicitly_separate_from_app_only_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+    module: str,
+    managed: bool,
+    expected: bool,
+) -> None:
+    helper = _helper()
+    command = [
+        "serve",
+        "--host",
+        "0.0.0.0",  # noqa: S104 - fixed container command fixture; no process is started.
+        "--port",
+        "8000",
+        "--allow-non-loopback",
+    ]
+    stdout = json.dumps(["python", "-m", module]) + "|" + json.dumps(command)
+    monkeypatch.setattr(helper, "_run", lambda *args, **kwargs: SimpleNamespace(stdout=stdout))
+    assert helper._image_has_recovery_entrypoint("fixed-fixture", managed=managed) is expected
+
+
+def test_hotfix_apply_persists_a_reloadable_pair_for_public_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    target = _hotfix_release_record(helper, monkeypatch)
+    predecessor = {
+        "revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "image_ref": helper._local_image_ref(helper.PRODUCTION_PREDECESSOR_REVISION),
+        "image_digest": helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+        "archive_sha256": helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "platform": "linux/amd64",
+        "schema_version": 13,
+        "source_context_sha256": helper.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        "compose_digest": target["compose_digest"],
+        "assistant_rollout_mode": "invited",
+    }
+    monkeypatch.setattr(helper, "CURRENT_RECORD", tmp_path / "current.json")
+    monkeypatch.setattr(helper, "FAILED_RECORD", tmp_path / "failed.json")
+    monkeypatch.setattr(helper, "RELEASE_ROOT", tmp_path / "releases")
+    helper.RELEASE_ROOT.mkdir(mode=0o700)
+    helper._write_json(helper.CURRENT_RECORD, predecessor)
+    events = []
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_ensure_no_active_temporary_recovery", lambda: None)
+    monkeypatch.setattr(
+        helper, "_assert_record_compose_digest", lambda row: tmp_path / "compose.yaml"
+    )
+    monkeypatch.setattr(
+        helper,
+        "_image_id",
+        lambda ref: target["image_id"] if ref == target["image_ref"] else predecessor["image_id"],
+    )
+    monkeypatch.setattr(
+        helper,
+        "_image_revision",
+        lambda ref: target["revision"] if ref == target["image_ref"] else predecessor["revision"],
+    )
+    monkeypatch.setattr(helper, "_image_platform", lambda ref: "linux/amd64")
+    monkeypatch.setattr(helper, "_image_schema", lambda *args, **kwargs: 13)
+    monkeypatch.setattr(helper, "_database_schema", lambda *args, **kwargs: 13)
+    monkeypatch.setattr(helper, "_stop_app", lambda *args, **kwargs: events.append("stop"))
+    monkeypatch.setattr(
+        helper, "_runtime_file", lambda *args, **kwargs: events.append(("runtime", args))
+    )
+    monkeypatch.setattr(helper, "_compose_up", lambda *args, **kwargs: events.append("up"))
+    monkeypatch.setattr(helper, "_run_migrations", lambda *args, **kwargs: events.append("migrate"))
+    monkeypatch.setattr(
+        helper,
+        "_verified_backup",
+        lambda *args, **kwargs: {
+            "name": "pre-deploy-safe.spbackup",
+            "sha256": "1" * 64,
+            "schema_version": 13,
+            "verified": True,
+        },
+    )
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda **kwargs: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+    )
+    monkeypatch.setattr(helper, "_audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(helper, "_run", lambda *args, **kwargs: pytest.fail("external command"))
+    assert helper._apply_release(target)["status"] == "ok"
+    for path in (helper.CURRENT_RECORD, helper.RELEASE_ROOT / f"{target['revision']}.json"):
+        persisted = helper._read_json(path)
+        for key in (
+            "recovery_contract",
+            "helper_source_revision",
+            "recovery_source_context_sha256",
+            "recovery_prior_pair_manifest_sha256",
+        ):
+            assert persisted[key] == target[key]
+    result = helper._rollback(target["revision"], helper.PRODUCTION_PREDECESSOR_IMAGE_ID)
+    current = helper._read_json(helper.CURRENT_RECORD)
+    assert current["revision"] == result["revision"] == predecessor["revision"]
+    assert current["image_id"] == predecessor["image_id"]
+    assert current["release_role"] == "recovery"
+    assert current["assistant_rollout_mode"] == "disabled"
+    assert "migrate" not in events
+    before = list(events)
+    with pytest.raises(helper.HostError, match="recovery_image_assistant_disabled"):
+        helper._set_assistant_rollout(
+            "owner_canary",
+            revision=current["revision"],
+            archive_sha256=current["archive_sha256"],
+            image_id=current["image_id"],
+        )
+    assert events == before
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("revision", "a" * 40),
+        ("image_id", "sha256:" + "a" * 64),
+        ("archive_sha256", "a" * 64),
+        ("source_context_sha256", "a" * 64),
+        ("schema_version", 12),
+        ("schema_version", 13.0),
+        (None, None),
+    ],
+)
+def test_hotfix_apply_rejects_changed_predecessor_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str | None,
+    value: Any,
+) -> None:
+    helper = _helper()
+    target = _hotfix_release_record(helper, monkeypatch)
+    current = {
+        "revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+        "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "archive_sha256": helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+        "source_context_sha256": helper.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        "schema_version": 13,
+    }
+    if field is not None:
+        current[field] = value
+    monkeypatch.setattr(helper, "_read_json", lambda path: current if field else None)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda record: None)
+    monkeypatch.setattr(helper, "_assert_loaded_recovery_image", lambda record: None)
+    for function in (
+        "_stop_app",
+        "_runtime_file",
+        "_write_json",
+        "_database_schema",
+        "_run_migrations",
+    ):
+        monkeypatch.setattr(helper, function, lambda *args, **kwargs: pytest.fail("mutation"))
+    with pytest.raises(helper.HostError, match="hotfix_predecessor_identity_mismatch"):
+        helper._apply_release(target)

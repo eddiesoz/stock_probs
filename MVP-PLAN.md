@@ -6566,3 +6566,287 @@ explicit eight-path change-aware coverage and scoped diff checks. Shared audit r
 The final count wording and completed-QA paragraph were added afterward; the final changed-file
 scan/checkpoint remains separate. No host, Docker, provider, installation, restoration, deployment
 or release acceptance follows from these mocks. Actual host, canonical and recovery gates remain open.
+
+
+### R-ASTRA-121 E21 — format-2 hotfix and production-reader checkpoint
+
+The additive format-2 contract `schema13_same_schema_hotfix_v1` separates operational-helper
+source PR #11 from application candidate PR #9 and its recovery artifact. The fixed application
+candidate is revision `d282d696937f279ca4af4c38341f82a8af7afb6d`, image
+`sha256:ba607be79055ee3a09d916e51788135590e7e0ead8f0922aa78128c478644c03`, source context
+`c2135215d9a96c37841190ff611b49d48e7a08ca88ad073ebcf1973a7abc86a9`, and build receipt
+SHA-256 `bb808883d862aafe8851bfeffc75fa3140866e72e770420699db0f11a4377608`. Recovery reuses the
+original production revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, and the original
+release image archive `signal-ledger-image-5ad2c3fddfce5a5a631b72cd832a53f24757c44a.tar.gz`,
+SHA-256 `99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5` (202,156,038 bytes).
+Its source context is separately bound as
+`9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb`; the prior pair has SHA-256
+`e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3` and invited rollout state.
+The transition is schema 13 to 13 with no migrations, no database restore, and no overlay;
+the `kind: "none"` overlay digest is SHA-256 of canonical `[]`,
+`4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945`. This original release
+artifact is not the separately registered A9 app-only recovery image or the PR #2 format-1
+schema-12-to-13 recovery pair.
+
+The frozen six-file helper identity check reported **Pass** for 35 selected tests and its static
+scope only. It had no `PYTHONPATH` binding, so it may have imported the main worktree's editable
+module; actual PR #11 source provenance is **Unverified** for that run. Receipt
+`/var/tmp/r12r/r121-pr11-helper-identity-20261016T0038Z/frozen-check/final-receipt.json`,
+SHA-256 `a8d592f603bc33f4a0b168e065ec9d1d5287da61726d76eca3e8f58ae09f435a`. Independent review
+of PR #2 versus PR #11 identity **Failed** with a P2; receipt
+`/var/tmp/r12r/independent-r121-pr-identity-review-20261016T0036Z/receipt.json`, SHA-256
+`fd7f10f6be0f9bb4cc4f1aa251240acb56db42094f283c9e0d0b0726e88dd53d`. A separate format-2
+recovery-contract review **Failed** with a P2 because it treated recovery as requiring an absent
+application file/package. Receipt `/var/tmp/r12r/independent-r121-v2-recovery-contract-20261016T0042Z/receipt.json`,
+SHA-256 `811c5c800351a235292c6d5165ec7e71c8542ad4309a7510aa36101a0c7d98e9`. The corrected
+format-2 recovery expectation is the normal shipped supervisor/image with the assistant worker
+disabled and no OpenCode process; it does not assert absence of the executable or package. The
+existing format-1 app-only absence check remains unchanged. Independent re-review of the fixes is
+**Pending**.
+
+The root-owned additive production reader/rollback changes span the helper and its test file.
+The first focused run **Passed** 41 tests; terminal receipt
+`/var/tmp/r12r/r121-production-v2-focused-b5blhqh9/terminal.json`, SHA-256
+`88b81ab206835eb4a26c1da4f5c1c2885f55ab88927f8c05e92231f3f9066a61`; retain that initial count
+as a separate result. The later root-owned selected module run exited 0 with **140 passed, one
+opt-in skip out of 141 cases**, two warnings, and 159 unchanged source/import pins. Its helper
+SHA-256 at this pre-finding checkpoint is `6a0772b7cbdbc59d67253612379f0049668d31d14dbbaf3a338f8f3e00661972`
+and test SHA-256 is
+`f109a5245ffc6164275105204236d19a24028a4bf4772a5ea323e1f75976c83b`. Terminal receipt
+`/var/tmp/r12r/r121-production-v2-final-bgj9wfv4/terminal.json`, SHA-256
+`c15f2c10602f71fef49e8ef12afed836775c2e818719761468ebfb35b97b4735`; parent test review
+`/var/tmp/r12r/r121-production-v2-final-bgj9wfv4/parent-test-review.json`, SHA-256
+`77a623e21b682ceb2f641f7eb6f166efe063181d7329ebe3e7db50349bfc11dc`; JUnit SHA-256
+`48f49100735be0fc1fb851f4ef03c3db9882105a51af347cbc82581fb7c7fe15`. Normal conftest loaded
+the pinned D282 backend fixture from a prior overlay while testing the actual PR #11 helper files;
+this selected run does not establish PR #11 backend or UI acceptance. Independent QA against the
+current PR #11 source and asset-only fixtures remains **Pending**. The earlier 35-test six-file
+frozen check remains builder/static-only, not independent acceptance.
+
+A subsequent independent source review (task label `r4_browser_retry_final`) found a P2 in the
+applied-copy-to-rollback path: the persisted copy omits `recovery_contract`,
+`helper_source_revision`, `recovery_source_context_sha256`, and
+`recovery_prior_pair_manifest_sha256`, even though the deploy response contains them. After
+reload, rollback can take the format-1 path and fail because the v2 migration value is `None`.
+Independent review also **Failed** the migrate-CLI and exact-predecessor-guard scopes. The review
+receipt is `/var/tmp/r12r/r121-pr11-hotfix-independent-static-20261016T005900Z/independent-review.json`,
+SHA-256 `ddd520a3ad511404a9a598aa8aafa37f9f9514031714352cfb479a9a999170a2`. Before the repair,
+a temporary JSON applied-state regression reproduced `KeyError: recovery_contract` after reload;
+terminal receipt `/var/tmp/r12r/r121-persistence-regression-before-anrkw_au/terminal.json`,
+SHA-256 `3fc0481b2cf299fbf51ee282d24887d34bff38d9e4f801849e5423feff23b592`, JUnit SHA-256
+`3c4ac66b56027cd9a66df1f471ce2d366948cda4610821e12599b079ba099f8a`, and log SHA-256
+`65b3671f5604eb9189336398b45210c79b777c388c7773822da087f3aae7fce6`.
+
+The root repair is frozen at helper SHA-256
+`61d9e497af2270bf3f5b1c277c9eef685c4da8656e525c812b4a790015a33b84` and test SHA-256
+`9ea469fd299c2da2542e121bdd02755ec1eb3ae2be3c4beb2c43d94f01393eee`. It persists the four v2
+dispatch fields, applies an exact-predecessor guard, and skips the legacy migration CLI for a
+13-to-13 v2 transition. The fresh selected module run exited 0 with **148 passed, one opt-in skip
+out of 149 cases**, two warnings, and 159 stable source/import pins at
+`2026-10-16T01:01:33.971673Z`–`01:01:48.590708Z`. Terminal receipt
+`/var/tmp/r12r/r121-production-v2-persistence-repair-oi4bm1qj/terminal.json`, SHA-256
+`493cac59e84c57b7189f6b7e92ae59ef090cab8f9b8ba4f78787b94af07f81c3`; parent test review
+`/var/tmp/r12r/r121-production-v2-persistence-repair-oi4bm1qj/parent-review.json`, SHA-256
+`ba2a57c0eb39c2dbfc28925820033059d364843616d6a6bb059ee9c1faa055d7`; JUnit SHA-256
+`21a791aaaeec4b136a577afe68569a9138d5514d61bb3de86d3c5e905d402d66`. Normal conftest again
+loaded the pinned D282 backend fixture while exercising the actual PR #11 helper and test files;
+this result is not PR #11 backend or UI acceptance. Independent review of the repaired actual
+PR #11 source and asset-only fixture remains **Pending**. The earlier 140/141 run is pre-finding
+evidence and does not close this path; independent source QA must review the frozen repair before
+the P2 is considered resolved.
+
+A read-only production observation at `2026-10-16T00:09Z` confirmed the existing revision
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13, invited,
+ready, loopback-only service. The October 13 failed disable/readback remains historical; it does
+not describe this later healthy observation.
+
+The D282 application candidate's recorded canonical local gate **Passed** with 3,576 tests, four
+skips, four deselections and 85.69% coverage; its free-Zen real-native, wire and kill checks passed
+only for their recorded local scopes. The hotfix browser aggregate **Failed** at 58 passed, one
+failed, 141 unrun after its 300-second timeout; launcher-readiness cause remains **Unproven**.
+Therefore no release acceptance follows. No PR #11 helper installation, D282 candidate-archive
+packaging, format-2 pair-manifest creation, host execution, new deployment or rollout change, merge
+or email occurred. Actual
+combined 1 GB and PR-bound rollback remain open; the existing 1 GB host, backups and US$15 total
+monthly cap are unchanged.
+
+Before editing, all six owned authored-document and policy baselines were copied byte-for-byte to
+`/var/tmp/r12r/r121-pr11-recovery-docs/` on UUID `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`, with
+directory mode `0700` and file mode `0600`; the capture process inherited umask `0002`. Baseline
+SHA-256 values: `AGENTS.md` `24fcb9a16dd0ba60c2c4014b4ec55ccdf21af4b011a2102e01a87f5af7569638`,
+`MVP-PLAN.md` `06861dc17916ffe8ada9d24c7d776c94185b516af447f7f9c5d0743b3f7f50bc`,
+`docs/develop/documentation.md` `793e408f46ebf82d3250c0f5a2975786136aaae6f4e3d1c336bdc97a915de252`,
+`docs/develop/testing.md` `801961526b4b5c8e7120bb4c8d3c752cd23404ce87140b0da5218382df501c73`,
+`docs/operations/getting-started.md` `4bd3968fe776670c4d7fc50119e4703d7551bdd0725ae4b8161fcd46406fc1aa`, and
+`docs/configure/local-configuration.md` `50096690dc1f1144bfde78fe4095b6fb8bb5f8b9b52e2c115ca3f702ee51a065`.
+The baseline manifest SHA-256 is `0dc241cedcc7c3524e7e1c914b5a3c063a756ddc44eff68b9b12787567009974`.
+
+Authored-document validation passed with `python3 scripts/validate_docs.py` (9 categories,
+14 topics, 8 project-skill governance entries; child umask `0022`). The configured
+`.dev-venv/bin/python` entry point was **Unavailable** because that executable is absent. Complete
+and change-aware documentation coverage both passed for 154 mapped files; explicit coverage
+passed all 14 current changed paths (8 source/test files and these 6 documentation paths). The
+scoped `git diff --check` passed. Documentation tests were not run. The first audit-wrapper attempt
+did not reach the checkers because a literal `--` was passed as the executable; the corrected
+invocations above are the recorded results.
+
+
+### E21 follow-up — helper provenance and recovery process profile
+
+Independent QA of the current production helper and test files completed at
+`2026-10-16T01:32:13.845354Z`: helper SHA-256
+`68c75d8a72df3acc35ccaa43c1d1b02b0ec27fe7674b36603c5546a7dca909d9` and test SHA-256
+`094671be8812a96b51400a558bac4ba10c1fb6622fb74f8120e9ba926e8c4f68`. It reported **162 passed,
+one opt-in disposable-Docker test skipped, zero failures, and zero errors out of 163 tests**. The JUnit SHA-256 is
+`5b5524bb81eead70aff2e1bb95ac97072a83e9d8ba7514447666ec9f5e26d51f`; all 266 declared source and
+asset bindings remained stable. Receipt
+`/var/tmp/r12r/r121-pr11-independent-final-b67022ccc5/final-review.json` has SHA-256
+`9f8b687eb688c7c7f90d8ad98468c8840bc6143cc23dce4d91232318c5029d76`. Configured Ruff, Ruff
+format, and diff checks passed. The security Ruff check **Failed** on three existing S101 assertion
+findings; the same check excluding those existing assertions passed. The tests used a temporary
+mocked installed record: the fixed root-owned installed-record path is absent on this local host,
+so production metadata observation is **Unavailable**. This closes the applied-state persistence
+and helper-revision substitution findings only for the reviewed source and synthetic test scope;
+it does not establish installation or runtime provenance.
+
+Independent static review of the earlier v2 recovery process-profile source **Failed** with P2
+`v2_recovery_pid1_identity_mismatch`: the helper starts the image with a root supervisor as PID 1,
+while the generated v2 probe expected PID 1 to have the dropped application identity. The reviewed
+contract is root supervisor PID 1 with the fixed `SETUID`/`SETGID` capability set and
+no-new-privileges, plus an application child under UID/GID 10001 with zero effective and permitted
+capabilities and no-new-privileges; the assistant worker remains disabled. The old v1 app-only
+profile is unchanged. Receipt
+`/var/tmp/r12r/pr11-v2-recovery-process-profile-review-20261016T0106Z/receipt.json` has SHA-256
+`c8f53dc67260be5fd6ccd2f55eb753bf57252d949a026f7b70a84cbbc5024cf0`; it was static review only,
+with no container or procfs observation.
+
+The first local profile diagnostic against the original 5ad image **Failed**: observed PID 1
+included the normal trailing `serve --host ... --allow-non-loopback` arguments, while the probe
+expected a shorter command shape. The app's observed shebang and process prefix also required
+matching the shipped image. Its exact owned container and volume were removed. The initial setup
+guard's capability-name rejection is retained as a separate setup failure; the corrected guard
+used Docker's canonical `CAP_SETGID`/`CAP_SETUID` values without relaxing the profile. Diagnostic
+receipt `/var/tmp/r12r/pr11-5ad-profile-diagnostic-bww9dfe1/continuation-terminal.json` has
+SHA-256 `4d80fa87d64387afb38b58ca14b1459b6f6aacfdfcbc298c28301ff395cd3842`. This local failure is
+not a successful v2 profile check or an actual-host result.
+
+The scoped repair is frozen at helper SHA-256
+`933b0c822dc4e4f2ba682e52314ee1dd28e609b9d38c98bcafc62a90615e7f96` and test SHA-256
+`d00a0d3bc17d77473a38e04e27f5601cfe5ffd9a812e97dcefae1e7d5a730005`. It matches the exact
+observed supervisor arguments and validates the bounded PID 1 → wrapper → app parent chain; v1
+remains unchanged. The selected run passed **33 tests**, with Ruff, formatting, and diff checks
+passing. It used synthetic proc/readiness seams with the current PR #11 backend and D282 asset
+overlay; it did not start Docker or run the actual 5ad profile. Builder receipt
+`/var/tmp/r12r/pr11-5ad-profile-final-baseline-20261016T013800Z-f9579b00/final-source-test-receipt.json`
+has SHA-256 `0129a985ffb20605a66bc62b2e979bc342daeb62611a24de679ba7d52fb004ac`; its focused JUnit
+SHA-256 is `39a0573cf17afeafe37a5629e6dedcba2519ccfcaa582483df15a55f9150ec6f`. Independent review
+of this current repair and a fresh local 5ad profile check were **Pending at that checkpoint**.
+
+An initial read-only GitHub release-metadata check matched the original 5ad archive identity and
+prior-pair digest but did not download or verify archive bytes at that checkpoint. Its receipt is
+`/var/tmp/r12r/r121-fixed-5ad-asset-readback-920dzz4c/receipt.json`, SHA-256
+`bd2afbbe6f43c8ecae068a3833d7cd445fa3fcaa2126cbfd492c19ec5c4f78c3`. A later download verified
+the original 5ad release asset's byte count and SHA-256, as recorded in the following E21
+follow-up. The format-2 contract reuses that existing asset; no new recovery image or archive is
+required. The D282 candidate archive and v2 pair manifest have not been created.
+PR #11 remains a candidate: helper installation, actual-host pair rehearsal, PR-bound rollback,
+deployment, and release acceptance remain **Pending**. The actual combined 1 GB resource gate also remains open; no production change,
+rollout, resize, or email occurred. The D282 local canonical, native, wire, and kill results retain
+their prior narrow bindings and do not accept PR #11's helper or recovery profile.
+
+
+### E21 follow-up — current process-profile review and local diagnostic
+
+Independent current-source QA of the two rehearsal modules passed its declared scope at
+`2026-10-16T01:52:55.598909Z`–`01:53:22.643189Z`: **360 passed, one direct-Docker test deselected,
+zero skipped, two warnings**, with 117 frozen actual/private input bindings unchanged. The review
+used the 48-file PR #11 backend and 53 D282 asset overlay, Python 3.11.15, umask `0022`, and native
+x86_64. The current helper and test pins remained
+`933b0c822dc4e4f2ba682e52314ee1dd28e609b9d38c98bcafc62a90615e7f96` and
+`d00a0d3bc17d77473a38e04e27f5601cfe5ffd9a812e97dcefae1e7d5a730005`. Eight new generated-probe
+cases verified exact PID 1 and app arguments plus required parent ancestry; v1 dispatch/profile
+regressions also passed. The only Docker integration selector was deselected, so runtime was not
+observed by this QA. Receipt
+`/var/tmp/r12r/pr11-topology-independent-20261016Tdqcrevdr/independent-review.json` has SHA-256
+`75a2214b205505f1b99cec92936815ab9ee539898ccc3c2f2f5735ca3671e4e6`; JUnit SHA-256 is
+`152ca102c08a58d16be2a46cb1559c014d9f0e24a0f9d6367427a6c47a331acd`. The review passed current
+source and synthetic process-profile tests only; it did not establish actual container, host,
+archive, pair, rollback, or release acceptance.
+
+A separate parent-run local diagnostic on the original 5ad production image passed at
+`2026-10-16T01:58:30.332464Z`–`01:59:07.012534Z`, with the generated profile probe exiting 0.
+Readiness was schema 13 and ready with the assistant disabled. The observed profile confirmed the
+root container supervisor as PID 1 with the expected `SETUID`/`SETGID` bounding mask (`192`) and
+no-new-privileges; the app wrapper and app ran under UID/GID 10001 with zero effective/permitted
+capabilities and no-new-privileges, with the expected parent chain. No assistant worker ran,
+`/tmp` was writable, and worker-home privacy held. OpenCode binary and assistant package presence
+were observed as expected for the shipped image. Receipt
+`/var/tmp/r12r/pr11-5ad-profile-repair-ty4y55qy/terminal.json` has SHA-256
+`60a974a1cb2f3ff091ed88d75a49827309585bc5c83d5aba66765a2747f823a9`; diagnostic plan SHA-256
+`0ba0daefc3c243ee817f1937e27407cb221ef3d2009bae34c2fd4ab364d26f7e`, runner SHA-256
+`03e49fb8c7c8805f32542baeb2dd21d51e69a951d40c05bdb1e6150023c0808f`, and generated probe SHA-256
+`aff99dd86dffb73546cc0a5adb4415a3c4bff5cd8096e399d96d67a28373ac35`. The owned container and
+volume were removed and absence verified. This native-x86_64 local diagnostic used a 768 MiB
+cgroup and was not an actual production-host, 1 GB, pair, rollback, or deployment check. No image
+or production state changed. The earlier local profile failure and initial capability-name setup
+failure remain preserved above.
+
+At the E21 local-diagnostic checkpoint, independent offline integrity review of this runtime proof
+was still **Pending**. The original 5ad release image archive is the existing recovery artifact and
+is reused; its download bytes now match the recorded SHA-256 and size. This byte-identity check
+does not establish an archive contents scan,
+pair rehearsal, or rollback. No new recovery image or archive is required. The D282 candidate
+archive and format-2 pair manifest have not been created. PR #11 helper installation, actual-host
+pair rehearsal, PR-bound rollback, deployment, owner canary, and release acceptance remain
+**Pending**. The actual combined 1 GB gate is still open; no production change, rollout, resize, or
+email occurred.
+
+
+### E21 follow-up — original recovery asset byte verification
+
+A download of the existing original 5ad release image archive completed at
+`2026-10-16T02:01:23.478491Z`–`02:01:37.293598Z`. It returned zero exit status and no reported
+transfer errors. The private v2 packaging copy is 202,156,038 bytes and SHA-256
+`99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5`, matching the recorded
+release-asset metadata. Readback receipt
+`/var/tmp/r12r/r121-hotfix-v2-package-ibxu1cb0/download-terminal.json` has SHA-256
+`0bc7df75fc37ff33e2f02e4746331eaf089a48637eb9bd57b48d92c049636bae`; the downloaded file was
+stored mode `0600` on UUID `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`. This verifies only downloaded
+byte identity. Archive contents scanning, the D282 candidate archive, format-2 pair manifest,
+rehearsal, and rollback remain **Pending**. No Docker command, image change, or production action
+occurred.
+
+
+### R-ASTRA-121 E22 — independent review of the local 5ad profile diagnostic
+
+The independent offline review **Passed** for the bounded local disabled-assistant process-profile
+diagnostic. It checked the original image identity, the exact owned container and volume absence,
+and the frozen plan, runner, generated-probe, and terminal bindings. It did not rerun tests or
+start a container. The review ran on native x86_64 with Python 3.14.4 against a diagnostic executed
+with Python 3.11.15 and a 768 MiB cgroup. The Docker invocation included CPU, PID, swap, and tmpfs
+limits, but effective `HostConfig` values for those limits were not all independently inspected.
+The terminal's `profile_stderr_tail` was not reviewed. The runner prehashed the helper and probe
+but did not posthash every source input; the current helper matched the frozen hash at review time,
+which does not prove every input was unchanged throughout the original run.
+
+Two preceding reviewer setup attempts remain separate: the requested worktree `.dev-venv` command
+was **Unavailable** because that environment was absent and no Docker command ran; the initial
+system-Python review **Failed** as a reviewer-harness error because it compared the target image's
+`5ad` revision with helper-worktree `HEAD` `235bf4beea1292fd92d891088186598f4fd70042`. Neither
+attempt has a contemporaneously captured UTC window. The corrected read-only review then passed;
+its supplement preserves both setup observations. Review receipt
+`/var/tmp/r12r/pr11-5ad-profile-independent-review-20261016T020246Z/independent-review-receipt.json`
+has SHA-256 `426fda1ddaaa70be61b44f4555bf3955f5a6ae4fab991013224822cb72f1fb75`; supplement
+`/var/tmp/r12r/pr11-5ad-profile-independent-review-20261016T020246Z/independent-review-supplement.json`
+has SHA-256
+`4e2f76c444f2a60631f5d866200de2437b158ca4ab72703c860646f02187bcac`. The review window was
+`2026-10-16T02:03:40.770348Z`–`02:03:41.124673Z`.
+
+This Pass is limited to review of the local 768 MiB profile diagnostic. It does not establish
+actual-host or combined 1 GB acceptance, a PR-pair rehearsal, data rollback, helper installation,
+deployment, canary, or release acceptance. The original profile failure and the two reviewer
+setup outcomes remain preserved above. R-ASTRA-121 helper installation, actual-host pair rehearsal,
+PR-bound rollback, deployment, owner canary, and release acceptance remain **Pending**; the actual
+combined 1 GB gate remains open. No production state changed.

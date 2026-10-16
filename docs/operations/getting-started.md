@@ -1079,6 +1079,29 @@ startup reserve, so the new free-Zen application is not deployed. A fresh signed
 backup passed non-promoting verification inside the unchanged running container; no existing
 backup was removed. See [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup) for exact bindings and limitations.
 
+Operational-helper PR #11 is a separate candidate and is not installed. Its format-2
+`schema13_same_schema_hotfix_v1` pair binds the PR #9 application candidate to the original 5ad
+schema-13 production image and release image archive as its recovery artifact; its source context
+is bound separately. It has no schema change, migrations, database restore, or recovery overlay. Do
+not substitute the separately registered A9
+app-only recovery image or the PR #2 schema-12-to-13 recovery pair. The format-2 recovery check
+expects the normal shipped supervisor/image with the assistant worker disabled and no OpenCode
+process; it does not claim the executable or package was removed. Independent selected QA of the
+current helper passed 162 tests with one opt-in Docker test skipped and 266 stable bindings. The
+local 5ad profile check failed on the observed process command shapes; its focused synthetic repair
+passed 33 tests. Independent process-profile QA then passed 360 tests with one direct-Docker test
+deselected, and a local diagnostic against the original image passed. R-ASTRA-121 E22 independently
+passed review of that bounded local diagnostic receipt; the reviewer did not rerun tests or start a
+container, and effective CPU/PID/swap/tmpfs limits were not all inspected. This is not actual-host,
+combined 1 GB, pair, rollback, installation, or release acceptance. Before a v2 rollback can pass,
+the persisted applied record must keep the four v2 dispatch fields and successfully reload them;
+selected independent synthetic
+review passed that persistence scope. See
+[E21](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint) for exact
+evidence and the [E22 profile-review receipt](../../MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic).
+V2 packaging, installation, actual-host pair rehearsal, rollback, deployment, and release
+acceptance remain open.
+
 A possible temporary use of the registered app-only recovery image must first pass local
 compatibility and data continuity, exact recovery-role validation at both boundaries, signed
 backup verification and unchanged resource checks. Keep the existing volume and use only the

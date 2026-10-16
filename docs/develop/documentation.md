@@ -27,6 +27,26 @@ validation, actual host transition and restoration as separate results. Document
 import-path setup failures separately from a corrected test run; mocked reserve checks do not
 establish actual-host capacity. See [temporary recovery checks](testing.md#temporary-recovery-baseline-checks).
 
+## Same-schema hotfix evidence
+
+For R-ASTRA-121, the separate operational-helper PR #11 candidate adds format 2 with contract
+`schema13_same_schema_hotfix_v1`. Keep helper source PR #11, application candidate PR #9, and the
+original 5ad schema-13 production artifact used for recovery as distinct identities. The contract
+keeps schema 13 on both sides, with no migration, database restore, or recovery overlay; the
+separately registered A9 app-only recovery image is not this contract's recovery artifact. Its
+recovery check expects the normal shipped supervisor/image with the assistant worker disabled and
+no OpenCode process, not an absent executable or package. Link current statuses and findings to the
+[E21 evidence ledger](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint);
+the persisted applied state must keep every field needed to select the format-2 rollback path.
+The current helper received independent selected source/test review (162 passed, one opt-in Docker
+test skipped, 266 bindings stable); the later independent process-profile review passed 360 tests
+with one direct-Docker test deselected. The local original-image profile diagnostic and its bounded
+independent receipt review passed. The reviewer did not rerun tests or start a container, and
+effective CPU/PID/swap/tmpfs limits were not all inspected. The two earlier reviewer setup outcomes
+remain recorded in the [E22 ledger](../../MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic).
+Installation, actual-host pair rehearsal, rollback, and production
+acceptance remain open. Selected checks do not establish those later stages.
+
 ## Codex project configuration
 
 Codex loads repository policy from root `AGENTS.md` and trusted-project settings from
