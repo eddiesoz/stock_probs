@@ -6850,3 +6850,77 @@ deployment, canary, or release acceptance. The original profile failure and the 
 setup outcomes remain preserved above. R-ASTRA-121 helper installation, actual-host pair rehearsal,
 PR-bound rollback, deployment, owner canary, and release acceptance remain **Pending**; the actual
 combined 1 GB gate remains open. No production state changed.
+
+
+### R-ASTRA-121 E23 — enabled native phase source QA and package identity
+
+At the R-ASTRA-121 E23 source checkpoint, the v2 enabled-native phase was held as three local
+source changes atop then-pushed revision
+`ae1d0a2d9d5e891436732e6655e360b93ecce817`, before their subsequent publication:
+`tools/deploy_mcp/pr_rehearsal.py` SHA-256
+`1d31559100473840f1d29ef03f22eb73f9c2cef0ce1b76a2e2f19f14ecb26f3b`,
+`scripts/pr_rehearsal_host_helper.py` SHA-256
+`caebff00c481ce41f299999562c3343a5eb222f1ffa7a7c590d11434ebcec633`, and
+`tests/test_pr_rehearsal.py` SHA-256
+`6ac2184105a9c58d65e515be3a3ba63442c42377696f7b978af0469b1e31617d`.
+
+The format-2 path now requires the same D282 candidate image and disposable volume to pass a
+disabled cold-start seed check, then starts that candidate with the assistant enabled and runs the
+reviewed free-Zen native workload for two owners before writing the marker and snapshot. It then
+removes the candidate and checks the original 5ad schema-13 image in its disabled recovery profile
+against the same volume. The controller requires explicit disabled-seed, enabled-readiness, native
+workload, model identity, two workspace-summary calls, search-source count, simultaneous-turn,
+and owner-isolation evidence. Format-1 behavior, the eight MCP declarations, existing reserve
+floors, and existing time bounds remain unchanged.
+
+The builder's isolated two-module run **Passed** its bounded unit and static scope: 373 passed,
+one explicitly deselected Docker integration test, no failures, errors, or skips, and two warnings.
+It used Python 3.11.15, umask `0022`, 117 pinned source imports, and 53 bound export/stage asset
+pairs; Ruff, formatting, and diff checks passed. Receipt
+`/var/tmp/r12r/pr11-v2-native-build-20261016T024400Z-df2c0429-9127-474b-80a6-fba3ff5987d0-4fz3zca5/terminal-receipt.json`
+has SHA-256 `f9803223b69f292da1e2e410cbea6391bee7ba641d9f90a89c76e22b6f24f8d6`; its JUnit file
+has SHA-256 `c9f5f3b8dc7f835d82c81039902579d00800728296d105220c15fd8d22ccee59`. Independent QA
+**Passed** the same selected 373-test and source/static scope on a fresh bound copy, with one Docker
+integration test explicitly deselected, no failures, errors, or skips, and two warnings. It verified
+the source-root import closure, v1 byte-preservation, all three source pins, and the format-2
+evidence checks. Receipt
+`/var/tmp/r12r/pr11-v2-phase3-independent-20261016T0250Z/independent-qa-summary.json` has SHA-256
+`7b85296368a78cb3849a6520916f3d5e4dea418d2a12ba09aab6751c4e8f377a`. Preserve its earlier
+setup results: the first test attempt imported `stock_probs` from the main checkout and is
+**Unavailable** as copied-source evidence; the first broad source selector **Failed** because it
+matched a v1 occurrence and reversed a token-order expectation. The corrected source-root binding
+and function-scoped review passed.
+
+Packaging had already produced a candidate archive for the unchanged D282 image and a format-2
+pair manifest while helper revision `ae1d0a2d9d5e891436732e6655e360b93ecce817` was the reviewed
+helper head. The archive `signal-ledger-image-d282d696937f279ca4af4c38341f82a8af7afb6d.tar.gz`
+is 202,159,985 bytes with SHA-256
+`6b30af17fadf8ffd5af104c7f557c767edee1200551b8f8ef7dc3e932cf7acc7`; manifest
+`signal-ledger-pair-ae1d0a2d9d5e891436732e6655e360b93ecce817.json` has SHA-256
+`447955af754a3a0e3ec4d6f8cb518003ac70fb76e676e780eea196544e43d1b9`. The package receipt
+`/var/tmp/r12r/pr11-ae1d-hotfix-package-run-1bczxjmk/package-receipt.json` has SHA-256
+`0fc426a2df83f0abf0f5235380ec200eae9a6e9e74456dfc00f8c105d07c5061` and status `prepared`.
+That manifest is bound to `ae1d`, so it does not bind the newer three-file native-phase source.
+No new image was built, and no candidate-archive contents scan, public pair publication, or host
+operation occurred. A separate static publication review found the publisher/helper pair-locator
+contract unresolved; its report is
+`/var/tmp/r12r/r4-hotfix-pair-compatibility-analysis-20261016T022510Z/v2-hotfix-publication-static-review.json`,
+SHA-256 `fdf2cfb7728f5f013c4c79bd651efb1c680f450eeb20045a4129c13ff533ad8d`. The scanner/publication
+integration must be repaired and reviewed before release publication.
+
+A read-only production `inspect` receipt reports the unchanged revision
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13,
+invited rollout, ready application and assistant, and loopback-only binding. Its creation timestamp
+is `2026-10-16T02:29:15.705798Z`; the exact inspect invocation time is **Unavailable**. The retained
+October 13 failed-disable record remains historical and is not the current health result. Receipt
+`/var/tmp/r12r/pr11-ae1d-production-readonly-a76vno8o/receipt.json` has SHA-256
+`a63a6227ab2ed226914ece86c7cb57de8a92446bb64ded2f1b2b644102a1b360`; no production mutation
+occurred.
+
+These builder and independent checks are source/unit evidence only. The new enabled-native phase has
+not yet run in the actual-host rehearsal; actual combined 1 GB capacity, archive scanning and pair
+publication, PR #11 helper installation, its actual-host pair and data-rollback acceptance, PR-bound
+rollback, any release of these PR #11 changes, the associated owner canary, and release acceptance
+remain **Pending**. The existing
+production app, 1 GB host, backups, and US$15 monthly total cap are unchanged.

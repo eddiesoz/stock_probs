@@ -2320,6 +2320,13 @@ acceptance. Preserve failed local profile diagnostics even when a later selected
 passes, and keep independent profile QA, host execution, pair rehearsal, and release status distinct.
 The latest independent process-profile QA and local original-image diagnostic passed their declared
 scopes. E22 independently reviewed the local diagnostic receipt and passed its bounded scope; that
-review did not rerun tests or start a container. Actual-host/pair acceptance remains pending. Record
-exact evidence in [E21](MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint)
-and [E22](MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic).
+review did not rerun tests or start a container. E23 records a bounded source/unit pass for the
+enabled-native v2 phase and a package prepared for the earlier `ae1d` helper head. At the E23
+source checkpoint, the three-file change was still local, and the earlier manifest did not bind it.
+No actual-host native workload, combined 1 GB run, archive scan/publication, installation,
+pair/data rollback, release of these PR #11 changes, associated owner canary, or release acceptance
+is established.
+The publisher/helper pair-locator remains unresolved. Record exact evidence in
+[E21](MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint),
+[E22](MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic), and
+[E23](MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity).

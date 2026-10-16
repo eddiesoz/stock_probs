@@ -44,8 +44,14 @@ with one direct-Docker test deselected. The local original-image profile diagnos
 independent receipt review passed. The reviewer did not rerun tests or start a container, and
 effective CPU/PID/swap/tmpfs limits were not all inspected. The two earlier reviewer setup outcomes
 remain recorded in the [E22 ledger](../../MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic).
-Installation, actual-host pair rehearsal, rollback, and production
-acceptance remain open. Selected checks do not establish those later stages.
+A package and manifest were prepared for helper head
+`ae1d0a2d9d5e891436732e6655e360b93ecce817`, before three local source changes added the v2
+enabled-native phase. The old manifest does not bind those changes. Builder and independent
+copied-source checks each passed 373 selected tests with one Docker test deselected. Actual
+Docker/native-phase execution, archive scanning, pair publication, host resources, installation,
+rollback, and production acceptance remain **Pending**. The publisher/helper pair-locator issue is
+also open. See [E23](../../MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity)
+for the bound evidence and preserved setup results.
 
 ## Codex project configuration
 

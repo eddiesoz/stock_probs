@@ -4748,13 +4748,58 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
         _wait_ready(candidate_container, enabled=False, sample_count=sample_count)
         _copy_probe_files(candidate_container, source_digests)
         seeded = _seed(candidate_container)
+        runtime_users = seeded.get("users")
         user_ids = seeded.get("synthetic_user_ids")
         if (
-            not isinstance(user_ids, list)
+            not isinstance(runtime_users, list)
+            or len(runtime_users) != 2
+            or any(
+                not isinstance(user, dict)
+                or any(
+                    not isinstance(key, str) or not isinstance(value, str)
+                    for key, value in user.items()
+                )
+                for user in runtime_users
+            )
+            or not isinstance(user_ids, list)
             or len(user_ids) != 2
             or any(type(user_id) is not int or user_id < 1 for user_id in user_ids)
         ):
             raise RehearsalError("synthetic_identity_invalid")
+        candidate_disabled_seed_final = _memory_usage(candidate_container)
+        _oom_event_evidence(
+            candidate_memory_baseline,
+            candidate_disabled_seed_final,
+            role="candidate",
+        )
+        _cpu_stat_evidence(
+            candidate_memory_baseline,
+            candidate_disabled_seed_final,
+            role="candidate",
+        )
+        _remove_owned_container(candidate_name, revision, pair_sha256, volume)
+        containers.remove(candidate_name)
+        candidate_removed = True
+
+        containers.append(candidate_name)
+        candidate_container = _start_app(
+            candidate_id,
+            volume,
+            candidate_name,
+            assistant_enabled=True,
+            network=candidate_network,
+            network_id=candidate_network_id,
+            run_id=run_id,
+            reviewed_head_sha=revision,
+            pair_manifest_sha256=pair_sha256,
+            role="candidate",
+        )
+        candidate_memory_baseline = _memory_usage(candidate_container)
+        _oom_event_evidence(candidate_memory_baseline, candidate_memory_baseline, role="candidate")
+        _cpu_stat_evidence(candidate_memory_baseline, candidate_memory_baseline, role="candidate")
+        _wait_ready(candidate_container, enabled=True, sample_count=sample_count)
+        _copy_probe_files(candidate_container, source_digests)
+        native_summary = _run_native_workload(candidate_container, runtime_users, sample_count)
         marker = _seed_operation(
             candidate_container,
             "marker",
@@ -4856,6 +4901,14 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
             "production_mutation": False,
             "production_baseline": dict(production_baseline),
             "production_assistant_enabled": True,
+            "candidate_disabled_seed_verified": True,
+            "candidate_enabled_readiness_verified": True,
+            "native_workload_verified": True,
+            "native_model_id": native_summary["model_id"],
+            "mcp_workspace_summary_calls": native_summary["mcp_workspace_summary_calls"],
+            "native_search_source_count": native_summary["builtin_search_source_count"],
+            "simultaneous_two_owner_turns": native_summary["simultaneous_two_owner_turns"],
+            "ownership_isolation_verified": native_summary["owner_isolation"],
             "production_health_samples": sample_count[0],
             "host_memavailable_before_kib": host_memavailable_before_kib,
             "host_memavailable_after_kib": host_memavailable_after_kib,

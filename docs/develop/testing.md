@@ -645,4 +645,11 @@ tmpfs limits were not all independently inspected; this does not establish actua
 1 GB, pair, or rollback acceptance. The earlier profile and reviewer-setup failures remain in the
 [E21 ledger](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint)
 and [E22 review](../../MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic).
-Do not combine these scopes into actual-host pair or rollback acceptance.
+Do not combine these scopes into actual-host pair or rollback acceptance. E23 records the v2
+native-phase builder and independent source/unit results: each passed 373 selected tests with one
+Docker integration test deselected. The new orchestration has not run on the actual host. The
+earlier package/manifest is bound to helper head
+`ae1d0a2d9d5e891436732e6655e360b93ecce817`, before the three new source pins, and does not
+establish source-bound packaging for this phase. Archive scan/publication, actual-host combined
+1 GB, pair, and rollback checks remain pending; see
+[E23](../../MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity).

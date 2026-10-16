@@ -59,6 +59,7 @@ REVIEW_PAIR_ENV = "SIGNAL_LEDGER_REHEARSAL_REVIEWED_PAIR_MANIFEST_SHA256"
 REVISION = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 IMAGE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
+MODEL_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+-]{0,95}$")
 OOM_EVENT_COUNTERS = ("oom", "oom_kill", "oom_group_kill")
 CPU_STAT_COUNTERS = ("usage_usec", "nr_periods", "nr_throttled", "throttled_usec")
 MAX_RESOURCE_COUNTER = (1 << 64) - 1
@@ -607,6 +608,39 @@ def _validated_production_baseline(value: object) -> dict[str, object]:
     ):
         raise RehearsalError("host_response_invalid")
     return dict(value)
+
+
+def _validated_native_evidence(response: dict[str, object]) -> dict[str, object]:
+    """Require actual enabled-candidate and two-owner native evidence."""
+
+    model_id = response.get("native_model_id")
+    model_parts = model_id.split("/") if isinstance(model_id, str) else []
+    summary_calls = response.get("mcp_workspace_summary_calls")
+    search_sources = response.get("native_search_source_count")
+    if (
+        response.get("candidate_disabled_seed_verified") is not True
+        or response.get("candidate_enabled_readiness_verified") is not True
+        or response.get("native_workload_verified") is not True
+        or not 2 <= len(model_parts) <= 4
+        or any(MODEL_SEGMENT.fullmatch(part) is None for part in model_parts)
+        or type(summary_calls) is not int
+        or summary_calls != 2
+        or type(search_sources) is not int
+        or not 1 <= search_sources <= 10_000
+        or response.get("simultaneous_two_owner_turns") is not True
+        or response.get("ownership_isolation_verified") is not True
+    ):
+        raise RehearsalError("host_response_invalid")
+    return {
+        "candidate_disabled_seed_verified": True,
+        "candidate_enabled_readiness_verified": True,
+        "native_workload_verified": True,
+        "native_model_id": model_id,
+        "mcp_workspace_summary_calls": summary_calls,
+        "native_search_source_count": search_sources,
+        "simultaneous_two_owner_turns": True,
+        "ownership_isolation_verified": True,
+    }
 
 
 def _validated_resource_evidence(response: dict[str, object]) -> dict[str, object]:
@@ -1699,6 +1733,7 @@ def rehearse_pr_pair(
     )
     if common_response_valid:
         raise RehearsalError("host_response_invalid")
+    native_evidence: dict[str, object] = {}
     if manifest.get("format_version") == 2 and (
         response.get("schema13_same_schema_verified") is not True
         or type(response.get("migration_commands_executed")) is not int
@@ -1713,6 +1748,8 @@ def rehearse_pr_pair(
         or hotfix_pr_receipt is None
     ):
         raise RehearsalError("host_response_invalid")
+    if manifest.get("format_version") == 2:
+        native_evidence = _validated_native_evidence(response)
     if manifest.get("format_version") == 1 and (
         response.get("recovery_process_isolation_verified") is not True
     ):
@@ -1778,6 +1815,7 @@ def rehearse_pr_pair(
                     "simultaneous_two_owner_turns",
                 }
             },
+            **native_evidence,
             **resource_evidence,
         },
     }

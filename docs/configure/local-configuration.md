@@ -260,9 +260,16 @@ diagnostic against the original 5ad image failed on observed supervisor and app 
 focused repair passed 33 synthetic tests. The follow-up independent process-profile QA passed
 360 tests with one direct-Docker test deselected, and a local original-image diagnostic passed. The
 bounded diagnostic receipt then passed independent offline review in E22; the reviewer did not rerun
-tests or start a container, and effective CPU/PID/swap/tmpfs limits were not all inspected. PR #11
-remains a candidate pending v2 packaging and required host checks. See the
-[E21 contract and status](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint)
-and [E22 review](../../MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic)
-for exact findings and receipts. Applied-state persistence and helper-revision substitution
-passed their selected synthetic review; neither establishes installation or production acceptance.
+tests or start a container, and effective CPU/PID/swap/tmpfs limits were not all inspected. A
+format-2 package and manifest were prepared for helper head
+`ae1d0a2d9d5e891436732e6655e360b93ecce817`. The later enabled-native phase changes three
+helper-source files, so that manifest does not bind the current source. Builder and independent
+copied-source checks each passed 373 selected tests with one Docker integration test deselected;
+neither ran Docker or exercised the new native-phase orchestration. The candidate archive has not
+passed the required contents scan or pair publication, and the new source needs its own bound
+package. Host pair, actual 1 GB, installation, rollback, and production acceptance remain open. See
+the [E21 contract and status](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint),
+[E22 review](../../MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic),
+and [E23 current checkpoint](../../MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity).
+Applied-state persistence and helper-revision substitution passed their selected synthetic review;
+neither establishes installation or production acceptance.

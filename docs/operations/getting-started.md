@@ -1099,8 +1099,14 @@ selected independent synthetic
 review passed that persistence scope. See
 [E21](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint) for exact
 evidence and the [E22 profile-review receipt](../../MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic).
-V2 packaging, installation, actual-host pair rehearsal, rollback, deployment, and release
-acceptance remain open.
+A format-2 package and manifest were prepared for earlier helper head
+`ae1d0a2d9d5e891436732e6655e360b93ecce817`. Three later source changes add the enabled-native
+phase, so the existing manifest does not bind the current helper. Builder and independent
+copied-source checks passed 373 selected tests each, with one Docker test deselected; the new
+orchestration has not run on the actual host. Archive scanning, corrected pair publication,
+actual-host pair and rollback, the combined 1 GB gate, installation, deployment, and release
+acceptance remain open. See [E23](../../MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity)
+for the evidence and publication-locator finding.
 
 A possible temporary use of the registered app-only recovery image must first pass local
 compatibility and data continuity, exact recovery-role validation at both boundaries, signed

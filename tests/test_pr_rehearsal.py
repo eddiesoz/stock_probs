@@ -1107,8 +1107,10 @@ def test_v2_generated_recovery_probe_rejects_unsafe_synthetic_topologies(
         _execute_generated_v2_recovery_probe(tmp_path, scenario)
 
 
-def test_v2_runner_writes_after_candidate_start_then_reads_with_same_schema_recovery(
+@pytest.mark.parametrize("native_failure", [False, True])
+def test_v2_runner_requires_enabled_native_phase_before_write_and_recovery(
     monkeypatch: pytest.MonkeyPatch,
+    native_failure: bool,
 ) -> None:
     helper_revision = "a" * 40
     candidate_archive = b"candidate-oci-archive"
@@ -1133,12 +1135,24 @@ def test_v2_runner_writes_after_candidate_start_then_reads_with_same_schema_reco
         len(recovery_archive),
         host_helper.HOTFIX_RECOVERY_BASELINE["image_id"],
     )
-    sample = {
-        "limit": host_helper.CANDIDATE_MEMORY_LIMIT,
-        "peak": 1024,
-        "oom_events": {name: 0 for name in host_helper.OOM_EVENT_COUNTERS},
-        "cpu_stat": {name: 1 for name in host_helper.CPU_STAT_COUNTERS},
-    }
+    zero_events = {name: 0 for name in host_helper.OOM_EVENT_COUNTERS}
+    sample_offsets = {"a" * 64: 100, "c" * 64: 200, "b" * 64: 300}
+    sample_counts: dict[str, int] = {}
+
+    def memory_sample(container: str, *, expected_role: str = "candidate"):
+        sample_index = sample_counts.get(container, 0)
+        sample_counts[container] = sample_index + 1
+        offset = sample_offsets[container]
+        return {
+            "limit": host_helper._memory_limit_for_role(expected_role),
+            "peak": offset * 10 + sample_index,
+            "oom_events": zero_events.copy(),
+            "cpu_stat": {
+                name: offset + sample_index * 10 + index
+                for index, name in enumerate(host_helper.CPU_STAT_COUNTERS)
+            },
+        }
+
     production_checks: list[bool] = []
     starts: list[tuple[str, str, bool, str, str | None, str]] = []
     removed: list[str] = []
@@ -1186,30 +1200,59 @@ def test_v2_runner_writes_after_candidate_start_then_reads_with_same_schema_reco
 
     def start_app(image_id, volume, name, **kwargs):
         role = kwargs["role"]
-        assert kwargs["assistant_enabled"] is False
-        container = "a" * 64 if role == "candidate" else "b" * 64
+        if role == "candidate":
+            candidate_start_count = sum(row[1] == "candidate" for row in starts)
+            container = "a" * 64 if candidate_start_count == 0 else "c" * 64
+        else:
+            container = "b" * 64
         starts.append(
             (image_id, role, kwargs["assistant_enabled"], name, kwargs["network"], volume)
         )
-        events.append(f"start:{role}")
+        events.append(f"start:{role}:{kwargs['assistant_enabled']}")
         return container
 
     monkeypatch.setattr(host_helper, "_start_app", start_app)
-    monkeypatch.setattr(host_helper, "_memory_usage", lambda *_args, **_kwargs: sample)
+    monkeypatch.setattr(host_helper, "_memory_usage", memory_sample)
     monkeypatch.setattr(
         host_helper,
         "_wait_ready",
-        lambda _container, **kwargs: events.append(f"ready:{kwargs['enabled']}"),
+        lambda container, **kwargs: events.append(
+            f"ready:{'recovery' if container == 'b' * 64 else 'candidate'}:{kwargs['enabled']}"
+        ),
     )
     monkeypatch.setattr(host_helper, "_copy_probe_files", lambda *_args: None)
     monkeypatch.setattr(
         host_helper,
         "_seed",
-        lambda _container: {"synthetic_user_ids": [11, 12]},
+        lambda _container: {
+            "users": [
+                {"username": "owner-a", "password": "synthetic-a"},
+                {"username": "owner-b", "password": "synthetic-b"},
+            ],
+            "synthetic_user_ids": [11, 12],
+        },
     )
 
-    def fixture(_container: str, operation: str, request: dict[str, object]):
-        events.append(operation)
+    def run_native(container: str, users: list[dict[str, str]], _samples: list[int]):
+        assert container == "c" * 64
+        assert len(users) == 2
+        events.append("candidate:native")
+        if native_failure:
+            raise host_helper.RehearsalError("native_driver_failed")
+        return {
+            "native_v2": True,
+            "model_id": "openai/gpt-6.1-sol",
+            "mcp_workspace_summary_calls": 2,
+            "builtin_search_source_count": 8,
+            "simultaneous_two_owner_turns": True,
+            "owner_isolation": True,
+        }
+
+    monkeypatch.setattr(host_helper, "_run_native_workload", run_native)
+
+    def fixture(container: str, operation: str, request: dict[str, object]):
+        role = "recovery" if container == "b" * 64 else "candidate"
+        events.append(f"{role}:{operation}")
         return {"request_id": "marker-1"} if operation == "marker" else dict(snapshot_value)
 
     monkeypatch.setattr(host_helper, "_seed_operation", fixture)
@@ -1269,22 +1312,36 @@ def test_v2_runner_writes_after_candidate_start_then_reads_with_same_schema_reco
         "recovery_archive_sha256": recovery_hash,
     }
 
+    if native_failure:
+        with pytest.raises(host_helper.RehearsalError, match="native_driver_failed"):
+            host_helper._run_pair_v2(payload)
+        assert [row[2] for row in starts] == [False, True]
+        assert "candidate:marker" not in events
+        assert not any(row[1] == "recovery" for row in starts)
+        assert removed == [starts[0][3], starts[1][3]]
+        return
+
     result = host_helper._run_pair_v2(payload)
 
     assert [row[0] for row in starts] == [
         host_helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        host_helper.HOTFIX_CANDIDATE_IMAGE_ID,
         host_helper.HOTFIX_RECOVERY_BASELINE["image_id"],
     ]
-    assert [row[1] for row in starts] == ["candidate", "recovery"]
+    assert [row[1] for row in starts] == ["candidate", "candidate", "recovery"]
+    assert [row[2] for row in starts] == [False, True, False]
     assert starts[0][4] == host_helper._candidate_network_name(starts[0][5])
-    assert starts[1][4] == "none"
-    assert starts[0][5] == starts[1][5]
+    assert starts[1][4] == starts[0][4]
+    assert starts[2][4] == "none"
+    assert starts[0][5] == starts[1][5] == starts[2][5]
     assert load_revisions == [
         host_helper.HOTFIX_CANDIDATE_REVISION,
         host_helper.HOTFIX_RECOVERY_BASELINE["revision"],
     ]
-    assert events.index("marker") > events.index("ready:False")
-    assert events.index(f"remove:{starts[0][3]}") < events.index("start:recovery")
+    assert events.index("candidate:native") > events.index("ready:candidate:True")
+    assert events.index("candidate:marker") > events.index("candidate:native")
+    assert events.index("candidate:snapshot") > events.index("candidate:marker")
+    assert events.index(f"remove:{starts[1][3]}") < events.index("start:recovery:False")
     assert result["same_disposable_volume"] is True
     assert result["production_mutation"] is False
     assert result["schema13_same_schema_verified"] is True
@@ -1293,6 +1350,16 @@ def test_v2_runner_writes_after_candidate_start_then_reads_with_same_schema_reco
     assert result["post_start_write_preserved"] is True
     assert result["schema_after_recovery"] == 13
     assert result["recovery_process_isolation_verified"] is True
+    assert result["candidate_disabled_seed_verified"] is True
+    assert result["candidate_enabled_readiness_verified"] is True
+    assert result["native_workload_verified"] is True
+    assert result["native_model_id"] == "openai/gpt-6.1-sol"
+    assert result["mcp_workspace_summary_calls"] == 2
+    assert result["native_search_source_count"] == 8
+    assert result["simultaneous_two_owner_turns"] is True
+    assert result["ownership_isolation_verified"] is True
+    assert result["candidate_cpu_stat_evidence"]["baseline"]["usage_usec"] == 200
+    assert result["candidate_cpu_stat_evidence"]["final"]["usage_usec"] == 210
     assert result["volume_removed"] is True
     assert result["images_retained"] is True
     assert production_checks[0] is True
@@ -3976,6 +4043,143 @@ def _controller_resource_evidence() -> dict[str, object]:
         "oom_event_evidence_complete": True,
         "zero_oom_events_verified": True,
     }
+
+
+def _controller_native_evidence() -> dict[str, object]:
+    return {
+        "candidate_disabled_seed_verified": True,
+        "candidate_enabled_readiness_verified": True,
+        "native_workload_verified": True,
+        "native_model_id": "openai/gpt-6.1-sol",
+        "mcp_workspace_summary_calls": 2,
+        "native_search_source_count": 8,
+        "simultaneous_two_owner_turns": True,
+        "ownership_isolation_verified": True,
+    }
+
+
+def test_controller_requires_actual_enabled_candidate_native_evidence() -> None:
+    evidence = controller._validated_native_evidence(_controller_native_evidence())
+
+    assert evidence == _controller_native_evidence()
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("candidate_disabled_seed_verified", False),
+        ("candidate_enabled_readiness_verified", False),
+        ("native_workload_verified", False),
+        ("native_model_id", "openai/"),
+        ("mcp_workspace_summary_calls", True),
+        ("mcp_workspace_summary_calls", 1),
+        ("native_search_source_count", True),
+        ("native_search_source_count", 0),
+        ("simultaneous_two_owner_turns", False),
+        ("ownership_isolation_verified", False),
+    ],
+)
+def test_controller_rejects_missing_or_malformed_native_acceptance(
+    field: str,
+    invalid: object,
+) -> None:
+    response = _controller_native_evidence()
+    response[field] = invalid
+
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_native_evidence(response)
+
+
+def test_v2_controller_projects_only_verified_native_and_resource_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reviewed_head = "a" * 40
+    pair_digest = "b" * 64
+    config = controller.RehearsalConfig(
+        Path("/unused/operator-key"),
+        Path("/unused/known-hosts"),
+        reviewed_head,
+        pair_digest,
+    )
+    candidate_archive = b"candidate-oci-archive"
+    recovery_archive = b"previous-production-oci-archive"
+    manifest = _host_hotfix_manifest(reviewed_head, candidate_archive, recovery_archive)
+    response: dict[str, object] = {
+        "status": "pass",
+        "reviewed_head_sha": reviewed_head,
+        "pair_manifest_sha256": pair_digest,
+        "candidate_image_id": controller.HOTFIX_CANDIDATE_IMAGE_ID,
+        "recovery_image_id": controller.PRODUCTION_BASELINE["image_id"],
+        "same_disposable_volume": True,
+        "production_mutation": False,
+        "candidate_container_removed": True,
+        "recovery_container_removed": True,
+        "volume_removed": True,
+        "images_retained": True,
+        "architecture": "x86_64",
+        "schema13_same_schema_verified": True,
+        "migration_commands_executed": 0,
+        "restore_commands_executed": 0,
+        "post_start_write_preserved": True,
+        "schema_after_recovery": 13,
+        "production_assistant_enabled": True,
+        "recovery_process_isolation_verified": True,
+        "production_baseline": dict(controller.PRODUCTION_BASELINE),
+    }
+    response.update(_controller_resource_evidence())
+    response.update(_controller_native_evidence())
+
+    monkeypatch.setattr(
+        controller.RehearsalConfig,
+        "from_env",
+        classmethod(lambda _cls: config),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_artifact_pair",
+        lambda *_args, **_kwargs: (manifest, {"candidate": candidate_archive}),
+    )
+    monkeypatch.setattr(controller, "_verify_local_helper_checkout", lambda _head: None)
+    monkeypatch.setattr(
+        controller,
+        "verify_helper_source_pull_request",
+        lambda _head: {"head_sha": reviewed_head},
+    )
+    monkeypatch.setattr(
+        controller,
+        "verify_hotfix_pull_request",
+        lambda: {"head_sha": controller.HOTFIX_CANDIDATE_REVISION},
+    )
+    monkeypatch.setattr(controller, "_source_bundle", lambda: ({"bootstrap": b"x"}, {}))
+    monkeypatch.setattr(controller, "_ensure_incoming_directories", lambda _config: None)
+    monkeypatch.setattr(controller, "_stage_source_bundle", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(controller, "_stage_assets", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        controller,
+        "_run_fixed",
+        lambda *_args, **_kwargs: json.dumps(response).encode("utf-8"),
+    )
+
+    result = controller.rehearse_pr_pair(
+        reviewed_head_sha=reviewed_head,
+        candidate_image_id=controller.HOTFIX_CANDIDATE_IMAGE_ID,
+        candidate_source_context_sha256=controller.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        recovery_image_id=controller.PRODUCTION_BASELINE["image_id"],
+        recovery_source_context_sha256=controller.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        recovery_overlay_sha256=controller.HOTFIX_EMPTY_OVERLAY_SHA256,
+        pair_manifest_sha256=pair_digest,
+    )
+
+    host_receipt = result["host_receipt"]
+    assert isinstance(host_receipt, dict)
+    assert host_receipt["production_assistant_enabled"] is True
+    assert host_receipt["candidate_disabled_seed_verified"] is True
+    assert host_receipt["candidate_enabled_readiness_verified"] is True
+    assert host_receipt["native_workload_verified"] is True
+    assert host_receipt["native_model_id"] == "openai/gpt-6.1-sol"
+    assert host_receipt["mcp_workspace_summary_calls"] == 2
+    assert host_receipt["native_search_source_count"] == 8
+    assert host_receipt["candidate_cpu_stat_evidence"]["baseline"]["usage_usec"] == 100
 
 
 def test_controller_projects_only_complete_resource_observations() -> None:
