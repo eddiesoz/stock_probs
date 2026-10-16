@@ -496,7 +496,11 @@ The shared archive scanner must reject altered pinned source, extra token-like b
 paths and word-adjacent tokens. Each provenance-verified exception is restricted to its exact
 digest, size, path and match spans; exercise both candidate and recovery archives. The fixed
 compiled harness is custom-source-pinned; its exempt spans are verified against the pinned public
-Bun binary, not an official unmodified OpenCode binary. No whole-file waiver is permitted.
+Bun binary, not an official unmodified OpenCode binary. Pin a compiled executable's full digest
+separately: matching public spans validates only those bytes, not the provenance of the rest of
+the executable. No whole-file waiver is permitted. See
+[R-ASTRA-121 E32](../../MVP-PLAN.md#r-astra-121-e32-current-f6-archive-scanner-checkpoint) for
+the current scoped PR12 evidence.
 
 
 ### Exact PR-pair review pins

@@ -7252,3 +7252,45 @@ unchanged. These private scan passes are not archive publication, actual-host re
 deployment or release acceptance. The separate actual-host trial is outside this evidence checkpoint; no result from it is
 recorded here. The existing 1 GB host, backups and US$15 monthly
 cap remain unchanged; no merge, deployment or email is claimed.
+
+### R-ASTRA-121 E32 — Current F6 archive-scanner checkpoint
+
+At dirty PR #12 worktree revision `03ccd911722d20fb9b18de2630aee23ab4f68b05`, the scanner and test
+files match the independently reviewed pins: `scripts/verify-release-archive.py` SHA-256
+`5f1ac4b773f2ddf8866589cb2cb59bec8fce6097f20986bbf8d6de0c96c45085` and
+`tests/test_release_archive.py` SHA-256
+`f7f5a15ec4e4e6ae92f0537e344e1d90d9dedb9629f89475cc3be990f717e8f8`. The rebuilt F6 member
+`usr/local/bin/opencode` is pinned by its complete 212,784,608-byte SHA-256
+`2e83651d990f60987c17e1b20961190f1f80d86a4f160de2e2795014fc68577e` plus the four exact public
+spans listed in E31. The span comparison matched the official Bun 1.4.2 receipt at only those
+offsets and hashes; it does not establish provenance for the rest of the OpenCode executable.
+F6 span-check receipt: `/var/tmp/r12r/f6-scanner-span-pin-ee538340-9ef0-4135-aa3b-7c474f9934d2/archive-binary-span-check.json`
+(SHA-256 `cd75a4d1f66d8ec5b3fcf5393a66527af77aaaf94467dcde1b93efaa1be0a84a`).
+
+The independent selected QA terminal reported 33 archive tests, Ruff check/security/format,
+maintained OCI identity verification, and bounded scans of both archives **Pass**. The F6
+candidate archive was 202,160,947 bytes (SHA-256
+`c0e9d0fe89e53fef4c8f3173a5f2403d32a32f69b7591bc89e7d7ae129199f82`); the 5ad recovery archive
+was 202,156,038 bytes (SHA-256
+`99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5`). The maintained OCI
+identity verifier reported F6 image ID `sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196`.
+Independent QA ran at revision `603c26d8d064c235dcc79cc9365f06fd7684cfba`. Its terminal receipt is
+`/var/tmp/r12r/r12r-scanner-independent-qa-85c279f8-5b6a-4307-a45c-9c84b160d0df/terminal-receipt.json`
+(SHA-256 `29ed074896b303995ba422bf18375c8b63e6721f1a310806a119813fdd8d9450`). Its bound
+environment/span supplement is
+`/var/tmp/r12r/r12r-scanner-independent-qa-85c279f8-5b6a-4307-a45c-9c84b160d0df/qa-environment-and-span-supplement.json`
+(SHA-256 `613eb9d4f6df53114cae3bfec4c77f1341b0e3c604acd0e037d99c572b8a228e`): it records the
+initial child umask `0002`, contrary to the required `0022`, and therefore its overall status is
+**Fail** despite the individual checks passing. The private output directory and files were still
+mode `0700` and `0600`. A later test-only rerun under `0022` passed 33/33 tests; its receipt is
+`/var/tmp/r12r/r12r-scanner-independent-qa-85c279f8-5b6a-4307-a45c-9c84b160d0df/pytest-umask022-a4138cd6-1063-4460-87ab-5e4c55099a27/umask022-test-receipt.json`
+(SHA-256 `77c742b9a5477762bdbd24eb2738d78f95f6b230c7c46e838c62becd38ec929e`). That correction
+reran only the test file; it did not repeat either archive scan or the other checks.
+
+The earlier strict F6 scanner result remains **Fail** and unchanged: receipt
+`/var/tmp/r12r/f6-archive-scan-ce8ce62d-e91f-4e18-ad8c-a187a566aa25/receipt.json` (SHA-256
+`f19c10014a4865c7cc7195a343a092d02c071b48599a5567fda1b3a3f814d55f`). The passing scans apply
+only to the two identified private archives with the exact source and binary pins above. This is
+source/archive-scanner evidence; it does not establish a new image build, native/runtime or
+provider behavior, publication, actual-host rehearsal, rollback, deployment, or release
+acceptance. No production change or email is claimed.

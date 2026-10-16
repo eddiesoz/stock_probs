@@ -558,7 +558,14 @@ Historical R-ASTRA-120 E820: The clean `6efcf212` canonical local gate passed wi
 
 Never overwrite a delivered evidence receipt; record supplemental facts in a new uniquely named receipt.
 
-Image-archive credential verification must scan the Docker manifest, referenced Config, all regular outer archive members, and nested layer contents. Keep exact public-source exceptions confined to their reviewed layer paths, sizes, digests and match spans. A historical layer-only scan does not establish complete archive coverage.
+Image-archive credential verification must scan the Docker manifest, referenced Config, all regular
+outer archive members, and nested layer contents. Keep exact public-source exceptions confined to
+their reviewed layer paths, sizes, full-file digests and match spans. For a compiled OpenCode member,
+matching public Bun spans establishes only those exact span bytes; pin the complete executable
+independently and continue scanning every other byte and match. A span receipt is not whole-
+executable provenance or runtime acceptance, and no blanket or whole-file exception is allowed.
+Resolve OCI identity through its index, manifest, config and layer graph; a config-blob digest is
+not the OCI image ID. A historical layer-only scan does not establish complete archive coverage.
 
 Exclude generated build caches from release source fingerprints. After a packaging-only or test-fixture repair, reuse checks whose exact implementation and asset inputs are unchanged; rerun the affected scope and mandatory release gates. A changed fingerprint requires a newly bound image, not relabelling an earlier image.
 
