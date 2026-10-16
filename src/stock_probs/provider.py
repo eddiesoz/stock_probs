@@ -856,7 +856,9 @@ class YahooProvider:
             )
         ):
             raise OutcomeSourceUnavailable("series_incomplete")
-        if response_at < target_utc or response_at > now_utc:
+        # ``now`` is sampled before dispatch, while response_at is sampled after both history
+        # requests. The collector bounds that response timestamp against its completion clock.
+        if response_at < target_utc:
             raise OutcomeSourceUnavailable("series_incomplete")
 
         try:

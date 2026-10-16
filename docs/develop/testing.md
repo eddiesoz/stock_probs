@@ -363,6 +363,11 @@ pass. Run checked-in isolated browser regressions with `make browser-test`, and 
 headless MCP interaction with `make mcp-smoke`. `scripts/local-gate.sh` provides the fail-closed
 aggregate and records revision, architecture and results; a builder run is not independent QA.
 
+`test_yahoo_fetch_latency_is_bounded_by_collection_completion` uses injected clocks and mocked Yahoo:
+it accepts a timestamp after dispatch through collection completion and records a later one as
+unavailable. Target session and provider/scoring guards stay unchanged; no network request occurs.
+With no `static/next/_next`, run under `--noconftest` because root setup imports the staged app.
+
 The frontend build exports the pinned Next App Router UI and stages it for FastAPI; it does not
 start a Next server. The served candidate contains 48 generated files and four authored assets.
 Node remains build-only in the container, while the candidate OpenCode/Bun assistant worker runs

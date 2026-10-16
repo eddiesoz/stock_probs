@@ -959,6 +959,36 @@ without a test rerun; receipt `/var/tmp/r12r/static-copy-parent-review-021b2670-
 Receipt `/var/tmp/r12r/static-export-copy-qa-097qf2ie/independent-static-copy-guards-qa.json`,
 SHA-256 `4f14106dcbb09f48544f42d736e476719b57c3e1b4f07324c9b74c46a52cd5e9`.
 
+### R3-OUTCOME-01 — Yahoo outcome collection latency repair
+
+Task `R-ASTRA-121` (`R3-OUTCOME-01`), dirty pre-change `HEAD` `7b8ca3360e9e5a3e38b1b9310e69774194c108f2`.
+Yahoo `response_at` is sampled after both history requests; the collector bounds `series.as_of` by fresh
+completion time. Positive fetch latency before completion is accepted, a later timestamp is
+rejected; target session and provider/scoring guards remain intact, and the collector is sole consumer.
+
+The parameterized test accepts a mocked 2-second response before 3-second completion and records a
+4-second response as unavailable; its pre-repair run **Failed** the valid case. Builder and
+independent focused runs each **Passed** 7 tests with `--noconftest` because the staged frontend
+export was absent and root `tests/conftest.py` could not initialize. Configured Ruff, security
+excluding `S101`, format, and scoped diff checks **Passed**. Two exploratory Ruff `S` selections
+**Failed** on 120 test assertions after omitting the `S101` exclusion; these remain invocation
+failures, not source findings. No live Yahoo/network, build, full-suite, browser, canonical, runtime, or release check was run.
+
+Independent QA **Passed** at `2026-10-16T20:00:50.693437Z`–`20:00:52.947152Z`; parent integrated
+review **Passed** only for the two-file source/evidence scope. Source pins: `provider.py`
+`2e2d3e6443a4a92200a7104837f470a1efb6219cfe91ae4ba6cdb5ab2ae74df2` and
+`test_outcome_collection.py` `3b5fe7f30dfe77ed5009a4f1b49d3380192de2c2c102b832d62388916a29dd9c`.
+Builder receipt `/var/tmp/r12r/r3-outcome-latency-repair-fb9e8cbc-2cb5-4ad7-a3e1-d1c7c715edc3/final-evidence.json`,
+SHA-256 `396cc33e351bbc97526dfcc1999cced1c95485a4228cb868f28230cc231dcf9f`; independent receipt
+`/var/tmp/r12r/r3-outcome-latency-independent-qa-e6857736-4f37-4178-8b9c-828241661dfd/independent-qa-final.json`,
+SHA-256 `74fe0315634d1fa22cdc6713699c878e6262efb03beaa8528fec0468f70ab170`; parent review
+`/var/tmp/r12r/r3-outcome-latency-repair-fb9e8cbc-2cb5-4ad7-a3e1-d1c7c715edc3/parent-integrated-review.json`,
+SHA-256 `1fdbb083c029cfddbacd41cffa5e3c7b26fac1b8c4d2ff9096b12598198b0ccc`. R3 canonical, security,
+host resource, recovery, rollback, browser/accessibility, and release gates remain open. Docs validator
+passed (9 categories/14 topics/8 governance entries); completeness and four-file change-aware checks
+each covered 249 files, and scoped diff check passed. Production, the 1 GB host, backups, and US$15
+monthly cap are unchanged.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.

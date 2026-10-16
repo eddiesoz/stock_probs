@@ -9,6 +9,7 @@ import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+import pandas as pd
 import pytest
 
 from stock_probs.domain import Bar
@@ -26,8 +27,10 @@ from stock_probs.outcome_collection_store import (
     OutcomeCollectionStoreError,
     OutcomeForecast,
 )
+from stock_probs.provider import YahooProvider
 from stock_probs.report_store import ReportCardStore
 from stock_probs.repository import Repository
+from stock_probs.service import ForecastService
 
 NOW = datetime(2026, 10, 15, 23, tzinfo=UTC)
 TARGET = datetime(2026, 10, 15, 20, tzinfo=UTC)
@@ -546,6 +549,70 @@ def test_provider_latency_uses_completion_time_without_changing_target_session(
             (row["id"],),
         ).fetchone()[0]
     assert collected_at == timestamp
+
+
+@pytest.mark.parametrize(
+    ("response_delay", "expected_state"),
+    [(timedelta(seconds=2), "observed"), (timedelta(seconds=4), "unavailable")],
+)
+def test_yahoo_fetch_latency_is_bounded_by_collection_completion(
+    repository: Repository,
+    monkeypatch: pytest.MonkeyPatch,
+    response_delay: timedelta,
+    expected_state: str,
+) -> None:
+    """Accept a Yahoo response after dispatch only through collector completion time."""
+    forecast = _forecast()
+    forecast["provenance"]["source"] = "Yahoo Finance"
+    forecast["provenance"]["instrument_identity"]["provider"] = "Yahoo Finance"
+    _add_forecast(repository, 1, 1, forecast_payload=forecast)
+
+    dispatch_at = NOW + timedelta(seconds=1)
+    completed_at = NOW + timedelta(seconds=3)
+    response_at = NOW + response_delay
+    dates = pd.DatetimeIndex(["2026-10-14", "2026-10-15"], tz="America/New_York")
+    metadata = {
+        "symbol": "SPY",
+        "instrumentType": "EQUITY",
+        "currency": "USD",
+        "exchangeTimezoneName": "America/New_York",
+        "exchangeName": "NYQ",
+        "shortName": "Example Corp",
+        "longName": "Example Corp",
+        "dataGranularity": "1d",
+    }
+
+    class DelayedTicker:
+        def history(self, **kwargs: object) -> pd.DataFrame:
+            frame = pd.DataFrame(
+                {"Close": (100.0, 105.0), "Adj Close": (100.0, 105.0)}, index=dates
+            )
+            if kwargs["actions"]:
+                frame["Dividends"] = (0.0, 0.0)
+                frame["Stock Splits"] = (0.0, 0.0)
+            frame.attrs["history_metadata"] = metadata
+            return frame
+
+    monkeypatch.setattr("stock_probs.provider.yf.Ticker", lambda _symbol: DelayedTicker())
+    provider = YahooProvider(timeout=1.0, clock=lambda: response_at)
+    service = ForecastService(repository, provider, clock=lambda: NOW)
+    clock_values = iter((dispatch_at, completed_at))
+    collector = DailyOutcomeCollector(
+        OutcomeCollectionStore(repository), service, completion_clock=lambda: next(clock_values)
+    )
+
+    result = collector.run_once(NOW)
+
+    row = _read_outcomes(repository, 1)[0]
+    assert result["recorded"] == 1
+    assert row["state"] == expected_state
+    assert row["created_at"] == completed_at.isoformat(timespec="microseconds").replace(
+        "+00:00", "Z"
+    )
+    assert row["observed_at"] == TARGET.isoformat(timespec="microseconds").replace("+00:00", "Z")
+    if expected_state == "observed":
+        evidence = json.loads(str(row["payload_json"]))
+        assert evidence["bar"]["timestamp"] == TARGET.isoformat()
 
 
 def test_provider_dispatch_and_completion_use_fresh_clock_samples(repository: Repository) -> None:
