@@ -26,6 +26,8 @@ IMAGE_REPOSITORY = "ghcr.io/jtmb/signal-ledger"
 RELEASE_TRANSPORT = "github_release"
 ASSISTANT_ROLLOUT_MODES = frozenset({"disabled", "owner_canary", "invited"})
 ASSISTANT_READY_SCHEMA = 13
+RESEARCH_READY_SCHEMA = 14
+RESEARCH_ROLLOUT_MODES = frozenset({"disabled", "owner_canary", "invited"})
 LOCAL_IMAGE_REPOSITORY = "signal-ledger"
 HOST = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
 USER = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
@@ -648,6 +650,95 @@ class DeployController:
             or assistant.get("status") != "ready"
         ):
             raise DeployError("assistant_not_ready")
+        return response
+
+    def set_research_rollout(self, mode: str) -> dict[str, Any]:
+        """Change the independent research rollout for the exact deployed schema-14 image."""
+
+        if not isinstance(mode, str) or mode not in RESEARCH_ROLLOUT_MODES:
+            raise DeployError("research_rollout_invalid")
+        status = self.status()
+        current = status.get("current") if isinstance(status, dict) else None
+        if not isinstance(current, dict):
+            raise DeployError("active_release_unavailable")
+        revision = current.get("revision")
+        archive_sha256 = current.get("archive_sha256")
+        image_id = current.get("image_id")
+        schema_version = current.get("schema_version")
+        assistant_mode = current.get("assistant_rollout_mode", "disabled")
+        previous_mode = current.get("research_rollout_mode", "disabled")
+        if (
+            status.get("status") != "ok"
+            or current.get("transport") != RELEASE_TRANSPORT
+            or not isinstance(revision, str)
+            or not REVISION.fullmatch(revision)
+            or not isinstance(archive_sha256, str)
+            or not SHA256.fullmatch(archive_sha256)
+            or current.get("image_digest") != archive_sha256
+            or not isinstance(image_id, str)
+            or not IMAGE_ID.fullmatch(image_id)
+            or current.get("platform") != "linux/amd64"
+            or type(schema_version) is not int
+            or schema_version < RESEARCH_READY_SCHEMA
+            or not isinstance(current.get("compose_digest"), str)
+            or not SHA256.fullmatch(current["compose_digest"])
+            or not isinstance(assistant_mode, str)
+            or assistant_mode not in ASSISTANT_ROLLOUT_MODES
+            or not isinstance(previous_mode, str)
+            or previous_mode not in RESEARCH_ROLLOUT_MODES
+        ):
+            raise DeployError("active_release_identity_invalid")
+        valid_transition = (
+            mode == previous_mode
+            or mode == "disabled"
+            or (previous_mode == "disabled" and mode == "owner_canary")
+            or (previous_mode == "owner_canary" and mode == "invited")
+        )
+        if not valid_transition:
+            raise DeployError("research_rollout_transition_invalid")
+        if mode != "disabled":
+            if current.get("release_role", "candidate") != "candidate":
+                raise DeployError("research_recovery_image_disabled")
+            if self._local_rollout_revision() != revision:
+                raise DeployError("reviewed_release_mismatch")
+            if (
+                self.config.reviewed_revision is not None
+                and self.config.reviewed_revision != revision
+            ):
+                raise DeployError("reviewed_release_mismatch")
+        response = self._invoke(
+            "set_research_rollout",
+            {
+                "mode": mode,
+                "revision": revision,
+                "archive_sha256": archive_sha256,
+                "image_id": image_id,
+            },
+            timeout=600,
+        )
+        health = response.get("health")
+        research = health.get("research") if isinstance(health, dict) else None
+        assistant = health.get("assistant") if isinstance(health, dict) else None
+        if (
+            response.get("status") != "ok"
+            or response.get("result") != "rollout_updated"
+            or response.get("revision") != revision
+            or response.get("archive_sha256") != archive_sha256
+            or response.get("image_id") != image_id
+            or response.get("schema_version") != schema_version
+            or response.get("research_rollout_mode") != mode
+            or not isinstance(health, dict)
+            or health.get("status") != "ready"
+            or health.get("schema_version") != schema_version
+            or not isinstance(research, dict)
+            or type(research.get("enabled")) is not bool
+            or research.get("enabled") is not (mode != "disabled")
+            or research.get("rollout_mode") != mode
+            or not isinstance(assistant, dict)
+            or type(assistant.get("enabled")) is not bool
+            or assistant.get("enabled") is not (assistant_mode != "disabled")
+        ):
+            raise DeployError("remote_response_invalid")
         return response
 
     def _local_rollout_revision(self) -> str:

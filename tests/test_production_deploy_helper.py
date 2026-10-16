@@ -592,6 +592,139 @@ def test_request_parser_limits_assistant_rollout_to_mode_and_exact_release_ident
         )
 
 
+def test_readiness_projects_valid_research_rollout_without_untrusted_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    value = {
+        "status": "ready",
+        "schema_version": 14,
+        "assistant": {"enabled": True, "status": "starting", "internal": "ignored"},
+        "research": {"enabled": True, "rollout_mode": "owner_canary", "internal": "ignored"},
+    }
+    monkeypatch.setattr(helper, "HEALTH_ATTEMPTS", 1)
+    monkeypatch.setattr(
+        helper,
+        "_run",
+        lambda *_args, **_kwargs: SimpleNamespace(stdout=json.dumps(value)),
+    )
+
+    health = helper._health_check()
+
+    assert health["research"] == {"enabled": True, "rollout_mode": "owner_canary"}
+    assert "internal" not in health["research"]
+    value["research"]["rollout_mode"] = "unexpected"
+    health = helper._health_check()
+    with pytest.raises(helper.HostError, match="research_rollout_unverified"):
+        helper._require_research_ready(health, "owner_canary", schema_version=14)
+
+
+def test_running_release_verification_requires_exact_container_image(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    container_id = "a" * 64
+    expected_image_id = "sha256:" + "b" * 64
+    record = {"image_id": expected_image_id}
+    snapshot = tmp_path / "reviewed.compose.yaml"
+    monkeypatch.setattr(helper, "_app_container_identity", lambda _snapshot: (container_id, 123))
+    monkeypatch.setattr(
+        helper,
+        "_run",
+        lambda command, **_kwargs: SimpleNamespace(stdout=expected_image_id + "\n"),
+    )
+
+    assert helper._assert_running_release_image(record, snapshot) == container_id
+    with pytest.raises(helper.HostError, match="research_app_image_mismatch"):
+        monkeypatch.setattr(
+            helper,
+            "_run",
+            lambda command, **_kwargs: SimpleNamespace(stdout="sha256:" + "c" * 64 + "\n"),
+        )
+        helper._assert_running_release_image(record, snapshot)
+
+
+def test_runtime_file_preserves_both_independent_rollout_modes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    current = {
+        "schema_version": 14,
+        "assistant_rollout_mode": "owner_canary",
+        "research_rollout_mode": "invited",
+    }
+    runtime_file = tmp_path / "runtime.env"
+    monkeypatch.setattr(helper, "CURRENT_RECORD", tmp_path / "current.json")
+    monkeypatch.setattr(helper, "RUNTIME_ENV_FILE", runtime_file)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: current if path == helper.CURRENT_RECORD else None,
+    )
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 14)
+    monkeypatch.setattr(helper, "_safe_mode", lambda *_: None)
+
+    helper._runtime_file("signal-ledger:reviewed-image")
+
+    values = dict(line.split("=", 1) for line in runtime_file.read_text().splitlines())
+    assert values["STOCK_PROBS_ASSISTANT_ENABLED"] == "1"
+    assert values["STOCK_PROBS_ASSISTANT_ROLLOUT"] == "owner_canary"
+    assert values["STOCK_PROBS_RESEARCH_FEATURES_ENABLED"] == "1"
+    assert values["STOCK_PROBS_RESEARCH_FEATURES_CANARY_ONLY"] == "0"
+
+
+def test_runtime_file_disables_research_for_pre_schema14_target_with_schema14_current(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    current = {
+        "schema_version": 14,
+        "assistant_rollout_mode": "owner_canary",
+        "research_rollout_mode": "invited",
+    }
+    runtime_file = tmp_path / "runtime.env"
+    monkeypatch.setattr(helper, "CURRENT_RECORD", tmp_path / "current.json")
+    monkeypatch.setattr(helper, "RUNTIME_ENV_FILE", runtime_file)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: current if path == helper.CURRENT_RECORD else None,
+    )
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 13)
+    monkeypatch.setattr(helper, "_safe_mode", lambda *_: None)
+
+    helper._runtime_file("signal-ledger:reviewed-image")
+
+    values = dict(line.split("=", 1) for line in runtime_file.read_text().splitlines())
+    assert values["STOCK_PROBS_ASSISTANT_ENABLED"] == "1"
+    assert values["STOCK_PROBS_RESEARCH_FEATURES_ENABLED"] == "0"
+    assert values["STOCK_PROBS_RESEARCH_FEATURES_CANARY_ONLY"] == "1"
+
+
+def test_request_parser_limits_research_rollout_to_mode_and_exact_release_identity() -> None:
+    helper = _helper()
+    payload = {
+        "mode": "owner_canary",
+        "revision": "a" * 40,
+        "archive_sha256": "b" * 64,
+        "image_id": "sha256:" + "c" * 64,
+    }
+    operation, parsed = helper._parse_request(
+        json.dumps({"operation": "set_research_rollout", "payload": payload}).encode()
+    )
+    assert operation == "set_research_rollout"
+    assert parsed == payload
+    with pytest.raises(helper.HostError, match="payload_invalid"):
+        helper._parse_request(
+            json.dumps(
+                {
+                    "operation": "set_research_rollout",
+                    "payload": {**payload, "research_enabled": True},
+                }
+            ).encode()
+        )
+
+
 def test_assistant_rollout_is_bound_to_current_schema13_release_and_ordered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -702,6 +835,213 @@ def test_assistant_rollout_is_bound_to_current_schema13_release_and_ordered(
     assert all(call["force_recreate"] is True for call in compose_calls)
     assert all(call["compose_file"] == snapshot for call in compose_calls)
     assert kill_calls == ["1" * 64]
+
+
+def test_research_rollout_is_independent_ordered_and_bound_to_exact_schema14_image(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    revision = "a" * 40
+    archive_sha256 = "b" * 64
+    image_id = "sha256:" + "c" * 64
+    current = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "platform": "linux/amd64",
+        "archive_size": 1234,
+        "schema_version": 14,
+        "compose_digest": "d" * 64,
+        "assistant_rollout_mode": "owner_canary",
+        "research_rollout_mode": "disabled",
+    }
+    snapshot = tmp_path / "reviewed.compose.yaml"
+    runtime_modes: list[tuple[str, str]] = []
+    writes: list[tuple[Path, dict[str, object]]] = []
+    compose_calls: list[dict[str, object]] = []
+
+    def read_json(path: Path):
+        return current if path == helper.CURRENT_RECORD else None
+
+    def write_json(path: Path, value: dict[str, object], **_: object) -> None:
+        writes.append((path, dict(value)))
+        if path == helper.CURRENT_RECORD:
+            current.update(value)
+
+    def health_check() -> dict[str, object]:
+        mode = current["research_rollout_mode"]
+        return {
+            "status": "ready",
+            "schema_version": 14,
+            "assistant": {"enabled": True, "status": "starting"},
+            "research": {"enabled": mode != "disabled", "rollout_mode": mode},
+        }
+
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_read_json", read_json)
+    monkeypatch.setattr(helper, "_write_json", write_json)
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 14)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda _record: None)
+    monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _record: snapshot)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: current["compose_digest"])
+    monkeypatch.setattr(
+        helper,
+        "_assert_running_release_image",
+        lambda _record, _snapshot: "e" * 64,
+    )
+    monkeypatch.setattr(
+        helper,
+        "_runtime_file",
+        lambda _image, assistant, research: runtime_modes.append((assistant, research)),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_compose_up",
+        lambda record, **kwargs: compose_calls.append({"record": record, **kwargs}) or "",
+    )
+    monkeypatch.setattr(helper, "_health_check", health_check)
+    monkeypatch.setattr(helper, "_audit", lambda *args, **kwargs: None)
+
+    with pytest.raises(helper.HostError, match="research_release_identity_mismatch"):
+        helper._set_research_rollout(
+            "owner_canary",
+            revision=revision,
+            archive_sha256=archive_sha256,
+            image_id="sha256:" + "f" * 64,
+        )
+    with pytest.raises(helper.HostError, match="research_rollout_transition_invalid"):
+        helper._set_research_rollout(
+            "invited",
+            revision=revision,
+            archive_sha256=archive_sha256,
+            image_id=image_id,
+        )
+    assert runtime_modes == []
+
+    owner = helper._set_research_rollout(
+        "owner_canary",
+        revision=revision,
+        archive_sha256=archive_sha256,
+        image_id=image_id,
+    )
+    invited = helper._set_research_rollout(
+        "invited",
+        revision=revision,
+        archive_sha256=archive_sha256,
+        image_id=image_id,
+    )
+    disabled = helper._set_research_rollout(
+        "disabled",
+        revision=revision,
+        archive_sha256=archive_sha256,
+        image_id=image_id,
+    )
+    assert [owner["research_rollout_mode"], invited["research_rollout_mode"]] == [
+        "owner_canary",
+        "invited",
+    ]
+    assert disabled["research_rollout_mode"] == "disabled"
+    assert current["research_rollout_mode"] == "disabled"
+    assert current["assistant_rollout_mode"] == "owner_canary"
+    assert runtime_modes == [
+        ("owner_canary", "owner_canary"),
+        ("owner_canary", "invited"),
+        ("owner_canary", "disabled"),
+    ]
+    assert len(compose_calls) == 3
+    assert all(call["force_recreate"] is True for call in compose_calls)
+    assert all(call["compose_file"] == snapshot for call in compose_calls)
+
+
+def test_research_rollout_failure_compensates_to_disabled_without_changing_assistant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    revision = "a" * 40
+    archive_sha256 = "b" * 64
+    image_id = "sha256:" + "c" * 64
+    current = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "platform": "linux/amd64",
+        "archive_size": 1234,
+        "schema_version": 14,
+        "compose_digest": "d" * 64,
+        "assistant_rollout_mode": "owner_canary",
+        "research_rollout_mode": "disabled",
+    }
+    snapshot = tmp_path / "reviewed.compose.yaml"
+    runtime_modes: list[tuple[str, str]] = []
+    failure_record: dict[str, object] | None = None
+    health_calls = 0
+
+    def read_json(path: Path):
+        return current if path == helper.CURRENT_RECORD else None
+
+    def write_json(path: Path, value: dict[str, object], **_: object) -> None:
+        nonlocal failure_record
+        if path == helper.CURRENT_RECORD:
+            current.update(value)
+        elif path == helper.FAILED_RECORD:
+            failure_record = dict(value)
+
+    def health_check() -> dict[str, object]:
+        nonlocal health_calls
+        health_calls += 1
+        mode = current["research_rollout_mode"]
+        if health_calls == 2:
+            mode = "disabled"
+        return {
+            "status": "ready",
+            "schema_version": 14,
+            "assistant": {"enabled": True, "status": "ready"},
+            "research": {"enabled": mode != "disabled", "rollout_mode": mode},
+        }
+
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_read_json", read_json)
+    monkeypatch.setattr(helper, "_write_json", write_json)
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 14)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda _record: None)
+    monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _record: snapshot)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: current["compose_digest"])
+    monkeypatch.setattr(
+        helper,
+        "_assert_running_release_image",
+        lambda _record, _snapshot: "e" * 64,
+    )
+    monkeypatch.setattr(
+        helper,
+        "_runtime_file",
+        lambda _image, assistant, research: runtime_modes.append((assistant, research)),
+    )
+    monkeypatch.setattr(helper, "_compose_up", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(helper, "_stop_app", lambda *_args: None)
+    monkeypatch.setattr(helper, "_health_check", health_check)
+    monkeypatch.setattr(helper, "_audit", lambda *args, **kwargs: None)
+
+    with pytest.raises(helper.HostError, match="research_rollout_unverified"):
+        helper._set_research_rollout(
+            "owner_canary",
+            revision=revision,
+            archive_sha256=archive_sha256,
+            image_id=image_id,
+        )
+    assert runtime_modes == [("owner_canary", "owner_canary"), ("owner_canary", "disabled")]
+    assert current["assistant_rollout_mode"] == "owner_canary"
+    assert current["research_rollout_mode"] == "disabled"
+    assert failure_record is not None
+    assert failure_record["research_disabled_verified"] is True
+    assert failure_record["containment_status"] == "research_disabled"
 
 
 def test_in_place_kill_uses_only_the_fixed_nonroot_cli_vector(monkeypatch) -> None:

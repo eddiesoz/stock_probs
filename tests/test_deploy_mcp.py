@@ -283,6 +283,93 @@ def test_assistant_rollout_sends_only_current_reviewed_release_identity(
     ]
 
 
+def test_research_rollout_sends_only_current_schema14_identity_and_preserves_assistant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    controller = _controller(tmp_path)
+    revision = "a" * 40
+    archive_sha256 = "b" * 64
+    image_id = "sha256:" + "c" * 64
+    current = {
+        "revision": revision,
+        "transport": "github_release",
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "platform": "linux/amd64",
+        "schema_version": 14,
+        "compose_digest": "d" * 64,
+        "assistant_rollout_mode": "owner_canary",
+        "research_rollout_mode": "disabled",
+    }
+    monkeypatch.setattr(controller, "status", lambda: {"status": "ok", "current": current})
+    monkeypatch.setattr(controller, "_local_rollout_revision", lambda: revision)
+    calls: list[tuple[str, dict[str, object], int]] = []
+
+    def invoke(operation: str, payload: dict[str, object], *, timeout: int):
+        calls.append((operation, payload, timeout))
+        return {
+            "status": "ok",
+            "result": "rollout_updated",
+            "revision": revision,
+            "archive_sha256": archive_sha256,
+            "image_id": image_id,
+            "schema_version": 14,
+            "research_rollout_mode": "owner_canary",
+            "health": {
+                "status": "ready",
+                "schema_version": 14,
+                "assistant": {"enabled": True, "status": "starting"},
+                "research": {"enabled": True, "rollout_mode": "owner_canary"},
+            },
+        }
+
+    monkeypatch.setattr(controller, "_invoke", invoke)
+    result = controller.set_research_rollout("owner_canary")
+    assert result["research_rollout_mode"] == "owner_canary"
+    assert calls == [
+        (
+            "set_research_rollout",
+            {
+                "mode": "owner_canary",
+                "revision": revision,
+                "archive_sha256": archive_sha256,
+                "image_id": image_id,
+            },
+            600,
+        )
+    ]
+
+
+def test_research_rollout_rejects_old_schema_and_skips_invalid_transition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    controller = _controller(tmp_path)
+    current = {
+        "revision": "a" * 40,
+        "transport": "github_release",
+        "image_digest": "b" * 64,
+        "archive_sha256": "b" * 64,
+        "image_id": "sha256:" + "c" * 64,
+        "platform": "linux/amd64",
+        "schema_version": 13,
+        "compose_digest": "d" * 64,
+        "assistant_rollout_mode": "disabled",
+        "research_rollout_mode": "disabled",
+    }
+    monkeypatch.setattr(controller, "status", lambda: {"status": "ok", "current": current})
+    with patch.object(controller, "_invoke") as invoke:
+        with pytest.raises(DeployError, match="active_release_identity_invalid"):
+            controller.set_research_rollout("owner_canary")
+        invoke.assert_not_called()
+
+    current["schema_version"] = 14
+    with patch.object(controller, "_invoke") as invoke:
+        with pytest.raises(DeployError, match="research_rollout_transition_invalid"):
+            controller.set_research_rollout("invited")
+        invoke.assert_not_called()
+
+
 def test_assistant_rollout_refuses_old_schema_and_stale_local_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -337,7 +337,7 @@ def test_canonical_model_manifest_matches_codex_model_fields():
         assert role_name == "worker"
 
 
-def test_codex_deployment_mcp_exposes_all_eight_typed_tools_with_approval_modes():
+def test_codex_deployment_mcp_exposes_all_nine_typed_tools_with_approval_modes():
     project = tomllib.loads((ROOT / ".codex/config.toml").read_text())
     server = project["mcp_servers"]["signal_ledger_deploy"]
     tools = server["tools"]
@@ -351,6 +351,7 @@ def test_codex_deployment_mcp_exposes_all_eight_typed_tools_with_approval_modes(
         "refresh_operator_access",
         "rehearse_pr_pair",
         "set_assistant_rollout",
+        "set_research_rollout",
     }
     assert {name: value["approval_mode"] for name, value in tools.items()} == {
         "inspect": "auto",
@@ -361,6 +362,7 @@ def test_codex_deployment_mcp_exposes_all_eight_typed_tools_with_approval_modes(
         "refresh_operator_access": "prompt",
         "rehearse_pr_pair": "prompt",
         "set_assistant_rollout": "prompt",
+        "set_research_rollout": "prompt",
     }
 
 

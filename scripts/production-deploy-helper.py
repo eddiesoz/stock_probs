@@ -74,11 +74,21 @@ HEALTH_ATTEMPTS = 30
 HEALTH_DELAY_SECONDS = 1.0
 ASSISTANT_MINIMUM_SCHEMA = 13
 ASSISTANT_ROLLOUT_MODES = frozenset({"disabled", "owner_canary", "invited"})
+RESEARCH_MINIMUM_SCHEMA = 14
+RESEARCH_ROLLOUT_MODES = frozenset({"disabled", "owner_canary", "invited"})
 ASSISTANT_RUNTIME_STATUS = frozenset({"disabled", "starting", "ready", "unavailable", "stopped"})
 MAX_COMPOSE_SNAPSHOT_BYTES = 128 * 1024
 
 _ALLOWED_OPERATIONS = frozenset(
-    {"inspect", "plan_deploy", "deploy", "status", "rollback", "set_assistant_rollout"}
+    {
+        "inspect",
+        "plan_deploy",
+        "deploy",
+        "status",
+        "rollback",
+        "set_assistant_rollout",
+        "set_research_rollout",
+    }
 )
 _EXPECTED_PAYLOAD_KEYS = {
     "inspect": frozenset(),
@@ -87,6 +97,7 @@ _EXPECTED_PAYLOAD_KEYS = {
     "deploy": frozenset({"plan_id", "revision", "archive_sha256", "image_id"}),
     "rollback": frozenset({"revision", "image_id"}),
     "set_assistant_rollout": frozenset({"mode", "revision", "archive_sha256", "image_id"}),
+    "set_research_rollout": frozenset({"mode", "revision", "archive_sha256", "image_id"}),
 }
 _PAIR_PAYLOAD_KEYS = {
     "plan_deploy": frozenset({"revision", "archive_sha256", "image_id", "pair_manifest_sha256"}),
@@ -1163,17 +1174,40 @@ def _pull_image(revision: str, expected_image_digest: str) -> tuple[str, str, in
     return image_ref, expected_image_digest, _image_schema(image_ref)
 
 
-def _runtime_file(image_ref: str, rollout_mode: str = "disabled") -> None:
-    """Write only the fixed image and bounded assistant rollout settings."""
+def _runtime_file(
+    image_ref: str,
+    rollout_mode: str | None = None,
+    research_rollout_mode: str | None = None,
+) -> None:
+    """Write the image and keep research rollout only when its schema supports it."""
 
-    if rollout_mode not in ASSISTANT_ROLLOUT_MODES:
+    current = _read_json(CURRENT_RECORD)
+    if rollout_mode is None:
+        rollout_mode = current.get("assistant_rollout_mode", "disabled") if current else "disabled"
+    if research_rollout_mode is None:
+        current_schema = current.get("schema_version", 0) if current else 0
+        current_research_mode = _stored_research_mode(current, current_schema)
+        target_schema = _image_schema(image_ref)
+        research_rollout_mode = (
+            current_research_mode if target_schema >= RESEARCH_MINIMUM_SCHEMA else "disabled"
+        )
+    if not isinstance(rollout_mode, str) or rollout_mode not in ASSISTANT_ROLLOUT_MODES:
         raise HostError("assistant_rollout_invalid")
+    if (
+        not isinstance(research_rollout_mode, str)
+        or research_rollout_mode not in RESEARCH_ROLLOUT_MODES
+    ):
+        raise HostError("research_rollout_state_invalid")
     enabled = "0" if rollout_mode == "disabled" else "1"
+    research_enabled = "0" if research_rollout_mode == "disabled" else "1"
+    canary_only = "0" if research_rollout_mode == "invited" else "1"
     encoded = (
         f"STOCK_PROBS_IMAGE={image_ref}\n"
         f"STOCK_PROBS_ASSISTANT_ENABLED={enabled}\n"
         f"STOCK_PROBS_ASSISTANT_ROLLOUT={rollout_mode}\n"
         "STOCK_PROBS_ASSISTANT_CANARY_GITHUB_IDS=\n"
+        f"STOCK_PROBS_RESEARCH_FEATURES_ENABLED={research_enabled}\n"
+        f"STOCK_PROBS_RESEARCH_FEATURES_CANARY_ONLY={canary_only}\n"
     ).encode()
     _safe_mode(RUNTIME_ENV_FILE.parent, 0o750)
     temporary = RUNTIME_ENV_FILE.with_name(f".{RUNTIME_ENV_FILE.name}.{secrets.token_hex(8)}.tmp")
@@ -1292,6 +1326,18 @@ def _app_container_identity(compose_file: Path) -> tuple[str, int]:
     if not parts[1].isdecimal() or int(parts[1]) <= 1:
         raise HostError("assistant_app_identity_unavailable")
     return container_id, int(parts[1])
+
+
+def _assert_running_release_image(record: dict[str, Any], compose_file: Path) -> str:
+    """Verify the running Compose app uses the exact image ID in the current release record."""
+
+    container_id, _pid = _app_container_identity(compose_file)
+    image_id = _run(
+        ["docker", "inspect", "--format", "{{.Image}}", container_id], timeout=10
+    ).stdout.strip()
+    if image_id != record.get("image_id"):
+        raise HostError("research_app_image_mismatch")
+    return container_id
 
 
 def _request_in_place_assistant_kill(container_id: str) -> None:
@@ -1455,6 +1501,17 @@ def _health_check() -> dict[str, Any]:
                             "enabled": assistant["enabled"],
                             "status": assistant["status"],
                         }
+                    research = value.get("research")
+                    if (
+                        isinstance(research, dict)
+                        and type(research.get("enabled")) is bool
+                        and isinstance(research.get("rollout_mode"), str)
+                        and research["rollout_mode"] in RESEARCH_ROLLOUT_MODES
+                    ):
+                        health["research"] = {
+                            "enabled": research["enabled"],
+                            "rollout_mode": research["rollout_mode"],
+                        }
                     return health
         except (HostError, json.JSONDecodeError, TypeError, ValueError):
             pass
@@ -1486,6 +1543,37 @@ def _require_assistant_ready(
         or assistant.get("status") != "ready"
     ):
         raise HostError("assistant_not_ready")
+
+
+def _require_research_ready(
+    health: dict[str, Any], rollout_mode: str, *, schema_version: int | None = None
+) -> None:
+    """Require readiness to expose the exact independent research rollout state."""
+
+    if not isinstance(rollout_mode, str) or rollout_mode not in RESEARCH_ROLLOUT_MODES:
+        raise HostError("research_rollout_invalid")
+    if schema_version is not None and schema_version < RESEARCH_MINIMUM_SCHEMA:
+        if rollout_mode != "disabled":
+            raise HostError("research_schema_unsupported")
+        return
+    research = health.get("research")
+    if (
+        not isinstance(research, dict)
+        or research.get("enabled") is not (rollout_mode != "disabled")
+        or research.get("rollout_mode") != rollout_mode
+    ):
+        raise HostError("research_rollout_unverified")
+
+
+def _stored_research_mode(record: dict[str, Any] | None, schema_version: int) -> str:
+    """Read a persisted research mode, treating pre-schema-14 releases as disabled."""
+
+    if schema_version < RESEARCH_MINIMUM_SCHEMA:
+        return "disabled"
+    mode = record.get("research_rollout_mode", "disabled") if record else "disabled"
+    if not isinstance(mode, str) or mode not in RESEARCH_ROLLOUT_MODES:
+        raise HostError("research_rollout_state_invalid")
+    return mode
 
 
 def _record_rollout_failure(
@@ -2116,7 +2204,19 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
                 raise HostError("active_release_mismatch")
             if schema_version < active_health["schema_version"]:
                 raise HostError("schema_incompatible")
+            active_research_mode = _stored_research_mode(current, active_health["schema_version"])
+            _require_research_ready(
+                active_health,
+                active_research_mode,
+                schema_version=active_health["schema_version"],
+            )
 
+    current_schema = current.get("schema_version", 0) if current else 0
+    research_mode = (
+        _stored_research_mode(current, current_schema)
+        if current is not None and schema_version >= RESEARCH_MINIMUM_SCHEMA
+        else "disabled"
+    )
     backup: dict[str, Any] | None = None
     try:
         # Stop and verify the only application container before taking the pre-migration
@@ -2179,6 +2279,7 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
         if health.get("schema_version") != schema_version:
             raise HostError("readiness_schema_mismatch")
         _require_assistant_ready(health, "disabled", schema_version=schema_version)
+        _require_research_ready(health, research_mode, schema_version=schema_version)
     except HostError as error:
         # A migration can commit before startup/readiness fails. First re-establish and verify
         # maintenance; inspect the real database schema only after no app writes are admitted.
@@ -2229,6 +2330,9 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
             else:
                 rollback_attempted = True
                 try:
+                    previous_research_mode = _stored_research_mode(
+                        previous, previous.get("schema_version", 0)
+                    )
                     _runtime_file(previous["image_ref"], "disabled")
                     _assert_loaded_image(previous)
                     _compose_up(
@@ -2241,6 +2345,12 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
                     rollback_succeeded = rollback_health.get("schema_version") == previous.get(
                         "schema_version"
                     )
+                    if rollback_succeeded:
+                        _require_research_ready(
+                            rollback_health,
+                            previous_research_mode,
+                            schema_version=previous.get("schema_version"),
+                        )
                 except HostError:
                     rollback_succeeded = False
                 if not rollback_succeeded:
@@ -2268,6 +2378,8 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
         "deployed_at": _utc_now(),
         "assistant_rollout_mode": "disabled",
     }
+    if schema_version >= RESEARCH_MINIMUM_SCHEMA:
+        applied["research_rollout_mode"] = research_mode
     if backup is not None:
         pre_deploy = backup.get("pre_deploy_backup", backup)
         if (
@@ -2526,6 +2638,17 @@ def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
         actual_schema = _database_schema(record["image_ref"])
         if actual_schema != record.get("schema_version"):
             raise HostError("rollback_schema_incompatible")
+        active_record = _read_json(CURRENT_RECORD)
+        active_schema = (
+            active_record.get("schema_version", actual_schema) if active_record else actual_schema
+        )
+        if type(active_schema) is not int:
+            raise HostError("research_rollout_state_invalid")
+        research_mode = (
+            _stored_research_mode(active_record, active_schema)
+            if actual_schema >= RESEARCH_MINIMUM_SCHEMA
+            else "disabled"
+        )
         _stop_app()
         try:
             if (
@@ -2543,12 +2666,15 @@ def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
             health = _health_check()
             if health.get("schema_version") != actual_schema:
                 raise HostError("rollback_schema_incompatible")
+            _require_research_ready(health, research_mode, schema_version=actual_schema)
         except HostError:
             with suppress(HostError):
                 _stop_app(compose_snapshot)
             raise
         applied = dict(record)
         applied["assistant_rollout_mode"] = "disabled"
+        if actual_schema >= RESEARCH_MINIMUM_SCHEMA:
+            applied["research_rollout_mode"] = research_mode
         _write_json(CURRENT_RECORD, applied)
         _audit(
             "rollback",
@@ -2730,6 +2856,185 @@ def _set_assistant_rollout(
         }
 
 
+def _set_research_rollout(
+    mode: str,
+    *,
+    revision: str,
+    archive_sha256: str,
+    image_id: str,
+) -> dict[str, Any]:
+    """Change only the research rollout for the exact current schema-14-or-newer image."""
+
+    if not isinstance(mode, str) or mode not in RESEARCH_ROLLOUT_MODES:
+        raise HostError("research_rollout_invalid")
+    with _exclusive_lock():
+        _ensure_layout()
+        current = _read_json(CURRENT_RECORD)
+        if current is None:
+            raise HostError("release_not_found")
+        _assert_image_record(current)
+        schema_version = current.get("schema_version")
+        if current.get("release_role") == "recovery" and mode != "disabled":
+            raise HostError("recovery_image_research_disabled")
+        if (
+            current.get("revision") != revision
+            or current.get("transport") != GITHUB_RELEASE_TRANSPORT
+            or current.get("archive_sha256") != archive_sha256
+            or current.get("image_digest") != archive_sha256
+            or current.get("image_id") != image_id
+            or current.get("platform") != "linux/amd64"
+            or type(schema_version) is not int
+            or schema_version < RESEARCH_MINIMUM_SCHEMA
+            or _image_schema(current["image_ref"]) != schema_version
+        ):
+            raise HostError("research_release_identity_mismatch")
+        compose_snapshot = _assert_record_compose_digest(current)
+        if _compose_digest() != current.get("compose_digest"):
+            raise HostError("compose_revision_mismatch")
+        _assert_loaded_image(current)
+        assistant_mode = current.get("assistant_rollout_mode", "disabled")
+        if not isinstance(assistant_mode, str) or assistant_mode not in ASSISTANT_ROLLOUT_MODES:
+            raise HostError("assistant_rollout_state_invalid")
+        previous_mode = _stored_research_mode(current, schema_version)
+        valid_transition = (
+            mode == previous_mode
+            or mode == "disabled"
+            or (previous_mode == "disabled" and mode == "owner_canary")
+            or (previous_mode == "owner_canary" and mode == "invited")
+        )
+        if not valid_transition:
+            raise HostError("research_rollout_transition_invalid")
+
+        # Refuse to layer a rollout change over an unknown container or stale readiness state.
+        _assert_running_release_image(current, compose_snapshot)
+        current_health = _health_check()
+        if current_health.get("schema_version") != schema_version:
+            raise HostError("readiness_schema_mismatch")
+        _require_research_ready(current_health, previous_mode, schema_version=schema_version)
+        assistant_health = current_health.get("assistant")
+        if not isinstance(assistant_health, dict) or assistant_health.get("enabled") is not (
+            assistant_mode != "disabled"
+        ):
+            raise HostError("assistant_rollout_state_unverified")
+
+        updated = dict(current)
+        updated["research_rollout_mode"] = mode
+        try:
+            _runtime_file(current["image_ref"], assistant_mode, mode)
+            _write_json(CURRENT_RECORD, updated)
+            _compose_up(
+                updated,
+                timeout=180,
+                compose_file=compose_snapshot,
+                force_recreate=True,
+            )
+            _assert_running_release_image(updated, compose_snapshot)
+            health = _health_check()
+            if health.get("schema_version") != schema_version:
+                raise HostError("readiness_schema_mismatch")
+            _require_research_ready(health, mode, schema_version=schema_version)
+            assistant_health = health.get("assistant")
+            if not isinstance(assistant_health, dict) or assistant_health.get("enabled") is not (
+                assistant_mode != "disabled"
+            ):
+                raise HostError("assistant_rollout_state_unverified")
+        except HostError as error:
+            disabled = dict(current)
+            disabled["research_rollout_mode"] = "disabled"
+            environment_written = False
+            record_written = False
+            try:
+                _runtime_file(current["image_ref"], assistant_mode, "disabled")
+                environment_written = True
+            except HostError:
+                pass
+            try:
+                _write_json(CURRENT_RECORD, disabled)
+                record_written = True
+            except HostError:
+                pass
+            research_disabled_verified = False
+            app_stopped = False
+            if environment_written and record_written:
+                try:
+                    _compose_up(
+                        disabled,
+                        timeout=180,
+                        compose_file=compose_snapshot,
+                        force_recreate=True,
+                    )
+                    _assert_running_release_image(disabled, compose_snapshot)
+                    disabled_health = _health_check()
+                    if disabled_health.get("schema_version") != schema_version:
+                        raise HostError("readiness_schema_mismatch")
+                    _require_research_ready(
+                        disabled_health, "disabled", schema_version=schema_version
+                    )
+                    disabled_assistant = disabled_health.get("assistant")
+                    if not isinstance(disabled_assistant, dict) or disabled_assistant.get(
+                        "enabled"
+                    ) is not (assistant_mode != "disabled"):
+                        raise HostError("assistant_rollout_state_unverified")
+                    research_disabled_verified = True
+                except HostError:
+                    try:
+                        _stop_app(compose_snapshot)
+                        app_stopped = True
+                    except HostError:
+                        app_stopped = False
+            else:
+                try:
+                    _stop_app(compose_snapshot)
+                    app_stopped = True
+                except HostError:
+                    app_stopped = False
+            failure = {
+                "status": "research_rollout_failed",
+                "revision": current.get("revision"),
+                "image_id": current.get("image_id"),
+                "schema_version": schema_version,
+                "requested_mode": mode,
+                "failure_code": error.code,
+                "research_rollout_mode": "disabled",
+                "research_disabled_verified": research_disabled_verified,
+                "app_stopped": app_stopped,
+                "containment_status": (
+                    "research_disabled"
+                    if research_disabled_verified
+                    else "app_stopped"
+                    if app_stopped
+                    else "unverified"
+                ),
+                "failed_at": _utc_now(),
+            }
+            with suppress(HostError):
+                _write_json(FAILED_RECORD, failure)
+            _audit(
+                "research_rollout",
+                "failed",
+                revision=revision,
+                schema_version=schema_version,
+            )
+            raise error
+        _audit(
+            "research_rollout",
+            "updated",
+            revision=revision,
+            image_digest=archive_sha256,
+            schema_version=schema_version,
+        )
+        return {
+            "status": "ok",
+            "result": "rollout_updated",
+            "revision": revision,
+            "archive_sha256": archive_sha256,
+            "image_id": image_id,
+            "schema_version": schema_version,
+            "research_rollout_mode": mode,
+            "health": health,
+        }
+
+
 def _parse_request(raw: bytes) -> tuple[str, dict[str, object]]:
     if len(raw) > REQUEST_LIMIT:
         raise HostError("request_too_large")
@@ -2796,6 +3101,16 @@ def _dispatch(operation: str, payload: dict[str, object]) -> dict[str, Any]:
         if not isinstance(mode, str) or mode not in ASSISTANT_ROLLOUT_MODES:
             raise HostError("assistant_rollout_invalid")
         return _set_assistant_rollout(
+            mode,
+            revision=_validate_revision(payload["revision"]),
+            archive_sha256=_validate_digest(payload["archive_sha256"]),
+            image_id=_validate_image_id(payload["image_id"]),
+        )
+    if operation == "set_research_rollout":
+        mode = payload["mode"]
+        if not isinstance(mode, str) or mode not in RESEARCH_ROLLOUT_MODES:
+            raise HostError("research_rollout_invalid")
+        return _set_research_rollout(
             mode,
             revision=_validate_revision(payload["revision"]),
             archive_sha256=_validate_digest(payload["archive_sha256"]),

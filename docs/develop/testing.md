@@ -74,6 +74,34 @@ packet still lacks run-time source pins. Neither result is a full API, canonical
 or deployment acceptance. See the [R1 readiness evidence](../../MVP-PLAN.md#r-astra-121-r1-pr7-independent-readiness-qa-2026-10-16)
 for the exact receipt and scope.
 
+### R1 typed research-rollout controller
+
+`set_research_rollout(mode)` accepts `disabled`, `owner_canary`, and `invited`. Its controller
+binds the request to the exact active GitHub release revision, archive digest, image ID, Compose
+digest, and `linux/amd64` image; enabling requires schema 14 or newer and the locally reviewed
+revision. The host helper checks the loaded container and exact schema readiness before and after
+recreation, verifies the projected research state while preserving assistant state, and fails
+closed for recovery images. Only `disabled → owner_canary → invited` is allowed, with disabling
+available from either state. For schema versions below 14, the stored/default research mode is
+`disabled`; older records missing the new field remain compatible.
+
+The builder report for `R-ASTRA-121` passed 138 cases with one opt-in Docker case skipped, zero
+failures/errors, and nine stable source/import pins; exact receipt
+`/var/tmp/r12r/r1-research-runtime-mode-repair-0ae8a72d-514c-428f-a2c1-bd1fa0c6072a/attempt-01/final-command-result.json`,
+SHA-256 `3837f32d51f3657f44c72a2610c6721844647fdd781abdf1abdb7de6ec6d2058`. Its exact UTC window
+is **Unavailable**. The task record notes that the cross-target builder's pre-edit hashes were
+recorded but original bytes were reconstructed after edits; this is not a pre-edit byte-preservation
+Pass; that baseline workflow **Failed** and remains distinct from source QA.
+
+Independent final-source QA **Passed** at `2026-10-16T18:24:50.056349Z`–`18:26:44.067221Z`: 138 of
+139 selected cases passed, one expected opt-in Docker recovery case was skipped, and failures and
+errors were zero. All 65 inputs and 35 observed Python origins stayed stable; Ruff, security,
+format, syntax, diff and model-routing checks passed. Receipt
+`/var/tmp/r12r/r1-research-cross-target-qa-7b4cf741-1080-4de6-b059-5e324cd0bef8/independent-qa-receipt.json`,
+SHA-256 `1feda0e7d1d19cc6e0e285fd95a34ea703e1ee10721a7b6971b3a4607420920d`. Fresh Codex discovery,
+Docker image, schema-14 host pair, live rollout, or canary is not established. See the [R1 rollout
+checkpoint](../../MVP-PLAN.md#r-astra-121-r1-typed-research-rollout-checkpoint-2026-10-16).
+
 For a full schema-12-to-13 pair rehearsal, `--use-deployed-baseline-image` is an optional boolean
 that selects the centrally pinned deployed schema-12 image. It is accepted only in full-rehearsal
 mode; the default still rebuilds the base image from the verified archive. Before reuse, the helper

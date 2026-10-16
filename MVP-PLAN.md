@@ -387,6 +387,44 @@ run-time source pins or terminal receipt, which remain **Unavailable**. Receipt
 SHA-256 `1f80c3a4184b8962d2ba93f77ffb9baf2afc1a7589fbecdd5c661421e8157ddd`. Release acceptance
 remains open.
 
+### R-ASTRA-121 R1 typed research-rollout checkpoint (2026-10-16)
+
+R1's source adds typed `set_research_rollout(mode)` to the deployment MCP server and controller,
+with `approval_mode = "prompt"` in `.codex/config.toml`. It accepts `disabled`, `owner_canary`,
+and `invited`; the research mode is separate from assistant mode, can be disabled from any stage,
+and otherwise advances only disabled → owner canary → invited. Enabling is bound to the exact active
+GitHub-release revision, archive digest, image ID, `linux/amd64` platform, Compose digest and loaded
+image, with schema 14 or newer and matching readiness before and after recreation. Recovery images
+cannot be enabled. Runtime projection defaults research to disabled for pre-14 targets; schema-14+
+records missing a research mode also default to disabled.
+
+The builder report for `R-ASTRA-121` records 138 passed cases, one opt-in Docker case skipped, zero
+failures/errors, and nine unchanged source/import pins (139 cases total). Command result
+`/var/tmp/r12r/r1-research-runtime-mode-repair-0ae8a72d-514c-428f-a2c1-bd1fa0c6072a/attempt-01/final-command-result.json`,
+SHA-256 `3837f32d51f3657f44c72a2610c6721844647fdd781abdf1abdb7de6ec6d2058`; exact UTC start/finish
+are **Unavailable**. Seven implementation/configuration paths are dirty in the R1 worktree:
+`.codex/config.toml`, `scripts/production-deploy-helper.py`, `tests/test_config_quality.py`,
+`tests/test_deploy_mcp.py`, `tests/test_production_deploy_helper.py`,
+`tools/deploy_mcp/controller.py`, and `tools/deploy_mcp/server.py`.
+
+Independent final-source QA **Passed** for its declared source/test scope on native x86_64 at
+`2026-10-16T18:24:50.056349Z`–`18:26:44.067221Z`: all 139 selected cases were collected, 138
+passed, one opt-in Docker recovery case was skipped, and failures/errors were zero. The three-file
+suite covered `tests/test_production_deploy_helper.py`, `tests/test_deploy_mcp.py`, and
+`tests/test_config_quality.py`; all 65 bound inputs and 35 observed Python origins stayed stable.
+Ruff check/security/format, AST syntax, diff, and model-routing checks passed. Independent receipt
+`/var/tmp/r12r/r1-research-cross-target-qa-7b4cf741-1080-4de6-b059-5e324cd0bef8/independent-qa-receipt.json`
+has SHA-256 `1feda0e7d1d19cc6e0e285fd95a34ea703e1ee10721a7b6971b3a4607420920d`. One earlier
+independent-review lookup correction is recorded in that receipt; no source was changed by QA.
+
+The cross-target builder's baseline workflow **Failed** to preserve exact pre-edit bytes: it
+recorded hashes, then reconstructed original bytes after editing. This remains a separate failure;
+independent final-source QA does not repair it. The `.codex/config.toml` declaration does not prove
+fresh Codex discovery; that requires a fresh task and remains **Unavailable** here. R1 must
+integrate with the newer PR11/F6 helper stack before release validation. No schema-14 image, real
+host pair, research canary, deployment, merge, resize, or email is established. See [typed-rollout
+testing](docs/develop/testing.md#r1-typed-research-rollout-controller), [operations](docs/operations/getting-started.md#r1-typed-research-rollout), and [documentation coverage](docs/develop/documentation.md#local-deployment-mcp-boundary).
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.

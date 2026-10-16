@@ -659,6 +659,27 @@ for its original schema, but must never be restored over schema-14 user data. Th
 and release checks remain pending; see the
 [R1 evidence ledger](../../MVP-PLAN.md#r-astra-121-r1-schema-14-source-only-recovery-overlay-checkpoint-2026-10-16).
 
+#### R1 typed research rollout
+
+The `set_research_rollout(mode)` MCP operation changes research availability independently of
+assistant rollout. It accepts only `disabled`, `owner_canary`, or `invited`; enable in the order
+disabled → owner canary → invited, and permit disabling from any stage. The operation has one typed
+mode argument; the controller binds the call to the current release revision, archive digest, full
+image ID, Compose digest and readiness schema, and passes that exact identity to the fixed host
+helper. Enabling is limited to the exact loaded `linux/amd64` GitHub candidate at schema 14 or newer;
+recovery images remain disabled. The helper verifies the research readiness projection after
+recreation and preserves the independent assistant mode. For targets below schema 14, research
+rollout defaults to disabled; schema-14+ records without the field also read as disabled. The new
+Codex tool is configured for prompt approval. Fresh-task discovery is **Unavailable** until a task
+after the config change lists the operation; a TOML parse or source test is not runtime evidence.
+
+R1's builder reported 138 passes and one opt-in Docker test skip. Independent final-source QA then
+passed 138 of 139 selected cases, with 65 input hashes and 35 observed Python origins stable;
+this does not prove fresh Codex discovery or host behavior. The separate cross-target baseline-byte
+workflow failed because original bytes were reconstructed after edits. R1 requires integration with
+the newer PR11/F6 helper stack before any release build. No schema-14 image, host pair, or canary
+has passed. See the [R1 typed-rollout checkpoint](../../MVP-PLAN.md#r-astra-121-r1-typed-research-rollout-checkpoint-2026-10-16).
+
 For schema-13 GitHub-release deployments, supply `pair_manifest_sha256` from the exact revision's
 `signal-ledger-pair-<revision>.json` manifest to both calls. The MCP schema declares this field
 optional, but the schema-13 host requires it, and `deploy` must match the hash bound by

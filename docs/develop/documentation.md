@@ -171,6 +171,18 @@ private Terraform state and the existing clean-tree, exact-`origin/main`, review
 gate; it accepts no caller-supplied command, path, state, or credential. A tool listing does not
 establish a live firewall refresh or deployment.
 
+R1 adds a separate typed `set_research_rollout(mode)` controller/server operation and a prompt-
+approval entry in `.codex/config.toml`. Keep it distinct from the historical eight-tool R-ASTRA-120
+receipt: current source/config presence does not prove the new tool is discoverable. A fresh Codex
+task is required after the config change; that discovery remains **Unavailable**. Independent R1
+source QA passed 138/139 selected tests (one expected opt-in Docker skip) with 65 bound inputs and
+35 observed Python origins stable. Its source/test, syntax, Ruff/security/format, diff and routing
+scope does not establish host readiness, image identity, fresh-task discovery, or deployment
+acceptance. Preserve the separate cross-target pre-edit-byte workflow failure recorded in the plan.
+The documentation map also binds the controller, host-helper runtime projection, config-quality
+and deployment-MCP tests to this workflow policy and the R1 testing/operations pages. See the [R1 rollout
+checkpoint](../../MVP-PLAN.md#r-astra-121-r1-typed-research-rollout-checkpoint-2026-10-16).
+
 For R-ASTRA-120, retain the client/task distinction in each guide and status summary. A fresh
 official locked Python SDK stdio client at `2026-10-05T13:17:09Z`–`13:17:12Z` discovered all eight
 operations and completed read-only production `status`; this is a runtime discovery **Pass** for
@@ -538,3 +550,5 @@ Native V2's directory-based auto-discovery is the loader boundary, and runtime d
 The `research-workspaces` map rule binds thesis/comparison implementation and their fixtures to
 the dashboard, API, approved design and threat-model guides. Add matching rules as later R121
 releases introduce new record types. Candidate documentation does not establish deployment or QA.
+The R1 typed rollout adds host-controller and readiness coverage to the same map contract; keep
+research rollout mode separate from assistant mode and retain the pre-schema-14 disabled default.

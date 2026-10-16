@@ -18,6 +18,21 @@ rehearse same-volume schema-14 recovery without restore or down-migration and ve
 records remain. Never restore a schema-13 backup over schema-14 user data. See the R1 overlay
 checkpoint in `MVP-PLAN.md` and its scoped testing notes.
 
+R1's typed `set_research_rollout(mode)` control is separate from assistant rollout and accepts only
+`disabled`, `owner_canary`, or `invited`, in that order (with disable always allowed). Require the
+exact active GitHub release revision/archive/image identity, `linux/amd64` platform, schema 14 or
+newer, matching loaded image and Compose digest, and same-schema readiness before and after the
+change; recovery images cannot be enabled. Preserve the current assistant mode. Runtime/default
+compatibility keeps research disabled on pre-14 releases and for schema-14+ records with no mode.
+The Codex entry requires prompt approval; parsing or local tests do not establish fresh-task tool
+discovery or runtime acceptance. Independent R1 QA passed 138/139 selected tests with one expected
+opt-in Docker skip and stable 65-input/35-origin bindings, but did not run Codex discovery, Docker,
+SSH, production, or a canonical aggregate. The cross-target builder's pre-edit byte-preservation
+workflow failed because it reconstructed the original bytes after editing; independent QA does not
+repair that record. R1 still needs integration with the current PR11/F6 helper before a schema-14
+image or host-pair attempt. Do not claim a schema-14 image, host pair, or canary before those
+receipts exist.
+
 ## Codex project workflow
 
 Codex uses this root `AGENTS.md` for repository policy. Its project configuration is

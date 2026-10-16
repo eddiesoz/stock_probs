@@ -55,6 +55,9 @@ approval_mode = "prompt"
 [mcp_servers.signal_ledger_deploy.tools.set_assistant_rollout]
 approval_mode = "prompt"
 
+[mcp_servers.signal_ledger_deploy.tools.set_research_rollout]
+approval_mode = "prompt"
+
 # Fixed target metadata and operator-controlled secret paths. Credential bytes stay outside the
 # repo and are consumed only by the typed access-refresh subprocess.
 [mcp_servers.signal_ledger_deploy.env]

@@ -94,6 +94,15 @@ def set_assistant_rollout(
 
 
 @server.tool()
+def set_research_rollout(
+    mode: Literal["disabled", "owner_canary", "invited"],
+) -> dict[str, Any]:
+    """Enable research routes only for the owner canary or invited-user rollout."""
+
+    return _call("set_research_rollout", mode=mode)
+
+
+@server.tool()
 def refresh_operator_access(operator_ipv4_cidr: str) -> dict[str, Any]:
     """Refresh only the fixed Signal Ledger operator SSH `/32` through Terraform."""
 
