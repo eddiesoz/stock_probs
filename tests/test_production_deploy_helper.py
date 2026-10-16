@@ -28,6 +28,7 @@ from typing import Any
 import pytest
 
 import stock_probs.cli as cli
+from scripts import pr_rehearsal_host_helper as rehearsal_host_helper
 from stock_probs.config import Settings
 from stock_probs.repository import SCHEMA_VERSION, Repository
 
@@ -4289,7 +4290,7 @@ def _dispatch_profile(
         or host.get("NanoCpus") != 1_000_000_000
         or host.get("PidsLimit") != 128
         or host.get("CapDrop") != ["ALL"]
-        or set(host.get("CapAdd", [])) != {"SETGID", "SETUID"}
+        or not rehearsal_host_helper._cap_add_matches(host.get("CapAdd", []))
         or host.get("SecurityOpt") != ["no-new-privileges:true"]
         or host.get("Tmpfs") != expected_tmpfs
         or host.get("RestartPolicy", {}).get("Name") != "no"
@@ -4344,6 +4345,75 @@ def _dispatch_profile(
             "tmpfs": dict(sorted(host["Tmpfs"].items())),
         },
     }
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "accepted"),
+    [
+        (["CAP_SETGID", "CAP_SETUID"], True),
+        (["SETUID", "CAP_SETGID"], True),
+        (["CAP_SETUID", "SETUID"], False),
+        (["CAP_SETUID", "CAP_SETGID", "CAP_NET_ADMIN"], False),
+        (["CAP_CAP_SETUID", "CAP_SETGID"], False),
+        (["CAP_SETUID", 17], False),
+    ],
+    ids=[
+        "docker-prefixed",
+        "mixed-prefix",
+        "duplicate-alias",
+        "extra",
+        "double-prefix",
+        "nonstring",
+    ],
+)
+def test_dispatch_profile_uses_exact_docker_capability_matching(
+    capabilities: list[object], accepted: bool
+) -> None:
+    project = "signal-ledger-test"
+    run_id = "a" * 16
+    volume = "signal-ledger-data-test"
+    expected_network = f"{project}_isolated"
+    facts: dict[str, object] = {
+        "host_config": {
+            "ReadonlyRootfs": True,
+            "Memory": 768 * 1024 * 1024,
+            "NanoCpus": 1_000_000_000,
+            "PidsLimit": 128,
+            "CapDrop": ["ALL"],
+            "CapAdd": capabilities,
+            "SecurityOpt": ["no-new-privileges:true"],
+            "Tmpfs": {
+                "/tmp": "rw,nosuid,nodev,noexec,size=64m,uid=10001,gid=10001,mode=0700",  # noqa: S108
+                "/run/assistant": "rw,nosuid,nodev,noexec,size=16m,mode=0711",
+                "/run/assistant-worker-home": (
+                    "rw,nosuid,nodev,noexec,size=64m,uid=10002,gid=10002,mode=0700"
+                ),
+            },
+            "RestartPolicy": {"Name": "no"},
+            "Privileged": False,
+            "NetworkMode": expected_network,
+        },
+        "mounts": [
+            {
+                "Destination": "/data",
+                "Type": "volume",
+                "Name": volume,
+                "RW": True,
+                "Source": "/var/lib/docker/volumes/signal-ledger-data-test/_data",
+            }
+        ],
+        "published_ports": {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18000"}]},
+        "networks": {expected_network: {}},
+        "labels": {"com.stock-probs.task": "R-ASTRA-120", "com.stock-probs.run": run_id},
+        "config_user": "0:0",
+    }
+
+    if accepted:
+        result = _dispatch_profile(facts, project=project, run_id=run_id, volume=volume)
+        assert result["profile"]["cap_add"] == sorted(capabilities)
+    else:
+        with pytest.raises(ValueError, match="container_profile_invalid"):
+            _dispatch_profile(facts, project=project, run_id=run_id, volume=volume)
 
 
 def test_opt_in_schema13_recovery_dispatch_on_disposable_data(tmp_path: Path) -> None:
@@ -6446,6 +6516,160 @@ def test_temporary_profile_passes_reserve_to_both_identity_waits(
     assert commands[2][0][:3] == ["docker", "inspect", "--format"]
     assert commands[2][1:] == (15, reserve_kib)
     assert process_profiles == [(container_id, 4321, "temporary_app_pid1", reserve_kib)]
+
+
+@pytest.mark.parametrize(
+    ("init_json", "accepted"),
+    [("null", True), ("false", True), ("true", False), ("0", False), ("not-json", False)],
+    ids=["missing-init", "false-init", "true-init", "nonboolean-init", "malformed-init"],
+)
+def test_temporary_profile_uses_optional_init_lookup_without_weakening_guards(
+    init_json: str, accepted: bool, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    container_id = "a" * 64
+    image_id = "sha256:" + "b" * 64
+    profile = "|".join(
+        (
+            container_id,
+            image_id,
+            "4321",
+            "true",
+            "true",
+            init_json,
+            "0:0",
+            json.dumps(["no-new-privileges:true"]),
+            json.dumps(["ALL"]),
+            json.dumps(["SETUID", "SETGID"]),
+            json.dumps({"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}),
+            str(768 * 1024 * 1024),
+            str(1_000_000_000),
+            "128",
+        )
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        helper,
+        "_app_container_identity",
+        lambda *_args, **_kwargs: (container_id, 4321),
+    )
+
+    def inspect(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        commands.append(command)
+        assert command[:3] == ["docker", "inspect", "--format"]
+        assert '{{json (index .HostConfig "Init")}}' in command[3]
+        assert ".HostConfig.Init" not in command[3]
+        return SimpleNamespace(stdout=profile + "\n")
+
+    monkeypatch.setattr(helper, "_run", inspect)
+    monkeypatch.setattr(helper, "_assert_container_process_profile", lambda *_args, **_kwargs: None)
+
+    if accepted:
+        assert (
+            helper._assert_temporary_container_profile(
+                tmp_path / "compose.yaml",
+                expected_image_id=image_id,
+                process_profile="temporary_app_pid1",
+            )
+            == container_id
+        )
+    else:
+        with pytest.raises(helper.HostError, match="temporary_recovery_container_profile_invalid"):
+            helper._assert_temporary_container_profile(
+                tmp_path / "compose.yaml",
+                expected_image_id=image_id,
+                process_profile="temporary_app_pid1",
+            )
+    assert len(commands) == 1
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "extra_field", "accepted"),
+    [
+        (["CAP_SETGID", "CAP_SETUID"], False, True),
+        (["SETUID", "CAP_SETGID"], False, True),
+        (["CAP_SETUID", "SETUID"], False, False),
+        (["CAP_SETUID", "CAP_SETUID"], False, False),
+        (["CAP_SETUID", "CAP_SETGID", "CAP_NET_ADMIN"], False, False),
+        (["CAP_SETUID", "SYS_ADMIN"], False, False),
+        (["CAP_SETUID", " SETGID"], False, False),
+        (["cap_setuid", "CAP_SETGID"], False, False),
+        (["CAP_CAP_SETUID", "CAP_SETGID"], False, False),
+        (["CAP_SETUID", 17], False, False),
+        (["CAP_SETUID", "CAP_SETGID"], True, False),
+    ],
+    ids=[
+        "docker-prefixed-pair",
+        "mixed-prefix-pair",
+        "duplicate-alias",
+        "repeated-capability",
+        "extra-capability",
+        "unknown-capability",
+        "whitespace",
+        "case-change",
+        "double-prefix",
+        "nonstring-capability",
+        "extra-profile-field",
+    ],
+)
+def test_temporary_profile_accepts_only_the_exact_uid_gid_capabilities(
+    capabilities: list[object],
+    extra_field: bool,
+    accepted: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    container_id = "a" * 64
+    image_id = "sha256:" + "b" * 64
+    parts = [
+        container_id,
+        image_id,
+        "4321",
+        "true",
+        "true",
+        "null",
+        "0:0",
+        json.dumps(["no-new-privileges:true"]),
+        json.dumps(["ALL"]),
+        json.dumps(capabilities),
+        json.dumps({"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}),
+        str(768 * 1024 * 1024),
+        str(1_000_000_000),
+        "128",
+    ]
+    if extra_field:
+        parts.append("unreviewed")
+    profile = "|".join(parts)
+    monkeypatch.setattr(
+        helper,
+        "_app_container_identity",
+        lambda *_args, **_kwargs: (container_id, 4321),
+    )
+    monkeypatch.setattr(helper, "_run", lambda *_args, **_kwargs: SimpleNamespace(stdout=profile))
+    monkeypatch.setattr(helper, "_assert_container_process_profile", lambda *_args, **_kwargs: None)
+
+    if accepted:
+        assert (
+            helper._assert_temporary_container_profile(
+                tmp_path / "compose.yaml",
+                expected_image_id=image_id,
+                process_profile="temporary_app_pid1",
+            )
+            == container_id
+        )
+    else:
+        error = (
+            "temporary_recovery_container_identity_mismatch"
+            if extra_field
+            else "temporary_recovery_container_profile_invalid"
+        )
+        with pytest.raises(helper.HostError, match=error):
+            helper._assert_temporary_container_profile(
+                tmp_path / "compose.yaml",
+                expected_image_id=image_id,
+                process_profile="temporary_app_pid1",
+            )
 
 
 def test_app_container_identity_omits_none_reserve_for_legacy_command_seams(

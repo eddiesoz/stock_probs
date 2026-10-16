@@ -111,6 +111,30 @@ KNOWN_INSTALLED_C408_INSTALL_MANIFEST = {
     "helper_source_contract": HELPER_SOURCE_CONTRACT,
     "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
 }
+# Exact DD7 helper installation observed before the source-only profile-query repair.
+KNOWN_INSTALLED_DD7_PRODUCTION_HELPER_SHA256 = (
+    "0d99260dfdc09f2e49a486932bd3b820ea62d4eec614f26899350d640b0ab76d"
+)
+KNOWN_INSTALLED_DD7_REVIEWED_HEAD_SHA = "dd7f327202358c244253e36e4a0b0f52185a0f1c"
+KNOWN_INSTALLED_DD7_PAIR_MANIFEST_SHA256 = (
+    "f35dedd6ba9d49c9cb53aa036f1912b3082b7af144204dbae10378b341a08095"
+)
+KNOWN_INSTALLED_DD7_INSTALLED_FILES = {
+    "host_helper.py": "383719bfd2700adcc76e662b15774ca3e32dd87f61b77a9fe65ff2458f6f6a8c",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_DD7_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_DD7_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_DD7_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_DD7_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_DD7_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -480,6 +504,8 @@ def _prepare_previous_production_helper(
         current_digest = hashlib.sha256(current).hexdigest()
         if current_digest == KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256:
             _require_installed_manifest(KNOWN_INTERMEDIATE_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_DD7_PRODUCTION_HELPER_SHA256:
+            _require_installed_manifest(KNOWN_INSTALLED_DD7_INSTALL_MANIFEST)
         elif current_digest in {
             KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256,
             KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256,

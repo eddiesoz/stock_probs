@@ -686,6 +686,17 @@ The full F6 aggregate remains failed at 195/2/3, with two raw-axe attachments un
 scope only. See the [latest PR11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-installed-helper-local-6359-profile-and-archive-parser-checkpoint-2026-10-16)
 and the [initial consumer/install checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-temporary-recovery-consumer-and-installer-receipt-checkpoint-2026-10-16).
 
+The later PR #11 Docker profile repair passed 33 builder and 33 independent focused tests, with
+scoped source review and static checks passing. A separate two-file run reported 617 passed and
+one skipped but had a workflow-compliance failure because it included a possible Docker integration
+test without JUnit; Docker execution and exact cleanup remain unavailable. The actual V5 host
+command failed with exit 1; its emitted workflow record reported unavailable at operation
+identity, and the pair rehearsal did not run. Read-only profile and
+canonical-manifest/archive diagnostics passed only their stated scopes; a counterfactual use of the
+repaired profile function still failed the existing approval-format check. Preserve the strict
+canonical serializer requirement and do not treat the diagnostic as an installed-helper or
+host-transition pass. See the [Docker profile and admission checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-docker-profile-repair-and-actual-host-admission-failure-2026-10-16).
+
 The lazy-provider startup repair is documented in the API, testing and operations guides and
 [E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint). Preserve
 its local import-memory and focused QA scope separately from the failed host startup guard.

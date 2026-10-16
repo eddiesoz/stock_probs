@@ -671,6 +671,29 @@ repository conftest with a genuine staged frontend and a source-bound import pat
 passes are neither actual archive/image acceptance nor a successful host transition. Current
 results are recorded in the [MVP plan](../../MVP-PLAN.md).
 
+For the PR #11 container profile, read optional Docker inspect keys such as `HostConfig.Init` by
+map index so a missing field does not fail the template; missing/null and `false` are accepted,
+while `true` and nonboolean values fail. `CapAdd` is valid only as the exact pair
+`SETUID` and `SETGID`, allowing Docker's `CAP_` prefix on either value; reject duplicates, repeated
+aliases, additional capabilities and malformed spellings. Keep all other profile checks intact.
+
+Before admission, parse the staged manifest and approval with the maintained parser, and create
+both records with its canonical serializer. The approval binds the manifest's exact bytes, so
+whitespace changes matter: compact JSON, no duplicate keys and no trailing newline are required.
+Equivalent pretty-printed JSON is not accepted. Do not relax the parser or edit privileged staged
+files by hand; run the parser preflight on replacement artifacts before a host transition.
+
+On 2026-10-16, builder and independent focused QA passed the same 33 profile cases and scoped
+source checks. A separate two-file command reported 617 passed and one skipped but had a workflow
+compliance failure because it included a possible Docker integration test without retaining
+JUnit; the skipped test identity, Docker execution and cleanup remain unavailable, and there was no
+retry. The actual V5 host command failed with exit 1; its emitted workflow record reported
+`status: Unavailable` at `operation_identity`, and the pair rehearsal did not run and is unavailable.
+Read-only profile and canonical-manifest/archive queries passed only their stated scopes; a
+counterfactual use of the profile repair then failed the existing approval-format check. These
+results do not establish installed-helper admission or a host transition. See the [dated PR #11
+checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-docker-profile-repair-and-actual-host-admission-failure-2026-10-16).
+
 For the current PR #11 consumer port, keep the 6359 manifest/context/image and synchronized
 approval, operation, current and phase records distinct from the retained 5ad release and A9
 recovery image. Verify the disabled loopback identity, signed-reader backup and 512 MiB startup

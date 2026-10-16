@@ -3182,6 +3182,130 @@ def _known_c408_install_fixture(
     return original, helper, manifest_path, expected_fields, sidecars
 
 
+def _known_dd7_install_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[bytes, bytes, Path, dict[str, object], dict[Path, bytes]]:
+    """Build a DD7 install receipt with a fixed backup and isolated sidecar files."""
+    original, helper, manifest_path, _prior_fields, sidecars = _known_677_install_fixture(
+        monkeypatch, tmp_path
+    )
+    repository_root = Path(__file__).parents[1]
+    source_paths = {
+        "host_helper.py": "scripts/pr_rehearsal_host_helper.py",
+        "seed.py": "scripts/pr_rehearsal_seed.py",
+        "native_driver.py": "tests/native_assistant_probe.py",
+    }
+    for installed_name, source_name in source_paths.items():
+        path = next(path for path in sidecars if path.name == installed_name)
+        contents = (repository_root / source_name).read_bytes()
+        assert (
+            hashlib.sha256(contents).hexdigest()
+            == bootstrap.KNOWN_INSTALLED_DD7_INSTALLED_FILES[installed_name]
+        )
+        path.write_bytes(contents)
+        path.chmod(0o750 if installed_name == "host_helper.py" else 0o640)
+        sidecars[path] = contents
+    expected_fields = dict(bootstrap.KNOWN_INSTALLED_DD7_INSTALL_MANIFEST)
+    expected_files = dict(expected_fields["files"])
+    for path, contents in sidecars.items():
+        expected_files[path.name] = hashlib.sha256(contents).hexdigest()
+    helper_digest = hashlib.sha256(helper).hexdigest()
+    expected_files["production-deploy-helper.py"] = helper_digest
+    expected_fields["files"] = expected_files
+    expected_fields["previous_production_helper_sha256"] = hashlib.sha256(original).hexdigest()
+    manifest_path.write_bytes(_installed_manifest_bytes(expected_fields))
+    manifest_path.chmod(0o640)
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_DD7_PRODUCTION_HELPER_SHA256", helper_digest)
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_DD7_INSTALL_MANIFEST", expected_fields)
+    return original, helper, manifest_path, expected_fields, sidecars
+
+
+def test_bootstrap_accepts_exact_dd7_install_and_preserves_immutable_backup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    assert bootstrap.KNOWN_INSTALLED_DD7_PRODUCTION_HELPER_SHA256 == (
+        "0d99260dfdc09f2e49a486932bd3b820ea62d4eec614f26899350d640b0ab76d"
+    )
+    assert bootstrap.KNOWN_INSTALLED_DD7_REVIEWED_HEAD_SHA == (
+        "dd7f327202358c244253e36e4a0b0f52185a0f1c"
+    )
+    assert bootstrap.KNOWN_INSTALLED_DD7_PAIR_MANIFEST_SHA256 == (
+        "f35dedd6ba9d49c9cb53aa036f1912b3082b7af144204dbae10378b341a08095"
+    )
+    assert bootstrap.KNOWN_INSTALLED_DD7_INSTALLED_FILES == {
+        "host_helper.py": "383719bfd2700adcc76e662b15774ca3e32dd87f61b77a9fe65ff2458f6f6a8c",
+        "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+        "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+        "production-deploy-helper.py": bootstrap.KNOWN_INSTALLED_DD7_PRODUCTION_HELPER_SHA256,
+    }
+    assert bootstrap.KNOWN_INSTALLED_DD7_INSTALL_MANIFEST["previous_production_helper_sha256"] == (
+        "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+    )
+    original, helper, manifest_path, old_fields, old_sidecars = _known_dd7_install_fixture(
+        monkeypatch, tmp_path
+    )
+    old_manifest = manifest_path.read_bytes()
+    candidate_fields = {**old_fields, "reviewed_head_sha": "a" * 40}
+    candidate_fields["reviewed_pair_manifest_sha256"] = "b" * 64
+
+    assert bootstrap._prepare_previous_production_helper(
+        helper,
+        candidate_manifest_fields=candidate_fields,
+    ) == (helper, bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256)
+    assert manifest_path.read_bytes() == old_manifest
+    assert {path: path.read_bytes() for path in old_sidecars} == old_sidecars
+    backup = bootstrap.PREVIOUS_PRODUCTION_HELPER
+    assert backup.read_bytes() == original
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize(
+    "malformation", ["head", "pair", "files", "predecessor", "missing", "sidecar"]
+)
+def test_bootstrap_rejects_drifted_dd7_install_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    malformation: str,
+) -> None:
+    original, helper, manifest_path, expected_fields, old_sidecars = _known_dd7_install_fixture(
+        monkeypatch, tmp_path
+    )
+    malformed = dict(expected_fields)
+    malformed_files = dict(expected_fields["files"])
+    malformed["files"] = malformed_files
+    if malformation == "head":
+        malformed["reviewed_head_sha"] = "f" * 40
+    elif malformation == "pair":
+        malformed["reviewed_pair_manifest_sha256"] = "f" * 64
+    elif malformation == "files":
+        malformed_files["native_driver.py"] = "f" * 64
+    elif malformation == "predecessor":
+        malformed["previous_production_helper_sha256"] = "f" * 64
+    elif malformation == "missing":
+        manifest_path.unlink()
+    elif malformation == "sidecar":
+        path = next(path for path in old_sidecars if path.name == "native_driver.py")
+        path.write_bytes(b"unreviewed DD7 source drift")
+        path.chmod(0o640)
+    if malformation != "missing":
+        manifest_path.write_bytes(_installed_manifest_bytes(malformed))
+        manifest_path.chmod(0o640)
+
+    with pytest.raises(bootstrap.InstallError, match="production_helper_manifest_mismatch"):
+        bootstrap._prepare_previous_production_helper(
+            helper,
+            candidate_manifest_fields={
+                **expected_fields,
+                "reviewed_head_sha": "a" * 40,
+                "reviewed_pair_manifest_sha256": "b" * 64,
+            },
+        )
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
+
+
 def test_bootstrap_accepts_exact_67723_install_during_same_helper_source_upgrade(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

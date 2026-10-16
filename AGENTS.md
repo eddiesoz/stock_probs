@@ -2381,6 +2381,13 @@ exact typed restoration path. Backup verification must not rewrite the running r
 promote a restore, rotate trust state or remove existing artifacts. Source/profile evidence alone
 does not accept a production transition, memory saving, native fix, owner canary or release.
 
+For the PR #11 Docker profile checker, access optional inspect map keys by explicit map index.
+Accept only the two distinct SETUID/SETGID capabilities with at most one `CAP_` prefix on each;
+keep the process, isolation, loopback and resource checks unchanged. Before privileged recovery
+staging or activation, verify manifest and approval bytes with the maintained canonical JSON
+parser, including exact compact serialization and no trailing newline. Field-only reads and
+source/mock checks do not establish integrated installed-helper or host admission.
+
 For the separate R-ASTRA-121 operational-helper PR #11 candidate, preserve the additive format-2
 `schema13_same_schema_hotfix_v1` identity: helper source PR #11, application candidate PR #9, and
 the original 5ad schema-13 production release as the recovery artifact. This contract is a 13-to-13

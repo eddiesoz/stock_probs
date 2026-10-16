@@ -8512,6 +8512,91 @@ preview causes remain unproven. Parent terminal/closure receipt SHA-256
 `cf2849897501c7c24711784d2f81a2f00355392d64d0977d0dfa5dd5787d62d6` records exact owned cleanup.
 No actual native/provider, 1 GB, recovery, deployment, or release acceptance follows.
 
+### R-ASTRA-121 PR11 Docker profile repair and actual-host admission failure (2026-10-16)
+
+The PR11 Docker profile checker repair is source-bound in the `dd7f327202358c244253e36e4a0b0f52185a0f1c`
+worktree. The helper SHA-256 is `4411def05a0cf757eef859b257d403d1c05eeed44c5c4265b86cb9905e1de730` and its focused
+test file SHA-256 is `9cccaeef5ef0268368f8f126e936d2e20ab080d1a441a55b35f19b161d0c45c6`. The checker
+now looks up optional Docker `HostConfig.Init` through the map index form, so an absent optional
+field does not abort the inspect template; missing/null and `false` are allowed, while `true` and
+nonboolean values remain rejected. Capability matching accepts the exact two distinct
+`SETUID` and `SETGID` capabilities with or without Docker's individual `CAP_` prefixes; duplicate
+aliases, repeated values, extra capabilities, and malformed values remain rejected. The other
+container-profile guards are unchanged.
+
+Builder focused verification **Passed** 33 selected tests, with two existing deprecation warnings;
+Ruff check, Ruff format and scoped diff checks also passed. Independent QA **Passed** the same 33
+focused tests, source review with no findings, module-origin checks, Ruff check/security/format,
+diff check, and all seven explicit source/import pins. Receipt
+`/var/tmp/r12r/pr11-dd7-independent-qa-3668e944-aa67-4d77-9ef3-b7761dc146b0/independent-qa-receipt.json`,
+SHA-256 `545ca3c71bcca5cf77e9d8315cbe3928ea6e44de09083e08155342d45985cc93`, records the review
+window `2026-10-16T20:06:35Z`–`20:09:16Z` and all four source/test pins unchanged. Its separate
+two-file run reported 617 passed and one skipped, but workflow compliance **Failed** because the
+command included a test that could invoke Docker and did not retain JUnit; the exact skipped case,
+Docker execution and cleanup remain **Unavailable**. No retry was made. The same QA receipt marks
+worktree-status stability **Fail** because these concurrent documentation edits appeared after its
+pre-snapshot; the reviewer did not read or modify them, and the four code/test plus three imported
+source pins remained unchanged. A bounded parent `docker ps` prefix query found no matching local
+fixture container at `20:09:43Z` (receipt
+`/var/tmp/r12r/dd7-start-readonly-diagnostic-676d9a15-c56a-4499-94c3-c92fc97a924e/parent-local-fixture-current-absence.json`,
+SHA-256 `187e42bbc2b627fbea21cda4b53211bdcdcc47a4b5136d67fd0cba05294d26bc`), which does not prove
+cleanup of a historical test container. The
+builder receipt preserves the exact command and source origins:
+`/var/tmp/r12r/dd7-init-lookup-repair-17b6e5f5-e805-4a8a-89fe-66825e3bcc87/final-source-and-test-review.json`,
+SHA-256 `701294fda9ed9ab4647852bcdb6cc4ef537069cd4d6fefc1f5c7a8af7ce1310b`; its module-origin
+supplement is SHA-256 `efdc1d09071f398b90b53e17ef21860742c976dbc5934e019b6fad279850a7b1`.
+
+The actual-host V5 command **Failed** with exit 1. Its emitted workflow record reported
+`status: Unavailable` at phase `operation_identity`; the pair rehearsal did not run and is
+**Unavailable**. It ran `2026-10-16T19:52:19Z`–`19:52:24Z`; the actual user unit's captured
+terminal showed exit status 1, failed/exit-code, `MainPID=0`, and the recorded cgroup and worker PID
+absent after exit. Its receipt is
+`/var/tmp/r12r/dd7-f6-temporary-restore-prep-07748318-275e-4d3a-ae2a-3c955ab45f4c/parent-v5-actual-terminal-before-retirement.json`,
+SHA-256 `d13cc04cdcbde70c30553dccc6a2e0805c1e26e67dc5fa95dd4cb702faadf999`; the separately captured
+post-terminal read-only reconciliation is SHA-256
+`a8c3114fce711aea16944ad67d518f78983f3289d2d16a7e495c7851fd34c90e`. The full workflow was not
+retried. The reconciliation reports the original 5ad image/revision, schema 13, invited rollout,
+ready service and loopback-only boundary, with no active temporary-recovery record. The earlier
+`assistant_disable_unverified` record remains historical.
+
+Read-only host diagnosis isolated a Docker inspect template failure: this host's `HostConfig` map
+did not contain optional `Init`, so `.HostConfig.Init` returned “map has no entry for key”. The
+initial combined diagnostic **Failed** at that field (receipt SHA-256
+`0a552442437ef0c4cc38cd3e5a056d79af8afd60264abb8aba5f0cf5007027fb`); a separate 14-field
+read-only query **Passed**, observing `Init: null`, both expected capabilities, and the other
+profile values (receipt SHA-256
+`c0e485921b091e2673b94ac37181dd30de63c5a0b8681281967ea097a8ca8315`). Applying only the exact
+repaired profile function to a volatile copy of the old helper then passed the profile checks but
+failed at `authorization_manifest`, because the already-staged approval did not match the strict
+canonical parser. That counterfactual receipt is SHA-256
+`40492c1b8cb8d3ea857afb32334733bc2486d3b251187c193509ad5221f27e4c`; it did not install the
+repair or change service state.
+
+A later read-only check **Passed** the maintained inline canonical-manifest/schema parser and exact
+root-owned archive identity at `2026-10-16T20:06:59.036641Z`–`20:07:01.997655Z` (receipt
+`/var/tmp/r12r/dd7-start-readonly-diagnostic-676d9a15-c56a-4499-94c3-c92fc97a924e/actual-canonical-manifest-archive-readonly-terminal.json`,
+SHA-256 `a822296163271504b3f649ce7a11ccde84b076546b9c976e14e2da9afa0777c8`). It did not inspect the
+staged root manifest or approval, install a helper, or start a transition. The previously staged
+manifest is 1,877 bytes (compact JSON plus newline), while its strict canonical serialization is
+1,876 bytes with SHA-256 `0df715d879112f26603f32ef0312fadcc6efe2ebc5147c78c900e7b0b0fa6900`; the
+178-byte staged approval also has pretty whitespace and a trailing newline. These existing bytes
+do not satisfy the maintained compact, duplicate-free, no-trailing-newline format. Do not relax the
+parser: prepare replacement artifacts with the maintained serializer and run its parser as a
+preflight before any future host transition. That replacement is **Pending** and has not been
+executed.
+
+The F6 full browser aggregate remains **Fail** at 195 passed, two failed and three expected skips;
+22 of 24 raw axe attachments are retained, so the raw attachment set is **Unavailable**. The
+separate four-case focused browser result remains a scoped **Pass** and does not repair the full
+aggregate. No new browser or canonical aggregate ran for this checkpoint. Repaired helper
+installation, temporary host transition, pair rehearsal, actual combined 1 GB resources, PR-bound
+rollback, full security, deployment, canary, and release remain open. Production remains on the
+5ad schema-13 invited, ready, loopback-only service; no database restore, migration, resize,
+deployment, rollout or email occurred. The existing 1 GB host, backups and US$15 monthly total cap
+are unchanged.
+
+**Pre-edit authored-file baseline:** UUID-verified SD mount `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; exact byte copies under `/var/tmp/r12r/pr11-profile-docs-baseline-20261016T2030Z/`, directory mode `0700`, files mode `0600`; copied and re-read at `2026-10-16T20:06:19Z`. SHA-256: `MVP-PLAN.md` `98c7ee99a45d4cd9628e0052d9f8bc1d88a9c3c1f646228b652f992e577d1f7e`; `docs/develop/testing.md` `46b689f6744432d7c85ab9276282ea17770187d9cca754cb587ca3c33a950241`; `docs/develop/documentation.md` `b8d107e45cd7e93bb20032492621b1cdce3e2fd97ec4d35b44323bba269d0c2f`.
+
 #### R-ASTRA-121 PR11 helper rebind and focused F6 browser checkpoint (2026-10-16)
 
 The approved full frontend build/export was reused because its 88 bound inputs were unchanged;

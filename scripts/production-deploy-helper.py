@@ -3125,7 +3125,7 @@ def _assert_temporary_container_profile(
     )
     template = (
         "{{.Id}}|{{.Image}}|{{.State.Pid}}|{{.State.Running}}|"
-        "{{.HostConfig.ReadonlyRootfs}}|{{json .HostConfig.Init}}|{{.Config.User}}|"
+        '{{.HostConfig.ReadonlyRootfs}}|{{json (index .HostConfig "Init")}}|{{.Config.User}}|'
         "{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.CapDrop}}|"
         "{{json .HostConfig.CapAdd}}|{{json .HostConfig.PortBindings}}|"
         "{{.HostConfig.Memory}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}"
@@ -3152,6 +3152,11 @@ def _assert_temporary_container_profile(
         port_bindings = json.loads(parts[10])
     except json.JSONDecodeError as exc:
         raise HostError("temporary_recovery_container_profile_invalid") from exc
+    normalized_cap_add = (
+        {capability.removeprefix("CAP_") for capability in cap_add}
+        if isinstance(cap_add, list) and all(isinstance(capability, str) for capability in cap_add)
+        else set()
+    )
     expected_ports = {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}
     if (
         parts[3] != "true"
@@ -3163,7 +3168,7 @@ def _assert_temporary_container_profile(
         or not isinstance(cap_add, list)
         or any(not isinstance(capability, str) for capability in cap_add)
         or len(cap_add) != 2
-        or set(cap_add) != {"SETUID", "SETGID"}
+        or normalized_cap_add != {"SETUID", "SETGID"}
         or port_bindings != expected_ports
         or parts[11] != str(768 * 1024 * 1024)
         or parts[12] != str(1_000_000_000)
