@@ -59,6 +59,7 @@ REVIEW_PAIR_ENV = "SIGNAL_LEDGER_REHEARSAL_REVIEWED_PAIR_MANIFEST_SHA256"
 REVISION = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 IMAGE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
+OPERATION_ID = re.compile(r"^[0-9a-f]{32}$")
 MODEL_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+-]{0,95}$")
 OOM_EVENT_COUNTERS = ("oom", "oom_kill", "oom_group_kill")
 CPU_STAT_COUNTERS = ("usage_usec", "nr_periods", "nr_throttled", "throttled_usec")
@@ -101,6 +102,50 @@ class RecoveryProductionBaseline(RecoveryProductionBaselineFields):
     container_revision: str
 
 
+class TemporaryRecoveryProductionBaselineFields(TypedDict):
+    operation_kind: str
+    operation_id: str
+    phase: str
+    start_admission_allowed: bool
+    startup_floor_kib: int
+    revision: str
+    image_id: str
+    image_ref: str
+    build_tag: str
+    archive_sha256: str
+    archive_size: int
+    manifest_sha256: str
+    source_manifest_sha256: str
+    source_context_sha256: str
+    base_revision: str
+    base_source_archive_sha256: str
+    base_source_context_sha256: str
+    migration_sha256: str
+    overlay_sha256: str
+    compose_digest: str
+    schema_version: int
+    platform: str
+    assistant_rollout_mode: str
+    assistant_enabled: bool
+    assistant_status: str
+    loopback_only: bool
+    original_revision: str
+    original_image_id: str
+    original_compose_digest: str
+    original_assistant_rollout_mode: str
+    protected_recovery_revision: str
+    protected_recovery_image_id: str
+    protected_recovery_image_ref: str
+    protected_recovery_archive_sha256: str
+    protected_recovery_pair_manifest_sha256: str
+    protected_recovery_overlay_sha256: str
+
+
+class TemporaryRecoveryProductionBaseline(TemporaryRecoveryProductionBaselineFields):
+    container_id: str
+    container_revision: str
+
+
 PRODUCTION_BASELINE: ProductionBaseline = {
     "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
     "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
@@ -122,6 +167,55 @@ RECOVERY_PRODUCTION_BASELINE: RecoveryProductionBaselineFields = {
     "loopback_only": True,
 }
 MIGRATION_SHA256 = "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b"
+TEMPORARY_RECOVERY_SOURCE_REVISION = "63597953c9d1ab387563dadfe705b78a2861a426"
+TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256 = (
+    "9443700f5248606c1f50a6e4e1bb2a20782a44aaa06fe62ffc3de2d17c4c2994"
+)
+TEMPORARY_RECOVERY_BASE_ARCHIVE_SHA256 = (
+    "a197b69829076e75bdc1c51830761d1bb4d4c0fda9074372abb45b6d972d59d7"
+)
+TEMPORARY_RECOVERY_BASE_CONTEXT_SHA256 = (
+    "38a2098f81fde0d3b73e7e3b3d31f84b5731492ff04b9ace2bfe5fd83c53c97b"
+)
+TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256 = (
+    "964d7ca16ac1733c031780fc5dd3c271461489cc58cb9a653371cb060b26baa9"
+)
+TEMPORARY_RECOVERY_OVERLAY_SHA256 = (
+    "272949c0fcaafcc0b217265619ba3eb76d9e9e92d69c18a2492100f5e14a0a6f"
+)
+TEMPORARY_RECOVERY_IMAGE_BUILD_TAG = "signal-ledger:temporary-recovery-build-63597953c9d1"
+TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS: dict[str, object] = {
+    "operation_kind": "temporary_recovery",
+    "phase": "startup_floor_passed",
+    "start_admission_allowed": True,
+    "revision": TEMPORARY_RECOVERY_SOURCE_REVISION,
+    "build_tag": TEMPORARY_RECOVERY_IMAGE_BUILD_TAG,
+    "source_manifest_sha256": TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+    "source_context_sha256": TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+    "base_revision": DEPLOYED_BASELINE["revision"],
+    "base_source_archive_sha256": TEMPORARY_RECOVERY_BASE_ARCHIVE_SHA256,
+    "base_source_context_sha256": TEMPORARY_RECOVERY_BASE_CONTEXT_SHA256,
+    "migration_sha256": MIGRATION_SHA256,
+    "overlay_sha256": TEMPORARY_RECOVERY_OVERLAY_SHA256,
+    "compose_digest": RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+    "schema_version": 13,
+    "platform": "linux/amd64",
+    "assistant_rollout_mode": "disabled",
+    "assistant_enabled": False,
+    "assistant_status": "disabled",
+    "loopback_only": True,
+    "original_revision": PRODUCTION_BASELINE["revision"],
+    "original_image_id": PRODUCTION_BASELINE["image_id"],
+    "original_compose_digest": RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+    "protected_recovery_revision": RECOVERY_PRODUCTION_BASELINE["revision"],
+    "protected_recovery_image_id": RECOVERY_PRODUCTION_BASELINE["image_id"],
+    "protected_recovery_image_ref": (
+        f"signal-ledger:recovery-sha-{RECOVERY_PRODUCTION_BASELINE['revision']}"
+    ),
+    "protected_recovery_archive_sha256": RECOVERY_PRODUCTION_BASELINE["archive_sha256"],
+    "protected_recovery_pair_manifest_sha256": RECOVERY_PRODUCTION_BASELINE["pair_manifest_sha256"],
+    "protected_recovery_overlay_sha256": RECOVERY_PRODUCTION_BASELINE["recovery_overlay_sha256"],
+}
 SOURCE_ASSETS = {
     "bootstrap": ("scripts/pr_rehearsal_bootstrap.py", "bootstrap.py", 256 * 1024),
     "host_helper": ("scripts/pr_rehearsal_host_helper.py", "host_helper.py", 256 * 1024),
@@ -597,6 +691,60 @@ def _validated_production_baseline(value: object) -> dict[str, object]:
         if type(value.get("schema_version")) is int:
             return dict(value)
         raise RehearsalError("host_response_invalid")
+    temporary_dynamic_keys = {
+        "operation_id",
+        "startup_floor_kib",
+        "image_id",
+        "image_ref",
+        "archive_sha256",
+        "archive_size",
+        "manifest_sha256",
+        "original_assistant_rollout_mode",
+        "container_id",
+        "container_revision",
+    }
+    temporary_keys = set(TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS) | temporary_dynamic_keys
+    if isinstance(value, dict) and set(value) == temporary_keys:
+        operation_id = value.get("operation_id")
+        image_id = value.get("image_id")
+        container_id = value.get("container_id")
+        archive_size = value.get("archive_size")
+        startup_floor_kib = value.get("startup_floor_kib")
+        if (
+            any(
+                value.get(key) != expected
+                for key, expected in TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS.items()
+            )
+            or type(value.get("start_admission_allowed")) is not bool
+            or type(value.get("assistant_enabled")) is not bool
+            or type(value.get("loopback_only")) is not bool
+            or type(value.get("schema_version")) is not int
+            or not isinstance(operation_id, str)
+            or OPERATION_ID.fullmatch(operation_id) is None
+            or not isinstance(image_id, str)
+            or IMAGE_ID.fullmatch(image_id) is None
+            or image_id
+            in {
+                PRODUCTION_BASELINE["image_id"],
+                RECOVERY_PRODUCTION_BASELINE["image_id"],
+                DEPLOYED_BASELINE["image_id"],
+            }
+            or value.get("image_ref") != f"signal-ledger:temporary-recovery-{operation_id}"
+            or not isinstance(value.get("archive_sha256"), str)
+            or DIGEST.fullmatch(value["archive_sha256"]) is None
+            or type(archive_size) is not int
+            or not 1 <= archive_size <= MAX_ARCHIVE_BYTES
+            or not isinstance(value.get("manifest_sha256"), str)
+            or DIGEST.fullmatch(value["manifest_sha256"]) is None
+            or type(startup_floor_kib) is not int
+            or not START_RESERVE_KIB <= startup_floor_kib <= MAX_RESOURCE_COUNTER
+            or not isinstance(container_id, str)
+            or re.fullmatch(r"[0-9a-f]{64}", container_id) is None
+            or value.get("container_revision") != TEMPORARY_RECOVERY_SOURCE_REVISION
+            or value.get("original_assistant_rollout_mode") != "invited"
+        ):
+            raise RehearsalError("host_response_invalid")
+        return dict(value)
     recovery_keys = {*RECOVERY_PRODUCTION_BASELINE, "container_id", "container_revision"}
     if (
         not isinstance(value, dict)
@@ -613,6 +761,14 @@ def _validated_production_baseline(value: object) -> dict[str, object]:
     ):
         raise RehearsalError("host_response_invalid")
     return dict(value)
+
+
+def _validated_v2_production_baseline(value: object) -> dict[str, object]:
+    """Accept only the pinned release or a fully validated temporary baseline for V2."""
+    baseline = _validated_production_baseline(value)
+    if baseline != PRODUCTION_BASELINE and baseline.get("operation_kind") != "temporary_recovery":
+        raise RehearsalError("host_response_invalid")
+    return baseline
 
 
 def _validated_native_evidence(response: dict[str, object]) -> dict[str, object]:
@@ -1784,9 +1940,12 @@ def rehearse_pr_pair(
         response.get("recovery_process_isolation_verified") is not True
     ):
         raise RehearsalError("host_response_invalid")
-    production_baseline = _validated_production_baseline(response.get("production_baseline"))
-    if manifest.get("format_version") == 2 and production_baseline != PRODUCTION_BASELINE:
-        raise RehearsalError("host_response_invalid")
+    production_baseline_value = response.get("production_baseline")
+    production_baseline = (
+        _validated_v2_production_baseline(production_baseline_value)
+        if manifest.get("format_version") == 2
+        else _validated_production_baseline(production_baseline_value)
+    )
     resource_evidence = _validated_resource_evidence(response)
     result: dict[str, object] = {
         "status": "pass",

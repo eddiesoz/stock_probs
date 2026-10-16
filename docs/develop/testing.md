@@ -671,6 +671,18 @@ repository conftest with a genuine staged frontend and a source-bound import pat
 passes are neither actual archive/image acceptance nor a successful host transition. Current
 results are recorded in the [MVP plan](../../MVP-PLAN.md).
 
+For the current PR #11 consumer port, keep the 6359 manifest/context/image and synchronized
+approval, operation, current and phase records distinct from the retained 5ad release and A9
+recovery image. Verify the disabled loopback identity, signed-reader backup and 512 MiB startup
+floor; preserve the 128 MiB reserve through archive inspection and nested Docker/Compose waits. The
+source/mock consumer QA passed 390 cases with one direct-Docker case deselected and 29 stable pins;
+this does not establish runtime or host acceptance. The six-file context image build later passed
+for identity only: image `sha256:893788c137d1956f590c9bee0ee078e06af52ad0a52a47b870bcc0f4c169fe6b`.
+Independent build review, local runtime, archive, root-manifest and activation checks remain Pending.
+The earlier actual-host attempt Failed preflight at 467,908 KiB below the 524,288 KiB floor. See the
+dated [PR #11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-temporary-recovery-consumer-and-installer-receipt-checkpoint-2026-10-16)
+for exact receipts and the preserved launch checkpoint.
+
 
 ### Genuine free Zen restoration checks
 

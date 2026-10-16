@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import gzip
 import hashlib
 import io
@@ -3101,6 +3102,285 @@ def test_bootstrap_upgrade_restores_exact_intermediate_then_allows_exact_retry(
     assert hashlib.sha256(backup_path.read_bytes()).hexdigest() == (
         bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256
     )
+
+
+def _known_677_install_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[bytes, bytes, Path, dict[str, object], dict[Path, bytes]]:
+    """Build the exact 67723 receipt shape with deterministic sidecar bytes."""
+
+    original = b"immutable original helper fixture for 67723 receipt"
+    original_digest = hashlib.sha256(original).hexdigest()
+    workspace = Path(__file__).resolve().parents[1]
+    helper = (workspace / "scripts/production-deploy-helper.py").read_bytes()
+    assert hashlib.sha256(helper).hexdigest() == (
+        "85ea6568514188b37c6b6f7b93dc902cf7003836b60983255e4a0337fc575371"
+    )
+
+    production_helper = tmp_path / "libexec" / "signal-ledger-deploy-helper"
+    production_helper.parent.mkdir()
+    production_helper.write_bytes(helper)
+    production_helper.chmod(0o750)
+    state_root = tmp_path / "state"
+    state_root.mkdir()
+    backup_path = state_root / "previous-production-deploy-helper.py"
+    backup_path.write_bytes(original)
+    backup_path.chmod(0o600)
+    install_root = tmp_path / "installed"
+    install_root.mkdir()
+    manifest_path = install_root / "installed.json"
+
+    installed_sidecars: dict[Path, bytes] = {}
+    expected_fields = dict(bootstrap.KNOWN_INSTALLED_67723_INSTALL_MANIFEST)
+    expected_files = dict(expected_fields["files"])
+    for installed_name in expected_files:
+        if installed_name == "production-deploy-helper.py":
+            continue
+        content = f"installed 67723 source for {installed_name}".encode()
+        path = install_root / installed_name
+        path.write_bytes(content)
+        path.chmod(0o750 if installed_name == "host_helper.py" else 0o640)
+        installed_sidecars[path] = content
+        expected_files[installed_name] = hashlib.sha256(content).hexdigest()
+    expected_fields["files"] = expected_files
+    expected_fields["previous_production_helper_sha256"] = original_digest
+    manifest_path.write_bytes(_installed_manifest_bytes(expected_fields))
+    manifest_path.chmod(0o640)
+
+    monkeypatch.setattr(bootstrap, "PRODUCTION_HELPER", production_helper)
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER", backup_path)
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER_SIZE", len(original))
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER_SHA256", original_digest)
+    monkeypatch.setattr(bootstrap, "INSTALL_ROOT", install_root)
+    monkeypatch.setattr(bootstrap, "INSTALLED_MANIFEST", manifest_path)
+    # The full installed receipt is pinned in production. Sidecar bytes here are
+    # synthetic, so bind this fixture's hashes while preserving its real source pins.
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_67723_INSTALL_MANIFEST", expected_fields)
+    monkeypatch.setattr(bootstrap, "_read_fixed_root_file", _read_temp_root_file)
+    return original, helper, manifest_path, expected_fields, installed_sidecars
+
+
+def test_bootstrap_accepts_exact_67723_install_during_same_helper_source_upgrade(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    assert bootstrap.KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256 == (
+        "85ea6568514188b37c6b6f7b93dc902cf7003836b60983255e4a0337fc575371"
+    )
+    assert bootstrap.KNOWN_INSTALLED_67723_REVIEWED_HEAD_SHA == (
+        "67723d36ea03b0628e59007af20c2910a64d06fb"
+    )
+    assert bootstrap.KNOWN_INSTALLED_67723_PAIR_MANIFEST_SHA256 == (
+        "60f1288183685f104452b1fc1f51a823a31a09501f3807fe7023d988f950335e"
+    )
+    assert (
+        bootstrap.KNOWN_INSTALLED_67723_INSTALL_MANIFEST["previous_production_helper_sha256"]
+        == "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+    )
+    assert bootstrap.KNOWN_INSTALLED_67723_INSTALLED_FILES == {
+        "host_helper.py": "c2929e6d129cc56eeb21d3dcec7be484345e9d39ff1ed910dcb16901d62faf76",
+        "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+        "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+        "production-deploy-helper.py": bootstrap.KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256,
+    }
+    original, helper, manifest_path, old_fields, old_sidecars = _known_677_install_fixture(
+        monkeypatch, tmp_path
+    )
+    old_manifest = manifest_path.read_bytes()
+    new_source_fields: dict[str, object] = {
+        "format_version": 1,
+        "repository": bootstrap.REPOSITORY,
+        "pull_number": bootstrap.HELPER_SOURCE_PR_NUMBER,
+        "reviewed_head_sha": "a" * 40,
+        "reviewed_pair_manifest_sha256": "b" * 64,
+        "files": {
+            "host_helper.py": "383719bfd2700adcc76e662b15774ca3e32dd87f61b77a9fe65ff2458f6f6a8c",
+            "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+            "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+            "production-deploy-helper.py": bootstrap.KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256,
+        },
+        "helper_source_contract": bootstrap.HELPER_SOURCE_CONTRACT,
+        "previous_production_helper_sha256": bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256,
+    }
+
+    assert old_fields["reviewed_head_sha"] != new_source_fields["reviewed_head_sha"]
+    old_pair_digest = old_fields["reviewed_pair_manifest_sha256"]
+    new_pair_digest = new_source_fields["reviewed_pair_manifest_sha256"]
+    assert old_pair_digest != new_pair_digest
+    assert bootstrap._prepare_previous_production_helper(
+        helper,
+        candidate_manifest_fields=new_source_fields,
+    ) == (helper, bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256)
+    assert manifest_path.read_bytes() == old_manifest
+    assert {path: path.read_bytes() for path in old_sidecars} == old_sidecars
+    backup = bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes()
+    assert backup == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    ["head", "pair", "files", "contract", "predecessor", "duplicate", "missing", "mode", "sidecar"],
+)
+def test_bootstrap_rejects_drifted_67723_install_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    malformation: str,
+) -> None:
+    original, helper, manifest_path, expected_fields, old_sidecars = _known_677_install_fixture(
+        monkeypatch, tmp_path
+    )
+    malformed = dict(expected_fields)
+    malformed_files = dict(expected_fields["files"])
+    malformed["files"] = malformed_files
+    if malformation == "head":
+        malformed["reviewed_head_sha"] = "f" * 40
+    elif malformation == "pair":
+        malformed["reviewed_pair_manifest_sha256"] = "f" * 64
+    elif malformation == "files":
+        malformed_files["native_driver.py"] = "f" * 64
+    elif malformation == "contract":
+        malformed["helper_source_contract"] = "wrong-contract"
+    elif malformation == "predecessor":
+        malformed["previous_production_helper_sha256"] = "f" * 64
+    if malformation == "missing":
+        manifest_path.unlink()
+    else:
+        raw = _installed_manifest_bytes(malformed)
+        if malformation == "duplicate":
+            raw = b'{"format_version":1,' + raw[1:]
+        manifest_path.write_bytes(raw)
+        manifest_path.chmod(0o644 if malformation == "mode" else 0o640)
+    if malformation == "sidecar":
+        path = next(path for path in old_sidecars if path.name == "native_driver.py")
+        path.write_bytes(b"unreviewed source drift")
+        path.chmod(0o640)
+
+    with pytest.raises(bootstrap.InstallError, match="production_helper_manifest_mismatch"):
+        bootstrap._prepare_previous_production_helper(
+            helper,
+            candidate_manifest_fields={
+                **expected_fields,
+                "reviewed_head_sha": "a" * 40,
+                "reviewed_pair_manifest_sha256": "b" * 64,
+            },
+        )
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("drift", ["current-helper", "backup-bytes", "backup-mode"])
+def test_bootstrap_rejects_67723_helper_or_immutable_backup_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    drift: str,
+) -> None:
+    original, helper, _manifest_path, expected_fields, _old_sidecars = _known_677_install_fixture(
+        monkeypatch, tmp_path
+    )
+    if drift == "current-helper":
+        bootstrap.PRODUCTION_HELPER.write_bytes(b"unreviewed current helper drift")
+        bootstrap.PRODUCTION_HELPER.chmod(0o750)
+        expected_error = "production_helper_drift"
+    elif drift == "backup-bytes":
+        bootstrap.PREVIOUS_PRODUCTION_HELPER.write_bytes(b"unreviewed backup drift")
+        bootstrap.PREVIOUS_PRODUCTION_HELPER.chmod(0o600)
+        expected_error = "production_helper_backup_mismatch"
+    else:
+        bootstrap.PREVIOUS_PRODUCTION_HELPER.chmod(0o640)
+        expected_error = "production_helper_file_unsafe"
+    with pytest.raises(bootstrap.InstallError, match=expected_error):
+        bootstrap._prepare_previous_production_helper(
+            helper,
+            candidate_manifest_fields=expected_fields,
+        )
+    if drift == "current-helper":
+        assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+
+
+def test_bootstrap_source_only_upgrade_compensates_and_retries_exact_67723_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    original, helper, manifest_path, old_fields, old_sidecars = _known_677_install_fixture(
+        monkeypatch, tmp_path
+    )
+    workspace = Path(__file__).resolve().parents[1]
+    incoming = tmp_path / "incoming"
+    incoming.mkdir()
+    state_root = bootstrap.PREVIOUS_PRODUCTION_HELPER.parent
+    sources = {
+        relative: (workspace / relative).read_bytes()
+        for relative, _name, _maximum in bootstrap.ASSETS.values()
+    }
+    revision = "a" * 40
+    pair_digest = "b" * 64
+    asset_hashes: dict[str, str] = {}
+
+    def stage_sources() -> None:
+        for role, (_relative, staged_name, _maximum) in bootstrap.ASSETS.items():
+            content = sources[bootstrap.ASSETS[role][0]]
+            asset_hashes[role] = hashlib.sha256(content).hexdigest()
+            (incoming / f"signal-ledger-pr1-{revision}-{staged_name}").write_bytes(content)
+
+    stage_sources()
+    monkeypatch.setattr(bootstrap, "INCOMING", incoming)
+    monkeypatch.setattr(bootstrap, "STATE_ROOT", state_root)
+    monkeypatch.setattr(bootstrap, "_install_locks", nullcontext)
+    monkeypatch.setattr(bootstrap, "_safe_directory", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bootstrap, "_safe_incoming_directory", lambda: None)
+    monkeypatch.setattr(bootstrap, "_check_root_directory", lambda *_args: None)
+    monkeypatch.setattr(bootstrap, "_verify_pull_request", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        bootstrap,
+        "_fetch_reviewed_source",
+        lambda _revision, relative, _maximum: sources[relative],
+    )
+    prior_manifest = manifest_path.read_bytes()
+    prior_sidecars = dict(old_sidecars)
+    fail_receipt_once = True
+
+    def atomic_write(path: Path, contents: bytes, mode: int) -> None:
+        nonlocal fail_receipt_once
+        if path == manifest_path and contents != prior_manifest and fail_receipt_once:
+            fail_receipt_once = False
+            raise OSError("simulated installed receipt publication failure")
+        temporary = path.with_name(f".{path.name}.test-tmp")
+        temporary.write_bytes(contents)
+        temporary.chmod(mode)
+        temporary.replace(path)
+
+    monkeypatch.setattr(bootstrap, "_atomic_root_file", atomic_write)
+    payload = {
+        "reviewed_head_sha": revision,
+        "reviewed_pair_manifest_sha256": pair_digest,
+        "asset_sha256": asset_hashes,
+        "helper_source_contract": bootstrap.HELPER_SOURCE_CONTRACT,
+    }
+
+    with pytest.raises(bootstrap.InstallError, match="sidecar_install_failed"):
+        bootstrap.install(payload)
+    assert manifest_path.read_bytes() == prior_manifest
+    assert {path: path.read_bytes() for path in prior_sidecars} == prior_sidecars
+    assert bootstrap.PRODUCTION_HELPER.read_bytes() == helper
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
+
+    result = bootstrap.install(payload)
+    assert result["status"] == "installed"
+    assert result["reviewed_head_sha"] == revision
+    assert bootstrap.PRODUCTION_HELPER.read_bytes() == helper
+    assert manifest_path.read_bytes() != prior_manifest
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
+
+    stage_sources()
+    retry = bootstrap.install(payload)
+    assert retry == result
+    assert bootstrap.PRODUCTION_HELPER.read_bytes() == helper
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert old_fields["reviewed_head_sha"] == bootstrap.KNOWN_INSTALLED_67723_REVIEWED_HEAD_SHA
 
 
 @pytest.mark.parametrize(
@@ -6335,6 +6615,494 @@ def _recovery_baseline_receipt() -> dict[str, object]:
         "container_id": "a" * 64,
         "container_revision": controller.RECOVERY_PRODUCTION_BASELINE["revision"],
     }
+
+
+def _temporary_recovery_documents() -> tuple[
+    dict[str, object], dict[str, object], dict[str, object], dict[str, object], bytes
+]:
+    image_id = "sha256:" + "d" * 64
+    archive_sha256 = "f" * 64
+    operation_id = "a" * 32
+    created_at = "2026-10-15T17:00:00Z"
+    manifest: dict[str, object] = {
+        "format_version": 1,
+        "kind": "temporary_recovery",
+        "built_or_published": True,
+        "source_revision": host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "source_manifest_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "base_revision": host_helper.BASE_REVISION,
+        "base_source_archive_sha256": host_helper.TEMPORARY_RECOVERY_BASE_ARCHIVE_SHA256,
+        "base_source_context_sha256": host_helper.TEMPORARY_RECOVERY_BASE_CONTEXT_SHA256,
+        "source_context_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "migration_sha256": host_helper.MIGRATION_SHA256,
+        "overlay_sha256": host_helper.TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "overlay_files": host_helper.TEMPORARY_RECOVERY_FILE_SHA256,
+        "schema_version": 13,
+        "image": {
+            "archive_sha256": archive_sha256,
+            "archive_size": 123_456,
+            "image_id": image_id,
+            "platform": "linux/amd64",
+            "image_revision": host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+            "repo_tag": host_helper.TEMPORARY_RECOVERY_IMAGE_BUILD_TAG,
+            "entrypoint": ["python", "-m", "stock_probs.recovery_supervisor"],
+            "command": host_helper.TEMPORARY_RECOVERY_COMMAND,
+        },
+    }
+    manifest_raw = json.dumps(
+        manifest, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    manifest_sha256 = hashlib.sha256(manifest_raw).hexdigest()
+    operation: dict[str, object] = {
+        "operation_kind": "temporary_recovery",
+        "operation_id": operation_id,
+        "phase": "startup_floor_passed",
+        "created_at": created_at,
+        "updated_at": "2026-10-15T17:01:00Z",
+        "manifest_sha256": manifest_sha256,
+        "source_manifest_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "source_revision": host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "source_context_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "base_revision": host_helper.BASE_REVISION,
+        "migration_sha256": host_helper.MIGRATION_SHA256,
+        "overlay_sha256": host_helper.TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "archive_sha256": archive_sha256,
+        "archive_size": 123_456,
+        "image_id": image_id,
+        "build_tag": host_helper.TEMPORARY_RECOVERY_IMAGE_BUILD_TAG,
+        "image_ref": f"signal-ledger:temporary-recovery-{operation_id}",
+        "schema_version": 13,
+        "compose_digest": host_helper.RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+        "original_record": {
+            "revision": host_helper.PRODUCTION_BASELINE["revision"],
+            "image_id": host_helper.PRODUCTION_BASELINE["image_id"],
+            "image_ref": f"signal-ledger:sha-{host_helper.PRODUCTION_BASELINE['revision']}",
+            "schema_version": 13,
+            "assistant_rollout_mode": "invited",
+            "compose_digest": host_helper.RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+        },
+        "original_compose_revision": host_helper.PRODUCTION_BASELINE["revision"],
+        "initial_available_kib": 600_000,
+        "available_kib": 550_000,
+        "backup": {
+            "trigger": "pre_deploy",
+            "name": "pre-deploy-5ad2c3fddfce5a5a.spbackup",
+            "sha256": "c" * 64,
+            "schema_version": 13,
+            "verified": True,
+            "promoted": False,
+        },
+        "startup_floor_kib": 540_000,
+        "start_admission_allowed": True,
+    }
+    current: dict[str, object] = {
+        "operation_kind": "temporary_recovery",
+        "operation_id": operation_id,
+        "status": "ready",
+        "revision": host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "image_ref": f"signal-ledger:temporary-recovery-{operation_id}",
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "archive_size": 123_456,
+        "image_id": image_id,
+        "transport": "temporary_recovery",
+        "platform": "linux/amd64",
+        "schema_version": 13,
+        "assistant_rollout_mode": "disabled",
+        "compose_digest": host_helper.RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+        "manifest_sha256": manifest_sha256,
+        "source_manifest_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "source_context_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "base_revision": host_helper.BASE_REVISION,
+        "migration_sha256": host_helper.MIGRATION_SHA256,
+        "overlay_sha256": host_helper.TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "started_at": created_at,
+    }
+    approval: dict[str, object] = {
+        "format_version": 1,
+        "kind": "temporary_recovery",
+        "review_status": "approved",
+        "manifest_sha256": manifest_sha256,
+    }
+    return current, operation, manifest, approval, manifest_raw
+
+
+def _temporary_recovery_baseline_for_test(
+    documents: tuple[
+        dict[str, object], dict[str, object], dict[str, object], dict[str, object], bytes
+    ],
+) -> dict[str, object]:
+    current, operation, manifest, approval, manifest_raw = documents
+    return host_helper._temporary_recovery_documents_match(
+        current,
+        operation,
+        manifest,
+        approval,
+        manifest_raw,
+        image_id=manifest["image"]["image_id"],  # type: ignore[index]
+        image_revision=host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        container_id="b" * 64,
+    )
+
+
+def test_temporary_recovery_baseline_binds_approved_records_and_original_images() -> None:
+    baseline = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+
+    assert baseline["operation_kind"] == "temporary_recovery"
+    assert "role" not in baseline
+    assert baseline["phase"] == "startup_floor_passed"
+    assert baseline["start_admission_allowed"] is True
+    assert baseline["startup_floor_kib"] == 540_000
+    assert baseline["image_id"] == "sha256:" + "d" * 64
+    assert baseline["container_id"] == "b" * 64
+    assert baseline["container_revision"] == host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION
+    assert baseline["original_image_id"] == host_helper.PRODUCTION_BASELINE["image_id"]
+    assert (
+        baseline["protected_recovery_image_id"]
+        == host_helper.RECOVERY_PRODUCTION_BASELINE["image_id"]
+    )
+    assert baseline["protected_recovery_image_ref"] == (
+        f"signal-ledger:recovery-sha-{host_helper.RECOVERY_PRODUCTION_BASELINE['revision']}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("target", "field", "invalid"),
+    [
+        ("manifest", "source_revision", "0" * 40),
+        ("manifest", "overlay_sha256", "0" * 64),
+        ("manifest", "unexpected", "unreviewed"),
+        ("manifest_image", "repo_tag", "signal-ledger:temporary-recovery-build-other"),
+        ("manifest_image", "image_id", host_helper.PRODUCTION_BASELINE["image_id"]),
+        ("approval", "review_status", "pending"),
+        ("approval", "manifest_sha256", "0" * 64),
+        ("operation", "phase", "temporary_app_ready"),
+        ("operation", "start_admission_allowed", 1),
+        ("operation", "startup_floor_kib", host_helper.START_RESERVE_KIB - 1),
+        ("operation", "source_context_sha256", "0" * 64),
+        ("operation", "image_ref", "signal-ledger:sha-5ad"),
+        ("operation", "operation_id", "not-an-operation-id"),
+        ("operation", "image_id", host_helper.RECOVERY_PRODUCTION_BASELINE["image_id"]),
+        ("operation", "archive_size", True),
+        ("operation", "original_record.image_id", "sha256:" + "0" * 64),
+        ("operation", "backup.verified", False),
+        ("operation", "unexpected", "unreviewed"),
+        ("current", "status", "starting"),
+        ("current", "transport", "github_release"),
+        ("current", "schema_version", 12),
+        ("current", "unexpected", "unreviewed"),
+    ],
+)
+def test_temporary_recovery_baseline_rejects_record_drift(
+    target: str, field: str, invalid: object
+) -> None:
+    current, operation, manifest, approval, manifest_raw = copy.deepcopy(
+        _temporary_recovery_documents()
+    )
+    record = {
+        "manifest": manifest,
+        "manifest_image": manifest["image"],
+        "approval": approval,
+        "operation": operation,
+        "current": current,
+    }[target]
+    target_record = record
+    target_field = field
+    if "." in field:
+        parent, target_field = field.split(".", 1)
+        target_record = record[parent]
+    target_record[target_field] = invalid
+    if target == "manifest" or target == "manifest_image":
+        manifest_raw = json.dumps(
+            manifest, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+        approval["manifest_sha256"] = hashlib.sha256(manifest_raw).hexdigest()
+        operation["manifest_sha256"] = approval["manifest_sha256"]
+        current["manifest_sha256"] = approval["manifest_sha256"]
+
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._temporary_recovery_documents_match(
+            current,
+            operation,
+            manifest,
+            approval,
+            manifest_raw,
+            image_id=manifest["image"]["image_id"],  # type: ignore[index]
+            image_revision=host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+            container_id="b" * 64,
+        )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [b'{"phase":"one","phase":"two"}', b'{"startup_floor_kib":NaN}', b"[]"],
+)
+def test_temporary_recovery_json_rejects_duplicate_nonfinite_and_nonobject(raw: bytes) -> None:
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._strict_json_object(raw)
+
+
+def test_temporary_recovery_reader_rejects_unapproved_paths() -> None:
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._read_temporary_recovery_json(
+            host_helper.PRODUCTION_STATE_ROOT / "unapproved.json", 128
+        )
+
+
+def test_temporary_recovery_identity_requires_approved_image_refs_and_platform(monkeypatch) -> None:
+    baseline = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    expected_rows = [
+        f"{baseline['image_id']}|linux|amd64|{host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION}"
+    ] * 3 + [
+        f"{host_helper.RECOVERY_PRODUCTION_BASELINE['image_id']}|linux|amd64|"
+        f"{host_helper.RECOVERY_PRODUCTION_BASELINE['revision']}"
+    ]
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        assert kwargs["monitor_production"] is False
+        return CompletedProcess(command, 0, ("\n".join(expected_rows) + "\n").encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+    assert host_helper._temporary_recovery_image_identity_matches(baseline)
+    assert commands[0][1:4] == ["image", "inspect", "--format"]
+    assert "exec" not in commands[0]
+
+    expected_rows[0] = expected_rows[0].replace("|linux|amd64|", "|linux|arm64|")
+    assert not host_helper._temporary_recovery_image_identity_matches(baseline)
+    expected_rows[0] = expected_rows[0].replace("|linux|arm64|", "|linux|amd64|")
+    expected_rows[2] = expected_rows[2].replace("sha256:" + "d" * 64, "sha256:" + "e" * 64)
+    assert not host_helper._temporary_recovery_image_identity_matches(baseline)
+    expected_rows[2] = expected_rows[2].replace("sha256:" + "e" * 64, "sha256:" + "d" * 64)
+    expected_rows[3] = expected_rows[3].replace(
+        host_helper.RECOVERY_PRODUCTION_BASELINE["image_id"], "sha256:" + "e" * 64
+    )
+    assert not host_helper._temporary_recovery_image_identity_matches(baseline)
+
+
+def test_temporary_recovery_recurring_guard_rejects_operation_or_manifest_drift(
+    monkeypatch,
+) -> None:
+    baseline = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    changed = dict(baseline)
+    changed["operation_id"] = "c" * 32
+    monkeypatch.setattr(host_helper, "ACTIVE_PRODUCTION_BASELINE", baseline)
+    monkeypatch.setattr(host_helper, "_production_identity", lambda: changed)
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._check_production([0], startup=True)
+
+
+def test_temporary_recovery_production_identity_checks_loopback_and_readiness(monkeypatch) -> None:
+    documents = _temporary_recovery_documents()
+    current, operation, manifest, approval, manifest_raw = documents
+    image = manifest["image"]
+    records = {
+        host_helper.PRODUCTION_CURRENT_RECORD: (current, b"current"),
+        host_helper.TEMPORARY_RECOVERY_OPERATION_PATH: (operation, b"operation"),
+        host_helper.TEMPORARY_RECOVERY_MANIFEST_PATH: (manifest, manifest_raw),
+        host_helper.TEMPORARY_RECOVERY_APPROVAL_PATH: (approval, b"approval"),
+    }
+
+    def read_json(path, _maximum):
+        return records[path]
+
+    monkeypatch.setattr(host_helper, "_read_temporary_recovery_json", read_json)
+    monkeypatch.setattr(
+        host_helper, "_temporary_recovery_image_identity_matches", lambda _base: True
+    )
+    baseline_for_docker = {
+        "image_id": image["image_id"],
+        "revision": host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+    }
+    _mock_production_docker_identity(monkeypatch, baseline_for_docker)
+
+    baseline = host_helper._production_identity()
+    assert baseline["operation_kind"] == "temporary_recovery"
+    assert baseline["operation_id"] == operation["operation_id"]
+    assert host_helper._production_readiness_matches(
+        baseline,
+        {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+    )
+    assert not host_helper._production_readiness_matches(
+        baseline,
+        {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": True, "status": "ready"},
+        },
+    )
+
+    _mock_production_docker_identity(
+        monkeypatch,
+        baseline_for_docker,
+        port_bindings={"8000/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8000"}]},  # noqa: S104
+    )
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._production_identity()
+
+
+def test_mcp_receipt_accepts_candidate_recovery_and_temporary_baselines() -> None:
+    assert controller._validated_production_baseline(dict(controller.PRODUCTION_BASELINE)) == (
+        controller.PRODUCTION_BASELINE
+    )
+    recovery = _recovery_baseline_receipt()
+    assert controller._validated_production_baseline(recovery) == recovery
+    temporary = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    assert {
+        key: temporary[key] for key in controller.TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS
+    } == controller.TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS
+    assert {
+        key: temporary[key] for key in host_helper.TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS
+    } == host_helper.TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS
+    assert controller._validated_production_baseline(temporary) == temporary
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("operation_kind", "recovery"),
+        ("phase", "temporary_app_ready"),
+        ("start_admission_allowed", False),
+        ("source_manifest_sha256", "0" * 64),
+        ("source_context_sha256", "0" * 64),
+        ("base_revision", "0" * 40),
+        ("overlay_sha256", "0" * 64),
+        ("schema_version", True),
+        ("assistant_enabled", 0),
+        ("loopback_only", False),
+        ("operation_id", "not-an-operation-id"),
+        ("image_id", controller.PRODUCTION_BASELINE["image_id"]),
+        ("image_ref", "signal-ledger:sha-5ad"),
+        ("archive_sha256", "not-a-digest"),
+        ("archive_size", True),
+        ("manifest_sha256", "not-a-digest"),
+        ("startup_floor_kib", controller.START_RESERVE_KIB - 1),
+        ("container_id", "short-id"),
+        ("container_revision", controller.PRODUCTION_BASELINE["revision"]),
+        ("original_assistant_rollout_mode", "invited-ish"),
+        ("original_assistant_rollout_mode", "disabled"),
+        ("original_assistant_rollout_mode", "owner_canary"),
+    ],
+)
+def test_mcp_receipt_rejects_malformed_temporary_baseline(field: str, invalid: object) -> None:
+    value = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    value[field] = invalid
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline(value)
+
+
+def test_mcp_receipt_rejects_unknown_temporary_baseline_field() -> None:
+    value = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    value["role"] = "recovery"
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline(value)
+
+
+def test_mcp_v2_receipt_accepts_only_exact_temporary_production_baseline() -> None:
+    temporary = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+
+    assert controller._validated_v2_production_baseline(temporary) == temporary
+    assert controller._validated_v2_production_baseline(dict(controller.PRODUCTION_BASELINE)) == (
+        controller.PRODUCTION_BASELINE
+    )
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_v2_production_baseline(_recovery_baseline_receipt())
+
+    changed = dict(temporary)
+    changed["schema_version"] = 12
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_v2_production_baseline(changed)
+
+
+def test_v2_pair_accepts_fully_validated_temporary_baseline_before_assets(monkeypatch) -> None:
+    baseline = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    events: list[str] = []
+
+    def verify_installed_source(_revision: str, _pair: str, **kwargs: object) -> dict[str, str]:
+        assert kwargs == {"helper_source_contract": host_helper.HOTFIX_CONTRACT}
+        events.append("installed_source")
+        return {"host_helper.py": "a" * 64}
+
+    def verify_helper_source_pull_request(revision: str) -> None:
+        assert revision == "c" * 40
+        events.append("helper_pr")
+
+    def verify_hotfix_pull_request() -> None:
+        events.append("candidate_pr")
+
+    monkeypatch.setattr(host_helper, "_verify_installed_source", verify_installed_source)
+    monkeypatch.setattr(
+        host_helper, "_verify_helper_source_pull_request", verify_helper_source_pull_request
+    )
+    monkeypatch.setattr(host_helper, "_verify_hotfix_pull_request", verify_hotfix_pull_request)
+    monkeypatch.setattr(host_helper, "_production_container", lambda: baseline)
+    monkeypatch.setattr(
+        host_helper,
+        "_readiness",
+        lambda: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+    )
+    monkeypatch.setattr(host_helper, "_production_loopback_matches", lambda: True)
+
+    with pytest.raises(host_helper.RehearsalError, match="candidate_image_id_invalid"):
+        host_helper._run_pair_v2(
+            {
+                "repository": host_helper.REPOSITORY,
+                "pull_number": host_helper.HELPER_SOURCE_PR_NUMBER,
+                "reviewed_head_sha": "c" * 40,
+                "pair_manifest_sha256": "d" * 64,
+            }
+        )
+    assert events == ["installed_source", "helper_pr", "candidate_pr"]
+
+
+def test_v2_pair_still_rejects_registered_recovery_as_production_baseline(monkeypatch) -> None:
+    monkeypatch.setattr(host_helper, "_verify_installed_source", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(host_helper, "_verify_helper_source_pull_request", lambda _revision: None)
+    monkeypatch.setattr(host_helper, "_verify_hotfix_pull_request", lambda: None)
+    monkeypatch.setattr(host_helper, "_production_container", lambda: _recovery_baseline_receipt())
+
+    with pytest.raises(host_helper.RehearsalError, match="hotfix_production_baseline_mismatch"):
+        host_helper._run_pair_v2(
+            {
+                "repository": host_helper.REPOSITORY,
+                "pull_number": host_helper.HELPER_SOURCE_PR_NUMBER,
+                "reviewed_head_sha": "c" * 40,
+                "pair_manifest_sha256": "d" * 64,
+            }
+        )
+
+
+def test_hotfix_guard_accepts_validated_temporary_baseline(monkeypatch) -> None:
+    baseline = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    monkeypatch.setattr(host_helper, "HOTFIX_OPERATION_ACTIVE", True)
+    monkeypatch.setattr(host_helper, "ACTIVE_PRODUCTION_BASELINE", baseline)
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+    monkeypatch.setattr(host_helper, "_production_identity", lambda: baseline)
+    monkeypatch.setattr(
+        host_helper,
+        "_readiness",
+        lambda: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+    )
+    monkeypatch.setattr(host_helper, "_production_loopback_matches", lambda: True)
+    samples = [0]
+
+    assert host_helper._check_production(samples, startup=True) == host_helper.START_RESERVE_KIB
+    assert samples == [1]
 
 
 def test_mcp_receipt_accepts_exact_candidate_and_recovery_production_baselines() -> None:

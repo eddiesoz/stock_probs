@@ -60,6 +60,32 @@ KNOWN_INTERMEDIATE_INSTALL_MANIFEST = {
     "helper_source_contract": HELPER_SOURCE_CONTRACT,
     "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
 }
+# Exact helper installation observed on PR11 head 67723d36 before the source-only
+# helper refresh. Keep this state separate from the older cebe intermediate above:
+# both receipts are valid rollback inputs, but they identify different source bundles.
+KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256 = (
+    "85ea6568514188b37c6b6f7b93dc902cf7003836b60983255e4a0337fc575371"
+)
+KNOWN_INSTALLED_67723_REVIEWED_HEAD_SHA = "67723d36ea03b0628e59007af20c2910a64d06fb"
+KNOWN_INSTALLED_67723_PAIR_MANIFEST_SHA256 = (
+    "60f1288183685f104452b1fc1f51a823a31a09501f3807fe7023d988f950335e"
+)
+KNOWN_INSTALLED_67723_INSTALLED_FILES = {
+    "host_helper.py": "c2929e6d129cc56eeb21d3dcec7be484345e9d39ff1ed910dcb16901d62faf76",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_67723_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_67723_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_67723_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_67723_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -429,6 +455,15 @@ def _prepare_previous_production_helper(
         current_digest = hashlib.sha256(current).hexdigest()
         if current_digest == KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256:
             _require_installed_manifest(KNOWN_INTERMEDIATE_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256:
+            # Source-only upgrades can retain identical helper bytes while their
+            # installed receipt still binds the previous reviewed source bundle.
+            # Accept only the exact known installed receipt or the exact candidate
+            # receipt for an already-completed retry.
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                _require_installed_manifest(KNOWN_INSTALLED_67723_INSTALL_MANIFEST)
         elif current_digest == candidate_digest:
             _require_installed_manifest(candidate_manifest_fields)
         elif current_digest != PREVIOUS_PRODUCTION_HELPER_SHA256:

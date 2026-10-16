@@ -9,6 +9,15 @@ every nested Compose/Docker wait; require the unchanged 512 MiB startup floor be
 the rehearsal. Source/mock checks do not prove installed helper behavior or authorize an unbuilt
 temporary image. Preserve uncertainty and the original release/recovery identities.
 
+For the PR #11 follow-on, accept the `temporary_recovery` consumer baseline only with the exact
+6359 manifest/context/image and matching approval, operation, current and phase records, including
+the disabled loopback identity and verified backup. Keep the 5ad release and A9 recovery identities
+protected. For this follow-on, use the exact known 67723 installed receipt and sidecar pins; preserve the
+separately recognized older receipt and exact completed-candidate retry;
+retain the immutable `57b88adc…` original helper backup and restore the exact pre-install helper and
+receipt together after failure. Source/mock passes and build preparation do not establish installed
+host behavior or transition acceptance.
+
 
 For the R121 local build repair, preserve uncertain historical failure facts. Release a failed
 local reservation only through the reviewed typed operation with fresh setup-bound stopped

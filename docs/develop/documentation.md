@@ -673,6 +673,12 @@ schema-12 pair seed; an exact image allowlist is a guard, not evidence that the 
 production or met the resource floors. Keep source checks, local disposable compatibility, signed
 backup verification and actual-host observations separate in the [E19 ledger](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
 
+For the current PR #11 follow-on, coverage also spans the exact 6359 temporary-recovery consumer
+and the known 67723 installed-helper receipt. Update `AGENTS.md`, this page, testing, operations and
+the MVP ledger together. Keep the retained 5ad/A9 identities, immutable original helper backup,
+build-only image result, source/mock QA, actual-host preflight and restoration as separate facts; a
+build does not establish temporary-image runtime or host acceptance. See the [PR #11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-temporary-recovery-consumer-and-installer-receipt-checkpoint-2026-10-16).
+
 The lazy-provider startup repair is documented in the API, testing and operations guides and
 [E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint). Preserve
 its local import-memory and focused QA scope separately from the failed host startup guard.

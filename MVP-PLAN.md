@@ -8667,3 +8667,81 @@ uninstalled. Fresh helper-revision packaging, installed-helper and actual-host n
 pair/rollback checks, current canonical and complete browser acceptance, deployment, and owner
 canary remain open. No candidate deployment, merge, resize, or email occurred. The 1 GB host,
 existing backups, and US$15 monthly total cap remain unchanged.
+
+
+### R-ASTRA-121 PR11 temporary-recovery consumer and installer-receipt checkpoint (2026-10-16)
+
+At worktree base `67723d36ea03b0628e59007af20c2910a64d06fb`, the current temporary-recovery
+consumer port is source-bound to `tools/deploy_mcp/pr_rehearsal.py` SHA-256
+`b986acd496276857e4107794b3d8a61331cecddffe8332f1f95ac69844d6662b` and
+`scripts/pr_rehearsal_host_helper.py` SHA-256
+`383719bfd2700adcc76e662b15774ca3e32dd87f61b77a9fe65ff2458f6f6a8c`. Independent consumer QA
+**Passed** 390 selected cases, with one direct-Docker case deselected and 29 stable source/test pins;
+receipt `/var/tmp/r12r/pr11-temporary-consumer-qa-20261016T170415Z/qa-review.txt`, SHA-256
+`049e9f2c84309a66347338c54a812239fab43374f2069c93f32dfa5c4fa18878`. It covers source/mock
+behavior only. The fixed `temporary_recovery` identity is bound to 6359 manifest SHA-256
+`9443700f5248606c1f50a6e4e1bb2a20782a44aaa06fe62ffc3de2d17c4c2994`, source context SHA-256
+`964d7ca16ac1733c031780fc5dd3c271461489cc58cb9a653371cb060b26baa9`, six overlay files, and the
+existing 5ad release/A9 recovery identities. Approval, manifest, operation, current and phase
+records remain distinct and must agree with the disabled loopback runtime and verified backup.
+
+The task-owned context was prepared at `/var/tmp/r12r/temporary6359-context-prepare-f084a6b1-edcd-4b9d-9688-e8593be2ea3b`; the `linux/amd64` image build launched at
+`2026-10-16T17:25:07Z` as
+`signal-ledger-temporary6359-build-f084a6b1.service`. At that launch checkpoint its terminal
+result was **Pending**; no temporary image or host acceptance had then been established. An earlier actual-host attempt
+**Failed** at preflight with `467908 KiB < 524288 KiB`. Independent review of calls 01–09
+**Passed** its bounded receipt scope and confirmed calls 05–09 restored the exact 5ad image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13, invited,
+ready and loopback-only. Review receipt `/var/tmp/r12r/maintenance-pair-actual-host-review-20261016T164131Z-dd9ef657/independent-review-receipt.json`, SHA-256
+`438be5da1476d51f3a448f44616e537ef93d121f23aaea3913e2839e7fc7e4c6`; caller terminal SHA-256
+`86adb4d6a664347bf2d1974e1b85d1f7251a6b379850b2c10592285c6cec627c`; actual unit terminal
+`/var/tmp/r12r/actual-host-67723-parent-8eb6d336-0075-4396-bc63-48b48062a97e/actual-unit-terminal.json`,
+SHA-256 `19cc7467bda617f5a7f11731f7e92fe58f349508f8fc7f0abdd56f1000986917`. No new host attempt or
+temporary transition occurred.
+
+#### Supplemental 6359 image build result (2026-10-16)
+
+The task-owned `linux/amd64` build **Passed for build identity only**: terminal exit 0 from
+`2026-10-16T17:25:07Z` to `17:29:41Z`, image
+`sha256:893788c137d1956f590c9bee0ee078e06af52ad0a52a47b870bcc0f4c169fe6b`, context SHA-256
+`964d7ca16ac1733c031780fc5dd3c271461489cc58cb9a653371cb060b26baa9`, revision label
+`63597953c9d1ab387563dadfe705b78a2861a426`, and source head
+`f6a51d5c821e6b1ab7974a94f4ff795da10130bc`. The official build receipt is
+`/home/james/.local/state/stock-probs/r120-buildkit-v1/build-runs/f6a51d5c821e6b1ab7974a94f4ff795da10130bc/536cccfceaa54296af93acbed6f6837184270281079c615ad880dac75856ffd4/build-receipt.json`,
+SHA-256 `8f0bd002398c74920e8ff52c305b6ac0d146ae2b6e52062b5bf16ee67115bb41`. Parent-captured unit terminal
+`/var/tmp/r12r/temporary6359-context-prepare-f084a6b1-edcd-4b9d-9688-e8593be2ea3b/parent-unit-terminal.json`,
+SHA-256 `eb8a31b06ec4dcca332aede38c6d1dae6b40c52ba0da77cb25dff22925978777`, records the exact
+`ExecStart`/status, `MainPID=0`, and an empty cgroup after exit. Independent build review, local
+runtime, archive, root-manifest, and activation checks remain **Pending**. This build does not revise
+the earlier failed host preflight or establish a host transition; no new host attempt, deployment,
+merge, resize, or email occurred.
+
+For the PR #11 bootstrap upgrade, builder and final independent source/mock QA each **Passed** 44
+selected tests with 339 deselected. The final independent run had 0 skips, 2 warnings, 57 unchanged
+source/test/import bindings, and Ruff, security, format and diff checks **Passed**; it explicitly
+deselected the direct-Docker test. Its receipt is
+`/var/tmp/r12r/pr11-known-677-independent-qa-20261016T1722Z/qa-review.txt`, SHA-256
+`41ab9e1b9416c9dfe94df32c1f729ba4b5c9712f56fdaa53c816739640ef8692`; the builder completion
+receipt is `/var/tmp/r12r/pr11-known-67723-source-upgrade-2f3fc7e7-b004-4e6f-a1d4-41d5747752c8/builder-completion-receipt.json`, SHA-256
+`02519aa0986d78f5c9e10afd84b27eb29f48bfcd469098a6183220ba845d2dd8`. A corrected report
+clarifies that the earlier unfiltered 391-case suite included a non-skipped Docker fixture; the
+previous blanket no-Docker claim is not accepted. An earlier 32-input QA run omitted conftest; the
+corrected 57-input result is separate and does not retroactively repair it. QA confirmed the exact
+known installed state at head `67723d36ea03b0628e59007af20c2910a64d06fb`, pair manifest SHA-256
+`60f1288183685f104452b1fc1f51a823a31a09501f3807fe7023d988f950335e`, helper SHA-256
+`85ea6568514188b37c6b6f7b93dc902cf7003836b60983255e4a0337fc575371`, and four sidecar pins. It
+retains immutable original helper backup SHA-256
+`57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915` and compensates a failed
+upgrade to the exact pre-install helper and receipt; the earlier `cebe3870a62d3d433baaeba45845cf59ebb1e9bc`
+receipt remains a distinct recognized state. Root-owned reads, host install, and real backup bytes
+remain **Unavailable**.
+
+The latest F6 full browser aggregate **Failed** at 195 passed, two failed and three expected skips;
+new fixture-readiness/navigation timeouts remain **Unproven**. Raw axe attachment results are
+**Unavailable**: 22 of 24 expected attachments are retained, with two missing. Independent review receipt
+`/var/tmp/r12r/f6-full200-after-host-prep-7084c40c-9d93-4f31-88d7-9417cca4ddd2/independent-actual-run-review-v3.json`, SHA-256
+`3a4e93ec29dc9161036d0e38b09c99313f8a1332a181d55131e71fd015a97503`. No further browser retry
+was authorized. These source/mock results and the failed preflight do not establish helper
+installation, temporary-image behavior, combined 1 GB resources, rollback, deployment, release, or
+email acceptance. The 1 GB host, existing backups, and US$15 monthly cap are unchanged; no merge,
+resize, deployment, rollout, or email occurred.
