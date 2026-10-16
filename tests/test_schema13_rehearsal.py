@@ -2002,21 +2002,48 @@ def test_deployed_baseline_flag_is_rejected_outside_full_rehearsal(
     assert "only valid for a full rehearsal" in failure["reason"]
 
 
+def test_reviewed_candidate_build_receipt_path_and_pins_are_exact() -> None:
+    assert rehearsal.HOTFIX_CANDIDATE_REVISION == "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
+    assert rehearsal.HOTFIX_CANDIDATE_IMAGE_ID == (
+        "sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196"
+    )
+    assert rehearsal.HOTFIX_CANDIDATE_CONTEXT_SHA256 == (
+        "a332dca5d27f4bb6fda4673e826096158c038e218f6291f01069951378c4fbae"
+    )
+    assert rehearsal.HOTFIX_BUILD_RECEIPT_SHA256 == (
+        "d3529f24499ea2f3b7921055a4308be019798b7be083fc6e75f1ad94b205b0b5"
+    )
+    assert (
+        Path(
+            "/home/james/.local/state/stock-probs/r120-buildkit-v1/build-runs/"
+            "f6a51d5c821e6b1ab7974a94f4ff795da10130bc/"
+            "5962e1c34bd3f66db6d3bed981d8ed75cccbddef5043e3d916b3e69b4242accf/"
+            "build-receipt.json"
+        )
+        == rehearsal.HOTFIX_BUILD_RECEIPT_PATH
+    )
+
+
 def test_fixed_hotfix_build_receipt_accepts_only_the_pinned_image_and_context(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     receipt = {
-        "status": "built",
-        "build_kind": "local",
-        "candidate_role": "current",
-        "context_sha256": rehearsal.HOTFIX_CANDIDATE_CONTEXT_SHA256,
-        "image_id": rehearsal.HOTFIX_CANDIDATE_IMAGE_ID,
-        "platform": "linux/amd64",
-        "revision_label": rehearsal.HOTFIX_CANDIDATE_REVISION,
         "schema": "r120-bounded-image-build-v1",
-        "source_head": rehearsal.HOTFIX_CANDIDATE_REVISION,
+        "status": "built",
         "stage": "complete",
+        "build_exit_code": 0,
+        "candidate_role": "current",
+        "source_branch": "codex/signal-ledger-assistant-fix",
+        "source_head": rehearsal.HOTFIX_CANDIDATE_REVISION,
+        "revision_label": rehearsal.HOTFIX_CANDIDATE_REVISION,
+        "image_platform": "linux/amd64",
+        "image_id": rehearsal.HOTFIX_CANDIDATE_IMAGE_ID,
+        "context_sha256": rehearsal.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "setup_receipt_sha256": (
+            "291ca40fc11266bac55fb095a30bcc17e9f0baf49530f72d5f703b300f0d7ceb"
+        ),
+        "post_build_root_identity_verified": True,
     }
     raw = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
     receipt_path = tmp_path / "build-receipt.json"
@@ -2025,9 +2052,66 @@ def test_fixed_hotfix_build_receipt_accepts_only_the_pinned_image_and_context(
     monkeypatch.setattr(rehearsal, "HOTFIX_BUILD_RECEIPT_PATH", receipt_path)
     monkeypatch.setattr(rehearsal, "HOTFIX_BUILD_RECEIPT_SHA256", hashlib.sha256(raw).hexdigest())
 
-    assert rehearsal._read_fixed_hotfix_build_receipt()["image_id"] == (
-        rehearsal.HOTFIX_CANDIDATE_IMAGE_ID
-    )
+    accepted = rehearsal._read_fixed_hotfix_build_receipt()
+    assert accepted["image_id"] == rehearsal.HOTFIX_CANDIDATE_IMAGE_ID
+    assert accepted["source_head"] == rehearsal.HOTFIX_CANDIDATE_REVISION
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("schema", "unexpected-schema"),
+        ("status", "running"),
+        ("stage", "failed"),
+        ("build_exit_code", 1),
+        ("build_exit_code", False),
+        ("candidate_role", "recovery"),
+        ("source_branch", "unreviewed"),
+        ("source_head", "0" * 40),
+        ("revision_label", "0" * 40),
+        ("image_platform", "linux/arm64"),
+        ("image_id", "sha256:" + "0" * 64),
+        ("context_sha256", "0" * 64),
+        ("setup_receipt_sha256", "0" * 64),
+        ("post_build_root_identity_verified", False),
+    ],
+)
+def test_fixed_hotfix_build_receipt_rejects_noncurrent_or_incomplete_producer_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: object,
+) -> None:
+    receipt = {
+        "schema": "r120-bounded-image-build-v1",
+        "status": "built",
+        "stage": "complete",
+        "build_exit_code": 0,
+        "candidate_role": "current",
+        "source_branch": "codex/signal-ledger-assistant-fix",
+        "source_head": rehearsal.HOTFIX_CANDIDATE_REVISION,
+        "revision_label": rehearsal.HOTFIX_CANDIDATE_REVISION,
+        "image_platform": "linux/amd64",
+        "image_id": rehearsal.HOTFIX_CANDIDATE_IMAGE_ID,
+        "context_sha256": rehearsal.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "setup_receipt_sha256": (
+            "291ca40fc11266bac55fb095a30bcc17e9f0baf49530f72d5f703b300f0d7ceb"
+        ),
+        "post_build_root_identity_verified": True,
+    }
+    receipt[field] = replacement
+    raw = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+    receipt_path = tmp_path / "build-receipt.json"
+    receipt_path.write_bytes(raw)
+    receipt_path.chmod(0o600)
+    monkeypatch.setattr(rehearsal, "HOTFIX_BUILD_RECEIPT_PATH", receipt_path)
+    monkeypatch.setattr(rehearsal, "HOTFIX_BUILD_RECEIPT_SHA256", hashlib.sha256(raw).hexdigest())
+
+    with pytest.raises(
+        rehearsal.RehearsalError,
+        match="accepted_hotfix_build_receipt_identity_mismatch",
+    ):
+        rehearsal._read_fixed_hotfix_build_receipt()
 
 
 def test_fixed_hotfix_recovery_archive_requires_exact_digest_and_size(
@@ -2069,7 +2153,7 @@ def test_prepare_schema13_hotfix_pair_emits_explicit_no_migration_contract(
     )
     recovery_path.write_bytes(recovery_archive)
     recovery_path.chmod(0o600)
-    candidate_archive = b"pinned d282 source image"
+    candidate_archive = b"pinned reviewed source image"
     receipt = {"image_id": rehearsal.HOTFIX_CANDIDATE_IMAGE_ID}
     monkeypatch.setattr(rehearsal, "_verify_local_pr_head", lambda *_args: None)
     verified_pr_numbers: list[int] = []

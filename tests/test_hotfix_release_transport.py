@@ -246,7 +246,7 @@ def test_snapshot_rejects_source_mutation_during_stream_copy(
     assert changed
 
 
-def test_candidate_publication_uploads_only_the_reviewed_d282_archive(
+def test_candidate_publication_uploads_only_the_reviewed_candidate_archive(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     root, revision, candidate, _ = _package(tmp_path, monkeypatch)
@@ -537,6 +537,37 @@ def test_normal_v1_release_locator_is_unchanged() -> None:
     assert (
         transport._expected_manifest("a" * 40)["candidate"]["revision"]
         == transport.HOTFIX_CANDIDATE_REVISION
+    )
+
+
+def test_reviewed_candidate_and_original_5ad_recovery_pins_are_exact() -> None:
+    assert transport.HOTFIX_CANDIDATE_REVISION == "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
+    assert transport.HOTFIX_CANDIDATE_IMAGE_ID == (
+        "sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196"
+    )
+    assert transport.HOTFIX_CANDIDATE_CONTEXT_SHA256 == (
+        "a332dca5d27f4bb6fda4673e826096158c038e218f6291f01069951378c4fbae"
+    )
+    assert transport.HOTFIX_BUILD_RECEIPT_SHA256 == (
+        "d3529f24499ea2f3b7921055a4308be019798b7be083fc6e75f1ad94b205b0b5"
+    )
+    assert transport.HOTFIX_CANDIDATE_ARCHIVE_SHA256 == (
+        "c0e9d0fe89e53fef4c8f3173a5f2403d32a32f69b7591bc89e7d7ae129199f82"
+    )
+    assert transport.HOTFIX_CANDIDATE_ARCHIVE_SIZE == 202_160_947
+    assert transport.RELEASE_SCANNER_SHA256 == (
+        "5f1ac4b773f2ddf8866589cb2cb59bec8fce6097f20986bbf8d6de0c96c45085"
+    )
+    assert transport.PRODUCTION_PREDECESSOR_REVISION == "5ad2c3fddfce5a5a631b72cd832a53f24757c44a"
+    assert transport.PRODUCTION_PREDECESSOR_IMAGE_ID == (
+        "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1"
+    )
+    assert transport.PRODUCTION_PREDECESSOR_ARCHIVE_SHA256 == (
+        "99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5"
+    )
+    assert transport.PRODUCTION_PREDECESSOR_ARCHIVE_SIZE == 202_156_038
+    assert hashlib.sha256(transport.SCANNER_PATH.read_bytes()).hexdigest() == (
+        transport.RELEASE_SCANNER_SHA256
     )
 
 

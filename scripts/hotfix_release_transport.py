@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish the fixed D282 image and helper-bound pair as separate immutable releases."""
+"""Publish the fixed reviewed candidate and helper-bound pair as immutable releases."""
 
 from __future__ import annotations
 
@@ -33,14 +33,14 @@ REVISION_PATTERN = re.compile(r"[0-9a-f]{40}")
 DIGEST_PATTERN = re.compile(r"[0-9a-f]{64}")
 IMAGE_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 
-HOTFIX_CANDIDATE_REVISION = "d282d696937f279ca4af4c38341f82a8af7afb6d"
+HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
 HOTFIX_CANDIDATE_IMAGE_ID = (
-    "sha256:ba607be79055ee3a09d916e51788135590e7e0ead8f0922aa78128c478644c03"
+    "sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196"
 )
-HOTFIX_CANDIDATE_CONTEXT_SHA256 = "c2135215d9a96c37841190ff611b49d48e7a08ca88ad073ebcf1973a7abc86a9"
-HOTFIX_BUILD_RECEIPT_SHA256 = "bb808883d862aafe8851bfeffc75fa3140866e72e770420699db0f11a4377608"
-HOTFIX_CANDIDATE_ARCHIVE_SHA256 = "6b30af17fadf8ffd5af104c7f557c767edee1200551b8f8ef7dc3e932cf7acc7"
-HOTFIX_CANDIDATE_ARCHIVE_SIZE = 202_159_985
+HOTFIX_CANDIDATE_CONTEXT_SHA256 = "a332dca5d27f4bb6fda4673e826096158c038e218f6291f01069951378c4fbae"
+HOTFIX_BUILD_RECEIPT_SHA256 = "d3529f24499ea2f3b7921055a4308be019798b7be083fc6e75f1ad94b205b0b5"
+HOTFIX_CANDIDATE_ARCHIVE_SHA256 = "c0e9d0fe89e53fef4c8f3173a5f2403d32a32f69b7591bc89e7d7ae129199f82"
+HOTFIX_CANDIDATE_ARCHIVE_SIZE = 202_160_947
 PRODUCTION_PREDECESSOR_REVISION = "5ad2c3fddfce5a5a631b72cd832a53f24757c44a"
 PRODUCTION_PREDECESSOR_IMAGE_ID = (
     "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1"
@@ -59,7 +59,7 @@ HOTFIX_EMPTY_OVERLAY_SHA256 = hashlib.sha256(b"[]").hexdigest()
 HOTFIX_PAIR_CONTRACT = "schema13_same_schema_hotfix_v1"
 SCANNER_PATH = ROOT / "scripts" / "verify-release-archive.py"
 # PR12 is the reviewed scanner that inspects every archive member and Docker config metadata.
-RELEASE_SCANNER_SHA256 = "314179e4b41d34c0f060867c1868b36b13528cd1567da938f5f72b401b617163"
+RELEASE_SCANNER_SHA256 = "5f1ac4b773f2ddf8866589cb2cb59bec8fce6097f20986bbf8d6de0c96c45085"
 DOWNLOAD_TIMEOUT_SECONDS = 180
 COMMAND_OUTPUT_LIMIT = 16_384
 
@@ -83,7 +83,7 @@ class Archive:
 
 @dataclass(frozen=True)
 class Package:
-    """A validated pair package prepared from the frozen D282 and 5ad images."""
+    """A validated pair package prepared from the reviewed candidate and original 5ad images."""
 
     root: Path
     helper_revision: str
@@ -285,7 +285,7 @@ def _validate_package_root(root: Path) -> None:
 
 
 def validate_package(root: Path, helper_revision: str) -> Package:
-    """Verify fixed D282/5ad archive bytes and all v2 publication/source identities."""
+    """Verify fixed candidate/5ad archive bytes and all v2 publication/source identities."""
 
     _validate_package_root(root)
     if not _valid(REVISION_PATTERN, helper_revision):
@@ -890,8 +890,8 @@ def _publish_candidate(package: Package) -> dict[str, object]:
     _create_release(
         tag,
         HOTFIX_CANDIDATE_REVISION,
-        "Signal Ledger reviewed assistant candidate D282",
-        "Publishes the exact reviewed D282 Linux amd64 candidate archive.",
+        "Signal Ledger reviewed assistant candidate",
+        "Publishes the exact reviewed Linux amd64 candidate archive.",
         package.candidate.path,
     )
     _assert_release_asset(
@@ -935,7 +935,7 @@ def _publish_pair(package: Package) -> dict[str, object]:
         pair_tag,
         package.helper_revision,
         f"Signal Ledger reviewed hotfix pair {package.helper_revision[:12]}",
-        "Binds the immutable D282 assistant candidate to the original 5ad production image.",
+        "Binds the immutable reviewed assistant candidate to the original 5ad production image.",
         package.manifest_path,
     )
     _assert_pair_release(pair_tag, package)

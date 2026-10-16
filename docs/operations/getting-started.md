@@ -1098,9 +1098,17 @@ verification, rendered owner workspace, and functional invited-user acceptance r
 **Unavailable**; the current local application is untouched.
 
 
-The free OpenCode restoration candidate requires a freshly bound executable scanner pin, backed
-by the exact official Bun public-span comparison. Verify both final archives with the reviewed
-checker before staging the PR9 pair; preserve earlier scanner failures and image identities.
+The current free-OpenCode candidate is F6 head
+`f6a51d5c821e6b1ab7974a94f4ff795da10130bc`, image
+`sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196`. Its scanner pins the
+exact compiled binary and four independently verified public spans. Preserve the initial scanner
+failure and the independent scanner environment-supplement **Fail**: the later `0022` rerun covered
+only tests, not archive scans. Candidate archive SHA-256 is
+`c0e9d0fe89e53fef4c8f3173a5f2403d32a32f69b7591bc89e7d7ae129199f82`; 5ad recovery archive SHA-256
+is `99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5`. See the [F6
+ledger](../../MVP-PLAN.md#f6-pr9-candidate-build-archive-scan-and-parity-checkpoint-2026-10-16).
+These local source/provenance checks do not establish publication, installation, a host pair, or
+release acceptance.
 
 
 For the current PR #9 free-Zen repair, the host rehearsal's live production guard is pinned to
@@ -1155,6 +1163,15 @@ post-call inspect showed the original ready, invited, enabled, loopback-only pro
 receipt creation time is not the exact tool-call time. No native/recovery phase or deployment
 acceptance follows. See [E24](../../MVP-PLAN.md#r-astra-121-e24-host-reserve-preflight).
 
+Those package and selected-test results are historical and do not bind the later PR11/F6 helper.
+The current five-consumer rebind has separate 50-test builder and 72-test independent results.
+An independent source-backed supplement confirmed all five candidate/recovery identity tuples;
+preserve the original contradictory false summary field and note its generator cause is
+unavailable. A later seven-test follow-up has passing JUnit/stdout but its collector's subprocess
+exit is unavailable, so it is not an added accepted count. No helper was installed and no current
+host pair, rollback, deployment, or release result followed. See the [F6 helper
+checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-helper-rebind-and-focused-f6-browser-checkpoint-2026-10-16).
+
 E25 records a source-only proposal for maintenance on the exact existing 5ad schema-13 release:
 disable the assistant using same-image Compose with `--no-build --force-recreate --pull never`,
 preserving the exact original image, volume, schema, Compose definition, and loopback binding. The candidate records current
@@ -1189,7 +1206,7 @@ historical. See
 [E28](../../MVP-PLAN.md#r-astra-121-e28-pushed-pr-checkpoint-and-hotfix-transport-finding).
 
 For local hotfix publication, the publisher first validates clean exact `origin/main` source and
-the fixed package, including the exact D282 and 5ad artifacts and format-2 manifest. It creates
+the fixed package, including the exact F6 candidate and 5ad recovery artifacts and format-2 manifest. It creates
 private byte-verified snapshots, scans those copies, uploads those same copies, then downloads and
 compares the published bytes with their expected digests. The 5ad schema-13 recovery input is the
 `image-5ad` artifact, not the older `recovery-5ad` archive. The local publisher does not inspect a

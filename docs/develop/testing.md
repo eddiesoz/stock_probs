@@ -523,13 +523,30 @@ failed against the earlier scanner pin. A later bounded check verified the exact
 `usr/local/bin/opencode` path, 212,784,608-byte size, full binary digest, and four unchanged public
 spans with no extra offsets or retained matched bytes; the maintained OCI identity check also
 passed for the archive and image. The scanner source now pins that exact binary, and seven focused
-regressions plus scoped static checks passed. Subsequent independent QA passed 33 archive tests
-under `0022` and one read-only scan per exact candidate/recovery archive; the scans and original
-test run recorded `0002`, retained explicitly, and only the test file was repeated under `0022`. The metadata finding did not establish that a real secret was present. Preserve the
+regressions plus scoped static checks passed. The independent scanner receipt's selected 33-test,
+Ruff/security/format/diff, OCI-identity, and one-read-only-scan-per-archive subchecks passed, but
+the overall environment-and-span supplement **Failed** because the command group recorded child
+umask `0002`. The private directories and outputs were `0700` and `0600`, respectively; that does
+not cure the qualification. A distinct `0022` rerun passed only the 33 archive tests; it did not
+rescan either archive. The metadata finding did not establish that a real secret was present. Preserve the
 earlier wrong-root parity failure and later corrected parity pass separately. The completed PR9 browser aggregate failed with 195 passed, two failed and three expected skips.
 Its source/stage bindings were unchanged and 24 raw axe attachments were clean; the fixture
 startup and missing-preview causes remain unproven. See the [F6 evidence
 ledger](../../MVP-PLAN.md#f6-pr9-candidate-build-archive-scan-and-parity-checkpoint-2026-10-16).
+
+The later focused F6 browser diagnostic passed four exact-title/project cases, and independent
+review passed those same cases and checked its current-source/browser/stage bindings and cleanup.
+This does not replace the failed 200-case aggregate or establish its cause. On the separate PR11
+helper-rebind scope, the builder reported 50 tests passing (two warnings; the exact selector argv
+was unavailable). Independent QA passed its distinct 72 selected tests, 24 source/import pins,
+managed-reader receipt check, and Ruff/security/format/diff checks. A source-backed supplement then
+verified all five candidate/recovery consumer tuples and confirmed the 24 pins unchanged, so
+consumer identity alignment **Passed** for that static scope. Preserve the original contradictory
+false summary field and the supplement's explanation that its generator cause is unavailable.
+Keep the builder's 50 and independent 72 tests separate. A later seven-test JUnit/stdout run has
+7 passes, but the receipt collector raised `KeyError`; its process exit remains **Unavailable**
+and it is not an added accepted count. This establishes no runtime, host-pair, or release result.
+See the new checkpoint in the [MVP plan](../../MVP-PLAN.md).
 
 
 ### Exact PR-pair review pins
@@ -711,10 +728,10 @@ The additive `format_version: 2` contract `schema13_same_schema_hotfix_v1` keeps
 separate:
 
 - **Helper source:** PR #11 at the reviewed helper revision.
-- **Application candidate:** PR #9, revision `d282d696937f279ca4af4c38341f82a8af7afb6d`, image
-  `sha256:ba607be79055ee3a09d916e51788135590e7e0ead8f0922aa78128c478644c03`, source context
-  `c2135215d9a96c37841190ff611b49d48e7a08ca88ad073ebcf1973a7abc86a9`, and build receipt SHA-256
-  `bb808883d862aafe8851bfeffc75fa3140866e72e770420699db0f11a4377608`.
+- **Application candidate:** PR #9, revision `f6a51d5c821e6b1ab7974a94f4ff795da10130bc`, image
+  `sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196`, source context
+  `a332dca5d27f4bb6fda4673e826096158c038e218f6291f01069951378c4fbae`, and build receipt SHA-256
+  `d3529f24499ea2f3b7921055a4308be019798b7be083fc6e75f1ad94b205b0b5`.
 - **Recovery artifact:** Original production revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`,
   image `sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, release image
   archive SHA-256 `99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5`
@@ -729,7 +746,7 @@ recovery check tests the normal shipped supervisor/image with the assistant work
 OpenCode process. It does not require the executable or package to be absent. Keep the historical
 format-1 PR #2 schema-12-to-13 contract and its app-only absence assertion unchanged. See the
 [E21 ledger](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint)
-for the exact QA and release status. Current helper source/test QA passed 162 tests with one
+for that checkpoint's exact QA and release status. E21's historical helper source/test QA passed 162 tests with one
 opt-in Docker skip and 266 stable bindings; its production-installed metadata was mocked because
 the fixed installed record is absent locally. Manifest validation or focused tests alone are not a
 pair rehearsal, archive publication, host execution, installation, or rollback acceptance.

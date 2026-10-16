@@ -2480,12 +2480,21 @@ binary pin is source SHA-256
 `5f1ac4b773f2ddf8866589cb2cb59bec8fce6097f20986bbf8d6de0c96c45085`; seven selected regressions
 and scoped Ruff check/security/format and diff checks passed in PR11/PR12. Implementation receipt
 `/var/tmp/r12r/f6-scanner-span-pin-ee538340-9ef0-4135-aa3b-7c474f9934d2/implementation-checks-022872d494ca788c.json`,
-SHA-256 `d3f35f0b2b601706c969f2c49c21a357beaeb4b6083b636e9e6b8a0628d21d2a`. Subsequent independent source QA, 33 tests under `0022`, and one read-only scan per exact F6 and
-5ad archive passed their declared scopes. The first command group used `0002`; its qualification
-is retained separately, and only the test file was rerun under `0022`. The full F6 browser
-aggregate failed with 195 passed, two failed and three expected skips; source/stage stayed bound
-and the 24 raw axe attachments were clean. No provider, runtime, resource, publication, or
-release acceptance follows. See the [current F6 ledger](MVP-PLAN.md#f6-pr9-candidate-build-archive-scan-and-parity-checkpoint-2026-10-16).
+SHA-256 `d3f35f0b2b601706c969f2c49c21a357beaeb4b6083b636e9e6b8a0628d21d2a`. The independent scanner
+receipt's selected 33-test, Ruff/security/format/diff, OCI-identity, and one-read-only-scan-per-
+archive subchecks passed; its overall environment-and-span supplement **Failed** because the
+command group recorded child umask `0002`. Its explicit `0700` directories and `0600` outputs do
+not cure that qualification. A separate `0022` rerun passed the 33 archive tests only; it did not
+rescan either archive. The earlier scan failure remains preserved, and no real secret was shown.
+The full F6 browser aggregate **Failed** with 195 passed, two failed and three expected skips; the
+four-case focused browser rerun and its independent review passed only their selected scope, while
+the full aggregate's cause remains unproven. Source/stage stayed bound and the 24 raw axe
+attachments were clean. No provider, runtime, resource, publication, or release acceptance follows.
+See the [current F6 ledger](MVP-PLAN.md#f6-pr9-candidate-build-archive-scan-and-parity-checkpoint-2026-10-16)
+and the subsequent helper/focused-browser checkpoint in `MVP-PLAN.md`. That checkpoint records
+source-backed five-consumer identity alignment as Pass after a supplement, while retaining the
+original contradictory false summary field and the unavailable field-generator cause. It is not
+host/runtime, publication, rollback, or release acceptance.
 
 
 For the R-ASTRA-121 startup repair, load Yahoo's optional clients only at their market/news call

@@ -8491,14 +8491,18 @@ full 200-case PR9 browser aggregate running with no aggregate result. Publicatio
 recovery, deployment and release acceptance remain open; no production mutation or rollout
 occurred.
 
-Subsequent independent QA passed 33 archive tests under the required `0022` child umask and
-scoped Ruff/security/format/diff checks. One read-only scan per exact F6 and 5ad archive passed;
-those scans recorded `0002`, with explicitly private `0700` directories and `0600` outputs. The
-first 33-test run also used `0002`; its environment qualification remains preserved, and only the
-test file was rerun under `0022`. Original QA receipt SHA-256
+The independent scanner receipt's selected 33 archive tests, Ruff/security/format/diff, OCI
+identity, and one read-only scan per exact F6 and 5ad archive passed their declared subchecks.
+However, its overall environment-and-span supplement **Failed** because the command group recorded
+child umask `0002`; the scans and original test run recorded `0002`, even though the directories
+and outputs were explicitly `0700`/`0600`. A separate `0022` rerun passed only the 33 archive
+tests and did not rescan either archive. Preserve the failed qualification. Original QA receipt SHA-256
 `29ed074896b303995ba422bf18375c8b63e6721f1a310806a119813fdd8d9450`; corrected test receipt
 `/var/tmp/r12r/r12r-scanner-independent-qa-85c279f8-5b6a-4307-a45c-9c84b160d0df/pytest-umask022-a4138cd6-1063-4460-87ab-5e4c55099a27/umask022-test-receipt.json`,
 SHA-256 `77c742b9a5477762bdbd24eb2738d78f95f6b230c7c46e838c62becd38ec929e`.
+Environment-and-span supplement
+`/var/tmp/r12r/r12r-scanner-independent-qa-85c279f8-5b6a-4307-a45c-9c84b160d0df/qa-environment-and-span-supplement.json`,
+SHA-256 `613eb9d4f6df53114cae3bfec4c77f1341b0e3c604acd0e037d99c572b8a228e`.
 Source/test and both archive hashes remained unchanged. These are scanner/provenance checks only;
 the helper's F6 consumer rebind and managed-receipt shape repair remain pending. The completed
 F6 browser aggregate **Failed**: 195 passed, two failed, three expected skips, zero flaky and zero
@@ -8507,3 +8511,52 @@ attachments (28 scopes) had zero violations and incompletes. The fixture startup
 preview causes remain unproven. Parent terminal/closure receipt SHA-256
 `cf2849897501c7c24711784d2f81a2f00355392d64d0977d0dfa5dd5787d62d6` records exact owned cleanup.
 No actual native/provider, 1 GB, recovery, deployment, or release acceptance follows.
+
+#### R-ASTRA-121 PR11 helper rebind and focused F6 browser checkpoint (2026-10-16)
+
+The approved full frontend build/export was reused because its 88 bound inputs were unchanged;
+all 53 served/export pairs matched. Stage-reuse receipt
+`/var/tmp/r12r/pr11-f6-exact-stage-0cc268eb-0df1-4e12-b258-9b6a9b13f28a/stage-reuse-receipt.json`,
+SHA-256 `41b17a9f5d3a107c1258dcf0a01a651a0a5395049eb78467eb8c444586d1dfce`. This is a bound stage
+reuse, not a new frontend build or browser-wide acceptance.
+
+PR11's five-consumer F6 rebind changed eight helper/caller/test files. The builder reported 50
+tests passed with two warnings; exact selector argv was unavailable. Independent QA separately
+passed 72 selected tests, 24 source/import pins, Ruff/security/format/diff checks, and the strict
+managed-reader receipt check. Do not add the two test counts: they are separately selected runs.
+The producer receipt identifies image `sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196`
+for `linux/amd64`, exit 0, candidate role current, branch `codex/signal-ledger-assistant-fix`,
+head `f6a51d5c821e6b1ab7974a94f4ff795da10130bc`, verified root identity, and setup receipt
+SHA-256 `291ca40fc11266bac55fb095a30bcc17e9f0baf49530f72d5f703b300f0d7ceb`. This was a readback of
+the producer receipt, not a fresh image build or runtime trial.
+
+The independent final review reports `Pass` for its declared tests/static/receipt-reader scope,
+but its `five_consumer_alignment.candidate_pr9_and_helper_pr11_preserved` field is `false`. A
+source-backed supplement reconciled the factual alignment: all five consumer tuples match the PR
+#9 F6 candidate, PR #11 helper, PR #2 legacy mode, and exact 5ad recovery artifact. It records
+24 unchanged source/import pins and reuses the original 72-case exit-0 Pass. Preserve the original
+false summary bit and its contradictory status as a reporting Fail; the old field-generator cause
+is unavailable. The supplement's overall result is Pass only for source-backed consumer
+alignment, not runtime, publication, or release. Receipt
+`/var/tmp/r12r/pr11-five-consumer-projection-qa-06/consumer-alignment-supplement.json`, SHA-256
+`3b926aa402d3700519a6a0b26f6849364ebc15857d278845b5e942f1164ee962`; same-run smoke SHA-256
+`f5507785aa15e92a89ffea529c5bd3bbd168e394bbf58dc19708534d392846a3`. Independent review receipt
+`/var/tmp/r12r/pr11-f6-five-consumer-independent-40208964-c3bf-4a99-ad32-4e56b2e30a99/run-01/independent-final-review.json`,
+SHA-256 `00ecd4579d7d84e442a5d7fe51333165b5b7674b7ce4d1456a63935a86b806b2`. Builder completion
+receipt SHA-256 `6ebefe07a0e03666a1e8efb9cdf411cdc84be6bfa25de9933be8faeaa58c2de1`. A later
+seven-test JUnit/stdout selection records 7 passed and no failures, but its collector raised
+`KeyError`, so subprocess exit is **Unavailable**; do not add it to accepted test counts. Receipt
+`/var/tmp/r12r/pr11-five-consumer-projection-qa-06/consumer-alignment-supplement.json` preserves
+that distinction.
+
+A focused F6 browser diagnostic passed four exact-title/project cases at
+`2026-10-16T10:16:50.160955Z`–`10:17:36.903080Z`; its terminal SHA-256 is
+`c065f314bb3a2d1665bd9f7a65ef629c0cfafb5ea91c85d776724437cc38b634`. Independent QA verified the
+recorded four-case results, checked eight matching diagnostic rows and the copied 518-file binding set
+(391 source, 25 browser, 53 served/export), and verified cleanup; receipt SHA-256
+`b8c4865860d4c53c0ac83df0548cc2a2a1a6936186860e6e253e9d40f4363184`. Parent terminal/cleanup
+review passed its exact scope, receipt SHA-256
+`0639070443a5e546eb12cf397786cd454b72ecc4d8ccd554f72c138d81179b57`. The complete 200-case F6
+aggregate remains **Failed** at 195 passed, two failed and three expected skips; those two causes
+remain unproven. No full aggregate, current-image native/provider, host/resource, recovery, rollback,
+deployment, or release acceptance follows from the focused result.

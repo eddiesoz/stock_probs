@@ -37,16 +37,16 @@ MIGRATION_013_SHA256 = "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92dee
 HOTFIX_CONTRACT = "schema13_same_schema_hotfix_v1"
 HELPER_SOURCE_PR_NUMBER = 11
 HOTFIX_PR_NUMBER = 9
-HOTFIX_CANDIDATE_REVISION = "d282d696937f279ca4af4c38341f82a8af7afb6d"
+HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
 HOTFIX_CANDIDATE_IMAGE_ID = (
-    "sha256:ba607be79055ee3a09d916e51788135590e7e0ead8f0922aa78128c478644c03"
+    "sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196"
 )
-HOTFIX_CANDIDATE_CONTEXT_SHA256 = "c2135215d9a96c37841190ff611b49d48e7a08ca88ad073ebcf1973a7abc86a9"
-HOTFIX_BUILD_RECEIPT_SHA256 = "bb808883d862aafe8851bfeffc75fa3140866e72e770420699db0f11a4377608"
+HOTFIX_CANDIDATE_CONTEXT_SHA256 = "a332dca5d27f4bb6fda4673e826096158c038e218f6291f01069951378c4fbae"
+HOTFIX_BUILD_RECEIPT_SHA256 = "d3529f24499ea2f3b7921055a4308be019798b7be083fc6e75f1ad94b205b0b5"
 HOTFIX_BUILD_RECEIPT_PATH = Path(
     "/home/james/.local/state/stock-probs/r120-buildkit-v1/build-runs/"
-    "d282d696937f279ca4af4c38341f82a8af7afb6d/"
-    "be4ad6f0e6d98531824e64bd39518cb7c1be05fc6df075ed72409cd591501a2a/"
+    "f6a51d5c821e6b1ab7974a94f4ff795da10130bc/"
+    "5962e1c34bd3f66db6d3bed981d8ed75cccbddef5043e3d916b3e69b4242accf/"
     "build-receipt.json"
 )
 HOTFIX_RECOVERY_REVISION = "5ad2c3fddfce5a5a631b72cd832a53f24757c44a"
@@ -2262,18 +2262,25 @@ def _read_fixed_hotfix_build_receipt() -> dict[str, object]:
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RehearsalError("accepted_hotfix_build_receipt_invalid") from exc
     expected = {
-        "status": "built",
-        "build_kind": "local",
-        "candidate_role": "current",
-        "context_sha256": HOTFIX_CANDIDATE_CONTEXT_SHA256,
-        "image_id": HOTFIX_CANDIDATE_IMAGE_ID,
-        "platform": "linux/amd64",
-        "revision_label": HOTFIX_CANDIDATE_REVISION,
         "schema": "r120-bounded-image-build-v1",
-        "source_head": HOTFIX_CANDIDATE_REVISION,
+        "status": "built",
         "stage": "complete",
+        "candidate_role": "current",
+        "source_branch": "codex/signal-ledger-assistant-fix",
+        "source_head": HOTFIX_CANDIDATE_REVISION,
+        "revision_label": HOTFIX_CANDIDATE_REVISION,
+        "image_platform": "linux/amd64",
+        "image_id": HOTFIX_CANDIDATE_IMAGE_ID,
+        "context_sha256": HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "setup_receipt_sha256": "291ca40fc11266bac55fb095a30bcc17e9f0baf49530f72d5f703b300f0d7ceb",
     }
-    if not isinstance(value, dict) or any(value.get(key) != item for key, item in expected.items()):
+    if (
+        not isinstance(value, dict)
+        or any(value.get(key) != item for key, item in expected.items())
+        or type(value.get("build_exit_code")) is not int
+        or value.get("build_exit_code") != 0
+        or value.get("post_build_root_identity_verified") is not True
+    ):
         raise RehearsalError("accepted_hotfix_build_receipt_identity_mismatch")
     return value
 
