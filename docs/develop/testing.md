@@ -48,6 +48,20 @@ remains recorded as a failure; the later checks establish only the repaired back
 scope. Schema-compatible recovery-image, post-migration data-retention pair, and research-rollout
 binding verification remain pending. See the [R-ASTRA-121 evidence](../../MVP-PLAN.md#r-astra-121-r1-schema-14-backup-count-and-staged-integrity-follow-up-2026-10-16).
 
+### R1 schema-14 recovery overlay scope
+
+The latest independent overlay QA passed seven focused tests, exact malformed-database rejection
+(reused from the immediately preceding reader check), and private output-mode checks; parent
+integrated source/evidence review passed without rerunning tests. Earlier independent findings remain
+visible: the first reader accepted a database missing core tables, and the next aggregate failed on
+an intermediate directory mode after its focused tests passed. The current reader checks required
+tables, critical columns, and contiguous versions, not arbitrary SQL constraints or persisted
+migration digests. The overlay contains the pinned schema registry/version and migration 014; its
+manifest describes intended controls, not effective image/runtime flags. These checks do not build
+or inspect a recovery image or accept a schema-13→14 host pair. Keep same-volume schema-14 recovery,
+post-migration record retention, and actual host/release checks pending. See the
+[R1 overlay ledger](../../MVP-PLAN.md#r-astra-121-r1-schema-14-source-only-recovery-overlay-checkpoint-2026-10-16).
+
 For a full schema-12-to-13 pair rehearsal, `--use-deployed-baseline-image` is an optional boolean
 that selects the centrally pinned deployed schema-12 image. It is accepted only in full-rehearsal
 mode; the default still rebuilds the base image from the verified archive. Before reuse, the helper

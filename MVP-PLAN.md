@@ -310,6 +310,43 @@ thesis revisions and comparison content after candidate failure. No migration ex
 build, host operation, deployment, rollout, or release acceptance is claimed; the R1 canonical,
 security, recovery, and release gates remain open.
 
+### R-ASTRA-121 R1 schema-14 source-only recovery-overlay checkpoint (2026-10-16)
+
+The initial independent task, `R1 schema14 recovery overlay independent source QA`, **Failed**:
+the reader accepted a malformed schema-14 database missing `users` and `forecast_runs`. Receipt
+`/var/tmp/r12r/r1-schema14-recovery-overlay-f19d82c-20261016/independent-qa-20261016T160445Z-fe09078c/independent-qa-receipt.json`,
+SHA-256 `30bc98cf0146773046246ddc3e63ef1a87145166a45f8f36964f604f085e05e7`. A later independent
+read-only QA run passed seven focused tests and the corrected malformed-database rejection, but
+its aggregate **Failed** because one generated intermediate `src` directory was mode `0755`; its
+initial malformed-fixture invocation was **Unavailable** due to a harness environment-variable
+setup error. Preserve that receipt at
+`/var/tmp/r12r/r1-schema14-independent-qa-20261016T1616Z-t2gJSw/independent-qa-final-receipt.json`,
+SHA-256 `699974436afec6c215f38bf49e8e1d19a9829b2248662361e5689dda3d0bf8fa`.
+
+The subsequent task, `R1 schema-14 recovery overlay permissions repair independent QA`, **Passed**
+its focused scope: seven tests, zero failures/errors/skips, actual child exit 0; generated overlay
+directories were `0700` and files `0600`, and 24 source/import pins were unchanged. It reused the
+prior malformed-database rejection because the directory-mode repair did not change reader
+semantics. Python 3.11.15 ran on native x86_64 with child umask `022`. Receipt
+`/var/tmp/r12r/r1-schema14-permission-qa-20261016T1622Z-5gjAid/independent-qa-final-receipt.json`,
+SHA-256 `50e781b235fd20d5d6114823321ff77df6ad3b5e96e0a59c40dafc3b436e3707`. Parent integrated
+source/evidence review **Passed** without rerunning tests; it verified the source pins and
+limitations in receipt
+`/var/tmp/r12r/r1-overlay-parent-final-review-148d1517-08de-4191-950f-af0df676c3fb/parent-review.json`,
+SHA-256 `3e04eafff120605da90cb7fa144fbd0e53f23503f000265cf87a0a2a0e8e73fc`.
+
+This overlay materializes only the pinned 5ad schema-13 repository version/registry, migration
+014, and its manifest. The compatibility reader opens SQLite read-only and checks required tables,
+critical columns, and contiguous versions 1–14; it does not authenticate arbitrary SQL constraints
+or persisted migration digests. Manifest disabled-control fields specify intended launch contract,
+not effective image/runtime flags. This remains source-only preparation: recovery-image control
+inspection, the actual schema-13-to-14 pair, same-schema-14 recovery without restoring or
+down-migrating, post-migration record retention, and host/release acceptance are pending. Verify
+the actual recovery image has assistant/research/automatic rollout and schema-13 backup promotion
+disabled before any release. Never restore a schema-13 backup over schema-14 user data. See the
+[R1 overlay testing scope](docs/develop/testing.md#r1-schema-14-recovery-overlay-scope) and
+[operator boundary](docs/operations/getting-started.md#r1-schema-14-source-only-recovery-overlay).
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.

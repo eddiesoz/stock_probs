@@ -106,6 +106,19 @@
       ]
     },
     {
+      "name": "research-recovery-overlay",
+      "match": [
+        "scripts/research_recovery_overlay.py",
+        "tools/research-recovery/manifest.json",
+        "tests/test_schema14_recovery_overlay.py"
+      ],
+      "docs": [
+        "docs/develop/documentation.md",
+        "docs/develop/testing.md",
+        "docs/operations/getting-started.md"
+      ]
+    },
+    {
       "name": "research-workspaces",
       "match": [
         "src/stock_probs/research.py",
@@ -156,6 +169,9 @@
         "scripts/local-compose.sh",
         "scripts/publish-production-image.sh",
         "scripts/rehearse_schema13.py",
+        "scripts/research_recovery_overlay.py",
+        "tools/research-recovery/manifest.json",
+        "tests/test_schema14_recovery_overlay.py",
         "scripts/r120-buildkitd.toml",
         "scripts/setup_bounded_buildkit.py",
         "tests/test_bounded_build_entrypoints.py",

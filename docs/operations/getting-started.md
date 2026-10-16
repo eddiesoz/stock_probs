@@ -646,6 +646,19 @@ The normal sequence is:
 inspect → plan_deploy(main revision, release archive SHA, image ID) → deploy(plan) → status
 ```
 
+#### R1 schema-14 source-only recovery overlay
+
+The R1 recovery-overlay generator is a private source-preparation path for the pinned 5ad schema-13
+registry/version and migration 014. It is not an application image, a selected helper check is not
+a schema-13→14 pair rehearsal, and manifest rollout fields do not prove effective runtime
+controls. Before release, inspect the actual recovery image and verify assistant, research, and
+automatic rollout are disabled and schema-13 backup promotion is disabled. Rehearse migration and
+failure recovery on the same schema-14 volume without restoring or down-migrating; verify
+post-migration theses, revisions, and comparisons remain. A schema-13 backup may remain verifiable
+for its original schema, but must never be restored over schema-14 user data. The image, host-pair,
+and release checks remain pending; see the
+[R1 evidence ledger](../../MVP-PLAN.md#r-astra-121-r1-schema-14-source-only-recovery-overlay-checkpoint-2026-10-16).
+
 For schema-13 GitHub-release deployments, supply `pair_manifest_sha256` from the exact revision's
 `signal-ledger-pair-<revision>.json` manifest to both calls. The MCP schema declares this field
 optional, but the schema-13 host requires it, and `deploy` must match the hash bound by

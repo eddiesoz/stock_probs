@@ -19,6 +19,14 @@ schema separately. The historical schema-13 rehearsal retains its default contra
 new schema in a generated verifier changes only that verifier's exact assertions. See the
 [migration rehearsal boundary](testing.md#named-schema-verification-boundary) and the R121 ledger
 in `MVP-PLAN.md`. Do not describe a selected test as image or production rollback acceptance.
+The `research-recovery-overlay` documentation-map rule binds its generator, manifest, and focused
+test to this guide, [developer testing](testing.md#r1-schema-14-recovery-overlay-scope), and the
+[operator procedure](../operations/getting-started.md#r1-schema-14-source-only-recovery-overlay).
+Describe this R1 overlay only as source preparation: its manifest controls are intended launch
+metadata, and its compatibility reader does not prove effective runtime flags, exact SQL
+constraints, or persisted migration digests. Link to the
+[R1 evidence ledger](../../MVP-PLAN.md#r-astra-121-r1-schema-14-source-only-recovery-overlay-checkpoint-2026-10-16)
+for its failures, selected passes, and still-pending recovery gates.
 
 Contrast evidence follows the root `AGENTS.md` rule: retain raw axe results and separately
 resolve uncertain results with exact-node measurements, independent QA and parent screenshot
