@@ -1173,6 +1173,16 @@ def test_v2_runner_requires_enabled_native_phase_before_write_and_recovery(
     monkeypatch.setattr(
         host_helper, "_production_container", lambda: dict(host_helper.PRODUCTION_BASELINE)
     )
+    monkeypatch.setattr(
+        host_helper,
+        "_readiness",
+        lambda: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+    )
+    monkeypatch.setattr(host_helper, "_production_loopback_matches", lambda: True)
     monkeypatch.setattr(host_helper, "_host_memory_kib", lambda: (8 * 1024 * 1024, 2 * 1024 * 1024))
     monkeypatch.setattr(
         host_helper,
@@ -1829,7 +1839,7 @@ def test_controller_pair_dispatch_keeps_v1_pr2_and_v2_pr11(
     monkeypatch.setattr(
         controller,
         "_source_bundle",
-        lambda: ({"bootstrap": b"b"}, {"bootstrap": "e" * 64}),
+        lambda **_kwargs: ({"bootstrap": b"b"}, {"bootstrap": "e" * 64}),
     )
     monkeypatch.setattr(controller, "_ensure_incoming_directories", lambda _config: None)
     monkeypatch.setattr(
@@ -2134,6 +2144,7 @@ def test_host_helper_verifies_fixed_open_pr11_helper_head(monkeypatch) -> None:
 
 def test_host_installed_manifest_binds_v1_pr2_and_v2_pr11_separately(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     revision = "a" * 40
     pair_digest = "b" * 64
@@ -2153,6 +2164,8 @@ def test_host_installed_manifest_binds_v1_pr2_and_v2_pr11_separately(
     def read_root_file(path: Path, _maximum: int) -> bytes:
         if path == host_helper.INSTALLED_MANIFEST:
             return json.dumps(manifest).encode()
+        if path == host_helper.PRODUCTION_HELPER:
+            return source_files["production-deploy-helper.py"]
         return source_files[path.name]
 
     monkeypatch.setattr(host_helper, "_read_root_file", read_root_file)
@@ -2161,6 +2174,15 @@ def test_host_installed_manifest_binds_v1_pr2_and_v2_pr11_separately(
 
     manifest["pull_number"] = host_helper.HELPER_SOURCE_PR_NUMBER
     manifest["helper_source_contract"] = host_helper.HOTFIX_CONTRACT
+    production_helper = tmp_path / "signal-ledger-deploy-helper"
+    production_helper.write_bytes(b"reviewed production helper")
+    production_helper.chmod(0o750)
+    monkeypatch.setattr(host_helper, "PRODUCTION_HELPER", production_helper)
+    source_files["production-deploy-helper.py"] = production_helper.read_bytes()
+    manifest["files"] = {
+        name: hashlib.sha256(contents).hexdigest() for name, contents in source_files.items()
+    }
+    manifest["previous_production_helper_sha256"] = host_helper.PREVIOUS_PRODUCTION_HELPER_SHA256
     assert (
         host_helper._verify_installed_source(
             revision,
@@ -2169,6 +2191,25 @@ def test_host_installed_manifest_binds_v1_pr2_and_v2_pr11_separately(
         )
         == manifest["files"]
     )
+
+    manifest["files"]["production-deploy-helper.py"] = "0" * 64
+    with pytest.raises(host_helper.RehearsalError, match="installed_source_digest_mismatch"):
+        host_helper._verify_installed_source(
+            revision,
+            pair_digest,
+            helper_source_contract=host_helper.HOTFIX_CONTRACT,
+        )
+    manifest["files"]["production-deploy-helper.py"] = hashlib.sha256(
+        source_files["production-deploy-helper.py"]
+    ).hexdigest()
+    manifest["previous_production_helper_sha256"] = "0" * 64
+    with pytest.raises(host_helper.RehearsalError, match="installed_manifest_mismatch"):
+        host_helper._verify_installed_source(
+            revision,
+            pair_digest,
+            helper_source_contract=host_helper.HOTFIX_CONTRACT,
+        )
+    manifest["previous_production_helper_sha256"] = host_helper.PREVIOUS_PRODUCTION_HELPER_SHA256
 
     manifest["pull_number"] = host_helper.PULL_NUMBER
     with pytest.raises(host_helper.RehearsalError, match="installed_manifest_mismatch"):
@@ -2291,8 +2332,16 @@ def test_source_upload_and_reviewed_bootstrap_share_the_sha_prefixed_names(
     config = controller.RehearsalConfig(
         Path("/unused/operator-key"), Path("/unused/known-hosts"), revision, pair_digest
     )
-    names = controller._source_stage_names(revision)
-    assert set(names) == set(bootstrap.ASSETS)
+    include_production_helper = helper_source_contract == controller.HOTFIX_CONTRACT
+    names = controller._source_stage_names(
+        revision, include_production_helper=include_production_helper
+    )
+    expected_assets = {
+        role
+        for role in bootstrap.ASSETS
+        if include_production_helper or role != "production_helper"
+    }
+    assert set(names) == expected_assets
     for role, name in names.items():
         assert name == f"signal-ledger-pr1-{revision}-{bootstrap.ASSETS[role][1]}"
         assert bootstrap._staged_asset_path(revision, role) == bootstrap.INCOMING / name
@@ -2322,6 +2371,10 @@ def test_source_upload_and_reviewed_bootstrap_share_the_sha_prefixed_names(
         if "helper_source_contract" in payload:
             response["helper_source_contract"] = payload["helper_source_contract"]
             response["pull_number"] = controller.HELPER_SOURCE_PR_NUMBER
+            response["production_helper_sha256"] = payload["asset_sha256"]["production_helper"]
+            response["previous_production_helper_sha256"] = (
+                bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256
+            )
         return json.dumps(response).encode()
 
     monkeypatch.setattr(controller, "_run_fixed", fake_run_fixed)
@@ -2368,12 +2421,17 @@ def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
     incoming = tmp_path / "incoming"
     incoming.mkdir()
     install_root = tmp_path / "installed"
+    selected_assets = {
+        role: definition
+        for role, definition in bootstrap.ASSETS.items()
+        if helper_source_contract is not None or role != "production_helper"
+    }
     sources = {
         relative: f"reviewed source for {role}".encode()
-        for role, (relative, _name, _maximum) in bootstrap.ASSETS.items()
+        for role, (relative, _name, _maximum) in selected_assets.items()
     }
     hashes: dict[str, str] = {}
-    for role, (relative, staged_name, _maximum) in bootstrap.ASSETS.items():
+    for role, (relative, staged_name, _maximum) in selected_assets.items():
         content = sources[relative]
         hashes[role] = hashlib.sha256(content).hexdigest()
         (incoming / f"signal-ledger-pr1-{revision}-{staged_name}").write_bytes(content)
@@ -2384,6 +2442,18 @@ def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
     monkeypatch.setattr(bootstrap, "INCOMING", incoming)
     monkeypatch.setattr(bootstrap, "INSTALL_ROOT", install_root)
     monkeypatch.setattr(bootstrap, "INSTALLED_MANIFEST", install_root / "installed.json")
+    production_helper = tmp_path / "usr-local-libexec" / "signal-ledger-deploy-helper"
+    monkeypatch.setattr(bootstrap, "PRODUCTION_HELPER", production_helper)
+    monkeypatch.setattr(
+        bootstrap,
+        "_prepare_previous_production_helper",
+        lambda _candidate: (
+            b"known prior helper",
+            bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256,
+        ),
+    )
+    monkeypatch.setattr(bootstrap, "_read_fixed_root_file", lambda *_args: b"known prior helper")
+    monkeypatch.setattr(bootstrap, "_install_locks", nullcontext)
     monkeypatch.setattr(bootstrap, "_safe_directory", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(bootstrap, "_safe_incoming_directory", lambda: None)
     monkeypatch.setattr(bootstrap, "_check_root_directory", lambda *_args: None)
@@ -2416,12 +2486,15 @@ def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
     assert result["status"] == "installed"
     assert result["asset_sha256"] == hashes
     assert verified_pull_numbers == [expected_pull_number]
-    assert {path.name for path, _content, _mode in installed} == {
+    expected_installed = {
         "host_helper.py",
         "seed.py",
         "native_driver.py",
         "installed.json",
     }
+    if helper_source_contract is not None:
+        expected_installed.add(production_helper.name)
+    assert {path.name for path, _content, _mode in installed} == expected_installed
     installed_manifest = next(
         content for path, content, _mode in installed if path.name == "installed.json"
     )
@@ -2432,11 +2505,273 @@ def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
         assert "pull_number" not in result
     else:
         assert receipt["helper_source_contract"] == helper_source_contract
+        assert receipt["previous_production_helper_sha256"] == (
+            bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256
+        )
+        assert receipt["files"]["production-deploy-helper.py"] == hashes["production_helper"]
         assert result["helper_source_contract"] == helper_source_contract
         assert result["pull_number"] == expected_pull_number
-    for _role, (_relative, staged_name, _maximum) in bootstrap.ASSETS.items():
+        assert result["production_helper_sha256"] == hashes["production_helper"]
+    for _role, (_relative, staged_name, _maximum) in selected_assets.items():
         assert not (incoming / f"signal-ledger-pr1-{revision}-{staged_name}").exists()
         assert (incoming / staged_name).read_bytes() == b"legacy name must remain untouched"
+
+
+def test_bootstrap_install_locks_use_fixed_order_and_contention_blocks_install_writes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    deploy_root = tmp_path / "deploy-state"
+    rehearsal_root = tmp_path / "rehearsal-state"
+    deploy_root.mkdir()
+    rehearsal_root.mkdir()
+    deploy_lock = deploy_root / "deploy.lock"
+    rehearsal_lock = rehearsal_root / "rehearsal.lock"
+    deploy_lock.touch(mode=0o640)
+    deploy_lock.chmod(0o640)
+    rehearsal_lock.touch(mode=0o600)
+    rehearsal_lock.chmod(0o600)
+    monkeypatch.setattr(bootstrap, "DEPLOY_STATE_ROOT", deploy_root)
+    monkeypatch.setattr(bootstrap, "STATE_ROOT", rehearsal_root)
+    monkeypatch.setattr(bootstrap, "DEPLOY_LOCK", deploy_lock)
+    monkeypatch.setattr(bootstrap, "REHEARSAL_LOCK", rehearsal_lock)
+    monkeypatch.setattr(bootstrap, "_safe_directory", lambda *_args, **_kwargs: None)
+
+    original_open = os.open
+    original_fstat = os.fstat
+    original_flock = bootstrap.fcntl.flock
+    held_descriptor = original_open(rehearsal_lock, os.O_RDWR | os.O_NOFOLLOW)
+    original_flock(held_descriptor, bootstrap.fcntl.LOCK_EX | bootstrap.fcntl.LOCK_NB)
+    opened: list[Path] = []
+    attempts: list[Path] = []
+    descriptor_paths: dict[int, Path] = {held_descriptor: rehearsal_lock}
+    writes: list[str] = []
+
+    def tracked_open(path, flags, mode=0o777):
+        descriptor = original_open(path, flags, mode)
+        normalized = Path(path)
+        if normalized in {deploy_lock, rehearsal_lock}:
+            opened.append(normalized)
+            descriptor_paths[descriptor] = normalized
+        return descriptor
+
+    def root_owned_fstat(descriptor: int) -> SimpleNamespace:
+        metadata = original_fstat(descriptor)
+        return SimpleNamespace(st_mode=metadata.st_mode, st_uid=0)
+
+    def tracked_flock(descriptor: int, operation: int) -> None:
+        if operation == bootstrap.fcntl.LOCK_EX | bootstrap.fcntl.LOCK_NB:
+            attempts.append(descriptor_paths[descriptor])
+        original_flock(descriptor, operation)
+
+    monkeypatch.setattr(bootstrap.os, "open", tracked_open)
+    monkeypatch.setattr(bootstrap.os, "fstat", root_owned_fstat)
+    monkeypatch.setattr(bootstrap.fcntl, "flock", tracked_flock)
+
+    try:
+        with (
+            pytest.raises(bootstrap.InstallError, match="install_operation_busy"),
+            bootstrap._install_locks(),
+        ):
+            writes.append("install body entered")
+    finally:
+        original_flock(held_descriptor, bootstrap.fcntl.LOCK_UN)
+        os.close(held_descriptor)
+
+    assert opened == [deploy_lock, rehearsal_lock]
+    assert attempts == [deploy_lock, rehearsal_lock]
+    assert writes == []
+
+    # The first lock was released after second-lock contention, so another owner can acquire it.
+    descriptor = original_open(deploy_lock, os.O_RDWR | os.O_NOFOLLOW)
+    try:
+        original_flock(descriptor, bootstrap.fcntl.LOCK_EX | bootstrap.fcntl.LOCK_NB)
+    finally:
+        original_flock(descriptor, bootstrap.fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+@pytest.mark.parametrize("rollback_fails", [False, True], ids=["restored", "unverified"])
+def test_bootstrap_install_manifest_failure_reports_rollback_state_and_preserves_backup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    rollback_fails: bool,
+) -> None:
+    revision = "e" * 40
+    incoming = tmp_path / "incoming"
+    incoming.mkdir()
+    install_root = tmp_path / "installed"
+    install_root.mkdir()
+    production_helper = tmp_path / "libexec" / "production-deploy-helper.py"
+    production_helper.parent.mkdir()
+    manifest_path = install_root / "installed.json"
+    backup_path = tmp_path / "libexec" / "previous-production-deploy-helper.py"
+    old_manifest = b'{"previous":"manifest"}\n'
+    prior_helper = b"verified prior helper bytes"
+    replacement_helper = b"reviewed replacement helper bytes"
+    manifest_path.write_bytes(old_manifest)
+    manifest_path.chmod(0o640)
+    production_helper.write_bytes(prior_helper)
+    production_helper.chmod(0o750)
+
+    selected_assets = bootstrap.ASSETS
+    sources: dict[str, bytes] = {}
+    hashes: dict[str, str] = {}
+    old_files: dict[Path, bytes] = {}
+    replacement_files: dict[Path, bytes] = {}
+    for role, (relative, staged_name, _maximum) in selected_assets.items():
+        if role == "production_helper":
+            content = replacement_helper
+        else:
+            content = f"reviewed {role} bytes".encode()
+        sources[relative] = content
+        hashes[role] = hashlib.sha256(content).hexdigest()
+        (incoming / f"signal-ledger-pr1-{revision}-{staged_name}").write_bytes(content)
+        if role not in {"bootstrap", "production_helper"}:
+            destination = install_root / staged_name
+            previous = f"previous {role} bytes".encode()
+            destination.write_bytes(previous)
+            destination.chmod(0o750 if role == "host_helper" else 0o640)
+            old_files[destination] = previous
+            replacement_files[destination] = content
+
+    monkeypatch.setattr(bootstrap, "INCOMING", incoming)
+    monkeypatch.setattr(bootstrap, "STATE_ROOT", tmp_path / "state")
+    monkeypatch.setattr(bootstrap, "INSTALL_ROOT", install_root)
+    monkeypatch.setattr(bootstrap, "INSTALLED_MANIFEST", manifest_path)
+    monkeypatch.setattr(bootstrap, "PRODUCTION_HELPER", production_helper)
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER", backup_path)
+    monkeypatch.setattr(bootstrap, "_install_locks", nullcontext)
+    monkeypatch.setattr(bootstrap, "_safe_directory", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bootstrap, "_safe_incoming_directory", lambda: None)
+    monkeypatch.setattr(bootstrap, "_check_root_directory", lambda *_args: None)
+    monkeypatch.setattr(bootstrap, "_verify_pull_request", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        bootstrap,
+        "_fetch_reviewed_source",
+        lambda _revision, relative, _maximum: sources[relative],
+    )
+
+    failed_manifest_write = False
+    failed_rollback_write = False
+
+    def atomic_write(path: Path, contents: bytes, mode: int) -> None:
+        nonlocal failed_manifest_write, failed_rollback_write
+        if path == manifest_path and contents != old_manifest and not failed_manifest_write:
+            failed_manifest_write = True
+            raise OSError("simulated manifest publication failure")
+        if (
+            rollback_fails
+            and failed_manifest_write
+            and path == production_helper
+            and contents == prior_helper
+        ):
+            failed_rollback_write = True
+            raise OSError("simulated production helper rollback failure")
+        temporary = path.with_name(f".{path.name}.test-tmp")
+        temporary.write_bytes(contents)
+        temporary.chmod(mode)
+        temporary.replace(path)
+
+    def prepare_previous_helper(_candidate: bytes) -> tuple[bytes, str]:
+        atomic_write(backup_path, prior_helper, 0o600)
+        return prior_helper, hashlib.sha256(prior_helper).hexdigest()
+
+    def read_fixed_root_file(path: Path, maximum: int, mode: int) -> bytes:
+        metadata = path.lstat()
+        assert stat.S_ISREG(metadata.st_mode)
+        assert 0 < metadata.st_size <= maximum
+        assert stat.S_IMODE(metadata.st_mode) == mode
+        return path.read_bytes()
+
+    monkeypatch.setattr(bootstrap, "_atomic_root_file", atomic_write)
+    monkeypatch.setattr(bootstrap, "_prepare_previous_production_helper", prepare_previous_helper)
+    monkeypatch.setattr(bootstrap, "_read_fixed_root_file", read_fixed_root_file)
+
+    payload = {
+        "reviewed_head_sha": revision,
+        "reviewed_pair_manifest_sha256": "f" * 64,
+        "asset_sha256": hashes,
+        "helper_source_contract": bootstrap.HELPER_SOURCE_CONTRACT,
+    }
+    with pytest.raises(bootstrap.InstallError) as raised:
+        bootstrap.install(payload)
+
+    assert failed_manifest_write is True
+    assert manifest_path.read_bytes() == old_manifest
+    assert backup_path.read_bytes() == prior_helper
+    assert stat.S_IMODE(backup_path.stat().st_mode) == 0o600
+    if rollback_fails:
+        assert raised.value.code == "install_rollback_unverified"
+        assert failed_rollback_write is True
+        assert production_helper.read_bytes() == replacement_helper
+        assert {path: path.read_bytes() for path in replacement_files} == replacement_files
+    else:
+        assert raised.value.code == "sidecar_install_failed"
+        assert failed_rollback_write is False
+        assert production_helper.read_bytes() == prior_helper
+        assert {path: path.read_bytes() for path in old_files} == old_files
+
+
+def test_bootstrap_retains_exact_predecessor_helper_and_rejects_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    previous = b"verified predecessor helper bytes"
+    candidate = b"reviewed replacement helper bytes"
+    previous_digest = hashlib.sha256(previous).hexdigest()
+    helper_path = tmp_path / "signal-ledger-deploy-helper"
+    backup_path = tmp_path / "previous-production-deploy-helper.py"
+    helper_path.write_bytes(previous)
+    helper_path.chmod(0o750)
+    monkeypatch.setattr(bootstrap, "PRODUCTION_HELPER", helper_path)
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER", backup_path)
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER_SIZE", len(previous))
+    monkeypatch.setattr(bootstrap, "PREVIOUS_PRODUCTION_HELPER_SHA256", previous_digest)
+
+    writes: list[tuple[Path, int]] = []
+
+    def read_fixed(path: Path, maximum: int, mode: int) -> bytes:
+        assert path in {helper_path, backup_path}
+        assert 0 < path.stat().st_size <= maximum
+        assert stat.S_IMODE(path.stat().st_mode) == mode
+        return path.read_bytes()
+
+    def atomic_write(path: Path, content: bytes, mode: int) -> None:
+        path.write_bytes(content)
+        path.chmod(mode)
+        writes.append((path, mode))
+
+    monkeypatch.setattr(bootstrap, "_read_fixed_root_file", read_fixed)
+    monkeypatch.setattr(bootstrap, "_atomic_root_file", atomic_write)
+
+    assert bootstrap._prepare_previous_production_helper(candidate) == (
+        previous,
+        previous_digest,
+    )
+    assert backup_path.read_bytes() == previous
+    assert stat.S_IMODE(backup_path.stat().st_mode) == 0o600
+    assert writes == [(backup_path, 0o600)]
+
+    helper_path.write_bytes(candidate)
+    helper_path.chmod(0o750)
+    assert bootstrap._prepare_previous_production_helper(candidate) == (
+        previous,
+        previous_digest,
+    )
+    assert writes == [(backup_path, 0o600)]
+
+    helper_path.write_bytes(b"unreviewed helper drift")
+    helper_path.chmod(0o750)
+    with pytest.raises(bootstrap.InstallError, match="production_helper_drift"):
+        bootstrap._prepare_previous_production_helper(candidate)
+    assert writes == [(backup_path, 0o600)]
+
+    backup_path.write_bytes(b"tampered predecessor")
+    backup_path.chmod(0o600)
+    with pytest.raises(bootstrap.InstallError, match="production_helper_backup_mismatch"):
+        bootstrap._prepare_previous_production_helper(candidate)
+    assert writes == [(backup_path, 0o600)]
 
 
 @pytest.mark.parametrize(
@@ -2470,7 +2805,9 @@ def test_controller_rejects_bootstrap_install_receipt_for_wrong_helper_pr(
         "b" * 64,
     )
     monkeypatch.setattr(
-        controller, "_source_stage_names", lambda _revision: {"bootstrap": "bootstrap.py"}
+        controller,
+        "_source_stage_names",
+        lambda _revision, **_kwargs: {"bootstrap": "bootstrap.py"},
     )
     monkeypatch.setattr(controller, "_stage_named_assets", lambda *_args: None)
     monkeypatch.setattr(controller, "_ssh_prefix", lambda _config: ["ssh"])
@@ -3127,7 +3464,7 @@ def test_host_main_preserves_primary_details_and_first_cleanup_failure(
         lambda _raw: ("rehearse_pr_pair", {"reviewed_head_sha": revision}),
     )
     monkeypatch.setattr(host_helper, "_prepare_host_paths", lambda: None)
-    monkeypatch.setattr(host_helper, "_operation_lock", lambda: -1)
+    monkeypatch.setattr(host_helper, "_operation_locks", lambda **_kwargs: [])
     monkeypatch.setattr(host_helper, "_run_pair", fail_run)
     monkeypatch.setattr(host_helper, "_cleanup_assets", fail_asset_cleanup)
 
@@ -3159,7 +3496,7 @@ def test_host_main_returns_error_when_success_cleanup_fails(monkeypatch) -> None
         lambda _raw: ("rehearse_pr_pair", {"reviewed_head_sha": revision}),
     )
     monkeypatch.setattr(host_helper, "_prepare_host_paths", lambda: None)
-    monkeypatch.setattr(host_helper, "_operation_lock", lambda: -1)
+    monkeypatch.setattr(host_helper, "_operation_locks", lambda **_kwargs: [])
     monkeypatch.setattr(host_helper, "_run_pair", pass_run)
     monkeypatch.setattr(host_helper, "_cleanup_assets", fail_asset_cleanup)
 
@@ -4122,7 +4459,8 @@ def test_v2_controller_projects_only_verified_native_and_resource_fields(
         "restore_commands_executed": 0,
         "post_start_write_preserved": True,
         "schema_after_recovery": 13,
-        "production_assistant_enabled": True,
+        "production_assistant_enabled": False,
+        "production_assistant_disabled_maintenance_verified": True,
         "recovery_process_isolation_verified": True,
         "production_baseline": dict(controller.PRODUCTION_BASELINE),
     }
@@ -4150,7 +4488,7 @@ def test_v2_controller_projects_only_verified_native_and_resource_fields(
         "verify_hotfix_pull_request",
         lambda: {"head_sha": controller.HOTFIX_CANDIDATE_REVISION},
     )
-    monkeypatch.setattr(controller, "_source_bundle", lambda: ({"bootstrap": b"x"}, {}))
+    monkeypatch.setattr(controller, "_source_bundle", lambda **_kwargs: ({"bootstrap": b"x"}, {}))
     monkeypatch.setattr(controller, "_ensure_incoming_directories", lambda _config: None)
     monkeypatch.setattr(controller, "_stage_source_bundle", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(controller, "_stage_assets", lambda *_args, **_kwargs: None)
@@ -4172,7 +4510,8 @@ def test_v2_controller_projects_only_verified_native_and_resource_fields(
 
     host_receipt = result["host_receipt"]
     assert isinstance(host_receipt, dict)
-    assert host_receipt["production_assistant_enabled"] is True
+    assert host_receipt["production_assistant_enabled"] is False
+    assert host_receipt["production_assistant_disabled_maintenance_verified"] is True
     assert host_receipt["candidate_disabled_seed_verified"] is True
     assert host_receipt["candidate_enabled_readiness_verified"] is True
     assert host_receipt["native_workload_verified"] is True
@@ -4651,7 +4990,7 @@ def test_production_headroom_floors_are_unchanged_and_fail_closed(monkeypatch) -
         host_helper._check_production([0])
 
 
-def test_hotfix_production_guard_requires_ready_enabled_loopback_baseline(
+def test_hotfix_production_guard_requires_ready_disabled_loopback_maintenance_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     baseline = dict(host_helper.PRODUCTION_BASELINE)
@@ -4665,7 +5004,7 @@ def test_hotfix_production_guard_requires_ready_enabled_loopback_baseline(
         lambda: {
             "status": "ready",
             "schema_version": 13,
-            "assistant": {"enabled": True, "status": "ready"},
+            "assistant": {"enabled": False, "status": "disabled"},
         },
     )
     monkeypatch.setattr(host_helper, "_production_loopback_matches", lambda: True)

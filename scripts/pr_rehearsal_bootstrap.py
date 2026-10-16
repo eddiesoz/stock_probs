@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import grp
 import hashlib
 import http.client
@@ -12,6 +13,8 @@ import pwd
 import re
 import stat
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,6 +27,16 @@ INCOMING = Path("/var/lib/signal-ledger-pr-rehearsal/incoming")
 INSTALL_ROOT = Path("/usr/local/libexec/signal-ledger-pr-rehearsal")
 STATE_ROOT = Path("/var/lib/signal-ledger-pr-rehearsal")
 INSTALLED_MANIFEST = INSTALL_ROOT / "installed.json"
+DEPLOY_STATE_ROOT = Path("/var/lib/signal-ledger")
+DEPLOY_LOCK = DEPLOY_STATE_ROOT / "deploy.lock"
+REHEARSAL_LOCK = STATE_ROOT / "rehearsal.lock"
+PRODUCTION_HELPER = Path("/usr/local/libexec/signal-ledger-deploy-helper")
+PREVIOUS_PRODUCTION_HELPER = STATE_ROOT / "previous-production-deploy-helper.py"
+PRODUCTION_HELPER_MAX_BYTES = 512 * 1024
+PREVIOUS_PRODUCTION_HELPER_SIZE = 108_471
+PREVIOUS_PRODUCTION_HELPER_SHA256 = (
+    "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+)
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -31,6 +44,11 @@ ASSETS = {
     "host_helper": ("scripts/pr_rehearsal_host_helper.py", "host_helper.py", 256 * 1024),
     "seed": ("scripts/pr_rehearsal_seed.py", "seed.py", 64 * 1024),
     "driver": ("tests/native_assistant_probe.py", "native_driver.py", 2 * 1024 * 1024),
+    "production_helper": (
+        "scripts/production-deploy-helper.py",
+        "production-deploy-helper.py",
+        PRODUCTION_HELPER_MAX_BYTES,
+    ),
 }
 REQUEST_LIMIT = 8 * 1024
 # The fixed public PR record is about 21 KiB. Keep a bounded 64 KiB response cap
@@ -212,6 +230,131 @@ def _atomic_root_file(path: Path, contents: bytes, mode: int) -> None:
         raise InstallError("sidecar_install_failed") from exc
 
 
+@contextmanager
+def _install_locks() -> Iterator[None]:
+    """Serialize fixed source installation with deployment and rehearsal operations."""
+
+    descriptors: list[int] = []
+    try:
+        _safe_directory(DEPLOY_STATE_ROOT, 0o750, create=False, group="signalops")
+        _safe_directory(STATE_ROOT, 0o750, create=False, group="signalops")
+        for path, mode in ((DEPLOY_LOCK, 0o640), (REHEARSAL_LOCK, 0o600)):
+            try:
+                descriptor = os.open(
+                    path,
+                    os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,
+                    mode,
+                )
+            except OSError as exc:
+                raise InstallError("install_lock_unavailable") from exc
+            descriptors.append(descriptor)
+            info = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != 0
+                or stat.S_IMODE(info.st_mode) != mode
+            ):
+                raise InstallError("install_lock_unsafe")
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, OSError) as exc:
+                raise InstallError("install_operation_busy") from exc
+        yield
+    finally:
+        for descriptor in reversed(descriptors):
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+
+
+def _read_fixed_root_file(path: Path, maximum: int, mode: int) -> bytes:
+    """Read one root-owned, bounded file without following links."""
+
+    try:
+        before = path.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != 0
+            or stat.S_IMODE(before.st_mode) != mode
+            or not 1 <= before.st_size <= maximum
+        ):
+            raise InstallError("production_helper_file_unsafe")
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+        )
+        with os.fdopen(descriptor, "rb") as stream:
+            opened = os.fstat(stream.fileno())
+            contents = stream.read(maximum + 1)
+            after = os.fstat(stream.fileno())
+    except InstallError:
+        raise
+    except OSError as exc:
+        raise InstallError("production_helper_file_unavailable") from exc
+    identity = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_gid",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if (
+        len(contents) != before.st_size
+        or len(contents) > maximum
+        or any(getattr(before, field) != getattr(opened, field) for field in identity)
+        or any(getattr(opened, field) != getattr(after, field) for field in identity)
+    ):
+        raise InstallError("production_helper_file_changed")
+    return contents
+
+
+def _prepare_previous_production_helper(candidate: bytes) -> tuple[bytes, str]:
+    """Preserve only the exact known installed helper before the first replacement."""
+
+    if hashlib.sha256(candidate).hexdigest() == PREVIOUS_PRODUCTION_HELPER_SHA256:
+        raise InstallError("production_helper_candidate_is_previous")
+    backup_exists = PREVIOUS_PRODUCTION_HELPER.exists() or PREVIOUS_PRODUCTION_HELPER.is_symlink()
+    if backup_exists:
+        previous = _read_fixed_root_file(
+            PREVIOUS_PRODUCTION_HELPER,
+            PRODUCTION_HELPER_MAX_BYTES,
+            0o600,
+        )
+        if (
+            len(previous) != PREVIOUS_PRODUCTION_HELPER_SIZE
+            or hashlib.sha256(previous).hexdigest() != PREVIOUS_PRODUCTION_HELPER_SHA256
+        ):
+            raise InstallError("production_helper_backup_mismatch")
+        current = _read_fixed_root_file(PRODUCTION_HELPER, PRODUCTION_HELPER_MAX_BYTES, 0o750)
+        if hashlib.sha256(current).hexdigest() not in {
+            PREVIOUS_PRODUCTION_HELPER_SHA256,
+            hashlib.sha256(candidate).hexdigest(),
+        }:
+            raise InstallError("production_helper_drift")
+        return previous, PREVIOUS_PRODUCTION_HELPER_SHA256
+
+    previous = _read_fixed_root_file(PRODUCTION_HELPER, PRODUCTION_HELPER_MAX_BYTES, 0o750)
+    digest = hashlib.sha256(previous).hexdigest()
+    if (
+        len(previous) != PREVIOUS_PRODUCTION_HELPER_SIZE
+        or digest != PREVIOUS_PRODUCTION_HELPER_SHA256
+    ):
+        raise InstallError("production_helper_drift")
+    _atomic_root_file(PREVIOUS_PRODUCTION_HELPER, previous, 0o600)
+    stored = _read_fixed_root_file(
+        PREVIOUS_PRODUCTION_HELPER,
+        PRODUCTION_HELPER_MAX_BYTES,
+        0o600,
+    )
+    if stored != previous:
+        raise InstallError("production_helper_backup_mismatch")
+    return previous, digest
+
+
 def install(payload: object) -> dict[str, object]:
     base_keys = {
         "reviewed_head_sha",
@@ -223,12 +366,16 @@ def install(payload: object) -> dict[str, object]:
     if set(payload) == base_keys:
         helper_source_contract = None
         helper_source_pull_number = PULL_NUMBER
+        selected_assets = {
+            key: value for key, value in ASSETS.items() if key != "production_helper"
+        }
     elif (
         set(payload) == base_keys | {"helper_source_contract"}
         and payload.get("helper_source_contract") == HELPER_SOURCE_CONTRACT
     ):
         helper_source_contract = HELPER_SOURCE_CONTRACT
         helper_source_pull_number = HELPER_SOURCE_PR_NUMBER
+        selected_assets = ASSETS
     else:
         raise InstallError("payload_invalid")
     revision = payload.get("reviewed_head_sha")
@@ -241,7 +388,7 @@ def install(payload: object) -> dict[str, object]:
         or DIGEST_RE.fullmatch(pair_manifest_digest) is None
     ):
         raise InstallError("reviewed_pair_manifest_invalid")
-    if not isinstance(hashes, dict) or set(hashes) != set(ASSETS):
+    if not isinstance(hashes, dict) or set(hashes) != set(selected_assets):
         raise InstallError("asset_manifest_invalid")
     for digest in hashes.values():
         if not isinstance(digest, str) or DIGEST_RE.fullmatch(digest) is None:
@@ -258,7 +405,7 @@ def install(payload: object) -> dict[str, object]:
 
     verified: dict[str, str] = {}
     contents: dict[str, bytes] = {}
-    for key, (relative_path, _staged_name, maximum) in ASSETS.items():
+    for key, (relative_path, _staged_name, maximum) in selected_assets.items():
         local = _read_staged(_staged_asset_path(revision, key), maximum)
         digest = hashlib.sha256(local).hexdigest()
         if digest != hashes[key]:
@@ -269,44 +416,116 @@ def install(payload: object) -> dict[str, object]:
         contents[key] = local
         verified[key] = digest
 
-    for key, (_relative, installed_name, _maximum) in ASSETS.items():
-        if key == "bootstrap":
-            continue
-        _atomic_root_file(
-            INSTALL_ROOT / installed_name, contents[key], 0o750 if key == "host_helper" else 0o640
-        )
+    def installed_path(key: str) -> Path:
+        if key == "production_helper":
+            return PRODUCTION_HELPER
+        return INSTALL_ROOT / selected_assets[key][1]
 
-    receipt: dict[str, object] = {
-        "format_version": 1,
-        "repository": REPOSITORY,
-        "pull_number": helper_source_pull_number,
-        "reviewed_head_sha": revision,
-        "reviewed_pair_manifest_sha256": pair_manifest_digest,
-        "files": {
-            installed_name: verified[key]
-            for key, (_relative, installed_name, _maximum) in ASSETS.items()
-            if key != "bootstrap"
-        },
-        "installed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-    }
+    def previous_file(path: Path, *, maximum: int, mode: int) -> bytes | None:
+        if not path.exists() and not path.is_symlink():
+            return None
+        return _read_fixed_root_file(path, maximum, mode)
+
+    def write_install() -> dict[str, object]:
+        previous_helper: bytes | None = None
+        previous_helper_digest: str | None = None
+        helper_replacement_started = False
+        snapshots: dict[Path, bytes | None] = {}
+        for key in selected_assets:
+            if key == "bootstrap":
+                continue
+            path = installed_path(key)
+            mode = 0o750 if key == "host_helper" or key == "production_helper" else 0o640
+            snapshots[path] = previous_file(path, maximum=selected_assets[key][2], mode=mode)
+        old_manifest = previous_file(INSTALLED_MANIFEST, maximum=8192, mode=0o640)
+        try:
+            if helper_source_contract is not None:
+                previous_helper, previous_helper_digest = _prepare_previous_production_helper(
+                    contents["production_helper"]
+                )
+            for key, (_relative, installed_name, _maximum) in selected_assets.items():
+                if key == "bootstrap" or key == "production_helper":
+                    continue
+                _atomic_root_file(
+                    INSTALL_ROOT / installed_name,
+                    contents[key],
+                    0o750 if key == "host_helper" else 0o640,
+                )
+            if helper_source_contract is not None:
+                current_helper = _read_fixed_root_file(
+                    PRODUCTION_HELPER,
+                    PRODUCTION_HELPER_MAX_BYTES,
+                    0o750,
+                )
+                if current_helper != contents["production_helper"]:
+                    helper_replacement_started = True
+                    _atomic_root_file(PRODUCTION_HELPER, contents["production_helper"], 0o750)
+
+            receipt: dict[str, object] = {
+                "format_version": 1,
+                "repository": REPOSITORY,
+                "pull_number": helper_source_pull_number,
+                "reviewed_head_sha": revision,
+                "reviewed_pair_manifest_sha256": pair_manifest_digest,
+                "files": {
+                    installed_name: verified[key]
+                    for key, (_relative, installed_name, _maximum) in selected_assets.items()
+                    if key != "bootstrap"
+                },
+                "installed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            }
+            if helper_source_contract is not None:
+                receipt["helper_source_contract"] = helper_source_contract
+                assert previous_helper_digest is not None
+                receipt["previous_production_helper_sha256"] = previous_helper_digest
+            _atomic_root_file(
+                INSTALLED_MANIFEST,
+                (json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n").encode(),
+                0o640,
+            )
+        except (InstallError, OSError, ValueError, TypeError) as error:
+            try:
+                if helper_replacement_started and previous_helper is not None:
+                    _atomic_root_file(PRODUCTION_HELPER, previous_helper, 0o750)
+                for path, contents_before in snapshots.items():
+                    if path == PRODUCTION_HELPER:
+                        continue
+                    if contents_before is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        mode = 0o750 if path.name == "host_helper.py" else 0o640
+                        _atomic_root_file(path, contents_before, mode)
+                if old_manifest is None:
+                    INSTALLED_MANIFEST.unlink(missing_ok=True)
+                else:
+                    _atomic_root_file(INSTALLED_MANIFEST, old_manifest, 0o640)
+            except (InstallError, OSError, ValueError, TypeError) as rollback_error:
+                raise InstallError("install_rollback_unverified") from rollback_error
+            if isinstance(error, InstallError):
+                raise
+            raise InstallError("sidecar_install_failed") from error
+
+        result: dict[str, object] = {
+            "status": "installed",
+            "reviewed_head_sha": revision,
+            "reviewed_pair_manifest_sha256": pair_manifest_digest,
+            "asset_sha256": verified,
+        }
+        if helper_source_contract is not None:
+            result["pull_number"] = helper_source_pull_number
+            result["helper_source_contract"] = helper_source_contract
+            result["production_helper_sha256"] = verified["production_helper"]
+            result["previous_production_helper_sha256"] = previous_helper_digest
+        return result
+
+    _safe_directory(STATE_ROOT, 0o750, create=True, group="signalops")
     if helper_source_contract is not None:
-        receipt["helper_source_contract"] = helper_source_contract
-    _atomic_root_file(
-        INSTALLED_MANIFEST,
-        (json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n").encode(),
-        0o640,
-    )
-    for key in ASSETS:
+        with _install_locks():
+            result = write_install()
+    else:
+        result = write_install()
+    for key in selected_assets:
         _staged_asset_path(revision, key).unlink(missing_ok=True)
-    result: dict[str, object] = {
-        "status": "installed",
-        "reviewed_head_sha": revision,
-        "reviewed_pair_manifest_sha256": pair_manifest_digest,
-        "asset_sha256": verified,
-    }
-    if helper_source_contract is not None:
-        result["pull_number"] = helper_source_pull_number
-        result["helper_source_contract"] = helper_source_contract
     return result
 
 

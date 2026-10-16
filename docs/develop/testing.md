@@ -653,3 +653,40 @@ earlier package/manifest is bound to helper head
 establish source-bound packaging for this phase. Archive scan/publication, actual-host combined
 1 GB, pair, and rollback checks remain pending; see
 [E23](../../MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity).
+E24's actual-host call **Failed** at reserve preflight (367,872 KiB available versus 524,288 KiB
+required). The SDK transport completed, but the typed operation returned an error. Independent
+source-path review traced the guard before candidate operations; actual candidate-container/asset
+cleanup was not independently verified. The native workload and recovery profile did not start, and
+this does not pass actual combined 1 GB acceptance. See
+[E24](../../MVP-PLAN.md#r-astra-121-e24-host-reserve-preflight).
+
+E25's builder run of `tests/test_pr_rehearsal.py` and
+`tests/test_production_deploy_helper.py` passed 462 tests with one skip; the Docker integration test
+was explicitly deselected. Ruff lint, security, format, and diff checks passed. The 117 bound inputs
+comprised 64 worktree source files and 53 verified stage assets. An earlier independent run passed
+458 tests but identified three missing edge-coverage cases. Lock contention, installation rollback,
+and failing compensation were then covered by new tests; independent rerun passed 462 tests and
+static/input-binding checks. Its requested rollback-failure coverage check **Failed** because
+`install_rollback_unverified` at `scripts/pr_rehearsal_bootstrap.py:503` still lacks a test
+assertion. This is a test-coverage gap, not a source-defect finding. No actual Docker or host
+operation, helper installation, production mutation, or combined 1 GB acceptance occurred. The
+candidate keeps v1 and eight MCP schemas unchanged and preserves 512 MiB startup / 128 MiB running
+reserve floors. See
+[E25](../../MVP-PLAN.md#r-astra-121-e25-maintenance-only-assistant-disable-and-failure-edge-checkpoint).
+
+The original 5ad disable and compensation paths use same-image Compose with
+`--no-build --force-recreate --pull never`; the checked path preserves the original image, volume,
+schema, and loopback binding.
+
+E26 adds a focused `install_rollback_unverified` regression and a restored-state companion
+parameter. The exact builder two-module run passed 463 tests with one skip. Independent QA passed
+both changed parameter cases and its 117-input/static scope; it did not rerun the full suite for
+the new test pin. Preserve E25's earlier coverage gap as historical evidence. See
+[E26](../../MVP-PLAN.md#r-astra-121-e26-install-rollback-failure-regression-supplement).
+
+E27's exact two-module builder suite passed 466 tests with one skip; independent Astra re-review
+passed three state-writer fault regressions and its 117-input/static scope. These are separate
+builder and focused independent results, not a combined full-suite claim. E25's coverage gap and
+E26's test-only supplement remain historical. No actual installation, host, production, recovery,
+or resource acceptance ran. See
+[E27](../../MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).

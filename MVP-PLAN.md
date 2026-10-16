@@ -6924,3 +6924,204 @@ publication, PR #11 helper installation, its actual-host pair and data-rollback 
 rollback, any release of these PR #11 changes, the associated owner canary, and release acceptance
 remain **Pending**. The existing
 production app, 1 GB host, backups, and US$15 monthly total cap are unchanged.
+
+### R-ASTRA-121 E24 — host reserve preflight
+
+The v2 enabled-native phase was published at revision
+`7c3ceeeddc741f1795b40c4df7acdaf5daff4d7f`. Its actual-host PR-pair call **Failed** at the reserve
+preflight: the host reported 367,872 KiB available against the required 524,288 KiB and returned
+`host_memory_reserve_breached`. The SDK transport completed successfully, but the typed operation
+result was `status=error`; transport completion is not rehearsal acceptance. Host result
+`/var/tmp/r12r/pr11-7c3-publication-package-kc0fap10/host-tool-result.json` has SHA-256
+`de17dfe8f0b1b454e49f8dfa8e0a24b2df95c11f63940a50ed1e4dfa023ad65f`.
+
+Independent review **Failed** the actual PR-pair host rehearsal and **Passed** its exact-input,
+structured-result, and source-path review scope. It confirmed the preflight guard returns before the
+candidate native/recovery actions are issued. Actual candidate-container/asset cleanup was not
+independently verified; tests and live acceptance were **Skipped**. Review receipt
+`/var/tmp/r12r/pr11-v2-hostresult-independent-b2340b4cc32d44a9bf57c4aa787b4db6/independent-host-result-review.json`
+has SHA-256 `55d20e779f9bb8904a69f0a27dcb7fd3bd585a168587a97ccc18f27008b3e558` and review window
+`2026-10-16T03:29:04Z`–`2026-10-16T03:31:12.728637Z`. The SDK transport result is Pass only for
+transport, not for the typed rehearsal.
+
+The post-call read-only inspect reports the unchanged production revision
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13, invited
+rollout, ready application and assistant, assistant enabled, and loopback-only binding. Inspect
+receipt `/var/tmp/r12r/pr11-7c3-publication-package-kc0fap10/posthost-production-inspect.json` has
+SHA-256 `440ef7968b598e0daaccc5ab2105c5d479feef19b8db7d5b4e02761c345d801c` and receipt-creation
+time `2026-10-16T03:33:47.447571Z`; its exact tool invocation time is **Unavailable**. The bounded
+independent supplement passed saved-receipt integrity and typed inspect-field review:
+`/var/tmp/r12r/pr11-v2-hostresult-independent-b2340b4cc32d44a9bf57c4aa787b4db6/posthost-health-supplement.json`,
+SHA-256 `f761db897b0a99404c2320c2d3de550da611dc1b5125d4a9a3af6a336fef6c75`, reviewed
+`2026-10-16T03:34:02Z`–`03:34:12.042904Z`.
+
+No candidate resource, native workload, or recovery phase started. No production disable, retry, or
+deployment occurred. The separate maintenance source repair remains in progress and has no result in
+this entry. Actual combined 1 GB acceptance, PR-bound recovery/rollback, installation, deployment,
+owner canary, and release gates remain open. The existing 1 GB host, backups, and US$15 monthly total
+cap are unchanged; no email or release is claimed.
+
+
+### R-ASTRA-121 E25 — maintenance-only assistant-disable and failure-edge checkpoint
+
+The maintenance-helper candidate narrows the operational change to disabling the assistant on the
+existing production image `sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`
+at revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, schema 13. Its reviewed path is same-image
+Compose with `--no-build --force-recreate --pull never`; it preserves the original image, exact
+existing data volume, Compose definition, schema 13, and loopback binding. The candidate captures the current runtime and
+configuration plus the original rollout mode, and its compensation path reports restored state
+truthfully. The explicit rollout sequence is assistant disabled and app ready, then `owner_canary`,
+then `invited` after the canary. Other release, rollback, and kill paths are unchanged. This is
+source-level behavior only: no actual-host call or production mutation occurred for E25.
+
+Bootstrap v2 now declares five fixed source assets, adding `scripts/production-deploy-helper.py`
+with intended installed mode `0750`. It retains the exact prior helper executable
+(`108,471` bytes, SHA-256
+`57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915`) as a mode-`0600` backup,
+uses a self-manifest and source pins, takes deploy-to-rehearsal locks without waiting, and uses
+atomic installation with compensation. Inputs do not select arbitrary paths or URLs. These source
+changes retain the v1 contract, all eight MCP schemas, and the existing 512 MiB startup and 128 MiB
+running reserve floors. The v2 maintenance preflight requires production to be assistant-disabled
+and app-ready. This entry supersedes any earlier four-asset description only for the new v2
+bootstrap; prior checkpoint wording remains historical.
+
+The builder-selected regression run **Passed** its declared unit/static scope on native x86_64,
+Python 3.11.15, with child umask `0022`: `462` passed, one skipped, one Docker integration case
+deselected, zero failures and errors. The exact command selected
+`tests/test_pr_rehearsal.py` and `tests/test_production_deploy_helper.py`; 117 bound inputs were 64
+worktree source files plus 53 verified stage assets, not 117 worktree files. Ruff lint, security,
+format, and diff checks passed. Run window was `2026-10-16T04:18:29Z`–`04:18:51Z`; task ID was not
+provided. Scoped receipt `/var/tmp/r12r/r121-pr11-edge-regressions-full-05/scoped-checks.json` has
+SHA-256 `8a53cd90eac272dcc7be632f5bf8d853dc9e379c2243a6bde6b7201d929e63ae`; terminal
+`terminal.json` SHA-256 is `dce90176fd43d4b080b358261ca1e4a2a418eb1a6cc49d9f84e9144c8ce5adb0`,
+and JUnit SHA-256 is `940c9058a2d8b9295eb1938f7d0f364a47076acac3ee4419de9b10ab69f9cf1d`.
+
+The first independent review passed 458 selected tests, one skip, and static checks, but identified
+three missing edge-coverage cases; its receipt is
+`/var/tmp/r12r/pr11-maintenance-independent-qa-20261016T0408Z/qa-receipt-final.json`, SHA-256
+`9b8a446843dfbd3c2085e31acae32c758559469707c49f685d3d9366557e7530`. The subsequent builder
+added lock-contention, install-rollback, and failing-compensation tests. The independent rerun's
+selected test, input-binding, Ruff, and diff scopes **Passed**: 462 tests passed, one was skipped,
+and zero failed or errored; 117 copied inputs (64 worktree sources plus 53 staged assets) and 36
+imported source modules matched. It ran on native x86_64 with Python 3.11.15 and umask `0022` at
+`2026-10-16T04:22:11.227060Z`–`04:22:34.994555Z`. Receipt
+`/var/tmp/r12r/pr11-edge-independent-qa-20261016T0421Z/qa-final-receipt.json` has SHA-256
+`e04fb13f92971b25c886e456a179360e0da9edf599fc53c3f83dafcaa4d7d763`; task ID was not present in
+the receipt. However, the separate requested rollback-failure coverage check **Failed**: the
+`install_rollback_unverified` path at `scripts/pr_rehearsal_bootstrap.py:503` still has no test
+assertion. This is a test-coverage gap, not evidence of a source defect. The receipt also preserves
+two reviewer setup attempts as **Unavailable** (missing bare `python` alias; then a staged-asset
+path mismatch before tests), both corrected before the passing rerun. The four-asset description
+and all earlier results remain historical.
+
+No helper installation, archive publication, actual-host pair rehearsal, PR-bound rollback,
+production deployment, owner canary, release, or actual combined 1 GB acceptance follows. The
+publisher/helper pair-locator finding remains open until separately resolved and reviewed. The
+uncovered rollback-failure test assertion remains outstanding. The
+existing 1 GB host, backups, and US$15 monthly total cap are unchanged; no email or release is
+claimed.
+
+
+### R-ASTRA-121 E26 — install rollback-failure regression supplement
+
+E26 is a test-only follow-up to E25. It adds
+`test_bootstrap_install_manifest_failure_reports_rollback_state_and_preserves_backup` in
+`tests/test_pr_rehearsal.py` for the `install_rollback_unverified` path: a helper rollback write
+failure is injected, residual file bytes are asserted directly, and a companion restored-state
+parameter verifies the successful rollback path. The test pin is
+`75ee151c2d0c9a91d3c4ffd3b7dc6885156459174e258f73efd1a50dcab0b99d`. The five unchanged
+implementation/controller pins are bootstrap `0595f4555b8b842dcb06a86313d77261890ff175502ea972b68f5ffb0626961c`,
+host helper `3f8ee3626e6feb22cec7c791e1879f754bcbc968422a923a40a22cfaeb882e0b`, production helper
+`e3b544964f1ada8c7dc798e735b9764341a9269a2650784b8acce1a91ace0474`, controller
+`ada39633091258288d994e68a1fd1eb0e9c3991a8625cbac6029484d888bc67f`, and rehearsal module
+`8fc87a2d4b12e1030e17d21244749bae3eb42a268e4591df84f6ae8303db87e0`. The unchanged
+`tests/test_production_deploy_helper.py` pin is
+`f3d8a8260635e3f00c5954023d21c609dd2f0db554c43518900fde5c4ae61621`. The separate E25 coverage gap
+remains part of its historical record; E26 supplies a focused test for that missing path.
+
+The builder's exact two-module run **Passed** with `463` passed, one skipped, zero failures and
+errors in `464` JUnit cases; one opt-in Docker integration case was explicitly deselected. It used
+Python 3.11.15, native x86_64, and child umask `0022`, from
+`2026-10-16T04:30:59.633048Z` to `04:31:10.514512Z`. Terminal
+`/var/tmp/r12r/r121-pr11-install-rollback-failure-test-20261016T0425Z/full-suite-recheck-v2/terminal-receipt.json`
+has SHA-256 `723f2180f86e02bc00b75c41157b23235c1f1f25c3dfeb3a4c42de2d5fa1feb7`; JUnit in the same
+directory has SHA-256 `2074c9c55fab9db6d46101f3d6aca997cdad8e5baaf94ac0553fe1f459d70834`.
+
+Independent QA **Passed** for the two changed rollback-failure parameter cases and its declared
+source/stage/import binding and static scope: all `117` copied inputs, including `53` staged assets,
+and imported source modules matched; Ruff lint, security, format, and diff checks passed. Its new
+test pin matched the value above. This was a focused two-case recheck, not an independent full-suite
+rerun for the changed test pin. The earlier independent `462`-pass suite remains bound to its
+previous test pin; do not combine the two counts. QA receipt
+`/var/tmp/r12r/pr11-rollback-failure-independent-qa-20261016T0434Z/qa-final-receipt.json` has
+SHA-256 `7085ddd30923e21b06e56388d441f68add33083d33fdfab6269e62f9ef50b08c`; its overall receipt
+creation time is `2026-10-16T04:39:23.670820Z`, with focused cases at
+`04:35:13.492135Z`–`04:35:17.956514Z` and `04:35:55.919802Z`–`04:36:00.237671Z`. The exact task
+UUID was not supplied. Four reviewer setup/receipt attempts failed or were unavailable before the
+corrected evidence was recorded; the receipt preserves them. No source security-audit result is
+included here.
+
+No Docker/native assistant, provider, browser, host, production, installation, maintenance, recovery,
+or release operation ran. The actual combined 1 GB, PR-bound rollback, publication-locator, source
+security review, installation, deployment, owner canary, and release gates remain open. The existing
+1 GB host, backups, and US$15 monthly total cap remain unchanged. E26 is a focused test supplement;
+it does not revise E25's earlier result or establish public readiness.
+
+
+### R-ASTRA-121 E27 — maintenance state-writer fault repair
+
+An independent Astra review **Failed** with P2 `PR11-MAINT-01`: `_write_json` opened its temporary
+file before converting `OSError` to a safe helper error. Injected `ENOSPC` at that real temp-open
+boundary after the runtime file had been atomically replaced escaped the transition handler. The
+synthetic observation showed runtime mode `disabled`, current record `invited`, and no compensation
+or failure-record call. This demonstrated a reachable state-transition defect, not only missing
+test coverage. The original review receipt
+`/var/tmp/r12r/pr11-astra-security-20261016T044228Z/review-receipt.json` has SHA-256
+`e1213ab95ebf8e666537bf76f20851de47c562191aef1cf6c52ba53be7deb40a`; its recorded creation time
+is `2026-10-16T04:45:05.000304Z`. Its fault injection used synthetic private state with host and
+Compose observations stubbed; no host or production operation ran.
+
+The minimal repair changes only `scripts/production-deploy-helper.py` and
+`tests/test_production_deploy_helper.py`. Atomic state/runtime/restore writers normalize
+temp-open/write/close/replace `OSError` to safe error categories; the maintenance transition and
+compensation also catch raw `OSError` defensively. Failure-record publication reports whether it
+persisted. If the outcome cannot be recorded, the helper returns
+`assistant_maintenance_outcome_unrecorded` and does not claim a verified restoration. Current
+helper SHA-256 is
+`584caf0be5f726ac25313fdfac3fc23af9c8185a833dff94b27ae61ae7fe1aae`; production helper tests SHA-256
+is `4abe31fd96e0aa4ee48af5b9c8e1b431dc18d703a2838565e6dcf57b66f68833`. The other five core
+source/test pins remained unchanged in the independent review. Candidate diff
+`/var/tmp/r12r/pr11-statewriter-suite-ed0cd57a-416b-4a25-b64e-d28a63128ace/candidate-diff.patch`
+has SHA-256 `cb309dd8f08ab14c7c996a68482e461912c8dde4d0c6028894d78fb0642e60d4`.
+
+The builder's exact two-module suite **Passed** with `466` passed, one skipped, zero failures and
+errors in `467` JUnit cases; the opt-in Docker integration case was deselected. It used native
+x86_64, Python 3.11.15, and child umask `0022`; the recorded pytest timestamp is
+`2026-10-16T04:49:26.875154Z` and duration `8.687` seconds. Terminal
+`/var/tmp/r12r/pr11-statewriter-suite-ed0cd57a-416b-4a25-b64e-d28a63128ace/terminal-receipt.json`
+has SHA-256 `a4ea3e9b05e022200c9ea2d0024ae12e87de6d31e6dc23ff3deba7dad1a6cda8`; JUnit SHA-256 is
+`954fe4d5a3599a672e5412df40878f591ab36960a0211c0247ab0afee6a67cc2`.
+
+Fresh Astra independent QA **Passed** the three actual-writer fault regressions, 117-input
+source/stage binding (53 staged assets, 28 imported modules), and scoped Ruff lint/security/format/
+diff checks, with two warnings. Its test window was
+`2026-10-16T04:52:31.684991Z`–`04:52:36.904877Z`; review receipt
+`/var/tmp/r12r/pr11-astra-enospc-rereview-20261016T045212Z/review-receipt.json` has SHA-256
+`27366ba2602c9c10ac6b26f39f18f402a26db542b25708ba6e5553816afbc04d`. The cases verified restoration
+after a transition-state write failure, truthful unverified mixed state when compensation-state
+writing fails, and `assistant_maintenance_outcome_unrecorded` when failure-record publication also
+fails. This is narrow PR11-MAINT-01 re-review, not a full source security audit. The earlier E25
+coverage failure and E26 test-only supplement remain separate historical checkpoints; the earlier
+independent full-suite counts are not combined with E27's focused review.
+
+Parent semantic correction: the earlier E25 draft incorrectly described the original-image disable
+and compensation path as avoiding force recreation, and omitted the leading `5` from the historical
+helper-backup digest. The source and test assertions confirm same-image Compose flags
+`--no-build --force-recreate --pull never`; the corrected digest appears in E25 above. This
+documentation correction changes no source or tests and records no runtime or operational result.
+
+No actual installer, maintenance, Docker, native assistant, provider, host, production, recovery,
+canary, or resource acceptance ran. The publication-locator gap and actual combined 1 GB,
+PR-bound rollback, deployment, owner-canary, and release gates remain open. No public readiness is
+claimed; the existing 1 GB host, backups, and US$15 monthly total cap remain unchanged.

@@ -273,3 +273,39 @@ the [E21 contract and status](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-
 and [E23 current checkpoint](../../MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity).
 Applied-state persistence and helper-revision substitution passed their selected synthetic review;
 neither establishes installation or production acceptance.
+
+E24 records the published native phase and the first actual-host call. The call failed before
+candidate actions at the 512 MiB startup reserve check (367,872 KiB available); SDK transport success
+is not rehearsal acceptance. Independent source-path review found the guard returned before candidate
+native/recovery operations, but did not independently verify container/asset cleanup. Production
+remained on the original ready 5ad schema-13 image with assistant enabled, invited rollout and
+loopback-only access. The inspect receipt's creation time is not its tool invocation time. The actual
+combined 1 GB gate and release acceptance remain open. See
+[E24](../../MVP-PLAN.md#r-astra-121-e24-host-reserve-preflight).
+
+E25 describes a separate maintenance-helper candidate scoped to disabling the assistant on the
+existing 5ad schema-13 release. It uses the same image and Compose definition with
+`--no-build --force-recreate --pull never`, preserving the exact existing volume, schema, and
+loopback binding. The
+candidate records runtime/configuration and original rollout mode and compensates failures without
+claiming a restore that was not observed. Re-enable only through disabled/ready, owner canary, then
+invited rollout. Its bootstrap now pins five fixed assets, including
+`scripts/production-deploy-helper.py`; older four-asset wording is historical. This is source and
+builder-test evidence only: the independent selected suite passed, but its requested
+rollback-failure coverage check found one missing assertion at
+`scripts/pr_rehearsal_bootstrap.py:503` (`install_rollback_unverified`). This is a test-coverage gap,
+not a source-defect finding; no install, host call, production change, or release is established. See
+[E25](../../MVP-PLAN.md#r-astra-121-e25-maintenance-only-assistant-disable-and-failure-edge-checkpoint).
+
+E26 adds a test-only assertion for helper-install rollback failure. Its builder two-module suite
+passed 463 tests with one skip; independent QA passed the two changed cases and scoped pins/static
+checks, while the full suite was not independently rerun for that new test pin. E25's original
+coverage-gap result is preserved. Source security review and operational acceptance remain open.
+See [E26](../../MVP-PLAN.md#r-astra-121-e26-install-rollback-failure-regression-supplement).
+
+E27 records the minimal PR11-MAINT-01 state-writer repair. The builder's two-module suite passed
+466 tests with one skip, and independent Astra re-review passed three real writer-fault regressions
+plus its bound input/static checks. This narrow review does not establish a full security audit,
+installation, host, production, recovery, resource, or release acceptance; the publication-locator
+gap remains open. Preserve E25 and E26 as separate historical evidence. See
+[E27](../../MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).

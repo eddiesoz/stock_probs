@@ -1106,7 +1106,38 @@ copied-source checks passed 373 selected tests each, with one Docker test desele
 orchestration has not run on the actual host. Archive scanning, corrected pair publication,
 actual-host pair and rollback, the combined 1 GB gate, installation, deployment, and release
 acceptance remain open. See [E23](../../MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity)
-for the evidence and publication-locator finding.
+for the evidence and publication-locator finding. E24 records the published `7c3cee` source and an
+actual-host call that stopped at `host_memory_reserve_breached` before candidate actions. The
+post-call inspect showed the original ready, invited, enabled, loopback-only production state; its
+receipt creation time is not the exact tool-call time. No native/recovery phase or deployment
+acceptance follows. See [E24](../../MVP-PLAN.md#r-astra-121-e24-host-reserve-preflight).
+
+E25 records a source-only proposal for maintenance on the exact existing 5ad schema-13 release:
+disable the assistant using same-image Compose with `--no-build --force-recreate --pull never`,
+preserving the exact original image, volume, schema, Compose definition, and loopback binding. The candidate records current
+runtime/configuration and original rollout mode, then compensates failures truthfully. Re-enable in
+order: assistant-disabled/app-ready, owner canary, invited rollout. The prior E24 read remains the
+last production observation; no E25 host call, helper install, or production change occurred.
+Bootstrap v2 now includes five pinned source assets, with `scripts/production-deploy-helper.py`
+added; four-asset wording is historical. Independent selected tests and source/static checks passed,
+but the requested rollback-failure coverage check **Failed** because
+`install_rollback_unverified` at `scripts/pr_rehearsal_bootstrap.py:503` remains unasserted. This is
+a test-coverage gap, not a source-defect finding. The scoped review does not authorize an
+operational transition or establish host, rollback, or release acceptance. See
+[E25](../../MVP-PLAN.md#r-astra-121-e25-maintenance-only-assistant-disable-and-failure-edge-checkpoint).
+
+E26 adds a test-only check for helper-install rollback failure. The builder's two-module suite
+passed 463 tests with one skip, and independent QA passed the two changed cases and scoped static
+review. No independent full-suite rerun was performed for the changed test pin. This does not alter
+the operational hold or establish installation, host, production, or release acceptance. See
+[E26](../../MVP-PLAN.md#r-astra-121-e26-install-rollback-failure-regression-supplement).
+
+E27 records the minimal state-writer error repair after the PR11-MAINT-01 review. The exact builder
+two-module suite passed 466 tests with one skip, and independent Astra re-review passed three
+actual-writer fault regressions plus its pinned input/static scope. This narrow result does not
+authorize installation or a host/production transition; recovery, resource, publication-locator,
+and release gates remain open. E25 and E26 retain their earlier scopes. See
+[E27](../../MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).
 
 A possible temporary use of the registered app-only recovery image must first pass local
 compatibility and data continuity, exact recovery-role validation at both boundaries, signed

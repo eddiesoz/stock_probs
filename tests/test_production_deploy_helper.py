@@ -602,7 +602,7 @@ def test_assistant_rollout_is_bound_to_current_schema13_release_and_ordered(
         "archive_sha256": archive_sha256,
         "image_id": image_id,
         "platform": "linux/amd64",
-        "archive_size": 1234,
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
         "schema_version": 13,
         "compose_digest": "d" * 64,
         "assistant_rollout_mode": "disabled",
@@ -923,6 +923,637 @@ def test_disable_rollout_stops_app_when_kill_switch_cannot_be_verified(
     assert failed["assistant_disabled_verified"] is False
     assert failed["app_stopped"] is True
     assert failed["containment_status"] == "app_stopped"
+
+
+def test_original_5ad_disable_recreates_fixed_image_without_in_place_kill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    revision = helper.PRODUCTION_PREDECESSOR_REVISION
+    archive_sha256 = helper.HOTFIX_RECOVERY_ARCHIVE_SHA256
+    image_id = helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    snapshot = tmp_path / "compose.yaml"
+    current = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "release_role": "candidate",
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "platform": "linux/amd64",
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "assistant_rollout_mode": "invited",
+    }
+    state = dict(current)
+    runtime_box = {"value": helper._runtime_file_bytes(current["image_ref"], "invited")}
+    compose_calls: list[dict[str, object]] = []
+    killed: list[str] = []
+    identities = iter(
+        [
+            ("1" * 64, "signal-ledger_signal-ledger-data"),
+            ("2" * 64, "signal-ledger_signal-ledger-data"),
+        ]
+    )
+
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(
+        helper, "_read_json", lambda path: state if path == helper.CURRENT_RECORD else None
+    )
+    monkeypatch.setattr(
+        helper,
+        "_write_json",
+        lambda path, value: state.update(value) if path == helper.CURRENT_RECORD else None,
+    )
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 13)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda _record: None)
+    monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _record: snapshot)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: current["compose_digest"])
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", lambda: "a" * 40)
+    monkeypatch.setattr(helper, "_read_runtime_file", lambda: runtime_box["value"])
+    monkeypatch.setattr(
+        helper,
+        "_runtime_file",
+        lambda _image, mode: runtime_box.__setitem__(
+            "value", helper._runtime_file_bytes(current["image_ref"], mode)
+        ),
+    )
+    monkeypatch.setattr(helper, "_maintenance_app_identity", lambda _snapshot: next(identities))
+    monkeypatch.setattr(
+        helper,
+        "_live_app_identity",
+        lambda _snapshot: {
+            "revision": revision,
+            "image_id": image_id,
+            "container_status": "running",
+            "loopback_verified": True,
+            "data_volume": "signal-ledger_signal-ledger-data",
+            "data_volume_mount_valid": True,
+        },
+    )
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda *, assistant_rollout_mode=None: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {
+                "enabled": assistant_rollout_mode != "disabled",
+                "status": "disabled" if assistant_rollout_mode == "disabled" else "ready",
+            },
+        },
+    )
+    original_compose_up = helper._compose_up
+    monkeypatch.setattr(
+        helper,
+        "_compose_up",
+        lambda record, **kwargs: compose_calls.append({"record": record, **kwargs}) or "",
+    )
+    monkeypatch.setattr(helper, "_request_in_place_assistant_kill", killed.append)
+    monkeypatch.setattr(helper, "_audit", lambda *_args, **_kwargs: None)
+
+    result = helper._set_assistant_rollout(
+        "disabled",
+        revision=revision,
+        archive_sha256=archive_sha256,
+        image_id=image_id,
+    )
+
+    assert result["maintenance_verified"] is True
+    assert result["assistant_rollout_mode"] == "disabled"
+    assert result["production_data_volume_preserved"] is True
+    assert state["assistant_rollout_mode"] == "disabled"
+    assert runtime_box["value"] == helper._runtime_file_bytes(current["image_ref"], "disabled")
+    assert len(compose_calls) == 1
+    assert compose_calls[0]["force_recreate"] is True
+    assert compose_calls[0]["compose_file"] == snapshot
+    assert killed == []
+
+    up_calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(helper, "_compose", lambda *args, **_kwargs: up_calls.append(args) or "")
+    original_compose_up(current, compose_file=snapshot, force_recreate=True)
+    assert up_calls == [
+        ("up", "--detach", "--no-build", "--force-recreate", "--pull", "never", "app")
+    ]
+
+
+def test_original_5ad_disable_failure_restores_captured_mode_and_reports_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    revision = helper.PRODUCTION_PREDECESSOR_REVISION
+    archive_sha256 = helper.HOTFIX_RECOVERY_ARCHIVE_SHA256
+    image_id = helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    snapshot = tmp_path / "compose.yaml"
+    current = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "release_role": "candidate",
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "platform": "linux/amd64",
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "assistant_rollout_mode": "invited",
+    }
+    state = dict(current)
+    runtime_box = {"value": helper._runtime_file_bytes(current["image_ref"], "invited")}
+    failures: list[dict[str, object]] = []
+    compose_count = [0]
+    identities = iter(
+        [
+            ("1" * 64, "signal-ledger_signal-ledger-data"),
+            ("2" * 64, "signal-ledger_signal-ledger-data"),
+            ("2" * 64, "signal-ledger_signal-ledger-data"),
+        ]
+    )
+
+    def write_json(path: Path, value: dict[str, object]) -> None:
+        if path == helper.CURRENT_RECORD:
+            state.clear()
+            state.update(value)
+        elif path == helper.FAILED_RECORD:
+            failures.append(dict(value))
+
+    def compose_up(*_args: object, **_kwargs: object) -> str:
+        compose_count[0] += 1
+        if compose_count[0] == 1:
+            raise helper.HostError("maintenance_start_failed")
+        return ""
+
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(
+        helper, "_read_json", lambda path: dict(state) if path == helper.CURRENT_RECORD else None
+    )
+    monkeypatch.setattr(helper, "_write_json", write_json)
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 13)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda _record: None)
+    monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _record: snapshot)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: current["compose_digest"])
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", lambda: "a" * 40)
+    monkeypatch.setattr(helper, "_read_runtime_file", lambda: runtime_box["value"])
+    monkeypatch.setattr(
+        helper,
+        "_runtime_file",
+        lambda _image, mode: runtime_box.__setitem__(
+            "value", helper._runtime_file_bytes(current["image_ref"], mode)
+        ),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_restore_runtime_file",
+        lambda content: runtime_box.__setitem__("value", content),
+    )
+    monkeypatch.setattr(helper, "_maintenance_app_identity", lambda _snapshot: next(identities))
+    monkeypatch.setattr(
+        helper,
+        "_live_app_identity",
+        lambda _snapshot: {
+            "revision": revision,
+            "image_id": image_id,
+            "container_status": "running",
+            "loopback_verified": True,
+            "data_volume": "signal-ledger_signal-ledger-data",
+            "data_volume_mount_valid": True,
+        },
+    )
+
+    def health_check(*, assistant_rollout_mode=None):
+        mode = assistant_rollout_mode or state.get("assistant_rollout_mode")
+        return {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {
+                "enabled": mode != "disabled",
+                "status": "disabled" if mode == "disabled" else "ready",
+            },
+        }
+
+    monkeypatch.setattr(helper, "_health_check", health_check)
+    monkeypatch.setattr(helper, "_compose_up", compose_up)
+    monkeypatch.setattr(helper, "_audit", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(helper.HostError, match="maintenance_start_failed"):
+        helper._set_assistant_rollout(
+            "disabled",
+            revision=revision,
+            archive_sha256=archive_sha256,
+            image_id=image_id,
+        )
+
+    assert state["assistant_rollout_mode"] == "invited"
+    assert runtime_box["value"] == helper._runtime_file_bytes(current["image_ref"], "invited")
+    assert failures[0]["compensation_status"] == "verified_original_state_restored"
+    assert failures[0]["observed_state"]["current_rollout_mode"] == "invited"
+    assert failures[0]["observed_state"]["runtime_rollout_mode"] == "invited"
+    assert failures[0]["observed_state"]["state_verified"] is True
+
+
+@pytest.mark.parametrize("compensation_fault", ["compose_up", "observed_volume"])
+def test_original_5ad_failed_compensation_receipt_reports_unverified_observed_state(
+    compensation_fault: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    revision = helper.PRODUCTION_PREDECESSOR_REVISION
+    archive_sha256 = helper.HOTFIX_RECOVERY_ARCHIVE_SHA256
+    image_id = helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    snapshot = tmp_path / "compose.yaml"
+    current = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "release_role": "candidate",
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "platform": "linux/amd64",
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "assistant_rollout_mode": "invited",
+    }
+    state = dict(current)
+    runtime_box = {"value": helper._runtime_file_bytes(current["image_ref"], "invited")}
+    failures: list[dict[str, object]] = []
+    compose_count = 0
+    identity_count = 0
+
+    def write_json(path: Path, value: dict[str, object]) -> None:
+        if path == helper.CURRENT_RECORD:
+            state.clear()
+            state.update(value)
+        elif path == helper.FAILED_RECORD:
+            failures.append(dict(value))
+
+    def compose_up(*_args: object, **_kwargs: object) -> str:
+        nonlocal compose_count
+        compose_count += 1
+        if compose_count == 1:
+            raise helper.HostError("maintenance_start_failed")
+        if compensation_fault == "compose_up":
+            raise helper.HostError("compensation_start_failed")
+        return ""
+
+    def maintenance_identity(_snapshot: Path) -> tuple[str, str]:
+        nonlocal identity_count
+        identity_count += 1
+        volume = (
+            "unexpected-volume"
+            if compensation_fault == "observed_volume" and identity_count == 2
+            else "signal-ledger_signal-ledger-data"
+        )
+        return ("1" * 64 if identity_count == 1 else "2" * 64, volume)
+
+    if compensation_fault == "compose_up":
+        observed_live = {
+            "revision": revision,
+            "image_id": image_id,
+            "container_status": "exited",
+            "loopback_verified": False,
+            "data_volume": "signal-ledger_signal-ledger-data",
+            "data_volume_mount_valid": True,
+        }
+    else:
+        observed_live = {
+            "revision": revision,
+            "image_id": image_id,
+            "container_status": "running",
+            "loopback_verified": True,
+            "data_volume": "unexpected-volume",
+            "data_volume_mount_valid": True,
+        }
+
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: dict(state) if path == helper.CURRENT_RECORD else None,
+    )
+    monkeypatch.setattr(helper, "_write_json", write_json)
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 13)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda _record: None)
+    monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _record: snapshot)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: current["compose_digest"])
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", lambda: "a" * 40)
+    monkeypatch.setattr(helper, "_read_runtime_file", lambda: runtime_box["value"])
+    monkeypatch.setattr(
+        helper,
+        "_runtime_file",
+        lambda _image, mode: runtime_box.__setitem__(
+            "value", helper._runtime_file_bytes(current["image_ref"], mode)
+        ),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_restore_runtime_file",
+        lambda content: runtime_box.__setitem__("value", content),
+    )
+    monkeypatch.setattr(helper, "_maintenance_app_identity", maintenance_identity)
+    monkeypatch.setattr(helper, "_live_app_identity", lambda _snapshot: observed_live)
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda *, assistant_rollout_mode=None: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {
+                "enabled": assistant_rollout_mode != "disabled",
+                "status": "disabled" if assistant_rollout_mode == "disabled" else "ready",
+            },
+        },
+    )
+    monkeypatch.setattr(helper, "_compose_up", compose_up)
+    monkeypatch.setattr(helper, "_audit", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(helper.HostError, match="maintenance_start_failed"):
+        helper._set_assistant_rollout(
+            "disabled",
+            revision=revision,
+            archive_sha256=archive_sha256,
+            image_id=image_id,
+        )
+
+    assert len(failures) == 1
+    failure = failures[0]
+    assert failure["status"] == "assistant_maintenance_failed"
+    assert failure["compensation_status"] == "failed"
+    assert failure["compensation_status"] != "verified_original_state_restored"
+    observed = failure["observed_state"]
+    assert observed["production_revision"] == revision
+    assert observed["production_image_id"] == image_id
+    assert observed["current_rollout_mode"] == "invited"
+    assert observed["runtime_rollout_mode"] == "invited"
+    assert observed["app_status"] == "ready"
+    assert observed["assistant_status"] == "ready"
+    assert observed["assistant_enabled"] is True
+    assert observed["state_verified"] is False
+    if compensation_fault == "compose_up":
+        assert failure["compensation_failure_code"] == "compensation_start_failed"
+        assert observed["app_container_status"] == "exited"
+        assert observed["loopback_verified"] is False
+    else:
+        assert failure["compensation_failure_code"] == "maintenance_compensation_unverified"
+        assert observed["app_container_status"] == "running"
+        assert observed["data_volume"] == "unexpected-volume"
+
+
+def _prepare_original_5ad_real_state_files(
+    helper: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[dict[str, Any], Path, Path, Path, Callable[..., int]]:
+    """Use real atomic state/runtime writers with only host-service reads stubbed."""
+
+    revision = helper.PRODUCTION_PREDECESSOR_REVISION
+    archive_sha256 = helper.HOTFIX_RECOVERY_ARCHIVE_SHA256
+    current = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "release_role": "candidate",
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "platform": "linux/amd64",
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "assistant_rollout_mode": "invited",
+    }
+    current_path = tmp_path / "current.json"
+    failed_path = tmp_path / "failed.json"
+    runtime_path = tmp_path / "runtime.env"
+    monkeypatch.setattr(helper, "CURRENT_RECORD", current_path)
+    monkeypatch.setattr(helper, "FAILED_RECORD", failed_path)
+    monkeypatch.setattr(helper, "RUNTIME_ENV_FILE", runtime_path)
+    monkeypatch.setattr(helper, "AUDIT_LOG", tmp_path / "audit.jsonl")
+    monkeypatch.setattr(helper, "_safe_mode", lambda *_args: None)
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_ensure_no_active_temporary_recovery", lambda: None)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: json.loads(path.read_text(encoding="utf-8")) if path.exists() else None,
+    )
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 13)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda _record: None)
+    monkeypatch.setattr(
+        helper, "_assert_record_compose_digest", lambda _record: tmp_path / "compose.yaml"
+    )
+    monkeypatch.setattr(helper, "_compose_digest", lambda: current["compose_digest"])
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", lambda: "a" * 40)
+    monkeypatch.setattr(helper, "_read_runtime_file", lambda: runtime_path.read_bytes())
+    monkeypatch.setattr(
+        helper,
+        "_maintenance_app_identity",
+        lambda _snapshot: (
+            "1" * 64,
+            "signal-ledger_signal-ledger-data",
+        ),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_live_app_identity",
+        lambda _snapshot: {
+            "revision": revision,
+            "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "container_status": "running",
+            "loopback_verified": True,
+            "data_volume": "signal-ledger_signal-ledger-data",
+            "data_volume_mount_valid": True,
+        },
+    )
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda *, assistant_rollout_mode=None: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {
+                "enabled": assistant_rollout_mode != "disabled",
+                "status": "disabled" if assistant_rollout_mode == "disabled" else "ready",
+            },
+        },
+    )
+    monkeypatch.setattr(helper, "_audit", lambda *_args, **_kwargs: None)
+    helper._write_json(current_path, current)
+    helper._runtime_file(current["image_ref"], "invited")
+    return current, current_path, failed_path, runtime_path, os.open
+
+
+def _inject_state_open_enospc(
+    helper: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    current_path: Path,
+    failed_path: Path,
+    original_open: Callable[..., int],
+    *,
+    current_open_number: int | None = None,
+    fail_failed_record: bool = False,
+) -> None:
+    """Fail the real atomic writer's temp-file open at selected record boundaries."""
+
+    current_opens = 0
+    failed_record_failed = False
+
+    def open_with_enospc(
+        path: str | bytes | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        **kwargs: Any,
+    ) -> int:
+        nonlocal current_opens, failed_record_failed
+        candidate = Path(path)
+        if candidate.parent == current_path.parent and candidate.name.startswith(
+            f".{current_path.name}."
+        ):
+            current_opens += 1
+            if current_open_number == current_opens:
+                raise OSError(errno.ENOSPC, "synthetic state temp-file exhaustion")
+        if (
+            fail_failed_record
+            and not failed_record_failed
+            and candidate.parent == failed_path.parent
+            and candidate.name.startswith(f".{failed_path.name}.")
+        ):
+            failed_record_failed = True
+            raise OSError(errno.ENOSPC, "synthetic failure-record exhaustion")
+        return original_open(path, flags, mode, **kwargs)
+
+    monkeypatch.setattr(helper.os, "open", open_with_enospc)
+
+
+def test_original_5ad_state_temp_open_failure_after_runtime_change_is_compensated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    current, current_path, failed_path, runtime_path, original_open = (
+        _prepare_original_5ad_real_state_files(helper, monkeypatch, tmp_path)
+    )
+    compose_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        helper,
+        "_compose_up",
+        lambda record, **kwargs: compose_calls.append(kwargs) or "",
+    )
+    _inject_state_open_enospc(
+        helper, monkeypatch, current_path, failed_path, original_open, current_open_number=1
+    )
+
+    with pytest.raises(helper.HostError) as raised:
+        helper._set_assistant_rollout(
+            "disabled",
+            revision=current["revision"],
+            archive_sha256=current["archive_sha256"],
+            image_id=current["image_id"],
+        )
+
+    assert raised.value.code == "state_write_failed"
+    assert current_path.exists()
+    assert (
+        json.loads(current_path.read_text(encoding="utf-8"))["assistant_rollout_mode"] == "invited"
+    )
+    assert helper._runtime_rollout_mode(runtime_path.read_bytes()) == "invited"
+    assert len(compose_calls) == 1
+    failure = json.loads(failed_path.read_text(encoding="utf-8"))
+    assert failure["failure_code"] == "state_write_failed"
+    assert failure["compensation_status"] == "verified_original_state_restored"
+    assert failure["observed_state"]["state_verified"] is True
+
+
+def test_original_5ad_compensation_state_open_failure_preserves_both_codes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    current, current_path, failed_path, runtime_path, original_open = (
+        _prepare_original_5ad_real_state_files(helper, monkeypatch, tmp_path)
+    )
+    compose_calls = 0
+
+    def fail_initial_start(*_args: object, **_kwargs: object) -> str:
+        nonlocal compose_calls
+        compose_calls += 1
+        if compose_calls == 1:
+            raise helper.HostError("maintenance_start_failed")
+        return ""
+
+    monkeypatch.setattr(helper, "_compose_up", fail_initial_start)
+    _inject_state_open_enospc(
+        helper, monkeypatch, current_path, failed_path, original_open, current_open_number=2
+    )
+
+    with pytest.raises(helper.HostError) as raised:
+        helper._set_assistant_rollout(
+            "disabled",
+            revision=current["revision"],
+            archive_sha256=current["archive_sha256"],
+            image_id=current["image_id"],
+        )
+
+    assert raised.value.code == "maintenance_start_failed"
+    assert compose_calls == 1
+    assert (
+        json.loads(current_path.read_text(encoding="utf-8"))["assistant_rollout_mode"] == "disabled"
+    )
+    assert helper._runtime_rollout_mode(runtime_path.read_bytes()) == "invited"
+    failure = json.loads(failed_path.read_text(encoding="utf-8"))
+    assert failure["failure_code"] == "maintenance_start_failed"
+    assert failure["compensation_failure_code"] == "state_write_failed"
+    assert failure["compensation_status"] == "failed"
+    assert failure["observed_state"]["current_rollout_mode"] == "disabled"
+    assert failure["observed_state"]["runtime_rollout_mode"] == "invited"
+    assert failure["observed_state"]["state_verified"] is False
+
+
+def test_original_5ad_unrecorded_compensation_failure_returns_uncertain_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    current, current_path, failed_path, runtime_path, original_open = (
+        _prepare_original_5ad_real_state_files(helper, monkeypatch, tmp_path)
+    )
+    monkeypatch.setattr(
+        helper,
+        "_compose_up",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            helper.HostError("maintenance_start_failed")
+        ),
+    )
+    _inject_state_open_enospc(
+        helper,
+        monkeypatch,
+        current_path,
+        failed_path,
+        original_open,
+        current_open_number=2,
+        fail_failed_record=True,
+    )
+
+    with pytest.raises(helper.HostError) as raised:
+        helper._set_assistant_rollout(
+            "disabled",
+            revision=current["revision"],
+            archive_sha256=current["archive_sha256"],
+            image_id=current["image_id"],
+        )
+
+    assert raised.value.code == "assistant_maintenance_outcome_unrecorded"
+    assert isinstance(raised.value.__cause__, helper.HostError)
+    assert raised.value.__cause__.code == "maintenance_start_failed"
+    assert (
+        json.loads(current_path.read_text(encoding="utf-8"))["assistant_rollout_mode"] == "disabled"
+    )
+    assert helper._runtime_rollout_mode(runtime_path.read_bytes()) == "invited"
+    assert not failed_path.exists()
 
 
 def test_in_place_disable_rejects_container_replacement_and_stops_app(
@@ -6212,6 +6843,88 @@ def test_hotfix_helper_provenance_rejects_a_special_file_without_waiting_for_a_w
     monkeypatch.setattr(helper, "HOTFIX_HELPER_INSTALL_RECORD", fifo)
     with pytest.raises(helper.HostError, match="hotfix_helper_provenance_unsafe"):
         helper._reviewed_hotfix_helper_revision("f" * 64)
+
+
+def test_installed_maintenance_helper_requires_its_exact_root_recorded_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    revision = "a" * 40
+    pair_digest = "f" * 64
+    helper_bytes = b"reviewed production helper contents"
+    predecessor_bytes = b"known predecessor helper contents"
+    helper_path = tmp_path / "production-deploy-helper.py"
+    backup_path = tmp_path / "previous-production-deploy-helper.py"
+    manifest_path = tmp_path / "installed.json"
+    helper_path.write_bytes(helper_bytes)
+    helper_path.chmod(0o750)
+    backup_path.write_bytes(predecessor_bytes)
+    backup_path.chmod(0o600)
+    manifest = {
+        "format_version": 1,
+        "repository": helper.PAIR_REPOSITORY,
+        "pull_number": 11,
+        "reviewed_head_sha": revision,
+        "reviewed_pair_manifest_sha256": pair_digest,
+        "files": {
+            "host_helper.py": "1" * 64,
+            "seed.py": "2" * 64,
+            "native_driver.py": "3" * 64,
+            "production-deploy-helper.py": hashlib.sha256(helper_bytes).hexdigest(),
+        },
+        "installed_at": "2026-10-16T00:00:00Z",
+        "helper_source_contract": helper.HOTFIX_PAIR_CONTRACT,
+        "previous_production_helper_sha256": hashlib.sha256(predecessor_bytes).hexdigest(),
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    manifest_path.chmod(0o640)
+    monkeypatch.setattr(helper, "HOTFIX_HELPER_INSTALL_RECORD", manifest_path)
+    monkeypatch.setattr(helper, "PRODUCTION_HELPER_FILE", helper_path)
+    monkeypatch.setattr(helper, "PREVIOUS_PRODUCTION_HELPER_FILE", backup_path)
+    monkeypatch.setattr(helper, "PREVIOUS_PRODUCTION_HELPER_SIZE", len(predecessor_bytes))
+    monkeypatch.setattr(
+        helper,
+        "PREVIOUS_PRODUCTION_HELPER_SHA256",
+        hashlib.sha256(predecessor_bytes).hexdigest(),
+    )
+    monkeypatch.setattr(helper, "_reviewed_hotfix_helper_revision", lambda _digest: revision)
+
+    trusted_paths = {manifest_path, helper_path, backup_path}
+    original_lstat = Path.lstat
+    original_fstat = os.fstat
+
+    def as_root(metadata: os.stat_result) -> SimpleNamespace:
+        fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_gid",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        return SimpleNamespace(st_uid=0, **{field: getattr(metadata, field) for field in fields})
+
+    inodes = {path.stat().st_ino for path in trusted_paths}
+
+    def projected_lstat(path: Path) -> os.stat_result | SimpleNamespace:
+        metadata = original_lstat(path)
+        return as_root(metadata) if path in trusted_paths else metadata
+
+    def projected_fstat(descriptor: int) -> os.stat_result | SimpleNamespace:
+        metadata = original_fstat(descriptor)
+        return as_root(metadata) if metadata.st_ino in inodes else metadata
+
+    monkeypatch.setattr(Path, "lstat", projected_lstat)
+    monkeypatch.setattr(helper.os, "fstat", projected_fstat)
+
+    assert helper._read_installed_maintenance_helper() == revision
+
+    helper_path.write_bytes(b"changed helper bytes")
+    helper_path.chmod(0o750)
+    with pytest.raises(helper.HostError, match="hotfix_helper_digest_mismatch"):
+        helper._read_installed_maintenance_helper()
 
 
 @pytest.mark.parametrize(

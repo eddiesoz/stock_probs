@@ -118,6 +118,13 @@ INCOMING = STATE_ROOT / "incoming"
 INSTALL_ROOT = Path("/usr/local/libexec/signal-ledger-pr-rehearsal")
 INSTALLED_MANIFEST = INSTALL_ROOT / "installed.json"
 LOCK_FILE = STATE_ROOT / "rehearsal.lock"
+DEPLOYMENT_LOCK_FILE = Path("/var/lib/signal-ledger/deploy.lock")
+PRODUCTION_HELPER = Path("/usr/local/libexec/signal-ledger-deploy-helper")
+MAX_PRODUCTION_HELPER_BYTES = 512 * 1024
+PREVIOUS_PRODUCTION_HELPER_SHA256 = (
+    "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+)
+PREVIOUS_PRODUCTION_HELPER_SIZE = 108_471
 RECEIPT_ROOT = STATE_ROOT / "receipts"
 TEMP_ROOT = STATE_ROOT / "tmp"
 MAX_REQUEST = 16 * 1024
@@ -196,6 +203,10 @@ INSTALLED_FILES = {
     "host_helper.py": 256 * 1024,
     "seed.py": 64 * 1024,
     "native_driver.py": 2 * 1024 * 1024,
+}
+HOTFIX_INSTALLED_FILES = {
+    **INSTALLED_FILES,
+    "production-deploy-helper.py": MAX_PRODUCTION_HELPER_BYTES,
 }
 CONTAINER_ASSET_INSTALLER = """\
 import hashlib, os, re, stat, sys
@@ -927,8 +938,10 @@ def _verify_installed_source(
         "installed_at",
     }
     if helper_source_contract is not None:
-        expected_keys.add("helper_source_contract")
-    expected_files = INSTALLED_FILES
+        expected_keys.update({"helper_source_contract", "previous_production_helper_sha256"})
+    expected_files = (
+        HOTFIX_INSTALLED_FILES if helper_source_contract is not None else INSTALLED_FILES
+    )
     if (
         not isinstance(value, dict)
         or set(value) != expected_keys
@@ -940,6 +953,10 @@ def _verify_installed_source(
             helper_source_contract is not None
             and value.get("helper_source_contract") != helper_source_contract
         )
+        or (
+            helper_source_contract is not None
+            and value.get("previous_production_helper_sha256") != PREVIOUS_PRODUCTION_HELPER_SHA256
+        )
         or value.get("reviewed_head_sha") != revision
         or value.get("reviewed_pair_manifest_sha256") != pair_manifest_sha256
         or not isinstance(value.get("files"), dict)
@@ -949,7 +966,15 @@ def _verify_installed_source(
     files = value["files"]
     verified_files: dict[str, str] = {}
     for name, maximum in expected_files.items():
-        content = _read_root_file(INSTALL_ROOT / name, maximum)
+        path = PRODUCTION_HELPER if name == "production-deploy-helper.py" else INSTALL_ROOT / name
+        content = _read_root_file(path, maximum)
+        if name == "production-deploy-helper.py":
+            try:
+                info = path.lstat()
+            except OSError as exc:
+                raise RehearsalError("installed_source_unavailable") from exc
+            if stat.S_IMODE(info.st_mode) != 0o750:
+                raise RehearsalError("installed_source_unsafe")
         digest = files.get(name)
         if (
             not isinstance(digest, str)
@@ -1953,8 +1978,8 @@ def _check_production(sample_count: list[int], *, startup: bool = False) -> int:
         if (
             baseline != PRODUCTION_BASELINE
             or not isinstance(assistant, dict)
-            or assistant.get("enabled") is not True
-            or assistant.get("status") != "ready"
+            or assistant.get("enabled") is not False
+            or assistant.get("status") != "disabled"
             or not _production_loopback_matches()
         ):
             raise RehearsalError("hotfix_production_boundary_changed")
@@ -3572,10 +3597,60 @@ def _operation_lock() -> int:
     return descriptor
 
 
+def _deployment_operation_lock() -> int:
+    """Share the production helper's fixed lock before a PR11 maintenance rehearsal."""
+
+    try:
+        _safe_directory(PRODUCTION_STATE_ROOT, 0o750, create=False, group="signalops")
+        descriptor = os.open(
+            DEPLOYMENT_LOCK_FILE,
+            os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o640,
+        )
+    except OSError as exc:
+        raise RehearsalError("deployment_lock_unavailable") from exc
+    try:
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != 0
+            or stat.S_IMODE(info.st_mode) != 0o640
+        ):
+            raise RehearsalError("deployment_lock_unsafe")
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        os.close(descriptor)
+        raise RehearsalError("deployment_busy") from exc
+    except OSError as exc:
+        os.close(descriptor)
+        raise RehearsalError("deployment_lock_unavailable") from exc
+    except RehearsalError:
+        os.close(descriptor)
+        raise
+    return descriptor
+
+
+def _operation_locks(*, include_deployment: bool) -> list[int]:
+    """Acquire fixed locks in deployment-then-rehearsal order without waiting."""
+
+    descriptors: list[int] = []
+    try:
+        if include_deployment:
+            descriptors.append(_deployment_operation_lock())
+        descriptors.append(_operation_lock())
+    except (RehearsalError, OSError):
+        for descriptor in reversed(descriptors):
+            with suppress(OSError):
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
+        raise
+    return descriptors
+
+
 def _remove_incoming_asset(name: str) -> None:
     if (
         re.fullmatch(
-            r"signal-ledger-pr1-[0-9a-f]{40}-(?:candidate\.tar\.gz|recovery\.tar\.gz|pair\.json|bootstrap\.py|host_helper\.py|seed\.py|native_driver\.py)",
+            r"signal-ledger-pr1-[0-9a-f]{40}-(?:candidate\.tar\.gz|recovery\.tar\.gz|pair\.json|bootstrap\.py|host_helper\.py|seed\.py|native_driver\.py|production-deploy-helper\.py)",
             name,
         )
         is None
@@ -3607,6 +3682,7 @@ def _cleanup_assets(revision: str) -> dict[str, object]:
         "host_helper.py",
         "seed.py",
         "native_driver.py",
+        "production-deploy-helper.py",
     ):
         path = f"signal-ledger-pr1-{revision}-{suffix}"
         before = (INCOMING / path).exists() or (INCOMING / path).is_symlink()
@@ -4638,6 +4714,18 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
     production_baseline = _production_container()
     if production_baseline != PRODUCTION_BASELINE:
         raise RehearsalError("hotfix_production_baseline_mismatch")
+    maintenance_readiness = _readiness()
+    maintenance_assistant = maintenance_readiness.get("assistant")
+    if (
+        maintenance_readiness.get("status") != "ready"
+        or type(maintenance_readiness.get("schema_version")) is not int
+        or maintenance_readiness.get("schema_version") != 13
+        or not isinstance(maintenance_assistant, dict)
+        or maintenance_assistant.get("enabled") is not False
+        or maintenance_assistant.get("status") != "disabled"
+        or not _production_loopback_matches()
+    ):
+        raise RehearsalError("hotfix_production_maintenance_state_unverified")
     candidate_id = _image_id(payload.get("candidate_image_id"), "candidate_image_id_invalid")
     recovery_id = _image_id(payload.get("recovery_image_id"), "recovery_image_id_invalid")
     candidate_context = _digest(
@@ -4900,7 +4988,8 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
             "same_disposable_volume": True,
             "production_mutation": False,
             "production_baseline": dict(production_baseline),
-            "production_assistant_enabled": True,
+            "production_assistant_enabled": False,
+            "production_assistant_disabled_maintenance_verified": True,
             "candidate_disabled_seed_verified": True,
             "candidate_enabled_readiness_verified": True,
             "native_workload_verified": True,
@@ -5048,11 +5137,15 @@ def main() -> int:
         if not raw or len(raw) > MAX_REQUEST:
             response = {"status": "error", "code": "request_invalid"}
         else:
-            lock_descriptor = -1
+            lock_descriptors: list[int] = []
             try:
                 operation, payload = _parse_request(raw)
                 _prepare_host_paths()
-                lock_descriptor = _operation_lock()
+                include_deployment_lock = (
+                    operation == "rehearse_pr_pair"
+                    and payload.get("pull_number") == HELPER_SOURCE_PR_NUMBER
+                )
+                lock_descriptors = _operation_locks(include_deployment=include_deployment_lock)
                 if operation == "cleanup_assets":
                     revision = _revision(payload.get("reviewed_head_sha"))
                     response = _cleanup_assets(revision)
@@ -5072,7 +5165,7 @@ def main() -> int:
                     response["failure"] = exc.details
                 if exc.cleanup_failure in CLEANUP_FAILURE_CODES:
                     response["cleanup_failure"] = exc.cleanup_failure
-                if lock_descriptor >= 0 and response.get("status") == "error":
+                if lock_descriptors and response.get("status") == "error":
                     with suppress(RehearsalError, OSError):
                         response["receipt_id"] = _write_receipt(response)
             except (OSError, ValueError, TypeError, KeyError) as exc:
@@ -5085,9 +5178,9 @@ def main() -> int:
                 if cleanup_failure in CLEANUP_FAILURE_CODES:
                     response["cleanup_failure"] = cleanup_failure
             finally:
-                if lock_descriptor >= 0:
-                    fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
-                    os.close(lock_descriptor)
+                for descriptor in reversed(lock_descriptors):
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+                    os.close(descriptor)
     encoded = json.dumps(response, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     if len(encoded) > MAX_RESPONSE:
         encoded = b'{"status":"error","code":"response_too_large"}'

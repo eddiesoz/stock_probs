@@ -127,6 +127,11 @@ SOURCE_ASSETS = {
     "host_helper": ("scripts/pr_rehearsal_host_helper.py", "host_helper.py", 256 * 1024),
     "seed": ("scripts/pr_rehearsal_seed.py", "seed.py", 64 * 1024),
     "driver": ("tests/native_assistant_probe.py", "native_driver.py", 2 * 1024 * 1024),
+    "production_helper": (
+        "scripts/production-deploy-helper.py",
+        "production-deploy-helper.py",
+        512 * 1024,
+    ),
 }
 
 
@@ -1543,10 +1548,17 @@ def _ensure_incoming_directories(config: RehearsalConfig) -> None:
     _run_fixed(command, timeout=30)
 
 
-def _source_bundle() -> tuple[dict[str, bytes], dict[str, str]]:
+def _source_bundle(
+    *, include_production_helper: bool = False
+) -> tuple[dict[str, bytes], dict[str, str]]:
     assets: dict[str, bytes] = {}
     hashes: dict[str, str] = {}
-    for role, (relative, _remote_name, maximum) in SOURCE_ASSETS.items():
+    selected = {
+        role: definition
+        for role, definition in SOURCE_ASSETS.items()
+        if include_production_helper or role != "production_helper"
+    }
+    for role, (relative, _remote_name, maximum) in selected.items():
         content = _read_regular_file(
             REPOSITORY_ROOT / relative,
             maximum=maximum,
@@ -1557,7 +1569,9 @@ def _source_bundle() -> tuple[dict[str, bytes], dict[str, str]]:
     return assets, hashes
 
 
-def _source_stage_names(revision: str) -> dict[str, str]:
+def _source_stage_names(
+    revision: str, *, include_production_helper: bool = False
+) -> dict[str, str]:
     """Derive only the fixed incoming basenames for one validated reviewed SHA."""
 
     if REVISION.fullmatch(revision) is None:
@@ -1565,6 +1579,7 @@ def _source_stage_names(revision: str) -> dict[str, str]:
     return {
         role: f"signal-ledger-pr1-{revision}-{remote_name}"
         for role, (_path, remote_name, _maximum) in SOURCE_ASSETS.items()
+        if include_production_helper or role != "production_helper"
     }
 
 
@@ -1579,7 +1594,13 @@ def _stage_source_bundle(
 ) -> None:
     if helper_source_contract is not None and helper_source_contract != HOTFIX_CONTRACT:
         raise RehearsalError("helper_source_contract_invalid")
-    names = _source_stage_names(revision)
+    include_production_helper = helper_source_contract == HOTFIX_CONTRACT
+    names = _source_stage_names(
+        revision,
+        include_production_helper=include_production_helper,
+    )
+    if set(assets) != set(names) or set(hashes) != set(names):
+        raise RehearsalError("bootstrap_assets_invalid")
     _stage_named_assets(config, names, assets)
     payload: dict[str, object] = {
         "reviewed_head_sha": revision,
@@ -1616,6 +1637,12 @@ def _stage_source_bundle(
                 or response.get("helper_source_contract") != helper_source_contract
             )
         )
+    ):
+        raise RehearsalError("bootstrap_install_failed")
+    if include_production_helper and (
+        response.get("production_helper_sha256") != hashes.get("production_helper")
+        or not isinstance(response.get("previous_production_helper_sha256"), str)
+        or DIGEST.fullmatch(response["previous_production_helper_sha256"]) is None
     ):
         raise RehearsalError("bootstrap_install_failed")
 
@@ -1661,7 +1688,9 @@ def rehearse_pr_pair(
             recovery_source_context_sha256=recovery_source_context_sha256,
             recovery_overlay_sha256=recovery_overlay_sha256,
         )
-    source_assets, source_hashes = _source_bundle()
+    source_assets, source_hashes = _source_bundle(
+        include_production_helper=manifest.get("format_version") == 2
+    )
     _ensure_incoming_directories(config)
     try:
         _stage_source_bundle(
@@ -1743,7 +1772,8 @@ def rehearse_pr_pair(
         or response.get("post_start_write_preserved") is not True
         or type(response.get("schema_after_recovery")) is not int
         or response.get("schema_after_recovery") != 13
-        or response.get("production_assistant_enabled") is not True
+        or response.get("production_assistant_enabled") is not False
+        or response.get("production_assistant_disabled_maintenance_verified") is not True
         or response.get("recovery_process_isolation_verified") is not True
         or hotfix_pr_receipt is None
     ):
@@ -1802,6 +1832,7 @@ def rehearse_pr_pair(
                     "post_start_write_preserved",
                     "schema_after_recovery",
                     "production_assistant_enabled",
+                    "production_assistant_disabled_maintenance_verified",
                     "ownership_isolation_verified",
                     "restore_guard_verified",
                     "recovery_process_isolation_verified",

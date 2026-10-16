@@ -53,6 +53,40 @@ rollback, and production acceptance remain **Pending**. The publisher/helper pai
 also open. See [E23](../../MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity)
 for the bound evidence and preserved setup results.
 
+E24 adds the published revision and actual-host preflight failure without changing E23's source-time
+checkpoint. Record the host rehearsal as **Fail** and the independent exact-input/structured-result
+review as a separate scoped **Pass**. SDK transport completion does not accept the typed operation;
+the post-call inspect also has a receipt-creation time, not an exact invocation time. See
+[E24](../../MVP-PLAN.md#r-astra-121-e24-host-reserve-preflight).
+
+E25 adds a source-only maintenance-helper checkpoint: bootstrap v2 has five fixed assets, and the
+helper's scoped production path disables the assistant on the existing 5ad schema-13 image without
+building, pulling, force-recreating, changing the data volume, or altering Compose/loopback
+configuration. The prior four-asset statement remains historical. Its builder regression run
+passed 462 selected tests with one skip and one Docker integration case deselected; independent
+review passed the selected suite and source bindings. Its separate requested rollback-failure
+coverage check **Failed** because `install_rollback_unverified` at
+`scripts/pr_rehearsal_bootstrap.py:503` still lacks a test assertion; this is a coverage gap, not a
+source-defect finding. Do not promote this to installation, actual-host or production acceptance. See
+[E25](../../MVP-PLAN.md#r-astra-121-e25-maintenance-only-assistant-disable-and-failure-edge-checkpoint).
+
+For the original 5ad schema-13 release, both disable and compensation recreate the same image with
+Compose flags `--no-build --force-recreate --pull never`; the flow verifies the original volume,
+schema, and loopback binding.
+
+E26 adds the missing rollback-failure test as a test-only change. The builder's two-module suite
+passed 463 tests with one skip; independent QA passed the two changed regression cases and scoped
+source/static checks, but did not rerun the full suite for the new test pin. E25's coverage finding
+remains in its historical checkpoint. See
+[E26](../../MVP-PLAN.md#r-astra-121-e26-install-rollback-failure-regression-supplement).
+
+E27 records the state-writer fault repair for PR11-MAINT-01. The builder's two-module suite passed
+466 tests with one skip; independent Astra re-review passed three actual-writer fault regressions
+and scoped input/static checks. This is not full security or release acceptance. E25's coverage
+finding and E26's test-only supplement remain historical; installation, host, production, recovery,
+resource, and publication-locator gates remain open. See
+[E27](../../MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).
+
 ## Codex project configuration
 
 Codex loads repository policy from root `AGENTS.md` and trusted-project settings from

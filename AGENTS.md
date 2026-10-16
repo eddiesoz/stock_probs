@@ -2330,3 +2330,43 @@ The publisher/helper pair-locator remains unresolved. Record exact evidence in
 [E21](MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint),
 [E22](MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic), and
 [E23](MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity).
+
+E24 records the v2 native-phase source published at `7c3ceeeddc741f1795b40c4df7acdaf5daff4d7f`.
+The actual-host rehearsal call **Failed** at its reserve preflight: 367,872 KiB was available against
+the required 524,288 KiB, returning `host_memory_reserve_breached`. The SDK transport returned, but
+the typed operation result was an error. Independent review passed exact-input, structured-result and
+source-path checks; it traced the guard before candidate actions, while actual container/asset cleanup
+was not independently verified. The post-call read-only inspect showed the original 5ad schema-13
+image still ready, assistant enabled/ready, invited rollout and loopback-only; the receipt creation
+time is not the invocation time, which remains unavailable. No candidate native/recovery phase ran,
+and no production disable, retry or deploy occurred. Actual combined 1 GB and release gates remain
+open; the separate maintenance source repair is still in progress. See [E24](MVP-PLAN.md#r-astra-121-e24-host-reserve-preflight).
+
+E25 records the separate maintenance-helper source checkpoint. Its candidate path changes only the
+assistant rollout on the exact existing 5ad schema-13 image: same-image Compose with
+`--no-build --force-recreate --pull never`, preserving the original image, existing data volume,
+Compose definition, schema 13, and loopback binding. It captures the prior runtime/configuration and rollout mode, uses truthful
+compensation, and restores through disabled/ready → owner canary → invited; other release, rollback,
+and kill paths remain unchanged. Bootstrap v2 now has five fixed source assets, adding
+`scripts/production-deploy-helper.py`; the four-asset wording is historical. V1, eight MCP schemas,
+and 512/128 MiB reserve floors are unchanged. The builder's bounded run passed 462 tests, with one
+skip and one Docker integration case deselected, but an earlier independent run found three missing
+edge-coverage cases. The independent rerun passed 462 selected tests and the pinned-input/static
+checks, but its requested rollback-failure coverage check **Failed**: the
+`install_rollback_unverified` path at `scripts/pr_rehearsal_bootstrap.py:503` still lacks a test
+assertion. This is a coverage gap, not a source-defect finding. No installation, actual-host call,
+production mutation, archive publication, pair, rollback, release, or actual combined 1 GB
+acceptance is established. See [E25](MVP-PLAN.md#r-astra-121-e25-maintenance-only-assistant-disable-and-failure-edge-checkpoint).
+
+E26 adds a test-only rollback-failure regression. The builder's exact two-module suite passed 463
+with one skip; independent QA passed the two changed parameter cases, 117-input binding, and scoped
+static checks. The prior E25 coverage failure remains historical. This was not an independent full
+suite for the changed test pin, and source-security review and all host/production/release gates
+remain open. See [E26](MVP-PLAN.md#r-astra-121-e26-install-rollback-failure-regression-supplement).
+
+E27 records the repaired PR11-MAINT-01 state-writer failure edge. The builder's two-module suite
+passed 466 tests with one skip; independent Astra re-review passed three actual-writer fault cases
+and its pinned input/static scope. E25's coverage failure and E26's test-only supplement remain
+historical. This is a narrow re-review, not a full security audit or operational acceptance; actual
+installation, host, production, recovery, resource, publication-locator, and release gates remain
+open. See [E27](MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).

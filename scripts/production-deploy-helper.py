@@ -81,6 +81,15 @@ PRODUCTION_PREDECESSOR_IMAGE_ID = (
 )
 HOTFIX_PAIR_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOTFIX_HELPER_INSTALL_RECORD = Path("/usr/local/libexec/signal-ledger-pr-rehearsal/installed.json")
+PRODUCTION_HELPER_FILE = Path(__file__)
+PREVIOUS_PRODUCTION_HELPER_FILE = Path(
+    "/var/lib/signal-ledger-pr-rehearsal/previous-production-deploy-helper.py"
+)
+PRODUCTION_HELPER_MAX_BYTES = 512 * 1024
+PREVIOUS_PRODUCTION_HELPER_SHA256 = (
+    "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+)
+PREVIOUS_PRODUCTION_HELPER_SIZE = 108_471
 HOTFIX_CANDIDATE_REVISION = "d282d696937f279ca4af4c38341f82a8af7afb6d"
 HOTFIX_CANDIDATE_IMAGE_ID = (
     "sha256:ba607be79055ee3a09d916e51788135590e7e0ead8f0922aa78128c478644c03"
@@ -1049,19 +1058,21 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
     _safe_mode(path.parent, 0o750)
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
-    descriptor = os.open(
-        temporary,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-        0o600,
-    )
     try:
-        _write_all(descriptor, encoded)
-        os.fsync(descriptor)
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+        )
+        try:
+            _write_all(descriptor, encoded)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
     except OSError as exc:
-        temporary.unlink(missing_ok=True)
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
         raise HostError("state_write_failed") from exc
-    finally:
-        os.close(descriptor)
     try:
         os.replace(temporary, path)
         directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -1070,7 +1081,8 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
         finally:
             os.close(directory)
     except OSError as exc:
-        temporary.unlink(missing_ok=True)
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
         raise HostError("state_write_failed") from exc
 
 
@@ -2052,6 +2064,155 @@ def _reviewed_hotfix_helper_revision(pair_manifest_sha256: str) -> str:
     return value["reviewed_head_sha"]
 
 
+def _read_installed_maintenance_helper() -> str:
+    """Verify the fixed PR11 installation, running helper bytes, and retained predecessor."""
+
+    try:
+        info = HOTFIX_HELPER_INSTALL_RECORD.lstat()
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != 0
+            or stat.S_IMODE(info.st_mode) != 0o640
+            or not 1 <= info.st_size <= 8192
+        ):
+            raise HostError("hotfix_helper_provenance_unsafe")
+        descriptor = os.open(
+            HOTFIX_HELPER_INSTALL_RECORD,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+        )
+        with os.fdopen(descriptor, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            raw = stream.read(8193)
+            after = os.fstat(stream.fileno())
+    except HostError:
+        raise
+    except OSError as exc:
+        raise HostError("hotfix_helper_provenance_unavailable") from exc
+    identity = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_gid",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if (
+        len(raw) != info.st_size
+        or any(getattr(info, field) != getattr(before, field) for field in identity)
+        or any(getattr(before, field) != getattr(after, field) for field in identity)
+    ):
+        raise HostError("hotfix_helper_provenance_changed")
+    try:
+        value: object = json.loads(raw, object_pairs_hook=_unique_release_pair_object)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise HostError("hotfix_helper_provenance_invalid") from exc
+    expected_keys = {
+        "format_version",
+        "repository",
+        "pull_number",
+        "reviewed_head_sha",
+        "reviewed_pair_manifest_sha256",
+        "files",
+        "installed_at",
+        "helper_source_contract",
+        "previous_production_helper_sha256",
+    }
+    expected_files = {
+        "host_helper.py",
+        "seed.py",
+        "native_driver.py",
+        "production-deploy-helper.py",
+    }
+    if (
+        not isinstance(value, dict)
+        or set(value) != expected_keys
+        or type(value.get("format_version")) is not int
+        or value.get("format_version") != 1
+        or value.get("repository") != PAIR_REPOSITORY
+        or type(value.get("pull_number")) is not int
+        or value.get("pull_number") != 11
+        or value.get("helper_source_contract") != HOTFIX_PAIR_CONTRACT
+        or not isinstance(value.get("reviewed_head_sha"), str)
+        or REVISION_PATTERN.fullmatch(value["reviewed_head_sha"]) is None
+        or not isinstance(value.get("reviewed_pair_manifest_sha256"), str)
+        or DIGEST_PATTERN.fullmatch(value["reviewed_pair_manifest_sha256"]) is None
+        or value.get("previous_production_helper_sha256") != PREVIOUS_PRODUCTION_HELPER_SHA256
+        or not isinstance(value.get("files"), dict)
+        or set(value["files"]) != expected_files
+        or any(
+            not isinstance(digest, str) or DIGEST_PATTERN.fullmatch(digest) is None
+            for digest in value["files"].values()
+        )
+    ):
+        raise HostError("hotfix_helper_provenance_mismatch")
+
+    reviewed_head = _reviewed_hotfix_helper_revision(value["reviewed_pair_manifest_sha256"])
+    if reviewed_head != value["reviewed_head_sha"]:
+        raise HostError("hotfix_helper_provenance_mismatch")
+    try:
+        helper_info = PRODUCTION_HELPER_FILE.lstat()
+        if (
+            not stat.S_ISREG(helper_info.st_mode)
+            or helper_info.st_uid != 0
+            or stat.S_IMODE(helper_info.st_mode) != 0o750
+            or not 1 <= helper_info.st_size <= PRODUCTION_HELPER_MAX_BYTES
+        ):
+            raise HostError("hotfix_helper_provenance_unsafe")
+        helper_descriptor = os.open(
+            PRODUCTION_HELPER_FILE,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+        )
+        with os.fdopen(helper_descriptor, "rb") as stream:
+            helper_before = os.fstat(stream.fileno())
+            helper_bytes = stream.read(PRODUCTION_HELPER_MAX_BYTES + 1)
+            helper_after = os.fstat(stream.fileno())
+    except HostError:
+        raise
+    except OSError as exc:
+        raise HostError("hotfix_helper_provenance_unavailable") from exc
+    if (
+        len(helper_bytes) != helper_info.st_size
+        or len(helper_bytes) > PRODUCTION_HELPER_MAX_BYTES
+        or any(getattr(helper_info, field) != getattr(helper_before, field) for field in identity)
+        or any(getattr(helper_before, field) != getattr(helper_after, field) for field in identity)
+        or hashlib.sha256(helper_bytes).hexdigest() != value["files"]["production-deploy-helper.py"]
+    ):
+        raise HostError("hotfix_helper_digest_mismatch")
+
+    try:
+        backup_info = PREVIOUS_PRODUCTION_HELPER_FILE.lstat()
+        if (
+            not stat.S_ISREG(backup_info.st_mode)
+            or backup_info.st_uid != 0
+            or stat.S_IMODE(backup_info.st_mode) != 0o600
+            or backup_info.st_size != PREVIOUS_PRODUCTION_HELPER_SIZE
+        ):
+            raise HostError("hotfix_helper_backup_unsafe")
+        backup_descriptor = os.open(
+            PREVIOUS_PRODUCTION_HELPER_FILE,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+        )
+        with os.fdopen(backup_descriptor, "rb") as stream:
+            backup_before = os.fstat(stream.fileno())
+            backup_bytes = stream.read(PRODUCTION_HELPER_MAX_BYTES + 1)
+            backup_after = os.fstat(stream.fileno())
+    except HostError:
+        raise
+    except OSError as exc:
+        raise HostError("hotfix_helper_backup_unavailable") from exc
+    if (
+        len(backup_bytes) != PREVIOUS_PRODUCTION_HELPER_SIZE
+        or len(backup_bytes) != backup_info.st_size
+        or any(getattr(backup_info, field) != getattr(backup_before, field) for field in identity)
+        or any(getattr(backup_before, field) != getattr(backup_after, field) for field in identity)
+        or hashlib.sha256(backup_bytes).hexdigest() != PREVIOUS_PRODUCTION_HELPER_SHA256
+    ):
+        raise HostError("hotfix_helper_backup_mismatch")
+    return reviewed_head
+
+
 def _load_release_pair(
     revision: str,
     expected_manifest_sha256: str,
@@ -2243,35 +2404,210 @@ def _pull_image(revision: str, expected_image_digest: str) -> tuple[str, str, in
 def _runtime_file(image_ref: str, rollout_mode: str = "disabled") -> None:
     """Write only the fixed image and bounded assistant rollout settings."""
 
+    encoded = _runtime_file_bytes(image_ref, rollout_mode)
+    _safe_mode(RUNTIME_ENV_FILE.parent, 0o750)
+    temporary = RUNTIME_ENV_FILE.with_name(f".{RUNTIME_ENV_FILE.name}.{secrets.token_hex(8)}.tmp")
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o640,
+        )
+        try:
+            _write_all(descriptor, encoded)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
+        raise HostError("runtime_write_failed") from exc
+    try:
+        os.replace(temporary, RUNTIME_ENV_FILE)
+    except OSError as exc:
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
+        raise HostError("runtime_write_failed") from exc
+
+
+def _runtime_file_bytes(image_ref: str, rollout_mode: str) -> bytes:
     if rollout_mode not in ASSISTANT_ROLLOUT_MODES:
         raise HostError("assistant_rollout_invalid")
     enabled = "0" if rollout_mode == "disabled" else "1"
-    encoded = (
+    return (
         f"STOCK_PROBS_IMAGE={image_ref}\n"
         f"STOCK_PROBS_ASSISTANT_ENABLED={enabled}\n"
         f"STOCK_PROBS_ASSISTANT_ROLLOUT={rollout_mode}\n"
         "STOCK_PROBS_ASSISTANT_CANARY_GITHUB_IDS=\n"
     ).encode()
+
+
+def _read_runtime_file() -> bytes:
+    """Read the small root-owned runtime file without following a link."""
+
+    try:
+        before = RUNTIME_ENV_FILE.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != 0
+            or stat.S_IMODE(before.st_mode) != 0o640
+            or not 1 <= before.st_size <= 1024
+        ):
+            raise HostError("runtime_file_unsafe")
+        descriptor = os.open(
+            RUNTIME_ENV_FILE,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+        )
+        with os.fdopen(descriptor, "rb") as source:
+            opened = os.fstat(source.fileno())
+            content = source.read(1025)
+            after = os.fstat(source.fileno())
+    except HostError:
+        raise
+    except OSError as exc:
+        raise HostError("runtime_file_unavailable") from exc
+    identity = ("st_dev", "st_ino", "st_mode", "st_uid", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if (
+        len(content) != before.st_size
+        or any(getattr(before, field) != getattr(opened, field) for field in identity)
+        or any(getattr(opened, field) != getattr(after, field) for field in identity)
+    ):
+        raise HostError("runtime_file_changed")
+    return content
+
+
+def _restore_runtime_file(content: bytes) -> None:
+    """Atomically restore the exact previously captured runtime settings."""
+
+    if not 1 <= len(content) <= 1024:
+        raise HostError("runtime_restore_invalid")
     _safe_mode(RUNTIME_ENV_FILE.parent, 0o750)
     temporary = RUNTIME_ENV_FILE.with_name(f".{RUNTIME_ENV_FILE.name}.{secrets.token_hex(8)}.tmp")
-    descriptor = os.open(
-        temporary,
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-        0o640,
-    )
     try:
-        _write_all(descriptor, encoded)
-        os.fsync(descriptor)
-    except OSError:
-        temporary.unlink(missing_ok=True)
-        raise
-    finally:
-        os.close(descriptor)
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o640,
+        )
+        try:
+            _write_all(descriptor, content)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
+        raise HostError("runtime_restore_failed") from exc
     try:
         os.replace(temporary, RUNTIME_ENV_FILE)
+        directory = os.open(RUNTIME_ENV_FILE.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
     except OSError as exc:
-        temporary.unlink(missing_ok=True)
-        raise HostError("runtime_write_failed") from exc
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
+        raise HostError("runtime_restore_failed") from exc
+
+
+def _live_app_identity(compose_snapshot: Path) -> dict[str, Any]:
+    """Read bounded identity facts for the one app selected by fixed Compose."""
+    container_id = _compose(
+        "ps",
+        "--status",
+        "running",
+        "--quiet",
+        "app",
+        timeout=20,
+        compose_file=compose_snapshot,
+    )
+    if CONTAINER_ID_PATTERN.fullmatch(container_id) is None:
+        raise HostError("maintenance_app_identity_unavailable")
+    inspect_format = (
+        '{{.Image}}|{{.State.Status}}|{{index .Config.Labels "org.opencontainers.image.revision"}}|'
+        "{{json .HostConfig.PortBindings}}|{{json .Mounts}}"
+    )
+    result = _run(
+        [
+            "docker",
+            "inspect",
+            "--format",
+            inspect_format,
+            container_id,
+        ],
+        timeout=10,
+    )
+    try:
+        parts = result.stdout.decode("ascii", errors="strict").strip().split("|", 4)
+        bindings = json.loads(parts[3])
+        mounts = json.loads(parts[4])
+    except (UnicodeDecodeError, json.JSONDecodeError, IndexError) as exc:
+        raise HostError("maintenance_app_identity_unavailable") from exc
+    if len(parts) != 5 or IMAGE_ID_PATTERN.fullmatch(parts[0]) is None:
+        raise HostError("maintenance_app_identity_unavailable")
+    volume_mounts = (
+        [
+            mount
+            for mount in mounts
+            if isinstance(mount, dict) and mount.get("Destination") == "/data"
+        ]
+        if isinstance(mounts, list)
+        else []
+    )
+    volume_name = None
+    volume_mount_valid = False
+    if len(volume_mounts) == 1:
+        mount = volume_mounts[0]
+        if isinstance(mount.get("Name"), str):
+            volume_name = mount["Name"]
+        volume_mount_valid = (
+            mount.get("Type") == "volume" and mount.get("RW") is True and volume_name is not None
+        )
+    revision = parts[2] if REVISION_PATTERN.fullmatch(parts[2]) is not None else None
+    known_statuses = {"created", "restarting", "running", "removing", "paused", "exited", "dead"}
+    return {
+        "container_id": container_id,
+        "image_id": parts[0],
+        "container_status": parts[1] if parts[1] in known_statuses else "unknown",
+        "revision": revision,
+        "loopback_verified": bindings
+        == {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]},
+        "data_volume": volume_name,
+        "data_volume_mount_valid": volume_mount_valid,
+    }
+
+
+def _maintenance_app_identity(compose_snapshot: Path) -> tuple[str, str]:
+    """Bind one live app to the exact original image, loopback port, and data volume."""
+
+    actual = _live_app_identity(compose_snapshot)
+    if (
+        actual["image_id"] != PRODUCTION_PREDECESSOR_IMAGE_ID
+        or actual["container_status"] != "running"
+        or actual["revision"] != PRODUCTION_PREDECESSOR_REVISION
+        or actual["loopback_verified"] is not True
+        or actual["data_volume"] != "signal-ledger_signal-ledger-data"
+        or actual["data_volume_mount_valid"] is not True
+    ):
+        raise HostError("maintenance_app_identity_mismatch")
+    return actual["container_id"], actual["data_volume"]
+
+
+def _is_original_5ad_release(record: dict[str, Any]) -> bool:
+    return (
+        record.get("revision") == PRODUCTION_PREDECESSOR_REVISION
+        and record.get("transport") == GITHUB_RELEASE_TRANSPORT
+        and record.get("release_role", "candidate") == "candidate"
+        and record.get("image_ref") == _local_image_ref(PRODUCTION_PREDECESSOR_REVISION)
+        and record.get("image_id") == PRODUCTION_PREDECESSOR_IMAGE_ID
+        and record.get("image_digest") == HOTFIX_RECOVERY_ARCHIVE_SHA256
+        and record.get("archive_sha256") == HOTFIX_RECOVERY_ARCHIVE_SHA256
+        and record.get("archive_size") == HOTFIX_RECOVERY_ARCHIVE_SIZE
+        and record.get("platform") == "linux/amd64"
+        and record.get("schema_version") == ASSISTANT_MINIMUM_SCHEMA
+        and record.get("compose_digest") == PRODUCTION_PREDECESSOR_COMPOSE_SHA256
+    )
 
 
 def _compose_prefix(compose_file: Path | None = None) -> list[str]:
@@ -3108,6 +3444,218 @@ def _record_rollout_failure(
         revision=current.get("revision"),
         schema_version=current.get("schema_version"),
     )
+
+
+def _runtime_rollout_mode(content: bytes) -> str | None:
+    for mode in ASSISTANT_ROLLOUT_MODES:
+        if content == _runtime_file_bytes(_local_image_ref(PRODUCTION_PREDECESSOR_REVISION), mode):
+            return mode
+    return None
+
+
+def _maintenance_failure_record(
+    current: dict[str, Any],
+    *,
+    failure_code: str,
+    original_mode: str,
+    compensation_status: str,
+    compensation_failure_code: str | None = None,
+) -> bool:
+    """Persist only observed, bounded state after maintenance compensation."""
+
+    observed: dict[str, Any] = {
+        "production_revision": None,
+        "production_image_id": None,
+        "current_rollout_mode": None,
+        "runtime_rollout_mode": None,
+        "app_status": "unavailable",
+        "assistant_status": "unavailable",
+        "assistant_enabled": None,
+        "app_container_status": "unavailable",
+        "production_schema_version": None,
+        "data_volume": None,
+        "loopback_verified": False,
+        "state_verified": False,
+    }
+    try:
+        actual = _live_app_identity(COMPOSE_FILE)
+        observed["production_revision"] = actual["revision"]
+        observed["production_image_id"] = actual["image_id"]
+        observed["app_container_status"] = actual["container_status"]
+        observed["data_volume"] = actual["data_volume"]
+        observed["loopback_verified"] = actual["loopback_verified"] is True
+        live = _read_json(CURRENT_RECORD)
+        if isinstance(live, dict) and live.get("revision") == PRODUCTION_PREDECESSOR_REVISION:
+            mode = live.get("assistant_rollout_mode")
+            if mode in ASSISTANT_ROLLOUT_MODES:
+                observed["current_rollout_mode"] = mode
+        runtime = _read_runtime_file()
+        observed["runtime_rollout_mode"] = _runtime_rollout_mode(runtime)
+        health = _health_check()
+        observed["app_status"] = health.get("status", "unavailable")
+        observed["production_schema_version"] = health.get("schema_version")
+        assistant = health.get("assistant")
+        if isinstance(assistant, dict):
+            observed["assistant_status"] = assistant.get("status", "unavailable")
+            observed["assistant_enabled"] = assistant.get("enabled")
+        observed["state_verified"] = (
+            observed["production_revision"] == PRODUCTION_PREDECESSOR_REVISION
+            and observed["production_image_id"] == PRODUCTION_PREDECESSOR_IMAGE_ID
+            and observed["app_container_status"] == "running"
+            and observed["production_schema_version"] == ASSISTANT_MINIMUM_SCHEMA
+            and observed["current_rollout_mode"] is not None
+            and observed["runtime_rollout_mode"] == observed["current_rollout_mode"]
+            and observed["assistant_status"]
+            == ("disabled" if observed["current_rollout_mode"] == "disabled" else "ready")
+            and observed["assistant_enabled"] is (observed["current_rollout_mode"] != "disabled")
+            and observed["app_status"] == "ready"
+            and observed["loopback_verified"] is True
+            and observed["data_volume"] == "signal-ledger_signal-ledger-data"
+            and actual["data_volume_mount_valid"] is True
+        )
+    except (HostError, OSError, ValueError, TypeError):
+        pass
+    failure: dict[str, Any] = {
+        "status": "assistant_maintenance_failed",
+        "revision": current.get("revision"),
+        "image_id": current.get("image_id"),
+        "schema_version": current.get("schema_version"),
+        "requested_mode": "disabled",
+        "original_mode": original_mode,
+        "failure_code": failure_code,
+        "compensation_status": compensation_status,
+        "observed_state": observed,
+        "failed_at": _utc_now(),
+    }
+    if compensation_failure_code is not None:
+        failure["compensation_failure_code"] = compensation_failure_code
+    try:
+        _write_json(FAILED_RECORD, failure)
+    except (HostError, OSError):
+        return False
+    with suppress(HostError, OSError):
+        _audit(
+            "assistant_rollout",
+            "maintenance_failed",
+            revision=current.get("revision"),
+            schema_version=current.get("schema_version"),
+        )
+    return True
+
+
+def _disable_original_5ad_assistant(
+    current: dict[str, Any], compose_snapshot: Path, previous_mode: str
+) -> dict[str, Any]:
+    """Recreate only the fixed original app image with the assistant explicitly disabled."""
+
+    _read_installed_maintenance_helper()
+    if not _is_original_5ad_release(current):
+        raise HostError("assistant_release_identity_mismatch")
+    if previous_mode not in ASSISTANT_ROLLOUT_MODES:
+        raise HostError("assistant_rollout_state_invalid")
+    _assert_loaded_image(current)
+    if _compose_digest() != current.get("compose_digest"):
+        raise HostError("compose_revision_mismatch")
+    previous_runtime = _read_runtime_file()
+    if previous_runtime != _runtime_file_bytes(current["image_ref"], previous_mode):
+        raise HostError("assistant_rollout_state_mismatch")
+    original_container, original_volume = _maintenance_app_identity(compose_snapshot)
+    if original_volume != "signal-ledger_signal-ledger-data":
+        raise HostError("production_volume_mismatch")
+    previous_health = _health_check(assistant_rollout_mode=previous_mode)
+    if previous_health.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA:
+        raise HostError("readiness_schema_mismatch")
+
+    disabled = dict(current)
+    disabled["assistant_rollout_mode"] = "disabled"
+    try:
+        _runtime_file(current["image_ref"], "disabled")
+        _write_json(CURRENT_RECORD, disabled)
+        _compose_up(
+            current,
+            timeout=180,
+            compose_file=compose_snapshot,
+            force_recreate=True,
+        )
+        health = _health_check(assistant_rollout_mode="disabled")
+        if health.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA:
+            raise HostError("readiness_schema_mismatch")
+        container, volume = _maintenance_app_identity(compose_snapshot)
+        if (
+            volume != original_volume
+            or volume != "signal-ledger_signal-ledger-data"
+            or _compose_digest() != current.get("compose_digest")
+        ):
+            raise HostError("maintenance_app_identity_mismatch")
+    except (HostError, OSError) as failure:
+        error = (
+            failure
+            if isinstance(failure, HostError)
+            else HostError("assistant_maintenance_transition_failed")
+        )
+        compensation_error: HostError | None = None
+        compensation_status = "failed"
+        try:
+            _restore_runtime_file(previous_runtime)
+            _write_json(CURRENT_RECORD, current)
+            _compose_up(
+                current,
+                timeout=180,
+                compose_file=compose_snapshot,
+                force_recreate=True,
+            )
+            restored_health = _health_check(assistant_rollout_mode=previous_mode)
+            _restored_container, restored_volume = _maintenance_app_identity(compose_snapshot)
+            if (
+                restored_health.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+                or restored_volume != original_volume
+                or _compose_digest() != current.get("compose_digest")
+            ):
+                raise HostError("maintenance_compensation_unverified")
+            compensation_status = "verified_original_state_restored"
+        except (HostError, OSError) as compensation_failure:
+            compensation_error = (
+                compensation_failure
+                if isinstance(compensation_failure, HostError)
+                else HostError("assistant_maintenance_compensation_failed")
+            )
+        try:
+            failure_recorded = _maintenance_failure_record(
+                current,
+                failure_code=error.code,
+                original_mode=previous_mode,
+                compensation_status=compensation_status,
+                compensation_failure_code=(
+                    compensation_error.code if compensation_error is not None else None
+                ),
+            )
+        except (HostError, OSError):
+            failure_recorded = False
+        if not failure_recorded:
+            raise HostError("assistant_maintenance_outcome_unrecorded") from failure
+        if isinstance(failure, HostError):
+            raise
+        raise error from failure
+
+    _audit(
+        "assistant_rollout",
+        "maintenance_disabled",
+        revision=PRODUCTION_PREDECESSOR_REVISION,
+        schema_version=ASSISTANT_MINIMUM_SCHEMA,
+    )
+    return {
+        "status": "ok",
+        "result": "rollout_updated",
+        "revision": PRODUCTION_PREDECESSOR_REVISION,
+        "archive_sha256": current["archive_sha256"],
+        "image_id": PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "schema_version": ASSISTANT_MINIMUM_SCHEMA,
+        "assistant_rollout_mode": "disabled",
+        "maintenance_verified": True,
+        "previous_container_recreated": container != original_container,
+        "production_data_volume_preserved": True,
+        "health": health,
+    }
 
 
 def _load_plan(plan_id: str) -> dict[str, Any]:
@@ -4556,6 +5104,10 @@ def _set_assistant_rollout(
         )
         if not valid_transition:
             raise HostError("assistant_rollout_transition_invalid")
+        if _is_original_5ad_release(current):
+            if mode == "disabled":
+                return _disable_original_5ad_assistant(current, compose_snapshot, previous_mode)
+            _read_installed_maintenance_helper()
 
         updated = dict(current)
         updated["assistant_rollout_mode"] = mode
