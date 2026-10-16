@@ -308,7 +308,10 @@ this page, [developer testing](testing.md), and [getting started](../operations/
 the separate workflow-policy rule requires `AGENTS.md`. Keep this path coverage aligned as the
 local build command contract changes. Record current runtime acceptance in the task ledger and
 reflect operational status in the operations/testing guides; the map describes source coverage, not
-runtime acceptance. The optional `prebuilt-release` publisher mode uses the completed schema-13
+runtime acceptance. This R2 source set explicitly lists 18 generated HTML pages in its Dockerfile
+and recursively copies the shared `out/_next` asset tree. Keep that package contract aligned with
+the export and describe it in the mapped operations/testing guides; source lists do not prove image
+contents. The optional `prebuilt-release` publisher mode uses the completed schema-13
 pair receipt and fixed revision-named artifacts; keep its verification and release prerequisites
 documented in the operations and testing guides when changing that contract.
 Archive-scanner changes also require the testing and operations guides to describe the fixed

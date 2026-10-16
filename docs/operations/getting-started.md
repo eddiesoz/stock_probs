@@ -28,6 +28,16 @@ or release evidence. FastAPI remains the only production server and `/api/v1` re
 application-data boundary. The Docker path uses Node in a build-only stage and copies the staged
 static files into the Python wheel; Node is not part of the runtime image.
 
+The R2 Dockerfile source explicitly lists 18 generated HTML pages, including
+Portfolio/Transactions and What-if, and recursively copies the shared `out/_next` asset
+tree. Keep both aligned with the export when routes change. Independent static-copy QA
+on 2026-10-16 passed one selected source test per R1/R2/R3 worktree and the disposable
+baseline copies; it rejected a missing `out/_next` copy and a missing `out/admin.html`
+mapping. Page counts and source closures were 16/18/20 and 38/45/59 unchanged inputs.
+This is source-level contract evidence only: no Docker image, packaged-route,
+served/export parity, or runtime behavior was verified. See the [scoped QA
+record](../develop/testing.md#bounded-local-docker-builds-and-worker-verification).
+
 The default provider is Yahoo Finance and requires network availability. For a repeatable
 offline-oriented development run, use the fixture settings in
 [local configuration](../configure/local-configuration.md). Startup creates the private data
