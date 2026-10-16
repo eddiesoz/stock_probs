@@ -471,6 +471,20 @@ bytes still fail. Exercise both candidate and recovery archives. The fixed
 compiled harness is custom-source-pinned; its exempt spans are verified against the pinned public
 Bun binary, not an official unmodified OpenCode binary. No whole-file waiver is permitted.
 
+For the current R-ASTRA-121 F6 PR #9 checkpoint, the image build and corrected explicit-root
+source/stage parity checks passed their declared identity scopes. The first full archive scan
+failed against the earlier scanner pin. A later bounded check verified the exact
+`usr/local/bin/opencode` path, 212,784,608-byte size, full binary digest, and four unchanged public
+spans with no extra offsets or retained matched bytes; the maintained OCI identity check also
+passed for the archive and image. The scanner source now pins that exact binary, and seven focused
+regressions plus scoped static checks passed. Subsequent independent QA passed 33 archive tests
+under `0022` and one read-only scan per exact candidate/recovery archive; the scans and original
+test run recorded `0002`, retained explicitly, and only the test file was repeated under `0022`. The metadata finding did not establish that a real secret was present. Preserve the
+earlier wrong-root parity failure and later corrected parity pass separately. The completed PR9 browser aggregate failed with 195 passed, two failed and three expected skips.
+Its source/stage bindings were unchanged and 24 raw axe attachments were clean; the fixture
+startup and missing-preview causes remain unproven. See the [F6 evidence
+ledger](../../MVP-PLAN.md#f6-pr9-candidate-build-archive-scan-and-parity-checkpoint-2026-10-16).
+
 
 ### Exact PR-pair review pins
 

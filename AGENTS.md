@@ -2403,3 +2403,33 @@ every regular outer archive member, and nested layer contents, including private
 persistent-data paths. A public-byte exemption requires the exact path, size, full digest and
 match spans; never exempt all Config values or an entire file. The pre-merge host-pair helper's
 separate reserve/deadline-aware recovery verifier remains unchanged.
+
+For rebuilt-binary exemptions, require the complete binary digest, exact member path and size, and
+unchanged public match spans independently verified against public provenance. Public Bun-span
+proof covers only those exact byte ranges; it is not whole-executable provenance, an upstream
+binary endorsement, or runtime evidence. For OCI archives, derive image identity through the
+maintained index → image-manifest → config/layer graph. The config-blob digest and OCI image ID
+identify different objects; their difference alone is not an identity mismatch. Keep the original
+F6 scanner failure visible until a full archive scan passes on the repaired exact-source pin.
+
+Current R-ASTRA-121 F6 evidence is narrow: the public-binary check found the four expected spans
+with no extra offsets, retained no matched bytes, and bound member `usr/local/bin/opencode` at
+212,784,608 bytes to full SHA-256
+`2e83651d990f60987c17e1b20961190f1f80d86a4f160de2e2795014fc68577e`. Receipt
+`/var/tmp/r12r/f6-scanner-span-pin-ee538340-9ef0-4135-aa3b-7c474f9934d2/archive-binary-span-check.json`,
+SHA-256 `cd75a4d1f66d8ec5b3fcf5393a66527af77aaaf94467dcde1b93efaa1be0a84a`. The maintained OCI
+identity verifier **Passed** for archive SHA-256
+`c0e9d0fe89e53fef4c8f3173a5f2403d32a32f69b7591bc89e7d7ae129199f82` and F6 image ID
+`sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196`; receipt
+`/var/tmp/r12r/f6-scanner-span-pin-ee538340-9ef0-4135-aa3b-7c474f9934d2/oci-identity-6e2269d0-5329-4e85-8633-273f0c24d1d8.json`, SHA-256
+`81e0353a90076658d48b40682d57453ceb5e7f4e53fab1d550e6dad9c06c0a80`. The scanner's new exact
+binary pin is source SHA-256
+`5f1ac4b773f2ddf8866589cb2cb59bec8fce6097f20986bbf8d6de0c96c45085`; seven selected regressions
+and scoped Ruff check/security/format and diff checks passed in PR11/PR12. Implementation receipt
+`/var/tmp/r12r/f6-scanner-span-pin-ee538340-9ef0-4135-aa3b-7c474f9934d2/implementation-checks-022872d494ca788c.json`,
+SHA-256 `d3f35f0b2b601706c969f2c49c21a357beaeb4b6083b636e9e6b8a0628d21d2a`. Subsequent independent source QA, 33 tests under `0022`, and one read-only scan per exact F6 and
+5ad archive passed their declared scopes. The first command group used `0002`; its qualification
+is retained separately, and only the test file was rerun under `0022`. The full F6 browser
+aggregate failed with 195 passed, two failed and three expected skips; source/stage stayed bound
+and the 24 raw axe attachments were clean. No provider, runtime, resource, publication, or
+release acceptance follows. See the [current F6 ledger](MVP-PLAN.md#f6-pr9-candidate-build-archive-scan-and-parity-checkpoint-2026-10-16).

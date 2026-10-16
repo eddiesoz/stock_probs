@@ -546,6 +546,7 @@ def test_release_archive_verifier_pins_exact_opencode_variants() -> None:
             "9dd48571a16d00a4cc021b6eb85b5c347f2b965aaee96913fa24028b86cef955",
             "dc6d6963ce86d02f265d6e630417f835ef8732feacfaaecd0c3cd8a2b82e7a98",
             "c22fce743cf6ab15d056d5b589d1307fb5c05ed2129949bef5491af775c2c3ad",
+            "2e83651d990f60987c17e1b20961190f1f80d86a4f160de2e2795014fc68577e",
         }
     )
     assert spans == (
@@ -554,6 +555,62 @@ def test_release_archive_verifier_pins_exact_opencode_variants() -> None:
         (16_825_067, 16_825_502),
         (16_849_344, 16_852_808),
     )
+
+
+def _configure_opencode_test_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+    contents: bytes,
+    spans: tuple[tuple[int, int], ...],
+    *,
+    allowed_digests: frozenset[str] | None = None,
+) -> None:
+    digest = hashlib.sha256(contents).hexdigest()
+    monkeypatch.setattr(
+        verifier,
+        "PINNED_PUBLIC_MATCH_SOURCES",
+        {
+            "usr/local/bin/opencode": (
+                len(contents),
+                allowed_digests if allowed_digests is not None else frozenset({digest}),
+                spans,
+            )
+        },
+    )
+
+
+def test_release_archive_verifier_accepts_only_exact_opencode_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    _configure_opencode_test_allowlist(monkeypatch, contents, spans)
+    archive = _docker_archive(tmp_path, {"usr/local/bin/opencode": contents})
+
+    assert verifier.verify_image_archive(archive)["status"] == "pass"
+
+    changed = contents[:-1] + b"z"
+    changed_archive = _docker_archive(tmp_path, {"usr/local/bin/opencode": changed})
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(changed_archive)
+
+
+def test_release_archive_verifier_rejects_extra_opencode_match_span(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    extra_match = b"sk-" + b"C" * 20
+    changed = contents + b" extra " + extra_match
+    _configure_opencode_test_allowlist(
+        monkeypatch,
+        changed,
+        spans,
+        allowed_digests=frozenset({hashlib.sha256(changed).hexdigest()}),
+    )
+    archive = _docker_archive(tmp_path, {"usr/local/bin/opencode": changed})
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(archive)
 
 
 def test_release_archive_verifier_rejects_spdx_file_with_added_match(

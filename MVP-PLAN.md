@@ -7304,3 +7304,68 @@ SHA-256 `1137ea91f2070ac283819cc3098caaa3819153112f00ec9345bd798c224a940b`.
 No container, production, release-asset, deployment or rollout operation followed from this local
 retirement. A replacement source-bound image and actual native/resource/recovery/rollback and
 release gates remain required. The 1 GB host, backups and US$15 monthly total cap are unchanged.
+
+#### F6 PR9 candidate build, archive scan, and parity checkpoint (2026-10-16)
+
+The clean pushed PR #9 head `f6a51d5c821e6b1ab7974a94f4ff795da10130bc` built successfully on native
+x86_64 from context `a332dca5d27f4bb6fda4673e826096158c038e218f6291f01069951378c4fbae` at
+`2026-10-16T09:05:51.587043Z`–`09:19:32.985574Z`. The candidate image is
+`sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196`; build receipt
+`/var/tmp/r12r/f6-pr9-build-launch-2617d020-304a-4ef5-b2a0-6b9c5966dafd/candidate-build-receipt.json`
+SHA-256 `3aae17f5927365b5ff415e0cbd570db16fa405665855effdfa89f248fc729b1a` and terminal SHA-256
+`a19ba32f02997eda1f1ffdc4a06e3843c20f8220d3913355c2fd0222c445792d` bind the build result. Parent
+terminal/managed-receipt and cleanup review passed its declared build-identity scope. This is not
+runtime or release acceptance.
+
+The archive scanner **Failed** with exit 2 at `2026-10-16T09:34:57.019977Z`–`09:35:06.386213Z` on
+archive SHA-256 `c0e9d0fe89e53fef4c8f3173a5f2403d32a32f69b7591bc89e7d7ae129199f82` (202,160,947
+bytes) using scanner SHA-256 `314179e4b41d34c0f060867c1868b36b13528cd1567da938f5f72b401b617163`.
+The scan receipt is
+`/var/tmp/r12r/f6-archive-scan-ce8ce62d-e91f-4e18-ad8c-a187a566aa25/receipt.json`, SHA-256
+`f19c10014a4865c7cc7195a343a092d02c071b48599a5567fda1b3a3f814d55f`. A bounded metadata-only
+diagnosis found four credential-like match offsets in the public `usr/local/bin/opencode` span;
+they matched the existing public-span offsets and the binary size matched 212,784,608 bytes, but
+its complete digest differed from the current pin. The diagnosis retained no matched bytes
+(`matched_bytes_saved=false`), so it does not establish that a real secret was present. The public
+span and archive identity follow-up then passed their narrow scopes. The public-binary check
+verified the four unchanged public spans, no extra offsets, exact member path/size, and full binary
+SHA-256 `2e83651d990f60987c17e1b20961190f1f80d86a4f160de2e2795014fc68577e` without retaining matched
+bytes; receipt SHA-256 `cd75a4d1f66d8ec5b3fcf5393a66527af77aaaf94467dcde1b93efaa1be0a84a`. The maintained
+OCI identity verifier passed for the same archive and F6 image ID; receipt SHA-256
+`81e0353a90076658d48b40682d57453ceb5e7f4e53fab1d550e6dad9c06c0a80`. The scanner source now pins
+that exact binary at SHA-256 `5f1ac4b773f2ddf8866589cb2cb59bec8fce6097f20986bbf8d6de0c96c45085`;
+seven selected regressions and scoped Ruff/security/format/diff checks passed in both PR11/PR12
+worktrees. Implementation receipt
+`/var/tmp/r12r/f6-scanner-span-pin-ee538340-9ef0-4135-aa3b-7c474f9934d2/implementation-checks-022872d494ca788c.json`,
+SHA-256 `d3f35f0b2b601706c969f2c49c21a357beaeb4b6083b636e9e6b8a0628d21d2a`. At that source checkpoint, the earlier full scan failure remained preserved and no full scan had
+run on the new pin; independent source QA and fresh archive scanning were **Pending**. Diagnosis receipt
+`/var/tmp/r12r/f6-archive-diagnosis-2e54b1bc-94d0-4ef4-997a-5b186b281c2f/diagnosis.json`, SHA-256
+`72676a81a1576387b0c21e04750b205f6af443f83c81b2d692b2435b77051ab6`.
+
+An earlier parity run **Failed** with 46 mismatches because it used the wrong root; preserve its
+overall failure and review SHA-256 `61908dc94b44aa0d9331484ed652750290a84ef513657a9e4073de4a8b0c2e46`. A
+subsequent corrected explicit-root parity check **Passed** its narrower scope: 265 rows, zero
+mismatches, 53 package source files and 53 served/export pairs for the same image/context. Receipt
+`/var/tmp/r12r/r121-f6-corrected-parity-410aecac-5960-4a0c-b26e-b42e68c71805/terminal-receipt.json`,
+SHA-256 `9648dcfd310ec0a4e1cb2c2133626bdb06bfaab670824876401083dcb3133034`. Runtime/provider,
+browser and release checks in that receipt were skipped. At this checkpoint the parent reports the
+full 200-case PR9 browser aggregate running with no aggregate result. Publication, host-pair,
+recovery, deployment and release acceptance remain open; no production mutation or rollout
+occurred.
+
+Subsequent independent QA passed 33 archive tests under the required `0022` child umask and
+scoped Ruff/security/format/diff checks. One read-only scan per exact F6 and 5ad archive passed;
+those scans recorded `0002`, with explicitly private `0700` directories and `0600` outputs. The
+first 33-test run also used `0002`; its environment qualification remains preserved, and only the
+test file was rerun under `0022`. Original QA receipt SHA-256
+`29ed074896b303995ba422bf18375c8b63e6721f1a310806a119813fdd8d9450`; corrected test receipt
+`/var/tmp/r12r/r12r-scanner-independent-qa-85c279f8-5b6a-4307-a45c-9c84b160d0df/pytest-umask022-a4138cd6-1063-4460-87ab-5e4c55099a27/umask022-test-receipt.json`,
+SHA-256 `77c742b9a5477762bdbd24eb2738d78f95f6b230c7c46e838c62becd38ec929e`.
+Source/test and both archive hashes remained unchanged. These are scanner/provenance checks only;
+the helper's F6 consumer rebind and managed-receipt shape repair remain pending. The completed
+F6 browser aggregate **Failed**: 195 passed, two failed, three expected skips, zero flaky and zero
+unrun. All 391 source, 25 browser and 53 served/export bindings stayed unchanged; 24 raw axe
+attachments (28 scopes) had zero violations and incompletes. The fixture startup and missing
+preview causes remain unproven. Parent terminal/closure receipt SHA-256
+`cf2849897501c7c24711784d2f81a2f00355392d64d0977d0dfa5dd5787d62d6` records exact owned cleanup.
+No actual native/provider, 1 GB, recovery, deployment, or release acceptance follows.
