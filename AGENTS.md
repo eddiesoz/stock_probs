@@ -8,6 +8,7 @@ The `research-workspaces`, `portfolio-ledger-workspaces`, and `monitoring-worksp
 threat-model guides; monitoring paths also require the testing guide, including the notification
 implementation and test path families. Keep those mappings current. Documentation presence and
 coverage do not establish runtime or release acceptance.
+Keep `src/stock_probs/auth_write_guard.py` and `tests/_auth_body_barrier.py` explicitly mapped to both development guides under `interactive-write-session-authorization`; the mapping and scoped tests do not establish security or release acceptance.
 For R-ASTRA-121, Priority 0 is a genuine OpenCode V2 `opencode-zen/space-bunny-free`
 answer through the application, with the intended native MCP/search/fetch path. Do not replace it
 with a compatible endpoint or paid provider. Local success is not deployment acceptance. The T9

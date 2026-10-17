@@ -470,6 +470,8 @@ Authored guides live under `docs/` in task-oriented categories. Every page has `
 `description` frontmatter, one primary topic, a lowercase hyphenated filename, and relative
 links. Category `index.md` pages provide navigation rather than duplicating topic prose.
 
+The first-match `interactive-write-session-authorization` rule maps `src/stock_probs/auth_write_guard.py` and `tests/_auth_body_barrier.py` to this guide and the [testing guide](testing.md). Middleware's cached `AuthContext` is an initial request snapshot: guarded stores recheck the owner-bound session and current role, with any required step-up, inside `BEGIN IMMEDIATE` on the same SQLite connection used for the write. This map requirement documents the boundary but is not security, runtime, or release acceptance.
+
 ## Source boundaries
 
 - [`MVP-PLAN.md`](../../MVP-PLAN.md) is the authoritative contract and evidence ledger.
