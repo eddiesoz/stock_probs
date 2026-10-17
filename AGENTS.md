@@ -18,6 +18,26 @@ retain the immutable `57b88adc…` original helper backup and restore the exact 
 receipt together after failure. Source/mock passes and build preparation do not establish installed
 host behavior or transition acceptance.
 
+For the PR #11 next-cycle temporary-recovery operation, keep
+`start_next_temporary_recovery` a fixed root-owned helper/controller operation; do not
+add or rename any of the eight deployment MCP server tools. Bind the exact inspected
+prior operation ID and canonical operation-view SHA-256 separately from the unchanged
+current record identifying the original 5ad schema-13 release as invited, ready, and
+loopback-only. Preserve the exact prior `temporary-recovery-operation.json` bytes in a
+root-owned mode-0700 history directory, with regular files mode 0600 and immutable
+closed-operation-ID/full-record-digest naming; create its matching deterministic cycle
+intent link. Never delete/reset history or mutate the separate current record before new
+active-phase publication; partial, conflicting, malformed, or symlinked state fails
+closed. Validate the actual producer response and backup fields, then inspect the exact
+new operation ID, image, manifest, schema, and health after publication before pairing.
+Reuse schema 13 without database restore, retain the 128 MiB runtime reserve and 512 MiB
+startup floor, disclose the assistant availability gap, and restore the exact original
+release before owner-canary then invited. A bounded operator trial may follow
+independent source QA and exact installation/readback; its observed result determines
+host acceptance. The
+[runbook](docs/operations/getting-started.md#temporary-recovery-candidate) carries the
+full response and link contract.
+
 At the historical c408 PR11 checkpoint, helper head `c408e914` was installed at 17:51Z without restarting
 the app or starting a rehearsal. The first readback failed on a duplicate nonexistent sidecar path;
 the corrected readback and its independent comparison passed for the root-owned global helper,

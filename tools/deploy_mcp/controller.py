@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import ipaddress
 import json
 import os
@@ -29,6 +30,9 @@ ASSISTANT_READY_SCHEMA = 13
 LOCAL_IMAGE_REPOSITORY = "signal-ledger"
 HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
 HOTFIX_RECOVERY_REVISION = "5ad2c3fddfce5a5a631b72cd832a53f24757c44a"
+TEMPORARY_RECOVERY_SOURCE_REVISION = "63597953c9d1ab387563dadfe705b78a2861a426"
+TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB = 128 * 1024
+TEMPORARY_RECOVERY_STARTUP_FLOOR_KIB = 512 * 1024
 HOTFIX_PAIR_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOST = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
 USER = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
@@ -85,6 +89,145 @@ def _valid_hotfix_identity(
     return (
         response.get("release_role") == "candidate"
         and response.get("revision") == requested_revision
+    )
+
+
+def _next_temporary_recovery_operation_id(prior_operation_id: str, prior_view_sha256: str) -> str:
+    """Derive the same stable successor ID as the fixed host helper."""
+
+    identity = (
+        b"signal-ledger-temporary-recovery-next-cycle-v1\0"
+        + prior_operation_id.encode("ascii")
+        + b"\0"
+        + prior_view_sha256.encode("ascii")
+    )
+    operation_id = hashlib.sha256(identity).hexdigest()[:32]
+    if operation_id == prior_operation_id:
+        raise DeployError("temporary_recovery_prior_identity_invalid")
+    return operation_id
+
+
+def _temporary_recovery_cycle_link_sha256(
+    prior_operation_id: str,
+    prior_record_sha256: str,
+    prior_view_sha256: str,
+    new_operation_id: str,
+) -> str:
+    """Hash the canonical immutable link body published by the fixed host helper."""
+
+    history_name = f"closed-{prior_operation_id}-{prior_record_sha256}.json"
+    link = {
+        "format_version": 1,
+        "kind": "temporary_recovery_cycle_link",
+        "status": "intent",
+        "prior_operation_id": prior_operation_id,
+        "prior_record_sha256": prior_record_sha256,
+        "prior_view_sha256": prior_view_sha256,
+        "new_operation_id": new_operation_id,
+        "history_name": history_name,
+        "database_policy": "reuse_schema_13_no_restore",
+    }
+    encoded = json.dumps(link, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _valid_temporary_recovery_ready_response(
+    response: dict[str, Any], prior_operation_id: str, prior_view_sha256: str
+) -> bool:
+    """Validate the complete existing helper response without inventing response fields."""
+
+    expected_fields = {
+        "status",
+        "result",
+        "operation_kind",
+        "operation_id",
+        "source_revision",
+        "image_ref",
+        "image_id",
+        "archive_sha256",
+        "manifest_sha256",
+        "schema_version",
+        "assistant_rollout_mode",
+        "backup",
+        "available_kib",
+        "startup_floor_kib",
+        "start_admission_allowed",
+        "health",
+        "prior_operation_id",
+        "prior_record_sha256",
+        "prior_view_sha256",
+        "cycle_link_sha256",
+        "cycle_link_status",
+    }
+    operation_id = _next_temporary_recovery_operation_id(prior_operation_id, prior_view_sha256)
+    record_sha256 = response.get("prior_record_sha256")
+    backup = response.get("backup")
+    health = response.get("health")
+    available_kib = response.get("available_kib")
+    admission_allowed = response.get("start_admission_allowed")
+    return not (
+        set(response) != expected_fields
+        or response.get("status") != "ok"
+        or response.get("result")
+        not in {
+            "temporary_recovery_ready",
+            "temporary_recovery_ready_startup_floor_unmet",
+        }
+        or response.get("operation_kind") != "temporary_recovery"
+        or response.get("operation_id") != operation_id
+        or response.get("source_revision") != TEMPORARY_RECOVERY_SOURCE_REVISION
+        or response.get("image_ref") != f"signal-ledger:temporary-recovery-{operation_id}"
+        or not isinstance(response.get("image_id"), str)
+        or IMAGE_ID.fullmatch(response["image_id"]) is None
+        or not isinstance(response.get("archive_sha256"), str)
+        or SHA256.fullmatch(response["archive_sha256"]) is None
+        or not isinstance(response.get("manifest_sha256"), str)
+        or SHA256.fullmatch(response["manifest_sha256"]) is None
+        or type(response.get("schema_version")) is not int
+        or response.get("schema_version") != ASSISTANT_READY_SCHEMA
+        or response.get("assistant_rollout_mode") != "disabled"
+        or not isinstance(backup, dict)
+        or set(backup) != {"trigger", "name", "sha256", "schema_version", "verified", "promoted"}
+        or backup.get("trigger") != "pre_deploy"
+        or not isinstance(backup.get("name"), str)
+        or not backup["name"].startswith(f"pre-deploy-{HOTFIX_RECOVERY_REVISION[:16]}-")
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,126}\.spbackup", backup["name"]) is None
+        or not isinstance(backup.get("sha256"), str)
+        or SHA256.fullmatch(backup["sha256"]) is None
+        or type(backup.get("schema_version")) is not int
+        or backup.get("schema_version") != ASSISTANT_READY_SCHEMA
+        or backup.get("verified") is not True
+        or backup.get("promoted") is not False
+        or not isinstance(health, dict)
+        or set(health) != {"status", "schema_version", "assistant"}
+        or health.get("status") != "ready"
+        or type(health.get("schema_version")) is not int
+        or health.get("schema_version") != ASSISTANT_READY_SCHEMA
+        or not isinstance(health.get("assistant"), dict)
+        or set(health["assistant"]) != {"enabled", "status"}
+        or health["assistant"].get("enabled") is not False
+        or health["assistant"].get("status") != "disabled"
+        or type(available_kib) is not int
+        or available_kib < TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB
+        or type(response.get("startup_floor_kib")) is not int
+        or response.get("startup_floor_kib") != TEMPORARY_RECOVERY_STARTUP_FLOOR_KIB
+        or type(admission_allowed) is not bool
+        or admission_allowed != (available_kib >= TEMPORARY_RECOVERY_STARTUP_FLOOR_KIB)
+        or response.get("result")
+        != (
+            "temporary_recovery_ready"
+            if admission_allowed
+            else "temporary_recovery_ready_startup_floor_unmet"
+        )
+        or response.get("prior_operation_id") != prior_operation_id
+        or not isinstance(record_sha256, str)
+        or SHA256.fullmatch(record_sha256) is None
+        or response.get("prior_view_sha256") != prior_view_sha256
+        or response.get("cycle_link_sha256")
+        != _temporary_recovery_cycle_link_sha256(
+            prior_operation_id, record_sha256, prior_view_sha256, operation_id
+        )
+        or response.get("cycle_link_status") != "started"
     )
 
 
@@ -590,6 +733,29 @@ class DeployController:
         """Read current and recent release status without changing the host."""
 
         return self._invoke("status", {}, timeout=60)
+
+    def start_next_temporary_recovery(
+        self, prior_operation_id: str, prior_view_sha256: str
+    ) -> dict[str, Any]:
+        """Start the fixed successor cycle from the exact inspected restored operation."""
+
+        if not isinstance(prior_operation_id, str) or not PLAN_ID.fullmatch(prior_operation_id):
+            raise DeployError("temporary_recovery_prior_identity_invalid")
+        if not isinstance(prior_view_sha256, str) or not SHA256.fullmatch(prior_view_sha256):
+            raise DeployError("temporary_recovery_prior_identity_invalid")
+        response = self._invoke(
+            "start_next_temporary_recovery",
+            {
+                "prior_operation_id": prior_operation_id,
+                "prior_view_sha256": prior_view_sha256,
+            },
+            timeout=900,
+        )
+        if not isinstance(response, dict) or not _valid_temporary_recovery_ready_response(
+            response, prior_operation_id, prior_view_sha256
+        ):
+            raise DeployError("remote_response_invalid")
+        return response
 
     def rollback(self, revision: str, image_id: str | None = None) -> dict[str, Any]:
         """Roll back to a recorded release bound to its full image ID."""

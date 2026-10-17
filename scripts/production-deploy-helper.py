@@ -57,6 +57,7 @@ TEMPORARY_RECOVERY_ROOT = STATE_ROOT / "temporary-recovery"
 TEMPORARY_RECOVERY_MANIFEST = TEMPORARY_RECOVERY_ROOT / "manifest.json"
 TEMPORARY_RECOVERY_ARCHIVE = TEMPORARY_RECOVERY_ROOT / "image.tar.gz"
 TEMPORARY_RECOVERY_OPERATION = STATE_ROOT / "temporary-recovery-operation.json"
+TEMPORARY_RECOVERY_HISTORY_ROOT = STATE_ROOT / "temporary-recovery-history"
 TEMPORARY_RECOVERY_APPROVAL = Path("/etc/signal-ledger/temporary-recovery.approval.json")
 PROJECT_NAME = "signal-ledger"
 # The registry is deliberately fixed in the root-owned helper.  MCP callers can supply a
@@ -178,6 +179,7 @@ _ALLOWED_OPERATIONS = frozenset(
         "rollback",
         "set_assistant_rollout",
         "start_temporary_recovery",
+        "start_next_temporary_recovery",
         "restore_temporary_recovery",
     }
 )
@@ -189,6 +191,7 @@ _EXPECTED_PAYLOAD_KEYS = {
     "rollback": frozenset({"revision", "image_id"}),
     "set_assistant_rollout": frozenset({"mode", "revision", "archive_sha256", "image_id"}),
     "start_temporary_recovery": frozenset(),
+    "start_next_temporary_recovery": frozenset({"prior_operation_id", "prior_view_sha256"}),
     "restore_temporary_recovery": frozenset({"operation_id"}),
 }
 _PAIR_PAYLOAD_KEYS = {
@@ -3879,10 +3882,11 @@ _TEMPORARY_RECOVERY_PHASES = frozenset(
 )
 
 
-def _temporary_operation_record() -> dict[str, Any] | None:
-    operation = _read_json(TEMPORARY_RECOVERY_OPERATION)
-    if operation is None:
-        return None
+def _validate_temporary_operation_record(operation: object) -> dict[str, Any]:
+    """Validate one operation record without rereading or changing its source bytes."""
+
+    if not isinstance(operation, dict):
+        raise HostError("temporary_recovery_state_invalid")
     if (
         operation.get("operation_kind") != "temporary_recovery"
         or not isinstance(operation.get("operation_id"), str)
@@ -3915,10 +3919,16 @@ def _temporary_operation_record() -> dict[str, Any] | None:
     return operation
 
 
-def _temporary_operation_view() -> dict[str, Any] | None:
-    operation = _temporary_operation_record()
+def _temporary_operation_record() -> dict[str, Any] | None:
+    operation = _read_json(TEMPORARY_RECOVERY_OPERATION)
     if operation is None:
         return None
+    return _validate_temporary_operation_record(operation)
+
+
+def _temporary_operation_view_for_record(operation: dict[str, Any]) -> dict[str, Any]:
+    """Project the stable operator-visible identity from one already validated record."""
+
     view: dict[str, Any] = {
         "operation_kind": "temporary_recovery",
         "operation_id": operation["operation_id"],
@@ -3931,6 +3941,13 @@ def _temporary_operation_view() -> dict[str, Any] | None:
     if isinstance(operation.get("failure_code"), str):
         view["failure_code"] = operation["failure_code"]
     return view
+
+
+def _temporary_operation_view() -> dict[str, Any] | None:
+    operation = _temporary_operation_record()
+    if operation is None:
+        return None
+    return _temporary_operation_view_for_record(operation)
 
 
 def _ensure_no_active_temporary_recovery() -> None:
@@ -5396,16 +5413,361 @@ def _set_assistant_rollout(
         }
 
 
+def _canonical_value_sha256(value: object) -> str:
+    """Hash the exact canonical JSON form used by inspect and immutable sidecars."""
+
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _next_temporary_recovery_operation_id(prior_operation_id: str, prior_view_sha256: str) -> str:
+    """Derive one stable successor ID so a crash before active publication is safely retryable."""
+
+    identity = (
+        b"signal-ledger-temporary-recovery-next-cycle-v1\0"
+        + prior_operation_id.encode("ascii")
+        + b"\0"
+        + prior_view_sha256.encode("ascii")
+    )
+    operation_id = hashlib.sha256(identity).hexdigest()[:32]
+    if operation_id == prior_operation_id:
+        raise HostError("temporary_recovery_cycle_identity_collision")
+    return operation_id
+
+
+def _open_temporary_recovery_history_directory() -> int:
+    """Open the fixed root-owned history directory without following its final component."""
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        state_fd = os.open(STATE_ROOT, directory_flags)
+    except OSError as exc:
+        raise HostError("temporary_recovery_history_unsafe") from exc
+    try:
+        state_metadata = os.fstat(state_fd)
+        if (
+            not stat.S_ISDIR(state_metadata.st_mode)
+            or state_metadata.st_uid != 0
+            or stat.S_IMODE(state_metadata.st_mode) & 0o022
+        ):
+            raise HostError("temporary_recovery_history_unsafe")
+        with suppress(FileExistsError):
+            os.mkdir(TEMPORARY_RECOVERY_HISTORY_ROOT.name, 0o700, dir_fd=state_fd)
+        os.fsync(state_fd)
+        history_fd = os.open(
+            TEMPORARY_RECOVERY_HISTORY_ROOT.name,
+            directory_flags,
+            dir_fd=state_fd,
+        )
+    except HostError:
+        raise
+    except OSError as exc:
+        raise HostError("temporary_recovery_history_unsafe") from exc
+    finally:
+        os.close(state_fd)
+    try:
+        metadata = os.fstat(history_fd)
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid != 0
+            or stat.S_IMODE(metadata.st_mode) != 0o700
+        ):
+            raise HostError("temporary_recovery_history_unsafe")
+    except OSError as exc:
+        os.close(history_fd)
+        raise HostError("temporary_recovery_history_unsafe") from exc
+    except HostError:
+        os.close(history_fd)
+        raise
+    return history_fd
+
+
+def _read_temporary_recovery_history_file(
+    directory_fd: int, name: str, *, maximum_bytes: int, error_code: str
+) -> bytes | None:
+    """Read one immutable sidecar only when its metadata and full contents are trustworthy."""
+
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=directory_fd,
+        )
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise HostError(error_code) from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != 0
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or metadata.st_nlink != 1
+            or metadata.st_size > maximum_bytes
+        ):
+            raise HostError(error_code)
+        chunks: list[bytes] = []
+        total = 0
+        while total <= maximum_bytes:
+            chunk = os.read(descriptor, min(4_096, maximum_bytes + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+        content = b"".join(chunks)
+        if len(content) != metadata.st_size or len(content) > maximum_bytes:
+            raise HostError(error_code)
+        return content
+    except OSError as exc:
+        raise HostError(error_code) from exc
+    finally:
+        os.close(descriptor)
+
+
+def _sync_temporary_recovery_history_file(
+    directory_fd: int, name: str, *, maximum_bytes: int, error_code: str
+) -> None:
+    """Make a previously published identical sidecar durable before an idempotent retry."""
+
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=directory_fd,
+        )
+    except OSError as exc:
+        raise HostError(error_code) from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != 0
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or metadata.st_nlink != 1
+            or metadata.st_size > maximum_bytes
+        ):
+            raise HostError(error_code)
+        os.fsync(descriptor)
+        after = os.fstat(descriptor)
+        if (
+            (after.st_dev, after.st_ino, after.st_size, after.st_nlink)
+            != (metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_nlink)
+            or stat.S_IMODE(after.st_mode) != 0o600
+            or after.st_uid != 0
+        ):
+            raise HostError(error_code)
+    except OSError as exc:
+        raise HostError(error_code) from exc
+    finally:
+        os.close(descriptor)
+    try:
+        os.fsync(directory_fd)
+    except OSError as exc:
+        raise HostError(error_code) from exc
+
+
+def _publish_immutable_temporary_recovery_file(
+    name: str,
+    content: bytes,
+    *,
+    maximum_bytes: int,
+    error_code: str,
+) -> str:
+    """Publish one bounded 0600 sidecar exclusively, retaining partial files on any failure."""
+
+    if len(content) > maximum_bytes:
+        raise HostError(error_code)
+    directory_fd = _open_temporary_recovery_history_directory()
+    try:
+        existing = _read_temporary_recovery_history_file(
+            directory_fd,
+            name,
+            maximum_bytes=maximum_bytes,
+            error_code=error_code,
+        )
+        if existing is not None:
+            if existing != content:
+                raise HostError(error_code)
+            _sync_temporary_recovery_history_file(
+                directory_fd, name, maximum_bytes=maximum_bytes, error_code=error_code
+            )
+            return hashlib.sha256(existing).hexdigest()
+        try:
+            descriptor = os.open(
+                name,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                0o600,
+                dir_fd=directory_fd,
+            )
+        except FileExistsError as exc:
+            existing = _read_temporary_recovery_history_file(
+                directory_fd,
+                name,
+                maximum_bytes=maximum_bytes,
+                error_code=error_code,
+            )
+            if existing != content:
+                raise HostError(error_code) from exc
+            _sync_temporary_recovery_history_file(
+                directory_fd, name, maximum_bytes=maximum_bytes, error_code=error_code
+            )
+            return hashlib.sha256(existing).hexdigest()
+        except OSError as exc:
+            raise HostError(error_code) from exc
+        try:
+            os.fchmod(descriptor, 0o600)
+            initial = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(initial.st_mode)
+                or initial.st_uid != 0
+                or stat.S_IMODE(initial.st_mode) != 0o600
+                or initial.st_nlink != 1
+                or initial.st_size != 0
+            ):
+                raise HostError(error_code)
+            _write_all(descriptor, content)
+            os.fsync(descriptor)
+            final = os.fstat(descriptor)
+            if (
+                (final.st_dev, final.st_ino) != (initial.st_dev, initial.st_ino)
+                or not stat.S_ISREG(final.st_mode)
+                or final.st_uid != 0
+                or stat.S_IMODE(final.st_mode) != 0o600
+                or final.st_nlink != 1
+                or final.st_size != len(content)
+            ):
+                raise HostError(error_code)
+        except OSError as exc:
+            raise HostError(error_code) from exc
+        finally:
+            os.close(descriptor)
+        os.fsync(directory_fd)
+        return hashlib.sha256(content).hexdigest()
+    except HostError:
+        raise
+    except OSError as exc:
+        raise HostError(error_code) from exc
+    finally:
+        os.close(directory_fd)
+
+
+def _temporary_recovery_cycle_link(
+    prior_operation_id: str,
+    prior_record_sha256: str,
+    prior_view_sha256: str,
+    new_operation_id: str,
+    history_name: str,
+) -> bytes:
+    """Build the immutable intent linking preserved bytes to one deterministic successor ID."""
+
+    record = {
+        "format_version": 1,
+        "kind": "temporary_recovery_cycle_link",
+        "status": "intent",
+        "prior_operation_id": prior_operation_id,
+        "prior_record_sha256": prior_record_sha256,
+        "prior_view_sha256": prior_view_sha256,
+        "new_operation_id": new_operation_id,
+        "history_name": history_name,
+        "database_policy": "reuse_schema_13_no_restore",
+    }
+    return json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
+
+
 def _start_temporary_recovery() -> dict[str, Any]:
-    """Start the separately approved app-only baseline without creating release provenance."""
+    """Start once from a retained baseline; the original no-argument contract stays one-shot."""
+
+    return _start_temporary_recovery_cycle()
+
+
+def _start_next_temporary_recovery(
+    prior_operation_id: str, prior_view_sha256: str
+) -> dict[str, Any]:
+    """Start one reviewed successor only from the exact inspected restored operation."""
+
+    if (
+        not isinstance(prior_operation_id, str)
+        or PLAN_PATTERN.fullmatch(prior_operation_id) is None
+    ):
+        raise HostError("temporary_recovery_prior_identity_invalid")
+    if (
+        not isinstance(prior_view_sha256, str)
+        or DIGEST_PATTERN.fullmatch(prior_view_sha256) is None
+    ):
+        raise HostError("temporary_recovery_prior_identity_invalid")
+    return _start_temporary_recovery_cycle(prior_operation_id, prior_view_sha256)
+
+
+def _start_temporary_recovery_cycle(
+    expected_prior_operation_id: str | None = None,
+    expected_prior_view_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Share the fixed start procedure while optionally retaining one restored predecessor."""
+
+    next_cycle = expected_prior_operation_id is not None
+    if next_cycle != (expected_prior_view_sha256 is not None):
+        raise HostError("temporary_recovery_prior_identity_invalid")
 
     with _exclusive_lock():
         _ensure_layout()
-        if _read_json(TEMPORARY_RECOVERY_OPERATION) is not None:
+        prior_operation: dict[str, Any] | None = None
+        prior_raw: bytes | None = None
+        prior_record_sha256: str | None = None
+        prior_view_sha256: str | None = None
+        cycle_link_sha256: str | None = None
+        if next_cycle:
+            assert expected_prior_operation_id is not None
+            assert expected_prior_view_sha256 is not None
+            prior_operation, prior_raw = _read_root_owned_json(
+                TEMPORARY_RECOVERY_OPERATION,
+                maximum_bytes=16_384,
+                error_code="temporary_recovery_state_invalid",
+            )
+            _validate_temporary_operation_record(prior_operation)
+            prior_view = _temporary_operation_view_for_record(prior_operation)
+            prior_view_sha256 = _canonical_value_sha256(prior_view)
+            if prior_operation.get("operation_id") != expected_prior_operation_id:
+                raise HostError("temporary_recovery_prior_operation_mismatch")
+            if prior_operation.get("phase") != "restored":
+                raise HostError("temporary_recovery_active")
+            if prior_view_sha256 != expected_prior_view_sha256:
+                raise HostError("temporary_recovery_prior_view_mismatch")
+            if (
+                prior_operation.get("failure_code") is not None
+                or prior_operation.get("assistant_rollout_mode") != "disabled"
+                or prior_operation.get("restored_image_id") != PRODUCTION_PREDECESSOR_IMAGE_ID
+                or not isinstance(prior_operation.get("restored_at"), str)
+                or type(prior_operation.get("startup_floor_kib")) is not int
+                or not isinstance(prior_operation.get("start_admission_allowed"), bool)
+            ):
+                raise HostError("temporary_recovery_prior_state_invalid")
+        elif _read_json(TEMPORARY_RECOVERY_OPERATION) is not None:
             raise HostError("temporary_recovery_already_recorded")
         current = _read_json(CURRENT_RECORD)
         if current is None:
             raise HostError("temporary_recovery_predecessor_unavailable")
+        if (
+            next_cycle
+            and current.get("temporary_recovery_restored_operation_id")
+            != expected_prior_operation_id
+        ):
+            raise HostError("temporary_recovery_prior_current_mismatch")
+        if next_cycle and current.get("assistant_rollout_mode") != "invited":
+            raise HostError("temporary_recovery_predecessor_unready")
+        if next_cycle:
+            assert prior_operation is not None
+            prior_original = prior_operation.get("original_record")
+            if (
+                not isinstance(prior_original, dict)
+                or prior_original.get("assistant_rollout_mode") != "invited"
+            ):
+                raise HostError("temporary_recovery_prior_state_invalid")
+            for key, value in prior_original.items():
+                if key in {"assistant_rollout_mode", "temporary_recovery_restored_operation_id"}:
+                    continue
+                if current.get(key) != value:
+                    raise HostError("temporary_recovery_prior_current_mismatch")
         initial_available = _require_temporary_service_reserve()
         compose_snapshot = _temporary_compose_snapshot(
             current,
@@ -5424,13 +5786,30 @@ def _start_temporary_recovery() -> dict[str, Any]:
             memory_reserve_kib=TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB,
         )
         manifest, manifest_sha256 = _load_temporary_recovery_authorization()
+        if next_cycle:
+            assert prior_operation is not None
+            prior_image = manifest["image"]
+            if (
+                prior_operation.get("manifest_sha256") != manifest_sha256
+                or prior_operation.get("archive_sha256") != prior_image["archive_sha256"]
+                or prior_operation.get("archive_size") != prior_image["archive_size"]
+                or prior_operation.get("image_id") != prior_image["image_id"]
+            ):
+                raise HostError("temporary_recovery_prior_artifact_mismatch")
         _assert_temporary_recovery_archive(
             manifest, memory_reserve_kib=TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB
         )
         stage_id = _temporary_archive_stage_id(
             manifest, memory_reserve_kib=TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB
         )
-        operation_id = secrets.token_hex(16)
+        operation_id = (
+            _next_temporary_recovery_operation_id(
+                expected_prior_operation_id,
+                expected_prior_view_sha256,
+            )
+            if next_cycle
+            else secrets.token_hex(16)
+        )
         temporary_image_ref = f"{LOCAL_IMAGE_REPOSITORY}:temporary-recovery-{operation_id}"
         if (
             _temporary_image_reference_id(
@@ -5465,6 +5844,31 @@ def _start_temporary_recovery() -> dict[str, Any]:
             "initial_available_kib": initial_available,
             "backup": None,
         }
+        if next_cycle:
+            assert expected_prior_operation_id is not None
+            assert expected_prior_view_sha256 is not None
+            assert prior_raw is not None
+            prior_record_sha256 = hashlib.sha256(prior_raw).hexdigest()
+            history_name = f"closed-{expected_prior_operation_id}-{prior_record_sha256}.json"
+            _publish_immutable_temporary_recovery_file(
+                history_name,
+                prior_raw,
+                maximum_bytes=16_384,
+                error_code="temporary_recovery_history_write_failed",
+            )
+            cycle_link_raw = _temporary_recovery_cycle_link(
+                expected_prior_operation_id,
+                prior_record_sha256,
+                expected_prior_view_sha256,
+                operation_id,
+                history_name,
+            )
+            cycle_link_sha256 = _publish_immutable_temporary_recovery_file(
+                f"cycle-{operation_id}.json",
+                cycle_link_raw,
+                maximum_bytes=4_096,
+                error_code="temporary_recovery_cycle_link_write_failed",
+            )
         _write_temporary_recovery_phase(operation, "prepared")
         try:
             available = _require_temporary_service_reserve()
@@ -5651,7 +6055,7 @@ def _start_temporary_recovery() -> dict[str, Any]:
                 operation_kind="temporary_recovery",
                 phase=floor_phase,
             )
-            return {
+            result = {
                 "status": "ok",
                 "result": result,
                 "operation_kind": "temporary_recovery",
@@ -5669,6 +6073,21 @@ def _start_temporary_recovery() -> dict[str, Any]:
                 "start_admission_allowed": startup_floor_met,
                 "health": health,
             }
+            if next_cycle:
+                assert expected_prior_operation_id is not None
+                assert prior_record_sha256 is not None
+                assert expected_prior_view_sha256 is not None
+                assert cycle_link_sha256 is not None
+                result.update(
+                    {
+                        "prior_operation_id": expected_prior_operation_id,
+                        "prior_record_sha256": prior_record_sha256,
+                        "prior_view_sha256": expected_prior_view_sha256,
+                        "cycle_link_sha256": cycle_link_sha256,
+                        "cycle_link_status": "started",
+                    }
+                )
+            return result
         except HostError as error:
             _record_temporary_recovery_failure(operation, error)
             raise
@@ -5876,6 +6295,12 @@ def _dispatch(operation: str, payload: dict[str, object]) -> dict[str, Any]:
         return _state_summary()
     if operation == "start_temporary_recovery":
         return _start_temporary_recovery()
+    if operation == "start_next_temporary_recovery":
+        prior_operation_id = payload["prior_operation_id"]
+        prior_view_sha256 = payload["prior_view_sha256"]
+        if not isinstance(prior_operation_id, str) or not isinstance(prior_view_sha256, str):
+            raise HostError("temporary_recovery_prior_identity_invalid")
+        return _start_next_temporary_recovery(prior_operation_id, prior_view_sha256)
     if operation == "restore_temporary_recovery":
         operation_id = payload["operation_id"]
         if not isinstance(operation_id, str):

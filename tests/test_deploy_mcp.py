@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -33,6 +34,74 @@ def _controller(tmp_path: Path) -> DeployController:
     identity.chmod(0o600)
     known_hosts.chmod(0o600)
     return DeployController(DeployConfig("example.com", "deploy", identity, known_hosts))
+
+
+def _next_temporary_recovery_response(
+    *,
+    prior_id: str = "a" * 32,
+    view_sha256: str = "b" * 64,
+    record_sha256: str = "d" * 64,
+    available_kib: int = 600_000,
+) -> dict[str, object]:
+    operation_id = hashlib.sha256(
+        b"signal-ledger-temporary-recovery-next-cycle-v1\0"
+        + prior_id.encode("ascii")
+        + b"\0"
+        + view_sha256.encode("ascii")
+    ).hexdigest()[:32]
+    link = {
+        "format_version": 1,
+        "kind": "temporary_recovery_cycle_link",
+        "status": "intent",
+        "prior_operation_id": prior_id,
+        "prior_record_sha256": record_sha256,
+        "prior_view_sha256": view_sha256,
+        "new_operation_id": operation_id,
+        "history_name": f"closed-{prior_id}-{record_sha256}.json",
+        "database_policy": "reuse_schema_13_no_restore",
+    }
+    link_sha256 = hashlib.sha256(
+        json.dumps(link, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    admitted = available_kib >= 512 * 1024
+    return {
+        "status": "ok",
+        "result": (
+            "temporary_recovery_ready"
+            if admitted
+            else "temporary_recovery_ready_startup_floor_unmet"
+        ),
+        "operation_kind": "temporary_recovery",
+        "operation_id": operation_id,
+        "source_revision": "63597953c9d1ab387563dadfe705b78a2861a426",
+        "image_ref": f"signal-ledger:temporary-recovery-{operation_id}",
+        "image_id": "sha256:" + "c" * 64,
+        "archive_sha256": "e" * 64,
+        "manifest_sha256": "f" * 64,
+        "schema_version": 13,
+        "assistant_rollout_mode": "disabled",
+        "backup": {
+            "trigger": "pre_deploy",
+            "name": "pre-deploy-5ad2c3fddfce5a5a-01234567.spbackup",
+            "sha256": "1" * 64,
+            "schema_version": 13,
+            "verified": True,
+            "promoted": False,
+        },
+        "available_kib": available_kib,
+        "startup_floor_kib": 512 * 1024,
+        "start_admission_allowed": admitted,
+        "health": {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+        "prior_operation_id": prior_id,
+        "prior_record_sha256": record_sha256,
+        "prior_view_sha256": view_sha256,
+        "cycle_link_sha256": link_sha256,
+        "cycle_link_status": "started",
+    }
 
 
 def test_invalid_revision_rejected_before_ssh(tmp_path: Path) -> None:
@@ -1071,3 +1140,188 @@ def test_noop_firewall_plan_requires_fixed_firewall_id() -> None:
 
     with pytest.raises(DeployError, match="terraform_scope_violation"):
         _validate_firewall_plan(plan, "203.0.113.44/32")
+
+
+def test_next_temporary_recovery_controller_sends_only_inspected_prior_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    controller = _controller(tmp_path)
+    prior_id = "a" * 32
+    view_sha256 = "b" * 64
+    response = _next_temporary_recovery_response()
+    assert response["operation_id"] == "ccd2fd1a94f4829b131b754e0f90d367"
+    assert (
+        response["cycle_link_sha256"]
+        == "3b07ba3dea48431a01bac712d4ffd97cc02e8111ef7bd1e4cdb04815a4db8b41"
+    )
+    calls: list[tuple[str, dict[str, object], int]] = []
+
+    def invoke(operation: str, payload: dict[str, object], *, timeout: int) -> dict[str, object]:
+        calls.append((operation, payload, timeout))
+        return response
+
+    monkeypatch.setattr(controller, "_invoke", invoke)
+    assert controller.start_next_temporary_recovery(prior_id, view_sha256) == response
+    assert calls == [
+        (
+            "start_next_temporary_recovery",
+            {"prior_operation_id": prior_id, "prior_view_sha256": view_sha256},
+            900,
+        )
+    ]
+
+
+def test_next_temporary_recovery_controller_accepts_floor_unmet_without_admission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    controller = _controller(tmp_path)
+    response = _next_temporary_recovery_response(available_kib=200_000)
+    monkeypatch.setattr(controller, "_invoke", lambda *_args, **_kwargs: response)
+
+    result = controller.start_next_temporary_recovery("a" * 32, "b" * 64)
+
+    assert result["result"] == "temporary_recovery_ready_startup_floor_unmet"
+    assert result["start_admission_allowed"] is False
+
+
+@pytest.mark.parametrize(
+    ("prior_id", "view_sha256"),
+    [("not-an-id", "b" * 64), ("a" * 32, "not-a-digest")],
+)
+def test_next_temporary_recovery_controller_rejects_untyped_prior_identity(
+    tmp_path: Path, prior_id: str, view_sha256: str
+) -> None:
+    controller = _controller(tmp_path)
+    with (
+        patch.object(controller, "_invoke") as invoke,
+        pytest.raises(DeployError, match="temporary_recovery_prior_identity_invalid"),
+    ):
+        controller.start_next_temporary_recovery(prior_id, view_sha256)
+    invoke.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("operation_id", "f" * 32),
+        ("cycle_link_sha256", "e" * 64),
+        ("prior_record_sha256", "2" * 64),
+        ("prior_view_sha256", "3" * 64),
+        ("prior_operation_id", "4" * 32),
+        ("cycle_link_status", "intent"),
+        ("status", "error"),
+        ("result", "temporary_recovery_ready_startup_floor_unmet"),
+        ("image_ref", "signal-ledger:temporary-recovery-" + "f" * 32),
+        ("image_id", "sha256:" + "z" * 64),
+        ("archive_sha256", "not-a-digest"),
+        ("manifest_sha256", "not-a-digest"),
+        ("source_revision", "0" * 40),
+        ("schema_version", True),
+        ("assistant_rollout_mode", "invited"),
+        ("available_kib", True),
+        ("startup_floor_kib", 1),
+        ("start_admission_allowed", False),
+    ],
+)
+def test_next_temporary_recovery_controller_rejects_unbound_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: object,
+) -> None:
+    controller = _controller(tmp_path)
+    prior_id = "a" * 32
+    view_sha256 = "b" * 64
+    response = _next_temporary_recovery_response()
+    response[field] = replacement
+    monkeypatch.setattr(controller, "_invoke", lambda *_args, **_kwargs: response)
+    with pytest.raises(DeployError, match="remote_response_invalid"):
+        controller.start_next_temporary_recovery(prior_id, view_sha256)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "status",
+        "image_ref",
+        "image_id",
+        "archive_sha256",
+        "manifest_sha256",
+        "backup",
+        "health",
+        "startup_floor_kib",
+        "start_admission_allowed",
+    ],
+)
+def test_next_temporary_recovery_controller_rejects_omitted_ready_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    controller = _controller(tmp_path)
+    response = _next_temporary_recovery_response()
+    del response[field]
+    monkeypatch.setattr(controller, "_invoke", lambda *_args, **_kwargs: response)
+
+    with pytest.raises(DeployError, match="remote_response_invalid"):
+        controller.start_next_temporary_recovery("a" * 32, "b" * 64)
+
+
+@pytest.mark.parametrize(
+    ("container", "field", "replacement"),
+    [
+        ("backup", "verified", False),
+        ("backup", "promoted", True),
+        ("backup", "name", "pre-deploy-63597953c9d1ab38-01234567.spbackup"),
+        ("backup", "schema_version", 12),
+        ("backup", "name", "pre-deploy-5ad2c3fddfce5a5-01234567.spbackup"),
+        ("health", "schema_version", 12),
+        ("health", "status", "starting"),
+    ],
+)
+def test_next_temporary_recovery_controller_rejects_mismatched_ready_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    container: str,
+    field: str,
+    replacement: object,
+) -> None:
+    controller = _controller(tmp_path)
+    response = _next_temporary_recovery_response()
+    nested = response[container]
+    assert isinstance(nested, dict)
+    nested[field] = replacement
+    monkeypatch.setattr(controller, "_invoke", lambda *_args, **_kwargs: response)
+
+    with pytest.raises(DeployError, match="remote_response_invalid"):
+        controller.start_next_temporary_recovery("a" * 32, "b" * 64)
+
+
+@pytest.mark.parametrize(("field", "replacement"), [("enabled", True), ("status", "ready")])
+def test_next_temporary_recovery_controller_rejects_non_disabled_worker_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: object,
+) -> None:
+    controller = _controller(tmp_path)
+    response = _next_temporary_recovery_response()
+    health = response["health"]
+    assert isinstance(health, dict)
+    assistant = health["assistant"]
+    assert isinstance(assistant, dict)
+    assistant[field] = replacement
+    monkeypatch.setattr(controller, "_invoke", lambda *_args, **_kwargs: response)
+
+    with pytest.raises(DeployError, match="remote_response_invalid"):
+        controller.start_next_temporary_recovery("a" * 32, "b" * 64)
+
+
+def test_next_temporary_recovery_controller_rejects_false_floor_admission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    controller = _controller(tmp_path)
+    response = _next_temporary_recovery_response(available_kib=200_000)
+    response["start_admission_allowed"] = True
+    monkeypatch.setattr(controller, "_invoke", lambda *_args, **_kwargs: response)
+
+    with pytest.raises(DeployError, match="remote_response_invalid"):
+        controller.start_next_temporary_recovery("a" * 32, "b" * 64)

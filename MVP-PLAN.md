@@ -9394,3 +9394,137 @@ to that archive and host store and does not repair the failed canonical OCI test
 | H helper installation | H package receipt `/var/tmp/r12r/pr11-e3ec8c7-package-24c06b31-078a-4f93-a5f5-6f1d5cdd25b2/package-receipt.json`, SHA-256 `2b7a0c18444e6c77719d2207cbabf7c0beaf1d26d9799d403b5894dd994a5ed9`; independent package audit SHA-256 `db27259afe57a08062fac1e89f8aaa24b38fa505294bf8679b43d48155450bd7`. Actual install response `/var/tmp/r12r/pr11-e3ec8c7-install-4e5cdc3b-ad01-4ce2-b936-4b5f69ec2afb/actual-install-response.json`, SHA-256 `1eb64f5aafc3de179f8dfca95a3d8f806c5a88268ae2e55aef7849c8e829e04f`; installed-file readback SHA-256 `08d41890055f00c6ed3dc313c1764679fd8d4c8b889b3d5d38a7831f621e83ef`; independent install review SHA-256 `dd1cb515679c05c6ad5ec257b6f8936d8242c5db6047f7968ac894688e52ef31`; helper-install evidence closure SHA-256 `3d733239dd1f5cf9c4beb499543b31f82392045922f861fa3d71ef21b41d47c3`. |
 
 The current H compensation behavior and focused browser path remain unaccepted. A successful new canonical run, focused4 browser Pass followed by the full aggregate, current-H-pair host recovery and rollback, and the remaining release gates are still required. Preserve the recorded failures and scoped passes separately. The existing nominal 1 GB host, retained backups, and US$15 monthly total cap including tax are unchanged; this checkpoint records no new application deployment, merge, rollout, resize, or email.
+
+### R-ASTRA-120 E851 I actual H2 preflight and current-release checkpoint (2026-10-17)
+
+E851 H’s failed canonical run remains in the ledger. The later clean native-x86_64 check on H2 revision `d8c765c3909125604b5be0503ee14bae94970d46` passed its complete local check profile: 3,930 Python passes, four skips, four deselected, 85.73% coverage, and 74/74 frontend checks. Documentation, frontend build/typecheck/test/stage, and Python checks completed. Independent QA verified the terminal, JUnit, bound source/frontend inputs, 53 served/export pairs, and runtime links. This updates only the current canonical result; browser, native/provider, recovery, resource, accessibility, and release gates remain open. Exact task-TMP ownership cleanup remains Unavailable.
+
+The authorized H2 host pair call **Failed** at memory preflight with 471,900 KiB available against the 524,288 KiB reserve. Independent source tracing confirms this occurred before candidate image loading, volume creation, container start, or native work. The same one-shot wrapper’s automatic invited restoration then **Failed** with `reviewed_release_mismatch` and `production_baseline_mismatch`. This is not native, provider, recovery, or resource acceptance. Keep its terminal and pair result intact; repair and independently review the restoration path before any new pair attempt.
+
+A separate operation using the exact original 5ad controller restored the existing release through `disabled → owner_canary → invited`. Its 08:23:43Z final read reported revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image `sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13, app and assistant ready, and loopback-only access. Independent QA verified the recorded historical failure and restored-recovery digests were unchanged. No database-count or storage-identity claim follows; image and schema stayed unchanged, and no resize occurred. It is the latest receipt-backed production observation here, not a current-time health check.
+
+The F6 candidate and 5ad recovery archives each passed the maintained 13-layer credential/persistent-data scan; independent integrity QA verified the scanner pin, archive/output hashes, and retained earlier scan failure. Separate Astra and parent source-security reviews found no actionable P1/P2 issue in their declared changed-app and supporting trust-boundary scope. These source and archive checks do not establish complete security or runtime acceptance.
+
+The latest focused F6 browser run **Passed** 4/4 desktop/mobile cases, with zero failures, skips, or retries and one worker, on native x86_64/Python 3.14.4 under umask 0022 (08:50:50.081–08:53:32.118Z). Independent QA **Passed** the consumer result, JUnit, unchanged source/stage snapshot, and lifecycle checks; exact service cleanup also **Passed**. The run used a local FastAPI fixture, Pixel 7 emulation, and no live provider. The full 200-case aggregate remains pending. Preserve the earlier focused 3/4 failure; do not combine runs.
+
+Draft [PR #15](https://github.com/eddiesoz/stock_probs/pull/15), stacked on PR #9 at `ef57821a3c0d965727e2db0d24ab083ff9d120e7`, contains the print-only guide selector repair. Independent review passed its fresh eight-image capture; the maintained finalizer and render also **Passed**. Rendered HTML/PDF are bound to this revision. Independent 12-state HTML accessibility and 14-page PDF visual review remain pending, so final guide acceptance is open. Preserve earlier HTML and PDF failures: the original 12-state HTML run failed one mobile System/Dark sample that initially showed a light canvas, and an earlier PDF showed an orphaned section-02 border at the page break. Separate settled-state HTML and 14-page print-candidate visual checks passed only their own scopes. The diagnostic print renderer **Failed** because `pdftotext` was unavailable. Physical mobile, true zoom, screen-reader, and PDF/UA remain Unavailable.
+
+No merge, new application deployment, resize, release, or email occurred. The 1 GB host, backups, and US$15 monthly total cap including tax remain unchanged.
+
+Evidence paths below are relative to `/var/tmp/r12r/` unless written as full paths.
+
+| Scope | Evidence |
+| --- | --- |
+| H2 canonical local check | `pr11-h2-canonical-worktree-8d92d549-1946-45f0-90d5-8402846d9496/checkout/test-results/local-gates/R-ASTRA-120-20261017T055018Z/evidence.json` `2609268936eb1d738ac22fa3f575bf9ddaa26958fc9e69c523dbe42a40970c40`; independent `independent-h2-canonical-review-20261017T0645Z/qa-receipt.json` `3471411216135c50f549889528a2bd62ec1812bad31da550b287fef2479b4036`. |
+| Actual H2 pair | `pr11-h2-direct-actual-a7dbec1e-cc3b-48cf-af63-6fa7d7d4d370/actual-terminal-before-stop.json` `903da04998b783a2bda19121ac1b6337c539c29232724d8ed08870a46fab8b24`; `pr11-h2-direct-wrapper-v4-20261017T080237Z-0c4b2f0e-c5f5-455e-97f3-aea59c07ad87/candidate/h2-pair-result.json` `e6c8a13e52bae242f4fdf8905d302944a9fabcfa8d5ab3ae5791f752fba5a526`; independent review `independent-h2-actual-restoration-qa-4f4d7622-2d57-4cfc-9227-60c600892b2b/qa-receipt.json` `ea2e0504f04ae537f74b1d41eed20174d877450600507a0d38a0f878dd797117`. |
+| Typed 5ad restoration | `production-5ad-rollout-recovery-5bc65609-6ce6-40b0-9565-3a7cb987320b/restoration-terminal.json` `8635c23b726ef4dd4693a036603df9b38d862d5f03d52f3dede1c4d35b71ca20`; append-only QA files `independent-h2-actual-restoration-qa-4f4d7622-2d57-4cfc-9227-60c600892b2b/qa-receipt-clarification.json` `d8b1011321ce0469ae8ed17ecb349465ee50c4890118f9af7a43cea1941b1d5a` and `independent-h2-actual-restoration-qa-4f4d7622-2d57-4cfc-9227-60c600892b2b/qa-receipt-clarification-2.json` `3a051ad61002512ef6d065ee4748864bab3115984243f921a3449beb6a9e4913`. |
+| Archive scan and source security | Scan terminal `f6-h2-full-archive-scan-8278cdce-e049-4292-b3b1-0136a168ea25/terminal.json` `4f086eaa11a473ec002bf269f22aa54ec43b6fc40e5e866d9094f77ae83eec0f`; independent integrity review `f6-h2-full-archive-scan-8278cdce-e049-4292-b3b1-0136a168ea25/independent-archive-scan-qa/independent-qa-receipt.json` `7fd318153b08aad369f0590f3d63768dba1bf112374cb9b62397859b4e3b95ab`; earlier failed scan retained `f19c10014a4865c7cc7195a343a092d02c071b48599a5567fda1b3a3f814d55f`. F6 Astra source review `f6-astra-app-source-audit-20261017T084105Z-4f2290ae-02a7-4f52-914a-2acf2a323d63/source-security-review.json` `e78a59698fd738e46f37f33374c3097235d7e9c66fa27f8181e935bc4b35d2d5`; parent review `f6-parent-app-security-review-6d4d124b-fb00-4ed5-957a-5b7b6bd63f99/parent-review.json` `e45a028683aa07e6112a1eb4af9fcb178609f168245e33369762c9f94271a2cb`. |
+| Focused browser | Consumer receipt `f6-runner-v13-v5-consumer-successor-20261017-2d86a246-34a9-4ead-99ee-d4109c08ade2/candidate/focused-four-case-v5-receipt.json` SHA-256 `f6f79bbadfe29cca7b105e0da661ee14981471d7cb57f38febe1b5483809f6cc`; independent review `f6-browser-v5-lineage-materialized-0e7823f6-b6b7-4e8b-b1b9-c716346617be/independent-qa-20261017T0850Z/independent-focused4-consumer-receipt.json` SHA-256 `f08bd2cab8262c8aeaf5c222435b37158cd42a8c2e78188920f9aef2a7a21fc4`; exact cleanup `f6-browser-v5-lineage-materialized-0e7823f6-b6b7-4e8b-b1b9-c716346617be/independent-qa-20261017T0850Z/exact-cleanup-receipt.json` SHA-256 `bff1827418f60070c1ebca707844feed9024feee989b86b76a9e957aeaaf0c47`. |
+| Guide capture and render | `f6-guide-isolated-clone-prep-a0a93b043f21/checkout/test-results/assistant-r120/help-current-captures-20261017-08d20acd9c98/independent-capture-qa-receipt.json` SHA-256 `093b6b55f8b944d895b6bf80aad828f833cda960210a8341e949b93888fb1a02`; `parent-finalization-terminal.json` SHA-256 `5fc61937368834589174e5622e7e595bac8b0254ca3da576ce38da79b3496040`; `parent-render-terminal.json` SHA-256 `a95a4a7ccafd248854a3ee5995a5bfa0f3cf7e3798a2713fbd9b4bc0f339c7fa`. `preview/guide.html`: 1,544,817 bytes, SHA-256 `1dfe31b12dd96e84bfce6fbd36f1d349ec4fb3c197f5f2b192c96fc8c00f2640`; `preview/guide.pdf`: 1,214,911 bytes, SHA-256 `0cb91d1e248758f869d949b797ee6b7f30028f75998dac92b60545055304c083`. The finalization and render terminals are in the same task root; both preview files are under `f6-guide-isolated-clone-prep-a0a93b043f21/checkout/test-results/assistant-r120/help-current-captures-20261017-08d20acd9c98/preview/`. |
+| Earlier print diagnostic | Renderer attempt `guide-print-model-candidate-20261017T080728Z-d0ecdce0/pdf-diagnostic-20261017T080000Z/attempt-01-terminal.json` SHA-256 `84378a3b3c832f1014d8f36f656c730b13856b162baa1ff4a5991ef7e6d62e0c` remains **Fail**; independent visual review `guide-print-model-independent-qa-20261017-35b57228-0ddd-4644-9b61-6e321a74e1ed/independent-guide-print-candidate-review.json` SHA-256 `68d1cc33746e4171adaf8f9ef5756e18fb7eb33d01c07d6a758f4532c1c2d24d` remains a scoped visual Pass. |
+
+### R-ASTRA-120 E851 J guide review and full browser aggregate (2026-10-17)
+
+Draft [PR #15](https://github.com/eddiesoz/stock_probs/pull/15), stacked on PR #9 at
+`ef57821a3c0d965727e2db0d24ab083ff9d120e7`, passed final independent review for these exact
+artifacts: 12 HTML states with raw axe 0 violations/0 incompletes, and a 14-page PDF visual
+review containing all eight figures. Independent review:
+`f6-guide-isolated-clone-prep-a0a93b043f21/checkout/test-results/assistant-r120/help-current-captures-20261017-08d20acd9c98/independent-artifact-qa-20261017T090209Z-2c63b7c8-a07f-40e9-844c-f2ee3b6cf8ad/independent-guide-review-receipt.json`,
+SHA-256 `4a2892239ac11271697c5867afcb399ac2a3a1bc82245f59075040a8b0677b6a`; parent visual review `/var/tmp/r12r/f6-guide-isolated-clone-prep-a0a93b043f21/checkout/test-results/assistant-r120/help-current-captures-20261017-08d20acd9c98/parent-current-pdf-visual-review.json`, SHA-256 `2f35d859f8cbf7c23ae12b025eb3b4ea9092c6933d5ce5f65eac0f98826f72f0`. HTML is 1,544,817
+bytes, SHA-256 `1dfe31b12dd96e84bfce6fbd36f1d349ec4fb3c197f5f2b192c96fc8c00f2640`; PDF is
+1,214,911 bytes, SHA-256 `0cb91d1e248758f869d949b797ee6b7f30028f75998dac92b60545055304c083`.
+Earlier HTML/PDF failures and missing-`pdftotext` diagnostic failure remain historical. PDF/UA,
+physical mobile, screen reader, and true zoom remain **Unavailable**; PR #15 remains draft.
+
+The full actual 200-case F6 browser run **Failed** at exit 1 (not timeout), native x86_64,
+`2026-10-17T09:10:36.626Z`–`09:33:19.912Z`: 192 passed, five failed, three expected skips, zero
+flaky, all cases run, one worker, zero retries. Run `e67b621f-0feb-45fc-90ef-0b583387e669`;
+terminal receipt
+`/var/tmp/r12r/f6-full200-v5-actual-e67b621f-0feb-45fc-90ef-0b583387e669/terminal-receipt.json`,
+SHA-256 `4a427af1c0793ae950b017e18651b5d9fc1c72db3b61ea238e0f862f48e25a4e`. The actual systemd
+terminal before cleanup is
+`/var/tmp/r12r/f6-full200-v5-launch-e67b621f-0feb-45fc-90ef-0b583387e669/actual-terminal-before-cleanup.json`,
+SHA-256 `a69307fa1486063ddcfbdaccaaac08de851b84017560c450d60ad5ae6a007976`, invocation
+`7f0f39fb658349288d51e7bcf088173a`. The run retained 391 source, 29 browser and one
+external-file bindings, 522 files, three links, 88 frontend inputs, and 53 staged files
+unchanged. Forty-three captures and five failure traces (13,163,150 bytes) passed integrity
+checks, with no discarded output.
+
+The five failures were desktop session revocation, failed-event history reopen, fresh-analysis
+API response, unresolved theme-hover DOM state, and mobile WebFetch screenshot font readiness.
+In session-revocation case 37, the primary HAR records HTTP 202 after a 6,314.766 ms turn POST;
+the five-second wait did not reach the logout guard. History reopen did not observe POST 502; the
+initial fresh-analysis POST had no response after five seconds; theme-hover DOM remained unresolved;
+and the mobile screenshot wait remained on font readiness. No common cause or fixture-only proof is
+established. The separate
+focused four-case run **Passed** 4/4 and is not combined with this aggregate; independent
+receipt SHA-256 `f08bd2cab8262c8aeaf5c222435b37158cd42a8c2e78188920f9aef2a7a21fc4` and cleanup
+SHA-256 `bff1827418f60070c1ebca707844feed9024feee989b86b76a9e957aeaaf0c47`.
+
+Raw-axe attachments covered 22/24 snapshots. Captured output showed zero violations/incompletes,
+but strict extraction/acceptance is **Unavailable** (assistant axe 11/12; M09 theme 1/2).
+Independent full-run integrity QA **Passed** 41/41 without changing the browser **Fail**:
+`/var/tmp/r12r/f6-full200-v5-independent-integrity-qa-20261017T0937Z-711a01f3-7a86-4756-aa70-0292ad069ceb/independent-qa-receipt-v2.json`,
+SHA-256 `a98841555e87949d139e80929f7ca4f84174887c043fb72a6589c6d15dfd1fc2`. Exact cleanup
+**Passed** at
+`/var/tmp/r12r/f6-full200-v5-launch-e67b621f-0feb-45fc-90ef-0b583387e669/exact-private-cleanup.json`,
+SHA-256 `8d101c72a2e7585aba722c2d4a46c35a123728cc635a639f8bbeb2f973e6388d`; the failed unit was
+retained, not stopped/reset. Direct process-group absence supplement
+`/var/tmp/r12r/f6-full200-v5-launch-e67b621f-0feb-45fc-90ef-0b583387e669/direct-process-group-absence-supplement.json`,
+SHA-256 `8fafcdf451f71d3fc79874350eb69f05b40b4c570d9cb62bf834c143504fb5ed`. The latest
+production read remains the earlier 08:23Z original 5ad schema-13 invited/ready/loopback
+observation; no later health read is claimed.
+
+### R-ASTRA-121 PR #11 next-cycle helper and synthetic wire checkpoint (2026-10-17)
+
+The first Luna review **Failed** on an impossible deterministic ID/link. Its full receipt is
+`/var/tmp/r12r/pr11-next-cycle-qa-2a6d3e5d-d1cc-4f49-a88b-1e9dbad884bb/independent-review.json`,
+SHA-256 `a6f5910b6847a69f14f2bf15ab26bb06b78250a2f78cf3587c126931b13f8152`. The second Luna
+review **Failed** because expected backup keys/name disagreed with the actual producer; parent
+finding
+`/var/tmp/r12r/pr11-v2-parent-contract-finding-bf1b3c6a-4058-4eea-8ca1-bbb215bd2569/parent-review-finding.json`,
+SHA-256 `5c5b8731c89e22e3079b6dd79a38c1cc3a4d35b0fd63d77ea26170205f4f0ef9`. The two same-scope
+failures met the scoped Sol escalation threshold; routing/configuration was unchanged.
+
+Frozen V3 helper patch SHA-256
+`e74b0609aa2c8b267b38b46fb327fd18c1317e8cf73bd4d7be1928b116b3b5d9` passed the builder’s 110-test
+scope. The first independent 110-test run passed but its source binding is **Unavailable**
+because `conftest.py` was omitted. Fresh independent QA passed 110 tests, deselected 220,
+reported two warnings, and verified 41 pins; receipt
+`/var/tmp/r12r/pr11-v3-independent-qa-20261017-0930/independent-final-receipt.json`, SHA-256
+`1ca14fc0446194dd36b034ea19ea00f0596eadac06f1a0d53aa0c567311ad0fd`. Astra’s V3-plus-installer
+static review found no P1/P2 in its declared scope:
+`/var/tmp/r12r/pr11-v3-astra-source-review-20261017T092411Z-3e7c25f9-db1f-4cd1-9287-a6dfc8c3f1da/source-security-review.json`,
+SHA-256 `9b171f399b937fe9aeaea9b1ab2299bb54290c27e95c9c67f72b4dcebd7a4a5b`.
+
+The frozen two-file installer patch SHA-256
+`bbb4b29becf224b8f2d3c8b05aeabc8d15e00a88e58050a50910f30756726928` has independent 57-test/Ruff
+**Pass** at
+`/var/tmp/r12r/h2-installer-recognition-independent-qa-20261017T0923Z-adaabe38-093b-460d-b71e-8db85cb73a01/independent-review.json`,
+SHA-256 `5bf86028a8faf658bccc23fbbf73d5bf44c06378f29a01f395c792f55954bd75`. Both installer
+source files are included in the parent’s six-file H2 code/test integration; the patch file
+remains a frozen private artifact. Parent integration receipt
+`/var/tmp/r12r/pr11-next-cycle-parent-integration-d3a307f7-6194-43a2-9f3b-0b78b95cb80e/parent-code-integration.json`,
+SHA-256 `a66b515de2d774077e922fb356020cee87737818f0eeef657c1f2e0166e264e5`, records H2 head
+`d8c765c3909125604b5be0503ee14bae94970d46`; no app/frontend/image/production changes. Source
+checkpoint/commit, applied-tree checks and canonical run, installation/readback, typed wrapper,
+and actual-host trial/recovery/rollback remain **Pending**. The earlier actual H2 pair remains
+**Fail** at its preflight and wrapper restoration; the separate exact-5ad restoration is
+recorded in E851 I.
+
+The F6 synthetic wire run **Passed** its separate protocol scope at `09:08:02Z`–`09:08:42Z` on
+image `sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196`, Linux/amd64,
+network-none, 1,536 MiB: three synthetic protocols, 11 MCP tools, 10 assertions, and Google
+continuation. Independent review **Passed** at
+`/var/tmp/r12r/f6-wire-independent-qa-fd916a54-8f56-4df7-8ad0-c65d5580f34e/independent-wire-result-review.json`,
+SHA-256 `4c0435bae673fde67a4c395cfdb5b467f0ffca7d1d360cc1a91c47b7ce267757`; pre-stop terminal
+digest `d35370432d802cdb46b94aa32d4e96a9007b7d3d791512ecc3bcd9a93373dd41`. Runner cleanup
+**Passed**; direct independent Docker query is **Unavailable**. This is synthetic protocol
+evidence, not live-provider, native-user, host-resource, or release acceptance.
+
+The operator contract is summarized in the [runbook](docs/operations/getting-started.md#temporary-recovery-candidate): preserve immutable exact
+prior-operation bytes separately from the unchanged current record, validate the actual producer
+response and deterministic cycle link, inspect the published operation before pairing, retain
+schema 13 without restore, and restore the original release before canary/invited. Full response
+fields and link checks remain in the runbook. The existing host, backups, and monthly cap are
+unchanged; no release or email is claimed.

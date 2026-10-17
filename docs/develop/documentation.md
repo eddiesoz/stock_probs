@@ -27,6 +27,18 @@ validation, actual host transition and restoration as separate results. Document
 import-path setup failures separately from a corrected test run; mocked reserve checks do not
 establish actual-host capacity. See [temporary recovery checks](testing.md#temporary-recovery-baseline-checks).
 
+For a next-cycle temporary-recovery workflow, document the prior operation record,
+separate current record, producer response, and inspected runtime state as distinct
+evidence. Bind the deterministic operation ID to the prior operation ID and canonical
+view digest; preserve immutable exact prior-record bytes and verify the canonical cycle
+link before publication. Never reset history or alter the current record before the
+active phase. The [operator
+runbook](../operations/getting-started.md#temporary-recovery-candidate) defines the
+actual response schema, admission boundary, post-start inspection, and restoration
+sequence. A ready response alone is not artifact/profile proof; source review,
+installation/readback, bounded host trial, and restoration remain separate evidence
+stages.
+
 ## Same-schema hotfix evidence
 
 For R-ASTRA-121, the separate operational-helper PR #11 candidate adds format 2 with contract

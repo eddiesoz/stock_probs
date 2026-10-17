@@ -126,6 +126,69 @@ Restore uses its exact operation identity and verifies the original disabled ser
 presence alone does not establish installation, an approved available image, or successful host
 execution; see [the verification procedure](../develop/testing.md#temporary-recovery-baseline-checks).
 
+### PR #11 next-cycle start contract
+`start_next_temporary_recovery` is a fixed root-owned helper/controller operation; it
+does not add a ninth deployment MCP server tool. Use the contract only after
+source/response QA and exact helper installation/readback checks pass. An authorized
+bounded operator trial then provides actual-host acceptance evidence; do not require a
+successful trial before attempting the trial.
+
+Before starting, bind the exact restored prior operation ID to its canonical
+operation-view SHA-256, and separately verify that the unchanged current record
+identifies the original 5ad schema-13 release as invited, ready, and loopback-only. Do
+not confuse the prior `temporary-recovery-operation.json` with the separate current
+record. Preserve the operation file's exact original bytes in a root-owned history
+directory (directory mode 0700, regular files mode 0600) as
+`closed-<prior-operation-id>-<full-record-sha256>.json`; preserve its complete record
+digest and create `cycle-<new-operation-id>.json` as its matching intent link. History
+is immutable: never delete/reset it. Keep current-record bytes unchanged until the new
+active phase is published.
+
+Derive the next operation ID as the first 32 lowercase hexadecimal characters of SHA-256
+over ASCII `signal-ledger-temporary-recovery-next-cycle-v1`, NUL, prior operation ID,
+NUL, and canonical prior operation-view SHA-256. The cycle-link body has exactly
+`format_version=1`, `kind=temporary_recovery_cycle_link`, `status=intent`,
+`prior_operation_id`, `prior_record_sha256`, `prior_view_sha256`, `new_operation_id`,
+`history_name=closed-<prior-operation-id>-<full-record-sha256>.json`, and
+`database_policy=reuse_schema_13_no_restore`. Compute `cycle_link_sha256` over its
+canonical JSON with sorted keys and no optional whitespace. Retry or publish only when
+the entire existing history record and intent link are byte-identical to their expected
+values; partial/malformed state, conflicting bytes, an unexpected symlink, or an
+impossible ID/link must fail closed.
+
+Accept the helper result only with the exact top-level keys `status`, `result`,
+`operation_kind`, `operation_id`, `source_revision`, `image_ref`, `image_id`,
+`archive_sha256`, `manifest_sha256`, `schema_version`, `assistant_rollout_mode`,
+`backup`, `available_kib`, `startup_floor_kib`, `start_admission_allowed`, `health`,
+`prior_operation_id`, `prior_record_sha256`, `prior_view_sha256`, `cycle_link_sha256`,
+and `cycle_link_status`; reject missing or extra fields. Require `status=ok`,
+`operation_kind=temporary_recovery`, source revision
+`63597953c9d1ab387563dadfe705b78a2861a426`, the deterministic operation ID,
+`image_ref=signal-ledger:temporary-recovery-<operation-id>`, schema 13, disabled
+assistant rollout, valid full image/archive/manifest digests, matching prior ID/view
+digest and record digest, and `cycle_link_status=started`. The nested `backup` object
+has exactly `trigger`, `name`, `sha256`, `schema_version`, `verified`, and `promoted`:
+require `trigger=pre_deploy`, name prefix `pre-deploy-5ad2c3fddfce5a5a-` and `.spbackup`
+suffix, schema 13, a full SHA-256, `verified=true`, and `promoted=false`. This matches
+the actual producer: do not substitute a candidate-revision backup name or omit
+`promoted`. The nested `health` object has exactly `status`, `schema_version`, and
+`assistant`; require `ready`, schema 13, and
+`assistant={enabled:false,status:disabled}`. Require `available_kib` at least 131072,
+`startup_floor_kib=524288`, and `start_admission_allowed` to equal whether available
+memory meets that floor. The result is `temporary_recovery_ready` when admission is
+allowed and `temporary_recovery_ready_startup_floor_unmet` otherwise; the latter does
+not admit a rehearsal.
+
+A valid producer response is not independent artifact/profile proof. After publication,
+perform a fresh exact-ID inspect and bind the new operation ID, image, archive/manifest,
+schema, disabled readiness, and backup before any pair or workload. Keep the same
+schema-13 database volume, require the verified unpromoted backup, and perform no
+database restore. Maintain 128 MiB available runtime reserve during
+archive/Compose/container work and the 512 MiB startup floor before rehearsal admission.
+The temporary service is assistant-disabled and creates an availability gap; restore the
+exact original release through the normal path with the new operation ID before
+owner-canary, then invited.
+
 ## Local Docker storage on removable media
 
 Use this procedure for operator-owned local Docker and build storage. It does not migrate the
