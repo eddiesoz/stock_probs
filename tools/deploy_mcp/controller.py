@@ -27,6 +27,9 @@ RELEASE_TRANSPORT = "github_release"
 ASSISTANT_ROLLOUT_MODES = frozenset({"disabled", "owner_canary", "invited"})
 ASSISTANT_READY_SCHEMA = 13
 LOCAL_IMAGE_REPOSITORY = "signal-ledger"
+HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
+HOTFIX_RECOVERY_REVISION = "5ad2c3fddfce5a5a631b72cd832a53f24757c44a"
+HOTFIX_PAIR_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOST = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
 USER = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 MAX_RESPONSE_BYTES = 65_536
@@ -48,6 +51,41 @@ class DeployError(Exception):
     def __init__(self, code: str) -> None:
         self.code = code
         super().__init__(code)
+
+
+def _valid_hotfix_identity(
+    response: dict[str, Any],
+    requested_revision: str,
+    *,
+    rollback: bool = False,
+) -> bool:
+    """Keep the app artifact revision separate from the registered helper source revision."""
+
+    identity_fields = {
+        "recovery_contract",
+        "helper_source_revision",
+        "candidate_release_revision",
+    }
+    if requested_revision != HOTFIX_CANDIDATE_REVISION:
+        return not any(field in response for field in identity_fields)
+    helper_revision = response.get("helper_source_revision")
+    if (
+        response.get("recovery_contract") != HOTFIX_PAIR_CONTRACT
+        or not isinstance(helper_revision, str)
+        or REVISION.fullmatch(helper_revision) is None
+        or helper_revision == requested_revision
+    ):
+        return False
+    if not rollback:
+        return "candidate_release_revision" not in response
+    if response.get("candidate_release_revision") != requested_revision:
+        return False
+    if response.get("release_role") == "recovery":
+        return response.get("revision") == HOTFIX_RECOVERY_REVISION
+    return (
+        response.get("release_role") == "candidate"
+        and response.get("revision") == requested_revision
+    )
 
 
 def _regular_private_file(path: Path) -> None:
@@ -479,6 +517,8 @@ class DeployController:
             or not SHA256.fullmatch(response["recovery_archive_sha256"])
         ):
             raise DeployError("remote_response_invalid")
+        if not _valid_hotfix_identity(response, revision):
+            raise DeployError("remote_response_invalid")
         return response
 
     def deploy(
@@ -542,6 +582,8 @@ class DeployController:
             and response.get("pair_manifest_sha256") != pair_manifest_sha256
         ):
             raise DeployError("remote_response_invalid")
+        if not _valid_hotfix_identity(response, revision):
+            raise DeployError("remote_response_invalid")
         return response
 
     def status(self) -> dict[str, Any]:
@@ -560,11 +602,15 @@ class DeployController:
         if image_id is not None:
             payload["image_id"] = image_id
         response = self._invoke("rollback", payload, timeout=900)
+        expected_response_revision = revision
+        if revision == HOTFIX_CANDIDATE_REVISION and response.get("release_role") == "recovery":
+            expected_response_revision = HOTFIX_RECOVERY_REVISION
         if (
-            response.get("revision") != revision
+            response.get("revision") != expected_response_revision
             or response.get("result") != "rolled_back"
             or not isinstance(response.get("image_digest"), str)
             or not SHA256.fullmatch(response["image_digest"])
+            or not _valid_hotfix_identity(response, revision, rollback=True)
         ):
             raise DeployError("remote_response_invalid")
         if image_id is not None and (
@@ -607,7 +653,18 @@ class DeployController:
         if mode != "disabled":
             if current.get("release_role", "candidate") != "candidate":
                 raise DeployError("assistant_recovery_image_disabled")
-            if self._local_rollout_revision() != revision:
+            local_revision = self._local_rollout_revision()
+            if revision == HOTFIX_CANDIDATE_REVISION:
+                helper_revision = current.get("helper_source_revision")
+                pair_manifest_sha256 = current.get("pair_manifest_sha256")
+                if (
+                    not _valid_hotfix_identity(current, revision)
+                    or not isinstance(pair_manifest_sha256, str)
+                    or not SHA256.fullmatch(pair_manifest_sha256)
+                    or local_revision != helper_revision
+                ):
+                    raise DeployError("reviewed_release_mismatch")
+            elif local_revision != revision:
                 raise DeployError("reviewed_release_mismatch")
             if (
                 self.config.reviewed_revision is not None
@@ -651,7 +708,7 @@ class DeployController:
         return response
 
     def _local_rollout_revision(self) -> str:
-        """Require a clean local checkout at the exact deployed revision before enabling."""
+        """Return the clean local checkout revision for caller-specific rollout checks."""
 
         environment = {
             "PATH": "/usr/bin:/bin",

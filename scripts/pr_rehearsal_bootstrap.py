@@ -183,6 +183,31 @@ KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST = {
     "helper_source_contract": HELPER_SOURCE_CONTRACT,
     "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
 }
+# Exact installed PR11 helper state captured from the F548 host pair. It retains
+# the 4411 helper bytes but binds the F548 source bundle and pair manifest.
+KNOWN_INSTALLED_F548_PRODUCTION_HELPER_SHA256 = (
+    "4411def05a0cf757eef859b257d403d1c05eeed44c5c4265b86cb9905e1de730"
+)
+KNOWN_INSTALLED_F548_REVIEWED_HEAD_SHA = "f548fd94dad75c73b31621ee1a466ac7d41d06c2"
+KNOWN_INSTALLED_F548_PAIR_MANIFEST_SHA256 = (
+    "0718ec4b9b3ae56a252432779b3bdad2eb7cc69a974e714a18ea19ea8b94d47e"
+)
+KNOWN_INSTALLED_F548_INSTALLED_FILES = {
+    "host_helper.py": "16640749679c8ca995d2f1740d6364523e82e940fe7c8be59f5fe0b0878cf6f4",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_F548_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_F548_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_F548_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_F548_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_F548_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -560,14 +585,20 @@ def _prepare_previous_production_helper(
                     _require_installed_manifest(candidate_manifest_fields)
                 except InstallError:
                     try:
+                        _require_installed_manifest(KNOWN_INSTALLED_F548_INSTALL_MANIFEST)
+                    except InstallError:
+                        try:
+                            _require_installed_manifest(KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST)
+                        except InstallError:
+                            _require_installed_manifest(KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
+            else:
+                try:
+                    _require_installed_manifest(KNOWN_INSTALLED_F548_INSTALL_MANIFEST)
+                except InstallError:
+                    try:
                         _require_installed_manifest(KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST)
                     except InstallError:
                         _require_installed_manifest(KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
-            else:
-                try:
-                    _require_installed_manifest(KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST)
-                except InstallError:
-                    _require_installed_manifest(KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
         elif current_digest in {
             KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256,
             KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256,

@@ -750,6 +750,18 @@ passed separately. See the [d6064e6 bootstrap-readiness checkpoint](../../MVP-PL
 
 PR11's authentication-key lifecycle is documented separately from provider availability. The
 V8 trial stopped at TOTP step-up before any owner/model turn and restored the exact invited 5ad
-release. Focused independent tests passed the per-pair key repair and exact prior-install
-recognition; no repaired-source host trial has yet run. Preserve the failed trial and the scope
-of its synthetic reproduction. See the [auth-key checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v8-auth-key-lifecycle-checkpoint-2026-10-17).
+release. At that checkpoint, focused independent tests had passed the per-pair key repair and exact
+prior-install recognition, but no repaired-source host trial had run. Preserve the failed trial and
+the scope of its synthetic reproduction. The later V10 actual-host rehearsal passed for its bound
+F6/helper pair and restored the exact 5ad invited release. The full browser aggregate remains
+**Fail**, raw axe for that aggregate is **Unavailable**, and the corrected canonical check also
+**Failed** with exit 1: JUnit recorded 3,580 tests (3,574 passed, two failed, four skipped); the
+console separately reported four deselected, and the receipt was incomplete against its expected
+checks. The two failures were a fresh-child
+10-second timeout and a Node Playwright-config subprocess exit 1; the first cause is unproven and
+the second was diagnosed as a missing lock-matched `@playwright/test` link in the isolated checkout.
+Independent retest passed both affected selectors and matched unchanged source/stage bindings; the
+original fresh-child timeout cause remains unproven and the canonical failure is preserved. The
+helper revision-contract follow-up passed independent selected source/test QA and parent integration
+review; no host, deployment, or rollback result follows. See the [V8 auth-key checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v8-auth-key-lifecycle-checkpoint-2026-10-17)
+and the [current V10 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v10-actual-host-free-zen-rehearsal-and-current-release-checkpoint-2026-10-17).

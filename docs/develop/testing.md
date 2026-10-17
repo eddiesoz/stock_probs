@@ -971,3 +971,43 @@ returns `503 authentication_unavailable`; restarting with the original verifies 
 V2 orchestration tests assert same-key reuse and fresh keys between runs; V1 is source-reviewed
 only in this selection. No production secret is read. These checks do not replace actual-host
 native, resource or recovery acceptance. See the [auth-key checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v8-auth-key-lifecycle-checkpoint-2026-10-17).
+
+### Latest PR11/F6 host and browser checkpoint
+
+The V10 host operation `b69dcfefa46b5bb6155942a9a156b1ec` passed its bounded same-schema rehearsal:
+two isolated owners completed genuine `opencode-zen/space-bunny-free` turns; the run also recorded
+native search and post-start write preservation. Candidate and recovery cgroups were limited to 768 MiB and 384 MiB
+on the observed nominal 1 GB host (`984564 KiB`). Independent supplemental review passed the
+measured production, candidate native workload, and same-schema recovery scope. No 1 GiB cgroup or
+broader all-features load acceptance is claimed. The run restored the existing 5ad schema-13
+invited, ready, loopback-only production state; it did not deploy the F6 application. The
+[V10 ledger](../../MVP-PLAN.md#r-astra-121-pr11-v10-actual-host-free-zen-rehearsal-and-current-release-checkpoint-2026-10-17)
+contains source, pair-manifest, terminal, and restoration bindings.
+
+Keep the full 200-case browser result **Fail** (195 passed, two failed, three expected skips) and its
+raw axe aggregate **Unavailable** because one expected attachment is missing. Independent fixture
+repair checks passed, but the repaired browser cases have not rerun. The first canonical attempt
+was interrupted and remains **Fail**. The corrected `TASK_ID=R-ASTRA-120` run also **Failed** with
+exit 1: JUnit recorded 3,580 tests (3,574 passed, two failed, four skipped); the console separately
+reported four deselected, and backend coverage was 85.70%.
+`test_fixture_and_application_start_without_yahoo_dependency_imports` exceeded its fresh
+child 10-second bound (cause **Unproven**); `test_playwright_external_server_switch_is_strict_and_omits_web_server`
+failed because its Node config-load subprocess could not resolve `@playwright/test` in the isolated
+checkout. Independent follow-up traced this environment failure to missing lock-matched package
+links. The receipt completed documentation and frontend but not all expected checks; security/Ruff and repeated
+backup checks did not execute. The parent terminal and unit-retirement receipts, full JUnit path,
+and exact hashes are recorded in the [V10 ledger](../../MVP-PLAN.md#r-astra-121-pr11-v10-actual-host-free-zen-rehearsal-and-current-release-checkpoint-2026-10-17).
+Do not infer either aggregate from the selected V2 unit pass or partial checks.
+Independent follow-up passed both affected canonical selectors (2/2, no errors or skips) after
+preparing six links to existing lock-matched packages. The separate startup diagnostic measured
+8.558 seconds against the existing 10-second bound; the original timeout cause remains
+**Unproven**, and the failed canonical aggregate is unchanged. The helper revision-contract repair
+passed its declared independent source/test/static scope (698 passed, one opt-in Docker skip, two
+warnings; Ruff/security/format passed) and parent integration review. V10's measured production,
+candidate native workload, and same-schema recovery scopes passed on the observed nominal 1 GB host
+(`984564 KiB`) for their bound F548 helper inputs; this does not claim an exact 1 GiB cgroup or
+broader all-features load. Remaining host work is packaging and validating installation, controls,
+and readback for the repaired helper, plus exact-PR recovery/rollback. The unchanged F6 app and
+host-helper inputs do not require another real-provider/native trial solely because helper source
+changed. Complete canonical and browser/axe runs, final guide, owner canary, and release gates remain
+open.

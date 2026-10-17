@@ -2584,3 +2584,36 @@ The PR11 auth-key lifecycle repair passed focused independent source/test QA onl
 `admin_step_up` 503 remains a preserved failed trial, and native/resource/recovery acceptance
 requires a new bound trial. Accept the exact prior 532 install tuple or exact candidate receipt;
 retain the immutable original helper backup and reject unknown installed identities.
+
+The latest PR11/F6 actual-host rehearsal is V10, operation `b69dcfefa46b5bb6155942a9a156b1ec`:
+both owners completed native free-Zen answers and owner-scoped MCP summaries; the run recorded eight
+native search sources, and the schema-13 recovery/write-preservation checks passed. Independent
+supplemental review passed the measured production, candidate native workload, and same-schema
+recovery scope on the observed nominal 1 GB host (`984564 KiB`). Candidate and recovery cgroups
+were 768 MiB and 384 MiB; no 1 GiB
+cgroup or broader all-features load acceptance is claimed. Production was restored to the exact
+5ad invited/ready loopback-only release;
+no F6 application deploy, merge, resize, or email occurred, and the trial left the original invited
+mode restored. Preserve the full browser aggregate
+**Fail** (195 passed, two failed, three expected skips; one of 24 raw-axe attachments unavailable)
+and the interrupted canonical attempt **Fail**. The first canonical run used an overlong `TMPDIR`
+and was interrupted with exit 143. The corrected `TASK_ID=R-ASTRA-120` canonical run also **Failed**
+with exit 1: JUnit recorded 3,580 tests (3,574 passed, two failed, four skipped, zero errors); the
+console separately reported four deselected. The receipt completed only documentation and
+frontend checks, not the full expected check set. The failures were the 10-second fresh-child
+timeout in
+`test_fixture_and_application_start_without_yahoo_dependency_imports` (cause **Unproven**) and
+the Node Playwright-config subprocess exit 1 in
+`test_playwright_external_server_switch_is_strict_and_omits_web_server` (`MODULE_NOT_FOUND` for
+`@playwright/test`, traced to missing lock-matched package links in the isolated checkout). Preserve
+the default-manager query as an unbound setup observation. Independent follow-up passed both affected
+selectors (2/2) after preparing six links to existing lock-matched packages; the original startup
+timeout cause remains **Unproven**, and the canonical aggregate remains **Fail**. The helper
+revision-contract repair passed independent selected source/test checks and parent integration review.
+V10's measured production, candidate native workload, and same-schema recovery scopes passed on the
+observed nominal 1 GB host (`984564 KiB`) for their bound F548 helper inputs; no 1 GiB cgroup or
+broader all-features load is claimed. Remaining host work is packaging and validating installation,
+controls, and readback for the repaired helper, plus exact-PR recovery and rollback. The unchanged
+F6 app and host-helper inputs do not require another real-provider/native trial solely because helper
+source changed. Complete browser/axe and canonical gates, final guide, owner canary, and release
+acceptance remain open. See the [V10 checkpoint](MVP-PLAN.md#r-astra-121-pr11-v10-actual-host-free-zen-rehearsal-and-current-release-checkpoint-2026-10-17).

@@ -759,6 +759,22 @@ def test_release_pair_request_shape_is_fixed_and_pair_hash_is_required_for_schem
             ).encode()
         )
 
+    with pytest.raises(helper.HostError, match="payload_invalid"):
+        helper._parse_request(
+            json.dumps(
+                {
+                    "operation": "plan_deploy",
+                    "payload": {
+                        "revision": helper.HOTFIX_CANDIDATE_REVISION,
+                        "archive_sha256": archive_sha256,
+                        "image_id": helper.HOTFIX_CANDIDATE_IMAGE_ID,
+                        "pair_manifest_sha256": pair_sha256,
+                        "helper_source_revision": "a" * 40,
+                    },
+                }
+            ).encode()
+        )
+
 
 def test_release_pair_migration_pin_matches_packaged_schema13_migration() -> None:
     helper = _helper()
@@ -6097,6 +6113,8 @@ def test_rollback_selects_exact_recorded_schema13_recovery_image(
                 "pair_manifest_sha256": record["pair_manifest_sha256"],
                 "compose_digest": record["compose_digest"],
                 "schema_version": 13,
+                "helper_source_revision": None,
+                "candidate_release_revision": None,
             },
         ),
     ) in events
@@ -7404,6 +7422,349 @@ def _hotfix_release_manifest(helper: Any) -> dict[str, Any]:
     }
 
 
+def _prepare_hotfix_plan_fixture(
+    helper: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    main_revision: str,
+    helper_source_revision: str = "a" * 40,
+    registered_pair_sha256: str = "f" * 64,
+    pair_sha256: str = "f" * 64,
+    pair_helper_source_revision: str | None = None,
+    helper_registered: bool = True,
+) -> tuple[list[tuple[str, Any]], list[dict[str, Any]]]:
+    """Stub I/O while preserving plan authorization and app/helper identity boundaries."""
+
+    compose_file = tmp_path / "compose.yaml"
+    compose_file.write_text("services: {}\n", encoding="utf-8")
+    observed: list[tuple[str, Any]] = []
+    written: list[dict[str, Any]] = []
+    monkeypatch.setattr(helper, "COMPOSE_FILE", compose_file)
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_ensure_no_active_temporary_recovery", lambda: None)
+    monkeypatch.setattr(helper, "_ensure_source", lambda: None)
+    monkeypatch.setattr(helper, "_read_json", lambda _path: None)
+    monkeypatch.setattr(
+        helper,
+        "_checkout_revision",
+        lambda revision: observed.append(("checkout", revision)),
+    )
+    monkeypatch.setattr(helper, "_assert_compose_revision", lambda: None)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: "1" * 64)
+    monkeypatch.setattr(helper, "_write_compose_snapshot", lambda *args: None)
+    monkeypatch.setattr(helper, "_utc_now", lambda: "2026-10-17T00:00:00Z")
+    monkeypatch.setattr(helper, "_write_json", lambda _path, value: written.append(dict(value)))
+    monkeypatch.setattr(helper, "_audit", lambda *args, **kwargs: None)
+
+    def fake_git(*arguments: str, timeout: float = 120.0) -> str:
+        del timeout
+        if arguments == ("rev-parse", f"refs/remotes/origin/{helper.MAIN_BRANCH}"):
+            return main_revision
+        if arguments and arguments[0] == "cat-file":
+            return ""
+        raise AssertionError(f"unexpected git command: {arguments!r}")
+
+    monkeypatch.setattr(helper, "_git", fake_git)
+
+    def read_registered_helper(expected_pair_sha256: str | None = None) -> str:
+        observed.append(("registered_helper", expected_pair_sha256))
+        if not helper_registered:
+            raise helper.HostError("hotfix_helper_provenance_unavailable")
+        if expected_pair_sha256 != registered_pair_sha256:
+            raise helper.HostError("hotfix_helper_provenance_mismatch")
+        return helper_source_revision
+
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", read_registered_helper)
+
+    def load_archive(
+        revision: str, digest: str, image_id: str
+    ) -> tuple[str, str, str, str, int, int]:
+        observed.append(("archive", revision))
+        return (
+            helper._local_image_ref(revision),
+            digest,
+            image_id,
+            "linux/amd64",
+            helper.ASSISTANT_MINIMUM_SCHEMA,
+            1024,
+        )
+
+    def load_pair(
+        revision: str,
+        expected_pair: str,
+        archive_digest: str,
+        image_id: str,
+        *,
+        candidate_archive_size: int,
+    ) -> dict[str, Any]:
+        observed.append(("pair", (revision, expected_pair, candidate_archive_size)))
+        assert revision == helper.HOTFIX_CANDIDATE_REVISION
+        assert expected_pair == pair_sha256
+        assert archive_digest == "e" * 64
+        assert image_id == helper.HOTFIX_CANDIDATE_IMAGE_ID
+        return {
+            "pair_manifest_sha256": expected_pair,
+            "source_context_sha256": helper.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            "migration_sha256": None,
+            "recovery_contract": helper.HOTFIX_PAIR_CONTRACT,
+            "helper_source_revision": (
+                pair_helper_source_revision
+                if pair_helper_source_revision is not None
+                else helper_source_revision
+            ),
+            "recovery_image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "recovery_archive_sha256": helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            "recovery_archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+            "recovery_platform": "linux/amd64",
+            "recovery_schema_version": helper.ASSISTANT_MINIMUM_SCHEMA,
+        }
+
+    monkeypatch.setattr(helper, "_load_release_archive", load_archive)
+    monkeypatch.setattr(helper, "_load_release_pair", load_pair)
+    return observed, written
+
+
+def test_hotfix_plan_keeps_app_revision_distinct_from_registered_helper_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    candidate_revision = helper.HOTFIX_CANDIDATE_REVISION
+    helper_source_revision = "f548fd94dad75c73b31621ee1a466ac7d41d06c2"
+    pair_sha256 = "f" * 64
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision=helper_source_revision,
+        helper_source_revision=helper_source_revision,
+        pair_sha256=pair_sha256,
+    )
+
+    result = helper._plan_deploy(
+        candidate_revision,
+        "e" * 64,
+        helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        pair_sha256,
+    )
+
+    assert result["revision"] == candidate_revision
+    assert result["image_ref"] == helper._local_image_ref(candidate_revision)
+    assert result["helper_source_revision"] == helper_source_revision
+    assert written[0]["revision"] == candidate_revision
+    assert written[0]["helper_source_revision"] == helper_source_revision
+    assert ("checkout", helper_source_revision) in observed
+    assert ("registered_helper", pair_sha256) in observed
+
+
+@pytest.mark.parametrize(
+    "main_revision",
+    ["4cab5eac006704b2f1d7d957ac5f05f26adaed0a", "d" * 40],
+)
+def test_hotfix_plan_rejects_when_registered_helper_is_not_exact_current_main(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    main_revision: str,
+) -> None:
+    helper = _helper()
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision=main_revision,
+        helper_source_revision="f548fd94dad75c73b31621ee1a466ac7d41d06c2",
+    )
+
+    with pytest.raises(helper.HostError, match="revision_not_current_main"):
+        helper._plan_deploy(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "e" * 64,
+            helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            "f" * 64,
+        )
+
+    assert not any(operation in {"checkout", "archive", "pair"} for operation, _ in observed)
+    assert written == []
+
+
+@pytest.mark.parametrize(
+    "image_id,pair_sha256",
+    [(None, "f" * 64), ("sha256:" + "0" * 64, "f" * 64), (None, None)],
+)
+def test_hotfix_plan_requires_the_fixed_image_and_registered_pair(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    image_id: str | None,
+    pair_sha256: str | None,
+) -> None:
+    helper = _helper()
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision="a" * 40,
+    )
+
+    with pytest.raises(helper.HostError, match="hotfix_release_pair_required"):
+        helper._plan_deploy(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "e" * 64,
+            image_id,
+            pair_sha256,
+        )
+
+    assert not any(operation in {"checkout", "archive", "pair"} for operation, _ in observed)
+    assert written == []
+
+
+def test_hotfix_plan_rejects_a_pair_not_bound_to_registered_helper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision="b" * 40,
+        registered_pair_sha256="f" * 64,
+    )
+
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        helper._plan_deploy(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "e" * 64,
+            helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            "0" * 64,
+        )
+
+    assert not any(operation in {"checkout", "archive", "pair"} for operation, _ in observed)
+    assert written == []
+
+
+def test_hotfix_plan_rejects_pair_helper_source_mismatch_after_pair_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    helper_source_revision = "a" * 40
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision=helper_source_revision,
+        helper_source_revision=helper_source_revision,
+        pair_helper_source_revision="b" * 40,
+    )
+
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        helper._plan_deploy(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "e" * 64,
+            helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            "f" * 64,
+        )
+
+    assert ("checkout", helper_source_revision) in observed
+    assert any(operation == "archive" for operation, _ in observed)
+    assert any(operation == "pair" for operation, _ in observed)
+    assert written == []
+
+
+def test_hotfix_plan_rejects_an_unregistered_helper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision="b" * 40,
+        helper_registered=False,
+    )
+
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_unavailable"):
+        helper._plan_deploy(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "e" * 64,
+            helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            "f" * 64,
+        )
+
+    assert not any(operation in {"checkout", "archive", "pair"} for operation, _ in observed)
+    assert written == []
+
+
+def test_hotfix_deploy_receipt_keeps_app_and_registered_helper_revisions_distinct(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    candidate_revision = helper.HOTFIX_CANDIDATE_REVISION
+    helper_source_revision = "f548fd94dad75c73b31621ee1a466ac7d41d06c2"
+    plan = {
+        "revision": candidate_revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "image_digest": "e" * 64,
+        "image_ref": helper._local_image_ref(candidate_revision),
+        "image_id": helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        "archive_sha256": "e" * 64,
+        "archive_size": 1024,
+        "platform": "linux/amd64",
+        "schema_version": helper.ASSISTANT_MINIMUM_SCHEMA,
+        "compose_digest": "1" * 64,
+        "pair_manifest_sha256": "f" * 64,
+        "helper_source_revision": helper_source_revision,
+    }
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_ensure_no_active_temporary_recovery", lambda: None)
+    monkeypatch.setattr(helper, "_load_plan", lambda _plan_id: plan)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: plan["compose_digest"])
+    monkeypatch.setattr(
+        helper,
+        "_apply_release",
+        lambda record: {
+            "status": "ok",
+            "result": "deployed",
+            "revision": record["revision"],
+        },
+    )
+
+    result = helper._deploy(
+        "1" * 32,
+        candidate_revision,
+        plan["image_digest"],
+        helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        plan["pair_manifest_sha256"],
+    )
+
+    assert result["revision"] == candidate_revision
+    assert result["image_id"] == helper.HOTFIX_CANDIDATE_IMAGE_ID
+    assert result["helper_source_revision"] == helper_source_revision
+
+
+def test_normal_release_still_requires_exact_current_main_revision(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision="a" * 40,
+    )
+
+    with pytest.raises(helper.HostError, match="revision_not_current_main"):
+        helper._plan_deploy("b" * 40, "e" * 64)
+
+    assert not any(operation == "registered_helper" for operation, _ in observed)
+    assert written == []
+
+
 def _validate_hotfix_release(helper: Any, manifest: dict[str, Any]) -> dict[str, Any]:
     return helper._validate_release_pair_manifest(
         manifest,
@@ -8004,11 +8365,20 @@ def test_hotfix_apply_persists_a_reloadable_pair_for_public_rollback(
             "recovery_prior_pair_manifest_sha256",
         ):
             assert persisted[key] == target[key]
+    current_summary = helper._state_summary()["current"]
+    assert current_summary["revision"] == target["revision"]
+    assert current_summary["helper_source_revision"] == target["helper_source_revision"]
     result = helper._rollback(target["revision"], helper.PRODUCTION_PREDECESSOR_IMAGE_ID)
     current = helper._read_json(helper.CURRENT_RECORD)
     assert current["revision"] == result["revision"] == predecessor["revision"]
+    assert result["candidate_release_revision"] == target["revision"]
+    assert result["helper_source_revision"] == target["helper_source_revision"]
+    assert result["recovery_contract"] == helper.HOTFIX_PAIR_CONTRACT
     assert current["image_id"] == predecessor["image_id"]
     assert current["release_role"] == "recovery"
+    assert current["candidate_release_revision"] == target["revision"]
+    assert current["helper_source_revision"] == target["helper_source_revision"]
+    assert helper._state_summary()["current"] == current
     assert current["assistant_rollout_mode"] == "disabled"
     assert "migrate" not in events
     before = list(events)

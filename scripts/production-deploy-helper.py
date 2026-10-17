@@ -1181,6 +1181,8 @@ def _audit(operation: str, result: str, **fields: object) -> None:
     }
     for key in (
         "revision",
+        "helper_source_revision",
+        "candidate_release_revision",
         "plan_id",
         "image_digest",
         "image_id",
@@ -4136,11 +4138,25 @@ def _plan_deploy(
         _ensure_layout()
         _ensure_no_active_temporary_recovery()
         _ensure_source()
-        _assert_main_revision(revision)
+        authorized_helper_revision: str | None = None
+        source_revision = revision
+        if revision == HOTFIX_CANDIDATE_REVISION:
+            if (
+                expected_image_id != HOTFIX_CANDIDATE_IMAGE_ID
+                or expected_pair_manifest_sha256 is None
+            ):
+                raise HostError("hotfix_release_pair_required")
+            authorized_helper_revision = _read_installed_maintenance_helper(
+                expected_pair_manifest_sha256
+            )
+            _assert_main_revision(authorized_helper_revision)
+            source_revision = authorized_helper_revision
+        else:
+            _assert_main_revision(revision)
         current = _read_json(CURRENT_RECORD)
         if current is not None:
             _ensure_compose_snapshot(current)
-        _checkout_revision(revision)
+        _checkout_revision(source_revision)
         _assert_compose_revision()
         compose_digest = _compose_digest()
         _write_compose_snapshot(revision, COMPOSE_FILE.read_bytes(), compose_digest)
@@ -4173,6 +4189,11 @@ def _plan_deploy(
                     image_id,
                     candidate_archive_size=archive_size,
                 )
+                if (
+                    authorized_helper_revision is not None
+                    and pair_record.get("helper_source_revision") != authorized_helper_revision
+                ):
+                    raise HostError("hotfix_helper_provenance_mismatch")
                 image_record.update(pair_record)
             elif schema_version >= ASSISTANT_MINIMUM_SCHEMA:
                 raise HostError("release_pair_required")
@@ -4197,6 +4218,7 @@ def _plan_deploy(
             image_digest=image_digest,
             compose_digest=compose_digest,
             schema_version=schema_version,
+            helper_source_revision=image_record.get("helper_source_revision"),
         )
         response = {
             "status": "ok",
@@ -4923,6 +4945,7 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
         compose_digest=record.get("compose_digest"),
         schema_version=schema_version,
         backup_name=applied["backup_name"],
+        helper_source_revision=record.get("helper_source_revision"),
     )
     return {"status": "ok", "result": "deployed", "revision": revision, "health": health}
 
@@ -5074,8 +5097,10 @@ def _rollback_to_recorded_recovery(
         pair_manifest_sha256=record["pair_manifest_sha256"],
         compose_digest=record["compose_digest"],
         schema_version=ASSISTANT_MINIMUM_SCHEMA,
+        helper_source_revision=record.get("helper_source_revision"),
+        candidate_release_revision=record.get("revision") if hotfix else None,
     )
-    return {
+    response = {
         "status": "ok",
         "result": "rolled_back",
         "revision": PRODUCTION_PREDECESSOR_REVISION if hotfix else revision,
@@ -5090,6 +5115,15 @@ def _rollback_to_recorded_recovery(
         "release_role": "recovery",
         "pair_manifest_sha256": record["pair_manifest_sha256"],
     }
+    if hotfix:
+        response.update(
+            {
+                "recovery_contract": HOTFIX_PAIR_CONTRACT,
+                "candidate_release_revision": record["revision"],
+                "helper_source_revision": record["helper_source_revision"],
+            }
+        )
+    return response
 
 
 def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
@@ -5159,6 +5193,12 @@ def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
             image_digest=record["image_digest"],
             compose_digest=record["compose_digest"],
             schema_version=record.get("schema_version"),
+            helper_source_revision=record.get("helper_source_revision"),
+            candidate_release_revision=(
+                record.get("revision")
+                if record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT
+                else None
+            ),
         )
         response = {
             "status": "ok",
@@ -5176,6 +5216,15 @@ def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
                     "image_id": record["image_id"],
                     "platform": record["platform"],
                     "archive_size": record["archive_size"],
+                }
+            )
+        if record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT:
+            response.update(
+                {
+                    "release_role": "candidate",
+                    "recovery_contract": HOTFIX_PAIR_CONTRACT,
+                    "candidate_release_revision": record["revision"],
+                    "helper_source_revision": record["helper_source_revision"],
                 }
             )
         return response

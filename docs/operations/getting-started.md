@@ -1130,7 +1130,8 @@ startup reserve, so the new free-Zen application is not deployed. A fresh signed
 backup passed non-promoting verification inside the unchanged running container; no existing
 backup was removed. See [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup) for exact bindings and limitations.
 
-The current PR #11 source-only helper upgrade is not installed. The observed upgrade input is
+At the earlier PR #11 helper-upgrade checkpoint, the source-only upgrade was not installed. The
+then-observed upgrade input was
 the exact known receipt from head `67723d36ea03b0628e59007af20c2910a64d06fb`, with helper SHA-256
 `85ea6568514188b37c6b6f7b93dc902cf7003836b60983255e4a0337fc575371` and pair-manifest SHA-256
 `60f1288183685f104452b1fc1f51a823a31a09501f3807fe7023d988f950335e`. The installer pins all four
@@ -1270,3 +1271,25 @@ After independent artifact review and exact helper installation, stage the fixed
 manifest and manifest-bound approval. Use the typed temporary recovery protocol to verify actual
 root-owned admission before the transition; retain the outcome and exact 5ad restoration evidence. See the [latest PR11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-installed-helper-local-6359-profile-and-archive-parser-checkpoint-2026-10-16)
 for receipts and limits.
+
+The later V10 PR #11/#9 same-schema rehearsal passed on the actual host for its bound helper and
+F6 candidate. Both owners completed genuine free-Zen answers with owner isolation; the run also
+recorded native search, schema-13 recovery, and post-start write preservation. It restored the existing 5ad schema-13 release to
+invited, ready and loopback-only. The host reported `984564 KiB` total memory; the candidate and
+recovery cgroups were limited to 768 MiB and 384 MiB. Independent supplemental review passed the
+measured production, candidate native workload, and same-schema recovery scope. No 1 GiB cgroup or
+broader all-features load acceptance is claimed, and this run did not deploy the F6 application.
+The full browser aggregate remains failed, raw axe for that aggregate is unavailable, and the
+corrected canonical check **Failed** with exit 1: JUnit recorded 3,580 tests (3,574 passed, two
+failed, four skipped); the console separately reported four deselected. The Node Playwright-config
+failure was traced to missing lock-matched `@playwright/test` links in the isolated checkout, and
+both affected selectors passed after six existing package links were prepared. The original
+fresh-child startup timeout cause remains **Unproven**; the canonical Fail remains. Independent
+selected QA and parent source review passed the helper revision-contract repair. V10's measured
+production, candidate native workload, and same-schema recovery scopes passed on the observed
+nominal 1 GB host (`984564 KiB`) for their bound F548 helper inputs; no exact 1 GiB cgroup or broader
+all-features load is claimed. Remaining host work is packaging and validating installation,
+controls, and readback for the repaired helper, plus exact-release recovery/rollback checks. The
+unchanged F6 app and host-helper inputs do not require another real-provider/native trial solely
+because helper source changed. The owner canary and guide checks also remain open. See the
+[V10 PR11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v10-actual-host-free-zen-rehearsal-and-current-release-checkpoint-2026-10-17).
