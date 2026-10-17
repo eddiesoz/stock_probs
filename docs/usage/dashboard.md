@@ -220,6 +220,11 @@ CSV imports accept UTF-8 files up to 64 KiB and 200 rows. Download the template,
 map columns, then validate the entire file before committing. Dates use `YYYY-MM-DD`; decimal
 amounts use a dot and no currency symbol or thousands separator. Duplicate rows require deliberate
 approval, and a failed batch imports no rows. Opening-position cost may be blank when unknown.
+An explicit `book_cost` is accepted only on an `opening_position`; `destination_currency` is only
+for an `exchange`, and `destination_account` is only for a linked `transfer`. Blank destination
+fields mean no destination. Supplying one of these fields for another transaction kind is reported
+with its row number during preview, and the invalid batch is not committed. Exchange and linked-
+transfer amounts retain their entered decimals.
 Existing manual holdings remain separate: select each original currency and explicitly preview
 their conversion to opening positions. Conversion preserves quantity, leaves cost unknown and
 does not invent purchases. A source holding can be converted only once.

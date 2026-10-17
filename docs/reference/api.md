@@ -36,6 +36,14 @@ and saved baselines/scenarios retain their original inputs.
 | `GET /api/v1/scenarios/{id}` | Reopen original scenario inputs and result. |
 | `GET /api/v1/scenarios/{id}/export` | JSON containing the scenario and its owned frozen baseline. |
 
+CSV import applies the same field-kind rules as manual transaction entry. An explicit `book_cost`
+is valid only for `opening_position`; an omitted or blank opening cost remains unknown. A nonblank
+`destination_currency` is valid only for `exchange`, and a nonblank `destination_account` only for
+a linked `transfer`; blank destination fields are treated as absent. A field supplied for the
+wrong transaction kind returns a row-specific `422` validation response from preview. Invalid
+batches do not commit ledger records or change balances. Valid exchange and linked-transfer amounts
+remain their entered decimal values.
+
 Preview transport is bounded to 256 KiB only on the two transaction/import preview paths; CSV text
 itself is at most 64 KiB. Ordinary request limits remain unchanged. Previews reserve four slots per
 owner and 32 globally for at most ten minutes. Commit retries survive a consumed preview or

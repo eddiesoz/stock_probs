@@ -350,6 +350,57 @@ evidence only. The application-wide canonical gate, browser, security aggregate,
 provider, host/network, email, backup/recovery, and release checks were not run; Release 2 release
 acceptance remains open.
 
+R2 CSV import kind-rule checkpoint — task **R2 CSV field-kind validation after blank
+normalization** — records the focused repair at HEAD
+`8e75e25e7af0639717addbb2b1396f1471441bee` on
+`codex/signal-ledger-portfolio-r2`. The current parser follows the manual-entry field-kind rules:
+explicit `book_cost` is allowed only for `opening_position` and unknown opening cost remains
+`None`; nonblank `destination_currency` is allowed only for `exchange`, and nonblank
+`destination_account` only for linked `transfer`. Blank destination values normalize to `None`.
+Wrong-kind values produce row-specific preview errors; invalid batches leave transaction records
+and balances unchanged. The selected replay checks retain valid exchange and linked-transfer
+decimals.
+
+The builder's source freeze is
+`/var/tmp/r12r/portfolio-import-kind-rules-a0dcf1d8-b87f-45b9-97e0-a60b0408b9a1/source-freeze-v2.json`
+(SHA-256 `c411cb127b94a04f5aed2f9b4acc77428b9ea1d28da54924931feea62850d58f`), with these current
+source/test bindings: `src/stock_probs/portfolio_import.py`
+`8a83d1781dbce7c34156c41d5917df9ce4ff3608bca14c2d7be51b6b944e8f0f`,
+`tests/test_portfolio_csv_import.py`
+`d2f58f0e544344f9fab289e013fbdb4c571c781ffc24a80a3caf302d7c55db6a`, and
+`tests/test_portfolio_http.py`
+`b8f241f1f592265c9556493583e71d41d52e08f7b2186aa167717b62fbab8314`. The builder's selected
+CSV/HTTP/store command recorded **Pass** with 31 tests at `2026-10-17 02:17:26`–`02:17:50 UTC`;
+changed-path Ruff, security, and format checks also recorded **Pass** by `02:17:51 UTC`. The first
+Ruff lint and format-check attempts **Failed** on two fixture-line length findings and one
+formatting request at `02:17:11`–`02:17:13 UTC`; the builder corrected them before the recorded
+final passes.
+
+Independent QA for task **R2 CSV field-kind validation after blank normalization** recorded
+**Pass** for the selected 31-test scope at `2026-10-17T02:19:18Z`–`02:20:10Z`; changed-path Ruff
+lint, security, and format checks also recorded **Pass** before `02:20:40Z`. An isolated same-owner
+UUID preview diagnostic recorded **Pass** at
+`02:20:40Z`–`02:20:45Z`: blank optional destinations normalized to `None`, valid exchange and
+linked transfer replayed, and zero transaction rows were committed. Receipt
+`/var/tmp/r12r/r2-import-kindrules-qa-20261017T0219Z/independent-qa-receipt-final.json` has
+SHA-256 `a4ef401913645f9ea03ceb5518d960ed3dd45cc4fd281382c5228b5b102d2ce2`. This is independent
+QA for the selected local import/preview scope only. Canonical/full-gate, frontend build/browser,
+Docker/image, provider/native runtime, production/deployment/release, physical/mobile/accessibility,
+and resource checks were **Skipped**; Release 2 acceptance was not assessed.
+
+Preserve the earlier findings: the original QA's CSV explicit-cost persistence mismatch **Failed**
+at `02:07:14Z`–`02:07:15Z` and `02:07:46Z`–`02:07:48Z` (corrected readback `02:07:58Z`), while its
+manual-entry comparison recorded **Pass** at `02:09:18Z`–`02:09:19Z`. The original receipt is
+`/var/tmp/r12r/r2-import-qa-20261017T0205Z/independent-qa-receipt-final.json`, SHA-256
+`a2d7f7f1e06a2df6272724ac59c23d6786057f302a58cd704a4227a9531a963f`; its recorded chronology is
+the individual check windows, not its `created_utc` metadata. The first repair's selected 27-test
+scope recorded **Pass**, but its follow-up diagnostic **Failed** at `02:14:36Z`/`02:14:39Z` because
+CSV accepted wrong-kind `destination_currency` and `destination_account`; that review is preserved at
+`/var/tmp/r12r/r2-import-cost-guard-qa-20261017T021247Z/repair-independent-qa-receipt.json`,
+SHA-256 `c7e431dd7bfa6460ea4c3f7e92bb80e39fe036169abd21a676c446fa19f4171d`. Those scoped findings
+were addressed by the current frozen changes; their earlier failures remain historical. No
+canonical or Release 2 acceptance follows from these focused results.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.

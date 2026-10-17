@@ -112,9 +112,19 @@ def parse_import(source: str, mapping: dict[str, str], account: str) -> list[Ent
                         decimal(data[field])
                     except LedgerError as error:
                         raise LedgerError(f"Row {line}: invalid {field} decimal.") from error
+            if data.get("book_cost") is not None and data["kind"] != "opening_position":
+                raise LedgerError(
+                    f"Row {line}: only an opening position accepts an explicit original book cost."
+                )
             for field in ("symbol", "destination_account", "destination_currency", "replaces"):
                 if field in data and data[field] == "":
                     data[field] = None
+            if data.get("destination_currency") is not None and data["kind"] != "exchange":
+                raise LedgerError(
+                    f"Row {line}: only a currency exchange accepts a destination currency."
+                )
+            if data.get("destination_account") is not None and data["kind"] != "transfer":
+                raise LedgerError(f"Row {line}: only a linked transfer accepts another account.")
             if data.get("destination_currency") and not currency_code(data["destination_currency"]):
                 raise LedgerError(f"Row {line}: invalid destination currency.")
             if data.get("symbol"):
