@@ -25,7 +25,7 @@ def store(tmp_path):
             (NOW.isoformat(), NOW.isoformat()),
         )
         connection.commit()
-    return PortfolioStore(repository)
+    return PortfolioStore(repository, allow_development_noauth=True)
 
 
 def create_account(store, owner=1):

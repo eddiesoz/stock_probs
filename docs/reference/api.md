@@ -454,3 +454,13 @@ by `STOCK_PROBS_RESEARCH_FEATURES_ENABLED` (default false) and
 Research retention is bounded to 100 theses and 100 comparisons per owner, 1,000 revisions per thesis, 5 MiB of retained payloads per owner and 20 MiB globally. Limits include immutable revisions. Comparison previews reserve capacity before provider calls (four per owner, 32 globally) and release their slot on save or expiry. CSV cells use the existing spreadsheet-formula neutralizer. Full database backups retain thesis revisions and comparison evidence; exact release recovery acceptance remains pending.
 
 A thesis creation key is checked against a canonical request digest before provider identity resolution. An identical retry reopens the saved record during a provider outage; changed content with the same key returns 409. Explicitly attached assistant messages copy a bounded excerpt on save, including manual ID attachment. Revision history retains the complete fields and excerpt from each revision.
+
+## Portfolio candidate write authorization
+
+Release 2 account changes, transaction/import commits, baseline saves and scenario saves recheck
+the exact authenticated session within the same SQLite write transaction. Durable batch and
+snapshot creation-key replays apply the same guard before returning saved results; final writes
+check again after any quote/FX work. A session revoked before that transaction returns 401 without
+a mutation. The store fails closed without trusted context; only explicitly configured local/test
+no-auth fixtures may bypass the session requirement. These candidate resources remain disabled
+by default and have no production acceptance yet.

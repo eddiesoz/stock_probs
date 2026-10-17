@@ -445,6 +445,34 @@ readback preserves pending runtime cases and earlier failures. Current canonical
 security, schema-compatible recovery, actual combined 1 GB, exact-PR rollback, owner-canary, and
 release acceptance remain open. No merge, deployment, rollout, resize, or email is claimed.
 
+### R-ASTRA-121 R2 transaction-bound write authorization (2026-10-17)
+
+At base head `28d6cbba60abf42971703a7c597638508a448f3f`, a deterministic delayed-body
+regression **Failed**: a session revoked after middleware authentication still created an
+account with HTTP 201. The candidate now rechecks the exact trusted session inside the write
+transaction for account changes, transaction/import commits, saved baselines and scenarios,
+including durable creation-key replays before provider work. Final saves check again. The helper
+is byte-identical to the reviewed research/monitoring guard; direct fixture setup opts into
+no-auth explicitly, while the store default fails closed.
+
+The affected builder selection **Passed** 37/37 before mechanical formatting/import sorting;
+AST-equivalence evidence binds those mechanical changes. JUnit SHA-256 is
+`8dd813cc9e94811728e7773f2a1e1a72b01605e692782029b0256dac97f55422`.
+The delayed-body regression then **Passed** 1/1 on final formatted source; its JUnit SHA-256 is
+`c325ffa12c239b7a2a5985d174108f60c4f8dd97e900c7fd52d90edca4b7a1ce`.
+A duplicate 37-case run was stopped after 13 completed cases and remains an interrupted
+non-acceptance result. The initial lint failure is preserved; final Ruff check/format and diff
+checks passed. Source and imported-module pins are in
+`/var/tmp/r12r/r2-auth-write-guard-d27d738f-0a06-413d-be47-feee5335fa68/final-pin-manifest.json`,
+SHA-256 `a5415a2eb7ed723e5cc868570ef7847d8824f851742cd4526351164fd2e4f6e7`.
+Exact private fixture cleanup passed; receipt SHA-256 is
+`de18d7d69fa1a4c9e06c8500917cc2c0e623f53c3609d0ad55392e629e9eafc5`.
+
+The parent personally reviewed the integrated source/test diff. Independent affected QA,
+current canonical/browser/design checks, schema-compatible recovery, actual-host resources,
+exact-PR rollback, owner canary and release gates remain open. Earlier accounting evidence is
+retained only for unchanged accounting inputs. No deployment, rollout, resize or email follows.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.

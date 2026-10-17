@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from stock_probs.auth import AuthContext
 from stock_probs.domain import DomainError
 from stock_probs.portfolio_import import csv_template, parse_import
 from stock_probs.portfolio_ledger import Entry, LedgerError, currency_code, decimal
@@ -251,6 +252,11 @@ def install_ledger_routes(
             )
         return value
 
+    def auth_context(request: Request) -> AuthContext | None:
+        """Return only the exact session context authenticated by outer middleware."""
+        context = getattr(request.state, "auth_context", None)
+        return context if isinstance(context, AuthContext) else None
+
     def safe(operation: Callable[[], _Result], *, status: int = 422) -> _Result:
         try:
             return operation()
@@ -348,6 +354,7 @@ def install_ledger_routes(
                 payload.account_type,
                 str(payload.idempotency_key),
                 clock(),
+                auth_context=auth_context(request),
             ),
             status=409,
         )
@@ -363,6 +370,7 @@ def install_ledger_routes(
                 payload.account_type,
                 payload.archived,
                 clock(),
+                auth_context=auth_context(request),
             ),
             status=409,
         )
@@ -493,7 +501,13 @@ def install_ledger_routes(
         identifier = str(payload.preview_id)
         approvals = {str(value) for value in payload.approved_duplicate_ids}
         existing = safe(
-            lambda: store.batch_for_key(user, str(payload.idempotency_key), identifier, approvals),
+            lambda: store.batch_for_key(
+                user,
+                str(payload.idempotency_key),
+                identifier,
+                approvals,
+                auth_context=auth_context(request),
+            ),
             status=409,
         )
         if existing:
@@ -524,6 +538,7 @@ def install_ledger_routes(
                 approvals,
                 clock(),
                 manual_openings=manual_sources,
+                auth_context=auth_context(request),
             ),
             status=409,
         )
@@ -578,7 +593,12 @@ def install_ledger_routes(
             encoded(payload.model_dump(mode="json", exclude={"idempotency_key"})).encode()
         ).hexdigest()
         previous = safe(
-            lambda: store.snapshot_for_key(user, str(payload.idempotency_key), request_hash),
+            lambda: store.snapshot_for_key(
+                user,
+                str(payload.idempotency_key),
+                request_hash,
+                auth_context=auth_context(request),
+            ),
             status=409,
         )
         if previous:
@@ -597,7 +617,13 @@ def install_ledger_routes(
         )
         return safe(
             lambda: store.save_snapshot(
-                user, str(payload.idempotency_key), request_hash, data, revisions, clock()
+                user,
+                str(payload.idempotency_key),
+                request_hash,
+                data,
+                revisions,
+                clock(),
+                auth_context=auth_context(request),
             ),
             status=409,
         )
@@ -690,6 +716,7 @@ def install_ledger_routes(
                 payload.title,
                 payload.assumptions.model_dump(mode="json"),
                 clock(),
+                auth_context=auth_context(request),
             ),
             status=409,
         )

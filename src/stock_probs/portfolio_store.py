@@ -5,10 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any, cast
 from uuid import uuid4
 
+from stock_probs.auth import AuthContext
+from stock_probs.auth_write_guard import AuthWriteAuthorizationError, authorize_current_write
+from stock_probs.domain import DomainError
 from stock_probs.portfolio_ledger import Entry, LedgerError, decimal, replay
 from stock_probs.portfolio_scenarios import simulate
 from stock_probs.repository import Repository
@@ -53,8 +56,31 @@ def from_row(row: Any) -> Entry:
 class PortfolioStore:
     """Use the same repository connection and write-owner guards as the application."""
 
-    def __init__(self, repository: Repository) -> None:
+    def __init__(self, repository: Repository, *, allow_development_noauth: bool = False) -> None:
         self.repository = repository
+        if type(allow_development_noauth) is not bool:
+            raise TypeError("allow_development_noauth must be a boolean")
+        self.allow_development_noauth = allow_development_noauth
+
+    def _authorize_write(
+        self, connection: Any, owner: int, auth_context: AuthContext | None
+    ) -> None:
+        """Recheck the request session while its serialized write transaction is held."""
+        if auth_context is None:
+            if not self.allow_development_noauth:
+                raise DomainError(
+                    "authentication_required",
+                    "The active session is unavailable; sign in again.",
+                    status_code=401,
+                )
+            self.repository._ensure_owner_can_write(connection, owner)  # noqa: SLF001
+            return
+        try:
+            authorize_current_write(connection, auth_context, owner, datetime.now(UTC))
+        except AuthWriteAuthorizationError as error:
+            raise DomainError(
+                error.code.lower(), error.message, status_code=error.status_code
+            ) from None
 
     def accounts(self, owner: int) -> list[dict[str, Any]]:
         """Return at most the bounded twenty accounts belonging to this owner."""
@@ -120,7 +146,14 @@ class PortfolioStore:
         return [from_row(row) for row in rows]
 
     def create_account(
-        self, owner: int, label: str, account_type: str, key: str, now: datetime
+        self,
+        owner: int,
+        label: str,
+        account_type: str,
+        key: str,
+        now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         """A durable account request key replays without network or generated-field comparison."""
         label = label.strip()
@@ -129,7 +162,7 @@ class PortfolioStore:
         request_hash = hashlib.sha256(encoded([label, account_type]).encode()).hexdigest()
         with self.repository.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            self.repository._ensure_owner_can_write(connection, owner)
+            self._authorize_write(connection, owner, auth_context)
             existing = connection.execute(
                 "SELECT id, request_sha256 FROM portfolio_accounts "
                 "WHERE owner_user_id=? AND idempotency_key=?",
@@ -172,6 +205,8 @@ class PortfolioStore:
         account_type: str,
         archived: bool,
         now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         """Labels and archive state change only after reviewing the current account revision."""
         label = label.strip()
@@ -179,7 +214,7 @@ class PortfolioStore:
             raise LedgerError("Choose an account label and supported account type.")
         with self.repository.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            self.repository._ensure_owner_can_write(connection, owner)
+            self._authorize_write(connection, owner, auth_context)
             previous = connection.execute(
                 "SELECT revision FROM portfolio_accounts WHERE id=? AND owner_user_id=?",
                 (account_id, owner),
@@ -250,9 +285,18 @@ class PortfolioStore:
         item["data"] = json.loads(item.pop("payload_json"))
         return item
 
-    def snapshot_for_key(self, owner: int, key: str, request_sha256: str) -> dict[str, Any] | None:
+    def snapshot_for_key(
+        self,
+        owner: int,
+        key: str,
+        request_sha256: str,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> dict[str, Any] | None:
         """Creation retries reopen the original baseline before any quote/FX request."""
         with self.repository.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._authorize_write(connection, owner, auth_context)
             row = connection.execute(
                 "SELECT * FROM portfolio_snapshots WHERE owner_user_id=? AND idempotency_key=?",
                 (owner, key),
@@ -280,6 +324,8 @@ class PortfolioStore:
         data: dict[str, Any],
         account_revisions: dict[str, int],
         now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         """Reject balances changed during quote collection and retain frozen provenance."""
         payload = encoded(data)
@@ -287,7 +333,7 @@ class PortfolioStore:
             raise LedgerError("The portfolio baseline is too large.")
         with self.repository.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            self.repository._ensure_owner_can_write(connection, owner)
+            self._authorize_write(connection, owner, auth_context)
             previous = connection.execute(
                 "SELECT * FROM portfolio_snapshots WHERE owner_user_id=? AND idempotency_key=?",
                 (owner, key),
@@ -342,6 +388,8 @@ class PortfolioStore:
         title: str,
         assumptions: dict[str, Any],
         now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         """Simulate only the owned frozen baseline; a scenario save cannot call ledger commit."""
         title = title.strip()
@@ -355,7 +403,7 @@ class PortfolioStore:
         ).hexdigest()
         with self.repository.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            self.repository._ensure_owner_can_write(connection, owner)
+            self._authorize_write(connection, owner, auth_context)
             existing = connection.execute(
                 "SELECT * FROM portfolio_scenarios WHERE owner_user_id=? AND idempotency_key=?",
                 (owner, key),
@@ -483,13 +531,14 @@ class PortfolioStore:
         now: datetime,
         *,
         manual_openings: dict[str, dict[str, Any]] | None = None,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         """Commit the reviewed batch atomically only while all owner-account revisions match."""
         if not 1 <= len(candidates) <= 200:
             raise LedgerError("Commit between one and two hundred reviewed transaction rows.")
         with self.repository.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            self.repository._ensure_owner_can_write(connection, owner)
+            self._authorize_write(connection, owner, auth_context)
             request_hash = hashlib.sha256(
                 encoded(
                     [
@@ -629,10 +678,18 @@ class PortfolioStore:
         return receipt
 
     def batch_for_key(
-        self, owner: int, key: str, preview_id: str, approved_duplicates: set[str]
+        self,
+        owner: int,
+        key: str,
+        preview_id: str,
+        approved_duplicates: set[str],
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any] | None:
         """Replay a committed request after its volatile preview expires or the process restarts."""
         with self.repository.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._authorize_write(connection, owner, auth_context)
             batch = connection.execute(
                 "SELECT * FROM portfolio_batches WHERE owner_user_id=? AND idempotency_key=?",
                 (owner, key),

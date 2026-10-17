@@ -4409,7 +4409,12 @@ def create_app(
     from stock_probs.portfolio_market import PortfolioMarket
     from stock_probs.portfolio_store import PortfolioStore
 
-    portfolio_store = PortfolioStore(repository)
+    portfolio_store = PortfolioStore(
+        repository,
+        allow_development_noauth=(
+            config.environment in {"development", "test"} and config.auth_mode == "disabled"
+        ),
+    )
     portfolio_market = PortfolioMarket(
         portfolio_store,
         service.quote_snapshot,

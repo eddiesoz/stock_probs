@@ -575,3 +575,14 @@ Independent QA, exports, recovery and release acceptance remain pending while im
 continues; these source contracts are not a deployed security result.
 
 The Release 1 draft handoff accepts a UUID for an existing assistant-role message, checks the active owner, and returns bounded editable text without persisting a thesis. User-role messages cannot become assistant evidence. An attached excerpt must match the selected saved reply; rendered text remains escaped. The assistant gains only the two approved page-route labels and descriptive product guidance, with no new model tools or write capability. Research storage and in-flight previews have separate byte/count bounds; over-capacity previews fail before external provider work.
+
+## R121 portfolio candidate transaction authorization
+
+Portfolio account, ledger-batch, snapshot and scenario mutations bind the middleware context to
+the persisted active owner and current session, token/CSRF hashes, expiry, role and MFA facts
+inside `BEGIN IMMEDIATE`. Creation-key replays use this same boundary, so a delayed request body
+or intervening revocation cannot turn cached authentication into continuing write permission.
+Quote/FX work does not replace the final guard. The shared guard matches the reviewed research
+and monitoring helper; production defaults fail closed, with explicit local/test fixture opt-in
+only. This is a local candidate source contract; independent Release 2 runtime/security and
+release acceptance remain open.
