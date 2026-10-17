@@ -386,7 +386,7 @@ def test_schema_fourteen_backup_verifies_research_rows_before_and_after_restore(
 
     repository = Repository(settings.database_path)
     repository.migrate()
-    research = ResearchStore(repository)
+    research = ResearchStore(repository, allow_development_noauth=True)
     thesis = research.save_thesis(
         OWNER_USER_ID,
         {
@@ -407,10 +407,15 @@ def test_schema_fourteen_backup_verifies_research_rows_before_and_after_restore(
         thesis_id=thesis["id"],
         revision=1,
     )
+    comparison_preview_id = str(uuid4())
     comparison = research.save_comparison(
         OWNER_USER_ID,
         str(uuid4()),
-        {"captured_at": NOW.isoformat(), "instruments": [{"symbol": "SPY"}]},
+        {
+            "preview_id": comparison_preview_id,
+            "captured_at": NOW.isoformat(),
+            "instruments": [{"symbol": "SPY"}],
+        },
         NOW,
     )
     manager = BackupManager(repository, settings.backup_dir)

@@ -179,7 +179,8 @@ def test_comparison_snapshot_reopens_with_action_evidence_and_suppression_reason
         ]
     )
     payload["captured_at"] = NOW.isoformat()
-    store = ResearchStore(repo)
+    payload["preview_id"] = str(uuid4())
+    store = ResearchStore(repo, allow_development_noauth=True)
     saved = store.save_comparison(1, str(uuid4()), payload, NOW)
 
     reopened = ResearchStore(Repository(settings.database_path)).get(1, "comparisons", saved["id"])

@@ -135,7 +135,7 @@ def test_signed_legacy_v1_schema_fourteen_backup_remains_verifiable(settings):
     """Legacy schema-14 v1 artifacts retain their authenticated five-count contract."""
 
     repository, manager = _manager(settings)
-    research = ResearchStore(repository)
+    research = ResearchStore(repository, allow_development_noauth=True)
     thesis = research.save_thesis(
         OWNER_USER_ID,
         {
@@ -581,7 +581,7 @@ def test_legacy_v1_schema14_promotion_failure_preserves_active_research_rows(set
     finally:
         staging.cleanup()
 
-    research = ResearchStore(repository)
+    research = ResearchStore(repository, allow_development_noauth=True)
     thesis = research.save_thesis(
         OWNER_USER_ID,
         {
@@ -602,10 +602,15 @@ def test_legacy_v1_schema14_promotion_failure_preserves_active_research_rows(set
         thesis_id=thesis["id"],
         revision=1,
     )
+    comparison_preview_id = str(uuid4())
     comparison = research.save_comparison(
         OWNER_USER_ID,
         str(uuid4()),
-        {"captured_at": datetime(2026, 10, 16, tzinfo=UTC).isoformat(), "instruments": []},
+        {
+            "preview_id": comparison_preview_id,
+            "captured_at": datetime(2026, 10, 16, tzinfo=UTC).isoformat(),
+            "instruments": [],
+        },
         datetime(2026, 10, 16, tzinfo=UTC),
     )
 
@@ -641,7 +646,7 @@ def test_legacy_v1_restore_rejects_staging_mutation_after_authentication(setting
     """Promotion stays bound to the authenticated database bytes, beyond row counts."""
 
     repository, manager = _manager(settings)
-    research = ResearchStore(repository)
+    research = ResearchStore(repository, allow_development_noauth=True)
     now = datetime(2026, 10, 16, tzinfo=UTC)
     thesis = research.save_thesis(
         OWNER_USER_ID,
@@ -656,10 +661,15 @@ def test_legacy_v1_restore_rejects_staging_mutation_after_authentication(setting
         },
         now,
     )
+    comparison_preview_id = str(uuid4())
     comparison = research.save_comparison(
         OWNER_USER_ID,
         str(uuid4()),
-        {"captured_at": now.isoformat(), "instruments": [{"symbol": "SPY"}]},
+        {
+            "preview_id": comparison_preview_id,
+            "captured_at": now.isoformat(),
+            "instruments": [{"symbol": "SPY"}],
+        },
         now,
     )
     source = manager.create("stage-anchor-source.spbackup")
@@ -697,7 +707,7 @@ def test_legacy_v1_restore_rejects_staging_mutation_after_authentication(setting
                 "UPDATE research_theses SET payload_json = ? WHERE id = ?",
                 (json.dumps(payload, separators=(",", ":")), thesis["id"]),
             )
-        ResearchStore(Repository(staged_database)).save_thesis(
+        ResearchStore(Repository(staged_database), allow_development_noauth=True).save_thesis(
             OWNER_USER_ID,
             {
                 "symbol": "QQQ",

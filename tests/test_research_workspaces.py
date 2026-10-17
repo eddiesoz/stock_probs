@@ -1,9 +1,13 @@
 """Exercise actual research persistence, ownership, provenance and HTTP validation."""
 
+import asyncio
+import json
+from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -27,6 +31,50 @@ def research_client(settings):
     )
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture
+def local_auth_research_client(settings):
+    """Provide a real local session for request-boundary authorization tests."""
+    configured = replace(
+        settings,
+        auth_mode="local",
+        auth_public_origin="http://testserver",
+        research_features_enabled=True,
+        research_features_canary_only=False,
+        bootstrap_username="research-owner",
+        bootstrap_password="research-development-owner-password",  # noqa: S106
+    )
+    app = create_app(configured, FixtureProvider(), lambda: NOW)
+    with TestClient(app) as client:
+        login = client.post(
+            "/api/v1/auth/local/login",
+            json={
+                "username": "research-owner",
+                "password": "research-development-owner-password",
+            },
+        )
+        assert login.status_code == 200, login.text
+        yield app, client, login.json()["csrf_token"]
+
+
+class _BlockedBody(httpx.AsyncByteStream):
+    """Pause a bounded request after its first chunk until the test revokes its session."""
+
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+        self.blocked = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        midpoint = max(1, len(self.body) // 2)
+        yield self.body[:midpoint]
+        self.blocked.set()
+        await self.release.wait()
+        yield self.body[midpoint:]
+
+    async def aclose(self) -> None:
+        """Finish without holding any resources."""
 
 
 def thesis():
@@ -53,6 +101,66 @@ def test_thesis_roundtrip_revision_conflict_and_history(research_client):
     assert history["total"] == 2
     assert history["items"][1]["data"]["reasoning"] == "Long-term diversification"
     assert research_client.get("/api/v1/theses").json()["total"] == 1
+
+
+def test_revoked_session_during_bounded_body_cannot_create_thesis(local_auth_research_client):
+    app, client, csrf_token = local_auth_research_client
+    body = json.dumps(thesis()).encode()
+    blocked_body = _BlockedBody(body)
+
+    async def submit_and_revoke() -> httpx.Response:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+            cookies=dict(client.cookies),
+        ) as asynchronous_client:
+            pending = asyncio.create_task(
+                asynchronous_client.post(
+                    "/api/v1/theses",
+                    content=blocked_body,
+                    headers={
+                        "content-length": str(len(body)),
+                        "content-type": "application/json",
+                        "x-csrf-token": csrf_token,
+                    },
+                )
+            )
+            await asyncio.wait_for(blocked_body.blocked.wait(), timeout=2)
+            app.state.service.repository.revoke_user_sessions(1, revoked_at=datetime.now(UTC))
+            blocked_body.release.set()
+            return await asyncio.wait_for(pending, timeout=5)
+
+    response = asyncio.run(submit_and_revoke())
+    assert response.status_code == 401, response.text
+    with app.state.service.repository.connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM research_theses").fetchone()[0] == 0
+
+
+def test_revocation_before_store_transaction_cannot_create_thesis(
+    local_auth_research_client, monkeypatch
+):
+    app, client, csrf_token = local_auth_research_client
+    original_save = ResearchStore.save_thesis
+
+    def revoke_before_store(
+        store: ResearchStore,
+        owner: int,
+        payload: dict[str, object],
+        now: datetime,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        store.repository.revoke_user_sessions(owner, revoked_at=datetime.now(UTC))
+        return original_save(store, owner, payload, now, **kwargs)
+
+    monkeypatch.setattr(ResearchStore, "save_thesis", revoke_before_store)
+    response = client.post(
+        "/api/v1/theses",
+        json=thesis(),
+        headers={"x-csrf-token": csrf_token},
+    )
+    assert response.status_code == 401, response.text
+    with app.state.service.repository.connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM research_theses").fetchone()[0] == 0
 
 
 def test_archiving_appends_a_revision_and_preserves_prior_states(research_client):
@@ -174,7 +282,7 @@ def test_comparison_is_provider_bound_and_saved_replay_is_provider_free(research
 def test_cross_owner_reads_are_absent_and_raw_revisions_cannot_be_replaced(settings):
     repo = Repository(settings.database_path)
     repo.migrate()
-    store = ResearchStore(repo)
+    store = ResearchStore(repo, allow_development_noauth=True)
     data = {**thesis(), "identity": {"symbol": "SPY"}}
     saved = store.save_thesis(1, data, NOW)
     assert store.get(2, "theses", saved["id"]) is None
@@ -346,15 +454,20 @@ def test_owned_failed_forecast_cannot_be_labelled_saved_evidence(research_client
 def test_research_records_survive_signed_backup_restore(settings):
     repo = Repository(settings.database_path)
     repo.migrate()
-    store = ResearchStore(repo)
+    store = ResearchStore(repo, allow_development_noauth=True)
     saved = store.save_thesis(1, {**thesis(), "identity": {"symbol": "SPY"}}, NOW)
     edited = store.save_thesis(
         1, {**saved["data"], "status": "active"}, NOW, thesis_id=saved["id"], revision=1
     )
+    preview_id = str(uuid4())
     comparison = store.save_comparison(
         1,
         str(uuid4()),
-        {"captured_at": NOW.isoformat(), "instruments": [{"symbol": "SPY"}, {"symbol": "ACDC"}]},
+        {
+            "preview_id": preview_id,
+            "captured_at": NOW.isoformat(),
+            "instruments": [{"symbol": "SPY"}, {"symbol": "ACDC"}],
+        },
         NOW,
     )
     manager = BackupManager(repo, settings.backup_dir)
@@ -519,7 +632,7 @@ def test_selected_assistant_reply_is_owner_checked_draft_not_automatic_save(rese
     assert manual.status_code == 201
     assert manual.json()["data"]["evidence"][0]["excerpt"] == "Selected reply with risks."
     with pytest.raises(DomainError, match="Reload"):
-        ResearchStore(repo).save_thesis(
+        ResearchStore(repo, allow_development_noauth=True).save_thesis(
             1,
             {
                 **thesis(),

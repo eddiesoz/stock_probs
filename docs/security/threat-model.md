@@ -549,4 +549,6 @@ retention and queries. No endpoint accepts a database path or external fetch des
 Independent QA, exports, recovery and release acceptance remain pending while implementation
 continues; these source contracts are not a deployed security result.
 
+Interactive research writes and creation-key replays bind the middleware context to the current persisted session, active owner, expiry, role and MFA facts in the same SQLite write transaction. This closes the delayed-body and preflight-to-write revocation windows without treating a cached context as continuing permission. The final save rechecks authorization after provider work; an authorized unchanged creation retry still avoids provider access. Explicit local/test fixture bypasses do not enable a production no-auth path.
+
 The Release 1 draft handoff accepts a UUID for an existing assistant-role message, checks the active owner, and returns bounded editable text without persisting a thesis. User-role messages cannot become assistant evidence. An attached excerpt must match the selected saved reply; rendered text remains escaped. The assistant gains only the two approved page-route labels and descriptive product guidance, with no new model tools or write capability. Research storage and in-flight previews have separate byte/count bounds; over-capacity previews fail before external provider work.

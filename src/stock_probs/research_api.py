@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from stock_probs.auth import AuthContext
 from stock_probs.config import Settings
 from stock_probs.domain import DomainError
 from stock_probs.research import ResearchStore, compare_series
@@ -112,7 +113,12 @@ def install_research_routes(
     safe_csv_cell: Callable[[object], str],
 ) -> None:
     """Keep owner checks and preview/save boundaries inside the canonical application."""
-    store = ResearchStore(service.repository)
+    store = ResearchStore(
+        service.repository,
+        allow_development_noauth=(
+            config.environment in {"development", "test"} and config.auth_mode == "disabled"
+        ),
+    )
     previews: dict[tuple[int, str], tuple[datetime, dict[str, Any]]] = {}
     preview_lock = threading.Lock()
     pending_previews: dict[int, int] = {}
@@ -141,6 +147,11 @@ def install_research_routes(
                 status_code=503,
             )
         return owner
+
+    def write_context(request: Request) -> AuthContext | None:
+        """Return only middleware-authenticated context for the in-transaction write guard."""
+        context = getattr(request.state, "auth_context", None)
+        return context if isinstance(context, AuthContext) else None
 
     @app.get("/api/v1/research/features", responses=errors)
     def features(request: Request) -> dict[str, Any]:
@@ -197,7 +208,13 @@ def install_research_routes(
         request_sha256 = hashlib.sha256(
             json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
-        existing = store.thesis_for_key(owner, str(payload.idempotency_key), request_sha256)
+        context = write_context(request)
+        existing = store.thesis_for_key(
+            owner,
+            str(payload.idempotency_key),
+            request_sha256,
+            auth_context=context,
+        )
         if existing is not None:
             return existing
         return store.save_thesis(
@@ -206,6 +223,7 @@ def install_research_routes(
             clock(),
             idempotency_key=str(payload.idempotency_key),
             request_sha256=request_sha256,
+            auth_context=context,
         )
 
     @app.put("/api/v1/theses/{thesis_id}", response_model=ResearchRecord, responses=errors)
@@ -233,6 +251,7 @@ def install_research_routes(
             clock(),
             thesis_id=str(thesis_id),
             revision=payload.revision,
+            auth_context=write_context(request),
         )
 
     @app.post("/api/v1/theses/{thesis_id}/review", response_model=ResearchRecord, responses=errors)
@@ -249,7 +268,12 @@ def install_research_routes(
             else None,
         }
         return store.save_thesis(
-            owner, data, clock(), thesis_id=str(thesis_id), revision=payload.revision
+            owner,
+            data,
+            clock(),
+            thesis_id=str(thesis_id),
+            revision=payload.revision,
+            auth_context=write_context(request),
         )
 
     @app.get("/api/v1/theses/export", responses=errors)
@@ -390,27 +414,22 @@ def install_research_routes(
     def save(request: Request, payload: ComparisonSave) -> dict[str, Any]:
         owner = require_owner(request)
         with preview_lock:
-            existing = store.comparison_for_key(owner, str(payload.idempotency_key))
-            if existing is not None:
-                if existing["data"].get("preview_id") != str(payload.preview_id):
-                    raise DomainError(
-                        "idempotency_conflict",
-                        "This save key belongs to a different preview.",
-                        status_code=409,
-                    )
-                return existing
             entry = previews.get((owner, str(payload.preview_id)))
-            if entry is None or entry[0] <= clock():
-                raise DomainError(
-                    "preview_expired", "Refresh the comparison before saving.", status_code=409
-                )
+            snapshot = (
+                {**entry[1], "preview_id": str(payload.preview_id)}
+                if entry is not None and entry[0] > clock()
+                else None
+            )
             saved = store.save_comparison(
                 owner,
                 str(payload.idempotency_key),
-                {**entry[1], "preview_id": str(payload.preview_id)},
+                snapshot,
                 clock(),
+                preview_id=str(payload.preview_id),
+                auth_context=write_context(request),
             )
-            del previews[owner, str(payload.preview_id)]
+            if snapshot is not None:
+                del previews[owner, str(payload.preview_id)]
             return saved
 
     @app.get("/api/v1/comparisons", response_model=ResearchCollection, responses=errors)

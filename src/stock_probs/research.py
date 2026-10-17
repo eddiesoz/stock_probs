@@ -7,10 +7,12 @@ import hashlib
 import json
 import math
 import statistics
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import uuid4
 
+from stock_probs.auth import AuthContext
+from stock_probs.auth_write_guard import AuthWriteAuthorizationError, authorize_current_write
 from stock_probs.domain import DomainError
 from stock_probs.repository import Repository
 
@@ -18,8 +20,35 @@ from stock_probs.repository import Repository
 class ResearchStore:
     """Use the canonical repository's coordinated connections and owner guards."""
 
-    def __init__(self, repository: Repository) -> None:
+    def __init__(self, repository: Repository, *, allow_development_noauth: bool = False) -> None:
+        """Create a research store with an opt-in for configured local no-auth use."""
+        if type(allow_development_noauth) is not bool:
+            raise TypeError("allow_development_noauth must be a boolean")
         self.repository = repository
+        self.allow_development_noauth = allow_development_noauth
+
+    def _authorize_write(
+        self,
+        connection: Any,
+        owner: int,
+        auth_context: AuthContext | None,
+    ) -> None:
+        """Recheck the exact request session while its serialized write transaction is held."""
+        if auth_context is None:
+            if not self.allow_development_noauth:
+                raise DomainError(
+                    "authentication_required",
+                    "The active session is unavailable; sign in again.",
+                    status_code=401,
+                )
+            self.repository._ensure_owner_can_write(connection, owner)  # noqa: SLF001
+            return
+        try:
+            authorize_current_write(connection, auth_context, owner, datetime.now(UTC))
+        except AuthWriteAuthorizationError as error:
+            raise DomainError(
+                error.code.lower(), error.message, status_code=error.status_code
+            ) from None
 
     @staticmethod
     def _ensure_capacity(connection: Any, owner: int, additional: int) -> None:
@@ -122,6 +151,7 @@ class ResearchStore:
         revision: int | None = None,
         idempotency_key: str | None = None,
         request_sha256: str | None = None,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         """Atomically validate attachments and append the new reviewed revision."""
         payload = copy.deepcopy(payload)
@@ -131,7 +161,7 @@ class ResearchStore:
             raise DomainError("thesis_too_large", "Reduce the thesis text.", status_code=422)
         with self.repository.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            self.repository._ensure_owner_can_write(connection, owner)  # noqa: SLF001
+            self._authorize_write(connection, owner, auth_context)
             previous_evidence: list[dict[str, Any]] = []
             if thesis_id is not None:
                 previous = connection.execute(
@@ -296,30 +326,53 @@ class ResearchStore:
         }
 
     def save_comparison(
-        self, owner: int, key: str, payload: dict[str, Any], now: datetime
+        self,
+        owner: int,
+        key: str,
+        payload: dict[str, Any] | None,
+        now: datetime,
+        *,
+        preview_id: str | None = None,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         """Save only a server-generated snapshot; repeated keys return the same record."""
-        text = json.dumps(payload, allow_nan=False, separators=(",", ":"))
-        if len(text.encode()) > 262144:
+        if preview_id is None and payload is not None:
+            candidate_preview_id = payload.get("preview_id")
+            preview_id = candidate_preview_id if isinstance(candidate_preview_id, str) else None
+        if preview_id is None:
+            raise DomainError(
+                "preview_expired", "Refresh the comparison before saving.", status_code=409
+            )
+        text = (
+            json.dumps(payload, allow_nan=False, separators=(",", ":"))
+            if payload is not None
+            else None
+        )
+        if text is not None and len(text.encode()) > 262144:
             raise DomainError(
                 "comparison_too_large", "The comparison exceeds its storage limit.", status_code=422
             )
         with self.repository.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            self.repository._ensure_owner_can_write(connection, owner)  # noqa: SLF001
+            self._authorize_write(connection, owner, auth_context)
             row = connection.execute(
                 "SELECT * FROM research_comparisons "
                 "WHERE owner_user_id = ? AND idempotency_key = ?",
                 (owner, key),
             ).fetchone()
             if row:
-                if row["payload_json"] != text:
+                saved_preview_id = json.loads(row["payload_json"]).get("preview_id")
+                if saved_preview_id != preview_id:
                     raise DomainError(
                         "idempotency_conflict",
                         "Use a new save operation for a different snapshot.",
                         status_code=409,
                     )
                 return self._item(row)
+            if text is None:
+                raise DomainError(
+                    "preview_expired", "Refresh the comparison before saving.", status_code=409
+                )
             if (
                 connection.execute(
                     "SELECT COUNT(*) FROM research_comparisons WHERE owner_user_id = ?", (owner,)
@@ -340,13 +393,23 @@ class ResearchStore:
             connection.commit()
         return self.get(owner, "comparisons", item_id) or {}
 
-    def thesis_for_key(self, owner: int, key: str, request_sha256: str) -> dict[str, Any] | None:
-        """Replay a durable creation without depending on provider availability."""
+    def thesis_for_key(
+        self,
+        owner: int,
+        key: str,
+        request_sha256: str,
+        *,
+        auth_context: AuthContext | None,
+    ) -> dict[str, Any] | None:
+        """Reauthorize and replay a durable creation before any provider work."""
         with self.repository.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._authorize_write(connection, owner, auth_context)
             row = connection.execute(
                 "SELECT * FROM research_theses WHERE owner_user_id = ? AND idempotency_key = ?",
                 (owner, key),
             ).fetchone()
+            connection.commit()
         if row is None:
             return None
         if row["request_sha256"] != request_sha256:

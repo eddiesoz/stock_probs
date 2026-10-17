@@ -568,6 +568,42 @@ fresh approved frontend build/stage, schema-14 recovery, security, actual combin
 rollback, owner canary, and release acceptance remain open. No merge, deployment, rollout, resize,
 or email is claimed.
 
+
+### R-ASTRA-121 R1 transaction-bound session authorization (2026-10-17)
+
+At pre-change head `0a58a017dfc8d97ce79e89cbbfaa0f176f576fb2`, source review found that
+research writes could trust authentication cached before a delayed request body. Two deterministic
+builder regressions reproduced revoked-session thesis creation before the repair. The store now
+checks the trusted context inside `BEGIN IMMEDIATE` for thesis writes, comparison saves and the
+provider-free thesis idempotency lookup; final saves check again after provider work. The shared
+`auth_write_guard.py` bytes match the independently reviewed R3 helper. Production defaults remain
+fail-closed; direct fixture setup opts into local no-auth explicitly.
+
+The initial candidate selection **Failed** six cases, including provider-free retry and comparison
+fixture preview identities. After their repair, the builder's affected selection **Passed** with
+113 tests, zero failures/errors/skips and shell exit 0. JUnit SHA-256 is
+`00dd5be1952660ee3dcbf770f5ab855399ce577b06a3bfeb8401c7d92327be0b`;
+terminal-exit receipt SHA-256 is
+`23e730e73b63c34317d71379459be1524bc00ddd0fe17dd6cbcfa4b687e2a9f7`.
+That run did not record in-process import origins. A separate two-regression run **Passed** with
+exit 0 at `2026-10-17T16:05:05.697752Z`–`16:05:20.779421Z`, binding 32 imported modules to the
+worktree; its inventory SHA-256 is
+`8516d24456e18cb25f3c0177d9a3a87c4e18d7c303d3362ba17c36bba97a8415`.
+An attempted unchanged full repeat was stopped; its seven-test partial JUnit/exit 2 and shell 120
+remain an interrupted diagnostic, not an aggregate Pass.
+
+Independent static source/test QA **Passed** the exact eight-file scope with no P1/P2 findings:
+`/var/tmp/r12r/r1-auth-write-guard-independent-qa-20261017T1558Z/receipt.json`, SHA-256
+`51a22f1c2fc9be2aa720df08000f41e62a48799a403a23d45a765ad3b689b85e`.
+The parent personally reviewed the integrated source/test diff and the JUnit/terminal bindings.
+Final source pins are in
+`/var/tmp/r12r/r1-auth-guard-build-20261017/final-source-pins.json`, SHA-256
+`968a32b0b9660102a7e4d026ce71eaf719a9a38a5ce44866502d4b70d79095d5`.
+Private fixture cleanup passed for its exact owned roots. This is scoped local evidence;
+independent runtime replay, current frontend build/stage and visual captures, canonical/security,
+schema-14 recovery, actual-host resources, exact-PR rollback and release gates remain open.
+No deployment, rollout, resize or email is implied.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.
