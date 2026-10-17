@@ -11,7 +11,7 @@ fictional data, incidental labels, and logos are not product requirements. See t
 | Release | Complete user-facing scope | Current status |
 | --- | --- | --- |
 | 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | In progress; local implementation and selected checks only |
-| 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | In progress in a separate managed checkout; no release acceptance |
+| 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | Draft PR #8; earlier 31-test CSV result is bound to its prior revision. Baseline export and new accounting cases have static checks only; runtime and release acceptance remain pending |
 | 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | Pending |
 | 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Pending |
 
@@ -400,6 +400,50 @@ CSV accepted wrong-kind `destination_currency` and `destination_account`; that r
 SHA-256 `c7e431dd7bfa6460ea4c3f7e92bb80e39fe036169abd21a676c446fa19f4171d`. Those scoped findings
 were addressed by the current frozen changes; their earlier failures remain historical. No
 canonical or Release 2 acceptance follows from these focused results.
+
+### R-ASTRA-121 R2 PR #8 baseline export and accounting checkpoint (2026-10-17)
+
+Draft [PR #8](https://github.com/eddiesoz/stock_probs/pull/8), stacked on Release 1, is at clean
+head `3f5d6470f650bd91fc1fef13c6133518838fcc24`. It adds an authenticated owner-scoped,
+provider-free `GET /api/v1/portfolio/snapshots/{baseline_id}/export` JSON download for the frozen
+baseline. The response includes its date and captured account revisions, is bounded to 270,336
+UTF-8 bytes, and rejects oversized responses. The What-if page exposes a 44-pixel “Export baseline
+JSON” control. Added HTTP assertions cover owner isolation, absence of provider calls, payload
+provenance, bounds, and malformed stored structure; they have not been executed against the app.
+
+An independent review of the new accounting acceptance test candidate **Passed** static semantic
+review at its supplied candidate binding. It verified fixed per-table SQL with bound row IDs,
+mutation/replacement rejection assertions, and the expected arithmetic for a backdated correction;
+the candidate was not executed. The same candidate bytes were subsequently applied in PR #8. The
+parent's changed-path Ruff check/format, browser-spec syntax, and `git diff --check` **Passed**; the
+new accounting and export runtime assertions are **Skipped** while the canonical gate is active.
+The independent candidate receipt is
+`/var/tmp/r12r/independent-feature-followup-qa-20261017/r2/qa-receipt.json`, SHA-256
+`97e355a89a8d1a9ccf3ec408268caf3791b4347933848f6d46467e59bdad1c2e`; the parent static checkpoint
+is `/var/tmp/r12r/r2-checkpoint-static-16f75961-fdad-4765-8249-c2410f8ee1dd/receipt.json`, SHA-256
+`44a7b0939558dd5fe039cae0ac54825e1956fb83c287970877f25cc97528a848`. The latter reuses the earlier
+documentation coverage result because those inputs were unchanged.
+
+The earlier baseline-export source review **Passed** its declared owner-isolation, provider-free,
+provenance, size-bound, and visible-link checks, but its overall receipt **Failed** on a metadata
+classification error that listed unchanged `portfolio_store.py` as modified. A parent erratum
+corrected the changed-path list without changing source bytes; preserve the initial receipt failure.
+The review and erratum are
+`/var/tmp/r12r/r2-baseline-export-static-qa-05c44561858841d680ad1a7e9dc311f3/receipt.json`
+(SHA-256 `c564955dffab181b7f1056495ee3198d7c8ecd817d0bf270c26fc82334348115`) and
+`/var/tmp/r12r/r2-application-path-erratum-16798e51-d88b-4918-8c65-0d8654630437/receipt-erratum.json`
+(SHA-256 `1f2252c33a49eebfbe6475e9acacea8dfaf1288adb53e61326bad6eb8d4ba492`). No endpoint or
+browser runtime was performed in that review.
+
+The independent 31-test CSV field-kind result remains valid only for its earlier source pins at
+`8e75e25e7af0639717addbb2b1396f1471441bee`; it is not evidence for the new export or accounting
+assertions. Publication readback confirms PR #8 is open and draft, the remote head matches
+`3f5d647`, and pre-push documentation coverage passed for 191 mapped files and 77 changed inputs.
+Publication receipt `/var/tmp/r12r/r2-followup-checkpoint-9a01f6ea-aed5-41c9-95fd-9252c2ccc964/publication.json`
+has SHA-256 `ca7cd130c9e9da11c0908cb96df28bf1e6d614b17b0eba96e7d55e3e8a9069e2`; its PR-body
+readback preserves pending runtime cases and earlier failures. Current canonical, browser/design,
+security, schema-compatible recovery, actual combined 1 GB, exact-PR rollback, owner-canary, and
+release acceptance remain open. No merge, deployment, rollout, resize, or email is claimed.
 
 ## Status And Scope
 
