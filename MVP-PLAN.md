@@ -468,10 +468,20 @@ SHA-256 `a5415a2eb7ed723e5cc868570ef7847d8824f851742cd4526351164fd2e4f6e7`.
 Exact private fixture cleanup passed; receipt SHA-256 is
 `de18d7d69fa1a4c9e06c8500917cc2c0e623f53c3609d0ad55392e629e9eafc5`.
 
-The parent personally reviewed the integrated source/test diff. Independent affected QA,
-current canonical/browser/design checks, schema-compatible recovery, actual-host resources,
-exact-PR rollback, owner canary and release gates remain open. Earlier accounting evidence is
-retained only for unchanged accounting inputs. No deployment, rollout, resize or email follows.
+The parent personally reviewed the integrated source/test diff. Independent source review and
+all 37 affected tests **Passed** at local commit `ec3d0fc30ecaa5a99da9837703f7364a4e1adee3`,
+with zero failures, errors or skips, Python 3.11.15 on native x86_64 and child umask `0022`.
+The run window was `2026-10-17T17:02:31Z`–`17:03:17Z`; its JUnit SHA-256 is
+`bfc58eccce9e21d0f6fb9750b7804cda76a85fb60fcc1c8a6d27d4e98ea7b5eb`.
+Receipt `/var/tmp/r12r/r2-auth-guard-independent-5d79c6cf-8f9c-4cd3-940d-58660b3237a9/independent-qa-receipt.json`
+has SHA-256 `faf0d9b762ee1a5b9f8964b45254bece3436ea4023efe8c7dd1f5855b1838961`.
+All nine source/test pins and actual package origins matched before and after. The builder
+manifest records the earlier base HEAD `28d6cbba…`, so its commit-metadata binding is **Fail**;
+its matching file hashes are retained separately from this fresh current-commit test binding.
+No receipt was rewritten. Current canonical/browser/design checks, schema-compatible recovery,
+actual-host resources, exact-PR rollback, owner canary and release gates remain open. Earlier
+accounting evidence is retained only for unchanged accounting inputs. No deployment, rollout,
+resize or email follows.
 
 ## Status And Scope
 
