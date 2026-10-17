@@ -7,7 +7,7 @@ import styles from "./research.module.css";
 
 type Instrument = { symbol: string; asset_type: "stock" | "etf" };
 type ActionEvent = { kind: "split"; date: string; new_shares_per_old_share: number } | { kind: "dividend"; date: string; amount: number; currency: string | null };
-type ActionEvidence = { status: string; events: ActionEvent[]; completeness: "not_established" };
+type ActionEvidence = { status: string; events: ActionEvent[]; completeness: "not_established"; provider?: string; requested_range?: string; series_as_of?: string; canonical_symbol?: string; available_fields?: string[] };
 type Compared = { symbol: string; identity: { display_name: string; asset_type: "stock" | "etf" }; currency: string; normalized: { date: string; value: number }[]; source: string; as_of: string; label: string; price_change: number | null; volatility: number | null; max_drawdown: number | null; sample_count: number; excluded_chart_sessions: number; missing_observations: number; common_sample_count: number; quality: string; metric_suppression_reason?: string | null; action_evidence?: ActionEvidence };
 type Snapshot = { instruments: Compared[]; dates: string[]; range: string; basis: string; captured_at: string };
 type Saved = { id: string; created_at: string; data: Snapshot };
@@ -20,14 +20,21 @@ function volatilityDisplay(item: Compared) {
   }
   return percent(item.volatility);
 }
-function actionEvidenceDisplay(item: Compared) {
-  const evidence = item.action_evidence;
-  if (!evidence) return "Corporate-action evidence was not captured in this saved comparison.";
-  if (!evidence.events.length) return "No corporate-action evidence was reported; provider feed completeness is unknown.";
-  return evidence.events.map(event => event.kind === "split"
+function actionEventDisplay(event: ActionEvent) {
+  return event.kind === "split"
     ? `${event.date}: ${event.new_shares_per_old_share} new share${event.new_shares_per_old_share === 1 ? "" : "s"} per old share`
-    : `${event.date}: dividend ${event.amount}${event.currency ? ` ${event.currency}` : "; currency not provided"}`
-  ).join(" · ");
+    : `${event.date}: dividend ${event.amount}${event.currency ? ` ${event.currency}` : "; currency not provided"}`;
+}
+
+function visibleWarnings(item: Compared) {
+  const warnings = new Set<string>();
+  if (item.metric_suppression_reason) warnings.add(item.metric_suppression_reason);
+  if (item.quality === "discontinuity_detected") warnings.add("Discontinuity detected; affected metrics are unavailable.");
+  if (item.missing_observations > 0) warnings.add(`${item.missing_observations} dates have no observation in the shared window.`);
+  if (item.action_evidence?.events.length && !item.metric_suppression_reason) {
+    warnings.add("Provider-reported corporate actions are present; this comparison uses unadjusted closes.");
+  }
+  return [...warnings];
 }
 
 export function Comparison() {
@@ -68,13 +75,106 @@ export function Comparison() {
   const low = Math.min(90, ...values), high = Math.max(110, ...values), span = high - low;
   const y = (value: number) => 280 - (value - low) / span * 230;
   return <main id="main" tabIndex={-1} className={styles.page}>
-    <header className={styles.head}><div><p className="panel-kicker">Tools / Compare</p><h1>Compare your research options</h1><p>Review price history and risk measures side by side, with dated evidence.</p></div></header>
-    <section className={styles.card} aria-label="Choose instruments"><div className={styles.controls}>{instruments.map((item, index) => <div className={styles.instrument} key={index}><label>Instrument {index + 1}<input aria-label={`Instrument ${index + 1} symbol`} maxLength={15} value={item.symbol} onChange={event => change(index, { symbol: event.target.value.toUpperCase() })} disabled={busy} /></label><label>Type<select aria-label={`Instrument ${index + 1} type`} value={item.asset_type} onChange={event => change(index, { asset_type: event.target.value as "stock" | "etf" })} disabled={busy}><option value="stock">Stock</option><option value="etf">ETF</option></select></label>{instruments.length > 2 && <button className="secondary" disabled={busy} onClick={() => setInstruments(old => old.filter((_, i) => i !== index))} aria-label={`Remove instrument ${index + 1}`}>Remove</button>}</div>)}</div><div className={styles.controls}><button className="secondary" disabled={busy || instruments.length === 4} onClick={() => setInstruments(old => [...old, { symbol: "", asset_type: "stock" }])}>Add instrument</button><label>Chart range<select value={range} onChange={event => setRange(event.target.value)} disabled={busy}><option value="5d">5 days</option><option value="1mo">1 month</option><option value="3mo">3 months</option><option value="6mo">6 months</option><option value="1y">1 year</option></select></label><button className="primary" disabled={busy || instruments.some(item => !item.symbol.trim())} onClick={compare}>{busy ? "Working…" : snapshot ? "Refresh comparison" : "Compare instruments"}</button></div></section>
-    {error && <div role="alert" className={styles.error}>{error}</div>}{busy && <p role="status">Working on your requested research…</p>}
+    <header className={styles.head}>
+      <div><p className="panel-kicker">Tools / Compare</p><h1>Compare your research options</h1><p>Analyze and compare price performance and risk measures across instruments.</p></div>
+    </header>
+    <section className={`${styles.card} ${styles.instrumentCard}`} aria-label="Choose instruments">
+      <div className={styles.compareControls}>
+        <div className={styles.instrumentList} role="group" aria-label="Selected instruments">
+          {instruments.map((item, index) => <div className={styles.instrument} key={index} role="group" aria-label={`Instrument ${index + 1}`}>
+            <label className={styles.instrumentSymbol}><span className={styles.visuallyHidden}>Instrument {index + 1} symbol</span><input aria-label={`Instrument ${index + 1} symbol`} placeholder="Symbol" maxLength={15} value={item.symbol} onChange={event => change(index, { symbol: event.target.value.toUpperCase() })} disabled={busy} /></label>
+            <label className={styles.instrumentType}><span className={styles.visuallyHidden}>Instrument {index + 1} type</span><select aria-label={`Instrument ${index + 1} type`} value={item.asset_type} onChange={event => change(index, { asset_type: event.target.value as "stock" | "etf" })} disabled={busy}><option value="stock">Stock</option><option value="etf">ETF</option></select></label>
+            {instruments.length > 2 && <button type="button" className={`secondary ${styles.instrumentRemove}`} disabled={busy} onClick={() => setInstruments(old => old.filter((_, i) => i !== index))} aria-label={`Remove instrument ${index + 1}`}>×</button>}
+          </div>)}
+          <button type="button" className={`secondary ${styles.addInstrument}`} disabled={busy || instruments.length === 4} onClick={() => setInstruments(old => [...old, { symbol: "", asset_type: "stock" }])}><span aria-hidden="true">＋</span><span>Add instrument</span></button>
+        </div>
+        <div className={styles.compareActions}>
+          <label className={styles.rangeControl}>Chart range<select value={range} onChange={event => setRange(event.target.value)} disabled={busy}><option value="5d">5 days</option><option value="1mo">1 month</option><option value="3mo">3 months</option><option value="6mo">6 months</option><option value="1y">1 year</option></select></label>
+          <button type="button" className="primary" disabled={busy || instruments.some(item => !item.symbol.trim())} onClick={compare}>{busy ? "Working…" : snapshot ? "Refresh comparison" : "Compare instruments"}</button>
+        </div>
+      </div>
+    </section>
+    {error && <div role="alert" className={styles.error}>{error}</div>}
+    {busy && <p role="status">Working on your requested research…</p>}
     {!snapshot && <div className={styles.card}><h2>Choose two to four instruments</h2><p>No forecast runs when you open this page. Select your instruments and request a comparison.</p></div>}
-    {snapshot && <><div className={styles.notice}>{savedId ? "Saved immutable comparison" : "Unsaved comparison preview"} · Captured {new Date(snapshot.captured_at).toLocaleString()}<br />{snapshot.basis}</div><section className={styles.card}><h2>Normalized price history</h2><p className={styles.muted}>Starts at 100 on {snapshot.dates[0]} · daily closes in each instrument’s currency</p><div className={styles.chartGrid}><div className={styles.yAxis} role="group" aria-label="Index scale">{[high, (low + high) / 2, low].map(value => <span key={value}>{value.toFixed(0)}</span>)}</div><svg className={styles.chart} viewBox="0 0 900 325" role="img" aria-label="Normalized price history. Index scale and dates are beside the chart; exact values are in the table below."><line x1="55" y1="280" x2="840" y2="280" />{[low, (low + high) / 2, high].map(value => <line key={value} x1="55" y1={y(value)} x2="840" y2={y(value)} />)}{snapshot.instruments.map((item, index) => <polyline key={item.symbol} className={styles[`line${index}`]} points={item.normalized.map((point, i) => `${55 + i / Math.max(1, item.normalized.length - 1) * 785},${y(point.value)}`).join(" ")} />)}</svg></div><div className={styles.chartDates}><span>{snapshot.dates[0]}</span><span>{snapshot.dates.at(-1)}</span></div><ul>{snapshot.instruments.map((item, i) => <li key={item.symbol}>{item.symbol} · line {i + 1} · {item.source} · {new Date(item.as_of).toLocaleString()} · {item.label} · {item.common_sample_count} common chart sessions · {item.missing_observations} dates without an observation compared with the observed session union{item.quality === "discontinuity_detected" ? " · Discontinuity detected: affected metrics unavailable" : ""} · {actionEvidenceDisplay(item)}</li>)}</ul><details><summary>Exact chart values</summary><div className={`${styles.tableWrap} ${styles.chartValues}`} role="region" aria-label="Exact chart values scroll region" tabIndex={0}><table className={styles.table}><caption>Normalized values on common observed sessions</caption><thead><tr><th>Date</th>{snapshot.instruments.map(item => <th key={item.symbol}>{item.symbol}</th>)}</tr></thead><tbody>{snapshot.dates.slice((chartPage - 1) * 5, chartPage * 5).map((day, i) => <tr key={day}><td data-label="Date">{day}</td>{snapshot.instruments.map(item => <td key={item.symbol} data-label={item.symbol}>{item.normalized[(chartPage - 1) * 5 + i].value.toFixed(2)}</td>)}</tr>)}</tbody></table></div><div className={styles.actions}><button className="secondary" disabled={chartPage === 1} onClick={() => setChartPage(value => value - 1)}>Previous chart values</button><span>Chart values page {chartPage} / {Math.ceil(snapshot.dates.length / 5)}</span><button className="secondary" disabled={chartPage * 5 >= snapshot.dates.length} onClick={() => setChartPage(value => value + 1)}>Next chart values</button></div></details></section>
-      <section className={styles.card}><h2>Comparison metrics</h2><div className={styles.tableWrap}><table className={styles.table}><caption>Unadjusted price statistics over the shared period · volatility and drawdown use each instrument’s native sessions</caption><thead><tr>{["Instrument", "Price change", "Annualized volatility", "Maximum drawdown", "Currency", "Samples"].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{snapshot.instruments.map(item => <tr key={item.symbol}><td data-label="Instrument"><strong>{item.symbol}</strong><br />{item.identity.display_name}</td><td data-label="Price change">{percent(item.price_change)}</td><td data-label="Annualized volatility">{volatilityDisplay(item)}</td><td data-label="Maximum drawdown">{percent(item.max_drawdown)}</td><td data-label="Currency">{item.currency}</td><td data-label="Samples">{item.sample_count}{item.excluded_chart_sessions > 0 ? ` · ${item.excluded_chart_sessions} native sessions outside common dates` : ""}</td></tr>)}</tbody></table></div>{snapshot.instruments.filter(item => item.metric_suppression_reason).map(item => <p className={styles.muted} role="note" key={`${item.symbol}-metric-reason`}><strong>{item.symbol}:</strong> {item.metric_suppression_reason}</p>)}</section>
-      <section className={styles.card}><h2>Weekly forecast · 5 trading sessions</h2><p>Each forecast keeps its own exact origin and target. Differing targets are not directly comparable.</p><button className="primary" disabled={busy} onClick={runForecasts}>Run selected forecasts</button>{forecasts.map(item => <article key={item.event.id}><h3>{item.input.canonical_symbol} · Event #{item.event.id}</h3>{item.results.map(result => <p key={result.horizon}>{result.availability} · Target {result.target_timestamp ? new Date(result.target_timestamp).toLocaleString() : "Unavailable"} · Up {percent(result.direction_probabilities?.up)} · Down {percent(result.direction_probabilities?.down)}</p>)}</article>)}{forecastErrors.map(message => <p role="alert" key={message}>{message}</p>)}</section><div className={styles.actions}><button className="primary" disabled={busy || !preview || !!savedId} onClick={save}>{savedId ? "Comparison saved" : "Save comparison"}</button>{savedId && <><a href={`/api/v1/comparisons/${savedId}/export?format=csv`}>Export CSV</a><a href={`/api/v1/comparisons/${savedId}/export?format=json`}>Export JSON</a></>}{preview && !savedId && <span className={styles.muted}>Preview expires {new Date(preview.expires_at).toLocaleTimeString()}</span>}</div></>}
-    <section className={`${styles.card} ${styles.history}`}><h2>Saved comparisons</h2>{listError ? <div role="alert">{listError}<button className="secondary" onClick={() => setRefresh(value => value + 1)}>Retry saved comparisons</button></div> : !saved ? <p role="status">Loading saved comparisons…</p> : !saved.items.length ? <p>No saved comparisons yet.</p> : <ul className={styles.list}>{saved.items.map(item => <li key={item.id}><button disabled={busy} onClick={() => { setChartPage(1); setSnapshot(item.data); setPreview(null); setSavedId(item.id); setInstruments(item.data.instruments.map(i => ({ symbol: i.symbol, asset_type: i.identity.asset_type }))); setRange(item.data.range); setForecasts([]); setForecastErrors([]); }}><strong>{item.data.instruments.map(i => i.symbol).join(" / ")}</strong><small>{new Date(item.created_at).toLocaleString()} · {item.data.range}</small></button></li>)}</ul>}<div className={styles.actions}><button className="secondary" disabled={page === 1 || busy} onClick={() => setPage(value => value - 1)}>Previous snapshots</button><span>Page {page}</span><button className="secondary" disabled={!saved?.has_next || busy} onClick={() => setPage(value => value + 1)}>Next snapshots</button></div></section>
+    {snapshot && <>
+      <div className={styles.notice}>{savedId ? "Saved immutable comparison" : "Unsaved comparison preview"} · Captured {new Date(snapshot.captured_at).toLocaleString()}<br />{snapshot.basis}</div>
+      <section className={`${styles.card} ${styles.chartCard}`}>
+        <div className={styles.sectionHeading}><div><h2>Normalized price performance</h2><p className={styles.muted}>Starts at 100 · price change in each instrument’s currency</p></div><span className={styles.unadjustedTag}>Daily closes · unadjusted</span></div>
+        {snapshot.instruments.some(item => visibleWarnings(item).length) && <ul className={styles.warningList} aria-label="Comparison data warnings">
+          {snapshot.instruments.flatMap(item => visibleWarnings(item).map((warning, index) => <li key={`${item.symbol}-warning-${index}`}><div role="note"><strong>{item.symbol}:</strong> {warning}</div></li>))}
+        </ul>}
+        <div className={styles.chartGrid}>
+          <div className={styles.yAxis} role="group" aria-label="Index scale">{[high, (low + high) / 2, low].map(value => <span key={value}>{value.toFixed(0)}</span>)}</div>
+          <svg className={styles.chart} viewBox="0 0 900 325" role="img" aria-label="Normalized unadjusted price history. Index scale and dates are beside the chart; exact values are available in the expandable table.">
+            <line x1="55" y1="280" x2="840" y2="280" />
+            {[low, (low + high) / 2, high].map(value => <line key={value} x1="55" y1={y(value)} x2="840" y2={y(value)} />)}
+            {snapshot.instruments.map((item, index) => <polyline key={item.symbol} className={styles[`line${index}`]} points={item.normalized.map((point, i) => `${55 + i / Math.max(1, item.normalized.length - 1) * 785},${y(point.value)}`).join(" ")} />)}
+          </svg>
+        </div>
+        <div className={styles.chartDates}><span>{snapshot.dates[0]}</span><span>{snapshot.dates.at(-1)}</span></div>
+        <ul className={styles.legend} aria-label="Chart legend">
+          {snapshot.instruments.map((item, index) => <li key={item.symbol}><span className={`${styles.legendSwatch} ${styles[`legendLine${index}`]}`} aria-hidden="true" /><strong>{item.symbol}</strong><span>Line {index + 1}</span><strong className={styles.legendValue}>{percent(item.price_change)}</strong></li>)}
+        </ul>
+        <details className={styles.evidenceDisclosure}>
+          <summary>Provider and corporate-action details</summary>
+          <div className={styles.evidenceGrid}>
+            {snapshot.instruments.map(item => <article key={item.symbol}>
+              <h3>{item.symbol} · {item.identity.display_name}</h3>
+              <dl>
+                <div><dt>Provider</dt><dd>{item.source}</dd></div>
+                <div><dt>Data as of</dt><dd><time dateTime={item.as_of}>{new Date(item.as_of).toLocaleString()}</time></dd></div>
+                <div><dt>Provider note</dt><dd>{item.label}</dd></div>
+                <div><dt>Common chart sessions</dt><dd>{item.common_sample_count}</dd></div>
+                <div><dt>Dates without an observation</dt><dd>{item.missing_observations}</dd></div>
+                <div><dt>Action evidence</dt><dd>{item.action_evidence?.status ?? "Not captured"} · feed completeness {item.action_evidence?.completeness ?? "unknown"}</dd></div>
+                {item.action_evidence?.provider && <div><dt>Action provider</dt><dd>{item.action_evidence.provider}</dd></div>}
+                {item.action_evidence?.requested_range && <div><dt>Action range</dt><dd>{item.action_evidence.requested_range}</dd></div>}
+                {item.action_evidence?.series_as_of && <div><dt>Action series as of</dt><dd><time dateTime={item.action_evidence.series_as_of}>{new Date(item.action_evidence.series_as_of).toLocaleString()}</time></dd></div>}
+                {item.action_evidence?.canonical_symbol && <div><dt>Provider symbol</dt><dd>{item.action_evidence.canonical_symbol}</dd></div>}
+                {item.action_evidence?.available_fields && <div><dt>Available action fields</dt><dd>{item.action_evidence.available_fields.join(", ") || "None reported"}</dd></div>}
+              </dl>
+              {item.action_evidence?.events.length ? <ul>{item.action_evidence.events.map((event, index) => <li key={`${event.date}-${event.kind}-${index}`}>{actionEventDisplay(event)}</li>)}</ul> : <p>No corporate-action events were reported; feed completeness is unknown.</p>}
+            </article>)}
+          </div>
+        </details>
+        <details className={styles.chartValuesDisclosure}>
+          <summary>Exact chart values</summary>
+          <div className={`${styles.tableWrap} ${styles.chartValues}`} role="region" aria-label="Exact chart values scroll region" tabIndex={0}>
+            <table className={styles.table}>
+              <caption>Normalized unadjusted values on common observed sessions</caption>
+              <thead><tr><th>Date</th>{snapshot.instruments.map(item => <th key={item.symbol}>{item.symbol}</th>)}</tr></thead>
+              <tbody>{snapshot.dates.slice((chartPage - 1) * 5, chartPage * 5).map((day, i) => <tr key={day}><td data-label="Date">{day}</td>{snapshot.instruments.map(item => <td key={item.symbol} data-label={item.symbol}>{item.normalized[(chartPage - 1) * 5 + i].value.toFixed(2)}</td>)}</tr>)}</tbody>
+            </table>
+          </div>
+          <div className={styles.actions}><button className="secondary" disabled={chartPage === 1} onClick={() => setChartPage(value => value - 1)}>Previous chart values</button><span>Chart values page {chartPage} / {Math.ceil(snapshot.dates.length / 5)}</span><button className="secondary" disabled={chartPage * 5 >= snapshot.dates.length} onClick={() => setChartPage(value => value + 1)}>Next chart values</button></div>
+        </details>
+      </section>
+      <section className={styles.card}>
+        <h2>Comparison metrics</h2>
+        <div className={styles.tableWrap}><table className={styles.table}>
+          <caption>Unadjusted price statistics over the shared period · volatility and drawdown use each instrument’s native sessions</caption>
+          <thead><tr>{["Instrument", "Price change", "Annualized volatility", "Maximum drawdown", "Currency", "Samples"].map(label => <th key={label}>{label}</th>)}</tr></thead>
+          <tbody>{snapshot.instruments.map(item => <tr key={item.symbol}><td data-label="Instrument"><strong>{item.symbol}</strong><br />{item.identity.display_name}</td><td data-label="Price change">{percent(item.price_change)}</td><td data-label="Annualized volatility">{volatilityDisplay(item)}</td><td data-label="Maximum drawdown">{percent(item.max_drawdown)}</td><td data-label="Currency">{item.currency}</td><td data-label="Samples">{item.sample_count}{item.excluded_chart_sessions > 0 ? ` · ${item.excluded_chart_sessions} native sessions outside common dates` : ""}</td></tr>)}</tbody>
+        </table></div>
+        {snapshot.instruments.filter(item => item.metric_suppression_reason).map(item => <p className={styles.metricWarning} role="note" key={`${item.symbol}-metric-reason`}><strong>{item.symbol}:</strong> {item.metric_suppression_reason}</p>)}
+      </section>
+      <section className={styles.card}>
+        <h2>Weekly forecast · 5 trading sessions</h2><p>Each forecast keeps its own exact origin and target. Differing targets are not directly comparable.</p>
+        <button type="button" className="primary" disabled={busy} onClick={runForecasts}>Run selected forecasts</button>
+        {forecasts.map(item => <article key={item.event.id}><h3>{item.input.canonical_symbol} · Event #{item.event.id}</h3>{item.results.map(result => <p key={result.horizon}>{result.availability} · Target {result.target_timestamp ? new Date(result.target_timestamp).toLocaleString() : "Unavailable"} · Up {percent(result.direction_probabilities?.up)} · Down {percent(result.direction_probabilities?.down)}</p>)}</article>)}
+        {forecastErrors.map(message => <p role="alert" key={message}>{message}</p>)}
+      </section>
+      <div className={styles.actions}>
+        <button type="button" className="primary" disabled={busy || !preview || !!savedId} onClick={save}>{savedId ? "Comparison saved" : "Save comparison"}</button>
+        {savedId && <><a href={`/api/v1/comparisons/${savedId}/export?format=csv`}>Export CSV</a><a href={`/api/v1/comparisons/${savedId}/export?format=json`}>Export JSON</a></>}
+        {preview && !savedId && <span className={styles.muted}>Preview expires {new Date(preview.expires_at).toLocaleTimeString()}</span>}
+      </div>
+    </>}
+    <section className={`${styles.card} ${styles.history}`}>
+      <h2>Saved comparisons</h2>
+      {listError ? <div role="alert">{listError}<button className="secondary" onClick={() => setRefresh(value => value + 1)}>Retry saved comparisons</button></div> : !saved ? <p role="status">Loading saved comparisons…</p> : !saved.items.length ? <p>No saved comparisons yet.</p> : <ul className={styles.list}>{saved.items.map(item => <li key={item.id}><button disabled={busy} onClick={() => { setChartPage(1); setSnapshot(item.data); setPreview(null); setSavedId(item.id); setInstruments(item.data.instruments.map(i => ({ symbol: i.symbol, asset_type: i.identity.asset_type }))); setRange(item.data.range); setForecasts([]); setForecastErrors([]); }}><strong>{item.data.instruments.map(i => i.symbol).join(" / ")}</strong><small>{new Date(item.created_at).toLocaleString()} · {item.data.range}</small></button></li>)}</ul>}
+      <div className={styles.actions}><button className="secondary" disabled={page === 1 || busy} onClick={() => setPage(value => value - 1)}>Previous snapshots</button><span>Page {page}</span><button className="secondary" disabled={!saved?.has_next || busy} onClick={() => setPage(value => value + 1)}>Next snapshots</button></div>
+    </section>
   </main>;
 }

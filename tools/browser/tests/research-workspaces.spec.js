@@ -2,6 +2,15 @@
 const AxeBuilder = require("@axe-core/playwright").default;
 const { test, expect } = require("./fixtures");
 
+async function attachAxeResults(page, testInfo, name) {
+  const results = await new AxeBuilder({ page }).analyze();
+  await testInfo.attach(`${name}-axe.json`, {
+    body: Buffer.from(JSON.stringify(results, null, 2)),
+    contentType: "application/json",
+  });
+  return results;
+}
+
 async function prepareCapture(page) {
   await page.locator("main").focus();
   // Fixed offscreen skip links must be captured from the document origin after focus scrolls.
@@ -13,7 +22,7 @@ for (const theme of ["light", "dark"]) {
   test(`thesis editing and immutable history in ${theme}`, async ({ page, restartableApplication }, testInfo) => {
     await page.addInitScript(value => localStorage.setItem("stock-probs.theme", value), theme);
     await page.goto(`${restartableApplication.url}/research/theses`);
-    const thesisList = page.getByRole("complementary", { name: "My theses" }).getByRole("listitem");
+    const thesisList = page.getByRole("complementary", { name: "My theses" }).locator("li");
     await expect(page.getByText("No theses yet. Record an idea to start your research history.", { exact: true })).toBeVisible();
     await expect(thesisList).toHaveCount(0);
     const title = `Research idea ${testInfo.project.name} ${theme}`;
@@ -30,27 +39,57 @@ for (const theme of ["light", "dark"]) {
     expect((await saved).status()).toBe(201);
     await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
     await expect(thesisList).toHaveCount(1);
+    const timeline = page.getByRole("group", { name: "Thesis timeline", exact: true });
+    await expect(timeline.locator("div").nth(0).locator("span").first()).toHaveText("Created");
+    await expect(timeline.locator("div").nth(1).locator("span").first()).toHaveText("Reviewed");
+    await expect(timeline.locator("div").nth(1).getByText("Unknown", { exact: true })).toBeVisible();
+    await expect(timeline.locator("div").nth(2).locator("span").first()).toHaveText("Revised");
+    await expect(timeline.locator("div").nth(2).getByText("Unknown", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Ask assistant to draft", exact: true })).toBeVisible();
+    if (await page.evaluate(() => matchMedia("(max-width: 760px)").matches)) {
+      const listToggle = page.getByRole("complementary", { name: "My theses" }).getByRole("button").first();
+      await expect(listToggle).toHaveAccessibleName("My theses (1)");
+      await expect(listToggle).toHaveAttribute("aria-expanded", "false");
+      await expect(thesisList.first()).toBeHidden();
+      await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      await listToggle.click();
+      await expect(listToggle).toHaveAccessibleName("Hide My theses");
+      await expect(thesisList.first()).toBeVisible();
+      await listToggle.click();
+      await expect(listToggle).toHaveAttribute("aria-expanded", "false");
+    }
     await page.getByRole("button", { name: "Edit thesis", exact: true }).click();
     await page.getByRole("textbox", { name: "My thesis", exact: true }).fill("Revised reasoning, retaining the original evidence.");
     await page.getByRole("button", { name: "Save reviewed thesis" }).click();
     await expect(page.getByText("Revised reasoning, retaining the original evidence.", { exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: title, exact: true })).toBeFocused();
+    await expect(timeline.locator("div").nth(2).getByText("Unknown", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Record review", exact: true }).click();
     await page.getByLabel("Next review date", { exact: true }).fill("2027-01-01");
     await page.getByRole("button", { name: "Confirm reviewed", exact: true }).click();
     await expect(page.getByText("Review date: 2027-01-01", { exact: true })).toBeVisible();
+    await expect(timeline.locator("div").nth(1).locator("time")).toHaveCount(1);
     await page.getByRole("button", { name: "Revision history", exact: true }).click();
-    const historySection = page.getByRole("heading", { name: "Revision history", exact: true }).locator("..");
+    const historySection = page.locator("details").filter({ has: page.getByText("Full revision history", { exact: true }) });
+    await expect(historySection).toHaveAttribute("open", "");
     await expect(historySection.locator("details")).toHaveCount(3);
+    await expect(timeline.locator("div").nth(2).locator("time")).toHaveCount(1);
     const firstRevision = historySection.getByText(/^Revision 1 ·/);
     await firstRevision.click();
     await expect(page.getByText("Diversification with an explicit review date.", { exact: true })).toBeVisible();
-    const axe = await new AxeBuilder({ page }).analyze();
+    const axe = await attachAxeResults(page, testInfo, "thesis-history");
     expect(axe.violations).toEqual([]);
     expect(axe.incomplete).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await firstRevision.click();
     await expect(historySection.locator("details[open]")).toHaveCount(0);
+    await historySection.getByText("Full revision history", { exact: true }).click();
+    await expect(historySection).not.toHaveAttribute("open", "");
+    await page.getByRole("button", { name: "Revision history", exact: true }).click();
+    await expect(historySection).toHaveAttribute("open", "");
+    await expect(firstRevision).toBeVisible();
+    await historySection.getByText("Full revision history", { exact: true }).click();
+    await expect(historySection).not.toHaveAttribute("open", "");
     await expect(thesisList).toHaveCount(1);
     await prepareCapture(page);
     await page.screenshot({ path: testInfo.outputPath(`theses-${theme}.png`), fullPage: true });
@@ -66,6 +105,41 @@ for (const theme of ["light", "dark"]) {
     await expect(savedComparisonList).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Choose two to four instruments" })).toBeVisible();
     expect(requests).not.toContain("/api/v1/forecasts");
+    const selectedInstruments = page.getByRole("group", { name: "Selected instruments", exact: true });
+    await expect(selectedInstruments.getByRole("group")).toHaveCount(2);
+    await expect(page.getByLabel("Instrument 1 symbol", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Instrument 1 type", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Instrument 2 symbol", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Instrument 2 type", { exact: true })).toBeVisible();
+    const addInstrument = page.getByRole("button", { name: "Add instrument", exact: true });
+    await expect(addInstrument).toBeVisible();
+    if (await page.evaluate(() => matchMedia("(max-width: 760px)").matches)) {
+      for (const control of [
+        selectedInstruments.getByRole("group", { name: "Instrument 1", exact: true }),
+        page.getByLabel("Instrument 1 symbol", { exact: true }),
+        page.getByLabel("Instrument 1 type", { exact: true }),
+        addInstrument,
+        page.getByRole("combobox", { name: /^Chart range/ }),
+        page.getByRole("button", { name: "Compare instruments", exact: true }),
+      ]) {
+        const box = await control.boundingBox();
+        expect(box).not.toBeNull();
+        expect(Math.round(box.height)).toBe(44);
+      }
+    }
+    await addInstrument.click();
+    await expect(selectedInstruments.getByRole("group")).toHaveCount(3);
+    await expect(page.getByLabel("Instrument 3 symbol", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Instrument 3 type", { exact: true })).toBeVisible();
+    const removeInstrument = page.getByRole("button", { name: "Remove instrument 3", exact: true });
+    await expect(removeInstrument).toBeVisible();
+    if (await page.evaluate(() => matchMedia("(max-width: 760px)").matches)) {
+      const box = await removeInstrument.boundingBox();
+      expect(box).not.toBeNull();
+      expect(Math.round(box.height)).toBe(44);
+    }
+    await removeInstrument.click();
+    await expect(selectedInstruments.getByRole("group")).toHaveCount(2);
     await page.getByLabel("Instrument 1 symbol").fill("ACDC");
     await page.getByLabel("Instrument 2 symbol").fill("SPY");
     await page.getByRole("button", { name: "Compare instruments", exact: true }).click();
@@ -78,19 +152,22 @@ for (const theme of ["light", "dark"]) {
     const before = requests.filter(path => path === "/api/v1/comparisons/preview").length;
     await page.getByRole("button", { name: /ACDC \/ SPY/ }).first().click();
     expect(requests.filter(path => path === "/api/v1/comparisons/preview")).toHaveLength(before);
-    await page.getByText("Exact chart values", { exact: true }).click();
-    await expect(page.getByRole("table", { name: "Normalized values on common observed sessions" })).toBeVisible();
-    expect(await page.getByRole("table", { name: "Normalized values on common observed sessions" }).locator("tbody tr").count()).toBeLessThanOrEqual(20);
-    const axe = await new AxeBuilder({ page }).analyze();
+    const exactValues = page.locator("details").filter({ has: page.getByText("Exact chart values", { exact: true }) });
+    await exactValues.getByText("Exact chart values", { exact: true }).click();
+    await expect(page.getByRole("table", { name: "Normalized unadjusted values on common observed sessions" })).toBeVisible();
+    expect(await page.getByRole("table", { name: "Normalized unadjusted values on common observed sessions" }).locator("tbody tr").count()).toBeLessThanOrEqual(20);
+    const axe = await attachAxeResults(page, testInfo, "comparison-saved-values-open");
     expect(axe.violations).toEqual([]);
     expect(axe.incomplete).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     await expect(savedComparisonList).toHaveCount(1);
+    await exactValues.getByText("Exact chart values", { exact: true }).click();
+    await expect(page.getByRole("table", { name: "Normalized unadjusted values on common observed sessions" })).toBeHidden();
     await prepareCapture(page);
     await page.screenshot({ path: testInfo.outputPath(`compare-${theme}.png`), fullPage: true });
   });
 
-  test(`split evidence explains unavailable metrics and survives saved replay in ${theme}`, async ({ page }) => {
+  test(`split evidence explains unavailable metrics and survives saved replay in ${theme}`, async ({ page }, testInfo) => {
     await page.addInitScript(value => localStorage.setItem("stock-probs.theme", value), theme);
     const previewId = "11111111-1111-4111-8111-111111111111";
     const savedId = "22222222-2222-4222-8222-222222222222";
@@ -189,9 +266,14 @@ for (const theme of ["light", "dark"]) {
     await page.getByLabel("Instrument 1 symbol").fill("ABC");
     await page.getByLabel("Instrument 2 symbol").fill("SPY");
     await page.getByRole("button", { name: "Compare instruments", exact: true }).click();
-    await expect(page.getByText("1.5 new shares per old share", { exact: false })).toBeVisible();
-    await expect(page.getByText("dividend 0.42; currency not provided", { exact: false })).toBeVisible();
-    await expect(page.getByText(/provider-reported split ratio of 1.5/)).toBeVisible();
+    await expect(page.getByText("Daily closes · unadjusted", { exact: true })).toBeVisible();
+    const metricsSection = page.getByRole("heading", { name: "Comparison metrics", exact: true }).locator("..");
+    const splitWarning = metricsSection.getByRole("note").filter({ hasText: "ABC:" });
+    await expect(splitWarning).toContainText("provider-reported split ratio of 1.5 new shares per old share");
+    const evidenceDisclosure = page.locator("details").filter({ has: page.getByText("Provider and corporate-action details", { exact: true }) });
+    await evidenceDisclosure.getByText("Provider and corporate-action details", { exact: true }).click();
+    await expect(evidenceDisclosure).toContainText("2026-10-02: 1.5 new shares per old share");
+    await expect(evidenceDisclosure).toContainText("2026-10-03: dividend 0.42; currency not provided");
     const affectedRow = page.getByRole("row").filter({ hasText: "ABC" }).last();
     await expect(affectedRow).toContainText("Unavailable");
     const unaffectedRow = page.getByRole("row").filter({ hasText: "SPY" }).last();
@@ -200,8 +282,11 @@ for (const theme of ["light", "dark"]) {
     await expect(page.getByRole("button", { name: "Comparison saved", exact: true })).toBeDisabled();
     const countBeforeReopen = previewRequests;
     await page.getByRole("button", { name: /ABC \/ SPY/ }).last().click();
-    await expect(page.getByText(/provider-reported split ratio of 1.5/)).toBeVisible();
+    await expect(splitWarning).toContainText("provider-reported split ratio of 1.5 new shares per old share");
     expect(previewRequests).toBe(countBeforeReopen);
+    const axe = await attachAxeResults(page, testInfo, "comparison-split-evidence");
+    expect(axe.violations).toEqual([]);
+    expect(axe.incomplete).toEqual([]);
   });
 }
 
@@ -264,7 +349,7 @@ for (const theme of ["light", "dark"]) {
       expect(thesisLoading.autoReleased()).toBe(false);
       thesisMode = "empty";
       thesisLoading.release();
-      const thesisList = page.getByRole("complementary", { name: "My theses" }).getByRole("listitem");
+      const thesisList = page.getByRole("complementary", { name: "My theses" }).locator("li");
       await expect(page.getByText("No theses yet. Record an idea to start your research history.", { exact: true })).toBeVisible();
       await expect(thesisList).toHaveCount(0);
       await prepareCapture(page);
@@ -283,7 +368,7 @@ for (const theme of ["light", "dark"]) {
       await page.reload();
       await expect(page.locator("main").getByRole("alert")).toContainText("These research features are not enabled for this account.");
       await expect(page.getByRole("button", { name: "Retry loading", exact: true })).toBeVisible();
-      const thesisAxe = await new AxeBuilder({ page }).analyze();
+      const thesisAxe = await attachAxeResults(page, testInfo, "thesis-unavailable");
       expect(thesisAxe.violations).toEqual([]);
       expect(thesisAxe.incomplete).toEqual([]);
       await prepareCapture(page);
@@ -325,7 +410,7 @@ for (const theme of ["light", "dark"]) {
       await page.getByRole("button", { name: "Compare instruments", exact: true }).click();
       await expect(page.locator("main").getByRole("alert")).toContainText("These instruments have too few common daily sessions.");
       await expect(page.getByRole("heading", { name: "Choose two to four instruments", exact: true })).toBeVisible();
-      const comparisonAxe = await new AxeBuilder({ page }).analyze();
+      const comparisonAxe = await attachAxeResults(page, testInfo, "comparison-error");
       expect(comparisonAxe.violations).toEqual([]);
       expect(comparisonAxe.incomplete).toEqual([]);
       await prepareCapture(page);

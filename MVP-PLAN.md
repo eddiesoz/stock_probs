@@ -10,7 +10,7 @@ fictional data, incidental labels, and logos are not product requirements. See t
 
 | Release | Complete user-facing scope | Current status |
 | --- | --- | --- |
-| 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | Draft PR #7; prior selected checks and static reviews only. New non-success capture fixtures have static review only; current browser/runtime and release acceptance remain pending |
+| 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | Draft PR #7; approved-design refinements and nine affected browser/axe cases passed after preserved failures; prior non-success cases retain their original bindings. Current aggregate, runtime and release gates remain open |
 | 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | In progress in a separate managed checkout; no release acceptance |
 | 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | Pending |
 | 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Pending |
@@ -603,6 +603,41 @@ Private fixture cleanup passed for its exact owned roots. This is scoped local e
 independent runtime replay, current frontend build/stage and visual captures, canonical/security,
 schema-14 recovery, actual-host resources, exact-PR rollback and release gates remain open.
 No deployment, rollout, resize or email is implied.
+
+### R-ASTRA-121 R1 approved-design refinement and affected browser checkpoint (2026-10-17)
+
+The candidate now uses compact comparison instrument controls, expandable provider/exact-value
+details, persistent data-quality warnings, stacked mobile metrics, a collapsible mobile thesis
+list and the Created / Reviewed / Revised timeline. Unknown dates remain unknown. Native history
+open/close behavior and the detail-card unsent assistant handoff preserve explicit save boundaries.
+The parent reviewed the source and the desktop/mobile Light/Dark success captures against the
+approved hierarchy and existing theme tokens; illustrative data and logos are not requirements.
+
+The first capture run **Failed** (12 passed, four failed) on ambiguous split-warning selectors; parent visual
+review also found excessive mobile form/list height. After the layout repair, the next 16-case
+command **Failed** (7 passed, 9 failed): four split cases exposed an invalid `li role=note`, four
+mobile cases used stale accessible selectors, and one desktop Dark fixture startup failed with
+cause unproven. Raw failures and axe results remain preserved. The note now sits inside a native
+list item; corrected selectors retain the collection, visibility and 44 px assertions.
+
+The final approved `./scripts/build-frontend.sh` **Passed** 72 checks, typecheck and production
+build, with 55 served/export pairs byte-identical and unchanged source. Receipt
+`/var/tmp/r12r/r1-aria-approved-build-da38e83a-faa0-4f28-bcab-2ea8c9bf218d/terminal.json`,
+SHA-256 `6078057b2a2ca98d727322c409b69df48c478887dae782858303398c64bbd955`.
+The nine affected browser cases then **Passed** 9/9, zero retries/skips/flaky results, at
+`2026-10-17T17:13:11Z`–`17:14:34Z`. All nine raw axe scans have zero violations and incompletes.
+Independent review matched 147 source pins and all 55 served/export pairs; receipt
+`/var/tmp/r12r/r1-affected-nine-independent-review-final-f4cfd401ae1c43588a90dec2389d7eb5/independent-review.json`,
+SHA-256 `873bbb52d8dba7416d84426e80be89eb065f479a2d23cf59ba4e0ad52407fa2a`.
+The private run's initial plan retained the pre-cwd config hash; a separate pre-launch final
+binding records the executed config, whose only change adds the explicit fixture working directory.
+
+The earlier seven passing cases, including non-success states, retain their original input
+bindings. They are not combined with this run into a green 16-case aggregate. These are selected
+synthetic desktop and emulated-mobile results, not a current full browser/local-gate, full WCAG,
+physical-mobile, screen-reader, actual-host resource, recovery or release result. Required canonical,
+complete security/browser, exact-PR schema-compatible rollback, 1 GB, owner canary and release gates
+remain open. No merge, deployment, rollout, resize or email follows.
 
 ## Status And Scope
 

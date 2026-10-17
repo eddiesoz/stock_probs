@@ -291,3 +291,14 @@ portfolio, comparison, briefing and what-if images replace their initial drafts.
 ![Approved briefing design proposal; fictional data.](../design/features/briefing.png)
 
 ![Approved what if design proposal; fictional data.](../design/features/what-if.png)
+
+
+The Release 1 candidate follows the approved thesis sidebar/detail hierarchy on desktop and
+collapses the mobile list behind a reachable My theses control. Its timeline displays recorded
+Created, Reviewed and Revised facts, with Unknown for unavailable history. Comparison controls
+use compact symbol/type groups; source details and exact values are disclosures, while data-quality
+warnings remain exposed. Mobile metrics stack into instrument cards. Existing Light/Dark tokens,
+Overview / Research / Tools navigation and the assistant launcher remain the visual authority.
+Parent review of desktop and emulated-mobile captures accepted this hierarchy and theme fidelity;
+fictional mockup values are not screenshot equality targets. Selected browser/axe results do not
+establish full-app accessibility or physical-mobile acceptance.

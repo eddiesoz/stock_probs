@@ -186,6 +186,11 @@ Saving requires a deliberate action. Edits append revisions; an out-of-date edit
 before saving. Attach only forecast event or assistant message IDs you have reviewed; inaccessible
 attachments are rejected. Archived theses retain their history.
 
+On mobile, **My theses** expands the list while the selected thesis stays the main card. The
+Created / Reviewed / Revised timeline uses recorded facts and shows **Unknown** when the needed
+history has not been loaded. **Revision history** opens retained versions; closing and reopening
+keeps the same saved evidence. The detail-card assistant button opens an unsent drafting prompt.
+
 Compare accepts two to four distinct instruments and the supported daily-bar ranges. Requesting
 a comparison does not run forecasts. Saved snapshots reopen without chart-provider calls;
 Refresh captures new inputs. The comparison keeps unadjusted closes and does not calculate total
@@ -200,6 +205,10 @@ instrument has observation gaps compared with the others in the shared window. D
 from every instrument cannot be detected by this comparison. Each observation retains its
 provider and date. Weekly forecasts are separate explicit requests and preserve their own exact
 five-session targets.
+
+The compact instrument controls remain editable. Provider and corporate-action details and exact
+chart values expand separately; missing-history and metric-suppression warnings stay visible.
+Desktop uses the metrics table, while mobile stacks each instrument's metrics into a card.
 
 For an assistant draft, choose **Ask assistant to draft**, review the prompt and model privacy terms, and explicitly send the request. Select a saved assistant reply with **Use this reply as an editable thesis draft**. The draft copies at most 6,000 characters and keeps the selected excerpt as evidence. Review the text and choose **Save reviewed thesis**; opening a draft creates no saved thesis. The assistant remains optional, and an unavailable model does not prevent manual notes. **Record review** retains the reasoning and appends the confirmed review date to history. Use the export links to download your own notes and dated comparison evidence.
 
