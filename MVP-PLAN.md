@@ -9405,7 +9405,7 @@ A separate operation using the exact original 5ad controller restored the existi
 
 The F6 candidate and 5ad recovery archives each passed the maintained 13-layer credential/persistent-data scan; independent integrity QA verified the scanner pin, archive/output hashes, and retained earlier scan failure. Separate Astra and parent source-security reviews found no actionable P1/P2 issue in their declared changed-app and supporting trust-boundary scope. These source and archive checks do not establish complete security or runtime acceptance.
 
-The latest focused F6 browser run **Passed** 4/4 desktop/mobile cases, with zero failures, skips, or retries and one worker, on native x86_64/Python 3.14.4 under umask 0022 (08:50:50.081–08:53:32.118Z). Independent QA **Passed** the consumer result, JUnit, unchanged source/stage snapshot, and lifecycle checks; exact service cleanup also **Passed**. The run used a local FastAPI fixture, Pixel 7 emulation, and no live provider. The full 200-case aggregate remains pending. Preserve the earlier focused 3/4 failure; do not combine runs.
+The latest focused F6 browser run **Passed** 4/4 desktop/mobile cases, with zero failures, skips, or retries and one worker, on native x86_64/Python 3.14.4 under umask 0022 (08:50:50.081–08:53:32.118Z). Independent QA **Passed** the consumer result, JUnit, unchanged source/stage snapshot, and lifecycle checks; exact service cleanup also **Passed**. The run used a local FastAPI fixture, Pixel 7 emulation, and no live provider. At this 08:53Z checkpoint, the full 200-case aggregate was still pending; its later result is recorded below. Preserve the earlier focused 3/4 failure; do not combine runs.
 
 Draft [PR #15](https://github.com/eddiesoz/stock_probs/pull/15), stacked on PR #9 at `ef57821a3c0d965727e2db0d24ab083ff9d120e7`, contains the print-only guide selector repair. Independent review passed its fresh eight-image capture; the maintained finalizer and render also **Passed**. Rendered HTML/PDF are bound to this revision. Independent 12-state HTML accessibility and 14-page PDF visual review remain pending, so final guide acceptance is open. Preserve earlier HTML and PDF failures: the original 12-state HTML run failed one mobile System/Dark sample that initially showed a light canvas, and an earlier PDF showed an orphaned section-02 border at the page break. Separate settled-state HTML and 14-page print-candidate visual checks passed only their own scopes. The diagnostic print renderer **Failed** because `pdftotext` was unavailable. Physical mobile, true zoom, screen-reader, and PDF/UA remain Unavailable.
 
@@ -9528,3 +9528,128 @@ response and deterministic cycle link, inspect the published operation before pa
 schema 13 without restore, and restore the original release before canary/invited. Full response
 fields and link checks remain in the runbook. The existing host, backups, and monthly cap are
 unchanged; no release or email is claimed.
+
+
+### R-ASTRA-121 PR #11 fixture-readiness and wrapper-proof follow-up (2026-10-17)
+
+**Historical pre-10:22Z checkpoint; its then-current pending/latest-state statements are superseded by the following checkpoint.**
+The scoped results below remain preserved with their original status.
+
+The separate local 10-case browser diagnostic **Failed** with 9 expected passes and one mobile session-revocation case failing during FastAPI fixture startup; its application assertions were not reached. Independent review localized the failure to a 10-second readiness deadline (195 connection-refused probes, then the deadline; no ready response), while the specific cause remained **Unproven**. Receipt: `/var/tmp/r12r/f6-five-case-diagnostic-independent-qa-20261017T0958Z-637477d5a91a485e8322675bb77afcec/result-review.json`, SHA-256 `c7df02e8d0c809a9ad1df469a117ce2caf0c8f28201821eb0dbc01a307c25d78`. A separate bounded fixture probe became ready at 7,011 ms and passed its timing-review scope; it did not reproduce or explain the failure and did not change the readiness deadline. Receipt: `/var/tmp/r12r/f6-fixture-startup-probe-independent-qa-20261017T0959Z-1b25e510d201430b87eba0f22a99624b/timing-probe-review.json`, SHA-256 `8409a5c59e23f960d73d9d6bd509b17d72694830c0e54bae175350abececa15b`.
+
+The separate four-overlay/two-spec review **Passed** its static binding and nine-unit-test scope. Its earlier anchored-title focused-run plan **Failed**; the corrected unanchored plan passed static review only, and that review skipped browser execution. The later focused-two desktop Chromium and mobile Chromium-emulation run **Passed** 2/2 with zero failures, skips, or flaky tests; the logout and no-action-confirm-POST assertions were reached and passed. Independent execution review and supplemental cleanup readback **Passed**, including source/stage binding, complete output drain, successful child/unit retirement, process-group/cgroup and port absence, and removal of four owned fixture directories. Execution terminal SHA-256 `75d3a79d38737915027b03dae9ae20b94fd603be5f20bf95b02d2edcddc908bd`; independent review `/var/tmp/r12r/f6-focused2-execution-qa-4edbe5de-7bf4-4a91-a580-f8cb3ce8441b/focused2-execution-qa.json`, SHA-256 `a30192cc84ef2d5db3664d2f38c35872b5ebf7ec248d08af920313a931d7f038`; readback supplement SHA-256 `10b67e2fe449f1267c59cf52caf0e370436fcd71c8082b8c71596ced55500c53`. The focused run is local fixture evidence only; physical mobile, full browser, accessibility, and production acceptance are not established. At this pre-run checkpoint, the full-200 operations plan at `/var/tmp/r12r/f6-full200-readiness-ops-c7906e90-3d38-4942-8054-7c258ce60fed` was prepared, its static review was pending, and no aggregate had yet launched. Independent static/unit receipt for the separate overlay review: `/var/tmp/r12r/f6-combined-overlay-qa-3330ca2a-90c2-468b-ad25-cc00d9c907e0/independent-static-unit-review.json`, SHA-256 `ce9780ea2cbb65f151311e8088fc29910476ddcb528f12e8516e63a22f55a640`.
+
+At this checkpoint, parent source review of the first temporary-proof helper **Failed** because its new proof path reached `_image_schema`, which invoked a new `docker run --rm` image-schema probe (256 MiB, 60 seconds). This finding concerns that container run; metadata-only Docker image inspection remains permitted. No host operation occurred. The replacement proof work was then private and unaccepted. Separately, independent review of the typed wrapper **Failed** at that checkpoint: the inspect producer then omitted fields the wrapper required. Review found that proof-validation failure after temporary start would skip the proof-gated restore, while the original-state fallback could not match the temporary current image. This was static control-flow evidence, not a runtime reproduction. Receipt: `/var/tmp/r12r/qa-next-cycle-wrapper-4fd6f7d2-4751-47e9-9fab-0cbaf6a9b16a/independent-qa-receipt.json`, SHA-256 `c15f4d4192e4fdbaa6403d244e341df68205147540c50013ff35ef1f111a1974`. At that checkpoint, the private compensation candidate builder reported 28 passing tests; independent review and source integration were **Pending** at `/var/tmp/r12r/pr11-next-cycle-wrapper-v2comp-20261017T1005Z/candidate`.
+
+The parent-integrated authored-docs checkpoint **Passed** and PR #11 publication **Passed** for clean pushed H2 revision `d17c00f91796ba2368d443756abece323dfcaac7`; receipts are `/var/tmp/r12r/pr11-next-cycle-parent-integration-d3a307f7-6194-43a2-9f3b-0b78b95cb80e/parent-docs-integration-v5.json` (SHA-256 `19d32a44f3f44871cc220d32da3a7b8f52310ebc95efa2a940dc52b3f17ecdfb`) and `/var/tmp/r12r/pr11-next-cycle-publication-973f9a0e-9874-4ec0-ac58-dd1efacbc56e/publication.json` (SHA-256 `6e7c567caed5ac5d36fb252fb4724b0a14325bb910a519e3e7b880e4970c4c38`). This was source-publication evidence only. At that pre-10:22Z checkpoint, the then-latest production read was the 08:23Z original-5ad, schema-13 invited/ready/loopback observation; the later 10:48Z read is in the following section. No production mutation was part of that publication. The other listed gates were pending at that historical checkpoint; current results follow below.
+
+### R-ASTRA-121 PR #11 optional inspect proof and wrapper checkpoint (2026-10-17)
+
+This checkpoint records the optional inspect-proof source repair, its typed-wrapper follow-up,
+the completed 200-case browser aggregate, and the latest read-only production observation. It
+preserves earlier failures and keeps source, package, host, and release acceptance distinct.
+
+Proof V1 **Failed** parent source review: its inspect path reached
+`_image_schema`, which invoked `docker run --rm` with a 256 MiB limit and 60-second timeout. No
+host operation occurred. Receipt `/var/tmp/r12r/h2-proof-v1-parent-finding-9bd824c4-e5de-4dd3-89ad-315180627767/parent-source-finding.json`,
+SHA-256 `daaefc2e48bf89bd7b9dc3463e13b7147122517f3cefda7815fa88ac280ee74d`. Proof V2 separately **Failed** Astra source-security review with P2
+`INSPECT-PROOF-SEC-01`: an active record missing `created_at` raised an uncaught
+`KeyError` in `_temporary_active_record`, dropping the inspect response. The malformed-state
+finding does not establish a normal producer omission. Receipt
+`/var/tmp/r12r/h2-proof-v2-astra-audit-20261017T102444Z-d8eae2e3-e033-4072-8c3b-513774fbd32a/source-security-review.json`,
+SHA-256 `4a87cd982449ab29ca59d2cfee41e6f3c18cb88f14f1d5fbdc60a5682cc9f863`. Following two
+consecutive same-scope Luna failures, the task-scoped Sol escalation was recorded at
+`/var/tmp/r12r/proof-sol-v3-escalation-c163ca39-f828-4c9c-902b-12ff92b4e99c/escalation.json`,
+SHA-256 `134651931605f2ac232e8655ed468da8623cf01258450020ea8611ce576fb655`; model routing was
+unchanged.
+
+Sol V3 was prepared from clean baseline `d17c00f91796ba2368d443756abece323dfcaac7`. Its manifest,
+helper, and test SHA-256 values are `f3c592d6a89fba6971f8b2dd12af40e93b4a741e7dfd56549e0ba86d125b1884`,
+`a6d0a3f7f755a74a7a41351aa05cb7b5b5a7a87232f5edd559d06fddf2566e45`, and
+`8b428546bc872cf031dbad328f330042300b5af6ecf3a6cb8391635a26288ba5`. Builder and independent
+selected pytest scopes each passed 25 tests with 250 deselected; independent JUnit was 25/0/0/0,
+93 context pins remained stable, and the builder’s Ruff, security-Ruff, and format checks passed.
+The first manifest/context comparison and read-only summarizer attempt remain setup failures; only
+the corrected pin comparison passed. Astra’s exact-source recheck found no issue in its declared scope. Parent applied and reviewed only
+the helper and test files. Receipts: independent QA
+`/var/tmp/r12r/h2-proof-v3-independent-qa-20261017-1034Z/independent-review-v3.json`
+(SHA-256 `ae7ae2df7105bf75c0bd1257635a6507866394752ef9b7fb1bbc4f344e40e3ba`), timing erratum
+`5e6d5a833a9a66feb05bdcbc4bcba3d16a1b0cf3cd08dcc4aeb6327e501c275a`, Astra review
+`/var/tmp/r12r/h2-proof-v3-security-recheck-20261017T103600Z-3356485b-d830-4193-a2bd-a1ec651cf372/source-security-review.json`
+(SHA-256 `cc7a0ee4a1c868708246e046da0dd9f730e43cb0a0145f5ac616c548dcc0dcae`), and parent source
+application `/var/tmp/r12r/pr11-proof-parent-integration-d696c6a8-cf42-48c2-a325-55f576d1281b/parent-v3-source-application.json`
+(SHA-256 `0f661b54294c0051ee4af1b762e524ed16bdfc047fe4b652196b67f1f61a9834`). These are offline
+source/test results, not installation, image, host, provider, or release acceptance.
+
+The stable seven-field operation view and ordinary current/health response remain unchanged.
+Schema-1 `temporary_recovery_proof` is optional only for an active successor in the two startup-floor
+phases with its restored-predecessor marker. A verified proof binds exact operation/current state,
+artifact/manifest/image, historical unpromoted backup metadata, process profile, the current 128 MiB
+reserve, recorded startup available-memory sample and its admission decision against the 512 MiB floor,
+and immutable predecessor/cycle history. A
+fixed-shape unavailable proof preserves current/health data. This is a bounded observation, not a
+continuous resource/health guarantee; it does not auto-execute/rearm jobs, replace the pair’s own
+host/resource preflight, or establish combined 1 GB acceptance. The stored backup `verified` flag is
+not fresh signed-reader verification. The new chain reads bounded image/container metadata,
+archive/history/state, and `/proc` data without Docker run/create/exec/copy/load/tag or proof-state
+writes. Existing `_ensure_layout` directory creation/mode behavior remains, so the entire `inspect`
+command is not claimed to be filesystem-write-free. Full contract is in the
+[operator runbook](docs/operations/getting-started.md#temporary-recovery-candidate) and
+[documentation rules](docs/develop/documentation.md).
+
+Wrapper V3 independent QA **Failed** in a private fake-only test: it detected a mismatched
+`current.base_revision` but admitted one pair callback and ran no typed restore (actual exit 23;
+expected safe exit 0). No host was used. Receipt
+`/var/tmp/r12r/pr11-wrapper-v3-independent-negative-20261017T104010Z/independent-negative-receipt.json`,
+SHA-256 `5c882106682cb01f221e1a3b462a67c20566129adee34e5dec773943725df38c`. V4 independently
+**Passed** its bounded offline candidate scope: 33 tests and 30 subtests, Ruff/format, 93 producer
+pins and six candidate pins unchanged; fixtures cover wrong current/operation identities, absent
+proof, partial starts, typed restoration, memory floors, healthy flow, and a changed-base input to
+the frozen V3 producer with zero pair/restore calls. Pair admission checks the exact active
+temporary current/operation/image against inspect and pair binding separately from the pinned
+original-release identity in the restoration binding; these identities must not be conflated. Receipt
+`/var/tmp/r12r/pr11-wrapper-v4-independent-qa-20261017T105000Z/independent-qa-receipt.json`,
+SHA-256 `7fdcbeb9a9e514b5a55609075ba53b632c0fbb1e03a8cb279e1a4c89aabc0be8`. An initial pending-binding
+harness assertion failed and its corrected rerun passed; the receipt retains both. Exact V4
+source/package/head binding and controller transport remain **Pending**. No native host, Docker,
+provider, browser, or resource trial follows; V3 remains **Fail**.
+
+The actual full-200 browser run `f6-full200-r20-e832f6ab7531` **Failed** at exit 1, not timeout,
+from `2026-10-17T10:22:06.887787Z` to `10:44:18.916445Z`: 196 passed, one failed, three expected
+skips, zero flaky, with all 200 cases completed. The single failure was the mobile saved-results,
+append-only/fresh-cutoff case: `POST /history/79/reconstructions` timed out at 5,000 ms and the UI
+remained calculating; cause is **Unproven**. The offline parent analysis records cause **Unproven** and proposes a new explicit 15-second
+fixture-forward/response-wait diagnostic; it is not a rerun or diagnosis. Receipt
+`/var/tmp/r12r/f6-reconstruction-failure-parent-analysis-dbef2925-81b6-469b-b5fe-4c011a9f9a6d/parent-analysis.json`
+(SHA-256 `679990e22b4bec15e76b9e32b77a1f70b003b3f18e44a19249d1d2c3c2f748a7`). JUnit recorded 200 tests, zero
+assertion failures, one error, and three skips (SHA-256
+`149185f6bb95e84e5bf8634c1803910d505a23fb3f295fa74e4cbcdf5f8a7fa9`). The actual terminal SHA-256 is
+`7794fc6fe15714c9548a7896c68c8e073cb33df22da879c1b7b061c4bf1340ef`; the pre-cleanup unit SHA-256
+is `0f69b485b4f28a19cceb06eacbeeecf71618b4ab0ab6e57cbfe12280ebcac665`; independent integrity and
+cleanup review **Passed** at
+`/var/tmp/r12r/f6-full200-result-qa-b2e2bfca-3639-479b-864a-a5a9562d7376/independent-result-review.json`
+(SHA-256 `ab04f34ad1b77e3bfe49df34802cf090d393eb1227a11610b40a02807326cbd7`). Review verified 522
+explicit files, three links, 391 source inputs, 88 frozen and 87 runtime frontend inputs, and 53
+served/export pairs unchanged; all owned PID/PGID/cgroup/port/directory targets were absent and
+reports retained. Exact cleanup receipt SHA-256 is
+`de6d8bf6b36f328715ad5e221457d0585398bab9cdfe2f22183f437b51abc885`; the failed unit was retained
+(SHA-256 `7a3c501944b675b4447403785306ea1ec20cd3d2137d00efaf72179938db683e`). Separately, strict
+raw axe passed for 24 raw-axe attachments across 28 scopes, with zero violations and incompletes.
+An independent read-only coverage audit **Failed** its mapping scope because the required 40-scope whole-document matrix (10 routes × Light/Dark × desktop/mobile) is **Unexecuted**; the existing 10-route traversal did not run axe and this panel-level raw-axe pass is not whole-app coverage, so the gap is not an observed product defect (receipt `/var/tmp/r12r/f6-whole-route-axe-coverage-qa-20261017T105800Z-7c96623c-5a64-4c44-9a68-84870f9eaa71/whole-route-accessibility-review.json`, SHA-256 `0a16d4d76b4ec0f56d9118cab260e7440d50405aecc770310988d4ce1d9744d5`); authorized private matrix preparation is underway, but execution has not started.
+Thirty-nine captures plus one trace passed their capture scope; this is not full-app WCAG acceptance.
+Preserve the prior 200-case aggregate (192 passed, five failed, three expected skips), the separate
+10-case setup failure (9 expected passes, one failure before app assertions), and the focused 2/2 pass
+as distinct results.
+
+The latest read-only production inspect/status **Passed** at `2026-10-17T10:48:26.500715Z`–
+`10:48:29.432212Z`: original release revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13, invited,
+app and assistant ready, loopback-only. Receipt
+`/var/tmp/r12r/pr11-proof-prepackage-production-read-9c7ef0dd-33c5-4456-b129-c08368f064b1/parent-readonly-receipt.json`
+(SHA-256 `5f6950a508bc6391054b86f2f248c76a00c220f57295aaf3a1b5bca65a815276`); inspect/status
+readback SHA-256 values are `7756753c6e4950bfd672f597e3c962cd4a9d53ee5a8607facf50b7b09133da75` and
+`54316340a7bc6e7e65697f22110ad3563c3077d00e13f86ccfcf26ed66b4d75e`. No host mutation, native
+provider/browser action, or new actual-1-GB acceptance occurred. The current helper/source package
+and head, installed readback, actual host trial/recovery/rollback, current canonical and release
+acceptance remain **Pending**; no fix deployment, resize, rollout change, merge, email, or release is
+claimed. The existing 1 GB host, backups, and US$15 monthly total cap are unchanged.

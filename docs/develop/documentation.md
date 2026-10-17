@@ -39,6 +39,22 @@ sequence. A ready response alone is not artifact/profile proof; source review,
 installation/readback, bounded host trial, and restoration remain separate evidence
 stages.
 
+When documenting the next-cycle helper's optional `temporary_recovery_proof`, keep it distinct
+from the stable seven-field operation view and core current/health response. The proof is emitted
+only for an active successor in the two startup-floor phases with its restored-predecessor marker;
+initial or restored operations omit it. Its version-1 `verified` response binds the exact operation,
+current state, artifact/manifest, image metadata, stored backup provenance, process profile, current
+128 MiB runtime reserve, recorded startup available-memory sample and its admission decision
+against the 512 MiB floor, and immutable predecessor/cycle-link history. A `verified` result
+with admission false does not allow pairing. The proof is a bounded
+observation, not a continuous health/resource guarantee; it does not execute or rearm jobs and does
+not replace pair-time host/resource preflight or establish the combined 1 GB gate. An unavailable
+result has a fixed version-1 schema/reason and leaves core current/health data intact. Describe the new proof
+chain's bounded metadata and archive/history reads without calling the whole `inspect` operation
+filesystem-write-free: its existing layout setup may create or change directory modes. Stored
+backup verification metadata is not a fresh signed-reader backup verification. Link current
+candidate, independent, and runtime status to the [PR #11 proof checkpoint](../../MVP-PLAN.md#r-astra-121-pr-11-optional-inspect-proof-and-wrapper-checkpoint-2026-10-17).
+
 ## Same-schema hotfix evidence
 
 For R-ASTRA-121, the separate operational-helper PR #11 candidate adds format 2 with contract

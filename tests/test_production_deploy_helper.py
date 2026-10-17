@@ -7885,6 +7885,505 @@ def _history_test_metadata(monkeypatch: pytest.MonkeyPatch, helper, tmp_path: Pa
     return history_root
 
 
+def _active_cycle_inspect_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    available_kib: int = 600_000,
+    helper: Any | None = None,
+) -> tuple[Any, dict[Path, dict[str, Any]], dict[str, bytes], Path]:
+    """Materialize producer-created cycle records and immutable sidecars for read-only inspect."""
+
+    helper = helper or _helper()
+    history_root = _history_test_metadata(monkeypatch, helper, tmp_path)
+    monkeypatch.setattr(helper, "CURRENT_RECORD", helper.STATE_ROOT / "current.json")
+    monkeypatch.setattr(
+        helper,
+        "TEMPORARY_RECOVERY_OPERATION",
+        helper.STATE_ROOT / "temporary-recovery-operation.json",
+    )
+    root_owned_json_reader = helper._read_root_owned_json
+    state, _events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior_id = prior["operation_id"]
+    prior_view_sha256 = helper._canonical_value_sha256(helper._temporary_operation_view())
+    monkeypatch.setattr(helper, "_memory_available_kib", lambda: available_kib)
+    helper._start_next_temporary_recovery(prior_id, prior_view_sha256)
+
+    for name, content in sidecars.items():
+        path = history_root / name
+        path.write_bytes(content)
+        path.chmod(0o600)
+    for path in (helper.CURRENT_RECORD, helper.TEMPORARY_RECOVERY_OPERATION):
+        raw = json.dumps(state[path], sort_keys=True, separators=(",", ":")).encode()
+        path.write_bytes(raw)
+        path.chmod(0o600)
+    monkeypatch.setattr(helper, "_read_root_owned_json", root_owned_json_reader)
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+
+    readonly_calls: list[str] = []
+
+    def read_only_inspect_run(command: list[str], **kwargs: Any) -> SimpleNamespace:
+        if command == [
+            "curl",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            "3",
+            helper.HEALTH_URL,
+        ]:
+            assert kwargs == {"timeout": 5}
+            readonly_calls.append("health-curl")
+            return SimpleNamespace(
+                stdout=json.dumps(
+                    {
+                        "status": "ready",
+                        "schema_version": helper.ASSISTANT_MINIMUM_SCHEMA,
+                        "assistant": {"enabled": False, "status": "disabled"},
+                    }
+                ),
+                stderr="",
+            )
+        assert command[:4] == ["docker", "image", "inspect", "--format"]
+        assert len(command) == 6
+        assert command[-1] == operation["image_ref"]
+        assert kwargs == {"timeout": 30, "memory_reserve_kib": 128 * 1024}
+        template = command[4]
+        if template == "{{.Id}}":
+            stdout = operation["image_id"]
+            readonly_calls.append("image-id")
+        elif template == '{{index .Config.Labels "org.opencontainers.image.revision"}}':
+            stdout = operation["source_revision"]
+            readonly_calls.append("image-revision")
+        elif template == "{{.Os}}/{{.Architecture}}":
+            stdout = "linux/amd64"
+            readonly_calls.append("image-platform")
+        elif template == "{{json .Config.Entrypoint}}|{{json .Config.Cmd}}":
+            stdout = json.dumps(["python", "-m", "stock_probs.recovery_supervisor"])
+            readonly_calls.append("image-entrypoint")
+            fixed_metadata_host = "0.0.0.0"  # noqa: S104 - fixture metadata only; no process starts.
+            stdout += "|"
+            stdout += json.dumps(
+                ["serve", "--host", fixed_metadata_host, "--port", "8000", "--allow-non-loopback"]
+            )
+        else:
+            raise AssertionError("inspect requested unapproved image metadata")
+        return SimpleNamespace(stdout=stdout, stderr="")
+
+    monkeypatch.setattr(helper, "_run", read_only_inspect_run)
+    helper._inspect_readonly_run_calls = readonly_calls
+    return helper, state, sidecars, history_root
+
+
+def _snapshot_recovery_inspect_files(
+    state_root: Path, history_root: Path
+) -> dict[str, tuple[Any, ...]]:
+    snapshot: dict[str, tuple[Any, ...]] = {}
+    paths = [state_root / "current.json", state_root / "temporary-recovery-operation.json"]
+    paths.extend(sorted(history_root.iterdir()))
+    for path in paths:
+        metadata = path.lstat()
+        snapshot[str(path)] = (
+            path.read_bytes() if stat.S_ISREG(metadata.st_mode) else None,
+            metadata.st_mode,
+            metadata.st_ino,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+            metadata.st_nlink,
+        )
+    return snapshot
+
+
+def test_temporary_recovery_inspect_proves_active_successor_read_only_and_keeps_floor_unmet_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    health_check = helper._health_check
+    profile_check = helper._assert_temporary_container_profile
+    helper, state, sidecars, history_root = _active_cycle_inspect_fixture(
+        monkeypatch, tmp_path, available_kib=200_000, helper=helper
+    )
+    monkeypatch.setattr(helper, "_health_check", health_check)
+    monkeypatch.setattr(helper, "_assert_temporary_container_profile", profile_check)
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior_id = operation["original_record"]["temporary_recovery_restored_operation_id"]
+    cycle_link = json.loads(sidecars[f"cycle-{operation['operation_id']}.json"])
+    prior_raw = sidecars[cycle_link["history_name"]]
+    prior_record = json.loads(prior_raw)
+    expected_prior_view_sha256 = helper._canonical_value_sha256(
+        helper._temporary_operation_view_for_record(prior_record)
+    )
+    before = _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root)
+    monkeypatch.setattr(
+        helper,
+        "_write_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("inspect wrote state")),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_publish_immutable_temporary_recovery_file",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("inspect wrote a sidecar")),
+    )
+    source_checks: list[tuple[str, Any]] = []
+    load_authorization = helper._load_temporary_recovery_authorization
+    verify_archive = helper._assert_temporary_recovery_archive
+
+    def load_authorized_manifest() -> tuple[dict[str, Any], str]:
+        result = load_authorization()
+        source_checks.append(("authorization", result[1]))
+        return result
+
+    def verify_authorized_archive(manifest: dict[str, Any], **kwargs: Any) -> None:
+        assert kwargs == {"memory_reserve_kib": 128 * 1024}
+        verify_archive(manifest, **kwargs)
+        source_checks.append(("archive", manifest["image"]["archive_sha256"]))
+
+    monkeypatch.setattr(helper, "_load_temporary_recovery_authorization", load_authorized_manifest)
+    monkeypatch.setattr(helper, "_assert_temporary_recovery_archive", verify_authorized_archive)
+    container_id = "a" * 64
+    init_pid = 4242
+    compose_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def read_only_compose(*args: Any, **kwargs: Any) -> str:
+        assert args == ("ps", "--status", "running", "--quiet", "app")
+        assert kwargs == {
+            "timeout": 20,
+            "compose_file": tmp_path / "compose",
+            "memory_reserve_kib": 128 * 1024,
+        }
+        compose_calls.append((args, kwargs))
+        return container_id
+
+    monkeypatch.setattr(helper, "_compose", read_only_compose)
+    process_reads: list[int] = []
+
+    def read_only_proc_status(pid: int) -> dict[str, Any]:
+        assert pid == init_pid
+        process_reads.append(pid)
+        return {
+            "pid": init_pid,
+            "ppid": 1,
+            "uid": 10001,
+            "uids": (10001, 10001, 10001, 10001),
+            "name": "stock-probs",
+            "namespace_pid": 1,
+            "CapPrm": 0,
+            "CapEff": 0,
+            "CapBnd": 0xC0,
+            "CapAmb": 0,
+        }
+
+    monkeypatch.setattr(helper, "_read_container_process_status", read_only_proc_status)
+    profile_run_calls: list[tuple[str, ...]] = []
+    fixture_run = helper._run
+
+    def bounded_read_only_run(command: list[str], **kwargs: Any) -> Any:
+        if command == [
+            "docker",
+            "inspect",
+            "--format",
+            "{{.Id}}|{{.State.Pid}}|{{.State.Running}}",
+            container_id,
+        ]:
+            assert kwargs == {"timeout": 10, "memory_reserve_kib": 128 * 1024}
+            profile_run_calls.append(tuple(command))
+            return SimpleNamespace(stdout=f"{container_id}|{init_pid}|true\n", stderr="")
+        if command == [
+            "docker",
+            "inspect",
+            "--format",
+            (
+                "{{.Id}}|{{.Image}}|{{.State.Pid}}|{{.State.Running}}|"
+                '{{.HostConfig.ReadonlyRootfs}}|{{json (index .HostConfig "Init")}}|'
+                "{{.Config.User}}|{{json .HostConfig.SecurityOpt}}|"
+                "{{json .HostConfig.CapDrop}}|{{json .HostConfig.CapAdd}}|"
+                "{{json .HostConfig.PortBindings}}|{{.HostConfig.Memory}}|"
+                "{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}"
+            ),
+            container_id,
+        ]:
+            assert kwargs == {"timeout": 15, "memory_reserve_kib": 128 * 1024}
+            profile_run_calls.append(tuple(command))
+            return SimpleNamespace(
+                stdout=(
+                    f"{container_id}|{operation['image_id']}|{init_pid}|true|true|false|0:0|"
+                    '["no-new-privileges:true"]|["ALL"]|["SETUID","SETGID"]|'
+                    '{"8000/tcp":[{"HostIp":"127.0.0.1","HostPort":"8000"}]}|'
+                    f"{768 * 1024 * 1024}|1000000000|128\n"
+                ),
+                stderr="",
+            )
+        if command == ["docker", "top", container_id, "-eo", "pid,ppid,uid,comm"]:
+            assert kwargs == {"timeout": 15, "memory_reserve_kib": 128 * 1024}
+            profile_run_calls.append(tuple(command))
+            return SimpleNamespace(
+                stdout=f"PID PPID UID COMMAND\n{init_pid} 1 10001 stock-probs\n",
+                stderr="",
+            )
+        # The existing fixture accepts only the exact image-inspect and health-curl
+        # commands. Thus run/create/exec/copy and all other Docker operations fail closed.
+        return fixture_run(command, **kwargs)
+
+    monkeypatch.setattr(helper, "_run", bounded_read_only_run)
+    image_schema_calls: list[tuple[Any, ...]] = []
+
+    def reject_image_schema(*args: Any, **kwargs: Any) -> int:
+        image_schema_calls.append((args, kwargs))
+        raise AssertionError("inspect must not start a container to read image schema")
+
+    monkeypatch.setattr(helper, "_image_schema", reject_image_schema)
+    response = helper._inspect()
+    after = _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root)
+    proof = response["temporary_recovery_proof"]
+
+    assert response["status"] == "ok"
+    assert response["current"] == state[helper.CURRENT_RECORD]
+    assert response["temporary_recovery"] == helper._temporary_operation_view_for_record(operation)
+    assert proof == {
+        "schema": 1,
+        "status": "verified",
+        "operation_id": operation["operation_id"],
+        "phase": "startup_floor_unmet",
+        "operation_record_sha256": hashlib.sha256(
+            json.dumps(operation, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "source_artifact_verified": True,
+        "backup": operation["backup"],
+        "process_profile": "temporary_app_pid1",
+        "process_profile_verified": True,
+        "runtime_reserve_kib": 128 * 1024,
+        "runtime_available_kib": 200_000,
+        "startup_available_kib": 200_000,
+        "startup_floor_kib": 512 * 1024,
+        "start_admission_allowed": False,
+        "cycle_history_verified": True,
+        "cycle_link": {
+            "prior_operation_id": prior_id,
+            "prior_record_sha256": hashlib.sha256(prior_raw).hexdigest(),
+            "prior_view_sha256": expected_prior_view_sha256,
+            "successor_operation_id": operation["operation_id"],
+            "history_name": cycle_link["history_name"],
+            "cycle_link_sha256": hashlib.sha256(
+                sidecars[f"cycle-{operation['operation_id']}.json"]
+            ).hexdigest(),
+            "cycle_link_status": "started",
+            "database_policy": "reuse_schema_13_no_restore",
+        },
+    }
+    assert len(compose_calls) == 1
+    assert process_reads == [init_pid]
+    assert len(profile_run_calls) == 3
+    assert source_checks == [
+        ("authorization", operation["manifest_sha256"]),
+        ("archive", operation["archive_sha256"]),
+    ]
+    assert image_schema_calls == []
+    assert helper._inspect_readonly_run_calls == [
+        "health-curl",
+        "image-id",
+        "image-revision",
+        "image-platform",
+        "image-entrypoint",
+    ]
+    assert before == after
+
+
+def test_temporary_recovery_inspect_omits_optional_proof_for_initial_and_restored_phases(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    _history_test_metadata(monkeypatch, helper, tmp_path)
+    monkeypatch.setattr(helper, "CURRENT_RECORD", helper.STATE_ROOT / "current.json")
+    monkeypatch.setattr(
+        helper,
+        "TEMPORARY_RECOVERY_OPERATION",
+        helper.STATE_ROOT / "temporary-recovery-operation.json",
+    )
+    root_owned_json_reader = helper._read_root_owned_json
+    state, _events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    started = helper._start_temporary_recovery()
+    for path in (helper.CURRENT_RECORD, helper.TEMPORARY_RECOVERY_OPERATION):
+        raw = json.dumps(state[path], sort_keys=True, separators=(",", ":")).encode()
+        path.write_bytes(raw)
+        path.chmod(0o600)
+    monkeypatch.setattr(helper, "_read_root_owned_json", root_owned_json_reader)
+
+    assert "temporary_recovery_proof" not in helper._inspect()
+    helper._restore_temporary_recovery(started["operation_id"])
+    assert "temporary_recovery_proof" not in helper._inspect()
+
+
+@pytest.mark.parametrize(
+    "health",
+    [
+        {
+            "status": "ready",
+            "schema_version": 12,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+        {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": True, "status": "ready"},
+        },
+        {"status": "unavailable"},
+    ],
+)
+def test_temporary_recovery_inspect_requires_schema13_disabled_live_health(
+    health: dict[str, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper, _state, _sidecars, _history_root = _active_cycle_inspect_fixture(monkeypatch, tmp_path)
+    monkeypatch.setattr(helper, "_health_check", lambda **_kwargs: health)
+
+    response = helper._inspect()
+
+    assert response["health"] == health
+    assert response["temporary_recovery_proof"] == {
+        "schema": 1,
+        "status": "unavailable",
+        "reason_code": "temporary_recovery_artifact_unverified",
+    }
+
+
+@pytest.mark.parametrize(
+    ("corruption", "expected_reason"),
+    [
+        ("current", "temporary_recovery_current_mismatch"),
+        ("missing_record", "temporary_recovery_state_invalid"),
+        ("image", "temporary_recovery_artifact_unverified"),
+        ("schema", "temporary_recovery_state_invalid"),
+        ("startup_reserve", "temporary_recovery_state_invalid"),
+        ("artifact", "temporary_recovery_artifact_unverified"),
+        ("profile", "temporary_recovery_process_profile_unverified"),
+        ("backup", "temporary_recovery_backup_unverified"),
+        ("history", "temporary_recovery_cycle_history_unverified"),
+        ("link", "temporary_recovery_cycle_history_unverified"),
+        ("partial_link", "temporary_recovery_cycle_history_unverified"),
+        ("link_symlink", "temporary_recovery_cycle_history_unverified"),
+    ],
+)
+def test_temporary_recovery_inspect_proof_fails_closed_for_mismatched_inputs(
+    corruption: str,
+    expected_reason: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper, state, sidecars, history_root = _active_cycle_inspect_fixture(monkeypatch, tmp_path)
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    operation_path = helper.TEMPORARY_RECOVERY_OPERATION
+    current_path = helper.CURRENT_RECORD
+    cycle_path = history_root / f"cycle-{operation['operation_id']}.json"
+
+    def write_canonical(path: Path, value: dict[str, Any]) -> None:
+        path.write_bytes(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
+        path.chmod(0o600)
+
+    if corruption == "current":
+        current = dict(state[current_path])
+        current["assistant_rollout_mode"] = "owner_canary"
+        state[current_path] = current
+        write_canonical(current_path, current)
+    elif corruption == "missing_record":
+        operation_path.unlink()
+    elif corruption == "image":
+        operation["image_id"] = "sha256:" + "9" * 64
+        state[operation_path] = operation
+        write_canonical(operation_path, operation)
+        current = helper._temporary_active_record(operation, status="ready")
+        state[current_path] = current
+        write_canonical(current_path, current)
+    elif corruption == "schema":
+        operation["schema_version"] = 12
+        state[operation_path] = operation
+        write_canonical(operation_path, operation)
+    elif corruption == "startup_reserve":
+        operation["startup_floor_kib"] = 100_000
+        operation["start_admission_allowed"] = False
+        state[operation_path] = operation
+        write_canonical(operation_path, operation)
+    elif corruption == "artifact":
+        monkeypatch.setattr(
+            helper,
+            "_assert_temporary_recovery_archive",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                helper.HostError("temporary_recovery_archive_digest_mismatch")
+            ),
+        )
+    elif corruption == "profile":
+        monkeypatch.setattr(
+            helper,
+            "_assert_temporary_container_profile",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                helper.HostError("temporary_recovery_container_profile_invalid")
+            ),
+        )
+    elif corruption == "backup":
+        operation["backup"]["promoted"] = True
+        state[operation_path] = operation
+        write_canonical(operation_path, operation)
+    elif corruption == "history":
+        link = json.loads(sidecars[f"cycle-{operation['operation_id']}.json"])
+        history_path = history_root / link["history_name"]
+        history_path.write_bytes(b"{}")
+        history_path.chmod(0o600)
+    elif corruption == "link":
+        link = json.loads(cycle_path.read_bytes())
+        link["new_operation_id"] = "0" * 32
+        write_canonical(cycle_path, link)
+    elif corruption == "partial_link":
+        cycle_path.write_bytes(b"{")
+        cycle_path.chmod(0o600)
+    elif corruption == "link_symlink":
+        target = history_root / "target.json"
+        target.write_bytes(cycle_path.read_bytes())
+        target.chmod(0o600)
+        cycle_path.unlink()
+        cycle_path.symlink_to(target)
+    else:
+        raise AssertionError(f"unknown corruption: {corruption}")
+
+    response = helper._inspect()
+    assert response["status"] == "ok"
+    assert response["health"]["status"] == "ready"
+    assert response["temporary_recovery_proof"] == {
+        "schema": 1,
+        "status": "unavailable",
+        "reason_code": expected_reason,
+    }
+
+
+def test_temporary_recovery_inspect_rejects_operation_change_during_proof(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper, _state, _sidecars, _history_root = _active_cycle_inspect_fixture(monkeypatch, tmp_path)
+    operation_path = helper.TEMPORARY_RECOVERY_OPERATION
+
+    def change_operation_after_initial_read(*_args: Any, **_kwargs: Any) -> str:
+        operation = json.loads(operation_path.read_bytes())
+        operation["created_at"] = "2099-01-01T00:00:00Z"
+        operation_path.write_bytes(
+            json.dumps(operation, sort_keys=True, separators=(",", ":")).encode()
+        )
+        operation_path.chmod(0o600)
+        return "a" * 64
+
+    monkeypatch.setattr(
+        helper, "_assert_temporary_container_profile", change_operation_after_initial_read
+    )
+    response = helper._inspect()
+
+    assert response["status"] == "ok"
+    assert response["health"]["status"] == "ready"
+    assert response["temporary_recovery_proof"] == {
+        "schema": 1,
+        "status": "unavailable",
+        "reason_code": "temporary_recovery_state_invalid",
+    }
+
+
 def test_temporary_recovery_history_rejects_conflict_and_symlink_without_replacing_them(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -9041,3 +9540,71 @@ def test_hotfix_apply_rejects_changed_predecessor_before_any_mutation(
         monkeypatch.setattr(helper, function, lambda *args, **kwargs: pytest.fail("mutation"))
     with pytest.raises(helper.HostError, match="hotfix_predecessor_identity_mismatch"):
         helper._apply_release(target)
+
+
+def test_temporary_recovery_inspect_isolates_active_successor_missing_created_at(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Malformed optional proof must preserve the current deployment and health."""
+    helper, state, _sidecars, history_root = _active_cycle_inspect_fixture(
+        monkeypatch, tmp_path, available_kib=200_000
+    )
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    assert operation["original_record"]["temporary_recovery_restored_operation_id"]
+    del operation["created_at"]
+    operation_path = helper.TEMPORARY_RECOVERY_OPERATION
+    operation_path.write_text(json.dumps(operation, sort_keys=True, separators=(",", ":")))
+    operation_path.chmod(0o600)
+    before = _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root)
+    expected_current = helper._read_json(helper.CURRENT_RECORD)
+    expected_health = helper._health_check()
+
+    response = helper._inspect()
+
+    assert response["status"] == "ok"
+    assert response["current"] == expected_current
+    assert response["health"] == expected_health
+    assert response["loopback_only"] is True
+    assert response["temporary_recovery_proof"] == {
+        "schema": 1,
+        "status": "unavailable",
+        "reason_code": "temporary_recovery_state_invalid",
+    }
+    assert _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root) == before
+
+
+@pytest.mark.parametrize(
+    "optional_function", ["_temporary_operation_view", "_temporary_recovery_proof_for_inspect"]
+)
+@pytest.mark.parametrize("error_type", [KeyError, RuntimeError, AssertionError])
+def test_temporary_recovery_inspect_isolates_optional_internal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    optional_function: str,
+    error_type: type[Exception],
+) -> None:
+    """Unexpected optional failures remain bounded and cannot erase normal inspect facts."""
+    helper, _state, _sidecars, history_root = _active_cycle_inspect_fixture(
+        monkeypatch, tmp_path, available_kib=200_000
+    )
+    expected_current = helper._read_json(helper.CURRENT_RECORD)
+    expected_health = helper._health_check()
+    before = _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root)
+
+    def fail_optional(*_args: Any, **_kwargs: Any) -> Any:
+        raise error_type("private internal diagnostic must not escape")
+
+    monkeypatch.setattr(helper, optional_function, fail_optional)
+    response = helper._inspect()
+
+    assert response["status"] == "ok"
+    assert response["current"] == expected_current
+    assert response["health"] == expected_health
+    assert response["loopback_only"] is True
+    assert response["temporary_recovery_proof"] == {
+        "schema": 1,
+        "status": "unavailable",
+        "reason_code": "temporary_recovery_state_invalid",
+    }
+    assert "private internal diagnostic" not in json.dumps(response)
+    assert _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root) == before

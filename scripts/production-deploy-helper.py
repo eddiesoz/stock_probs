@@ -3844,9 +3844,18 @@ def _inspect() -> dict[str, Any]:
         "health": health,
         "loopback_only": True,
     }
-    temporary = _temporary_operation_view()
-    if temporary is not None:
-        response["temporary_recovery"] = temporary
+    try:
+        temporary = _temporary_operation_view()
+        if temporary is not None:
+            response["temporary_recovery"] = temporary
+            proof = _temporary_recovery_proof_for_inspect(temporary, current, health)
+            if proof is not None:
+                response["temporary_recovery_proof"] = proof
+    except Exception:
+        # Optional recovery diagnostics must not discard the current deployment or health.
+        response["temporary_recovery_proof"] = _temporary_recovery_proof_unavailable(
+            "temporary_recovery_state_invalid"
+        )
     return response
 
 
@@ -4096,6 +4105,48 @@ def _assert_temporary_image(
             image_ref,
             memory_reserve_kib=memory_reserve_kib,
         )
+    ):
+        raise HostError("temporary_recovery_image_contract_mismatch")
+
+
+def _assert_temporary_image_inspect_metadata(
+    manifest: dict[str, Any],
+    image_ref: str,
+    health: object,
+    *,
+    memory_reserve_kib: int | None = None,
+) -> None:
+    """Verify the authorized local image through read-only metadata and live app health."""
+
+    expected = manifest["image"]
+    if (
+        _call_with_memory_reserve(_image_id, image_ref, memory_reserve_kib=memory_reserve_kib)
+        != expected["image_id"]
+        or _call_with_memory_reserve(
+            _image_revision, image_ref, memory_reserve_kib=memory_reserve_kib
+        )
+        != TEMPORARY_RECOVERY_SOURCE_REVISION
+        or _call_with_memory_reserve(
+            _image_platform, image_ref, memory_reserve_kib=memory_reserve_kib
+        )
+        != "linux/amd64"
+        or not _call_with_memory_reserve(
+            _image_has_recovery_entrypoint,
+            image_ref,
+            memory_reserve_kib=memory_reserve_kib,
+        )
+    ):
+        raise HostError("temporary_recovery_image_contract_mismatch")
+
+    assistant = health.get("assistant") if isinstance(health, dict) else None
+    if (
+        not isinstance(health, dict)
+        or health.get("status") != "ready"
+        or type(health.get("schema_version")) is not int
+        or health.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+        or not isinstance(assistant, dict)
+        or assistant.get("enabled") is not False
+        or assistant.get("status") != "disabled"
     ):
         raise HostError("temporary_recovery_image_contract_mismatch")
 
@@ -5673,6 +5724,368 @@ def _temporary_recovery_cycle_link(
         "database_policy": "reuse_schema_13_no_restore",
     }
     return json.dumps(record, sort_keys=True, separators=(",", ":")).encode()
+
+
+_TEMPORARY_RECOVERY_PROOF_UNAVAILABLE_REASONS = frozenset(
+    {
+        "temporary_recovery_state_invalid",
+        "temporary_recovery_current_mismatch",
+        "temporary_recovery_artifact_unverified",
+        "temporary_recovery_backup_unverified",
+        "temporary_recovery_process_profile_unverified",
+        "temporary_recovery_cycle_history_unverified",
+        "temporary_recovery_memory_unavailable",
+        "temporary_recovery_proof_unavailable",
+    }
+)
+
+
+def _temporary_recovery_proof_unavailable(reason_code: str) -> dict[str, Any]:
+    """Return only a fixed, non-sensitive failure projection for optional proof."""
+
+    if reason_code not in _TEMPORARY_RECOVERY_PROOF_UNAVAILABLE_REASONS:
+        reason_code = "temporary_recovery_proof_unavailable"
+    return {"schema": 1, "status": "unavailable", "reason_code": reason_code}
+
+
+def _open_temporary_recovery_history_directory_readonly() -> int:
+    """Open the fixed history directory without the creation side effect used by writers."""
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        state_fd = os.open(STATE_ROOT, directory_flags)
+    except OSError as exc:
+        raise HostError("temporary_recovery_history_unsafe") from exc
+    try:
+        state_metadata = os.fstat(state_fd)
+        if (
+            not stat.S_ISDIR(state_metadata.st_mode)
+            or state_metadata.st_uid != 0
+            or stat.S_IMODE(state_metadata.st_mode) & 0o022
+        ):
+            raise HostError("temporary_recovery_history_unsafe")
+        try:
+            history_fd = os.open(
+                TEMPORARY_RECOVERY_HISTORY_ROOT.name,
+                directory_flags,
+                dir_fd=state_fd,
+            )
+        except OSError as exc:
+            raise HostError("temporary_recovery_history_unsafe") from exc
+    finally:
+        os.close(state_fd)
+    try:
+        metadata = os.fstat(history_fd)
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid != 0
+            or stat.S_IMODE(metadata.st_mode) != 0o700
+        ):
+            raise HostError("temporary_recovery_history_unsafe")
+    except (HostError, OSError):
+        os.close(history_fd)
+        raise
+    return history_fd
+
+
+def _temporary_recovery_cycle_link_proof(operation: dict[str, Any]) -> dict[str, str]:
+    """Verify the exact prior record and immutable link for one deterministic successor."""
+
+    original = operation.get("original_record")
+    if not isinstance(original, dict):
+        raise HostError("temporary_recovery_cycle_history_unverified")
+    prior_operation_id = original.get("temporary_recovery_restored_operation_id")
+    if (
+        not isinstance(prior_operation_id, str)
+        or PLAN_PATTERN.fullmatch(prior_operation_id) is None
+        or operation.get("phase") not in {"startup_floor_passed", "startup_floor_unmet"}
+        or operation.get("operation_id") is None
+    ):
+        raise HostError("temporary_recovery_cycle_history_unverified")
+
+    cycle_name = f"cycle-{operation['operation_id']}.json"
+    directory_fd = _open_temporary_recovery_history_directory_readonly()
+    try:
+        cycle_raw = _read_temporary_recovery_history_file(
+            directory_fd,
+            cycle_name,
+            maximum_bytes=4_096,
+            error_code="temporary_recovery_cycle_history_unverified",
+        )
+        if cycle_raw is None:
+            raise HostError("temporary_recovery_cycle_history_unverified")
+        link = _canonical_json_object(cycle_raw, "temporary_recovery_cycle_history_unverified")
+        if set(link) != {
+            "format_version",
+            "kind",
+            "status",
+            "prior_operation_id",
+            "prior_record_sha256",
+            "prior_view_sha256",
+            "new_operation_id",
+            "history_name",
+            "database_policy",
+        }:
+            raise HostError("temporary_recovery_cycle_history_unverified")
+        prior_record_sha256 = link.get("prior_record_sha256")
+        prior_view_sha256 = link.get("prior_view_sha256")
+        history_name = link.get("history_name")
+        if (
+            type(link.get("format_version")) is not int
+            or link.get("format_version") != 1
+            or link.get("kind") != "temporary_recovery_cycle_link"
+            or link.get("status") != "intent"
+            or link.get("prior_operation_id") != prior_operation_id
+            or link.get("new_operation_id") != operation["operation_id"]
+            or link.get("database_policy") != "reuse_schema_13_no_restore"
+            or not isinstance(prior_record_sha256, str)
+            or DIGEST_PATTERN.fullmatch(prior_record_sha256) is None
+            or not isinstance(prior_view_sha256, str)
+            or DIGEST_PATTERN.fullmatch(prior_view_sha256) is None
+            or history_name != f"closed-{prior_operation_id}-{prior_record_sha256}.json"
+        ):
+            raise HostError("temporary_recovery_cycle_history_unverified")
+        prior_raw = _read_temporary_recovery_history_file(
+            directory_fd,
+            history_name,
+            maximum_bytes=16_384,
+            error_code="temporary_recovery_cycle_history_unverified",
+        )
+    finally:
+        os.close(directory_fd)
+
+    if prior_raw is None or hashlib.sha256(prior_raw).hexdigest() != prior_record_sha256:
+        raise HostError("temporary_recovery_cycle_history_unverified")
+    prior = _validate_temporary_operation_record(
+        _canonical_json_object(prior_raw, "temporary_recovery_cycle_history_unverified")
+    )
+    if (
+        prior.get("operation_id") != prior_operation_id
+        or prior.get("phase") != "restored"
+        or "failure_code" in prior
+        or type(prior.get("startup_floor_kib")) is not int
+        or type(prior.get("start_admission_allowed")) is not bool
+    ):
+        raise HostError("temporary_recovery_cycle_history_unverified")
+    prior_view_sha256 = _canonical_value_sha256(_temporary_operation_view_for_record(prior))
+    if (
+        link["prior_view_sha256"] != prior_view_sha256
+        or _next_temporary_recovery_operation_id(prior_operation_id, prior_view_sha256)
+        != operation["operation_id"]
+    ):
+        raise HostError("temporary_recovery_cycle_history_unverified")
+    prior_original = prior.get("original_record")
+    if (
+        not isinstance(prior_original, dict)
+        or prior_original.get("assistant_rollout_mode") != "invited"
+    ):
+        raise HostError("temporary_recovery_cycle_history_unverified")
+    if any(
+        original.get(key) != value
+        for key, value in prior_original.items()
+        if key not in {"assistant_rollout_mode", "temporary_recovery_restored_operation_id"}
+    ):
+        raise HostError("temporary_recovery_cycle_history_unverified")
+    expected_link = _temporary_recovery_cycle_link(
+        prior_operation_id,
+        prior_record_sha256,
+        prior_view_sha256,
+        operation["operation_id"],
+        history_name,
+    )
+    if cycle_raw != expected_link:
+        raise HostError("temporary_recovery_cycle_history_unverified")
+    return {
+        "prior_operation_id": link["prior_operation_id"],
+        "prior_record_sha256": link["prior_record_sha256"],
+        "prior_view_sha256": link["prior_view_sha256"],
+        "successor_operation_id": link["new_operation_id"],
+        "history_name": link["history_name"],
+        "cycle_link_sha256": hashlib.sha256(cycle_raw).hexdigest(),
+        "cycle_link_status": "started",
+        "database_policy": link["database_policy"],
+    }
+
+
+def _temporary_recovery_proof_for_inspect(
+    temporary_view: dict[str, Any],
+    inspected_current: object,
+    inspected_health: object,
+) -> dict[str, Any] | None:
+    """Freshly verify the active successor while leaving inspect useful on proof failure."""
+
+    if temporary_view.get("phase") not in {"startup_floor_passed", "startup_floor_unmet"}:
+        return None
+    try:
+        operation, operation_raw = _read_root_owned_json(
+            TEMPORARY_RECOVERY_OPERATION,
+            maximum_bytes=16_384,
+            error_code="temporary_recovery_state_invalid",
+        )
+        operation = _validate_temporary_operation_record(operation)
+    except Exception:
+        return _temporary_recovery_proof_unavailable("temporary_recovery_state_invalid")
+    if _temporary_operation_view_for_record(operation) != temporary_view:
+        return _temporary_recovery_proof_unavailable("temporary_recovery_state_invalid")
+    original = operation.get("original_record")
+    if not isinstance(original, dict):
+        return _temporary_recovery_proof_unavailable("temporary_recovery_state_invalid")
+    if original.get("temporary_recovery_restored_operation_id") is None:
+        return None
+
+    if not isinstance(inspected_current, dict) or inspected_current != _temporary_active_record(
+        operation, status="ready"
+    ):
+        return _temporary_recovery_proof_unavailable("temporary_recovery_current_mismatch")
+
+    operation_record_sha256 = hashlib.sha256(operation_raw).hexdigest()
+    try:
+        current, _current_raw = _read_root_owned_json(
+            CURRENT_RECORD,
+            maximum_bytes=16_384,
+            error_code="temporary_recovery_current_mismatch",
+        )
+        if current != _temporary_active_record(operation, status="ready"):
+            raise HostError("temporary_recovery_current_mismatch")
+    except Exception:
+        return _temporary_recovery_proof_unavailable("temporary_recovery_current_mismatch")
+
+    backup = operation.get("backup")
+    if (
+        not isinstance(backup, dict)
+        or set(backup) != {"trigger", "name", "sha256", "schema_version", "verified", "promoted"}
+        or backup.get("trigger") != "pre_deploy"
+        or not isinstance(backup.get("name"), str)
+        or BACKUP_NAME_PATTERN.fullmatch(backup["name"]) is None
+        or not backup["name"].startswith(f"pre-deploy-{PRODUCTION_PREDECESSOR_REVISION[:16]}-")
+        or not isinstance(backup.get("sha256"), str)
+        or DIGEST_PATTERN.fullmatch(backup["sha256"]) is None
+        or type(backup.get("schema_version")) is not int
+        or backup.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+        or backup.get("verified") is not True
+        or backup.get("promoted") is not False
+    ):
+        return _temporary_recovery_proof_unavailable("temporary_recovery_backup_unverified")
+
+    try:
+        manifest, manifest_sha256 = _load_temporary_recovery_authorization()
+        image = manifest["image"]
+        if (
+            manifest_sha256 != operation.get("manifest_sha256")
+            or manifest.get("source_revision") != operation.get("source_revision")
+            or manifest.get("source_manifest_sha256") != operation.get("source_manifest_sha256")
+            or manifest.get("source_context_sha256") != operation.get("source_context_sha256")
+            or manifest.get("base_revision") != operation.get("base_revision")
+            or manifest.get("migration_sha256") != operation.get("migration_sha256")
+            or manifest.get("overlay_sha256") != operation.get("overlay_sha256")
+            or image.get("archive_sha256") != operation.get("archive_sha256")
+            or image.get("archive_size") != operation.get("archive_size")
+            or image.get("image_id") != operation.get("image_id")
+            or image.get("repo_tag") != operation.get("build_tag")
+            or operation.get("source_revision") != TEMPORARY_RECOVERY_SOURCE_REVISION
+            or operation.get("schema_version") != ASSISTANT_MINIMUM_SCHEMA
+            or operation.get("source_manifest_sha256") != TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256
+            or operation.get("source_context_sha256") != TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256
+        ):
+            raise HostError("temporary_recovery_manifest_mismatch")
+        _assert_temporary_recovery_archive(
+            manifest,
+            memory_reserve_kib=TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB,
+        )
+        _assert_temporary_image_inspect_metadata(
+            manifest,
+            operation["image_ref"],
+            inspected_health,
+            memory_reserve_kib=TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB,
+        )
+    except Exception:
+        return _temporary_recovery_proof_unavailable("temporary_recovery_artifact_unverified")
+
+    startup_available_kib = operation.get("startup_floor_kib")
+    start_admission_allowed = operation.get("start_admission_allowed")
+    expected_admission = (
+        type(startup_available_kib) is int
+        and startup_available_kib >= TEMPORARY_RECOVERY_STARTUP_FLOOR_KIB
+    )
+    if (
+        type(startup_available_kib) is not int
+        or startup_available_kib < TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB
+        or type(start_admission_allowed) is not bool
+        or start_admission_allowed is not expected_admission
+        or (operation["phase"] == "startup_floor_passed") is not expected_admission
+    ):
+        return _temporary_recovery_proof_unavailable("temporary_recovery_state_invalid")
+
+    try:
+        compose_snapshot = _temporary_compose_snapshot(
+            original,
+            memory_reserve_kib=TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB,
+        )
+        _assert_temporary_container_profile(
+            compose_snapshot,
+            expected_image_id=operation["image_id"],
+            process_profile="temporary_app_pid1",
+            memory_reserve_kib=TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB,
+        )
+    except Exception:
+        return _temporary_recovery_proof_unavailable(
+            "temporary_recovery_process_profile_unverified"
+        )
+
+    try:
+        runtime_available_kib = _require_temporary_service_reserve()
+        if (
+            type(runtime_available_kib) is not int
+            or runtime_available_kib < TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB
+        ):
+            raise HostError("host_memory_reserve_breached")
+    except Exception:
+        return _temporary_recovery_proof_unavailable("temporary_recovery_memory_unavailable")
+
+    try:
+        cycle_link = _temporary_recovery_cycle_link_proof(operation)
+    except Exception:
+        return _temporary_recovery_proof_unavailable("temporary_recovery_cycle_history_unverified")
+
+    try:
+        final_operation, final_operation_raw = _read_root_owned_json(
+            TEMPORARY_RECOVERY_OPERATION,
+            maximum_bytes=16_384,
+            error_code="temporary_recovery_state_invalid",
+        )
+    except Exception:
+        return _temporary_recovery_proof_unavailable("temporary_recovery_state_invalid")
+    if final_operation_raw != operation_raw or final_operation != operation:
+        return _temporary_recovery_proof_unavailable("temporary_recovery_state_invalid")
+    try:
+        final_current, _final_current_raw = _read_root_owned_json(
+            CURRENT_RECORD,
+            maximum_bytes=16_384,
+            error_code="temporary_recovery_current_mismatch",
+        )
+    except Exception:
+        return _temporary_recovery_proof_unavailable("temporary_recovery_current_mismatch")
+    if final_current != current:
+        return _temporary_recovery_proof_unavailable("temporary_recovery_current_mismatch")
+
+    return {
+        "schema": 1,
+        "status": "verified",
+        "operation_id": operation["operation_id"],
+        "phase": operation["phase"],
+        "operation_record_sha256": operation_record_sha256,
+        "source_artifact_verified": True,
+        "backup": dict(backup),
+        "process_profile": "temporary_app_pid1",
+        "process_profile_verified": True,
+        "runtime_reserve_kib": TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB,
+        "runtime_available_kib": runtime_available_kib,
+        "startup_available_kib": startup_available_kib,
+        "startup_floor_kib": TEMPORARY_RECOVERY_STARTUP_FLOOR_KIB,
+        "start_admission_allowed": start_admission_allowed,
+        "cycle_history_verified": True,
+        "cycle_link": cycle_link,
+    }
 
 
 def _start_temporary_recovery() -> dict[str, Any]:

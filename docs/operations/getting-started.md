@@ -189,6 +189,47 @@ The temporary service is assistant-disabled and creates an availability gap; res
 exact original release through the normal path with the new operation ID before
 owner-canary, then invited.
 
+#### Optional successor inspect proof
+
+For a next-cycle successor, `inspect` may include `temporary_recovery_proof` only while the
+operation is active in `startup_floor_passed` or `startup_floor_unmet` and its original record
+contains the restored-predecessor marker. Initial single-cycle, non-active, and restored operations
+omit this field. The separate seven-field `temporary_recovery` view and the ordinary `current`,
+`failed`, `health`, and loopback fields remain the canonical core response.
+
+The optional proof uses schema 1. A `verified` result binds the operation ID, phase, exact
+operation-record digest, approved source artifact/manifest and image metadata, stored backup fields,
+temporary app process profile and live runtime memory sample, plus the recorded startup
+available-memory sample and its floor/admission decision against the 512 MiB threshold, with
+verified immutable prior-record/cycle-link history. The reserve remains at least 131072 KiB
+(128 MiB). The startup floor remains 524288 KiB (512 MiB). If `start_admission_allowed` is false,
+keep the proof for observation but do not admit a pair. The proof does not auto-execute or rearm
+jobs. It is a bounded observation, not a continuous health/resource guarantee; the pair operation
+must still run its own host/resource preflight, and this proof does not establish the combined 1 GB
+gate. The stored backup `verified` flag is historical metadata; it does not replace signed-reader verification of the exact backup before an
+operation.
+
+An unavailable result has only `schema: 1`, `status: "unavailable"`, and a fixed `reason_code`.
+Allowed reasons are `temporary_recovery_state_invalid`, `temporary_recovery_current_mismatch`,
+`temporary_recovery_artifact_unverified`, `temporary_recovery_backup_unverified`,
+`temporary_recovery_process_profile_unverified`, `temporary_recovery_cycle_history_unverified`,
+`temporary_recovery_memory_unavailable`, and `temporary_recovery_proof_unavailable`. An optional
+proof error must not discard the core current or health fields, and its exception text is not part
+of the response.
+
+The proof chain uses bounded image and container metadata inspection, bounded archive/history and
+root-owned state reads, and bounded process metadata. It introduces no container run/create/exec/copy,
+image load/tag, or proof-state write. The surrounding existing `inspect` still runs its established
+layout setup, which may create directories or change their modes; do not treat the entire command
+as filesystem-write-free. A verified proof is a bounded observation rather than a locked guarantee.
+Before any pair call, the wrapper must independently verify (1) the exact active temporary
+current/operation/image identity against fresh inspect and the pair binding, and (2) the pinned
+original-release identity against the restoration binding. These identities are distinct: the active
+temporary current is not required to equal the pinned original release. If either identity check fails,
+do not invoke the pair; a partial start must use only the guarded typed restore path bound to the
+observed current image and operation. The V3 proof source, integration,
+wrapper, and full-200 statuses are tracked in the [MVP plan](../../MVP-PLAN.md#r-astra-121-pr-11-optional-inspect-proof-and-wrapper-checkpoint-2026-10-17).
+
 ## Local Docker storage on removable media
 
 Use this procedure for operator-owned local Docker and build storage. It does not migrate the

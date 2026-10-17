@@ -38,6 +38,32 @@ host acceptance. The
 [runbook](docs/operations/getting-started.md#temporary-recovery-candidate) carries the
 full response and link contract.
 
+Keep optional `inspect` proof separate from the stable seven-field temporary-operation view and
+ordinary current/health response. Emit `temporary_recovery_proof` only for an active successor in
+`startup_floor_passed` or `startup_floor_unmet` with its restored-predecessor marker; initial
+single-cycle, non-active, and restored operations omit the proof. Schema 1 `verified` proof binds
+the exact operation and current record, source artifact/manifest and image metadata, historical
+unpromoted backup metadata, temporary process profile, current 128 MiB runtime reserve, the
+recorded startup available-memory sample and its admission decision against the 512 MiB floor,
+and immutable prior-record/cycle-link history. The
+backup's stored `verified=true` is provenance metadata, not a fresh signed-reader backup check.
+A schema 1 `unavailable` proof exposes only its fixed reason code and must preserve the ordinary
+current and health fields. A verified proof with `start_admission_allowed=false` never admits a
+pair. Proof is a bounded observation, not a continuous health/resource guarantee; it does not
+auto-execute or rearm jobs and does not satisfy the pair operation’s own host/resource preflight
+or prove the combined 1 GB gate.
+
+The new proof chain may inspect the approved Docker image and Compose/container/process metadata,
+read bounded archive/history/state files, and sample bounded `/proc` metadata. It must not run or
+create a container, execute/copy into one, load/tag an image, or write proof state. Preserve the
+pre-existing `_ensure_layout` directory creation/mode behavior; do not claim the full `inspect`
+operation is filesystem-write-free. Before invoking a pair, the wrapper must independently verify
+both the exact active temporary current/operation/image identity against fresh inspect and pair
+binding, and the pinned original-release identity against the restoration binding. These identities
+are distinct: the active temporary current is not required to equal the pinned original release. Proof
+presence alone cannot authorize the pair. A failed or partial start must use the guarded typed
+restore path bound to the observed current image and operation.
+
 At the historical c408 PR11 checkpoint, helper head `c408e914` was installed at 17:51Z without restarting
 the app or starting a rehearsal. The first readback failed on a duplicate nonexistent sidecar path;
 the corrected readback and its independent comparison passed for the root-owned global helper,
