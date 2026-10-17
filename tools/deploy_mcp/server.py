@@ -110,7 +110,10 @@ def rehearse_pr_pair(
     recovery_overlay_sha256: str,
     pair_manifest_sha256: str,
 ) -> dict[str, Any]:
-    """Run the fixed PR #2 candidate and recovery pair in the isolated host rehearsal slot."""
+    """Run the fixed reviewed candidate/recovery contract in the isolated host slot.
+
+    Supports legacy V1 PR #2 and current V2 PR #9/PR #11 pairs.
+    """
 
     try:
         return run_pr_pair_rehearsal(

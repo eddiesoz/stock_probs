@@ -4,12 +4,64 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
+from stock_probs import provider as provider_module
 from stock_probs.domain import DomainError
 from stock_probs.provider import MAX_NEWS_BODY_BYTES, FixtureProvider, YahooProvider
+
+
+def _patch_yfinance(monkeypatch, **constructors):
+    module = SimpleNamespace(**constructors)
+    monkeypatch.setattr(provider_module, "_load_yfinance", lambda: module)
+
+
+def _patch_curl_requests(monkeypatch, session_factory):
+    module = SimpleNamespace(Session=session_factory)
+    monkeypatch.setattr(provider_module, "_load_curl_requests", lambda: module)
+
+
+@pytest.mark.parametrize(
+    ("loader_name", "module_name", "operation", "message"),
+    [
+        (
+            "_load_yfinance",
+            "yfinance",
+            lambda: YahooProvider().lookup("SPY", 5, datetime.now(UTC)),
+            "The market data provider is temporarily unavailable.",
+        ),
+        (
+            "_load_curl_requests",
+            "curl_cffi.requests",
+            lambda: YahooProvider().fetch_news("SPY"),
+            "The news provider is temporarily unavailable.",
+        ),
+    ],
+)
+def test_missing_optional_dependency_is_sanitized(
+    monkeypatch, loader_name, module_name, operation, message
+):
+    loader = getattr(provider_module, loader_name)
+    loader.cache_clear()
+
+    def fail_import(name):
+        assert name == module_name
+        raise ModuleNotFoundError("private dependency detail")
+
+    monkeypatch.setattr(provider_module, "import_module", fail_import)
+    try:
+        with pytest.raises(DomainError) as failure:
+            operation()
+    finally:
+        loader.cache_clear()
+
+    assert failure.value.code == "provider_unavailable"
+    assert failure.value.status_code == 503
+    assert failure.value.message == message
+    assert "private dependency" not in failure.value.message
 
 
 class FakeTicker:
@@ -60,7 +112,7 @@ class FakeTicker:
 
 def test_yfinance_adapter_uses_exact_bounded_queries(monkeypatch):
     FakeTicker.calls = []
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", FakeTicker)
+    _patch_yfinance(monkeypatch, Ticker=FakeTicker)
     now = datetime(2025, 1, 3, 15, 0, tzinfo=UTC)
 
     response_at = datetime(2025, 1, 3, 15, 0, 2, tzinfo=UTC)
@@ -79,9 +131,9 @@ def test_yfinance_adapter_uses_exact_bounded_queries(monkeypatch):
     assert data.provider_metadata["daily_data_granularity"] == "1d"
     assert data.query["intraday"]["start"] == (now - timedelta(days=59)).isoformat()
     assert data.query["intraday"]["end"] == (now + timedelta(days=1)).isoformat()
-    assert data.query["intraday"]["returned_coverage"] == data.provider_metadata[
-        "intraday_coverage"
-    ]
+    assert (
+        data.query["intraday"]["returned_coverage"] == data.provider_metadata["intraday_coverage"]
+    )
     assert isinstance(data.provider_metadata["regular_session"]["start"], float)
     assert data.fetched_at == response_at
     assert data.query["requested_as_of"] == now.isoformat()
@@ -104,7 +156,7 @@ def test_yfinance_historical_cutoff_uses_explicit_bounded_ranges(monkeypatch):
     """Fresh reconstruction never substitutes a current rolling-period provider request."""
 
     FakeTicker.calls = []
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", FakeTicker)
+    _patch_yfinance(monkeypatch, Ticker=FakeTicker)
     cutoff = datetime(2025, 1, 3, 15, 0, tzinfo=UTC)
     performed = cutoff + timedelta(days=2)
 
@@ -126,9 +178,9 @@ def test_yfinance_historical_cutoff_uses_explicit_bounded_ranges(monkeypatch):
 
 
 def test_yfinance_historical_cutoff_rejects_future_and_archive_overflow(monkeypatch):
-    monkeypatch.setattr(
-        "stock_probs.provider.yf.Ticker",
-        lambda *args, **kwargs: pytest.fail("invalid cutoff must fail before Yahoo access"),
+    _patch_yfinance(
+        monkeypatch,
+        Ticker=lambda *args, **kwargs: pytest.fail("invalid cutoff must fail before Yahoo access"),
     )
     now = datetime(2025, 3, 10, tzinfo=UTC)
 
@@ -158,7 +210,7 @@ def test_yfinance_accepts_an_arbitrary_equity_symbol_under_the_same_contract(mon
             metadata["longName"] = "Berkshire Hathaway Inc."
             return metadata
 
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", StockTicker)
+    _patch_yfinance(monkeypatch, Ticker=StockTicker)
     data = YahooProvider().fetch("BRK-B", "stock", datetime(2025, 1, 3, 15, 0, tzinfo=UTC))
 
     assert StockTicker.seen_symbols == ["BRK-B"]
@@ -186,8 +238,7 @@ def test_yfinance_company_lookup_uses_bounded_search_and_identity_calls(monkeypa
             ]
 
     FakeTicker.calls = []
-    monkeypatch.setattr("stock_probs.provider.yf.Search", FakeSearch)
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", FakeTicker)
+    _patch_yfinance(monkeypatch, Search=FakeSearch, Ticker=FakeTicker)
     now = datetime(2025, 1, 3, 15, 0, tzinfo=UTC)
 
     identities = YahooProvider(timeout=2, clock=lambda: now).lookup("S&P 500", 2, now)
@@ -221,8 +272,7 @@ def test_yfinance_lookup_keeps_search_etf_classification_when_chart_is_generic(m
             metadata["instrumentType"] = "EQUITY"
             return metadata
 
-    monkeypatch.setattr("stock_probs.provider.yf.Search", FakeSearch)
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", GenericChartTicker)
+    _patch_yfinance(monkeypatch, Search=FakeSearch, Ticker=GenericChartTicker)
 
     identity = YahooProvider().lookup("SPY", 5, datetime.now(UTC))[0]
 
@@ -234,9 +284,9 @@ def test_yfinance_lookup_keeps_search_etf_classification_when_chart_is_generic(m
 
 
 def test_yfinance_lookup_rejects_unbounded_limit_before_network(monkeypatch):
-    monkeypatch.setattr(
-        "stock_probs.provider.yf.Search",
-        lambda *args, **kwargs: pytest.fail("invalid bounds must fail before Yahoo access"),
+    _patch_yfinance(
+        monkeypatch,
+        Search=lambda *args, **kwargs: pytest.fail("invalid bounds must fail before Yahoo access"),
     )
 
     with pytest.raises(DomainError) as failure:
@@ -301,7 +351,7 @@ def test_non_finite_provider_prices_are_not_normalized_as_market_bars():
 
 
 def test_yfinance_asset_type_mismatch_is_classified(monkeypatch):
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", FakeTicker)
+    _patch_yfinance(monkeypatch, Ticker=FakeTicker)
     with pytest.raises(DomainError) as failure:
         YahooProvider().fetch("SPY", "stock", datetime.now(UTC))
     assert failure.value.code == "asset_type_mismatch"
@@ -314,7 +364,7 @@ def test_yfinance_requires_unambiguous_asset_and_session_metadata(monkeypatch):
         def metadata(self):
             return {"instrumentType": "INDEX", "exchangeTimezoneName": ""}
 
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", AmbiguousTicker)
+    _patch_yfinance(monkeypatch, Ticker=AmbiguousTicker)
     with pytest.raises(DomainError) as failure:
         YahooProvider().fetch("SPY", "etf", datetime.now(UTC))
     assert failure.value.code == "unsupported_asset"
@@ -331,7 +381,7 @@ def test_yfinance_rejects_silent_interval_substitution(monkeypatch, requested, r
                 frame.attrs["history_metadata"]["dataGranularity"] = reported
             return frame
 
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", SubstitutedTicker)
+    _patch_yfinance(monkeypatch, Ticker=SubstitutedTicker)
 
     with pytest.raises(DomainError) as failure:
         YahooProvider().fetch("SPY", "etf", datetime(2025, 1, 3, 15, 0, tzinfo=UTC))
@@ -345,7 +395,7 @@ def test_yfinance_rejects_control_bearing_identity_metadata(monkeypatch):
             metadata["shortName"] = "unsafe\nname"
             return metadata
 
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", UnsafeNameTicker)
+    _patch_yfinance(monkeypatch, Ticker=UnsafeNameTicker)
     with pytest.raises(DomainError) as failure:
         YahooProvider().fetch("SPY", "etf", datetime.now(UTC))
     assert failure.value.code == "provider_metadata_unavailable"
@@ -358,7 +408,7 @@ def test_yfinance_history_failure_is_safely_classified(monkeypatch):
         def history(self, **kwargs):
             raise RuntimeError("credential-like internal detail")
 
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", FailingTicker)
+    _patch_yfinance(monkeypatch, Ticker=FailingTicker)
     with pytest.raises(DomainError) as failure:
         YahooProvider().fetch("SPY", "etf", datetime.now(UTC))
     assert failure.value.code == "provider_unavailable"
@@ -368,11 +418,9 @@ def test_yfinance_history_failure_is_safely_classified(monkeypatch):
 def test_yfinance_metadata_is_reused_from_timeout_bounded_history(monkeypatch):
     """R-M05-3 eliminates the network-capable get_history_metadata call entirely."""
 
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", FakeTicker)
+    _patch_yfinance(monkeypatch, Ticker=FakeTicker)
 
-    data = YahooProvider(timeout=0.25).fetch(
-        "SPY", "etf", datetime(2025, 1, 3, 15, 0, tzinfo=UTC)
-    )
+    data = YahooProvider(timeout=0.25).fetch("SPY", "etf", datetime(2025, 1, 3, 15, 0, tzinfo=UTC))
 
     assert data.provider_metadata["data_granularity"] == "5m"
 
@@ -401,7 +449,7 @@ def test_provider_reports_omitted_daily_session_and_trailing_completed_bars(monk
                 )
             return frame
 
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", GappedTicker)
+    _patch_yfinance(monkeypatch, Ticker=GappedTicker)
 
     data = YahooProvider().fetch("SPY", "etf", datetime(2025, 1, 7, 15, 0, tzinfo=UTC))
 
@@ -466,14 +514,10 @@ def test_yahoo_news_uses_one_request_local_exact_bounded_get(monkeypatch):
         )
         assert kwargs["content_callback"](payload) == len(payload)
 
-    monkeypatch.setattr(
-        "stock_probs.provider.curl_requests.Session", fake_curl_session(handler)
-    )
+    _patch_curl_requests(monkeypatch, fake_curl_session(handler))
     as_of = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
 
-    result = YahooProvider(timeout=20, monotonic_clock=lambda: 100.0).fetch_news(
-        " spy ", 2, as_of
-    )
+    result = YahooProvider(timeout=20, monotonic_clock=lambda: 100.0).fetch_news(" spy ", 2, as_of)
 
     assert len(sessions) == len(calls) == 1
     url, options = calls[0]
@@ -519,9 +563,7 @@ def test_yahoo_news_rejects_malformed_or_unsafe_payloads(monkeypatch, payload):
         raw = json.dumps(payload).encode()
         kwargs["content_callback"](raw)
 
-    monkeypatch.setattr(
-        "stock_probs.provider.curl_requests.Session", fake_curl_session(handler)
-    )
+    _patch_curl_requests(monkeypatch, fake_curl_session(handler))
 
     with pytest.raises(DomainError) as failure:
         YahooProvider(monotonic_clock=lambda: 0.0).fetch_news("SPY")
@@ -534,9 +576,7 @@ def test_yahoo_news_enforces_body_cap_during_receipt(monkeypatch):
         assert accepted == 0
         raise RuntimeError("curl write aborted")
 
-    monkeypatch.setattr(
-        "stock_probs.provider.curl_requests.Session", fake_curl_session(handler)
-    )
+    _patch_curl_requests(monkeypatch, fake_curl_session(handler))
 
     with pytest.raises(DomainError, match="response size") as failure:
         YahooProvider(monotonic_clock=lambda: 0.0).fetch_news("SPY")
@@ -557,9 +597,7 @@ def test_yahoo_news_deadline_covers_processing_after_receipt(monkeypatch):
         assert kwargs["content_callback"](payload) == len(payload)
         clock.value = 0.1
 
-    monkeypatch.setattr(
-        "stock_probs.provider.curl_requests.Session", fake_curl_session(handler)
-    )
+    _patch_curl_requests(monkeypatch, fake_curl_session(handler))
 
     with pytest.raises(DomainError, match="time boundary") as failure:
         YahooProvider(timeout=0.1, monotonic_clock=clock).fetch_news("SPY")
@@ -588,14 +626,10 @@ def test_fixture_news_loader_ignores_metadata_and_keeps_symbol_entries():
 
 def test_yahoo_news_bounds_optional_related_symbols(monkeypatch):
     def handler(_session, _url, kwargs):
-        payload = _news_payload(
-            [_news_item(relatedTickers=[f"S{index}" for index in range(40)])]
-        )
+        payload = _news_payload([_news_item(relatedTickers=[f"S{index}" for index in range(40)])])
         kwargs["content_callback"](payload)
 
-    monkeypatch.setattr(
-        "stock_probs.provider.curl_requests.Session", fake_curl_session(handler)
-    )
+    _patch_curl_requests(monkeypatch, fake_curl_session(handler))
 
     result = YahooProvider(monotonic_clock=lambda: 0.0).fetch_news("SPY")
     assert result.items[0].related_symbols == tuple(f"S{index}" for index in range(32))

@@ -9,6 +9,7 @@ import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta
+from functools import lru_cache
 from importlib import import_module
 from importlib.resources import files
 from typing import Any, Protocol, cast
@@ -41,9 +42,33 @@ class _YFinanceModule(Protocol):
     def Ticker(self, symbol: str) -> object: ...
 
 
-# yfinance does not publish type information; keep its dynamic module behind the narrow facade.
-yf = cast(_YFinanceModule, import_module("yfinance"))
-curl_requests = import_module("curl_cffi.requests")
+@lru_cache(maxsize=1)
+def _load_yfinance() -> _YFinanceModule:
+    """Load Yahoo's client only when a Yahoo market-data operation needs it."""
+
+    try:
+        return cast(_YFinanceModule, import_module("yfinance"))
+    except (ImportError, OSError) as exc:
+        raise DomainError(
+            "provider_unavailable",
+            "The market data provider is temporarily unavailable.",
+            status_code=503,
+        ) from exc
+
+
+@lru_cache(maxsize=1)
+def _load_curl_requests() -> Any:
+    """Load the bounded news transport only when Yahoo news is requested."""
+
+    try:
+        return import_module("curl_cffi.requests")
+    except (ImportError, OSError) as exc:
+        raise DomainError(
+            "provider_unavailable",
+            "The news provider is temporarily unavailable.",
+            status_code=503,
+        ) from exc
+
 
 MAX_LOOKUP_RESULTS = 5
 YAHOO_PROVIDER_NAME = "Yahoo Finance"
@@ -84,9 +109,7 @@ CANADIAN_FIXTURE_IDENTITIES = (
 class MarketDataProvider(Protocol):
     """Narrow provider boundary keeps deterministic tests out of transport internals."""
 
-    def lookup(
-        self, query: str, limit: int, now: datetime
-    ) -> tuple[InstrumentIdentity, ...]: ...
+    def lookup(self, query: str, limit: int, now: datetime) -> tuple[InstrumentIdentity, ...]: ...
 
     def fetch(self, symbol: str, asset_type: str, now: datetime) -> MarketData: ...
 
@@ -94,9 +117,7 @@ class MarketDataProvider(Protocol):
         self, symbol: str, asset_type: str, cutoff: datetime, now: datetime
     ) -> MarketData: ...
 
-    def fetch_news(
-        self, symbol: str, limit: int = 5, now: datetime | None = None
-    ) -> NewsData: ...
+    def fetch_news(self, symbol: str, limit: int = 5, now: datetime | None = None) -> NewsData: ...
 
     def quote_snapshot(
         self, symbol: str, asset_type: str, now: datetime | None = None
@@ -110,6 +131,7 @@ class MarketDataProvider(Protocol):
         *,
         range: str = "1mo",
     ) -> HistoricalBarSeries: ...
+
 
 class YahooProvider:
     """Translate bounded yfinance history calls into the provider-neutral contract."""
@@ -174,9 +196,7 @@ class YahooProvider:
                 status_code=502,
             ) from exc
 
-    def _history_from_bounds(
-        self, ticker: Any, *, interval: str, bounds: dict[str, object]
-    ) -> Any:
+    def _history_from_bounds(self, ticker: Any, *, interval: str, bounds: dict[str, object]) -> Any:
         """Narrow dynamic query metadata before passing it to the typed provider boundary."""
 
         period = bounds.get("period")
@@ -188,9 +208,7 @@ class YahooProvider:
             raise ValueError("historical provider bounds require datetime start and end")
         return self._history(ticker, interval=interval, start=start, end=end)
 
-    def fetch_news(
-        self, symbol: str, limit: int = 5, now: datetime | None = None
-    ) -> NewsData:
+    def fetch_news(self, symbol: str, limit: int = 5, now: datetime | None = None) -> NewsData:
         """Fetch one bounded Yahoo search payload without yfinance's shared sessions."""
 
         normalized_symbol = normalize_symbol(symbol)
@@ -236,7 +254,7 @@ class YahooProvider:
             if remaining <= 0:
                 raise TimeoutError
             # A per-call session prevents cookie, connection, or option mutation from leaking.
-            with curl_requests.Session() as session:
+            with _load_curl_requests().Session() as session:
                 response = session.get(
                     YAHOO_NEWS_URL,
                     params=params,
@@ -247,6 +265,8 @@ class YahooProvider:
                     default_headers=False,
                     content_callback=receive,
                 )
+        except DomainError:
+            raise
         except Exception as exc:
             message = (
                 "Yahoo Finance news exceeded the bounded response size."
@@ -330,9 +350,7 @@ class YahooProvider:
                 )
             try:
                 published_at = (
-                    datetime.fromtimestamp(float(published), UTC)
-                    if published is not None
-                    else None
+                    datetime.fromtimestamp(float(published), UTC) if published is not None else None
                 )
                 item = NewsItem(
                     id=item_id,
@@ -376,9 +394,7 @@ class YahooProvider:
         quote_type = _metadata_text(
             fallback.get("quoteType") or metadata.get("instrumentType"), "quote type", 24
         ).upper()
-        asset_type = {"equity": "stock", "stock": "stock", "etf": "etf"}.get(
-            quote_type.lower()
-        )
+        asset_type = {"equity": "stock", "stock": "stock", "etf": "etf"}.get(quote_type.lower())
         if asset_type is None:
             raise DomainError(
                 "unsupported_asset",
@@ -433,7 +449,7 @@ class YahooProvider:
         try:
             # Search is the only company-name call. News/lists/recommendations are disabled so
             # Yahoo cannot return unrelated, unbounded payload categories.
-            search = yf.Search(
+            search = _load_yfinance().Search(
                 normalized_query,
                 max_results=limit,
                 news_count=0,
@@ -448,6 +464,8 @@ class YahooProvider:
                 raise_errors=True,
             )
             quotes = search.quotes
+        except DomainError:
+            raise
         except Exception as exc:
             raise DomainError(
                 "provider_unavailable",
@@ -475,14 +493,12 @@ class YahooProvider:
                 continue
             if searched_symbol in seen:
                 continue
-            ticker = yf.Ticker(searched_symbol)
+            ticker = _load_yfinance().Ticker(searched_symbol)
             # Yahoo search omits currency/timezone. One timeout-bounded chart call per returned
             # candidate completes identity without using Ticker.info or metadata cache misses.
             frame = self._history(ticker, period="5d", interval="1d")
             metadata = self._metadata_from_bounded_history(ticker, frame)
-            identity = self._identity_from_metadata(
-                metadata, self._response_time(), fallback=quote
-            )
+            identity = self._identity_from_metadata(metadata, self._response_time(), fallback=quote)
             searched_asset_type = "etf" if quote_type == "ETF" else "stock"
             if (
                 identity.canonical_symbol != searched_symbol
@@ -528,7 +544,7 @@ class YahooProvider:
         if asset_type not in {"stock", "etf"}:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
         normalized_symbol = normalize_symbol(symbol)
-        ticker = yf.Ticker(normalized_symbol)
+        ticker = _load_yfinance().Ticker(normalized_symbol)
         frame = self._history(ticker, period=period, interval=interval)
         if frame.empty:
             raise DomainError(
@@ -595,9 +611,7 @@ class YahooProvider:
         )
         reference_at = now.astimezone(UTC) if now is not None else response_at
         bars = tuple(
-            bar
-            for bar in self._timed_bars(frame, 60)
-            if bar.end.astimezone(UTC) <= reference_at
+            bar for bar in self._timed_bars(frame, 60) if bar.end.astimezone(UTC) <= reference_at
         )
         if not bars:
             raise DomainError(
@@ -605,9 +619,7 @@ class YahooProvider:
                 "Yahoo Finance returned no usable quote price.",
                 status_code=502,
             )
-        delayed, delay_minutes, label = _delay_disclosure(
-            metadata, subject="Yahoo Finance quote"
-        )
+        delayed, delay_minutes, label = _delay_disclosure(metadata, subject="Yahoo Finance quote")
         rows = tuple(frame.iterrows())
         opens = [_optional_positive(row.get("Open")) for _, row in rows]
         highs = [_optional_positive(row.get("High")) for _, row in rows]
@@ -637,9 +649,7 @@ class YahooProvider:
         )
         change = change if change is None or math.isfinite(change) else None
         change_percent = (
-            change_percent
-            if change_percent is None or math.isfinite(change_percent)
-            else None
+            change_percent if change_percent is None or math.isfinite(change_percent) else None
         )
         return QuoteSnapshot(
             symbol=identity.canonical_symbol,
@@ -687,9 +697,7 @@ class YahooProvider:
                 "Yahoo Finance returned no usable chart bars.",
                 status_code=502,
             )
-        delayed, delay_minutes, label = _delay_disclosure(
-            metadata, subject="Yahoo Finance chart"
-        )
+        delayed, delay_minutes, label = _delay_disclosure(metadata, subject="Yahoo Finance chart")
         return HistoricalBarSeries(
             symbol=identity.canonical_symbol,
             range=requested_range,
@@ -806,7 +814,7 @@ class YahooProvider:
         if asset_type not in {"stock", "etf"}:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
         requested_symbol = normalize_symbol(symbol)
-        ticker = yf.Ticker(requested_symbol)
+        ticker = _load_yfinance().Ticker(requested_symbol)
         daily_frame = self._history_from_bounds(ticker, interval="1d", bounds=daily_bounds)
         if daily_frame.empty:
             raise DomainError(
@@ -816,9 +824,7 @@ class YahooProvider:
             )
         # Capture the per-call cache before the next history request replaces it.
         daily_meta = self._metadata_from_bounded_history(ticker, daily_frame)
-        intraday_frame = self._history_from_bounds(
-            ticker, interval="5m", bounds=intraday_bounds
-        )
+        intraday_frame = self._history_from_bounds(ticker, interval="5m", bounds=intraday_bounds)
         if intraday_frame.empty:
             raise DomainError(
                 "symbol_not_found",
@@ -1059,9 +1065,7 @@ class FixtureProvider:
             matches.append(((rank, identity.canonical_symbol), identity))
         return tuple(identity for _, identity in sorted(matches)[:limit])
 
-    def fetch(
-        self, symbol: str, asset_type: str, now: datetime | None = None
-    ) -> MarketData:
+    def fetch(self, symbol: str, asset_type: str, now: datetime | None = None) -> MarketData:
         now = self._time(now, "request")
         if asset_type not in {"stock", "etf"}:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
@@ -1088,9 +1092,7 @@ class FixtureProvider:
                 "The deterministic fixture has no instrument with that symbol.",
                 status_code=404,
             )
-        payload = next(
-            item for item in self._payloads() if str(item["symbol"]) == base_symbol
-        )
+        payload = next(item for item in self._payloads() if str(item["symbol"]) == base_symbol)
         if payload["asset_type"] != asset_type:
             raise DomainError(
                 "asset_type_mismatch",
@@ -1120,9 +1122,7 @@ class FixtureProvider:
                 close = price * (
                     1.0 + session_index * 0.001 + index * 0.00012 + ((index % 7) - 3) * 0.00003
                 )
-                intraday.append(
-                    Bar(start + timedelta(minutes=5 * index), round(close, 6), 300)
-                )
+                intraday.append(Bar(start + timedelta(minutes=5 * index), round(close, 6), 300))
         # Mirror the live adapter: a deterministic response ends at the exact completed-bar cutoff.
         intraday = [bar for bar in intraday if bar.end.astimezone(UTC) <= now.astimezone(UTC)]
         if normalized_symbol == "STALE":
@@ -1182,9 +1182,7 @@ class FixtureProvider:
             },
         )
 
-    def fetch_news(
-        self, symbol: str, limit: int = 5, now: datetime | None = None
-    ) -> NewsData:
+    def fetch_news(self, symbol: str, limit: int = 5, now: datetime | None = None) -> NewsData:
         """Return checked-in current headlines without touching forecast fixture data."""
 
         normalized_symbol = normalize_symbol(symbol)
@@ -1240,9 +1238,7 @@ class FixtureProvider:
         zone = ZoneInfo(data.timezone)
         latest_day = latest.timestamp.astimezone(zone).date()
         session = [
-            bar
-            for bar in data.intraday
-            if bar.timestamp.astimezone(zone).date() == latest_day
+            bar for bar in data.intraday if bar.timestamp.astimezone(zone).date() == latest_day
         ]
         previous = next(
             (bar.close for bar in reversed(data.daily) if bar.timestamp < latest.timestamp),
@@ -1287,9 +1283,7 @@ class FixtureProvider:
             bars = data.daily[-5:]
         else:
             cutoff = requested_at - timedelta(days=CHART_RANGE_DAYS[requested_range])
-            bars = tuple(
-                bar for bar in data.daily if bar.timestamp.astimezone(UTC) >= cutoff
-            )
+            bars = tuple(bar for bar in data.daily if bar.timestamp.astimezone(UTC) >= cutoff)
         if not bars:
             raise DomainError(
                 "chart_range_unavailable",
@@ -1419,9 +1413,7 @@ def _optional_volume(value: Any) -> int | None:
     return int(number) if valid else None
 
 
-def _delay_disclosure(
-    metadata: Mapping[str, Any], *, subject: str
-) -> tuple[bool, int | None, str]:
+def _delay_disclosure(metadata: Mapping[str, Any], *, subject: str) -> tuple[bool, int | None, str]:
     """Report Yahoo's delay field without turning missing metadata into a live claim."""
 
     value = metadata.get("exchangeDataDelayedBy")

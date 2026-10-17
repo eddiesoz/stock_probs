@@ -141,3 +141,21 @@ the backup schema to match the active schema, so a schema-10 backup cannot be di
 promoted over schema 11. Use a schema-10-compatible offline restore and migrate a copy through the
 supported CLI; verify the copy before any promotion. A completed schema-10-to-11 backup/restore
 rehearsal is not claimed. See the [R-ASTRA-111 evidence](../../MVP-PLAN.md).
+
+For the R-ASTRA-121 recovery follow-on, the 32-artifact limit was observed at the production CLI.
+An operator verified `pre-native-a5-schema13-20261014-backup02.spbackup` without promotion, copied
+its opaque bytes to the approved independent SD volume, and moved the source with a same-volume
+`NOREPLACE` operation into `retained-backups-r120`. The archive is 744,415 bytes with SHA-256
+`24512058dc9c4811938ec0b1de38b65d93fd452e143736a8f6f4a5ea1353ca2b`. The independent copy is a
+preservation check; by itself it is not sufficient recovery if both the production filesystem and
+its trust key are lost. A durable host marker holds trust-key rotation and retirement until this
+archive is re-admitted under the existing locks, verified, included in coordinated rotation, and
+the independent copies are rebound. This marker is operator policy, not an application guard. The
+immediate post-move readback saw 31 active artifacts, but a later rehearsal created another backup,
+so inspect the current inventory before planning another creation. Do not remove backups or raise
+the configured cap to free a slot. See the
+[R-ASTRA-121 V7 and retention evidence](../../MVP-PLAN.md#r-astra-121-pr11-v7-host-trial-and-backup-retention-checkpoint-2026-10-16).
+
+The task's CLI verification used the existing same-schema migration preflight and filesystem
+metadata hardening path. That was an authorized non-promoting verification step, but it is not a
+strict zero-write inspection. It made no new schema transition and did not promote the backup.

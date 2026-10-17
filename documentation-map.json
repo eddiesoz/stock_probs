@@ -87,6 +87,7 @@
         "compose.yaml",
         "scripts/arm64-smoke.sh",
         "scripts/bounded_docker_build.py",
+        "scripts/hotfix_release_transport.py",
         "scripts/local-compose.sh",
         "scripts/publish-production-image.sh",
         "scripts/rehearse_schema13.py",
@@ -94,6 +95,7 @@
         "scripts/setup_bounded_buildkit.py",
         "tests/test_bounded_build_entrypoints.py",
         "tests/test_bounded_docker_build.py",
+        "tests/test_hotfix_release_transport.py",
         "tests/test_production_deploy_helper.py",
         "tests/test_schema13_rehearsal.py",
         "tests/test_setup_builder_inventory.py",
@@ -103,6 +105,37 @@
         "docs/develop/documentation.md",
         "docs/develop/testing.md",
         "docs/operations/getting-started.md"
+      ]
+    },
+    {
+      "name": "release-archive-credential-coverage",
+      "match": [
+        "scripts/verify-release-archive.py",
+        "tests/test_release_archive.py"
+      ],
+      "docs": [
+        "docs/develop/documentation.md",
+        "docs/develop/testing.md",
+        "docs/operations/getting-started.md"
+      ]
+    },
+    {
+      "name": "native-managed-execution-guards",
+      "match": [
+        "src/stock_probs/assistant/native_restricted_tools.json",
+        "src/stock_probs/assistant/native_provider_adapters.py",
+        "src/stock_probs/assistant/api.py",
+        "src/stock_probs/assistant/providers.py",
+        "src/stock_probs/assistant/runtime.py",
+        "src/stock_probs/container_supervisor.py",
+        "tools/opencode-v2-security-patch/**",
+        "tests/test_native_restricted_tools.py",
+        "tests/test_opencode_webfetch_build.py",
+        "tests/test_container_supervisor.py"
+      ],
+      "docs": [
+        "docs/develop/testing.md",
+        "docs/configure/local-configuration.md"
       ]
     }
   ],
@@ -144,7 +177,9 @@
         "tests/test_production_deploy_helper.py",
         "tests/test_schema13_rehearsal.py",
         "tests/test_setup_builder_inventory.py",
-        "tests/test_setup_builder_space_guard.py"
+        "tests/test_setup_builder_space_guard.py",
+        "scripts/verify-release-archive.py",
+        "tests/test_release_archive.py"
       ],
       "docs": [
         "AGENTS.md"

@@ -38,7 +38,13 @@ def _tar_bytes(files: dict[str, bytes]) -> bytes:
 
 
 # Preserve Docker's nested layer archive so verification covers paths without extracting files.
-def _docker_archive(tmp_path: Path, layer_files: dict[str, bytes]) -> Path:
+def _docker_archive(
+    tmp_path: Path,
+    layer_files: dict[str, bytes],
+    *,
+    config_contents: bytes = b"{}",
+    extra_members: tuple[tuple[str, bytes], ...] = (),
+) -> Path:
     tmp_path.mkdir(parents=True, exist_ok=True)
     layer = _tar_bytes(layer_files)
     manifest = json.dumps(
@@ -48,7 +54,9 @@ def _docker_archive(tmp_path: Path, layer_files: dict[str, bytes]) -> Path:
     with tarfile.open(path, mode="w:gz") as archive:
         for name, contents in (
             ("manifest.json", manifest),
+            ("config.json", config_contents),
             ("layer/layer.tar", layer),
+            *extra_members,
         ):
             member = tarfile.TarInfo(name)
             member.size = len(contents)
@@ -409,6 +417,64 @@ def test_release_archive_verifier_accepts_clean_bounded_single_image(tmp_path: P
     assert len(result["archive_sha256"]) == 64
 
 
+def test_release_archive_verifier_scans_manifest_referenced_config(
+    tmp_path: Path,
+) -> None:
+    token = b"sk-" + b"C" * 24
+    archive = _docker_archive(
+        tmp_path,
+        {"app.py": b"print('safe')"},
+        config_contents=b'{"config":{"Env":["OPENAI_API_KEY=' + token + b'"]}}',
+    )
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(archive)
+
+
+def test_release_archive_verifier_scans_non_layer_outer_members(
+    tmp_path: Path,
+) -> None:
+    token = b"ghp_" + b"D" * 24
+    archive = _docker_archive(
+        tmp_path,
+        {"app.py": b"print('safe')"},
+        config_contents=b'{"config":{"Env":[]}}',
+        extra_members=(("repositories", b"image:tag -> " + token),),
+    )
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(archive)
+
+
+def test_release_archive_verifier_rejects_duplicate_outer_members(
+    tmp_path: Path,
+) -> None:
+    archive = _docker_archive(
+        tmp_path,
+        {"app.py": b"print('safe')"},
+        extra_members=(("config.json", b"{}"),),
+    )
+
+    with pytest.raises(verifier.ArchiveError, match="archive_member_duplicate"):
+        verifier.verify_image_archive(archive)
+
+
+def test_release_archive_verifier_accepts_benign_config_and_extra_outer_member(
+    tmp_path: Path,
+) -> None:
+    archive = _docker_archive(
+        tmp_path,
+        {"app.py": b"print('safe')"},
+        config_contents=b'{"config":{"Env":["MODE=local"]}}',
+        extra_members=(("repositories", b'{"signal-ledger":["latest"]}'),),
+    )
+
+    result = verifier.verify_image_archive(archive)
+
+    assert result["status"] == "pass"
+    assert result["layer_count"] == 1
+
+
 def _spdx_test_source() -> tuple[bytes, tuple[tuple[int, int], ...]]:
     first = b"sk-" + b"A" * 20
     second = b"sk-" + b"B" * 20
@@ -432,7 +498,7 @@ def _configure_spdx_test_allowlist(
         {
             "vendor/licenses/_spdx.py": (
                 len(contents),
-                hashlib.sha256(contents).hexdigest(),
+                frozenset({hashlib.sha256(contents).hexdigest()}),
                 spans,
             )
         },
@@ -450,6 +516,101 @@ def test_release_archive_verifier_allows_only_pinned_spdx_match_spans(
     result = verifier.verify_image_archive(archive)
 
     assert result["status"] == "pass"
+
+
+def test_release_archive_verifier_allows_only_exact_pinned_file_variants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first, spans = _spdx_test_source()
+    second = first[:-23] + b"y" * 23
+    assert len(first) == len(second)
+    digests = frozenset({hashlib.sha256(first).hexdigest(), hashlib.sha256(second).hexdigest()})
+    monkeypatch.setattr(
+        verifier,
+        "PINNED_PUBLIC_MATCH_SOURCES",
+        {"vendor/licenses/_spdx.py": (len(first), digests, spans)},
+    )
+
+    for contents in (first, second):
+        archive = _docker_archive(tmp_path, {"vendor/licenses/_spdx.py": contents})
+        assert verifier.verify_image_archive(archive)["status"] == "pass"
+
+
+def test_release_archive_verifier_pins_exact_opencode_variants() -> None:
+    size, digests, spans = verifier.PINNED_PUBLIC_MATCH_SOURCES["usr/local/bin/opencode"]
+
+    assert size == 212_784_608
+    assert digests == frozenset(
+        {
+            "9dd48571a16d00a4cc021b6eb85b5c347f2b965aaee96913fa24028b86cef955",
+            "dc6d6963ce86d02f265d6e630417f835ef8732feacfaaecd0c3cd8a2b82e7a98",
+            "c22fce743cf6ab15d056d5b589d1307fb5c05ed2129949bef5491af775c2c3ad",
+            "2e83651d990f60987c17e1b20961190f1f80d86a4f160de2e2795014fc68577e",
+        }
+    )
+    assert spans == (
+        (1_169_954, 1_169_988),
+        (1_184_754, 1_184_859),
+        (16_825_067, 16_825_502),
+        (16_849_344, 16_852_808),
+    )
+
+
+def _configure_opencode_test_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+    contents: bytes,
+    spans: tuple[tuple[int, int], ...],
+    *,
+    allowed_digests: frozenset[str] | None = None,
+) -> None:
+    digest = hashlib.sha256(contents).hexdigest()
+    monkeypatch.setattr(
+        verifier,
+        "PINNED_PUBLIC_MATCH_SOURCES",
+        {
+            "usr/local/bin/opencode": (
+                len(contents),
+                allowed_digests if allowed_digests is not None else frozenset({digest}),
+                spans,
+            )
+        },
+    )
+
+
+def test_release_archive_verifier_accepts_only_exact_opencode_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    _configure_opencode_test_allowlist(monkeypatch, contents, spans)
+    archive = _docker_archive(tmp_path, {"usr/local/bin/opencode": contents})
+
+    assert verifier.verify_image_archive(archive)["status"] == "pass"
+
+    changed = contents[:-1] + b"z"
+    changed_archive = _docker_archive(tmp_path, {"usr/local/bin/opencode": changed})
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(changed_archive)
+
+
+def test_release_archive_verifier_rejects_extra_opencode_match_span(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    extra_match = b"sk-" + b"C" * 20
+    changed = contents + b" extra " + extra_match
+    _configure_opencode_test_allowlist(
+        monkeypatch,
+        changed,
+        spans,
+        allowed_digests=frozenset({hashlib.sha256(changed).hexdigest()}),
+    )
+    archive = _docker_archive(tmp_path, {"usr/local/bin/opencode": changed})
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier.verify_image_archive(archive)
 
 
 def test_release_archive_verifier_rejects_spdx_file_with_added_match(
@@ -481,6 +642,34 @@ def test_release_archive_verifier_rejects_spdx_digest_mismatch(
         verifier.verify_image_archive(archive)
 
 
+def test_release_archive_verifier_rejects_pinned_source_size_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    _configure_spdx_test_allowlist(monkeypatch, contents, spans)
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier._scan_member(
+            "vendor/licenses/_spdx.py",
+            io.BytesIO(contents),
+            len(contents) + 1,
+        )
+
+
+def test_release_archive_verifier_rejects_malformed_source_digest_pin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contents, spans = _spdx_test_source()
+    monkeypatch.setattr(
+        verifier,
+        "PINNED_PUBLIC_MATCH_SOURCES",
+        {"vendor/licenses/_spdx.py": (len(contents), frozenset({"invalid"}), spans)},
+    )
+
+    with pytest.raises(verifier.ArchiveError, match="credential_like_bytes"):
+        verifier._scan_member("vendor/licenses/_spdx.py", io.BytesIO(contents), len(contents))
+
+
 def test_release_archive_verifier_rejects_added_match_with_updated_source_digest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -496,7 +685,7 @@ def test_release_archive_verifier_rejects_added_match_with_updated_source_digest
         {
             "vendor/licenses/_spdx.py": (
                 len(changed),
-                hashlib.sha256(changed).hexdigest(),
+                frozenset({hashlib.sha256(changed).hexdigest()}),
                 spans,
             )
         },
@@ -529,7 +718,7 @@ def test_release_archive_verifier_pinned_spans_cross_stream_chunks(
         {
             "vendor/licenses/_spdx.py": (
                 size,
-                hashlib.sha256(source).hexdigest(),
+                frozenset({hashlib.sha256(source).hexdigest()}),
                 spans,
             )
         },

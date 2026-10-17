@@ -32,6 +32,13 @@ two-user native run failed final-answer acceptance. A lower sampled peak does no
 causal improvement or the combined 1 GB resource gate. The US$15 monthly Linode cap includes
 tax and existing backups; the 1 GB plan and backups remain in place.
 
+The candidate native image builder separately fixes `BUN_OPTIONS=--smol` for the pinned Bun
+compilation command and its embedded app/Vite children. The strict build environment ignores the
+host's `BUN_OPTIONS`; dependency installation and selected source tests keep their existing build
+environment. This is fixed build behavior rather than a configurable application setting. It does
+not change the installed runtime flags, container limits or build deadlines, and needs a fresh
+image build before any reduction in build memory can be claimed.
+
 The current source also uses the native V2 build-agent system prompt to request concise final
 answers by default, preserving necessary caveats, citations, retrieval dates and user-requested
 detail. This is fixed product guidance, not an output-token override. Its latency effect remains
@@ -93,6 +100,12 @@ operation was invoked. Future configuration changes require another fresh Codex 
 [developer testing guide](../develop/testing.md#exact-pr-pair-review-pins) for the command contract
 and [getting started](../operations/getting-started.md#review-a-pr-pair-before-rehearsal) for the
 operator sequence.
+
+The PR #9 reserve checker uses a fixed, read-only startup observation of at most 30 seconds before
+the existing final memory and readiness checks; there is no environment variable to configure this
+wait. It preserves the 512 MiB startup and 128 MiB running floors and the 1,080-second absolute
+operation budget. E22's five-second wait is historical. E29's local source/test and parent reviews
+do not establish a host retry, deployed checker, native answer, or actual 1 GB acceptance.
 
 ## Authentication settings
 
@@ -234,3 +247,131 @@ expire active query history. See [backup and restore](../operations/backup-resto
 trust-key lifecycle, restore behavior, and exact managed-name constraint.
 
 Continue with [getting started](../operations/getting-started.md).
+
+
+## Free Zen native tool registration repair
+
+R-ASTRA-121 preserves genuine OpenCode V2 read and shell SDK registrations for reviewed Zen
+models while prohibiting their execution in Signal Ledger. The supervisor fixes
+`STOCK_PROBS_MANAGED_ASSISTANT=1` in the worker environment. Checksum-pinned native guards
+abort before filesystem access, shell parsing, or execution, including saved permission grants.
+The verified managed build must bind both original and patched read/shell source digests.
+The location and session rules change read/shell to `ask` only for Zen with verified guards;
+`execute`, edits, subagents and unrelated permissions remain denied. The application separately
+rejects unsupported permission events. This variable is fixed internal policy, not an operator
+option for enabling shell access.
+
+The provider route accepts the pinned SDK declarations only for an authorized Zen turn with
+verified native transport/guards. It preserves their actual descriptions and schemas. Missing,
+modified or unverified declarations fail closed. The current repair is a candidate: local real-Zen
+answers do not establish production rollout, installed-image readiness, or actual 1 GB acceptance.
+The existing host, backups and US$15 monthly cap remain fixed.
+
+
+The current fixed restoration rehearsal target is PR #9. The operator cannot supply another PR
+number through MCP. Bootstrap, local verification and the installed helper must agree on that
+identity and the exact clean candidate head/pair. Earlier PR #2 receipts remain historical. A helper
+commit on PR #9 requires a new exact-head image label and pair, even if application context bytes
+are unchanged; never relabel the earlier image or claim unchanged helper/runtime acceptance.
+
+
+### Rehearsal baseline identity
+
+The candidate source also recognizes a separately approved `temporary_recovery` baseline. It is
+fixed to the reviewed 6359 source/overlay and schema 13, and requires bounded root-owned approval,
+manifest, operation and current-state records to match the actual image/container and ready
+assistant-disabled projection. Only the completed startup-floor phase admits a rehearsal; the
+512 MiB startup and 128 MiB running floors remain unchanged. This is neither a configuration
+shortcut nor a retained-release identity. Current source/mock passes do not show that the running
+MCP process loaded this consumer or that a temporary image was built, approved or started.
+
+The candidate rehearsal checker uses a separate fixed running-production identity; the schema-12
+PR-pair fixture remains unchanged. The registered schema-13 recovery alternative is an exact
+source allowlist with a disabled-ready requirement, not a configurable arbitrary image, archive
+or database. It does not lower the startup/running memory floors or replace the reviewed PR's
+candidate/recovery pair. Source presence does not prove host installation or production acceptance;
+see [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+### Same-schema hotfix contract
+
+The separate R-ASTRA-121 operational-helper PR #11 candidate adds a format-2
+`schema13_same_schema_hotfix_v1` contract. It binds helper source PR #11, application candidate PR
+#9, and the original 5ad schema-13 production artifact as the recovery identity; it keeps schema 13
+on both sides and declares no migrations, restore, or recovery overlay. The installed PR #10 helper
+and historical PR #2 format-1 schema-12-to-13 pair remain separate. The format-2 recovery check
+expects the normal shipped supervisor/image with its assistant worker disabled and no OpenCode
+process, not removal of an executable or package. The current helper's independent selected
+source/test review passed 162 tests with one opt-in Docker test skipped and 266 stable bindings;
+its installed production metadata remains unavailable on the local host. The local recovery profile
+diagnostic against the original 5ad image failed on observed supervisor and app command shapes. A
+focused repair passed 33 synthetic tests. The follow-up independent process-profile QA passed
+360 tests with one direct-Docker test deselected, and a local original-image diagnostic passed. The
+bounded diagnostic receipt then passed independent offline review in E22; the reviewer did not rerun
+tests or start a container, and effective CPU/PID/swap/tmpfs limits were not all inspected. A
+format-2 package and manifest were prepared for helper head
+`ae1d0a2d9d5e891436732e6655e360b93ecce817`. The later enabled-native phase changes three
+helper-source files, so that manifest does not bind the current source. Builder and independent
+copied-source checks each passed 373 selected tests with one Docker integration test deselected;
+neither ran Docker or exercised the new native-phase orchestration. The candidate archive has not
+passed the required contents scan or pair publication, and the new source needs its own bound
+package. Host pair, actual 1 GB, installation, rollback, and production acceptance remain open. See
+the [E21 contract and status](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint),
+[E22 review](../../MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic),
+and [E23 current checkpoint](../../MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity).
+Applied-state persistence and helper-revision substitution passed their selected synthetic review;
+neither establishes installation or production acceptance.
+
+E24 records the published native phase and the first actual-host call. The call failed before
+candidate actions at the 512 MiB startup reserve check (367,872 KiB available); SDK transport success
+is not rehearsal acceptance. Independent source-path review found the guard returned before candidate
+native/recovery operations, but did not independently verify container/asset cleanup. Production
+remained on the original ready 5ad schema-13 image with assistant enabled, invited rollout and
+loopback-only access. The inspect receipt's creation time is not its tool invocation time. The actual
+combined 1 GB gate and release acceptance remain open. See
+[E24](../../MVP-PLAN.md#r-astra-121-e24-host-reserve-preflight).
+
+E25 describes a separate maintenance-helper candidate scoped to disabling the assistant on the
+existing 5ad schema-13 release. It uses the same image and Compose definition with
+`--no-build --force-recreate --pull never`, preserving the exact existing volume, schema, and
+loopback binding. The
+candidate records runtime/configuration and original rollout mode and compensates failures without
+claiming a restore that was not observed. Re-enable only through disabled/ready, owner canary, then
+invited rollout. Its bootstrap now pins five fixed assets, including
+`scripts/production-deploy-helper.py`; older four-asset wording is historical. This is source and
+builder-test evidence only: the independent selected suite passed, but its requested
+rollback-failure coverage check found one missing assertion at
+`scripts/pr_rehearsal_bootstrap.py:503` (`install_rollback_unverified`). This is a test-coverage gap,
+not a source-defect finding; no install, host call, production change, or release is established. See
+[E25](../../MVP-PLAN.md#r-astra-121-e25-maintenance-only-assistant-disable-and-failure-edge-checkpoint).
+
+E26 adds a test-only assertion for helper-install rollback failure. Its builder two-module suite
+passed 463 tests with one skip; independent QA passed the two changed cases and scoped pins/static
+checks, while the full suite was not independently rerun for that new test pin. E25's original
+coverage-gap result is preserved. Source security review and operational acceptance remain open.
+See [E26](../../MVP-PLAN.md#r-astra-121-e26-install-rollback-failure-regression-supplement).
+
+E27 records the minimal PR11-MAINT-01 state-writer repair. The builder's two-module suite passed
+466 tests with one skip, and independent Astra re-review passed three real writer-fault regressions
+plus its bound input/static checks. This narrow review does not establish a full security audit,
+installation, host, production, recovery, resource, or release acceptance; the publication-locator
+gap remains open. Preserve E25 and E26 as separate historical evidence. See
+[E27](../../MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).
+
+At the E28 checkpoint, PR #11's artifact transport remained on hold: independent QA reproduced a
+mocked scan/upload TOCTOU race even though the corrected selected counts were 17 transport and 18
+helper tests passed.
+The required repair at that checkpoint was to stage verified private copies and scan and upload
+those same copies; final tests and independent review were pending. Its proposed sequence conflated
+publisher validation with the production consumer's installed-helper identity check; E29 corrects
+the distinction below. No install, deployment, live publication, or native acceptance was
+established. See
+[E28](../../MVP-PLAN.md#r-astra-121-e28-pushed-pr-checkpoint-and-hotfix-transport-finding).
+
+E29 supersedes that pending status for the scoped local source review: independent QA passed 21
+transport tests and Ruff check/format after the private-snapshot and bounded-wait repairs. These
+checks did not run publication or installation. The local publisher validates clean exact
+`origin/main` source and its fixed package, stages verified private copies, scans/uploads those same
+copies, and verifies downloaded readback. The root-owned installed-helper record and expected pair
+digest are checked by the production consumer before it derives the helper-head pair URL; the local
+publisher does not check remote installation metadata. See
+[E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-hotfix-publisher-review-and-flow-separation).

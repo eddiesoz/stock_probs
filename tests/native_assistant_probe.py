@@ -4153,13 +4153,17 @@ def run_native_live_zen_probe() -> int:
 
         original_verify = runtime._verify_location
 
-        async def traced_verify_location(context, directory, descriptor=None):
+        async def traced_verify_location(
+            context, directory, descriptor=None, *, turn_deadline=None
+        ):
             trace["location_verify_started"] = True
             trace["location_verify_directory_matches"] = directory == str(
                 location_root / context.execution_id
             )
             try:
-                result = await original_verify(context, directory, descriptor)
+                result = await original_verify(
+                    context, directory, descriptor, turn_deadline=turn_deadline
+                )
             except Exception as exc:
                 trace["location_verify_error_type"] = type(exc).__name__
                 raise

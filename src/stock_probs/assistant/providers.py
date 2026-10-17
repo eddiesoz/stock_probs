@@ -43,6 +43,8 @@ from stock_probs.assistant.native_provider_adapters import (
     NativeConfiguredModel,
     NativeProviderDescriptorError,
     native_output_token_budget,
+    native_restricted_tool_declarations,
+    native_restricted_tool_matches,
     native_webfetch_schema,
     native_websearch_description_sha256,
     native_websearch_schema,
@@ -2839,7 +2841,11 @@ class AssistantProviderManager:
         if app_tools is not None or provider_id == "opencode-zen":
             if not isinstance(app_tools, list) or not 1 <= len(app_tools) <= 11:
                 raise ProviderUnavailable("provider_request_invalid")
-            allowed_tools = _native_application_tools(app_tools, protocol="openai-compatible-chat")
+            allowed_tools = _native_application_tools(
+                app_tools,
+                protocol="openai-compatible-chat",
+                include_restricted=provider_id == "opencode-zen",
+            )
             clean_tools, declared_tool_names = _validate_native_compatible_tools(
                 body.get("tools"), allowed_tools
             )
@@ -5772,6 +5778,7 @@ def _native_application_tools(
     app_tools: list[dict[str, object]],
     *,
     protocol: str,
+    include_restricted: bool = False,
 ) -> dict[str, tuple[str | None, Mapping[str, object] | None]]:
     if not isinstance(app_tools, list) or not 1 <= len(app_tools) <= 32:
         raise ProviderUnavailable("provider_request_invalid")
@@ -5811,6 +5818,11 @@ def _native_application_tools(
         raise ProviderUnavailable("provider_request_invalid") from exc
     output["websearch"] = (None, search_schema)
     output["webfetch"] = (None, webfetch_schema)
+    if include_restricted and protocol == "openai-compatible-chat":
+        try:
+            output.update(native_restricted_tool_declarations())
+        except ValueError as exc:
+            raise ProviderUnavailable("provider_request_invalid") from exc
     return output
 
 
@@ -5822,7 +5834,7 @@ def _validate_native_compatible_tools(
 
     if raw_tools is None:
         return None, set()
-    if not isinstance(raw_tools, list) or not 1 <= len(raw_tools) <= 13:
+    if not isinstance(raw_tools, list) or not 1 <= len(raw_tools) <= 15:
         raise ProviderUnavailable("provider_request_invalid")
     try:
         encoded_size = len(
@@ -5907,6 +5919,8 @@ def _native_tool_schema_matches(
             != NATIVE_WEBFETCH_DESCRIPTION_SHA256
         ):
             return False
+    elif name in {"read", "shell"}:
+        return native_restricted_tool_matches(name, description, schema)
     elif description != expected_description:
         return False
     if expected_schema is None:

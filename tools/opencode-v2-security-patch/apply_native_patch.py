@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply the exact R120 network guard to the pinned OpenCode WebFetch tool."""
+"""Apply checksum-bound network and execution guards to pinned native OpenCode."""
 
 from __future__ import annotations
 
@@ -140,7 +140,8 @@ _NEW_TOOL_HTTP_BLOCK = (
             "              const timeoutSeconds = input.timeout ?? DEFAULT_TIMEOUT_SECONDS",
             "              const timeoutMs = timeoutSeconds * 1000",
             (
-                "              const { body, contentType, finalUrl } = yield* executeGuarded(input.url, "
+                "              const { body, contentType, finalUrl } = yield* "
+                "executeGuarded(input.url, "
                 "input.format, openCodeUserAgent, timeoutMs)"
             ),
             (
@@ -229,11 +230,45 @@ def patch_webfetch(source: str) -> str:
     patched = _replace_once(
         source, _OLD_TOOL_HTTP_BLOCK, _NEW_TOOL_HTTP_BLOCK, label="tool-execution"
     )
-    patched = _replace_once(patched, _OLD_RESULT_RETURN, _NEW_RESULT_RETURN, label="final-url-metadata")
+    patched = _replace_once(
+        patched, _OLD_RESULT_RETURN, _NEW_RESULT_RETURN, label="final-url-metadata"
+    )
     if hashlib.sha256(patched.encode("utf-8")).hexdigest() != opencode["webfetch_patched_sha256"]:
         raise ValueError("pinned WebFetch patch output digest mismatch")
     if _sha256(GUARD_PATH) != opencode["webfetch_guard_sha256"]:
         raise ValueError("pinned WebFetch guard digest mismatch")
+    return patched
+
+
+def patch_restricted_tool(source: str, name: str) -> str:
+    """Keep native registrations while forbidding managed filesystem and shell execution."""
+
+    if name not in {"read", "shell"}:
+        raise ValueError("unsupported restricted native tool")
+    pins = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))["opencode"]
+    if hashlib.sha256(source.encode()).hexdigest() != pins[f"{name}_sha256"]:
+        raise ValueError("pinned restricted native source digest mismatch")
+    indent = "              "
+    anchor = (
+        "            Effect.gen(function* () {\n              const timeout = input.background"
+        if name == "shell"
+        else "            return Effect.gen(function* () {\n              const read = "
+    )
+    message = (
+        "Shell execution is disabled in the Signal Ledger assistant."
+        if name == "shell"
+        else "Filesystem access is disabled in the Signal Ledger assistant."
+    )
+    guard = (
+        f'{indent}if (process.env.STOCK_PROBS_MANAGED_ASSISTANT === "1")\n'
+        f'{indent}  return yield* Effect.fail(new ToolFailure({{ message: "{message}" }}))\n'
+    )
+    if source.count(anchor) != 1:
+        raise ValueError("pinned restricted native execution anchor mismatch")
+    before, operation = anchor.rsplit("\n", 1)
+    patched = source.replace(anchor, before + "\n" + guard + operation, 1)
+    if hashlib.sha256(patched.encode()).hexdigest() != pins[f"{name}_patched_sha256"]:
+        raise ValueError("pinned restricted native output digest mismatch")
     return patched
 
 
@@ -253,6 +288,14 @@ def apply_patch(source_root: Path) -> dict[str, str]:
     tool_path.write_text(patched_source, encoding="utf-8")
     patched_hash = _sha256(tool_path)
     mcp_patch_receipt = patch_mcp_tool(source_root)
+    restricted_receipt: dict[str, str] = {}
+    for name in ("read", "shell"):
+        path = source_root / opencode[f"{name}_path"]
+        original = path.read_text(encoding="utf-8")
+        patched = patch_restricted_tool(original, name)
+        path.write_text(patched, encoding="utf-8")
+        restricted_receipt[f"{name}_source_sha256"] = hashlib.sha256(original.encode()).hexdigest()
+        restricted_receipt[f"{name}_patched_sha256"] = hashlib.sha256(patched.encode()).hexdigest()
     return {
         "opencode_version": opencode["version"],
         "source_commit": opencode["source_commit"],
@@ -260,6 +303,7 @@ def apply_patch(source_root: Path) -> dict[str, str]:
         "webfetch_patched_sha256": patched_hash,
         "webfetch_guard_sha256": _sha256(helper_path),
         **mcp_patch_receipt,
+        **restricted_receipt,
     }
 
 

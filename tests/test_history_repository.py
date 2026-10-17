@@ -6,11 +6,14 @@ import json
 import random
 import sqlite3
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from importlib.resources import files
+from threading import Barrier
+from typing import Any
 
 import pytest
 
@@ -484,16 +487,51 @@ def test_concurrent_audit_writes_and_bounded_reads_remain_complete(settings):
             ),
         )
 
+    def run_in_batch(
+        barrier: Barrier, operation: Callable[..., Any], *args: Any, **kwargs: Any
+    ) -> Any:
+        barrier.wait(timeout=10)
+        return operation(*args, **kwargs)
+
+    # Keep the eight-caller peak, including one full writer wave, without queueing 120 jobs.
+    batches: list[tuple[list[int], int]] = [(list(range(8)), 0)]
+    next_write = 8
+    reads_remaining = 20
+    while next_write < 100:
+        read_count = min(2, reads_remaining)
+        write_count = 8 - read_count
+        batch_indices = list(range(next_write, min(next_write + write_count, 100)))
+        batches.append((batch_indices, read_count))
+        next_write += len(batch_indices)
+        reads_remaining -= read_count
+
+    indexed_event_ids = []
+    checked_reads = 0
     with ThreadPoolExecutor(max_workers=8) as workers:
-        writes = [workers.submit(write, index) for index in range(100)]
-        reads = [
-            workers.submit(repository.history, owner_user_id=OWNER_USER_ID, page_size=7)
-            for _ in range(20)
-        ]
-        indexed_event_ids = [future.result(timeout=10) for future in writes]
-        for read in reads:
-            payload = read.result(timeout=10)
-            assert len(payload["items"]) <= 7
+        for batch_indices, read_count in batches:
+            barrier = Barrier(len(batch_indices) + read_count)
+            writes = [
+                workers.submit(run_in_batch, barrier, write, index) for index in batch_indices
+            ]
+            reads = [
+                workers.submit(
+                    run_in_batch,
+                    barrier,
+                    repository.history,
+                    owner_user_id=OWNER_USER_ID,
+                    page_size=7,
+                )
+                for _ in range(read_count)
+            ]
+            indexed_event_ids.extend(future.result(timeout=10) for future in writes)
+            for read in reads:
+                payload = read.result(timeout=10)
+                assert len(payload["items"]) <= 7
+            checked_reads += len(reads)
+
+    assert next_write == 100
+    assert reads_remaining == 0
+    assert checked_reads == 20
 
     first = repository.history(owner_user_id=OWNER_USER_ID, page=1, page_size=50)
     second = repository.history(owner_user_id=OWNER_USER_ID, page=2, page_size=50)

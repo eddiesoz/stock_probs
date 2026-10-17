@@ -232,6 +232,39 @@ def _build_environment(work: Path, version: str) -> dict[str, str]:
     }
 
 
+def _native_compile_environment(work: Path, version: str) -> dict[str, str]:
+    """Use Bun's memory-conserving mode only for native compilation and its children."""
+    environment = _build_environment(work, version)
+    environment["BUN_OPTIONS"] = "--smol"
+    return environment
+
+
+def _run_native_compile(
+    *,
+    bun_executable: Path,
+    source_root: Path,
+    work: Path,
+    version: str,
+    build_target: str,
+    output_dir: Path,
+) -> None:
+    subprocess.run(  # noqa: S603 - fixed Bun compiler and fixed pinned source build script
+        [
+            str(bun_executable),
+            "run",
+            "packages/cli/script/build.ts",
+            "--single",
+            f"--target={build_target}",
+            f"--outdir={output_dir}",
+            "--skip-install",
+        ],
+        cwd=source_root,
+        env=_native_compile_environment(work, version),
+        check=True,
+        timeout=1800,
+    )
+
+
 class _AllowlistedRedirectHandler(urllib.request.HTTPRedirectHandler):
     def __init__(self) -> None:
         super().__init__()
@@ -457,6 +490,15 @@ def _build_receipt(
         "webfetch_guard_sha256": opencode["webfetch_guard_sha256"],
         "mcp_tool_source_sha256": opencode["mcp_tool_sha256"],
         "mcp_tool_patched_sha256": opencode["mcp_tool_patched_sha256"],
+        **{
+            field: opencode[pin]
+            for field, pin in (
+                ("read_source_sha256", "read_sha256"),
+                ("read_patched_sha256", "read_patched_sha256"),
+                ("shell_source_sha256", "shell_sha256"),
+                ("shell_patched_sha256", "shell_patched_sha256"),
+            )
+        },
     }
     if patch_receipt != {
         **{"opencode_version": opencode["version"], "source_commit": opencode["source_commit"]},
@@ -535,7 +577,7 @@ def install_arguments(*, target_arch: str, build_arch: str) -> list[str]:
         "--filter=@opencode/cli",
         "--filter=@opencode/app",
         "--network-concurrency=8",
-        "--concurrent-scripts=2",
+        "--concurrent-scripts=1",
     ]
 
 
@@ -744,20 +786,13 @@ def compile_for_target(
             )
             return receipt
         output_dir = work / "out"
-        subprocess.run(  # noqa: S603 - fixed Bun compiler and fixed pinned source build script
-            [
-                str(bun_executable),
-                "run",
-                "packages/cli/script/build.ts",
-                "--single",
-                f"--target={build_target}",
-                f"--outdir={output_dir}",
-                "--skip-install",
-            ],
-            cwd=extracted,
-            env=environment,
-            check=True,
-            timeout=1800,
+        _run_native_compile(
+            bun_executable=bun_executable,
+            source_root=extracted,
+            work=work,
+            version=str(opencode["version"]),
+            build_target=build_target,
+            output_dir=output_dir,
         )
         executable = output_dir / output_relative
         with executable.open("rb") as stream:
