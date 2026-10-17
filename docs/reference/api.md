@@ -47,9 +47,14 @@ default. The candidate reuses the application SMTP transport; configuration and 
 not prove that an address was verified or a message delivered. Do not treat this candidate as a
 production feature. Each user record derives its
 owner from the active session rather than a request field. Authenticated mutations also require
-the application CSRF token described below. The administrator-control authorization boundary has a
-current unsafe finding; its mutation route is not accepted for use or rollout until the repair passes
-independent review.
+the application CSRF token described below. The administrator-control PUT revalidates the active
+session after bounded request-body receipt, then enforces CSRF, administrator role, recent TOTP
+step-up, and expected revision. The earlier stale-context regression (one live request passed; a
+revoked session, demoted role, disabled account, and expired step-up each incorrectly returned 200)
+remains historical. The route-specific repair passed selected independent local ASGI barrier tests
+for those five cases. Fresh authorization and the control-store write are not atomic, so revocation
+or another state change between the final check and write remains a race; this result is not full
+security or release acceptance.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -62,7 +67,7 @@ independent review.
 | `POST` | `/api/v1/notification-addresses/select` | Select an explicitly verified address for notifications. |
 | `POST` | `/api/v1/notification-address-verifications/confirm` | Confirm a verification challenge. |
 | `GET` | `/api/v1/admin/monitoring/control` | Read the persisted administrator monitoring switch. |
-| `PUT` | `/api/v1/admin/monitoring/control` | Intended to change the persisted switch with expected revision, administrator role, and fresh TOTP step-up; current control-boundary review is unsafe and this route is not accepted for use. |
+| `PUT` | `/api/v1/admin/monitoring/control` | Change the persisted switch after post-body session revalidation, CSRF, administrator-role, recent-TOTP, and expected-revision checks. Selected local ASGI barrier tests pass; revalidation and the store write are not atomic. |
 | `GET` / `POST` | `/api/v1/alerts` | List bounded owner rules or create one with `Idempotency-Key`; the first valid quote establishes a baseline and cannot trigger. |
 | `GET` / `PATCH` | `/api/v1/alerts/{alert_id}` | Read or revision-check an owned rule. Editing a live rule requests a fresh baseline. |
 | `DELETE` | `/api/v1/alerts/{alert_id}` | Currently returns `503 MONITORING_DELETE_UNAVAILABLE` to preserve immutable history. |
@@ -73,6 +78,13 @@ independent review.
 | `GET` | `/api/v1/report-cards` | Read a bounded page of recorded outcomes with optional symbol and horizon filters. |
 | `GET` / `POST` | `/api/v1/report-cards/{result_id}/reviews` | Read review history or append a confirmed/disputed review with expected revision. |
 | `GET` | `/api/v1/monitoring/export` | Export selected bounded monitoring-history sections as JSON or formula-safe CSV. |
+
+When the persisted switch transitions from enabled to disabled, the candidate clears active leases
+for `price` and `outcome` jobs. A late completion carrying either invalidated lease is rejected.
+After monitoring is re-enabled, job processing must use a fresh claim before it can record an
+observation; disabling and re-enabling does not revive or accept the earlier work. These are
+source-contract semantics, not scheduler-runtime or release acceptance. The selected route-specific
+authorization checks do not establish an atomic boundary between final authorization and persistence.
 
 Alert create requires an `Idempotency-Key` UUID. Alert edits, pause/resume actions, notification
 read-state updates, preference changes, and manual outcome reviews use expected revisions; stale
@@ -94,8 +106,8 @@ since changed, so the whole current source tree is not bound to that stage. Inde
 source review passed 16 Node/scoped TypeScript checks with no actionable P1/P2 finding, but was not a
 browser run and left lost-response GET reconciliation/explicit replacement testing open. Live-provider,
 browser/axe, complete security, backup/recovery, host-resource, rollback,
-canary, and release acceptance. The current mypy baseline remains failed (six repository and 20
-app errors). See the [R-ASTRA-121 R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15) for exact receipts and limits.
+canary, and release acceptance remain open. The current mypy baseline remains failed (six repository and 20
+app errors). See the [R3 administrator-control checkpoint](../../MVP-PLAN.md#r-astra-121-r3-administrator-control-revalidation-and-selected-qa-checkpoint-2026-10-17) and the [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15) for exact receipts and limits.
 
 Preview transport is bounded to 256 KiB only on the two transaction/import preview paths; CSV text
 itself is at most 64 KiB. Ordinary request limits remain unchanged. Previews reserve four slots per

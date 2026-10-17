@@ -19,7 +19,7 @@ dependency must pass before the first R121 feature release; no deployed assistan
 | --- | --- | --- |
 | 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | In progress; local implementation and selected checks only |
 | 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | In progress in a separate managed checkout; no release acceptance |
-| 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | In progress in the R3 checkout; candidate schema 18 is registered; selected integration, UI-source and repository typing scopes pass; the three-file typing repair and follow-up preference fixture received selected independent and parent review, while the earlier 32-test failure remains recorded; the earlier build/stage does not bind changed repository source; browser, canonical and release acceptance remain open |
+| 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | In progress in the R3 checkout; candidate schema 18 is registered; selected integration, UI-source and repository-typing scopes pass; the three-file typing repair and preference fixture received selected review, while the earlier 32-test failure remains recorded. The Oct 17 route-specific post-body authorization repair passes independent selected barrier checks (5/5), with a separate narrow lease/split selection also passing (5/5); the earlier build/stage does not bind changed repository source, and fresh browser, canonical, full-security, provider, and release acceptance remain open. |
 | 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Separate R4 schema-17 checkout: isolated API draft (44 checks), source/domain/service review (32 independent checks plus scoped static checks), and UI-source repair (15 scoped checks); not built or integrated; migration 019, route/session wiring, browser and release acceptance remain open |
 
 Transactions retain original currency/date and use decimal weighted-average book calculations.
@@ -45,7 +45,7 @@ No R121 production deployment, merge, rollback, rollout, or email has occurred.
 
 1. **In progress:** implement, independently verify and integrate Release 1.
 2. **In progress:** implement and verify Release 2 in an isolated checkout.
-3. **In progress:** implement and verify Release 3; integrated and release acceptance remain pending.
+3. **In progress:** implement and verify Release 3; the route-specific post-body authorization repair and narrow local selections pass, while integration and release acceptance remain pending.
 4. **In progress:** isolated Release 4 API draft and UI-source repair only; UI build/integration and release checks remain pending.
 5. **Pending:** complete each release's exact-revision acceptance, recovery and publication.
 
@@ -55,8 +55,8 @@ The R3 checkout registers schema 18 for verified notification-address delivery. 
 schema state only; production remains on the existing schema-13 release, with no R121 deployment,
 rollout, or email delivery. Monitoring, scheduler, and email controls default off. The scheduler is
 owned by normal application startup and is not started by one-shot CLI commands. The independent
-review of the administrator control boundary remains unsafe; canary and release acceptance remain
-blocked on its repair and review.
+review of the administrator control boundary was unsafe at this Oct 15 checkpoint; the later
+route-specific repair and selected review are recorded in the Oct 17 checkpoint below.
 
 The schema-18 repository/restore-guard review passed 12 selected checks (receipt
 `/var/tmp/r12r/r3-schema18-independent-qa-20261014-NovGAi/independent-review-receipt.json`,
@@ -159,6 +159,60 @@ has SHA-256 `e20e2cd42018c23d585b8b01ee102e4f6e41f64cfc6fc5cfa0c35346ac6e8f4d` a
 SMTP/scheduler integration as **Unavailable**. E26's overall **Fail**, including its separate
 typing and liveness findings, remains historical; this checkpoint does not reclassify those
 results or establish R3 release acceptance.
+
+### R-ASTRA-121 R3 administrator-control revalidation and selected-QA checkpoint (2026-10-17)
+
+This checkpoint updates only the administrator-control finding reported in the Oct 15 R3
+checkpoint. It does not change that earlier result or the other R3 acceptance statuses. No R121
+production deployment, rollout, or email action occurred in this checkpoint; no new production
+inspection or release acceptance is claimed.
+
+The original-API paused-body regression reproduction **Failed** as expected at
+`2026-10-17T06:48:32.008033Z`–`06:48:50.967336Z`: the live request passed, while session revocation,
+role demotion, account disablement, and expired TOTP step-up each incorrectly returned HTTP 200.
+The five-case receipt is
+`/var/tmp/r12r/r3-auth-baseline-v2-391010aeb6aa493aaddba6332402857b/receipt.json` (SHA-256
+`301bb4ad569db0fd1f5e609ce6f023e5e5d0255851ed7fc59ed86a8d394281b2`). A separate initial attempt
+**Failed** at setup with exit 4 before JUnit because the generated static mount directories were
+absent; receipt `/var/tmp/r12r/r3-auth-baseline-45e1e507e5f2478d802970cb94895f25/receipt.json`
+(SHA-256 `f980207c0a8323a177b296a0cd94c8d8eee966462f391599acbbde557f4513f4`). Both baseline
+results remain in the record.
+
+The applied repair opts in only `PUT /api/v1/admin/monitoring/control` to fresh authentication after
+bounded body parsing; CSRF, administrator-role, and recent-TOTP checks remain enforced. The parent
+application receipt records API source SHA-256
+`7ab6a9fb82bc935668e2349cd3d2bf38c9abaf6448c09971bbe6a0d26e57727c` and receipt SHA-256
+`9712b723db02e2eefec0970a55e88e5edf3db012072ef266303cfaaf9bce7845` at
+`/var/tmp/r12r/r3-control-auth-parent-application-9683d8fe-b751-4eeb-a478-5bc2abb2ff4f/application.json`.
+Independent task `R3 focused administrator-control authorization repair and outcome/split follow-ups`
+**Passed** the real local ASGI login/TOTP/body-barrier selection (5/5: live, revoked session,
+demoted role, disabled account, expired step-up) at `2026-10-17T06:51:20.123621Z`–
+`06:51:39.942151Z`, with two warnings. Its receipt is
+`/var/tmp/r12r/r3qa-20261017-8f4a52/o/independent-qa-receipt.json` (SHA-256
+`93aea90372cac4d01cf02b669e13af88c037162756c11ed52fec95d30a225108`); the selected-run supplement
+is `/var/tmp/r12r/r3qa-20261017-8f4a52/o/selection-supplement-v2.json` (SHA-256
+`e325c679841e17f4ebdc72ea3263d4acae804caa1f6e6312c945df3ccf45c034`). The separate final narrow
+lease/split/action-event selection **Passed** 5/5 at `2026-10-17T06:53:04.216406Z`–
+`06:53:12.531629Z`, also with two warnings. An earlier overbroad 7/7 selection passed only its
+separately recorded diagnostic scope, included out-of-scope action categories, and is not combined
+with the later narrow run.
+
+The independent QA receipt binds 82 inputs with zero post-test mismatches; the API source is the
+expected changed input, and focused test SHA-256 is
+`8950ba7dd2f5e6579f0c3ac421c9fdde656c7f7cf6588421cd314fe7166fbe54`. Its source review confirms
+that only the monitoring-control PUT opts into post-parse revalidation and that existing CSRF,
+admin, and recent-TOTP checks remain. It also records a residual race: fresh authorization and
+`monitoring_store.set_control` are not atomic, so a state change between the final check and the
+store write is not excluded. No atomic revocation/write-ordering claim follows.
+
+The API-only test fixture created empty generated static mount directories. Parent cleanup removed
+only those exact, inode-checked empty directories; receipt
+`/var/tmp/r12r/r3-auth-functional-preparation-v2-edbdfd2b-5911-40fc-9a62-aca9affed64f/generated-static-fixture-cleanup.json`
+(SHA-256 `e785f60742d867a3e575523fad808330da789b2b2d8ed1d0bbdf3f776d8c40b1`). One cleanup command
+was rejected by the tool guard and no alternate deletion was attempted. Independent QA private
+roots were retained. The selected results are local and do not establish the full security suite,
+canonical gate, frontend build/stage, browser/axe, external provider, Docker/host resources,
+production, rollback, canary, or release acceptance; those gates remain open.
 
 Historical R120 release/evidence below remains unchanged. R121 does not supersede E850's deployed
 product identity or claim new production observations.

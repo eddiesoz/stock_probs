@@ -849,13 +849,21 @@ def test_action_events_are_never_treated_as_a_checked_clear_interval(
     repository: Repository,
 ) -> None:
     _add_forecast(repository, 1, 1)
-    source = FixtureOutcomeSource(actions=("split",))
+    source = FixtureOutcomeSource(actions=({"date": "2026-10-15", "types": ("Stock Splits",)},))
     DailyOutcomeCollector(OutcomeCollectionStore(repository), source).run_once(NOW)
 
     row = _read_outcomes(repository, 1)[0]
     assert row["state"] == "unavailable"
     assert row["evidence_state"] == "unavailable"
     assert json.loads(str(row["payload_json"])) == {"reason_code": "corporate_action_unknown"}
+
+    report = ReportCardStore(repository).list_report(1, NOW)
+    assert report["counts"]["unavailable"] == 1
+    assert report["counts"]["scored"] == 0
+    group = report["groups"][0]
+    assert group["counts"]["unavailable"] == 1
+    assert group["direction"]["denominator"] == 0
+    assert group["interval_80"]["denominator"] == 0
 
 
 def test_missing_daily_sessions_never_become_a_scored_outcome(repository: Repository) -> None:
@@ -927,6 +935,56 @@ def test_completion_commit_rechecks_owner_and_monitoring_controls(
 
     assert source.calls == 1
     assert _read_outcomes(repository, 1) == []
+
+
+def test_monitoring_disable_and_reenable_invalidates_inflight_outcome_lease(
+    repository: Repository,
+) -> None:
+    _add_forecast(repository, 1, 1)
+    monitoring = MonitoringStore(repository)
+    control_changes: list[dict[str, object]] = []
+
+    def disable_and_reenable() -> None:
+        current = monitoring.get_control()
+        disabled = monitoring.set_control(current["revision"], False, NOW + timedelta(seconds=1))
+        control_changes.append(disabled)
+        control_changes.append(
+            monitoring.set_control(disabled["revision"], True, NOW + timedelta(seconds=2))
+        )
+
+    store = OutcomeCollectionStore(repository)
+    in_flight_source = FixtureOutcomeSource(on_fetch=disable_and_reenable)
+    with pytest.raises(OutcomeCollectionLeaseConflict, match="lease is stale"):
+        DailyOutcomeCollector(
+            store,
+            in_flight_source,
+            completion_clock=lambda: NOW + timedelta(seconds=3),
+        ).run_once(NOW)
+
+    assert in_flight_source.calls == 1
+    assert [change["enabled"] for change in control_changes] == [False, True]
+    assert _read_outcomes(repository, 1) == []
+    with repository.connect() as connection:
+        invalidated = connection.execute(
+            "SELECT lease_token,active_request_id FROM monitoring_jobs "
+            "WHERE owner_user_id=1 AND kind='outcome' AND resource_id='1'"
+        ).fetchone()
+    assert invalidated["lease_token"] is None
+    assert invalidated["active_request_id"] is None
+
+    fresh_source = FixtureOutcomeSource()
+    fresh_result = DailyOutcomeCollector(
+        store,
+        fresh_source,
+        completion_clock=lambda: NOW + timedelta(seconds=5),
+    ).run_once(NOW + timedelta(seconds=4))
+
+    assert fresh_result == {"claimed": 1, "recorded": 1, "unchanged": 0, "skipped": 0}
+    assert fresh_source.calls == 1
+    rows = _read_outcomes(repository, 1)
+    assert len(rows) == 1
+    assert rows[0]["state"] == "observed"
+    assert rows[0]["observed_close"] == 105.0
 
 
 def test_user_outcome_added_after_queue_is_preserved(repository: Repository) -> None:

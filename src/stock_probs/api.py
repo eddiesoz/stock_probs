@@ -3389,14 +3389,20 @@ def create_app(
         return result
 
     def _auth_context(
-        request: Request, *, role: str | None = None, step_up: bool = False
+        request: Request,
+        *,
+        role: str | None = None,
+        step_up: bool = False,
+        revalidate: bool = False,
     ) -> AuthContext:
-        """Resolve middleware identity and enforce role, CSRF, and admin step-up rules."""
+        """Resolve current identity and enforce role, CSRF, and admin step-up rules."""
 
         if not auth_manager.enabled:
             raise AuthenticationRequired()
         context = getattr(request.state, "auth_context", None)
-        if not isinstance(context, AuthContext):
+        # The middleware snapshot predates bounded body reads. Revalidate selected
+        # writes after parsing.
+        if revalidate or not isinstance(context, AuthContext):
             context = auth_manager.authenticate(
                 request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC)
             )
@@ -4630,7 +4636,7 @@ def create_app(
     def change_monitoring_control(
         payload: MonitoringControlRequest, request: Request
     ) -> dict[str, object]:
-        _auth_context(request, role="admin", step_up=True)
+        _auth_context(request, role="admin", step_up=True, revalidate=True)
         try:
             return monitoring_store.set_control(
                 payload.expected_revision, payload.enabled, selected_clock()

@@ -318,7 +318,7 @@ class MonitoringStore:
                     connection.execute(
                         "UPDATE monitoring_jobs SET lease_token=NULL,lease_until=NULL,"
                         "active_request_id=NULL,active_requested_at=NULL,revision=revision+1 "
-                        "WHERE kind='price' AND lease_token IS NOT NULL"
+                        "WHERE kind IN ('price','outcome') AND lease_token IS NOT NULL"
                     )
                     claimed_outboxes = connection.execute(
                         "SELECT id,owner_user_id,job_id,lease_token,revision FROM "

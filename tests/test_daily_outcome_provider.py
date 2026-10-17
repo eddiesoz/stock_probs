@@ -117,6 +117,8 @@ def test_yahoo_reads_unadjusted_bars_and_separate_explicit_action_interval(monke
     [
         ("Dividends", 0.5, "Dividends"),
         ("Stock Splits", 2.0, "Stock Splits"),
+        pytest.param("Stock Splits", 1.5, "Stock Splits", id="three-for-two-split"),
+        pytest.param("Stock Splits", 0.5, "Stock Splits", id="reverse-two-for-one-split"),
         ("Capital Gains", 0.25, "Capital Gains"),
     ],
 )
