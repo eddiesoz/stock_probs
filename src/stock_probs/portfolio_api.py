@@ -22,6 +22,7 @@ from stock_probs.portfolio_market import PortfolioMarket
 from stock_probs.portfolio_store import PortfolioStore, encoded
 
 _Result = TypeVar("_Result")
+MAX_BASELINE_EXPORT_BYTES = 270_336
 
 
 class PortfolioModel(BaseModel):
@@ -609,6 +610,54 @@ def install_ledger_routes(
                 "baseline_unavailable", "This baseline is unavailable.", status_code=404
             )
         return row
+
+    @app.get("/api/v1/portfolio/snapshots/{baseline_id}/export")
+    def export_baseline(request: Request, baseline_id: UUID) -> Response:
+        """Download one owner-scoped immutable baseline with its capture provenance."""
+        frozen = baseline(request, baseline_id)
+        data = frozen.get("data")
+        accounts = data.get("accounts") if isinstance(data, dict) else None
+        if (
+            not isinstance(data, dict)
+            or not isinstance(data.get("captured_at"), str)
+            or not isinstance(accounts, list)
+            or any(
+                not isinstance(account, dict)
+                or not isinstance(account.get("id"), str)
+                or type(account.get("revision")) is not int
+                or account["revision"] < 1
+                for account in accounts
+            )
+        ):
+            raise DomainError(
+                "baseline_export_unavailable",
+                "This saved baseline cannot be exported.",
+                status_code=500,
+            )
+        export_data = {
+            "format_version": 1,
+            "record_type": "portfolio_baseline",
+            "baseline_id": frozen["id"],
+            "created_at": frozen["created_at"],
+            "captured_at": data["captured_at"],
+            "account_revisions": {account["id"]: account["revision"] for account in accounts},
+            "data": data,
+        }
+        body = encoded(export_data)
+        if len(body.encode("utf-8")) > MAX_BASELINE_EXPORT_BYTES:
+            raise DomainError(
+                "baseline_export_too_large",
+                "The saved baseline exceeds the export size limit.",
+                status_code=413,
+            )
+        return Response(
+            body,
+            media_type="application/json",
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Disposition": 'attachment; filename="signal-ledger-baseline.json"',
+            },
+        )
 
     @app.post("/api/v1/portfolio/snapshots/{baseline_id}/simulate")
     def scenario_preview(

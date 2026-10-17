@@ -31,6 +31,7 @@ and saved baselines/scenarios retain their original inputs.
 | `POST /api/v1/portfolio/valuation` | Explicit dated quote/FX collection; CAD/USD display and optional owned account filter. |
 | `GET/POST /api/v1/portfolio/snapshots` | List or deliberately freeze a baseline; POST uses a UUID key and optional additional instruments. |
 | `GET /api/v1/portfolio/snapshots/{id}` | Reopen immutable owned inputs without provider calls. |
+| `GET /api/v1/portfolio/snapshots/{baseline_id}/export` | Download an owner-scoped immutable baseline as JSON; provider-free and bounded to 270,336 bytes. |
 | `POST /api/v1/portfolio/snapshots/{id}/simulate` | Deterministic price/FX shocks and cash-funded hypothetical allocations, with no transaction mutation. |
 | `GET/POST /api/v1/scenarios` | Paginated saved scenarios; explicit creation requires an owned baseline, assumptions and UUID key. |
 | `GET /api/v1/scenarios/{id}` | Reopen original scenario inputs and result. |
@@ -57,6 +58,23 @@ Canada indicative USD/CAD retrieval uses a fixed HTTPS endpoint, bounded respons
 persisted attempt per day. Prior dated rates disclose a failed refresh; rates older than 30 days are
 unavailable. Unsupported currency conversion remains explicitly unavailable. Actual exchange
 paid/received amounts remain immutable native records.
+
+### Portfolio baseline JSON export
+
+`GET /api/v1/portfolio/snapshots/{baseline_id}/export` downloads one saved baseline owned by the
+signed-in account. Ownership is derived from the session. The read-only request does not refresh
+quotes or FX and does not change the baseline.
+
+A successful `200` response is `application/json` with `Cache-Control: no-store` and
+`Content-Disposition: attachment; filename="signal-ledger-baseline.json"`. The JSON envelope
+contains `format_version` (`1`), `record_type` (`"portfolio_baseline"`), `baseline_id`, `created_at`,
+`captured_at`, `account_revisions` (account IDs mapped to the captured revisions), and `data` (the
+frozen baseline, including its captured account, quote and dated-FX inputs). Reopening or exporting
+it preserves those original inputs; it never updates automatically.
+
+The UTF-8 response body is limited to 270,336 bytes. A missing or non-owned baseline returns
+`404`; an oversized body returns a generic `413`. Malformed required baseline structure returns
+a generic `500`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |

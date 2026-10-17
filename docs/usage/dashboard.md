@@ -245,6 +245,13 @@ allocation use deterministic arithmetic. Save a named scenario to reopen its ori
 and assumptions without fetching new quotes. **Simulation only** stays visible; no scenario
 control changes your ledger. Freeze a new baseline explicitly when you want updated inputs.
 
+Choose **Export baseline JSON** for the selected baseline to download the file
+`signal-ledger-baseline.json`. It contains the frozen account revisions, balances, quote
+observations and dated FX. Export is read-only: it makes no provider calls and never
+refreshes or replaces the baseline. Freeze a new baseline to capture updated inputs;
+see the [API reference](../reference/api.md#portfolio-baseline-json-export) for the
+response contract.
+
 Ledger CSV/JSON and saved-scenario JSON exports retain native records and frozen evidence. CSV
 exports neutralize spreadsheet formulas. Feature-specific local checks are recorded in the
 [implementation ledger](../../MVP-PLAN.md#r-astra-121-seven-visible-feature-additions); production

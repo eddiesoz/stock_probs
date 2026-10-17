@@ -88,6 +88,12 @@ for (const theme of ["light", "dark"]) {
     const baselineResponse = page.waitForResponse(row => new URL(row.url()).pathname === "/api/v1/portfolio/snapshots" && row.request().method() === "POST");
     await page.getByRole("button", { name: "Freeze portfolio baseline", exact: true }).click();
     const baseline = await (await baselineResponse).json();
+    const baselineExport = page.getByRole("link", { name: "Export baseline JSON", exact: true });
+    await expect(baselineExport).toHaveAttribute("href", `/api/v1/portfolio/snapshots/${baseline.id}/export`);
+    await expect(baselineExport).toHaveAttribute("download", "");
+    const baselineDownload = page.waitForEvent("download");
+    await baselineExport.click();
+    expect((await baselineDownload).suggestedFilename()).toBe("signal-ledger-baseline.json");
     await page.getByRole("textbox", { name: /^SPY price change/ }).fill("-20");
     await page.getByRole("textbox", { name: /^USD\/CAD change/ }).fill("10");
     await page.getByRole("combobox", { name: "Funding cash", exact: true }).selectOption(`${accountId}/CAD`);

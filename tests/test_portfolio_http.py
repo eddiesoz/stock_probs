@@ -61,6 +61,38 @@ def commit(client, reviewed, key=None):
     return response.json()
 
 
+def test_baseline_export_enforces_response_bound(portfolio_client, monkeypatch):
+    client = portfolio_client
+    identifier = account(client)
+    commit(client, preview(client, identifier))
+    saved = client.post(
+        "/api/v1/portfolio/snapshots",
+        json={"idempotency_key": str(uuid4()), "additional_instruments": []},
+    )
+    assert saved.status_code == 201, saved.text
+
+    monkeypatch.setattr("stock_probs.portfolio_api.MAX_BASELINE_EXPORT_BYTES", 1)
+    response = client.get(f"/api/v1/portfolio/snapshots/{saved.json()['id']}/export")
+
+    assert response.status_code == 413, response.text
+    assert response.json()["error"]["code"] == "baseline_export_too_large"
+
+
+def test_baseline_export_fails_closed_for_invalid_saved_data(portfolio_client, monkeypatch):
+    def invalid_snapshot(self, _owner, identifier):
+        return {
+            "id": identifier,
+            "created_at": "2026-10-17T00:00:00+00:00",
+            "data": {"captured_at": "2026-10-17T00:00:00+00:00", "accounts": None},
+        }
+
+    monkeypatch.setattr("stock_probs.portfolio_store.PortfolioStore.snapshot", invalid_snapshot)
+    response = portfolio_client.get(f"/api/v1/portfolio/snapshots/{uuid4()}/export")
+
+    assert response.status_code == 500, response.text
+    assert response.json()["error"]["code"] == "baseline_export_unavailable"
+
+
 def test_real_routes_preview_commit_retry_and_atomic_unfunded_rejection(portfolio_client):
     client = portfolio_client
     identifier = account(client)
@@ -108,6 +140,26 @@ def test_baseline_and_scenario_replay_are_provider_free_and_do_not_commit(portfo
 
     provider.quote_snapshot = forbidden
     assert client.post("/api/v1/portfolio/snapshots", json=payload).json() == baseline
+    exported = client.get(f"/api/v1/portfolio/snapshots/{baseline['id']}/export")
+    assert exported.status_code == 200, exported.text
+    assert exported.headers["content-type"].startswith("application/json")
+    assert exported.headers["content-disposition"] == (
+        'attachment; filename="signal-ledger-baseline.json"'
+    )
+    assert exported.headers["cache-control"] == "no-store"
+    export_data = exported.json()
+    assert export_data["format_version"] == 1
+    assert export_data["record_type"] == "portfolio_baseline"
+    assert export_data["baseline_id"] == baseline["id"]
+    assert export_data["created_at"] == baseline["created_at"]
+    assert export_data["captured_at"] == baseline["data"]["captured_at"]
+    assert export_data["account_revisions"] == {
+        row["id"]: row["revision"] for row in baseline["data"]["accounts"]
+    }
+    assert export_data["data"] == baseline["data"]
+    assert "owner_user_id" not in export_data
+    assert "idempotency_key" not in export_data
+    assert "request_sha256" not in export_data
     assumptions = {
         "price_shocks": [{"symbol": "SPY", "asset_type": "etf", "percent": "-20"}],
         "usd_cad_percent": "1.25",
@@ -313,6 +365,7 @@ def test_real_local_fixture_sessions_enforce_owner_csrf_and_canary(settings):
     app = create_app(config, FixtureProvider(), lambda: now)
     with TestClient(app) as admin, TestClient(app) as member:
         assert admin.get("/api/v1/portfolio/accounts").status_code == 401
+        assert admin.get(f"/api/v1/portfolio/snapshots/{uuid4()}/export").status_code == 401
         for client, username, password in (
             (admin, "fixture-admin", "fixture-admin-password-123"),
             (member, "fixture-member", "fixture-member-password-123"),
@@ -350,3 +403,11 @@ def test_real_local_fixture_sessions_enforce_owner_csrf_and_canary(settings):
         )
         assert denied.status_code == 403
         assert admin.get("/api/v1/portfolio/accounts").json()["total"] == 1
+        baseline_response = admin.post(
+            "/api/v1/portfolio/snapshots",
+            json={"idempotency_key": str(uuid4()), "additional_instruments": []},
+        )
+        assert baseline_response.status_code == 201, baseline_response.text
+        baseline_id = baseline_response.json()["id"]
+        assert admin.get(f"/api/v1/portfolio/snapshots/{baseline_id}/export").status_code == 200
+        assert member.get(f"/api/v1/portfolio/snapshots/{baseline_id}/export").status_code == 404
