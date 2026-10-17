@@ -36,7 +36,12 @@ release before owner-canary then invited. A bounded operator trial may follow
 independent source QA and exact installation/readback; its observed result determines
 host acceptance. The
 [runbook](docs/operations/getting-started.md#temporary-recovery-candidate) carries the
-full response and link contract.
+full response and link contract. A successor may explicitly acknowledge a fully restored
+predecessor only when its failure code is `host_command_failed` and its failure/restoration
+timestamps, original image, current-record marker, and paired startup facts validate. The
+same predecessor validator must protect admission and inspect proof. Preserve exact failed
+history; reject malformed or unknown states and rerun every source, image, schema, backup,
+reserve, and startup gate. Never clear a failure or retry automatically.
 
 Keep optional `inspect` proof separate from the stable seven-field temporary-operation view and
 ordinary current/health response. Emit `temporary_recovery_proof` only for an active successor in

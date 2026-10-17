@@ -133,6 +133,17 @@ source/response QA and exact helper installation/readback checks pass. An author
 bounded operator trial then provides actual-host acceptance evidence; do not require a
 successful trial before attempting the trial.
 
+A restored predecessor can be acknowledged for one explicit successor only when its closed
+record has `failure_code=host_command_failed`, canonical `failed_at` and `restored_at` values,
+the exact original 5ad image and current-record marker, and valid startup facts. For this retryable
+failure, startup facts may be paired nulls if no valid sample was recorded, or a measured floor and
+admission value consistent with the existing 128 MiB reserve and 512 MiB threshold. The exact
+prior operation ID plus its canonical view SHA-256 is the acknowledgement; there is no implicit
+retry. The shared validator applies to start admission and inspect-proof history. Preserve the exact
+predecessor bytes and reject other failure codes, malformed or partial metadata, and mismatched
+current state. A successor repeats source, image, schema, verified-backup, reserve, and startup
+checks; it does not clear or rewrite failed history.
+
 Before starting, bind the exact restored prior operation ID to its canonical
 operation-view SHA-256, and separately verify that the unchanged current record
 identifies the original 5ad schema-13 release as invited, ready, and loopback-only. Do

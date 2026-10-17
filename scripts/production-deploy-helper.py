@@ -5788,6 +5788,82 @@ def _open_temporary_recovery_history_directory_readonly() -> int:
     return history_fd
 
 
+def _is_canonical_utc_timestamp(value: object) -> bool:
+    """Accept only the canonical UTC timestamp shape emitted by ``_utc_now``."""
+
+    if not isinstance(value, str) or len(value) > 40:
+        return False
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return (
+        parsed.tzinfo is not None
+        and parsed.utcoffset() == UTC.utcoffset(None)
+        and parsed.isoformat() == value
+    )
+
+
+def _validate_restored_temporary_recovery_predecessor(
+    prior: dict[str, Any], current: object
+) -> None:
+    """Validate one fully restored predecessor and the current record linked to it."""
+
+    if (
+        prior.get("phase") != "restored"
+        or prior.get("assistant_rollout_mode") != "disabled"
+        or prior.get("restored_image_id") != PRODUCTION_PREDECESSOR_IMAGE_ID
+        or not _is_canonical_utc_timestamp(prior.get("restored_at"))
+    ):
+        raise HostError("temporary_recovery_prior_state_invalid")
+
+    failure_code_present = "failure_code" in prior
+    failed_at_present = "failed_at" in prior
+    if failure_code_present != failed_at_present:
+        raise HostError("temporary_recovery_prior_state_invalid")
+    has_retryable_failure = failure_code_present and failed_at_present
+    if has_retryable_failure and (
+        prior.get("failure_code") != "host_command_failed"
+        or not _is_canonical_utc_timestamp(prior.get("failed_at"))
+    ):
+        raise HostError("temporary_recovery_prior_state_invalid")
+
+    startup_floor = prior.get("startup_floor_kib")
+    start_admission = prior.get("start_admission_allowed")
+    startup_fields_present = {
+        "startup_floor_kib",
+        "start_admission_allowed",
+    } <= prior.keys()
+    paired_null_startup = (
+        startup_fields_present and startup_floor is None and start_admission is None
+    )
+    measured_startup = (
+        startup_fields_present
+        and type(startup_floor) is int
+        and startup_floor >= TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB
+        and type(start_admission) is bool
+        and start_admission is (startup_floor >= TEMPORARY_RECOVERY_STARTUP_FLOOR_KIB)
+    )
+    if not (measured_startup or (has_retryable_failure and paired_null_startup)):
+        raise HostError("temporary_recovery_prior_state_invalid")
+
+    original = prior.get("original_record")
+    if not isinstance(original, dict) or original.get("assistant_rollout_mode") != "invited":
+        raise HostError("temporary_recovery_prior_state_invalid")
+    if not isinstance(current, dict):
+        raise HostError("temporary_recovery_prior_current_mismatch")
+    if current.get("temporary_recovery_restored_operation_id") != prior.get("operation_id"):
+        raise HostError("temporary_recovery_prior_current_mismatch")
+    if current.get("assistant_rollout_mode") != "invited":
+        raise HostError("temporary_recovery_predecessor_unready")
+    if any(
+        current.get(key) != value
+        for key, value in original.items()
+        if key not in {"assistant_rollout_mode", "temporary_recovery_restored_operation_id"}
+    ):
+        raise HostError("temporary_recovery_prior_current_mismatch")
+
+
 def _temporary_recovery_cycle_link_proof(operation: dict[str, Any]) -> dict[str, str]:
     """Verify the exact prior record and immutable link for one deterministic successor."""
 
@@ -5859,13 +5935,7 @@ def _temporary_recovery_cycle_link_proof(operation: dict[str, Any]) -> dict[str,
     prior = _validate_temporary_operation_record(
         _canonical_json_object(prior_raw, "temporary_recovery_cycle_history_unverified")
     )
-    if (
-        prior.get("operation_id") != prior_operation_id
-        or prior.get("phase") != "restored"
-        or "failure_code" in prior
-        or type(prior.get("startup_floor_kib")) is not int
-        or type(prior.get("start_admission_allowed")) is not bool
-    ):
+    if prior.get("operation_id") != prior_operation_id:
         raise HostError("temporary_recovery_cycle_history_unverified")
     prior_view_sha256 = _canonical_value_sha256(_temporary_operation_view_for_record(prior))
     if (
@@ -5874,17 +5944,11 @@ def _temporary_recovery_cycle_link_proof(operation: dict[str, Any]) -> dict[str,
         != operation["operation_id"]
     ):
         raise HostError("temporary_recovery_cycle_history_unverified")
-    prior_original = prior.get("original_record")
-    if (
-        not isinstance(prior_original, dict)
-        or prior_original.get("assistant_rollout_mode") != "invited"
-    ):
-        raise HostError("temporary_recovery_cycle_history_unverified")
-    if any(
-        original.get(key) != value
-        for key, value in prior_original.items()
-        if key not in {"assistant_rollout_mode", "temporary_recovery_restored_operation_id"}
-    ):
+    try:
+        _validate_restored_temporary_recovery_predecessor(prior, original)
+    except HostError as exc:
+        raise HostError("temporary_recovery_cycle_history_unverified") from exc
+    if prior.get("operation_id") != original.get("temporary_recovery_restored_operation_id"):
         raise HostError("temporary_recovery_cycle_history_unverified")
     expected_link = _temporary_recovery_cycle_link(
         prior_operation_id,
@@ -6146,41 +6210,14 @@ def _start_temporary_recovery_cycle(
                 raise HostError("temporary_recovery_active")
             if prior_view_sha256 != expected_prior_view_sha256:
                 raise HostError("temporary_recovery_prior_view_mismatch")
-            if (
-                prior_operation.get("failure_code") is not None
-                or prior_operation.get("assistant_rollout_mode") != "disabled"
-                or prior_operation.get("restored_image_id") != PRODUCTION_PREDECESSOR_IMAGE_ID
-                or not isinstance(prior_operation.get("restored_at"), str)
-                or type(prior_operation.get("startup_floor_kib")) is not int
-                or not isinstance(prior_operation.get("start_admission_allowed"), bool)
-            ):
-                raise HostError("temporary_recovery_prior_state_invalid")
         elif _read_json(TEMPORARY_RECOVERY_OPERATION) is not None:
             raise HostError("temporary_recovery_already_recorded")
         current = _read_json(CURRENT_RECORD)
         if current is None:
             raise HostError("temporary_recovery_predecessor_unavailable")
-        if (
-            next_cycle
-            and current.get("temporary_recovery_restored_operation_id")
-            != expected_prior_operation_id
-        ):
-            raise HostError("temporary_recovery_prior_current_mismatch")
-        if next_cycle and current.get("assistant_rollout_mode") != "invited":
-            raise HostError("temporary_recovery_predecessor_unready")
         if next_cycle:
             assert prior_operation is not None
-            prior_original = prior_operation.get("original_record")
-            if (
-                not isinstance(prior_original, dict)
-                or prior_original.get("assistant_rollout_mode") != "invited"
-            ):
-                raise HostError("temporary_recovery_prior_state_invalid")
-            for key, value in prior_original.items():
-                if key in {"assistant_rollout_mode", "temporary_recovery_restored_operation_id"}:
-                    continue
-                if current.get(key) != value:
-                    raise HostError("temporary_recovery_prior_current_mismatch")
+            _validate_restored_temporary_recovery_predecessor(prior_operation, current)
         initial_available = _require_temporary_service_reserve()
         compose_snapshot = _temporary_compose_snapshot(
             current,

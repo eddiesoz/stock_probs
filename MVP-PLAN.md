@@ -9653,3 +9653,51 @@ provider/browser action, or new actual-1-GB acceptance occurred. The current hel
 and head, installed readback, actual host trial/recovery/rollback, current canonical and release
 acceptance remain **Pending**; no fix deployment, resize, rollout change, merge, email, or release is
 claimed. The existing 1 GB host, backups, and US$15 monthly total cap are unchanged.
+
+
+### R-ASTRA-121 PR #11 explicit retry repair and backup-cap hold (2026-10-17)
+
+The H2 helper/test repair now admits a successor from a fully restored predecessor only for the
+closed `host_command_failed` failure code with canonical failure/restoration timestamps, the exact
+original image and current marker, and either paired-null startup fields for that retryable failure
+or a measured startup pair consistent with the existing 128 MiB reserve and 512 MiB floor. Start
+admission and inspect-proof history use the same validator. Exact prior operation ID and canonical
+view digest provide the explicit acknowledgement; immutable predecessor bytes are retained, invalid
+or unknown states fail closed, and the successor reruns the existing source, image, schema,
+verified-backup, reserve, and startup checks. Builder-focused tests **Passed** 42/42; JUnit SHA-256 `05e10fbf158dd371b7451ce2bb04e3b835471f97460d7f79a97be222350e509e`
+and terminal SHA-256 `467d844e955a15b42c138e528069a5c54b0a920ebead8876afe6d7fec6109949` are under
+`/var/tmp/r12r/h2-helper-recovery-20261017/focused-final2/`; candidate pins SHA-256 are
+`f4983557b0d728b2f340c48df8f87a8c5a3814b0e6b77d6de6962c8386b4789a`. Independent task
+`H2-helper-independent-qa-20261017` **Passed** 42/42 with no failures, skips, or errors at
+`2026-10-17T16:21:17Z`–`16:21:23Z`; receipt
+`/var/tmp/r12r/h2-independent-qa-20261017T1625Z/independent-review-receipt.json`, SHA-256
+`8e7a848c541676e5218f56d9d81415484e7e2dc4766df477073e3b5f9a1dcf79`. The reviewer found no
+P1/P2 and confirmed unchanged reserve/floor constants; this was synthetic focused source/test QA,
+not a host, Docker, provider, SSH, deployment, production retry, broad suite, or canonical gate.
+Parent integrated source review **Passed**; receipt
+`/var/tmp/r12r/h2-helper-recovery-20261017/parent-integrated-review.json`, SHA-256
+`f000743d2cf5149b560e4d06e59d339c8ccca94e383bbb25c3e49fedb3fe205f`. No runtime retry of the
+repaired helper has occurred.
+
+The preceding V7 actual-host operation `98ce0f645a558df329fd911b958e12a4` **Failed** while
+verifying a fresh backup (`failure_code=host_command_failed`); `pair_calls=0`. Typed restoration
+confirmed the original 5ad schema-13 release and invited mode, but post-restore cycle-history
+readback is **Unavailable**. Production readback remained ready and loopback-only on the same
+5ad image. The backup inventory showed 32 managed artifacts, at the configured cap; every observed
+artifact modification time predated the attempt. This confirms the current backup-cap constraint;
+whether it alone caused the generic host failure remains **Unproven**. The actual terminal is
+`/var/tmp/r12r/pr11-next-cycle-wrapper-v7-public-pins-c81d5765-9ac0-4752-89ea-0a42950f935b/actual-terminal-before-cleanup.json`,
+SHA-256 `3599aa6c688172e27a89f9bdf82af34b090a33429024d881ad87eb7c198d1103`; independent result
+review is `/var/tmp/r12r/v7-result-qa-c920fedd-fa6e-4ae9-b1d6-92a01043ff19/independent-result-qa.json`,
+SHA-256 `8844ca19275ee8fe00f20a24bfe5348b1f3779c8b3734e7b10671bafb25cdf2e`. The 32-artifact count
+terminal SHA-256 is `45b5a15aeb5814d630cc7dc24f955c9bc37df803b58f2f1cf04fd56b00019e87`; timestamp
+readback SHA-256 is `008cb109a31dcb4d3180400a2aa84497cc5a618ee7c5921e8312c74c9f46972e`. Fresh production
+readback `/var/tmp/r12r/pr11-next-cycle-wrapper-v7-public-pins-c81d5765-9ac0-4752-89ea-0a42950f935b/fresh-post-run-production-inspect.json`,
+SHA-256 `1b087de3392efd67d2ae3b166e706d70b05248b701bb790d81bf414ad561a762`, confirmed the original
+5ad schema-13 image ready, invited, and loopback-only with the temporary operation restored. No archive
+move, helper retry, or new application deployment has occurred. The archive-retention protocol is
+still under isolated preparation/review, and source publication/installation, current canonical,
+new host pair/native/resource checks, exact rollback, owner canary, and release gates remain open.
+The existing 1 GB host, backups, and US$15 monthly cap are unchanged; no release or email is
+claimed. The original V7 terminal, backup/event readbacks, independent review, and cleanup receipts
+remain in their original immutable evidence locations recorded by the task.

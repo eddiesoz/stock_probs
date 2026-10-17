@@ -37,7 +37,13 @@ runbook](../operations/getting-started.md#temporary-recovery-candidate) defines 
 actual response schema, admission boundary, post-start inspection, and restoration
 sequence. A ready response alone is not artifact/profile proof; source review,
 installation/readback, bounded host trial, and restoration remain separate evidence
-stages.
+stages. A retryable predecessor is limited to a fully restored `host_command_failed` record
+with canonical failure/restoration timestamps, the exact original image/current marker, and
+either paired-null startup fields for that failure or a consistent measured startup pair. The
+exact prior operation ID and canonical view digest form the explicit acknowledgement; retain
+its immutable bytes. Admission and inspect proof share this validation, unknown or malformed
+states fail closed, and every successor reruns the normal source, image, schema, verified-backup,
+reserve, and startup checks.
 
 When documenting the next-cycle helper's optional `temporary_recovery_proof`, keep it distinct
 from the stable seven-field operation view and core current/health response. The proof is emitted

@@ -7767,6 +7767,206 @@ def test_temporary_recovery_next_cycle_preserves_exact_predecessor_and_restores_
     assert state[helper.CURRENT_RECORD]["schema_version"] == 13
 
 
+@pytest.mark.parametrize("available_kib", [600_000, 200_000])
+@pytest.mark.parametrize(
+    ("prior_startup_floor", "prior_start_admission"),
+    [(None, None), (200_000, False), (600_000, True)],
+)
+def test_temporary_recovery_next_cycle_accepts_only_explicitly_bound_restored_host_failure(
+    available_kib: int,
+    prior_startup_floor: int | None,
+    prior_start_admission: bool | None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    state, events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior.update(
+        {
+            "failure_code": "host_command_failed",
+            "failed_at": "2026-10-17T10:11:12.123456+00:00",
+            "startup_floor_kib": prior_startup_floor,
+            "start_admission_allowed": prior_start_admission,
+        }
+    )
+    prior_id = prior["operation_id"]
+    prior_view_sha = helper._canonical_value_sha256(
+        helper._temporary_operation_view_for_record(prior)
+    )
+    prior_raw = json.dumps(prior, sort_keys=True, separators=(",", ":")).encode()
+    verified_backup = helper._verified_backup
+    backup_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def counted_backup(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        backup_calls.append((args, kwargs))
+        return verified_backup(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_verified_backup", counted_backup)
+    memory_samples: list[int] = []
+
+    def read_memory() -> int:
+        memory_samples.append(available_kib)
+        return available_kib
+
+    monkeypatch.setattr(helper, "_memory_available_kib", read_memory)
+    source_check = helper._assert_temporary_recovery_source_health
+    source_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def counted_source(*args: Any, **kwargs: Any) -> Any:
+        source_calls.append((args, kwargs))
+        return source_check(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_assert_temporary_recovery_source_health", counted_source)
+    archive_check = helper._assert_temporary_recovery_archive
+    archive_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def counted_archive(*args: Any, **kwargs: Any) -> Any:
+        archive_calls.append((args, kwargs))
+        return archive_check(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_assert_temporary_recovery_archive", counted_archive)
+    image_check = helper._assert_temporary_image
+    image_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def counted_image(*args: Any, **kwargs: Any) -> Any:
+        image_calls.append((args, kwargs))
+        return image_check(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_assert_temporary_image", counted_image)
+    schema_reader = helper._database_schema
+    schema_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def counted_schema(*args: Any, **kwargs: Any) -> int:
+        schema_calls.append((args, kwargs))
+        return schema_reader(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_database_schema", counted_schema)
+    events_before_retry = len(events)
+
+    result = helper._start_next_temporary_recovery(prior_id, prior_view_sha)
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    history_name = f"closed-{prior_id}-{hashlib.sha256(prior_raw).hexdigest()}.json"
+    admitted = available_kib >= helper.TEMPORARY_RECOVERY_STARTUP_FLOOR_KIB
+    assert result["result"] == (
+        "temporary_recovery_ready" if admitted else "temporary_recovery_ready_startup_floor_unmet"
+    )
+    assert result["prior_record_sha256"] == hashlib.sha256(prior_raw).hexdigest()
+    assert sidecars[history_name] == prior_raw
+    assert len(backup_calls) == 1
+    assert len(source_calls) == 1
+    assert len(archive_calls) == 1
+    assert len(image_calls) == 1
+    assert len(schema_calls) >= 2
+    assert memory_samples
+    retry_events = events[events_before_retry:]
+    assert any(event[0] == "docker_load" for event in retry_events)
+    assert any(event[0] == "docker_tag" for event in retry_events)
+    assert any(event[0] == "compose_up" for event in retry_events)
+    assert operation["startup_floor_kib"] == available_kib
+    assert operation["start_admission_allowed"] is admitted
+    assert "failure_code" not in operation
+
+
+@pytest.mark.parametrize(
+    "invalid_prior",
+    [
+        "unknown_failure",
+        "missing_failed_at",
+        "invalid_failed_at",
+        "invalid_restored_at",
+        "null_startup_without_failure",
+        "half_null_startup",
+        "startup_below_runtime_reserve",
+        "startup_admission_mismatch",
+    ],
+)
+def test_temporary_recovery_next_cycle_rejects_invalid_failed_predecessor_history(
+    invalid_prior: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    state, _events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior["failure_code"] = "host_command_failed"
+    prior["failed_at"] = "2026-10-17T10:11:12.123456+00:00"
+    prior["startup_floor_kib"] = None
+    prior["start_admission_allowed"] = None
+    if invalid_prior == "unknown_failure":
+        prior["failure_code"] = "temporary_recovery_backup_unverified"
+    elif invalid_prior == "missing_failed_at":
+        del prior["failed_at"]
+    elif invalid_prior == "invalid_failed_at":
+        prior["failed_at"] = "not-a-time"
+    elif invalid_prior == "invalid_restored_at":
+        prior["restored_at"] = "2026-10-17T10:11:12Z"
+    elif invalid_prior == "null_startup_without_failure":
+        del prior["failure_code"]
+        del prior["failed_at"]
+    elif invalid_prior == "half_null_startup":
+        prior["startup_floor_kib"] = 600_000
+    elif invalid_prior == "startup_below_runtime_reserve":
+        prior["startup_floor_kib"] = 100_000
+        prior["start_admission_allowed"] = False
+    elif invalid_prior == "startup_admission_mismatch":
+        prior["startup_floor_kib"] = 600_000
+        prior["start_admission_allowed"] = False
+    else:
+        raise AssertionError(f"unknown invalid predecessor: {invalid_prior}")
+    prior_id = prior["operation_id"]
+    view_sha = helper._canonical_value_sha256(helper._temporary_operation_view_for_record(prior))
+    prior_raw = json.dumps(prior, sort_keys=True, separators=(",", ":")).encode()
+    monkeypatch.setattr(
+        helper,
+        "_read_root_owned_json",
+        lambda _path, **_kwargs: (json.loads(json.dumps(prior)), prior_raw),
+    )
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_state_invalid"):
+        helper._start_next_temporary_recovery(prior_id, view_sha)
+    assert sidecars == {}
+
+
+def test_temporary_recovery_next_cycle_rechecks_runtime_reserve_before_publication(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior.update(
+        {
+            "failure_code": "host_command_failed",
+            "failed_at": "2026-10-17T10:11:12.123456+00:00",
+            "startup_floor_kib": None,
+            "start_admission_allowed": None,
+        }
+    )
+    prior_id = prior["operation_id"]
+    view_sha = helper._canonical_value_sha256(helper._temporary_operation_view_for_record(prior))
+    prior_raw = json.dumps(prior, sort_keys=True, separators=(",", ":")).encode()
+    events_before_retry = len(events)
+    monkeypatch.setattr(helper, "_memory_available_kib", lambda: 100_000)
+
+    with pytest.raises(helper.HostError, match="host_memory_reserve_breached"):
+        helper._start_next_temporary_recovery(prior_id, view_sha)
+
+    assert state[helper.TEMPORARY_RECOVERY_OPERATION] == prior
+    assert json.dumps(prior, sort_keys=True, separators=(",", ":")).encode() == prior_raw
+    assert sidecars == {}
+    assert not any(
+        event[0] in {"docker_load", "docker_tag", "stop_app", "compose_up"}
+        for event in events[events_before_retry:]
+    )
+
+
 @pytest.mark.parametrize("fail_after_publish", [False, True])
 def test_temporary_recovery_next_cycle_crash_boundary_is_observable_and_retry_safe(
     fail_after_publish: bool,
@@ -7891,6 +8091,7 @@ def _active_cycle_inspect_fixture(
     *,
     available_kib: int = 600_000,
     helper: Any | None = None,
+    failed_prior: bool = False,
 ) -> tuple[Any, dict[Path, dict[str, Any]], dict[str, bytes], Path]:
     """Materialize producer-created cycle records and immutable sidecars for read-only inspect."""
 
@@ -7907,6 +8108,15 @@ def _active_cycle_inspect_fixture(
         monkeypatch, helper, tmp_path
     )
     prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    if failed_prior:
+        prior.update(
+            {
+                "failure_code": "host_command_failed",
+                "failed_at": "2026-10-17T10:11:12.123456+00:00",
+                "startup_floor_kib": None,
+                "start_admission_allowed": None,
+            }
+        )
     prior_id = prior["operation_id"]
     prior_view_sha256 = helper._canonical_value_sha256(helper._temporary_operation_view())
     monkeypatch.setattr(helper, "_memory_available_kib", lambda: available_kib)
@@ -8189,6 +8399,32 @@ def test_temporary_recovery_inspect_proves_active_successor_read_only_and_keeps_
         "image-entrypoint",
     ]
     assert before == after
+
+
+def test_temporary_recovery_inspect_verifies_failed_restored_predecessor_history(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper, state, sidecars, _history_root = _active_cycle_inspect_fixture(
+        monkeypatch, tmp_path, failed_prior=True
+    )
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    response = helper._inspect()
+    proof = response["temporary_recovery_proof"]
+    cycle_link = json.loads(sidecars[f"cycle-{operation['operation_id']}.json"])
+    prior_raw = sidecars[cycle_link["history_name"]]
+    prior = json.loads(prior_raw)
+
+    assert response["status"] == "ok"
+    assert proof["status"] == "verified"
+    assert proof["cycle_history_verified"] is True
+    assert proof["cycle_link"]["prior_record_sha256"] == hashlib.sha256(prior_raw).hexdigest()
+    assert proof["cycle_link"]["prior_view_sha256"] == helper._canonical_value_sha256(
+        helper._temporary_operation_view_for_record(prior)
+    )
+    assert prior["failure_code"] == "host_command_failed"
+    assert prior["failed_at"] == "2026-10-17T10:11:12.123456+00:00"
+    assert prior["startup_floor_kib"] is None
+    assert prior["start_admission_allowed"] is None
 
 
 def test_temporary_recovery_inspect_omits_optional_proof_for_initial_and_restored_phases(
