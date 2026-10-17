@@ -91,6 +91,75 @@ topics, 8 governance entries); completeness checked 202 mapped files and one com
 run passed across 72 dirty paths. `git diff --check -- AGENTS.md README.md MVP-PLAN.md MVP-ROADMAP.md
 docs` passed. `/home/james/repos/stock_probs/.dev-venv/bin/python -m pytest --noconftest -p no:cacheprovider -o addopts='' tests/test_docs_validation.py -q` passed 60 tests in 148.22 seconds for R3. The earlier system-Python attempt failed at setup because that interpreter lacked pytest; it did not establish pytest unavailability in the project environment. Two initial coverage-wrapper attempts failed before invoking the checker because the wrapper argument parser received an embedded NUL; the corrected aggregate command passed.
 
+### R-ASTRA-121 R3 outbox source-wiring and selected-QA checkpoint (2026-10-17)
+
+At clean HEAD `8cec836cbaec6def2832c787a7849928e4ac306d`, read-only source clarification task
+`R-ASTRA-121 R3 notification outbox source-wiring clarification` recorded **Pass** for source
+wiring: `api.py` conditionally constructs and injects
+`NotificationDeliveryConsumer` into the default scheduler; application lifespan starts the
+configured monitoring runtime, and the scheduler's `run_due` path invokes the consumer. No missing
+application/scheduler call was found. The feature response gates `email_available` on configured
+delivery, a runtime consumer, and monitoring availability. This corrects the historical
+“consumer is not called” / “unwired” source conclusions in [E26](#r-astra-121-e26-outbox-review-and-static-page-packaging),
+[E27](#r-astra-121-e27-assistant-priority-and-current-release-checkpoint), and the following
+checkpoint summary; it is static evidence only. The runtime value of `email_available`, scheduler
+startup/integration, and SMTP behavior were not exercised and remain **Unavailable**. No live SMTP
+endpoint was contacted and no email was sent.
+
+Independent QA task `R3 outbox independent selected QA`, followed by corrected task
+`R3 outbox independent selected QA, corrected no-conftest selections`, used disposable SQLite and
+fake SMTP. Its two ordinary pytest attempts
+**Failed** at setup with exit 4 at `2026-10-17T02:19:56.665333Z`–`02:20:06.806742Z` and
+`02:20:06.809210Z`–`02:20:18.355283Z`: repository `conftest.py` imported the app, which could not
+mount the absent staged `src/stock_probs/static/next/_next` directory. The corrected
+`--noconftest` selections then **Passed**: 27 delivery plus concurrent expired-submission-recovery
+cases at `02:20:53.622326Z`–`02:21:41.352312Z`, and 23 outbox-store/preference cases with 19
+deselected at `02:21:41.357571Z`–`02:22:39.181958Z`. These local selections do not establish
+scheduler startup/integration, live SMTP, mailbox delivery, browser, build, host, or release
+acceptance.
+
+The supplemental JUnit parser initially recorded zero tests because it read the `<testsuites>`
+wrapper. Additive reconciliation
+`/var/tmp/r12r/r3-outbox-contract-qa-20261017T021756Z/corrected-noconftest-20261017T022030Z/junit-count-reconciliation.json`
+(SHA-256 `e9ac623759d9ae32ccef5fa9393011b479f565c6fcd2847061672b510d5c9ae5`) confirms 27 and 23
+from child suites and the exact logs; it supersedes only those count fields and did not rerun tests.
+The initial setup-failure receipt is
+`/var/tmp/r12r/r3-outbox-contract-qa-20261017T021756Z/receipt.json` (SHA-256
+`b11fd6a8cd211ec11930eb7c2024dd81f86c4b289ad97a94b9b6bb26d956bb87`); the corrected supplemental
+receipt is
+`/var/tmp/r12r/r3-outbox-contract-qa-20261017T021756Z/corrected-noconftest-20261017T022030Z/supplemental-receipt.json`
+(SHA-256 `ab1806845ef24b53932a4742f06e164160bf0efa1696b38c7c570a3f7b7228cf`). Independent selected
+Ruff check, security, and format checks **Passed** at `2026-10-17T02:23:44.739817Z`–
+`02:23:44.926141Z`; receipt
+`/var/tmp/r12r/r3-outbox-contract-qa-20261017T021756Z/static-qa-20261017T022400Z/receipt.json`
+has SHA-256 `c2cb3ba10a09092c8e8263d44532e2bed05ebfd1a2613cc8fc1b97065837e289`.
+
+The selected-test bindings were unchanged at revision `8cec836cbaec6def2832c787a7849928e4ac306d`:
+`src/stock_probs/migrations/016_monitoring_and_report_cards.sql`
+`5e8505d115879cc5bd8db465b1afb213b7f7b07b008d264c28b0e373f30a03a7`,
+`src/stock_probs/migrations/018_notification_address_delivery.sql`
+`c152435ddf599a0715478e5863e5a2d2cd14b72fde5eca8d9a73900ff4981a63`,
+`src/stock_probs/monitoring_store.py`
+`a14d1332d91863008f0cda4ea8457295c080e41c1a7d1228c26a09aa35a62cef`,
+`src/stock_probs/notification_delivery.py`
+`0aa7d89398b941ce9653748ba2e4a42ed725b321bd55195e1122ad483824c772`,
+`tests/test_monitoring_store.py`
+`fc2fd08925e7af30ea534afb6e7d3d8680ce299803d3908ea6961db0876931bf`, and
+`tests/test_notification_delivery.py`
+`42bc5c9730e92ef1c2e9af1bcb97c006d836cb26c6f3f3e05705d093ee724fec`. The source clarification
+rehashed `src/stock_probs/api.py`
+`3cbe42150864a0250a9ee720f52200d3f873e5b045a5d61c955039d68fa665c1`,
+`src/stock_probs/config.py`
+`5e34de20f40a7565eca37affce560c269f68000dc996147f3f5021d3ce4b41ab`, and
+`src/stock_probs/monitoring_scheduler.py`
+`20e915ffed83025c52edc78f5a9e71a4f72aaf2f5d20bba43595820abbcbe139` at
+`2026-10-17T02:26:14Z`. Its receipt
+`/var/tmp/r12r/r3-outbox-contract-qa-20261017T021756Z/source-wiring-clarification-20261017T0226Z.json`
+has SHA-256 `e20e2cd42018c23d585b8b01ee102e4f6e41f64cfc6fc5cfa0c35346ac6e8f4d` and records runtime
+SMTP/scheduler integration as **Unavailable**. E26's overall **Fail**, including its separate
+typing and liveness findings, remains historical; this checkpoint does not reclassify those
+results or establish R3 release acceptance.
+
 Historical R120 release/evidence below remains unchanged. R121 does not supersede E850's deployed
 product identity or claim new production observations.
 
@@ -748,10 +817,12 @@ Strict typing for the newly added `monitoring_store.py` **Failed** with five `no
 diagnostics; they are current-scope errors, not inherited baseline debt. Independent source review
 found two P2 liveness gaps: consumer cancellation is not observed at batch/submit boundaries, and a
 global-control change during SMTP preparation can leave a stale-claim conflict at iteration time.
-The consumer is not called by the application or scheduler; `/api/v1/monitoring/features` still
-reports `email_available: false`. No SMTP endpoint was contacted and no email was sent. The repair
-is in progress and independent rereview is pending; this receipt does not establish a live delivery
-path or email availability.
+That review also reported that the consumer was not called by the application or scheduler and that
+`/api/v1/monitoring/features` reported `email_available: false`; its uncalled-consumer source
+conclusion is superseded by the [2026-10-17 R3 outbox checkpoint](#r-astra-121-r3-outbox-source-wiring-and-selected-qa-checkpoint-2026-10-17).
+At E26, repair and independent rereview were pending. No SMTP endpoint was contacted and no email
+was sent; the overall E26 **Fail** and other findings remain historical. The new source review
+does not establish runtime delivery or email availability.
 
 Packaging source evidence is recorded in
 `/var/tmp/r12r/signal-ledger-packaging-independent-qa-20261014-01/independent-final-receipt.json`,
@@ -815,8 +886,11 @@ SHA-256 `e1366c46b1ed929e6a93091f782833ee0e96ed0c944420d7878fca344da5c356`; pare
 SHA-256 `1c719a7f4d8df4d78fa6c3ae5ffce81325caff6adc25ae14ed06c33bf72bfdcd`. This is source/test
 packaging evidence only; it provides no new image, frontend build, served-route, or browser result.
 
-The narrow alert-mail consumer cancellation review passed its selected scope, but the consumer is
-still unwired. Verified-address draft 018 remains unregistered and unwired: the earlier 20-test,
+The narrow alert-mail consumer cancellation review passed its selected scope. E27 described the
+consumer as still unwired; that source-wiring conclusion is corrected by the
+[2026-10-17 R3 outbox checkpoint](#r-astra-121-r3-outbox-source-wiring-and-selected-qa-checkpoint-2026-10-17).
+Runtime scheduler/SMTP integration remains **Unavailable**. Verified-address draft 018 remains
+unregistered and unwired: the earlier 20-test,
 five-gap failure is preserved; the repaired 23-test builder run passed, then independent review
 found a P2 in current-challenge UUID ordering. A two-test correction is awaiting independent
 rereview. Email remains unavailable and no live email was sent. Release 4 is an isolated backend
@@ -859,7 +933,18 @@ Independent actual-artifact QA of the T9 memory-only host observation **Passed**
 
 The 30-second read-only startup-wait checker repair is in progress within the existing 1,080-second absolute budget and unchanged 512 MiB and 128 MiB floors/final guard. Source presence alone is not a checker, host, native, or release Pass. Genuine local OpenCode V2 `opencode-zen/space-bunny-free` evidence for two owners with MCP/native search/fetch remains scoped local evidence; restoring that exact provider through the application is Priority 0 and the first R121 release dependency. No deployed assistant fix is claimed.
 
-Release 3's notification-address draft 018 remains unregistered. The narrow consumer-cancellation review passed its selected scope, but delivery is unwired and `email_available` remains false. After the 23-case builder pass, independent review found a P2 in current-challenge UUID ordering; its two-case repair awaits independent QA. No SMTP request or email was sent. Release 4's isolated backend repair independently **Passed** 36 focused tests, full-import typing, Ruff, and 302 history-point cases; receipt `/var/tmp/r12r/r4-repair-independent-qa-20261014/independent-receipt.json`, SHA-256 `5472b64853294b67d3600aeb56599ef575c8da6ff49e99b72828d14faa68c9b8`. Preserve the earlier independent P2 review (`44affdda` prefix) as historical. Draft 019 remains unregistered; no frontend/API/headlines/digest/handoffs/backup/export integration, runtime, or release acceptance is established.
+Release 3's notification-address draft 018 remains unregistered. At this historical checkpoint,
+delivery was described as unwired and `email_available` as false; the source-wiring conclusion is
+corrected by the [2026-10-17 R3 outbox checkpoint](#r-astra-121-r3-outbox-source-wiring-and-selected-qa-checkpoint-2026-10-17).
+The endpoint's current runtime value was not observed, and scheduler/SMTP integration remains
+**Unavailable**. After the 23-case builder pass, independent review found a P2 in current-challenge
+UUID ordering; its two-case repair awaits independent QA. No SMTP request or email was sent.
+Release 4's isolated backend repair independently **Passed** 36 focused tests, full-import typing,
+Ruff, and 302 history-point cases; receipt `/var/tmp/r12r/r4-repair-independent-qa-20261014/independent-receipt.json`,
+SHA-256 `5472b64853294b67d3600aeb56599ef575c8da6ff49e99b72828d14faa68c9b8`. Preserve the earlier
+independent P2 review (`44affdda` prefix) as historical. Draft 019 remains unregistered; no
+frontend/API/headlines/digest/handoffs/backup/export integration, runtime, or release acceptance is
+established.
 
 R3's first 24-case browser aggregate **Failed** and remains preserved; selected route/CSP checks do not replace the held full browser rerun. Full-import typing diagnostics remain a scoped **Fail**, so no current canonical Pass is claimed. R1/R2 draft PRs 7/8, security, actual combined 1 GB, populated recovery, exact-PR rollback, owner canary, invited rollout, and release gates remain open. The existing 1 GB host, backups and US$15 monthly cap are unchanged. The feature goal remains blocked on production gates.
 
