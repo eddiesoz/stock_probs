@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
+from stock_probs.auth import AuthContext
+from stock_probs.auth_write_guard import StepUpChecker, authorize_current_write
 from stock_probs.report_cards import SUPPORTED_HORIZONS, score_record, summarize
 from stock_probs.repository import Repository
 
@@ -117,8 +119,43 @@ class ReportCardStore:
     Historical walk-forward evaluation fields are never queried or used for scoring.
     """
 
-    def __init__(self, repository: Repository):
+    def __init__(
+        self,
+        repository: Repository,
+        *,
+        write_authorization_mode: Literal[
+            "required", "development_no_auth", "test_no_auth"
+        ] = "required",
+        step_up_checker: StepUpChecker | None = None,
+    ):
+        if write_authorization_mode not in {
+            "required",
+            "development_no_auth",
+            "test_no_auth",
+        }:
+            raise TypeError("write_authorization_mode is invalid")
+        if step_up_checker is not None and not callable(step_up_checker):
+            raise TypeError("step_up_checker must be callable")
         self.repository = repository
+        self.write_authorization_mode = write_authorization_mode
+        self.step_up_checker = step_up_checker
+
+    def _authorize_user_mutation(
+        self,
+        connection: sqlite3.Connection,
+        auth_context: AuthContext | None,
+        owner: int,
+    ) -> None:
+        """Bind an interactive review to its cached context inside the existing transaction."""
+        if self.write_authorization_mode != "required":
+            return
+        authorize_current_write(
+            connection,
+            auth_context,
+            owner,
+            datetime.now(UTC),
+            step_up_checker=self.step_up_checker,
+        )
 
     @staticmethod
     def _register_time_function(connection: sqlite3.Connection) -> None:
@@ -413,6 +450,8 @@ class ReportCardStore:
         state: str,
         note: str,
         now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         """Append a CAS review for an existing, exact owner-bound manual five-minute source."""
         owner = _owner_id(owner_user_id)
@@ -443,6 +482,7 @@ class ReportCardStore:
         with self.repository.connect() as connection:
             self._register_time_function(connection)
             connection.execute("BEGIN IMMEDIATE")
+            self._authorize_user_mutation(connection, auth_context, owner)
             self._active_owner(connection, owner)
             forecast_row, outcome_row, evidence_row, forecast, source_payload = (
                 self._saved_manual_source(connection, owner, result_id, as_of)

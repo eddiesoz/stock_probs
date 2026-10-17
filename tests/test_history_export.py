@@ -35,7 +35,7 @@ def test_owner_history_export_filters_records_and_formula_safe_csv(settings):
         password_hash=None,
         created_at=NOW,
     )["id"]
-    store = MonitoringStore(repository)
+    store = MonitoringStore(repository, write_authorization_mode="test_no_auth")
     owner_alert = store.create_alert(
         1,
         str(uuid4()),

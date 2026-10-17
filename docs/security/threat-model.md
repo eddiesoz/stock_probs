@@ -38,9 +38,14 @@ and job processing are separately gated; the intended administrator control muta
 fresh TOTP step-up. Independent re-review now passes the preserved pre-provider role-revocation
 reproduction: demotion before dispatch resulted in zero provider calls and no stored outcome. This
 check revalidates immediately before dispatch and does not cover revocation after that final check.
-A separate administrator-control authorization boundary is characterized as unsafe; its repair and
-independent review remain pending. Do not treat the canary control as safe to enable based on the
-narrow dispatch result.
+The original administrator-control finding remains historical. A later shared write guard now
+binds interactive mutations to the current session, owner, role and MFA state inside the SQLite
+write transaction, including a fresh administrator step-up for control changes. Independent
+selected race/store/API checks passed 16 tests. The expanded 248-test command failed four cases;
+two fixture-authentication repairs and two isolated fixture/migration checks later passed their
+own scopes. These results do not constitute a green 248-test aggregate, full security review or
+permission to enable the candidate canary. Background leases remain separate from interactive
+session authorization.
 
 Notification API views expose the observed threshold crossing, price, currency, provider, time, and
 read state. They omit recipient addresses and transport details. Preference views expose only

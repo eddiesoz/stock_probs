@@ -22,6 +22,8 @@ from pydantic import (
     field_validator,
 )
 
+from .auth import AuthContext
+from .auth_write_guard import AuthWriteAuthorizationError
 from .monitoring_domain import MonitoringError, price
 from .monitoring_store import (
     MAX_CURSOR_BYTES,
@@ -42,6 +44,12 @@ PriceInput = Annotated[StrictStr, Field(min_length=1, max_length=64)]
 RevisionInput = Annotated[StrictInt, Field(ge=1, le=2**63 - 1)]
 OwnerResolver = Callable[[Request], int | None]
 UtcClock = Callable[[], datetime]
+
+
+def _request_auth_context(request: Request) -> AuthContext | None:
+    """Return only the trusted middleware snapshot; never re-read a cookie after body parsing."""
+    context = getattr(request.state, "auth_context", None)
+    return context if isinstance(context, AuthContext) else None
 
 
 class _RequestModel(BaseModel):
@@ -403,6 +411,7 @@ def create_monitoring_router(
         idempotency_key: Annotated[
             str, Header(alias="Idempotency-Key", min_length=36, max_length=36)
         ],
+        request: Request,
         owner: int | None = Depends(owner_for_request),
     ) -> JSONResponse:
         """Persist the rule and its initial-snapshot job together, without triggering it."""
@@ -417,10 +426,13 @@ def create_monitoring_router(
                 payload.model_dump(),
                 _safe_now(selected_clock),
                 allow_new_creation=can_arm(),
+                auth_context=_request_auth_context(request),
             )
             return JSONResponse(
                 _alert_view(saved).model_dump(), status_code=200 if saved["replayed"] else 201
             )
+        except AuthWriteAuthorizationError as error:
+            return _error(error.status_code, error.code, error.message)
         except MonitoringConflictError:
             return _error(409, "IDEMPOTENCY_CONFLICT", "Use the original request for this key.")
         except MonitoringArmingUnavailableError:
@@ -449,6 +461,7 @@ def create_monitoring_router(
     def edit_alert(
         payload: AlertEditRequest,
         alert_id: Annotated[str, Path(min_length=36, max_length=36, pattern=UUID_PATTERN)],
+        request: Request,
         owner: int | None = Depends(owner_for_request),
     ) -> AlertView | JSONResponse:
         """CAS-edit a rule; active changes wait for a new leased initial snapshot."""
@@ -470,8 +483,11 @@ def create_monitoring_router(
                 payload.expected_revision,
                 payload.model_dump(exclude={"expected_revision"}),
                 _safe_now(selected_clock),
+                auth_context=_request_auth_context(request),
             )
             return _alert_view(saved)
+        except AuthWriteAuthorizationError as error:
+            return _error(error.status_code, error.code, error.message)
         except MonitoringConflictError:
             return _error(409, "REVISION_CONFLICT", "Reload the alert before saving it.")
         except MonitoringStoreError:
@@ -499,6 +515,7 @@ def create_monitoring_router(
     def pause_alert(
         alert_id: Annotated[str, Path(min_length=36, max_length=36, pattern=UUID_PATTERN)],
         payload: RevisionRequest,
+        request: Request,
         owner: int | None = Depends(owner_for_request),
     ) -> AlertView | JSONResponse:
         """Pause an owner-scoped alert through the store's revision compare-and-swap."""
@@ -506,9 +523,15 @@ def create_monitoring_router(
             return _error(401, "AUTHENTICATION_REQUIRED", "Sign in to manage alerts.")
         try:
             saved = store.pause_alert(
-                owner, alert_id, payload.expected_revision, _safe_now(selected_clock)
+                owner,
+                alert_id,
+                payload.expected_revision,
+                _safe_now(selected_clock),
+                auth_context=_request_auth_context(request),
             )
             return _alert_view(saved)
+        except AuthWriteAuthorizationError as error:
+            return _error(error.status_code, error.code, error.message)
         except MonitoringConflictError:
             return _error(409, "REVISION_CONFLICT", "Reload the alert before pausing it.")
         except MonitoringStoreError:
@@ -520,6 +543,7 @@ def create_monitoring_router(
     def resume_alert(
         alert_id: Annotated[str, Path(min_length=36, max_length=36, pattern=UUID_PATTERN)],
         payload: RevisionRequest,
+        request: Request,
         owner: int | None = Depends(owner_for_request),
     ) -> AlertView | JSONResponse:
         """Queue a fresh arming generation; the previous observation cannot trigger it."""
@@ -530,9 +554,15 @@ def create_monitoring_router(
         try:
             return _alert_view(
                 store.resume_alert(
-                    owner, alert_id, payload.expected_revision, _safe_now(selected_clock)
+                    owner,
+                    alert_id,
+                    payload.expected_revision,
+                    _safe_now(selected_clock),
+                    auth_context=_request_auth_context(request),
                 )
             )
+        except AuthWriteAuthorizationError as error:
+            return _error(error.status_code, error.code, error.message)
         except MonitoringConflictError:
             return _error(409, "REVISION_CONFLICT", "Reload the alert before resuming it.")
         except MonitoringStoreError:
@@ -564,6 +594,7 @@ def create_monitoring_router(
     def set_notification_read(
         notification_id: Annotated[str, Path(min_length=36, max_length=36, pattern=UUID_PATTERN)],
         payload: NotificationReadRequest,
+        request: Request,
         owner: int | None = Depends(owner_for_request),
     ) -> NotificationView | JSONResponse:
         """CAS-update notification read state without exposing transport or recipient fields."""
@@ -576,8 +607,11 @@ def create_monitoring_router(
                 payload.expected_revision,
                 payload.is_read,
                 _safe_now(selected_clock),
+                auth_context=_request_auth_context(request),
             )
             return _notification_view(saved)
+        except AuthWriteAuthorizationError as error:
+            return _error(error.status_code, error.code, error.message)
         except MonitoringConflictError:
             return _error(409, "REVISION_CONFLICT", "Reload the notification before updating it.")
         except MonitoringStoreError:
@@ -602,6 +636,7 @@ def create_monitoring_router(
     @router.put("/notification-preferences", response_model=PreferencesView)
     def set_preferences(
         payload: PreferencesRequest,
+        request: Request,
         owner: int | None = Depends(owner_for_request),
     ) -> PreferencesView | JSONResponse:
         """Update preferences with CAS while retaining the owner-selected address server-side."""
@@ -634,8 +669,11 @@ def create_monitoring_router(
                     current["address_id"] if payload.alert_email or payload.digest_email else None
                 ),
                 now=_safe_now(selected_clock),
+                auth_context=_request_auth_context(request),
             )
             return _preferences_view(saved)
+        except AuthWriteAuthorizationError as error:
+            return _error(error.status_code, error.code, error.message)
         except MonitoringConflictError:
             return _error(409, "REVISION_CONFLICT", "Reload notification settings before saving.")
         except MonitoringStoreError:

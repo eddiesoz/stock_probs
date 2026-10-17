@@ -2,21 +2,30 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from _auth_body_barrier import request_with_body_barrier
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from stock_probs.api import create_app
+from stock_probs.auth import SESSION_COOKIE_NAME
+from stock_probs.config import Settings
+from stock_probs.provider import FixtureProvider
 from stock_probs.report_api import create_report_router
 from stock_probs.report_store import ReportCardStore
 from stock_probs.repository import Repository
+from stock_probs.totp import code_for_step, time_step
 
 NOW = datetime(2026, 10, 12, 22, tzinfo=UTC)
 TARGET = datetime(2026, 10, 12, 20, tzinfo=UTC)
 PROVIDER = "FixtureMarketProvider"
 ADJUSTMENT = "unadjusted provider closes (actions=False, auto_adjust=False)"
+_LOCAL_PASSWORD = "r3-report-review-admin-password"  # noqa: S105
 
 
 def _manual_forecast() -> dict[str, object]:
@@ -90,7 +99,7 @@ def report_app(tmp_path) -> tuple[Repository, TestClient]:
 
     app.include_router(
         create_report_router(
-            ReportCardStore(repository),
+            ReportCardStore(repository, write_authorization_mode="test_no_auth"),
             lambda request: request.state.test_owner,
             enabled=True,
             clock=lambda: NOW,
@@ -239,7 +248,7 @@ def test_feature_disable_returns_503_without_opening_the_report_store(tmp_path) 
     app = FastAPI()
     app.include_router(
         create_report_router(
-            ReportCardStore(repository),
+            ReportCardStore(repository, write_authorization_mode="test_no_auth"),
             lambda request: 1,
             enabled=lambda: False,
             clock=lambda: NOW,
@@ -306,6 +315,70 @@ def test_review_write_is_explicit_append_only_and_revision_checked(report_app) -
         assert (
             connection.execute("SELECT COUNT(*) FROM forecast_outcome_reviews").fetchone()[0] == 2
         )
+
+
+def test_manual_review_rejects_session_revoked_during_body_read(settings: Settings) -> None:
+    """The report-review write binds the cached pre-body session in its SQLite transaction."""
+
+    configured = replace(
+        settings,
+        auth_mode="local",
+        auth_session_secret="q" * 48,
+        auth_public_origin="http://testserver",
+        bootstrap_username="admin",
+        bootstrap_password=_LOCAL_PASSWORD,
+        monitoring_features_enabled=True,
+    )
+    application = create_app(configured, FixtureProvider(), lambda: datetime.now(UTC))
+    with TestClient(application) as client:
+        login = client.post(
+            "/api/v1/auth/local/login",
+            json={"username": "admin", "password": _LOCAL_PASSWORD},
+        )
+        assert login.status_code == 200, login.text
+        csrf_token = login.json()["csrf_token"]
+        started = client.post(
+            "/api/v1/auth/totp/enroll/start", headers={"x-csrf-token": csrf_token}
+        )
+        assert started.status_code == 200, started.text
+        finished = client.post(
+            "/api/v1/auth/totp/enroll/finish",
+            json={"code": code_for_step(started.json()["secret"], time_step())},
+            headers={"x-csrf-token": csrf_token},
+        )
+        assert finished.status_code == 200, finished.text
+        csrf_token = finished.json()["csrf_token"]
+        session_token = client.cookies.get(SESSION_COOKIE_NAME)
+        assert isinstance(session_token, str)
+        context = application.state.auth.authenticate(session_token, datetime.now(UTC))
+        _add_manual_record(application.state.repository, owner=context.user.id)
+
+        def revoke_session() -> None:
+            application.state.auth.store.auth_revoke_session_by_id(
+                context.user.id, context.session_id, datetime.now(UTC).isoformat()
+            )
+
+        status, body = asyncio.run(
+            request_with_body_barrier(
+                application,
+                session_token,
+                csrf_token,
+                method="POST",
+                path="/api/v1/report-cards/1/reviews",
+                body=b'{"expected_revision":0,"state":"confirmed","note":"review"}',
+                on_body_paused=revoke_session,
+            )
+        )
+
+        assert status == 401, body
+        with application.state.repository.connect() as connection:
+            assert (
+                connection.execute(
+                    "SELECT count(*) FROM forecast_outcome_reviews WHERE owner_user_id=?",
+                    (context.user.id,),
+                ).fetchone()[0]
+                == 0
+            )
 
 
 def test_review_route_uses_actual_offset_instant_for_source_evidence(report_app) -> None:

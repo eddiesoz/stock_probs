@@ -52,9 +52,13 @@ session after bounded request-body receipt, then enforces CSRF, administrator ro
 step-up, and expected revision. The earlier stale-context regression (one live request passed; a
 revoked session, demoted role, disabled account, and expired step-up each incorrectly returned 200)
 remains historical. The route-specific repair passed selected independent local ASGI barrier tests
-for those five cases. Fresh authorization and the control-store write are not atomic, so revocation
-or another state change between the final check and write remains a race; this result is not full
-security or release acceptance.
+for those five cases. The subsequent transaction-bound repair now rechecks the exact trusted
+session inside `BEGIN IMMEDIATE` for control changes, alert mutations, notification read state,
+preferences, address creation/verification/selection and manual outcome reviews. The store default
+fails closed; no-auth setup is an explicit development/test choice. The control write also checks
+current administrator role and fresh step-up in that transaction. Background leases retain their
+separate authorization rules. Selected independent race tests passed; full security and release
+acceptance remain open. Earlier route-only checks did not close this race.
 
 | Method | Path | Purpose |
 | --- | --- | --- |

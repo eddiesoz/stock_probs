@@ -466,7 +466,7 @@ def test_scheduler_close_cancels_inflight_outcome_without_a_second_worker(
         OutcomeCollectionStore(repository), source, completion_clock=lambda: NOW
     )
     scheduler = MonitoringScheduler(
-        MonitoringStore(repository),
+        MonitoringStore(repository, write_authorization_mode="test_no_auth"),
         _NoOpPriceService(),
         outcome_collector=collector,
         clock=lambda: NOW,
@@ -941,7 +941,7 @@ def test_monitoring_disable_and_reenable_invalidates_inflight_outcome_lease(
     repository: Repository,
 ) -> None:
     _add_forecast(repository, 1, 1)
-    monitoring = MonitoringStore(repository)
+    monitoring = MonitoringStore(repository, write_authorization_mode="test_no_auth")
     control_changes: list[dict[str, object]] = []
 
     def disable_and_reenable() -> None:

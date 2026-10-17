@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+from stock_probs.auth import AuthContext
 from stock_probs.invitation_mail import validate_email_address
 from stock_probs.monitoring_store import (
     MonitoringStore,
@@ -100,6 +101,7 @@ class NotificationAddressStore:
         *,
         supersedes_verification_id: str | None = None,
         expected_revision: int | None = None,
+        auth_context: AuthContext | None = None,
     ) -> VerificationIssue:
         """Queue a new explicit challenge, invalidating older pending codes atomically.
 
@@ -126,7 +128,13 @@ class NotificationAddressStore:
         challenge_id = str(uuid4())
         expires = timestamp + CHALLENGE_LIFETIME
         with self._monitoring._write() as connection:
-            owner = self._authorized_owner(connection, owner, require_control=True)
+            owner = self._authorized_owner(
+                connection,
+                owner,
+                require_control=True,
+                auth_context=auth_context,
+                user_mutation=True,
+            )
             existing = connection.execute(
                 "SELECT * FROM notification_address_verifications WHERE owner_user_id=? "
                 "AND idempotency_sha256=?",
@@ -338,6 +346,8 @@ class NotificationAddressStore:
         address_id: str,
         expected_revision: int,
         now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         """Select an owned verified address with both email choices reset to off."""
 
@@ -346,7 +356,13 @@ class NotificationAddressStore:
         expected = self._preference_revision(expected_revision)
         timestamp = self._format_time(self._timestamp(now))
         with self._monitoring._write() as connection:
-            self._authorized_owner(connection, owner, require_control=True)
+            self._authorized_owner(
+                connection,
+                owner,
+                require_control=True,
+                auth_context=auth_context,
+                user_mutation=True,
+            )
             verified = connection.execute(
                 "SELECT 1 FROM notification_addresses WHERE id=? AND owner_user_id=? "
                 "AND verified_at IS NOT NULL",
@@ -563,6 +579,8 @@ class NotificationAddressStore:
         code: str,
         expected_revision: int,
         now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         """Verify possession atomically, never selecting the address or enabling email consent."""
 
@@ -572,7 +590,13 @@ class NotificationAddressStore:
         token_digest = self._code_digest(code)
         timestamp = self._timestamp(now)
         with self._monitoring._write() as connection:
-            owner = self._authorized_owner(connection, owner, require_control=True)
+            owner = self._authorized_owner(
+                connection,
+                owner,
+                require_control=True,
+                auth_context=auth_context,
+                user_mutation=True,
+            )
             row = self._verification_row(connection, owner, identifier)
             row = self._reconcile_challenge(connection, row, timestamp)
             if (
@@ -685,8 +709,22 @@ class NotificationAddressStore:
             }
 
     def _authorized_owner(
-        self, connection: sqlite3.Connection, owner: int, *, require_control: bool
+        self,
+        connection: sqlite3.Connection,
+        owner: int,
+        *,
+        require_control: bool,
+        auth_context: AuthContext | None = None,
+        user_mutation: bool = False,
     ) -> int:
+        if type(user_mutation) is not bool:
+            raise TypeError("user_mutation must be a boolean")
+        if user_mutation:
+            self._monitoring._authorize_user_mutation(
+                connection,
+                auth_context,
+                owner,
+            )
         try:
             selected = self._monitoring._active_owner(connection, owner)
         except MonitoringStoreError as error:

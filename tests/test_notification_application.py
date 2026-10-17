@@ -16,6 +16,7 @@ from starlette.routing import Mount
 
 import stock_probs.api as api_module
 from stock_probs.api import create_app
+from stock_probs.auth import SESSION_COOKIE_NAME, AuthContext
 from stock_probs.config import Settings
 from stock_probs.invitation_mail import InvitationMailSettings
 from stock_probs.monitoring_scheduler import MonitoringScheduler
@@ -23,6 +24,7 @@ from stock_probs.monitoring_store import MonitoringStore
 from stock_probs.notification_delivery import MAX_NOTIFICATION_BATCH
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import Repository
+from stock_probs.totp import code_for_step, time_step
 
 NOW = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
 _ADMIN_PASSWORD = "notification-test-admin-password"  # noqa: S105
@@ -118,6 +120,34 @@ def _login(client: TestClient, username: str = "notification-admin") -> tuple[in
     return body["user"]["id"], body["csrf_token"]
 
 
+def _authenticate_admin_with_fresh_step_up(
+    client: TestClient, application
+) -> tuple[AuthContext, str, datetime]:
+    """Enroll the fixture admin through HTTP and return its active TOTP-backed session."""
+
+    user_id, csrf = _login(client)
+    headers = {"x-csrf-token": csrf}
+    started = client.post("/api/v1/auth/totp/enroll/start", headers=headers)
+    assert started.status_code == 200, started.text
+    finished = client.post(
+        "/api/v1/auth/totp/enroll/finish",
+        json={"code": code_for_step(started.json()["secret"], time_step(datetime.now(UTC)))},
+        headers=headers,
+    )
+    assert finished.status_code == 200, finished.text
+
+    session_token = client.cookies.get(SESSION_COOKIE_NAME)
+    assert isinstance(session_token, str)
+    csrf = finished.json()["csrf_token"]
+    auth_now = datetime.now(UTC)
+    context = application.state.auth.authenticate(session_token, auth_now)
+    assert context.user.id == user_id
+    assert context.user.role == "admin"
+    assert context.mfa_method == "totp"
+    assert application.state.auth.has_recent_step_up(context, auth_now)
+    return context, csrf, auth_now
+
+
 def _insert_verified_address(application, owner_id: int, address: str) -> str:
     identifier = str(uuid4())
     with application.state.repository.connect() as connection:
@@ -175,8 +205,10 @@ def test_transport_missing_reports_unavailable_but_allows_explicit_opt_out(setti
     config = _local_settings(settings, email_enabled=True, scheduler_enabled=True)
     application = create_app(config, FixtureProvider(), lambda: NOW, monitoring_runtime=runtime)
     with TestClient(application) as client:
-        _, csrf = _login(client)
-        application.state.monitoring_store.set_control(1, True, NOW)
+        admin_context, csrf, auth_now = _authenticate_admin_with_fresh_step_up(client, application)
+        application.state.monitoring_store.set_control(
+            1, True, auth_now, auth_context=admin_context
+        )
 
         features = client.get("/api/v1/monitoring/features")
         assert features.status_code == 200
@@ -220,9 +252,14 @@ def test_address_routes_bind_session_owner_csrf_and_selection_resets_opt_in(sett
     config = _local_settings(settings)
     application = create_app(config, FixtureProvider(), lambda: NOW)
     with TestClient(application) as client:
-        admin_id, admin_csrf = _login(client)
+        admin_context, _admin_csrf, auth_now = _authenticate_admin_with_fresh_step_up(
+            client, application
+        )
+        admin_id = admin_context.user.id
         member_id, member_csrf = _login(client, "notification-member")
-        application.state.monitoring_store.set_control(1, True, NOW)
+        application.state.monitoring_store.set_control(
+            1, True, auth_now, auth_context=admin_context
+        )
         admin_address = _insert_verified_address(application, admin_id, "admin@example.invalid")
         member_address = _insert_verified_address(application, member_id, "member@example.invalid")
 
@@ -247,6 +284,7 @@ def test_address_routes_bind_session_owner_csrf_and_selection_resets_opt_in(sett
             digest_email=False,
             address_id=admin_address,
             now=NOW,
+            auth_context=admin_context,
         )
         no_csrf = client.post(
             "/api/v1/notification-addresses/select",
@@ -314,13 +352,16 @@ def test_full_configuration_is_inert_until_normal_lifespan_and_control_allow_del
     assert email_disabled.state.notification_delivery is None
 
     with TestClient(application) as client:
-        owner_id, csrf = _login(client)
+        admin_context, csrf, auth_now = _authenticate_admin_with_fresh_step_up(client, application)
+        owner_id = admin_context.user.id
         staged_asset = client.get("/_next/static/chunks/09d8-9zfon09i.css")
         assert staged_asset.status_code == 200
         assert staged_asset.headers["content-type"].startswith("text/css")
         assert staged_asset.content
         assert client.get("/api/v1/monitoring/features").json()["email_available"] is False
-        application.state.monitoring_store.set_control(1, True, NOW)
+        application.state.monitoring_store.set_control(
+            1, True, auth_now, auth_context=admin_context
+        )
         assert client.get("/api/v1/monitoring/features").json()["email_available"] is True
         address_id = _insert_verified_address(application, owner_id, "owner@example.invalid")
         selected = client.post(
@@ -377,7 +418,7 @@ class BrokenDelivery:
 def test_scheduler_serial_delivery_handoff_observes_live_kill_and_stop(settings):
     repository = Repository(settings.database_path)
     repository.migrate()
-    store = MonitoringStore(repository)
+    store = MonitoringStore(repository, write_authorization_mode="test_no_auth")
     store.set_control(1, True, NOW)
     delivery = DeliveryProbe(store)
     runtime = MonitoringScheduler(
@@ -401,7 +442,7 @@ def test_scheduler_serial_delivery_handoff_observes_live_kill_and_stop(settings)
 def test_scheduler_email_failure_does_not_fail_local_monitoring_iteration(settings):
     repository = Repository(settings.database_path)
     repository.migrate()
-    store = MonitoringStore(repository)
+    store = MonitoringStore(repository, write_authorization_mode="test_no_auth")
     store.set_control(1, True, NOW)
     runtime = MonitoringScheduler(
         store,

@@ -75,7 +75,7 @@ def address_context(tmp_path, monkeypatch):
         password_hash=None,
         created_at=NOW,
     )
-    monitoring = MonitoringStore(repository)
+    monitoring = MonitoringStore(repository, write_authorization_mode="test_no_auth")
     control = monitoring.get_control()
     monitoring.set_control(control["revision"], True, NOW)
     return repository, monitoring, NotificationAddressStore(monitoring)
@@ -259,7 +259,9 @@ def test_owner_control_revocation_and_admin_canary_are_rechecked(address_context
     with repository.connect() as connection:
         connection.execute("UPDATE users SET status='active',role='member' WHERE id=1")
         connection.commit()
-    admin_store = NotificationAddressStore(MonitoringStore(repository, admin_only=True))
+    admin_store = NotificationAddressStore(
+        MonitoringStore(repository, admin_only=True, write_authorization_mode="test_no_auth")
+    )
     with pytest.raises(NotificationAddressUnavailable):
         admin_store.request_verification(1, "admin@example.test", str(uuid4()), NOW)
 
@@ -358,7 +360,11 @@ def test_stale_submission_recovers_to_uncertain_and_is_never_replayed(address_co
     checkpoint = store.mark_submission_started(
         1, issue.verification_id, issue.revision, issue._code, NOW
     )
-    restarted = NotificationAddressStore(MonitoringStore(Repository(repository.database_path)))
+    restarted = NotificationAddressStore(
+        MonitoringStore(
+            Repository(repository.database_path), write_authorization_mode="test_no_auth"
+        )
+    )
     replay = restarted.request_verification(
         1, "owner@example.test", key, NOW + timedelta(seconds=31)
     )

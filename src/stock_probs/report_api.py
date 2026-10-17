@@ -11,6 +11,8 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from stock_probs.auth import AuthContext
+from stock_probs.auth_write_guard import AuthWriteAuthorizationError
 from stock_probs.report_store import ReportCardStore, ReportStoreError
 from stock_probs.repository import RepositoryError
 
@@ -34,6 +36,12 @@ def _error(status_code: int, code: str, message: str) -> JSONResponse:
         status_code=status_code,
         content={"error": {"code": code, "message": message}},
     )
+
+
+def _request_auth_context(request: Request) -> AuthContext | None:
+    """Use only the trusted authentication snapshot attached before body parsing."""
+    context = getattr(request.state, "auth_context", None)
+    return context if isinstance(context, AuthContext) else None
 
 
 def create_report_router(
@@ -154,8 +162,11 @@ def create_report_router(
                 payload.state,
                 payload.note,
                 current_time(),
+                auth_context=_request_auth_context(request),
             )
             return JSONResponse(status_code=201, content=result)
+        except AuthWriteAuthorizationError as error:
+            return _error(error.status_code, error.code, error.message)
         except ReportStoreError as error:
             return store_error(error)
         except (RepositoryError, sqlite3.Error):

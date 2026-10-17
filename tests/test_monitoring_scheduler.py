@@ -64,7 +64,7 @@ def monitoring_store(tmp_path, monkeypatch):
         password_hash=None,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
-    return MonitoringStore(repository)
+    return MonitoringStore(repository, write_authorization_mode="test_no_auth")
 
 
 def _config(symbol: str = "SPY") -> dict[str, object]:
@@ -262,7 +262,9 @@ def test_admin_only_claims_exclude_member_alerts_and_reject_member_changes(monit
     admin_alert = _create_alert(regular_store, owner=1)
     member_alert = _create_alert(regular_store, owner=2, symbol="ACDC")
     _enable(regular_store)
-    canary_store = MonitoringStore(regular_store.repository, admin_only=True)
+    canary_store = MonitoringStore(
+        regular_store.repository, admin_only=True, write_authorization_mode="test_no_auth"
+    )
 
     claims = canary_store.claim_due_price_jobs("admin-canary", NOW, limit=2)
     assert [claim["owner_user_id"] for claim in claims] == [1]
@@ -277,14 +279,20 @@ def test_admin_only_claims_exclude_member_alerts_and_reject_member_changes(monit
     with pytest.raises(MonitoringStoreError, match="owner is unavailable"):
         _create_alert(canary_store, owner=2, symbol="VFV.TO")
     with pytest.raises(TypeError, match="admin_only must be a boolean"):
-        MonitoringStore(regular_store.repository, admin_only=1)  # type: ignore[arg-type]
+        MonitoringStore(
+            regular_store.repository,
+            admin_only=1,  # type: ignore[arg-type]
+            write_authorization_mode="test_no_auth",
+        )
 
 
 def test_admin_demotion_during_lookup_blocks_canary_quote_and_write(monitoring_store):
     regular_store = monitoring_store
     alert = _create_alert(regular_store)
     _enable(regular_store)
-    canary_store = MonitoringStore(regular_store.repository, admin_only=True)
+    canary_store = MonitoringStore(
+        regular_store.repository, admin_only=True, write_authorization_mode="test_no_auth"
+    )
     service = StubForecastService(NOW)
 
     def demote_admin(_query: str) -> None:

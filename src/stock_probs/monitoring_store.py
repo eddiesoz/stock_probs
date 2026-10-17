@@ -15,10 +15,12 @@ import sqlite3
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .auth import AuthContext
+from .auth_write_guard import StepUpChecker, authorize_current_write
 from .monitoring_domain import (
     ArmBaselineSnapshot,
     CrossingState,
@@ -96,6 +98,9 @@ class MonitoringConflictError(MonitoringStoreError):
 
 class MonitoringArmingUnavailableError(MonitoringStoreError):
     """New monitoring work cannot be accepted while its arming path is unavailable."""
+
+
+WriteAuthorizationMode = Literal["required", "development_no_auth", "test_no_auth"]
 
 
 def _canonical_json(value: Any, maximum: int) -> str:
@@ -236,13 +241,30 @@ def _cursor_decode(value: object) -> tuple[str, str] | None:
 class MonitoringStore:
     """Short-transaction, owner-bound persistence over the existing SQLite repository."""
 
-    def __init__(self, repository: Repository, *, admin_only: bool = False):
+    def __init__(
+        self,
+        repository: Repository,
+        *,
+        admin_only: bool = False,
+        write_authorization_mode: WriteAuthorizationMode = "required",
+        step_up_checker: StepUpChecker | None = None,
+    ):
         if not isinstance(repository, Repository):
             raise TypeError("repository must be a Repository")
         if type(admin_only) is not bool:
             raise TypeError("admin_only must be a boolean")
+        if write_authorization_mode not in {
+            "required",
+            "development_no_auth",
+            "test_no_auth",
+        }:
+            raise TypeError("write_authorization_mode is invalid")
+        if step_up_checker is not None and not callable(step_up_checker):
+            raise TypeError("step_up_checker must be callable")
         self.repository = repository
         self.admin_only = admin_only
+        self.write_authorization_mode = write_authorization_mode
+        self.step_up_checker = step_up_checker
 
     @contextmanager
     def _write(self) -> Iterator[sqlite3.Connection]:
@@ -269,6 +291,28 @@ class MonitoringStore:
                 raise MonitoringStoreError("The owner is unavailable.")
         return owner_id
 
+    def _authorize_user_mutation(
+        self,
+        connection: sqlite3.Connection,
+        auth_context: AuthContext | None,
+        owner: int,
+        *,
+        required_role: str | None = None,
+        require_step_up: bool = False,
+    ) -> None:
+        """Bind an interactive write to its cached context inside the existing transaction."""
+        if self.write_authorization_mode != "required":
+            return
+        authorize_current_write(
+            connection,
+            auth_context,
+            owner,
+            datetime.now(UTC),
+            required_role=required_role,
+            require_step_up=require_step_up,
+            step_up_checker=self.step_up_checker,
+        )
+
     def get_control(self) -> dict[str, Any]:
         """Return the persisted global monitoring switch and its compare-and-swap revision."""
 
@@ -289,6 +333,8 @@ class MonitoringStore:
         expected_revision: int,
         enabled: bool,
         now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         """CAS the global switch and fail claimed work that has not crossed its effect boundary."""
 
@@ -297,6 +343,13 @@ class MonitoringStore:
             raise MonitoringStoreError("The monitoring switch must be a boolean.")
         now_text = _timestamp(now, "now")
         with self._write() as connection:
+            self._authorize_user_mutation(
+                connection,
+                auth_context,
+                auth_context.user.id if isinstance(auth_context, AuthContext) else 0,
+                required_role="admin",
+                require_step_up=True,
+            )
             row = connection.execute(
                 "SELECT enabled,revision,updated_at FROM monitoring_control WHERE id=1"
             ).fetchone()
@@ -514,6 +567,7 @@ class MonitoringStore:
         now: datetime,
         *,
         allow_new_creation: bool = True,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         owner = _owner_id(owner_user_id)
         if type(allow_new_creation) is not bool:
@@ -522,6 +576,7 @@ class MonitoringStore:
         normalized, payload_json, request_hash = _config(payload)
         timestamp = _timestamp(now, "now")
         with self._write() as connection:
+            self._authorize_user_mutation(connection, auth_context, owner)
             owner = self._active_owner(connection, owner)
             existing = connection.execute(
                 "SELECT id,request_sha256 FROM price_alerts WHERE owner_user_id=? AND "
@@ -702,12 +757,15 @@ class MonitoringStore:
         expected_revision: int,
         payload: Mapping[str, Any],
         now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         owner = _owner_id(owner_user_id)
         identifier = _canonical_uuid(alert_id, "alert_id")
         expected = _revision(expected_revision)
         normalized, payload_json, _ = _config(payload)
         with self._write() as connection:
+            self._authorize_user_mutation(connection, auth_context, owner)
             self._active_owner(connection, owner)
             row = self._alert_row(connection, owner, identifier)
             if row["revision"] != expected:
@@ -720,12 +778,15 @@ class MonitoringStore:
         alert_id: str,
         expected_revision: int,
         now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         owner = _owner_id(owner_user_id)
         identifier = _canonical_uuid(alert_id, "alert_id")
         expected = _revision(expected_revision)
         now_text = _timestamp(now, "now")
         with self._write() as connection:
+            self._authorize_user_mutation(connection, auth_context, owner)
             self._active_owner(connection, owner)
             row = self._alert_row(connection, owner, identifier)
             if row["revision"] != expected:
@@ -780,12 +841,15 @@ class MonitoringStore:
         alert_id: str,
         expected_revision: int,
         now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         owner = _owner_id(owner_user_id)
         identifier = _canonical_uuid(alert_id, "alert_id")
         expected = _revision(expected_revision)
         now_text = _timestamp(now, "now")
         with self._write() as connection:
+            self._authorize_user_mutation(connection, auth_context, owner)
             self._active_owner(connection, owner)
             row = self._alert_row(connection, owner, identifier)
             if row["revision"] != expected:
@@ -869,6 +933,7 @@ class MonitoringStore:
         digest_timezone: str = "America/Toronto",
         address_id: str | None = None,
         now: datetime,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         owner = _owner_id(owner_user_id)
         expected = _revision(expected_revision, allow_zero=True)
@@ -887,6 +952,7 @@ class MonitoringStore:
         address = _canonical_uuid(address_id, "address_id") if address_id is not None else None
         now_text = _timestamp(now, "now")
         with self._write() as connection:
+            self._authorize_user_mutation(connection, auth_context, owner)
             self._active_owner(connection, owner)
             existing = connection.execute(
                 "SELECT revision FROM notification_preferences WHERE owner_user_id=?", (owner,)
@@ -1443,6 +1509,8 @@ class MonitoringStore:
         expected_revision: int,
         is_read: bool,
         now: datetime,
+        *,
+        auth_context: AuthContext | None = None,
     ) -> dict[str, Any]:
         owner = _owner_id(owner_user_id)
         identifier = _canonical_uuid(notification_id, "notification_id")
@@ -1451,6 +1519,7 @@ class MonitoringStore:
             raise MonitoringStoreError("Read state must be boolean.")
         now_text = _timestamp(now, "now")
         with self._write() as connection:
+            self._authorize_user_mutation(connection, auth_context, owner)
             self._active_owner(connection, owner)
             row = connection.execute(
                 "SELECT id,kind,payload_json,is_read,revision,created_at FROM notifications "

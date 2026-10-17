@@ -31,7 +31,7 @@ def monitoring_store(tmp_path):
             password_hash=None,
             created_at=NOW,
         )
-    return MonitoringStore(repository)
+    return MonitoringStore(repository, write_authorization_mode="test_no_auth")
 
 
 def _client(

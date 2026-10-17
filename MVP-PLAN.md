@@ -214,6 +214,45 @@ roots were retained. The selected results are local and do not establish the ful
 canonical gate, frontend build/stage, browser/axe, external provider, Docker/host resources,
 production, rollback, canary, or release acceptance; those gates remain open.
 
+### R-ASTRA-121 R3 transaction-bound write authorization (2026-10-17)
+
+The shared guard now rechecks interactive owner/session/token/CSRF bindings, current role,
+revocation, expiry and MFA inside the same `BEGIN IMMEDIATE` transaction as each user mutation.
+Control changes additionally require the current administrator role and recent step-up. The
+store default fails closed; development/test fixtures opt into no-auth explicitly. Alert,
+notification, preference, address and manual-review routes pass only the trusted request context;
+background leases and transport-effect boundaries remain separate. No migration changed.
+
+Independent selected race/store/API QA **Passed** 16 tests; receipt
+`/var/tmp/r12r/r3-monitoring-auth-race-independent-qa-20261017T1546Z/independent-receipt.json`,
+SHA-256 `798bd26a13dbfe19066e0c5e9d4b0ebfe28999391bb2696ad2719796bad2a773`.
+The expanded 248-test command remains **Fail** (244 passed, four failed): two stale fixture
+setups omitted authorization, one strict import assertion loaded a QA overlay, and one concurrent
+migration check timed out with cause unproven. No green aggregate is inferred from later results.
+
+The two missing-auth fixture cases **Passed** after enrolling/authenticating the administrator
+through the existing HTTP flow and passing its current context; JUnit SHA-256
+`2578e08de37d6e8b46d658f1e7979711e315f4b3ae2d490180b8c6ce90b1b15b`.
+The remaining strict-import/lifespan and concurrent-repository selectors **Passed** 2/2 at
+`2026-10-17T17:07:19Z`–`17:07:29Z`, Python 3.11.15 on native x86_64, child umask `0022`.
+Receipt `/var/tmp/r12r/r3-two-selectors-ad5d4755-5053-420b-a679-7cbcc698cc28/independent-qa-receipt.json`
+has SHA-256 `2160b5a4be1d05b4a1895dc233c36d61239a5ee74450bcbd49229c088ca1047c`;
+all 77 pins matched and the actual API module loaded from this worktree. A temporary generated
+static link supplied only a historical CSS fixture and was removed by exact inode after the run;
+no current frontend build/browser acceptance follows. The migration selector uses four threads
+and independent Repository instances, despite its historical two-process docstring; separate
+OS-process contention was not tested. The original timeout is not assigned a proven cause.
+
+After the selected runs, two fixture expressions received mechanical Ruff formatting;
+AST equality and exact formatter reproduction passed. Proof SHA-256 `735ba6205a1997dc0f940ad203b43905e2bd327ef4cde8fcd7ee270674ed3639`.
+Additional formatting proof SHA-256 `6edf595ad8a48deb901aeec22906d96d8b8e98c953c738e7849d1e90df1bd462`.
+No post-format runtime rerun is claimed. Ruff and diff checks passed for the final repair scope.
+
+The parent reviewed the integrated guard, API/store changes and fixture repairs. Current canonical,
+full security, frontend/browser/design, provider, actual combined 1 GB, schema-compatible recovery,
+exact-PR rollback, owner canary and release gates remain open. No production mutation, deployment,
+rollout, resize or email follows; existing backups and the US$15 total monthly cap are unchanged.
+
 Historical R120 release/evidence below remains unchanged. R121 does not supersede E850's deployed
 product identity or claim new production observations.
 

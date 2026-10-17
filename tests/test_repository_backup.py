@@ -544,7 +544,7 @@ def test_schema18_backup_preserves_address_effects_and_rejects_older_snapshot(se
         password_hash=None,
         created_at=NOW,
     )["id"]
-    monitoring = MonitoringStore(repository)
+    monitoring = MonitoringStore(repository, write_authorization_mode="test_no_auth")
     control = monitoring.get_control()
     monitoring.set_control(control["revision"], True, NOW)
     store = NotificationAddressStore(monitoring)
@@ -716,7 +716,7 @@ def test_restore_refuses_to_erase_submitted_notification_delivery_history(settin
     """An older snapshot cannot erase a later accepted or ambiguous SMTP submission."""
 
     repository, _ = _service(settings)
-    store = MonitoringStore(repository)
+    store = MonitoringStore(repository, write_authorization_mode="test_no_auth")
     now = NOW
     notification_id = str(uuid4())
     address_id = str(uuid4())

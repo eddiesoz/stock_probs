@@ -68,7 +68,7 @@ def monitoring_store(tmp_path, monkeypatch):
         password_hash=None,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
-    return MonitoringStore(repository)
+    return MonitoringStore(repository, write_authorization_mode="test_no_auth")
 
 
 def _config(**changes):
@@ -493,7 +493,7 @@ def test_notification_outbox_enqueue_is_owner_bound_idempotent_and_persisted(mon
         preferences["revision"],
         now=enqueued_at + timedelta(seconds=1),
     )
-    restarted = MonitoringStore(store.repository)
+    restarted = MonitoringStore(store.repository, write_authorization_mode="test_no_auth")
     persisted = restarted.enqueue_notification_outbox(
         1,
         notification["id"],
@@ -859,7 +859,7 @@ def test_notifications_page_read_cas_persists_and_preferences_require_verified_a
     assert read["revision"] == 2 and read["is_read"]
     with pytest.raises(MonitoringConflictError, match="changed"):
         store.set_notification_read(1, ids[0], 1, False, cursor_time)
-    restarted = MonitoringStore(store.repository)
+    restarted = MonitoringStore(store.repository, write_authorization_mode="test_no_auth")
     persisted = {item["id"]: item for item in restarted.list_notifications(1)["items"]}
     assert persisted[ids[0]]["is_read"] and persisted[ids[0]]["revision"] == 2
 

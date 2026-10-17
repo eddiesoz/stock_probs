@@ -217,7 +217,9 @@ def test_report_page_is_owner_bound_and_excludes_future_backtests_and_evaluation
         )
         connection.commit()
 
-    report = ReportCardStore(repository).list_report(1, NOW, page_size=1)
+    report = ReportCardStore(repository, write_authorization_mode="test_no_auth").list_report(
+        1, NOW, page_size=1
+    )
 
     assert report["total"] == 1
     assert report["denominator_scope"] == "current_page"
@@ -241,7 +243,9 @@ def test_report_as_of_filters_use_exact_instants_for_offsets_and_microseconds(
     _add_saved_result(repository, 6, 1, created_at="2026-10-12T17:00:00-05:00")
     _add_saved_result(repository, 7, 1, created_at="2026-10-13T00:15:00+03:00")
 
-    report = ReportCardStore(repository).list_report(1, NOW, page_size=10)
+    report = ReportCardStore(repository, write_authorization_mode="test_no_auth").list_report(
+        1, NOW, page_size=10
+    )
 
     assert report["total"] == 4
     assert [item["result_id"] for item in report["items"]] == [6, 3, 7, 1]
@@ -311,7 +315,7 @@ def test_latest_outcome_evidence_and_review_queries_use_exact_instants(
             )
         connection.commit()
 
-    store = ReportCardStore(repository)
+    store = ReportCardStore(repository, write_authorization_mode="test_no_auth")
     report = store.list_report(1, NOW)
     history = store.review_history(1, 1, NOW)
 
@@ -328,7 +332,7 @@ def test_page_counts_and_denominators_describe_only_the_bounded_page(
 ) -> None:
     _add_saved_result(repository, 1, 1)
     _add_saved_result(repository, 2, 1, created_at=TARGET - timedelta(minutes=30))
-    store = ReportCardStore(repository)
+    store = ReportCardStore(repository, write_authorization_mode="test_no_auth")
 
     first = store.list_report(1, NOW, page=1, page_size=1)
     second = store.list_report(1, NOW, page=2, page_size=1)
@@ -353,7 +357,9 @@ def test_malformed_saved_json_is_reported_as_incomparable_without_crashing(
         connection.execute("UPDATE forecast_results SET result_json=? WHERE id=1", ("{broken",))
         connection.commit()
 
-    report = ReportCardStore(repository).list_report(1, NOW)
+    report = ReportCardStore(repository, write_authorization_mode="test_no_auth").list_report(
+        1, NOW
+    )
 
     assert report["counts"]["incomparable"] == 1
     assert report["items"][0]["direction_correct"] is None
@@ -399,7 +405,9 @@ def test_malformed_evidence_json_is_incomparable_without_crashing(
         )
         connection.commit()
 
-    report = ReportCardStore(repository).list_report(1, NOW)
+    report = ReportCardStore(repository, write_authorization_mode="test_no_auth").list_report(
+        1, NOW
+    )
 
     assert report["counts"]["incomparable"] == 1
     assert report["items"][0]["direction_correct"] is None
@@ -411,7 +419,7 @@ def test_inactive_owner_and_cross_owner_review_history_are_not_disclosed(
 ) -> None:
     _add_saved_result(repository, 1, 1)
     _add_saved_result(repository, 2, 2)
-    store = ReportCardStore(repository)
+    store = ReportCardStore(repository, write_authorization_mode="test_no_auth")
     assert store.list_report(2, NOW)["total"] == 1
     assert store.review_history(1, 2, NOW) is None
     with repository.connect() as connection:
@@ -465,7 +473,7 @@ def test_manual_review_requires_exact_matching_existing_evidence_and_cas(
             ),
         )
         connection.commit()
-    store = ReportCardStore(repository)
+    store = ReportCardStore(repository, write_authorization_mode="test_no_auth")
 
     review = store.append_manual_review(1, 1, 0, "confirmed", "Checked source endpoints.", NOW)
     assert review["revision"] == 1

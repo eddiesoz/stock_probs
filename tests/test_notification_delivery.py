@@ -76,7 +76,11 @@ def _queued_delivery(repository: Repository, *, admin_only: bool):
             connection.execute("UPDATE users SET role='admin' WHERE id=1")
             connection.commit()
 
-    store = MonitoringStore(repository, admin_only=admin_only)
+    store = MonitoringStore(
+        repository,
+        admin_only=admin_only,
+        write_authorization_mode="test_no_auth",
+    )
     control = store.get_control()
     enabled = store.set_control(control["revision"], True, NOW)
 

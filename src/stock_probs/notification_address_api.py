@@ -17,6 +17,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from stock_probs.auth import AuthContext
+from stock_probs.auth_write_guard import AuthWriteAuthorizationError
 from stock_probs.notification_address_store import (
     NotificationAddressConflict,
     NotificationAddressError,
@@ -33,6 +35,12 @@ _CODE_CHARACTERS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwx
 OwnerResolver = Callable[[Request], int | None]
 MutationGuard = Callable[[Request, int], bool]
 UtcClock = Callable[[], datetime]
+
+
+def _request_auth_context(request: Request) -> AuthContext | None:
+    """Use only the trusted authentication snapshot attached before bounded body parsing."""
+    context = getattr(request.state, "auth_context", None)
+    return context if isinstance(context, AuthContext) else None
 
 
 def create_notification_address_router(
@@ -111,6 +119,7 @@ def create_notification_address_router(
             return _error(
                 403, "NOTIFICATION_FEATURE_UNAVAILABLE", "Notification settings are unavailable."
             )
+        auth_context = _request_auth_context(request)
         if not service_ready() or service is None:
             return _error(
                 503, "EMAIL_VERIFICATION_UNAVAILABLE", "Email verification is unavailable."
@@ -133,7 +142,10 @@ def create_notification_address_router(
                 address,
                 key,
                 await run_in_threadpool(_safe_now, selected_clock),
+                auth_context=auth_context,
             )
+        except AuthWriteAuthorizationError as error:
+            return _error(error.status_code, error.code, error.message)
         except NotificationAddressConflict:
             return _error(409, "IDEMPOTENCY_CONFLICT", "Use the original request for this key.")
         except NotificationAddressRateLimited:
@@ -169,6 +181,7 @@ def create_notification_address_router(
             return _error(
                 403, "NOTIFICATION_FEATURE_UNAVAILABLE", "Notification settings are unavailable."
             )
+        auth_context = _request_auth_context(request)
         if not service_ready() or service is None:
             return _error(
                 503, "EMAIL_VERIFICATION_UNAVAILABLE", "Email verification is unavailable."
@@ -205,7 +218,10 @@ def create_notification_address_router(
                 await run_in_threadpool(_safe_now, selected_clock),
                 supersedes_verification_id=previous_id,
                 expected_revision=revision,
+                auth_context=auth_context,
             )
+        except AuthWriteAuthorizationError as error:
+            return _error(error.status_code, error.code, error.message)
         except NotificationAddressConflict:
             return _error(
                 409, "REVISION_OR_IDEMPOTENCY_CONFLICT", "Reload status and use a new key."
@@ -311,6 +327,7 @@ def create_notification_address_router(
             return _error(
                 403, "NOTIFICATION_FEATURE_UNAVAILABLE", "Notification settings are unavailable."
             )
+        auth_context = _request_auth_context(request)
         parsed = await _read_json(request)
         if isinstance(parsed, JSONResponse):
             return parsed
@@ -332,7 +349,10 @@ def create_notification_address_router(
                 address_id,
                 revision,
                 await run_in_threadpool(_safe_now, selected_clock),
+                auth_context=auth_context,
             )
+        except AuthWriteAuthorizationError as error:
+            return _error(error.status_code, error.code, error.message)
         except NotificationAddressConflict:
             return _error(
                 409, "REVISION_CONFLICT", "Reload notification preferences before selecting."
@@ -360,6 +380,7 @@ def create_notification_address_router(
             return _error(
                 403, "NOTIFICATION_FEATURE_UNAVAILABLE", "Notification settings are unavailable."
             )
+        auth_context = _request_auth_context(request)
         parsed = await _read_json(request)
         if isinstance(parsed, JSONResponse):
             return parsed
@@ -391,7 +412,10 @@ def create_notification_address_router(
                 code,
                 revision,
                 await run_in_threadpool(_safe_now, selected_clock),
+                auth_context=auth_context,
             )
+        except AuthWriteAuthorizationError as error:
+            return _error(error.status_code, error.code, error.message)
         except NotificationAddressConflict:
             return _error(
                 409, "REVISION_CONFLICT", "Reload the verification status before retrying."

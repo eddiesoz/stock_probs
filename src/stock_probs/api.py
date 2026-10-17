@@ -54,6 +54,7 @@ from stock_probs.auth import (
     PasskeyBackend,
     UserRecord,
 )
+from stock_probs.auth_write_guard import AuthWriteAuthorizationError
 from stock_probs.backup import MAX_BACKUP_BYTES, BackupError, BackupManager
 from stock_probs.config import Settings
 from stock_probs.domain import FORECAST_INTERVAL_HORIZONS, DomainError, normalize_symbol
@@ -3120,10 +3121,20 @@ def create_app(
         (lambda: fixture_now) if fixture_now is not None else (lambda: datetime.now(UTC))
     )
     service = ForecastService(repository, selected_provider, selected_clock)
+    backups = BackupManager(repository, config.backup_dir)
+    auth_manager = AuthManager(
+        auth_store if auth_store is not None else repository,
+        config.auth_settings(),
+        passkey_backend=passkey_backend,
+    )
+    write_authorization_mode = "required" if auth_manager.enabled else "development_no_auth"
     from stock_probs.monitoring_store import MonitoringStore
 
     monitoring_store = MonitoringStore(
-        repository, admin_only=config.monitoring_features_canary_only
+        repository,
+        admin_only=config.monitoring_features_canary_only,
+        write_authorization_mode=write_authorization_mode,
+        step_up_checker=auth_manager.has_recent_step_up,
     )
     from stock_probs.notification_address_store import NotificationAddressStore
 
@@ -3171,12 +3182,6 @@ def create_app(
                 completion_clock=selected_clock,
             ),
         )
-    backups = BackupManager(repository, config.backup_dir)
-    auth_manager = AuthManager(
-        auth_store if auth_store is not None else repository,
-        config.auth_settings(),
-        passkey_backend=passkey_backend,
-    )
     selected_assistant_catalog = assistant_catalog
     selected_assistant_providers = assistant_providers
     selected_assistant_runtime = assistant_runtime
@@ -4636,11 +4641,18 @@ def create_app(
     def change_monitoring_control(
         payload: MonitoringControlRequest, request: Request
     ) -> dict[str, object]:
-        _auth_context(request, role="admin", step_up=True, revalidate=True)
+        context = _auth_context(request, role="admin", step_up=True, revalidate=True)
         try:
             return monitoring_store.set_control(
-                payload.expected_revision, payload.enabled, selected_clock()
+                payload.expected_revision,
+                payload.enabled,
+                selected_clock(),
+                auth_context=context,
             )
+        except AuthWriteAuthorizationError as error:
+            raise DomainError(
+                error.code.lower(), error.message, status_code=error.status_code
+            ) from error
         except MonitoringConflictError as error:
             raise DomainError(
                 "revision_conflict", "Reload the monitoring control before saving.", status_code=409
@@ -4693,7 +4705,11 @@ def create_app(
 
     app.include_router(
         create_report_router(
-            ReportCardStore(repository),
+            ReportCardStore(
+                repository,
+                write_authorization_mode=write_authorization_mode,
+                step_up_checker=auth_manager.has_recent_step_up,
+            ),
             monitoring_owner,
             enabled=config.monitoring_features_enabled,
             clock=selected_clock,
