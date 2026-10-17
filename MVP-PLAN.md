@@ -10,7 +10,7 @@ fictional data, incidental labels, and logos are not product requirements. See t
 
 | Release | Complete user-facing scope | Current status |
 | --- | --- | --- |
-| 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | In progress; local implementation and selected checks only |
+| 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | Draft PR #7; prior selected checks and static reviews only. New non-success capture fixtures have static review only; current browser/runtime and release acceptance remain pending |
 | 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | In progress in a separate managed checkout; no release acceptance |
 | 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | Pending |
 | 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Pending |
@@ -524,6 +524,49 @@ separate task ID. Its tests exercise generated verifier code and fake adapters; 
 actual Docker behavior or a live recovery run. The actual runtime gate remains **Unavailable/held**
 because the immutable merged-F6 candidate binding is missing. Parent integrated source and
 documentation review **Passed** for this synthetic tooling scope; publication remains pending. No image, host pair, deployment, rollout, or release acceptance is claimed.
+
+### R-ASTRA-121 R1 PR #7 comparison, thesis, and capture checkpoint (2026-10-17)
+
+Draft [PR #7](https://github.com/eddiesoz/stock_probs/pull/7) includes head
+`a08722161689f2e7e3c8eeba16d96fcc4469d533`, following
+`750fc99f96deb8e9d465de561e653081faa35d7d`. The comparison implementation uses dated
+split/dividend evidence for comparison calculations only; ordinary chart history remains
+unadjusted. It validates bounded event evidence, marks incomplete evidence, and suppresses affected
+change, volatility, and drawdown metrics when a split crosses the common comparison window. It
+does not rewrite observations or silently repair prices. Thesis revisions retain explicit review
+and save actions, owner-scoped queries, evidence checks, and revision-conflict protection. The
+integrated source-contract review **Passed** its static scope. Its initial test-oracle review
+**Failed** because an explicit empty available-fields list was treated as if both fields were
+present. The fixture now defaults only when the field is `None`; an independent static supplement
+**Passed** this correction. The corrected test has not run.
+
+The success-state capture fixture uses a disposable app per thesis/comparison capture and checks
+initial and post-action record counts. Independent V2 review **Passed** static inspection of its
+API/history/capture assertions and corrected comparison locator. The exact candidate was applied;
+its application receipt is `/var/tmp/r12r/r1-isolation-v2-parent-application-5554e9b8-a42c-4191-ae3e-168f8d4ad51e/application.json`,
+SHA-256 `d3604ffdc1a875b1cec20a0dd5dbe7ca8c76cccc2a61a03db3cce6b8f4e1406b`; independent static
+review is `/var/tmp/r12r/r1-isolation-v2-static-qa-a2fcad480e8c4270947cba5abf98b59f/receipt.json`,
+SHA-256 `699c5450754625ef700ab511cad928cce0c7ec5110d29bd09cd85163951f533f`. Runtime was
+**Skipped** while the canonical gate was active. This does not create fresh success screenshots.
+The earlier R121 E5 capture-fidelity **Fail** remains preserved; later capture-only images and
+visual review retain their original scopes.
+
+The new non-success fixture adds 32 named captures for loading, empty, error, and unavailable
+states across thesis and comparison surfaces in Light and Dark themes. After each loading
+screenshot, a bounded-state guard checks that the requested text remains visible and that the
+fixture timer did not auto-release the state. Independent static review **Passed** for candidate
+`research-workspaces.spec.js` SHA-256
+`6e7d79a67cdbbc0c2408d971716c472a98d9bd7835a9754ad2b774bcd04a2d57`; parent application
+recorded SHA-256 `ca334a5ab524acbbe39c527290386f56134867442ef2ac96eed38c845ce4fe22`. The review was
+bound to parent `750fc99`; the exact reviewed bytes were subsequently applied and committed as
+`a087221`. Existing action/navigation/test budgets of 5,000/10,000/30,000 ms and the 300,000 ms
+global timeout were retained. Test and browser execution for this new fixture remains **Skipped**;
+no current screenshot or design acceptance follows.
+
+Release 1 remains in progress. The canonical gate, current-source browser and whole-route axe,
+fresh approved frontend build/stage, schema-14 recovery, security, actual combined 1 GB, exact-PR
+rollback, owner canary, and release acceptance remain open. No merge, deployment, rollout, resize,
+or email is claimed.
 
 ## Status And Scope
 
