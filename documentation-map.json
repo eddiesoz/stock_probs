@@ -142,6 +142,17 @@
         "docs/develop/design-system.md",
         "docs/security/threat-model.md"
       ]
+    },
+    {
+      "name": "interactive-write-session-authorization",
+      "match": [
+        "src/stock_probs/auth_write_guard.py",
+        "tests/_auth_body_barrier.py"
+      ],
+      "docs": [
+        "docs/develop/documentation.md",
+        "docs/develop/testing.md"
+      ]
     }
   ],
   "additional": [
