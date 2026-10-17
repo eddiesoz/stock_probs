@@ -876,6 +876,14 @@ selection. This acceptance-run selector does not change the app's normal model c
 policy, or budgets; no model request occurred. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md)
 for complete evidence and limits.
 
+The candidate rollout helper waits within its existing 30-check health budget for the requested
+assistant projection as well as application readiness. Disabling requires `enabled=false` and
+`status=disabled`; owner and invited rollout require `enabled=true` and `status=ready`. The kill
+request is issued once. A stale ready projection is observed again rather than treated as a
+completed transition. Missing or permanently mismatched projections still fail closed, and the
+existing image, schema, Compose and app-process identity checks remain required. This repair is
+under local verification; it does not establish a production update or the assistant hotfix release.
+
 The later prebuilt-image rehearsal remains a separate step. It binds an immutable candidate image
 ID and context digest to the same reviewed PR head SHA, followed by the existing recovery-image
 pair. The optional `prebuilt-release` publisher mode consumes that completed pair and its original

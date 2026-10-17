@@ -6900,6 +6900,71 @@ honestly; mandatory current release/resource/recovery/rollback and owner UI/depl
 open. Production, existing backups, the 1 GB host and US$15 monthly total are unchanged.
 
 
+This E18 entry is preserved verbatim from the main-branch checkpoint; later entries follow in sequence.
+
+
+### R-ASTRA-121 E18 — rollout observation failure and bounded state verification
+
+The free-Zen restoration remains the first dependency before the seven visible feature additions.
+The current application candidate is frozen on draft PR #9 at `f7c5a9787e4fd7e1f777040be3f7fa8dfea3cefc`;
+its local native answers do not establish production restoration. The instrumented actual-host
+attempt failed before candidate startup: preflight observed 466,160 KiB available against the
+unchanged 524,288 KiB floor. Independent artifact review confirmed that result and the restoration
+to the old `5ad2c3f` / `78746f60` schema-13 invited release. Receipt
+`/var/tmp/r12r/signal-ledger-r120-host04-failure-restore-review-f7d36146-c33c-4a1b-9cbc-e5a17c2353bc/receipt.json`,
+SHA-256 `416e5e74e737d01a51a9a0b64963510fe89b8779b9bb2e99310064f631fb3300`.
+
+A later bounded diagnostic attempted to disable that old worker for a process snapshot. The
+operation failed, and authoritative readback recorded `assistant_disable_unverified`, with the
+safety fallback stopping the app at `2026-10-13T22:05:27.264222Z`. The planned disabled-period
+memory snapshot was not obtained. Guarded recovery restored the exact old image through
+`owner_canary` and `invited`; both returned ready, schema 13, with loopback-only readback. Preserve
+this incident separately from the earlier successful transitions. No candidate deployment or
+new native trial followed. Its private artifacts are under
+`/var/tmp/r12r/signal-ledger-assistant-fix-20261013-native-zen/production-rollout-disabled-07`,
+`production07-uncertain-readback-01`, `production07-recovery-owner-01`, and
+`production-rollout-invited-07` in that same task directory.
+
+Source review found an observation gap: the helper returned on application readiness and checked
+the worker projection only afterward. The app learns the supervisor's disable through its runtime
+observation, so a stale enabled projection can precede the disabled projection. A regression using
+that sequence failed on the original helper with `assistant_disable_unverified`. This reproduces
+the source-level failure path; the failed production observation did not retain its exact health
+payload, so the incident's precise timing cause remains unproven.
+
+The narrow candidate helper now waits for the requested projection inside the same 30 attempts,
+one-second intervals, three-second curl limit and five-second command limit. Disabled and enabled
+states retain their strict boolean/status requirements, and the existing containment, identity,
+image, schema and Compose checks remain. It never repeats the kill command while observing health.
+The helper and tests are isolated on `codex/assistant-rollout-health`; the application candidate
+and its implementation/image bindings are unchanged. Local and independent verification, exact
+publication and actual-host confirmation remain pending. The existing 1 GB host, backups and US$15
+monthly total remain fixed; reserve floors are unchanged. No hotfix release, merge, deployment,
+email or full accessibility acceptance is claimed.
+
+E18 local verification subsequently **Passed** for the helper scope. Builder and independent runs
+each passed 94 tests with one opt-in Docker recovery-dispatch skip (95 JUnit cases). The independent
+run was `2026-10-13T22:18:55Z`–`22:18:58Z`; 66 source/import inputs remained unchanged, with schema-13
+application imports resolved to the operational worktree. Independent receipt
+`/var/tmp/r12r/signal-ledger-assistant-fix-20261013-native-zen/rollout-health-independent-dbc3566f-4771-44fe-9ec9-1dc9c1461304/independent-qa-receipt.json`,
+SHA-256 `eea0a3e4455d62be07b55abb8c81ec531b2ffd6489b3714e6bc7566862ead905`; JUnit SHA-256
+`84e142463d069a1ebe11bfcf04fb77b492ff4302bb7a44a472ee7be65bb3411a`. Ruff, formatting, scoped
+security selection, validator (9/14/8), coverage (154 mapped files) and diff checks passed. Parent
+personally verified all 66 bindings and the integrated source/test/evidence diff. Canonical, browser,
+Docker, provider and production checks were outside this narrow run, not accepted by it.
+
+Independent restoration artifact review confirmed the exact old image ready/invited after the
+incident, but the dedicated stopped-app recovery invocation has no retained baseline/wrapper; its
+invocation provenance is **Unavailable**. Preserve that qualification and the failed disable/readback.
+Receipt `independent-restoration-review-02/receipt.json` in the same task directory has SHA-256
+`5e11144b5a1ccc57b61ef6d53366dd12e2d060a0c2559acb6ec8df9183dda395`. Initial builder preparation
+failed before tests on a backup-module filename mismatch. A custom broad security selector failed
+on assertion findings, including test assertions; its tool output was truncated. Correct configured
+lint and the scoped security selection ignoring S101 passed separately. Neither earlier setup nor
+selector failure is rewritten as a Pass. Helper publication, installation, actual-host confirmation,
+the free-Zen hotfix release and all feature releases remain pending.
+
+
 ### R-ASTRA-121 E19 — installed rollout repair and signed schema-13 backup
 
 Operational PR #10 merged at `4cab5eac006704b2f1d7d957ac5f05f26adaed0a`. The guarded
