@@ -7,7 +7,7 @@ import hashlib
 import json
 import math
 import statistics
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -368,6 +368,170 @@ class ResearchStore:
         return self._item(row) if row else None
 
 
+def _action_evidence(item: dict[str, Any]) -> dict[str, Any]:
+    """Validate provider action evidence without treating an empty feed as proof of absence."""
+
+    raw = item.get("action_evidence")
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise DomainError(
+            "provider_market_data_invalid",
+            "Corporate-action evidence is invalid.",
+            status_code=502,
+        )
+    provider = item["source"]
+    symbol = item["symbol"]
+    requested_range = item["range"]
+    series_as_of = item["as_of"]
+    supplied_identity = (
+        raw.get("provider", provider),
+        raw.get("canonical_symbol", symbol),
+        raw.get("requested_range", requested_range),
+        raw.get("series_as_of", series_as_of),
+    )
+    if supplied_identity != (provider, symbol, requested_range, series_as_of):
+        raise DomainError(
+            "provider_market_data_invalid",
+            "Corporate-action evidence does not match its chart response.",
+            status_code=502,
+        )
+    available = raw.get("available_fields", [])
+    if (
+        not isinstance(available, list)
+        or any(
+            not isinstance(field, str) or field not in {"Dividends", "Stock Splits"}
+            for field in available
+        )
+        or len(set(available)) != len(available)
+    ):
+        raise DomainError(
+            "provider_market_data_invalid",
+            "Corporate-action field provenance is invalid.",
+            status_code=502,
+        )
+    supplied_events = raw.get("events", [])
+    if not isinstance(supplied_events, list) or len(supplied_events) > 1000:
+        raise DomainError(
+            "provider_market_data_invalid",
+            "Corporate-action event data is invalid.",
+            status_code=502,
+        )
+    events: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for supplied in supplied_events:
+        if not isinstance(supplied, dict):
+            raise DomainError(
+                "provider_market_data_invalid",
+                "Corporate-action event data is invalid.",
+                status_code=502,
+            )
+        kind, event_day = supplied.get("kind"), supplied.get("date")
+        if (
+            not isinstance(kind, str)
+            or kind not in {"split", "dividend"}
+            or not isinstance(event_day, str)
+        ):
+            raise DomainError(
+                "provider_market_data_invalid",
+                "Corporate-action event data is invalid.",
+                status_code=502,
+            )
+        try:
+            if date.fromisoformat(event_day).isoformat() != event_day:
+                raise ValueError("Noncanonical event date")
+        except ValueError as error:
+            raise DomainError(
+                "provider_market_data_invalid",
+                "Corporate-action event dates are invalid.",
+                status_code=502,
+            ) from error
+        key = kind, event_day
+        if key in seen:
+            raise DomainError(
+                "provider_market_data_invalid",
+                "Corporate-action events are duplicated.",
+                status_code=502,
+            )
+        seen.add(key)
+        if kind == "split":
+            value = supplied.get("new_shares_per_old_share")
+            try:
+                numeric_value = float(value)
+            except (OverflowError, TypeError, ValueError) as error:
+                raise DomainError(
+                    "provider_market_data_invalid",
+                    "Stock-split ratios are invalid.",
+                    status_code=502,
+                ) from error
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int | float)
+                or "Stock Splits" not in available
+                or not math.isfinite(numeric_value)
+                or numeric_value <= 0
+            ):
+                raise DomainError(
+                    "provider_market_data_invalid",
+                    "Stock-split ratios are invalid.",
+                    status_code=502,
+                )
+            events.append(
+                {
+                    "kind": kind,
+                    "date": event_day,
+                    "new_shares_per_old_share": numeric_value,
+                }
+            )
+        else:
+            amount = supplied.get("amount")
+            currency = supplied.get("currency")
+            try:
+                numeric_amount = float(amount)
+            except (OverflowError, TypeError, ValueError) as error:
+                raise DomainError(
+                    "provider_market_data_invalid",
+                    "Dividend evidence is invalid.",
+                    status_code=502,
+                ) from error
+            if (
+                isinstance(amount, bool)
+                or not isinstance(amount, int | float)
+                or "Dividends" not in available
+                or not math.isfinite(numeric_amount)
+                or numeric_amount <= 0
+                or (
+                    currency is not None
+                    and (
+                        not isinstance(currency, str)
+                        or len(currency) != 3
+                        or not currency.isascii()
+                        or not currency.isalpha()
+                        or not currency.isupper()
+                    )
+                )
+            ):
+                raise DomainError(
+                    "provider_market_data_invalid",
+                    "Dividend evidence is invalid.",
+                    status_code=502,
+                )
+            events.append(
+                {"kind": kind, "date": event_day, "amount": numeric_amount, "currency": currency}
+            )
+    events.sort(key=lambda event: (event["date"], event["kind"]))
+    return {
+        "status": "provider_events_returned" if events else "no_reported_action_evidence",
+        "provider": provider,
+        "canonical_symbol": symbol,
+        "requested_range": requested_range,
+        "series_as_of": series_as_of,
+        "available_fields": available,
+        "events": events,
+        "completeness": "not_established",
+    }
+
+
 def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
     """Align daily observations without inventing sessions, returns, or total-return data."""
     if not 2 <= len(series) <= 4 or len({item["symbol"] for item in series}) != len(series):
@@ -375,6 +539,7 @@ def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
             "invalid_comparison", "Choose two to four distinct instruments.", status_code=422
         )
     mappings = []
+    action_evidence = []
     for item in series:
         bars = item["bars"]
         if not 2 <= len(bars) <= 500:
@@ -416,6 +581,7 @@ def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
                 )
             mapped[day] = close
         mappings.append(mapped)
+        action_evidence.append(_action_evidence(item))
     common = sorted(set.intersection(*(set(item) for item in mappings)))
     if len(common) < 2:
         raise DomainError(
@@ -425,7 +591,7 @@ def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
         )
     union_dates = {day for mapping in mappings for day in mapping if common[0] <= day <= common[-1]}
     instruments = []
-    for item, mapped in zip(series, mappings, strict=True):
+    for item, mapped, evidence in zip(series, mappings, action_evidence, strict=True):
         dates = sorted(day for day in mapped if common[0] <= day <= common[-1])
         prices = [mapped[day] for day in dates]
         missing_observations = len(union_dates - set(dates))
@@ -439,9 +605,30 @@ def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
         returns = [
             math.log(value) - math.log(prices[index]) for index, value in enumerate(prices[1:])
         ]
-        discontinuity = any(
+        inferred_discontinuity = any(
             abs(prices[index + 1] / value - 1) >= 0.5 for index, value in enumerate(prices[:-1])
         )
+        split_events = [
+            event
+            for event in evidence["events"]
+            if event["kind"] == "split"
+            and event["new_shares_per_old_share"] != 1
+            and common[0] < event["date"] <= common[-1]
+        ]
+        discontinuity = inferred_discontinuity or bool(split_events)
+        suppression_reason = None
+        if split_events:
+            event = split_events[0]
+            suppression_reason = (
+                "Unadjusted closes include a provider-reported split ratio of "
+                f"{event['new_shares_per_old_share']:g} new shares per old share on "
+                f"{event['date']}; price change, volatility, and drawdown are unavailable."
+            )
+        elif inferred_discontinuity:
+            suppression_reason = (
+                "A price discontinuity was inferred from unadjusted closes; "
+                "price change, volatility, and drawdown are unavailable."
+            )
         peak, drawdown = prices[0], 0.0
         for value in prices:
             peak = max(peak, value)
@@ -473,7 +660,15 @@ def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
                 if discontinuity or missing_observations > 0 or len(returns) < 2
                 else statistics.stdev(returns) * math.sqrt(252),
                 "max_drawdown": None if discontinuity else drawdown,
-                "quality": "discontinuity_detected" if discontinuity else "unadjusted_price_only",
+                "quality": (
+                    "corporate_action_detected"
+                    if split_events
+                    else "discontinuity_detected"
+                    if inferred_discontinuity
+                    else "unadjusted_price_only"
+                ),
+                "metric_suppression_reason": suppression_reason,
+                "action_evidence": evidence,
                 "raw_bars": item["bars"],
             }
         )

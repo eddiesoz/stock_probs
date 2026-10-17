@@ -11,6 +11,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta
 from importlib import import_module
 from importlib.resources import files
+from numbers import Real
 from typing import Any, Protocol, cast
 from zoneinfo import ZoneInfo
 
@@ -84,9 +85,7 @@ CANADIAN_FIXTURE_IDENTITIES = (
 class MarketDataProvider(Protocol):
     """Narrow provider boundary keeps deterministic tests out of transport internals."""
 
-    def lookup(
-        self, query: str, limit: int, now: datetime
-    ) -> tuple[InstrumentIdentity, ...]: ...
+    def lookup(self, query: str, limit: int, now: datetime) -> tuple[InstrumentIdentity, ...]: ...
 
     def fetch(self, symbol: str, asset_type: str, now: datetime) -> MarketData: ...
 
@@ -94,9 +93,7 @@ class MarketDataProvider(Protocol):
         self, symbol: str, asset_type: str, cutoff: datetime, now: datetime
     ) -> MarketData: ...
 
-    def fetch_news(
-        self, symbol: str, limit: int = 5, now: datetime | None = None
-    ) -> NewsData: ...
+    def fetch_news(self, symbol: str, limit: int = 5, now: datetime | None = None) -> NewsData: ...
 
     def quote_snapshot(
         self, symbol: str, asset_type: str, now: datetime | None = None
@@ -110,6 +107,16 @@ class MarketDataProvider(Protocol):
         *,
         range: str = "1mo",
     ) -> HistoricalBarSeries: ...
+
+    def historical_comparison(
+        self,
+        symbol: str,
+        asset_type: str,
+        now: datetime | None = None,
+        *,
+        range: str = "1mo",
+    ) -> dict[str, object]: ...
+
 
 class YahooProvider:
     """Translate bounded yfinance history calls into the provider-neutral contract."""
@@ -149,6 +156,7 @@ class YahooProvider:
         period: str | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
+        actions: bool = False,
     ) -> Any:
         if (period is None) == (start is None or end is None):
             raise ValueError("history requires either period or complete start/end bounds")
@@ -161,7 +169,7 @@ class YahooProvider:
                 **bounds,
                 interval=interval,
                 prepost=False,
-                actions=False,
+                actions=actions,
                 auto_adjust=False,
                 repair=False,
                 timeout=self.timeout,
@@ -174,9 +182,7 @@ class YahooProvider:
                 status_code=502,
             ) from exc
 
-    def _history_from_bounds(
-        self, ticker: Any, *, interval: str, bounds: dict[str, object]
-    ) -> Any:
+    def _history_from_bounds(self, ticker: Any, *, interval: str, bounds: dict[str, object]) -> Any:
         """Narrow dynamic query metadata before passing it to the typed provider boundary."""
 
         period = bounds.get("period")
@@ -188,9 +194,7 @@ class YahooProvider:
             raise ValueError("historical provider bounds require datetime start and end")
         return self._history(ticker, interval=interval, start=start, end=end)
 
-    def fetch_news(
-        self, symbol: str, limit: int = 5, now: datetime | None = None
-    ) -> NewsData:
+    def fetch_news(self, symbol: str, limit: int = 5, now: datetime | None = None) -> NewsData:
         """Fetch one bounded Yahoo search payload without yfinance's shared sessions."""
 
         normalized_symbol = normalize_symbol(symbol)
@@ -330,9 +334,7 @@ class YahooProvider:
                 )
             try:
                 published_at = (
-                    datetime.fromtimestamp(float(published), UTC)
-                    if published is not None
-                    else None
+                    datetime.fromtimestamp(float(published), UTC) if published is not None else None
                 )
                 item = NewsItem(
                     id=item_id,
@@ -376,9 +378,7 @@ class YahooProvider:
         quote_type = _metadata_text(
             fallback.get("quoteType") or metadata.get("instrumentType"), "quote type", 24
         ).upper()
-        asset_type = {"equity": "stock", "stock": "stock", "etf": "etf"}.get(
-            quote_type.lower()
-        )
+        asset_type = {"equity": "stock", "stock": "stock", "etf": "etf"}.get(quote_type.lower())
         if asset_type is None:
             raise DomainError(
                 "unsupported_asset",
@@ -480,9 +480,7 @@ class YahooProvider:
             # candidate completes identity without using Ticker.info or metadata cache misses.
             frame = self._history(ticker, period="5d", interval="1d")
             metadata = self._metadata_from_bounded_history(ticker, frame)
-            identity = self._identity_from_metadata(
-                metadata, self._response_time(), fallback=quote
-            )
+            identity = self._identity_from_metadata(metadata, self._response_time(), fallback=quote)
             searched_asset_type = "etf" if quote_type == "ETF" else "stock"
             if (
                 identity.canonical_symbol != searched_symbol
@@ -522,6 +520,7 @@ class YahooProvider:
         *,
         period: str,
         interval: str,
+        actions: bool = False,
     ) -> tuple[Any, dict[str, Any], InstrumentIdentity, datetime]:
         """Use one bounded chart request for quote and chart capabilities."""
 
@@ -529,7 +528,7 @@ class YahooProvider:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
         normalized_symbol = normalize_symbol(symbol)
         ticker = yf.Ticker(normalized_symbol)
-        frame = self._history(ticker, period=period, interval=interval)
+        frame = self._history(ticker, period=period, interval=interval, actions=actions)
         if frame.empty:
             raise DomainError(
                 "symbol_not_found",
@@ -595,9 +594,7 @@ class YahooProvider:
         )
         reference_at = now.astimezone(UTC) if now is not None else response_at
         bars = tuple(
-            bar
-            for bar in self._timed_bars(frame, 60)
-            if bar.end.astimezone(UTC) <= reference_at
+            bar for bar in self._timed_bars(frame, 60) if bar.end.astimezone(UTC) <= reference_at
         )
         if not bars:
             raise DomainError(
@@ -605,9 +602,7 @@ class YahooProvider:
                 "Yahoo Finance returned no usable quote price.",
                 status_code=502,
             )
-        delayed, delay_minutes, label = _delay_disclosure(
-            metadata, subject="Yahoo Finance quote"
-        )
+        delayed, delay_minutes, label = _delay_disclosure(metadata, subject="Yahoo Finance quote")
         rows = tuple(frame.iterrows())
         opens = [_optional_positive(row.get("Open")) for _, row in rows]
         highs = [_optional_positive(row.get("High")) for _, row in rows]
@@ -637,9 +632,7 @@ class YahooProvider:
         )
         change = change if change is None or math.isfinite(change) else None
         change_percent = (
-            change_percent
-            if change_percent is None or math.isfinite(change_percent)
-            else None
+            change_percent if change_percent is None or math.isfinite(change_percent) else None
         )
         return QuoteSnapshot(
             symbol=identity.canonical_symbol,
@@ -687,9 +680,7 @@ class YahooProvider:
                 "Yahoo Finance returned no usable chart bars.",
                 status_code=502,
             )
-        delayed, delay_minutes, label = _delay_disclosure(
-            metadata, subject="Yahoo Finance chart"
-        )
+        delayed, delay_minutes, label = _delay_disclosure(metadata, subject="Yahoo Finance chart")
         return HistoricalBarSeries(
             symbol=identity.canonical_symbol,
             range=requested_range,
@@ -702,6 +693,138 @@ class YahooProvider:
             delay_minutes=delay_minutes if delayed else None,
             label=label,
         )
+
+    def historical_comparison(
+        self,
+        symbol: str,
+        asset_type: str,
+        now: datetime | None = None,
+        *,
+        range: str = "1mo",
+    ) -> dict[str, object]:
+        """Return raw comparison bars with bounded, explicitly incomplete action evidence."""
+
+        if now is not None and now.tzinfo is None:
+            raise DomainError(
+                "ambiguous_provider_time", "Provider chart time must include an offset."
+            )
+        requested_range = _validate_chart_range(range)
+        frame, metadata, identity, response_at = self._capability_history(
+            symbol, asset_type, period=requested_range, interval="1d", actions=True
+        )
+        bars = self._daily_bars(frame, identity.timezone)
+        if not bars:
+            raise DomainError(
+                "provider_market_data_invalid",
+                "Yahoo Finance returned no usable chart bars.",
+                status_code=502,
+            )
+        delayed, delay_minutes, label = _delay_disclosure(
+            metadata, subject="Yahoo Finance comparison"
+        )
+        series = HistoricalBarSeries(
+            symbol=identity.canonical_symbol,
+            range=requested_range,
+            interval="1d",
+            adjustment_basis="unadjusted closes (actions=True, auto_adjust=False)",
+            as_of=response_at,
+            provider=identity.provider,
+            bars=bars,
+            delayed=delayed,
+            delay_minutes=delay_minutes if delayed else None,
+            label=label,
+        )
+        return {
+            "series": series.as_dict(),
+            "action_evidence": self._comparison_action_evidence(
+                frame,
+                identity.timezone,
+                identity.provider,
+                identity.canonical_symbol,
+                requested_range,
+                response_at,
+            ),
+        }
+
+    @staticmethod
+    def _comparison_action_evidence(
+        frame: Any,
+        timezone: str,
+        provider: str,
+        symbol: str,
+        requested_range: str,
+        as_of: datetime,
+    ) -> dict[str, object]:
+        """Keep only dated split and dividend facts returned with this bounded chart."""
+
+        action_fields = ("Dividends", "Stock Splits")
+        available_fields = [field for field in action_fields if field in frame.columns]
+        events: list[dict[str, object]] = []
+        for timestamp, row in frame.iterrows():
+            try:
+                observed = timestamp.to_pydatetime()
+                event_date = (
+                    observed.astimezone(ZoneInfo(timezone)).date()
+                    if observed.tzinfo
+                    else observed.date()
+                ).isoformat()
+            except (AttributeError, TypeError, ValueError) as error:
+                raise DomainError(
+                    "provider_market_data_invalid",
+                    "Corporate-action observation dates are invalid.",
+                    status_code=502,
+                ) from error
+
+            for field, kind in (("Stock Splits", "split"), ("Dividends", "dividend")):
+                if field not in available_fields:
+                    continue
+                raw_value = row.get(field)
+                if raw_value is None:
+                    continue
+                if isinstance(raw_value, bool) or not isinstance(raw_value, Real):
+                    raise DomainError(
+                        "provider_market_data_invalid",
+                        "Corporate-action values are invalid.",
+                        status_code=502,
+                    )
+                value = float(raw_value)
+                if math.isnan(value):
+                    continue
+                if not math.isfinite(value) or value < 0:
+                    raise DomainError(
+                        "provider_market_data_invalid",
+                        "Corporate-action values are invalid.",
+                        status_code=502,
+                    )
+                if value == 0:
+                    continue
+                if kind == "split":
+                    events.append(
+                        {
+                            "kind": kind,
+                            "date": event_date,
+                            "new_shares_per_old_share": value,
+                        }
+                    )
+                else:
+                    events.append(
+                        {
+                            "kind": kind,
+                            "date": event_date,
+                            "amount": value,
+                            "currency": None,
+                        }
+                    )
+        events.sort(key=lambda item: (str(item["date"]), str(item["kind"])))
+        return {
+            "status": "provider_events_returned" if events else "no_reported_action_evidence",
+            "provider": provider,
+            "canonical_symbol": symbol,
+            "requested_range": requested_range,
+            "series_as_of": as_of.isoformat(),
+            "available_fields": available_fields,
+            "events": events,
+        }
 
     @staticmethod
     def _daily_bars(frame: Any, timezone: str) -> tuple[Bar, ...]:
@@ -816,9 +939,7 @@ class YahooProvider:
             )
         # Capture the per-call cache before the next history request replaces it.
         daily_meta = self._metadata_from_bounded_history(ticker, daily_frame)
-        intraday_frame = self._history_from_bounds(
-            ticker, interval="5m", bounds=intraday_bounds
-        )
+        intraday_frame = self._history_from_bounds(ticker, interval="5m", bounds=intraday_bounds)
         if intraday_frame.empty:
             raise DomainError(
                 "symbol_not_found",
@@ -1059,9 +1180,7 @@ class FixtureProvider:
             matches.append(((rank, identity.canonical_symbol), identity))
         return tuple(identity for _, identity in sorted(matches)[:limit])
 
-    def fetch(
-        self, symbol: str, asset_type: str, now: datetime | None = None
-    ) -> MarketData:
+    def fetch(self, symbol: str, asset_type: str, now: datetime | None = None) -> MarketData:
         now = self._time(now, "request")
         if asset_type not in {"stock", "etf"}:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
@@ -1088,9 +1207,7 @@ class FixtureProvider:
                 "The deterministic fixture has no instrument with that symbol.",
                 status_code=404,
             )
-        payload = next(
-            item for item in self._payloads() if str(item["symbol"]) == base_symbol
-        )
+        payload = next(item for item in self._payloads() if str(item["symbol"]) == base_symbol)
         if payload["asset_type"] != asset_type:
             raise DomainError(
                 "asset_type_mismatch",
@@ -1120,9 +1237,7 @@ class FixtureProvider:
                 close = price * (
                     1.0 + session_index * 0.001 + index * 0.00012 + ((index % 7) - 3) * 0.00003
                 )
-                intraday.append(
-                    Bar(start + timedelta(minutes=5 * index), round(close, 6), 300)
-                )
+                intraday.append(Bar(start + timedelta(minutes=5 * index), round(close, 6), 300))
         # Mirror the live adapter: a deterministic response ends at the exact completed-bar cutoff.
         intraday = [bar for bar in intraday if bar.end.astimezone(UTC) <= now.astimezone(UTC)]
         if normalized_symbol == "STALE":
@@ -1182,9 +1297,7 @@ class FixtureProvider:
             },
         )
 
-    def fetch_news(
-        self, symbol: str, limit: int = 5, now: datetime | None = None
-    ) -> NewsData:
+    def fetch_news(self, symbol: str, limit: int = 5, now: datetime | None = None) -> NewsData:
         """Return checked-in current headlines without touching forecast fixture data."""
 
         normalized_symbol = normalize_symbol(symbol)
@@ -1240,9 +1353,7 @@ class FixtureProvider:
         zone = ZoneInfo(data.timezone)
         latest_day = latest.timestamp.astimezone(zone).date()
         session = [
-            bar
-            for bar in data.intraday
-            if bar.timestamp.astimezone(zone).date() == latest_day
+            bar for bar in data.intraday if bar.timestamp.astimezone(zone).date() == latest_day
         ]
         previous = next(
             (bar.close for bar in reversed(data.daily) if bar.timestamp < latest.timestamp),
@@ -1287,9 +1398,7 @@ class FixtureProvider:
             bars = data.daily[-5:]
         else:
             cutoff = requested_at - timedelta(days=CHART_RANGE_DAYS[requested_range])
-            bars = tuple(
-                bar for bar in data.daily if bar.timestamp.astimezone(UTC) >= cutoff
-            )
+            bars = tuple(bar for bar in data.daily if bar.timestamp.astimezone(UTC) >= cutoff)
         if not bars:
             raise DomainError(
                 "chart_range_unavailable",
@@ -1308,6 +1417,30 @@ class FixtureProvider:
             delay_minutes=None,
             label="Deterministic simulated fixture chart; not live market data.",
         )
+
+    def historical_comparison(
+        self,
+        symbol: str,
+        asset_type: str,
+        now: datetime | None = None,
+        *,
+        range: str = "1mo",
+    ) -> dict[str, object]:
+        """Keep fixture charts provider-free and label absent action evidence explicitly."""
+
+        series = self.historical_bars(symbol, asset_type, now, range=range)
+        return {
+            "series": series.as_dict(),
+            "action_evidence": {
+                "status": "no_reported_action_evidence",
+                "provider": series.provider,
+                "canonical_symbol": series.symbol,
+                "requested_range": series.range,
+                "series_as_of": series.as_of.isoformat(),
+                "available_fields": [],
+                "events": [],
+            },
+        }
 
     def fetch_at_cutoff(
         self, symbol: str, asset_type: str, cutoff: datetime, now: datetime | None = None
@@ -1419,9 +1552,7 @@ def _optional_volume(value: Any) -> int | None:
     return int(number) if valid else None
 
 
-def _delay_disclosure(
-    metadata: Mapping[str, Any], *, subject: str
-) -> tuple[bool, int | None, str]:
+def _delay_disclosure(metadata: Mapping[str, Any], *, subject: str) -> tuple[bool, int | None, str]:
     """Report Yahoo's delay field without turning missing metadata into a live claim."""
 
     value = metadata.get("exchangeDataDelayedBy")

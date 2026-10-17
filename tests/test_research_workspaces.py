@@ -55,6 +55,45 @@ def test_thesis_roundtrip_revision_conflict_and_history(research_client):
     assert research_client.get("/api/v1/theses").json()["total"] == 1
 
 
+def test_archiving_appends_a_revision_and_preserves_prior_states(research_client):
+    created = research_client.post("/api/v1/theses", json=thesis())
+    assert created.status_code == 201, created.text
+    item = created.json()
+
+    active = research_client.put(
+        f"/api/v1/theses/{item['id']}",
+        json={**thesis(), "status": "active", "revision": item["revision"]},
+    )
+    assert active.status_code == 200, active.text
+    assert active.json()["revision"] == 2
+
+    archived = research_client.put(
+        f"/api/v1/theses/{item['id']}",
+        json={**thesis(), "status": "archived", "revision": active.json()["revision"]},
+    )
+    assert archived.status_code == 200, archived.text
+    assert archived.json()["data"]["status"] == "archived"
+    assert archived.json()["revision"] == 3
+
+    history = research_client.get(f"/api/v1/theses/{item['id']}/revisions").json()
+    assert history["total"] == 3
+    assert [row["revision"] for row in history["items"]] == [3, 2, 1]
+    assert [row["data"]["status"] for row in history["items"]] == [
+        "archived",
+        "active",
+        "watching",
+    ]
+    stale = research_client.put(
+        f"/api/v1/theses/{item['id']}",
+        json={**thesis(), "status": "watching", "revision": 1},
+    )
+    assert stale.status_code == 409
+    current = research_client.get(f"/api/v1/theses/{item['id']}").json()
+    assert current["revision"] == 3
+    assert current["data"]["status"] == "archived"
+    assert research_client.get(f"/api/v1/theses/{item['id']}/revisions").json()["total"] == 3
+
+
 def test_invalid_and_cross_owner_evidence_fails_before_save(research_client):
     assert (
         research_client.post("/api/v1/theses", json={**thesis(), "owner_user_id": 99}).status_code
@@ -366,6 +405,21 @@ def test_authenticated_owner_csrf_and_member_isolation(
             "/api/v1/theses", json=thesis(), headers={"x-csrf-token": login.json()["csrf_token"]}
         )
         assert item.status_code == 201, item.text
+        owner_csrf = {"x-csrf-token": login.json()["csrf_token"]}
+        owned_forecast = owner.post(
+            "/api/v1/forecasts",
+            json={"symbol": "SPY", "asset_type": "etf"},
+            headers=owner_csrf,
+        )
+        assert owned_forecast.status_code == 201, owned_forecast.text
+        forecast_reference = str(owned_forecast.json()["event"]["id"])
+        attached = owner.post(
+            "/api/v1/theses",
+            json={**thesis(), "evidence": [{"kind": "forecast", "reference": forecast_reference}]},
+            headers=owner_csrf,
+        )
+        assert attached.status_code == 201, attached.text
+        assert attached.json()["data"]["evidence"][0]["reference"] == forecast_reference
         with TestClient(app) as member:
             member_login = member.post(
                 "/api/v1/auth/local/login",
@@ -384,6 +438,16 @@ def test_authenticated_owner_csrf_and_member_isolation(
                     == 503
                 )
                 return
+            assert member.get("/api/v1/theses").json()["total"] == 0
+            cross_owner_attachment = member.post(
+                "/api/v1/theses",
+                json={
+                    **thesis(),
+                    "evidence": [{"kind": "forecast", "reference": forecast_reference}],
+                },
+                headers={"x-csrf-token": member_login.json()["csrf_token"]},
+            )
+            assert cross_owner_attachment.status_code == 404
             assert member.get("/api/v1/theses").json()["total"] == 0
             assert member.get("/api/v1/theses/export?format=json").json()["revisions"] == []
             assert member.get(f"/api/v1/theses/{item.json()['id']}/revisions").status_code == 404

@@ -336,21 +336,36 @@ def install_research_routes(
             for instrument in payload.instruments:
                 resolved = identity(instrument.symbol, instrument.asset_type)
 
-                def fetch_bars(
+                def fetch_comparison(
                     now: datetime, resolved_identity: dict[str, Any] = resolved
                 ) -> dict[str, object]:
-                    return service.provider.historical_bars(
+                    return service.provider.historical_comparison(
                         resolved_identity["canonical_symbol"],
                         resolved_identity["asset_type"],
                         now,
                         range=payload.range,
-                    ).as_dict()
+                    )
 
-                bars = service._provider_capability(  # noqa: SLF001
-                    fetch_bars,
-                    "The chart provider is temporarily unavailable.",
+                comparison = service._provider_capability(  # noqa: SLF001
+                    fetch_comparison,
+                    "The comparison provider is temporarily unavailable.",
                 )
-                series.append({**bars, "identity": resolved, "source": bars["provider"]})
+                bars = comparison.get("series")
+                action_evidence = comparison.get("action_evidence")
+                if not isinstance(bars, dict) or not isinstance(action_evidence, dict):
+                    raise DomainError(
+                        "provider_market_data_invalid",
+                        "The comparison provider returned invalid action evidence.",
+                        status_code=502,
+                    )
+                series.append(
+                    {
+                        **bars,
+                        "identity": resolved,
+                        "source": bars["provider"],
+                        "action_evidence": action_evidence,
+                    }
+                )
             data = {**compare_series(series), "captured_at": clock().isoformat()}
             if len(json.dumps(data, allow_nan=False).encode()) > 262144:
                 raise DomainError(
