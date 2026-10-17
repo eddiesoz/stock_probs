@@ -588,3 +588,9 @@ The lazy-provider startup repair is documented in the API, testing and operation
 its local import-memory and focused QA scope separately from the failed host startup guard.
 Changed recovery-overlay bytes require fresh image/pair bindings; an earlier image cannot inherit
 the source repair or the new frontend build result.
+
+The bounded-build documentation rule covers failure-path fixture corrections as well as
+controller source changes. Record a failed aggregate separately from a passing focused test
+repair, preserve exact source bindings, and distinguish synthetic disk inputs from real build
+admission evidence. The [F6 disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
+shows this distinction; it does not advance release acceptance.

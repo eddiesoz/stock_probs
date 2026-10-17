@@ -2363,3 +2363,10 @@ local 768 MiB evidence; it does not establish real free-Zen/model behavior, actu
 acceptance, or release readiness. Keep its exact scope, receipts, and the pending current-source
 browser checks in `MVP-PLAN.md`; the approved frontend build/stage pass does not accept browser,
 axe, native-provider, resource, or release scopes.
+
+For pure build-controller failure-path unit tests, isolate the external disk-space input when
+the test is intended to reach a mocked build or stop failure. Keep separate tests of the real
+4 GiB admission and 1 GiB stop boundaries. Synthetic available space in a unit fixture never
+establishes actual build admission or resource acceptance. R-ASTRA-121's failed 54e canonical
+run and narrow test-only repair are preserved in the F6 canonical disk-seam checkpoint in
+`MVP-PLAN.md`; a fresh complete aggregate remains required.

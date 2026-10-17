@@ -4272,6 +4272,7 @@ def test_local_failure_retains_reservation_and_primary_error_when_backend_stop_f
     monkeypatch.setattr(bounded, "LEDGER_FILE", ledger_path)
     monkeypatch.setattr(bounded, "LEDGER_LOCK_FILE", lock_path)
     monkeypatch.setattr(bounded, "_builder_preflight", lambda: (setup, tmp_path, "0" * 36))
+    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: 10 * 1024**3)
     monkeypatch.setattr(bounded, "checked", lambda _argv, **_kwargs: revision.encode())
 
     def build_context(destination: Path) -> str:

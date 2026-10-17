@@ -7705,3 +7705,66 @@ remain **Unavailable**. Production still runs the prior application release; no 
 image, helper installation, rollout or email occurred here. The 1 GB host, backups and US$15 monthly
 total cap including tax remain unchanged. Genuine free Zen through OpenCode remains the first
 release dependency, followed by the seven approved visible features.
+
+### R-ASTRA-121 F6 canonical disk-seam checkpoint (2026-10-17)
+
+The complete canonical check on clean pushed revision
+`54e6e51b7595f2f52f27d98f54f0e61c9c5b1512` **Failed** at exit 1. It ran
+`TASK_ID=R-ASTRA-121 ./scripts/local-gate.sh check` on native x86_64 from
+`2026-10-17T21:45:45Z` to `22:23:13Z`: 3,574 Python tests passed, two failed, four were
+skipped, four deselected, and 99 warnings were reported. Exact coverage was 85.70%; the
+coverage table rounded this to 86%. Documentation and the full frontend build/stage
+subchecks passed, including 74 frontend checks. The Python subcheck and aggregate did not pass.
+
+Both failures were the parametrizations of
+`tests/test_bounded_docker_build.py::test_local_failure_retains_reservation_and_primary_error_when_backend_stop_fails`.
+They expected the mocked command error `fixed_command_unavailable_or_timeout`, but the real
+filesystem admission check returned `build_disk_floor_breached` before the mocked build.
+The test mocked the build and stop operations but omitted the filesystem-space input. The
+private unchanged-source reproduction failed both cases. The reviewed one-line test repair
+supplies synthetic 10 GiB through the same `check_space` seam as its neighboring test. No
+production guard, assertion, helper, configuration, or application behavior changed. The two
+repaired cases and the existing below-floor/exact-boundary regression passed builder and
+independent focused checks, 3/3; actual integration checks are recorded separately. The first
+private candidate collection error, caused by an omitted adjacent BuildKit config copy, remains
+a preserved setup failure.
+
+Canonical receipt:
+`test-results/local-gates/R-ASTRA-121-20261017T214545Z/evidence.json`, SHA-256
+`ac36460f3f76df0b40392fc8347b1c60f6a40977d4e0b166ebae97521f5da1a5`.
+JUnit SHA-256: `17a9a0aabca3fff616783bedc2ae6f4c3bd2209d3ef170bb6c509d60d051ddeb`.
+Independent terminal QA:
+`/var/tmp/r12r/f6-canonical-independent-terminal-qa-d54a7bf4-c105-4b16-a6eb-b7ce136c4fe5/qa-receipt.json`,
+SHA-256 `37ecd706de87ea7915c8342afdfd543fd4016a255d091d1a7c3bee3adb9f0d7e`.
+The 549 declared source entries remained bound, the worktree was clean at terminal review, and
+all 53 served/export file pairs matched after the gate. The runner PID and exact cgroup were
+absent. Only the task-created disposable TMP directory was removed; source, logs, JUnit,
+receipts, application data, backups, and retained recovery images were preserved. The actual
+minimum SD free space was 2,688,266,240 bytes, above the wrapper's 1 GiB stop floor but below
+the real Docker build's 4 GiB admission requirement. No Docker build started in this check.
+
+Private repair receipt:
+`/var/tmp/r12r/f6-build-floor-testfix-7b637de2-7dcc-4fb7-b255-d3c279fad2da/candidate-receipt.json`,
+SHA-256 `d2fb49c0744dd55db3fa2c6c2c64ac33020a87352cadc4b42973db30d983ae03`.
+Parent baseline and integration records:
+`/var/tmp/r12r/f6-disk-seam-integration-9d0b0f6e-19b6-4ebc-b3fd-d5b22020ddcd/`.
+The repaired test SHA-256 is
+`4874ae738bcdb8c66000b3f1a7a1128651e2678ee29cb2d86b65ec44719f7e3a`; the unchanged
+production helper is `d6440d3557f88447a219f6b688c9a03f3c079b4e4ccbd362a1360245b850776c`.
+Ruff and format-check passed for the integrated test.
+
+The failed aggregate remains preserved. A fresh mandatory canonical check is still required,
+followed by current browser, image/native, actual combined 1 GB, recovery, exact-PR rollback,
+canary, and release checks. The four opt-in skips do not establish native or recovery
+acceptance. Production, backups, the 1 GB host, and the US$15 monthly total cap remain unchanged.
+
+Independent private-candidate QA receipt:
+`/var/tmp/r12r/f6-build-floor-independent-qa-860205aa-c9b3-485a-ab6f-a06bcd14169e/independent-qa-receipt.json`,
+SHA-256 `e67057d5ca96d2b0a2853532ba7ba48158e5e6485250122af45996f81287d8bf`.
+Independent actual-worktree integration QA receipt:
+`/var/tmp/r12r/f6-build-floor-integration-qa-d1c357eb-c7db-4291-91cd-d2844403061e/independent-integration-qa-receipt.json`,
+SHA-256 `dba137cd7b7eb5670a5073e43737be2844f6b523e2bae4356b69e7e06fcc7ca6`.
+Both selections passed 3/3 with normal child umask 022 and the unchanged F6 production
+helper/config pins. The authored validator, scoped six-file documentation coverage (177 mapped
+files, zero violations), Ruff, format-check, and diff checks passed for this checkpoint.
+These checks do not convert the original canonical aggregate to Pass.

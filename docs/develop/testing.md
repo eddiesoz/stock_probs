@@ -728,3 +728,10 @@ environment and that package installation/source tests retain their prior enviro
 Bun documentation describes a garbage-collection tradeoff rather than a hard memory cap. The
 embedded app build and final compiler still use the same source pins, arguments, targets and
 deadlines; a source test pass does not establish lower memory use or a successful image.
+
+Build-controller unit cases that isolate command or backend-stop failures supply a synthetic
+`check_space` result alongside their mocked build operations. This avoids depending on the
+operator filesystem before reaching the intended assertion. Separate boundary tests exercise
+real admission/stop logic with controlled disk inputs; the actual builder still enforces its
+4 GiB admission and 1 GiB stop thresholds. See the [F6 canonical disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
+for the preserved aggregate failure and narrow fixture repair.

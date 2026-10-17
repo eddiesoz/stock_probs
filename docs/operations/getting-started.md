@@ -1120,3 +1120,8 @@ its dependencies and requires the existing resource checks. T13 stopped below th
 before OpenCode ran. A fresh recovery overlay, image and compatibility evidence are required before
 another baseline trial; the original recovery image remains protected. See
 [E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint).
+
+The real managed build requires at least 4 GiB free on each checked build filesystem and stops
+below its 1 GiB floor. A passing mocked build-controller unit test does not establish that
+these actual resource requirements are met. See the [F6 disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
+for the separate synthetic-fixture and actual-filesystem results.
