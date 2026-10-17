@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
@@ -14,9 +15,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from stock_probs.api import create_app
+from stock_probs.auth import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME
 from stock_probs.config import Settings
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import Repository
+from stock_probs.totp import code_for_step, time_step
 
 SCRIPT_PATH = Path(__file__).parents[1] / "scripts" / "pr_rehearsal_seed.py"
 sys.path.insert(0, str(SCRIPT_PATH.parent))
@@ -83,6 +86,50 @@ def test_restore_guard_projects_seeded_users_and_checks_real_api_step_up_denial(
     assert responses[0].json()["error"]["code"] == "authorization_denied"
     assert "fresh authenticator code" in responses[0].json()["error"]["message"]
     assert _step_up_timestamps(repository, users) == before
+
+
+def test_seeded_totp_factor_requires_the_same_session_secret_after_app_restart(
+    tmp_path: Path,
+) -> None:
+    settings, _repository, seeded = _fixture(tmp_path)
+    owner = cast(list[dict[str, str]], seeded["users"])[0]
+    now = datetime.now(UTC)
+    code = code_for_step(owner["totp_secret"], time_step(now))
+    cookies = {
+        SESSION_COOKIE_NAME: owner["session_cookie"],
+        CSRF_COOKIE_NAME: owner["csrf_cookie"],
+    }
+    headers = {"x-csrf-token": owner["csrf_cookie"]}
+
+    restarted_settings = replace(
+        settings,
+        auth_session_secret="different-synthetic-test-session-secret-not-production-000000",  # noqa: S106
+    )
+    with TestClient(
+        create_app(restarted_settings, FixtureProvider()),
+        base_url="https://ledger-r120.test",
+    ) as client:
+        response = client.post(
+            "/api/v1/auth/totp/step-up",
+            json={"code": code},
+            cookies=cookies,
+            headers=headers,
+        )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "authentication_unavailable"
+
+    with TestClient(
+        create_app(settings, FixtureProvider()),
+        base_url="https://ledger-r120.test",
+    ) as client:
+        response = client.post(
+            "/api/v1/auth/totp/step-up",
+            json={"code": code},
+            cookies=cookies,
+            headers=headers,
+        )
+    assert response.status_code == 200
+    assert response.json()["verified"] is True
 
 
 def test_restore_guard_handles_seed_sessions_that_aged_during_native_turns(

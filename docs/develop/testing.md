@@ -961,3 +961,13 @@ recovery protocol then verifies actual archive admission before changing the app
 attachment result is **Unavailable**. A separate focused four-case desktop/mobile follow-up passed
 with four raw-axe snapshots containing zero violations/incompletes; it does not replace the failed
 aggregate. See the [latest PR11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-installed-helper-local-6359-profile-and-archive-parser-checkpoint-2026-10-16).
+
+### PR11 authentication across container restarts
+
+The disposable pair keeps one fresh volatile authentication-session secret across its disabled,
+enabled and recovery app starts. Separate pair invocations get distinct secrets. The focused
+regression invokes the real seeded-TOTP HTTP flow: restarting with a different synthetic secret
+returns `503 authentication_unavailable`; restarting with the original verifies successfully.
+V2 orchestration tests assert same-key reuse and fresh keys between runs; V1 is source-reviewed
+only in this selection. No production secret is read. These checks do not replace actual-host
+native, resource or recovery acceptance. See the [auth-key checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v8-auth-key-lifecycle-checkpoint-2026-10-17).

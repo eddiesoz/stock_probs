@@ -1155,7 +1155,7 @@ def test_v2_runner_requires_enabled_native_phase_before_write_and_recovery(
         }
 
     production_checks: list[bool] = []
-    starts: list[tuple[str, str, bool, str, str | None, str]] = []
+    starts: list[tuple[str, str, bool, str, str | None, str, str]] = []
     removed: list[str] = []
     events: list[str] = []
     load_revisions: list[str] = []
@@ -1213,11 +1213,19 @@ def test_v2_runner_requires_enabled_native_phase_before_write_and_recovery(
         role = kwargs["role"]
         if role == "candidate":
             candidate_start_count = sum(row[1] == "candidate" for row in starts)
-            container = "a" * 64 if candidate_start_count == 0 else "c" * 64
+            container = "a" * 64 if candidate_start_count % 2 == 0 else "c" * 64
         else:
             container = "b" * 64
         starts.append(
-            (image_id, role, kwargs["assistant_enabled"], name, kwargs["network"], volume)
+            (
+                image_id,
+                role,
+                kwargs["assistant_enabled"],
+                name,
+                kwargs["network"],
+                volume,
+                hashlib.sha256(kwargs["auth_session_secret"].encode()).hexdigest(),
+            )
         )
         events.append(f"start:{role}:{kwargs['assistant_enabled']}")
         return container
@@ -1327,6 +1335,7 @@ def test_v2_runner_requires_enabled_native_phase_before_write_and_recovery(
         with pytest.raises(host_helper.RehearsalError, match="native_driver_failed"):
             host_helper._run_pair_v2(payload)
         assert [row[2] for row in starts] == [False, True]
+        assert starts[0][6] == starts[1][6]
         assert "candidate:marker" not in events
         assert not any(row[1] == "recovery" for row in starts)
         assert removed == [starts[0][3], starts[1][3]]
@@ -1341,6 +1350,8 @@ def test_v2_runner_requires_enabled_native_phase_before_write_and_recovery(
     ]
     assert [row[1] for row in starts] == ["candidate", "candidate", "recovery"]
     assert [row[2] for row in starts] == [False, True, False]
+    assert len({row[6] for row in starts}) == 1
+    assert len(starts[0][6]) == 64
     assert starts[0][4] == host_helper._candidate_network_name(starts[0][5])
     assert starts[1][4] == starts[0][4]
     assert starts[2][4] == "none"
@@ -1374,6 +1385,16 @@ def test_v2_runner_requires_enabled_native_phase_before_write_and_recovery(
     assert result["volume_removed"] is True
     assert result["images_retained"] is True
     assert production_checks[0] is True
+
+    first_pair_key_digest = starts[0][6]
+    first_pair_volume = starts[0][5]
+    starts.clear()
+    host_helper._run_pair_v2(payload)
+    assert len(starts) == 3
+    assert len({row[6] for row in starts}) == 1
+    assert starts[0][6] != first_pair_key_digest
+    assert len({row[5] for row in starts}) == 1
+    assert starts[0][5] != first_pair_volume
 
 
 def test_forged_pair_manifest_digest_is_rejected_before_any_remote_call(
@@ -3238,6 +3259,38 @@ def _known_e1c6b17_install_fixture(
     return original, helper, manifest_path, expected_fields, sidecars
 
 
+def _known_532b2a0_install_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[bytes, bytes, Path, dict[str, object], dict[Path, bytes]]:
+    """Build the exact 532b2a0 receipt shape with isolated installed files."""
+    original, helper, manifest_path, _prior_fields, sidecars = _known_677_install_fixture(
+        monkeypatch, tmp_path
+    )
+    expected_fields = dict(bootstrap.KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST)
+    expected_files = dict(expected_fields["files"])
+    for path, contents in sidecars.items():
+        expected_files[path.name] = hashlib.sha256(contents).hexdigest()
+    helper_digest = hashlib.sha256(helper).hexdigest()
+    expected_files["production-deploy-helper.py"] = helper_digest
+    expected_fields["files"] = expected_files
+    expected_fields["previous_production_helper_sha256"] = hashlib.sha256(original).hexdigest()
+    manifest_path.write_bytes(_installed_manifest_bytes(expected_fields))
+    manifest_path.chmod(0o640)
+    monkeypatch.setattr(
+        bootstrap,
+        "KNOWN_INSTALLED_E1C6B17_PRODUCTION_HELPER_SHA256",
+        helper_digest,
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "KNOWN_INSTALLED_532B2A0_PRODUCTION_HELPER_SHA256",
+        helper_digest,
+    )
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST", expected_fields)
+    return original, helper, manifest_path, expected_fields, sidecars
+
+
 def test_bootstrap_accepts_exact_dd7_install_and_preserves_immutable_backup(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -3322,6 +3375,72 @@ def test_bootstrap_accepts_exact_e1c6b17_install_and_preserves_immutable_backup(
     ) == (helper, bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256)
     assert manifest_path.read_bytes() == old_manifest
     assert {path: path.read_bytes() for path in old_sidecars} == old_sidecars
+    backup = bootstrap.PREVIOUS_PRODUCTION_HELPER
+    assert backup.read_bytes() == original
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+
+
+def test_bootstrap_accepts_exact_532b2a0_prior_install_with_candidate_manifest_present(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    assert bootstrap.KNOWN_INSTALLED_532B2A0_PRODUCTION_HELPER_SHA256 == (
+        "4411def05a0cf757eef859b257d403d1c05eeed44c5c4265b86cb9905e1de730"
+    )
+    assert bootstrap.KNOWN_INSTALLED_532B2A0_REVIEWED_HEAD_SHA == (
+        "532b2a0c96ec4eebc645ebb315a5419ae74b9251"
+    )
+    assert bootstrap.KNOWN_INSTALLED_532B2A0_PAIR_MANIFEST_SHA256 == (
+        "e53b16c5670532b4167056533fc195a9f98f5bbd51dd9f2423e27f44ee001074"
+    )
+    assert bootstrap.KNOWN_INSTALLED_532B2A0_INSTALLED_FILES == {
+        "host_helper.py": "5bf55b2433597d9b958eeecd01933c11b41f37a513d7921f10321812be70f1f4",
+        "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+        "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+        "production-deploy-helper.py": bootstrap.KNOWN_INSTALLED_532B2A0_PRODUCTION_HELPER_SHA256,
+    }
+    original, helper, manifest_path, old_fields, old_sidecars = _known_532b2a0_install_fixture(
+        monkeypatch, tmp_path
+    )
+    old_manifest = manifest_path.read_bytes()
+    candidate_fields = {**old_fields, "reviewed_head_sha": "a" * 40}
+    candidate_fields["reviewed_pair_manifest_sha256"] = "b" * 64
+
+    assert bootstrap._prepare_previous_production_helper(
+        b"next reviewed production helper bytes",
+        candidate_manifest_fields=candidate_fields,
+    ) == (helper, bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256)
+    assert manifest_path.read_bytes() == old_manifest
+    assert {path: path.read_bytes() for path in old_sidecars} == old_sidecars
+    backup = bootstrap.PREVIOUS_PRODUCTION_HELPER
+    assert backup.read_bytes() == original
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("malformation", ["head", "pair"])
+def test_bootstrap_rejects_nearby_532b2a0_prior_install_tuple(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    malformation: str,
+) -> None:
+    original, helper, manifest_path, expected_fields, _sidecars = _known_532b2a0_install_fixture(
+        monkeypatch, tmp_path
+    )
+    malformed_fields = dict(expected_fields)
+    field = "reviewed_head_sha" if malformation == "head" else "reviewed_pair_manifest_sha256"
+    malformed_fields[field] = "f" * (40 if malformation == "head" else 64)
+    manifest_path.write_bytes(_installed_manifest_bytes(malformed_fields))
+    manifest_path.chmod(0o640)
+
+    with pytest.raises(bootstrap.InstallError, match="production_helper_manifest_mismatch"):
+        bootstrap._prepare_previous_production_helper(
+            b"next reviewed production helper bytes",
+            candidate_manifest_fields={
+                **expected_fields,
+                "reviewed_head_sha": "a" * 40,
+                "reviewed_pair_manifest_sha256": "b" * 64,
+            },
+        )
     backup = bootstrap.PREVIOUS_PRODUCTION_HELPER
     assert backup.read_bytes() == original
     assert stat.S_IMODE(backup.stat().st_mode) == 0o600
@@ -5335,6 +5454,7 @@ def test_app_container_command_uses_role_bound_memory_and_keeps_security_limits(
             volume,
             f"{volume}-{role}",
             assistant_enabled=role == "candidate",
+            auth_session_secret="synthetic-auth-session-secret-for-unit-test-only",  # noqa: S106
             network=network,
             network_id=expected_network_id,
             run_id=run_id,
@@ -5361,6 +5481,24 @@ def test_app_container_command_uses_role_bound_memory_and_keeps_security_limits(
         assert "--gateway" not in run_command
         assert run_command[run_command.index("--read-only") - 1] == "--restart=no"
         assert run_command[run_command.index("--cap-drop") + 1] == "ALL"
+
+
+def test_rehearsal_environment_uses_the_pair_session_secret_in_a_private_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    private_root = tmp_path / "private"
+    monkeypatch.setattr(host_helper, "TEMP_ROOT", private_root)
+    secret = "synthetic-pair-session-secret-for-environment-test-only"  # noqa: S105
+
+    env_path = host_helper._write_environment(
+        assistant_enabled=False,
+        auth_session_secret=secret,
+    )
+
+    assert stat.S_IMODE(env_path.stat().st_mode) == 0o600
+    assert "STOCK_PROBS_AUTH_SESSION_SECRET=" + secret + "\n" in env_path.read_text()
+    assert env_path.parent == private_root
 
 
 def test_schema_cli_keeps_the_lower_memory_profile(monkeypatch) -> None:

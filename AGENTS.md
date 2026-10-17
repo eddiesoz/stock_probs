@@ -18,7 +18,7 @@ retain the immutable `57b88adc…` original helper backup and restore the exact 
 receipt together after failure. Source/mock passes and build preparation do not establish installed
 host behavior or transition acceptance.
 
-At the latest PR11 checkpoint, helper head `c408e914` was installed at 17:51Z without restarting
+At the historical c408 PR11 checkpoint, helper head `c408e914` was installed at 17:51Z without restarting
 the app or starting a rehearsal. The first readback failed on a duplicate nonexistent sidecar path;
 the corrected readback and its independent comparison passed for the root-owned global helper,
 three runtime sidecars, installed receipt and immutable original backup. Production remained the
@@ -2575,3 +2575,12 @@ archival and fresh inventory. Distinguish the corrected source attribution for r
 builder-reported pre-edit DD7 fixture failure; if its raw artifact is unavailable, do not claim
 independent reproduction or reconstruct its baseline. A failed V7 `admin_step_up` remains
 cause-unproven; the fresh-code trace rules out only the stale/replay hypothesis.
+
+For disposable PR-pair rehearsals, generate one fresh volatile authentication-session secret per
+pair invocation and keep it across every app restart on that pair's volume. This protects seeded
+TOTP ciphertext and session continuity. Keep independent runs separate, remove the private env
+file after container creation, and never use production secrets or emit their bytes into evidence.
+The PR11 auth-key lifecycle repair passed focused independent source/test QA only; the V8
+`admin_step_up` 503 remains a preserved failed trial, and native/resource/recovery acceptance
+requires a new bound trial. Accept the exact prior 532 install tuple or exact candidate receipt;
+retain the immutable original helper backup and reject unknown installed identities.

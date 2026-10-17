@@ -2863,7 +2863,14 @@ def _schema_version(image_id: str, volume: str, *, revision: str, pair_manifest_
     return value["max"]
 
 
-def _write_environment(*, assistant_enabled: bool) -> Path:
+def _write_environment(*, assistant_enabled: bool, auth_session_secret: str) -> Path:
+    if (
+        not isinstance(auth_session_secret, str)
+        or not auth_session_secret.isascii()
+        or len(auth_session_secret) < 32
+        or len(auth_session_secret) > 256
+    ):
+        raise RehearsalError("auth_session_secret_invalid")
     TEMP_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
     path = TEMP_ROOT / f"app-{secrets.token_hex(8)}.env"
     env = {
@@ -2876,7 +2883,7 @@ def _write_environment(*, assistant_enabled: bool) -> Path:
         "STOCK_PROBS_PROVIDER": "yahoo",
         "STOCK_PROBS_AUTH_MODE": "github",
         "STOCK_PROBS_PUBLIC_ORIGIN": "https://ledger-r120.test",
-        "STOCK_PROBS_AUTH_SESSION_SECRET": secrets.token_urlsafe(48),
+        "STOCK_PROBS_AUTH_SESSION_SECRET": auth_session_secret,
         "STOCK_PROBS_AUTH_COOKIE_SECURE": "1",
         "STOCK_PROBS_GITHUB_CLIENT_ID": "synthetic-pr-rehearsal-client",
         "STOCK_PROBS_GITHUB_CLIENT_SECRET": secrets.token_urlsafe(32),
@@ -2899,6 +2906,7 @@ def _start_app(
     name: str,
     *,
     assistant_enabled: bool,
+    auth_session_secret: str,
     network: str,
     network_id: str | None,
     run_id: str,
@@ -2933,7 +2941,10 @@ def _start_app(
             require_empty=True,
         )
     memory_limit = _memory_limit_for_role(role)
-    env_path = _write_environment(assistant_enabled=assistant_enabled)
+    env_path = _write_environment(
+        assistant_enabled=assistant_enabled,
+        auth_session_secret=auth_session_secret,
+    )
     command = [
         "/usr/bin/docker",
         "run",
@@ -4915,6 +4926,7 @@ def _run_pair_v1(payload: dict[str, object]) -> dict[str, object]:
     OPERATION_DEADLINE = time.monotonic() + MAX_OPERATION_SECONDS
 
     run_id = secrets.token_hex(8)
+    auth_session_secret = secrets.token_urlsafe(48)
     volume = f"signal-ledger-pr1-{revision[:8]}-{run_id}"
     candidate_name = f"signal-ledger-pr1-{revision[:8]}-{run_id}-candidate"
     recovery_name = f"signal-ledger-pr1-{revision[:8]}-{run_id}-recovery"
@@ -5015,6 +5027,7 @@ def _run_pair_v1(payload: dict[str, object]) -> dict[str, object]:
                 volume,
                 candidate_name,
                 assistant_enabled=True,
+                auth_session_secret=auth_session_secret,
                 network=candidate_network,
                 network_id=candidate_network_id,
                 run_id=run_id,
@@ -5107,6 +5120,7 @@ def _run_pair_v1(payload: dict[str, object]) -> dict[str, object]:
                 volume,
                 recovery_name,
                 assistant_enabled=False,
+                auth_session_secret=auth_session_secret,
                 network="none",
                 network_id=None,
                 run_id=run_id,
@@ -5381,6 +5395,7 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
     PRODUCTION_SAMPLE_COUNT = sample_count
     OPERATION_DEADLINE = time.monotonic() + MAX_OPERATION_SECONDS
     run_id = secrets.token_hex(8)
+    auth_session_secret = secrets.token_urlsafe(48)
     volume = f"signal-ledger-pr1-{revision[:8]}-{run_id}"
     candidate_name = f"{volume}-candidate"
     recovery_name = f"{volume}-recovery"
@@ -5454,6 +5469,7 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
             volume,
             candidate_name,
             assistant_enabled=False,
+            auth_session_secret=auth_session_secret,
             network=candidate_network,
             network_id=candidate_network_id,
             run_id=run_id,
@@ -5506,6 +5522,7 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
             volume,
             candidate_name,
             assistant_enabled=True,
+            auth_session_secret=auth_session_secret,
             network=candidate_network,
             network_id=candidate_network_id,
             run_id=run_id,
@@ -5555,6 +5572,7 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
             volume,
             recovery_name,
             assistant_enabled=False,
+            auth_session_secret=auth_session_secret,
             network="none",
             network_id=None,
             run_id=run_id,

@@ -159,6 +159,30 @@ KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST = {
     "helper_source_contract": HELPER_SOURCE_CONTRACT,
     "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
 }
+# Exact installed PR11 helper state captured after the 532b2a0 package was installed.
+KNOWN_INSTALLED_532B2A0_PRODUCTION_HELPER_SHA256 = (
+    "4411def05a0cf757eef859b257d403d1c05eeed44c5c4265b86cb9905e1de730"
+)
+KNOWN_INSTALLED_532B2A0_REVIEWED_HEAD_SHA = "532b2a0c96ec4eebc645ebb315a5419ae74b9251"
+KNOWN_INSTALLED_532B2A0_PAIR_MANIFEST_SHA256 = (
+    "e53b16c5670532b4167056533fc195a9f98f5bbd51dd9f2423e27f44ee001074"
+)
+KNOWN_INSTALLED_532B2A0_INSTALLED_FILES = {
+    "host_helper.py": "5bf55b2433597d9b958eeecd01933c11b41f37a513d7921f10321812be70f1f4",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_532B2A0_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_532B2A0_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_532B2A0_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_532B2A0_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -535,9 +559,15 @@ def _prepare_previous_production_helper(
                 try:
                     _require_installed_manifest(candidate_manifest_fields)
                 except InstallError:
-                    _require_installed_manifest(KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
+                    try:
+                        _require_installed_manifest(KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST)
+                    except InstallError:
+                        _require_installed_manifest(KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
             else:
-                _require_installed_manifest(KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
+                try:
+                    _require_installed_manifest(KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST)
+                except InstallError:
+                    _require_installed_manifest(KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
         elif current_digest in {
             KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256,
             KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256,

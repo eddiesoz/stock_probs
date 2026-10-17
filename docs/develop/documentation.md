@@ -747,3 +747,9 @@ failures, errors, or skips. Review confirmed exact E1 constants against the actu
 receipt and the known-E1/exact-candidate receipt rule; its synthetic DD7 sidecars do not establish
 real historical-DD7 reinstall acceptance. No host install or runtime was exercised. The a6 journal archival and 32-artifact readback
 passed separately. See the [d6064e6 bootstrap-readiness checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-d6064e6-bootstrap-readiness-checkpoint-2026-10-16).
+
+PR11's authentication-key lifecycle is documented separately from provider availability. The
+V8 trial stopped at TOTP step-up before any owner/model turn and restored the exact invited 5ad
+release. Focused independent tests passed the per-pair key repair and exact prior-install
+recognition; no repaired-source host trial has yet run. Preserve the failed trial and the scope
+of its synthetic reproduction. See the [auth-key checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v8-auth-key-lifecycle-checkpoint-2026-10-17).

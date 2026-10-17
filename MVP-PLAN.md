@@ -9113,3 +9113,44 @@ schema 13 and ready state: `/var/tmp/r12r/next-trial-root-readback-f7db6924-b63a
 The V7 pair remains **Failed** and its specific cause remains **Unproven**. Native, actual 1 GB,
 rollback, browser, canonical, guide, owner-canary, and release gates remain open. No application
 deployment, merge, email, or resize occurred.
+
+### R-ASTRA-121 PR11 V8 auth-key lifecycle checkpoint (2026-10-17)
+
+PR11 head `532b2a0c96ec4eebc645ebb315a5419ae74b9251` was packaged and its helper installed
+without an application restart. The bound F6 and 5ad images remained unchanged. V8's one actual-host
+trial **Failed** at `admin_step_up`: HTTP 503 `authentication_unavailable`, before either owner
+turn or any model/tool answer. The exact original 5ad image, invited rollout, schema 13, loopback
+boundary and ready state were restored. Independent failure-integrity review **Passed** for that
+scope only: receipt `/var/tmp/r12r/v8-failure-integrity-independent-qa-20261017T0036Z-4b38a43d/independent-v8-failure-integrity-review.json`,
+SHA-256 `b57fc9e9f2a74b0099622623bc48ecf84e98b8add421d75188e584215bf037ef`.
+The initial retirement guard **Failed** because terminal `ControlGroup` was empty; the first stop
+return is **Unavailable**. A fresh read-only check of the previously bound live PID/cgroup confirmed
+both absent, with failed unit metadata retained. No blind retry or reset followed.
+
+Source review found the helper generated a new authentication-session secret for each container
+start, invalidating seeded encrypted TOTP material on restart. The repair generates one fresh
+volatile secret per isolated pair and passes it through V1/V2 candidate/recovery starts. It also
+recognizes the exact installed 532 manifest/source tuple while retaining exact E1/candidate
+recognition, unknown-state rejection and the immutable original helper backup.
+
+Independent selected QA **Passed**: 19 rehearsal tests and one real offline seeded-TOTP HTTP
+regression, with zero failures or skips; configured Ruff, security Ruff excluding test assertions,
+and format checks passed. V2 tests exercise reuse across starts and freshness between runs; V1
+reuse is source-reviewed but direct V1 behavioral coverage is **Unavailable** in this selection.
+The changed-key synthetic test returns the same 503 and the matching-key case verifies, but actual
+trial key bytes were not observed and the historical trial's specific cause remains **Unproven**.
+Receipt `/var/tmp/r12r/auth-key-lifecycle-independent-qa-20261017T0041Z-ff09444b/independent-qa-receipt.json`,
+SHA-256 `b87242c28e20136a510c090831db09754b4b5d1ba24a64686ae1aa39a3d276f8`; native x86_64,
+Python 3.11.15, normal environment/umask 022, source pins unchanged before/after.
+Parent integrated source review **Passed** separately: SHA-256
+`7a89b6be80f58ee10e88dfa83bc1dc92273b3304fc6ed1e1378881ea0f1ae20f`.
+No repaired-source host trial or native/resource/recovery acceptance follows from these checks.
+
+The second unreferenced backup was signed-reader verified without promotion, copied opaquely to
+the independent SD filesystem, then moved with `NOREPLACE` into retained storage. Both retained
+archives and key-rotation/retirement holds remain protected. A post-move readback saw 31 active
+backups; V8 created a fresh backup and the later inventory shows 32, so another exact retention
+operation is needed before a further trial. No deletion, cap increase or key rotation occurred.
+The existing 1 GB host, backups and US$15 monthly total cap remain unchanged. Native/resource,
+recovery/rollback, browser, canonical, guide, owner-canary and release gates remain open; no app
+merge, deployment, email or resize occurred in this checkpoint.
