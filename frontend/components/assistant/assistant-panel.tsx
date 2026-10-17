@@ -42,7 +42,12 @@ import styles from "./assistant.module.css";
 type LoadState = "loading" | "ready" | "error";
 type StreamState = "idle" | "connecting" | "streaming" | "interrupted" | "complete" | "cancelled" | "failed";
 type PanelErrorState = Readonly<{ message: string; owner: symbol | null }>;
-type ActiveTurn = { conversationId: string; turnId: string };
+type ActiveTurn = {
+  conversationId: string;
+  turnId: string;
+  contextRoute: AssistantContextRequest["route"] | null;
+  contextGeneration: number;
+};
 type FocusRequest = {
   kind: "load" | "send" | "cancel";
   source: HTMLElement;
@@ -51,7 +56,11 @@ type FocusRequest = {
   conversationId: string | null;
   generation: number;
 };
-type ActiveWebFetchPreview = PrivateWebFetchPreview & { turn_id: string };
+type ActiveWebFetchPreview = PrivateWebFetchPreview & {
+  turn_id: string;
+  contextRoute: AssistantContextRequest["route"] | null;
+  contextGeneration: number;
+};
 type BusyOperation = { key: string; token: number };
 
 const routeLabels: Record<AssistantContextRequest["route"], string> = {
@@ -534,6 +543,12 @@ export function AssistantPanel({
   const [actionProposals, setActionProposals] = useState<AssistantActionProposal[]>([]);
   const [searchPreviews, setSearchPreviews] = useState<PrivateSearchPreview[]>([]);
   const [webFetchPreviews, setWebFetchPreviews] = useState<ActiveWebFetchPreview[]>([]);
+  const webFetchPreviewsRef = useRef<ActiveWebFetchPreview[]>([]);
+  const updateWebFetchPreviews = useCallback((update: ActiveWebFetchPreview[] | ((current: ActiveWebFetchPreview[]) => ActiveWebFetchPreview[])) => {
+    const next = typeof update === "function" ? update(webFetchPreviewsRef.current) : update;
+    webFetchPreviewsRef.current = next;
+    setWebFetchPreviews(next);
+  }, []);
   const [activeTurn, setActiveTurn] = useState<ActiveTurn | null>(null);
   const activeTurnRef = useRef<ActiveTurn | null>(null);
   const [streamState, setStreamState] = useState<StreamState>("idle");
@@ -550,6 +565,17 @@ export function AssistantPanel({
       return message === current.message ? current : { message, owner: null };
     });
   }, []);
+  const invalidateWebFetchPreviews = useCallback((generation: number, route: AssistantContextRequest["route"]) => {
+    const hasStalePreview = webFetchPreviewsRef.current.some((preview) =>
+      preview.contextRoute !== route || preview.contextGeneration !== generation,
+    );
+    if (!hasStalePreview) return;
+    updateWebFetchPreviews((previews) => previews.filter((preview) =>
+      preview.contextRoute === route && preview.contextGeneration === generation,
+    ));
+    setPanelError("The page context changed after this URL preview. No URL was sent; ask again for a fresh preview.");
+    setLiveStatus("The old URL preview is stale. No web page request was approved.");
+  }, [setPanelError, updateWebFetchPreviews]);
   const [busy, setBusy] = useState<string | null>(null);
   const busyOperationRef = useRef<BusyOperation | null>(null);
   const busyOperationSequence = useRef(0);
@@ -859,6 +885,7 @@ export function AssistantPanel({
   async function reloadContext() {
     const generation = ++contextRequestGeneration.current;
     const request = contextRequest;
+    invalidateWebFetchPreviews(generation, request.route);
     const selection = selectedContextRequest(request, includeContextRef.current);
     setContextState("loading");
     try {
@@ -1042,6 +1069,7 @@ export function AssistantPanel({
   useEffect(() => {
     let current = true;
     const generation = ++contextRequestGeneration.current;
+    invalidateWebFetchPreviews(generation, contextRequest.route);
     void (async () => {
       setContextState("loading");
       try {
@@ -1059,7 +1087,7 @@ export function AssistantPanel({
       }
     })();
     return () => { current = false; };
-  }, [contextKey, includeContext, clearContextError, reportContextError]);
+  }, [contextKey, includeContext, clearContextError, reportContextError, invalidateWebFetchPreviews]);
 
   function handlePanelKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key === "Escape") {
@@ -1089,6 +1117,7 @@ export function AssistantPanel({
     const previousConversationId = selectedConversationId.current;
     selectedConversationId.current = id;
     const generation = ++conversationLoadGeneration.current;
+    const previewContextGeneration = contextRequestGeneration.current;
     if (focusRequest && focusRequestRef.current === focusRequest) {
       focusRequest.conversationId = id;
       focusRequest.generation = generation;
@@ -1116,7 +1145,7 @@ export function AssistantPanel({
     setToolEvents([]);
     setActionProposals([]);
     setSearchPreviews([]);
-    setWebFetchPreviews([]);
+    updateWebFetchPreviews([]);
     setSavedActions([]);
     setMessages([]);
     setPrompt("");
@@ -1146,35 +1175,54 @@ export function AssistantPanel({
         page_size: eventPageInfo && Number.isSafeInteger(eventPageInfo.page_size) ? eventPageInfo.page_size : 100,
         total: eventPageInfo && Number.isSafeInteger(eventPageInfo.total) ? eventPageInfo.total : 0,
       });
-      setTurnContexts(readTurnContexts(detail));
+      const loadedTurnContexts = readTurnContexts(detail);
+      setTurnContexts(loadedTurnContexts);
       setConversationState("ready");
       const currentTurn = Array.isArray(detail.turns)
         ? detail.turns.find((turn) => ["running", "queued", "streaming", "pending"].includes(turn.status))
         : undefined;
       if (currentTurn) {
+        const activeTurnDetails: ActiveTurn = {
+          conversationId: id,
+          turnId: currentTurn.id,
+          contextRoute: loadedTurnContexts[currentTurn.id]?.route ?? null,
+          contextGeneration: previewContextGeneration,
+        };
         const pendingFetchRefs = readPendingWebFetchReferences(detail.events, currentTurn.id);
-        const pendingFetches = await Promise.all(pendingFetchRefs.map(async (previewId) => {
+        const pendingFetches = await Promise.all(pendingFetchRefs.map(async (previewId): Promise<ActiveWebFetchPreview | null> => {
           try {
             const payload = await assistantRequest<{ preview?: unknown }>(
               `${conversationPath(id)}/turns/${encodeURIComponent(currentTurn.id)}/webfetch-previews/${encodeURIComponent(previewId)}`,
             );
             const preview = readPrivateWebFetchPreview(payload.preview);
-            return preview ? { ...preview, turn_id: currentTurn.id } : null;
+            return preview ? {
+              ...preview,
+              turn_id: currentTurn.id,
+              contextRoute: loadedTurnContexts[currentTurn.id]?.route ?? null,
+              contextGeneration: previewContextGeneration,
+            } : null;
           } catch {
             return null;
           }
         }));
         if (generation !== conversationLoadGeneration.current) return;
-        setWebFetchPreviews(pendingFetches.filter((preview): preview is ActiveWebFetchPreview => preview !== null));
+        const currentPreviews = pendingFetches.filter((preview): preview is ActiveWebFetchPreview => preview !== null
+          && preview.contextRoute === contextRequest.route
+          && preview.contextGeneration === contextRequestGeneration.current);
+        if (pendingFetches.some((preview) => preview !== null && !currentPreviews.includes(preview))) {
+          setPanelError("The page context changed after this URL preview. No URL was sent; ask again for a fresh preview.");
+          setLiveStatus("The old URL preview is stale. No web page request was approved.");
+        }
+        updateWebFetchPreviews(currentPreviews);
         const sameTerminalTurn = terminalTurnRef.current?.conversationId === id
           && terminalTurnRef.current.turnId === currentTurn.id;
         if (!sameTerminalTurn) {
           terminalEventRef.current = null;
           turnErrorRef.current = null;
-          terminalTurnRef.current = { conversationId: id, turnId: currentTurn.id };
+          terminalTurnRef.current = activeTurnDetails;
           cursorRef.current = 0;
         }
-        setActiveTurn({ conversationId: id, turnId: currentTurn.id });
+        setActiveTurn(activeTurnDetails);
         setStreamState("interrupted");
         setLiveStatus("A response was interrupted. Reconnect to its saved event stream.");
       } else {
@@ -1381,7 +1429,7 @@ export function AssistantPanel({
     setSavedActions([]);
     setActionProposals([]);
     setSearchPreviews([]);
-    setWebFetchPreviews([]);
+    updateWebFetchPreviews([]);
     setDraft("");
     setDraftSources([]);
     setToolEvents([]);
@@ -1534,9 +1582,20 @@ export function AssistantPanel({
         setLiveStatus("The web page request could not be confirmed.");
         return;
       }
-      setWebFetchPreviews((current) => [
+      if (turn.contextRoute === null || turn.contextRoute !== contextRequest.route
+          || turn.contextRoute !== currentPath() || turn.contextGeneration !== contextRequestGeneration.current) {
+        setPanelError("The page context changed after this URL preview. No URL was sent; ask again for a fresh preview.");
+        setLiveStatus("The old URL preview is stale. No web page request was approved.");
+        return;
+      }
+      updateWebFetchPreviews((current) => [
         ...current.filter((item) => item.preview_id !== preview.preview_id),
-        { ...preview, turn_id: turn.turnId },
+        {
+          ...preview,
+          turn_id: turn.turnId,
+          contextRoute: turn.contextRoute,
+          contextGeneration: turn.contextGeneration,
+        },
       ]);
       setLiveStatus("A web page request needs approval. Inspect the exact URL before it is sent.");
     } else if (event.type === "complete") {
@@ -1586,7 +1645,7 @@ export function AssistantPanel({
     setToolEvents([]);
     setActionProposals([]);
     setSearchPreviews([]);
-    setWebFetchPreviews([]);
+    updateWebFetchPreviews([]);
     cursorRef.current = 0;
     try {
       const turnContext = await latestConfirmationContext();
@@ -1610,9 +1669,15 @@ export function AssistantPanel({
       if (!isCurrentSelection()) return;
       const turn = asRecord(turnEnvelope.turn);
       if (typeof turn.id !== "string" || typeof turn.status !== "string") throw new Error("The assistant returned a malformed turn identifier.");
+      const activeTurnDetails: ActiveTurn = {
+        conversationId,
+        turnId: turn.id,
+        contextRoute: turnContext.route,
+        contextGeneration,
+      };
       terminalEventRef.current = null;
       turnErrorRef.current = null;
-      terminalTurnRef.current = { conversationId, turnId: turn.id };
+      terminalTurnRef.current = activeTurnDetails;
       if (turnContext) setTurnContexts((current) => ({ ...current, [turn.id as string]: turnContext }));
       setMessages((current) => [...current, {
         id: `pending-${turn.id as string}`,
@@ -1623,9 +1688,9 @@ export function AssistantPanel({
         created_at: new Date().toISOString(),
       }]);
       setPrompt("");
-      setActiveTurn({ conversationId, turnId: turn.id as string });
+      setActiveTurn(activeTurnDetails);
       setBusy(null);
-      await connectToTurn({ conversationId, turnId: turn.id as string });
+      await connectToTurn(activeTurnDetails);
     } catch (error) {
       if (!isCurrentSelection()) return;
       const code = assistantErrorCode(error);
@@ -1914,12 +1979,20 @@ export function AssistantPanel({
     const isContextCurrent = () => isSelectionCurrent()
       && contextGeneration === contextRequestGeneration.current
       && routeAtStart === currentPath();
+    const isPreviewContextCurrent = () => preview.contextRoute !== null
+      && preview.contextRoute === contextRequest.route
+      && preview.contextRoute === currentPath()
+      && preview.contextGeneration === contextRequestGeneration.current;
     const rejectStalePreview = () => {
       if (!isSelectionCurrent()) return;
-      setWebFetchPreviews((current) => current.filter((item) => item.preview_id !== preview.preview_id));
+      updateWebFetchPreviews((current) => current.filter((item) => item.preview_id !== preview.preview_id));
       setPanelError("The page context changed after this URL preview. No URL was sent; ask again for a fresh preview.");
       setLiveStatus("The old URL preview is stale. No web page request was approved.");
     };
+    if (!isPreviewContextCurrent()) {
+      rejectStalePreview();
+      return;
+    }
     if (allow && Date.parse(preview.expires_at) <= Date.now()) {
       setPanelError("This web page request preview expired. No URL was sent. Ask again to create a fresh preview.");
       return;
@@ -1967,7 +2040,7 @@ export function AssistantPanel({
         },
       );
       if (!isConversationCurrent()) return;
-      setWebFetchPreviews((current) => current.filter((item) => item.preview_id !== preview.preview_id));
+      updateWebFetchPreviews((current) => current.filter((item) => item.preview_id !== preview.preview_id));
       setLiveStatus(result.status === "approved"
         ? "This exact URL was approved for one web page request."
         : result.status === "expired"

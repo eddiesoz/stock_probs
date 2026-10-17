@@ -7653,3 +7653,55 @@ and `5e369d4df8c6bd004d2013a0378a6d4d09f0554212697288514ae73a021304e1`, respecti
 All 53 served/export pairs remained matched, and the isolated fixture processes, ports, and
 owned runtime cleanup passed independent review. Full browser/accessibility and remaining
 resource/recovery/release gates remain open.
+
+### R-ASTRA-121 F6 stale approval repair and focused browser checkpoint (2026-10-17)
+
+The unreleased assistant candidate now removes a pending WebFetch approval as soon as its page or
+reference context changes, before awaiting the replacement context request. Originating page and
+context generation also guard late preview events, saved running turns, and confirmation clicks.
+The URL, privacy, ownership and explicit-confirmation rules are unchanged. A stopped or stale turn
+cannot authorize a fetch in another page context. The user must stop the pending response before
+asking for a fresh preview. No layout or theme change accompanies this repair.
+
+The approved `./scripts/build-frontend.sh` path **Passed** at
+`2026-10-17T20:20:41.623422Z`–`20:23:00.839362Z`: 74 frontend tests, zero failures/skips,
+88 unchanged input files and 53 served/export pairs (49 Next files and four authored assets).
+Independent build postflight passed those bindings; receipt
+`/var/tmp/r12r/f6-build-postflight-independent-qa-0d76f3eb05df4e6fb390db9bc9f17360/qa-receipt.json`,
+SHA-256 `8010b2c7a670a1cbc221146d1caad7f59dfe67eb36615ef00c0022f1c5d001ea`.
+The initial TypeScript failure remains preserved; the explicit callback return annotation repaired
+its nullable preview type without weakening runtime guards.
+
+A focused run using the current test and its direct consumers **Passed** 2/2 on desktop Chromium
+and emulated Pixel 7, exit 0, zero retries/skips/flaky cases, at
+`2026-10-17T21:19:34.133Z`–`21:20:48.383743Z`. The terminal binds six current consumers,
+31 application files, all 88 frontend inputs and 53 served/export pairs; its child process group
+and loopback port were absent afterward. Packet:
+`/var/tmp/r12r/f6-current-source-selected2-d2248a11-f69a-4a18-8b8b-430db07fc40c`.
+The test arms the exact same-origin turn POST before sending, requires HTTP 202 within five
+seconds, then retains the existing five-second preview assertion and 180-second case budget.
+Independent selected source review passed this test-only sequencing change; receipt SHA-256
+`d1b356f1cd71785aeab02488a6b680d120cbb029112ee365fa29565516f07287`.
+Independent terminal review **Passed** the selected scope: JSON, JUnit and HTML digests matched;
+all four approved/cancelled desktop/mobile raw axe snapshots had zero violations and zero incomplete
+items. Independent PID/PGID checks found no remaining process; port absence was read from the
+runner receipt rather than independently reprobed. Receipt
+`/var/tmp/r12r/f6-selected2-terminal-independent-qa-709dfd99-6588-4baf-84c8-582ce14523c1/receipt.json`,
+SHA-256 `7f5b10c6230f9e1c45721e9a538b94eb221e9792d5e221442644160b56ac73fb`.
+This does not establish full-app accessibility or production/provider acceptance.
+
+Earlier failures remain **Fail**: the old-source control retained stale approval cards; an initial
+new-frontend run clicked a correctly removed card; the next diagnostic overlay run passed desktop
+but missed the mobile preview at its five-second wait, although the immediate diagnostic saw the
+card at 5,094 ms. Its secondary incomplete-chunk error has an unproven cause. Those private overlays
+were not equivalent to the current test source. The earlier full 200-case run remains **Fail**
+(195 passed, two failed, three expected skips), including the separate history-seed timeout.
+The current focused pass neither rewrites those results nor establishes full-browser acceptance.
+
+No current-image native run, complete canonical/security/browser check, actual combined 1 GB
+acceptance, exact-PR recovery/rollback, refreshed release guide, deployment, owner canary or invited
+rollout is established by this checkpoint. Physical mobile, actual screen reader and true zoom
+remain **Unavailable**. Production still runs the prior application release; no new application
+image, helper installation, rollout or email occurred here. The 1 GB host, backups and US$15 monthly
+total cap including tax remain unchanged. Genuine free Zen through OpenCode remains the first
+release dependency, followed by the seven approved visible features.
