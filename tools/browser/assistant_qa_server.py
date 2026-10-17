@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import json
+import os
 import re
+import sys
+import time
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,6 +17,7 @@ from pathlib import Path
 import httpx
 import uvicorn
 
+import stock_probs
 from stock_probs.api import create_app
 from stock_probs.assistant.schemas import AssistantModelPolicy, AssistantTurnResult
 from stock_probs.config import Settings
@@ -168,6 +173,12 @@ class _Runtime:
         return None
 
     async def run_turn(self, *, context, prompt, emit):
+        # Fixture-only checkpoints exclude prompts, identities, capabilities and model data.
+        print(
+            json.dumps({"qa_stage": "turn_started", "monotonic": time.monotonic()}),
+            file=sys.stderr,
+            flush=True,
+        )
         if prompt.strip() in {
             "fixture webfetch approval",
             "fixture webfetch decline",
@@ -219,6 +230,27 @@ class _Runtime:
             raise RuntimeError(
                 f"synthetic browser MCP call returned HTTP {response.status_code} ({error_code})"
             )
+        print(
+            json.dumps({
+                "qa_stage": "workspace_summary_received",
+                "status": response.status_code,
+                "monotonic": time.monotonic(),
+            }),
+            file=sys.stderr,
+            flush=True,
+        )
+        if prompt == "Explain this page without selected references (delayed browser fixture)":
+            # Exercise a valid asynchronous response beyond the former five-second poll.
+            print(
+                json.dumps({
+                    "qa_stage": "response_delay_started",
+                    "monotonic": time.monotonic(),
+                    "delay_seconds": 6,
+                }),
+                file=sys.stderr,
+                flush=True,
+            )
+            await asyncio.sleep(6)
         await emit({
             "type": "meta",
             "data": {
@@ -235,6 +267,11 @@ class _Runtime:
             "type": "proposed_action",
             "data": {"action_type": "theme.set", "payload": {"theme": "dark"}},
         })
+        print(
+            json.dumps({"qa_stage": "runtime_completed", "monotonic": time.monotonic()}),
+            file=sys.stderr,
+            flush=True,
+        )
         return AssistantTurnResult(status="completed")
 
 
@@ -337,6 +374,16 @@ def main() -> None:
     application.state.repository.migrate()
     user_id = _seed_session(application, assistant_now)
     application.state.service.search("ACDC", "stock", owner_user_id=user_id)
+    print(
+        json.dumps({
+            "qa_stage": "fixture_started",
+            "pid": os.getpid(),
+            "port": args.port,
+            "module_path": stock_probs.__file__,
+        }),
+        file=sys.stderr,
+        flush=True,
+    )
     uvicorn.run(
         _AssistantStreamAudit(application, stream_audits),
         host="127.0.0.1",

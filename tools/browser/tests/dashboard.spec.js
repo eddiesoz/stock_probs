@@ -2106,7 +2106,7 @@ test("news renders empty partial stale failure busy unreachable and superseded s
   await page.route("**/api/v1/news?*", async (route) => {
     const symbol = new URL(route.request().url()).searchParams.get("symbol");
     if (mode === "provider") return route.fulfill({ status: 502, contentType: "application/json", json: { error: { code: "provider_unavailable", message: "Provider unavailable" } } });
-    if (mode === "busy") return route.fulfill({ status: 503, contentType: "application/json", json: { error: { code: "capacity_busy", message: "Busy" } } });
+    if (mode === "busy") return route.fulfill({ status: 503, contentType: "application/json", json: { error: { code: "provider_busy", message: "Busy" } } });
     const payload = newsPayload(symbol, mode === "empty" ? 0 : 1);
     if (mode === "partial") {
       payload.items[0] = { id: "partial", title: "Headline with partial metadata", publisher: null, published_at: null, url: "https://example.com/partial", related_symbols: null };

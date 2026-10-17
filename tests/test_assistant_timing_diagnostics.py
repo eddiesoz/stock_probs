@@ -856,7 +856,8 @@ def test_runtime_provider_failure_v4_keeps_only_valid_403_classes() -> None:
     }
 
 
-def test_runtime_provider_failure_v4_keeps_closed_error_type_class() -> None:
+@pytest.mark.parametrize("error_type_class", ["free_usage_limit_error", "free_tier_access_error"])
+def test_runtime_provider_failure_v4_keeps_closed_error_type_class(error_type_class: str) -> None:
     diagnostics = assistant_runtime._TurnTimingDiagnostics(clock=lambda: 30.0)
     diagnostics.begin(EXECUTION_ID, 27)
     ordinal = diagnostics.provider_started(EXECUTION_ID, 27)
@@ -868,7 +869,7 @@ def test_runtime_provider_failure_v4_keeps_closed_error_type_class() -> None:
         "upstream_stream",
         "provider_upstream_unavailable",
         403,
-        provider_error_type_class="free_usage_limit_error",
+        provider_error_type_class=error_type_class,
     )
     diagnostics.provider_finished(EXECUTION_ID, 27, ordinal, "failed", "safe_protocol_error")
 
@@ -879,7 +880,7 @@ def test_runtime_provider_failure_v4_keeps_closed_error_type_class() -> None:
         "stage": "upstream_stream",
         "error_code": "provider_upstream_unavailable",
         "http_status": 403,
-        "provider_error_type_class": "free_usage_limit_error",
+        "provider_error_type_class": error_type_class,
     }
     assert "execution_id" not in json.dumps(receipt)
     assert "owner_id" not in json.dumps(receipt)

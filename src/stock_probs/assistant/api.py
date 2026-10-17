@@ -24,6 +24,8 @@ from stock_probs.assistant import net
 from stock_probs.assistant.native_provider_adapters import (
     NATIVE_WEBFETCH_DESCRIPTION_SHA256,
     native_output_token_budget,
+    native_restricted_tool_declarations,
+    native_restricted_tool_matches,
     native_webfetch_schema,
     validated_output_token_count,
 )
@@ -132,7 +134,15 @@ _PROVIDER_403_CONTENT_TYPE_CLASSES = frozenset(
 )
 _PROVIDER_403_CF_MITIGATED_CLASSES = frozenset({"challenge", "absent", "other"})
 _PROVIDER_403_ERROR_TYPE_CLASSES = frozenset(
-    {"region_error", "data_policy_error", "free_usage_limit_error", "other", "malformed", "unknown"}
+    {
+        "region_error",
+        "data_policy_error",
+        "free_usage_limit_error",
+        "free_tier_access_error",
+        "other",
+        "malformed",
+        "unknown",
+    }
 )
 _PROVIDER_RESPONSE_FAILURE_PHASES = frozenset(
     {
@@ -1360,7 +1370,10 @@ def _loopback_client(request: Request) -> bool:
 
 
 def _validated_provider_request(
-    value: object, app_tools: list[dict[str, object]]
+    value: object,
+    app_tools: list[dict[str, object]],
+    *,
+    include_restricted: bool = False,
 ) -> dict[str, object] | None:
     """Bound the native provider protocol to messages and tools the app actually registers."""
 
@@ -1390,7 +1403,7 @@ def _validated_provider_request(
     ):
         return None
 
-    declarations: dict[str, tuple[dict[str, object], str]] = {}
+    declarations: dict[str, tuple[dict[str, object] | None, str]] = {}
     for tool in app_tools:
         raw_name = str(tool["name"])
         # V2 location-scoped MCP declarations use the same server prefix granted
@@ -1412,6 +1425,12 @@ def _validated_provider_request(
     websearch = _native_websearch_declaration()
     declarations["websearch"] = (websearch, "websearch")
     declarations["webfetch"] = (None, "webfetch")
+    if include_restricted is True:
+        try:
+            for name in native_restricted_tool_declarations():
+                declarations[name] = (None, name)
+        except ValueError:
+            return None
 
     messages = value.get("messages")
     if not isinstance(messages, list) or not 1 <= len(messages) <= _PROXY_MAX_MESSAGES:
@@ -1583,7 +1602,9 @@ def _validated_provider_request(
     tools = value.get("tools")
     declared_names: set[str] = set()
     if tools is not None:
-        if not isinstance(tools, list) or len(tools) > len(app_tools) + 2:
+        if not isinstance(tools, list) or len(tools) > len(app_tools) + (
+            4 if include_restricted is True else 2
+        ):
             return None
         seen: set[str] = set()
         canonical_seen: set[str] = set()
@@ -1613,6 +1634,17 @@ def _validated_provider_request(
                         "strict": False,
                     },
                 }
+            elif canonical_name in {"read", "shell"}:
+                if (
+                    tool.get("type") != "function"
+                    or set(function) != {"name", "description", "parameters", "strict"}
+                    or function.get("strict") is not False
+                    or not native_restricted_tool_matches(
+                        name, function.get("description"), function.get("parameters")
+                    )
+                ):
+                    return None
+                copied_tool = dict(tool)
             elif expected is None or dict(tool) != expected:
                 return None
             else:
@@ -3296,7 +3328,17 @@ def create_assistant_router(
             )
         if not authorization_check():
             return denied
-        bounded = _validated_provider_request(body, assistant.tool_gateway.list_tools())
+        restricted_guard = getattr(assistant.runtime, "restricted_native_tools_ready", None)
+        include_restricted = (
+            policy.provider_id == "opencode-zen"
+            and callable(restricted_guard)
+            and restricted_guard() is True
+        )
+        bounded = _validated_provider_request(
+            body,
+            assistant.tool_gateway.list_tools(),
+            include_restricted=include_restricted,
+        )
         if bounded is None:
             return JSONResponse(
                 status_code=422,

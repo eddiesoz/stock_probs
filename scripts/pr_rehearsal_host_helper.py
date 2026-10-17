@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
+import ctypes
 import fcntl
+import gc
 import grp
 import gzip
 import hashlib
 import http.client
 import json
+import math
 import os
 import platform
 import pwd
@@ -25,12 +28,193 @@ from pathlib import Path
 from typing import TypedDict
 
 REPOSITORY = "eddiesoz/stock_probs"
-PULL_NUMBER = 2
+PULL_NUMBER = 9
 TASK_ID = "R-ASTRA-120"
+
+
+class ProductionBaseline(TypedDict):
+    revision: str
+    image_id: str
+    schema_version: int
+
+
+class RecoveryProductionBaselineFields(TypedDict):
+    role: str
+    revision: str
+    image_id: str
+    archive_sha256: str
+    pair_manifest_sha256: str
+    recovery_overlay_sha256: str
+    migration_sha256: str
+    compose_digest: str
+    schema_version: int
+    assistant_rollout_mode: str
+    assistant_enabled: bool
+    assistant_status: str
+    loopback_only: bool
+
+
+class RecoveryProductionBaseline(RecoveryProductionBaselineFields):
+    container_id: str
+    container_revision: str
+
+
+class TemporaryRecoveryProductionBaselineFields(TypedDict):
+    operation_kind: str
+    operation_id: str
+    phase: str
+    start_admission_allowed: bool
+    startup_floor_kib: int
+    revision: str
+    image_id: str
+    image_ref: str
+    build_tag: str
+    archive_sha256: str
+    archive_size: int
+    manifest_sha256: str
+    source_manifest_sha256: str
+    source_context_sha256: str
+    base_revision: str
+    base_source_archive_sha256: str
+    base_source_context_sha256: str
+    migration_sha256: str
+    overlay_sha256: str
+    compose_digest: str
+    schema_version: int
+    platform: str
+    assistant_rollout_mode: str
+    assistant_enabled: bool
+    assistant_status: str
+    loopback_only: bool
+    original_revision: str
+    original_image_id: str
+    original_compose_digest: str
+    protected_recovery_revision: str
+    protected_recovery_image_id: str
+    protected_recovery_image_ref: str
+    protected_recovery_archive_sha256: str
+    protected_recovery_pair_manifest_sha256: str
+    protected_recovery_overlay_sha256: str
+    original_assistant_rollout_mode: str
+
+
+class TemporaryRecoveryProductionBaseline(TemporaryRecoveryProductionBaselineFields):
+    container_id: str
+    container_revision: str
+
+
+PRODUCTION_BASELINE: ProductionBaseline = {
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
+    "schema_version": 13,
+}
+RECOVERY_PRODUCTION_BASELINE: RecoveryProductionBaselineFields = {
+    "role": "recovery",
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "image_id": "sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f",
+    "archive_sha256": "082d04e065acfc1eb7db86358e40e20f937111f7d26901bd98b589521f8628c3",
+    "pair_manifest_sha256": "e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3",
+    "recovery_overlay_sha256": "d1df9215ecb99dc8dc45b06c5b4c0aede364be6e80c7701a6814225397dfecad",
+    "migration_sha256": "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b",
+    "compose_digest": "01028e5b02cc0eded5f7b5207950a54b5a111b169f2a60a4ae8abdc6dfdb92b0",
+    "schema_version": 13,
+    "assistant_rollout_mode": "disabled",
+    "assistant_enabled": False,
+    "assistant_status": "disabled",
+    "loopback_only": True,
+}
+PRODUCTION_STATE_ROOT = Path("/var/lib/signal-ledger")
 BASE_REVISION = "da2764e8477698fa7d686be93a4711e35478e802"
+MIGRATION_SHA256 = "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b"
+TEMPORARY_RECOVERY_SOURCE_REVISION = "63597953c9d1ab387563dadfe705b78a2861a426"
+TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256 = (
+    "9443700f5248606c1f50a6e4e1bb2a20782a44aaa06fe62ffc3de2d17c4c2994"
+)
+TEMPORARY_RECOVERY_BASE_ARCHIVE_SHA256 = (
+    "a197b69829076e75bdc1c51830761d1bb4d4c0fda9074372abb45b6d972d59d7"
+)
+TEMPORARY_RECOVERY_BASE_CONTEXT_SHA256 = (
+    "38a2098f81fde0d3b73e7e3b3d31f84b5731492ff04b9ace2bfe5fd83c53c97b"
+)
+TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256 = (
+    "964d7ca16ac1733c031780fc5dd3c271461489cc58cb9a653371cb060b26baa9"
+)
+TEMPORARY_RECOVERY_OVERLAY_SHA256 = (
+    "272949c0fcaafcc0b217265619ba3eb76d9e9e92d69c18a2492100f5e14a0a6f"
+)
+TEMPORARY_RECOVERY_FILE_SHA256 = {
+    "Dockerfile": "e904ce9e9dc842be12860efd19f4e6f4e6eb4a1a04e696ba00d065456dcca7d4",
+    "src/stock_probs/api.py": "91cadf3c9dec6b599e9a27c54105a38097c2a2e5db44d4874af9e5bb841eb568",
+    "src/stock_probs/migrations/013_assistant_conversations.sql": (
+        "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b"
+    ),
+    "src/stock_probs/provider.py": (
+        "1b4a4c94f049a3068985d11919e96f1b5c4b459bdfdae7e985bec8b888eb3ad1"
+    ),
+    "src/stock_probs/recovery_supervisor.py": (
+        "35972aad9f7c58339c703afaa3767203dbb2e4e8fce017162f316e6550759803"
+    ),
+    "src/stock_probs/repository.py": (
+        "cab534210e18fb2fd493fd147bbda59a2460721db931600de701d6e489500710"
+    ),
+}
+TEMPORARY_RECOVERY_IMAGE_BUILD_TAG = "signal-ledger:temporary-recovery-build-63597953c9d1"
+TEMPORARY_RECOVERY_COMMAND = [
+    "serve",
+    "--host",
+    "0.0.0.0",  # noqa: S104 - the fixed production publish is loopback-only.
+    "--port",
+    "8000",
+    "--allow-non-loopback",
+]
+TEMPORARY_RECOVERY_MANIFEST_PATH = PRODUCTION_STATE_ROOT / "temporary-recovery" / "manifest.json"
+TEMPORARY_RECOVERY_OPERATION_PATH = PRODUCTION_STATE_ROOT / "temporary-recovery-operation.json"
+TEMPORARY_RECOVERY_APPROVAL_PATH = Path("/etc/signal-ledger/temporary-recovery.approval.json")
+TEMPORARY_RECOVERY_ROOT = PRODUCTION_STATE_ROOT / "temporary-recovery"
+MAX_TEMPORARY_RECOVERY_MANIFEST_BYTES = 8_192
+MAX_TEMPORARY_RECOVERY_APPROVAL_BYTES = 1_024
+MAX_TEMPORARY_RECOVERY_ARCHIVE_BYTES = 512 * 1024 * 1024
+TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS: dict[str, object] = {
+    "operation_kind": "temporary_recovery",
+    "phase": "startup_floor_passed",
+    "start_admission_allowed": True,
+    "revision": TEMPORARY_RECOVERY_SOURCE_REVISION,
+    "build_tag": TEMPORARY_RECOVERY_IMAGE_BUILD_TAG,
+    "source_manifest_sha256": TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+    "source_context_sha256": TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+    "base_revision": BASE_REVISION,
+    "base_source_archive_sha256": TEMPORARY_RECOVERY_BASE_ARCHIVE_SHA256,
+    "base_source_context_sha256": TEMPORARY_RECOVERY_BASE_CONTEXT_SHA256,
+    "migration_sha256": MIGRATION_SHA256,
+    "overlay_sha256": TEMPORARY_RECOVERY_OVERLAY_SHA256,
+    "compose_digest": RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+    "schema_version": 13,
+    "platform": "linux/amd64",
+    "assistant_rollout_mode": "disabled",
+    "assistant_enabled": False,
+    "assistant_status": "disabled",
+    "loopback_only": True,
+    "original_revision": PRODUCTION_BASELINE["revision"],
+    "original_image_id": PRODUCTION_BASELINE["image_id"],
+    "original_compose_digest": RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+    "protected_recovery_revision": RECOVERY_PRODUCTION_BASELINE["revision"],
+    "protected_recovery_image_id": RECOVERY_PRODUCTION_BASELINE["image_id"],
+    "protected_recovery_image_ref": (
+        f"signal-ledger:recovery-sha-{RECOVERY_PRODUCTION_BASELINE['revision']}"
+    ),
+    "protected_recovery_archive_sha256": RECOVERY_PRODUCTION_BASELINE["archive_sha256"],
+    "protected_recovery_pair_manifest_sha256": RECOVERY_PRODUCTION_BASELINE["pair_manifest_sha256"],
+    "protected_recovery_overlay_sha256": RECOVERY_PRODUCTION_BASELINE["recovery_overlay_sha256"],
+}
+PRODUCTION_CURRENT_RECORD = PRODUCTION_STATE_ROOT / "current.json"
+PRODUCTION_RELEASE_ROOT = PRODUCTION_STATE_ROOT / "releases"
+MAX_PRODUCTION_RECORD_BYTES = 65_536
+MAX_PRODUCTION_COMPOSE_BYTES = 128 * 1024
+RECOVERY_CANDIDATE_ARCHIVE_SHA256 = (
+    "99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5"
+)
 BASE_IMAGE_ID = "sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1"
 BASE_ARCHIVE_SHA256 = "669f840a3141b0fb95ae248b5ea0799733b9e5b5b81e224d4637571c24d8f640"
-MIGRATION_SHA256 = "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b"
 STATE_ROOT = Path("/var/lib/signal-ledger-pr-rehearsal")
 INCOMING = STATE_ROOT / "incoming"
 INSTALL_ROOT = Path("/usr/local/libexec/signal-ledger-pr-rehearsal")
@@ -60,6 +244,8 @@ CANDIDATE_MEMORY_LIMIT = 768 * 1024 * 1024
 RECOVERY_MEMORY_LIMIT = 384 * 1024 * 1024
 START_RESERVE_KIB = 512 * 1024
 RUN_RESERVE_KIB = 128 * 1024
+START_RESERVE_SETTLE_SECONDS = 30.0
+START_RESERVE_POLL_SECONDS = 0.25
 OOM_EVENT_COUNTERS = ("oom", "oom_kill", "oom_group_kill")
 CPU_STAT_COUNTERS = ("usage_usec", "nr_periods", "nr_throttled", "throttled_usec")
 
@@ -260,6 +446,7 @@ class _BoundedTarInfo(tarfile.TarInfo):
 OPERATION_DEADLINE: float | None = None
 MONITOR_ACTIVE = False
 PRODUCTION_SAMPLE_COUNT = [0]
+ACTIVE_PRODUCTION_BASELINE: dict[str, object] | None = None
 OPERATION_CONTAINERS: list[tuple[str, str, str, str]] = []
 
 
@@ -435,6 +622,7 @@ def _run(
     input_bytes: bytes | None = None,
     maximum: int = 32_768,
     allow_failure: bool = False,
+    monitor_production: bool = True,
 ) -> subprocess.CompletedProcess[bytes]:
     """Run fixed argv with bounded output, a hard deadline, and no inherited credentials."""
     process: subprocess.Popen[bytes] | None = None
@@ -484,7 +672,7 @@ def _run(
                         process.wait(timeout=1)
                     raise RehearsalError("rehearsal_deadline_exceeded")
                 remaining = min(remaining, operation_remaining)
-            if MONITOR_ACTIVE and time.monotonic() >= next_health_check:
+            if MONITOR_ACTIVE and monitor_production and time.monotonic() >= next_health_check:
                 _check_production(PRODUCTION_SAMPLE_COUNT)
                 next_health_check = time.monotonic() + 5
             for key, _ in selector.select(min(remaining, 1.0 if MONITOR_ACTIVE else remaining)):
@@ -1363,23 +1551,580 @@ def _readiness() -> dict[str, object]:
     return value
 
 
-def _check_production(sample_count: list[int], *, startup: bool = False) -> int:
-    available = _memavailable_kib()
-    floor = START_RESERVE_KIB if startup else RUN_RESERVE_KIB
-    if available < floor:
-        raise RehearsalError("host_memory_reserve_breached")
-    readiness = _readiness()
-    if readiness.get("status") != "ready" or readiness.get("schema_version") != 12:
-        raise RehearsalError("production_health_lost")
-    sample_count[0] += 1
-    return available
+def _production_release_value(path: Path, maximum: int) -> bytes:
+    try:
+        info = path.lstat()
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != 0
+            or stat.S_IMODE(info.st_mode) != 0o600
+            or not 1 <= info.st_size <= maximum
+        ):
+            raise RehearsalError("production_baseline_mismatch")
+        return _read_root_file(path, maximum)
+    except RehearsalError as exc:
+        if exc.code == "production_baseline_mismatch":
+            raise
+        raise RehearsalError("production_baseline_mismatch") from exc
+    except OSError as exc:
+        raise RehearsalError("production_baseline_mismatch") from exc
 
 
-def _production_container() -> None:
+def _recovery_record_matches() -> bool:
+    try:
+        record = json.loads(
+            _production_release_value(PRODUCTION_CURRENT_RECORD, MAX_PRODUCTION_RECORD_BYTES)
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, RehearsalError):
+        return False
+    if not isinstance(record, dict):
+        return False
+    revision = RECOVERY_PRODUCTION_BASELINE["revision"]
+    expected_recovery_ref = f"signal-ledger:recovery-sha-{revision}"
+    expected = {
+        "transport": "github_release",
+        "release_role": "recovery",
+        "revision": revision,
+        "image_ref": expected_recovery_ref,
+        "image_digest": RECOVERY_PRODUCTION_BASELINE["archive_sha256"],
+        "archive_sha256": RECOVERY_PRODUCTION_BASELINE["archive_sha256"],
+        "image_id": RECOVERY_PRODUCTION_BASELINE["image_id"],
+        "archive_size": 103190644,
+        "platform": "linux/amd64",
+        "assistant_rollout_mode": "disabled",
+        "pair_manifest_sha256": RECOVERY_PRODUCTION_BASELINE["pair_manifest_sha256"],
+        "migration_sha256": RECOVERY_PRODUCTION_BASELINE["migration_sha256"],
+        "recovery_image_ref": expected_recovery_ref,
+        "recovery_image_id": RECOVERY_PRODUCTION_BASELINE["image_id"],
+        "recovery_archive_sha256": RECOVERY_PRODUCTION_BASELINE["archive_sha256"],
+        "recovery_archive_size": 103190644,
+        "recovery_platform": "linux/amd64",
+        "recovery_schema_version": 13,
+        "recovery_base_revision": BASE_REVISION,
+        "recovery_overlay_sha256": RECOVERY_PRODUCTION_BASELINE["recovery_overlay_sha256"],
+        "compose_digest": RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+        "source_context_sha256": "9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb",
+        "candidate_image_id": PRODUCTION_BASELINE["image_id"],
+        "candidate_archive_sha256": RECOVERY_CANDIDATE_ARCHIVE_SHA256,
+    }
+    if (
+        any(record.get(key) != value for key, value in expected.items())
+        or type(record.get("schema_version")) is not int
+        or record.get("schema_version") != RECOVERY_PRODUCTION_BASELINE["schema_version"]
+        or type(record.get("archive_size")) is not int
+        or type(record.get("recovery_archive_size")) is not int
+        or type(record.get("recovery_schema_version")) is not int
+    ):
+        return False
+    snapshot = PRODUCTION_RELEASE_ROOT / f"{revision}.compose.yaml"
+    try:
+        compose = _production_release_value(snapshot, MAX_PRODUCTION_COMPOSE_BYTES)
+    except RehearsalError:
+        return False
+    return hashlib.sha256(compose).hexdigest() == RECOVERY_PRODUCTION_BASELINE["compose_digest"]
+
+
+def _strict_json_object(raw: bytes) -> dict[str, object]:
+    """Parse a UTF-8 JSON object while rejecting duplicate keys and non-finite numbers."""
+
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = value
+        return result
+
+    def reject_constant(_value: str) -> object:
+        raise ValueError("non-finite JSON number")
+
+    try:
+        value = json.loads(
+            raw.decode("utf-8", errors="strict"),
+            object_pairs_hook=unique_object,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise RehearsalError("production_baseline_mismatch") from exc
+    if not isinstance(value, dict):
+        raise RehearsalError("production_baseline_mismatch")
+    return value
+
+
+def _read_temporary_recovery_json(path: Path, maximum: int) -> tuple[dict[str, object], bytes]:
+    """Read one fixed root-owned temporary-recovery record without following path links."""
+    allowed_paths = {
+        PRODUCTION_CURRENT_RECORD,
+        TEMPORARY_RECOVERY_OPERATION_PATH,
+        TEMPORARY_RECOVERY_MANIFEST_PATH,
+        TEMPORARY_RECOVERY_APPROVAL_PATH,
+    }
+    if path not in allowed_paths or not path.is_absolute() or maximum < 1:
+        raise RehearsalError("production_baseline_mismatch")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    directory_fd: int | None = None
+    file_fd: int | None = None
+    try:
+        directory_fd = os.open("/", flags)
+        current_directory = Path("/")
+        for component in path.parent.parts[1:]:
+            next_fd = os.open(component, flags, dir_fd=directory_fd)
+            try:
+                metadata = os.fstat(next_fd)
+                next_directory = current_directory / component
+                mode = stat.S_IMODE(metadata.st_mode)
+                if (
+                    not stat.S_ISDIR(metadata.st_mode)
+                    or metadata.st_uid != 0
+                    or mode & 0o022
+                    or (next_directory == PRODUCTION_STATE_ROOT and mode != 0o750)
+                    or (next_directory == TEMPORARY_RECOVERY_ROOT and mode != 0o700)
+                ):
+                    raise RehearsalError("production_baseline_mismatch")
+            except BaseException:
+                os.close(next_fd)
+                raise
+            os.close(directory_fd)
+            directory_fd = next_fd
+            current_directory = next_directory
+
+        before = os.stat(path.name, dir_fd=directory_fd, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != 0
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_nlink != 1
+            or not 1 <= before.st_size <= maximum
+        ):
+            raise RehearsalError("production_baseline_mismatch")
+        file_fd = os.open(
+            path.name,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+            dir_fd=directory_fd,
+        )
+        opened = os.fstat(file_fd)
+
+        def file_identity(item: os.stat_result) -> tuple[int, ...]:
+            return (
+                item.st_dev,
+                item.st_ino,
+                item.st_uid,
+                item.st_gid,
+                stat.S_IMODE(item.st_mode),
+                item.st_nlink,
+                item.st_size,
+                item.st_mtime_ns,
+                item.st_ctime_ns,
+            )
+
+        if file_identity(opened) != file_identity(before):
+            raise RehearsalError("production_baseline_mismatch")
+        chunks: list[bytes] = []
+        total = 0
+        while total <= maximum:
+            chunk = os.read(file_fd, min(4_096, maximum + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+        raw = b"".join(chunks)
+        after = os.fstat(file_fd)
+        named_after = os.stat(path.name, dir_fd=directory_fd, follow_symlinks=False)
+        if (
+            len(raw) != before.st_size
+            or len(raw) > maximum
+            or file_identity(after) != file_identity(before)
+            or file_identity(named_after) != file_identity(before)
+        ):
+            raise RehearsalError("production_baseline_mismatch")
+    except RehearsalError:
+        raise
+    except (OSError, OverflowError, ValueError) as exc:
+        raise RehearsalError("production_baseline_mismatch") from exc
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        if directory_fd is not None:
+            os.close(directory_fd)
+
+    return _strict_json_object(raw), raw
+
+
+def _temporary_recovery_documents_match(
+    current: dict[str, object],
+    operation: dict[str, object],
+    manifest: dict[str, object],
+    approval: dict[str, object],
+    manifest_raw: bytes,
+    *,
+    image_id: str,
+    image_revision: str,
+    container_id: str,
+) -> TemporaryRecoveryProductionBaseline:
+    """Validate the fixed approved temporary-recovery records and return their exact identity."""
+    manifest_keys = {
+        "format_version",
+        "kind",
+        "built_or_published",
+        "source_revision",
+        "source_manifest_sha256",
+        "base_revision",
+        "base_source_archive_sha256",
+        "base_source_context_sha256",
+        "source_context_sha256",
+        "migration_sha256",
+        "overlay_sha256",
+        "overlay_files",
+        "schema_version",
+        "image",
+    }
+    manifest_static = {
+        "format_version": 1,
+        "kind": "temporary_recovery",
+        "built_or_published": True,
+        "source_revision": TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "source_manifest_sha256": TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "base_revision": BASE_REVISION,
+        "base_source_archive_sha256": TEMPORARY_RECOVERY_BASE_ARCHIVE_SHA256,
+        "base_source_context_sha256": TEMPORARY_RECOVERY_BASE_CONTEXT_SHA256,
+        "source_context_sha256": TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "migration_sha256": MIGRATION_SHA256,
+        "overlay_sha256": TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "overlay_files": TEMPORARY_RECOVERY_FILE_SHA256,
+        "schema_version": 13,
+    }
+    if (
+        set(manifest) != manifest_keys
+        or type(manifest.get("format_version")) is not int
+        or any(manifest.get(key) != expected for key, expected in manifest_static.items())
+        or type(manifest.get("built_or_published")) is not bool
+    ):
+        raise RehearsalError("production_baseline_mismatch")
+    image = manifest.get("image")
+    image_keys = {
+        "archive_sha256",
+        "archive_size",
+        "image_id",
+        "platform",
+        "image_revision",
+        "repo_tag",
+        "entrypoint",
+        "command",
+    }
+    if not isinstance(image, dict) or set(image) != image_keys:
+        raise RehearsalError("production_baseline_mismatch")
+    approved_manifest_sha256 = hashlib.sha256(manifest_raw).hexdigest()
+    image_archive_sha256 = image.get("archive_sha256")
+    image_archive_size = image.get("archive_size")
+    manifest_image_id = image.get("image_id")
+    if (
+        not isinstance(manifest_image_id, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", manifest_image_id) is None
+        or manifest_image_id
+        in {
+            PRODUCTION_BASELINE["image_id"],
+            RECOVERY_PRODUCTION_BASELINE["image_id"],
+            BASE_IMAGE_ID,
+        }
+        or not isinstance(image_archive_sha256, str)
+        or DIGEST_RE.fullmatch(image_archive_sha256) is None
+        or type(image_archive_size) is not int
+        or not 1 <= image_archive_size <= MAX_TEMPORARY_RECOVERY_ARCHIVE_BYTES
+        or image.get("platform") != "linux/amd64"
+        or image.get("image_revision") != TEMPORARY_RECOVERY_SOURCE_REVISION
+        or image.get("repo_tag") != TEMPORARY_RECOVERY_IMAGE_BUILD_TAG
+        or image.get("entrypoint") != ["python", "-m", "stock_probs.recovery_supervisor"]
+        or image.get("command") != TEMPORARY_RECOVERY_COMMAND
+    ):
+        raise RehearsalError("production_baseline_mismatch")
+
+    if (
+        set(approval) != {"format_version", "kind", "review_status", "manifest_sha256"}
+        or type(approval.get("format_version")) is not int
+        or approval.get("format_version") != 1
+        or approval.get("kind") != "temporary_recovery"
+        or approval.get("review_status") != "approved"
+        or approval.get("manifest_sha256") != approved_manifest_sha256
+    ):
+        raise RehearsalError("production_baseline_mismatch")
+
+    operation_id = operation.get("operation_id")
+    if not isinstance(operation_id, str) or re.fullmatch(r"[0-9a-f]{32}", operation_id) is None:
+        raise RehearsalError("production_baseline_mismatch")
+    operation_keys = {
+        "operation_kind",
+        "operation_id",
+        "phase",
+        "created_at",
+        "updated_at",
+        "manifest_sha256",
+        "source_manifest_sha256",
+        "source_revision",
+        "source_context_sha256",
+        "base_revision",
+        "migration_sha256",
+        "overlay_sha256",
+        "archive_sha256",
+        "archive_size",
+        "image_id",
+        "build_tag",
+        "image_ref",
+        "schema_version",
+        "compose_digest",
+        "original_record",
+        "original_compose_revision",
+        "initial_available_kib",
+        "available_kib",
+        "backup",
+        "startup_floor_kib",
+        "start_admission_allowed",
+    }
+    operation_image_ref = f"signal-ledger:temporary-recovery-{operation_id}"
+    startup_floor = operation.get("startup_floor_kib")
+    original_record = operation.get("original_record")
+    backup = operation.get("backup")
+    if (
+        set(operation) != operation_keys
+        or operation.get("operation_kind") != "temporary_recovery"
+        or operation.get("phase") != "startup_floor_passed"
+        or operation.get("start_admission_allowed") is not True
+        or type(startup_floor) is not int
+        or startup_floor < START_RESERVE_KIB
+        or startup_floor > MAX_RESOURCE_COUNTER_VALUE
+        or not isinstance(operation.get("created_at"), str)
+        or not 1 <= len(operation["created_at"]) <= 64
+        or not isinstance(operation.get("updated_at"), str)
+        or not 1 <= len(operation["updated_at"]) <= 64
+        or operation.get("manifest_sha256") != approved_manifest_sha256
+        or operation.get("source_manifest_sha256") != TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256
+        or operation.get("source_revision") != TEMPORARY_RECOVERY_SOURCE_REVISION
+        or operation.get("source_context_sha256") != TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256
+        or operation.get("base_revision") != BASE_REVISION
+        or operation.get("migration_sha256") != MIGRATION_SHA256
+        or operation.get("overlay_sha256") != TEMPORARY_RECOVERY_OVERLAY_SHA256
+        or operation.get("archive_sha256") != image_archive_sha256
+        or type(operation.get("archive_size")) is not int
+        or operation.get("archive_size") != image_archive_size
+        or operation.get("image_id") != manifest_image_id
+        or operation.get("build_tag") != TEMPORARY_RECOVERY_IMAGE_BUILD_TAG
+        or operation.get("image_ref") != operation_image_ref
+        or operation.get("schema_version") != 13
+        or type(operation.get("schema_version")) is not int
+        or operation.get("compose_digest") != RECOVERY_PRODUCTION_BASELINE["compose_digest"]
+        or operation.get("original_compose_revision") != PRODUCTION_BASELINE["revision"]
+        or type(operation.get("initial_available_kib")) is not int
+        or operation.get("initial_available_kib", -1) < RUN_RESERVE_KIB
+        or operation.get("initial_available_kib", MAX_RESOURCE_COUNTER_VALUE + 1)
+        > MAX_RESOURCE_COUNTER_VALUE
+        or type(operation.get("available_kib")) is not int
+        or operation.get("available_kib", -1) < RUN_RESERVE_KIB
+        or operation.get("available_kib", MAX_RESOURCE_COUNTER_VALUE + 1)
+        > MAX_RESOURCE_COUNTER_VALUE
+        or not isinstance(original_record, dict)
+        or not isinstance(backup, dict)
+    ):
+        raise RehearsalError("production_baseline_mismatch")
+    original_rollout_mode = original_record.get("assistant_rollout_mode")
+    if (
+        original_record.get("revision") != PRODUCTION_BASELINE["revision"]
+        or original_record.get("image_id") != PRODUCTION_BASELINE["image_id"]
+        or original_record.get("schema_version") != PRODUCTION_BASELINE["schema_version"]
+        or original_record.get("image_ref")
+        != f"signal-ledger:sha-{PRODUCTION_BASELINE['revision']}"
+        or original_record.get("compose_digest") != RECOVERY_PRODUCTION_BASELINE["compose_digest"]
+        or original_rollout_mode != "invited"
+    ):
+        raise RehearsalError("production_baseline_mismatch")
+    if (
+        set(backup) != {"trigger", "name", "sha256", "schema_version", "verified", "promoted"}
+        or backup.get("trigger") != "pre_deploy"
+        or not isinstance(backup.get("name"), str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}\.spbackup", backup["name"]) is None
+        or not isinstance(backup.get("sha256"), str)
+        or DIGEST_RE.fullmatch(backup["sha256"]) is None
+        or backup.get("schema_version") != 13
+        or type(backup.get("schema_version")) is not int
+        or backup.get("verified") is not True
+        or backup.get("promoted") is not False
+    ):
+        raise RehearsalError("production_baseline_mismatch")
+
+    current_keys = {
+        "operation_kind",
+        "operation_id",
+        "status",
+        "revision",
+        "image_ref",
+        "image_digest",
+        "archive_sha256",
+        "archive_size",
+        "image_id",
+        "transport",
+        "platform",
+        "schema_version",
+        "assistant_rollout_mode",
+        "compose_digest",
+        "manifest_sha256",
+        "source_manifest_sha256",
+        "source_context_sha256",
+        "base_revision",
+        "migration_sha256",
+        "overlay_sha256",
+        "started_at",
+    }
+    expected_current = {
+        "operation_kind": "temporary_recovery",
+        "operation_id": operation_id,
+        "status": "ready",
+        "revision": TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "image_ref": operation_image_ref,
+        "image_digest": image_archive_sha256,
+        "archive_sha256": image_archive_sha256,
+        "archive_size": image_archive_size,
+        "image_id": manifest_image_id,
+        "transport": "temporary_recovery",
+        "platform": "linux/amd64",
+        "schema_version": 13,
+        "assistant_rollout_mode": "disabled",
+        "compose_digest": RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+        "manifest_sha256": approved_manifest_sha256,
+        "source_manifest_sha256": TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "source_context_sha256": TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "base_revision": BASE_REVISION,
+        "migration_sha256": MIGRATION_SHA256,
+        "overlay_sha256": TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "started_at": operation.get("created_at"),
+    }
+    if (
+        set(current) != current_keys
+        or any(current.get(key) != expected for key, expected in expected_current.items())
+        or type(current.get("archive_size")) is not int
+        or type(current.get("schema_version")) is not int
+    ):
+        raise RehearsalError("production_baseline_mismatch")
+
+    if (
+        not isinstance(container_id, str)
+        or re.fullmatch(r"[0-9a-f]{64}", container_id) is None
+        or image_id != manifest_image_id
+        or image_revision != TEMPORARY_RECOVERY_SOURCE_REVISION
+    ):
+        raise RehearsalError("production_baseline_mismatch")
+
+    return TemporaryRecoveryProductionBaseline(
+        **TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS,
+        operation_id=operation_id,
+        startup_floor_kib=startup_floor,
+        image_id=manifest_image_id,
+        image_ref=operation_image_ref,
+        archive_sha256=image_archive_sha256,
+        archive_size=image_archive_size,
+        manifest_sha256=approved_manifest_sha256,
+        original_assistant_rollout_mode=original_rollout_mode,
+        container_id=container_id,
+        container_revision=image_revision,
+    )
+
+
+def _temporary_recovery_image_identity_matches(
+    baseline: TemporaryRecoveryProductionBaseline,
+) -> bool:
+    """Bind the approved temp tags, actual image platform, and retained A9 tag to exact IDs."""
+    template = (
+        "{{.Id}}|{{.Os}}|{{.Architecture}}|"
+        '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+    )
+    references = [
+        baseline["image_id"],
+        baseline["image_ref"],
+        baseline["build_tag"],
+        baseline["protected_recovery_image_ref"],
+    ]
+    try:
+        result = _run(
+            ["/usr/bin/docker", "image", "inspect", "--format", template, *references],
+            timeout=15,
+            monitor_production=False,
+        )
+        lines = result.stdout.decode("ascii", errors="strict").strip().splitlines()
+    except (RehearsalError, UnicodeDecodeError):
+        return False
+    expected = [
+        f"{baseline['image_id']}|linux|amd64|{TEMPORARY_RECOVERY_SOURCE_REVISION}",
+        f"{baseline['image_id']}|linux|amd64|{TEMPORARY_RECOVERY_SOURCE_REVISION}",
+        f"{baseline['image_id']}|linux|amd64|{TEMPORARY_RECOVERY_SOURCE_REVISION}",
+        (
+            f"{RECOVERY_PRODUCTION_BASELINE['image_id']}|linux|amd64|"
+            f"{RECOVERY_PRODUCTION_BASELINE['revision']}"
+        ),
+    ]
+    return lines == expected
+
+
+def _temporary_recovery_production_baseline(
+    container_id: str, image_id: str, image_revision: str
+) -> TemporaryRecoveryProductionBaseline:
+    """Return the baseline only while fixed approved records and runtime identity all agree."""
+    current, _current_raw = _read_temporary_recovery_json(
+        PRODUCTION_CURRENT_RECORD, MAX_PRODUCTION_RECORD_BYTES
+    )
+    operation, _operation_raw = _read_temporary_recovery_json(
+        TEMPORARY_RECOVERY_OPERATION_PATH, MAX_PRODUCTION_RECORD_BYTES
+    )
+    manifest, manifest_raw = _read_temporary_recovery_json(
+        TEMPORARY_RECOVERY_MANIFEST_PATH, MAX_TEMPORARY_RECOVERY_MANIFEST_BYTES
+    )
+    approval, _approval_raw = _read_temporary_recovery_json(
+        TEMPORARY_RECOVERY_APPROVAL_PATH, MAX_TEMPORARY_RECOVERY_APPROVAL_BYTES
+    )
+    baseline = _temporary_recovery_documents_match(
+        current,
+        operation,
+        manifest,
+        approval,
+        manifest_raw,
+        image_id=image_id,
+        image_revision=image_revision,
+        container_id=container_id,
+    )
+    if not _temporary_recovery_image_identity_matches(
+        baseline
+    ) or not _recovery_port_bindings_match(container_id):
+        raise RehearsalError("production_baseline_mismatch")
+    return baseline
+
+
+def _recovery_port_bindings_match(container_id: str) -> bool:
+    try:
+        result = _run(
+            [
+                "/usr/bin/docker",
+                "inspect",
+                "--format",
+                "{{json .HostConfig.PortBindings}}",
+                container_id,
+            ],
+            timeout=10,
+            monitor_production=False,
+        )
+    except RehearsalError:
+        return False
+    try:
+        bindings = json.loads(result.stdout.decode("ascii", errors="strict"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return bindings == {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}
+
+
+def _production_identity() -> (
+    ProductionBaseline | RecoveryProductionBaseline | TemporaryRecoveryProductionBaseline
+):
+    # Identity probes are part of the health check; they must not recursively start another one.
     result = _run(
         [
             "/usr/bin/docker",
             "ps",
+            "--no-trunc",
             "--filter",
             "label=com.docker.compose.project=signal-ledger",
             "--filter",
@@ -1388,20 +2133,246 @@ def _production_container() -> None:
             "{{.ID}}",
         ],
         timeout=10,
+        monitor_production=False,
     )
     identifiers = result.stdout.decode("ascii", errors="strict").splitlines()
-    if len(identifiers) != 1 or re.fullmatch(r"[0-9a-f]{12,64}", identifiers[0]) is None:
+    if len(identifiers) != 1 or re.fullmatch(r"[0-9a-f]{64}", identifiers[0]) is None:
         raise RehearsalError("production_app_identity_unavailable")
+    container_id = identifiers[0]
     template = (
         '{{.Image}}|{{.State.Status}}|{{index .Config.Labels "org.opencontainers.image.revision"}}'
     )
-    result = _run(["/usr/bin/docker", "inspect", "--format", template, identifiers[0]], timeout=10)
+    result = _run(
+        ["/usr/bin/docker", "inspect", "--format", template, container_id],
+        timeout=10,
+        monitor_production=False,
+    )
     values = result.stdout.decode("ascii", errors="strict").strip().split("|")
-    if values != [BASE_IMAGE_ID, "running", BASE_REVISION]:
+    if values == [PRODUCTION_BASELINE["image_id"], "running", PRODUCTION_BASELINE["revision"]]:
+        return dict(PRODUCTION_BASELINE)
+    if values == [
+        RECOVERY_PRODUCTION_BASELINE["image_id"],
+        "running",
+        RECOVERY_PRODUCTION_BASELINE["revision"],
+    ]:
+        if not _recovery_record_matches() or not _recovery_port_bindings_match(container_id):
+            raise RehearsalError("production_baseline_mismatch")
+        return RecoveryProductionBaseline(
+            **RECOVERY_PRODUCTION_BASELINE,
+            container_id=container_id,
+            container_revision=values[2],
+        )
+    if len(values) == 3 and values[1] == "running":
+        return _temporary_recovery_production_baseline(
+            container_id,
+            image_id=values[0],
+            image_revision=values[2],
+        )
+    raise RehearsalError("production_baseline_mismatch")
+
+
+def _production_readiness_matches(
+    baseline: dict[str, object], readiness: dict[str, object]
+) -> bool:
+    if (
+        readiness.get("status") != "ready"
+        or type(readiness.get("schema_version")) is not int
+        or readiness.get("schema_version") != baseline["schema_version"]
+    ):
+        return False
+    if baseline == PRODUCTION_BASELINE:
+        return True
+    assistant = readiness.get("assistant")
+    if not isinstance(assistant, dict):
+        return False
+    if baseline.get("role") == "recovery":
+        return assistant.get("enabled") is False and assistant.get("status") == "disabled"
+    return (
+        baseline.get("operation_kind") == "temporary_recovery"
+        and baseline.get("phase") == "startup_floor_passed"
+        and baseline.get("start_admission_allowed") is True
+        and baseline.get("assistant_enabled") is False
+        and baseline.get("assistant_status") == "disabled"
+        and assistant.get("enabled") is False
+        and assistant.get("status") == "disabled"
+    )
+
+
+def _check_production(sample_count: list[int], *, startup: bool = False) -> int:
+    available = _memavailable_kib()
+    floor = START_RESERVE_KIB if startup else RUN_RESERVE_KIB
+    if available < floor:
+        raise _memory_reserve_failure(available, floor, "startup" if startup else "monitor")
+    baseline = _production_identity()
+    if ACTIVE_PRODUCTION_BASELINE is not None and baseline != ACTIVE_PRODUCTION_BASELINE:
         raise RehearsalError("production_baseline_mismatch")
+    readiness = _readiness()
+    if not _production_readiness_matches(baseline, readiness):
+        raise RehearsalError("production_health_lost")
+    sample_count[0] += 1
+    return available
+
+
+def _memory_reserve_failure(available: int, floor: int, phase: str) -> RehearsalError:
+    return RehearsalError(
+        "host_memory_reserve_breached",
+        details={
+            "memory_reserve_phase": phase,
+            "host_memavailable_kib": available,
+            "required_reserve_kib": floor,
+        },
+    )
+
+
+def _release_completed_preflight_memory() -> None:
+    """Release only this process's completed verification allocations on Linux/glibc."""
+
+    try:
+        if not (platform.system() == "Linux" and platform.libc_ver()[0] == "glibc"):
+            raise RehearsalError("preflight_memory_release_unavailable")
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        malloc_trim = libc.malloc_trim
+        malloc_trim.argtypes = [ctypes.c_size_t]
+        malloc_trim.restype = ctypes.c_int
+        collected = gc.collect(2)
+        released = malloc_trim(0)
+    except RehearsalError:
+        raise
+    except Exception as exc:
+        raise RehearsalError("preflight_memory_release_unavailable") from exc
+    if (
+        type(collected) is not int
+        or collected < 0
+        or type(released) is not int
+        or released not in (0, 1)
+    ):
+        raise RehearsalError("preflight_memory_release_unavailable")
+
+
+def _is_finite_number(value: object) -> bool:
+    """Return whether a clock or duration is an exact finite int or float."""
+
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
+def _bounded_monotonic(previous: float | None = None) -> float:
+    """Return a finite monotonic reading that does not move backwards."""
+
+    try:
+        value = time.monotonic()
+    except Exception as exc:
+        raise RehearsalError("rehearsal_clock_invalid") from exc
+    if not _is_finite_number(value) or (previous is not None and value < previous):
+        raise RehearsalError("rehearsal_clock_invalid")
+    return float(value)
+
+
+def _settle_start_reserve() -> tuple[int, int]:
+    """Wait at most 30 seconds for startup reserve while honoring the operation deadline."""
+
+    if not _is_finite_number(OPERATION_DEADLINE):
+        raise RehearsalError("rehearsal_deadline_unavailable")
+    if (
+        not _is_finite_number(START_RESERVE_SETTLE_SECONDS)
+        or START_RESERVE_SETTLE_SECONDS <= 0
+        or not _is_finite_number(START_RESERVE_POLL_SECONDS)
+        or START_RESERVE_POLL_SECONDS <= 0
+    ):
+        raise RehearsalError("rehearsal_deadline_unavailable")
+    _release_completed_preflight_memory()
+    started = _bounded_monotonic()
+    if started >= OPERATION_DEADLINE:
+        raise RehearsalError("rehearsal_deadline_exceeded")
+    settle_deadline = min(
+        started + START_RESERVE_SETTLE_SECONDS,
+        OPERATION_DEADLINE,
+    )
+    last_clock = started
+    last_available: int | None = None
+    while True:
+        now = _bounded_monotonic(last_clock)
+        last_clock = now
+        if now >= OPERATION_DEADLINE:
+            raise RehearsalError("rehearsal_deadline_exceeded")
+        if now >= settle_deadline:
+            if last_available is None:
+                raise RehearsalError("host_memory_settle_timeout")
+            raise _memory_reserve_failure(last_available, START_RESERVE_KIB, "preflight")
+
+        sample = _host_memory_kib()
+        if (
+            not isinstance(sample, tuple)
+            or len(sample) != 2
+            or type(sample[0]) is not int
+            or type(sample[1]) is not int
+            or not 0 < sample[0] <= MAX_RESOURCE_COUNTER_VALUE
+            or not 0 <= sample[1] <= sample[0]
+        ):
+            raise RehearsalError("host_memory_evidence_unavailable")
+        memtotal_kib, available_kib = sample
+        last_available = available_kib
+        sampled_at = _bounded_monotonic(last_clock)
+        last_clock = sampled_at
+        if sampled_at >= OPERATION_DEADLINE:
+            raise RehearsalError("rehearsal_deadline_exceeded")
+        if available_kib < RUN_RESERVE_KIB:
+            raise _memory_reserve_failure(available_kib, RUN_RESERVE_KIB, "monitor")
+        if sampled_at >= settle_deadline:
+            if available_kib < START_RESERVE_KIB:
+                raise _memory_reserve_failure(available_kib, START_RESERVE_KIB, "preflight")
+            raise RehearsalError("host_memory_settle_timeout")
+        if available_kib >= START_RESERVE_KIB:
+            return memtotal_kib, available_kib
+
+        delay = min(
+            START_RESERVE_POLL_SECONDS,
+            settle_deadline - sampled_at,
+            OPERATION_DEADLINE - sampled_at,
+        )
+        if not math.isfinite(delay) or delay <= 0:
+            raise RehearsalError("rehearsal_deadline_unavailable")
+        time.sleep(delay)
+
+
+def _startup_preflight(sample_count: list[int]) -> tuple[int, int]:
+    """Bind the existing operation budget before settling, then keep the final guard."""
+
+    global OPERATION_DEADLINE
+    try:
+        started = _bounded_monotonic()
+        if not _is_finite_number(MAX_OPERATION_SECONDS) or MAX_OPERATION_SECONDS <= 0:
+            raise RehearsalError("rehearsal_deadline_unavailable")
+        deadline = started + MAX_OPERATION_SECONDS
+        if not _is_finite_number(deadline) or deadline <= started:
+            raise RehearsalError("rehearsal_deadline_unavailable")
+        OPERATION_DEADLINE = deadline
+        memtotal_kib, _settled_available_kib = _settle_start_reserve()
+        startup_available_kib = _check_production(sample_count, startup=True)
+        if (
+            type(startup_available_kib) is not int
+            or startup_available_kib < START_RESERVE_KIB
+            or startup_available_kib > memtotal_kib
+        ):
+            raise RehearsalError("host_memory_evidence_unavailable")
+        return memtotal_kib, startup_available_kib
+    except BaseException:
+        OPERATION_DEADLINE = None
+        raise
+
+
+def _production_container() -> (
+    ProductionBaseline | RecoveryProductionBaseline | TemporaryRecoveryProductionBaseline
+):
+    baseline = _production_identity()
     ready = _readiness()
-    if ready.get("status") != "ready" or ready.get("schema_version") != 12:
+    if not _production_readiness_matches(baseline, ready):
         raise RehearsalError("production_health_unavailable")
+    return baseline
 
 
 def _image_identity(image_id: str, revision: str) -> None:
@@ -3326,7 +4297,8 @@ def _validate_pre_migration_backup(value: object) -> dict[str, object]:
 
 
 def _run_pair(payload: dict[str, object]) -> dict[str, object]:
-    global MONITOR_ACTIVE, OPERATION_DEADLINE, PRODUCTION_SAMPLE_COUNT
+    global ACTIVE_PRODUCTION_BASELINE, MONITOR_ACTIVE, OPERATION_DEADLINE, PRODUCTION_SAMPLE_COUNT
+    ACTIVE_PRODUCTION_BASELINE = None
     if (
         payload.get("repository") != REPOSITORY
         or type(payload.get("pull_number")) is not int
@@ -3337,7 +4309,8 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
     pair_sha256 = _digest(payload.get("pair_manifest_sha256"), "pair_manifest_invalid")
     source_digests = _verify_installed_source(revision, pair_sha256)
     _verify_pull_request(revision)
-    _production_container()
+    production_baseline = _production_container()
+    ACTIVE_PRODUCTION_BASELINE = production_baseline
     candidate_id = _image_id(payload.get("candidate_image_id"), "candidate_image_id_invalid")
     recovery_id = _image_id(payload.get("recovery_image_id"), "recovery_image_id_invalid")
     candidate_context = _digest(
@@ -3353,13 +4326,9 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
         raise RehearsalError("pair_archives_must_differ")
 
     sample_count = [0]
-    host_memtotal_before_kib, host_memavailable_before_kib = _host_memory_kib()
-    if host_memavailable_before_kib < START_RESERVE_KIB:
-        raise RehearsalError("host_memory_reserve_breached")
-    _check_production(sample_count, startup=True)
+    host_memtotal_before_kib, host_memavailable_before_kib = _startup_preflight(sample_count)
     MONITOR_ACTIVE = True
     PRODUCTION_SAMPLE_COUNT = sample_count
-    OPERATION_DEADLINE = time.monotonic() + MAX_OPERATION_SECONDS
 
     run_id = secrets.token_hex(8)
     volume = f"signal-ledger-pr1-{revision[:8]}-{run_id}"
@@ -3627,7 +4596,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
                 },
             )
         if host_memavailable_after_kib < RUN_RESERVE_KIB:
-            raise RehearsalError("host_memory_reserve_breached")
+            raise _memory_reserve_failure(host_memavailable_after_kib, RUN_RESERVE_KIB, "final")
         result_receipt = {
             "status": "pass",
             "reviewed_head_sha": revision,
@@ -3639,6 +4608,7 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
             "recovery_overlay_sha256": overlay_hash,
             "same_disposable_volume": True,
             "production_mutation": False,
+            "production_baseline": dict(production_baseline),
             "production_health_samples": sample_count[0],
             "host_memavailable_before_kib": host_memavailable_before_kib,
             "host_memavailable_after_kib": host_memavailable_after_kib,

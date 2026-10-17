@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import copy
 import gzip
 import hashlib
 import io
@@ -513,7 +514,7 @@ def test_bootstrap_accepts_bounded_realistic_open_pr_payload_over_16k(
 
         def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
             assert method == "GET"
-            assert path == "/repos/eddiesoz/stock_probs/pulls/2"
+            assert path == "/repos/eddiesoz/stock_probs/pulls/9"
             assert headers["Accept"] == "application/vnd.github+json"
 
         def getresponse(self) -> Response:
@@ -563,11 +564,11 @@ def test_controller_verifies_fixed_open_pr2_head(monkeypatch) -> None:
 
     assert requests[0][0:2] == (
         "GET",
-        f"/repos/{controller.REPOSITORY}/pulls/2",
+        f"/repos/{controller.REPOSITORY}/pulls/9",
     )
     assert receipt == {
         "repository": controller.REPOSITORY,
-        "pull_number": 2,
+        "pull_number": 9,
         "state": "open",
         "base": "main",
         "head_sha": revision,
@@ -609,7 +610,7 @@ def test_host_helper_verifies_fixed_open_pr2_head(monkeypatch) -> None:
 
     host_helper._verify_pull_request(revision)
 
-    assert requests == [("GET", f"/repos/{host_helper.REPOSITORY}/pulls/2")]
+    assert requests == [("GET", f"/repos/{host_helper.REPOSITORY}/pulls/9")]
 
 
 def test_bootstrap_install_requires_fixed_reviewed_manifest_digest() -> None:
@@ -650,7 +651,22 @@ def test_pr_rehearsal_bundle_installs_driver_that_uses_image_package() -> None:
     assets, hashes = controller._source_bundle()
     assert set(assets) == {"bootstrap", "host_helper", "seed", "driver"}
     assert hashes == {name: hashlib.sha256(content).hexdigest() for name, content in assets.items()}
+    assert hashes["host_helper"] == controller.HOST_HELPER_SOURCE_SHA256
     assert assets["driver"] == Path(__file__).with_name("native_assistant_probe.py").read_bytes()
+
+
+def test_pr_rehearsal_source_bundle_rejects_host_helper_digest_drift(monkeypatch) -> None:
+    read_regular_file = controller._read_regular_file
+    helper_path = controller.REPOSITORY_ROOT / controller.SOURCE_ASSETS["host_helper"][0]
+
+    def read_modified_helper(path: Path, *, maximum: int, label: str) -> bytes:
+        content = read_regular_file(path, maximum=maximum, label=label)
+        return content + b"\n" if path == helper_path else content
+
+    monkeypatch.setattr(controller, "_read_regular_file", read_modified_helper)
+
+    with pytest.raises(controller.RehearsalError, match="host_helper_source_digest_mismatch"):
+        controller._source_bundle()
 
 
 def test_source_upload_and_reviewed_bootstrap_share_the_sha_prefixed_names(
@@ -768,7 +784,7 @@ def test_bootstrap_installs_from_and_cleans_only_sha_prefixed_source_files(
     installed_manifest = next(
         content for path, content, _mode in installed if path.name == "installed.json"
     )
-    assert json.loads(installed_manifest)["pull_number"] == 2
+    assert json.loads(installed_manifest)["pull_number"] == 9
     for _role, (_relative, staged_name, _maximum) in bootstrap.ASSETS.items():
         assert not (incoming / f"signal-ledger-pr1-{revision}-{staged_name}").exists()
         assert (incoming / staged_name).read_bytes() == b"legacy name must remain untouched"
@@ -2776,7 +2792,12 @@ def test_production_headroom_floors_are_unchanged_and_fail_closed(monkeypatch) -
     assert host_helper.START_RESERVE_KIB == 512 * 1024
     assert host_helper.RUN_RESERVE_KIB == 128 * 1024
     monkeypatch.setattr(
-        host_helper, "_readiness", lambda: {"status": "ready", "schema_version": 12}
+        host_helper,
+        "_readiness",
+        lambda: {
+            "status": "ready",
+            "schema_version": host_helper.PRODUCTION_BASELINE["schema_version"],
+        },
     )
 
     monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB - 1)
@@ -2786,6 +2807,577 @@ def test_production_headroom_floors_are_unchanged_and_fail_closed(monkeypatch) -
     monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.RUN_RESERVE_KIB - 1)
     with pytest.raises(host_helper.RehearsalError, match="host_memory_reserve_breached"):
         host_helper._check_production([0])
+
+
+def test_preflight_memory_release_uses_linux_glibc_gc_then_one_trim(monkeypatch) -> None:
+    events = []
+
+    class FakeFunction:
+        argtypes = None
+        restype = None
+
+        def __call__(self, argument):
+            events.append(("trim", argument))
+            return 0
+
+    trim = FakeFunction()
+    monkeypatch.setattr(host_helper.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(host_helper.platform, "libc_ver", lambda: ("glibc", "2.39"))
+    monkeypatch.setattr(
+        host_helper.ctypes,
+        "CDLL",
+        lambda name, *, use_errno: (
+            events.append(("cdll", name, use_errno)) or SimpleNamespace(malloc_trim=trim)
+        ),
+    )
+    monkeypatch.setattr(
+        host_helper.gc, "collect", lambda generation: events.append(("gc", generation)) or 7
+    )
+
+    host_helper._release_completed_preflight_memory()
+
+    assert events == [
+        ("cdll", "libc.so.6", True),
+        ("gc", 2),
+        ("trim", 0),
+    ]
+    assert trim.argtypes == [host_helper.ctypes.c_size_t]
+    assert trim.restype is host_helper.ctypes.c_int
+
+
+def test_preflight_memory_release_fails_closed_without_linux_glibc_abi(monkeypatch) -> None:
+    monkeypatch.setattr(host_helper.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(host_helper.platform, "libc_ver", lambda: ("musl", "1.2"))
+    monkeypatch.setattr(
+        host_helper.gc,
+        "collect",
+        lambda _generation: pytest.fail("GC must not run when the fixed ABI is unavailable"),
+    )
+    monkeypatch.setattr(
+        host_helper.ctypes,
+        "CDLL",
+        lambda *_args, **_kwargs: pytest.fail("no fallback libc lookup is allowed"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="preflight_memory_release_unavailable"):
+        host_helper._release_completed_preflight_memory()
+
+
+def test_start_reserve_waits_briefly_for_a_real_512_mib_sample(monkeypatch) -> None:
+    events = []
+    now = [0.0]
+    samples = iter(
+        [
+            (1_000_000, host_helper.START_RESERVE_KIB - 64),
+            (1_000_000, host_helper.START_RESERVE_KIB),
+        ]
+    )
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 30.0)
+    monkeypatch.setattr(
+        host_helper, "_release_completed_preflight_memory", lambda: events.append("release")
+    )
+    monkeypatch.setattr(
+        host_helper, "_host_memory_kib", lambda: (events.append("sample") or next(samples))
+    )
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper.time,
+        "sleep",
+        lambda delay: (events.append(("sleep", delay)), now.__setitem__(0, now[0] + delay)),
+    )
+
+    assert host_helper._settle_start_reserve() == (1_000_000, host_helper.START_RESERVE_KIB)
+    assert events == [
+        "release",
+        "sample",
+        ("sleep", host_helper.START_RESERVE_POLL_SECONDS),
+        "sample",
+    ]
+    assert host_helper.START_RESERVE_KIB == 512 * 1024
+    assert host_helper.RUN_RESERVE_KIB == 128 * 1024
+
+
+def test_start_reserve_timeout_uses_last_below_floor_sample(monkeypatch) -> None:
+    now = [0.0]
+    samples = []
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 20.0)
+    monkeypatch.setattr(host_helper, "START_RESERVE_SETTLE_SECONDS", 0.5)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (samples.append(host_helper.START_RESERVE_KIB - 1) or (1_000_000, samples[-1])),
+    )
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper.time,
+        "sleep",
+        lambda delay: now.__setitem__(0, now[0] + delay),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_reserve_breached") as error:
+        host_helper._settle_start_reserve()
+
+    assert error.value.details == {
+        "memory_reserve_phase": "preflight",
+        "host_memavailable_kib": host_helper.START_RESERVE_KIB - 1,
+        "required_reserve_kib": host_helper.START_RESERVE_KIB,
+    }
+    assert len(samples) == 2
+    assert now[0] == host_helper.START_RESERVE_SETTLE_SECONDS
+
+
+@pytest.mark.parametrize(
+    ("final_available", "identity_matches", "readiness_status", "expected_error"),
+    [
+        (host_helper.START_RESERVE_KIB, True, "ready", None),
+        (
+            host_helper.START_RESERVE_KIB - 1,
+            True,
+            "ready",
+            "host_memory_reserve_breached",
+        ),
+        (host_helper.START_RESERVE_KIB, False, "ready", "production_baseline_mismatch"),
+        (host_helper.START_RESERVE_KIB, True, "starting", "production_health_lost"),
+    ],
+)
+def test_late_startup_reserve_recovery_still_requires_final_guard(
+    monkeypatch, final_available, identity_matches, readiness_status, expected_error
+) -> None:
+    now = [0.0]
+    events = []
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(host_helper, "MAX_OPERATION_SECONDS", 1_080.0)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper,
+        "_release_completed_preflight_memory",
+        lambda: events.append("release"),
+    )
+
+    def sample_memory():
+        events.append(("sample", now[0]))
+        available = (
+            host_helper.START_RESERVE_KIB if now[0] >= 26.0 else host_helper.START_RESERVE_KIB - 64
+        )
+        return 1_000_000, available
+
+    monkeypatch.setattr(host_helper, "_host_memory_kib", sample_memory)
+    monkeypatch.setattr(
+        host_helper,
+        "_memavailable_kib",
+        lambda: (events.append("final_memory") or final_available),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_production_identity",
+        lambda: (
+            events.append("final_identity")
+            or (
+                dict(host_helper.PRODUCTION_BASELINE)
+                if identity_matches
+                else dict(host_helper.PRODUCTION_BASELINE) | {"revision": "f" * 40}
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_readiness",
+        lambda: (
+            events.append("final_readiness")
+            or {
+                "status": readiness_status,
+                "schema_version": host_helper.PRODUCTION_BASELINE["schema_version"],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "ACTIVE_PRODUCTION_BASELINE",
+        dict(host_helper.PRODUCTION_BASELINE),
+    )
+    sample_count = [0]
+
+    def advance(delay):
+        events.append(("sleep", delay, host_helper.OPERATION_DEADLINE))
+        now[0] += delay
+
+    monkeypatch.setattr(host_helper.time, "sleep", advance)
+
+    if expected_error is None:
+        assert host_helper._startup_preflight(sample_count) == (
+            1_000_000,
+            host_helper.START_RESERVE_KIB,
+        )
+        assert sample_count == [1]
+        assert host_helper.OPERATION_DEADLINE == 1_080.0
+    else:
+        with pytest.raises(host_helper.RehearsalError, match=expected_error):
+            host_helper._startup_preflight(sample_count)
+        assert sample_count == [0]
+        assert host_helper.OPERATION_DEADLINE is None
+
+    assert now[0] == 26.0
+    assert host_helper.START_RESERVE_KIB == 512 * 1024
+    assert host_helper.RUN_RESERVE_KIB == 128 * 1024
+    if final_available < host_helper.START_RESERVE_KIB:
+        assert events[-1:] == ["final_memory"]
+    elif not identity_matches:
+        assert events[-2:] == ["final_memory", "final_identity"]
+    else:
+        assert events[-3:] == ["final_memory", "final_identity", "final_readiness"]
+    assert all(
+        event[2] == 1_080.0 for event in events if isinstance(event, tuple) and event[0] == "sleep"
+    )
+
+
+def test_startup_preflight_rejects_invalid_initial_clock(monkeypatch) -> None:
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: float("nan"))
+    monkeypatch.setattr(
+        host_helper,
+        "_settle_start_reserve",
+        lambda: pytest.fail("invalid initial clock must abort before reserve sampling"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="rehearsal_clock_invalid"):
+        host_helper._startup_preflight([0])
+
+    assert host_helper.OPERATION_DEADLINE is None
+
+
+def test_sustained_startup_reserve_shortfall_expires_at_thirty_seconds(monkeypatch) -> None:
+    now = [0.0]
+    samples = []
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 1_080.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (samples.append(now[0]) or (1_000_000, host_helper.START_RESERVE_KIB - 1)),
+    )
+    monkeypatch.setattr(host_helper.time, "sleep", lambda delay: now.__setitem__(0, now[0] + delay))
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_reserve_breached") as error:
+        host_helper._settle_start_reserve()
+
+    assert host_helper.START_RESERVE_SETTLE_SECONDS == 30.0
+    assert now[0] == 30.0
+    assert len(samples) == 120
+    assert error.value.details == {
+        "memory_reserve_phase": "preflight",
+        "host_memavailable_kib": host_helper.START_RESERVE_KIB - 1,
+        "required_reserve_kib": host_helper.START_RESERVE_KIB,
+    }
+
+
+def test_start_reserve_below_run_floor_aborts_on_first_observation(monkeypatch) -> None:
+    samples = []
+    sleeps = []
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 1_080.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (samples.append(True) or (1_000_000, host_helper.RUN_RESERVE_KIB - 1)),
+    )
+    monkeypatch.setattr(host_helper.time, "sleep", lambda delay: sleeps.append(delay))
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_reserve_breached") as error:
+        host_helper._settle_start_reserve()
+
+    assert samples == [True]
+    assert sleeps == []
+    assert error.value.details == {
+        "memory_reserve_phase": "monitor",
+        "host_memavailable_kib": host_helper.RUN_RESERVE_KIB - 1,
+        "required_reserve_kib": host_helper.RUN_RESERVE_KIB,
+    }
+
+
+@pytest.mark.parametrize(
+    "sample",
+    [None, (1_000_000, True), (1_000, 1_001), (0, 0), (1_000, -1)],
+)
+def test_invalid_start_reserve_counter_sample_fails_closed(monkeypatch, sample) -> None:
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 1_080.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(host_helper, "_host_memory_kib", lambda: sample)
+    monkeypatch.setattr(
+        host_helper.time,
+        "sleep",
+        lambda _delay: pytest.fail("invalid memory counters must abort before sleeping"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_evidence_unavailable"):
+        host_helper._settle_start_reserve()
+
+
+def test_unavailable_start_reserve_counter_fails_closed(monkeypatch) -> None:
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 1_080.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: 0.0)
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (_ for _ in ()).throw(
+            host_helper.RehearsalError("host_memory_evidence_unavailable")
+        ),
+    )
+    monkeypatch.setattr(
+        host_helper.time,
+        "sleep",
+        lambda _delay: pytest.fail("unavailable memory counters must abort before sleeping"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_evidence_unavailable"):
+        host_helper._settle_start_reserve()
+
+
+@pytest.mark.parametrize(
+    "clock_values",
+    [[float("nan")], [float("inf")], [True], [1.0, 0.5]],
+)
+def test_invalid_start_reserve_clock_fails_closed(monkeypatch, clock_values) -> None:
+    values = iter(clock_values)
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 20.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: next(values))
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: pytest.fail("invalid clocks must be rejected before sampling counters"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="rehearsal_clock_invalid"):
+        host_helper._settle_start_reserve()
+
+
+def test_start_reserve_window_does_not_extend_a_shorter_operation_deadline(monkeypatch) -> None:
+    now = [0.0]
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", 12.0)
+    monkeypatch.setattr(host_helper, "_release_completed_preflight_memory", lambda: None)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (1_000_000, host_helper.START_RESERVE_KIB - 1),
+    )
+    monkeypatch.setattr(host_helper.time, "sleep", lambda delay: now.__setitem__(0, now[0] + delay))
+
+    with pytest.raises(host_helper.RehearsalError, match="rehearsal_deadline_exceeded"):
+        host_helper._settle_start_reserve()
+
+    assert now[0] == 12.0
+    assert host_helper.OPERATION_DEADLINE == 12.0
+
+
+def test_startup_preflight_returns_final_guard_availability_not_earlier_sample(monkeypatch) -> None:
+    events = []
+    settled = host_helper.START_RESERVE_KIB + 32
+    final_guard = host_helper.START_RESERVE_KIB + 96
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(host_helper, "MAX_OPERATION_SECONDS", 60.0)
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: 10.0)
+    monkeypatch.setattr(
+        host_helper,
+        "_settle_start_reserve",
+        lambda: (events.append("settled") or (1_000_000, settled)),
+    )
+
+    def final_guard_check(sample_count, *, startup):
+        assert startup is True
+        assert host_helper.OPERATION_DEADLINE == 70.0
+        events.append("final_guard")
+        sample_count[0] += 1
+        return final_guard
+
+    monkeypatch.setattr(host_helper, "_check_production", final_guard_check)
+
+    assert host_helper._startup_preflight([0]) == (1_000_000, final_guard)
+    assert events == ["settled", "final_guard"]
+    assert host_helper.OPERATION_DEADLINE == 70.0
+
+
+def test_startup_preflight_rejects_missing_final_guard_sample(monkeypatch) -> None:
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(host_helper, "_settle_start_reserve", lambda: (1_000_000, 600_000))
+    monkeypatch.setattr(host_helper, "_check_production", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_evidence_unavailable"):
+        host_helper._startup_preflight([0])
+
+    assert host_helper.OPERATION_DEADLINE is None
+
+
+def test_startup_preflight_rejects_availability_above_settled_memtotal(monkeypatch) -> None:
+    memtotal_kib = 1_000_000
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(
+        host_helper,
+        "_settle_start_reserve",
+        lambda: (memtotal_kib, host_helper.START_RESERVE_KIB),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_check_production",
+        lambda *_args, **_kwargs: memtotal_kib + 1,
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_evidence_unavailable"):
+        host_helper._startup_preflight([0])
+
+    assert host_helper.OPERATION_DEADLINE is None
+
+
+def _valid_startup_preflight_payload() -> dict[str, object]:
+    return {
+        "repository": host_helper.REPOSITORY,
+        "pull_number": host_helper.PULL_NUMBER,
+        "reviewed_head_sha": "a" * 40,
+        "candidate_image_id": "sha256:" + "b" * 64,
+        "candidate_source_context_sha256": "c" * 64,
+        "recovery_image_id": "sha256:" + "d" * 64,
+        "recovery_source_context_sha256": "e" * 64,
+        "recovery_overlay_sha256": "f" * 64,
+        "pair_manifest_sha256": "1" * 64,
+        "candidate_archive_sha256": "2" * 64,
+        "recovery_archive_sha256": "3" * 64,
+    }
+
+
+def test_pair_checks_production_again_after_settled_memory_before_candidate_setup(
+    monkeypatch,
+) -> None:
+    events = []
+
+    def stop_at_second_guard(sample_count, *, startup):
+        assert startup is True
+        events.append(("final_guard", sample_count))
+        raise host_helper.RehearsalError("host_memory_reserve_breached")
+
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(
+        host_helper,
+        "_verify_installed_source",
+        lambda *_args: (events.append("source") or {}),
+    )
+    monkeypatch.setattr(
+        host_helper, "_verify_pull_request", lambda _revision: events.append("pull_request")
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_production_container",
+        lambda: (
+            events.append("production_identity_and_readiness")
+            or dict(host_helper.PRODUCTION_BASELINE)
+        ),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_release_completed_preflight_memory",
+        lambda: events.append("allocator_release"),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (
+            events.append("settled_memory_sample") or (1_000_000, host_helper.START_RESERVE_KIB)
+        ),
+    )
+    monkeypatch.setattr(host_helper, "_check_production", stop_at_second_guard)
+    monkeypatch.setattr(
+        host_helper,
+        "_verify_pair",
+        lambda *_args: pytest.fail("candidate setup must follow the final startup guard"),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_image_identity",
+        lambda *_args: pytest.fail("candidate image work must follow the final startup guard"),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="host_memory_reserve_breached"):
+        host_helper._run_pair(_valid_startup_preflight_payload())
+
+    assert [event if isinstance(event, str) else event[0] for event in events] == [
+        "source",
+        "pull_request",
+        "production_identity_and_readiness",
+        "allocator_release",
+        "settled_memory_sample",
+        "final_guard",
+    ]
+    assert host_helper.OPERATION_DEADLINE is None
+
+
+def test_pair_deadline_includes_memory_settle_and_expires_before_candidate_effects(
+    monkeypatch,
+) -> None:
+    now = [0.0]
+    events = []
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    monkeypatch.setattr(host_helper, "MAX_OPERATION_SECONDS", 0.5)
+    monkeypatch.setattr(
+        host_helper,
+        "_verify_installed_source",
+        lambda *_args: (events.append("source") or {}),
+    )
+    monkeypatch.setattr(
+        host_helper, "_verify_pull_request", lambda _revision: events.append("pull_request")
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_production_container",
+        lambda: (events.append("production") or dict(host_helper.PRODUCTION_BASELINE)),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_release_completed_preflight_memory",
+        lambda: events.append("allocator_release"),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_host_memory_kib",
+        lambda: (events.append("memory_sample") or (1_000_000, host_helper.START_RESERVE_KIB - 1)),
+    )
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        host_helper.time,
+        "sleep",
+        lambda delay: (events.append(("sleep", delay)), now.__setitem__(0, now[0] + delay)),
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_check_production",
+        lambda *_args, **_kwargs: pytest.fail("expired preflight must not reach the final guard"),
+    )
+    candidate_effects = {"_verify_pair", "_image_identity", "_load_image", "_start_app"}
+
+    def reject_candidate_call(*_args, _name, **_kwargs):
+        events.append(_name)
+        pytest.fail(f"expired preflight must not call {_name}")
+
+    for name in candidate_effects:
+        monkeypatch.setattr(
+            host_helper,
+            name,
+            lambda *_args, _name=name, **_kwargs: reject_candidate_call(
+                *_args, _name=_name, **_kwargs
+            ),
+        )
+
+    with pytest.raises(host_helper.RehearsalError, match="rehearsal_deadline_exceeded"):
+        host_helper._run_pair(_valid_startup_preflight_payload())
+
+    assert now[0] == host_helper.MAX_OPERATION_SECONDS
+    assert "allocator_release" in events
+    assert "memory_sample" in events
+    assert candidate_effects.isdisjoint(events)
+    assert host_helper.OPERATION_DEADLINE is None
 
 
 def test_invalid_container_role_fails_closed_for_resource_resolution() -> None:
@@ -3528,3 +4120,890 @@ def test_bounded_archive_reader_rejects_single_large_read_request() -> None:
     with pytest.raises(host_helper.RehearsalError, match="image_archive_read_request_limit"):
         reader.read(host_helper.MAX_ARCHIVE_READ + 1)
     assert source.calls == 0
+
+
+def test_live_candidate_baseline_stays_separate_from_schema12_pair_seed(monkeypatch) -> None:
+    baseline = host_helper.PRODUCTION_BASELINE
+    assert baseline == controller.PRODUCTION_BASELINE
+    assert baseline == {
+        "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+        "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
+        "schema_version": 13,
+    }
+    assert host_helper.BASE_REVISION == "da2764e8477698fa7d686be93a4711e35478e802"
+    assert host_helper.BASE_IMAGE_ID == (
+        "sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1"
+    )
+    assert controller.DEPLOYED_BASELINE == {
+        "revision": host_helper.BASE_REVISION,
+        "image_id": host_helper.BASE_IMAGE_ID,
+        "archive_sha256": host_helper.BASE_ARCHIVE_SHA256,
+    }
+    monkeypatch.setattr(
+        host_helper, "_readiness", lambda: {"status": "ready", "schema_version": 13}
+    )
+    _mock_production_docker_identity(monkeypatch, baseline)
+    assert host_helper._production_container() == baseline
+
+
+def _mock_production_docker_identity(
+    monkeypatch,
+    identity: dict[str, object],
+    *,
+    port_bindings: dict[str, object] | None = None,
+) -> None:
+    container_id = "a" * 64
+
+    def run(command, **kwargs):
+        assert kwargs.get("monitor_production") is False
+        if command[1] == "ps":
+            output = container_id
+        elif command[3] == "{{json .HostConfig.PortBindings}}":
+            output = json.dumps(
+                port_bindings
+                if port_bindings is not None
+                else {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}
+            )
+        else:
+            output = f"{identity['image_id']}|running|{identity['revision']}"
+        return CompletedProcess(command, 0, output.encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+
+
+def test_recovery_baseline_requires_registered_image_record_and_loopback(monkeypatch) -> None:
+    baseline = host_helper.RECOVERY_PRODUCTION_BASELINE
+    monkeypatch.setattr(host_helper, "_recovery_record_matches", lambda: True)
+    monkeypatch.setattr(
+        host_helper,
+        "_readiness",
+        lambda: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+    )
+    _mock_production_docker_identity(monkeypatch, baseline)
+
+    observed = host_helper._production_container()
+
+    assert {key: observed[key] for key in baseline} == baseline
+    assert observed["container_id"] == "a" * 64
+    assert observed["container_revision"] == baseline["revision"]
+
+
+@pytest.mark.parametrize(
+    "port_bindings",
+    [
+        {"8000/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8000"}]},  # noqa: S104
+        {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}], "9000/tcp": []},
+    ],
+)
+def test_recovery_baseline_rejects_non_loopback_or_extra_port_bindings(monkeypatch, port_bindings):
+    monkeypatch.setattr(host_helper, "_recovery_record_matches", lambda: True)
+    _mock_production_docker_identity(
+        monkeypatch, host_helper.RECOVERY_PRODUCTION_BASELINE, port_bindings=port_bindings
+    )
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._production_identity()
+
+
+@pytest.mark.parametrize(
+    "assistant",
+    [
+        {"enabled": True, "status": "ready"},
+        {"enabled": False, "status": "starting"},
+        {"enabled": 0, "status": "disabled"},
+    ],
+)
+def test_recovery_baseline_requires_ready_disabled_assistant(monkeypatch, assistant):
+    monkeypatch.setattr(host_helper, "_recovery_record_matches", lambda: True)
+    _mock_production_docker_identity(monkeypatch, host_helper.RECOVERY_PRODUCTION_BASELINE)
+    monkeypatch.setattr(
+        host_helper,
+        "_readiness",
+        lambda: {"status": "ready", "schema_version": 13, "assistant": assistant},
+    )
+    with pytest.raises(host_helper.RehearsalError, match="production_health_unavailable"):
+        host_helper._production_container()
+
+
+@pytest.mark.parametrize(
+    "observed",
+    [
+        dict(host_helper.RECOVERY_PRODUCTION_BASELINE)
+        | {
+            "container_id": "b" * 64,
+            "container_revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+        },
+        dict(host_helper.PRODUCTION_BASELINE),
+    ],
+)
+def test_recurring_production_guard_rejects_baseline_change(monkeypatch, observed):
+    active_baseline = dict(host_helper.RECOVERY_PRODUCTION_BASELINE) | {
+        "container_id": "a" * 64,
+        "container_revision": host_helper.RECOVERY_PRODUCTION_BASELINE["revision"],
+    }
+    monkeypatch.setattr(host_helper, "ACTIVE_PRODUCTION_BASELINE", active_baseline)
+    monkeypatch.setattr(host_helper, "_production_identity", lambda: observed)
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+    samples = [0]
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._check_production(samples, startup=True)
+    assert samples == [0]
+
+
+def test_recovery_release_record_is_exact_and_compose_digest_bound(
+    tmp_path: Path, monkeypatch
+) -> None:
+    baseline = host_helper.RECOVERY_PRODUCTION_BASELINE
+    revision = baseline["revision"]
+    record = {
+        "transport": "github_release",
+        "release_role": "recovery",
+        "revision": revision,
+        "image_ref": f"signal-ledger:recovery-sha-{revision}",
+        "image_digest": baseline["archive_sha256"],
+        "archive_sha256": baseline["archive_sha256"],
+        "image_id": baseline["image_id"],
+        "archive_size": 103190644,
+        "platform": "linux/amd64",
+        "assistant_rollout_mode": "disabled",
+        "pair_manifest_sha256": baseline["pair_manifest_sha256"],
+        "migration_sha256": baseline["migration_sha256"],
+        "recovery_image_ref": f"signal-ledger:recovery-sha-{revision}",
+        "recovery_image_id": baseline["image_id"],
+        "recovery_archive_sha256": baseline["archive_sha256"],
+        "recovery_archive_size": 103190644,
+        "recovery_platform": "linux/amd64",
+        "recovery_schema_version": 13,
+        "recovery_base_revision": host_helper.BASE_REVISION,
+        "recovery_overlay_sha256": baseline["recovery_overlay_sha256"],
+        "compose_digest": baseline["compose_digest"],
+        "source_context_sha256": "9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb",
+        "candidate_image_id": host_helper.PRODUCTION_BASELINE["image_id"],
+        "candidate_archive_sha256": (
+            "99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5"
+        ),
+        "schema_version": 13,
+    }
+    release_root = tmp_path / "releases"
+    release_root.mkdir(mode=0o700)
+    record_path = tmp_path / "current.json"
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    record_path.chmod(0o600)
+    compose_path = release_root / f"{revision}.compose.yaml"
+    compose_path.write_bytes(b"bound recovery compose")
+    compose_path.chmod(0o600)
+    real_sha256 = host_helper.hashlib.sha256
+
+    class ExpectedComposeDigest:
+        def hexdigest(self) -> str:
+            return baseline["compose_digest"]
+
+    monkeypatch.setattr(host_helper, "PRODUCTION_CURRENT_RECORD", record_path)
+    monkeypatch.setattr(host_helper, "PRODUCTION_RELEASE_ROOT", release_root)
+    monkeypatch.setattr(
+        host_helper,
+        "_production_release_value",
+        lambda path, _maximum: path.read_bytes(),
+    )
+
+    def sha256(value=b""):
+        return ExpectedComposeDigest() if value == b"bound recovery compose" else real_sha256(value)
+
+    monkeypatch.setattr(host_helper.hashlib, "sha256", sha256)
+    assert host_helper._recovery_record_matches()
+
+    for field, invalid in (
+        ("release_role", "candidate"),
+        ("image_id", host_helper.PRODUCTION_BASELINE["image_id"]),
+        ("archive_sha256", "0" * 64),
+        ("pair_manifest_sha256", "0" * 64),
+        ("recovery_overlay_sha256", "0" * 64),
+        ("compose_digest", "0" * 64),
+        ("assistant_rollout_mode", "invited"),
+        ("schema_version", 12),
+    ):
+        changed = dict(record)
+        changed[field] = invalid
+        record_path.write_text(json.dumps(changed), encoding="utf-8")
+        assert not host_helper._recovery_record_matches(), field
+
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    compose_path.write_bytes(b"stale compose")
+    assert not host_helper._recovery_record_matches()
+
+
+def _recovery_baseline_receipt() -> dict[str, object]:
+    return {
+        **controller.RECOVERY_PRODUCTION_BASELINE,
+        "container_id": "a" * 64,
+        "container_revision": controller.RECOVERY_PRODUCTION_BASELINE["revision"],
+    }
+
+
+def _temporary_recovery_documents() -> tuple[
+    dict[str, object], dict[str, object], dict[str, object], dict[str, object], bytes
+]:
+    image_id = "sha256:" + "d" * 64
+    archive_sha256 = "f" * 64
+    operation_id = "a" * 32
+    created_at = "2026-10-15T17:00:00Z"
+    manifest: dict[str, object] = {
+        "format_version": 1,
+        "kind": "temporary_recovery",
+        "built_or_published": True,
+        "source_revision": host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "source_manifest_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "base_revision": host_helper.BASE_REVISION,
+        "base_source_archive_sha256": host_helper.TEMPORARY_RECOVERY_BASE_ARCHIVE_SHA256,
+        "base_source_context_sha256": host_helper.TEMPORARY_RECOVERY_BASE_CONTEXT_SHA256,
+        "source_context_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "migration_sha256": host_helper.MIGRATION_SHA256,
+        "overlay_sha256": host_helper.TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "overlay_files": host_helper.TEMPORARY_RECOVERY_FILE_SHA256,
+        "schema_version": 13,
+        "image": {
+            "archive_sha256": archive_sha256,
+            "archive_size": 123_456,
+            "image_id": image_id,
+            "platform": "linux/amd64",
+            "image_revision": host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+            "repo_tag": host_helper.TEMPORARY_RECOVERY_IMAGE_BUILD_TAG,
+            "entrypoint": ["python", "-m", "stock_probs.recovery_supervisor"],
+            "command": host_helper.TEMPORARY_RECOVERY_COMMAND,
+        },
+    }
+    manifest_raw = json.dumps(
+        manifest, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    manifest_sha256 = hashlib.sha256(manifest_raw).hexdigest()
+    operation: dict[str, object] = {
+        "operation_kind": "temporary_recovery",
+        "operation_id": operation_id,
+        "phase": "startup_floor_passed",
+        "created_at": created_at,
+        "updated_at": "2026-10-15T17:01:00Z",
+        "manifest_sha256": manifest_sha256,
+        "source_manifest_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "source_revision": host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "source_context_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "base_revision": host_helper.BASE_REVISION,
+        "migration_sha256": host_helper.MIGRATION_SHA256,
+        "overlay_sha256": host_helper.TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "archive_sha256": archive_sha256,
+        "archive_size": 123_456,
+        "image_id": image_id,
+        "build_tag": host_helper.TEMPORARY_RECOVERY_IMAGE_BUILD_TAG,
+        "image_ref": f"signal-ledger:temporary-recovery-{operation_id}",
+        "schema_version": 13,
+        "compose_digest": host_helper.RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+        "original_record": {
+            "revision": host_helper.PRODUCTION_BASELINE["revision"],
+            "image_id": host_helper.PRODUCTION_BASELINE["image_id"],
+            "image_ref": f"signal-ledger:sha-{host_helper.PRODUCTION_BASELINE['revision']}",
+            "schema_version": 13,
+            "assistant_rollout_mode": "invited",
+            "compose_digest": host_helper.RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+        },
+        "original_compose_revision": host_helper.PRODUCTION_BASELINE["revision"],
+        "initial_available_kib": 600_000,
+        "available_kib": 550_000,
+        "backup": {
+            "trigger": "pre_deploy",
+            "name": "pre-deploy-5ad2c3fddfce5a5a.spbackup",
+            "sha256": "c" * 64,
+            "schema_version": 13,
+            "verified": True,
+            "promoted": False,
+        },
+        "startup_floor_kib": 540_000,
+        "start_admission_allowed": True,
+    }
+    current: dict[str, object] = {
+        "operation_kind": "temporary_recovery",
+        "operation_id": operation_id,
+        "status": "ready",
+        "revision": host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "image_ref": f"signal-ledger:temporary-recovery-{operation_id}",
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "archive_size": 123_456,
+        "image_id": image_id,
+        "transport": "temporary_recovery",
+        "platform": "linux/amd64",
+        "schema_version": 13,
+        "assistant_rollout_mode": "disabled",
+        "compose_digest": host_helper.RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+        "manifest_sha256": manifest_sha256,
+        "source_manifest_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "source_context_sha256": host_helper.TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "base_revision": host_helper.BASE_REVISION,
+        "migration_sha256": host_helper.MIGRATION_SHA256,
+        "overlay_sha256": host_helper.TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "started_at": created_at,
+    }
+    approval: dict[str, object] = {
+        "format_version": 1,
+        "kind": "temporary_recovery",
+        "review_status": "approved",
+        "manifest_sha256": manifest_sha256,
+    }
+    return current, operation, manifest, approval, manifest_raw
+
+
+def _temporary_recovery_baseline_for_test(
+    documents: tuple[
+        dict[str, object], dict[str, object], dict[str, object], dict[str, object], bytes
+    ],
+) -> dict[str, object]:
+    current, operation, manifest, approval, manifest_raw = documents
+    return host_helper._temporary_recovery_documents_match(
+        current,
+        operation,
+        manifest,
+        approval,
+        manifest_raw,
+        image_id=manifest["image"]["image_id"],  # type: ignore[index]
+        image_revision=host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        container_id="b" * 64,
+    )
+
+
+def test_temporary_recovery_baseline_binds_approved_records_and_original_images() -> None:
+    baseline = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+
+    assert baseline["operation_kind"] == "temporary_recovery"
+    assert "role" not in baseline
+    assert baseline["phase"] == "startup_floor_passed"
+    assert baseline["start_admission_allowed"] is True
+    assert baseline["startup_floor_kib"] == 540_000
+    assert baseline["image_id"] == "sha256:" + "d" * 64
+    assert baseline["container_id"] == "b" * 64
+    assert baseline["container_revision"] == host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION
+    assert baseline["original_image_id"] == host_helper.PRODUCTION_BASELINE["image_id"]
+    assert (
+        baseline["protected_recovery_image_id"]
+        == host_helper.RECOVERY_PRODUCTION_BASELINE["image_id"]
+    )
+    assert baseline["protected_recovery_image_ref"] == (
+        f"signal-ledger:recovery-sha-{host_helper.RECOVERY_PRODUCTION_BASELINE['revision']}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("target", "field", "invalid"),
+    [
+        ("manifest", "source_revision", "0" * 40),
+        ("manifest", "overlay_sha256", "0" * 64),
+        ("manifest", "unexpected", "unreviewed"),
+        ("manifest_image", "repo_tag", "signal-ledger:temporary-recovery-build-other"),
+        ("manifest_image", "image_id", host_helper.PRODUCTION_BASELINE["image_id"]),
+        ("approval", "review_status", "pending"),
+        ("approval", "manifest_sha256", "0" * 64),
+        ("operation", "phase", "temporary_app_ready"),
+        ("operation", "start_admission_allowed", 1),
+        ("operation", "startup_floor_kib", host_helper.START_RESERVE_KIB - 1),
+        ("operation", "source_context_sha256", "0" * 64),
+        ("operation", "image_ref", "signal-ledger:sha-5ad"),
+        ("operation", "operation_id", "not-an-operation-id"),
+        ("operation", "image_id", host_helper.RECOVERY_PRODUCTION_BASELINE["image_id"]),
+        ("operation", "archive_size", True),
+        ("operation", "original_record.image_id", "sha256:" + "0" * 64),
+        ("operation", "backup.verified", False),
+        ("operation", "unexpected", "unreviewed"),
+        ("current", "status", "starting"),
+        ("current", "transport", "github_release"),
+        ("current", "schema_version", 12),
+        ("current", "unexpected", "unreviewed"),
+    ],
+)
+def test_temporary_recovery_baseline_rejects_record_drift(
+    target: str, field: str, invalid: object
+) -> None:
+    current, operation, manifest, approval, manifest_raw = copy.deepcopy(
+        _temporary_recovery_documents()
+    )
+    record = {
+        "manifest": manifest,
+        "manifest_image": manifest["image"],
+        "approval": approval,
+        "operation": operation,
+        "current": current,
+    }[target]
+    target_record = record
+    target_field = field
+    if "." in field:
+        parent, target_field = field.split(".", 1)
+        target_record = record[parent]
+    target_record[target_field] = invalid
+    if target == "manifest" or target == "manifest_image":
+        manifest_raw = json.dumps(
+            manifest, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+        approval["manifest_sha256"] = hashlib.sha256(manifest_raw).hexdigest()
+        operation["manifest_sha256"] = approval["manifest_sha256"]
+        current["manifest_sha256"] = approval["manifest_sha256"]
+
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._temporary_recovery_documents_match(
+            current,
+            operation,
+            manifest,
+            approval,
+            manifest_raw,
+            image_id=manifest["image"]["image_id"],  # type: ignore[index]
+            image_revision=host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+            container_id="b" * 64,
+        )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [b'{"phase":"one","phase":"two"}', b'{"startup_floor_kib":NaN}', b"[]"],
+)
+def test_temporary_recovery_json_rejects_duplicate_nonfinite_and_nonobject(raw: bytes) -> None:
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._strict_json_object(raw)
+
+
+def test_temporary_recovery_reader_rejects_unapproved_paths() -> None:
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._read_temporary_recovery_json(
+            host_helper.PRODUCTION_STATE_ROOT / "unapproved.json", 128
+        )
+
+
+def test_temporary_recovery_identity_requires_approved_image_refs_and_platform(monkeypatch) -> None:
+    baseline = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    expected_rows = [
+        f"{baseline['image_id']}|linux|amd64|{host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION}"
+    ] * 3 + [
+        f"{host_helper.RECOVERY_PRODUCTION_BASELINE['image_id']}|linux|amd64|"
+        f"{host_helper.RECOVERY_PRODUCTION_BASELINE['revision']}"
+    ]
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        assert kwargs["monitor_production"] is False
+        return CompletedProcess(command, 0, ("\n".join(expected_rows) + "\n").encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+    assert host_helper._temporary_recovery_image_identity_matches(baseline)
+    assert commands[0][1:4] == ["image", "inspect", "--format"]
+    assert "exec" not in commands[0]
+
+    expected_rows[0] = expected_rows[0].replace("|linux|amd64|", "|linux|arm64|")
+    assert not host_helper._temporary_recovery_image_identity_matches(baseline)
+    expected_rows[0] = expected_rows[0].replace("|linux|arm64|", "|linux|amd64|")
+    expected_rows[2] = expected_rows[2].replace("sha256:" + "d" * 64, "sha256:" + "e" * 64)
+    assert not host_helper._temporary_recovery_image_identity_matches(baseline)
+    expected_rows[2] = expected_rows[2].replace("sha256:" + "e" * 64, "sha256:" + "d" * 64)
+    expected_rows[3] = expected_rows[3].replace(
+        host_helper.RECOVERY_PRODUCTION_BASELINE["image_id"], "sha256:" + "e" * 64
+    )
+    assert not host_helper._temporary_recovery_image_identity_matches(baseline)
+
+
+def test_temporary_recovery_recurring_guard_rejects_operation_or_manifest_drift(
+    monkeypatch,
+) -> None:
+    baseline = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    changed = dict(baseline)
+    changed["operation_id"] = "c" * 32
+    monkeypatch.setattr(host_helper, "ACTIVE_PRODUCTION_BASELINE", baseline)
+    monkeypatch.setattr(host_helper, "_production_identity", lambda: changed)
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._check_production([0], startup=True)
+
+
+def test_temporary_recovery_production_identity_checks_loopback_and_readiness(monkeypatch) -> None:
+    documents = _temporary_recovery_documents()
+    current, operation, manifest, approval, manifest_raw = documents
+    image = manifest["image"]
+    records = {
+        host_helper.PRODUCTION_CURRENT_RECORD: (current, b"current"),
+        host_helper.TEMPORARY_RECOVERY_OPERATION_PATH: (operation, b"operation"),
+        host_helper.TEMPORARY_RECOVERY_MANIFEST_PATH: (manifest, manifest_raw),
+        host_helper.TEMPORARY_RECOVERY_APPROVAL_PATH: (approval, b"approval"),
+    }
+
+    def read_json(path, _maximum):
+        return records[path]
+
+    monkeypatch.setattr(host_helper, "_read_temporary_recovery_json", read_json)
+    monkeypatch.setattr(
+        host_helper, "_temporary_recovery_image_identity_matches", lambda _base: True
+    )
+    baseline_for_docker = {
+        "image_id": image["image_id"],
+        "revision": host_helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+    }
+    _mock_production_docker_identity(monkeypatch, baseline_for_docker)
+
+    baseline = host_helper._production_identity()
+    assert baseline["operation_kind"] == "temporary_recovery"
+    assert baseline["operation_id"] == operation["operation_id"]
+    assert host_helper._production_readiness_matches(
+        baseline,
+        {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+    )
+    assert not host_helper._production_readiness_matches(
+        baseline,
+        {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": True, "status": "ready"},
+        },
+    )
+
+    _mock_production_docker_identity(
+        monkeypatch,
+        baseline_for_docker,
+        port_bindings={"8000/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8000"}]},  # noqa: S104
+    )
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._production_identity()
+
+
+def test_mcp_receipt_accepts_candidate_recovery_and_temporary_baselines() -> None:
+    assert controller._validated_production_baseline(dict(controller.PRODUCTION_BASELINE)) == (
+        controller.PRODUCTION_BASELINE
+    )
+    recovery = _recovery_baseline_receipt()
+    assert controller._validated_production_baseline(recovery) == recovery
+    temporary = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    assert {
+        key: temporary[key] for key in controller.TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS
+    } == controller.TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS
+    assert {
+        key: temporary[key] for key in host_helper.TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS
+    } == host_helper.TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS
+    assert controller._validated_production_baseline(temporary) == temporary
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("operation_kind", "recovery"),
+        ("phase", "temporary_app_ready"),
+        ("start_admission_allowed", False),
+        ("source_manifest_sha256", "0" * 64),
+        ("source_context_sha256", "0" * 64),
+        ("base_revision", "0" * 40),
+        ("overlay_sha256", "0" * 64),
+        ("schema_version", True),
+        ("assistant_enabled", 0),
+        ("loopback_only", False),
+        ("operation_id", "not-an-operation-id"),
+        ("image_id", controller.PRODUCTION_BASELINE["image_id"]),
+        ("image_ref", "signal-ledger:sha-5ad"),
+        ("archive_sha256", "not-a-digest"),
+        ("archive_size", True),
+        ("manifest_sha256", "not-a-digest"),
+        ("startup_floor_kib", controller.START_RESERVE_KIB - 1),
+        ("container_id", "short-id"),
+        ("container_revision", controller.PRODUCTION_BASELINE["revision"]),
+        ("original_assistant_rollout_mode", "invited-ish"),
+        ("original_assistant_rollout_mode", "disabled"),
+        ("original_assistant_rollout_mode", "owner_canary"),
+    ],
+)
+def test_mcp_receipt_rejects_malformed_temporary_baseline(field: str, invalid: object) -> None:
+    value = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    value[field] = invalid
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline(value)
+
+
+def test_mcp_receipt_rejects_unknown_temporary_baseline_field() -> None:
+    value = _temporary_recovery_baseline_for_test(_temporary_recovery_documents())
+    value["role"] = "recovery"
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline(value)
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("role", "candidate"),
+        ("image_id", controller.PRODUCTION_BASELINE["image_id"]),
+        ("archive_sha256", "0" * 64),
+        ("pair_manifest_sha256", "0" * 64),
+        ("recovery_overlay_sha256", "0" * 64),
+        ("compose_digest", "0" * 64),
+        ("assistant_rollout_mode", "invited"),
+        ("assistant_enabled", True),
+        ("assistant_enabled", 0),
+        ("assistant_status", "ready"),
+        ("loopback_only", False),
+        ("schema_version", 12),
+        ("container_revision", "0" * 40),
+        ("container_id", "short"),
+    ],
+)
+def test_mcp_receipt_rejects_partial_or_mismatched_recovery_baseline(field, invalid) -> None:
+    value = _recovery_baseline_receipt()
+    value[field] = invalid
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline(value)
+
+
+def test_mcp_receipt_rejects_candidate_role_and_unknown_baseline() -> None:
+    candidate = dict(controller.PRODUCTION_BASELINE)
+    candidate["role"] = "candidate"
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline(candidate)
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline({"role": "unknown"})
+
+
+@pytest.mark.parametrize("monitor_production", [False, True])
+def test_identity_subprocess_can_bypass_recurring_health_guard(monkeypatch, monitor_production):
+    monkeypatch.setattr(host_helper, "MONITOR_ACTIVE", True)
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    ticks = iter([0.0, 0.0, 6.0, 6.0])
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: next(ticks, 6.0))
+    checks = []
+
+    def check(samples):
+        checks.append(samples)
+        raise host_helper.RehearsalError("nested_health_check")
+
+    monkeypatch.setattr(host_helper, "_check_production", check)
+    command = ["/usr/bin/printf", "identity"]
+    if monitor_production:
+        with pytest.raises(host_helper.RehearsalError, match="nested_health_check"):
+            host_helper._run(command, timeout=30, monitor_production=True)
+        assert len(checks) == 1
+    else:
+        result = host_helper._run(command, timeout=30, monitor_production=False)
+        assert result.stdout == b"identity"
+        assert checks == []
+
+
+@pytest.mark.parametrize(
+    ("phase", "floor"),
+    [("preflight", 524288), ("startup", 524288), ("monitor", 131072), ("final", 131072)],
+)
+def test_memory_reserve_diagnostic_preserves_exact_phase_and_floor(phase, floor):
+    error = host_helper._memory_reserve_failure(floor - 1, floor, phase)
+    assert error.code == "host_memory_reserve_breached"
+    assert controller._safe_host_failure_details(
+        {"status": "error", "code": error.code, "failure": error.details}
+    ) == {
+        "memory_reserve_failure": {
+            "memory_reserve_phase": phase,
+            "host_memavailable_kib": floor - 1,
+            "required_reserve_kib": floor,
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        {"memory_reserve_phase": "unknown", "host_memavailable_kib": 1, "required_reserve_kib": 2},
+        {
+            "memory_reserve_phase": "preflight",
+            "host_memavailable_kib": 1,
+            "required_reserve_kib": 131072,
+        },
+        {
+            "memory_reserve_phase": "monitor",
+            "host_memavailable_kib": True,
+            "required_reserve_kib": 131072,
+        },
+        {
+            "memory_reserve_phase": "monitor",
+            "host_memavailable_kib": 1,
+            "required_reserve_kib": 131072,
+            "extra": 1,
+        },
+    ],
+)
+def test_memory_reserve_diagnostic_rejects_untyped_or_unknown_facts(failure):
+    assert controller._safe_memory_reserve_failure(failure) is None
+
+
+@pytest.mark.parametrize("schema", [12, 14, None, "13", 13.0, True])
+def test_live_production_guard_rejects_stale_or_unknown_schema(monkeypatch, schema):
+    monkeypatch.setattr(
+        host_helper, "_production_identity", lambda: dict(host_helper.PRODUCTION_BASELINE)
+    )
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+    monkeypatch.setattr(
+        host_helper, "_readiness", lambda: {"status": "ready", "schema_version": schema}
+    )
+    samples = [0]
+    with pytest.raises(host_helper.RehearsalError, match="production_health_lost"):
+        host_helper._check_production(samples)
+    assert samples == [0]
+
+
+def test_live_production_identity_is_separate_from_migration_origin(monkeypatch):
+    baseline = host_helper.PRODUCTION_BASELINE
+    assert baseline == controller.PRODUCTION_BASELINE
+    assert baseline["schema_version"] == 13
+    assert baseline["revision"] != host_helper.BASE_REVISION
+    assert baseline["image_id"] != host_helper.BASE_IMAGE_ID
+    monkeypatch.setattr(
+        host_helper, "_readiness", lambda: {"status": "ready", "schema_version": 13}
+    )
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+    samples = [0]
+
+    def run(command, **kwargs):
+        assert kwargs.get("monitor_production") is False
+        output = (
+            "a" * 64
+            if command[1] == "ps"
+            else f"{baseline['image_id']}|running|{baseline['revision']}"
+        )
+        return CompletedProcess(command, 0, output.encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+    host_helper._check_production(samples)
+    assert samples == [1]
+    host_helper._production_container()
+
+
+@pytest.mark.parametrize("monitor_production", [False, True])
+def test_slow_identity_subprocess_does_not_reenter_health_guard(monkeypatch, monitor_production):
+    monkeypatch.setattr(host_helper, "MONITOR_ACTIVE", True)
+    monkeypatch.setattr(host_helper, "OPERATION_DEADLINE", None)
+    ticks = iter([0.0, 0.0, 6.0, 6.0])
+    monkeypatch.setattr(host_helper.time, "monotonic", lambda: next(ticks, 6.0))
+    checks = []
+
+    def check(samples):
+        checks.append(samples)
+        raise host_helper.RehearsalError("nested_health_check")
+
+    monkeypatch.setattr(host_helper, "_check_production", check)
+    command = ["/usr/bin/printf", "identity"]
+    if monitor_production:
+        with pytest.raises(host_helper.RehearsalError, match="nested_health_check"):
+            host_helper._run(command, timeout=30, monitor_production=True)
+        assert len(checks) == 1
+    else:
+        result = host_helper._run(command, timeout=30, monitor_production=False)
+        assert result.stdout == b"identity"
+        assert checks == []
+
+
+@pytest.mark.parametrize(
+    "image,revision",
+    [(host_helper.BASE_IMAGE_ID, host_helper.BASE_REVISION), ("sha256:" + "f" * 64, "f" * 40)],
+)
+def test_live_production_identity_rejects_old_or_other_image(monkeypatch, image, revision):
+    def run(command, **kwargs):
+        output = "a" * 64 if command[1] == "ps" else f"{image}|running|{revision}"
+        return CompletedProcess(command, 0, output.encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._production_container()
+
+
+@pytest.mark.parametrize("change", ["missing", "old", "float", "extra", "image", "revision"])
+def test_host_receipt_rejects_invalid_live_production_binding(change):
+    value = dict(controller.PRODUCTION_BASELINE)
+    if change == "missing":
+        value.pop("schema_version")
+    elif change == "old":
+        value["schema_version"] = 12
+    elif change == "float":
+        value["schema_version"] = 13.0
+    elif change == "extra":
+        value["extra"] = True
+    else:
+        value["image_id" if change == "image" else "revision"] = "wrong"
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validated_production_baseline(value)
+
+
+def test_host_receipt_accepts_only_pinned_live_baseline():
+    value = dict(controller.PRODUCTION_BASELINE)
+    assert controller._validated_production_baseline(value) == value
+
+
+@pytest.mark.parametrize("changed_field", ["image_id", "revision"])
+def test_recurring_production_guard_rejects_same_schema_replacement(monkeypatch, changed_field):
+    live = dict(host_helper.PRODUCTION_BASELINE)
+
+    def run(command, **kwargs):
+        output = (
+            "a" * 64 if command[1] == "ps" else f"{live['image_id']}|running|{live['revision']}"
+        )
+        return CompletedProcess(command, 0, output.encode(), b"")
+
+    monkeypatch.setattr(host_helper, "_run", run)
+    monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
+    monkeypatch.setattr(
+        host_helper, "_readiness", lambda: {"status": "ready", "schema_version": 13}
+    )
+    samples = [0]
+    host_helper._check_production(samples)
+    assert samples == [1]
+    live[changed_field] = "sha256:" + "f" * 64 if changed_field == "image_id" else "f" * 40
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._check_production(samples)
+    assert samples == [1]
+
+
+@pytest.mark.parametrize(
+    ("phase", "floor"),
+    [("preflight", 524288), ("startup", 524288), ("monitor", 131072), ("final", 131072)],
+)
+def test_memory_reserve_failure_survives_the_exact_host_consumer_boundary(phase, floor):
+    error = host_helper._memory_reserve_failure(floor - 1, floor, phase)
+    assert error.code == "host_memory_reserve_breached"
+    projected = controller._safe_host_failure_details(
+        {"status": "error", "code": error.code, "failure": error.details}
+    )
+    assert projected == {"memory_reserve_failure": error.details}
+    assert (
+        controller._safe_host_failure_details(
+            {"status": "error", "code": "production_health_lost", "failure": error.details}
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        {"memory_reserve_phase": "provider error with raw account text"},
+        {"required_reserve_kib": 131072},
+        {"required_reserve_kib": "524288"},
+        {"host_memavailable_kib": True},
+        {"host_memavailable_kib": -1},
+        {"host_memavailable_kib": 524288},
+        {"host_memavailable_kib": 1 << 63},
+        {"host_memavailable_kib": 123.5},
+        {"host_memavailable_kib": "raw account text"},
+        {"provider_body": "raw account text"},
+    ],
+)
+def test_memory_reserve_projection_rejects_untrusted_or_nonfailure_readings(replacement):
+    evidence = {
+        "memory_reserve_phase": "preflight",
+        "host_memavailable_kib": 524287,
+        "required_reserve_kib": 524288,
+        **replacement,
+    }
+    assert (
+        controller._safe_host_failure_details(
+            {"status": "error", "code": "host_memory_reserve_breached", "failure": evidence}
+        )
+        is None
+    )

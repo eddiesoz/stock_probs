@@ -12,6 +12,19 @@ signed-in tabs and authentication state. Never clear user cookies, browser stora
 reset a test. Do not use production local-login flows or claim an MFA bypass; exercise authentication
 through development fixtures and isolated contexts.
 
+## Assistant access-failure checks
+
+Native verification must retain the original turn deadline through diagnostic wrappers. Exact
+`FreeTierError` responses map to the closed `free_tier_access_error` diagnostic class across the
+proxy, runtime, API, and probe; never retain raw provider bodies. A classified rejection is not a
+successful model answer. Test safe failure copy through terminal stream completion and saved-chat
+reopening, with the saved context matching the submitted context and no automatic retry.
+
+For an isolated worktree, set `PYTHONPATH` to its absolute `src` directory and set
+`STOCK_PROBS_BROWSER_RUNTIME` to a task-owned disposable directory. A shared editable environment
+can otherwise import another checkout. Bind actual served asset bytes as well as local staged
+files; a matching local export alone does not identify the running package.
+
 ## Reviewing incomplete contrast results
 
 Keep raw axe violations and incomplete results in the evidence. An incomplete result needs
@@ -50,6 +63,19 @@ target. The helper removes only its task-generated tags after ownership checks, 
 uses exact fixed image IDs only after provenance and reference checks, as described in the root
 [agent policy](../../AGENTS.md). Selected helper tests do not establish that a pair rehearsal ran;
 see the [R-ASTRA-120 ledger](../../MVP-PLAN.md) for the current scope.
+
+### Selecting a retained local image
+
+Before replacing a local candidate at the three-image retention limit, use
+`--expected-local-current-image-id sha256:<full-id> --select-local-current-image-id sha256:<full-id>`
+with the bounded builder. The operation locks the ledger, compares the existing pointer against the
+expected image, verifies both completed current-role rows and their build receipts, and verifies
+Docker image IDs, revision labels, platform, and exact tags before atomically selecting the retained
+replacement. It does not delete images, change ledger roles, increase the retention limit, or make
+an old candidate automatically eligible for deletion. A stale pointer or failed validation leaves
+the pointer unchanged. Record the command and result in a new private receipt. Subsequent exact-ID
+cleanup still requires independent provenance, protection, tag, container-reference and bounded
+RootFS review, followed by absence verification and the existing retirement acknowledgement.
 
 ### Schema-13 rehearsal image cleanup
 
@@ -93,6 +119,26 @@ bounded-policy helper's 145-test result is a distinct scope. See the [E825 ledge
 for exact bindings and status.
 
 ## Bounded local Docker builds and worker verification
+
+A failed local build retains its exact in-flight ledger row and publishes bounded failure facts.
+CLI process-group cancellation does not establish that a remote BuildKit `RUN` stopped. The
+failure handler checks the setup-bound full container ID, start generation, configuration and
+ownership before stopping only that builder; an uncertain stop or receipt write keeps recovery
+held. Preserve the primary build error separately from cleanup errors.
+
+Use the typed `--reconcile-local-inflight-reservation` operation in
+`scripts/bounded_docker_build.py` with the exact local tag, revision, context digest and current
+role. Supply either the genuine local-failure receipt digest or all four separately hashed
+terminal, worker-preflight, cancellation and settled observations. External observations must
+remain private on the verified SD mount. External-observation mode rechecks current history.
+Genuine-local-failure mode instead requires fresh proof of the same stopped builder generation,
+PID zero and an absent or empty bounded descendant cgroup, so history inspection cannot restart
+the builder before that proof. Both modes require fresh tag/full-ID absence, protected inventory
+and ledger consistency. A complete private receipt is staged before ledger commit/verification
+and exclusive publication; a publication error restores the ledger. Missing historical BuildKit
+terminal evidence stays Unavailable, and observed historical negative facts are rejected.
+Never use the PR-failure mode, edit the
+ledger manually, or reconstruct a missing failure receipt. See [E33](../../MVP-PLAN.md#r-astra-121-e33-local-build-failure-and-reservation-recovery).
 
 Use `./scripts/local-compose.sh build` or `./scripts/local-compose.sh up --build -d` for local
 root-Compose builds. The launcher performs the bounded build; `compose.yaml` intentionally has no
@@ -439,7 +485,7 @@ R-ASTRA-120 remains **In progress**. E725's earlier full-browser failure remains
 ### PR-head candidate image build helper
 
 The existing schema-13 rehearsal CLI now has a fixed-source mode for building a private local
-image from the exact clean, reviewed head of open PR #2. Use only these mode flags:
+image from the exact clean, reviewed head of open PR #9. Use only these mode flags:
 
 ```bash
 python3 scripts/rehearse_schema13.py \
@@ -450,7 +496,7 @@ python3 scripts/rehearse_schema13.py \
 
 Set `REVIEWED_PR_HEAD` to the exact lowercase 40-character PR head SHA and `PRIVATE_RECEIPT` to a
 private output path. The helper checks that local `HEAD` is that SHA and the worktree is clean,
-validates the fixed PR-2/head/base relationship, rechecks the head around the build, and writes a
+validates the fixed PR-9/head/base relationship, rechecks the head around the build, and writes a
 mode-0600 JSON receipt. The build is local `linux/amd64`, is not published, and requires at least
 4 GiB free on every checked build filesystem; it aborts if free space drops below 1 GiB. E678's original independent process-ownership review **Failed** and remains historical. E683
 recorded builder checks, and E684 independently passed source/test QA (59/59, exit 0; 149 inputs
@@ -477,7 +523,7 @@ The fixed local review-pin command accepts only an explicit write request:
 python3 scripts/pin_pr_rehearsal_review.py --write
 ```
 
-Before writing, the helper reads the current commit, requires the exact clean PR-2 source, checks
+Before writing, the helper reads the current commit, requires the exact clean PR-9 source, checks
 its fixed candidate/recovery pair manifest and image/source digests, verifies the PR identity, and
 binds the pair to that same commit. It accepts no target, path, or credential arguments. The
 operator-local record is `$XDG_CONFIG_HOME/signal-ledger/rehearsal-review.json`; when
@@ -568,3 +614,124 @@ for the full reconciliation and limitations.
 ARM64 checks must identify whether execution is native or QEMU/OCI-emulated. Emulation can
 exercise package, runtime, functional, build, and tool behavior; it cannot prove native
 resource performance. See the [MVP plan](../../MVP-PLAN.md) for current gate requirements.
+
+
+## Genuine free Zen restoration checks
+
+Compare the same official OpenCode binary, free model and prompt with its ordinary native tools
+and the application restrictions before attributing rejection to provider availability. R-ASTRA-121
+observed an ordinary built-in free answer, rejection with read/shell registrations removed, and
+success when genuine read/shell registrations were retained. This isolates the registration
+boundary for the tested model; it does not promise all free models or continuous availability.
+
+Verify the managed read/shell guards against actual compiled native tool calls with permission
+already allowed. Force calls only after the provider request declares the target tool; title requests
+can contain no tools and are not execution evidence. Check file-content leakage, shell side effects,
+and comment-only commands. Synthetic provider responses prove guard behavior, not Zen acceptance.
+Then test a real free answer through the application provider route and owner-scoped MCP.
+Record whether the fixture overrides readiness, and preserve exact pre-run bindings. A scratch
+binary owned by the developer fails the production receipt validator by design. Verify the normal
+installed root-owned artifact path in the current image before release. Keep native isolation,
+search/fetch, kill/restart, canonical, security, actual-host 1 GB and PR-bound recovery/rollback
+checks separate and mandatory. Reuse unchanged UI evidence only at its existing bindings.
+
+
+For the R-ASTRA-121 rebuilt native executable, refresh the scanner's exact file digest only after
+comparing every existing public match span against checksum-verified official Bun 1.4.2 bytes.
+Keep the path, size, offsets and all other bytes subject to their existing checks. A file-only scan
+or provenance comparison does not replace scans of the final candidate and recovery archives.
+
+
+### Local build phase observations
+
+The local image build now requests Buildx raw JSON progress only for its opt-in observer. A
+bounded background reader discards raw logs and records coarse allowlisted build phases,
+completion/cache/error flags and elapsed durations in a genuine failure receipt. Unknown vertex
+names are counted without saving their text; later recognized phases remain available as a
+partial observation. Frame, byte, vertex and artifact limits stop parsing while the reader keeps
+draining. Reader failure, closure or publication does not replace the primary build result.
+The original 900-second deadline, disk/mount checks, cancellation and separate ARM Compose path
+remain unchanged.
+Unit tests do not establish the next actual build's phase or cause.
+
+### Candidate and recovery production baselines
+
+The candidate rehearsal checker distinguishes the running 5ad schema-13 app from the da2764/d3
+schema-12 migration fixture. Its recovery alternative requires the exact registered recovery role,
+image/archive, pair/overlay/migration, Compose snapshot, schema and disabled-ready projection at
+both host and MCP boundaries, with the running container and loopback binding checked again
+during monitoring. Negative fixtures must reject partial, mismatched, enabled and stale identities;
+the 512 MiB startup and 128 MiB running reserve remain mandatory. A synthetic checker test does
+not accept an image transition. Test the exact recovery image on disposable data and a user-defined
+bridge, retain post-migration records, and verify a fresh signed backup before an actual-host step.
+The current resource failure and backup scope are recorded in [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+For the current R-ASTRA-121 helper, the startup operation budget begins before its bounded settle.
+On Linux/glibc, it collects completed Python allocations and calls process-local `malloc_trim(0)`,
+then samples host availability at 250 ms intervals for up to 30 seconds before the existing
+production/readiness guard records the final startup value. Unsupported allocator environments fail
+closed. This is fixed checker behavior, not an environment setting. The 512/128 MiB reserve floors
+and 1,080-second absolute budget do not change. E22's five-second observation is historical; the
+current bounded wait repair is E29. Independent source/unit/static QA passed 278 tests with one
+opt-in local-Docker test deselected, plus Ruff, Ruff security, format and diff checks at pinned
+source hashes; builder-selected 24 tests also passed with 255 deselected. Parent source review
+passed with no findings. The original preflight **Fail** at 517,480 KiB against the 524,288 KiB
+startup floor remains unchanged. T9 separately failed at 519,432 KiB; its twelve later above-floor
+observations do not change that result. Those E29 checks did not establish a post-repair host retry,
+native answer, fresh image or actual 1 GB acceptance. See [E22](../../MVP-PLAN.md#r-astra-121-e22-startup-reserve-preflight-repair-checkpoint)
+and [E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-startup-wait-checker-checkpoint).
+
+The later T13 trial still failed its startup reserve before the SDK or model ran. The subsequent
+lazy-provider repair has independent focused checks for fresh-process startup without Yahoo,
+pandas, NumPy or curl imports, guarded fixture requests, on-demand synthetic provider calls,
+dependency failures, safe API errors and the actual headline client's busy/unavailable branches.
+The approved frontend build and stage passed in a source-bound checkout. These checks do not
+replace current-image native, actual-host resource, recovery, canonical or release acceptance.
+See [E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint).
+
+The third production-baseline source shape is specifically `temporary_recovery`, not a release or
+the retained A9 recovery role. It requires the separately approved fixed 6359 manifest, matching
+operation/current records, exact Docker image/tag/platform/revision and loopback identity, ready
+assistant-disabled state, and the completed 512 MiB startup-floor phase. Monitoring compares the
+whole accepted identity again. The independent 332-test and 52-case selected passes cover mocked
+consumer/source behavior only; the image, dynamic approval and host transition remain unbound.
+The later local cancellation/reconciliation repair passed 238 tests under explicit child umask
+022; its actual typed reservation recovery is recorded at
+[E34](../../MVP-PLAN.md#r-astra-121-e34-6359-build-failure-and-stopped-generation-recovery).
+
+The later local build on pushed PR #9 head `63b9da6dd27cbbed1cb973cb5d5442753e285b4f`
+**Failed** with Docker `OOMKilled=true`; all 149 application inputs stayed bound and no image was
+accepted. The bounded resource sampler ended before the container exit, and no PID-to-strict-cgroup
+binding was available, so worker limits and the specific OOM cause remain **Unavailable** and
+**Unproven**. Typed reservation reconciliation separately **Passed**, retaining two ledger rows.
+This is recovery evidence, not a build or actual 1 GB resource pass. See the [63b9 build and
+recovery checkpoint](../../MVP-PLAN.md#r-astra-121-local-63b9-oom-build-and-recovery-checkpoint-2026-10-15)
+for exact receipts and limitations.
+
+A subsequent local Dockerfile diagnostic reduced the package-install parallelism argument from 2
+to 1. Builder and independent selected scopes each passed 23 tests; the independent review also
+matched 49 pins and passed Ruff, security, format and diff checks. This tests a memory-reduction
+hypothesis only: the prior OOM's install-versus-compile phase remains unproven, and no image build
+or native run has started. The initial temporary-path quota/policy setup failure and the initial
+independent umask omission remain preserved separately. See the [serial-install checkpoint](../../MVP-PLAN.md#r-astra-121-63b9-serial-install-diagnostic-checkpoint-2026-10-15).
+
+The resulting 12ed build subsequently failed with a cgroup OOM transition during native
+compilation. A continuous 78-row sampler and independently bound live worker establish the local
+1280 MiB RAM/768 MiB swap/one CPU/128 PID limits; the high-RSS argument category does not prove
+the executable or killed PID. Typed reservation reconciliation passed separately. Keep this failed
+build separate from native functional and actual production 1 GB acceptance, and obtain new
+discriminating evidence before another build. See the [12ed compilation checkpoint](../../MVP-PLAN.md#r-astra-121-12ed-native-compilation-oom-checkpoint-2026-10-15).
+
+The next native-build candidate fixes Bun's `--smol` mode only for the final build-script command
+and its child processes. Check that a host-supplied `BUN_OPTIONS` cannot alter that command's
+environment and that package installation/source tests retain their prior environment. The pinned
+Bun documentation describes a garbage-collection tradeoff rather than a hard memory cap. The
+embedded app build and final compiler still use the same source pins, arguments, targets and
+deadlines; a source test pass does not establish lower memory use or a successful image.
+
+Build-controller unit cases that isolate command or backend-stop failures supply a synthetic
+`check_space` result alongside their mocked build operations. This avoids depending on the
+operator filesystem before reaching the intended assertion. Separate boundary tests exercise
+real admission/stop logic with controlled disk inputs; the actual builder still enforces its
+4 GiB admission and 1 GiB stop thresholds. See the [F6 canonical disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
+for the preserved aggregate failure and narrow fixture repair.

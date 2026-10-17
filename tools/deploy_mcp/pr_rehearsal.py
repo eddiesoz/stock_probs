@@ -14,13 +14,14 @@ import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_DIRECTORY = REPOSITORY_ROOT / "test-results" / "assistant-r120-pr-pair"
 HOST = "45.79.180.32"
 USER = "signalops"
 REPOSITORY = "eddiesoz/stock_probs"
-PULL_NUMBER = 2
+PULL_NUMBER = 9
 HELPER_PATH = "/usr/local/libexec/signal-ledger-pr-rehearsal/host_helper.py"
 STATE_ROOT = "/var/lib/signal-ledger-pr-rehearsal"
 INCOMING_DIRECTORY = "/var/lib/signal-ledger-pr-rehearsal/incoming"
@@ -41,6 +42,7 @@ REVIEW_PAIR_ENV = "SIGNAL_LEDGER_REHEARSAL_REVIEWED_PAIR_MANIFEST_SHA256"
 REVISION = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 IMAGE_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
+OPERATION_ID = re.compile(r"^[0-9a-f]{32}$")
 OOM_EVENT_COUNTERS = ("oom", "oom_kill", "oom_group_kill")
 CPU_STAT_COUNTERS = ("usage_usec", "nr_periods", "nr_throttled", "throttled_usec")
 MAX_RESOURCE_COUNTER = (1 << 64) - 1
@@ -53,13 +55,156 @@ DEPLOYED_BASELINE = {
     "image_id": "sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1",
     "archive_sha256": "669f840a3141b0fb95ae248b5ea0799733b9e5b5b81e224d4637571c24d8f640",
 }
+
+
+class ProductionBaseline(TypedDict):
+    revision: str
+    image_id: str
+    schema_version: int
+
+
+class RecoveryProductionBaselineFields(TypedDict):
+    role: str
+    revision: str
+    image_id: str
+    archive_sha256: str
+    pair_manifest_sha256: str
+    recovery_overlay_sha256: str
+    migration_sha256: str
+    compose_digest: str
+    schema_version: int
+    assistant_rollout_mode: str
+    assistant_enabled: bool
+    assistant_status: str
+    loopback_only: bool
+
+
+class RecoveryProductionBaseline(RecoveryProductionBaselineFields):
+    container_id: str
+    container_revision: str
+
+
+class TemporaryRecoveryProductionBaselineFields(TypedDict):
+    operation_kind: str
+    operation_id: str
+    phase: str
+    start_admission_allowed: bool
+    startup_floor_kib: int
+    revision: str
+    image_id: str
+    image_ref: str
+    build_tag: str
+    archive_sha256: str
+    archive_size: int
+    manifest_sha256: str
+    source_manifest_sha256: str
+    source_context_sha256: str
+    base_revision: str
+    base_source_archive_sha256: str
+    base_source_context_sha256: str
+    migration_sha256: str
+    overlay_sha256: str
+    compose_digest: str
+    schema_version: int
+    platform: str
+    assistant_rollout_mode: str
+    assistant_enabled: bool
+    assistant_status: str
+    loopback_only: bool
+    original_revision: str
+    original_image_id: str
+    original_compose_digest: str
+    original_assistant_rollout_mode: str
+    protected_recovery_revision: str
+    protected_recovery_image_id: str
+    protected_recovery_image_ref: str
+    protected_recovery_archive_sha256: str
+    protected_recovery_pair_manifest_sha256: str
+    protected_recovery_overlay_sha256: str
+
+
+class TemporaryRecoveryProductionBaseline(TemporaryRecoveryProductionBaselineFields):
+    container_id: str
+    container_revision: str
+
+
+PRODUCTION_BASELINE: ProductionBaseline = {
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "image_id": "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1",
+    "schema_version": 13,
+}
+RECOVERY_PRODUCTION_BASELINE: RecoveryProductionBaselineFields = {
+    "role": "recovery",
+    "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    "image_id": "sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f",
+    "archive_sha256": "082d04e065acfc1eb7db86358e40e20f937111f7d26901bd98b589521f8628c3",
+    "pair_manifest_sha256": "e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3",
+    "recovery_overlay_sha256": "d1df9215ecb99dc8dc45b06c5b4c0aede364be6e80c7701a6814225397dfecad",
+    "migration_sha256": "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b",
+    "compose_digest": "01028e5b02cc0eded5f7b5207950a54b5a111b169f2a60a4ae8abdc6dfdb92b0",
+    "schema_version": 13,
+    "assistant_rollout_mode": "disabled",
+    "assistant_enabled": False,
+    "assistant_status": "disabled",
+    "loopback_only": True,
+}
 MIGRATION_SHA256 = "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b"
+TEMPORARY_RECOVERY_SOURCE_REVISION = "63597953c9d1ab387563dadfe705b78a2861a426"
+TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256 = (
+    "9443700f5248606c1f50a6e4e1bb2a20782a44aaa06fe62ffc3de2d17c4c2994"
+)
+TEMPORARY_RECOVERY_BASE_ARCHIVE_SHA256 = (
+    "a197b69829076e75bdc1c51830761d1bb4d4c0fda9074372abb45b6d972d59d7"
+)
+TEMPORARY_RECOVERY_BASE_CONTEXT_SHA256 = (
+    "38a2098f81fde0d3b73e7e3b3d31f84b5731492ff04b9ace2bfe5fd83c53c97b"
+)
+TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256 = (
+    "964d7ca16ac1733c031780fc5dd3c271461489cc58cb9a653371cb060b26baa9"
+)
+TEMPORARY_RECOVERY_OVERLAY_SHA256 = (
+    "272949c0fcaafcc0b217265619ba3eb76d9e9e92d69c18a2492100f5e14a0a6f"
+)
+TEMPORARY_RECOVERY_IMAGE_BUILD_TAG = "signal-ledger:temporary-recovery-build-63597953c9d1"
+TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS: dict[str, object] = {
+    "operation_kind": "temporary_recovery",
+    "phase": "startup_floor_passed",
+    "start_admission_allowed": True,
+    "revision": TEMPORARY_RECOVERY_SOURCE_REVISION,
+    "build_tag": TEMPORARY_RECOVERY_IMAGE_BUILD_TAG,
+    "source_manifest_sha256": TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+    "source_context_sha256": TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+    "base_revision": DEPLOYED_BASELINE["revision"],
+    "base_source_archive_sha256": TEMPORARY_RECOVERY_BASE_ARCHIVE_SHA256,
+    "base_source_context_sha256": TEMPORARY_RECOVERY_BASE_CONTEXT_SHA256,
+    "migration_sha256": MIGRATION_SHA256,
+    "overlay_sha256": TEMPORARY_RECOVERY_OVERLAY_SHA256,
+    "compose_digest": RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+    "schema_version": 13,
+    "platform": "linux/amd64",
+    "assistant_rollout_mode": "disabled",
+    "assistant_enabled": False,
+    "assistant_status": "disabled",
+    "loopback_only": True,
+    "original_revision": PRODUCTION_BASELINE["revision"],
+    "original_image_id": PRODUCTION_BASELINE["image_id"],
+    "original_compose_digest": RECOVERY_PRODUCTION_BASELINE["compose_digest"],
+    "protected_recovery_revision": RECOVERY_PRODUCTION_BASELINE["revision"],
+    "protected_recovery_image_id": RECOVERY_PRODUCTION_BASELINE["image_id"],
+    "protected_recovery_image_ref": (
+        f"signal-ledger:recovery-sha-{RECOVERY_PRODUCTION_BASELINE['revision']}"
+    ),
+    "protected_recovery_archive_sha256": RECOVERY_PRODUCTION_BASELINE["archive_sha256"],
+    "protected_recovery_pair_manifest_sha256": RECOVERY_PRODUCTION_BASELINE["pair_manifest_sha256"],
+    "protected_recovery_overlay_sha256": RECOVERY_PRODUCTION_BASELINE["recovery_overlay_sha256"],
+}
 SOURCE_ASSETS = {
     "bootstrap": ("scripts/pr_rehearsal_bootstrap.py", "bootstrap.py", 256 * 1024),
     "host_helper": ("scripts/pr_rehearsal_host_helper.py", "host_helper.py", 256 * 1024),
     "seed": ("scripts/pr_rehearsal_seed.py", "seed.py", 64 * 1024),
     "driver": ("tests/native_assistant_probe.py", "native_driver.py", 2 * 1024 * 1024),
 }
+HOST_HELPER_SOURCE_SHA256 = "0ed584c725b2546985f6c2aebe7a373ae4d8c6f27a12b492ceeb933e9ddd4b86"
 
 
 class RehearsalError(Exception):
@@ -519,6 +664,83 @@ def _run_fixed(command: list[str], *, timeout: float, input_bytes: bytes | None 
     return result.stdout
 
 
+def _validated_production_baseline(value: object) -> dict[str, object]:
+    if isinstance(value, dict) and value == PRODUCTION_BASELINE:
+        if type(value.get("schema_version")) is int:
+            return dict(value)
+        raise RehearsalError("host_response_invalid")
+    temporary_dynamic_keys = {
+        "operation_id",
+        "startup_floor_kib",
+        "image_id",
+        "image_ref",
+        "archive_sha256",
+        "archive_size",
+        "manifest_sha256",
+        "original_assistant_rollout_mode",
+        "container_id",
+        "container_revision",
+    }
+    temporary_keys = set(TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS) | temporary_dynamic_keys
+    if isinstance(value, dict) and set(value) == temporary_keys:
+        operation_id = value.get("operation_id")
+        image_id = value.get("image_id")
+        container_id = value.get("container_id")
+        archive_size = value.get("archive_size")
+        startup_floor_kib = value.get("startup_floor_kib")
+        if (
+            any(
+                value.get(key) != expected
+                for key, expected in TEMPORARY_RECOVERY_PRODUCTION_BASELINE_FIELDS.items()
+            )
+            or type(value.get("start_admission_allowed")) is not bool
+            or type(value.get("assistant_enabled")) is not bool
+            or type(value.get("loopback_only")) is not bool
+            or type(value.get("schema_version")) is not int
+            or not isinstance(operation_id, str)
+            or OPERATION_ID.fullmatch(operation_id) is None
+            or not isinstance(image_id, str)
+            or IMAGE_ID.fullmatch(image_id) is None
+            or image_id
+            in {
+                PRODUCTION_BASELINE["image_id"],
+                RECOVERY_PRODUCTION_BASELINE["image_id"],
+                DEPLOYED_BASELINE["image_id"],
+            }
+            or value.get("image_ref") != f"signal-ledger:temporary-recovery-{operation_id}"
+            or not isinstance(value.get("archive_sha256"), str)
+            or DIGEST.fullmatch(value["archive_sha256"]) is None
+            or type(archive_size) is not int
+            or not 1 <= archive_size <= MAX_ARCHIVE_BYTES
+            or not isinstance(value.get("manifest_sha256"), str)
+            or DIGEST.fullmatch(value["manifest_sha256"]) is None
+            or type(startup_floor_kib) is not int
+            or not START_RESERVE_KIB <= startup_floor_kib <= MAX_RESOURCE_COUNTER
+            or not isinstance(container_id, str)
+            or re.fullmatch(r"[0-9a-f]{64}", container_id) is None
+            or value.get("container_revision") != TEMPORARY_RECOVERY_SOURCE_REVISION
+            or value.get("original_assistant_rollout_mode") != "invited"
+        ):
+            raise RehearsalError("host_response_invalid")
+        return dict(value)
+    recovery_keys = {*RECOVERY_PRODUCTION_BASELINE, "container_id", "container_revision"}
+    if (
+        not isinstance(value, dict)
+        or set(value) != recovery_keys
+        or any(value.get(key) != expected for key, expected in RECOVERY_PRODUCTION_BASELINE.items())
+        or type(value.get("schema_version")) is not int
+        or type(value.get("assistant_enabled")) is not bool
+        or value.get("assistant_enabled") is not False
+        or type(value.get("loopback_only")) is not bool
+        or value.get("loopback_only") is not True
+        or not isinstance(value.get("container_id"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", value["container_id"]) is None
+        or value.get("container_revision") != RECOVERY_PRODUCTION_BASELINE["revision"]
+    ):
+        raise RehearsalError("host_response_invalid")
+    return dict(value)
+
+
 def _validated_resource_evidence(response: dict[str, object]) -> dict[str, object]:
     """Project only complete, bounded host and cgroup resource observations."""
 
@@ -672,7 +894,7 @@ def _validated_resource_evidence(response: dict[str, object]) -> dict[str, objec
 
 
 def verify_pull_request(reviewed_head_sha: str) -> dict[str, object]:
-    """Require public PR #2 to remain open, based on main, at the reviewed SHA."""
+    """Require public PR #9 to remain open, based on main, at the reviewed SHA."""
 
     if REVISION.fullmatch(reviewed_head_sha) is None:
         raise RehearsalError("reviewed_pr_head_invalid")
@@ -854,7 +1076,7 @@ def _artifact_pair(
 
 
 def write_review_pins_from_current_pair() -> dict[str, str]:
-    """Verify the current clean PR #2 pair and persist its two public review pins."""
+    """Verify the current clean PR #9 pair and persist its two public review pins."""
 
     environment_pins = _environment_review_pins()
     metadata_pins = _read_review_metadata()
@@ -1103,8 +1325,11 @@ def _source_bundle() -> tuple[dict[str, bytes], dict[str, str]]:
             maximum=maximum,
             label="bootstrap_source",
         )
+        digest = hashlib.sha256(content).hexdigest()
+        if role == "host_helper" and digest != HOST_HELPER_SOURCE_SHA256:
+            raise RehearsalError("host_helper_source_digest_mismatch")
         assets[role] = content
-        hashes[role] = hashlib.sha256(content).hexdigest()
+        hashes[role] = digest
     return assets, hashes
 
 
@@ -1167,7 +1392,7 @@ def rehearse_pr_pair(
     recovery_overlay_sha256: str,
     pair_manifest_sha256: str,
 ) -> dict[str, object]:
-    """Run only the fixed PR #2 disposable pair rehearsal through the operator helper."""
+    """Run only the fixed PR #9 disposable pair rehearsal through the operator helper."""
 
     config = RehearsalConfig.from_env()
     if reviewed_head_sha != config.reviewed_head_sha:
@@ -1257,6 +1482,7 @@ def rehearse_pr_pair(
         or response.get("architecture") not in {"x86_64", "aarch64"}
     ):
         raise RehearsalError("host_response_invalid")
+    production_baseline = _validated_production_baseline(response.get("production_baseline"))
     resource_evidence = _validated_resource_evidence(response)
     return {
         "status": "pass",
@@ -1270,6 +1496,7 @@ def rehearse_pr_pair(
         "recovery_overlay_sha256": recovery_overlay_sha256,
         "pair_manifest_sha256": pair_manifest_sha256,
         "host_receipt": {
+            "production_baseline": production_baseline,
             **{
                 key: value
                 for key, value in response.items()
@@ -1282,6 +1509,7 @@ def rehearse_pr_pair(
                     "host_memavailable_before_kib",
                     "host_memavailable_after_kib",
                     "production_health_samples",
+                    "production_baseline",
                     "migration_backup_verified",
                     "post_migration_write_preserved",
                     "ownership_isolation_verified",
@@ -1410,6 +1638,39 @@ def _safe_fixed_command_failure(value: object) -> dict[str, object] | None:
     return {"command_category": category, "exit_status": exit_status}
 
 
+def _safe_memory_reserve_failure(value: object) -> dict[str, object] | None:
+    """Accept only a closed guard phase and its below-threshold numeric reading."""
+    if not isinstance(value, dict) or set(value) != {
+        "memory_reserve_phase",
+        "host_memavailable_kib",
+        "required_reserve_kib",
+    }:
+        return None
+    phase = value.get("memory_reserve_phase")
+    available = value.get("host_memavailable_kib")
+    floor = value.get("required_reserve_kib")
+    floors = {
+        "preflight": START_RESERVE_KIB,
+        "startup": START_RESERVE_KIB,
+        "monitor": RUN_RESERVE_KIB,
+        "final": RUN_RESERVE_KIB,
+    }
+    if (
+        not isinstance(phase, str)
+        or phase not in floors
+        or type(available) is not int
+        or type(floor) is not int
+        or floor != floors[phase]
+        or not 0 <= available < floor
+    ):
+        return None
+    return {
+        "memory_reserve_phase": phase,
+        "host_memavailable_kib": available,
+        "required_reserve_kib": floor,
+    }
+
+
 def _safe_host_failure_details(response: dict[str, object]) -> dict[str, object] | None:
     """Keep the existing native projection and add only typed command/receipt facts."""
     details: dict[str, object] = {}
@@ -1420,6 +1681,10 @@ def _safe_host_failure_details(response: dict[str, object]) -> dict[str, object]
     command_failure = _safe_fixed_command_failure(failure)
     if command_failure is not None:
         details["fixed_command_failure"] = command_failure
+    if response.get("code") == "host_memory_reserve_breached":
+        reserve_failure = _safe_memory_reserve_failure(failure)
+        if reserve_failure is not None:
+            details["memory_reserve_failure"] = reserve_failure
     receipt_id = response.get("receipt_id")
     if isinstance(receipt_id, str) and re.fullmatch(r"[0-9a-f]{32}", receipt_id) is not None:
         details["host_receipt_id"] = receipt_id
