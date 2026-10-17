@@ -205,49 +205,134 @@ for (const theme of ["light", "dark"]) {
   });
 }
 
+function createBoundedGate(maximumWaitMs = 10_000) {
+  let timer;
+  let releasePromise;
+  let released = false;
+  let autoReleased = false;
+  const promise = new Promise(resolve => {
+    releasePromise = () => {
+      if (released) return;
+      released = true;
+      if (timer) clearTimeout(timer);
+      resolve();
+    };
+  });
+  return {
+    wait: () => {
+      if (!released && !timer) {
+        timer = setTimeout(() => {
+          autoReleased = true;
+          releasePromise();
+        }, maximumWaitMs);
+      }
+      return promise;
+    },
+    release: releasePromise,
+    autoReleased: () => autoReleased,
+  };
+}
+
 for (const theme of ["light", "dark"]) {
   test(`research empty loading error and unavailable states in ${theme}`, async ({ page, browserDiagnostics }, testInfo) => {
-    browserDiagnostics.expectHttpFailures({ method: "GET", path: "/api/v1/theses", status: 503, count: 2 }, { method: "POST", path: "/api/v1/comparisons/preview", status: 422 });
-    await page.addInitScript(value => localStorage.setItem("stock-probs.theme", value), theme);
-    let mode = "loading";
-    let releaseLoading;
-    const loading = new Promise(resolve => { releaseLoading = resolve; });
+    browserDiagnostics.expectHttpFailures(
+      { method: "GET", path: "/api/v1/theses", status: 503, count: 2 },
+      { method: "GET", path: "/api/v1/comparisons", status: 503 },
+      { method: "POST", path: "/api/v1/comparisons/preview", status: 422 },
+    );
     const empty = { items: [], total: 0, page: 1, page_size: 20, has_next: false };
-    await page.route("**/api/v1/theses?*", async route => {
-      if (mode === "loading") await loading;
-      if (mode === "error" || mode === "unavailable") {
-        const message = mode === "error" ? "The thesis list could not be loaded." : "These research features are not enabled for this account.";
-        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "research_unavailable", message } }) });
-      } else await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(empty) });
-    });
-    await page.goto("/research/theses");
-    await expect(page.getByText("Loading your theses…", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "New thesis", exact: true })).toBeDisabled();
-    mode = "empty"; releaseLoading();
-    await expect(page.getByText("No theses yet. Record an idea to start your research history.", { exact: true })).toBeVisible();
-    mode = "error"; await page.reload();
-    await expect(page.locator("main").getByRole("alert")).toContainText("could not be loaded");
-    mode = "empty";
-    await page.getByRole("button", { name: "Retry loading", exact: true }).click();
-    await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
-    mode = "unavailable"; await page.reload();
-    await expect(page.locator("main").getByRole("alert")).toContainText("not enabled");
-    let axe = await new AxeBuilder({ page }).analyze();
-    expect(axe.violations).toEqual([]); expect(axe.incomplete).toEqual([]);
-    await prepareCapture(page);
-    await page.screenshot({ path: testInfo.outputPath(`theses-unavailable-${theme}.png`), fullPage: true });
-    await page.route("**/api/v1/comparisons?*", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(empty) }));
-    await page.route("**/api/v1/comparisons/preview", route => route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ error: { code: "insufficient_common_history", message: "These instruments have too few common daily sessions." } }) }));
-    await page.goto("/tools/compare");
-    await expect(page.getByText("No saved comparisons yet.", { exact: true })).toBeVisible();
-    await page.getByLabel("Instrument 1 symbol").fill("ACDC");
-    await page.getByLabel("Instrument 2 symbol").fill("SPY");
-    await page.getByRole("button", { name: "Compare instruments", exact: true }).click();
-    await expect(page.locator("main").getByRole("alert")).toContainText("too few common daily sessions");
-    await expect(page.getByRole("heading", { name: "Choose two to four instruments", exact: true })).toBeVisible();
-    axe = await new AxeBuilder({ page }).analyze();
-    expect(axe.violations).toEqual([]); expect(axe.incomplete).toEqual([]);
-    await prepareCapture(page);
-    await page.screenshot({ path: testInfo.outputPath(`compare-unavailable-${theme}.png`), fullPage: true });
+    const thesisLoading = createBoundedGate();
+    const comparisonLoading = createBoundedGate();
+    let thesisMode = "loading";
+    let comparisonMode = "loading";
+    try {
+      await page.addInitScript(value => localStorage.setItem("stock-probs.theme", value), theme);
+      await page.route("**/api/v1/theses?*", async route => {
+        if (thesisMode === "loading") await thesisLoading.wait();
+        if (thesisMode === "error" || thesisMode === "unavailable") {
+          const message = thesisMode === "error" ? "The thesis list could not be loaded." : "These research features are not enabled for this account.";
+          return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "research_unavailable", message } }) });
+        }
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(empty) });
+      });
+      await page.goto("/research/theses");
+      await expect(page.getByText("Loading your theses…", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "New thesis", exact: true })).toBeDisabled();
+      await prepareCapture(page);
+      await page.screenshot({ path: testInfo.outputPath(`theses-loading-${theme}.png`), fullPage: true });
+      await expect(page.getByText("Loading your theses…", { exact: true })).toBeVisible();
+      expect(thesisLoading.autoReleased()).toBe(false);
+      thesisMode = "empty";
+      thesisLoading.release();
+      const thesisList = page.getByRole("complementary", { name: "My theses" }).getByRole("listitem");
+      await expect(page.getByText("No theses yet. Record an idea to start your research history.", { exact: true })).toBeVisible();
+      await expect(thesisList).toHaveCount(0);
+      await prepareCapture(page);
+      await page.screenshot({ path: testInfo.outputPath(`theses-empty-${theme}.png`), fullPage: true });
+      thesisMode = "error";
+      await page.reload();
+      await expect(page.locator("main").getByRole("alert")).toContainText("The thesis list could not be loaded.");
+      await expect(page.getByRole("button", { name: "Retry loading", exact: true })).toBeVisible();
+      await prepareCapture(page);
+      await page.screenshot({ path: testInfo.outputPath(`theses-error-${theme}.png`), fullPage: true });
+      thesisMode = "empty";
+      await page.getByRole("button", { name: "Retry loading", exact: true }).click();
+      await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
+      await expect(page.getByText("No theses yet. Record an idea to start your research history.", { exact: true })).toBeVisible();
+      thesisMode = "unavailable";
+      await page.reload();
+      await expect(page.locator("main").getByRole("alert")).toContainText("These research features are not enabled for this account.");
+      await expect(page.getByRole("button", { name: "Retry loading", exact: true })).toBeVisible();
+      const thesisAxe = await new AxeBuilder({ page }).analyze();
+      expect(thesisAxe.violations).toEqual([]);
+      expect(thesisAxe.incomplete).toEqual([]);
+      await prepareCapture(page);
+      await page.screenshot({ path: testInfo.outputPath(`theses-unavailable-${theme}.png`), fullPage: true });
+
+      await page.route("**/api/v1/comparisons?*", async route => {
+        if (comparisonMode === "loading") await comparisonLoading.wait();
+        if (comparisonMode === "unavailable") {
+          return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "research_unavailable", message: "Saved comparisons are unavailable for this account." } }) });
+        }
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(empty) });
+      });
+      await page.route("**/api/v1/comparisons/preview", route => route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ error: { code: "insufficient_common_history", message: "These instruments have too few common daily sessions." } }) }));
+      await page.goto("/tools/compare");
+      await expect(page.getByText("Loading saved comparisons…", { exact: true })).toBeVisible();
+      await prepareCapture(page);
+      await page.screenshot({ path: testInfo.outputPath(`compare-loading-${theme}.png`), fullPage: true });
+      await expect(page.getByText("Loading saved comparisons…", { exact: true })).toBeVisible();
+      expect(comparisonLoading.autoReleased()).toBe(false);
+      comparisonMode = "empty";
+      comparisonLoading.release();
+      const savedComparisonList = page.getByRole("heading", { name: "Saved comparisons", exact: true }).locator("..").getByRole("listitem");
+      await expect(page.getByText("No saved comparisons yet.", { exact: true })).toBeVisible();
+      await expect(savedComparisonList).toHaveCount(0);
+      await prepareCapture(page);
+      await page.screenshot({ path: testInfo.outputPath(`compare-empty-${theme}.png`), fullPage: true });
+      comparisonMode = "unavailable";
+      await page.reload();
+      await expect(page.locator("main").getByRole("alert")).toContainText("Saved comparisons are unavailable for this account.");
+      await expect(page.getByRole("button", { name: "Retry saved comparisons", exact: true })).toBeVisible();
+      await prepareCapture(page);
+      await page.screenshot({ path: testInfo.outputPath(`compare-unavailable-${theme}.png`), fullPage: true });
+      comparisonMode = "empty";
+      await page.getByRole("button", { name: "Retry saved comparisons", exact: true }).click();
+      await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
+      await expect(page.getByText("No saved comparisons yet.", { exact: true })).toBeVisible();
+      await page.getByLabel("Instrument 1 symbol").fill("ACDC");
+      await page.getByLabel("Instrument 2 symbol").fill("SPY");
+      await page.getByRole("button", { name: "Compare instruments", exact: true }).click();
+      await expect(page.locator("main").getByRole("alert")).toContainText("These instruments have too few common daily sessions.");
+      await expect(page.getByRole("heading", { name: "Choose two to four instruments", exact: true })).toBeVisible();
+      const comparisonAxe = await new AxeBuilder({ page }).analyze();
+      expect(comparisonAxe.violations).toEqual([]);
+      expect(comparisonAxe.incomplete).toEqual([]);
+      await prepareCapture(page);
+      await page.screenshot({ path: testInfo.outputPath(`compare-error-${theme}.png`), fullPage: true });
+    } finally {
+      thesisLoading.release();
+      comparisonLoading.release();
+    }
   });
 }
