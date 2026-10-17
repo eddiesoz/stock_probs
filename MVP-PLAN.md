@@ -9302,3 +9302,95 @@ guide, owner canary, and broader release gates remain open. Keep all seven visib
 the assistant restoration in their approved sequence.
 The existing 1 GB host, retained backups, and US$15 monthly total cap including tax remain in force.
 No merge, new application deployment, resize, email, or release occurred in this checkpoint.
+
+
+### R-ASTRA-120 E851 H canonical and focused recovery checkpoint (2026-10-17)
+
+This checkpoint binds PR11 helper candidate `e3ec8c71bc1e94d0e4383c6a19f7673d8e463589` to the
+unchanged F6 application `f6a51d5c821e6b1ab7974a94f4ff795da10130bc`, image
+`sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196`, and H pair manifest
+SHA-256 `d8750dd9e01a6ea2f0f73c6cfc3a127edc9a99c66483a8457625e9673600f72f`. The helper and pair
+were installed and read back at `2026-10-17T04:07Z`; independent review passed the installed-file
+and evidence-closure scope. No application restart or new application deployment occurred. The
+post-install observation remained the existing `5ad2c3fddfce5a5a631b72cd832a53f24757c44a` image,
+schema 13, invited rollout, ready app and assistant, loopback-only. V10's native/recovery result
+remains bound to its earlier `f548fd94` helper and `0718ec4b` pair; it is not H-pair recovery or
+rollback evidence.
+
+The native-x86_64 `TASK_ID=R-ASTRA-120 ./scripts/local-gate.sh check` run on H **Failed** at exit 1.
+JUnit recorded 3,923 tests: 3,911 passed, 8 failed, 4 skipped, and 0 errors; 4 tests were deselected; there were 102 warnings, and coverage was 85.72%. Frontend checks passed 74 tests; the
+88 frontend inputs and 53 served/export pairs remained unchanged. Only documentation-completeness
+and frontend build/typecheck/test/stage completed. The Python check failed; backend security and
+repeated-backup phases were skipped after that failure. The eight failing selectors cover history
+repository, release transport, OCI archive verification, and schema-13 rehearsal. No single cause
+is established. The exact user-unit terminal was captured before retirement; independent integrity
+review passed the receipt/JUnit/terminal consistency, 381 source inputs, 88 frontend inputs, 53
+served/export pairs, and exact-unit retirement. This is a review Pass for those evidence bindings,
+not a canonical-gate Pass.
+
+The independent H release-control review found a P2 in failed code-only deployment compensation:
+the fallback restarted the previous image in disabled mode but accepted schema equality alone and
+did not persist a matching disabled current record. Its exact-pair host recovery/rollback and
+positive current-main checks were **Unavailable**. A local compensation/bootstrap candidate was
+prepared (patch SHA-256 `e0dd71f00dfaf0e2a65d1ab99e68f92d35fc2b66113b2b03aa010a4922321804`).
+
+The first selected 12-case run **Failed** with 6 passes and 6 failures: five rollback cases stopped
+at the synthetic `recovery_image_record_invalid` precondition, and the successor-provenance case
+hit `production_helper_manifest_mismatch` because its fixture matched an earlier fake-digest
+branch. The independent report attributes these to fixture preconditions/collision; they do not
+verify the intended compensation behavior or establish live deployment behavior. Ruff check also
+failed on `UP035` and `SIM105`; format and selected security Ruff passed. An earlier eight-selector
+reproduction passed two timing cases and failed six fixture cases, without establishing the
+historical cause.
+
+A second Luna selected 12-case run on the frozen H revision **Failed**: 11 passed and 1 failed in
+14.45 seconds, with no skips or errors. The remaining failure was the legacy schema-7 case; its
+synthetic historical record omitted three preservation metadata fields, with the first exposed
+assertion reporting missing `pair_manifest_sha256`. Ruff check and selected security Ruff **Passed**;
+Ruff format check **Failed**. This fixture result does not establish compensation behavior.
+
+After the two consecutive Luna failures, the parent performed the authorized minimal scoped Sol
+fixture finish: it restored the three historical fields and formatted only
+`tests/test_production_deploy_helper.py` (before SHA-256
+`32e378496672187ac0fbcd42dea2d5b20588d05d9fb7c68db38b577ebb0e1198`; after SHA-256
+`0d1afc78fc9b475efc834358f8856a3bc25123472bb06b804a36cf353dd5e357`). Runtime execution was
+**Skipped** in that fixture-only finish. Parent integrated review **Passed** its selected nine-path
+source/evidence scope with no P1/P2 findings; it explicitly did not establish runtime acceptance.
+
+The independent 21-case selected pytest scope **Passed**: JUnit recorded 21 tests, zero failures,
+zero errors and zero skips; pytest exited 0 in 17.444 seconds overall (12.448 seconds JUnit test
+time). Source/import bindings and owned child-process retirement also **Passed**. The selected
+runner receipt remains **Fail**, however, because its Ruff format check failed on
+`tests/test_release_image_helper.py` and `tests/test_schema13_rehearsal.py`; Ruff check and security
+Ruff passed. A later formatting-only supplement reformatted those two files and independently
+confirmed their parsed ASTs were unchanged. Its selected Ruff check, format check, security check
+and diff check **Passed**, but pytest was not rerun. Preserve the 21 behavioral passes at their
+original nine-override input hashes and retain the original aggregate **Fail**; the static
+supplement does not upgrade it.
+
+The separate diagnostic V2 static review **Passed** its declared static scope. The single desktop
+WebFetch runtime diagnostic remains **Pending**; its current execution state is **Skipped**, so no
+browser runtime result is inferred. There is no H2 commit, push, helper installation, or deployment.
+
+The focused F6 browser run **Failed** with 3 passed and 1 failed. The desktop WebFetch case timed
+out while the assistant model-consent request remained visibly at “Saving consent…”; the trace had
+no completed response. The test stopped before WebFetch preview/approval and cancellation assertions,
+so the cause remains **Unavailable/Unproven**. Independent QA passed the exact source/stage binding
+and owned cleanup only; it did not change the browser result. The full 200-case run was **Skipped**
+while focused4 acceptance was held. A separate read-only inspection of the exact F6 archive passed
+its bounded containerd-store identity check: Docker `.Id` matched the OCI root/image-manifest digest
+and differed from the config digest. No config or layer payload was read; this finding is limited
+to that archive and host store and does not repair the failed canonical OCI test.
+
+| Evidence | Exact artifact and observed result |
+| --- | --- |
+| H canonical and terminal | Canonical receipt `/var/tmp/r12r/f6-canonical-worktree-e2539637-80b4-456b-8ccc-4babc05b5939/checkout/test-results/local-gates/R-ASTRA-120-20261017T040147Z/evidence.json`, SHA-256 `d9559f1a950c5fe6c27571f3153b5b25eca925d2f4d73a55b5787108a376c9a0`; JUnit `/var/tmp/r12r/f6-canonical-worktree-e2539637-80b4-456b-8ccc-4babc05b5939/checkout/test-results/local-gates/R-ASTRA-120-20261017T040147Z/python/junit.xml`, SHA-256 `dbefcdbb67493eb6fd416e0b75f7c2871ac4d58f8c0fe48c320b93ded03ff1dd`; parent result/bindings SHA-256 `f521ccb6becb330cc2f204e5c1c2e6a57311969e9f59292b8138f420557d03ef`; pre-stop terminal SHA-256 `698aef97f6cd7913d42309674a7f375145ec805195fee94af4014f66df16ec58`; user unit `pr11-h-canonical-2f6ae877848f.service`, invocation `76d2645c4d8c465abadad55259819fbf`; independent integrity audit SHA-256 `5bf457162688fd85d04cb253fb41cd67d05c403c1e89583a56e55ac70cbe948d`; exact retirement SHA-256 `1e544f61a7a9f49a5f62fde9e2db46dbdeace8c91739c38b81ec60604fbc60e`. |
+| Compensation source review and first selected run | Initial independent P2 review `/var/tmp/r12r/h-release-control-static-review-20261017T0434Z/independent-review.json`, SHA-256 `fbb132d649836ab9e458d9addf47aa440ce4574632d40dc6b78a34a001805f20`; first failed 12-case receipt `/var/tmp/r12r/h-pr11-focused-20261017T0502Z-qa01/receipt.json`, SHA-256 `9cb7d6c63ee111456b3da1160e4f27a316cca541738322207337f9b5e3d144d`; first failure summary SHA-256 `ed0e629a035818833d06b534c4d0edbc708ea5d8070c1cf4dcf263b27b438cd7`. |
+| Second Luna, Sol fixture finish, and integrated review | Second-run receipt `/var/tmp/r12r/h-pr11-test-repair-run-43f9d813-87bf-4dab-bb31-df0be8d211ad/receipt.json`, SHA-256 `594680811a0b5376787b948e822cd2c86dfa87a4aba53cae237a52606108baf0`; 11/12 passed in 14.45 seconds; legacy schema-7 fixture omitted three fields; Ruff check/security **Pass**, format **Fail**. Sol fixture-finish receipt `/var/tmp/r12r/h-sol-fixture-finish-afc1f848-8963-44b5-b22d-a94b847251d2/receipt.json`, SHA-256 `d4c71a5ed44aee9039771318acec5d90efc2e77081f12b6b480215f46633e35f`; only `tests/test_production_deploy_helper.py` changed, and runtime execution was **Skipped**. Parent integrated review `/var/tmp/r12r/h-integrated-parent-review-47cdcebf-4af6-49cb-9271-ec71f6e8eae2/review.json`, SHA-256 `8341e663874282f5de89fbc44ba06aa5c85031359ba6ddcd2a50f2d0fafa0726`, **Pass** for selected nine-path source/evidence scope, no P1/P2; runtime held. |
+| Independent 21-case selected run and formatting supplement | Independent QA `/var/tmp/r12r/f6-pr11-focused21-ea06fddb-b560-4635-b745-0a3e10ed49f3/independent-qa-receipt.json`, SHA-256 `e9e931d62fb1e446d23d3e93d1fcf06a3eda72be6e9f160051e4fe318667f6de`; pytest **Pass** 21/21, 17.444 seconds overall, 12.448 JUnit seconds; Ruff check/security **Pass**, format **Fail**, so overall selected runner **Fail**. Runner receipt `/var/tmp/r12r/f6-pr11-focused21-ea06fddb-b560-4635-b745-0a3e10ed49f3/run/receipt.json`, SHA-256 `6e659e41da95045407207bcf84a9a7ca85d32796639692fe8fc13c25330b497c`; 381 inputs and nine overrides matched, child groups absent. Formatting supplement `/var/tmp/r12r/h-format-supplement-f8431559-c571-4f1b-a4c9-a212a8b05284/receipt.json`, SHA-256 `7eb1326faca353b44fdd2665c706b657c9548d0cb4cf914905d31566502de375`; two-file AST equality **Pass**, no pytest rerun. Independent static review `/var/tmp/r12r/f6-format-qa-2cd613d0-032e-42f1-8fc8-0fcad77f7918/independent-review.json`, SHA-256 `2efd5dd3bd0c4beac60f8014babde9a98a94cce194cb5e2a0673b567c23d4040`, and its runner receipt SHA-256 `2135edc5a637679f7504a66491b4e8fb05d5dcab640a7f3b905148909ae6db9f`, **Pass** for selected static checks only; original 21-case aggregate remains **Fail**. |
+| Diagnostic V2 browser runtime | Static review SHA-256 `3bc79c4cc73b9a03f1963b2e7413d9161cff98dbb7a4d5d80f3b43223be32bac` **Pass** for declared scope; single desktop WebFetch runtime is **Pending**, with execution currently **Skipped**. |
+| Focused browser | Independent focused4 report `/var/tmp/r12r/f6-focused4-independent-qa-20261017T0455Z-b439c8f3-64bd-4050-a73c-9baeafdfbc12/independent-qa-receipt.json`, SHA-256 `9bbd099c9011a58cdcb497c80bc928dce6757f760d8a2f8d44dbb56ed5bef265`; test result **Fail**, bindings/cleanup **Pass** for declared scope, full200 **Skipped**. |
+| Actual F6 archive identity | `/var/tmp/r12r/f6-actual-oci-identity-800cc0c0-40e2-49d4-b970-4f714a5ac89a/receipt.json`, SHA-256 `9d16ee92b7cf72818f71a8d785e4acfdf48beff22cfa8fe76cefb4d5763e8c31`; bounded identity check **Pass** only. |
+| H helper installation | H package receipt `/var/tmp/r12r/pr11-e3ec8c7-package-24c06b31-078a-4f93-a5f5-6f1d5cdd25b2/package-receipt.json`, SHA-256 `2b7a0c18444e6c77719d2207cbabf7c0beaf1d26d9799d403b5894dd994a5ed9`; independent package audit SHA-256 `db27259afe57a08062fac1e89f8aaa24b38fa505294bf8679b43d48155450bd7`. Actual install response `/var/tmp/r12r/pr11-e3ec8c7-install-4e5cdc3b-ad01-4ce2-b936-4b5f69ec2afb/actual-install-response.json`, SHA-256 `1eb64f5aafc3de179f8dfca95a3d8f806c5a88268ae2e55aef7849c8e829e04f`; installed-file readback SHA-256 `08d41890055f00c6ed3dc313c1764679fd8d4c8b889b3d5d38a7831f621e83ef`; independent install review SHA-256 `dd1cb515679c05c6ad5ec257b6f8936d8242c5db6047f7968ac894688e52ef31`; helper-install evidence closure SHA-256 `3d733239dd1f5cf9c4beb499543b31f82392045922f861fa3d71ef21b41d47c3`. |
+
+The current H compensation behavior and focused browser path remain unaccepted. A successful new canonical run, focused4 browser Pass followed by the full aggregate, current-H-pair host recovery and rollback, and the remaining release gates are still required. Preserve the recorded failures and scoped passes separately. The existing nominal 1 GB host, retained backups, and US$15 monthly total cap including tax are unchanged; this checkpoint records no new application deployment, merge, rollout, resize, or email.

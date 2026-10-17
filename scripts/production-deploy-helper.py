@@ -4851,10 +4851,20 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
                         force_recreate=True,
                     )
                     rollback_health = _health_check()
-                    rollback_succeeded = rollback_health.get("schema_version") == previous.get(
-                        "schema_version"
+                    previous_schema = previous.get("schema_version")
+                    if (
+                        type(previous_schema) is not int
+                        or rollback_health.get("schema_version") != previous_schema
+                    ):
+                        raise HostError("rollback_schema_incompatible")
+                    _require_assistant_ready(
+                        rollback_health, "disabled", schema_version=previous_schema
                     )
-                except HostError:
+                    disabled_previous = dict(previous)
+                    disabled_previous["assistant_rollout_mode"] = "disabled"
+                    _write_json(CURRENT_RECORD, disabled_previous)
+                    rollback_succeeded = True
+                except (HostError, OSError):
                     rollback_succeeded = False
                 if not rollback_succeeded:
                     with suppress(HostError):

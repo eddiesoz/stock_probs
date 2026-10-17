@@ -38,6 +38,14 @@ recovery check expects the normal shipped supervisor/image with the assistant wo
 no OpenCode process, not an absent executable or package. Link current statuses and findings to the
 [E21 evidence ledger](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint);
 the persisted applied state must keep every field needed to select the format-2 rollback path.
+
+For failed code-only deployment compensation, count the prior release as restored only after it
+passes readiness with its exact prior schema and assistant disabled, then persist a matching
+disabled current record before reporting success. If readiness, schema, assistant state, or record
+persistence fails, compensation remains unsuccessful and the flow stops for reviewed recovery.
+Bootstrap may use an installed helper as a successor base only when its complete installed
+manifest, helper digest, reviewed head, and pair identity match the exact verified tuple pinned for
+that transition. Source and fixture checks do not establish host behavior.
 The current helper received independent selected source/test review (162 passed, one opt-in Docker
 test skipped, 266 bindings stable); the later independent process-profile review passed 360 tests
 with one direct-Docker test deselected. The local original-image profile diagnostic and its bounded

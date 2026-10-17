@@ -134,8 +134,9 @@ def _oci_archive(
     index_descriptor_updates: dict[str, object] | None = None,
     additional_descriptors: list[dict[str, object]] | None = None,
     extra_members: tuple[tuple[str, bytes], ...] = (),
+    config_digest_override: str | None = None,
 ) -> tuple[bytes, str]:
-    config = b"opaque config bytes; verifier must not read"
+    config = b"opaque config bytes; verifier hashes without parsing"
     layer = b"opaque layer bytes; verifier must not read"
     config_digest = hashlib.sha256(config).hexdigest()
     layer_digest = hashlib.sha256(layer).hexdigest()
@@ -147,7 +148,7 @@ def _oci_archive(
             "mediaType": "application/vnd.oci.image.manifest.v1+json",
             "config": {
                 "mediaType": "application/vnd.oci.image.config.v1+json",
-                "digest": f"sha256:{config_digest}",
+                "digest": config_digest_override or f"sha256:{config_digest}",
                 "size": len(config),
             },
             "layers": [
@@ -200,7 +201,7 @@ def _oci_archive(
             else:
                 member.size = len(content)
                 archive.addfile(member, io.BytesIO(content))
-    return path.read_bytes(), f"sha256:{config_digest}"
+    return path.read_bytes(), f"sha256:{manifest_digest}"
 
 
 def _bound_legacy_archive(
@@ -762,7 +763,7 @@ def test_archive_verifier_finds_manifest_after_image_members(
     helper._assert_temporary_recovery_archive(manifest)
 
 
-def test_archive_verifier_accepts_closed_oci_graph_without_reading_config_or_layers(
+def test_archive_verifier_hashes_oci_config_without_reading_layers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     helper = _helper()
@@ -783,19 +784,18 @@ def test_archive_verifier_accepts_closed_oci_graph_without_reading_config_or_lay
             "sha256:"
         )
         image_manifest = json.load(archive.extractfile(oci_manifest_path))
-    forbidden_reads = {
-        image_manifest["config"]["digest"].replace("sha256:", "blobs/sha256/"),
-        *(
-            layer["digest"].replace("sha256:", "blobs/sha256/")
-            for layer in image_manifest["layers"]
-        ),
+    assert image_id == index["manifests"][0]["digest"]
+    assert image_id != image_manifest["config"]["digest"]
+    config_path = image_manifest["config"]["digest"].replace("sha256:", "blobs/sha256/")
+    layer_paths = {
+        layer["digest"].replace("sha256:", "blobs/sha256/") for layer in image_manifest["layers"]
     }
     extracted: list[str] = []
     real_extractfile = tarfile.TarFile.extractfile
 
     def guarded_extractfile(self, member):
         name = member if isinstance(member, str) else member.name
-        if name in forbidden_reads:
+        if name in layer_paths:
             raise AssertionError(f"archive verifier read protected payload {name}")
         extracted.append(name)
         return real_extractfile(self, member)
@@ -803,7 +803,42 @@ def test_archive_verifier_accepts_closed_oci_graph_without_reading_config_or_lay
     monkeypatch.setattr(tarfile.TarFile, "extractfile", guarded_extractfile)
     helper._assert_temporary_recovery_archive(manifest)
 
-    assert set(extracted) == {"manifest.json", "oci-layout", "index.json", oci_manifest_path}
+    assert set(extracted) == {
+        "manifest.json",
+        "oci-layout",
+        "index.json",
+        oci_manifest_path,
+        config_path,
+    }
+    assert not set(extracted) & layer_paths
+
+
+def test_archive_verifier_rejects_oci_config_digest_as_registered_root_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    archive_path = tmp_path / "oci-config-identity-is-not-root.tar.gz"
+    raw, root_image_id = _oci_archive(archive_path, _temporary_tag(helper))
+    archive_path.chmod(0o600)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
+    _pretend_file_is_root_owned(monkeypatch, helper)
+
+    with tarfile.open(archive_path, mode="r:gz") as archive:
+        index = json.load(archive.extractfile("index.json"))
+        root_digest = index["manifests"][0]["digest"]
+        image_manifest_path = "blobs/sha256/" + root_digest.removeprefix("sha256:")
+        image_manifest = json.load(archive.extractfile(image_manifest_path))
+    config_digest = image_manifest["config"]["digest"]
+    assert root_image_id == root_digest
+    assert config_digest != root_digest
+
+    manifest = _manifest(helper)
+    manifest["image"]["image_id"] = config_digest
+    manifest["image"]["archive_sha256"] = hashlib.sha256(raw).hexdigest()
+    manifest["image"]["archive_size"] = len(raw)
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_archive_invalid"):
+        helper._assert_temporary_recovery_archive(manifest)
 
 
 @pytest.mark.parametrize(
@@ -868,11 +903,16 @@ def test_archive_verifier_rejects_oci_config_digest_mismatch(
 ) -> None:
     helper = _helper()
     archive_path = tmp_path / "oci-wrong-config.tar.gz"
-    raw, _image_id = _oci_archive(archive_path, _temporary_tag(helper))
+    raw, image_id = _oci_archive(
+        archive_path,
+        _temporary_tag(helper),
+        config_digest_override="sha256:" + "0" * 64,
+    )
     archive_path.chmod(0o600)
     monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
     _pretend_file_is_root_owned(monkeypatch, helper)
     manifest = _manifest(helper)
+    manifest["image"]["image_id"] = image_id
     manifest["image"]["archive_sha256"] = hashlib.sha256(raw).hexdigest()
     manifest["image"]["archive_size"] = len(raw)
 

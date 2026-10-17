@@ -5,9 +5,11 @@ import hashlib
 import importlib.util
 import json
 import os
+import signal
 import stat
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -738,7 +740,9 @@ def test_command_fails_closed_when_killed_process_cannot_be_reaped(
     assert process.kill_calls == 1
 
 
-def test_command_timeout_kills_process_group_holding_its_output_pipes(tmp_path: Path) -> None:
+def test_command_timeout_kills_process_group_holding_its_output_pipes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     child_pid_path = tmp_path / "child.pid"
     child_code = (
         "import os,pathlib,sys,time; "
@@ -749,6 +753,33 @@ def test_command_timeout_kills_process_group_holding_its_output_pipes(tmp_path: 
         "subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2]]); "
         "print('child started',flush=True)"
     )
+
+    real_popen = transport.subprocess.Popen
+
+    def start_after_child_ready(*args: Any, **kwargs: Any) -> Any:
+        process = real_popen(*args, **kwargs)
+        readiness_deadline = time.monotonic() + 5
+        while time.monotonic() < readiness_deadline:
+            if child_pid_path.exists():
+                return process
+            # The parent is expected to exit after fork; only the descendant is the ready signal.
+            time.sleep(0.01)
+
+        try:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            try:
+                process.wait(timeout=5)
+            except transport.subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        finally:
+            for stream in (process.stdout, process.stderr):
+                if stream is not None and not stream.closed:
+                    stream.close()
+        pytest.fail("timed-out command fixture child did not become ready")
+
+    monkeypatch.setattr(transport.subprocess, "Popen", start_after_child_ready)
     with pytest.raises(transport.PublicationError, match="bounded_command_timeout"):
         transport._command(
             [sys.executable, "-c", parent_code, child_code, str(child_pid_path)],

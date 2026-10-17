@@ -1192,16 +1192,13 @@ def test_recovery_overlay_has_fixed_file_hash_manifest_and_migration_identity(
     base_context = tmp_path / "base"
     rehearsal._extract_base_archive(REPOSITORY_ROOT, base_context)
     base_provider = base_context / "src/stock_probs/provider.py"
-    assert hashlib.sha256(base_provider.read_bytes()).hexdigest() == (
-        rehearsal.SCHEMA12_PROVIDER_SHA256
-    )
+    base_provider_bytes = base_provider.read_bytes()
     overlay = rehearsal._apply_recovery_overlay(REPOSITORY_ROOT, base_context)
 
     expected_paths = {
         "Dockerfile",
         "src/stock_probs/api.py",
         "src/stock_probs/migrations/013_assistant_conversations.sql",
-        "src/stock_probs/provider.py",
         "src/stock_probs/recovery_supervisor.py",
         "src/stock_probs/repository.py",
     }
@@ -1223,13 +1220,8 @@ def test_recovery_overlay_has_fixed_file_hash_manifest_and_migration_identity(
     migration = base_context / "src/stock_probs/migrations/013_assistant_conversations.sql"
     assert hashlib.sha256(migration.read_bytes()).hexdigest() == rehearsal.MIGRATION_013_SHA256
     provider = base_context / "src/stock_probs/provider.py"
-    assert (
-        hashlib.sha256(provider.read_bytes()).hexdigest() == rehearsal.LAZY_PROVIDER_OVERLAY_SHA256
-    )
-    assert provider.read_bytes() == (REPOSITORY_ROOT / "src/stock_probs/provider.py").read_bytes()
-    assert overlay["files"]["src/stock_probs/provider.py"] == (
-        rehearsal.LAZY_PROVIDER_OVERLAY_SHA256
-    )
+    assert provider.read_bytes() == base_provider_bytes
+    assert "src/stock_probs/provider.py" not in overlay["files"]
     repository = (base_context / "src/stock_probs/repository.py").read_text(encoding="utf-8")
     assert "SCHEMA_VERSION = 13" in repository
     assert f'13: "{rehearsal.MIGRATION_013_SHA256}"' in repository
@@ -1262,39 +1254,63 @@ def test_recovery_overlay_fails_closed_when_pinned_base_anchor_changes(tmp_path:
         rehearsal._apply_recovery_overlay(REPOSITORY_ROOT, base_context)
 
 
-def test_recovery_overlay_fails_closed_when_pinned_base_provider_changes(tmp_path: Path) -> None:
+def test_recovery_overlay_does_not_rewrite_unlisted_base_provider(tmp_path: Path) -> None:
     base_context = tmp_path / "base"
     rehearsal._extract_base_archive(REPOSITORY_ROOT, base_context)
     provider = base_context / "src/stock_probs/provider.py"
-    provider.write_bytes(provider.read_bytes() + b"\n# unreviewed base change\n")
+    provider.write_bytes(provider.read_bytes() + b"\n# fixture base variation\n")
+    provider_bytes = provider.read_bytes()
 
-    with pytest.raises(rehearsal.RehearsalError, match="schema-12 provider source digest"):
-        rehearsal._apply_recovery_overlay(REPOSITORY_ROOT, base_context)
+    overlay = rehearsal._apply_recovery_overlay(REPOSITORY_ROOT, base_context)
+
+    assert "src/stock_probs/provider.py" not in overlay["files"]
+    assert provider.read_bytes() == provider_bytes
 
 
-def test_recovery_overlay_fails_closed_when_reviewed_provider_source_changes(
-    tmp_path: Path,
-) -> None:
+def test_recovery_overlay_ignores_unlisted_provider_source(tmp_path: Path) -> None:
     base_context = tmp_path / "base"
     rehearsal._extract_base_archive(REPOSITORY_ROOT, base_context)
+    base_provider = base_context / "src/stock_probs/provider.py"
+    base_provider_bytes = base_provider.read_bytes()
     source_root = tmp_path / "source"
     provider = source_root / "src/stock_probs/provider.py"
     migration = source_root / "src/stock_probs/migrations/013_assistant_conversations.sql"
     provider.parent.mkdir(parents=True)
     migration.parent.mkdir(parents=True)
-    provider.write_bytes((REPOSITORY_ROOT / "src/stock_probs/provider.py").read_bytes() + b"\n")
+    provider.write_bytes(b"unreviewed provider content is not an overlay input\n")
     migration.write_bytes(
         (
             REPOSITORY_ROOT / "src/stock_probs/migrations/013_assistant_conversations.sql"
         ).read_bytes()
     )
 
-    with pytest.raises(rehearsal.RehearsalError, match="lazy-provider overlay source digest"):
-        rehearsal._apply_recovery_overlay(source_root, base_context)
-    assert (
-        hashlib.sha256((base_context / "src/stock_probs/provider.py").read_bytes()).hexdigest()
-        == rehearsal.SCHEMA12_PROVIDER_SHA256
+    overlay = rehearsal._apply_recovery_overlay(source_root, base_context)
+
+    assert "src/stock_probs/provider.py" not in overlay["files"]
+    assert base_provider.read_bytes() == base_provider_bytes
+    assert overlay["files"]["src/stock_probs/migrations/013_assistant_conversations.sql"] == (
+        rehearsal.MIGRATION_013_SHA256
     )
+
+
+def test_recovery_overlay_rejects_changed_migration_source_digest(tmp_path: Path) -> None:
+    base_context = tmp_path / "base"
+    rehearsal._extract_base_archive(REPOSITORY_ROOT, base_context)
+    source_root = tmp_path / "source"
+    migration = source_root / "src/stock_probs/migrations/013_assistant_conversations.sql"
+    migration.parent.mkdir(parents=True)
+    migration.write_bytes(
+        (
+            REPOSITORY_ROOT / "src/stock_probs/migrations/013_assistant_conversations.sql"
+        ).read_bytes()
+        + b"\n-- unreviewed migration change\n"
+    )
+
+    with pytest.raises(
+        rehearsal.RehearsalError,
+        match="schema-13 migration checksum does not match the reviewed value",
+    ):
+        rehearsal._apply_recovery_overlay(source_root, base_context)
 
 
 def test_recovery_image_run_profile_is_private_and_identity_drop_is_fixed() -> None:
@@ -1467,9 +1483,13 @@ def test_fixed_pr_verifier_uses_only_the_approved_api_endpoint_and_head(
 
     monkeypatch.setattr(http.client, "HTTPSConnection", Connection)
     rehearsal._verify_reviewed_pr(repository, reviewed_sha)
-    assert requests[0][0:2] == ("GET", "/repos/eddiesoz/stock_probs/pulls/9")
+    assert requests[0][0:2] == ("GET", "/repos/eddiesoz/stock_probs/pulls/2")
 
     requests.clear()
+    with pytest.raises(rehearsal.RehearsalError, match="fixed reviewed PR verifier is unavailable"):
+        rehearsal._verify_reviewed_pr(repository, reviewed_sha, rehearsal.HOTFIX_PR_NUMBER)
+    assert requests == []
+
     rehearsal._verify_reviewed_pr(
         repository,
         reviewed_sha,
@@ -1878,7 +1898,7 @@ def test_pr_candidate_receipt_is_bound_and_failed_revalidation_retains_tag(
     receipt = rehearsal.build_pr_candidate(repository, reviewed_sha, receipt_path)
     assert calls == {"local": 3, "pr": 2}
     assert inspected_commands[0][0:3] == ["docker", "image", "inspect"]
-    assert receipt["pull_request"] == 9
+    assert receipt["pull_request"] == 2
     assert receipt["candidate_image"]["id"] == image_id
     assert receipt["reviewed_head"] == reviewed_sha
     assert receipt_path.stat().st_mode & 0o777 == 0o600

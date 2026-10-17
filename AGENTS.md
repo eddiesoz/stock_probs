@@ -508,6 +508,14 @@ before building. Every failed diagnostic must identify a concrete next repair or
 do not repeat an unchanged trial without new discriminating evidence. All required security,
 runtime, rollback, resource, accessibility, and release gates remain mandatory.
 
+A failed code-only deployment counts as compensated only after the prior release passes readiness
+with its exact prior schema and assistant disabled, and the matching disabled rollout record is
+written before success is reported. If either check or the record write fails, keep compensation
+unsuccessful and stop for reviewed recovery. Bootstrap may use an installed helper as a successor
+base only when its complete installed manifest, helper digest, reviewed head, and pair identity
+match the exact verified tuple pinned for that transition. Source and fixture checks alone do not
+establish host behavior.
+
 For focused diagnosis across tasks, reuse verified evidence while its bound inputs remain
 unchanged. Reproduce the specific failing path before expanding tests, then rerun affected checks
 after a fix. Repeat a full suite when a release gate or shared-contract impact requires it. This

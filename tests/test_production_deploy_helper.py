@@ -3139,31 +3139,132 @@ def test_rollback_rejects_loaded_image_before_schema_probe(
     assert schema_calls == []
 
 
-def test_failed_code_only_release_rolls_back_after_schema_probe(
+@pytest.mark.parametrize(
+    ("schema_version", "rollback_health", "fail_current_record", "rollback_succeeds"),
+    [
+        (7, {"status": "ready", "schema_version": 7}, False, True),
+        (
+            13,
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": False, "status": "disabled"},
+            },
+            False,
+            True,
+        ),
+        (
+            13,
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": True, "status": "ready"},
+            },
+            False,
+            False,
+        ),
+        (
+            13,
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": False, "status": "starting"},
+            },
+            False,
+            False,
+        ),
+        (
+            13,
+            {
+                "status": "ready",
+                "schema_version": 12,
+                "assistant": {"enabled": False, "status": "disabled"},
+            },
+            False,
+            False,
+        ),
+        (
+            13,
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": False, "status": "disabled"},
+            },
+            True,
+            False,
+        ),
+    ],
+    ids=[
+        "old-schema-without-assistant-projection",
+        "schema-13-invited-to-disabled",
+        "assistant-enabled-contradiction",
+        "assistant-not-ready-contradiction",
+        "schema-mismatch",
+        "disabled-record-write-failure",
+    ],
+)
+def test_failed_code_only_release_compensation_requires_disabled_persisted_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    schema_version: int,
+    rollback_health: dict[str, object],
+    fail_current_record: bool,
+    rollback_succeeds: bool,
 ) -> None:
     helper = _helper()
     old_revision = "a" * 40
     new_revision = "b" * 40
     old_digest = "1" * 64
     new_digest = "2" * 64
-    old_image = helper._image_ref(old_revision, old_digest)
-    new_image = helper._image_ref(new_revision, new_digest)
-    current = {
-        "revision": old_revision,
-        "image_ref": old_image,
-        "image_digest": old_digest,
-        "schema_version": 7,
-        "compose_digest": "c" * 64,
-    }
-    target = {
-        "revision": new_revision,
-        "image_ref": new_image,
-        "image_digest": new_digest,
-        "schema_version": 7,
-        "compose_digest": "c" * 64,
-    }
+    if schema_version == 13:
+        current = _schema13_release_record(helper)
+        current.update(
+            {
+                "revision": old_revision,
+                "image_ref": helper._local_image_ref(old_revision),
+                "image_digest": old_digest,
+                "archive_sha256": old_digest,
+                "schema_version": schema_version,
+                "assistant_rollout_mode": "invited",
+                "helper_source_revision": "f" * 40,
+            }
+        )
+        current["recovery_image_id"] = "sha256:" + "7" * 64
+        current["recovery_image_ref"] = helper._local_recovery_image_ref(old_revision)
+        target = _schema13_release_record(helper)
+        target.update(
+            {
+                "revision": new_revision,
+                "image_ref": helper._local_image_ref(new_revision),
+                "image_digest": new_digest,
+                "archive_sha256": new_digest,
+                "image_id": "sha256:" + "6" * 64,
+                "schema_version": schema_version,
+            }
+        )
+        target["recovery_image_ref"] = helper._local_recovery_image_ref(new_revision)
+        old_image = current["image_ref"]
+        new_image = target["image_ref"]
+    else:
+        old_image = helper._image_ref(old_revision, old_digest)
+        new_image = helper._image_ref(new_revision, new_digest)
+        current = {
+            "revision": old_revision,
+            "image_ref": old_image,
+            "image_digest": old_digest,
+            "schema_version": schema_version,
+            "compose_digest": "c" * 64,
+            "pair_manifest_sha256": "d" * 64,
+            "recovery_image_id": "sha256:" + "e" * 64,
+            "helper_source_revision": "f" * 40,
+        }
+        target = {
+            "revision": new_revision,
+            "image_ref": new_image,
+            "image_digest": new_digest,
+            "schema_version": schema_version,
+            "compose_digest": "c" * 64,
+        }
     events: list[tuple[str, object]] = []
     health_calls = 0
     writes: list[tuple[Path, dict[str, object]]] = []
@@ -3174,19 +3275,61 @@ def test_failed_code_only_release_rolls_back_after_schema_probe(
         health_calls += 1
         if health_calls == 2:
             raise helper.HostError("readiness_failed")
-        return {"status": "ready", "schema_version": 7}
+        if health_calls == 3:
+            return rollback_health
+        return {"status": "ready", "schema_version": schema_version}
 
     monkeypatch.setattr(
         helper,
         "_read_json",
         lambda path: current if path == helper.CURRENT_RECORD else None,
     )
-    monkeypatch.setattr(
-        helper,
-        "_image_digest",
-        lambda image: old_digest if image == old_image else new_digest,
-    )
-    monkeypatch.setattr(helper, "_image_schema", lambda _: 7)
+    recovery_entrypoint_checks: list[str] = []
+    if schema_version == 13:
+        loaded_images = {
+            current["image_ref"]: current,
+            current["recovery_image_ref"]: {
+                "image_id": current["recovery_image_id"],
+                "revision": old_revision,
+                "platform": current["recovery_platform"],
+            },
+            target["image_ref"]: target,
+            target["recovery_image_ref"]: {
+                "image_id": target["recovery_image_id"],
+                "revision": new_revision,
+                "platform": target["recovery_platform"],
+            },
+        }
+        monkeypatch.setattr(
+            helper,
+            "_image_id",
+            lambda image, **kwargs: loaded_images[image]["image_id"],
+        )
+        monkeypatch.setattr(
+            helper,
+            "_image_revision",
+            lambda image, **kwargs: loaded_images[image]["revision"],
+        )
+        monkeypatch.setattr(
+            helper,
+            "_image_platform",
+            lambda image, **kwargs: loaded_images[image]["platform"],
+        )
+
+        def has_recovery_entrypoint(image: str, **kwargs: object) -> bool:
+            recovery_entrypoint_checks.append(image)
+            # The first call validates the candidate's installed image. The later forward
+            # recovery attempt is unavailable at this mocked Docker boundary.
+            return len(recovery_entrypoint_checks) == 1
+
+        monkeypatch.setattr(helper, "_image_has_recovery_entrypoint", has_recovery_entrypoint)
+    else:
+        monkeypatch.setattr(
+            helper,
+            "_image_digest",
+            lambda image: old_digest if image == old_image else new_digest,
+        )
+    monkeypatch.setattr(helper, "_image_schema", lambda _: schema_version)
     monkeypatch.setattr(helper, "_health_check", health_check)
     monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _: compose_snapshot)
     monkeypatch.setattr(
@@ -3201,7 +3344,7 @@ def test_failed_code_only_release_rolls_back_after_schema_probe(
             "trigger": "pre_deploy",
             "name": "pre-deploy-safe.spbackup",
             "sha256": "3" * 64,
-            "schema_version": 7,
+            "schema_version": schema_version,
             "verified": True,
         },
     )
@@ -3214,33 +3357,58 @@ def test_failed_code_only_release_rolls_back_after_schema_probe(
     monkeypatch.setattr(
         helper,
         "_database_schema",
-        lambda image, **kwargs: events.append(("schema", image)) or 7,
+        lambda image, **kwargs: events.append(("schema", image)) or schema_version,
     )
     monkeypatch.setattr(
         helper,
         "_compose_up",
         lambda record, **kwargs: events.append(("up", kwargs)) or "",
     )
-    monkeypatch.setattr(
-        helper,
-        "_write_json",
-        lambda path, value, **_: writes.append((path, value)),
-    )
+
+    def write_json(path: Path, value: dict[str, Any], **_: object) -> None:
+        if path == helper.CURRENT_RECORD and fail_current_record:
+            raise helper.HostError("state_write_failed")
+        writes.append((path, dict(value)))
+
+    monkeypatch.setattr(helper, "_write_json", write_json)
     monkeypatch.setattr(helper, "_audit", lambda *arguments, **_: None)
 
     with pytest.raises(helper.HostError, match="readiness_failed"):
         helper._apply_release(target)
 
+    assert recovery_entrypoint_checks == (
+        [target["recovery_image_ref"], target["recovery_image_ref"]] if schema_version == 13 else []
+    )
+
     failed_writes = [value for path, value in writes if path == helper.FAILED_RECORD]
     assert len(failed_writes) == 1
     assert failed_writes[0]["rollback_attempted"] is True
-    assert failed_writes[0]["rollback_succeeded"] is True
+    assert failed_writes[0]["rollback_succeeded"] is rollback_succeeds
+    assert failed_writes[0]["failure_code"] == "readiness_failed"
+    current_writes = [value for path, value in writes if path == helper.CURRENT_RECORD]
+    if rollback_succeeds:
+        assert len(current_writes) == 1
+        assert current_writes[0] == {**current, "assistant_rollout_mode": "disabled"}
+        assert current_writes[0]["pair_manifest_sha256"] == current["pair_manifest_sha256"]
+        assert current_writes[0]["recovery_image_id"] == current["recovery_image_id"]
+        assert current_writes[0]["helper_source_revision"] == current["helper_source_revision"]
+    else:
+        assert current_writes == []
     schema_index = next(index for index, event in enumerate(events) if event[0] == "schema")
     up_indices = [index for index, event in enumerate(events) if event[0] == "up"]
     assert len(up_indices) == 2
     assert schema_index < up_indices[-1]
     assert events[up_indices[-1]][1]["compose_file"] == compose_snapshot
     assert events[up_indices[-1]][1]["force_recreate"] is True
+    rollback_runtime = [event for event in events if event[0] == "runtime"][-1]
+    assert rollback_runtime == ("runtime", (old_image, "disabled"))
+    if not rollback_succeeds:
+        stop_indices = [
+            index
+            for index, event in enumerate(events)
+            if event[0] == "compose" and event[1] == ("stop", "app")
+        ]
+        assert stop_indices[-1] > up_indices[-1]
 
 
 def test_first_deploy_refuses_an_unowned_existing_database(monkeypatch: pytest.MonkeyPatch) -> None:
