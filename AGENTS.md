@@ -5,6 +5,7 @@ corrected designs take precedence. Use phased, reviewed releases and retain owne
 explicit confirmation, schema-compatible data-preserving rollback and the existing 1 GB/US$15 cap.
 The research-workspace documentation-map entry binds new code and fixtures to the dashboard, API,
 design and threat-model guides; documentation presence does not establish acceptance.
+Keep `src/stock_probs/auth_write_guard.py` and `tests/_auth_body_barrier.py` explicitly mapped to both development guides under `interactive-write-session-authorization`; the mapping and scoped tests do not establish security or release acceptance.
 Keep historical schema-13 rehearsal defaults and receipts intact. A named-schema verifier check
 does not establish a new schema-compatible recovery image, actual-host rollback, or release gate.
 The R1 schema-14 recovery overlay is source preparation only: it materializes the pinned 5ad

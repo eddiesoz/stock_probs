@@ -12,6 +12,12 @@ signed-in tabs and authentication state. Never clear user cookies, browser stora
 reset a test. Do not use production local-login flows or claim an MFA bypass; exercise authentication
 through development fixtures and isolated contexts.
 
+## Interactive write-session authorization
+
+Middleware attaches a cached `AuthContext` before reading the bounded request body, so treat it as an initial snapshot rather than final write authority. Guarded stores revalidate the owner-bound session and current role, with any operation-specific step-up requirement, after starting `BEGIN IMMEDIATE` and on the same SQLite connection used for the mutation.
+
+Where the branch includes `tests/_auth_body_barrier.py`, use it to pause before the final body chunk after middleware authentication, change session state under test, and resume the request; assert the stale snapshot cannot commit a write. Branches without that helper still need equivalent deterministic race coverage. No-auth fixtures are explicit development/test setup, not a production fallback. Map coverage and helper presence do not establish test execution or release acceptance.
+
 ## Reviewing incomplete contrast results
 
 Keep raw axe violations and incomplete results in the evidence. An incomplete result needs
