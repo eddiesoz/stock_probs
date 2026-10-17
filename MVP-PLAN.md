@@ -425,6 +425,106 @@ integrate with the newer PR11/F6 helper stack before release validation. No sche
 host pair, research canary, deployment, merge, resize, or email is established. See [typed-rollout
 testing](docs/develop/testing.md#r1-typed-research-rollout-controller), [operations](docs/operations/getting-started.md#r1-typed-research-rollout), and [documentation coverage](docs/develop/documentation.md#local-deployment-mcp-boundary).
 
+### R-ASTRA-121 R1 schema-14 same-volume recovery lifecycle (2026-10-17)
+
+This is a separate R1 lifecycle tool, not a change to the historical schema-13 rehearsal. The 5ad
+schema-13 repository baseline lacks the R1 research API/routes, migration 014, route wiring, and
+research feature flags. The minimal recovery overlay can verify contiguous migration history 1–14
+and retained owner/content digests through `open_schema14_recovery_reader`; its result is schema/data
+retention only, not owner API or export acceptance.
+
+Builder task scope `r1_schema14_same_volume_recovery_source_and_focused_tests` reported 24 focused
+cases passed, zero failed/skipped, and Ruff check, format, and compile passed. Its packet is
+`/var/tmp/r12r/r1-schema14-lifecycle-impl-77617411-eba5-434e-8c8d-c6a44cb7e018/completion-evidence.json`, SHA-256
+`fe16dbc6eeabad0637c3785b717fff0364ceec198e7e0bf5f8be2a90583ece9f`; JUnit SHA-256
+`9a60414d95f16739902a31d784748d363e69665859fa96edda6721b184c3d886`. The bound sources are
+`research_recovery_overlay.py` `e80d49b9eabc64f467503fbe7a70fdad90e844ca96e255737760e756a79586aa`,
+`rehearse_schema14.py` `ab3439a4f574c1d4a072459c78571976a3af7b9e063cf8f843b32d0c4f5645a6`,
+`test_schema14_recovery_overlay.py` `8c77e345b0cc0b1f0556de59abbc4df30577bb76c8aea79f1096b4e989a7808f`, and
+`test_rehearse_schema14.py` `2c31e02513cbdf35f200947e458d1e1a2f19cdeb763b075e72c17c5e0588c0a4`. The fixed
+local runtime-helper pin is `scripts/rehearse_schema13.py` SHA-256
+`884da794190a5776a5414286c23a7ac654c9c6d45a05875f81f935ea50871b79`.
+
+Independent task `R1 schema14 same-volume recovery independent source and focused-test QA` passed
+its 24 focused synthetic cases (zero failures/skips), configured Ruff including security rules, and
+format checks. Overall source/recovery-boundary acceptance **Failed** on two P2 findings. First,
+matching API response hashes did not assert known fixture contents in thesis/comparison JSON and CSV
+exports or absence of the other owner's thesis ID in owner-scoped exports; stable but incorrect or
+leaking exports could pass. Second, the snapshot container uses a read-only root but mounts the data
+volume read-write; SQLite `mode=ro` and `PRAGMA query_only=ON` do not remove OS-level write access.
+The independent receipt is
+`/var/tmp/r12r/schema14-independent-NeHj6q/independent-review.json`, SHA-256
+`1f9c0b9adbc6efabab040cff9429f167c77aa62b1c1badcb9cefd57c26ac92c1`. Its focused tests used fake
+adapter/Docker seams; they did not execute Docker, an image, or a provider. Browser and canonical
+checks were skipped. No current Git HEAD query was performed; the receipt is bound to the supplied
+source SHA-256 pins. At this initial-review checkpoint, the scoped repair was in progress and no
+post-repair independent result had been recorded. The later results below preserve this initial
+failure and update only the repaired-source status.
+
+The intended same-volume sequence first starts the exact current candidate, establishes schema 14,
+and creates two owner fixtures through its authenticated API using a deterministic provider. It then
+starts the disabled minimal recovery image against that already-migrated volume to verify migration
+history and retained SQL rows, versions, and assistant-data digests without restore or down-migration;
+that image has no owner API. After stopping recovery, the exact full candidate re-enters on the same
+volume. Only the disposable pair may enable research, and the candidate API must verify fixture
+content in thesis/revision/comparison responses and JSON/CSV exports, plus absence of the other
+owner's IDs and cross-owner `404` behavior. A hash-only comparison is insufficient. Snapshot
+verification must use an OS-level read-only volume mount.
+
+The source exposes separate `--prepare-only` and `--execute` paths. The expected local profile is
+network-none, 768 MiB, one CPU, 128 PIDs, and a 60-second readiness bound, using the fixed local
+adapter. Actual execution remains **Unavailable/held** because the reviewed immutable merged-F6
+commit/image/repository-blob binding and its exact helper pin have not been supplied. No image build, Docker/runtime execution, deployment, or release acceptance occurred. This recovery-tooling work does
+not make the seven user-facing features available. The separate `schema14-recovery-lifecycle` map
+entry is parent-owned. No fresh map-coverage or self-test result is claimed for the documentation
+edits in this follow-up.
+
+#### R1 schema-14 lifecycle source follow-up (2026-10-17)
+
+The independent source recheck **Passed** for the two repaired findings only: 35 focused cases,
+configured Ruff, security Ruff, format, and whitespace checks passed at
+`2026-10-17T00:35:50Z`–`00:35:58Z`. The review verified fixture semantics and cross-owner exclusion
+across the seven successful thesis/comparison response bodies and exports, with eight changed or
+foreign-content mutations rejected. It also verified that the snapshot adapter constructs a
+read-only mount of the candidate volume and preserves the declared network, root, and resource
+arguments. These assertions use the generated verifier and fake runtime; they do not establish
+Docker mount behavior. Receipt
+`/var/tmp/r12r/schema14-recheck-kpjbgK/independent-recheck.json`, SHA-256
+`c45924734af7ab9e22c896c0acd6a9aa7a1c3479e14227dc064bc6fb13fd58be`. The receipt has no separate
+task ID; its scope is “Independent R1 schema-14 recovery source recheck of two repaired P2
+findings only.” The initial failure above remains preserved.
+
+A subsequent parent source inspection **Failed** on a separate readiness incompatibility. The pinned
+5ad recovery application returns only `status`, `schema_version`, `provider`, and `assistant`, while
+the generated verifier required a `research` field for both phases. The minimal overlay patches
+`repository.py` and adds migration 014; it does not change the 5ad API. The fake runtime had
+supplied the missing recovery field, masking the mismatch. The read-only source trace ran at
+`2026-10-17T00:43:42Z`–`00:43:43Z`; its synthetic verifier reproduction rejected the four-key response
+at `00:43:36Z`. Receipt
+`/var/tmp/r12r/schema14-readiness-gap-20261017T0044Z/readiness-compatibility-finding.json`, SHA-256
+`bcbd9ed6ccf395f2c07e4fb7a4510514f6a70376f0be95267b5e910d163c0e6d`. No Docker, application,
+image, host, provider, or network call occurred. This is a deterministic source mismatch, not an
+observed container failure; the finding receipt does not record a separate task ID.
+
+The phase-specific readiness repair then received an independent scoped **Pass**. The generated
+probe now accepts exactly the four-key disabled recovery contract and keeps the five-key invited
+Research contract strict for the full candidate. Independent QA passed the 39-case runner/overlay
+suite and a separate three-case generated-verifier regression run; configured Ruff, security Ruff,
+and format checks passed. The recorded local test starts were `2026-10-16T20:50:22.052121-04:00`
+for the 39-case suite (13.476 seconds) and `2026-10-16T20:50:15.301111-04:00` for the generated
+probe cases (0.148 seconds). Final runner and test pins are `rehearse_schema14.py`
+`03c92d1b9dd633165e1b20418e2df6ff942f0561f1c112e343d196cdf27ec18a`,
+`test_rehearse_schema14.py`
+`c7f1f45fdfdc31add9a0ba69ad0e4ba119041826d62b647b3c60bb4029ac9ff5`, the unchanged overlay
+`e80d49b9eabc64f467503fbe7a70fdad90e844ca96e255737760e756a79586aa`, and its test
+`8c77e345b0cc0b1f0556de59abbc4df30577bb76c8aea79f1096b4e989a7808f`. Receipt
+`/var/tmp/r12r/r1-readiness-independent-qa-20261017T0055Z-3ca68b5f/independent-review.json`,
+SHA-256 `c3b63321421859e078fdfaee937f20061251225b6cbf131ea497a4e6333541c7`. The receipt has no
+separate task ID. Its tests exercise generated verifier code and fake adapters; they do not prove
+actual Docker behavior or a live recovery run. The actual runtime gate remains **Unavailable/held**
+because the immutable merged-F6 candidate binding is missing. Parent integrated source and
+documentation review **Passed** for this synthetic tooling scope; publication remains pending. No image, host pair, deployment, rollout, or release acceptance is claimed.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.

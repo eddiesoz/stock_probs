@@ -62,6 +62,30 @@ or inspect a recovery image or accept a schema-13→14 host pair. Keep same-volu
 post-migration record retention, and actual host/release checks pending. See the
 [R1 overlay ledger](../../MVP-PLAN.md#r-astra-121-r1-schema-14-source-only-recovery-overlay-checkpoint-2026-10-16).
 
+### R1 schema-14 same-volume recovery lifecycle
+
+The lifecycle runner is separate from the source-only recovery overlay and the historical schema-13
+rehearsal. The minimal 5ad-based recovery image has no R1 owner API; it verifies migration history
+and retained data only. The intended disposable-pair sequence first starts the exact candidate,
+establishes schema 14, and creates two owner fixtures through its authenticated API with a
+deterministic provider. It then starts the disabled recovery image against that already-migrated
+volume and checks retained SQL rows, migrations, and assistant data without restore or down-migration.
+After recovery stops, the exact candidate re-enters on the same volume to verify thesis, revision,
+comparison, JSON/CSV, and owner-isolation results. Matching response hashes alone do not prove
+content or isolation. Snapshot reads need an OS-level read-only volume mount; SQLite `mode=ro` and
+`query_only` do not constrain a writable mount.
+
+The initial independent review **Failed** the two P2 export/isolation and read-only-volume checks.
+A 35-case source recheck later **Passed** for those repairs. A separate review found that the
+generated recovery probe expected a `research` field absent from the pinned 5ad readiness response;
+the phase-specific repair then passed 39 runner cases and a separate three-case generated-probe
+selection with configured Ruff, security Ruff, and format checks. These tests use generated code and
+fake adapter/runtime seams; the captured read-only mount arguments do not verify Docker behavior.
+Image, Docker, provider, browser, and canonical checks were not run. Actual `--execute` remains
+**Unavailable/held** until the exact reviewed immutable merged-F6 binding and helper pin exist. See
+the [R1 lifecycle evidence](../../MVP-PLAN.md#r-astra-121-r1-schema-14-same-volume-recovery-lifecycle-2026-10-17)
+for receipts, source pins, and preserved failures.
+
 ### R1 research readiness contract
 
 The readiness tests cover the closed OpenAPI schema, global mapping to `disabled`, `owner_canary`,

@@ -308,6 +308,90 @@ def test_schema13_upgrade_and_recovery_reader_preserve_postmigration_owner_data(
             )
 
 
+def test_recovery_snapshot_is_canonical_and_includes_assistant_rows(tmp_path: Path) -> None:
+    """The bounded read-only fingerprint binds migrations and retained assistant content."""
+
+    database_path = _schema14_database(tmp_path)
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute(
+            """INSERT INTO assistant_conversations
+            (id, user_id, title, context_json, context_version, revision, created_at, updated_at)
+            VALUES (?, 1, ?, '{}', ?, 1, ?, ?)""",
+            (
+                "77777777-7777-4777-8777-777777777777",
+                "Retention fixture",
+                "a" * 64,
+                "2026-10-16T12:00:00+00:00",
+                "2026-10-16T12:00:00+00:00",
+            ),
+        )
+        connection.execute(
+            """INSERT INTO assistant_turns
+            (id, conversation_id, user_id, status, model_id, policy_version, context_json,
+             context_version, created_at, started_at, completed_at)
+            VALUES (?, ?, 1, 'completed', 'fixture', 'v1', '{}', ?, ?, ?, ?)""",
+            (
+                "88888888-8888-4888-8888-888888888888",
+                "77777777-7777-4777-8777-777777777777",
+                "a" * 64,
+                "2026-10-16T12:00:00+00:00",
+                "2026-10-16T12:00:01+00:00",
+                "2026-10-16T12:00:02+00:00",
+            ),
+        )
+        connection.execute(
+            """INSERT INTO assistant_messages
+            (id, conversation_id, turn_id, user_id, sequence, role, content, created_at)
+            VALUES (?, ?, ?, 1, 1, 'assistant', ?, ?)""",
+            (
+                "99999999-9999-4999-8999-999999999999",
+                "77777777-7777-4777-8777-777777777777",
+                "88888888-8888-4888-8888-888888888888",
+                "synthetic retained assistant content",
+                "2026-10-16T12:00:02+00:00",
+            ),
+        )
+    with overlay.open_schema14_recovery_reader(database_path) as reader:
+        first = overlay.recovery_database_snapshot(reader)
+    with overlay.open_schema14_recovery_reader(database_path) as reader:
+        assert overlay.recovery_database_snapshot(reader) == first
+    assert first["schema_versions"] == list(range(1, 15))
+    tables = first["tables"]
+    assert isinstance(tables, dict)
+    assert tables["assistant_conversations"]["rows"] == 1
+    assert tables["assistant_messages"]["rows"] == 1
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO assistant_messages
+            (id, conversation_id, turn_id, user_id, sequence, role, content, created_at)
+            VALUES (?, ?, ?, 1, 2, 'assistant', ?, ?)""",
+            (
+                "abababab-abab-4bab-8bab-abababababab",
+                "77777777-7777-4777-8777-777777777777",
+                "88888888-8888-4888-8888-888888888888",
+                "second retained assistant row",
+                "2026-10-16T12:00:03+00:00",
+            ),
+        )
+    with overlay.open_schema14_recovery_reader(database_path) as reader:
+        changed = overlay.recovery_database_snapshot(reader)
+    assert changed["tables"]["schema_migrations"]["sha256"] == tables["schema_migrations"]["sha256"]
+    assert (
+        changed["tables"]["assistant_messages"]["sha256"] != tables["assistant_messages"]["sha256"]
+    )
+    assert changed["sha256"] != first["sha256"]
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("CREATE TABLE unexpected_content (value TEXT NOT NULL)")
+    with (
+        overlay.open_schema14_recovery_reader(database_path) as reader,
+        pytest.raises(overlay.RecoveryOverlayError, match="recovery_database_tables_unexpected"),
+    ):
+        overlay.recovery_database_snapshot(reader)
+
+
 def test_malformed_manifest_pin_and_unreviewed_baseline_fail_closed() -> None:
     """Neither an altered manifest pin nor changed baseline bytes can generate an overlay."""
 

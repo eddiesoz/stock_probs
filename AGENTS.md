@@ -18,6 +18,21 @@ rehearse same-volume schema-14 recovery without restore or down-migration and ve
 records remain. Never restore a schema-13 backup over schema-14 user data. See the R1 overlay
 checkpoint in `MVP-PLAN.md` and its scoped testing notes.
 
+
+Keep the schema-14 same-volume lifecycle separate from the historical schema-13 rehearsal and
+source-only overlay checks. The 5ad-based recovery image verifies schema/data retention only; it
+has no owner-scoped R1 API. The full candidate must re-enter on the same volume for exact JSON/CSV
+content and cross-owner isolation checks. Hash equality alone does not establish export semantics,
+and SQLite `mode=ro`/`query_only` does not protect a Docker volume mounted read-write. The initial
+independent R1 lifecycle review **Failed** these two source-contract checks. A later 35-case source
+recheck **Passed** for the repaired export and mount checks. A separate review then **Failed** on a
+readiness-shape mismatch between the four-key 5ad recovery response and the generated verifier; the
+phase-specific repair passed 39 runner tests and three generated-probe cases in synthetic checks.
+Fake execution and captured mount arguments do not establish actual Docker behavior. Hold `--execute`
+until the exact reviewed immutable merged-F6 commit/image/repository-blob binding and helper pin are
+available. No image, Docker/runtime, or release acceptance is established; see the R1 lifecycle
+ledger in `MVP-PLAN.md`.
+
 R1's typed `set_research_rollout(mode)` control is separate from assistant rollout and accepts only
 `disabled`, `owner_canary`, or `invited`, in that order (with disable always allowed). Require the
 exact active GitHub release revision/archive/image identity, `linux/amd64` platform, schema 14 or

@@ -659,6 +659,21 @@ for its original schema, but must never be restored over schema-14 user data. Th
 and release checks remain pending; see the
 [R1 evidence ledger](../../MVP-PLAN.md#r-astra-121-r1-schema-14-source-only-recovery-overlay-checkpoint-2026-10-16).
 
+
+The separate schema-14 same-volume lifecycle is still a candidate, not an operator-approved run. The
+minimal recovery image checks migration 1–14 and retained row/content digests only; it does not serve
+R1 owner APIs. The intended disposable flow creates fixtures through the full candidate API, checks
+retention on the disabled recovery image without restore or down-migration, then stops it and re-enters
+the exact candidate on the same volume for semantic JSON/CSV and owner-isolation checks. Only that
+throwaway pair may enable Research. The first independent source review failed export semantic and
+volume-read-only checks; later focused source reviews passed those repairs and a separate readiness
+compatibility fix. The 5ad recovery API has no `research` readiness field, so the recovery probe must
+accept its four-key disabled response while keeping the full candidate's five-key Research contract
+strict. These checks use synthetic responses and fake adapters; they do not verify actual Docker
+mounts or a live recovery pair. Hold `--execute` until the immutable reviewed merged-F6
+commit/image/repository-blob binding and helper pin are supplied. Runtime and release checks remain
+pending. See the [lifecycle evidence](../../MVP-PLAN.md#r-astra-121-r1-schema-14-same-volume-recovery-lifecycle-2026-10-17).
+
 #### R1 typed research rollout
 
 The `set_research_rollout(mode)` MCP operation changes research availability independently of

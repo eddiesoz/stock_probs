@@ -22,6 +22,15 @@ in `MVP-PLAN.md`. Do not describe a selected test as image or production rollbac
 The `research-recovery-overlay` documentation-map rule binds its generator, manifest, and focused
 test to this guide, [developer testing](testing.md#r1-schema-14-recovery-overlay-scope), and the
 [operator procedure](../operations/getting-started.md#r1-schema-14-source-only-recovery-overlay).
+Keep `scripts/rehearse_schema14.py` and `tests/test_rehearse_schema14.py` in a separate
+`schema14-recovery-lifecycle` map topic, linked to this guide, the lifecycle testing notes, and the
+same-volume operator procedure. Do not merge that lifecycle with the schema-13 rehearsal contract.
+The initial source review failed export-content/isolation and read-only-volume checks; a later
+35-case source recheck passed for those repairs. A separate four-key recovery-readiness mismatch was
+then found and repaired in focused synthetic checks. These results do not establish actual Docker
+behavior or a host run; execution remains held for the immutable merged-F6 binding. Preserve the
+failures and exact scoped receipts in the
+[R1 lifecycle ledger](../../MVP-PLAN.md#r-astra-121-r1-schema-14-same-volume-recovery-lifecycle-2026-10-17).
 Describe this R1 overlay only as source preparation: its manifest controls are intended launch
 metadata, and its compatibility reader does not prove effective runtime flags, exact SQL
 constraints, or persisted migration digests. Link to the

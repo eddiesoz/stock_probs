@@ -24,6 +24,8 @@ OVERLAY_REPOSITORY_SHA256 = "10f5553d5d1e46e3d62899d79501d59ad08cbfaf1a2ac175546
 OVERLAY_SHA256 = "8305782c24de6ad539b15e3dda4bfd3982010052013cac9b2d29086d31019520"
 GIT_EXECUTABLE = "/usr/bin/git"
 SCHEMA_VERSION = 14
+RECOVERY_SNAPSHOT_MAX_ROWS_PER_TABLE = 250_000
+RECOVERY_SNAPSHOT_MAX_CANONICAL_BYTES = 128 * 1024 * 1024
 RESEARCH_TABLES = frozenset(
     {"research_theses", "research_thesis_revisions", "research_comparisons"}
 )
@@ -441,6 +443,112 @@ def open_schema14_recovery_reader(database_path: Path) -> sqlite3.Connection:
         if connection is not None:
             connection.close()
         raise RecoveryOverlayError("recovery_database_invalid") from exc
+
+
+def recovery_database_snapshot(connection: sqlite3.Connection) -> dict[str, object]:
+    """Fingerprint retained application rows through the already-validated read-only handle.
+
+    The snapshot reports counts and digests only. It streams every fixed recovery table, including
+    assistant history, owner mappings, research rows, and migration timestamps, without returning
+    row contents to the caller.
+    """
+
+    if connection.execute("PRAGMA query_only").fetchone()[0] != 1:
+        raise RecoveryOverlayError("recovery_reader_not_read_only")
+    versions = [
+        int(row[0])
+        for row in connection.execute("SELECT version FROM schema_migrations ORDER BY version")
+    ]
+    expected_versions = list(range(1, SCHEMA_VERSION + 1))
+    if versions != expected_versions:
+        raise RecoveryOverlayError("recovery_database_schema_invalid")
+    actual_tables = {
+        name
+        for name in (
+            str(row[0])
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        )
+        if not name.startswith("sqlite_")
+    }
+    if actual_tables != RECOVERY_REQUIRED_TABLES:
+        raise RecoveryOverlayError("recovery_database_tables_unexpected")
+
+    total_canonical_bytes = 0
+    table_summaries: dict[str, dict[str, object]] = {}
+    for table in sorted(RECOVERY_REQUIRED_TABLES):
+        quoted_table = '"' + table.replace('"', '""') + '"'
+        columns = [str(row[1]) for row in connection.execute(f"PRAGMA table_info({quoted_table})")]
+        if (
+            not columns
+            or len(columns) > 128
+            or any(not name or len(name) > 128 for name in columns)
+        ):
+            raise RecoveryOverlayError("recovery_database_columns_invalid")
+        quoted_columns = ['"' + name.replace('"', '""') + '"' for name in columns]
+        order_by = ", ".join(quoted_columns)
+        # The table is allowlisted and schema-derived identifiers are quoted above.
+        cursor = connection.execute(
+            f"SELECT {order_by} FROM {quoted_table} ORDER BY {order_by}"  # noqa: S608 - fixed identifiers
+        )
+        row_digest = hashlib.sha256()
+        column_bytes = json.dumps(
+            columns, ensure_ascii=True, separators=(",", ":"), allow_nan=False
+        ).encode("ascii")
+        row_digest.update(len(column_bytes).to_bytes(4, "big"))
+        row_digest.update(column_bytes)
+        row_count = 0
+        for row in cursor:
+            row_values: list[list[object]] = []
+            for value in row:
+                if value is None:
+                    row_values.append(["null", None])
+                elif type(value) is int:
+                    row_values.append(["integer", value])
+                elif type(value) is float:
+                    row_values.append(["real", value.hex()])
+                elif isinstance(value, str):
+                    row_values.append(["text", value])
+                elif isinstance(value, bytes):
+                    row_values.append(["blob", value.hex()])
+                else:
+                    raise RecoveryOverlayError("recovery_database_value_invalid")
+            try:
+                encoded_row = json.dumps(
+                    row_values,
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode("ascii")
+            except (TypeError, ValueError) as exc:
+                raise RecoveryOverlayError("recovery_database_value_invalid") from exc
+            row_count += 1
+            total_canonical_bytes += len(encoded_row)
+            if (
+                row_count > RECOVERY_SNAPSHOT_MAX_ROWS_PER_TABLE
+                or len(encoded_row) > 4 * 1024 * 1024
+                or total_canonical_bytes > RECOVERY_SNAPSHOT_MAX_CANONICAL_BYTES
+            ):
+                raise RecoveryOverlayError("recovery_snapshot_limit")
+            row_digest.update(len(encoded_row).to_bytes(8, "big"))
+            row_digest.update(encoded_row)
+        table_summaries[table] = {
+            "columns_sha256": hashlib.sha256(column_bytes).hexdigest(),
+            "rows": row_count,
+            "sha256": row_digest.hexdigest(),
+        }
+
+    canonical_summary = {
+        "schema_versions": versions,
+        "tables": table_summaries,
+    }
+    summary_bytes = json.dumps(
+        canonical_summary, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("ascii")
+    return {
+        "schema_version": SCHEMA_VERSION,
+        **canonical_summary,
+        "sha256": hashlib.sha256(summary_bytes).hexdigest(),
+    }
 
 
 def main() -> int:

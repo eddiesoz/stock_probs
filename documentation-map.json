@@ -119,6 +119,18 @@
       ]
     },
     {
+      "name": "schema14-recovery-lifecycle",
+      "match": [
+        "scripts/rehearse_schema14.py",
+        "tests/test_rehearse_schema14.py"
+      ],
+      "docs": [
+        "docs/develop/documentation.md",
+        "docs/develop/testing.md",
+        "docs/operations/getting-started.md"
+      ]
+    },
+    {
       "name": "research-workspaces",
       "match": [
         "src/stock_probs/research.py",
@@ -169,6 +181,7 @@
         "scripts/local-compose.sh",
         "scripts/publish-production-image.sh",
         "scripts/rehearse_schema13.py",
+        "scripts/rehearse_schema14.py",
         "scripts/research_recovery_overlay.py",
         "tools/research-recovery/manifest.json",
         "tests/test_schema14_recovery_overlay.py",
@@ -178,6 +191,7 @@
         "tests/test_bounded_docker_build.py",
         "tests/test_production_deploy_helper.py",
         "tests/test_schema13_rehearsal.py",
+        "tests/test_rehearse_schema14.py",
         "tests/test_setup_builder_inventory.py",
         "tests/test_setup_builder_space_guard.py"
       ],
