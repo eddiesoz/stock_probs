@@ -71,7 +71,7 @@ acceptance remain open. Earlier route-only checks did not close this race.
 | `POST` | `/api/v1/notification-addresses/select` | Select an explicitly verified address for notifications. |
 | `POST` | `/api/v1/notification-address-verifications/confirm` | Confirm a verification challenge. |
 | `GET` | `/api/v1/admin/monitoring/control` | Read the persisted administrator monitoring switch. |
-| `PUT` | `/api/v1/admin/monitoring/control` | Change the persisted switch after post-body session revalidation, CSRF, administrator-role, recent-TOTP, and expected-revision checks. Selected local ASGI barrier tests pass; revalidation and the store write are not atomic. |
+| `PUT` | `/api/v1/admin/monitoring/control` | Change the persisted switch after post-body session revalidation, CSRF, administrator-role, recent-TOTP, and expected-revision checks. Selected local ASGI barrier tests pass; the transaction rechecks the current session, administrator role and recent step-up before the store write. |
 | `GET` / `POST` | `/api/v1/alerts` | List bounded owner rules or create one with `Idempotency-Key`; the first valid quote establishes a baseline and cannot trigger. |
 | `GET` / `PATCH` | `/api/v1/alerts/{alert_id}` | Read or revision-check an owned rule. Editing a live rule requests a fresh baseline. |
 | `DELETE` | `/api/v1/alerts/{alert_id}` | Currently returns `503 MONITORING_DELETE_UNAVAILABLE` to preserve immutable history. |
@@ -87,8 +87,10 @@ When the persisted switch transitions from enabled to disabled, the candidate cl
 for `price` and `outcome` jobs. A late completion carrying either invalidated lease is rejected.
 After monitoring is re-enabled, job processing must use a fresh claim before it can record an
 observation; disabling and re-enabling does not revive or accept the earlier work. These are
-source-contract semantics, not scheduler-runtime or release acceptance. The selected route-specific
-authorization checks do not establish an atomic boundary between final authorization and persistence.
+source-contract semantics, not scheduler-runtime or release acceptance. The historical route-only
+authorization checks did not establish an atomic authorization/write boundary. The current candidate
+adds the transaction-bound guard described above; selected local QA does not establish full
+security or release acceptance.
 
 Alert create requires an `Idempotency-Key` UUID. Alert edits, pause/resume actions, notification
 read-state updates, preference changes, and manual outcome reviews use expected revisions; stale
