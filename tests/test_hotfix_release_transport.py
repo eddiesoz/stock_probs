@@ -963,6 +963,42 @@ def test_v3_manifest_rejects_missing_or_malformed_explicit_identity(
         )
 
 
+def _hotfix_v3_delta_text(mutation: str | None = None) -> tuple[str, str]:
+    """Build deterministic raw-diff and numstat fixtures from the pinned PR #9 map."""
+
+    raw_records: list[str] = []
+    stat_records: list[str] = []
+    target = "tests/test_assistant_final_boundary_coverage.py"
+    for (
+        filename,
+        base_blob,
+        head_blob,
+        additions,
+        deletions,
+    ) in transport.HOTFIX_V3_REVIEWED_PR9_FILE_DELTA:
+        old_mode, new_mode = "100644", "100644"
+        if mutation == "base_mode" and filename == target:
+            old_mode = "120000"
+        elif mutation == "head_mode" and filename == target:
+            new_mode = "100755"
+        elif mutation == "same_blob" and filename == target:
+            head_blob = base_blob
+        elif mutation == "wrong_blob" and filename == target:
+            head_blob = "3" * 40
+        raw_records.append(f":{old_mode} {new_mode} {base_blob} {head_blob} M\0{filename}\0")
+        if mutation == "wrong_numstat" and filename == target:
+            additions += 1
+        stat_records.append(f"{additions}\t{deletions}\t{filename}\0")
+    raw_diff = "".join(raw_records)
+    numstat = "".join(stat_records)
+    if mutation == "extra_file":
+        raw_diff += f":100644 100644 {'1' * 40} {'2' * 40} M\0unexpected.py\0"
+        numstat += "1\t0\tunexpected.py\0"
+    elif mutation == "truncated_raw":
+        raw_diff = raw_diff[:-1]
+    return raw_diff, numstat
+
+
 def test_v3_test_head_proof_requires_only_the_approved_one_line_change(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -972,15 +1008,14 @@ def test_v3_test_head_proof_requires_only_the_approved_one_line_change(
     new_line = (
         '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
     )
+    raw_diff, numstat = _hotfix_v3_delta_text()
     outputs = [
         "",
         "",
-        f"M\t{path}\n",
-        f"1\t1\t{path}\n",
-        "",
+        "\n".join(transport.HOTFIX_V3_REVIEWED_PR9_COMMITS) + "\n",
+        raw_diff,
+        numstat,
         (f"diff --git a/{path} b/{path}\n@@ -41 +41 @@\n-{old_line}\n+{new_line}\n"),
-        f"100644 blob {'1' * 40}\t{path}\0",
-        f"100644 blob {'2' * 40}\t{path}\0",
     ]
 
     def command(argv: list[str], *, timeout: int = 30) -> str:
@@ -991,7 +1026,7 @@ def test_v3_test_head_proof_requires_only_the_approved_one_line_change(
     monkeypatch.setattr(transport, "_command", command)
     transport._prove_reviewed_pr9_head(transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA, "c" * 40)
 
-    assert len(commands) == 8
+    assert len(commands) == 6
     assert commands[0][1:4] == [
         "merge-base",
         "--is-ancestor",
@@ -1002,12 +1037,11 @@ def test_v3_test_head_proof_requires_only_the_approved_one_line_change(
         "--is-ancestor",
         transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
     ]
-    assert commands[2][1:3] == ["diff", "--name-status"]
-    assert commands[3][1:3] == ["diff", "--numstat"]
-    assert commands[4][1:3] == ["diff", "--summary"]
+    assert commands[2][1:3] == ["rev-list", "--reverse"]
+    assert commands[3][1:3] == ["diff", "--raw"]
+    assert commands[3][2:4] == ["--raw", "--no-abbrev"]
+    assert commands[4][1:3] == ["diff", "--numstat"]
     assert commands[5][-2:] == ["--", path]
-    assert commands[6][1:3] == ["ls-tree", "-z"]
-    assert commands[7][1:3] == ["ls-tree", "-z"]
 
 
 def test_v3_test_head_proof_rejects_an_unpinned_head_before_git(
@@ -1023,40 +1057,33 @@ def test_v3_test_head_proof_rejects_an_unpinned_head_before_git(
 
 
 @pytest.mark.parametrize(
-    ("patch", "mode_summary"),
+    "patch_lines",
     [
         (
             '-    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"\n'
             '+    assert captured["url"] == '
-            '"https://opencode.ai/inference/openai/v1/chat/completions" # accepted?\n',
-            "",
+            '"https://opencode.ai/inference/openai/v1/chat/completions" # accepted?\n'
         ),
         (
             '-    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"\n'
             '+    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"\n'
-            "+assert unrelated is True\n",
-            "",
-        ),
-        (
-            '-    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"\n'
-            '+    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"\n',
-            " mode change 100644 => 100755\n",
+            "+assert unrelated is True\n"
         ),
     ],
 )
 def test_v3_test_head_proof_rejects_other_diff_shapes(
     monkeypatch: pytest.MonkeyPatch,
-    patch: str,
-    mode_summary: str,
+    patch_lines: str,
 ) -> None:
     path = "tests/test_assistant_final_boundary_coverage.py"
+    raw_diff, numstat = _hotfix_v3_delta_text()
     outputs = [
         "",
         "",
-        f"M\t{path}\n",
-        f"1\t1\t{path}\n",
-        mode_summary,
-        f"diff --git a/{path} b/{path}\n@@ -41 +41 @@\n{patch}",
+        "\n".join(transport.HOTFIX_V3_REVIEWED_PR9_COMMITS) + "\n",
+        raw_diff,
+        numstat,
+        f"diff --git a/{path} b/{path}\n@@ -41 +41 @@\n{patch_lines}",
     ]
     calls = 0
 
@@ -1073,36 +1100,34 @@ def test_v3_test_head_proof_rejects_other_diff_shapes(
 
 
 @pytest.mark.parametrize(
-    ("base_mode", "reviewed_mode", "base_sha", "reviewed_sha", "error", "expected_calls"),
+    "mutation",
     [
-        ("120000", "100644", "1" * 40, "2" * 40, "reviewed_pr_test_file_not_regular", 7),
-        ("100644", "120000", "1" * 40, "2" * 40, "reviewed_pr_test_file_not_regular", 8),
-        ("100644", "100644", "1" * 40, "1" * 40, "reviewed_pr_test_diff_mismatch", 8),
+        "base_mode",
+        "head_mode",
+        "same_blob",
+        "wrong_blob",
+        "extra_file",
+        "wrong_numstat",
+        "truncated_raw",
     ],
 )
-def test_v3_test_head_proof_requires_distinct_regular_blobs(
+def test_v3_test_head_proof_requires_the_exact_regular_six_file_delta(
     monkeypatch: pytest.MonkeyPatch,
-    base_mode: str,
-    reviewed_mode: str,
-    base_sha: str,
-    reviewed_sha: str,
-    error: str,
-    expected_calls: int,
+    mutation: str,
 ) -> None:
     path = "tests/test_assistant_final_boundary_coverage.py"
     old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
     new_line = (
         '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
     )
+    raw_diff, numstat = _hotfix_v3_delta_text(mutation)
     outputs = [
         "",
         "",
-        f"M\t{path}\n",
-        f"1\t1\t{path}\n",
-        "",
+        "\n".join(transport.HOTFIX_V3_REVIEWED_PR9_COMMITS) + "\n",
+        raw_diff,
+        numstat,
         f"diff --git a/{path} b/{path}\n@@ -41 +41 @@\n-{old_line}\n+{new_line}\n",
-        f"{base_mode} blob {base_sha}\t{path}\0",
-        f"{reviewed_mode} blob {reviewed_sha}\t{path}\0",
     ]
     calls = 0
 
@@ -1114,9 +1139,33 @@ def test_v3_test_head_proof_requires_distinct_regular_blobs(
         return result
 
     monkeypatch.setattr(transport, "_command", command)
-    with pytest.raises(transport.PublicationError, match=error):
+    with pytest.raises(transport.PublicationError, match="reviewed_pr_test_diff_mismatch"):
         transport._prove_reviewed_pr9_head(
             transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
             "c" * 40,
         )
-    assert calls == expected_calls
+    assert calls == 6
+
+
+def test_v3_test_head_proof_requires_the_exact_three_commit_pr9_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outputs = [
+        "",
+        "",
+        "c2fe99cbd486b93958c6d5c398da9fc25ddd7075\n"
+        "0b214bb47886cc7e9db73edccc8648b9af38b678\n" + "9" * 40 + "\n",
+    ]
+    calls = 0
+
+    def command(argv: list[str], *, timeout: int = 30) -> str:
+        nonlocal calls
+        assert timeout == 10
+        result = outputs[calls]
+        calls += 1
+        return result
+
+    monkeypatch.setattr(transport, "_command", command)
+    with pytest.raises(transport.PublicationError, match="reviewed_pr_lineage_mismatch"):
+        transport._prove_reviewed_pr9_head(transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA, "c" * 40)
+    assert calls == 3

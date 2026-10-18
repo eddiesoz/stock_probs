@@ -2383,126 +2383,90 @@ def test_verify_v3_pr_head_rejects_malformed_shas_before_git(
         rehearsal._verify_v3_pr_head(REPOSITORY_ROOT, reviewed_pr_head_sha, helper_sha)
 
 
-def test_verify_v3_pr_head_requires_the_exact_one_line_test_diff(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    path = "tests/test_assistant_final_boundary_coverage.py"
-    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
-    new_line = (
-        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
-    )
+def _schema13_v3_delta_bytes(mutation: str | None = None) -> tuple[bytes, bytes]:
+    """Build deterministic Git raw-diff and numstat fixtures from the frozen map."""
 
-    def run_with(*, patch: bytes, names: bytes | None = None, summary: bytes = b"") -> None:
-        outputs = [
-            b"",
-            b"",
-            names if names is not None else f"M\t{path}\n".encode(),
-            f"1\t1\t{path}\n".encode(),
-            summary,
-            patch,
-            f"100644 blob {'1' * 40}\t{path}\0".encode(),
-            f"100644 blob {'2' * 40}\t{path}\0".encode(),
-        ]
-        calls = 0
-
-        def run(command: list[str], **kwargs: object) -> CompletedProcess[bytes]:
-            nonlocal calls
-            assert kwargs["timeout"] == 10
-            assert kwargs["check"] is False and kwargs["shell"] is False
-            result = CompletedProcess(command, 0, stdout=outputs[calls], stderr=b"")
-            calls += 1
-            return result
-
-        monkeypatch.setattr(rehearsal.subprocess, "run", run)
-        rehearsal._verify_v3_pr_head(
-            REPOSITORY_ROOT,
-            rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
-            "d" * 40,
+    raw_records: list[bytes] = []
+    stat_records: list[bytes] = []
+    target = "tests/test_assistant_final_boundary_coverage.py"
+    for (
+        filename,
+        base_blob,
+        head_blob,
+        additions,
+        deletions,
+    ) in rehearsal.HOTFIX_V3_REVIEWED_PR9_FILE_DELTA:
+        old_mode, new_mode = "100644", "100644"
+        if mutation == "base_mode" and filename == target:
+            old_mode = "120000"
+        elif mutation == "head_mode" and filename == target:
+            new_mode = "100755"
+        elif mutation == "same_blob" and filename == target:
+            head_blob = base_blob
+        elif mutation == "wrong_blob" and filename == target:
+            head_blob = "3" * 40
+        raw_records.append(
+            f":{old_mode} {new_mode} {base_blob} {head_blob} M\0{filename}\0".encode("ascii")
         )
-        assert calls == 8
-
-    exact_patch = (
-        f"diff --git a/{path} b/{path}\n@@ -12 +12 @@\n-{old_line}\n+{new_line}\n"
-    ).encode()
-    run_with(patch=exact_patch)
-
-    for patch, names, summary in (
-        (
-            (
-                f"diff --git a/{path} b/{path}\n@@ -12 +12 @@\n-{old_line}\n"
-                f"+{new_line} # accepted?\n"
-            ).encode(),
-            None,
-            b"",
-        ),
-        (exact_patch + b"+assert True\n", None, b""),
-        (exact_patch, f"M\t{path}\nM\tother.py\n".encode(), b""),
-        (exact_patch, None, b" mode change 100644 => 100755\n"),
-    ):
-        outputs = [
-            b"",
-            b"",
-            names if names is not None else f"M\t{path}\n".encode(),
-            f"1\t1\t{path}\n".encode(),
-            summary,
-            patch,
-            f"100644 blob {'1' * 40}\t{path}\0".encode(),
-            f"100644 blob {'2' * 40}\t{path}\0".encode(),
-        ]
-        calls = 0
-
-        def reject(
-            command: list[str],
-            *,
-            responses: list[bytes] = outputs,
-            **kwargs: object,
-        ) -> CompletedProcess[bytes]:
-            nonlocal calls
-            result = CompletedProcess(command, 0, stdout=responses[calls], stderr=b"")
-            calls += 1
-            return result
-
-        monkeypatch.setattr(rehearsal.subprocess, "run", reject)
-        with pytest.raises(rehearsal.RehearsalError, match="unapproved source changes"):
-            rehearsal._verify_v3_pr_head(
-                REPOSITORY_ROOT,
-                rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
-                "d" * 40,
-            )
+        if mutation == "wrong_numstat" and filename == target:
+            additions += 1
+        stat_records.append(f"{additions}\t{deletions}\t{filename}\0".encode("ascii"))
+    raw_diff = b"".join(raw_records)
+    numstat = b"".join(stat_records)
+    if mutation == "extra_file":
+        raw_diff += (f":100644 100644 {'1' * 40} {'2' * 40} M\0unexpected.py\0").encode("ascii")
+        numstat += b"1\t0\tunexpected.py\0"
+    elif mutation == "truncated_raw":
+        raw_diff = raw_diff[:-1]
+    return raw_diff, numstat
 
 
 @pytest.mark.parametrize(
-    ("base_mode", "reviewed_mode", "base_sha", "reviewed_sha", "error", "expected_calls"),
+    ("mutation", "commit_mismatch", "error_message"),
     [
-        ("120000", "100644", "1" * 40, "2" * 40, "regular blob", 7),
-        ("100644", "120000", "1" * 40, "2" * 40, "regular blob", 8),
-        ("100644", "100644", "1" * 40, "1" * 40, "unapproved source changes", 8),
+        (None, False, None),
+        (None, False, "patch_comment"),
+        (None, False, "patch_extra"),
+        ("extra_file", False, "unapproved source changes"),
+        ("base_mode", False, "unapproved source changes"),
+        ("head_mode", False, "unapproved source changes"),
+        ("same_blob", False, "unapproved source changes"),
+        ("wrong_blob", False, "unapproved source changes"),
+        ("wrong_numstat", False, "unapproved source changes"),
+        ("truncated_raw", False, "unapproved source changes"),
+        (None, True, "reviewed image/helper lineage"),
     ],
 )
-def test_verify_v3_pr_head_requires_distinct_regular_blobs(
+def test_verify_v3_pr_head_binds_exact_delta_and_commit_chain(
     monkeypatch: pytest.MonkeyPatch,
-    base_mode: str,
-    reviewed_mode: str,
-    base_sha: str,
-    reviewed_sha: str,
-    error: str,
-    expected_calls: int,
+    mutation: str | None,
+    commit_mismatch: bool,
+    error_message: str | None,
 ) -> None:
     path = "tests/test_assistant_final_boundary_coverage.py"
     old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
     new_line = (
         '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
     )
-    patch = (f"diff --git a/{path} b/{path}\n@@ -12 +12 @@\n-{old_line}\n+{new_line}\n").encode()
+    patch_lines = [f"-{old_line}", f"+{new_line}"]
+    if error_message == "patch_comment":
+        patch_lines[1] += " # accepted?"
+    elif error_message == "patch_extra":
+        patch_lines.append("+assert unrelated is True")
+    patch = (
+        f"diff --git a/{path} b/{path}\n@@ -12 +12 @@\n" + "\n".join(patch_lines) + "\n"
+    ).encode()
+    raw_diff, numstat = _schema13_v3_delta_bytes(mutation)
+    commits = rehearsal.HOTFIX_V3_REVIEWED_PR9_COMMITS
+    if commit_mismatch:
+        commits = (*commits[:-1], "9" * 40)
     outputs = [
         b"",
         b"",
-        f"M\t{path}\n".encode(),
-        f"1\t1\t{path}\n".encode(),
-        b"",
+        ("\n".join(commits) + "\n").encode(),
+        raw_diff,
+        numstat,
         patch,
-        f"{base_mode} blob {base_sha}\t{path}\0".encode(),
-        f"{reviewed_mode} blob {reviewed_sha}\t{path}\0".encode(),
     ]
     calls = 0
 
@@ -2515,10 +2479,22 @@ def test_verify_v3_pr_head_requires_distinct_regular_blobs(
         return result
 
     monkeypatch.setattr(rehearsal.subprocess, "run", run)
-    with pytest.raises(rehearsal.RehearsalError, match=error):
+    if error_message is None:
         rehearsal._verify_v3_pr_head(
             REPOSITORY_ROOT,
             rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
             "d" * 40,
         )
-    assert calls == expected_calls
+    else:
+        expected_error = (
+            "reviewed image/helper lineage"
+            if error_message == "reviewed image/helper lineage"
+            else "unapproved source changes"
+        )
+        with pytest.raises(rehearsal.RehearsalError, match=expected_error):
+            rehearsal._verify_v3_pr_head(
+                REPOSITORY_ROOT,
+                rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+                "d" * 40,
+            )
+    assert calls == (3 if commit_mismatch else 6)

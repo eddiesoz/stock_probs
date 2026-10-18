@@ -32,7 +32,56 @@ HOTFIX_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
 HOTFIX_V3_CONTRACT = "schema13_same_schema_hotfix_v3"
 HOTFIX_V3_IMAGE_SOURCE_REVISION = "68c225a25a76c4bd65c6309e00dd13200a1d4678"
-HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "c2fe99cbd486b93958c6d5c398da9fc25ddd7075"
+HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "68973cbfb8520458f76cbcb4f1edf3c0b149168c"
+HOTFIX_V3_REVIEWED_PR9_COMMITS = (
+    "c2fe99cbd486b93958c6d5c398da9fc25ddd7075",
+    "0b214bb47886cc7e9db73edccc8648b9af38b678",
+    HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+)
+HOTFIX_V3_REVIEWED_PR9_FILE_DELTA = (
+    (
+        "MVP-PLAN.md",
+        "ca82cfb622bc774ad1db1817d2f60bc622ad8d99",
+        "868d27b263909099688baaee703ea4a9fba5243a",
+        54,
+        0,
+    ),
+    (
+        "docs/develop/testing.md",
+        "e93c28b6fcd44ce896ac27ad9edd70b87b629499",
+        "b1252778077a0f4dee0e11d936c151d56ce225a7",
+        2,
+        0,
+    ),
+    (
+        "tests/test_assistant_final_boundary_coverage.py",
+        "f35a58bd684ca9c38bde034193eece61588ee6f6",
+        "652d04666bb17f9b1cd9f93f66a6abeb58b8ffa6",
+        1,
+        1,
+    ),
+    (
+        "tools/browser/tests/assistant.spec.js",
+        "2941924b553ed689c9b70baf72b938f3cd56c755",
+        "3734a80eae843a382ac9b49bc2ec51d77b046903",
+        143,
+        11,
+    ),
+    (
+        "tools/browser/tests/fixtures-lifecycle.unit.js",
+        "5004e1408b74be15ddf11193fd8f4b9c9c84368b",
+        "49702a87fe612b0d248d89a22cfe8244c11a00e2",
+        60,
+        6,
+    ),
+    (
+        "tools/browser/tests/fixtures.js",
+        "40bf53b05c6a29d295366e11834bec4f40f2eafd",
+        "89468fe1a51ab1a7fa46b9fc1f169bf3a1028230",
+        15,
+        4,
+    ),
+)
 HOTFIX_V3_IMAGE_ID = "sha256:c3ac6f43749404e36e0ae94a8d749ccafe4c882216db09484c1c34f6fbad5f78"
 HOTFIX_V3_IMAGE_CONTEXT_SHA256 = "e0e79be05acad60f4220c3152c32ba5c5b31aa7c394e36cf28de30fcf31d7458"
 HOTFIX_V3_BUILD_RECEIPT_SHA256 = "a73f76fb2792efb88ed88326ff84f8b22db3f09181dc0571f9ba0aea8c561ae1"
@@ -1028,7 +1077,8 @@ def _read_v3_github_json(path: str) -> object:
 
     repository_path = re.escape(REPOSITORY)
     allowed = re.fullmatch(
-        rf"/repos/{repository_path}/(?:compare/[0-9a-f]{{40}}\.\.\.[0-9a-f]{{40}}\?per_page=1"
+        rf"/repos/{repository_path}/(?:compare/[0-9a-f]{{40}}\.\.\.[0-9a-f]{{40}}\?"
+        rf"(?:per_page=3|per_page=1&page=2)"
         rf"|git/trees/[0-9a-f]{{40}})",
         path,
     )
@@ -1069,53 +1119,105 @@ def _verify_v3_pr_lineage(reviewed_pr_head_sha: str, helper_revision: str) -> No
         raise RehearsalError("reviewed_pr_head_invalid")
     if reviewed_pr_head_sha != HOTFIX_V3_REVIEWED_PR_HEAD_SHA:
         raise RehearsalError("hotfix_pr_head_unreviewed")
-    image_comparison: dict[str, object] | None = None
-    for index, (base, head) in enumerate(
-        (
-            (HOTFIX_V3_IMAGE_SOURCE_REVISION, reviewed_pr_head_sha),
-            (reviewed_pr_head_sha, helper_revision),
+    image_comparison = _read_v3_github_json(
+        f"/repos/{REPOSITORY}/compare/{HOTFIX_V3_IMAGE_SOURCE_REVISION}..."
+        f"{reviewed_pr_head_sha}?per_page=3"
+    )
+    helper_comparison = _read_v3_github_json(
+        f"/repos/{REPOSITORY}/compare/{reviewed_pr_head_sha}...{helper_revision}?per_page=1&page=2"
+    )
+    if (
+        not isinstance(image_comparison, dict)
+        or image_comparison.get("status") != "ahead"
+        or type(image_comparison.get("ahead_by")) is not int
+        or image_comparison["ahead_by"] != len(HOTFIX_V3_REVIEWED_PR9_COMMITS)
+        or type(image_comparison.get("behind_by")) is not int
+        or image_comparison["behind_by"] != 0
+        or type(image_comparison.get("total_commits")) is not int
+        or image_comparison["total_commits"] != len(HOTFIX_V3_REVIEWED_PR9_COMMITS)
+    ):
+        raise RehearsalError("reviewed_pr_lineage_mismatch")
+    if (
+        not isinstance(helper_comparison, dict)
+        or helper_comparison.get("status") != "ahead"
+        or type(helper_comparison.get("ahead_by")) is not int
+        or helper_comparison["ahead_by"] < 1
+        or type(helper_comparison.get("behind_by")) is not int
+        or helper_comparison["behind_by"] != 0
+        or type(helper_comparison.get("total_commits")) is not int
+        or helper_comparison["total_commits"] < 1
+        or not isinstance(helper_comparison.get("base_commit"), dict)
+        or helper_comparison["base_commit"].get("sha") != reviewed_pr_head_sha
+        or not isinstance(helper_comparison.get("merge_base_commit"), dict)
+        or helper_comparison["merge_base_commit"].get("sha") != reviewed_pr_head_sha
+    ):
+        raise RehearsalError("reviewed_pr_lineage_mismatch")
+
+    base_commit = image_comparison.get("base_commit")
+    merge_base_commit = image_comparison.get("merge_base_commit")
+    commits = image_comparison.get("commits")
+    if (
+        not isinstance(base_commit, dict)
+        or base_commit.get("sha") != HOTFIX_V3_IMAGE_SOURCE_REVISION
+        or not isinstance(merge_base_commit, dict)
+        or merge_base_commit.get("sha") != HOTFIX_V3_IMAGE_SOURCE_REVISION
+        or not isinstance(commits, list)
+        or len(commits) != len(HOTFIX_V3_REVIEWED_PR9_COMMITS)
+        or any(
+            not isinstance(commit, dict) or commit.get("sha") != expected_sha
+            for commit, expected_sha in zip(commits, HOTFIX_V3_REVIEWED_PR9_COMMITS, strict=True)
         )
     ):
-        comparison = _read_v3_github_json(f"/repos/{REPOSITORY}/compare/{base}...{head}?per_page=1")
-        if (
-            not isinstance(comparison, dict)
-            or comparison.get("status") != "ahead"
-            or type(comparison.get("ahead_by")) is not int
-            or comparison["ahead_by"] < 1
-            or type(comparison.get("behind_by")) is not int
-            or comparison["behind_by"] != 0
-            or type(comparison.get("total_commits")) is not int
-            or comparison["total_commits"] < 1
-        ):
-            raise RehearsalError("reviewed_pr_lineage_mismatch")
-        if index == 0:
-            if comparison["ahead_by"] != 1 or comparison["total_commits"] != 1:
-                raise RehearsalError("reviewed_pr_test_diff_mismatch")
-            image_comparison = comparison
+        raise RehearsalError("reviewed_pr_lineage_mismatch")
 
-    files = image_comparison.get("files") if image_comparison is not None else None
+    files = image_comparison.get("files")
     path = "tests/test_assistant_final_boundary_coverage.py"
     old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
     new_line = (
         '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
     )
-    if not isinstance(files, list) or len(files) != 1 or not isinstance(files[0], dict):
+    if not isinstance(files, list) or len(files) != len(HOTFIX_V3_REVIEWED_PR9_FILE_DELTA):
         raise RehearsalError("reviewed_pr_test_diff_mismatch")
-    changed_file = files[0]
+    expected_file_delta = {
+        filename: (head_blob, additions, deletions)
+        for (
+            filename,
+            _base_blob,
+            head_blob,
+            additions,
+            deletions,
+        ) in HOTFIX_V3_REVIEWED_PR9_FILE_DELTA
+    }
+    observed_file_delta: dict[str, dict[str, object]] = {}
+    for changed_file in files:
+        if not isinstance(changed_file, dict):
+            raise RehearsalError("reviewed_pr_test_diff_mismatch")
+        filename = changed_file.get("filename")
+        if not isinstance(filename, str) or filename in observed_file_delta:
+            raise RehearsalError("reviewed_pr_test_diff_mismatch")
+        expected = expected_file_delta.get(filename)
+        if expected is None:
+            raise RehearsalError("reviewed_pr_test_diff_mismatch")
+        head_blob, additions, deletions = expected
+        if (
+            changed_file.get("status") != "modified"
+            or type(changed_file.get("additions")) is not int
+            or changed_file["additions"] != additions
+            or type(changed_file.get("deletions")) is not int
+            or changed_file["deletions"] != deletions
+            or type(changed_file.get("changes")) is not int
+            or changed_file["changes"] != additions + deletions
+            or changed_file.get("sha") != head_blob
+            or "previous_filename" in changed_file
+        ):
+            raise RehearsalError("reviewed_pr_test_diff_mismatch")
+        observed_file_delta[filename] = changed_file
+    if set(observed_file_delta) != set(expected_file_delta):
+        raise RehearsalError("reviewed_pr_test_diff_mismatch")
+
+    changed_file = observed_file_delta[path]
     patch = changed_file.get("patch")
-    if (
-        changed_file.get("filename") != path
-        or changed_file.get("status") != "modified"
-        or type(changed_file.get("additions")) is not int
-        or changed_file.get("additions") != 1
-        or type(changed_file.get("deletions")) is not int
-        or changed_file.get("deletions") != 1
-        or type(changed_file.get("changes")) is not int
-        or changed_file.get("changes") != 2
-        or not isinstance(patch, str)
-        or len(patch.encode("utf-8")) > MAX_PR_RESPONSE
-        or "previous_filename" in changed_file
-    ):
+    if not isinstance(patch, str) or len(patch.encode("utf-8")) > MAX_PR_RESPONSE:
         raise RehearsalError("reviewed_pr_test_diff_mismatch")
     changed_lines = [
         line
@@ -1126,26 +1228,31 @@ def _verify_v3_pr_lineage(reviewed_pr_head_sha: str, helper_revision: str) -> No
     if changed_lines != [f"-{old_line}", f"+{new_line}"]:
         raise RehearsalError("reviewed_pr_test_diff_mismatch")
 
-    base_commit = image_comparison.get("base_commit") if image_comparison is not None else None
-    commits = image_comparison.get("commits") if image_comparison is not None else None
-    if (
-        not isinstance(base_commit, dict)
-        or base_commit.get("sha") != HOTFIX_V3_IMAGE_SOURCE_REVISION
-        or not isinstance(commits, list)
-        or len(commits) != 1
-        or not isinstance(commits[0], dict)
-        or commits[0].get("sha") != reviewed_pr_head_sha
-    ):
-        raise RehearsalError("reviewed_pr_lineage_mismatch")
     base_tree = _v3_commit_tree_sha(base_commit)
-    head_tree = _v3_commit_tree_sha(commits[0])
-    base_blob = _v3_regular_test_blob(base_tree)
-    head_blob = _v3_regular_test_blob(head_tree)
-    if (
-        base_blob == head_blob
-        or changed_file.get("sha") != head_blob
-        or changed_file.get("status") != "modified"
-    ):
+    head_tree = _v3_commit_tree_sha(commits[-1])
+    base_blobs = _v3_regular_pr_file_blobs(base_tree)
+    head_blobs = _v3_regular_pr_file_blobs(head_tree)
+    expected_base_blobs = {
+        filename: base_blob
+        for (
+            filename,
+            base_blob,
+            _head_blob,
+            _additions,
+            _deletions,
+        ) in HOTFIX_V3_REVIEWED_PR9_FILE_DELTA
+    }
+    expected_head_blobs = {
+        filename: head_blob
+        for (
+            filename,
+            _base_blob,
+            head_blob,
+            _additions,
+            _deletions,
+        ) in HOTFIX_V3_REVIEWED_PR9_FILE_DELTA
+    }
+    if base_blobs != expected_base_blobs or head_blobs != expected_head_blobs:
         raise RehearsalError("reviewed_pr_test_diff_mismatch")
 
 
@@ -1158,53 +1265,83 @@ def _v3_commit_tree_sha(commit: dict[str, object]) -> str:
     return sha
 
 
-def _v3_regular_test_blob(root_tree_sha: str) -> str:
-    """Resolve the fixed test file through two bounded trees and require regular blobs."""
+def _v3_regular_pr_file_blobs(root_tree_sha: str) -> dict[str, str]:
+    """Resolve the six fixed PR #9 paths through bounded nonrecursive Git trees."""
 
-    tree_sha = root_tree_sha
-    for part in ("tests", "test_assistant_final_boundary_coverage.py"):
-        value = _read_v3_github_json(f"/repos/{REPOSITORY}/git/trees/{tree_sha}")
-        entries = value.get("tree") if isinstance(value, dict) else None
-        if (
-            not isinstance(value, dict)
-            or value.get("truncated") is not False
-            or not isinstance(entries, list)
-            or len(entries) > 2048
-        ):
-            raise RehearsalError("reviewed_pr_tree_invalid")
-        matches: list[dict[str, object]] = []
-        seen_paths: set[str] = set()
-        for entry in entries:
-            if not isinstance(entry, dict) or set(entry) - {
-                "path",
-                "mode",
-                "type",
-                "sha",
-                "size",
-                "url",
-            }:
+    tree_cache: dict[str, dict[str, dict[str, object]]] = {}
+    blob_shas: dict[str, str] = {}
+    for path, _base_blob, _head_blob, _additions, _deletions in HOTFIX_V3_REVIEWED_PR9_FILE_DELTA:
+        tree_sha = root_tree_sha
+        parts = path.split("/")
+        for index, part in enumerate(parts):
+            entries = tree_cache.get(tree_sha)
+            if entries is None:
+                value = _read_v3_github_json(f"/repos/{REPOSITORY}/git/trees/{tree_sha}")
+                raw_entries = value.get("tree") if isinstance(value, dict) else None
+                if (
+                    not isinstance(value, dict)
+                    or set(value) - {"sha", "url", "tree", "truncated"}
+                    or value.get("sha") != tree_sha
+                    or value.get("truncated") is not False
+                    or not isinstance(raw_entries, list)
+                    or len(raw_entries) > 2048
+                    or ("url" in value and not isinstance(value["url"], str))
+                ):
+                    raise RehearsalError("reviewed_pr_tree_invalid")
+                entries = {}
+                for entry in raw_entries:
+                    if not isinstance(entry, dict) or set(entry) - {
+                        "path",
+                        "mode",
+                        "type",
+                        "sha",
+                        "size",
+                        "url",
+                    }:
+                        raise RehearsalError("reviewed_pr_tree_invalid")
+                    entry_path = entry.get("path")
+                    mode = entry.get("mode")
+                    entry_type = entry.get("type")
+                    entry_sha = entry.get("sha")
+                    valid_types = {
+                        "040000": "tree",
+                        "100644": "blob",
+                        "100755": "blob",
+                        "120000": "blob",
+                        "160000": "commit",
+                    }
+                    if (
+                        not isinstance(entry_path, str)
+                        or not entry_path
+                        or entry_path in {".", ".."}
+                        or "/" in entry_path
+                        or entry_path in entries
+                        or not isinstance(mode, str)
+                        or valid_types.get(mode) != entry_type
+                        or not isinstance(entry_sha, str)
+                        or REVISION_RE.fullmatch(entry_sha) is None
+                        or (
+                            "size" in entry
+                            and (type(entry["size"]) is not int or entry["size"] < 0)
+                        )
+                        or ("url" in entry and not isinstance(entry["url"], str))
+                    ):
+                        raise RehearsalError("reviewed_pr_tree_invalid")
+                    entries[entry_path] = entry
+                tree_cache[tree_sha] = entries
+            selected = entries.get(part)
+            if selected is None:
                 raise RehearsalError("reviewed_pr_tree_invalid")
-            entry_path = entry.get("path")
-            if not isinstance(entry_path, str) or entry_path in seen_paths:
-                raise RehearsalError("reviewed_pr_tree_invalid")
-            seen_paths.add(entry_path)
-            if entry_path == part:
-                matches.append(entry)
-        if len(matches) != 1:
-            raise RehearsalError("reviewed_pr_tree_invalid")
-        selected = matches[0]
-        expected_type = "tree" if part == "tests" else "blob"
-        expected_mode = "040000" if part == "tests" else "100644"
-        selected_sha = selected.get("sha")
-        if (
-            selected.get("type") != expected_type
-            or selected.get("mode") != expected_mode
-            or not isinstance(selected_sha, str)
-            or REVISION_RE.fullmatch(selected_sha) is None
-        ):
-            raise RehearsalError("reviewed_pr_tree_identity_mismatch")
-        tree_sha = selected_sha
-    return tree_sha
+            selected_sha = selected["sha"]
+            if index < len(parts) - 1:
+                if selected.get("type") != "tree" or selected.get("mode") != "040000":
+                    raise RehearsalError("reviewed_pr_tree_identity_mismatch")
+            else:
+                if selected.get("type") != "blob" or selected.get("mode") != "100644":
+                    raise RehearsalError("reviewed_pr_tree_identity_mismatch")
+                blob_shas[path] = selected_sha  # type: ignore[assignment]
+            tree_sha = selected_sha  # type: ignore[assignment]
+    return blob_shas
 
 
 def _verify_helper_source_pull_request(revision: str) -> None:

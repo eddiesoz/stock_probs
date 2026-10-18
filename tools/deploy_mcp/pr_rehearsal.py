@@ -28,7 +28,56 @@ HOTFIX_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
 HOTFIX_V3_CONTRACT = "schema13_same_schema_hotfix_v3"
 HOTFIX_V3_IMAGE_SOURCE_REVISION = "68c225a25a76c4bd65c6309e00dd13200a1d4678"
-HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "c2fe99cbd486b93958c6d5c398da9fc25ddd7075"
+HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "68973cbfb8520458f76cbcb4f1edf3c0b149168c"
+HOTFIX_V3_REVIEWED_PR9_COMMITS = (
+    "c2fe99cbd486b93958c6d5c398da9fc25ddd7075",
+    "0b214bb47886cc7e9db73edccc8648b9af38b678",
+    HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+)
+HOTFIX_V3_REVIEWED_PR9_FILE_DELTA = (
+    (
+        "MVP-PLAN.md",
+        "ca82cfb622bc774ad1db1817d2f60bc622ad8d99",
+        "868d27b263909099688baaee703ea4a9fba5243a",
+        54,
+        0,
+    ),
+    (
+        "docs/develop/testing.md",
+        "e93c28b6fcd44ce896ac27ad9edd70b87b629499",
+        "b1252778077a0f4dee0e11d936c151d56ce225a7",
+        2,
+        0,
+    ),
+    (
+        "tests/test_assistant_final_boundary_coverage.py",
+        "f35a58bd684ca9c38bde034193eece61588ee6f6",
+        "652d04666bb17f9b1cd9f93f66a6abeb58b8ffa6",
+        1,
+        1,
+    ),
+    (
+        "tools/browser/tests/assistant.spec.js",
+        "2941924b553ed689c9b70baf72b938f3cd56c755",
+        "3734a80eae843a382ac9b49bc2ec51d77b046903",
+        143,
+        11,
+    ),
+    (
+        "tools/browser/tests/fixtures-lifecycle.unit.js",
+        "5004e1408b74be15ddf11193fd8f4b9c9c84368b",
+        "49702a87fe612b0d248d89a22cfe8244c11a00e2",
+        60,
+        6,
+    ),
+    (
+        "tools/browser/tests/fixtures.js",
+        "40bf53b05c6a29d295366e11834bec4f40f2eafd",
+        "89468fe1a51ab1a7fa46b9fc1f169bf3a1028230",
+        15,
+        4,
+    ),
+)
 HOTFIX_V3_IMAGE_ID = "sha256:c3ac6f43749404e36e0ae94a8d749ccafe4c882216db09484c1c34f6fbad5f78"
 HOTFIX_V3_IMAGE_CONTEXT_SHA256 = "e0e79be05acad60f4220c3152c32ba5c5b31aa7c394e36cf28de30fcf31d7458"
 HOTFIX_V3_BUILD_RECEIPT_SHA256 = "a73f76fb2792efb88ed88326ff84f8b22db3f09181dc0571f9ba0aea8c561ae1"
@@ -1657,39 +1706,65 @@ def _verify_local_helper_checkout(reviewed_head_sha: str) -> None:
         raise RehearsalError("reviewed_local_source_dirty")
 
 
-def _local_v3_test_blob_sha(commit_sha: str) -> str:
-    """Require the fixed PR #9 regression path to be a regular tracked blob."""
+def _local_v3_pr9_delta_matches(raw_diff: bytes, numstat: bytes) -> bool:
+    """Match Git's bounded raw diff and numstat to the frozen six-file PR #9 delta."""
 
-    if REVISION.fullmatch(commit_sha) is None:
-        raise RehearsalError("reviewed_pr_tree_invalid")
-    path = "tests/test_assistant_final_boundary_coverage.py"
-    raw = _run_fixed(
-        [
-            "/usr/bin/git",
-            "ls-tree",
-            "-z",
-            "--full-tree",
-            commit_sha,
-            "--",
-            path,
-        ],
-        timeout=10,
-    )
-    records = raw[:-1].split(b"\0") if raw.endswith(b"\0") else []
-    if len(records) != 1:
-        raise RehearsalError("reviewed_pr_tree_identity_mismatch")
-    metadata, separator, reported_path = records[0].partition(b"\t")
-    fields = metadata.split(b" ")
-    if (
-        separator != b"\t"
-        or reported_path != path.encode("ascii")
-        or len(fields) != 3
-        or fields[0] != b"100644"
-        or fields[1] != b"blob"
-        or re.fullmatch(rb"[0-9a-f]{40}", fields[2]) is None
-    ):
-        raise RehearsalError("reviewed_pr_tree_identity_mismatch")
-    return fields[2].decode("ascii")
+    expected = {
+        filename: (base_blob.encode("ascii"), head_blob.encode("ascii"), additions, deletions)
+        for (
+            filename,
+            base_blob,
+            head_blob,
+            additions,
+            deletions,
+        ) in HOTFIX_V3_REVIEWED_PR9_FILE_DELTA
+    }
+    raw_records = raw_diff.split(b"\0")
+    if not raw_records or raw_records[-1] != b"" or (len(raw_records) - 1) % 2:
+        return False
+    observed_raw: dict[str, tuple[bytes, bytes, bytes, bytes]] = {}
+    for index in range(0, len(raw_records) - 1, 2):
+        fields = raw_records[index].split(b" ")
+        try:
+            filename = raw_records[index + 1].decode("ascii", errors="strict")
+        except UnicodeDecodeError:
+            return False
+        if (
+            len(fields) != 5
+            or fields[0] != b":100644"
+            or fields[1] != b"100644"
+            or fields[4] != b"M"
+            or filename in observed_raw
+        ):
+            return False
+        observed_raw[filename] = (fields[2], fields[3], fields[0], fields[1])
+    expected_raw = {
+        filename: (base_blob, head_blob, b":100644", b"100644")
+        for filename, (base_blob, head_blob, _additions, _deletions) in expected.items()
+    }
+    if observed_raw != expected_raw:
+        return False
+
+    stat_records = numstat.split(b"\0")
+    if not stat_records or stat_records[-1] != b"":
+        return False
+    observed_stats: dict[str, tuple[bytes, bytes]] = {}
+    for record in stat_records[:-1]:
+        fields = record.split(b"\t")
+        if len(fields) != 3:
+            return False
+        try:
+            filename = fields[2].decode("ascii", errors="strict")
+        except UnicodeDecodeError:
+            return False
+        if filename in observed_stats:
+            return False
+        observed_stats[filename] = (fields[0], fields[1])
+    expected_stats = {
+        filename: (str(additions).encode("ascii"), str(deletions).encode("ascii"))
+        for filename, (_base_blob, _head_blob, additions, deletions) in expected.items()
+    }
+    return observed_stats == expected_stats
 
 
 def _verify_local_v3_pr_lineage(reviewed_pr_head_sha: str, helper_sha: str) -> None:
@@ -1705,13 +1780,27 @@ def _verify_local_v3_pr_lineage(reviewed_pr_head_sha: str, helper_sha: str) -> N
         (reviewed_pr_head_sha, helper_sha),
     ):
         _run_fixed(["/usr/bin/git", "merge-base", "--is-ancestor", base, descendant], timeout=10)
+    commits = _run_fixed(
+        [
+            "/usr/bin/git",
+            "rev-list",
+            "--reverse",
+            f"{HOTFIX_V3_IMAGE_SOURCE_REVISION}..{reviewed_pr_head_sha}",
+        ],
+        timeout=10,
+    )
+    expected_commits = ("\n".join(HOTFIX_V3_REVIEWED_PR9_COMMITS) + "\n").encode("ascii")
+    if commits != expected_commits:
+        raise RehearsalError("reviewed_pr_lineage_mismatch")
 
     path = "tests/test_assistant_final_boundary_coverage.py"
-    names = _run_fixed(
+    raw_diff = _run_fixed(
         [
             "/usr/bin/git",
             "diff",
-            "--name-status",
+            "--raw",
+            "--no-abbrev",
+            "-z",
             "--no-renames",
             HOTFIX_V3_IMAGE_SOURCE_REVISION,
             reviewed_pr_head_sha,
@@ -1723,22 +1812,10 @@ def _verify_local_v3_pr_lineage(reviewed_pr_head_sha: str, helper_sha: str) -> N
             "/usr/bin/git",
             "diff",
             "--numstat",
+            "-z",
             "--no-renames",
             HOTFIX_V3_IMAGE_SOURCE_REVISION,
             reviewed_pr_head_sha,
-        ],
-        timeout=10,
-    )
-    modes = _run_fixed(
-        [
-            "/usr/bin/git",
-            "diff",
-            "--summary",
-            "--no-renames",
-            HOTFIX_V3_IMAGE_SOURCE_REVISION,
-            reviewed_pr_head_sha,
-            "--",
-            path,
         ],
         timeout=10,
     )
@@ -1769,16 +1846,7 @@ def _verify_local_v3_pr_lineage(reviewed_pr_head_sha: str, helper_sha: str) -> N
         '-    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"',
         '+    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"',
     ]
-    if (
-        names != f"M\t{path}\n".encode()
-        or counts != f"1\t1\t{path}\n".encode()
-        or modes != b""
-        or changed_lines != expected_changed_lines
-    ):
-        raise RehearsalError("reviewed_pr_test_diff_mismatch")
-    base_blob = _local_v3_test_blob_sha(HOTFIX_V3_IMAGE_SOURCE_REVISION)
-    reviewed_blob = _local_v3_test_blob_sha(reviewed_pr_head_sha)
-    if base_blob == reviewed_blob:
+    if not _local_v3_pr9_delta_matches(raw_diff, counts) or changed_lines != expected_changed_lines:
         raise RehearsalError("reviewed_pr_test_diff_mismatch")
 
 
