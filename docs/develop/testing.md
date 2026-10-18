@@ -462,6 +462,8 @@ synchronous spawn failure and readiness failure with mocked child-process, netwo
 interfaces; it does not verify real child-process readiness, asynchronous child error events, or OS
 process reaping. The full browser aggregate must still pass separately.
 
+The later F6 fixture-readiness watchdog sets the fixture startup budget to 30 seconds to match the unchanged Playwright `webServer` timeout. Each readiness fetch uses an abort timeout of `max(1, min(1000, remaining_ms))` milliseconds; retry sleep is capped by remaining time. The 9/9 lifecycle suite uses a fake clock, child process, and fetch; it does not verify real app/browser startup. See the [F6 checkpoint](../../MVP-PLAN.md#r-astra-121-f6-deployment-access-and-startup-diagnostic-checkpoint-2026-10-18).
+
 The supervised native probe retains only normalized diagnostics. Model-discovery warnings use
 closed outcome names and bounded numeric counters for catalog reads and the activation barrier;
 raw log text, request URLs and owner identifiers are excluded. The existing limits remain four
