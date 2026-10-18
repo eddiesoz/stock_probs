@@ -738,7 +738,11 @@ def test_host_pair_version_probe_rejects_duplicate_or_untyped_version(
 def test_host_pair_dispatch_keeps_v1_schema_migration_runner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    payload = {"reviewed_head_sha": "a" * 40}
+    payload = {
+        "repository": host_helper.REPOSITORY,
+        "pull_number": host_helper.PULL_NUMBER,
+        "reviewed_head_sha": "a" * 40,
+    }
     expected = {"status": "legacy-v1"}
     monkeypatch.setattr(host_helper, "_pair_manifest_version", lambda _payload: 1)
     monkeypatch.setattr(
@@ -751,6 +755,145 @@ def test_host_pair_dispatch_keeps_v1_schema_migration_runner(
     )
 
     assert host_helper._run_pair(payload) == expected
+
+
+def _valid_host_pair_request_payload(
+    *, reviewed_pr_head_sha: str | None = None
+) -> dict[str, object]:
+    """Build the exact fixed payload shape emitted by the PR pair caller."""
+    payload: dict[str, object] = {
+        "repository": host_helper.REPOSITORY,
+        "pull_number": host_helper.HELPER_SOURCE_PR_NUMBER,
+        "reviewed_head_sha": "a" * 40,
+        "candidate_image_id": "sha256:" + "b" * 64,
+        "candidate_source_context_sha256": "c" * 64,
+        "recovery_image_id": "sha256:" + "d" * 64,
+        "recovery_source_context_sha256": "e" * 64,
+        "recovery_overlay_sha256": "f" * 64,
+        "pair_manifest_sha256": "1" * 64,
+        "candidate_archive_sha256": "2" * 64,
+        "recovery_archive_sha256": "3" * 64,
+    }
+    if reviewed_pr_head_sha is not None:
+        payload["reviewed_pr_head_sha"] = reviewed_pr_head_sha
+    return payload
+
+
+@pytest.mark.parametrize(
+    ("pull_number", "reviewed_pr_head_sha"),
+    [
+        (host_helper.PULL_NUMBER, None),
+        (host_helper.HELPER_SOURCE_PR_NUMBER, None),
+        (host_helper.HELPER_SOURCE_PR_NUMBER, host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA),
+    ],
+)
+def test_host_pair_request_parser_accepts_only_fixed_version_shapes(
+    pull_number: int,
+    reviewed_pr_head_sha: str | None,
+) -> None:
+    payload = _valid_host_pair_request_payload(reviewed_pr_head_sha=reviewed_pr_head_sha)
+    payload["pull_number"] = pull_number
+    request = {"operation": "rehearse_pr_pair", "payload": payload}
+
+    operation, parsed_payload = host_helper._parse_request(
+        json.dumps(request, separators=(",", ":")).encode("utf-8")
+    )
+
+    assert operation == "rehearse_pr_pair"
+    assert parsed_payload == payload
+
+
+@pytest.mark.parametrize(
+    ("change", "expected_error"),
+    [
+        ("missing_required", "payload_invalid"),
+        ("malformed_v3_head", "reviewed_pr_head_invalid"),
+        ("extra_field", "payload_invalid"),
+        ("explicit_version_field", "payload_invalid"),
+        ("boolean_pull_number", "fixed_pull_request_mismatch"),
+        ("unknown_pull_number", "fixed_pull_request_mismatch"),
+        ("v3_wrong_pull_number", "fixed_pull_request_mismatch"),
+    ],
+)
+def test_host_pair_request_parser_rejects_invalid_versioned_payloads(
+    change: str,
+    expected_error: str,
+) -> None:
+    payload = _valid_host_pair_request_payload(
+        reviewed_pr_head_sha=host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+    )
+    if change == "missing_required":
+        del payload["candidate_archive_sha256"]
+    elif change == "malformed_v3_head":
+        payload["reviewed_pr_head_sha"] = "not-a-revision"
+    elif change == "extra_field":
+        payload["arbitrary_command"] = "run"
+    elif change == "explicit_version_field":
+        payload["format_version"] = 3
+    elif change == "boolean_pull_number":
+        payload["pull_number"] = True
+    elif change == "unknown_pull_number":
+        payload["pull_number"] = 12
+    elif change == "v3_wrong_pull_number":
+        payload["pull_number"] = host_helper.PULL_NUMBER
+
+    request = {"operation": "rehearse_pr_pair", "payload": payload}
+    with pytest.raises(host_helper.RehearsalError, match=expected_error):
+        host_helper._parse_request(json.dumps(request, separators=(",", ":")).encode("utf-8"))
+
+
+@pytest.mark.parametrize(
+    ("format_version", "pull_number", "reviewed_pr_head_sha", "expected_error"),
+    [
+        (1, host_helper.PULL_NUMBER, None, None),
+        (2, host_helper.HELPER_SOURCE_PR_NUMBER, None, None),
+        (3, host_helper.HELPER_SOURCE_PR_NUMBER, host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA, None),
+        (1, host_helper.HELPER_SOURCE_PR_NUMBER, None, "fixed_pull_request_mismatch"),
+        (2, host_helper.PULL_NUMBER, None, "fixed_pull_request_mismatch"),
+        (3, host_helper.HELPER_SOURCE_PR_NUMBER, None, "payload_invalid"),
+        (3, host_helper.HELPER_SOURCE_PR_NUMBER, "not-a-revision", "reviewed_pr_head_invalid"),
+        (
+            2,
+            host_helper.HELPER_SOURCE_PR_NUMBER,
+            host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            "payload_invalid",
+        ),
+        (4, host_helper.HELPER_SOURCE_PR_NUMBER, None, "pair_manifest_version_unsupported"),
+    ],
+)
+def test_host_pair_dispatch_binds_payload_shape_and_pull_to_manifest_version(
+    monkeypatch: pytest.MonkeyPatch,
+    format_version: int,
+    pull_number: int,
+    reviewed_pr_head_sha: str | None,
+    expected_error: str | None,
+) -> None:
+    payload = _valid_host_pair_request_payload(reviewed_pr_head_sha=reviewed_pr_head_sha)
+    payload["pull_number"] = pull_number
+    expected = {"format_version": format_version}
+    dispatched: list[tuple[str, dict[str, object], int | None]] = []
+    monkeypatch.setattr(host_helper, "_pair_manifest_version", lambda _payload: format_version)
+    monkeypatch.setattr(
+        host_helper,
+        "_run_pair_v1",
+        lambda observed: dispatched.append(("v1", observed, None)) or expected,
+    )
+    monkeypatch.setattr(
+        host_helper,
+        "_run_pair_v2",
+        lambda observed, *, format_version=2: dispatched.append(("v2", observed, format_version))
+        or expected,
+    )
+
+    if expected_error is not None:
+        with pytest.raises(host_helper.RehearsalError, match=expected_error):
+            host_helper._run_pair(payload)
+        assert dispatched == []
+    else:
+        assert host_helper._run_pair(payload) == expected
+        assert dispatched == [
+            ("v1", payload, None) if format_version == 1 else ("v2", payload, format_version)
+        ]
 
 
 def test_recovery_process_profile_preserves_v1_and_supports_pinned_v2_supervisor(
@@ -2067,8 +2210,17 @@ def test_controller_pair_dispatch_preserves_v1_and_v2_v3_source_contracts(
     monkeypatch.setattr(controller, "_ssh_prefix", lambda _config: ["ssh"])
 
     def stop_at_host(command: list[str], **kwargs: object) -> bytes:
-        request = json.loads(kwargs["input_bytes"])
-        events.append(("host-payload", request["payload"]["pull_number"]))
+        encoded = kwargs["input_bytes"]
+        assert isinstance(encoded, bytes)
+        request = json.loads(encoded)
+        operation, payload = host_helper._parse_request(encoded)
+        assert operation == request["operation"] == "rehearse_pr_pair"
+        assert payload == request["payload"]
+        if format_version == 3:
+            assert payload["reviewed_pr_head_sha"] == controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+        else:
+            assert "reviewed_pr_head_sha" not in payload
+        events.append(("host-payload", payload["pull_number"]))
         raise controller.RehearsalError("fixture_host_boundary")
 
     monkeypatch.setattr(controller, "_run_fixed", stop_at_host)

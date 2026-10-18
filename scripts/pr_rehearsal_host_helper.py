@@ -521,6 +521,7 @@ def _parse_request(raw: bytes) -> tuple[str, dict[str, object]]:
     payload = value.get("payload")
     if operation == "cleanup_assets":
         expected = {"reviewed_head_sha"}
+        has_v3_lineage = False
     elif operation == "rehearse_pr_pair":
         expected = {
             "repository",
@@ -535,10 +536,24 @@ def _parse_request(raw: bytes) -> tuple[str, dict[str, object]]:
             "candidate_archive_sha256",
             "recovery_archive_sha256",
         }
+        has_v3_lineage = isinstance(payload, dict) and "reviewed_pr_head_sha" in payload
+        if has_v3_lineage:
+            expected.add("reviewed_pr_head_sha")
     else:
         raise RehearsalError("operation_invalid")
     if not isinstance(payload, dict) or set(payload) != expected:
         raise RehearsalError("payload_invalid")
+    if operation == "rehearse_pr_pair":
+        pull_number = payload.get("pull_number")
+        if type(pull_number) is not int or pull_number not in {
+            PULL_NUMBER,
+            HELPER_SOURCE_PR_NUMBER,
+        }:
+            raise RehearsalError("fixed_pull_request_mismatch")
+        if has_v3_lineage:
+            if pull_number != HELPER_SOURCE_PR_NUMBER:
+                raise RehearsalError("fixed_pull_request_mismatch")
+            _revision(payload.get("reviewed_pr_head_sha"))
     return operation, payload
 
 
@@ -5539,6 +5554,17 @@ def _run_pair(payload: dict[str, object]) -> dict[str, object]:
     """Dispatch migration, v2 hotfix, or dual-head v3 hotfix rehearsal."""
 
     version = _pair_manifest_version(payload)
+    expected_pull_number = PULL_NUMBER if version == 1 else HELPER_SOURCE_PR_NUMBER
+    if (
+        type(payload.get("pull_number")) is not int
+        or payload.get("pull_number") != expected_pull_number
+    ):
+        raise RehearsalError("fixed_pull_request_mismatch")
+    has_v3_lineage = "reviewed_pr_head_sha" in payload
+    if has_v3_lineage != (version == 3):
+        raise RehearsalError("payload_invalid")
+    if version == 3:
+        _revision(payload.get("reviewed_pr_head_sha"))
     if version == 1:
         return _run_pair_v1(payload)
     if version == 2:
