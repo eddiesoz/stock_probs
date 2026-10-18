@@ -8,10 +8,12 @@ import sqlite3
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
+from stock_probs import provider as provider_module
 from stock_probs.domain import Bar
 from stock_probs.monitoring_scheduler import MonitoringScheduler
 from stock_probs.monitoring_store import MonitoringStore
@@ -593,7 +595,8 @@ def test_yahoo_fetch_latency_is_bounded_by_collection_completion(
             frame.attrs["history_metadata"] = metadata
             return frame
 
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", lambda _symbol: DelayedTicker())
+    module = SimpleNamespace(Ticker=lambda _symbol: DelayedTicker())
+    monkeypatch.setattr(provider_module, "_load_yfinance", lambda: module)
     provider = YahooProvider(timeout=1.0, clock=lambda: response_at)
     service = ForecastService(repository, provider, clock=lambda: NOW)
     clock_values = iter((dispatch_at, completed_at))

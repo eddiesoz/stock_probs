@@ -18,6 +18,15 @@ Middleware attaches a cached `AuthContext` before reading the bounded request bo
 
 Where the branch includes `tests/_auth_body_barrier.py`, use it to pause before the final body chunk after middleware authentication, change session state under test, and resume the request; assert the stale snapshot cannot commit a write. Branches without that helper still need equivalent deterministic race coverage. No-auth fixtures are explicit development/test setup, not a production fallback. Map coverage and helper presence do not establish test execution or release acceptance.
 
+## Partial browser runs and startup failures
+
+A case that fails fixture readiness has not exercised its page assertions. Preserve that aggregate
+failure and diagnose the fixed startup path before repeating it or changing timeouts. A report
+parser that requires all selected cases to pass may reject a present report's counts; distinguish
+that result from a missing report. Bind available screenshots and raw axe results to their exact
+passing cases, and keep missing states unavailable. Partial captures do not establish the complete
+selected matrix. See the [R3 report-card checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-contrast-build-and-four-state-checkpoint-2026-10-18).
+
 ## Reviewing incomplete contrast results
 
 Keep raw axe violations and incomplete results in the evidence. An incomplete result needs
@@ -526,6 +535,14 @@ as stale-stage evidence, rebuild and stage, then rerun the affected browser chec
 The build/stage evidence is recorded in the R-ASTRA-120 ledger. A successful build/stage check alone
 is not browser acceptance.
 
+An earlier R3 build bound 113 source inputs and 65 served/export pairs, with separately verified
+copyback for that snapshot. The later report-card axis-label candidate build used 114 source inputs,
+passed 88 frontend checks, typecheck and the Next production build, and had 65 served/export pairs
+verified by the parent; it did not copy generated output back. The focused-six browser attempt
+preceded this three-file repair and failed 3/6, with five raw axe contrast incompletes in the
+denominator snapshot. No browser or axe run has tested the repaired build. See the
+[R3 axis-label build and focused-six checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-axis-label-repair-build-and-focused-six-case-checkpoint-2026-10-18).
+
 The Playwright journeys emulate system color preference and storage failure, switch among
 light/dark/system on both local pages, and exercise print, reduced-motion, forced-colors, CSP, and
 contrast behavior. News routes are fixture-fulfilled for not-requested, loading, fresh, empty,
@@ -545,9 +562,10 @@ unavailable live run into a pass.
 ## Monitoring and forecast outcome workspaces
 
 Release 3 adds the Notifications workspace at `/notifications` and the forecast report card at
-`/research/report-card`. Their current contract and acceptance status are tracked in the
-[current R121 Release 3 checkpoint](../../MVP-PLAN.md#r-astra-121-e26-outbox-review-and-static-page-packaging); source
-presence and selected checks do not establish a deployed feature.
+`/research/report-card`. The [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-e26-outbox-review-and-static-page-packaging)
+records the feature contract; the [latest axis-label checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-axis-label-repair-build-and-focused-six-case-checkpoint-2026-10-18)
+records the current report-card build and browser status. Source presence and selected checks do
+not establish a deployed feature.
 
 Authenticated routes derive ownership from the active session and use bounded pages and revision
 checks. Creating or resuming an alert stores its initial-snapshot job with the rule. The rule stays
@@ -617,6 +635,20 @@ pairs before a corrected explicit inventory verified all 65; an initial suppleme
 preserved in the plan. See the [R3 monitoring checkpoint](../../MVP-PLAN.md#r-astra-121-r3-current-monitoring-checkpoint-2026-10-15).
 
 The assistant hotfix T9 artifact-only review passed 16 checks, but the unchanged startup reserve guard remains failed at 519,432 KiB against 524,288 KiB. The later above-floor observation does not establish the guard, cause, or actual 1 GB acceptance; there was no live service reinspection after artifact review. See the [R121 E28 checkpoint](../../MVP-PLAN.md#r-astra-121-e28-map-rebind-and-current-release-status).
+
+Keep R3's aggregate and focused results separate. The earlier 248-count test report recorded 244
+passes and four failures; its exact command is **Unavailable**, and the focused four-case pass below
+does not turn it into a 248-pass result. A later independent four-case selection passed the
+notification opt-out, owner/CSRF address-route, normal-lifespan configuration, and concurrent
+migration cases. It is not a canonical gate or browser run. The earlier full-24 browser failure
+remains **Fail**; the later focused-six browser result and axis-label build are recorded separately
+in the [R3 latest checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-axis-label-repair-build-and-focused-six-case-checkpoint-2026-10-18).
+The prior eager-import observation was bound to `provider.py` SHA-256
+`2e2d3e6443a4a92200a7104837f470a1efb6219cfe91ae4ba6cdb5ab2ae74df2`. The current R3 worktree
+has since moved `yfinance` and `curl_cffi.requests` behind cached loaders in
+`provider.py` (SHA-256 `45e8259ca3d7586df521b0d82f50953458b11ca16c7a39bf96dab2f86c283994`);
+this source change has no provider-runtime acceptance from the frontend build. The startup/runtime
+cause remains **Unproven**.
 
 ## Historical application gate receipt (preserved)
 

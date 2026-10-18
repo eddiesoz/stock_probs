@@ -9,6 +9,7 @@ import unicodedata
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, time, timedelta
+from functools import lru_cache
 from importlib import import_module
 from importlib.resources import files
 from numbers import Real
@@ -49,8 +50,33 @@ class _YFinanceModule(Protocol):
 
 
 # yfinance does not publish type information; keep its dynamic module behind the narrow facade.
-yf = cast(_YFinanceModule, import_module("yfinance"))
-curl_requests = import_module("curl_cffi.requests")
+@lru_cache(maxsize=1)
+def _load_yfinance() -> _YFinanceModule:
+    """Load Yahoo's client only when a Yahoo market-data operation needs it."""
+
+    try:
+        return cast(_YFinanceModule, import_module("yfinance"))
+    except (ImportError, OSError) as exc:
+        raise DomainError(
+            "provider_unavailable",
+            "The market data provider is temporarily unavailable.",
+            status_code=503,
+        ) from exc
+
+
+@lru_cache(maxsize=1)
+def _load_curl_requests() -> Any:
+    """Load the bounded news transport only when Yahoo news is requested."""
+
+    try:
+        return import_module("curl_cffi.requests")
+    except (ImportError, OSError) as exc:
+        raise DomainError(
+            "provider_unavailable",
+            "The news provider is temporarily unavailable.",
+            status_code=503,
+        ) from exc
+
 
 MAX_LOOKUP_RESULTS = 5
 YAHOO_PROVIDER_NAME = "Yahoo Finance"
@@ -251,7 +277,7 @@ class YahooProvider:
             if remaining <= 0:
                 raise TimeoutError
             # A per-call session prevents cookie, connection, or option mutation from leaking.
-            with curl_requests.Session() as session:
+            with _load_curl_requests().Session() as session:
                 response = session.get(
                     YAHOO_NEWS_URL,
                     params=params,
@@ -262,6 +288,8 @@ class YahooProvider:
                     default_headers=False,
                     content_callback=receive,
                 )
+        except DomainError:
+            raise
         except Exception as exc:
             message = (
                 "Yahoo Finance news exceeded the bounded response size."
@@ -444,7 +472,7 @@ class YahooProvider:
         try:
             # Search is the only company-name call. News/lists/recommendations are disabled so
             # Yahoo cannot return unrelated, unbounded payload categories.
-            search = yf.Search(
+            search = _load_yfinance().Search(
                 normalized_query,
                 max_results=limit,
                 news_count=0,
@@ -459,6 +487,8 @@ class YahooProvider:
                 raise_errors=True,
             )
             quotes = search.quotes
+        except DomainError:
+            raise
         except Exception as exc:
             raise DomainError(
                 "provider_unavailable",
@@ -486,7 +516,7 @@ class YahooProvider:
                 continue
             if searched_symbol in seen:
                 continue
-            ticker = yf.Ticker(searched_symbol)
+            ticker = _load_yfinance().Ticker(searched_symbol)
             # Yahoo search omits currency/timezone. One timeout-bounded chart call per returned
             # candidate completes identity without using Ticker.info or metadata cache misses.
             frame = self._history(ticker, period="5d", interval="1d")
@@ -537,7 +567,7 @@ class YahooProvider:
         if asset_type not in {"stock", "etf"}:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
         normalized_symbol = normalize_symbol(symbol)
-        ticker = yf.Ticker(normalized_symbol)
+        ticker = _load_yfinance().Ticker(normalized_symbol)
         frame = self._history(ticker, period=period, interval=interval)
         if frame.empty:
             raise DomainError(
@@ -795,7 +825,7 @@ class YahooProvider:
         start = origin_utc - timedelta(days=1)
         end = target_utc + timedelta(days=1)
         try:
-            ticker = yf.Ticker(requested_symbol)
+            ticker = _load_yfinance().Ticker(requested_symbol)
             price_frame = self._history(
                 ticker,
                 interval="1d",
@@ -1032,7 +1062,7 @@ class YahooProvider:
         if asset_type not in {"stock", "etf"}:
             raise DomainError("unsupported_asset", "Only stocks and ETFs are supported.")
         requested_symbol = normalize_symbol(symbol)
-        ticker = yf.Ticker(requested_symbol)
+        ticker = _load_yfinance().Ticker(requested_symbol)
         daily_frame = self._history_from_bounds(ticker, interval="1d", bounds=daily_bounds)
         if daily_frame.empty:
             raise DomainError(

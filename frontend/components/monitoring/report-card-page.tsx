@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { AuthRequestError } from "../auth-client";
 import { ReportCardWorkspace, type ReportCardSummary, type ReportPanelState } from "./ReportCardWorkspace";
 import { monitoringRequest, parseMonitoringFeatures } from "./monitoring-client";
-import styles from "./monitoring-navigation.module.css";
+import styles from "./ReportCardWorkspace.module.css";
 
 interface ReportPage extends ReportCardSummary { page: number; page_size: number; total: number; has_next: boolean; denominator_scope: "current_page"; denominator_count: number }
 
@@ -31,8 +31,12 @@ export function ReportCardPage() {
     return () => controller.abort();
   }, [page, reload]);
   const scope = summary ? `Metrics and filters describe the ${summary.denominator_count} saved forecasts on page ${summary.page}, out of ${summary.total} matching records. Other pages are excluded from these denominators.` : "Metrics appear only for saved, comparable outcomes.";
-  return <main id="main" tabIndex={-1}><h1 className="sr-only">Forecast report card</h1>
-    <div className={styles.controls}><button type="button" disabled={state === "loading" || page <= 1} onClick={() => setPage(value => value - 1)}>Previous report page</button><button type="button" disabled={state === "loading" || summary?.page !== page || !summary.has_next} onClick={() => setPage(value => value + 1)}>Next report page</button><button type="button" disabled={state === "loading"} onClick={() => setReload(value => value + 1)}>Refresh report</button><p>{scope}</p></div>
+  return <main id="main" tabIndex={-1}><h1 className="sr-only" tabIndex={-1}>Forecast report card</h1>
     <ReportCardWorkspace state={state} summary={summary} errorMessage={error} statusMessage={scope} onRetry={() => setReload(value => value + 1)} />
+    {summary ? <nav className={styles.pagePagination} aria-label="Report data pages">
+      <button className={styles.secondaryButton} type="button" disabled={state === "loading" || page <= 1} onClick={() => setPage(value => value - 1)}>Previous report page</button>
+      <span>Page {summary.page} of {Math.max(1, Math.ceil(summary.total / summary.page_size))}</span>
+      <button className={styles.secondaryButton} type="button" disabled={state === "loading" || summary.page !== page || !summary.has_next} onClick={() => setPage(value => value + 1)}>Next report page</button>
+    </nav> : null}
   </main>;
 }

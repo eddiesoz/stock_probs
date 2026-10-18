@@ -37,6 +37,17 @@ function emptyReport(page = 1) {
   };
 }
 
+function expectNoPendingNotificationAddressVerification(browserDiagnostics, count) {
+  // The current-challenge endpoint intentionally returns this exact 404 contract when no
+  // verification is pending. Keep it scoped to journeys that load notification preferences.
+  browserDiagnostics.expectHttpFailures({
+    method: "GET",
+    path: "/api/v1/notification-address-verifications/current",
+    status: 404,
+    count,
+  });
+}
+
 function scoredRow({
   id,
   symbol,
@@ -96,7 +107,7 @@ function unscoredRow({ id, symbol, target, state, reason, horizon = "weekly_5", 
 function populatedReport() {
   const weekly = [
     scoredRow({ id: 1, symbol: "SPY", target: "2025-01-09", reason: "Primary SPY outcome" }),
-    scoredRow({ id: 2, symbol: "ACDC", target: "2025-01-08", direction: "down", covered: false, observedReturn: -0.02, reason: "Primary ACDC outcome" }),
+    scoredRow({ id: 2, symbol: "ACDC", target: "2025-01-08", direction: "down", covered: false, observedReturn: -0.08, reason: "Primary ACDC outcome" }),
     { ...scoredRow({ id: 3, symbol: "SPY", target: "2025-01-07", direction: "up", correct: null, reason: "Tied forecast; no unique direction" }), predicted_class: null },
     unscoredRow({ id: 4, symbol: "ACDC", target: "2025-01-09", state: "pending", reason: "Awaiting target-session evidence" }),
     unscoredRow({ id: 5, symbol: "SPY", target: "2025-01-10", state: "unavailable", reason: "Target evidence unavailable" }),
@@ -147,7 +158,7 @@ async function attachAxeCapture(page, testInfo, name, { screenshot = false } = {
   expect(result.violations, `${name} raw axe violations`).toEqual([]);
   expect(result.incomplete, `${name} raw axe incomplete results`).toEqual([]);
   const width = page.viewportSize().width;
-  const targets = await page.locator("main button:visible, main select:visible, main input:not([type=checkbox]):visible, main summary:visible").evaluateAll((nodes) => nodes.map((node) => {
+  const targets = await page.locator("main button:visible, main select:visible, main input:not([type=checkbox]):not([type=radio]):visible, main summary:visible").evaluateAll((nodes) => nodes.map((node) => {
     const rect = node.getBoundingClientRect();
     return { tag: node.tagName.toLowerCase(), label: node.getAttribute("aria-label") || node.textContent?.trim().slice(0, 80) || "", width: rect.width, height: rect.height };
   }));
@@ -156,11 +167,38 @@ async function attachAxeCapture(page, testInfo, name, { screenshot = false } = {
     contentType: "application/json",
   });
   expect(targets.filter((target) => target.width < 44 || target.height < 44), `${name} primary target geometry`).toEqual([]);
-  const smallChoiceLabels = await page.locator('main label:has(input[type="checkbox"]):visible, main label:has(input[type="radio"]):visible').evaluateAll((nodes) => nodes.map((node) => {
-    const rect = node.getBoundingClientRect();
-    return { label: node.textContent?.trim() || "", width: rect.width, height: rect.height };
-  }));
-  expect(smallChoiceLabels.filter((target) => target.width < 44 || target.height < 44), `${name} choice-label target geometry`).toEqual([]);
+  const choices = page.locator('main input[type="checkbox"]:visible, main input[type="radio"]:visible');
+  const choiceTargets = [];
+  for (let index = 0; index < await choices.count(); index += 1) {
+    const choice = choices.nth(index);
+    await choice.scrollIntoViewIfNeeded();
+    choiceTargets.push(await choice.evaluate((input) => {
+      const glyph = input.getBoundingClientRect();
+      const labels = Array.from(input.labels || []).map((label) => {
+        const rect = label.getBoundingClientRect();
+        const style = getComputedStyle(label);
+        const centerHit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return {
+          associated: label.control === input,
+          visible: label.isConnected && label.getClientRects().length > 0 && style.visibility === "visible" && style.display !== "none" && Number(style.opacity) > 0,
+          pointerEvents: style.pointerEvents,
+          centerHit: centerHit === label || Boolean(centerHit && label.contains(centerHit)),
+          width: rect.width,
+          height: rect.height,
+        };
+      });
+      return { glyph: { width: glyph.width, height: glyph.height }, labels };
+    }));
+  }
+  await testInfo.attach(`${name}-choice-targets.json`, {
+    body: Buffer.from(JSON.stringify(choiceTargets)),
+    contentType: "application/json",
+  });
+  const choicesWithoutReachableLabels = choiceTargets.filter((target) => !target.labels.some((label) => (
+    label.associated && label.visible && label.pointerEvents !== "none" &&
+    label.width >= 44 && label.height >= 44 && label.centerHit
+  )));
+  expect(choicesWithoutReachableLabels, `${name} associated choice-label target geometry and hit area`).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${name} horizontal page overflow`).toBe(true);
   if (screenshot) {
     await testInfo.attach(`${name}.png`, {
@@ -197,6 +235,7 @@ test.beforeEach(async ({ page }) => {
 for (const theme of ["light", "dark"]) {
   test(`notifications lost-response replay is idempotent and simulated baselines stay unavailable in ${theme}`, async ({ page, browserDiagnostics, monitoringApplication }, testInfo) => {
     browserDiagnostics.expectRequestAborts({ method: "POST", path: "/api/v1/alerts" });
+    expectNoPendingNotificationAddressVerification(browserDiagnostics, 4);
     await page.addInitScript((value) => localStorage.setItem("stock-probs.theme", value), theme);
     await monitoringApplication.signIn(page);
     await page.goto(`${monitoringApplication.url}/notifications`);
@@ -294,7 +333,7 @@ for (const theme of ["light", "dark"]) {
   });
 
   test(`notifications use explicit global-busy and revision-CAS actions in ${theme}`, async ({ page, browserDiagnostics, monitoringApplication }, testInfo) => {
-    browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/alerts/00000000-0000-4000-8000-000000000002/pause", status: 409 });
+    expectNoPendingNotificationAddressVerification(browserDiagnostics, 7);
     await page.addInitScript((value) => localStorage.setItem("stock-probs.theme", value), theme);
     await monitoringApplication.signIn(page);
     await page.goto(`${monitoringApplication.url}/notifications`);
@@ -313,7 +352,14 @@ for (const theme of ["light", "dark"]) {
     await createAlert("SPY");
     const alerts = await (await page.request.get(`${monitoringApplication.url}/api/v1/alerts?limit=100`)).json();
     expect(alerts.items).toHaveLength(2);
-    await page.getByRole("button", { name: "Refresh inbox", exact: true }).click();
+    const refreshInbox = page.getByRole("button", { name: "Refresh inbox", exact: true });
+    const refreshedAlerts = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === "GET" && url.pathname === "/api/v1/alerts";
+    });
+    await refreshInbox.click();
+    await refreshedAlerts;
+    await expect(refreshInbox).toBeEnabled();
     await expect(page.locator("main article").filter({ hasText: "ACDC" })).toBeVisible();
     await expect(page.locator("main article").filter({ hasText: "SPY" })).toBeVisible();
 
@@ -338,6 +384,7 @@ for (const theme of ["light", "dark"]) {
     const firstArticle = page.locator("main article").filter({ hasText: "ACDC" });
     const secondArticle = page.locator("main article").filter({ hasText: "SPY" });
     const pause = firstArticle.getByRole("button", { name: "Pause alert", exact: true });
+    await expect(pause).toBeEnabled();
     await pause.focus();
     await page.keyboard.press("Enter");
     await requestEntered;
@@ -357,6 +404,11 @@ for (const theme of ["light", "dark"]) {
       data: { expected_revision: secondAlert.revision },
     });
     expect(externalPause.status()).toBe(200);
+    browserDiagnostics.expectHttpFailures({
+      method: "POST",
+      path: `/api/v1/alerts/${secondAlert.id}/pause`,
+      status: 409,
+    });
     await secondArticle.getByRole("button", { name: "Pause alert", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "could not be confirmed" })).toBeVisible();
     await page.getByRole("button", { name: "Refresh inbox", exact: true }).click();
@@ -366,7 +418,7 @@ for (const theme of ["light", "dark"]) {
     const pausedAlert = pausedRows.items.find((item) => item.id === secondAlert.id);
     expect(pausedAlert.state).toBe("paused");
     await page.locator("main article").filter({ hasText: "SPY" }).getByRole("button", { name: "Resume alert", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "fresh verified baseline is required" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "verified fresh baseline is required" })).toBeVisible();
     const resumedRows = await (await page.request.get(`${monitoringApplication.url}/api/v1/alerts?limit=100`)).json();
     const resumedAlert = resumedRows.items.find((item) => item.id === secondAlert.id);
     expect(resumedAlert.baseline_ready).toBe(false);
@@ -378,6 +430,7 @@ for (const theme of ["light", "dark"]) {
 
   test(`notifications loading, empty, malformed-error, and feature-unavailable states in ${theme}`, async ({ page, browserDiagnostics, monitoringApplication }, testInfo) => {
     browserDiagnostics.expectHttpFailures({ method: "GET", path: "/api/v1/notifications", status: 500 });
+    expectNoPendingNotificationAddressVerification(browserDiagnostics, 2);
     await page.addInitScript((value) => localStorage.setItem("stock-probs.theme", value), theme);
     await monitoringApplication.signIn(page);
     let mode = "loading";
@@ -420,7 +473,8 @@ for (const theme of ["light", "dark"]) {
     await attachAxeCapture(page, testInfo, `notifications-unavailable-${testInfo.project.name}-${theme}`, { screenshot: true });
   });
 
-  test(`notification read state requires an explicit revision-checked action in ${theme}`, async ({ page, monitoringApplication }, testInfo) => {
+  test(`notification read state requires an explicit revision-checked action in ${theme}`, async ({ page, browserDiagnostics, monitoringApplication }, testInfo) => {
+    expectNoPendingNotificationAddressVerification(browserDiagnostics, 1);
     await page.addInitScript((value) => localStorage.setItem("stock-probs.theme", value), theme);
     await monitoringApplication.signIn(page);
     // The inbox projection is deliberately synthetic because this fixture refuses to attest a
@@ -488,10 +542,28 @@ for (const theme of ["light", "dark"]) {
     expect(initialAudit.items, "opening the report page must not start a provider operation").toEqual([]);
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     await expect(page.getByRole("heading", { name: "Report card", exact: true })).toBeVisible();
-    await expect(page.getByText("Metrics and filters describe the 28 saved forecasts on page 1, out of 128 matching records. Other pages are excluded from these denominators.", { exact: true })).toBeVisible();
+    const scopeText = "Metrics and filters describe the 28 saved forecasts on page 1, out of 128 matching records. Other pages are excluded from these denominators.";
+    await expect(page.getByText(scopeText, { exact: true })).toHaveCount(1);
+    const reportPageNav = page.getByRole("navigation", { name: "Report data pages", exact: true });
+    await expect(reportPageNav).toBeVisible();
+    await expect(reportPageNav).toContainText("Page 1 of 2");
+    await expect(reportPageNav.getByRole("button", { name: "Previous report page", exact: true })).toBeDisabled();
+    await expect(reportPageNav.getByRole("button", { name: "Next report page", exact: true })).toBeEnabled();
+    const reportWorkspace = page.locator("main > section");
+    expect(await reportWorkspace.count()).toBe(1);
+    expect(await page.locator('main > nav[aria-label="Report data pages"]').count()).toBe(1);
+    const paginationFollowsWorkspace = await page.locator("main").evaluate((main) => {
+      const workspace = main.querySelector(":scope > section");
+      const pagination = main.querySelector(':scope > nav[aria-label="Report data pages"]');
+      return Boolean(workspace && pagination && workspace.nextElementSibling === pagination);
+    });
+    expect(paginationFollowsWorkspace).toBe(true);
+    await expect(page.locator("main > section > header").getByRole("button", { name: "Refresh report", exact: true })).toBeVisible();
     await expect(page.getByText("Recorded outcomes · not a backtest", { exact: true })).toBeVisible();
-    await expect(page.getByText(/Daily-or-longer outcomes can be scored automatically/)).toBeVisible();
-    await expect(page.getByText(/Five-minute rows require supported saved evidence/)).toBeVisible();
+    const methodSummary = page.getByText("View scoring method", { exact: true });
+    const methodDisclosure = page.locator("details").filter({ has: methodSummary });
+    await expect(methodSummary).toBeVisible();
+    await expect(methodDisclosure).not.toHaveAttribute("open", "");
     await expect(page.getByText("3 malformed or duplicate result rows were omitted before calculating filters, charts, and denominators.", { exact: true })).toBeVisible();
     await expect(page.getByText("24", { exact: true }).first()).toBeVisible();
     const metrics = page.locator('[aria-label="Selected report metrics"]');
@@ -500,10 +572,75 @@ for (const theme of ["light", "dark"]) {
     await expect(metrics).toContainText("19 correct / 19 scored direction comparisons");
     await expect(metrics.locator("article").nth(2).locator("strong")).toHaveText("100.0%");
     await expect(metrics).toContainText("19 covered / 20 scored comparable intervals");
-    await expect(page.locator('[aria-label="Outcome states in selected scope"]')).toContainText("Pending");
-    await expect(page.locator('[aria-label="Outcome states in selected scope"]')).toContainText("Unavailable");
+    const outcomeStates = page.getByRole("group", { name: "Outcome states in selected scope", exact: true });
+    await expect(outcomeStates.locator("article")).toHaveCount(3);
+    await expect(outcomeStates).toContainText("Pending");
+    await expect(outcomeStates).toContainText("Unavailable");
+    await expect(outcomeStates).toContainText("Under review");
     await expect(page.getByText("No unique direction prediction", { exact: true })).toBeVisible();
-    await expect(page.getByRole("img", { name: /Predicted interval and observed return plot/ })).toBeVisible();
+    if (testInfo.project.name === "mobile-chromium") {
+      await expect(page.getByRole("group", { name: "Outcome return chart" })).toBeHidden();
+      const featured = page.getByRole("region", { name: "Featured forecast result" });
+      await expect(featured).toBeVisible();
+      await expect(featured).toContainText("SPY");
+      await expect(featured).toContainText("2025-01-09");
+      await expect(featured).toContainText("Predicted 80% range");
+      await expect(featured).toContainText("Observed return");
+      await expect(featured.getByText("Most recent result shown: 2025-01-09.", { exact: true })).toBeVisible();
+      // formatPercentPoints uses fixed two decimals without adding a plus sign to positive values.
+      await expect(featured.locator("dd").nth(1)).toHaveText("-3.00% to 5.00%");
+      await expect(featured.locator("dd").nth(2)).toHaveText("2.00%");
+      await expect(featured.getByRole("img")).toHaveAccessibleName(/SPY, target 2025-01-09; predicted 80% return range/);
+    } else {
+      await expect(page.getByRole("region", { name: "Featured forecast result" })).toBeHidden();
+      const returnChart = page.getByRole("group", { name: "Outcome return chart" });
+      await expect(returnChart).toBeVisible();
+      await expect(returnChart.getByText("Return over forecast horizon", { exact: true })).toBeVisible();
+      const chartRowsRegion = returnChart.getByRole("region", { name: "Scrollable return chart rows" });
+      await expect(chartRowsRegion).toHaveAttribute("tabindex", "0");
+      const chartRows = chartRowsRegion.getByTestId("report-chart-row");
+      await expect(chartRows).toHaveCount(20);
+      await expect(chartRows.first()).toContainText("SPY");
+      await expect(chartRows.first()).toContainText("2024-12-02");
+      await expect(returnChart.getByRole("img").first()).toHaveAccessibleName(/SPY, target 2024-12-02; predicted 80% return range/);
+      const scrollExtent = await chartRowsRegion.evaluate((node) => ({ scrollHeight: node.scrollHeight, clientHeight: node.clientHeight }));
+      expect(scrollExtent.scrollHeight).toBeGreaterThan(scrollExtent.clientHeight);
+    }
+    const statusBox = await outcomeStates.boundingBox();
+    expect(statusBox).not.toBeNull();
+    if (testInfo.project.name === "mobile-chromium") {
+      const featuredBox = await page.getByRole("region", { name: "Featured forecast result" }).boundingBox();
+      expect(featuredBox).not.toBeNull();
+      expect(statusBox.y).toBeGreaterThanOrEqual(featuredBox.y + featuredBox.height);
+    } else {
+      const chartBox = await page.getByRole("group", { name: "Outcome return chart" }).boundingBox();
+      expect(chartBox).not.toBeNull();
+      expect(statusBox.x).toBeGreaterThanOrEqual(chartBox.x + chartBox.width);
+    }
+
+    const textAlternative = page.getByText("Read plotted values as text", { exact: true });
+    const textAlternativeDetails = page.locator("details").filter({ has: textAlternative });
+    await methodDisclosure.evaluate((node) => { node.open = false; });
+    await textAlternativeDetails.evaluate((node) => { node.open = false; });
+    await expect(methodDisclosure).not.toHaveAttribute("open", "");
+    await expect(textAlternativeDetails).not.toHaveAttribute("open", "");
+    await page.evaluate(() => {
+      if (document.activeElement instanceof HTMLElement && document.activeElement !== document.body) document.activeElement.blur();
+      window.scrollTo(0, 0);
+    });
+    await expect.poll(() => page.evaluate(() => document.activeElement === document.body && window.scrollY === 0)).toBe(true);
+    await attachAxeCapture(page, testInfo, `report-card-${testInfo.project.name}-${theme}`, { screenshot: true });
+
+    if (testInfo.project.name !== "mobile-chromium") {
+      const chartRowsRegion = page.getByRole("region", { name: "Scrollable return chart rows" });
+      await chartRowsRegion.focus();
+      await expect(chartRowsRegion).toBeFocused();
+      const initialScrollTop = await chartRowsRegion.evaluate((node) => node.scrollTop);
+      await page.keyboard.press("PageDown");
+      await expect.poll(() => chartRowsRegion.evaluate((node) => node.scrollTop)).toBeGreaterThan(initialScrollTop);
+      await expect(chartRowsRegion).toBeFocused();
+      await chartRowsRegion.evaluate((node) => { node.scrollTop = 0; });
+    }
     const outcomes = page.getByRole("table", { name: /Metric denominators are recomputed/ });
     await expect(outcomes.locator("tbody tr")).toHaveCount(20);
     await page.getByRole("navigation", { name: "Outcome pages" }).getByRole("button", { name: "Next", exact: true }).click();
@@ -515,26 +652,40 @@ for (const theme of ["light", "dark"]) {
     const allReasons = [...pageOneReasons, ...pageTwoReasons];
     expect(allReasons).toHaveLength(24);
     expect(new Set(allReasons).size).toBe(24);
-    await page.getByText("Read plotted values as text", { exact: true }).click();
-    await expect(page.locator("figure ol li")).toHaveCount(20);
-    await attachAxeCapture(page, testInfo, `report-card-${testInfo.project.name}-${theme}`, { screenshot: true });
+    await methodSummary.click();
+    await expect(methodDisclosure).toHaveAttribute("open", "");
+    await expect(methodDisclosure.getByText(/Daily-or-longer outcomes can be scored automatically/)).toBeVisible();
+    await expect(methodDisclosure.getByText(/Five-minute rows require supported saved evidence/)).toBeVisible();
+    await expect(methodDisclosure.getByText(/This report is not a backtest/)).toBeVisible();
+    await methodSummary.click();
+    await expect(methodDisclosure).not.toHaveAttribute("open", "");
 
-    const modelHorizon = page.getByLabel("Model and horizon", { exact: true });
+    await expect(textAlternativeDetails).not.toHaveAttribute("open", "");
+    await textAlternative.click();
+    await expect(page.locator("figure ol li")).toHaveCount(20);
+    await textAlternative.click();
+    await expect(textAlternativeDetails).not.toHaveAttribute("open", "");
+    const reportHeading = page.getByRole("heading", { name: "Forecast report card", level: 1, exact: true });
+    await reportHeading.focus();
+    await expect(reportHeading).toBeFocused();
+    await expect(page.getByRole("link", { name: "Review outcomes", exact: true })).toHaveAttribute("href", /^#/);
+
+    const modelHorizon = page.getByRole("combobox", { name: "Model and horizon", exact: true });
     await modelHorizon.selectOption({ label: "fixture-model-2 · 5-minute forward" });
     await expect(metrics).toContainText("1 scored / 1 rows in this scope");
     await expect(page.getByText("0 provider-bar rows · 1 manual reviews", { exact: true })).toBeVisible();
     await expect(page.getByText("Fixture five-minute manual review", { exact: true })).toBeVisible();
 
     await modelHorizon.selectOption({ label: "fixture-model-1 · Weekly · 5 sessions" });
-    await page.getByLabel("Symbol", { exact: true }).selectOption("SPY");
-    await page.getByLabel("Period", { exact: true }).selectOption("7");
+    await page.getByRole("combobox", { name: "Symbol", exact: true }).selectOption("SPY");
+    await page.getByRole("combobox", { name: "Period", exact: true }).selectOption("7");
     await page.getByLabel("Target from (UTC)", { exact: true }).fill("2025-01-09");
     await page.getByLabel("Target through (UTC)", { exact: true }).fill("2025-01-09");
     await expect(metrics.locator("article").first()).toContainText("2");
     await expect(metrics).toContainText("1 correct / 1 scored direction comparisons");
     await expect(metrics).toContainText("1 covered / 1 scored comparable intervals");
     await expect(page.getByText("No rows match the selected model, horizon, symbol, and target-date filters.", { exact: true })).toHaveCount(0);
-    const focusedFilter = page.getByLabel("Symbol", { exact: true });
+    const focusedFilter = page.getByRole("combobox", { name: "Symbol", exact: true });
     await focusedFilter.focus();
     await page.keyboard.press("ArrowDown");
     const focusEvidence = await focusedFilter.evaluate((node) => ({ active: document.activeElement === node, outline: getComputedStyle(node).outlineStyle }));
@@ -562,7 +713,7 @@ for (const theme of ["light", "dark"]) {
     mode = "empty";
     release();
     await expect(page.getByText("No recorded outcomes to score", { exact: true })).toBeVisible();
-    await expect(page.getByText("Metrics appear only after an owner-scoped forecast has a published, comparable outcome.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Metrics appear after an owner-scoped forecast has a published, comparable target outcome.", { exact: true })).toBeVisible();
     await attachAxeCapture(page, testInfo, `report-empty-${testInfo.project.name}-${theme}`, { screenshot: true });
 
     mode = "error";

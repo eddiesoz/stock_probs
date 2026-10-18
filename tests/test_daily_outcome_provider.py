@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
+from stock_probs import provider as provider_module
 from stock_probs.domain import Bar
 from stock_probs.outcome_collection import (
     ADJUSTMENT_BASIS,
@@ -82,7 +84,8 @@ class FakeTicker:
 
 
 def _install_ticker(monkeypatch, ticker: FakeTicker) -> None:
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", lambda symbol: ticker)
+    module = SimpleNamespace(Ticker=lambda symbol: ticker)
+    monkeypatch.setattr(provider_module, "_load_yfinance", lambda: module)
 
 
 def _fetch(provider: YahooProvider | None = None) -> DailyOutcomeSeries:
@@ -223,10 +226,10 @@ def test_recent_target_requires_publication_at_or_after_target(monkeypatch):
     assert stale.value.reason_code == "series_incomplete"
     assert len(ticker.calls) == 2
 
-    monkeypatch.setattr(
-        "stock_probs.provider.yf.Ticker",
-        lambda _symbol: pytest.fail("future target must be rejected before provider access"),
+    module = SimpleNamespace(
+        Ticker=lambda _symbol: pytest.fail("future target must be rejected before provider access")
     )
+    monkeypatch.setattr(provider_module, "_load_yfinance", lambda: module)
     with pytest.raises(OutcomeSourceUnavailable) as future:
         YahooProvider(timeout=1.0).fetch_daily_outcome_series(
             "SPY", "etf", ORIGIN, TARGET, TARGET - timedelta(seconds=1)
@@ -261,10 +264,12 @@ def test_exact_exchange_sessions_skip_holiday_and_reject_holiday_close(monkeypat
 
 
 def test_span_and_history_row_bounds_fail_closed_before_scoring(monkeypatch):
-    monkeypatch.setattr(
-        "stock_probs.provider.yf.Ticker",
-        lambda _symbol: pytest.fail("oversized date span must be rejected before provider access"),
+    module = SimpleNamespace(
+        Ticker=lambda _symbol: pytest.fail(
+            "oversized date span must be rejected before provider access"
+        )
     )
+    monkeypatch.setattr(provider_module, "_load_yfinance", lambda: module)
     with pytest.raises(OutcomeSourceUnavailable):
         YahooProvider().fetch_daily_outcome_series(
             "SPY", "etf", ORIGIN, TARGET + timedelta(days=201), NOW + timedelta(days=201)

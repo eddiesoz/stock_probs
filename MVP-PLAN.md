@@ -19,7 +19,7 @@ dependency must pass before the first R121 feature release; no deployed assistan
 | --- | --- | --- |
 | 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | In progress; local implementation and selected checks only |
 | 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | In progress in a separate managed checkout; no release acceptance |
-| 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | In progress in the R3 checkout; candidate schema 18 is registered; selected integration, UI-source and repository-typing scopes pass; the three-file typing repair and preference fixture received selected review, while the earlier 32-test failure remains recorded. The Oct 17 route-specific post-body authorization repair passes independent selected barrier checks (5/5), with a separate narrow lease/split selection also passing (5/5); the earlier build/stage does not bind changed repository source, and fresh browser, canonical, full-security, provider, and release acceptance remain open. |
+| 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | In progress in the R3 checkout. The latest isolated report-card axis-label build/stage passed 88 frontend checks and verified 65 served/export pairs at 114 source inputs. The pre-repair focused six-case run failed 3/6 and raw axe recorded five SVG image-node incompletes; browser/axe rerun, full suite, and release gates remain open |
 | 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Separate R4 schema-17 checkout: isolated API draft (44 checks), source/domain/service review (32 independent checks plus scoped static checks), and UI-source repair (15 scoped checks); not built or integrated; migration 019, route/session wiring, browser and release acceptance remain open |
 
 Transactions retain original currency/date and use decimal weighted-average book calculations.
@@ -7523,3 +7523,164 @@ The authored-document freeze /var/tmp/r12r/auth-write-docs-final-freeze-6dc91acc
 R3's documentation/map commit is 1abafd89e7a33ae2b741efc6820a928946bdd498, clean locally and not published; commit receipt SHA-256 4d5d1992e16b873e8e221f8323bfbaad343b93241e4b1c736117dcd66a0c807a.
 
 This closes only the two-path documentation routing check, not comprehensive auth-call-site, security, or release coverage. The seven visible features and free-Zen-through-OpenCode work remain active; this note claims no product, provider, runtime, production, deployment, publication, or release acceptance.
+
+### R-ASTRA-121 R3 build, stage, and focused regression checkpoint (2026-10-18)
+
+Task `R-ASTRA-121`. On clean source revision `0dad048301b9eff8e93f42bb92ef316820c6225b`, the
+approved isolated `./scripts/build-frontend.sh` build-and-stage path **Passed** in 168.544 seconds:
+88 Node tests passed with zero failures or skips, TypeScript and Next compile passed, and npm audit
+reported zero vulnerabilities. Independent QA bound all 113 source inputs and 65 served/export
+pairs. Receipt
+`/var/tmp/r12r/r3-frontend-stage-pairs-111bf062-d6a2-4f45-8407-3ad32ae31678/independent-qa-receipt.json`,
+SHA-256 `9ead59863d931e0c8c54624c56e3810636647255d37f66f543a39d34b7ed4b5a`. This is isolated
+build/stage evidence only; it does not establish application, browser, production, or deployment
+acceptance.
+
+The isolated QA skipped copyback. A separate parent receipt later verified generated-output
+copyback for 113 source rows and 65 pairs without recopying. Its first category-verifier attempt
+**Failed** and is preserved at
+`/var/tmp/r12r/r3-generated-copyback-c3929fce-61a5-4bcf-88bb-96b234588688/initial-verifier-failure.json`,
+SHA-256 `735b90e01c91627b651fff1e5c1a1d0f8eaef9956f8e256f31717931230cddf2`. The corrected
+copyback supplement **Passed** its declared scope:
+`/var/tmp/r12r/r3-generated-copyback-c3929fce-61a5-4bcf-88bb-96b234588688/verified-copyback-supplement.json`,
+SHA-256 `fcc94b8f6043ef85b944c52faa44adb05443f2c3f64e0335f9362cbe93365d70`. No application
+start, tests, or browser run occurred during copyback verification.
+
+An earlier 248-count R3 test report remains **Fail** at 244 reported passes and four failures; its
+exact command is **Unavailable**. A later focused four-case pytest run **Passed** with exit 0,
+four tests, zero failures/errors/skips, and `canonical_acceptance=false`, at
+`2026-10-18T00:54:33.106954Z`–`00:54:54.513268Z`. The cases cover missing-transport opt-out,
+owner/CSRF address routes, inert configuration until normal lifespan, and concurrent clean
+migration. Terminal receipt
+`/var/tmp/r12r/r3-four-actual-f8ea234b-959c-4bcf-b68b-c3f78e282347/terminal.json`, SHA-256
+`cbad71b26b3bdfe4e1176fe19dba4f2fe94973d7df7046dcb82f27e313698eb1`; independent review passed
+terminal/JUnit identity, exact selectors, and source/stage binding at
+`/var/tmp/r12r/r3-four-terminal-independent-qa-db41171a-a0a6-4527-9c08-e2c6dc923354/independent-qa-receipt.json`,
+SHA-256 `2153ce7d7f830e31743d97b9f0f5040c0ca5792f17d0c6a3179361793644aa28`. The independent review
+did not rerun tests; temporary pytest directories remain and its complete scratch-cleanup result is
+**Unavailable**. Do not combine this focused pass with the earlier 244 reported passes. No live
+application/runtime, browser, native, real-provider, email-delivery, or production acceptance is
+established.
+
+The lazy-provider correction supplement supersedes the earlier attribution to
+`assistant/providers`: the R3 candidate still imports `yfinance` and `curl_cffi.requests` eagerly
+from `src/stock_probs/provider.py` (SHA-256
+`2e2d3e6443a4a92200a7104837f470a1efb6219cfe91ae4ba6cdb5ab2ae74df2`); the F6 lazy-import repair
+is not integrated into R3. Supplement
+`/var/tmp/r12r/r3-f6-lazy-provider-correction-88266217-0a5a-46db-b3cc-61af90ad9ec3/correction-supplement.json`,
+SHA-256 `bbda8267ce43b0951c651b70dc1c217e46763456b2e70b68efb2264e91a1544a`, records R3 integration
+and browser rerun **Pending** and R3 startup/runtime cause **Unproven**. The earlier 24-case browser
+aggregate **Failed** with 21 failures and three unrun; no browser rerun, real provider call, full
+application startup, native run, or production action occurred.
+
+### R-ASTRA-121 R3 report-card axis-label repair build and focused six-case checkpoint (2026-10-18)
+
+Task `R-ASTRA-121`. The fresh focused-six browser run against the R3 worktree based on
+`0dad048301b9eff8e93f42bb92ef316820c6225b`, before the axis-label repair, **Failed**: three of
+six selected identities passed and three failed, with zero skipped or flaky cases. The run window
+was `2026-10-18T08:06:51.966Z`–`08:09:19.299Z`. The mobile lost-response and CAS cases and the
+desktop five-state matrix passed. The desktop lost-response case hit a screenshot timeout and an
+unexpected/missing HTTP-failure assertion; the desktop CAS case timed out waiting for the second
+creation's status although the request returned HTTP 201 and read-after-write was delayed. The
+report-card denominator snapshot had zero raw axe violations and five contrast `imgNode`
+incompletes, so strict zero-incomplete acceptance **Failed** for that snapshot. The captured result
+is `/var/tmp/r12r/r3-accessible-report-build-2308da9e-22e7-403b-8e7a-ba6b42633540/focused6-successor-v1/run-v1/execution-focused6-v1/terminal.json`,
+SHA-256 `cb5e56a00dd47b2ff76d9476d4451ab025c3b97a5ffb254f88ad2150698e2718`. Independent
+supplement `/var/tmp/r12r/r3-focused6-independent-qa-20261018T0811Z-2dc97254-fb08-4b9c-af8f-adb01639809a/r3-focused6-independent-qa-supplement.json`,
+SHA-256 `18cc5907a9fd8bce19ac081b21ad6701f3498cca79aac14a4990a54b89126ed9`, confirmed the
+terminal status and six case identities, and also recorded a **Fail** for exact leaf artifact-mode
+conformance. Its CAS supplement (SHA-256
+`b20bde8da1993283ef8760de02dd24ab80f7707d222ce4af1a1a8ff2f1aa9e91`) corrects an earlier
+interpretation: the separate mobile pass was not a desktop retry.
+
+The subsequent visible axis-label change is limited to `ReportCardWorkspace.tsx`,
+`ReportCardWorkspace.module.css`, and `report-card-axis-label-boxes.ts`; it adds SVG
+`foreignObject` label boxes while retaining the chart title, description, text alternative, and
+existing CSP. The approved isolated `./scripts/build-frontend.sh` build-and-stage path then
+**Passed** for the R3 candidate based on `0dad048301b9eff8e93f42bb92ef316820c6225b`, with
+114 source inputs and 88 frontend checks plus typecheck and Next production build. Parent stage
+review verified 65 served/export pairs. The build terminal is
+`/var/tmp/r12r/r3-report-card-axis-build-v4b-20261018/build-terminal-v4b.json`, SHA-256
+`871bff55e8a62625b12a70c6e981015e7a7f0624c2c8cbb687cb48dff2f2388d`; pair review in the same
+packet has SHA-256
+`258623b7516a325d09cd18a6c4af9c229afc16ae37a3e7b3d55c40d2ba7fadab`. No generated output was
+copied back. No browser or axe run has tested this repaired build; the prior full-24 browser failure
+remains preserved and no current R3 browser, accessibility, provider/runtime, canonical, security,
+recovery, actual 1 GB, rollback, canary, or release acceptance is claimed.
+
+Documentation checks for task `R-ASTRA-121-R2-R3-docs`: before editing, byte-identical copies of
+`MVP-PLAN.md` (SHA-256 `0183c3ad1a3d86f0eecf559fc9170986555c4b6a3489606f95f76fadae04de2c`) and
+`docs/develop/testing.md` (`dc5ac3a23e807da7468af677ab5d2f7e10bed6036a2f724e06748fe0c8671bbe`)
+were saved under `/var/tmp/r12r/r121-r2-r3-feature-build-docs-baseline-20261018T0845Z/r3/`
+on UUID-verified SD `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`, with directory mode `0700` and file
+mode `0600`; manifest SHA-256 is `1b899c5af9e910b37a3c6e7577bb9d5100aeb661b018208785b1c886558f3dd9`.
+Initial R3 documentation commands failed setup (exit 127) because this worktree has no local
+`.dev-venv`; the corrected commands used the primary checkout's interpreter:
+`/home/james/repos/stock_probs/.dev-venv/bin/python scripts/validate_docs.py` **Passed**
+(9 categories, 14 topics, 8 skill entries);
+`/home/james/repos/stock_probs/.dev-venv/bin/python scripts/check-doc-coverage.py --root . --map documentation-map.json`
+**Passed** (252 mapped files); and change-aware coverage **Passed** (252 mapped files, 13 changed
+paths, including the new axis-label helper). The scoped
+`git diff --check -- MVP-PLAN.md docs/develop/testing.md` **Passed**. The existing
+`monitoring-workspaces` rule already matches `frontend/components/monitoring/**`, so
+`docs/develop/documentation.md` and the map were left unchanged. Documentation tests were not run.
+
+### R-ASTRA-121 R3 report-card contrast build and four-state checkpoint (2026-10-18)
+
+The later report-card layout and range/marker contrast candidate passed the approved isolated
+`./scripts/build-frontend.sh` path with 94 frontend checks. Independent build/stage review bound
+115 source inputs and all 65 served/export pairs (20 pages, 41 Next assets, four authored assets).
+Build terminal SHA-256 is `e9a3543bca4284cff34eec7a4bcfec44a82d939fc451d6879a70122b102684fc`;
+independent receipt `/var/tmp/r12r/r3-build-stage-terminal-v9-review-20261018T1630Z-ecb69433-1d3f-4a14-93d3-20899f78a99d/independent-terminal-review.json`
+has SHA-256 `be3259a8ccc79e801e3f182a1407b850bfe6e4bc9bb1f9025f74a148f09a60b8`.
+This isolated build did not copy generated files back to the worktree.
+
+The exact four populated report-card cases then **Failed** as an aggregate: three passed and
+mobile Light failed fixture readiness before test steps, with no skips or flaky cases. The native
+x86_64 run was `2026-10-18T17:06:17.948Z`–`17:07:38.287Z`, exit 1 after 80.338 seconds,
+based on `0dad048301b9eff8e93f42bb92ef316820c6225b`. Terminal SHA-256 is
+`46ea79a8dd2df1049601eceddeda0354c355a173671429fc41b6a004293c364e`.
+The report exists; its `expected=3`, `unexpected=1` counts fail the runner's required four-pass
+contract (`structured_report_stat:expected`). Exact counts come from the immutable report
+`/var/tmp/r12r/r3-report-card-focused6-v12-prep-86e6c993-fc73-4404-a3f0-425d5cb55634/execution-v12/artifacts/playwright-results.json`,
+SHA-256 `2fa86dffcd0538fa98b1750239a9858f5a98d0e058902f5dec550fc12b7b9ef1`.
+This is not a missing-report diagnosis. Startup cause
+remains **Unproven**; no unchanged rerun or timeout widening followed.
+
+Independent terminal review verified all 12 authorization pins, 218 candidate source inputs,
+115 build inputs, 65 export/served pairs, and stopped-process cleanup. Receipt
+`/var/tmp/r12r/r3-focused4-actual-terminal-integrity-qa-v12-ea444822-8bd6-46f5-b212-94f5d80b7208/receipts/independent-terminal-integrity-v12.json`
+has SHA-256 `da29c368ff45f62a341cd29dec5d444bd6c461ca3df7a803d30880ad92b241f2`.
+The parent extracted only the three passing cases' named PNGs and six raw axe attachments from
+the allowed report. Those six snapshots have zero violations/incompletes; the two mobile-Light
+snapshots are **Unavailable**. Parent visual review passed the three captured states' range/marker
+separation and responsive card layout only; receipt SHA-256
+`cbb9cae34cae8cf53af46365c95828ff12038840b8806a06079615fc0db3d526`.
+It does not establish independent visual replay, four-state acceptance, physical mobile, actual
+screen-reader/zoom, canonical, provider, recovery, actual combined 1 GB, rollback, canary, or release
+acceptance. Preserve the preceding six-case and full-24 failures. No merge, deployment, resize,
+rollout, or email occurred; the 1 GB host, backups, and US$15 monthly total cap remain unchanged.
+
+### R-ASTRA-121 R3 optional-provider import follow-up (2026-10-18)
+
+The later R3 source now defers optional Yahoo and news libraries until provider use; this
+supersedes the earlier not-integrated observation for the current source only. Independent
+source review and four focused selectors passed 72 tests with zero failures/errors/skips,
+exit 0 at `2026-10-18T17:49:17.990592Z`–`17:49:28.354637Z` (10.364 seconds overall).
+The selectors were `tests/test_provider.py`, `tests/test_market_quotes.py`,
+`tests/test_daily_outcome_provider.py`, and
+`tests/test_outcome_collection.py::test_yahoo_fetch_latency_is_bounded_by_collection_completion`.
+All 14 public source/test/config bindings matched before and after. Receipt
+`/var/tmp/r12r/r3-provider-minimal-pytest-24182ce5-d7d3-4fed-9013-790c7bfd2d28/independent-review-receipt.json`
+has SHA-256 `7fd50ccc2d0815fdd2d1a925efbeec01e87a879d2b5538d444cc2740405892fa`.
+The preceding PATH-only setup attempt exited 127 before tests; it remains a setup **Fail**.
+
+The fresh-process lazy-import test separately passed once in 6.10 seconds with its original
+10-second child limit. Its JUnit is
+`/var/tmp/r12r/r3-lazy-import-single-20261018T1743Z/junit.xml`; the parent terminal records
+one pass and zero failures/errors/skips. The earlier five-file attempt hit its 90-second outer
+bound (exit 124) without completed JUnit, and remains **Fail**, with no accepted aggregate
+pass count. Do not combine that partial attempt with the later scoped passes. The focused
+sanitizer coverage exercises ImportError; OSError handling was source-reviewed but not separately
+executed. No live provider, current full browser/canonical, production, or release acceptance is
+established by these checks.

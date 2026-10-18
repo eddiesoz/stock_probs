@@ -21,8 +21,8 @@ from fastapi import FastAPI
 
 from stock_probs.api import create_app
 from stock_probs.config import Settings
-from stock_probs.monitoring_store import MonitoringStore
 from stock_probs.provider import FixtureProvider
+from stock_probs.totp import code_for_step, time_step
 
 FIXTURE_NOW = datetime(2025, 1, 10, 22, 3, tzinfo=UTC)
 
@@ -95,11 +95,42 @@ def _monitoring_fixture_app(port: int) -> FastAPI:
     async def monitoring_fixture_lifespan(app: FastAPI):
         async with original_lifespan(app):
             # The scheduler starts with the persisted switch disabled and therefore performs no
-            # work during startup. Enable only this disposable fixture through the typed API.
-            store = MonitoringStore(app.state.repository, admin_only=True)
+            # work during startup. Enable only this disposable fixture after a real local login
+            # and authenticator proof, using the same AuthManager methods as the HTTP routes.
+            store = app.state.monitoring_store
             control = store.get_control()
             if control["enabled"] is not True:
-                store.set_control(control["revision"], True, FIXTURE_NOW)
+                auth_manager = app.state.auth
+                if not isinstance(settings.bootstrap_username, str) or not isinstance(
+                    settings.bootstrap_password, str
+                ):
+                    raise RuntimeError("the fixture admin credentials are not configured")
+                auth_now = datetime.now(UTC)
+                local_session = auth_manager.local_login(
+                    settings.bootstrap_username, settings.bootstrap_password, auth_now
+                )
+                login_context = auth_manager.authenticate(local_session.session_token, auth_now)
+                enrollment = auth_manager.begin_totp_enrollment(login_context, auth_now)
+                secret = enrollment.get("secret")
+                if not isinstance(secret, str):
+                    raise RuntimeError("the fixture authenticator proof is unavailable")
+                proof_time = datetime.now(UTC)
+                stepped_up_session, _recovery_codes = auth_manager.finish_totp_enrollment(
+                    login_context,
+                    code_for_step(secret, time_step(proof_time)),
+                    proof_time,
+                )
+                fixture_context = auth_manager.authenticate(
+                    stepped_up_session.session_token, proof_time
+                )
+                if (
+                    fixture_context.user.role != "admin"
+                    or not auth_manager.has_recent_step_up(fixture_context, proof_time)
+                ):
+                    raise RuntimeError("the fixture admin session lacks fresh authenticator proof")
+                store.set_control(
+                    control["revision"], True, FIXTURE_NOW, auth_context=fixture_context
+                )
             yield
 
     application.router.lifespan_context = monitoring_fixture_lifespan

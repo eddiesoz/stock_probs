@@ -3,6 +3,12 @@
 import { useId, useState } from "react";
 
 import styles from "./ReportCardWorkspace.module.css";
+import {
+  describeReportCardReturnPlotOmissions,
+  getReportCardReturnAxis,
+  getReportCardReturnPlot,
+} from "./report-card-axis-label-boxes";
+import type { ReportCardReturnPlotPoint } from "./report-card-axis-label-boxes";
 
 export type ReportOutcomeState = "scored" | "pending" | "unavailable" | "disputed" | "incomparable";
 export type ReportPanelState = "loading" | "ready" | "error" | "unavailable";
@@ -67,12 +73,7 @@ const MAX_RETURN = 100;
 const MAX_PLOT_RETURN_PERCENT = 100_000;
 
 type UnknownRecord = Record<string, unknown>;
-interface PlotPoint {
-  row: ReportOutcome;
-  lowPercent: number;
-  highPercent: number;
-  observedPercent: number;
-}
+type PlotPoint = ReportCardReturnPlotPoint<ReportOutcome>;
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -285,79 +286,108 @@ function asPlotPoint(row: ReportOutcome): PlotPoint | null {
   return { row, lowPercent, highPercent, observedPercent };
 }
 
+function formatAxisPercent(value: number): string {
+  return value === 0 ? "0%" : `${value.toFixed(0)}%`;
+}
+
+function plotPointDescription(point: PlotPoint): string {
+  return `${point.row.symbol}, target ${formatDateLabel(point.row.target_timestamp)}; predicted 80% return range ${formatPercentPoints(point.lowPercent)} to ${formatPercentPoints(point.highPercent)}; observed return ${formatPercentPoints(point.observedPercent)}; observed ${point.row.interval_80_covered ? "inside" : "outside"} the range.`;
+}
+
 function ReturnEvidencePlot({ records, titleId }: { records: readonly ReportOutcome[]; titleId: string }) {
   const scored = records
-    .filter((row) => row.state === "scored" && typeof row.interval_80_covered === "boolean")
+    .filter((row) => row.state === "scored")
     .slice()
     .sort((left, right) => compareTarget(left.target_timestamp, right.target_timestamp));
-  const plotted = scored.map(asPlotPoint).filter((point): point is PlotPoint => point !== null).slice(-PLOT_LIMIT);
-  const omittedFromPlot = scored.length - plotted.length;
-  const width = 720;
-  const height = 245;
-  const left = 64;
-  const right = 14;
-  const top = 24;
-  const bottom = 43;
+  const plot = getReportCardReturnPlot(scored.map((row) => ({
+    row,
+    observedClose: row.outcome?.observed_close,
+    observedReturn: row.observed_return,
+    interval: row.interval_80_price,
+    intervalCovered: row.interval_80_covered,
+  })), PLOT_LIMIT, MAX_PRICE, MAX_PLOT_RETURN_PERCENT);
+  const plotted = plot.plotted;
+  const omissionText = describeReportCardReturnPlotOmissions(plot.omissions);
   const values = plotted.flatMap((point) => [point.lowPercent, point.highPercent, point.observedPercent]);
-  const minimum = Math.min(0, ...values);
-  const maximum = Math.max(0, ...values);
-  const span = maximum - minimum || 1;
-  const paddedMinimum = minimum - span * 0.12;
-  const paddedMaximum = maximum + span * 0.12;
-  const plotWidth = width - left - right;
-  const plotHeight = height - top - bottom;
-  const yFor = (value: number) => top + ((paddedMaximum - value) / (paddedMaximum - paddedMinimum)) * plotHeight;
-  const xFor = (index: number) => plotted.length < 2 ? left + plotWidth / 2 : left + (index / (plotted.length - 1)) * plotWidth;
-  const zeroY = yFor(0);
-  const covered = plotted.filter((point) => point.row.interval_80_covered === true).length;
+  const axis = getReportCardReturnAxis(values);
+  const symbolCounts = new Map<string, number>();
+  for (const point of plotted) symbolCounts.set(point.row.symbol, (symbolCounts.get(point.row.symbol) ?? 0) + 1);
+  const latest = plotted[plotted.length - 1];
 
   return (
     <figure className={styles.plotFigure}>
-      <figcaption id={titleId}>Predicted 80% ranges and observed returns</figcaption>
+      <figcaption id={titleId}>Forecast outcome returns</figcaption>
       {plotted.length === 0 ? (
-        <div className={styles.plotEmpty}>No scored rows in this scope have safe, complete return and interval evidence to plot.</div>
+        <div className={styles.plotEmpty}>
+          {plot.status === "no_scored_outcomes"
+            ? "No scored outcomes are available in this view."
+            : <>No scored outcomes in this view can be plotted. {omissionText}</>}
+        </div>
       ) : (
         <>
-          <svg className={styles.plot} viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={`${titleId}-accessible-title ${titleId}-accessible-description`}>
-            <title id={`${titleId}-accessible-title`}>Predicted interval and observed return plot</title>
-            <desc id={`${titleId}-accessible-description`}>{plotted.length} scored outcomes ordered by target session. Teal vertical ranges show each forecast’s saved predicted 80 percent price interval normalized to return from its own inferred origin price; circles show the observed return. {covered} of the plotted outcomes were inside their own interval. At most the latest {PLOT_LIMIT} safe rows are drawn. {omittedFromPlot > 0 ? `${omittedFromPlot} scored rows are outside the chart bound or have unsafe plotting values.` : ""}</desc>
-            <line className={styles.axis} x1={left} x2={width - right} y1={height - bottom} y2={height - bottom} />
-            <line className={styles.zeroLine} x1={left} x2={width - right} y1={zeroY} y2={zeroY} />
-            <text className={styles.axisLabel} x={left - 8} y={top + 4} textAnchor="end">{formatPercentPoints(paddedMaximum)}</text>
-            <text className={styles.axisLabel} x={left - 8} y={zeroY + 4} textAnchor="end">0%</text>
-            <text className={styles.axisLabel} x={left - 8} y={height - bottom + 4} textAnchor="end">{formatPercentPoints(paddedMinimum)}</text>
-            {plotted.map((point, index) => {
-              const x = xFor(index);
-              return (
-                <g key={point.row.result_id}>
-                  <line className={styles.intervalRange} x1={x} x2={x} y1={yFor(point.lowPercent)} y2={yFor(point.highPercent)} />
-                  <line className={styles.intervalCap} x1={x - 4} x2={x + 4} y1={yFor(point.lowPercent)} y2={yFor(point.lowPercent)} />
-                  <line className={styles.intervalCap} x1={x - 4} x2={x + 4} y1={yFor(point.highPercent)} y2={yFor(point.highPercent)} />
-                  <circle className={point.row.interval_80_covered ? styles.coveredPoint : styles.outsidePoint} cx={x} cy={yFor(point.observedPercent)} r="4.5">
-                    <title>{`${point.row.symbol} · ${formatDateLabel(point.row.target_timestamp)} · predicted 80% range ${formatPercentPoints(point.lowPercent)} to ${formatPercentPoints(point.highPercent)} · observed ${formatPercentPoints(point.observedPercent)} · ${point.row.interval_80_covered ? "inside" : "outside"} range`}</title>
-                  </circle>
-                </g>
-              );
-            })}
-            <text className={styles.axisLabel} x={left} y={height - 12}>{formatDateLabel(plotted[0].row.target_timestamp)}</text>
-            <text className={styles.axisLabel} x={width - right} y={height - 12} textAnchor="end">{formatDateLabel(plotted[plotted.length - 1].row.target_timestamp)}</text>
-          </svg>
+          {latest ? (
+            <section className={styles.featuredResult} aria-label="Featured forecast result">
+              <div className={styles.featuredHeading}>
+                <div><p className={styles.kicker}>Featured forecast result</p><h4>{latest.row.symbol}</h4></div>
+                <span className={styles.featuredStatus} data-inside-range={latest.row.interval_80_covered ? "true" : "false"}>{latest.row.interval_80_covered ? "Within range" : "Outside range"}</span>
+              </div>
+              <dl className={styles.featuredFacts}>
+                <div><dt>Target date</dt><dd>{formatDateLabel(latest.row.target_timestamp)}</dd></div>
+                <div><dt>Predicted 80% range</dt><dd>{formatPercentPoints(latest.lowPercent)} to {formatPercentPoints(latest.highPercent)}</dd></div>
+                <div><dt>Observed return</dt><dd>{formatPercentPoints(latest.observedPercent)}</dd></div>
+              </dl>
+              <svg className={styles.featuredRange} viewBox="0 0 1000 100" preserveAspectRatio="none" role="img" aria-label={plotPointDescription(latest)}>
+                <line className={styles.zeroLine} x1={axis.position(0)} x2={axis.position(0)} y1="10" y2="90" vectorEffect="non-scaling-stroke" />
+                <line className={styles.intervalRangeOutline} x1={axis.position(latest.lowPercent)} x2={axis.position(latest.highPercent)} y1="50" y2="50" vectorEffect="non-scaling-stroke" />
+                <line className={styles.intervalRange} x1={axis.position(latest.lowPercent)} x2={axis.position(latest.highPercent)} y1="50" y2="50" vectorEffect="non-scaling-stroke" />
+                <line className={styles.pointHalo} x1={axis.position(latest.observedPercent)} x2={axis.position(latest.observedPercent)} y1="50" y2="50" vectorEffect="non-scaling-stroke" />
+                <line className={latest.row.interval_80_covered ? styles.coveredPoint : styles.outsidePoint} x1={axis.position(latest.observedPercent)} x2={axis.position(latest.observedPercent)} y1="50" y2="50" vectorEffect="non-scaling-stroke" />
+              </svg>
+              <div className={styles.featuredAxis} aria-hidden="true"><span>{formatAxisPercent(-axis.maximum)}</span><span>0%</span><span>{formatAxisPercent(axis.maximum)}</span></div>
+              <p className={styles.featuredTarget}>Most recent result shown: {formatDateLabel(latest.row.target_timestamp)}.</p>
+            </section>
+          ) : null}
+          <div className={styles.plotChart} role="group" aria-label="Outcome return chart">
+            <div className={styles.plotAxisRow} aria-hidden="true">
+              <span className={styles.plotAxisLead}>Instrument · target</span>
+              <div className={styles.plotAxisTrack}>{axis.ticks.map((tick) => <span className={styles.plotAxisTick} key={tick}>{formatAxisPercent(tick)}</span>)}</div>
+            </div>
+            <div className={styles.plotRows} role="region" aria-label="Scrollable return chart rows" tabIndex={0}>
+              {plotted.map((point) => {
+                const repeatedSymbol = (symbolCounts.get(point.row.symbol) ?? 0) > 1;
+                const date = formatDateLabel(point.row.target_timestamp);
+                return (
+                  <div className={styles.plotRow} data-testid="report-chart-row" key={point.row.result_id}>
+                    <span className={styles.plotRowLabel}><strong>{point.row.symbol}</strong>{repeatedSymbol ? <small>{date}</small> : null}</span>
+                    <svg className={styles.plotRowRange} viewBox="0 0 1000 100" preserveAspectRatio="none" role="img" aria-label={plotPointDescription(point)}>
+                      {axis.ticks.map((tick) => <line className={tick === 0 ? styles.zeroLine : styles.gridLine} key={tick} x1={axis.position(tick)} x2={axis.position(tick)} y1="8" y2="92" vectorEffect="non-scaling-stroke" />)}
+                      <line className={styles.intervalRangeOutline} x1={axis.position(point.lowPercent)} x2={axis.position(point.highPercent)} y1="50" y2="50" vectorEffect="non-scaling-stroke" />
+                      <line className={styles.intervalRange} x1={axis.position(point.lowPercent)} x2={axis.position(point.highPercent)} y1="50" y2="50" vectorEffect="non-scaling-stroke" />
+                      <line className={styles.pointHalo} x1={axis.position(point.observedPercent)} x2={axis.position(point.observedPercent)} y1="50" y2="50" vectorEffect="non-scaling-stroke" />
+                      <line className={point.row.interval_80_covered ? styles.coveredPoint : styles.outsidePoint} x1={axis.position(point.observedPercent)} x2={axis.position(point.observedPercent)} y1="50" y2="50" vectorEffect="non-scaling-stroke" />
+                    </svg>
+                  </div>
+                );
+              })}
+            </div>
+            <div className={styles.plotAxisTitle}>Return over forecast horizon</div>
+          </div>
           <div className={styles.plotLegend} aria-hidden="true">
-            <span><i className={styles.intervalSwatch} />Predicted 80% range</span>
+            <span><i className={styles.intervalSwatch} />Predicted 80% return range</span>
             <span><i className={styles.coveredSwatch} />Observed return inside range</span>
             <span><i className={styles.outsideSwatch} />Observed return outside range</span>
           </div>
-          <p className={styles.plotCaption}>Every interval and observed point is normalized against that row’s inferred origin price, so different symbols and currencies are not compared as native prices. Chart shows at most the latest {PLOT_LIMIT} rows.</p>
+          <p className={styles.plotCaption}>The horizontal axis is return over each forecast horizon. Every interval and observed point is normalized against that row’s inferred origin price, so different symbols and currencies are not compared as native prices. Rows are ordered by target date; repeated symbols include their target date. The chart shows at most the latest {PLOT_LIMIT} rows.</p>
           <details className={styles.plotTextAlternative}>
             <summary>Read plotted values as text</summary>
             <ol>
               {plotted.map((point) => (
                 <li key={point.row.result_id}>
-                  <strong>{point.row.symbol}</strong> · {formatDateLabel(point.row.target_timestamp)} · predicted 80% range {formatPercentPoints(point.lowPercent)} to {formatPercentPoints(point.highPercent)} · observed return {formatPercentPoints(point.observedPercent)} · {point.row.interval_80_covered ? "inside range" : "outside range"}
+                  <strong>{point.row.symbol}</strong> · {formatDateLabel(point.row.target_timestamp)} · predicted 80% return range {formatPercentPoints(point.lowPercent)} to {formatPercentPoints(point.highPercent)} · observed return {formatPercentPoints(point.observedPercent)} · {point.row.interval_80_covered ? "inside range" : "outside range"}
                 </li>
               ))}
             </ol>
-            {omittedFromPlot > 0 ? <p>{omittedFromPlot} additional scored rows were omitted by the 60-row chart bound or lacked safe normalized plotting values. All validated rows remain in the table and metric denominators.</p> : null}
+            {omissionText ? <p>{omissionText}</p> : null}
           </details>
         </>
       )}
@@ -465,7 +495,10 @@ export function ReportCardWorkspace({ state, summary, errorMessage, statusMessag
           <h2 id={headingId}>Report card</h2>
           <p>Review recorded forecast results with their source evidence and scoring denominators.</p>
         </div>
-        <span className={styles.scopeBadge}>Recorded outcomes · not a backtest</span>
+        <div className={styles.pageHeadActions}>
+          <span className={styles.scopeBadge}>Recorded outcomes · not a backtest</span>
+          {onRetry ? <button className={styles.secondaryButton} type="button" disabled={state === "loading"} onClick={onRetry}>Refresh report</button> : null}
+        </div>
       </header>
 
       <div className={state === "error" ? styles.errorBanner : styles.stateBanner} role={state === "error" ? "alert" : "status"} aria-live={state === "error" ? "assertive" : "polite"}>
@@ -484,7 +517,7 @@ export function ReportCardWorkspace({ state, summary, errorMessage, statusMessag
         </div>
       ) : (
         <>
-          <div className={styles.controls} aria-label="Report filters">
+          <div className={styles.controls} role="group" aria-label="Report filters">
             <label>
               <span>Model and horizon</span>
               <select value={activeGroupKey} onChange={(event) => changeGroup(event.target.value)}>
@@ -518,10 +551,6 @@ export function ReportCardWorkspace({ state, summary, errorMessage, statusMessag
             </label>
           </div>
           {filterError ? <p className={styles.filterError} role="alert">{filterError} No filtered rows or derived values are shown.</p> : null}
-          <div className={styles.methodNote}>
-            <strong>How recorded outcomes are scored</strong>
-            <span>Daily-or-longer outcomes can be scored automatically when a supported target-session source is available. Five-minute rows require supported saved evidence; when provider evidence is missing or unsuitable, explicit manual review is required. This report is not a backtest.</span>
-          </div>
           {malformedItems ? <p className={styles.filterError} role="alert">The report response is malformed or unavailable: “items” must be an array. No rows or metrics are shown.</p> : responseTooLarge ? <p className={styles.filterError} role="alert">This response exceeds the safe limit of {MAX_INPUT_ROWS} rows. The entire response is excluded from metrics and charts.</p> : omittedRows > 0 ? <p className={styles.dataNotice} role="status">{omittedRows} malformed or duplicate result row{omittedRows === 1 ? " was" : "s were"} omitted before calculating filters, charts, and denominators.</p> : null}
           {excludedWithoutTarget > 0 && !filterError ? <p className={styles.dataNotice} role="status">{excludedWithoutTarget} row{excludedWithoutTarget === 1 ? " has" : "s have"} no target timestamp and was omitted by the date filter.</p> : null}
 
@@ -537,7 +566,7 @@ export function ReportCardWorkspace({ state, summary, errorMessage, statusMessag
             </div>
           ) : selectedGroup ? (
             <>
-              <div className={styles.metricGrid} aria-label="Selected report metrics">
+              <div className={styles.metricGrid} role="group" aria-label="Selected report metrics">
                 <article className={styles.metricCard}>
                   <span>Forecasts in scope</span>
                   <strong>{validCount(orderedRows.length) ?? "Unavailable"}</strong>
@@ -560,18 +589,23 @@ export function ReportCardWorkspace({ state, summary, errorMessage, statusMessag
                 </article>
               </div>
 
-              <div className={styles.statusGrid} aria-label="Outcome states in selected scope">
-                <article><span>Pending</span><strong>{pendingCount}</strong><small>Waiting for supported target-session evidence</small></article>
-                <article><span>Unavailable</span><strong>{unavailableCount + incomparableCount}</strong><small>{unavailableCount} unavailable · {incomparableCount} incomparable</small></article>
-                <article><span>Under review</span><strong>{disputedCount}</strong><small>Disputed rows stay outside scored denominators</small></article>
-              </div>
-
               <div className={styles.evidenceGrid}>
                 <section className={styles.panel} aria-labelledby={`${headingId}-plot-heading`}>
                   <h3 id={`${headingId}-plot-heading`} className={styles.sectionHeading}>Outcome evidence · {horizonLabel(selectedGroup.horizon, selectedGroup.five_minute)}</h3>
                   <ReturnEvidencePlot records={orderedRows} titleId={plotId} />
                 </section>
                 <aside className={styles.explanation} aria-labelledby={`${headingId}-explanation`}>
+                  <div className={styles.statusGrid} role="group" aria-label="Outcome states in selected scope">
+                    <article><span>Pending</span><strong>{pendingCount}</strong><small>Waiting for supported target-session evidence</small></article>
+                    <article><span>Unavailable</span><strong>{unavailableCount + incomparableCount}</strong><small>{unavailableCount} unavailable · {incomparableCount} incomparable</small></article>
+                    <article><span>Under review</span><strong>{disputedCount}</strong><small>Disputed rows stay outside scored denominators</small></article>
+                  </div>
+                  <a className={styles.reviewOutcomes} href={`#${headingId}-outcomes`}>Review outcomes</a>
+                  <details className={styles.methodDisclosure}>
+                    <summary>View scoring method</summary>
+                    <strong>How recorded outcomes are scored</strong>
+                    <span>Daily-or-longer outcomes can be scored automatically when a supported target-session source is available. Five-minute rows require supported saved evidence; when provider evidence is missing or unsuitable, explicit manual review is required. This report is not a backtest.</span>
+                  </details>
                   <p className={styles.kicker}>How to read this</p>
                   <h3 id={`${headingId}-explanation`}>Recorded, not simulated</h3>
                   <p>This report scores saved forecasts against published target outcomes. It does not run or summarize a historical walk-forward backtest.</p>
