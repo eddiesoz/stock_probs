@@ -502,7 +502,9 @@ full-app accessibility, live-provider, physical-mobile, deployment, or release a
 source hash, task IDs, receipts, and preserved failures are in the [R1 assistant-to-thesis
 follow-up](../../MVP-PLAN.md#r-astra-121-r1-assistant-to-thesis-selected-reply-browser-follow-up-2026-10-18).
 That selected-reply browser result predates the later visible truncation notice, so it does not
-verify the notice's rendered state. The notice source change has no current browser or build result;
+verify the notice's rendered state. The later approved frontend build/stage passed 72 frontend
+tests with 94 unchanged public inputs and 51 matching served/export files; rendered browser and
+axe verification of the notice remain pending;
 see the [truncation notice checkpoint](../../MVP-PLAN.md#r-astra-121-r1-selected-reply-truncation-notice-2026-10-18).
 
 ## Assistant verification (`R-ASTRA-120`)

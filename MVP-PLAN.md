@@ -10,7 +10,7 @@ fictional data, incidental labels, and logos are not product requirements. See t
 
 | Release | Complete user-facing scope | Current status |
 | --- | --- | --- |
-| 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | Draft PR #7; approved-design refinements and nine affected browser/axe cases passed after preserved failures; a later source-only change adds a visible notice for shortened assistant excerpts. That notice has no current browser/build result. Current aggregate, runtime and release gates remain open |
+| 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | Draft PR #7; approved-design refinements and nine affected browser/axe cases passed after preserved failures; a later source-only change adds a visible notice for shortened assistant excerpts. That notice has a passing approved frontend build/stage; rendered verification remains pending. Current aggregate, runtime and release gates remain open |
 | 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | In progress in a separate managed checkout; no release acceptance |
 | 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | Pending |
 | 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Pending |
@@ -7138,3 +7138,20 @@ window, and a saved terminal receipt are **Unavailable**. The earlier selected-r
 component change and does not verify the notice. No frontend build/stage, browser or axe run was
 performed for this change; current rendered behavior and its acceptance remain **Pending**. No
 assistant runtime, provider, deployment, or release result is inferred.
+
+### R-ASTRA-121 R1 truncation-notice approved frontend build (2026-10-18)
+
+On pushed application head `e06f1a240701ba610a17f3d699df47f30b06c67d`, the parent ran
+`./scripts/build-frontend.sh` with umask `022` from `2026-10-18T21:23:40.138213+00:00` to
+`21:24:15.177890+00:00`. The approved install/typecheck/Next build/test/stage path **Passed**
+with exit `0`: 72 frontend tests passed, with zero failures or skips. All 94 explicitly bound
+public build inputs were unchanged, and all 51 staged Next files matched `frontend/out` byte
+for byte. The four authored static assets were included in the unchanged source bindings.
+The parent observed the completed unit with exit `0`, PID `0`, and empty control group.
+
+The terminal is `/var/tmp/r12r/r1-truncation-approved-build-pia9zhjk/terminal.json`
+(SHA-256 `c878f549046f371a441bf572518e4f36496941b06f03d03df04e944edb32660b`);
+`before.json` and `stage-pairs.json` retain the explicit bindings. The build log SHA-256 is
+`4459785f3fe63d1e0aa3e8c8b3b436540090d35cbb91a7bf0207baae66841621`. This closes only
+the build/stage gap recorded above. The notice has no current rendered/browser/axe result;
+no assistant provider, production, full aggregate, or release acceptance is inferred.
