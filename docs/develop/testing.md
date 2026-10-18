@@ -412,6 +412,13 @@ synchronous spawn failure and readiness failure with mocked child-process, netwo
 interfaces; it does not verify real child-process readiness, asynchronous child error events, or OS
 process reaping. The full browser aggregate must still pass separately.
 
+Shared local browser-fixture startup watchdogs use a 30-second overall deadline, matching
+the existing Playwright webServer timeout. Each readiness fetch uses a timeout of at least
+1 ms and otherwise no longer than the smaller of one second and the remaining deadline.
+Retry sleep is capped to the remaining budget, and an early child exit is surfaced
+immediately. This documents fixture orchestration only; passing lifecycle unit tests do not
+establish application or browser acceptance.
+
 The supervised native probe retains only normalized diagnostics. Model-discovery warnings use
 closed outcome names and bounded numeric counters for catalog reads and the activation barrier;
 raw log text, request URLs and owner identifiers are excluded. The existing limits remain four

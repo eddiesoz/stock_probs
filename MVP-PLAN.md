@@ -7684,3 +7684,17 @@ pass count. Do not combine that partial attempt with the later scoped passes. Th
 sanitizer coverage exercises ImportError; OSError handling was source-reviewed but not separately
 executed. No live provider, current full browser/canonical, production, or release acceptance is
 established by these checks.
+
+### R-ASTRA-121 shared local browser-fixture startup watchdog (2026-10-18)
+
+The shared fixture watchdog uses a 30-second startup deadline, matching the unchanged
+Playwright webServer timeout. Each readiness fetch is bounded by the smaller of one
+second and the remaining deadline, with a 1 ms floor; retry sleep is capped to remaining
+time, and early child exit is surfaced immediately. Independent source/pure QA passed
+each of four selected lifecycle suites (9/9 per suite) and fixture/test syntax checks.
+The review found feature-specific behavior, R1 diagnostics/counters, and R4 hooks
+preserved. Exact bindings and results are recorded in
+/var/tmp/r12r/f6-readiness-watchdog-qa-a1d4423c-752f-4728-835f-0d524238e444/receipt.json
+(SHA-256 70c83123439384ef87e4de1b7bb851c3c30026e0f93b7e64c93d5ebe61e329e6). This is
+fixture-source/pure-test evidence only: no app, browser, build, or provider run occurred,
+and previously recorded actual browser failures remain open.

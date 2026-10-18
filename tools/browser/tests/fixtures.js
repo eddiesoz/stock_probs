@@ -18,19 +18,31 @@ async function freeLoopbackPort() {
   return port;
 }
 
+const READINESS_TIMEOUT_MS = 30_000;
+const READINESS_REQUEST_TIMEOUT_MS = 1_000;
+
 async function waitForReadiness(url, processState, label) {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + READINESS_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (processState.exit !== null) {
       throw new Error(`${label} exited early (${processState.exit}): ${processState.stderr}`);
     }
     try {
-      const response = await fetch(`${url}/api/v1/readiness`);
-      if (response.ok) return;
+      const requestTimeoutMs = Math.max(1, Math.min(READINESS_REQUEST_TIMEOUT_MS, deadline - Date.now()));
+      const response = await fetch(`${url}/api/v1/readiness`, {
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+      if (response.ok && processState.exit === null && Date.now() < deadline) return;
     } catch (_) {
       // A refused connection is expected while the local process binds its loopback port.
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    if (processState.exit !== null) {
+      throw new Error(`${label} exited early (${processState.exit}): ${processState.stderr}`);
+    }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(50, remainingMs)));
+    }
   }
   throw new Error(`${label} did not become ready: ${processState.stderr}`);
 }
