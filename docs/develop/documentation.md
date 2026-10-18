@@ -507,6 +507,14 @@ not credentials, private paths, or copied runtime output.
 4. Run `.dev-venv/bin/python scripts/validate_docs.py`.
 5. Review the changed paths and record the actual pre-change and post-change checkpoint states.
 
+For local-build preparation on removable media, record the verified mount identity, free-space
+admission/stop readings, private audit scratch/receipt modes, and separate exact helper-source
+binding in the task ledger. Keep an approved setup receipt unchanged: it proves setup only. Pair it
+with independent review of the exact helper source and a successful build receipt bound to that
+source before claiming a helper or image build. Preserve Git-tracked executable modes in the
+materialized source context. For interrupted test runs, retain terminal and JUnit evidence
+independently and preserve count disagreements as a failed or unresolved result.
+
 The project `documentation` skill contains the agent-facing version of this workflow. Skill
 or configuration-time changes require an OpenCode restart before discovery can be validated;
 the editing session itself is not proof that the restarted process loaded them.

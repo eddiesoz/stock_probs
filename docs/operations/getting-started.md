@@ -123,6 +123,18 @@ For R-ASTRA-120, keep task-generated bulk recovery, QA, and build artifacts on t
 `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; stop if either expected mount is missing or mismatched.
 Do not fall back to the main filesystem or `/tmp`, and do not move active Codex or browser state.
 
+For the R-ASTRA-121 local candidate context, verify the same mounted UUID before creating its
+private directory. Admit a build only with at least 4 GiB free, monitor that mount throughout the
+operation, and stop if free space falls below 1 GiB. Use mode 0700 for private audit scratch
+directories and mode 0600 for private audit receipts, with child umask 022. Preserve Git-tracked
+source-context modes, including executable bits. Keep the approved setup receipt unchanged and pair
+it with a separate exact helper-source binding and review, plus a successful build receipt bound to
+those inputs. The setup receipt alone proves setup only; it does not need to be regenerated with a
+helper digest and does not prove helper contents or a build. For Unix-socket tests, use a unique
+short temporary root and preflight the complete encoded socket path before running the full suite; a
+focused short-path result remains diagnostic evidence. See the [R-ASTRA-121 checkpoint](../../MVP-PLAN.md)
+for the current result and open gates.
+
 1. Copy the source medium to an independent, protected filesystem. Before formatting, verify the
    backup checksum and byte count, the complete file/member inventory, and preserved metadata. If
    any check is missing or fails, stop before formatting.

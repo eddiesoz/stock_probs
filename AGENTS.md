@@ -2370,3 +2370,15 @@ the test is intended to reach a mocked build or stop failure. Keep separate test
 establishes actual build admission or resource acceptance. R-ASTRA-121's failed 54e canonical
 run and narrow test-only repair are preserved in the F6 canonical disk-seam checkpoint in
 `MVP-PLAN.md`; a fresh complete aggregate remains required.
+
+For R-ASTRA-121 Unix-socket test failures, preflight the complete encoded socket path under a
+unique short task-owned temporary root before a full run. Preserve a failed or interrupted
+canonical result; a focused short-path pass is diagnostic evidence and cannot replace it. Keep
+pytest terminal and JUnit totals separately bound, and fail closed when their counts disagree.
+Before creating task-local build context on removable media, verify the mounted filesystem UUID;
+require 4 GiB free at admission, monitor the mount during the operation, and stop below 1 GiB.
+Use mode 0700 for private audit scratch directories and mode 0600 for private audit receipts,
+with child umask 022. Preserve Git-tracked source-context modes, including executable bits; do not
+apply private receipt modes to materialized source files. Keep an approved setup receipt unchanged
+and pair it with a separate exact helper-source binding and review plus a successful build receipt
+bound to those inputs. The setup receipt alone proves setup, not helper contents or build completion.

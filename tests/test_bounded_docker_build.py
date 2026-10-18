@@ -8,6 +8,7 @@ import json
 import multiprocessing
 import os
 import signal
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime, timedelta
@@ -2073,6 +2074,74 @@ def test_bounded_build_timeout_cancels_noisy_child_and_bounds_reader_cleanup(
     assert observer._stream is not None and observer._stream.closed
 
 
+@pytest.mark.parametrize("cancel_verified", [True, False])
+def test_bounded_build_timeout_during_observer_attach_finalizes_reader(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cancel_verified: bool,
+) -> None:
+    monkeypatch.setattr(bounded, "verify_build_mount", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: bounded.MIN_FREE)
+    real_popen = bounded.subprocess.Popen
+    processes: list[subprocess.Popen[bytes]] = []
+
+    def tracked_popen(argv: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        process = real_popen(argv, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(bounded.subprocess, "Popen", tracked_popen)
+    observer = bounded._LocalBuildPhaseObserver()
+    real_attach = observer.attach
+    attach_completed_at: list[float] = []
+
+    def delayed_attach(stream: object) -> None:
+        real_attach(stream)
+        time.sleep(0.15)
+        attach_completed_at.append(time.monotonic())
+
+    monkeypatch.setattr(observer, "attach", delayed_attach)
+    real_cancel = bounded.cancel
+    cancellation_results: list[bool] = []
+
+    def cancel_child(process: subprocess.Popen[bytes]) -> bool:
+        verified = real_cancel(process) if cancel_verified else False
+        cancellation_results.append(verified)
+        return verified
+
+    monkeypatch.setattr(bounded, "cancel", cancel_child)
+    expected_error = (
+        "bounded_build_timeout" if cancel_verified else "bounded_build_timeout_cancel_unverified"
+    )
+    command = [sys.executable, "-c", "import time; time.sleep(30)"]
+    invocation_started_at = time.monotonic()
+
+    try:
+        with pytest.raises(bounded.BuildError, match=expected_error):
+            bounded._run_bounded_build(
+                command,
+                expected_uuid="12345678-1234-1234-1234-123456789abc",
+                docker_root=tmp_path,
+                space_paths=(tmp_path,),
+                env={"PYTHONDONTWRITEBYTECODE": "1"},
+                timeout=0.05,
+                phase_observer=observer,
+            )
+        assert len(processes) == 1
+        assert (processes[0].poll() is not None) is cancel_verified
+        assert attach_completed_at[0] - invocation_started_at > 0.05
+        assert cancellation_results == [cancel_verified]
+        assert observer._finalized
+        assert observer._thread is not None and not observer._thread.is_alive()
+        assert observer._stream is not None and observer._stream.closed
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                real_cancel(process)
+
+    assert len(processes) == 1 and processes[0].poll() is not None
+
+
 def test_phase_reader_failure_drains_pipe_and_preserves_primary_build_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2179,6 +2248,287 @@ def test_build_mount_monitor_reports_lookup_failure_without_command_output(
             str(tmp_path.resolve()),
             deadline=time.monotonic() + 10,
         )
+
+
+def test_builder_preflight_checks_managed_roots_without_sd_context_dependency(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    docker_root = tmp_path / "docker-root"
+    docker_root.mkdir()
+    context_root = tmp_path / "r12r"
+    context_root.mkdir(mode=0o700)
+    expected_uuid = "12345678-1234-1234-1234-123456789abc"
+    setup = {"expected_docker_root_uuid": expected_uuid, "docker_root": str(docker_root)}
+    mount_calls: list[tuple[str, str, float]] = []
+    space_calls: list[tuple[tuple[Path, ...], int]] = []
+
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", expected_uuid)
+    monkeypatch.setattr(bounded, "setup_receipt", lambda: setup)
+    monkeypatch.setattr(bounded, "inspect_builder", lambda _setup: None)
+    monkeypatch.setattr(bounded, "data_root", lambda *_args: (docker_root, bounded.MIN_FREE))
+    monkeypatch.setattr(
+        bounded,
+        "verify_build_mount",
+        lambda uuid, path, *, deadline: mount_calls.append((uuid, path, deadline)),
+    )
+    monkeypatch.setattr(
+        bounded,
+        "check_space",
+        lambda paths, minimum: space_calls.append((paths, minimum)) or {},
+    )
+
+    result = bounded._builder_preflight()
+
+    assert result == (setup, docker_root, expected_uuid)
+    assert mount_calls == []
+    assert len(space_calls) == 1
+    assert space_calls[0][0] == (docker_root, bounded.ROOT, bounded.STATE)
+    assert space_calls[0][1] == 4 * 1024**3
+
+
+@pytest.mark.parametrize(
+    ("root_kind", "expected_error"),
+    [
+        ("missing", "build_mount_path_unavailable"),
+        ("wrong_uuid", "build_mount_uuid_mismatch"),
+        ("symlink", "build_mount_path_changed"),
+        ("not_directory", "build_mount_path_invalid"),
+    ],
+)
+def test_local_builder_rejects_invalid_sd_context_before_temp_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    root_kind: str,
+    expected_error: str,
+) -> None:
+    context_root = tmp_path / "r12r"
+    expected_uuid = "12345678-1234-1234-1234-123456789abc"
+    if root_kind == "wrong_uuid":
+        context_root.mkdir()
+    elif root_kind == "symlink":
+        target = tmp_path / "mounted-target"
+        target.mkdir()
+        context_root.symlink_to(target, target_is_directory=True)
+    elif root_kind == "not_directory":
+        context_root.write_text("not a directory", encoding="utf-8")
+
+    def checked(argv: list[str], **_kwargs: object) -> bytes:
+        if argv[0] == bounded.GIT:
+            return b"a" * 40
+        if argv[0] == bounded.FINDMNT:
+            return b"different-uuid\n"
+        raise AssertionError("unexpected fixed command")
+
+    temporary_calls: list[tuple[object, ...]] = []
+
+    def unexpected_tempdir(*args: object, **_kwargs: object) -> None:
+        temporary_calls.append(args)
+        pytest.fail("invalid SD context path reached temporary-directory creation")
+
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", expected_uuid)
+    monkeypatch.setattr(bounded, "_builder_preflight", lambda: ({}, tmp_path, "0" * 36))
+    monkeypatch.setattr(bounded, "checked", checked)
+    monkeypatch.setattr(bounded.tempfile, "TemporaryDirectory", unexpected_tempdir)
+
+    with pytest.raises(bounded.BuildError) as caught:
+        bounded.build_local_image()
+
+    assert caught.value.code == expected_error
+    assert temporary_calls == []
+
+
+def test_local_builder_rejects_low_sd_space_before_temp_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    context_root = tmp_path / "r12r"
+    context_root.mkdir(mode=0o700)
+    expected_uuid = "12345678-1234-1234-1234-123456789abc"
+    events: list[str] = []
+    space_calls: list[tuple[tuple[Path, ...], int]] = []
+    temporary_calls: list[tuple[object, ...]] = []
+
+    def check_space(paths: tuple[Path, ...], minimum: int) -> dict[str, int]:
+        events.append("space")
+        space_calls.append((paths, minimum))
+        raise bounded.BuildError("build_disk_floor_breached")
+
+    def verify_mount(*_args: object, **_kwargs: object) -> None:
+        events.append("mount")
+
+    def unexpected_tempdir(*args: object, **_kwargs: object) -> None:
+        temporary_calls.append(args)
+        pytest.fail("low SD free space reached temporary-directory creation")
+
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", expected_uuid)
+    monkeypatch.setattr(bounded, "_builder_preflight", lambda: ({}, tmp_path, "0" * 36))
+    monkeypatch.setattr(bounded, "checked", lambda *_args, **_kwargs: b"a" * 40)
+    monkeypatch.setattr(bounded, "verify_build_mount", verify_mount)
+    monkeypatch.setattr(bounded, "check_space", check_space)
+    monkeypatch.setattr(bounded.tempfile, "TemporaryDirectory", unexpected_tempdir)
+
+    with pytest.raises(bounded.BuildError, match="build_disk_floor_breached"):
+        bounded.build_local_image()
+
+    assert len(space_calls) == 1
+    assert events == ["mount", "space"]
+    assert context_root in space_calls[0][0]
+    assert space_calls[0][1] == bounded.MIN_FREE
+    assert temporary_calls == []
+
+
+def test_local_builder_rejects_sd_change_after_context_copy_before_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    context_root = tmp_path / "r12r"
+    context_root.mkdir(mode=0o700)
+    docker_root = tmp_path / "docker-root"
+    docker_root.mkdir()
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    ledger_path = state / "candidate-ledger.json"
+    ledger_bytes = (
+        json.dumps({"schema": bounded.LEDGER_SCHEMA, "entries": []}, sort_keys=True) + "\n"
+    ).encode()
+    ledger_path.write_bytes(ledger_bytes)
+    ledger_path.chmod(0o600)
+    context_uuid = "12345678-1234-1234-1234-123456789abc"
+    docker_uuid = "abcdefab-cdef-abcd-efab-cdefabcdefab"
+    context_hash = "c" * 64
+    mount_checks: list[tuple[str, str]] = []
+    space_checks: list[tuple[tuple[Path, ...], int]] = []
+    context_directories: list[Path] = []
+    reservation_calls: list[tuple[object, ...]] = []
+    popen_calls: list[tuple[object, ...]] = []
+
+    monkeypatch.setattr(bounded, "USER", SimpleNamespace(pw_uid=os.getuid(), pw_dir=str(tmp_path)))
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", context_uuid)
+    monkeypatch.setattr(bounded, "STATE", state)
+    monkeypatch.setattr(bounded, "LEDGER_FILE", ledger_path)
+    monkeypatch.setattr(bounded, "LEDGER_LOCK_FILE", state / "candidate-ledger.lock")
+    monkeypatch.setattr(
+        bounded,
+        "_builder_preflight",
+        lambda: ({"legacy_task_image_inventory": {}}, docker_root, docker_uuid),
+    )
+    monkeypatch.setattr(bounded, "checked", lambda *_args, **_kwargs: b"d" * 40)
+
+    def verify_mount(expected_uuid: str, path: str, *, deadline: float) -> None:
+        assert deadline > time.monotonic()
+        mount_checks.append((expected_uuid, path))
+        if path == str(context_root) and sum(item[1] == path for item in mount_checks) == 3:
+            raise bounded.BuildError("build_mount_uuid_mismatch")
+
+    def check_space(paths: tuple[Path, ...], minimum: int) -> dict[str, int]:
+        space_checks.append((paths, minimum))
+        return {str(context_root): 10 * 1024**3}
+
+    def build_context(destination: Path) -> str:
+        context_directories.append(destination.parent)
+        destination.mkdir(mode=0o700)
+        return context_hash
+
+    def reserve(*args: object, **_kwargs: object) -> None:
+        reservation_calls.append(args)
+        pytest.fail("SD mismatch after context copy reached ledger reservation")
+
+    def popen(*args: object, **_kwargs: object) -> None:
+        popen_calls.append(args)
+        pytest.fail("SD mismatch after context copy reached build child dispatch")
+
+    monkeypatch.setattr(bounded, "verify_build_mount", verify_mount)
+    monkeypatch.setattr(bounded, "check_space", check_space)
+    monkeypatch.setattr(bounded, "_build_context", build_context)
+    monkeypatch.setattr(bounded, "_context_sha256", lambda *_args: context_hash)
+    monkeypatch.setattr(bounded, "_native_platform", lambda: "linux/amd64")
+    monkeypatch.setattr(bounded, "_reserve_managed_tags", reserve)
+    monkeypatch.setattr(bounded.subprocess, "Popen", popen)
+
+    with pytest.raises(bounded.BuildError, match="build_mount_uuid_mismatch"):
+        bounded.build_local_image()
+
+    assert mount_checks == [(context_uuid, str(context_root))] * 3
+    assert len(space_checks) == 1
+    assert context_root in space_checks[0][0]
+    assert space_checks[0][1] == bounded.MIN_FREE
+    assert reservation_calls == []
+    assert popen_calls == []
+    assert ledger_path.read_bytes() == ledger_bytes
+    assert len(context_directories) == 1 and not context_directories[0].exists()
+
+
+def test_bounded_build_cancels_when_required_context_mount_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    docker_root = tmp_path / "docker-root"
+    docker_root.mkdir()
+    context_root = tmp_path / "sd-context"
+    context_root.mkdir()
+    context_uuid = "abcdefab-cdef-abcd-efab-cdefabcdefab"
+    mount_calls: list[tuple[str, str]] = []
+    processes: list[subprocess.Popen[bytes]] = []
+    context_checks = 0
+    failure_phase = "preflight"
+
+    def verify_mount(uuid: str, path: str, *, deadline: float | None = None) -> None:
+        nonlocal context_checks
+        mount_calls.append((uuid, path))
+        if path == str(context_root):
+            context_checks += 1
+            if failure_phase == "preflight" or context_checks == 2:
+                raise bounded.BuildError("build_mount_uuid_mismatch")
+
+    real_popen = bounded.subprocess.Popen
+
+    def tracked_popen(argv: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        process = real_popen(argv, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(bounded, "verify_build_mount", verify_mount)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", context_uuid)
+    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(bounded.subprocess, "Popen", tracked_popen)
+
+    with pytest.raises(bounded.BuildError) as caught:
+        bounded._run_bounded_build(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            expected_uuid="12345678-1234-1234-1234-123456789abc",
+            docker_root=docker_root,
+            space_paths=(docker_root, context_root),
+            context_mount_path=str(context_root),
+            env={"PYTHONDONTWRITEBYTECODE": "1"},
+            timeout=10,
+        )
+
+    assert caught.value.code == "bounded_build_context_mount_uuid_mismatch"
+    assert mount_calls == [(context_uuid, str(context_root))]
+    assert processes == []
+
+    failure_phase = "monitor"
+    context_checks = 0
+    mount_calls.clear()
+    with pytest.raises(bounded.BuildError) as caught:
+        bounded._run_bounded_build(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            expected_uuid="12345678-1234-1234-1234-123456789abc",
+            docker_root=docker_root,
+            space_paths=(docker_root, context_root),
+            context_mount_path=str(context_root),
+            env={"PYTHONDONTWRITEBYTECODE": "1"},
+            timeout=10,
+        )
+
+    assert caught.value.code == "bounded_build_context_mount_uuid_mismatch"
+    assert mount_calls == [
+        (context_uuid, str(context_root)),
+        ("12345678-1234-1234-1234-123456789abc", str(docker_root)),
+        (context_uuid, str(context_root)),
+    ]
+    assert len(processes) == 1 and processes[0].poll() is not None
 
 
 def test_arm64_compose_command_selects_only_the_bounded_builder_and_fixed_services(
@@ -4227,24 +4577,30 @@ def test_local_failure_refuses_a_second_inflight_reservation() -> None:
 
 
 @pytest.mark.parametrize(
-    ("stop_result", "expected_secondary"),
+    ("stop_result", "expected_secondary", "failure_mode"),
     [
-        (None, "local_builder_stop_unverified"),
+        (None, "local_builder_stop_unverified", "backend_stop_failure"),
         (
             {
                 "status": "verified_stopped_same_generation",
                 "stop_error_code": "fixed_command_failed",
             },
             "fixed_command_failed",
+            "backend_stop_failure",
         ),
+        ({"status": "verified_stopped_same_generation"}, None, "context_cancel_unverified"),
     ],
 )
 def test_local_failure_retains_reservation_and_primary_error_when_backend_stop_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     stop_result: dict[str, object] | None,
-    expected_secondary: str,
+    expected_secondary: str | None,
+    failure_mode: str,
 ) -> None:
+    context_root = tmp_path / "r12r"
+    context_root.mkdir(mode=0o700)
+    context_uuid = "12345678-1234-1234-1234-123456789abc"
     state = tmp_path / "state"
     state.mkdir(mode=0o700)
     state.chmod(0o700)
@@ -4265,17 +4621,42 @@ def test_local_failure_retains_reservation_and_primary_error_when_backend_stop_f
     revision = "d" * 40
     generation = _local_generation()
     flags = {"process_group_reaped": False, "backend_stop_attempted": False}
+    context_directories: list[Path] = []
+    mount_checks: list[tuple[str, str]] = []
+    space_checks: list[tuple[tuple[Path, ...], int]] = []
+    cancel_calls: list[object] = []
 
     monkeypatch.setattr(bounded, "USER", SimpleNamespace(pw_uid=os.getuid(), pw_dir=str(tmp_path)))
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", context_uuid)
     monkeypatch.setattr(bounded, "STATE", state)
     monkeypatch.setattr(bounded, "RUNS", runs)
     monkeypatch.setattr(bounded, "LEDGER_FILE", ledger_path)
     monkeypatch.setattr(bounded, "LEDGER_LOCK_FILE", lock_path)
     monkeypatch.setattr(bounded, "_builder_preflight", lambda: (setup, tmp_path, "0" * 36))
-    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: 10 * 1024**3)
+
+    def verify_mount(uuid: str, path: str, **_kwargs: object) -> None:
+        mount_checks.append((uuid, path))
+        if (
+            failure_mode == "context_cancel_unverified"
+            and path == str(context_root)
+            and sum(item[1] == path for item in mount_checks) == 5
+        ):
+            raise bounded.BuildError("build_mount_uuid_mismatch")
+
+    monkeypatch.setattr(bounded, "verify_build_mount", verify_mount)
+
+    def check_space(paths: tuple[Path, ...], minimum: int) -> dict[str, int]:
+        space_checks.append((paths, minimum))
+        return {str(context_root): 10 * 1024**3}
+
+    monkeypatch.setattr(bounded, "check_space", check_space)
     monkeypatch.setattr(bounded, "checked", lambda _argv, **_kwargs: revision.encode())
 
     def build_context(destination: Path) -> str:
+        context_directories.append(destination.parent)
+        assert destination.parent.parent == context_root
+        assert destination.parent.stat().st_mode & 0o777 == 0o700
         destination.mkdir(mode=0o700)
         return context_hash
 
@@ -4292,6 +4673,8 @@ def test_local_failure_retains_reservation_and_primary_error_when_backend_stop_f
     monkeypatch.setattr(bounded, "_local_buildx_argv", lambda *_args: [bounded.DOCKER, "buildx"])
 
     def cli_build(*_args: object, **_kwargs: object) -> None:
+        assert _kwargs["context_mount_path"] == str(context_root)
+        assert context_root in _kwargs["space_paths"]
         flags["process_group_reaped"] = True
         observer = _kwargs.get("phase_observer")
         assert isinstance(observer, bounded._LocalBuildPhaseObserver)
@@ -4316,34 +4699,85 @@ def test_local_failure_retains_reservation_and_primary_error_when_backend_stop_f
             raise bounded.BuildError("local_builder_stop_unverified")
         return stop_result
 
-    monkeypatch.setattr(bounded, "_run_bounded_build", cli_build)
+    if failure_mode == "context_cancel_unverified":
+
+        class PendingProcess:
+            pid = 504
+
+            def __init__(self) -> None:
+                read_fd, write_fd = os.pipe()
+                os.close(write_fd)
+                self.stderr = os.fdopen(read_fd, "rb", buffering=0)
+
+            def poll(self) -> None:
+                return None
+
+        def pending_child(*_args: object, **_kwargs: object) -> PendingProcess:
+            return PendingProcess()
+
+        def unverified_cancel(process: object) -> bool:
+            cancel_calls.append(process)
+            return False
+
+        monkeypatch.setattr(bounded.subprocess, "Popen", pending_child)
+        monkeypatch.setattr(bounded, "cancel", unverified_cancel)
+    else:
+        monkeypatch.setattr(bounded, "_run_bounded_build", cli_build)
     monkeypatch.setattr(bounded, "_stop_owned_builder_after_local_failure", stop)
 
-    with pytest.raises(bounded.BuildError, match="fixed_command_unavailable_or_timeout") as caught:
+    expected_primary = (
+        "bounded_build_context_mount_cancel_unverified_uuid_mismatch"
+        if failure_mode == "context_cancel_unverified"
+        else "fixed_command_unavailable_or_timeout"
+    )
+    with pytest.raises(bounded.BuildError, match=expected_primary) as caught:
         bounded.build_local_image()
 
-    assert flags == {"process_group_reaped": True, "backend_stop_attempted": True}
-    assert caught.value.code == "fixed_command_unavailable_or_timeout"
-    assert caught.value.secondary_errors == [expected_secondary]
+    assert flags == {
+        "process_group_reaped": failure_mode != "context_cancel_unverified",
+        "backend_stop_attempted": True,
+    }
+    assert len(context_directories) == 1 and not context_directories[0].exists()
+    if failure_mode == "context_cancel_unverified":
+        assert sum(item[1] == str(context_root) for item in mount_checks) == 5
+        assert ("0" * 36, str(tmp_path)) in mount_checks
+        assert len(cancel_calls) == 1
+    else:
+        assert mount_checks == [(context_uuid, str(context_root))] * 3
+        assert cancel_calls == []
+    assert len(space_checks) == 3
+    assert all(
+        context_root in paths and minimum == bounded.MIN_FREE for paths, minimum in space_checks
+    )
+    assert caught.value.code == expected_primary
+    assert caught.value.secondary_errors == (
+        [expected_secondary] if expected_secondary is not None else []
+    )
     ledger = json.loads(ledger_path.read_bytes())
     assert len(ledger["entries"]) == 1
     assert ledger["entries"][0]["status"] == "inflight"
     failure_path = Path(caught.value.local_failure_receipt_path)
     failure = json.loads(failure_path.read_bytes())
-    assert failure["primary_error_code"] == "fixed_command_unavailable_or_timeout"
-    assert failure["secondary_error_codes"] == [expected_secondary]
+    assert failure["primary_error_code"] == expected_primary
+    assert failure["secondary_error_codes"] == (
+        [expected_secondary] if expected_secondary is not None else []
+    )
     assert failure["ledger_reservation_retained"] is True
     assert failure["failure_cause"] == "unproven"
-    phase_observation = failure["build_phase_observation"]
-    assert phase_observation["status"] == "available"
-    assert phase_observation["phases"][0]["phase"] == "frontend_checks_run"
-    assert phase_observation["phases"][0]["error"] is True
+    if failure_mode == "backend_stop_failure":
+        phase_observation = failure["build_phase_observation"]
+        assert phase_observation["status"] == "available"
+        assert phase_observation["phases"][0]["phase"] == "frontend_checks_run"
+        assert phase_observation["phases"][0]["error"] is True
     assert "private-buildkit-error" not in json.dumps(failure)
 
 
 def test_local_failure_receipt_write_error_does_not_mask_build_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    context_root = tmp_path / "r12r"
+    context_root.mkdir(mode=0o700)
+    context_uuid = "12345678-1234-1234-1234-123456789abc"
     state = tmp_path / "state"
     state.mkdir(mode=0o700)
     state.chmod(0o700)
@@ -4357,15 +4791,22 @@ def test_local_failure_receipt_write_error_does_not_mask_build_error(
     revision = "e" * 40
     context_hash = "f" * 64
 
+    context_directories: list[Path] = []
     monkeypatch.setattr(bounded, "USER", SimpleNamespace(pw_uid=os.getuid(), pw_dir=str(tmp_path)))
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", context_uuid)
     monkeypatch.setattr(bounded, "STATE", state)
     monkeypatch.setattr(bounded, "RUNS", runs)
     monkeypatch.setattr(bounded, "LEDGER_FILE", ledger_path)
     monkeypatch.setattr(bounded, "LEDGER_LOCK_FILE", state / "candidate-ledger.lock")
     monkeypatch.setattr(bounded, "_builder_preflight", lambda: (setup, tmp_path, "0" * 36))
+    monkeypatch.setattr(bounded, "verify_build_mount", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(bounded, "checked", lambda _argv, **_kwargs: revision.encode())
 
     def build_context(destination: Path) -> str:
+        context_directories.append(destination.parent)
+        assert destination.parent.parent == context_root
+        assert destination.parent.stat().st_mode & 0o777 == 0o700
         destination.mkdir(mode=0o700)
         return context_hash
 
@@ -4422,6 +4863,7 @@ def test_local_failure_receipt_write_error_does_not_mask_build_error(
     with pytest.raises(bounded.BuildError, match="buildx_exit_nonzero") as caught:
         bounded.build_local_image()
 
+    assert len(context_directories) == 1 and not context_directories[0].exists()
     assert caught.value.code == "buildx_exit_nonzero"
     assert caught.value.secondary_errors == ["local_failure_receipt_write_failed"]
     assert json.loads(ledger_path.read_bytes())["entries"][0]["status"] == "inflight"

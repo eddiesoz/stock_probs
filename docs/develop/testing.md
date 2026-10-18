@@ -126,6 +126,12 @@ failure handler checks the setup-bound full container ID, start generation, conf
 ownership before stopping only that builder; an uncertain stop or receipt write keeps recovery
 held. Preserve the primary build error separately from cleanup errors.
 
+The shared bounded-build deadline begins before `Popen`; pre-launch validation and dispatch time
+consume that deadline for every caller. A source or selected-test pass does not establish image,
+Docker-runtime, provider, or physical-mount acceptance. The R-ASTRA-121 F6SD-02 narrowed
+timeout-finalization result and its earlier full-suite source-review failure are recorded separately
+in the [MVP plan](../../MVP-PLAN.md#r-astra-121-f6sd-02-timeout-observer-finalization-follow-up-2026-10-18).
+
 Use the typed `--reconcile-local-inflight-reservation` operation in
 `scripts/bounded_docker_build.py` with the exact local tag, revision, context digest and current
 role. Supply either the genuine local-failure receipt digest or all four separately hashed
@@ -307,6 +313,12 @@ length of `sockaddr_un.sun_path`, including its terminator. Preserve a path-leng
 separately from product assertions, and rerun only after correcting that fixture boundary.
 For live supervisor cases, verify the serving thread exits and its control socket is unlinked;
 remove only that run's owned temporary directory after all children have exited.
+
+Before a full suite, preflight the paths that the actual runner will create; a short manually
+selected diagnostic path does not establish that the full runner's temporary root is safe. If a
+canonical run fails or is interrupted on socket setup, retain that aggregate and any inconsistent
+terminal/JUnit counts as a failure requiring reconciliation. A focused short-path pass can confirm
+the fixture boundary for its selection, but it cannot replace a fresh complete canonical run.
 
 ## Current OpenCode V2 QA contract
 

@@ -7768,3 +7768,121 @@ Both selections passed 3/3 with normal child umask 022 and the unchanged F6 prod
 helper/config pins. The authored validator, scoped six-file documentation coverage (177 mapped
 files, zero violations), Ruff, format-check, and diff checks passed for this checkpoint.
 These checks do not convert the original canonical aggregate to Pass.
+
+### R-ASTRA-121 F6 interrupted canonical retry and local-context checkpoint (2026-10-17–18)
+
+The clean pushed PR #9 head is `f88cb5c1230e86a8fd6a504dce0c2667c3bc52bc`. The earlier full
+canonical run remains **Fail**: 3,575 Python passes and one failure in
+`tests/test_history_repository.py::test_concurrent_audit_writes_and_bounded_reads_remain_complete`,
+where database coordination-lock acquisition timed out. The cause remains **Unproven**. The later
+canonical retry is a separate result: from `2026-10-17T23:55:33Z` to
+`2026-10-18T00:21:14Z`, the parent intentionally sent SIGINT after 25 AF_UNIX path-length setup
+failures in `tests.test_assistant_supervisor_client`. The terminal reported 1,389 passes and 25
+failures; documentation and frontend checks completed, while Python did not. Its JUnit recorded
+1,415 test-case nodes against a suite count of 1,414, leaving one case unreconciled. The aggregate
+is **Fail/interrupted**, not a canonical Pass. Its runner terminal SHA-256 is
+`b06f1a604791fe4e30f865b625dcd2b43a07eb89f8732536341834e50b3fc684`; the local-gate evidence
+SHA-256 is `8802a33520919c317b3c141b6900984f782291fbfb6fcce3e9d959050bc9b210e`, and the JUnit
+SHA-256 is `3da50d69fdd31aeb93d08b73a3bfb72eb240f3ba0d44e46ab5a3e6301695a796`. Independent QA
+receipt `/var/tmp/r12r/f6-canonical-retry-independent-qa-f4cce957-02f0-42a3-9c09-683efd5cdf02/qa-receipt.json`
+has SHA-256 `1d9ca8cad3adb8b3e8574e0dddff3cfad1dbb902f287501aeb63b5db6b3d0092`; it confirms the
+canonical Fail, the 549-entry source manifest, and all 53 served/export pairs. Runtime cleanup
+review is **Unavailable** in that receipt; the task scratch root was retained.
+
+A bounded follow-up of `tests/test_assistant_supervisor_client.py` passed 39/39 in 7.968 seconds,
+with a maximum observed control-socket path of 66 bytes. This is fixture-boundary diagnostic
+evidence only; its terminal explicitly records `canonical_acceptance=false`. Receipt:
+`/var/tmp/r12r/f88-short-socket-focus-63fa3b65-8f8d-418e-a9cf-09973efe04f7/terminal.json`;
+JUnit SHA-256 `3c56eab6ef6f39415154ab4794f2ac168233c602a0edfce1a4207e73255250d2`. The actual
+111-byte failing path and the 66-byte focused path are different observations; the focused pass
+does not resolve the earlier history-lock failure or replace a full canonical run.
+
+The initial local Buildx context change adds a private working context on the UUID-verified SD
+filesystem and source checks for the 4 GiB admission and 1 GiB stop floors with mount monitoring.
+It uses modes 0700/0600 for private audit scratch/receipts with child umask 022; materialized
+source context must preserve Git-tracked modes. Its builder completion receipt
+`/var/tmp/r12r/f6-bounded-build-final-qa-d5fb25e8-ba32-4226-b1db-a1714336b8f0/completion-receipt.json`
+reports 10/10 focused helper tests and selected static checks passed as builder-reported evidence;
+later independent QA found F6SD-01 below, so this does not establish source acceptance. The helper
+and test digests recorded by that builder receipt are
+`ba7efc0b847d4593cee4ac7e7bea1698f5893a780f23473bb45471fd3439057f` and
+`28e0f418bf2524e8c78c67e16c6089c554781fb5e9586a6aee00c2d26cbaa32f`. The setup receipt itself
+does not bind those helper bytes; pair it unchanged with a separate exact helper-source binding and
+an actual successful build receipt before claiming helper or build acceptance. No Docker image
+build, full suite, or provider run was invoked for this context repair.
+
+The next full canonical run remains held until the selected socket-path preflight passes against
+the actual generated path. Then independently review the context-helper source binding before a
+fresh PR #9 image build, and run the real native free-Zen functional check before the next full
+aggregate. The seven visible feature releases remain in progress behind assistant restoration.
+The latest read-only production receipt remains the October 16 observation: revision
+`5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
+`sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1`, schema 13, invited
+rollout, app and assistant ready, loopback-only; receipt SHA-256
+`e92985772d90dc2861642fe5bea24a347ece096e02d3966eb5e60560db7e387f`. No new deployment,
+rollout, or email occurred. The existing 1 GB host and backups remain within the US$15 monthly
+total cap; current-image native acceptance, actual combined 1 GB, recovery, PR-bound rollback,
+canary, and release checks remain open.
+
+Documentation checks for this checkpoint passed: `.dev-venv/bin/python scripts/validate_docs.py`
+reported 9 categories, 14 topics, and 8 governance entries; complete and change-aware coverage
+reported 177 mapped files with five changed paths and zero violations; the coverage self-test
+passed 26 cases; and `git diff --check` exited 0 for the five authored files. These checks validate
+documentation only and do not change the canonical, helper-QA, build, or release results above.
+
+### R-ASTRA-121 F6SD-01 independent source-review failure (2026-10-18)
+
+Independent source QA **Failed** the SD local-context safety contract in finding `F6SD-01`:
+`/var/tmp/r12r/f6-sd-context-independent-source-qa-20261018T0041Z-489c7976-f468-44a5-b116-03af1e9a7593/independent-source-qa-receipt.json`, SHA-256
+`3d91024c0f32c3d8bb87311846b0a6856344ed2718d607f6a8e6b9e047aa41cc`. The entry check rejects a
+missing or wrong UUID before creating the temporary directory, but the source did not recheck the
+UUID after copying the context and before dispatch. `_run_bounded_build` can start `Popen` before
+its first in-run mount check, leaving a gap in which a removed SD mount could expose the underlying
+mountpoint and a build child could start. This was a source-path finding; no unmount race, Docker
+build, or runtime behavior was tested. The setup receipt's helper-source binding is **Unavailable**.
+
+The prior 10-test builder result remains builder-reported only. That review separately passed the
+shared disk-preflight and ARM64 call-path source scope, while independent pytest remained **Skipped**.
+The follow-on two-file candidate adds a UUID recheck after context copy and before dispatch, while
+retaining the in-run mount monitor. The later independent 267-test run included the 19 UUID/mount
+regressions and its source review checked the F6SD-01 repair; these passed on that run's original
+helper/test pins. The receipt's overall result is nevertheless **Fail** for the separate F6SD-02
+finding below. The 19 cases were part of the 267-test module, not a separate 19-case command. A
+fresh independent static continuity review now **Passed** for the final helper: compared with the
+267-test helper pin, the exact delta removes only the four-line early timeout branch; post-copy,
+pre-reservation, pre-`Popen`, and in-run SD checks remain unchanged. Receipt:
+`/var/tmp/r12r/f6-producer-contract-static-independent-qa-ec156ff9-a1ea-401c-85d9-ea273f4a24e6/independent-qa-receipt.json`,
+SHA-256 `2249c2374503f266221a43db3bb69c4fbc799d148435df95920484ac9f95ab32`. This reuses only the
+unchanged F6SD-01 source/test scope; it is not a full module rerun at the final pins. No actual
+unmount race, Docker build, or runtime behavior was tested.
+
+### R-ASTRA-121 F6SD-02 timeout-observer finalization follow-up (2026-10-18)
+
+The earlier independent F6SD-02 receipt remains **Fail** for its original source-review scope: its
+full `tests/test_bounded_docker_build.py` run passed 267 tests on the earlier helper/test pins, but
+review found that a timeout detected immediately after observer attachment could raise before the
+existing `try/finally`, leaving `phase_observer.finish()` uncalled. Preserve that aggregate result
+and finding; the full-module pass does not bind the repaired files. Receipt:
+`/var/tmp/r12r/f6q-9018af/independent-qa-receipt-v1.json`, SHA-256
+`cbd13be7952ed552a9d430ccce7ce2bb4868d840c30d5c937c68f324044c11f0`.
+
+The follow-up removes that early raise path so timeout handling reaches the existing finalizer. The
+shared bounded-build deadline now starts before `Popen`, and includes pre-launch validation and
+dispatch time for all callers. Builder and independent QA each **Passed** the same narrowed three-case
+scope (266 deselected, zero failures/errors/skips, two warnings); the independent run used the exact
+final helper SHA-256 `32cfa0a8e42883651fdd826f74225d63d02864b86e6ee497653e0a35acd5fe8c` and test
+SHA-256 `b15ead87e4ee104ab6b8a4faa2663ceed8b9de0b44c9811b8c84b1c428b3343c`. Independent receipt:
+`/var/tmp/r12r/f6-timeout-finally-independent-qa-dc84ed3c-1f75-4b77-9f07-9daf821da340/independent-qa-receipt.json`,
+SHA-256 `c698f528f53b6af2302243f404525b1d52fa464c62acb4913112c78a80f2a1f2`. Parent source/evidence
+review **Passed** for this narrowed repair; receipt:
+`/var/tmp/r12r/f6-parent-integrated-review-2c958049-8a84-4ee9-b972-72b18f46701f/parent-code-review.json`,
+SHA-256 `d0b00df229343bb16a113183b95f272f70214cc66bfb79d0d535edf83773f76e`. The earlier full
+267-test result remains tied to its original pins; no full-module rerun at the final pins is
+claimed.
+
+The ARM64 commands, profiles, and shared three-root preflight remain unchanged; no claim is made
+that end-to-end ARM64 timing is unchanged. No image build, runtime/native execution, Docker build,
+or physical-unmount test was run for this follow-up. F6SD-01 has the static source/test continuity
+Pass above; the three-case timeout-finalization pass does not expand that scope. The full current-pin
+test module, canonical gate, image/runtime/native checks, and physical-mount acceptance remain
+**Pending** or **Not run**.
