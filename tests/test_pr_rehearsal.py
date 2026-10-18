@@ -1499,7 +1499,11 @@ def test_v2_runner_requires_enabled_native_phase_before_write_and_recovery(
         lambda *_args, **_kwargs: {"seed.py": "f" * 64},
     )
     monkeypatch.setattr(host_helper, "_verify_helper_source_pull_request", lambda _revision: None)
-    monkeypatch.setattr(host_helper, "_verify_hotfix_pull_request", lambda: None)
+
+    def verify_candidate_pull_request(reviewed_pr_head_sha: str | None = None) -> None:
+        assert reviewed_pr_head_sha is None
+
+    monkeypatch.setattr(host_helper, "_verify_hotfix_pull_request", verify_candidate_pull_request)
     monkeypatch.setattr(
         host_helper, "_production_container", lambda: dict(host_helper.PRODUCTION_BASELINE)
     )
@@ -2105,11 +2109,12 @@ def test_v2_review_pins_use_helper_pr11_and_candidate_pr9_without_pr2(
         "verify_helper_source_pull_request",
         lambda _revision: events.append("helper-pr11"),
     )
-    monkeypatch.setattr(
-        controller,
-        "verify_hotfix_pull_request",
-        lambda: events.append("candidate-pr9"),
-    )
+
+    def verify_candidate_pull_request(reviewed_pr_head_sha: str | None = None) -> None:
+        assert reviewed_pr_head_sha is None
+        events.append("candidate-pr9")
+
+    monkeypatch.setattr(controller, "verify_hotfix_pull_request", verify_candidate_pull_request)
     monkeypatch.setattr(
         controller,
         "verify_pull_request",
@@ -7017,9 +7022,13 @@ def test_v2_controller_projects_only_verified_native_and_resource_fields(
     manifest = _host_hotfix_manifest(reviewed_head, candidate_archive, recovery_archive)
     response: dict[str, object] = {
         "status": "pass",
+        "contract": controller.HOTFIX_CONTRACT,
         "reviewed_head_sha": reviewed_head,
         "pair_manifest_sha256": pair_digest,
         "candidate_image_id": controller.HOTFIX_CANDIDATE_IMAGE_ID,
+        "candidate_revision": controller.HOTFIX_CANDIDATE_REVISION,
+        "candidate_source_context_sha256": controller.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "candidate_build_receipt_sha256": controller.HOTFIX_BUILD_RECEIPT_SHA256,
         "recovery_image_id": controller.PRODUCTION_BASELINE["image_id"],
         "same_disposable_volume": True,
         "production_mutation": False,
@@ -7057,11 +7066,14 @@ def test_v2_controller_projects_only_verified_native_and_resource_fields(
         "verify_helper_source_pull_request",
         lambda _head: {"head_sha": reviewed_head},
     )
-    monkeypatch.setattr(
-        controller,
-        "verify_hotfix_pull_request",
-        lambda: {"head_sha": controller.HOTFIX_CANDIDATE_REVISION},
-    )
+
+    def verify_candidate_pull_request(
+        reviewed_pr_head_sha: str | None = None,
+    ) -> dict[str, str]:
+        assert reviewed_pr_head_sha is None
+        return {"head_sha": controller.HOTFIX_CANDIDATE_REVISION}
+
+    monkeypatch.setattr(controller, "verify_hotfix_pull_request", verify_candidate_pull_request)
     monkeypatch.setattr(controller, "_source_bundle", lambda **_kwargs: ({"bootstrap": b"x"}, {}))
     monkeypatch.setattr(controller, "_ensure_incoming_directories", lambda _config: None)
     monkeypatch.setattr(controller, "_stage_source_bundle", lambda *_args, **_kwargs: None)
@@ -9082,7 +9094,8 @@ def test_v2_pair_accepts_fully_validated_temporary_baseline_before_assets(monkey
         assert revision == "c" * 40
         events.append("helper_pr")
 
-    def verify_hotfix_pull_request() -> None:
+    def verify_hotfix_pull_request(reviewed_pr_head_sha: str | None = None) -> None:
+        assert reviewed_pr_head_sha is None
         events.append("candidate_pr")
 
     monkeypatch.setattr(host_helper, "_verify_installed_source", verify_installed_source)
@@ -9117,7 +9130,11 @@ def test_v2_pair_accepts_fully_validated_temporary_baseline_before_assets(monkey
 def test_v2_pair_still_rejects_registered_recovery_as_production_baseline(monkeypatch) -> None:
     monkeypatch.setattr(host_helper, "_verify_installed_source", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(host_helper, "_verify_helper_source_pull_request", lambda _revision: None)
-    monkeypatch.setattr(host_helper, "_verify_hotfix_pull_request", lambda: None)
+
+    def verify_candidate_pull_request(reviewed_pr_head_sha: str | None = None) -> None:
+        assert reviewed_pr_head_sha is None
+
+    monkeypatch.setattr(host_helper, "_verify_hotfix_pull_request", verify_candidate_pull_request)
     monkeypatch.setattr(host_helper, "_production_container", lambda: _recovery_baseline_receipt())
 
     with pytest.raises(host_helper.RehearsalError, match="hotfix_production_baseline_mismatch"):
