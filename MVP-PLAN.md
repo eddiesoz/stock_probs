@@ -7706,3 +7706,20 @@ preserved. Exact bindings and results are recorded in
 (SHA-256 70c83123439384ef87e4de1b7bb851c3c30026e0f93b7e64c93d5ebe61e329e6). This is
 fixture-source/pure-test evidence only: no app, browser, build, or provider run occurred,
 and previously recorded actual browser failures remain open.
+
+### R-ASTRA-121 R3 report-card scoring boundary and outcome-collector QA (2026-10-18)
+
+Independent source QA **Passed** 66 report-card scorer/store/API tests. The same QA recorded a
+boundary **Fail**: a synthetic invalid off-session forecast was scored. Whether a supported current
+user can reach that case remains **Unproven**, and no supported current false-success path was found. The
+API accepts no target timestamp, and domain-calendar handling skips holidays. No product repair was
+made; this review found no supported user path requiring one. Receipt `/var/tmp/r12r/r3-report-card-source-qa-5c97cffd-13b5-457e-81f0-12888369e779/receipt.json`,
+SHA-256 `e3bc517700a0e7210badbb44eb4db9569983646fc20a8b8e2f09fc3dbc1d6a74`.
+
+Separate outcome-collector/provider QA **Passed** 13 scoped tests and a one-case holiday regression;
+41 tests were deselected. No live provider or API call occurred. Receipt
+`/var/tmp/r12r/r3-outcome-collector-qa-3c142ba9-166e-4b7e-92da-f23041c66562/independent-outcome-collector-qa-v1.json`,
+SHA-256 `1f97a7399d3b81c7eaa3f80c316d72581dcc4183d2e4d8bf9c01a08a7f827630`. These source/test results
+are separate from the v14 four-case browser/axe Pass; the earlier full-24 browser aggregate remains
+**Fail**, and no current full-suite, full-app accessibility, provider/runtime, production, or release
+acceptance follows.

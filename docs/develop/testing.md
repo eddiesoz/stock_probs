@@ -656,6 +656,12 @@ remains **Fail**; the focused-six and axis-label build results remain separately
 The later v14 focused-four selection passed 4/4 with eight raw axe snapshots at 0 violations and 0
 incompletes; this selected scope does not replace the failed full-24 aggregate or establish full-app
 accessibility. See the [latest R3 report-card checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-v14-focused-browser-and-axe-checkpoint-2026-10-18).
+The latest report-card source QA passed 66 scorer/store/API tests. The same QA recorded a
+boundary **Fail**: a synthetic invalid off-session forecast was scored. Supported-user reachability
+remains unproven, and no supported current false-success path was found. The API accepts no target timestamp, and the domain calendar skips
+holidays. Separate outcome-collector/provider QA passed 13 scoped tests plus one holiday regression,
+with 41 deselected and no live provider/API call. See the [scoring-boundary and
+collector checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-scoring-boundary-and-outcome-collector-qa-2026-10-18).
 The prior eager-import observation was bound to `provider.py` SHA-256
 `2e2d3e6443a4a92200a7104837f470a1efb6219cfe91ae4ba6cdb5ab2ae74df2`. The current R3 worktree
 has since moved `yfinance` and `curl_cffi.requests` behind cached loaders in
