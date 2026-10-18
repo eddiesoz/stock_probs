@@ -1915,19 +1915,35 @@ test("selected assistant reply opens an owner-scoped editable thesis draft and s
   expect(href).toMatch(/^\/research\/theses\?assistant_message=/);
   const messageId = new URL(href, origin).searchParams.get("assistant_message");
   expect(messageId).toMatch(/^[0-9a-f-]{36}$/i);
-  const selectedDraftResponse = page.waitForResponse((response) => {
+  const selectedDraftUrl = new URL("/api/v1/theses/draft", origin);
+  selectedDraftUrl.searchParams.set("message_id", messageId);
+  const realSelectedDraftResponse = await page.request.get(selectedDraftUrl.href, { timeout: 5000 });
+  expect(realSelectedDraftResponse.status()).toBe(200);
+  const realSelectedDraftBody = await realSelectedDraftResponse.json();
+  expect(realSelectedDraftBody).toEqual({
+    reasoning: reply,
+    truncated: false,
+    evidence: [{ kind: "assistant", reference: messageId, excerpt: reply }],
+  });
+  await page.route("**/api/v1/theses/draft?*", async (route) => {
+    const request = route.request();
+    if (request.method() !== "GET" || request.url() !== selectedDraftUrl.href) return route.continue();
+    await route.fulfill({ response: realSelectedDraftResponse, json: { ...realSelectedDraftBody, truncated: true } });
+  });
+  const waitForSelectedDraft = () => page.waitForResponse((response) => {
     const url = new URL(response.url());
     return response.request().method() === "GET"
       && url.pathname === "/api/v1/theses/draft"
       && url.searchParams.get("message_id") === messageId;
   });
+  const selectedDraftResponse = waitForSelectedDraft();
   await handoff.click();
   const draftResponse = await selectedDraftResponse;
   expect(draftResponse.status()).toBe(200);
   expect(draftReads).toContain(messageId);
   expect(await draftResponse.json()).toEqual({
     reasoning: reply,
-    truncated: false,
+    truncated: true,
     evidence: [{ kind: "assistant", reference: messageId, excerpt: reply }],
   });
   const closeAssistant = page.getByRole("button", { name: "Close assistant", exact: true });
@@ -1935,6 +1951,24 @@ test("selected assistant reply opens an owner-scoped editable thesis draft and s
   const reasoning = page.getByRole("textbox", { name: "My thesis", exact: true });
   await expect(reasoning).toHaveValue(reply);
   await expect(reasoning).toBeEditable();
+  const truncatedNotice = page.getByRole("status").filter({
+    hasText: "The selected assistant reply was shortened to fit this draft.",
+  });
+  await expect(truncatedNotice).toBeVisible();
+  expect(thesisWrites).toHaveLength(0);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(truncatedNotice).toHaveCount(0);
+  expect(thesisWrites).toHaveLength(0);
+
+  const reopenedDraftResponse = waitForSelectedDraft();
+  await page.goto(new URL(href, origin).href);
+  const reopenedDraft = await reopenedDraftResponse;
+  expect(reopenedDraft.status()).toBe(200);
+  expect((await reopenedDraft.json()).truncated).toBe(true);
+  await expect(reasoning).toHaveValue(reply);
+  await expect(reasoning).toBeEditable();
+  await expect(truncatedNotice).toBeVisible();
+  expect(thesisWrites).toHaveLength(0);
   await page.getByLabel("Instrument symbol", { exact: true }).fill("SPY");
   await page.getByRole("combobox", { name: "Instrument type", exact: true }).selectOption("etf");
   const title = "Reviewed SPY fixture thesis";

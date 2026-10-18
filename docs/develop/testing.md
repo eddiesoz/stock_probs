@@ -502,10 +502,19 @@ full-app accessibility, live-provider, physical-mobile, deployment, or release a
 source hash, task IDs, receipts, and preserved failures are in the [R1 assistant-to-thesis
 follow-up](../../MVP-PLAN.md#r-astra-121-r1-assistant-to-thesis-selected-reply-browser-follow-up-2026-10-18).
 That selected-reply browser result predates the later visible truncation notice, so it does not
-verify the notice's rendered state. The later approved frontend build/stage passed 72 frontend
-tests with 94 unchanged public inputs and 51 matching served/export files; rendered browser and
-axe verification of the notice remain pending;
-see the [truncation notice checkpoint](../../MVP-PLAN.md#r-astra-121-r1-selected-reply-truncation-notice-2026-10-18).
+verify the notice's rendered state. A later `R-ASTRA-121` browser invocation passed the selected
+notice case 2/2 on desktop Chromium and mobile Chromium viewport emulation, reusing the approved
+build/stage with 94 unchanged frontend inputs and 51 matching served/export pairs. The preserved
+v1 attempt returned 404 in both projects with the R1 `PYTHONPATH` missing; a later `find_spec`
+resolved the canonical package rather than the R1 worktree package, a plausible but unconfirmed
+cause. V2 passed mobile but timed out on desktop at the unchanged five-second
+`route.fetch` bound. V3 used the direct owner-scoped prefetch, changed only the response's
+`truncated` flag in the browser route, and checked notice visibility, editability, Cancel/reopen,
+no write before Save, and one explicit Save POST returning 201. This verifies the selected UI-flag
+contract only; it does not establish backend truncation generation, cross-owner isolation,
+full-browser, axe, screenshot/design, provider/native, physical-mobile, or release acceptance.
+See the [truncation notice checkpoint](../../MVP-PLAN.md#r-astra-121-r1-truncation-notice-selected-browser-checkpoint-2026-10-18)
+for exact run identity, receipts, preserved failures, and bounds.
 
 ## Assistant verification (`R-ASTRA-120`)
 

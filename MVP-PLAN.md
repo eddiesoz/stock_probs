@@ -7153,5 +7153,48 @@ The terminal is `/var/tmp/r12r/r1-truncation-approved-build-pia9zhjk/terminal.js
 (SHA-256 `c878f549046f371a441bf572518e4f36496941b06f03d03df04e944edb32660b`);
 `before.json` and `stage-pairs.json` retain the explicit bindings. The build log SHA-256 is
 `4459785f3fe63d1e0aa3e8c8b3b436540090d35cbb91a7bf0207baae66841621`. This closes only
-the build/stage gap recorded above. The notice has no current rendered/browser/axe result;
-no assistant provider, production, full aggregate, or release acceptance is inferred.
+the build/stage gap recorded above. At that checkpoint the notice had no rendered/browser/axe
+result; the later selected browser checkpoint is recorded below. No provider, production, full
+aggregate, or release acceptance is inferred.
+
+### R-ASTRA-121 R1 truncation-notice selected browser checkpoint (2026-10-18)
+
+Task `R-ASTRA-121`, browser invocation `0ded025b2ecf469cb5981d7354cf99b7`. The parent-run
+selected-reply notice case **Passed** on desktop Chromium and mobile Chromium viewport emulation:
+2 passed, 0 failed/skipped/flaky, child exit `0`, with durations `15.596s` and `16.506s`. The
+run was `2026-10-18T22:29:51.562573Z`–`22:30:30.240626Z`. The terminal is
+`/var/tmp/r12r/r1-truncation-prefetch-v3-822d46a5-f821-4cd5-b7f9-3d438500513b/actual-terminal.json`
+(SHA-256 `94f82384403e76519a2139d3f242a0698a11e105edb56204ea00130a92918576`).
+
+The preserved v1 attempt returned `404` in both projects with the R1 `PYTHONPATH` missing. A later
+`find_spec` resolved the canonical package rather than the R1 worktree package, a plausible but
+unconfirmed cause. V2 passed mobile and timed out on desktop at the existing five-second
+`route.fetch` bound. V3 used the direct owner-scoped draft prefetch with the same five-second bound.
+It checked the real response's reasoning, evidence, and `truncated=false`, then changed only
+`truncated` to `true` in the browser route. It verified the status notice, editable draft, notice
+clearing on Cancel, notice restoration on reopen, no thesis writes before explicit Save, and one
+**Save reviewed thesis** POST returning `201`. No timeout was increased.
+
+Independent read-only review **Passed for this selected UI-flag contract only**; it did not replay
+Playwright. Its receipt is
+`/var/tmp/r12r/r1-selected-two-case-review-ba1143de9c26497089caf5f0c1831cb7/receipt.json`
+(SHA-256 `082f285e68d73ebde5f3278268534cc1df6fd13626f9b99f21fd7694ffbb3de2`). It confirmed
+41 fixture files, 94 frontend inputs, 51 served/export pairs, and four authored assets matched the
+approved build/stage binding; the earlier approved build on `e06f1a240701ba610a17f3d699df47f30b06c67d`
+was reused. The bound browser spec SHA-256 is
+`548167df96a6eb3f119ae7700172637a70da17a30f9d600f2a63f53e76ba48a1`. The review observed
+MainPID `0`, no unit cgroup, and systemd state `active/exited`; no screenshots were present.
+The fixed-port probe covered the unused external base URL, not the dynamic fixture listener;
+no actual fixture-port readback is claimed. The correction is preserved in
+`/var/tmp/r12r/r1-cleanup-correction-78e67c4678cc44a5b7295b260de003dd/receipt.json`
+(SHA-256 `671ed0dfd22f50f77640b767cefe4eb8ef12e851b1b3ddc5efb74dbb3843b80a`).
+This selected run does not establish backend
+truncation generation (including replies over 6,000 characters), cross-owner isolation,
+full-browser coverage, axe, visual/design review, native/provider behavior, physical mobile,
+or release acceptance.
+
+Before editing this record, the exact owned documentation bytes were preserved on the
+UUID-verified SD mount in `/var/tmp/r12r/R1-truncation-notice-docs-baseline-20261018T2238Z/`
+(directory `0700`, files `0600`; observed shell umask `0002`). Baseline SHA-256: `MVP-PLAN.md`
+`11f35b47db135593de50d3b1863a5fea372d05daf1db482522cba884afe0dbfa`;
+`docs/develop/testing.md` `88bb6145aa27b214372108c0c3d81ae78101f5bfa5735a955c1bde810723c15d`.
