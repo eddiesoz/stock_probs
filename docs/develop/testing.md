@@ -25,7 +25,7 @@ failure and diagnose the fixed startup path before repeating it or changing time
 parser that requires all selected cases to pass may reject a present report's counts; distinguish
 that result from a missing report. Bind available screenshots and raw axe results to their exact
 passing cases, and keep missing states unavailable. Partial captures do not establish the complete
-selected matrix. See the [R3 report-card checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-contrast-build-and-four-state-checkpoint-2026-10-18).
+selected matrix. See the [latest R3 report-card checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-v14-focused-browser-and-axe-checkpoint-2026-10-18).
 
 ## Reviewing incomplete contrast results
 
@@ -547,8 +547,11 @@ copyback for that snapshot. The later report-card axis-label candidate build use
 passed 88 frontend checks, typecheck and the Next production build, and had 65 served/export pairs
 verified by the parent; it did not copy generated output back. The focused-six browser attempt
 preceded this three-file repair and failed 3/6, with five raw axe contrast incompletes in the
-denominator snapshot. No browser or axe run has tested the repaired build. See the
-[R3 axis-label build and focused-six checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-axis-label-repair-build-and-focused-six-case-checkpoint-2026-10-18).
+denominator snapshot. A later v14 focused-four browser selection passed 4/4 and eight raw axe
+snapshots at 0/0; independent QA bound its source/build/stage inputs and parent visual review passed
+the four-capture scope only. This does not rerun the full-24 suite or establish full accessibility.
+See the [prior axis-label checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-axis-label-repair-build-and-focused-six-case-checkpoint-2026-10-18)
+and [latest v14 checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-v14-focused-browser-and-axe-checkpoint-2026-10-18).
 
 The Playwright journeys emulate system color preference and storage failure, switch among
 light/dark/system on both local pages, and exercise print, reduced-motion, forced-colors, CSP, and
@@ -648,8 +651,11 @@ passes and four failures; its exact command is **Unavailable**, and the focused 
 does not turn it into a 248-pass result. A later independent four-case selection passed the
 notification opt-out, owner/CSRF address-route, normal-lifespan configuration, and concurrent
 migration cases. It is not a canonical gate or browser run. The earlier full-24 browser failure
-remains **Fail**; the later focused-six browser result and axis-label build are recorded separately
-in the [R3 latest checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-axis-label-repair-build-and-focused-six-case-checkpoint-2026-10-18).
+remains **Fail**; the focused-six and axis-label build results remain separately recorded in the
+[prior axis-label checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-axis-label-repair-build-and-focused-six-case-checkpoint-2026-10-18).
+The later v14 focused-four selection passed 4/4 with eight raw axe snapshots at 0 violations and 0
+incompletes; this selected scope does not replace the failed full-24 aggregate or establish full-app
+accessibility. See the [latest R3 report-card checkpoint](../../MVP-PLAN.md#r-astra-121-r3-report-card-v14-focused-browser-and-axe-checkpoint-2026-10-18).
 The prior eager-import observation was bound to `provider.py` SHA-256
 `2e2d3e6443a4a92200a7104837f470a1efb6219cfe91ae4ba6cdb5ab2ae74df2`. The current R3 worktree
 has since moved `yfinance` and `curl_cffi.requests` behind cached loaders in

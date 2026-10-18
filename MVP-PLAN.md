@@ -19,7 +19,7 @@ dependency must pass before the first R121 feature release; no deployed assistan
 | --- | --- | --- |
 | 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | In progress; local implementation and selected checks only |
 | 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | In progress in a separate managed checkout; no release acceptance |
-| 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | In progress in the R3 checkout. The latest isolated report-card axis-label build/stage passed 88 frontend checks and verified 65 served/export pairs at 114 source inputs. The pre-repair focused six-case run failed 3/6 and raw axe recorded five SVG image-node incompletes; browser/axe rerun, full suite, and release gates remain open |
+| 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | In progress in the R3 checkout. The v14 focused browser selection passed 4/4 with eight raw axe snapshots at zero violations and zero incompletes. Independent QA bound 220 source inputs, 115 build inputs, 65 served/export pairs, 130 generated artifacts, and four exact PNGs; parent visual review passed the four-capture scope. Earlier focused-six and v12 3/1 failures remain preserved; the earlier full-24 aggregate remains **Fail** at its prior binding, with no new full-24 run recorded. Other states, full accessibility, and release gates remain open |
 | 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Separate R4 schema-17 checkout: isolated API draft (44 checks), source/domain/service review (32 independent checks plus scoped static checks), and UI-source repair (15 scoped checks); not built or integrated; migration 019, route/session wiring, browser and release acceptance remain open |
 
 Transactions retain original currency/date and use decimal weighted-average book calculations.
@@ -7684,6 +7684,14 @@ pass count. Do not combine that partial attempt with the later scoped passes. Th
 sanitizer coverage exercises ImportError; OSError handling was source-reviewed but not separately
 executed. No live provider, current full browser/canonical, production, or release acceptance is
 established by these checks.
+
+### R-ASTRA-121 R3 report-card v14 focused browser and axe checkpoint (2026-10-18)
+
+The actual v14 focused browser selection **Passed** all four selected cases in 99.12 seconds, with no retries, skips, or flaky cases. Eight raw axe snapshots reported zero violations and zero incompletes. The terminal spans `2026-10-18T19:49:43.325Z`–`19:51:22.447Z` and is `/var/tmp/r12r/r3-v14-provenance-prep-20261018T192716Z-7c0374dc/execution-v14/terminal.json`, SHA-256 `bbafded8a5531d2b77a5d129107760d2e0097db668d78bfce3a7c50b3b356557`.
+
+Independent QA **Passed** its source/build/stage and artifact-integrity scope: 220 source inputs, 115 build inputs, 65 served/export pairs, 130 generated artifacts, and four PNGs with exact bindings. The review recorded the owned unit dead at cleanup. Receipt `/var/tmp/r12r/r3-v14-independent-qa-3bbc16e6-aff4-4f65-bc8f-fccc0e3bd629/independent-review-v1.json`, SHA-256 `b56771143a5c27ab8aaf69971fd1aa37b477f4e03a01406f8f93a07f31ccbfd3`. Parent visual review **Passed** for all four captured cases only; receipt `/var/tmp/r12r/r3-parent-visual-crops-8718a43f-4b43-413a-8266-c1ac2db57635/parent-visual-review.json`, SHA-256 `093c733cf95f7c34c114e25cf10ed97f3aca88ded4179842c72eb58c4b6a385b`.
+
+This scoped pass is separate from the v12 focused-four **Fail** (three passed, mobile-Light failed fixture readiness); the two mobile-Light axe snapshots remained **Unavailable**. The earlier focused-six and full-24 aggregate **Fail** remain at their prior bindings; no new full-24 run is recorded. An initial QA helper object/file-hash comparison **Failed**; the corrected binding check passed separately. Independent QA did not rerun the browser cases. The v14 evidence does not establish the full-24 suite, other unpopulated design states, full-app accessibility, physical mobile, actual screen-reader or zoom, provider/runtime, canonical, recovery, actual combined 1 GB, rollback, canary, production, or release acceptance. No merge, deployment, resize, rollout, or email occurred; the 1 GB host, backups, and US$15 monthly total cap remain unchanged.
 
 ### R-ASTRA-121 shared local browser-fixture startup watchdog (2026-10-18)
 
