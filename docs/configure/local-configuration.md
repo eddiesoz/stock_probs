@@ -8,6 +8,11 @@ description: "Supported Stock Probability environment variables for local runtim
 The application reads a small environment-only configuration. Keep machine-local values out
 of tracked files and shell history when they could expose private locations.
 
+The provider bridge preserves initial upstream 401, 403 and 429 statuses as sanitized no-store
+JSON before starting SSE, after checking that the application session is still current. This has
+no operator override and does not raise provider limits, guess reset times, or enable paid fallback.
+An error after streaming begins remains an interrupted stream.
+
 | Variable | Default | Constraint and effect |
 | --- | --- | --- |
 | `STOCK_PROBS_DATA_DIR` | `data` | Runtime root. The server places `stock_probs.sqlite3`, `backups/`, and `.backup-auth.key` beneath it and hardens sensitive paths. |
@@ -20,9 +25,15 @@ of tracked files and shell history when they could expose private locations.
 
 ## Ledger assistant candidate settings
 
-These source settings belong to the R-ASTRA-120 candidate. They do not enable the production
-assistant, which remains disabled on schema 12 while the required acceptance gates are open.
-Do not enable rollout based on configuration presence.
+These source settings control the managed assistant. Configuration presence does not identify
+the deployed revision or enable production rollout by itself. Use the
+[current deployment and release ledger](../../MVP-PLAN.md) for the observed rollout state.
+
+The fixed Zen chat base is `https://opencode.ai/inference/openai/v1`, matching the
+[reviewed OpenCode model route](https://opencode.ai/v2/docs/console/models/). Stored Zen base
+URLs cannot override it. Endpoint identity and consent remain bound to the effective route;
+a changed identity requires the existing review and consent flow. Model discovery retains its
+separate catalog URL. No automatic route or paid-provider fallback is enabled.
 
 The managed worker source fixes `BUN_OPTIONS` to `--smol` and discards any caller-supplied
 value. This candidate asks Bun to collect garbage more frequently; it can reduce heap growth

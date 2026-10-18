@@ -74,6 +74,7 @@ _MAX_VALIDATE_BYTES = 262_144
 _MAX_PROXY_CHUNK_BYTES = 32 * 1024
 _MODEL_POLICY_KEY = "_model_policy"
 _OPENCODE_REVIEW_KEY = "_opencode_model_reviews"
+_OPENCODE_ZEN_CHAT_BASE_URL = "https://opencode.ai/inference/openai/v1"
 _MAX_MODEL_POLICIES = 256
 _MAX_POLICY_REVISION = 2_147_483_647
 _MODEL_CACHE_SECONDS = 300.0
@@ -1153,7 +1154,7 @@ class AssistantProviderManager:
             )
             if provider_id == "custom":
                 configured = endpoint_configured and config.get("endpoint_policy_reviewed") is True
-            endpoint = config.get("base_url", definition.get("default_base_url"))
+            endpoint = _provider_base_url(provider_id, config, definition)
             selected_model = config.get("model_id")
             inventory_loaded_at = self._provider_inventory_loaded_at.get(provider_id, 0.0)
             inventory_current = (
@@ -1476,7 +1477,7 @@ class AssistantProviderManager:
         if definition["adapter_supported"] is not True and provider_id != "opencode-zen":
             raise ProviderUnavailable("provider_adapter_unsupported")
         state = self._read_metadata().get(provider_id, {})
-        base_url = state.get("base_url", definition.get("default_base_url"))
+        base_url = _provider_base_url(provider_id, state, definition)
         if provider_id == "opencode-zen":
             if self.catalog is None:
                 raise ProviderUnavailable("provider_unavailable")
@@ -2273,7 +2274,7 @@ class AssistantProviderManager:
             self._replace_provider_models(provider_id, ())
             raise ProviderUnavailable("provider_adapter_unsupported")
         state = self._read_metadata().get(provider_id, {})
-        base_url = state.get("base_url", definition.get("default_base_url"))
+        base_url = _provider_base_url(provider_id, state, definition)
         secret = self._read_credential(provider_id)
         if not isinstance(base_url, str):
             self._replace_provider_models(provider_id, ())
@@ -2372,7 +2373,7 @@ class AssistantProviderManager:
             policy = _custom_model_policy(state)
         else:
             policy = definition
-        configured_endpoint = provider_state.get("base_url", definition.get("default_base_url"))
+        configured_endpoint = _provider_base_url(provider_id, provider_state, definition)
         endpoint_base = (
             _validate_public_https_url(configured_endpoint)
             if isinstance(configured_endpoint, str)
@@ -2860,7 +2861,7 @@ class AssistantProviderManager:
             raise ProviderUnavailable("provider_request_invalid")
 
         config = self._read_metadata().get(provider_id, {})
-        base_url = config.get("base_url", definition.get("default_base_url"))
+        base_url = _provider_base_url(provider_id, config, definition)
         if not isinstance(base_url, str):
             raise ProviderUnavailable("endpoint_not_configured")
         canonical_base = _validate_public_https_url(base_url)
@@ -3335,7 +3336,7 @@ class AssistantProviderManager:
             canonical_base = "https://chatgpt.com/backend-api/codex"
         else:
             state = self._read_metadata().get(provider_id, {})
-            base_url = state.get("base_url", definition.get("default_base_url"))
+            base_url = _provider_base_url(provider_id, state, definition)
             if not isinstance(base_url, str):
                 raise ProviderUnavailable("endpoint_not_configured")
             canonical_base = _validate_public_https_url(base_url).rstrip("/")
@@ -3542,7 +3543,7 @@ class AssistantProviderManager:
         definition = self._definitions.get(provider_id)
         provider_state = self._read_metadata().get(provider_id, {})
         endpoint = (
-            provider_state.get("base_url", definition.get("default_base_url"))
+            _provider_base_url(provider_id, provider_state, definition)
             if definition is not None
             else None
         )
@@ -3607,7 +3608,7 @@ class AssistantProviderManager:
         definition = self._definitions.get(provider_id) if isinstance(provider_id, str) else None
         if definition is not None:
             provider_state = self._read_metadata().get(provider_id, {})
-            endpoint = provider_state.get("base_url", definition.get("default_base_url"))
+            endpoint = _provider_base_url(provider_id, provider_state, definition)
             canonical_endpoint = (
                 _validate_public_https_url(endpoint) if isinstance(endpoint, str) else None
             )
@@ -3713,7 +3714,7 @@ class AssistantProviderManager:
         provider_state = state.get(provider_id, {})
         if not isinstance(provider_state, Mapping):
             raise ProviderUnavailable("provider_config_invalid")
-        endpoint = provider_state.get("base_url", definition.get("default_base_url"))
+        endpoint = _provider_base_url(provider_id, provider_state, definition)
         if not isinstance(endpoint, str):
             return None
         canonical_endpoint = _validate_public_https_url(endpoint)
@@ -4184,6 +4185,13 @@ class AssistantProviderManager:
         zen_policy = self._definitions.get("opencode-zen")
         if not isinstance(zen_policy, Mapping):
             raise ProviderUnavailable("model_policy_unavailable")
+        if isinstance(endpoint_url, str):
+            try:
+                canonical_endpoint = _validate_public_https_url(endpoint_url)
+            except ProviderUnavailable:
+                canonical_endpoint = None
+            if canonical_endpoint == _OPENCODE_ZEN_CHAT_BASE_URL:
+                provider_id = zen_policy.get("provider_id")
         try:
             return known_model_exclusion_reason(
                 zen_policy,
@@ -4206,7 +4214,7 @@ class AssistantProviderManager:
             "models_url": zen["models_url"],
             "excluded_models": zen["excluded_models"],
             "auth_methods": ["free_no_key"],
-            "default_base_url": "https://opencode.ai/zen/v1",
+            "default_base_url": _OPENCODE_ZEN_CHAT_BASE_URL,
             "terms_url": zen["terms_url"],
             "runtime_provider_id": zen["provider_id"],
             "credential_required": False,
@@ -4639,6 +4647,18 @@ def _validated_messages(
     if pending_calls:
         raise ProviderUnavailable("provider_request_invalid")
     return messages
+
+
+def _provider_base_url(
+    provider_id: str,
+    state: Mapping[str, object],
+    definition: Mapping[str, object],
+) -> object:
+    """Pin Zen to its reviewed route and resolve other providers from stored defaults."""
+
+    if provider_id == "opencode-zen":
+        return _OPENCODE_ZEN_CHAT_BASE_URL
+    return state.get("base_url", definition.get("default_base_url"))
 
 
 def _validate_public_https_url(value: str) -> str:

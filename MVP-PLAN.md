@@ -7969,3 +7969,135 @@ a discriminating input for a reviewed cached successor, not a guarantee of cache
 image retry, application/native run, canonical pass, production change or release is recorded
 here. The 900-second deadline, resource guards, protected images, existing host/backups and
 US$15 monthly cap remain unchanged.
+
+### R-ASTRA-121 F6 fc923 image and current application trial (2026-10-18)
+
+The cached successor at clean pushed PR #9 head
+`fc923975fb1fb3dce56798d0215c44500fc50c5d` **Passed build/source/stage scope**.
+Unit `f6-image-fc923-cache-a0969231.service` ran `01:55:33Z`–`02:01:29Z`, exit 0,
+helper reaped and helper cgroup empty. Its actual local-build producer receipt SHA-256 is
+`ff62390ad015725a303233fcbe99c23f9d214e00b426d6f1dceddaf0c3f07818`, binding Linux/amd64 image
+`sha256:f744816d87bd7f073b9c92f215501c490852e472c191a9aa677ff5255bd97b65` to runtime context
+`ca80afa7f696c4266afeb7e7753622335a9079b62b110641d85959d0fb7f842e`.
+Parent terminal SHA-256 `9bc193dd257ca6898d2614ae3b6bacc534feafcfb5bf9762a19fc345a2e2a302`
+records source-mediated successful Buildx/post-root checks; it is not an independently captured
+raw Buildx terminal. Independent static build/package-map audit SHA-256 is
+`f46f5f702191ee2b8085db20668cfc316a7526f1e5cb24cf0fffc94383e8fd44`.
+
+The copied context manifest retained an older revision label; its original bytes remain intact.
+A separate current measurement and correction bind unchanged entries to fc923 without backdating
+that measurement: correction SHA-256
+`72a7a88b6fafabe7557e5274a883ee6b5b8801c66f52ab448030d249cbe04ccb`.
+An incorrectly serialized image-facts artifact was null; a separate direct image inspection
+verified the exact image/platform/revision, SHA-256
+`3626e2880b2bf4c76363644034155728b4e34b86f513d9fbc49d4e7407e058d9`.
+The owned idle builder was then stopped at the same generation with its cgroup absent.
+
+The offline installed-package check **Passed** for 102 unique application/served files,
+3,514,175 bytes, with 53 context files, 53 served files and four identical overlaps. Runtime receipt
+`/var/tmp/r12r/f6-package-empty-bindings-successor-5e390848-c9a9-420c-a070-57aed1f89c8c/runtime-result.json`,
+SHA-256 `d44c32946f951475790030cbd47cacbf0e65131ac9684b6b4de0ff4d274554a6`, includes actual
+pre-start profile, bounded checker exit 0 and exact container cleanup. Independent receipt audit
+was reported for this scope; a separately named audit artifact is **Unavailable**. Earlier verifier failures are preserved: a missing optional Docker inspect
+field and a null-versus-empty port-binding representation each stopped before checker startup.
+The first needed separately verified created-only cleanup; the second cleaned itself up.
+Neither was an application/provider failure or a package Pass.
+
+The one current-image, two-owner native functional trial **Failed**, exit 2. Its systemd window
+was `02:22:02Z`–`02:25:03Z`; both owners timed out about 122 seconds after model-session events,
+with zero answers, workspace summaries, search sources or fetch sources. Retained diagnostics
+report 16 upstream-stream `provider_upstream_unavailable` failures, all HTTP 429, and zero
+sanitized chunks/bytes. Exact quota, error type and causal mechanism remain **Unproven**.
+The app was ready in all 114 health samples; worker samples were 105 ready, six starting and
+three unavailable. Peak local cgroup memory was 532,967,424 of 805,306,368 bytes, zero
+high/max/OOM/OOM-kill deltas; this is not actual combined 1 GB acceptance.
+
+Parent terminal and raw-output bindings are at
+`/var/tmp/r12r/f6-native-one-functional-run-4d520e86-98e7-44e4-9fbd-183a094374c0/parent-terminal.json`,
+SHA-256 `fe6ad16378d5603b3177687d5c95dd02795c0476bb73281f6d456036d6101ac9`.
+Independent retained-terminal review was reported for the failed result and bindings; its
+separately named artifact is **Unavailable**. The wrapper verified disposable
+container/volume/network absence and loopback-port refusal. The runner was
+reaped with an empty cgroup. No unchanged retry, active-kill acceptance, canonical run or
+production promotion followed this failure.
+
+### R-ASTRA-121 F6 initial 429 repair and genuine native baseline (2026-10-18)
+
+Source review found that only initial 401/403 failures were classified before SSE headers;
+an initial 429 instead started HTTP 200 then interrupted the stream. The narrow API repair
+preserves recognized initial 401/403/429 as safe no-store JSON after the authorization recheck.
+Unknown initial errors and failures after the first chunk retain interruption behavior. It does
+not forward raw errors, invent Retry-After/reset values, change provider limits or enable fallback.
+Owned API/test baselines are preserved under
+`/var/tmp/r12r/f6-initial-429-repair-baseline-20261018-a14c7f30`.
+
+Builder selected pytest **Passed** 11 cases, 115 deselected, two warnings; JUnit SHA-256
+`86e1b4595d7dacb18e929f6075486f573504c6770ed8ca22fda4986bf6111ed4`.
+The initial invalid TMPDIR invocation remains separate. Independent selected terminal review
+**Passed** 13 cases including malformed status, first-chunk replay and failure/revocation
+regressions, explicit worktree PYTHONPATH and umask 022. Independent JUnit/log/start-window
+artifacts are **Unavailable**; no unchanged rerun or reconstruction is claimed. Supplemental
+receipt SHA-256 `4b60c6eeb6dfb82fdb029d0481e6024dbadffbf4f9a22698f1d9d8119d1fe84b`.
+Ruff check/format and parent integrated diff review passed the two-file scope. API SHA-256 is
+`6b8d401f391ee8bd32f202aa3f3e8cb1fdd23baa4823cad2e3aaed583e29d90b`; test SHA-256 is
+`2405d169fef0c59fed069ac59bce9732fa9edff2999c4a8a3df9d590d893832c`.
+The f744 image predates this repair.
+
+A minimal genuine built-in OpenCode V2 CLI comparison on that same immutable image **Passed
+connectivity scope only**: `opencode/space-bunny-free` returned exactly `NATIVE_OK`, exit 0,
+8.964 seconds, child reaped and exact owned container/network cleanup verified. The isolated
+read-only UID-10002 container had fresh HOME/XDG, no host mounts or credentials forwarded,
+no custom endpoint/client headers, fixed title, and genuine native read/shell registrations
+requiring approval; no tool approval or execution occurred. Result receipt
+`/var/tmp/r12r/f6-direct-native-registered-tools-00180119-3ef6-4d1b-ae8d-733b6cb79c05/result.json`
+has SHA-256 `9a18052e308bd9ada37a486f05273fcd1ba9875425a3685cde81b24cf940ad65`;
+stdout SHA-256 is `a48090209487572199fb254f1a6561bf7c3365e5ebb85c2f3bbc6ae532a03fde`.
+Independent artifact review was reported for the exact text/terminal/cleanup scope; its
+separately named artifact and precise UTC command start/end are **Unavailable**. The earlier all-tools-denied comparison returned 403 and is retained
+as a failed control that repeated the repository's documented registration boundary.
+
+This successful native baseline does not turn the application's 429 trial into Pass. Native and
+managed requests still differ in product prompt, schemas/normalization, transport and concurrency;
+final outbound wire equivalence is unverified. Current application functional/kill, canonical,
+full browser/security, actual-host combined 1 GB, exact-PR recovery/rollback, owner canary and
+release gates remain open. The seven-feature branches continue in parallel. Production, existing
+1 GB host, backups and US$15 monthly total cap are unchanged; no deploy, rollout, resize or email
+occurred in this checkpoint.
+
+### R-ASTRA-121 F6 reviewed Zen chat route repair (2026-10-18)
+
+The official OpenCode model documentation and a fresh unauthenticated public catalog GET identify
+`https://opencode.ai/inference/openai/v1` as the provider and Space Bunny Free chat base. The
+application still selected `/zen/v1`; the successful isolated CLI baseline did not capture its
+effective outbound URL, so this discrepancy is not a proven cause of the earlier HTTP 429 trial.
+The public GET made no inference or authenticated request. Retained catalog:
+`/var/tmp/r12r/f6-public-route-catalog-16eb0f70-fba5-4b26-853f-9f1e20447e3d/api.json`,
+5,805,482 bytes, SHA-256 `a914d45ea8fa4bbe86103079e5c29719e78d78478bc42e62fdced0525f3c1a1f`;
+receipt SHA-256 `f0a6a60fa19cc564eb58ed53553d275c85eab958277f912b4ee7e9c3b896820d`.
+
+The source pins the reviewed chat base for Zen display, validation, policy identity and transport,
+ignoring stale stored Zen URLs. It preserves separate discovery, genuine native identity/public
+marker, session authorization and cancellation. Known-model exclusions recognize both official
+chat routes; ambiguous same-host paths still fail closed. No arbitrary endpoint, automatic
+fallback, new account or paid route is introduced. Existing endpoint-identity and consent checks
+remain in force. The older f744 image predates this and the initial-429 API repair.
+
+Builder focused synthetic checks **Passed** 27 cases, Ruff check/format and diff check. Exact
+baselines, source pins, JUnit and output are in
+`/var/tmp/r12r/zen-route-migration-3af3b352f7f32571/route-implementation-receipt.json`,
+SHA-256 `35cda4bc81747e55d952634d7db91fe7b9a6d061efe3659a1681890a244b285a`;
+JUnit SHA-256 `b3135e41af288300c5d64dfe1425d05983f0adecff8dea8fb5c197d786e7b36c`.
+Independent QA and parent final review remain pending at this checkpoint. No new image, native
+application answer, production change, release or resource acceptance follows from these checks.
+
+Independent route source/synthetic QA then **Passed** 29 selected tests with exit 0,
+`02:59:18.987403Z`–`02:59:23.034409Z`, no failures/errors/skips, plus a separate disposable
+old-endpoint consent fixture at `03:00:19.830772Z`–`03:00:20.838857Z`. The old approved identity
+was not rewritten by a read; it stayed unusable with `provider_endpoint_changed` until explicit
+current-policy acknowledgement. Source pins stayed unchanged. Independent receipt:
+`/var/tmp/r12r/qa-zen-route-d792f38f-f9a6-43a0-999d-1b084b83db69/independent-review-summary.json`,
+SHA-256 `e3da23b3fd69165cea45f889e3140af47be84c4981a03c1c0b47e70f406b5fe0`; JUnit SHA-256
+`412b89a1a01dc1a90d0856927d2aafc8bac3bdafbf6eb335b5ef1b809a714d76`.
+Ruff check/format and diff check passed. Parent personally reviewed the combined API, provider,
+test and authored-documentation diff and evidence for this scope, with no blocker found. This
+remains synthetic/source acceptance; current-image native and all release gates stay open.

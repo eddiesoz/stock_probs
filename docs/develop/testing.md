@@ -20,6 +20,18 @@ proxy, runtime, API, and probe; never retain raw provider bodies. A classified r
 successful model answer. Test safe failure copy through terminal stream completion and saved-chat
 reopening, with the saved context matching the submitted context and no automatic retry.
 
+Initial recognized upstream 401, 403 and 429 failures must reach the native client as sanitized
+no-store JSON with the original HTTP status before SSE headers. Recheck the active session after
+prefetch, close the iterator, and never forward raw provider bodies or invent a retry reset time.
+Keep unknown initial failures and failures after the first chunk interrupted; do not emit a clean
+completion. A correctly reported 429 is failure handling, not proof that the provider can answer.
+
+Verify that Zen display, validation, policy identity and outbound requests all use the fixed
+reviewed chat route even when stored metadata contains a legacy or unrelated base URL. Both the
+legacy `/zen/v1` route and `/inference/openai/v1` must preserve known-model exclusions; ambiguous
+paths on the same host fail closed, while similarly named unrelated hosts are not globally banned.
+Keep session revalidation and stream cancellation covered without a live provider request.
+
 For an isolated worktree, set `PYTHONPATH` to its absolute `src` directory and set
 `STOCK_PROBS_BROWSER_RUNTIME` to a task-owned disposable directory. A shared editable environment
 can otherwise import another checkout. Bind actual served asset bytes as well as local staged
