@@ -2784,10 +2784,18 @@ def _reconcile_local_inflight_reservation(
                 )
             ):
                 raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
-        elif (
-            backend.get("error_code") != "fixed_command_unavailable_or_timeout"
-            or reservation_error != "fixed_command_unavailable_or_timeout"
-            or failure.get("primary_error_code") != "bounded_build_timeout_cancel_unverified"
+        elif backend.get("error_code") != "fixed_command_unavailable_or_timeout" or not (
+            (
+                reservation_error == "fixed_command_unavailable_or_timeout"
+                and failure.get("primary_error_code") == "bounded_build_timeout_cancel_unverified"
+            )
+            or (
+                "reservation_verification_error" in failure
+                and reservation_error is None
+                and failure.get("primary_error_code") == "bounded_build_timeout"
+                and historical_tag_absent is True
+                and historical_inventory_matches is True
+            )
         ):
             raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
         if backend_status == "unverified":
@@ -2798,6 +2806,11 @@ def _reconcile_local_inflight_reservation(
                 or any(
                     error != "fixed_command_unavailable_or_timeout" for error in secondary_errors
                 )
+            ):
+                raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
+            if reservation_error is None and (
+                set(backend) != {"status", "error_code"}
+                or secondary_errors != ["fixed_command_unavailable_or_timeout"]
             ):
                 raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
         evidence = {

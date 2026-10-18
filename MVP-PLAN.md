@@ -7886,3 +7886,86 @@ or physical-unmount test was run for this follow-up. F6SD-01 has the static sour
 Pass above; the three-case timeout-finalization pass does not expand that scope. The full current-pin
 test module, canonical gate, image/runtime/native checks, and physical-mount acceptance remain
 **Pending** or **Not run**.
+
+### R-ASTRA-121 F6 9a91 DNS retry and bounded-build timeout checkpoint (2026-10-18)
+
+On clean pushed PR #9 head `9a911a1b0f8fde24b5ca917a49409689900fb5d1`, the first authorized
+`./scripts/local-compose.sh build` **Failed** in `base_image_metadata`. Its bounded log recorded
+the builder's embedded `127.0.0.11` resolver returning SERVFAIL for Docker Hub/GHCR while the
+stopped-builder resolver snapshot had no external nameserver; host lookups succeeded. A
+read-only diagnostic and category supplement retained that observation but both mark cause
+**Unproven**. The failure receipt and exact source/setup identity are in the first-attempt packet;
+terminal SHA-256 `74ce29fae39a6270c0f21a0f4d12589b401d27048256df805326b63ef2d4b985`, independent
+terminal QA SHA-256 `95cca302c0e33af48e5b9249b62fa6794e812cdf0d0e3f5a3231cd9ffe597902`, and failure
+receipt SHA-256 `20855c59f8d9a4284c9da18ff54acabc360af835fa018bfab16379e4f8ca7cd2`. Its typed
+stopped-generation reservation recovery passed separately; this did not produce an image.
+
+After verifying the exact owned stopped builder, a bounded builder-only resolver refresh passed:
+the maintained profile/network/storage preflight remained valid, the resolver had an external
+server, and two public registry lookups passed. Setup remained byte-identical and no global
+network mutation occurred. This scoped pass authorized one successor attempt only; it does not
+prove the cause of the first failure. DNS diagnostic:
+`/var/tmp/r12r/f6-build-base-metadata-diagnostic-dc95c77f-6679-4101-84f6-7d5d1eef684a/diagnostic.json`,
+SHA-256 `af3f5b7f2ad024ed542d97928cdd36277c323bc2d7686769c5876605e9e9d676`; resolver refresh:
+`/var/tmp/r12r/f6-owned-builder-dns-refresh-970f43dc-bec9-48a3-a926-e4be40753c78/terminal.json`,
+SHA-256 `3fd2cc8bb0fb36a20ffadf93210560ca0f6da33b2473937fef4d4fe26d7c553e`.
+
+The single successor, unit `f6-image-9a91-dns-ef8253fb.service`, **Failed** with
+`bounded_build_timeout` after its 900-second helper deadline; the bound local-failure receipt
+records `2026-10-18T01:15:10.076994Z`–`01:30:31.759874Z`, exit 1, no completed build, and an
+unproven specific cause. The phase observer reached `native_builder_run` but ended
+**Unavailable** at `line_byte_limit`; no image/runtime acceptance follows. Its failure receipt is
+`/home/james/.local/state/stock-probs/r120-buildkit-v1/build-runs/9a911a1b0f8fde24b5ca917a49409689900fb5d1/cade9dd61cdb821b6a549737ab9e3fde11b6169c7c46a33cbbbcf7219acbcc60/local-failure.json`,
+SHA-256 `1fb04fff9f6c84bd5113dacb9870399ce2aec37fcbc3d4d321a1a009be68afe9`. The original
+backend cancellation observation remains **Unverified**. A later supplemental exact same-generation
+stop **Passed**, verifying the builder stopped and its worker cgroup was absent; receipt
+`/var/tmp/r12r/f6-timeout-terminal-stop-0f6be7bf-6f56-4c9b-b71e-fe4cef5e4d8e/stop-terminal.json`,
+SHA-256 `9777f5e533632d5edbfea09bcbd7ef61f7d3f97a70ccbd1b94c5bc70a90cd944`. The failed
+reservation remains retained pending the narrow typed-contract repair and reviewed reconciliation.
+No further image retry, native/provider run, production change, or release acceptance is recorded;
+the existing host, backups and US$15 monthly cap remain unchanged.
+
+### R-ASTRA-121 F6 typed timeout recovery and build history checkpoint (2026-10-18)
+
+The first narrow recovery candidate passed 20 selected tests but **Failed** independent source
+review: an omitted `reservation_verification_error` was treated as null. The repaired helper
+`e1b01843890c71d95b78bdf79f8304eb8cb71a2bf614b91e82365fe9c6ff21a7` and tests
+`6433a420e25e8afb3c4ccd1217b108e91931b4f412e167435cf716500fdce065` require explicit key
+presence and the exact supported tuple. Independent focused QA **Passed** 13 cases, exit 0,
+PID 515320 reaped, at `2026-10-18T01:40:51.014948Z`–`01:40:54.522783Z`, with source pins
+unchanged. Runner receipt SHA-256 `3a2ba0ef349b47ea6f7c2932264a74d5b54e7641866fe8f3575eedb286866144`
+incorrectly read the JUnit wrapper count; immutable supplement
+`be6d16d0f1086cf0de2dd98fd0664590d81a4edd5669e197d1b087967475655c` verifies 13 testcase
+elements, zero failures/errors/skips. The original candidate finding and setup errors remain.
+
+Parent source/evidence review found no blocker for this narrow operation. Actual typed recovery
+**Passed**, exit 0, PID 515572 reaped, `01:41:42.314395Z`–`01:41:53.102188Z`: only the failed
+inflight row was removed; both protected complete rows and the current pointer were unchanged.
+Terminal `/var/tmp/r12r/f6-timeout-typed-recovery-e9777252-c3ff-427a-ad7a-10b93b3860d0/terminal.json`,
+SHA-256 `cefd53d4855129a7dfa09ab5715ee8d0f2ead4df7a21895c9286dc2f8cf119c8`, binds emitted
+reconciliation receipt `01b360e869982c702d4daf3f82ee8bc94032743d22cde025c726ef6d21344cdf`.
+Independent artifact audit **Passed** its retained snapshot/receipt scope, SHA-256
+`2e1c862a8710f44a40565fbf8b926735e5c3e8ffb0df88f39e5c952a563005ab`; no live operation was
+replayed. The original build failure and its cause field remain unchanged.
+
+Read-only history diagnosis preserved an initial generic preflight failure and a full-reference
+log lookup with no record. The documented bare build ID resolved the exact failed record
+`xznc6jrueinjg0i67owt7p6em`, created `01:15:10.377411771Z`, completed with Error at
+`01:30:18.497687634Z`. Bounded log capture **Passed** (169,327 bytes, child 518545 reaped);
+terminal `/var/tmp/r12r/f6-exact-build-id-log-f49e557d-f0dd-43cc-9831-5fca6ab87b96/terminal.json`,
+SHA-256 `0be54124fa1558ee09b64adbc6ef2c47bad9777cb40caa929c9b07921f729532`. The log shows
+native compilation completed in 627.2 seconds, frontend checks/build in 136.9 seconds, Python
+packaging in 96.3 seconds and runtime install copy in 24.5 seconds before the overall timeout.
+The emitted native build metadata reports a 212,784,608-byte binary, SHA-256
+`1710c236935721e1f632fe9cea625140a80aecff056370c14fa46b16199a5a20`. This supersedes only the
+coarse observer's missing stage detail; it does not change the failed build or prove a native
+assistant/provider response. The exact owned builder was stopped afterward with its cgroup absent.
+
+A bounded read-only cache inventory **Passed**, retaining completed native/frontend cache records
+for the unchanged runtime context. Terminal SHA-256
+`5379daef193ed8c021217601042d3526cb3bdae9a3a2d113133f3915993c4dac`, inventory
+`cc57f7009e7635af8fd26d478c23b8784f4e06a7155b005f4b576a0faec9f5a5`. Cache presence is
+a discriminating input for a reviewed cached successor, not a guarantee of cache reuse. No new
+image retry, application/native run, canonical pass, production change or release is recorded
+here. The 900-second deadline, resource guards, protected images, existing host/backups and
+US$15 monthly cap remain unchanged.

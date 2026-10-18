@@ -5203,6 +5203,17 @@ def _local_unverified_failure_fixture(
     return failure, failure_sha
 
 
+def _local_timeout_stop_failure_fixture(state: dict[str, object]) -> tuple[dict[str, object], str]:
+    return _local_unverified_failure_fixture(
+        state,
+        reservation_verification_error=None,
+        local_tag_and_placeholder_absent=True,
+        remaining_inventory_matches=True,
+        primary_error_code="bounded_build_timeout",
+        secondary_error_codes=["fixed_command_unavailable_or_timeout"],
+    )
+
+
 def test_typed_local_reconciliation_uses_fresh_stop_for_unverified_timeout_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -5258,6 +5269,194 @@ def test_typed_local_reconciliation_uses_fresh_stop_for_unverified_timeout_recei
     assert (
         json.loads(_local_reconciliation_fixture_path(state, "ledger_path").read_bytes())["entries"]
         == []
+    )
+
+
+def test_typed_local_reconciliation_accepts_bounded_timeout_after_fresh_builder_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    failure, failure_sha = _local_timeout_stop_failure_fixture(state)
+    stopped_generation = _local_generation(running=False)
+    observed: list[dict[str, object]] = []
+
+    def verify_stopped(
+        received_setup: dict[str, object], original: dict[str, object]
+    ) -> dict[str, object]:
+        assert received_setup is state["setup"]
+        assert original == failure["builder_generation_before"]
+        observed.append(original)
+        return {
+            "status": "verified_stopped_same_generation",
+            "builder_container_id": original["container_id"],
+            "current_generation": stopped_generation,
+            "worker_cgroup": {
+                "status": "absent",
+                "scope_path": (
+                    f"/sys/fs/cgroup/system.slice/docker-{original['container_id']}.scope"
+                ),
+                "process_ids_observed": 0,
+            },
+        }
+
+    monkeypatch.setattr(bounded, "_verify_local_stopped_builder", verify_stopped)
+    monkeypatch.setattr(
+        bounded,
+        "_assert_no_running_buildkit_history",
+        lambda: pytest.fail("stopped backend history is unavailable in local-failure mode"),
+    )
+
+    result = bounded._reconcile_local_inflight_reservation(
+        tag=str(state["tag"]),
+        revision=str(state["revision"]),
+        context_hash=str(state["context_hash"]),
+        role="current",
+        local_failure_receipt_sha256=failure_sha,
+    )
+
+    assert result["status"] == "local_inflight_reconciled"
+    assert observed == [failure["builder_generation_before"]]
+    receipt = json.loads(Path(result["reconciliation_receipt"]).read_bytes())
+    evidence = receipt["external_evidence"]
+    assert evidence["primary_error_code"] == "bounded_build_timeout"
+    assert evidence["backend_cancellation"] == failure["backend_cancellation"]
+    assert evidence["fresh_stopped_backend"]["worker_cgroup"]["process_ids_observed"] == 0
+    assert evidence["fresh_inventory"]["exact_tag_absent"] is True
+    assert evidence["fresh_inventory"]["placeholder_image_id_absent"] is True
+    assert receipt["cause"] == "unproven"
+    assert (
+        json.loads(_local_reconciliation_fixture_path(state, "ledger_path").read_bytes())["entries"]
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"primary_error_code": "bounded_build_timeout_cancel_unverified"},
+        {"reservation_verification_error": "fixed_command_unavailable_or_timeout"},
+        {"local_tag_and_placeholder_absent": None},
+        {"remaining_inventory_matches": None},
+        {"secondary_error_codes": []},
+        {
+            "secondary_error_codes": [
+                "fixed_command_unavailable_or_timeout",
+                "fixed_command_unavailable_or_timeout",
+            ]
+        },
+        {
+            "backend_cancellation": {
+                "status": "unverified",
+                "error_code": "different_fixed_command_error",
+            }
+        },
+        {
+            "backend_cancellation": {
+                "status": "unverified",
+                "error_code": "fixed_command_unavailable_or_timeout",
+                "unexpected": True,
+            }
+        },
+    ],
+)
+def test_typed_local_reconciliation_rejects_unmatched_bounded_timeout_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    updates: dict[str, object],
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    failure, failure_sha = _local_timeout_stop_failure_fixture(state)
+    failure.update(updates)
+    failure_sha = _write_private_json(
+        _local_reconciliation_fixture_path(state, "run_dir") / "local-failure.json", failure
+    )
+    monkeypatch.setattr(
+        bounded,
+        "_verify_local_stopped_builder",
+        lambda *_args: pytest.fail("an unmatched timeout tuple must fail before fresh stop"),
+    )
+
+    with pytest.raises(
+        bounded.BuildError, match="local_reconciliation_failure_receipt_contract_mismatch"
+    ):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            local_failure_receipt_sha256=failure_sha,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+
+
+def test_typed_local_reconciliation_rejects_missing_reservation_error_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    failure, _failure_sha = _local_timeout_stop_failure_fixture(state)
+    failure.pop("reservation_verification_error")
+    failure_sha = _write_private_json(
+        _local_reconciliation_fixture_path(state, "run_dir") / "local-failure.json", failure
+    )
+    monkeypatch.setattr(
+        bounded,
+        "_verify_local_stopped_builder",
+        lambda *_args: pytest.fail("missing tuple field must fail before fresh stop"),
+    )
+
+    with pytest.raises(
+        bounded.BuildError, match="local_reconciliation_failure_receipt_contract_mismatch"
+    ):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            local_failure_receipt_sha256=failure_sha,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+
+
+def test_typed_local_reconciliation_keeps_reservation_when_bounded_timeout_stop_unverified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    _failure, failure_sha = _local_timeout_stop_failure_fixture(state)
+    monkeypatch.setattr(
+        bounded,
+        "_verify_local_stopped_builder",
+        lambda *_args: (_ for _ in ()).throw(
+            bounded.BuildError("local_reconciliation_builder_generation_unverified")
+        ),
+    )
+
+    with pytest.raises(
+        bounded.BuildError, match="local_reconciliation_builder_generation_unverified"
+    ):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            local_failure_receipt_sha256=failure_sha,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+    assert not list(
+        _local_reconciliation_fixture_path(state, "run_dir").glob(
+            "local-inflight-reconciliation-*.json"
+        )
     )
 
 

@@ -1137,3 +1137,13 @@ The real managed build requires at least 4 GiB free on each checked build filesy
 below its 1 GiB floor. A passing mocked build-controller unit test does not establish that
 these actual resource requirements are met. See the [F6 disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
 for the separate synthetic-fixture and actual-filesystem results.
+
+For a bounded local-build timeout whose backend stop was initially unverified, the typed
+reconciliation accepts only the supported exact failure tuple, including an explicitly present
+null reservation error and successful historical tag/inventory observations. A later verified
+stop must match the captured builder generation, have PID zero and no worker descendants, and
+pass fresh protected-inventory checks. Keep the original failure receipt unchanged. Releasing
+the reservation does not accept the image or authorize an unchanged build retry; inspect the
+exact failed build history and retain the distinct evidence. The
+[F6 recovery checkpoint](../../MVP-PLAN.md#r-astra-121-f6-typed-timeout-recovery-and-build-history-checkpoint-2026-10-18)
+records the selected QA and actual operation.

@@ -747,3 +747,25 @@ operator filesystem before reaching the intended assertion. Separate boundary te
 real admission/stop logic with controlled disk inputs; the actual builder still enforces its
 4 GiB admission and 1 GiB stop thresholds. See the [F6 canonical disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
 for the preserved aggregate failure and narrow fixture repair.
+
+### F6 9a91 image-build retry checkpoint (2026-10-18)
+
+The first PR #9 build failed during base-image metadata; embedded resolver SERVFAIL was observed,
+but the cause remains **Unproven**. A scoped refresh of the exact owned builder resolver and two
+public registry lookups passed, permitting one retry. That retry then **Failed** with the bounded
+900-second build timeout; its phase observer reached `native_builder_run` but ended **Unavailable**
+at the line-byte limit. No image was accepted. The original backend-stop observation remains
+**Unverified**; a later exact-generation stop check passed with the worker cgroup absent. The
+reservation remains retained pending reviewed typed recovery. Preserve both build failures and
+do not infer a native build/runtime cause from the partial phase record. See the
+[F6 9a91 build checkpoint](../../MVP-PLAN.md#r-astra-121-f6-9a91-dns-retry-and-bounded-build-timeout-checkpoint-2026-10-18)
+for receipts and exact status.
+
+The F6 timeout-reconciliation follow-up independently passed 13 focused cases on repaired source,
+including explicit-null versus omitted receipt fields, exact tuple rejection, fresh-stop failure,
+and the legacy control. Preserve the earlier candidate's static-review failure and its separate
+20-case pass. The actual typed operation and its independent artifact audit passed only their
+reservation-release scope. A subsequent exact build-history read showed the native binary,
+frontend and Python-package steps completed before the overall assembly deadline; no completed
+image or native assistant result follows. See the
+[F6 recovery and history checkpoint](../../MVP-PLAN.md#r-astra-121-f6-typed-timeout-recovery-and-build-history-checkpoint-2026-10-18).

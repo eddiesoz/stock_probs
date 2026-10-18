@@ -602,3 +602,10 @@ controller source changes. Record a failed aggregate separately from a passing f
 repair, preserve exact source bindings, and distinguish synthetic disk inputs from real build
 admission evidence. The [F6 disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
 shows this distinction; it does not advance release acceptance.
+
+Typed local-timeout recovery changes need the mapped policy, testing and operations coverage.
+Document explicit-null receipt fields separately from missing fields, preserve failed candidate
+reviews, and bind the repaired source to fresh focused QA and the actual emitted recovery receipt.
+Completed build-step logs and remaining cache records explain a retry decision; they do not
+replace image, native, resource or release checks. See the
+[F6 recovery and history checkpoint](../../MVP-PLAN.md#r-astra-121-f6-typed-timeout-recovery-and-build-history-checkpoint-2026-10-18).

@@ -2382,3 +2382,10 @@ with child umask 022. Preserve Git-tracked source-context modes, including execu
 apply private receipt modes to materialized source files. Keep an approved setup receipt unchanged
 and pair it with a separate exact helper-source binding and review plus a successful build receipt
 bound to those inputs. The setup receipt alone proves setup, not helper contents or build completion.
+
+For the R121 bounded-timeout recovery tuple, require an explicit null
+`reservation_verification_error`, the exact unverified backend/error and singleton secondary
+error, and true historical tag/inventory observations. Fresh same-generation stopped PID-zero,
+empty-cgroup and current protected-inventory checks remain mandatory before typed reservation
+release; historical failure receipts are immutable. Completed build-step history or cache presence
+does not establish a completed image or native assistant acceptance.
