@@ -407,6 +407,44 @@ release acceptance. See the
 [R2-CASH-01 checkpoint](../../MVP-PLAN.md#r2-cash-01-accounting-and-scenario-regression-acceptance)
 for its exact command, receipts, and limitations.
 
+The six selected PR #8 backend checks later passed independent fixture QA at commit
+`ee5260b7b617398b0ca214ca6d21388afc96b8d8`. They cover baseline export bounds and malformed saved
+data, provider-free replay, owner/CSRF/canary session enforcement, saved-row immutability, and
+backdated weighted-cost/cash replay. This is scoped backend evidence only. At that checkpoint, the
+CSV browser regression was syntax-checked but had not run; broader rendered CSV and pagination
+behavior remained pending. See the
+[R2 selected backend recheck](../../MVP-PLAN.md#r-astra-121-r2-selected-backend-recheck-2026-10-18)
+for the task ID, exact run evidence, and current limitations.
+
+A later approved isolated `./scripts/build-frontend.sh` run on the R2 candidate based at
+`ee5260b7b617398b0ca214ca6d21388afc96b8d8` passed 72 frontend checks and verified 58
+served/export pairs across 101 build inputs. At that checkpoint, the three CSV browser cases were
+prepared but unrun, so the build did not establish rendered CSV or pagination behavior. See the
+[R2 frontend build checkpoint](../../MVP-PLAN.md#r-astra-121-r2-frontend-build-and-csv-browser-preparation-checkpoint-2026-10-18).
+
+After that preparation checkpoint, task packet `r2-csv-import-browser-prep-successor9` ran the
+three selected CSV scenarios on desktop Chromium and mobile Chromium emulation: custom header
+mapping, atomic rejection of an invalid later row, and duplicate-consent review. All six
+scenario/viewport runs passed, with no failures or skips. The bound source set (164 files), prior
+frontend build inputs (101), and served/export pairs (58) remained unchanged; the earlier 72-check
+frontend build was reused. The preceding v8 attempt's three failures remain recorded, and this
+selected pass does not establish broader browser or release acceptance. See the
+[R2 CSV browser and provider follow-up](../../MVP-PLAN.md#r-astra-121-r2-provider-lazy-import-and-csv-browser-follow-up-2026-10-18)
+for exact task packets, terminal receipts, and limitations.
+
+The inherited artifact-privacy finding says the earlier browser artifact inventory included
+generated fixture credential-file digests and cache entries; no plaintext key output is known. The
+later private runner review passed source review and 11 selected synthetic safety tests. Its
+candidate finalizer treats non-allowlisted regular files as metadata-only and limits content reads
+and hashes to named QA reports/logs and the designated failure screenshot; owner/type/link/size
+checks remain, and symlink, special-file, and hard-link cases are rejected. Reviewers did not open,
+read, hash, or chmod generated runtime credential, cache, or backup leaves. Actual browser acceptance
+with this runner and its inert default invocation were skipped. The earlier six-case CSV functional
+pass remains bound to the original v9 recorder and is not relabeled privacy-safe, so privacy-safe
+browser capture and release acceptance remain pending. See the
+[R2 CSV artifact-privacy runner review](../../MVP-PLAN.md#r-astra-121-r2-csv-artifact-privacy-runner-review-2026-10-18)
+for exact pins and receipts.
+
 ## Assistant verification (`R-ASTRA-120`)
 
 Use focused checks to isolate their boundaries. `tests/test_assistant_delete_session_boundary.py`

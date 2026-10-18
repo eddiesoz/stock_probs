@@ -11,7 +11,7 @@ fictional data, incidental labels, and logos are not product requirements. See t
 | Release | Complete user-facing scope | Current status |
 | --- | --- | --- |
 | 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | In progress; local implementation and selected checks only |
-| 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | Draft PR #8; earlier 31-test CSV result is bound to its prior revision. Baseline export and new accounting cases have static checks only; runtime and release acceptance remain pending |
+| 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | Draft PR #8; selected backend tests and isolated frontend build/stage pass for their scopes. The selected R2 CSV v9 desktop/mobile browser cases passed (6/6); earlier v8 failures and the artifact-privacy follow-up remain visible. Broader browser, canonical, security, recovery, actual 1 GB, rollback, canary, and release acceptance remain open |
 | 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | Pending |
 | 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Pending |
 
@@ -482,6 +482,33 @@ No receipt was rewritten. Current canonical/browser/design checks, schema-compat
 actual-host resources, exact-PR rollback, owner canary and release gates remain open. Earlier
 accounting evidence is retained only for unchanged accounting inputs. No deployment, rollout,
 resize or email follows.
+
+### R-ASTRA-121 R2 selected backend recheck (2026-10-18)
+
+Independent task `R2-selected-backend-qa` **Passed** six selected deterministic backend tests at
+clean commit `ee5260b7b617398b0ca214ca6d21388afc96b8d8` on
+`codex/signal-ledger-portfolio-r2`. The cases cover baseline-export size bounds and invalid stored
+data, provider-free/non-committing baseline and scenario replay, owner/CSRF/canary session checks,
+immutable saved portfolio/scenario rows, and backdated replacement replay of weighted cost, cash,
+and unknown cost. Python 3.11.15, pytest 9.1.1, native Linux x86_64, child umask `0022`; six
+passed, zero failures/errors/skips, 15.535 seconds. The run was
+`2026-10-18T04:35:48.949959740Z`–`04:36:21.301845218Z`; child PID 652157 exited 0 and was reaped,
+and all 15 source pins remained unchanged. Packet:
+`/var/tmp/r12r/r2-selected-backend-qa-20261018T043537Z-a228acd8`; `qa-summary.json` SHA-256
+`be1b27b90ab5571583c89c0c8abcaa50fdfaa93991ac12018b3014d6b76ae1bf`, `junit.xml`
+`402451327ef2902e354a94eb14325dff00570a23b20c89c2af528e7dbcca196f`, and `terminal.txt`
+`a1ef43efac537adf9020e52a366c768fbbba7ece655547d77afb9cb12fa1b500`. These local fixture tests
+used no external provider or network and do not establish browser, full-suite, Docker, production,
+or operator-authentication acceptance.
+
+Separately, the custom CSV browser regression spec is syntax-checked only (SHA-256
+`f87e113eeef29711ff557d4f8e421ddb4e8418d9e6631165e4205603a050cbf7`); it has not run in a browser.
+The original future-date finding remains preserved; the corrected fixture dates are January 3 and 4,
+before its January 10 fixture date. Rendered CSV and existing pagination regressions remain pending.
+The fifth frontend build/stage's precise binding is **Unavailable**; a fresh approved build/stage was
+prepared but held. Current canonical, full browser/design, complete security, actual combined 1 GB,
+compatible recovery, exact-PR rollback, canary, and release gates remain open. No merge, deployment,
+rollout, resize, or email is claimed.
 
 ## Status And Scope
 
@@ -6839,3 +6866,189 @@ The authored-document freeze /var/tmp/r12r/auth-write-docs-final-freeze-6dc91acc
 R2's documentation/map commit is ade4d1085b991bfbc2b046d16d46de06906c716d, clean locally and not published; commit receipt SHA-256 4072682543a3b66b85b191c96927f0b43cc8e976a2e871481eb782128a8b5928. src/stock_probs/api.py remains an unmatched auth-related path outside this two-file closure. The helper's map entry does not assert that the helper exists in R2 or that its tests ran.
 
 This closes only the two-path documentation routing check, not comprehensive auth-delta, security, or release coverage. The seven visible features and free-Zen-through-OpenCode work remain active; this note claims no product, provider, runtime, production, deployment, publication, or release acceptance.
+
+### R-ASTRA-121 R2 frontend build and CSV browser preparation checkpoint (2026-10-18)
+
+Task `R-ASTRA-121`. The approved isolated `./scripts/build-frontend.sh` build-and-stage run
+passed in 184.325 seconds against the R2 worktree based on `ee5260b7b617398b0ca214ca6d21388afc96b8d8`,
+with 101 pinned build inputs. TypeScript, the Next production build, and all 72 frontend checks
+passed. Parent stage review verified all 58 served/export pairs (18 pages, four authored assets,
+33 chunks, and three manifests). The run did not copy generated output back to the source worktree.
+Terminal `/var/tmp/r12r/r2-frontend-build-held-v2-16c2d7c7e679/build-terminal-r2.json` has
+SHA-256 `bace18f5aec42f657c2253d9d6adf0d3e2fee1dd90615626d6dddd2a9a033c8f`; parent pair review
+`parent-build-stage-pairs-review.json` in the same packet has SHA-256
+`45baf1a26b03bf861ecf68b7408e00e04ec22620cafc3f7c863bd5e1cc68568b`.
+
+The three current CSV browser cases remain preparation-only and were not executed. The selected
+six-test backend pass remains tied to its recorded source pins; neither it nor this frontend
+build establishes rendered CSV, pagination, full browser/design, canonical, security, recovery,
+actual combined 1 GB, exact-PR rollback, owner canary, or release acceptance. PR #8 remains a
+draft; no merge or production action is recorded.
+
+Documentation checks for task `R-ASTRA-121-R2-R3-docs`: before editing, byte-identical copies of
+`MVP-PLAN.md` (SHA-256 `42da428b711769118d19fd13ae3857630bfcca550a4137f511719be78b7797fc`) and
+`docs/develop/testing.md` (`48e3a7782607f576aca8cd2f46d287c71b136bcee3ed577f29f5cd5403d36816`)
+were saved under `/var/tmp/r12r/r121-r2-r3-feature-build-docs-baseline-20261018T0845Z/r2/`
+on UUID-verified SD `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`, with directory mode `0700` and file
+mode `0600`; manifest SHA-256 is `1b899c5af9e910b37a3c6e7577bb9d5100aeb661b018208785b1c886558f3dd9`.
+`.dev-venv/bin/python scripts/validate_docs.py` **Passed** (9 categories, 14 topics, 8 skill
+entries); `.dev-venv/bin/python scripts/check-doc-coverage.py --root . --map documentation-map.json`
+**Passed** (193 mapped files); and the scoped `git diff --check -- MVP-PLAN.md docs/develop/testing.md`
+**Passed**. Change-aware coverage **Failed** for the existing changed
+`tools/browser/tests/portfolio-workspaces.spec.js`: the rule requires one of
+`docs/usage/dashboard.md`, `docs/reference/api.md`, `docs/develop/design-system.md`, or
+`docs/security/threat-model.md`. Those guides were outside this documentation assignment and were
+not changed. Documentation tests were not run; this coverage failure remains open.
+
+Change-aware follow-up: the parent authorized the narrow `docs/usage/dashboard.md` update to
+document only the CSV mapping and review flow supported by the current workspace, parser, and
+browser spec. Before editing, its exact 17,981 bytes and SHA-256
+`00c81400a32dc5d90b146898a121531ff8e8c6306b8af4d83e5bc31cf730e047` were preserved at
+`/var/tmp/r12r/r121-r2-r3-feature-build-docs-baseline-20261018T0845Z/r2-dashboard-followup/`
+on UUID-verified SD `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; directory/file modes were `0700`/`0600`
+and the child umask was `022`. The guide now explains choosing an account, mapping distinct CSV
+headers, validating the complete file, reviewing rows and before/after balances, explicit duplicate
+approval, and the separate commit action. Final `.dev-venv/bin/python scripts/validate_docs.py`
+**Passed** (9 categories, 14 topics, 8 skill entries); completeness and change-aware coverage
+**Passed** (193 mapped files; four changed paths); and scoped `git diff --check` **Passed**.
+The final change-aware command was `.dev-venv/bin/python scripts/check-doc-coverage.py --root . --map documentation-map.json --changed-file MVP-PLAN.md --changed-file docs/develop/testing.md --changed-file docs/usage/dashboard.md --changed-file tools/browser/tests/portfolio-workspaces.spec.js`; final diff-check was `git diff --check -- MVP-PLAN.md docs/develop/testing.md docs/usage/dashboard.md`.
+The original change-aware failure above is retained as the initial attempt; the follow-up resolves
+that documentation-routing gap only. At that documentation checkpoint, the six listed browser
+identities remained list-only, with no browser execution or acceptance, and the three CSV cases
+were still preparation-only. Documentation tests were not run.
+
+### R-ASTRA-121 R2 provider lazy-import and CSV browser follow-up (2026-10-18)
+
+The provider adapter now defers optional `yfinance` and `curl_cffi` imports until Yahoo provider
+operations. The current `src/stock_probs/provider.py` SHA-256 is
+`a18cd47521b8091ae3c1c28ef5ebf0802a70662810775605a7a9e08cbe3ff1f0`. The builder reported 52
+provider/quote/lazy-import tests **Passed**. Independent task packet
+`r2-provider-lazy-import-independent-qa-20261018T152042Z` reported 52 selected tests, lint, and
+security checks **Passed**; receipt
+`/var/tmp/r12r/r2-provider-lazy-import-independent-qa-20261018T152042Z/independent-provider-lazy-import-qa-final-receipt.json`
+has SHA-256 `c5baa5b39f3b369a6a5a1c77c563b5d5531e708e3882e3775e85ac1be2ddbce3`. This confirms the
+measured avoidable imports were deferred for the declared scope; it does not establish the cause
+of the earlier CSV startup failure. The builder task ID and terminal receipt were not supplied;
+the builder's exact 52-test report is therefore task-attributed only as reported. The original
+whole-format check **Failed** for three preexisting files: `src/stock_probs/provider.py`,
+`tests/test_provider.py`, and `tests/test_market_quotes.py`. The new
+`tests/test_provider_lazy_import.py` format check **Passed**. The whole-format check's exact
+command and receipt were not supplied. One introduced blank-line issue in `src/stock_probs/provider.py`
+was fixed after QA, but no post-fix whole-format rerun is recorded, so a complete format Pass is
+not established.
+
+Browser task packet `r2-csv-import-browser-prep-successor9-20261018T152954Z` ran three selected
+CSV scenarios in desktop Chromium and mobile Chromium emulation: custom header mapping, atomic
+rejection when a later CSV row is invalid, and duplicate-consent review. All six
+scenario/viewport runs **Passed** (6 passed, 0 failed, 0 skipped) in 54.8 seconds, from
+`2026-10-18T15:44:00.438Z` to `15:45:10.764Z`. Its invocation ID is
+`a50c57a7a9084829bd09ad05384a660c`; child return code was 0, the unit/main process result was 0,
+the cgroup and process group were empty, and PID `70718` and browser process group `70756` were
+absent after cleanup. The run was bound to source head
+`ee5260b7b617398b0ca214ca6d21388afc96b8d8`, including selected spec locations `204`, `226`, and
+`243`. The 164 source-file bindings, 101 frontend build inputs, and 58 served/export pairs matched
+before and after the run. It reused the prior 72-check frontend build/stage result; no new frontend
+build was run.
+
+The terminal packet is
+`/var/tmp/r12r/r2-csv-import-browser-prep-successor9-20261018T152954Z-54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e/run-terminal.json`
+(SHA-256 `3e9e0b02091af91797211ea806efc439ee183f9fdee2d3e47dbddce96079ab2e`). Parent terminal
+review `parent-terminal-review-v9.json` in that packet has SHA-256
+`a637bde636d007ba006e76a7ecadc952e1030f29d392bff674db872d34f0b756`. Independent task packet
+`r2-csv-v9-terminal-independent-qa-20261018T155146Z-c81cae0d-9e71-4aa5-9bb8-111222f6134f`
+reported the six functional results **Passed**; its
+`independent-v9-actual-terminal-review.json` receipt has SHA-256
+`68cb4ea7b7fa539dfe0c8a0808282f78f214e6ba629fc79d1c72e7c8dabd2ef9`. The original v8 result
+(3 passed, 3 failed) remains preserved; the earlier startup cause remains **Unproven**.
+
+An inherited privacy finding reports that the browser artifact inventory included digests for
+generated fixture credential files and cache entries; no plaintext key output is known. This
+documentation follow-up did not read or output that inventory or inspect generated runtime
+credential/cache files. Harness narrowing and privacy acceptance remain **Pending**. The three
+stale explanatory metadata fields were recorded in immutable parent errata
+`parent-plan-metadata-errata-v9.json` (SHA-256
+`7bf1b637016ac3b1ec33324eca4b666d4aa9a98a42b59f5ffe0ba07b7597b0c3`); the actual runtime pins
+were correct. This erratum does not change the browser result or runtime bindings.
+
+The selected browser Pass does not establish complete browser/design, canonical, security,
+recovery, actual combined 1 GB, exact-PR rollback, owner canary, or release acceptance. PR #8
+remains a draft. The existing 1 GB plan, backups, and US$15 monthly total cap including tax remain
+unchanged; no merge, deployment, resize, rollout, or email is claimed.
+
+Documentation recovery baseline for this follow-up: before editing, exact working bytes for
+`MVP-PLAN.md` and `docs/develop/testing.md` were saved under
+`/var/tmp/r12r/r2-csv-evidence-docs-baseline-20261018T1556Z/` on UUID-verified SD
+`54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`, with directory mode `0700`, file mode `0600`, and child
+umask `0022`. Baseline SHA-256 values were `020e8fb4188233cbfb0e93b7b204d4a915e3296bdf9a080050f99cdf21a126db`
+for `MVP-PLAN.md` and `5bef56133483449d7765ff32e7990986f5ca082ecf42d26fa11f7a299b9fba59` for
+`docs/develop/testing.md`; manifest SHA-256 is
+`3c6c4e36225dc34a0dbedfbfd0c8a021c41a3f4c3f9c58d8ae4365776de7c48d`. Documentation validation
+for this follow-up **Passed**: `.dev-venv/bin/python scripts/validate_docs.py` reported 9
+categories, 14 topics, and 8 project skill governance entries; `.dev-venv/bin/python
+scripts/check-doc-coverage.py --root . --map documentation-map.json` checked 193 mapped files;
+and change-aware coverage checked the same 193 mapped files across 8 dirty paths. The exact
+change-aware command was:
+
+```bash
+.dev-venv/bin/python scripts/check-doc-coverage.py --root . --map documentation-map.json --changed-file MVP-PLAN.md --changed-file docs/develop/testing.md --changed-file docs/usage/dashboard.md --changed-file src/stock_probs/provider.py --changed-file tests/test_market_quotes.py --changed-file tests/test_provider.py --changed-file tests/test_provider_lazy_import.py --changed-file tools/browser/tests/portfolio-workspaces.spec.js
+```
+
+`git diff --check -- MVP-PLAN.md docs/develop/testing.md` **Passed**. Documentation tests were
+not run. These checks establish authored-document validation and map coverage for this dirty
+worktree only; they do not establish code, browser, or release acceptance.
+
+Formatter-path clarification documentation checkpoint: before this edit, exact working bytes of
+`MVP-PLAN.md` were saved at
+`/var/tmp/r12r/r2-csv-format-clarification-baseline-20261018T1600Z/MVP-PLAN.md` on UUID-verified
+SD `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e` (1,791,159 bytes; SHA-256
+`6862ff70c903e7b4e91fecf0d45b40cd938a30662aec030647cd68cd0f267f94`). The directory mode was
+`0700`, file mode `0600`, child umask `0022`, and baseline manifest SHA-256
+`5464734fc3b95a0eda349dd771f19c8be7319cf767846ab3dc68676d79dbb43a`. After the clarification,
+`.dev-venv/bin/python scripts/validate_docs.py` **Passed** (9 categories, 14 topics, 8 project
+skill governance entries), and `git diff --check -- MVP-PLAN.md` **Passed**. No tests or broader
+gates were run for this clarification.
+
+### R-ASTRA-121 R2 CSV artifact-privacy runner review (2026-10-18)
+
+Before this documentation edit, the exact authored-file bytes were saved under
+`/var/tmp/r12r/r2-csv-privacy-docs-update-e779f0ee-2045-4da7-8dca-65a281a90f08/before/` on
+UUID-verified SD `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`. The directory/file modes were `0700`/`0600`
+and child umask was `022`. Baseline SHA-256 values were `c5f389557a59829cfede566f6ae2dc5ff1a0173d429e0a8492189be6658b6a45`
+for `MVP-PLAN.md` and `5f4fb4e907c5fb1ddfcd8324ff3935ce0d4ef612444a7fdd20b9f7b18b26c11d` for
+`docs/develop/testing.md`; manifest SHA-256 is
+`a3bef43b085cb4567395198986ecbed80c6979450393202c53da5f2696a4b322`.
+
+Private candidate packet `r2-csv-artifact-privacy-v1-20261018T160151Z-351d75d9-9e6d-4001-a1a8-fbf289341b49`
+received independent review **Pass for pinned source review and selected pure safety tests**.
+The source review and 11 selected synthetic guard tests passed; runner SHA-256 is
+`059289d6bb92d7deb3ed9d905f60f15b18069f0231cf9e8c25f784266fd5afbf`, test SHA-256 is
+`ff6ed12ca5e4205fafcf52f604bfd66db93e29e7102f579fceebdd84dc4e7bd1`, and launcher-guard SHA-256
+is `8eb2e3e32c5deafd678e62dab69991533d5da250a2973f1510316b12c3124cbd`. The plan and patch pins
+also matched (`f2f4a713e8022930c7eca581e27c49f14b68b65a5dcf164a48b13f49315fbea5` and
+`82c00bfe174cabd08c39509ef04741c8a2e0e56556b54abf95a2c813c3d83f6f`). Independent receipt
+`/var/tmp/r12r/r2-csv-artifact-privacy-v1-20261018T160151Z-351d75d9-9e6d-4001-a1a8-fbf289341b49/candidate/independent-qa-v1/independent-privacy-review-final.json`
+has SHA-256 `995f20324696802de19a645fefa521aa1c8d8200855210bc281d6b2fc2ac2c6f`.
+
+For the reviewed candidate, non-allowlisted regular files receive metadata-only treatment; content
+reads and hashes are limited to named QA reports/logs and the designated failure screenshot. The
+reviewed guards retain owner/type/link/size checks and reject symlink, special-file, and hard-link
+cases. Reviewers did not open, read, hash, or chmod generated runtime credential, cache, or backup
+leaves. Parent source/evidence review **Passed** for its declared scope (receipt
+`/var/tmp/r12r/parent-integrated-r2-r3-review-105709bc-7dcf-447d-9d88-a20c7a01ded2/review.json`,
+SHA-256 `9b4cc5929f16e33a2a79757c9e1b7fe2ca3c673b1ee9362bc64efa85c5499349`); it did not run new
+tests or a browser/build.
+
+The prior six desktop/mobile CSV functional runs remain **Pass for their original scope** and stay
+bound to the v9 recorder and invocation `a50c57a7a9084829bd09ad05384a660c`, source head
+`ee5260b7b617398b0ca214ca6d21388afc96b8d8`, and the original 164 source, 101 build-input, and 58
+served/export bindings. The inherited artifact-privacy finding remains attached to those earlier
+artifacts; the functional pass is not relabeled as privacy-safe. Actual browser acceptance with the
+new private runner and its inert default invocation were **Skipped**. Thus privacy-safe browser
+capture, full privacy/security, and release acceptance remain pending; no application source/test
+or Git metadata changed in the private runner review. Authored-doc checks for this update passed:
+`.dev-venv/bin/python scripts/validate_docs.py` (9 categories, 14 topics, 8 project skill
+governance entries), `.dev-venv/bin/python scripts/check-doc-coverage.py --root . --map documentation-map.json`
+(193 mapped files), and
+`git diff --check -- MVP-PLAN.md docs/develop/testing.md`. Its initial run **Failed** on a newly
+introduced blank line at the plan EOF; that blank line was removed and the final run **Passed**.
+Documentation tests were not run.

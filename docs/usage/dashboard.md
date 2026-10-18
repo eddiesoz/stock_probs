@@ -216,10 +216,20 @@ append a replacement or reversal; the original record remains visible. Book cost
 weighted-average calculations per account and instrument. Realized sales remain separate from
 unrealized gains; these results are not tax reports.
 
-CSV imports accept UTF-8 files up to 64 KiB and 200 rows. Download the template, choose the account,
-map columns, then validate the entire file before committing. Dates use `YYYY-MM-DD`; decimal
-amounts use a dot and no currency symbol or thousands separator. Duplicate rows require deliberate
-approval, and a failed batch imports no rows. Opening-position cost may be blank when unknown.
+On **Transactions**, choose the source account before selecting a CSV. You can download the
+template or use a UTF-8 file up to 64 KiB with one header row of at most 40 distinct columns and
+up to 200 transaction rows. Map the date (`effective_date`) and transaction type (`kind`) columns
+at minimum; map each supported field at most once, using a distinct source column for each, and
+leave unrelated columns unmapped. Dates use `YYYY-MM-DD`; decimal amounts use a dot with no
+currency symbol or thousands separator.
+
+Choose **Validate and preview import** to review the full batch, including its rows and before/after
+balances. A validation error identifies the affected row when possible, and no row from an invalid
+batch is committed. Existing transactions are flagged as duplicates; the commit control stays
+disabled until you explicitly approve the listed duplicates. Review the preview, then choose
+**Commit reviewed transactions** to write the batch, or discard it. Importing is a separate,
+explicit action; opening a file and validating it do not change the ledger. Opening-position cost
+may be blank when unknown.
 An explicit `book_cost` is accepted only on an `opening_position`; `destination_currency` is only
 for an `exchange`, and `destination_account` is only for a linked `transfer`. Blank destination
 fields mean no destination. Supplying one of these fields for another transaction kind is reported

@@ -174,6 +174,106 @@ test("correct a saved transaction through its workspace action", async ({ page, 
   expect(history.items.filter(row => row.superseded)).toHaveLength(1);
 });
 
+async function loadCustomCsv(page, rows, filename) {
+  const csv = ["Trade Date,Transaction Type,Cash Value", ...rows].join("\n") + "\n";
+  await page.getByLabel("CSV file", { exact: true }).setInputFiles({ name: filename, mimeType: "text/csv", buffer: Buffer.from(csv) });
+  const date = page.getByRole("combobox", { name: "effective date", exact: true });
+  const kind = page.getByRole("combobox", { name: "kind", exact: true });
+  const amount = page.getByRole("combobox", { name: "amount", exact: true });
+  await expect(date).toBeVisible();
+  await expect(date).toHaveValue("");
+  await expect(kind).toHaveValue("");
+  await expect(amount).toHaveValue("");
+  await date.selectOption("Trade Date");
+  await kind.selectOption("Transaction Type");
+  await amount.selectOption("Cash Value");
+}
+
+async function previewCsvImport(page) {
+  const response = page.waitForResponse(row => new URL(row.url()).pathname === "/api/v1/portfolio/imports/preview" && row.request().method() === "POST");
+  await page.getByRole("button", { name: "Validate and preview import", exact: true }).click();
+  return response;
+}
+
+async function commitCsvImport(page) {
+  const response = page.waitForResponse(row => new URL(row.url()).pathname === "/api/v1/portfolio/transactions" && row.request().method() === "POST");
+  await page.getByRole("button", { name: "Commit reviewed transactions", exact: true }).click();
+  return response;
+}
+
+test("custom CSV headers map to the reviewed date, kind, and amount", async ({ page, outOfSessionApplication }) => {
+  const origin = outOfSessionApplication.url;
+  await createAccount(page, origin, "Custom CSV TFSA");
+  await loadCustomCsv(page, ["2025-01-03,deposit,1250"], "custom-ledger.csv");
+
+  const preview = await previewCsvImport(page);
+  expect(preview.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Review before committing", exact: true })).toBeFocused();
+  const row = page.getByRole("listitem").filter({ hasText: "2025-01-03" });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("deposit");
+  await expect(row).toContainText("amount 1250");
+
+  const commit = await commitCsvImport(page);
+  expect(commit.status()).toBe(201);
+  await expect(page.locator("main").getByRole("status")).toContainText("Reviewed transactions committed");
+  const history = await (await page.request.get(`${origin}/api/v1/portfolio/transactions`)).json();
+  expect(history.total).toBe(1);
+  expect(history.items[0]).toMatchObject({ effective_date: "2025-01-03", kind: "deposit" });
+  expect(Number(history.items[0].amount)).toBe(1250);
+});
+
+test("a later invalid CSV row alerts without committing earlier valid rows", async ({ page, outOfSessionApplication, browserDiagnostics }) => {
+  const origin = outOfSessionApplication.url;
+  await createAccount(page, origin, "Invalid CSV TFSA");
+  await loadCustomCsv(page, ["2025-01-03,deposit,500", "2025-01-04,withdrawal,not-money"], "invalid-later-row.csv");
+  browserDiagnostics.expectHttpFailures({ method: "POST", path: "/api/v1/portfolio/imports/preview", status: 422 });
+  const preview = await previewCsvImport(page);
+  expect(preview.status()).toBe(422);
+  await expect(page.locator("main").getByRole("alert")).toContainText("Row 3: invalid amount decimal.");
+  await expect(page.getByRole("heading", { name: "Review before committing", exact: true })).not.toBeVisible();
+  const [history, balances] = await Promise.all([
+    page.request.get(`${origin}/api/v1/portfolio/transactions`).then(response => response.json()),
+    page.request.get(`${origin}/api/v1/portfolio/balances`).then(response => response.json()),
+  ]);
+  expect(history.total).toBe(0);
+  expect(balances.book.cash).toEqual([]);
+});
+
+test("a duplicate CSV row needs explicit review consent before the approved commit", async ({ page, outOfSessionApplication }) => {
+  const origin = outOfSessionApplication.url;
+  await createAccount(page, origin, "Duplicate CSV TFSA");
+  const rows = ["2025-01-03,deposit,200"];
+  await loadCustomCsv(page, rows, "duplicate-ledger-first.csv");
+  const firstPreview = await previewCsvImport(page);
+  expect(firstPreview.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Review before committing", exact: true })).toBeFocused();
+  await expect(page.getByText("Duplicate row ·", { exact: true })).toHaveCount(0);
+  expect((await commitCsvImport(page)).status()).toBe(201);
+  await expect(page.locator("main").getByRole("status")).toContainText("Reviewed transactions committed");
+  const afterFirstCommit = await (await page.request.get(`${origin}/api/v1/portfolio/transactions`)).json();
+  expect(afterFirstCommit.total).toBe(1);
+
+  await loadCustomCsv(page, rows, "duplicate-ledger-again.csv");
+  const duplicatePreview = await previewCsvImport(page);
+  expect(duplicatePreview.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Review before committing", exact: true })).toBeFocused();
+  await expect(page.getByText("Duplicate row ·", { exact: true })).toBeVisible();
+  const consent = page.getByRole("checkbox", { name: "I reviewed all 1 duplicate rows and deliberately want to include them.", exact: true });
+  const commitButton = page.getByRole("button", { name: "Commit reviewed transactions", exact: true });
+  await expect(consent).not.toBeChecked();
+  await expect(commitButton).toBeDisabled();
+  expect((await (await page.request.get(`${origin}/api/v1/portfolio/transactions`)).json()).total).toBe(1);
+
+  await consent.check();
+  await expect(commitButton).toBeEnabled();
+  expect((await commitCsvImport(page)).status()).toBe(201);
+  await expect(page.locator("main").getByRole("status")).toContainText("Reviewed transactions committed");
+  const afterApprovedCommit = await (await page.request.get(`${origin}/api/v1/portfolio/transactions`)).json();
+  expect(afterApprovedCommit.total).toBe(2);
+  expect(afterApprovedCommit.items.map(row => [row.kind, Number(row.amount)])).toEqual([["deposit", 200], ["deposit", 200]]);
+});
+
 // Page advances must include every original transaction without gaps.
 test("overview five-row pagination retains every imported original amount", async ({ page, outOfSessionApplication }) => {
   const origin = outOfSessionApplication.url;
