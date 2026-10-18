@@ -7865,8 +7865,8 @@ def test_internal_provider_proxy_uses_db_model_and_closes_on_bad_capability(sett
 
 
 @pytest.mark.parametrize("route_kind", ("chat", "native"), ids=("chat", "native"))
-@pytest.mark.parametrize("status_code", (401, 403))
-def test_internal_provider_proxy_returns_initial_upstream_auth_status_before_stream(
+@pytest.mark.parametrize("status_code", (401, 403, 429))
+def test_internal_provider_proxy_returns_initial_upstream_status_before_stream(
     settings, route_kind: str, status_code: int
 ) -> None:
     class Runtime(FakeRuntime):
@@ -7939,7 +7939,7 @@ def test_internal_provider_proxy_returns_initial_upstream_auth_status_before_str
                 path,
                 headers={
                     "Authorization": f"Bearer {capability}",
-                    "session-id": "ses_initial_auth_status_fixture_01",
+                    "session-id": "ses_initial_status_fixture_01",
                 },
                 json=(
                     {

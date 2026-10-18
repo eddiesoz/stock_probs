@@ -20,6 +20,18 @@ proxy, runtime, API, and probe; never retain raw provider bodies. A classified r
 successful model answer. Test safe failure copy through terminal stream completion and saved-chat
 reopening, with the saved context matching the submitted context and no automatic retry.
 
+Initial recognized upstream 401, 403 and 429 failures must reach the native client as sanitized
+no-store JSON with the original HTTP status before SSE headers. Recheck the active session after
+prefetch, close the iterator, and never forward raw provider bodies or invent a retry reset time.
+Keep unknown initial failures and failures after the first chunk interrupted; do not emit a clean
+completion. A correctly reported 429 is failure handling, not proof that the provider can answer.
+
+Verify that Zen display, validation, policy identity and outbound requests all use the fixed
+reviewed chat route even when stored metadata contains a legacy or unrelated base URL. Both the
+legacy `/zen/v1` route and `/inference/openai/v1` must preserve known-model exclusions; ambiguous
+paths on the same host fail closed, while similarly named unrelated hosts are not globally banned.
+Keep session revalidation and stream cancellation covered without a live provider request.
+
 For an isolated worktree, set `PYTHONPATH` to its absolute `src` directory and set
 `STOCK_PROBS_BROWSER_RUNTIME` to a task-owned disposable directory. A shared editable environment
 can otherwise import another checkout. Bind actual served asset bytes as well as local staged
@@ -125,6 +137,12 @@ CLI process-group cancellation does not establish that a remote BuildKit `RUN` s
 failure handler checks the setup-bound full container ID, start generation, configuration and
 ownership before stopping only that builder; an uncertain stop or receipt write keeps recovery
 held. Preserve the primary build error separately from cleanup errors.
+
+The shared bounded-build deadline begins before `Popen`; pre-launch validation and dispatch time
+consume that deadline for every caller. A source or selected-test pass does not establish image,
+Docker-runtime, provider, or physical-mount acceptance. The R-ASTRA-121 F6SD-02 narrowed
+timeout-finalization result and its earlier full-suite source-review failure are recorded separately
+in the [MVP plan](../../MVP-PLAN.md#r-astra-121-f6sd-02-timeout-observer-finalization-follow-up-2026-10-18).
 
 Use the typed `--reconcile-local-inflight-reservation` operation in
 `scripts/bounded_docker_build.py` with the exact local tag, revision, context digest and current
@@ -307,6 +325,12 @@ length of `sockaddr_un.sun_path`, including its terminator. Preserve a path-leng
 separately from product assertions, and rerun only after correcting that fixture boundary.
 For live supervisor cases, verify the serving thread exits and its control socket is unlinked;
 remove only that run's owned temporary directory after all children have exited.
+
+Before a full suite, preflight the paths that the actual runner will create; a short manually
+selected diagnostic path does not establish that the full runner's temporary root is safe. If a
+canonical run fails or is interrupted on socket setup, retain that aggregate and any inconsistent
+terminal/JUnit counts as a failure requiring reconciliation. A focused short-path pass can confirm
+the fixture boundary for its selection, but it cannot replace a fresh complete canonical run.
 
 ## Current OpenCode V2 QA contract
 
@@ -1021,3 +1045,45 @@ and readback for the repaired helper, plus exact-PR recovery/rollback. The uncha
 host-helper inputs do not require another real-provider/native trial solely because helper source
 changed. Complete canonical and browser/axe runs, final guide, owner canary, and release gates remain
 open.
+
+Build-controller unit cases that isolate command or backend-stop failures supply a synthetic
+`check_space` result alongside their mocked build operations. This avoids depending on the
+operator filesystem before reaching the intended assertion. Separate boundary tests exercise
+real admission/stop logic with controlled disk inputs; the actual builder still enforces its
+4 GiB admission and 1 GiB stop thresholds. See the [F6 canonical disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
+for the preserved aggregate failure and narrow fixture repair.
+
+### F6 9a91 image-build retry checkpoint (2026-10-18)
+
+The first PR #9 build failed during base-image metadata; embedded resolver SERVFAIL was observed,
+but the cause remains **Unproven**. A scoped refresh of the exact owned builder resolver and two
+public registry lookups passed, permitting one retry. That retry then **Failed** with the bounded
+900-second build timeout; its phase observer reached `native_builder_run` but ended **Unavailable**
+at the line-byte limit. No image was accepted. The original backend-stop observation remains
+**Unverified**; a later exact-generation stop check passed with the worker cgroup absent. The
+reservation remains retained pending reviewed typed recovery. Preserve both build failures and
+do not infer a native build/runtime cause from the partial phase record. See the
+[F6 9a91 build checkpoint](../../MVP-PLAN.md#r-astra-121-f6-9a91-dns-retry-and-bounded-build-timeout-checkpoint-2026-10-18)
+for receipts and exact status.
+
+The F6 timeout-reconciliation follow-up independently passed 13 focused cases on repaired source,
+including explicit-null versus omitted receipt fields, exact tuple rejection, fresh-stop failure,
+and the legacy control. Preserve the earlier candidate's static-review failure and its separate
+20-case pass. The actual typed operation and its independent artifact audit passed only their
+reservation-release scope. A subsequent exact build-history read showed the native binary,
+frontend and Python-package steps completed before the overall assembly deadline; no completed
+image or native assistant result follows. See the
+[F6 recovery and history checkpoint](../../MVP-PLAN.md#r-astra-121-f6-typed-timeout-recovery-and-build-history-checkpoint-2026-10-18).
+
+### Dual-head release and actual producer receipt checks
+
+Format-3 pair tests keep the image-source revision separate from the reviewed PR #9 head and helper
+head. Negative cases reject a different patch, additional source change, executable/symlink test
+blob, invalid lineage and mismatched installed source transport. The managed-v3 receipt tests use
+the producer's exact 14-key shape; the real fixed receipt must also pass through the consumer
+without overriding its expected identity. Legacy receipt and pair-format paths retain separate
+controls. The 31-test independent private-candidate Pass and actual receipt probe are source/contract
+evidence, not host, Docker, rollback or release acceptance. The current full F6 browser aggregate
+remains Fail (188 passed, nine failed, three expected skips); preserve each failure and run focused
+discriminating checks before another aggregate. See the
+[dual-head checkpoint](../../MVP-PLAN.md#r-astra-121-dual-head-receipt-compatibility-and-current-browser-checkpoint-2026-10-18).

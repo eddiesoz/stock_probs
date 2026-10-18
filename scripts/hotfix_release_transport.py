@@ -34,6 +34,11 @@ DIGEST_PATTERN = re.compile(r"[0-9a-f]{64}")
 IMAGE_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 
 HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
+HOTFIX_V3_IMAGE_SOURCE_REVISION = "68c225a25a76c4bd65c6309e00dd13200a1d4678"
+HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "c2fe99cbd486b93958c6d5c398da9fc25ddd7075"
+HOTFIX_V3_IMAGE_ID = "sha256:c3ac6f43749404e36e0ae94a8d749ccafe4c882216db09484c1c34f6fbad5f78"
+HOTFIX_V3_IMAGE_CONTEXT_SHA256 = "e0e79be05acad60f4220c3152c32ba5c5b31aa7c394e36cf28de30fcf31d7458"
+HOTFIX_V3_BUILD_RECEIPT_SHA256 = "a73f76fb2792efb88ed88326ff84f8b22db3f09181dc0571f9ba0aea8c561ae1"
 HOTFIX_CANDIDATE_IMAGE_ID = (
     "sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196"
 )
@@ -57,9 +62,10 @@ PRODUCTION_PREDECESSOR_PRIOR_PAIR_SHA256 = (
 )
 HOTFIX_EMPTY_OVERLAY_SHA256 = hashlib.sha256(b"[]").hexdigest()
 HOTFIX_PAIR_CONTRACT = "schema13_same_schema_hotfix_v1"
+HOTFIX_PAIR_CONTRACT_V3 = "schema13_same_schema_hotfix_v3"
 SCANNER_PATH = ROOT / "scripts" / "verify-release-archive.py"
 # PR12 is the reviewed scanner that inspects every archive member and Docker config metadata.
-RELEASE_SCANNER_SHA256 = "5f1ac4b773f2ddf8866589cb2cb59bec8fce6097f20986bbf8d6de0c96c45085"
+RELEASE_SCANNER_SHA256 = "75e3f8c07e62a36fb0e11ad8ef48996971148a890688bbb31bd9eb0d3d791670"
 DOWNLOAD_TIMEOUT_SECONDS = 180
 COMMAND_OUTPUT_LIMIT = 16_384
 
@@ -93,6 +99,7 @@ class Package:
     manifest_size: int
     candidate: Archive
     predecessor: Archive
+    reviewed_pr_head_sha: str | None = None
 
 
 def _valid(pattern: re.Pattern[str], value: object) -> bool:
@@ -265,6 +272,192 @@ def _expected_manifest(helper_revision: str) -> dict[str, Any]:
     }
 
 
+def _expected_manifest_v3(
+    helper_revision: str,
+    reviewed_pr_head_sha: str,
+    *,
+    candidate_archive_sha256: str,
+    candidate_archive_size: int,
+) -> dict[str, Any]:
+    """Build the v3 pair manifest with independent PR, helper, and image identities."""
+
+    if not _valid(REVISION_PATTERN, helper_revision):
+        raise PublicationError("helper_revision_invalid")
+    if not _valid(REVISION_PATTERN, reviewed_pr_head_sha):
+        raise PublicationError("reviewed_pr_head_invalid")
+    if reviewed_pr_head_sha != HOTFIX_V3_REVIEWED_PR_HEAD_SHA:
+        raise PublicationError("reviewed_pr_head_unreviewed")
+    if (
+        not _valid(DIGEST_PATTERN, candidate_archive_sha256)
+        or type(candidate_archive_size) is not int
+        or not 1 <= candidate_archive_size <= MAX_ARCHIVE_BYTES
+    ):
+        raise PublicationError("candidate_archive_identity_invalid")
+    candidate_name = _fixed_archive_name(HOTFIX_V3_IMAGE_SOURCE_REVISION)
+    predecessor_name = _fixed_archive_name(PRODUCTION_PREDECESSOR_REVISION)
+    return {
+        "format_version": 3,
+        "contract": HOTFIX_PAIR_CONTRACT_V3,
+        "repository": REPOSITORY,
+        "revision": helper_revision,
+        "reviewed_pr_head_sha": reviewed_pr_head_sha,
+        "image_source_revision": HOTFIX_V3_IMAGE_SOURCE_REVISION,
+        "helper_source": {"pull_number": 11, "revision": helper_revision},
+        "candidate": {
+            "asset": candidate_name,
+            "archive_sha256": candidate_archive_sha256,
+            "archive_size": candidate_archive_size,
+            "image_id": HOTFIX_V3_IMAGE_ID,
+            "platform": "linux/amd64",
+            "pull_number": 9,
+            "revision": HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            "schema_version": 13,
+            "source_context_sha256": HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+            "build_receipt_sha256": HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        },
+        "recovery": {
+            "asset": predecessor_name,
+            "archive_sha256": PRODUCTION_PREDECESSOR_ARCHIVE_SHA256,
+            "archive_size": PRODUCTION_PREDECESSOR_ARCHIVE_SIZE,
+            "image_id": PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "platform": "linux/amd64",
+            "revision": PRODUCTION_PREDECESSOR_REVISION,
+            "schema_version": 13,
+            "source_context_sha256": PRODUCTION_PREDECESSOR_CONTEXT_SHA256,
+            "kind": "previous_production_candidate",
+            "prior_pair_manifest_sha256": PRODUCTION_PREDECESSOR_PRIOR_PAIR_SHA256,
+            "assistant_rollout_mode": "invited",
+        },
+        "transition": {"from_schema": 13, "to_schema": 13, "migrations": [], "restore": False},
+        "recovery_overlay": {"kind": "none", "sha256": HOTFIX_EMPTY_OVERLAY_SHA256},
+    }
+
+
+def _v3_test_blob_sha(commit_sha: str) -> str:
+    """Require the fixed PR #9 regression path to be a regular tracked blob."""
+
+    if not _valid(REVISION_PATTERN, commit_sha):
+        raise PublicationError("reviewed_pr_test_file_invalid")
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    output = _command(
+        [
+            "/usr/bin/git",
+            "ls-tree",
+            "-z",
+            "--full-tree",
+            commit_sha,
+            "--",
+            path,
+        ],
+        timeout=10,
+    )
+    records = output[:-1].split("\0") if output.endswith("\0") else []
+    if len(records) != 1:
+        raise PublicationError("reviewed_pr_test_file_not_regular")
+    metadata, separator, reported_path = records[0].partition("\t")
+    fields = metadata.split(" ")
+    if (
+        separator != "\t"
+        or reported_path != path
+        or len(fields) != 3
+        or fields[0] != "100644"
+        or fields[1] != "blob"
+        or not _valid(REVISION_PATTERN, fields[2])
+    ):
+        raise PublicationError("reviewed_pr_test_file_not_regular")
+    return fields[2]
+
+
+def _prove_reviewed_pr9_head(reviewed_pr_head_sha: str, helper_revision: str) -> None:
+    """Require the exact approved single-line test repair atop the immutable image source."""
+
+    if not _valid(REVISION_PATTERN, reviewed_pr_head_sha):
+        raise PublicationError("reviewed_pr_head_invalid")
+    if reviewed_pr_head_sha != HOTFIX_V3_REVIEWED_PR_HEAD_SHA:
+        raise PublicationError("reviewed_pr_head_unreviewed")
+    if not _valid(REVISION_PATTERN, helper_revision):
+        raise PublicationError("helper_revision_invalid")
+    for base, descendant in (
+        (HOTFIX_V3_IMAGE_SOURCE_REVISION, reviewed_pr_head_sha),
+        (reviewed_pr_head_sha, helper_revision),
+    ):
+        _command(
+            ["/usr/bin/git", "merge-base", "--is-ancestor", base, descendant],
+            timeout=10,
+        )
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    changed_paths = _command(
+        [
+            "/usr/bin/git",
+            "diff",
+            "--name-status",
+            "--no-renames",
+            HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            reviewed_pr_head_sha,
+        ],
+        timeout=10,
+    )
+    line_counts = _command(
+        [
+            "/usr/bin/git",
+            "diff",
+            "--numstat",
+            "--no-renames",
+            HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            reviewed_pr_head_sha,
+        ],
+        timeout=10,
+    )
+    mode_changes = _command(
+        [
+            "/usr/bin/git",
+            "diff",
+            "--summary",
+            "--no-renames",
+            HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            reviewed_pr_head_sha,
+            "--",
+            path,
+        ],
+        timeout=10,
+    )
+    patch = _command(
+        [
+            "/usr/bin/git",
+            "diff",
+            "--no-ext-diff",
+            "--no-renames",
+            "--unified=0",
+            HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            reviewed_pr_head_sha,
+            "--",
+            path,
+        ],
+        timeout=10,
+    )
+    changed_lines = [
+        line
+        for line in patch.splitlines()
+        if (line.startswith("+") and not line.startswith("+++"))
+        or (line.startswith("-") and not line.startswith("---"))
+    ]
+    expected_changed_lines = [
+        '-    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"',
+        '+    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"',
+    ]
+    if (
+        changed_paths != f"M\t{path}\n"
+        or line_counts != f"1\t1\t{path}\n"
+        or mode_changes != ""
+        or changed_lines != expected_changed_lines
+    ):
+        raise PublicationError("reviewed_pr_test_diff_mismatch")
+    base_blob = _v3_test_blob_sha(HOTFIX_V3_IMAGE_SOURCE_REVISION)
+    reviewed_blob = _v3_test_blob_sha(reviewed_pr_head_sha)
+    if base_blob == reviewed_blob:
+        raise PublicationError("reviewed_pr_test_diff_mismatch")
+
+
 def _validate_package_root(root: Path) -> None:
     try:
         parent = root.parent
@@ -284,30 +477,34 @@ def _validate_package_root(root: Path) -> None:
         raise PublicationError("package_directory_unsafe")
 
 
-def validate_package(root: Path, helper_revision: str) -> Package:
-    """Verify fixed candidate/5ad archive bytes and all v2 publication/source identities."""
+def validate_package(
+    root: Path, helper_revision: str, *, reviewed_pr_head_sha: str | None = None
+) -> Package:
+    """Verify the fixed candidate/5ad bytes and versioned pair identity."""
 
     _validate_package_root(root)
     if not _valid(REVISION_PATTERN, helper_revision):
         raise PublicationError("helper_revision_invalid")
     receipt, _ = _read_json(root / "package-receipt.json")
-    candidate_name = _fixed_archive_name(HOTFIX_CANDIDATE_REVISION)
+    v3 = reviewed_pr_head_sha is not None
+    if v3 and not _valid(REVISION_PATTERN, reviewed_pr_head_sha):
+        raise PublicationError("reviewed_pr_head_invalid")
+    if v3 and reviewed_pr_head_sha != HOTFIX_V3_REVIEWED_PR_HEAD_SHA:
+        raise PublicationError("reviewed_pr_head_unreviewed")
+    candidate_revision = HOTFIX_V3_IMAGE_SOURCE_REVISION if v3 else HOTFIX_CANDIDATE_REVISION
+    candidate_image_id = HOTFIX_V3_IMAGE_ID if v3 else HOTFIX_CANDIDATE_IMAGE_ID
+    candidate_context = HOTFIX_V3_IMAGE_CONTEXT_SHA256 if v3 else HOTFIX_CANDIDATE_CONTEXT_SHA256
+    candidate_build_receipt = HOTFIX_V3_BUILD_RECEIPT_SHA256 if v3 else HOTFIX_BUILD_RECEIPT_SHA256
+    candidate_name = _fixed_archive_name(candidate_revision)
     predecessor_name = _fixed_archive_name(PRODUCTION_PREDECESSOR_REVISION)
     manifest_name = f"signal-ledger-pair-{helper_revision}.json"
     expected_receipt = {
         "status": "prepared",
-        "contract": HOTFIX_PAIR_CONTRACT,
+        "contract": HOTFIX_PAIR_CONTRACT_V3 if v3 else HOTFIX_PAIR_CONTRACT,
         "helper_source_revision": helper_revision,
+        **({"reviewed_pr_head_sha": reviewed_pr_head_sha} if v3 else {}),
         "hotfix_pull_number": 9,
         "candidate_archive_name": candidate_name,
-        "candidate_archive_sha256": HOTFIX_CANDIDATE_ARCHIVE_SHA256,
-        "candidate_archive_size": HOTFIX_CANDIDATE_ARCHIVE_SIZE,
-        "candidate_image": {
-            "architecture": "linux/amd64",
-            "id": HOTFIX_CANDIDATE_IMAGE_ID,
-            "revision_label": HOTFIX_CANDIDATE_REVISION,
-            "source_context_sha256": HOTFIX_CANDIDATE_CONTEXT_SHA256,
-        },
         "recovery_archive_name": predecessor_name,
         "recovery_archive_sha256": PRODUCTION_PREDECESSOR_ARCHIVE_SHA256,
         "recovery_archive_size": PRODUCTION_PREDECESSOR_ARCHIVE_SIZE,
@@ -322,6 +519,25 @@ def validate_package(root: Path, helper_revision: str) -> Package:
         "restore_commands": 0,
         "manifest_name": manifest_name,
     }
+    candidate_path = root / candidate_name
+    candidate_sha256, candidate_size = _hash_regular_file(candidate_path, MAX_ARCHIVE_BYTES)
+    expected_receipt.update(
+        {
+            "candidate_archive_sha256": candidate_sha256,
+            "candidate_archive_size": candidate_size,
+            "candidate_image": {
+                "architecture": "linux/amd64",
+                "id": candidate_image_id,
+                "revision_label": candidate_revision,
+                "source_context_sha256": candidate_context,
+            },
+        }
+    )
+    if v3:
+        expected_receipt["candidate_build_receipt_sha256"] = candidate_build_receipt
+    else:
+        expected_receipt["candidate_archive_sha256"] = HOTFIX_CANDIDATE_ARCHIVE_SHA256
+        expected_receipt["candidate_archive_size"] = HOTFIX_CANDIDATE_ARCHIVE_SIZE
     if set(receipt) != set(expected_receipt) | {"manifest_sha256"}:
         raise PublicationError("package_receipt_fields_invalid")
     for field, expected in expected_receipt.items():
@@ -335,20 +551,32 @@ def validate_package(root: Path, helper_revision: str) -> Package:
     manifest, raw_manifest = _read_json(manifest_path)
     canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
     manifest_sha256 = hashlib.sha256(raw_manifest).hexdigest()
+    expected_manifest = (
+        _expected_manifest_v3(
+            helper_revision,
+            reviewed_pr_head_sha,
+            candidate_archive_sha256=candidate_sha256,
+            candidate_archive_size=candidate_size,
+        )
+        if v3
+        else _expected_manifest(helper_revision)
+    )
     if (
         raw_manifest != canonical
         or manifest_sha256 != receipt["manifest_sha256"]
-        or manifest != _expected_manifest(helper_revision)
+        or manifest != expected_manifest
     ):
         raise PublicationError("hotfix_manifest_identity_mismatch")
 
-    candidate_path = root / candidate_name
     predecessor_path = root / predecessor_name
-    candidate_sha256, candidate_size = _hash_regular_file(candidate_path, MAX_ARCHIVE_BYTES)
     predecessor_sha256, predecessor_size = _hash_regular_file(predecessor_path, MAX_ARCHIVE_BYTES)
-    if (candidate_sha256, candidate_size) != (
-        HOTFIX_CANDIDATE_ARCHIVE_SHA256,
-        HOTFIX_CANDIDATE_ARCHIVE_SIZE,
+    if (
+        not v3
+        and (candidate_sha256, candidate_size)
+        != (
+            HOTFIX_CANDIDATE_ARCHIVE_SHA256,
+            HOTFIX_CANDIDATE_ARCHIVE_SIZE,
+        )
     ) or (predecessor_sha256, predecessor_size) != (
         PRODUCTION_PREDECESSOR_ARCHIVE_SHA256,
         PRODUCTION_PREDECESSOR_ARCHIVE_SIZE,
@@ -366,9 +594,9 @@ def validate_package(root: Path, helper_revision: str) -> Package:
             candidate_path,
             candidate_sha256,
             candidate_size,
-            HOTFIX_CANDIDATE_IMAGE_ID,
-            HOTFIX_CANDIDATE_REVISION,
-            HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            candidate_image_id,
+            candidate_revision,
+            candidate_context,
         ),
         predecessor=Archive(
             predecessor_name,
@@ -379,6 +607,7 @@ def validate_package(root: Path, helper_revision: str) -> Package:
             PRODUCTION_PREDECESSOR_REVISION,
             PRODUCTION_PREDECESSOR_CONTEXT_SHA256,
         ),
+        reviewed_pr_head_sha=reviewed_pr_head_sha,
     )
 
 
@@ -492,6 +721,25 @@ def _validate_current_source(helper_revision: str) -> None:
         or remote[0] != helper_revision
         or ancestor.returncode != 0
     ):
+        raise PublicationError("reviewed_source_identity_mismatch")
+
+
+def _validate_current_source_v3(helper_revision: str, reviewed_pr_head_sha: str) -> None:
+    """Require a clean helper head containing the exact reviewed PR9 test-only descendant."""
+
+    try:
+        git = shutil.which("git", path=os.defpath)
+        if git is None:
+            raise PublicationError("reviewed_source_unavailable")
+        head = _command([git, "rev-parse", "--verify", "HEAD"])
+        status = _command([git, "status", "--porcelain", "--untracked-files=normal"])
+        remote = _command([git, "ls-remote", "origin", "refs/heads/main"]).split()
+        _prove_reviewed_pr9_head(reviewed_pr_head_sha, helper_revision)
+    except PublicationError:
+        raise
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise PublicationError("reviewed_source_unavailable") from exc
+    if head.strip() != helper_revision or status or not remote or remote[0] != helper_revision:
         raise PublicationError("reviewed_source_identity_mismatch")
 
 
@@ -886,17 +1134,18 @@ def _create_release(tag: str, target: str, title: str, notes: str, *assets: Path
 
 
 def _publish_candidate(package: Package) -> dict[str, object]:
-    tag = f"signal-ledger-{HOTFIX_CANDIDATE_REVISION}"
+    candidate_revision = package.candidate.revision
+    tag = f"signal-ledger-{candidate_revision}"
     _create_release(
         tag,
-        HOTFIX_CANDIDATE_REVISION,
+        candidate_revision,
         "Signal Ledger reviewed assistant candidate",
         "Publishes the exact reviewed Linux amd64 candidate archive.",
         package.candidate.path,
     )
     _assert_release_asset(
         tag,
-        HOTFIX_CANDIDATE_REVISION,
+        candidate_revision,
         package.candidate,
         exact_asset_count=True,
     )
@@ -912,11 +1161,12 @@ def _publish_candidate(package: Package) -> dict[str, object]:
 
 
 def _publish_pair(package: Package) -> dict[str, object]:
-    candidate_tag = f"signal-ledger-{HOTFIX_CANDIDATE_REVISION}"
+    candidate_revision = package.candidate.revision
+    candidate_tag = f"signal-ledger-{candidate_revision}"
     predecessor_tag = f"signal-ledger-{PRODUCTION_PREDECESSOR_REVISION}"
     _assert_release_asset(
         candidate_tag,
-        HOTFIX_CANDIDATE_REVISION,
+        candidate_revision,
         package.candidate,
         exact_asset_count=True,
     )
@@ -1009,15 +1259,29 @@ def _assert_pair_release(tag: str, package: Package) -> None:
 
 
 def publish(
-    mode: str, helper_revision: str, package_root: Path = PACKAGE_ROOT
+    mode: str,
+    helper_revision: str,
+    package_root: Path = PACKAGE_ROOT,
+    *,
+    reviewed_pr_head_sha: str | None = None,
 ) -> dict[str, object]:
     """Validate current source and package, then publish one immutable release step."""
 
-    if mode not in {"hotfix-candidate", "hotfix-pair"}:
+    if mode not in {"hotfix-candidate", "hotfix-pair", "hotfix-pair-v3"}:
         raise PublicationError("hotfix_publish_mode_invalid")
-    _validate_current_source(helper_revision)
+    v3 = mode == "hotfix-pair-v3"
+    if v3 != (reviewed_pr_head_sha is not None):
+        raise PublicationError("reviewed_pr_head_required")
+    if v3:
+        _validate_current_source_v3(helper_revision, reviewed_pr_head_sha)
+    else:
+        _validate_current_source(helper_revision)
     _require_hotfix_scratch_mount()
-    package = validate_package(package_root, helper_revision)
+    package = validate_package(
+        package_root,
+        helper_revision,
+        reviewed_pr_head_sha=reviewed_pr_head_sha,
+    )
     with _staged_package(package) as staged:
         _scan_archive(staged.candidate)
         _scan_archive(staged.predecessor)
@@ -1028,14 +1292,18 @@ def publish(
 
 def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else argv
-    if len(arguments) != 2:
+    if len(arguments) not in {2, 3} or (len(arguments) == 3 and arguments[0] != "hotfix-pair-v3"):
         print(
             "hotfix release transport requires a fixed mode and reviewed source revision",
             file=sys.stderr,
         )
         return 2
     try:
-        result = publish(arguments[0], arguments[1])
+        result = publish(
+            arguments[0],
+            arguments[1],
+            reviewed_pr_head_sha=arguments[2] if len(arguments) == 3 else None,
+        )
     except PublicationError as exc:
         print(f"hotfix release publication failed: {exc}", file=sys.stderr)
         return 4

@@ -50,6 +50,13 @@ public query and approve it; remove private details first. **WebFetch** is separ
 to approve the exact public HTTPS URL. Redirects require a new approval. Treat results as
 untrusted leads and check each destination.
 
+In the unreleased assistant candidate, changing the page or selected references removes a pending
+WebFetch approval immediately, including while the new context preview is loading or unavailable.
+Use **Stop response** before asking again, then review a new preview for the current page. An old
+approval cannot authorize a request in the new context. The
+[focused browser checkpoint](../../MVP-PLAN.md#r-astra-121-f6-stale-approval-repair-and-focused-browser-checkpoint-2026-10-17)
+records the candidate's verification and remaining release checks.
+
 ## Navigate the research workspace
 
 The shared navigation exposes these routes:

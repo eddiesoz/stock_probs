@@ -639,6 +639,14 @@ not credentials, private paths, or copied runtime output.
 4. Run `.dev-venv/bin/python scripts/validate_docs.py`.
 5. Review the changed paths and record the actual pre-change and post-change checkpoint states.
 
+For local-build preparation on removable media, record the verified mount identity, free-space
+admission/stop readings, private audit scratch/receipt modes, and separate exact helper-source
+binding in the task ledger. Keep an approved setup receipt unchanged: it proves setup only. Pair it
+with independent review of the exact helper source and a successful build receipt bound to that
+source before claiming a helper or image build. Preserve Git-tracked executable modes in the
+materialized source context. For interrupted test runs, retain terminal and JUnit evidence
+independently and preserve count disagreements as a failed or unresolved result.
+
 The project `documentation` skill contains the agent-facing version of this workflow. Skill
 or configuration-time changes require an OpenCode restart before discovery can be validated;
 the editing session itself is not proof that the restarted process loaded them.
@@ -807,3 +815,23 @@ original fresh-child timeout cause remains unproven and the canonical failure is
 helper revision-contract follow-up passed independent selected source/test QA and parent integration
 review; no host, deployment, or rollback result follows. See the [V8 auth-key checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v8-auth-key-lifecycle-checkpoint-2026-10-17)
 and the [current V10 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v10-actual-host-free-zen-rehearsal-and-current-release-checkpoint-2026-10-17).
+
+The bounded-build documentation rule covers failure-path fixture corrections as well as
+controller source changes. Record a failed aggregate separately from a passing focused test
+repair, preserve exact source bindings, and distinguish synthetic disk inputs from real build
+admission evidence. The [F6 disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
+shows this distinction; it does not advance release acceptance.
+
+Typed local-timeout recovery changes need the mapped policy, testing and operations coverage.
+Document explicit-null receipt fields separately from missing fields, preserve failed candidate
+reviews, and bind the repaired source to fresh focused QA and the actual emitted recovery receipt.
+Completed build-step logs and remaining cache records explain a retry decision; they do not
+replace image, native, resource or release checks. See the
+[F6 recovery and history checkpoint](../../MVP-PLAN.md#r-astra-121-f6-typed-timeout-recovery-and-build-history-checkpoint-2026-10-18).
+
+For additive dual-head release tooling, document the image-source, reviewed application-test head
+and helper head separately. Keep bootstrap source transport distinct from pair-format versions,
+preserve legacy contracts and bind receipt claims to the actual producer. The managed-v3 receipt
+consumer and `tests/test_v3_build_receipt.py` are covered with the rehearsal workflow; record scoped
+private QA separately from applied-source, actual-host and release acceptance. See the
+[dual-head checkpoint](../../MVP-PLAN.md#r-astra-121-dual-head-receipt-compatibility-and-current-browser-checkpoint-2026-10-18).

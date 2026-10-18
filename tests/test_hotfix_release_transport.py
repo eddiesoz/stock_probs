@@ -558,7 +558,7 @@ def test_reviewed_candidate_and_original_5ad_recovery_pins_are_exact() -> None:
     )
     assert transport.HOTFIX_CANDIDATE_ARCHIVE_SIZE == 202_160_947
     assert transport.RELEASE_SCANNER_SHA256 == (
-        "5f1ac4b773f2ddf8866589cb2cb59bec8fce6097f20986bbf8d6de0c96c45085"
+        "75e3f8c07e62a36fb0e11ad8ef48996971148a890688bbb31bd9eb0d3d791670"
     )
     assert transport.PRODUCTION_PREDECESSOR_REVISION == "5ad2c3fddfce5a5a631b72cd832a53f24757c44a"
     assert transport.PRODUCTION_PREDECESSOR_IMAGE_ID == (
@@ -798,3 +798,325 @@ def test_command_timeout_kills_process_group_holding_its_output_pipes(
         time.sleep(0.01)
     else:
         pytest.fail("timed-out command left its child running")
+
+
+def test_v3_manifest_keeps_reviewed_test_head_separate_from_image_revision() -> None:
+    manifest = transport._expected_manifest_v3(
+        "a" * 40,
+        transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+        candidate_archive_sha256="c" * 64,
+        candidate_archive_size=17,
+    )
+
+    assert manifest["format_version"] == 3
+    assert manifest["contract"] == transport.HOTFIX_PAIR_CONTRACT_V3
+    assert manifest["revision"] == "a" * 40
+    assert manifest["reviewed_pr_head_sha"] == transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+    assert manifest["image_source_revision"] == transport.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    assert manifest["candidate"]["revision"] == transport.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    assert manifest["candidate"]["image_id"] == transport.HOTFIX_V3_IMAGE_ID
+    assert (
+        manifest["candidate"]["source_context_sha256"] == transport.HOTFIX_V3_IMAGE_CONTEXT_SHA256
+    )
+    assert manifest["candidate"]["build_receipt_sha256"] == transport.HOTFIX_V3_BUILD_RECEIPT_SHA256
+    assert manifest["candidate"]["revision"] != manifest["reviewed_pr_head_sha"]
+
+
+def test_v3_package_validation_binds_the_explicit_pr9_head_and_fixed_image(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper_revision = "a" * 40
+    reviewed_pr_head_sha = transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+    candidate = b"synthetic fixed 68c archive"
+    predecessor = b"synthetic retained 5ad archive"
+    monkeypatch.setattr(
+        transport,
+        "PRODUCTION_PREDECESSOR_ARCHIVE_SHA256",
+        hashlib.sha256(predecessor).hexdigest(),
+    )
+    monkeypatch.setattr(transport, "PRODUCTION_PREDECESSOR_ARCHIVE_SIZE", len(predecessor))
+    root = tmp_path / "package-v3"
+    root.mkdir(mode=0o700)
+    root.chmod(0o700)
+    scratch = tmp_path / "approved-scratch"
+    scratch.mkdir(mode=0o700)
+    scratch.chmod(0o700)
+    monkeypatch.setattr(transport, "HOTFIX_SCRATCH_ROOT", scratch)
+
+    candidate_name = transport._fixed_archive_name(transport.HOTFIX_V3_IMAGE_SOURCE_REVISION)
+    predecessor_name = transport._fixed_archive_name(transport.PRODUCTION_PREDECESSOR_REVISION)
+    _write_private(root / candidate_name, candidate)
+    _write_private(root / predecessor_name, predecessor)
+    manifest_name = f"signal-ledger-pair-{helper_revision}.json"
+    manifest = transport._expected_manifest_v3(
+        helper_revision,
+        reviewed_pr_head_sha,
+        candidate_archive_sha256=hashlib.sha256(candidate).hexdigest(),
+        candidate_archive_size=len(candidate),
+    )
+    manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    _write_private(root / manifest_name, manifest_bytes)
+    receipt = {
+        "status": "prepared",
+        "contract": transport.HOTFIX_PAIR_CONTRACT_V3,
+        "helper_source_revision": helper_revision,
+        "reviewed_pr_head_sha": reviewed_pr_head_sha,
+        "hotfix_pull_number": 9,
+        "candidate_archive_name": candidate_name,
+        "candidate_archive_sha256": hashlib.sha256(candidate).hexdigest(),
+        "candidate_archive_size": len(candidate),
+        "candidate_image": {
+            "architecture": "linux/amd64",
+            "id": transport.HOTFIX_V3_IMAGE_ID,
+            "revision_label": transport.HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            "source_context_sha256": transport.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+        },
+        "candidate_build_receipt_sha256": transport.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        "recovery_archive_name": predecessor_name,
+        "recovery_archive_sha256": hashlib.sha256(predecessor).hexdigest(),
+        "recovery_archive_size": len(predecessor),
+        "recovery_image": {
+            "architecture": "linux/amd64",
+            "id": transport.PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "revision_label": transport.PRODUCTION_PREDECESSOR_REVISION,
+            "source_context_sha256": transport.PRODUCTION_PREDECESSOR_CONTEXT_SHA256,
+        },
+        "prior_pair_manifest_sha256": transport.PRODUCTION_PREDECESSOR_PRIOR_PAIR_SHA256,
+        "migration_commands": 0,
+        "restore_commands": 0,
+        "manifest_name": manifest_name,
+        "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+    }
+    _write_private(
+        root / "package-receipt.json",
+        json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode(),
+    )
+
+    package = transport.validate_package(
+        root, helper_revision, reviewed_pr_head_sha=reviewed_pr_head_sha
+    )
+
+    assert package.reviewed_pr_head_sha == reviewed_pr_head_sha
+    assert package.candidate.revision == transport.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    assert package.candidate.image_id == transport.HOTFIX_V3_IMAGE_ID
+
+    manifest["reviewed_pr_head_sha"] = "d" * 40
+    changed_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    _write_private(root / manifest_name, changed_bytes)
+    receipt["manifest_sha256"] = hashlib.sha256(changed_bytes).hexdigest()
+    _write_private(
+        root / "package-receipt.json",
+        json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode(),
+    )
+    with pytest.raises(transport.PublicationError, match="hotfix_manifest_identity_mismatch"):
+        transport.validate_package(root, helper_revision, reviewed_pr_head_sha=reviewed_pr_head_sha)
+
+
+@pytest.mark.parametrize(
+    ("helper_revision", "reviewed_pr_head_sha", "archive_digest", "archive_size", "error"),
+    [
+        (
+            "A" * 40,
+            transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            "c" * 64,
+            17,
+            "helper_revision_invalid",
+        ),
+        ("a" * 40, "", "c" * 64, 17, "reviewed_pr_head_invalid"),
+        (
+            "a" * 40,
+            transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            "C" * 64,
+            17,
+            "candidate_archive_identity_invalid",
+        ),
+        (
+            "a" * 40,
+            transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            "c" * 64,
+            True,
+            "candidate_archive_identity_invalid",
+        ),
+        (
+            "a" * 40,
+            transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            "c" * 64,
+            0,
+            "candidate_archive_identity_invalid",
+        ),
+    ],
+)
+def test_v3_manifest_rejects_missing_or_malformed_explicit_identity(
+    helper_revision: str,
+    reviewed_pr_head_sha: str,
+    archive_digest: str,
+    archive_size: int,
+    error: str,
+) -> None:
+    with pytest.raises(transport.PublicationError, match=error):
+        transport._expected_manifest_v3(
+            helper_revision,
+            reviewed_pr_head_sha,
+            candidate_archive_sha256=archive_digest,
+            candidate_archive_size=archive_size,
+        )
+
+
+def test_v3_test_head_proof_requires_only_the_approved_one_line_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
+    new_line = (
+        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
+    )
+    outputs = [
+        "",
+        "",
+        f"M\t{path}\n",
+        f"1\t1\t{path}\n",
+        "",
+        (f"diff --git a/{path} b/{path}\n@@ -41 +41 @@\n-{old_line}\n+{new_line}\n"),
+        f"100644 blob {'1' * 40}\t{path}\0",
+        f"100644 blob {'2' * 40}\t{path}\0",
+    ]
+
+    def command(argv: list[str], *, timeout: int = 30) -> str:
+        assert timeout == 10
+        commands.append(argv)
+        return outputs[len(commands) - 1]
+
+    monkeypatch.setattr(transport, "_command", command)
+    transport._prove_reviewed_pr9_head(transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA, "c" * 40)
+
+    assert len(commands) == 8
+    assert commands[0][1:4] == [
+        "merge-base",
+        "--is-ancestor",
+        transport.HOTFIX_V3_IMAGE_SOURCE_REVISION,
+    ]
+    assert commands[1][1:4] == [
+        "merge-base",
+        "--is-ancestor",
+        transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+    ]
+    assert commands[2][1:3] == ["diff", "--name-status"]
+    assert commands[3][1:3] == ["diff", "--numstat"]
+    assert commands[4][1:3] == ["diff", "--summary"]
+    assert commands[5][-2:] == ["--", path]
+    assert commands[6][1:3] == ["ls-tree", "-z"]
+    assert commands[7][1:3] == ["ls-tree", "-z"]
+
+
+def test_v3_test_head_proof_rejects_an_unpinned_head_before_git(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        transport,
+        "_command",
+        lambda *_args, **_kwargs: pytest.fail("unreviewed head must be rejected before Git"),
+    )
+    with pytest.raises(transport.PublicationError, match="reviewed_pr_head_unreviewed"):
+        transport._prove_reviewed_pr9_head("b" * 40, "c" * 40)
+
+
+@pytest.mark.parametrize(
+    ("patch", "mode_summary"),
+    [
+        (
+            '-    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"\n'
+            '+    assert captured["url"] == '
+            '"https://opencode.ai/inference/openai/v1/chat/completions" # accepted?\n',
+            "",
+        ),
+        (
+            '-    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"\n'
+            '+    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"\n'
+            "+assert unrelated is True\n",
+            "",
+        ),
+        (
+            '-    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"\n'
+            '+    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"\n',
+            " mode change 100644 => 100755\n",
+        ),
+    ],
+)
+def test_v3_test_head_proof_rejects_other_diff_shapes(
+    monkeypatch: pytest.MonkeyPatch,
+    patch: str,
+    mode_summary: str,
+) -> None:
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    outputs = [
+        "",
+        "",
+        f"M\t{path}\n",
+        f"1\t1\t{path}\n",
+        mode_summary,
+        f"diff --git a/{path} b/{path}\n@@ -41 +41 @@\n{patch}",
+    ]
+    calls = 0
+
+    def command(_argv: list[str], *, timeout: int = 30) -> str:
+        nonlocal calls
+        assert timeout == 10
+        result = outputs[calls]
+        calls += 1
+        return result
+
+    monkeypatch.setattr(transport, "_command", command)
+    with pytest.raises(transport.PublicationError, match="reviewed_pr_test_diff_mismatch"):
+        transport._prove_reviewed_pr9_head(transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA, "c" * 40)
+
+
+@pytest.mark.parametrize(
+    ("base_mode", "reviewed_mode", "base_sha", "reviewed_sha", "error", "expected_calls"),
+    [
+        ("120000", "100644", "1" * 40, "2" * 40, "reviewed_pr_test_file_not_regular", 7),
+        ("100644", "120000", "1" * 40, "2" * 40, "reviewed_pr_test_file_not_regular", 8),
+        ("100644", "100644", "1" * 40, "1" * 40, "reviewed_pr_test_diff_mismatch", 8),
+    ],
+)
+def test_v3_test_head_proof_requires_distinct_regular_blobs(
+    monkeypatch: pytest.MonkeyPatch,
+    base_mode: str,
+    reviewed_mode: str,
+    base_sha: str,
+    reviewed_sha: str,
+    error: str,
+    expected_calls: int,
+) -> None:
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
+    new_line = (
+        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
+    )
+    outputs = [
+        "",
+        "",
+        f"M\t{path}\n",
+        f"1\t1\t{path}\n",
+        "",
+        f"diff --git a/{path} b/{path}\n@@ -41 +41 @@\n-{old_line}\n+{new_line}\n",
+        f"{base_mode} blob {base_sha}\t{path}\0",
+        f"{reviewed_mode} blob {reviewed_sha}\t{path}\0",
+    ]
+    calls = 0
+
+    def command(argv: list[str], *, timeout: int = 30) -> str:
+        nonlocal calls
+        assert timeout == 10
+        result = outputs[calls]
+        calls += 1
+        return result
+
+    monkeypatch.setattr(transport, "_command", command)
+    with pytest.raises(transport.PublicationError, match=error):
+        transport._prove_reviewed_pr9_head(
+            transport.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            "c" * 40,
+        )
+    assert calls == expected_calls

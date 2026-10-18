@@ -30,6 +30,12 @@ HELPER_SOURCE_PR_NUMBER = 11
 HOTFIX_PR_NUMBER = 9
 HOTFIX_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
+HOTFIX_V3_CONTRACT = "schema13_same_schema_hotfix_v3"
+HOTFIX_V3_IMAGE_SOURCE_REVISION = "68c225a25a76c4bd65c6309e00dd13200a1d4678"
+HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "c2fe99cbd486b93958c6d5c398da9fc25ddd7075"
+HOTFIX_V3_IMAGE_ID = "sha256:c3ac6f43749404e36e0ae94a8d749ccafe4c882216db09484c1c34f6fbad5f78"
+HOTFIX_V3_IMAGE_CONTEXT_SHA256 = "e0e79be05acad60f4220c3152c32ba5c5b31aa7c394e36cf28de30fcf31d7458"
+HOTFIX_V3_BUILD_RECEIPT_SHA256 = "a73f76fb2792efb88ed88326ff84f8b22db3f09181dc0571f9ba0aea8c561ae1"
 HOTFIX_CANDIDATE_IMAGE_ID = (
     "sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196"
 )
@@ -953,8 +959,16 @@ def _verify_pull_request(revision: str) -> None:
         raise RehearsalError("reviewed_pr_mismatch")
 
 
-def _verify_hotfix_pull_request() -> None:
+def _verify_hotfix_pull_request(reviewed_pr_head_sha: str | None = None) -> None:
     """Require the fixed PR #9 candidate head independently of the helper source gate."""
+
+    expected_head_sha = (
+        HOTFIX_CANDIDATE_REVISION if reviewed_pr_head_sha is None else reviewed_pr_head_sha
+    )
+    if REVISION_RE.fullmatch(expected_head_sha) is None:
+        raise RehearsalError("hotfix_pr_head_invalid")
+    if reviewed_pr_head_sha is not None and expected_head_sha != HOTFIX_V3_REVIEWED_PR_HEAD_SHA:
+        raise RehearsalError("hotfix_pr_head_unreviewed")
 
     connection = http.client.HTTPSConnection("api.github.com", timeout=10)
     try:
@@ -987,11 +1001,195 @@ def _verify_hotfix_pull_request() -> None:
         or not isinstance(base, dict)
         or base.get("ref") != "main"
         or not isinstance(head, dict)
-        or head.get("sha") != HOTFIX_CANDIDATE_REVISION
+        or head.get("sha") != expected_head_sha
         or not isinstance(repo, dict)
         or repo.get("full_name") != REPOSITORY
     ):
         raise RehearsalError("hotfix_pr_mismatch")
+
+
+def _read_v3_github_json(path: str) -> object:
+    """Read only fixed bounded compare and tree routes used for v3 lineage proof."""
+
+    repository_path = re.escape(REPOSITORY)
+    allowed = re.fullmatch(
+        rf"/repos/{repository_path}/(?:compare/[0-9a-f]{{40}}\.\.\.[0-9a-f]{{40}}\?per_page=1"
+        rf"|git/trees/[0-9a-f]{{40}})",
+        path,
+    )
+    if allowed is None:
+        raise RehearsalError("v3_lineage_route_invalid")
+    connection = http.client.HTTPSConnection("api.github.com", timeout=10)
+    try:
+        connection.request(
+            "GET",
+            path,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "signal-ledger-pr-rehearsal",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        response = connection.getresponse()
+        raw = response.read(MAX_PR_RESPONSE + 1)
+        if response.status != 200 or len(raw) > MAX_PR_RESPONSE:
+            raise RehearsalError("v3_lineage_unavailable")
+    except (OSError, TimeoutError, http.client.HTTPException) as exc:
+        raise RehearsalError("v3_lineage_unavailable") from exc
+    finally:
+        connection.close()
+    try:
+        return json.loads(raw, object_pairs_hook=_strict_object_pairs)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise RehearsalError("v3_lineage_invalid") from exc
+
+
+def _verify_v3_pr_lineage(reviewed_pr_head_sha: str, helper_revision: str) -> None:
+    """Independently verify fixed image→PR9→PR11 ancestry and the exact PR9 file delta."""
+
+    if (
+        REVISION_RE.fullmatch(reviewed_pr_head_sha) is None
+        or REVISION_RE.fullmatch(helper_revision) is None
+    ):
+        raise RehearsalError("reviewed_pr_head_invalid")
+    if reviewed_pr_head_sha != HOTFIX_V3_REVIEWED_PR_HEAD_SHA:
+        raise RehearsalError("hotfix_pr_head_unreviewed")
+    image_comparison: dict[str, object] | None = None
+    for index, (base, head) in enumerate(
+        (
+            (HOTFIX_V3_IMAGE_SOURCE_REVISION, reviewed_pr_head_sha),
+            (reviewed_pr_head_sha, helper_revision),
+        )
+    ):
+        comparison = _read_v3_github_json(f"/repos/{REPOSITORY}/compare/{base}...{head}?per_page=1")
+        if (
+            not isinstance(comparison, dict)
+            or comparison.get("status") != "ahead"
+            or type(comparison.get("ahead_by")) is not int
+            or comparison["ahead_by"] < 1
+            or type(comparison.get("behind_by")) is not int
+            or comparison["behind_by"] != 0
+            or type(comparison.get("total_commits")) is not int
+            or comparison["total_commits"] < 1
+        ):
+            raise RehearsalError("reviewed_pr_lineage_mismatch")
+        if index == 0:
+            if comparison["ahead_by"] != 1 or comparison["total_commits"] != 1:
+                raise RehearsalError("reviewed_pr_test_diff_mismatch")
+            image_comparison = comparison
+
+    files = image_comparison.get("files") if image_comparison is not None else None
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
+    new_line = (
+        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
+    )
+    if not isinstance(files, list) or len(files) != 1 or not isinstance(files[0], dict):
+        raise RehearsalError("reviewed_pr_test_diff_mismatch")
+    changed_file = files[0]
+    patch = changed_file.get("patch")
+    if (
+        changed_file.get("filename") != path
+        or changed_file.get("status") != "modified"
+        or type(changed_file.get("additions")) is not int
+        or changed_file.get("additions") != 1
+        or type(changed_file.get("deletions")) is not int
+        or changed_file.get("deletions") != 1
+        or type(changed_file.get("changes")) is not int
+        or changed_file.get("changes") != 2
+        or not isinstance(patch, str)
+        or len(patch.encode("utf-8")) > MAX_PR_RESPONSE
+        or "previous_filename" in changed_file
+    ):
+        raise RehearsalError("reviewed_pr_test_diff_mismatch")
+    changed_lines = [
+        line
+        for line in patch.splitlines()
+        if (line.startswith("+") and not line.startswith("+++"))
+        or (line.startswith("-") and not line.startswith("---"))
+    ]
+    if changed_lines != [f"-{old_line}", f"+{new_line}"]:
+        raise RehearsalError("reviewed_pr_test_diff_mismatch")
+
+    base_commit = image_comparison.get("base_commit") if image_comparison is not None else None
+    commits = image_comparison.get("commits") if image_comparison is not None else None
+    if (
+        not isinstance(base_commit, dict)
+        or base_commit.get("sha") != HOTFIX_V3_IMAGE_SOURCE_REVISION
+        or not isinstance(commits, list)
+        or len(commits) != 1
+        or not isinstance(commits[0], dict)
+        or commits[0].get("sha") != reviewed_pr_head_sha
+    ):
+        raise RehearsalError("reviewed_pr_lineage_mismatch")
+    base_tree = _v3_commit_tree_sha(base_commit)
+    head_tree = _v3_commit_tree_sha(commits[0])
+    base_blob = _v3_regular_test_blob(base_tree)
+    head_blob = _v3_regular_test_blob(head_tree)
+    if (
+        base_blob == head_blob
+        or changed_file.get("sha") != head_blob
+        or changed_file.get("status") != "modified"
+    ):
+        raise RehearsalError("reviewed_pr_test_diff_mismatch")
+
+
+def _v3_commit_tree_sha(commit: dict[str, object]) -> str:
+    details = commit.get("commit")
+    tree = details.get("tree") if isinstance(details, dict) else None
+    sha = tree.get("sha") if isinstance(tree, dict) else None
+    if not isinstance(sha, str) or REVISION_RE.fullmatch(sha) is None:
+        raise RehearsalError("reviewed_pr_tree_invalid")
+    return sha
+
+
+def _v3_regular_test_blob(root_tree_sha: str) -> str:
+    """Resolve the fixed test file through two bounded trees and require regular blobs."""
+
+    tree_sha = root_tree_sha
+    for part in ("tests", "test_assistant_final_boundary_coverage.py"):
+        value = _read_v3_github_json(f"/repos/{REPOSITORY}/git/trees/{tree_sha}")
+        entries = value.get("tree") if isinstance(value, dict) else None
+        if (
+            not isinstance(value, dict)
+            or value.get("truncated") is not False
+            or not isinstance(entries, list)
+            or len(entries) > 2048
+        ):
+            raise RehearsalError("reviewed_pr_tree_invalid")
+        matches: list[dict[str, object]] = []
+        seen_paths: set[str] = set()
+        for entry in entries:
+            if not isinstance(entry, dict) or set(entry) - {
+                "path",
+                "mode",
+                "type",
+                "sha",
+                "size",
+                "url",
+            }:
+                raise RehearsalError("reviewed_pr_tree_invalid")
+            entry_path = entry.get("path")
+            if not isinstance(entry_path, str) or entry_path in seen_paths:
+                raise RehearsalError("reviewed_pr_tree_invalid")
+            seen_paths.add(entry_path)
+            if entry_path == part:
+                matches.append(entry)
+        if len(matches) != 1:
+            raise RehearsalError("reviewed_pr_tree_invalid")
+        selected = matches[0]
+        expected_type = "tree" if part == "tests" else "blob"
+        expected_mode = "040000" if part == "tests" else "100644"
+        selected_sha = selected.get("sha")
+        if (
+            selected.get("type") != expected_type
+            or selected.get("mode") != expected_mode
+            or not isinstance(selected_sha, str)
+            or REVISION_RE.fullmatch(selected_sha) is None
+        ):
+            raise RehearsalError("reviewed_pr_tree_identity_mismatch")
+        tree_sha = selected_sha
+    return tree_sha
 
 
 def _verify_helper_source_pull_request(revision: str) -> None:
@@ -1476,7 +1674,7 @@ def _verify_pair(
         raise RehearsalError("pair_manifest_invalid") from exc
     if not isinstance(manifest, dict):
         raise RehearsalError("pair_manifest_invalid")
-    if manifest.get("format_version") == 2:
+    if manifest.get("format_version") in {2, 3}:
         return _verify_hotfix_pair(
             payload,
             revision,
@@ -1633,26 +1831,46 @@ def _verify_hotfix_pair(
     helper_source = manifest.get("helper_source")
     transition = manifest.get("transition")
     overlay = manifest.get("recovery_overlay")
-    candidate_asset = f"signal-ledger-image-{HOTFIX_CANDIDATE_REVISION}.tar.gz"
+    version = manifest.get("format_version")
+    v3 = version == 3
+    candidate_revision = HOTFIX_V3_IMAGE_SOURCE_REVISION if v3 else HOTFIX_CANDIDATE_REVISION
+    candidate_image = HOTFIX_V3_IMAGE_ID if v3 else HOTFIX_CANDIDATE_IMAGE_ID
+    candidate_context_pin = (
+        HOTFIX_V3_IMAGE_CONTEXT_SHA256 if v3 else HOTFIX_CANDIDATE_CONTEXT_SHA256
+    )
+    candidate_build_receipt = HOTFIX_V3_BUILD_RECEIPT_SHA256 if v3 else HOTFIX_BUILD_RECEIPT_SHA256
+    candidate_asset = f"signal-ledger-image-{candidate_revision}.tar.gz"
     recovery_asset = f"signal-ledger-image-{HOTFIX_RECOVERY_BASELINE['revision']}.tar.gz"
+    expected_root_keys = {
+        "format_version",
+        "contract",
+        "repository",
+        "revision",
+        "helper_source",
+        "candidate",
+        "recovery",
+        "transition",
+        "recovery_overlay",
+    }
+    if v3:
+        expected_root_keys.update({"reviewed_pr_head_sha", "image_source_revision"})
     valid = (
-        set(manifest)
-        == {
-            "format_version",
-            "contract",
-            "repository",
-            "revision",
-            "helper_source",
-            "candidate",
-            "recovery",
-            "transition",
-            "recovery_overlay",
-        }
+        set(manifest) == expected_root_keys
         and type(manifest.get("format_version")) is int
-        and manifest.get("format_version") == 2
-        and manifest.get("contract") == HOTFIX_CONTRACT
+        and manifest.get("format_version") == version
+        and version in {2, 3}
+        and manifest.get("contract") == (HOTFIX_V3_CONTRACT if v3 else HOTFIX_CONTRACT)
         and manifest.get("repository") == REPOSITORY
         and manifest.get("revision") == helper_revision
+        and (
+            not v3
+            or (
+                isinstance(manifest.get("reviewed_pr_head_sha"), str)
+                and manifest["reviewed_pr_head_sha"] == HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+                and manifest.get("image_source_revision") == candidate_revision
+                and payload.get("reviewed_pr_head_sha") == manifest.get("reviewed_pr_head_sha")
+            )
+        )
         and isinstance(helper_source, dict)
         and set(helper_source) == {"pull_number", "revision"}
         and type(helper_source.get("pull_number")) is int
@@ -1676,17 +1894,15 @@ def _verify_hotfix_pair(
         and candidate.get("archive_sha256") == candidate_hash
         and type(candidate.get("archive_size")) is int
         and 1 <= candidate.get("archive_size", 0) <= MAX_ARCHIVE
-        and candidate.get("image_id") == HOTFIX_CANDIDATE_IMAGE_ID == candidate_id
+        and candidate.get("image_id") == candidate_image == candidate_id
         and candidate.get("platform") == "linux/amd64"
         and type(candidate.get("pull_number")) is int
         and candidate.get("pull_number") == HOTFIX_PR_NUMBER
-        and candidate.get("revision") == HOTFIX_CANDIDATE_REVISION
+        and candidate.get("revision") == candidate_revision
         and type(candidate.get("schema_version")) is int
         and candidate.get("schema_version") == 13
-        and candidate.get("source_context_sha256")
-        == HOTFIX_CANDIDATE_CONTEXT_SHA256
-        == candidate_context
-        and candidate.get("build_receipt_sha256") == HOTFIX_BUILD_RECEIPT_SHA256
+        and candidate.get("source_context_sha256") == candidate_context_pin == candidate_context
+        and candidate.get("build_receipt_sha256") == candidate_build_receipt
         and isinstance(recovery, dict)
         and set(recovery)
         == {
@@ -1739,7 +1955,7 @@ def _verify_hotfix_pair(
             expected_digest=candidate_hash,
             role="candidate",
             image_id=candidate_id,
-            revision=HOTFIX_CANDIDATE_REVISION,
+            revision=candidate_revision,
         )
         recovery_archive = _stage_asset(
             incoming_names["recovery"],
@@ -1776,7 +1992,7 @@ def _pair_manifest_version(payload: dict[str, object]) -> int:
     if not isinstance(manifest, dict) or type(manifest.get("format_version")) is not int:
         raise RehearsalError("pair_manifest_invalid")
     version = manifest["format_version"]
-    if version not in {1, 2}:
+    if version not in {1, 2, 3}:
         raise RehearsalError("pair_manifest_version_unsupported")
     return version
 
@@ -5320,18 +5536,20 @@ def _run_pair_v1(payload: dict[str, object]) -> dict[str, object]:
 
 
 def _run_pair(payload: dict[str, object]) -> dict[str, object]:
-    """Dispatch exact v1 migration rehearsal or additive v2 same-schema hotfix rehearsal."""
+    """Dispatch migration, v2 hotfix, or dual-head v3 hotfix rehearsal."""
 
     version = _pair_manifest_version(payload)
     if version == 1:
         return _run_pair_v1(payload)
     if version == 2:
         return _run_pair_v2(payload)
+    if version == 3:
+        return _run_pair_v2(payload, format_version=3)
     raise RehearsalError("pair_manifest_version_unsupported")
 
 
-def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
-    """Run the fixed schema-13 image pair without migration, downgrade, or backup restore."""
+def _run_pair_v2(payload: dict[str, object], *, format_version: int = 2) -> dict[str, object]:
+    """Run a fixed schema-13 image pair without migration, downgrade, or backup restore."""
 
     global ACTIVE_PRODUCTION_BASELINE, HOTFIX_OPERATION_ACTIVE, MONITOR_ACTIVE
     global OPERATION_DEADLINE, PRODUCTION_SAMPLE_COUNT
@@ -5345,13 +5563,27 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
         raise RehearsalError("fixed_pull_request_mismatch")
     revision = _revision(payload.get("reviewed_head_sha"))
     pair_sha256 = _digest(payload.get("pair_manifest_sha256"), "pair_manifest_invalid")
+    v3 = format_version == 3
+    helper_contract = HOTFIX_V3_CONTRACT if v3 else HOTFIX_CONTRACT
+    candidate_revision = HOTFIX_V3_IMAGE_SOURCE_REVISION if v3 else HOTFIX_CANDIDATE_REVISION
+    if v3:
+        reviewed_pr_head_sha = payload.get("reviewed_pr_head_sha")
+        if (
+            not isinstance(reviewed_pr_head_sha, str)
+            or REVISION_RE.fullmatch(reviewed_pr_head_sha) is None
+        ):
+            raise RehearsalError("reviewed_pr_head_invalid")
+    else:
+        reviewed_pr_head_sha = None
     source_digests = _verify_installed_source(
         revision,
         pair_sha256,
         helper_source_contract=HOTFIX_CONTRACT,
     )
     _verify_helper_source_pull_request(revision)
-    _verify_hotfix_pull_request()
+    _verify_hotfix_pull_request(reviewed_pr_head_sha)
+    if v3:
+        _verify_v3_pr_lineage(reviewed_pr_head_sha, revision)
     production_baseline = _production_container()
     # _production_container validates the exact approved temporary records and image identity.
     if (
@@ -5414,21 +5646,22 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
     try:
         _check_production(sample_count, startup=True)
         manifest, staged = _verify_pair(payload, revision)
-        if manifest.get("format_version") != 2:
+        if manifest.get("format_version") != format_version:
             raise RehearsalError("pair_manifest_version_mismatch")
         candidate_manifest = manifest.get("candidate")
         recovery_manifest = manifest.get("recovery")
         if (
             not isinstance(candidate_manifest, dict)
             or not isinstance(recovery_manifest, dict)
-            or candidate_manifest.get("revision") != HOTFIX_CANDIDATE_REVISION
+            or candidate_manifest.get("revision") != candidate_revision
             or recovery_manifest.get("revision") != HOTFIX_RECOVERY_BASELINE["revision"]
-            or candidate_manifest.get("build_receipt_sha256") != HOTFIX_BUILD_RECEIPT_SHA256
+            or candidate_manifest.get("build_receipt_sha256")
+            != (HOTFIX_V3_BUILD_RECEIPT_SHA256 if v3 else HOTFIX_BUILD_RECEIPT_SHA256)
         ):
             raise RehearsalError("pair_manifest_identity_mismatch")
 
         _load_image(
-            HOTFIX_CANDIDATE_REVISION,
+            candidate_revision,
             "candidate",
             candidate_id,
             staged["candidate"],
@@ -5539,7 +5772,7 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
         marker = _seed_operation(
             candidate_container,
             "marker",
-            {"user_id": user_ids[0], "revision": HOTFIX_CANDIDATE_REVISION},
+            {"user_id": user_ids[0], "revision": candidate_revision},
         )
         request_id = marker.get("request_id")
         if not isinstance(request_id, str) or not 1 <= len(request_id) <= 96:
@@ -5623,13 +5856,20 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
             raise _memory_reserve_failure(host_memavailable_after_kib, RUN_RESERVE_KIB, "final")
         result_receipt = {
             "status": "pass",
-            "contract": HOTFIX_CONTRACT,
+            "contract": helper_contract,
             "reviewed_head_sha": revision,
             "pair_manifest_sha256": pair_sha256,
             "candidate_image_id": candidate_id,
-            "candidate_revision": HOTFIX_CANDIDATE_REVISION,
+            "candidate_revision": candidate_revision,
             "candidate_source_context_sha256": candidate_context,
-            "candidate_build_receipt_sha256": HOTFIX_BUILD_RECEIPT_SHA256,
+            "candidate_build_receipt_sha256": (
+                HOTFIX_V3_BUILD_RECEIPT_SHA256 if v3 else HOTFIX_BUILD_RECEIPT_SHA256
+            ),
+            **(
+                {"reviewed_pr_head_sha": reviewed_pr_head_sha, "reviewed_pr_lineage_verified": True}
+                if v3
+                else {}
+            ),
             "recovery_image_id": recovery_id,
             "recovery_revision": HOTFIX_RECOVERY_BASELINE["revision"],
             "recovery_source_context_sha256": recovery_context,
@@ -5699,6 +5939,8 @@ def _run_pair_v2(payload: dict[str, object]) -> dict[str, object]:
             "started_at": started,
             "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         }
+        if v3:
+            result_receipt["reviewed_pr_head_sha"] = reviewed_pr_head_sha
     except BaseException as exc:
         primary_exception = exc
         raise

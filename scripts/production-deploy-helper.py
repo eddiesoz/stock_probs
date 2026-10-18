@@ -82,6 +82,9 @@ PRODUCTION_PREDECESSOR_IMAGE_ID = (
     "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1"
 )
 HOTFIX_PAIR_CONTRACT = "schema13_same_schema_hotfix_v1"
+HOTFIX_PAIR_CONTRACT_V3 = "schema13_same_schema_hotfix_v3"
+# The installed bootstrap record tracks its source transport independently of the pair format.
+HOTFIX_INSTALLED_SOURCE_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOTFIX_HELPER_INSTALL_RECORD = Path("/usr/local/libexec/signal-ledger-pr-rehearsal/installed.json")
 PRODUCTION_HELPER_FILE = Path(__file__)
 PREVIOUS_PRODUCTION_HELPER_FILE = Path(
@@ -93,6 +96,11 @@ PREVIOUS_PRODUCTION_HELPER_SHA256 = (
 )
 PREVIOUS_PRODUCTION_HELPER_SIZE = 108_471
 HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
+HOTFIX_V3_IMAGE_SOURCE_REVISION = "68c225a25a76c4bd65c6309e00dd13200a1d4678"
+HOTFIX_V3_CANDIDATE_REVISION = HOTFIX_V3_IMAGE_SOURCE_REVISION
+HOTFIX_V3_IMAGE_ID = "sha256:c3ac6f43749404e36e0ae94a8d749ccafe4c882216db09484c1c34f6fbad5f78"
+HOTFIX_V3_IMAGE_CONTEXT_SHA256 = "e0e79be05acad60f4220c3152c32ba5c5b31aa7c394e36cf28de30fcf31d7458"
+HOTFIX_V3_BUILD_RECEIPT_SHA256 = "a73f76fb2792efb88ed88326ff84f8b22db3f09181dc0571f9ba0aea8c561ae1"
 HOTFIX_CANDIDATE_IMAGE_ID = (
     "sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196"
 )
@@ -101,6 +109,32 @@ HOTFIX_BUILD_RECEIPT_SHA256 = "d3529f24499ea2f3b7921055a4308be019798b7be083fc6e7
 HOTFIX_RECOVERY_ARCHIVE_SHA256 = "99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5"
 HOTFIX_RECOVERY_ARCHIVE_SIZE = 202_156_038
 HOTFIX_RECOVERY_CONTEXT_SHA256 = "9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb"
+
+
+def _hotfix_identity(revision: str) -> tuple[str, str, str, str] | None:
+    """Return only the reviewed fixed identity for a supported same-schema candidate."""
+
+    if revision == HOTFIX_CANDIDATE_REVISION:
+        return (
+            HOTFIX_PAIR_CONTRACT,
+            HOTFIX_CANDIDATE_IMAGE_ID,
+            HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            HOTFIX_BUILD_RECEIPT_SHA256,
+        )
+    if revision == HOTFIX_V3_CANDIDATE_REVISION:
+        return (
+            HOTFIX_PAIR_CONTRACT_V3,
+            HOTFIX_V3_IMAGE_ID,
+            HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+            HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        )
+    return None
+
+
+def _is_hotfix_contract(value: object) -> bool:
+    return value in {HOTFIX_PAIR_CONTRACT, HOTFIX_PAIR_CONTRACT_V3}
+
+
 HOTFIX_PRIOR_PAIR_SHA256 = "e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3"
 HOTFIX_EMPTY_OVERLAY_SHA256 = hashlib.sha256(b"[]").hexdigest()
 PRODUCTION_PREDECESSOR_COMPOSE_SHA256 = (
@@ -1874,19 +1908,49 @@ def _validate_hotfix_release_pair_manifest(
     candidate_archive_size: int,
     candidate_image_id: str,
     facts: dict[str, Any],
+    format_version: int = 2,
 ) -> dict[str, Any]:
-    """Bind this one same-schema hotfix to the original production recovery artifact."""
+    """Bind a fixed same-schema image independently from the reviewed helper source."""
 
+    v3 = format_version == 3
+    expected_contract = HOTFIX_PAIR_CONTRACT_V3 if v3 else HOTFIX_PAIR_CONTRACT
+    expected_revision = HOTFIX_V3_CANDIDATE_REVISION if v3 else HOTFIX_CANDIDATE_REVISION
+    expected_image_id = HOTFIX_V3_IMAGE_ID if v3 else HOTFIX_CANDIDATE_IMAGE_ID
+    expected_context = HOTFIX_V3_IMAGE_CONTEXT_SHA256 if v3 else HOTFIX_CANDIDATE_CONTEXT_SHA256
+    expected_build_receipt = HOTFIX_V3_BUILD_RECEIPT_SHA256 if v3 else HOTFIX_BUILD_RECEIPT_SHA256
     helper_revision = manifest.get("revision")
     source = facts.get("--source-context-manifest")
+    reviewed_pr_head_sha = manifest.get("reviewed_pr_head_sha")
+    expected_keys = {
+        "format_version",
+        "contract",
+        "repository",
+        "revision",
+        "helper_source",
+        "candidate",
+        "recovery",
+        "transition",
+        "recovery_overlay",
+    }
+    if v3:
+        expected_keys.update({"reviewed_pr_head_sha", "image_source_revision"})
     if (
-        revision != HOTFIX_CANDIDATE_REVISION
-        or candidate_image_id != HOTFIX_CANDIDATE_IMAGE_ID
+        format_version not in {2, 3}
+        or revision != expected_revision
+        or candidate_image_id != expected_image_id
         or not isinstance(helper_revision, str)
         or REVISION_PATTERN.fullmatch(helper_revision) is None
         or helper_revision != facts.get("--hotfix-helper-source")
         or not isinstance(source, dict)
-        or source.get("source_context_sha256") != HOTFIX_CANDIDATE_CONTEXT_SHA256
+        or source.get("source_context_sha256") != expected_context
+        or (
+            v3
+            and (
+                not isinstance(reviewed_pr_head_sha, str)
+                or REVISION_PATTERN.fullmatch(reviewed_pr_head_sha) is None
+                or manifest.get("image_source_revision") != expected_revision
+            )
+        )
         or not isinstance(candidate_archive_sha256, str)
         or DIGEST_PATTERN.fullmatch(candidate_archive_sha256) is None
         or type(candidate_archive_size) is not int
@@ -1894,8 +1958,8 @@ def _validate_hotfix_release_pair_manifest(
     ):
         raise HostError("release_pair_hotfix_identity_invalid")
     expected = {
-        "format_version": 2,
-        "contract": HOTFIX_PAIR_CONTRACT,
+        "format_version": format_version,
+        "contract": expected_contract,
         "repository": PAIR_REPOSITORY,
         "revision": helper_revision,
         "helper_source": {"pull_number": 11, "revision": helper_revision},
@@ -1903,13 +1967,13 @@ def _validate_hotfix_release_pair_manifest(
             "asset": _release_asset_name(revision, "candidate"),
             "archive_sha256": candidate_archive_sha256,
             "archive_size": candidate_archive_size,
-            "image_id": HOTFIX_CANDIDATE_IMAGE_ID,
+            "image_id": expected_image_id,
             "platform": "linux/amd64",
             "pull_number": 9,
-            "revision": revision,
+            "revision": expected_revision,
             "schema_version": ASSISTANT_MINIMUM_SCHEMA,
-            "source_context_sha256": HOTFIX_CANDIDATE_CONTEXT_SHA256,
-            "build_receipt_sha256": HOTFIX_BUILD_RECEIPT_SHA256,
+            "source_context_sha256": expected_context,
+            "build_receipt_sha256": expected_build_receipt,
         },
         "recovery": {
             "asset": _release_archive_name(PRODUCTION_PREDECESSOR_REVISION),
@@ -1927,6 +1991,10 @@ def _validate_hotfix_release_pair_manifest(
         "transition": {"from_schema": 13, "to_schema": 13, "migrations": [], "restore": False},
         "recovery_overlay": {"kind": "none", "sha256": HOTFIX_EMPTY_OVERLAY_SHA256},
     }
+    expected = {key: value for key, value in expected.items() if key in expected_keys}
+    if v3:
+        expected["reviewed_pr_head_sha"] = reviewed_pr_head_sha
+        expected["image_source_revision"] = expected_revision
     # Canonical JSON comparison also rejects bool/float substitutions for integer fields.
     if json.dumps(manifest, sort_keys=True) != json.dumps(expected, sort_keys=True):
         raise HostError("release_pair_hotfix_invalid")
@@ -1948,9 +2016,17 @@ def _validate_release_pair_manifest(
     if (
         isinstance(manifest, dict)
         and type(manifest.get("format_version")) is int
-        and manifest["format_version"] == 2
+        and manifest["format_version"] in {2, 3}
     ):
-        validator = _validate_hotfix_release_pair_manifest
+        return _validate_hotfix_release_pair_manifest(
+            manifest,
+            revision=revision,
+            candidate_archive_sha256=candidate_archive_sha256,
+            candidate_archive_size=candidate_archive_size,
+            candidate_image_id=candidate_image_id,
+            facts=facts,
+            format_version=manifest["format_version"],
+        )
     return validator(
         manifest,
         revision=revision,
@@ -2164,7 +2240,7 @@ def _reviewed_hotfix_helper_revision(pair_manifest_sha256: str) -> str:
         or value.get("repository") != PAIR_REPOSITORY
         or type(value.get("pull_number")) is not int
         or value.get("pull_number") != 11
-        or value.get("helper_source_contract") != HOTFIX_PAIR_CONTRACT
+        or value.get("helper_source_contract") != HOTFIX_INSTALLED_SOURCE_CONTRACT
         or value.get("reviewed_pair_manifest_sha256") != pair_manifest_sha256
         or not isinstance(value.get("reviewed_head_sha"), str)
         or REVISION_PATTERN.fullmatch(value["reviewed_head_sha"]) is None
@@ -2175,6 +2251,8 @@ def _reviewed_hotfix_helper_revision(pair_manifest_sha256: str) -> str:
 
 def _read_installed_maintenance_helper(
     expected_pair_manifest_sha256: str | None = None,
+    *,
+    expected_source_contract: str | None = None,
 ) -> str:
     """Verify the fixed PR11 installation, running helper bytes, and retained predecessor."""
 
@@ -2247,7 +2325,14 @@ def _read_installed_maintenance_helper(
         or value.get("repository") != PAIR_REPOSITORY
         or type(value.get("pull_number")) is not int
         or value.get("pull_number") != 11
-        or value.get("helper_source_contract") != HOTFIX_PAIR_CONTRACT
+        or value.get("helper_source_contract") != HOTFIX_INSTALLED_SOURCE_CONTRACT
+        or (
+            expected_source_contract is not None
+            and (
+                expected_source_contract != HOTFIX_INSTALLED_SOURCE_CONTRACT
+                or value.get("helper_source_contract") != expected_source_contract
+            )
+        )
         or not isinstance(value.get("reviewed_head_sha"), str)
         or REVISION_PATTERN.fullmatch(value["reviewed_head_sha"]) is None
         or not isinstance(value.get("reviewed_pair_manifest_sha256"), str)
@@ -2348,7 +2433,7 @@ def _load_release_pair(
         or not 1 <= candidate_archive_size <= MAX_RELEASE_ARCHIVE_BYTES
     ):
         raise HostError("candidate_archive_size_invalid")
-    if revision == HOTFIX_CANDIDATE_REVISION:
+    if _hotfix_identity(revision) is not None:
         helper_revision = _read_installed_maintenance_helper(expected_manifest_sha256)
         pair_path = _download_hotfix_pair_asset(helper_revision)
     else:
@@ -2370,8 +2455,13 @@ def _load_release_pair(
         if (
             isinstance(manifest, dict)
             and type(manifest.get("format_version")) is int
-            and manifest["format_version"] == 2
+            and manifest["format_version"] in {2, 3}
         ):
+            if manifest["format_version"] == 3:
+                _read_installed_maintenance_helper(
+                    expected_manifest_sha256,
+                    expected_source_contract=HOTFIX_INSTALLED_SOURCE_CONTRACT,
+                )
             facts["--hotfix-helper-source"] = _reviewed_hotfix_helper_revision(
                 expected_manifest_sha256
             )
@@ -2387,7 +2477,7 @@ def _load_release_pair(
         pair_path.unlink(missing_ok=True)
 
     recovery = manifest["recovery"]
-    if manifest["format_version"] == 2:
+    if manifest["format_version"] in {2, 3}:
         return _load_hotfix_release_recovery(manifest, expected_manifest_sha256)
     archive = _download_release_asset(revision, "recovery")
     try:
@@ -2437,6 +2527,11 @@ def _load_hotfix_release_recovery(manifest: dict[str, Any], manifest_sha256: str
         HOTFIX_RECOVERY_ARCHIVE_SHA256,
         PRODUCTION_PREDECESSOR_IMAGE_ID,
     )
+    candidate_revision = manifest["candidate"]["revision"]
+    identity = _hotfix_identity(candidate_revision)
+    if identity is None:
+        raise HostError("release_pair_hotfix_identity_invalid")
+    contract, candidate_image_id, candidate_context_sha256, _build_receipt_sha256 = identity
     if (
         size != HOTFIX_RECOVERY_ARCHIVE_SIZE
         or schema != ASSISTANT_MINIMUM_SCHEMA
@@ -2446,10 +2541,17 @@ def _load_hotfix_release_recovery(manifest: dict[str, Any], manifest_sha256: str
         raise HostError("recovery_image_contract_mismatch")
     return {
         "pair_manifest_sha256": manifest_sha256,
-        "source_context_sha256": HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "source_context_sha256": candidate_context_sha256,
         "migration_sha256": None,
-        "recovery_contract": HOTFIX_PAIR_CONTRACT,
+        "recovery_contract": contract,
         "helper_source_revision": manifest["helper_source"]["revision"],
+        **(
+            {"reviewed_pr_head_sha": manifest["reviewed_pr_head_sha"]}
+            if manifest.get("format_version") == 3
+            else {}
+        ),
+        "candidate_image_id": candidate_image_id,
+        "candidate_source_context_sha256": candidate_context_sha256,
         "recovery_image_ref": image_ref,
         "recovery_image_id": image_id,
         "recovery_archive_sha256": archive_sha256,
@@ -3300,19 +3402,53 @@ def _assert_image_record(record: dict[str, Any]) -> None:
         )
         if release_role == "recovery" and "recovery_contract" in record:
             if (
-                record.get("recovery_contract") != HOTFIX_PAIR_CONTRACT
+                not _is_hotfix_contract(record.get("recovery_contract"))
                 or revision != PRODUCTION_PREDECESSOR_REVISION
-                or record.get("candidate_release_revision") != HOTFIX_CANDIDATE_REVISION
+                or record.get("candidate_release_revision")
+                not in {HOTFIX_CANDIDATE_REVISION, HOTFIX_V3_CANDIDATE_REVISION}
                 or record.get("image_id") != PRODUCTION_PREDECESSOR_IMAGE_ID
                 or record.get("archive_sha256") != HOTFIX_RECOVERY_ARCHIVE_SHA256
                 or record.get("archive_size") != HOTFIX_RECOVERY_ARCHIVE_SIZE
                 or record.get("source_context_sha256") != HOTFIX_RECOVERY_CONTEXT_SHA256
-                or record.get("candidate_image_id") != HOTFIX_CANDIDATE_IMAGE_ID
-                or record.get("candidate_source_context_sha256") != HOTFIX_CANDIDATE_CONTEXT_SHA256
+                or record.get("candidate_image_id")
+                != _hotfix_identity(record.get("candidate_release_revision"))[1]
+                or record.get("candidate_source_context_sha256")
+                != _hotfix_identity(record.get("candidate_release_revision"))[2]
+                or (
+                    record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT_V3
+                    and (
+                        not isinstance(record.get("reviewed_pr_head_sha"), str)
+                        or REVISION_PATTERN.fullmatch(record["reviewed_pr_head_sha"]) is None
+                    )
+                )
+                or (
+                    record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT
+                    and "reviewed_pr_head_sha" in record
+                )
                 or record.get("assistant_rollout_mode") != "disabled"
             ):
                 raise HostError("recovery_image_record_invalid")
             expected_ref = _local_image_ref(revision)
+        if release_role == "candidate" and "recovery_contract" in record:
+            contract = record.get("recovery_contract")
+            if contract == HOTFIX_PAIR_CONTRACT_V3:
+                identity = _hotfix_identity(revision)
+                reviewed_head = record.get("reviewed_pr_head_sha")
+                if (
+                    identity is None
+                    or contract != identity[0]
+                    or record.get("image_id") != identity[1]
+                    or record.get("candidate_image_id") != identity[1]
+                    or record.get("source_context_sha256") != identity[2]
+                    or record.get("candidate_source_context_sha256") != identity[2]
+                    or not isinstance(record.get("helper_source_revision"), str)
+                    or REVISION_PATTERN.fullmatch(record["helper_source_revision"]) is None
+                    or not isinstance(reviewed_head, str)
+                    or REVISION_PATTERN.fullmatch(reviewed_head) is None
+                ):
+                    raise HostError("release_invalid")
+            elif contract != HOTFIX_PAIR_CONTRACT or "reviewed_pr_head_sha" in record:
+                raise HostError("release_invalid")
         if (
             record.get("archive_sha256") != image_digest
             or not isinstance(record.get("image_id"), str)
@@ -3395,24 +3531,61 @@ def _assert_loaded_recovery_image(record: dict[str, Any]) -> None:
 def _assert_loaded_hotfix_recovery_image(record: dict[str, Any]) -> None:
     """Recheck the original 5ad artifact before this fixed same-schema recovery."""
 
-    expected = {
-        "revision": HOTFIX_CANDIDATE_REVISION,
-        "image_id": HOTFIX_CANDIDATE_IMAGE_ID,
-        "schema_version": ASSISTANT_MINIMUM_SCHEMA,
-        "source_context_sha256": HOTFIX_CANDIDATE_CONTEXT_SHA256,
-        "migration_sha256": None,
-        "recovery_contract": HOTFIX_PAIR_CONTRACT,
-        "recovery_image_ref": _local_image_ref(PRODUCTION_PREDECESSOR_REVISION),
-        "recovery_image_id": PRODUCTION_PREDECESSOR_IMAGE_ID,
-        "recovery_archive_sha256": HOTFIX_RECOVERY_ARCHIVE_SHA256,
-        "recovery_archive_size": HOTFIX_RECOVERY_ARCHIVE_SIZE,
-        "recovery_platform": "linux/amd64",
-        "recovery_schema_version": ASSISTANT_MINIMUM_SCHEMA,
-        "recovery_base_revision": PRODUCTION_PREDECESSOR_REVISION,
-        "recovery_source_context_sha256": HOTFIX_RECOVERY_CONTEXT_SHA256,
-        "recovery_prior_pair_manifest_sha256": HOTFIX_PRIOR_PAIR_SHA256,
-        "recovery_overlay_sha256": HOTFIX_EMPTY_OVERLAY_SHA256,
-    }
+    contract = record.get("recovery_contract")
+    if contract == HOTFIX_PAIR_CONTRACT:
+        expected = {
+            "revision": HOTFIX_CANDIDATE_REVISION,
+            "image_id": HOTFIX_CANDIDATE_IMAGE_ID,
+            "schema_version": ASSISTANT_MINIMUM_SCHEMA,
+            "source_context_sha256": HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            "migration_sha256": None,
+            "recovery_contract": HOTFIX_PAIR_CONTRACT,
+            "recovery_image_ref": _local_image_ref(PRODUCTION_PREDECESSOR_REVISION),
+            "recovery_image_id": PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "recovery_archive_sha256": HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            "recovery_archive_size": HOTFIX_RECOVERY_ARCHIVE_SIZE,
+            "recovery_platform": "linux/amd64",
+            "recovery_schema_version": ASSISTANT_MINIMUM_SCHEMA,
+            "recovery_base_revision": PRODUCTION_PREDECESSOR_REVISION,
+            "recovery_source_context_sha256": HOTFIX_RECOVERY_CONTEXT_SHA256,
+            "recovery_prior_pair_manifest_sha256": HOTFIX_PRIOR_PAIR_SHA256,
+            "recovery_overlay_sha256": HOTFIX_EMPTY_OVERLAY_SHA256,
+        }
+    elif contract == HOTFIX_PAIR_CONTRACT_V3:
+        revision = record.get("revision")
+        identity = _hotfix_identity(revision) if isinstance(revision, str) else None
+        reviewed_head = record.get("reviewed_pr_head_sha")
+        if (
+            identity is None
+            or identity[0] != HOTFIX_PAIR_CONTRACT_V3
+            or not isinstance(reviewed_head, str)
+            or REVISION_PATTERN.fullmatch(reviewed_head) is None
+        ):
+            raise HostError("recovery_image_record_invalid")
+        expected = {
+            "revision": revision,
+            "image_id": identity[1],
+            "schema_version": ASSISTANT_MINIMUM_SCHEMA,
+            "source_context_sha256": identity[2],
+            "migration_sha256": None,
+            "recovery_contract": HOTFIX_PAIR_CONTRACT_V3,
+            "candidate_image_id": identity[1],
+            "candidate_source_context_sha256": identity[2],
+            "reviewed_pr_head_sha": reviewed_head,
+            "recovery_image_ref": _local_image_ref(PRODUCTION_PREDECESSOR_REVISION),
+            "recovery_image_id": PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "recovery_archive_sha256": HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            "recovery_archive_size": HOTFIX_RECOVERY_ARCHIVE_SIZE,
+            "recovery_platform": "linux/amd64",
+            "recovery_schema_version": ASSISTANT_MINIMUM_SCHEMA,
+            "recovery_base_revision": PRODUCTION_PREDECESSOR_REVISION,
+            "recovery_source_context_sha256": HOTFIX_RECOVERY_CONTEXT_SHA256,
+            "recovery_prior_pair_manifest_sha256": HOTFIX_PRIOR_PAIR_SHA256,
+            "recovery_overlay_sha256": HOTFIX_EMPTY_OVERLAY_SHA256,
+        }
+    else:
+        raise HostError("recovery_image_record_invalid")
+
     if (
         json.dumps({key: record.get(key) for key in expected}, sort_keys=True)
         != json.dumps(expected, sort_keys=True)
@@ -4208,11 +4381,9 @@ def _plan_deploy(
         _ensure_source()
         authorized_helper_revision: str | None = None
         source_revision = revision
-        if revision == HOTFIX_CANDIDATE_REVISION:
-            if (
-                expected_image_id != HOTFIX_CANDIDATE_IMAGE_ID
-                or expected_pair_manifest_sha256 is None
-            ):
+        hotfix_identity = _hotfix_identity(revision)
+        if hotfix_identity is not None:
+            if expected_image_id != hotfix_identity[1] or expected_pair_manifest_sha256 is None:
                 raise HostError("hotfix_release_pair_required")
             authorized_helper_revision = _read_installed_maintenance_helper(
                 expected_pair_manifest_sha256
@@ -4714,11 +4885,16 @@ def _activate_same_schema_recovery(
                 "assistant_rollout_mode": "disabled",
             }
         )
-        if record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT:
+        if _is_hotfix_contract(record.get("recovery_contract")):
             recovered.update(
                 {
                     "candidate_release_revision": record["revision"],
                     "candidate_source_context_sha256": record["source_context_sha256"],
+                    **(
+                        {"reviewed_pr_head_sha": record["reviewed_pr_head_sha"]}
+                        if record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT_V3
+                        else {}
+                    ),
                     "revision": PRODUCTION_PREDECESSOR_REVISION,
                     "source_context_sha256": HOTFIX_RECOVERY_CONTEXT_SHA256,
                 }
@@ -4761,7 +4937,7 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
     ):
         return {"status": "ok", "result": "already_applied", "revision": revision}
 
-    hotfix = record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT
+    hotfix = _is_hotfix_contract(record.get("recovery_contract"))
     if hotfix and (
         current is None
         or current.get("revision") != PRODUCTION_PREDECESSOR_REVISION
@@ -5011,6 +5187,23 @@ def _apply_release(record: dict[str, Any]) -> dict[str, Any]:
     ):
         if key in record:
             applied[key] = record[key]
+    if record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT_V3:
+        v3_identity = _hotfix_identity(revision)
+        reviewed_head = record.get("reviewed_pr_head_sha")
+        if (
+            v3_identity is None
+            or record.get("candidate_image_id") != v3_identity[1]
+            or record.get("candidate_source_context_sha256") != v3_identity[2]
+            or not isinstance(reviewed_head, str)
+            or REVISION_PATTERN.fullmatch(reviewed_head) is None
+        ):
+            raise HostError("release_invalid")
+        for key in (
+            "candidate_image_id",
+            "candidate_source_context_sha256",
+            "reviewed_pr_head_sha",
+        ):
+            applied[key] = record[key]
     if isinstance(record.get("compose_digest"), str):
         applied["compose_digest"] = record["compose_digest"]
     _write_json(CURRENT_RECORD, applied)
@@ -5082,6 +5275,8 @@ def _deploy(
             "recovery_overlay_sha256",
             "recovery_contract",
             "helper_source_revision",
+            "candidate_release_revision",
+            "reviewed_pr_head_sha",
             "recovery_source_context_sha256",
             "recovery_prior_pair_manifest_sha256",
         ):
@@ -5098,7 +5293,7 @@ def _rollback_to_recorded_recovery(
 ) -> dict[str, Any]:
     """Activate only the exact recorded schema-13 recovery image on the existing volume."""
 
-    hotfix = record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT
+    hotfix = _is_hotfix_contract(record.get("recovery_contract"))
     if (
         not _is_release_record(record)
         or record.get("release_role", "candidate") != "candidate"
@@ -5196,9 +5391,14 @@ def _rollback_to_recorded_recovery(
     if hotfix:
         response.update(
             {
-                "recovery_contract": HOTFIX_PAIR_CONTRACT,
+                "recovery_contract": record.get("recovery_contract"),
                 "candidate_release_revision": record["revision"],
                 "helper_source_revision": record["helper_source_revision"],
+                **(
+                    {"reviewed_pr_head_sha": record["reviewed_pr_head_sha"]}
+                    if record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT_V3
+                    else {}
+                ),
             }
         )
     return response
@@ -5274,7 +5474,7 @@ def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
             helper_source_revision=record.get("helper_source_revision"),
             candidate_release_revision=(
                 record.get("revision")
-                if record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT
+                if _is_hotfix_contract(record.get("recovery_contract"))
                 else None
             ),
         )
@@ -5296,13 +5496,18 @@ def _rollback(revision: str, image_id: str | None = None) -> dict[str, Any]:
                     "archive_size": record["archive_size"],
                 }
             )
-        if record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT:
+        if _is_hotfix_contract(record.get("recovery_contract")):
             response.update(
                 {
                     "release_role": "candidate",
-                    "recovery_contract": HOTFIX_PAIR_CONTRACT,
+                    "recovery_contract": record.get("recovery_contract"),
                     "candidate_release_revision": record["revision"],
                     "helper_source_revision": record["helper_source_revision"],
+                    **(
+                        {"reviewed_pr_head_sha": record["reviewed_pr_head_sha"]}
+                        if record.get("recovery_contract") == HOTFIX_PAIR_CONTRACT_V3
+                        else {}
+                    ),
                 }
             )
         return response

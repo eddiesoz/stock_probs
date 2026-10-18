@@ -2784,10 +2784,18 @@ def _reconcile_local_inflight_reservation(
                 )
             ):
                 raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
-        elif (
-            backend.get("error_code") != "fixed_command_unavailable_or_timeout"
-            or reservation_error != "fixed_command_unavailable_or_timeout"
-            or failure.get("primary_error_code") != "bounded_build_timeout_cancel_unverified"
+        elif backend.get("error_code") != "fixed_command_unavailable_or_timeout" or not (
+            (
+                reservation_error == "fixed_command_unavailable_or_timeout"
+                and failure.get("primary_error_code") == "bounded_build_timeout_cancel_unverified"
+            )
+            or (
+                "reservation_verification_error" in failure
+                and reservation_error is None
+                and failure.get("primary_error_code") == "bounded_build_timeout"
+                and historical_tag_absent is True
+                and historical_inventory_matches is True
+            )
         ):
             raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
         if backend_status == "unverified":
@@ -2798,6 +2806,11 @@ def _reconcile_local_inflight_reservation(
                 or any(
                     error != "fixed_command_unavailable_or_timeout" for error in secondary_errors
                 )
+            ):
+                raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
+            if reservation_error is None and (
+                set(backend) != {"status", "error_code"}
+                or secondary_errors != ["fixed_command_unavailable_or_timeout"]
             ):
                 raise BuildError("local_reconciliation_failure_receipt_contract_mismatch")
         evidence = {
@@ -4355,10 +4368,28 @@ def _run_bounded_build(
     expected_uuid: str,
     docker_root: Path,
     space_paths: tuple[Path, ...],
+    context_mount_path: str | None = None,
     env: dict[str, str],
     timeout: int,
     phase_observer: _LocalBuildPhaseObserver | None = None,
 ) -> None:
+    started = time.monotonic()
+    deadline = started + timeout
+    if context_mount_path is not None:
+        try:
+            verify_build_mount(
+                LOCAL_OBSERVATION_UUID,
+                context_mount_path,
+                deadline=deadline,
+            )
+        except BuildError as exc:
+            if exc.code == "bounded_build_timeout":
+                raise
+            suffix = exc.code.removeprefix("build_mount_")
+            raise BuildError(f"bounded_build_context_mount_{suffix}") from exc
+        if time.monotonic() >= deadline:
+            raise BuildError("bounded_build_timeout")
+
     try:
         process = subprocess.Popen(  # noqa: S603 - Fixed command vector, no shell.
             command,
@@ -4389,8 +4420,6 @@ def _run_bounded_build(
                     process.stderr.close()
             raise BuildError("bounded_build_phase_reader_start_failed") from exc
 
-    started = time.monotonic()
-    deadline = started + timeout
     next_uuid_check = started
     original_term_handler = signal.getsignal(signal.SIGTERM)
 
@@ -4441,6 +4470,29 @@ def _run_bounded_build(
                     if not cancel(process):
                         raise BuildError("bounded_build_timeout_cancel_unverified")
                     raise BuildError("bounded_build_timeout")
+                if context_mount_path is not None:
+                    try:
+                        verify_build_mount(
+                            LOCAL_OBSERVATION_UUID,
+                            context_mount_path,
+                            deadline=deadline,
+                        )
+                    except BuildError as exc:
+                        if exc.code == "bounded_build_timeout":
+                            if not cancel(process):
+                                raise BuildError("bounded_build_timeout_cancel_unverified") from exc
+                            raise BuildError("bounded_build_timeout") from exc
+                        if not cancel(process):
+                            suffix = exc.code.removeprefix("build_mount_")
+                            raise BuildError(
+                                f"bounded_build_context_mount_cancel_unverified_{suffix}"
+                            ) from exc
+                        suffix = exc.code.removeprefix("build_mount_")
+                        raise BuildError(f"bounded_build_context_mount_{suffix}") from exc
+                    if time.monotonic() >= deadline:
+                        if not cancel(process):
+                            raise BuildError("bounded_build_timeout_cancel_unverified")
+                        raise BuildError("bounded_build_timeout")
                 next_uuid_check = time.monotonic() + UUID_POLL
             try:
                 check_space(space_paths, STOP_FREE)
@@ -4519,14 +4571,43 @@ def build_local_image() -> dict[str, str]:
     if re.fullmatch(r"[0-9a-f]{40}", revision) is None:
         raise BuildError("local_source_head_invalid")
 
-    with tempfile.TemporaryDirectory(prefix="local-image-context-", dir=STATE) as directory:
+    verify_build_mount(
+        LOCAL_OBSERVATION_UUID,
+        str(LOCAL_OBSERVATION_ROOT),
+        deadline=time.monotonic() + 30,
+    )
+    check_space((docker_root, ROOT, STATE, LOCAL_OBSERVATION_ROOT), MIN_FREE)
+    with tempfile.TemporaryDirectory(
+        prefix="local-image-context-", dir=LOCAL_OBSERVATION_ROOT
+    ) as directory:
         temporary = Path(directory)
+        try:
+            temporary_info = temporary.lstat()
+        except OSError as exc:
+            raise BuildError("local_build_context_directory_unavailable") from exc
+        if (
+            not stat.S_ISDIR(temporary_info.st_mode)
+            or temporary_info.st_uid != USER.pw_uid
+            or stat.S_IMODE(temporary_info.st_mode) != 0o700
+        ):
+            raise BuildError("local_build_context_directory_not_private")
+        verify_build_mount(
+            LOCAL_OBSERVATION_UUID,
+            str(LOCAL_OBSERVATION_ROOT),
+            deadline=time.monotonic() + 30,
+        )
         context = temporary / "context"
         context_hash = _build_context(context)
         if _context_sha256(context, USER.pw_uid) != context_hash:
             raise BuildError("local_build_context_digest_mismatch")
         expected_platform = _native_platform()
-        space_paths = (docker_root, ROOT, STATE, temporary, context)
+        space_paths = (docker_root, ROOT, STATE, LOCAL_OBSERVATION_ROOT, temporary, context)
+        verify_build_mount(
+            LOCAL_OBSERVATION_UUID,
+            str(LOCAL_OBSERVATION_ROOT),
+            deadline=time.monotonic() + 30,
+        )
+        check_space(space_paths, MIN_FREE)
         with _candidate_ledger_lock():
             ledger = _ledger_read()
             _verify_ledger_inventory(ledger, setup)
@@ -4585,6 +4666,7 @@ def build_local_image() -> dict[str, str]:
                 expected_uuid=expected_uuid,
                 docker_root=docker_root,
                 space_paths=space_paths,
+                context_mount_path=str(LOCAL_OBSERVATION_ROOT),
                 env=ENV,
                 timeout=TIMEOUT,
                 phase_observer=phase_observer,

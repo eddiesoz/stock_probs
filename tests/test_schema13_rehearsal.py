@@ -2244,3 +2244,281 @@ def test_prepare_schema13_hotfix_pair_emits_explicit_no_migration_contract(
     }
     assert result["migration_commands"] == 0
     assert result["restore_commands"] == 0
+
+
+def test_prepare_schema13_dual_head_pair_binds_reviewed_pr9_and_fixed_68c_image(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper_head = "a" * 40
+    reviewed_pr9_head = rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+    artifact_directory = tmp_path / "private-v3-pair"
+    artifact_directory.mkdir(mode=0o700)
+    artifact_directory.chmod(0o700)
+    recovery_archive = b"pinned original 5ad image"
+    recovery_path = artifact_directory / (
+        f"signal-ledger-image-{rehearsal.HOTFIX_RECOVERY_REVISION}.tar.gz"
+    )
+    recovery_path.write_bytes(recovery_archive)
+    recovery_path.chmod(0o600)
+    candidate_archive = b"pinned immutable 68c image"
+    build_receipt_path = tmp_path / "build-receipt.json"
+    verified_prs: list[tuple[str, int]] = []
+    lineage: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(rehearsal, "_verify_local_pr_head", lambda _root, _sha: None)
+
+    def verify_reviewed_pr(_root: Path, sha: str, number: int = 2) -> None:
+        verified_prs.append((sha, number))
+
+    monkeypatch.setattr(rehearsal, "_verify_reviewed_pr", verify_reviewed_pr)
+    monkeypatch.setattr(
+        rehearsal,
+        "_verify_v3_pr_head",
+        lambda _root, pr9, helper: lineage.append(("lineage", pr9, helper)),
+    )
+
+    def read_build_receipt(path: Path, **kwargs: object) -> dict[str, str]:
+        assert kwargs["receipt_profile"] == "managed-v3"
+        lineage.append(("build", str(path), str(kwargs["image_revision"])))
+        return {"image_id": rehearsal.HOTFIX_V3_IMAGE_ID}
+
+    monkeypatch.setattr(rehearsal, "_read_fixed_hotfix_build_receipt", read_build_receipt)
+    monkeypatch.setattr(rehearsal, "_docker_environment", lambda _path: {})
+
+    def verify_image(
+        image_id: str,
+        context: str,
+        _env: dict[str, str],
+        *,
+        expected_revision_label: str | None = None,
+    ) -> dict[str, str]:
+        assert expected_revision_label in {
+            rehearsal.HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            rehearsal.HOTFIX_RECOVERY_REVISION,
+        }
+        return {
+            "id": image_id,
+            "architecture": "linux/amd64",
+            "source_context_sha256": context,
+            "revision_label": expected_revision_label or "",
+        }
+
+    monkeypatch.setattr(rehearsal, "_verify_candidate_image", verify_image)
+    monkeypatch.setattr(rehearsal, "_image_platform", lambda *_args: "linux/amd64")
+
+    def save_archive(image_id: str, path: Path, _env: dict[str, str]) -> tuple[str, int]:
+        assert image_id == rehearsal.HOTFIX_V3_IMAGE_ID
+        path.write_bytes(candidate_archive)
+        path.chmod(0o600)
+        return hashlib.sha256(candidate_archive).hexdigest(), len(candidate_archive)
+
+    monkeypatch.setattr(rehearsal, "_save_image_archive", save_archive)
+    monkeypatch.setattr(
+        rehearsal,
+        "HOTFIX_RECOVERY_ARCHIVE_SHA256",
+        hashlib.sha256(recovery_archive).hexdigest(),
+    )
+    monkeypatch.setattr(rehearsal, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(recovery_archive))
+
+    with pytest.raises(rehearsal.RehearsalError, match="dual-head hotfix requires"):
+        rehearsal.prepare_schema13_hotfix_pair(
+            REPOSITORY_ROOT,
+            helper_head,
+            artifact_directory,
+            reviewed_pr_head_sha=reviewed_pr9_head,
+        )
+    result = rehearsal.prepare_schema13_hotfix_pair(
+        REPOSITORY_ROOT,
+        helper_head,
+        artifact_directory,
+        reviewed_pr_head_sha=reviewed_pr9_head,
+        build_receipt_path=build_receipt_path,
+    )
+
+    manifest = json.loads((artifact_directory / result["manifest_name"]).read_bytes())
+    assert result["contract"] == rehearsal.HOTFIX_V3_CONTRACT
+    assert result["reviewed_pr_head_sha"] == reviewed_pr9_head
+    assert manifest["revision"] == helper_head
+    assert manifest["reviewed_pr_head_sha"] == reviewed_pr9_head
+    assert manifest["image_source_revision"] == rehearsal.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    assert manifest["candidate"]["revision"] == rehearsal.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    assert manifest["candidate"]["image_id"] == rehearsal.HOTFIX_V3_IMAGE_ID
+    assert verified_prs == [
+        (helper_head, rehearsal.HELPER_SOURCE_PR_NUMBER),
+        (reviewed_pr9_head, 9),
+    ]
+    assert lineage == [
+        ("lineage", reviewed_pr9_head, helper_head),
+        (
+            "build",
+            str(build_receipt_path),
+            rehearsal.HOTFIX_V3_IMAGE_SOURCE_REVISION,
+        ),
+    ]
+    assert result["migration_commands"] == result["restore_commands"] == 0
+
+
+@pytest.mark.parametrize(
+    ("reviewed_pr_head_sha", "helper_sha", "error_message"),
+    [
+        ("not-a-commit", "b" * 40, "reviewed PR #9 head"),
+        ("A" * 40, "b" * 40, "reviewed PR #9 head"),
+        ("a" * 40, "b" * 40, "pinned reviewed test commit"),
+        (rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA, "not-a-commit", "helper PR #11 head"),
+        (rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA, "B" * 40, "helper PR #11 head"),
+    ],
+)
+def test_verify_v3_pr_head_rejects_malformed_shas_before_git(
+    monkeypatch: pytest.MonkeyPatch,
+    reviewed_pr_head_sha: str,
+    helper_sha: str,
+    error_message: str,
+) -> None:
+    def reject_git_execution(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Git must not run with malformed commit SHAs")
+
+    monkeypatch.setattr(rehearsal.subprocess, "run", reject_git_execution)
+
+    with pytest.raises(rehearsal.RehearsalError, match=error_message):
+        rehearsal._verify_v3_pr_head(REPOSITORY_ROOT, reviewed_pr_head_sha, helper_sha)
+
+
+def test_verify_v3_pr_head_requires_the_exact_one_line_test_diff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
+    new_line = (
+        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
+    )
+
+    def run_with(*, patch: bytes, names: bytes | None = None, summary: bytes = b"") -> None:
+        outputs = [
+            b"",
+            b"",
+            names if names is not None else f"M\t{path}\n".encode(),
+            f"1\t1\t{path}\n".encode(),
+            summary,
+            patch,
+            f"100644 blob {'1' * 40}\t{path}\0".encode(),
+            f"100644 blob {'2' * 40}\t{path}\0".encode(),
+        ]
+        calls = 0
+
+        def run(command: list[str], **kwargs: object) -> CompletedProcess[bytes]:
+            nonlocal calls
+            assert kwargs["timeout"] == 10
+            assert kwargs["check"] is False and kwargs["shell"] is False
+            result = CompletedProcess(command, 0, stdout=outputs[calls], stderr=b"")
+            calls += 1
+            return result
+
+        monkeypatch.setattr(rehearsal.subprocess, "run", run)
+        rehearsal._verify_v3_pr_head(
+            REPOSITORY_ROOT,
+            rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            "d" * 40,
+        )
+        assert calls == 8
+
+    exact_patch = (
+        f"diff --git a/{path} b/{path}\n@@ -12 +12 @@\n-{old_line}\n+{new_line}\n"
+    ).encode()
+    run_with(patch=exact_patch)
+
+    for patch, names, summary in (
+        (
+            (
+                f"diff --git a/{path} b/{path}\n@@ -12 +12 @@\n-{old_line}\n"
+                f"+{new_line} # accepted?\n"
+            ).encode(),
+            None,
+            b"",
+        ),
+        (exact_patch + b"+assert True\n", None, b""),
+        (exact_patch, f"M\t{path}\nM\tother.py\n".encode(), b""),
+        (exact_patch, None, b" mode change 100644 => 100755\n"),
+    ):
+        outputs = [
+            b"",
+            b"",
+            names if names is not None else f"M\t{path}\n".encode(),
+            f"1\t1\t{path}\n".encode(),
+            summary,
+            patch,
+            f"100644 blob {'1' * 40}\t{path}\0".encode(),
+            f"100644 blob {'2' * 40}\t{path}\0".encode(),
+        ]
+        calls = 0
+
+        def reject(
+            command: list[str],
+            *,
+            responses: list[bytes] = outputs,
+            **kwargs: object,
+        ) -> CompletedProcess[bytes]:
+            nonlocal calls
+            result = CompletedProcess(command, 0, stdout=responses[calls], stderr=b"")
+            calls += 1
+            return result
+
+        monkeypatch.setattr(rehearsal.subprocess, "run", reject)
+        with pytest.raises(rehearsal.RehearsalError, match="unapproved source changes"):
+            rehearsal._verify_v3_pr_head(
+                REPOSITORY_ROOT,
+                rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+                "d" * 40,
+            )
+
+
+@pytest.mark.parametrize(
+    ("base_mode", "reviewed_mode", "base_sha", "reviewed_sha", "error", "expected_calls"),
+    [
+        ("120000", "100644", "1" * 40, "2" * 40, "regular blob", 7),
+        ("100644", "120000", "1" * 40, "2" * 40, "regular blob", 8),
+        ("100644", "100644", "1" * 40, "1" * 40, "unapproved source changes", 8),
+    ],
+)
+def test_verify_v3_pr_head_requires_distinct_regular_blobs(
+    monkeypatch: pytest.MonkeyPatch,
+    base_mode: str,
+    reviewed_mode: str,
+    base_sha: str,
+    reviewed_sha: str,
+    error: str,
+    expected_calls: int,
+) -> None:
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
+    new_line = (
+        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
+    )
+    patch = (f"diff --git a/{path} b/{path}\n@@ -12 +12 @@\n-{old_line}\n+{new_line}\n").encode()
+    outputs = [
+        b"",
+        b"",
+        f"M\t{path}\n".encode(),
+        f"1\t1\t{path}\n".encode(),
+        b"",
+        patch,
+        f"{base_mode} blob {base_sha}\t{path}\0".encode(),
+        f"{reviewed_mode} blob {reviewed_sha}\t{path}\0".encode(),
+    ]
+    calls = 0
+
+    def run(command: list[str], **kwargs: object) -> CompletedProcess[bytes]:
+        nonlocal calls
+        assert kwargs["timeout"] == 10
+        assert kwargs["check"] is False and kwargs["shell"] is False
+        result = CompletedProcess(command, 0, stdout=outputs[calls], stderr=b"")
+        calls += 1
+        return result
+
+    monkeypatch.setattr(rehearsal.subprocess, "run", run)
+    with pytest.raises(rehearsal.RehearsalError, match=error):
+        rehearsal._verify_v3_pr_head(
+            REPOSITORY_ROOT,
+            rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            "d" * 40,
+        )
+    assert calls == expected_calls

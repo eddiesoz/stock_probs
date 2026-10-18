@@ -2676,3 +2676,37 @@ controls, and readback for the repaired helper, plus exact-PR recovery and rollb
 F6 app and host-helper inputs do not require another real-provider/native trial solely because helper
 source changed. Complete browser/axe and canonical gates, final guide, owner canary, and release
 acceptance remain open. See the [V10 checkpoint](MVP-PLAN.md#r-astra-121-pr11-v10-actual-host-free-zen-rehearsal-and-current-release-checkpoint-2026-10-17).
+
+For pure build-controller failure-path unit tests, isolate the external disk-space input when
+the test is intended to reach a mocked build or stop failure. Keep separate tests of the real
+4 GiB admission and 1 GiB stop boundaries. Synthetic available space in a unit fixture never
+establishes actual build admission or resource acceptance. R-ASTRA-121's failed 54e canonical
+run and narrow test-only repair are preserved in the F6 canonical disk-seam checkpoint in
+`MVP-PLAN.md`; a fresh complete aggregate remains required.
+
+For R-ASTRA-121 Unix-socket test failures, preflight the complete encoded socket path under a
+unique short task-owned temporary root before a full run. Preserve a failed or interrupted
+canonical result; a focused short-path pass is diagnostic evidence and cannot replace it. Keep
+pytest terminal and JUnit totals separately bound, and fail closed when their counts disagree.
+Before creating task-local build context on removable media, verify the mounted filesystem UUID;
+require 4 GiB free at admission, monitor the mount during the operation, and stop below 1 GiB.
+Use mode 0700 for private audit scratch directories and mode 0600 for private audit receipts,
+with child umask 022. Preserve Git-tracked source-context modes, including executable bits; do not
+apply private receipt modes to materialized source files. Keep an approved setup receipt unchanged
+and pair it with a separate exact helper-source binding and review plus a successful build receipt
+bound to those inputs. The setup receipt alone proves setup, not helper contents or build completion.
+
+For the R121 bounded-timeout recovery tuple, require an explicit null
+`reservation_verification_error`, the exact unverified backend/error and singleton secondary
+error, and true historical tag/inventory observations. Fresh same-generation stopped PID-zero,
+empty-cgroup and current protected-inventory checks remain mandatory before typed reservation
+release; historical failure receipts are immutable. Completed build-step history or cache presence
+does not establish a completed image or native assistant acceptance.
+
+For the R-ASTRA-121 dual-head release contract, retain the actual image-source revision separately
+from the reviewed PR #9 test-only head and the PR #11 helper head. Prove the image-to-test-to-helper
+lineage and the exact approved one-line regular-blob change before admission. Match receipt readers
+to the actual producer bytes: the managed-v3 14-key local build receipt is distinct from the legacy
+receipt profile. A synchronized digest or mocked receipt alone does not establish producer/consumer
+compatibility; exercise the fixed real receipt through the consumer without overriding its expected
+identity. Preserve the original failed checks and require exact applied-source and release gates.

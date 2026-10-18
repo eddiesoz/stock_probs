@@ -390,15 +390,27 @@ def test_native_gateway_thirteen_tools_dispatch_and_validate_webfetch_continuati
     assert request["max_tokens"] == native_output_token_budget()
 
 
-def test_zen_proxy_uses_native_public_bearer_without_changing_other_auth_headers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "stale_base_url",
+    (
+        "https://opencode.ai/zen/v1",
+        "https://unreviewed.example.test/v1",
+    ),
+)
+def test_zen_proxy_uses_fixed_route_and_native_public_bearer_without_changing_other_auth_headers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stale_base_url: str
 ) -> None:
-    """Send OpenCode's fixed public marker only for Zen through the real proxy requester."""
+    """Ignore stale Zen endpoints and preserve the native public marker and other auth."""
 
     zen_model_id, _suffix = _reviewed_zen_model_ids()
     zen_manager = _policy_manager(
         tmp_path / "zen", _policy_model(zen_model_id, provider_id="opencode-zen")
     )
+    zen_manager._write_metadata({"opencode-zen": {"base_url": stale_base_url}})
+    zen_summary = next(
+        item for item in zen_manager.list_providers() if item.provider_id == "opencode-zen"
+    )
+    assert zen_summary.selected_base_url == "https://opencode.ai/inference/openai/v1"
     openai_manager, openai_model_id = _native_gateway_proxy_manager(tmp_path / "openai", "openai")
     calls: list[dict[str, object]] = []
 
@@ -442,7 +454,7 @@ def test_zen_proxy_uses_native_public_bearer_without_changing_other_auth_headers
 
     assert len(calls) == 2
     zen_request, openai_request = calls
-    assert zen_request["url"] == "https://opencode.ai/zen/v1/chat/completions"
+    assert zen_request["url"] == ("https://opencode.ai/inference/openai/v1/chat/completions")
     assert zen_request["headers"] == {
         "accept": "text/event-stream",
         "authorization": "Bearer public",
@@ -464,6 +476,64 @@ def test_zen_proxy_uses_native_public_bearer_without_changing_other_auth_headers
     assert providers._provider_headers("custom", None) == {}
     assert providers._provider_headers("google", None) == {}
     assert providers._provider_headers("anthropic", None) == {}
+
+
+def test_zen_route_keeps_authorization_revalidation_and_stream_cancellation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep the fixed route behind live authorization and close its stream on cancellation."""
+
+    manager, model_id = _native_gateway_proxy_manager(tmp_path, "opencode-zen")
+    app_tools = AssistantToolGateway.list_tools()
+    closed: list[bool] = []
+    calls: list[str] = []
+
+    async def fake_stream(url: str, **_kwargs: object):
+        calls.append(url)
+        try:
+            yield (
+                b'data: {"choices":[{"index":0,"delta":{"content":"Partial"},'
+                b'"finish_reason":"stop"}]}\n\n'
+            )
+            await asyncio.Event().wait()
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(providers, "stream_public_https", fake_stream)
+    body = {
+        "model": "assistant-selected",
+        "messages": [{"role": "user", "content": "Synthetic auth check."}],
+        "stream": True,
+    }
+
+    async def exercise() -> None:
+        stream = manager.proxy_chat_completion(
+            "opencode-zen",
+            model_id,
+            body,
+            app_tools=app_tools,
+            **_native_zen_context(),
+            authorization_check=lambda: True,
+        )
+        iterator = stream.__aiter__()
+        assert b"Partial" in await anext(iterator)
+        await iterator.aclose()
+
+        denied_stream = manager.proxy_chat_completion(
+            "opencode-zen",
+            model_id,
+            body,
+            app_tools=app_tools,
+            **_native_zen_context(),
+            authorization_check=lambda: False,
+        )
+        with pytest.raises(CredentialRejected, match="oauth_authorization_required"):
+            _ = [chunk async for chunk in denied_stream]
+
+    asyncio.run(exercise())
+
+    assert calls == ["https://opencode.ai/inference/openai/v1/chat/completions"]
+    assert closed == [True]
 
 
 @pytest.mark.parametrize("mutation", ("fourteenth", "unknown", "schema", "description"))
@@ -1839,6 +1909,7 @@ def _configured_provider_manager(
 @pytest.mark.parametrize(
     "endpoint",
     [
+        "https://opencode.ai/inference/openai/v1",
         "HTTPS://OPENCODE.AI:443/%7Aen/v1/",
         "https://opencode.ai/unused/%2e%2e/zen/v1",
         "https://opencode.ai/zen/%76%31/",
@@ -1860,7 +1931,15 @@ def test_custom_inventory_excludes_catalog_native_ids_at_canonical_zen_endpoint(
     assert manager._parse_provider_model_rows("custom", [{"id": native_model_id}]) == ()
 
 
-def test_excluded_id_on_ambiguous_zen_host_path_fails_closed(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "endpoint",
+    (
+        "HTTPS://OPENCODE.AI:443/unrelated/path",
+        "https://opencode.ai/inference/openai/v1beta",
+        "https://opencode.ai/inference/openai/v1/chat/completions",
+    ),
+)
+def test_excluded_id_on_ambiguous_zen_host_path_fails_closed(tmp_path: Path, endpoint: str) -> None:
     """Do not infer that another path on Zen's host has unrelated model identity."""
 
     native_model_id = _zen_exclusion_fixtures()[0][0]
@@ -1870,9 +1949,7 @@ def test_excluded_id_on_ambiguous_zen_host_path_fails_closed(tmp_path: Path) -> 
     )
 
     with pytest.raises(ProviderUnavailable, match="model_policy_unavailable"):
-        manager._known_model_exclusion_reason(
-            "custom", "HTTPS://OPENCODE.AI:443/unrelated/path", native_model_id
-        )
+        manager._known_model_exclusion_reason("custom", endpoint, native_model_id)
 
 
 def test_custom_endpoint_allows_same_catalog_id_on_unrelated_host(tmp_path: Path) -> None:
@@ -1882,7 +1959,7 @@ def test_custom_endpoint_allows_same_catalog_id_on_unrelated_host(tmp_path: Path
     manager, _catalog = _configured_provider_manager(tmp_path, lambda: 10.0)
     _configure_custom_endpoint(
         manager,
-        base_url="https://opencode.ai.example.test/zen/v1",
+        base_url="https://opencode.ai.example.test/inference/openai/v1",
         billing_class="free",
     )
 
@@ -1893,7 +1970,7 @@ def test_custom_endpoint_allows_same_catalog_id_on_unrelated_host(tmp_path: Path
     assert rows[0].available is True
     assert (
         manager._known_model_exclusion_reason(
-            "custom", "https://opencode.ai.example.test/zen/v1", native_model_id
+            "custom", "https://opencode.ai.example.test/inference/openai/v1", native_model_id
         )
         is None
     )
@@ -3961,6 +4038,7 @@ def test_opencode_console_model_ids_and_inventories_are_owner_scoped(
 @pytest.mark.parametrize(
     "endpoint",
     [
+        "https://opencode.ai/inference/openai/v1",
         "HTTPS://OPENCODE.AI:443/%7Aen/v1/",
         "https://opencode.ai/unused/%2e%2e/zen/v1",
         "https://opencode.ai/zen/%76%31/",
@@ -4008,8 +4086,15 @@ def test_opencode_console_inventory_excludes_catalog_native_ids_after_alias_mapp
     )
 
 
+@pytest.mark.parametrize(
+    "endpoint",
+    (
+        "https://opencode.ai/zen/v1",
+        "https://opencode.ai/inference/openai/v1",
+    ),
+)
 def test_opencode_console_allows_review_of_nonexcluded_model_on_zen_endpoint(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, endpoint: str
 ) -> None:
     """Keep explicit admin review available for unrelated IDs on the exact Zen route."""
 
@@ -4025,7 +4110,7 @@ def test_opencode_console_allows_review_of_nonexcluded_model_on_zen_endpoint(
         return SimpleNamespace(
             status_code=200,
             content=json.dumps(
-                _opencode_console_payload_for_model(safe_native_id, "https://opencode.ai/zen/v1")
+                _opencode_console_payload_for_model(safe_native_id, endpoint)
             ).encode("utf-8"),
         )
 
@@ -4061,10 +4146,18 @@ def test_opencode_console_allows_review_of_nonexcluded_model_on_zen_endpoint(
 @pytest.mark.parametrize(
     "native_model_id", [model_id for model_id, _reason in _zen_exclusion_fixtures()[:1]]
 )
+@pytest.mark.parametrize(
+    "endpoint",
+    (
+        "https://opencode.ai.example.test/zen/v1",
+        "https://opencode.ai.example.test/inference/openai/v1",
+    ),
+)
 def test_opencode_console_same_model_id_on_similarly_named_host_is_not_globally_excluded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     native_model_id: str,
+    endpoint: str,
 ) -> None:
     """Match the exact Zen endpoint, not a host that merely contains its name."""
 
@@ -4078,9 +4171,7 @@ def test_opencode_console_same_model_id_on_similarly_named_host_is_not_globally_
         return SimpleNamespace(
             status_code=200,
             content=json.dumps(
-                _opencode_console_payload_for_model(
-                    native_model_id, "https://opencode.ai.example.test/zen/v1"
-                )
+                _opencode_console_payload_for_model(native_model_id, endpoint)
             ).encode("utf-8"),
         )
 
@@ -4094,10 +4185,7 @@ def test_opencode_console_same_model_id_on_similarly_named_host_is_not_globally_
 
     assert len(inventory) == 1
     assert (
-        manager._known_model_exclusion_reason(
-            "opencode-console", "https://opencode.ai.example.test/zen/v1", native_model_id
-        )
-        is None
+        manager._known_model_exclusion_reason("opencode-console", endpoint, native_model_id) is None
     )
     assert manager.get_opencode_model(str(inventory[0]["model_id"]), owner_id=43).available is False
 

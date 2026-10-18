@@ -665,7 +665,7 @@ class _ProviderProxyStreamingResponse(StreamingResponse):
                 await send({"type": "http.response.body", "body": self._denied.body})
                 return
 
-            if _is_initial_provider_auth_failure(initial_error):
+            if _is_initial_provider_status_failure(initial_error):
                 assert type(initial_error) is _ProviderProxyProtocolError
                 status_code = initial_error.status_code
                 assert type(status_code) is int
@@ -704,7 +704,7 @@ class _ProviderProxyStreamingResponse(StreamingResponse):
             await _close_provider_iterator(iterator)
 
 
-def _is_initial_provider_auth_failure(
+def _is_initial_provider_status_failure(
     failure: object,
 ) -> bool:
     return (
@@ -712,7 +712,7 @@ def _is_initial_provider_auth_failure(
         and failure.stage == "upstream_stream"
         and failure.error_code == "provider_upstream_unavailable"
         and type(failure.status_code) is int
-        and failure.status_code in {401, 403}
+        and failure.status_code in {401, 403, 429}
     )
 
 

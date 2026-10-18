@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import errno
 import hashlib
 import importlib.util
@@ -9142,6 +9143,104 @@ def test_hotfix_release_pair_retains_distinct_helper_candidate_and_recovery_revi
     assert manifest["transition"]["restore"] is False
 
 
+def _dual_head_release_manifest(helper: Any) -> dict[str, Any]:
+    manifest = _hotfix_release_manifest(helper)
+    manifest.update(
+        {
+            "format_version": 3,
+            "contract": helper.HOTFIX_PAIR_CONTRACT_V3,
+            "reviewed_pr_head_sha": "b" * 40,
+            "image_source_revision": helper.HOTFIX_V3_IMAGE_SOURCE_REVISION,
+        }
+    )
+    manifest["candidate"].update(
+        {
+            "asset": helper._release_archive_name(helper.HOTFIX_V3_CANDIDATE_REVISION),
+            "image_id": helper.HOTFIX_V3_IMAGE_ID,
+            "revision": helper.HOTFIX_V3_CANDIDATE_REVISION,
+            "source_context_sha256": helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+            "build_receipt_sha256": helper.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        }
+    )
+    return manifest
+
+
+def test_dual_head_release_pair_validates_image_and_reviewed_test_identity_separately() -> None:
+    helper = _helper()
+    manifest = _dual_head_release_manifest(helper)
+    facts = {
+        "--hotfix-helper-source": "a" * 40,
+        "--source-context-manifest": {
+            "source_context_sha256": helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+        },
+    }
+
+    validated = helper._validate_hotfix_release_pair_manifest(
+        manifest,
+        revision=helper.HOTFIX_V3_CANDIDATE_REVISION,
+        candidate_archive_sha256="c" * 64,
+        candidate_archive_size=1024,
+        candidate_image_id=helper.HOTFIX_V3_IMAGE_ID,
+        facts=facts,
+        format_version=3,
+    )
+
+    assert validated["revision"] == facts["--hotfix-helper-source"]
+    assert validated["reviewed_pr_head_sha"] == "b" * 40
+    assert validated["image_source_revision"] == helper.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    assert validated["candidate"]["revision"] == helper.HOTFIX_V3_IMAGE_SOURCE_REVISION
+
+    for mutate in (
+        lambda value: value.pop("reviewed_pr_head_sha"),
+        lambda value: value.update(image_source_revision="b" * 40),
+        lambda value: value.update(unexpected=True),
+    ):
+        malformed = copy.deepcopy(manifest)
+        mutate(malformed)
+        with pytest.raises(
+            helper.HostError,
+            match="release_pair_hotfix_identity_invalid|release_pair_hotfix_invalid",
+        ):
+            helper._validate_hotfix_release_pair_manifest(
+                malformed,
+                revision=helper.HOTFIX_V3_CANDIDATE_REVISION,
+                candidate_archive_sha256="c" * 64,
+                candidate_archive_size=1024,
+                candidate_image_id=helper.HOTFIX_V3_IMAGE_ID,
+                facts=facts,
+                format_version=3,
+            )
+
+
+def test_dual_head_release_record_requires_reviewed_pr9_identity() -> None:
+    helper = _helper()
+    candidate_revision = helper.HOTFIX_V3_CANDIDATE_REVISION
+    record = {
+        "revision": candidate_revision,
+        "image_ref": helper._local_image_ref(candidate_revision),
+        "image_digest": "c" * 64,
+        "archive_sha256": "c" * 64,
+        "image_id": helper.HOTFIX_V3_IMAGE_ID,
+        "platform": "linux/amd64",
+        "archive_size": 1024,
+        "schema_version": 13,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "release_role": "candidate",
+        "source_context_sha256": helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+        "candidate_image_id": helper.HOTFIX_V3_IMAGE_ID,
+        "candidate_source_context_sha256": helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+        "recovery_contract": helper.HOTFIX_PAIR_CONTRACT_V3,
+        "helper_source_revision": "a" * 40,
+        "reviewed_pr_head_sha": "b" * 40,
+    }
+    helper._assert_image_record(record)
+
+    for value in (None, "not-a-commit"):
+        malformed = {**record, "reviewed_pr_head_sha": value}
+        with pytest.raises(helper.HostError, match="release_invalid"):
+            helper._assert_image_record(malformed)
+
+
 def test_hotfix_pair_parser_rejects_duplicate_nested_identity_keys() -> None:
     helper = _helper()
     with pytest.raises(ValueError, match="duplicate release pair key"):
@@ -9189,7 +9288,7 @@ def _hotfix_install_metadata(helper: Any) -> dict[str, Any]:
         "format_version": 1,
         "repository": helper.PAIR_REPOSITORY,
         "pull_number": 11,
-        "helper_source_contract": helper.HOTFIX_PAIR_CONTRACT,
+        "helper_source_contract": helper.HOTFIX_INSTALLED_SOURCE_CONTRACT,
         "reviewed_head_sha": "a" * 40,
         "reviewed_pair_manifest_sha256": "f" * 64,
     }
@@ -9216,6 +9315,8 @@ def test_hotfix_helper_revision_comes_from_the_matching_root_bootstrap_record(
         ("pull_number", 2),
         ("pull_number", 11.0),
         ("helper_source_contract", None),
+        ("helper_source_contract", "schema13_same_schema_hotfix_v3"),
+        ("helper_source_contract", "spoofed_source_transport"),
         ("reviewed_pair_manifest_sha256", "e" * 64),
         ("reviewed_head_sha", "unreviewed"),
     ],
@@ -9308,7 +9409,7 @@ def test_installed_maintenance_helper_requires_its_exact_root_recorded_bytes(
             "production-deploy-helper.py": hashlib.sha256(helper_bytes).hexdigest(),
         },
         "installed_at": "2026-10-16T00:00:00Z",
-        "helper_source_contract": helper.HOTFIX_PAIR_CONTRACT,
+        "helper_source_contract": helper.HOTFIX_INSTALLED_SOURCE_CONTRACT,
         "previous_production_helper_sha256": hashlib.sha256(predecessor_bytes).hexdigest(),
     }
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
@@ -9353,7 +9454,32 @@ def test_installed_maintenance_helper_requires_its_exact_root_recorded_bytes(
     monkeypatch.setattr(Path, "lstat", projected_lstat)
     monkeypatch.setattr(helper.os, "fstat", projected_fstat)
 
-    assert helper._read_installed_maintenance_helper(pair_digest) == revision
+    assert (
+        helper._read_installed_maintenance_helper(
+            pair_digest,
+            expected_source_contract=helper.HOTFIX_INSTALLED_SOURCE_CONTRACT,
+        )
+        == revision
+    )
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        helper._read_installed_maintenance_helper(
+            pair_digest,
+            expected_source_contract=helper.HOTFIX_PAIR_CONTRACT_V3,
+        )
+
+    for source_contract in (helper.HOTFIX_PAIR_CONTRACT_V3, "spoofed_source_transport"):
+        manifest["helper_source_contract"] = source_contract
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        manifest_path.chmod(0o640)
+        with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+            helper._read_installed_maintenance_helper(
+                pair_digest,
+                expected_source_contract=helper.HOTFIX_INSTALLED_SOURCE_CONTRACT,
+            )
+
+    manifest["helper_source_contract"] = helper.HOTFIX_INSTALLED_SOURCE_CONTRACT
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    manifest_path.chmod(0o640)
     with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
         helper._read_installed_maintenance_helper("e" * 64)
 
@@ -9400,7 +9526,12 @@ def test_hotfix_release_pair_rejects_identity_schema_or_overlay_substitution(
         _validate_hotfix_release(helper, manifest)
 
 
-def _hotfix_release_record(helper: Any, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+def _hotfix_release_record(
+    helper: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    dual_head: bool = False,
+) -> dict[str, Any]:
     monkeypatch.setattr(
         helper,
         "_load_release_archive",
@@ -9414,13 +9545,21 @@ def _hotfix_release_record(helper: Any, monkeypatch: pytest.MonkeyPatch) -> dict
         ),
     )
     monkeypatch.setattr(helper, "_image_has_recovery_entrypoint", lambda *args, **kwargs: True)
+    manifest = (
+        _dual_head_release_manifest(helper) if dual_head else _hotfix_release_manifest(helper)
+    )
+    candidate_revision = (
+        helper.HOTFIX_V3_CANDIDATE_REVISION if dual_head else helper.HOTFIX_CANDIDATE_REVISION
+    )
+    identity = helper._hotfix_identity(candidate_revision)
+    assert identity is not None
     record = _schema13_release_record(helper)
     record.update(
-        revision=helper.HOTFIX_CANDIDATE_REVISION,
-        image_ref=helper._local_image_ref(helper.HOTFIX_CANDIDATE_REVISION),
-        image_id=helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        revision=candidate_revision,
+        image_ref=helper._local_image_ref(candidate_revision),
+        image_id=identity[1],
     )
-    record.update(helper._load_hotfix_release_recovery(_hotfix_release_manifest(helper), "f" * 64))
+    record.update(helper._load_hotfix_release_recovery(manifest, "f" * 64))
     return record
 
 
@@ -9508,22 +9647,31 @@ def test_hotfix_recovery_preserves_data_without_migrations_and_reports_actual_so
         helper._assert_image_record({**current, "revision": helper.HOTFIX_CANDIDATE_REVISION})
 
 
-def test_hotfix_pair_load_keeps_the_recovery_asset_under_its_original_release(
+@pytest.mark.parametrize("dual_head", [False, True], ids=("v1-pair", "v3-pair"))
+def test_hotfix_pair_load_keeps_source_transport_separate_from_pair_contract(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    dual_head: bool,
 ) -> None:
     helper = _helper()
-    _hotfix_release_record(helper, monkeypatch)
-    manifest = _hotfix_release_manifest(helper)
+    _hotfix_release_record(helper, monkeypatch, dual_head=dual_head)
+    manifest = (
+        _dual_head_release_manifest(helper) if dual_head else _hotfix_release_manifest(helper)
+    )
     raw = json.dumps(manifest).encode()
     path = tmp_path / "pair.json"
     path.write_bytes(raw)
     calls = []
-    monkeypatch.setattr(
-        helper,
-        "_read_installed_maintenance_helper",
-        lambda expected: calls.append(("install", expected)) or "a" * 40,
-    )
+
+    def read_installed_helper(
+        expected: str | None = None, *, expected_source_contract: str | None = None
+    ) -> str:
+        calls.append(("install", expected, expected_source_contract))
+        if expected_source_contract is not None:
+            assert expected_source_contract == helper.HOTFIX_INSTALLED_SOURCE_CONTRACT
+        return "a" * 40
+
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", read_installed_helper)
     monkeypatch.setattr(
         helper,
         "_download_hotfix_pair_asset",
@@ -9538,32 +9686,101 @@ def test_hotfix_pair_load_keeps_the_recovery_asset_under_its_original_release(
         "_release_pair_source_facts",
         lambda: {
             "--source-context-manifest": {
-                "source_context_sha256": helper.HOTFIX_CANDIDATE_CONTEXT_SHA256
+                "source_context_sha256": (
+                    helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256
+                    if dual_head
+                    else helper.HOTFIX_CANDIDATE_CONTEXT_SHA256
+                )
             }
         },
     )
     monkeypatch.setattr(helper, "_reviewed_hotfix_helper_revision", lambda pair_sha: "a" * 40)
     monkeypatch.setattr(helper, "_run", lambda *args, **kwargs: pytest.fail("external command"))
     result = helper._load_release_pair(
-        helper.HOTFIX_CANDIDATE_REVISION,
+        helper.HOTFIX_V3_CANDIDATE_REVISION if dual_head else helper.HOTFIX_CANDIDATE_REVISION,
         hashlib.sha256(raw).hexdigest(),
         "c" * 64,
-        helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        helper.HOTFIX_V3_IMAGE_ID if dual_head else helper.HOTFIX_CANDIDATE_IMAGE_ID,
         candidate_archive_size=1024,
     )
-    assert calls == [
-        ("install", hashlib.sha256(raw).hexdigest()),
-        ("pair", "a" * 40),
+    pair_sha = hashlib.sha256(raw).hexdigest()
+    expected_calls = [("install", pair_sha, None), ("pair", "a" * 40)]
+    if dual_head:
+        expected_calls.append(("install", pair_sha, helper.HOTFIX_INSTALLED_SOURCE_CONTRACT))
+    expected_calls.append(
         (
             helper.PRODUCTION_PREDECESSOR_REVISION,
             helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
             helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
-        ),
-    ]
+        )
+    )
+    assert calls == expected_calls
     assert result["recovery_image_ref"] == helper._local_image_ref(
         helper.PRODUCTION_PREDECESSOR_REVISION
     )
     assert not path.exists()
+
+
+@pytest.mark.parametrize(
+    "installed_contract,helper_source_revision,expected_error",
+    [
+        ("schema13_same_schema_hotfix_v3", "a" * 40, "hotfix_helper_provenance_mismatch"),
+        ("spoofed_source_transport", "a" * 40, "hotfix_helper_provenance_mismatch"),
+        ("schema13_same_schema_hotfix_v1", "b" * 40, "release_pair_hotfix_identity_invalid"),
+    ],
+)
+def test_dual_head_pair_load_rejects_wrong_installer_contract_or_helper_pin(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    installed_contract: str,
+    helper_source_revision: str,
+    expected_error: str,
+) -> None:
+    helper = _helper()
+    _hotfix_release_record(helper, monkeypatch, dual_head=True)
+    manifest = _dual_head_release_manifest(helper)
+    raw = json.dumps(manifest).encode()
+    pair_path = tmp_path / "pair.json"
+    pair_path.write_bytes(raw)
+    pair_sha = hashlib.sha256(raw).hexdigest()
+
+    def read_installed_helper(
+        expected: str | None = None, *, expected_source_contract: str | None = None
+    ) -> str:
+        if installed_contract != helper.HOTFIX_INSTALLED_SOURCE_CONTRACT:
+            raise helper.HostError("hotfix_helper_provenance_mismatch")
+        if expected_source_contract is not None and (
+            expected_source_contract != installed_contract
+        ):
+            raise helper.HostError("hotfix_helper_provenance_mismatch")
+        if expected is not None and expected != pair_sha:
+            raise helper.HostError("hotfix_helper_provenance_mismatch")
+        return "a" * 40
+
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", read_installed_helper)
+    monkeypatch.setattr(helper, "_download_hotfix_pair_asset", lambda _revision: pair_path)
+    monkeypatch.setattr(
+        helper,
+        "_release_pair_source_facts",
+        lambda: {
+            "--source-context-manifest": {
+                "source_context_sha256": helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256
+            }
+        },
+    )
+    monkeypatch.setattr(
+        helper, "_reviewed_hotfix_helper_revision", lambda _pair_sha: helper_source_revision
+    )
+    monkeypatch.setattr(helper, "_run", lambda *args, **kwargs: pytest.fail("external command"))
+
+    with pytest.raises(helper.HostError, match=expected_error):
+        helper._load_release_pair(
+            helper.HOTFIX_V3_CANDIDATE_REVISION,
+            pair_sha,
+            "c" * 64,
+            helper.HOTFIX_V3_IMAGE_ID,
+            candidate_archive_size=1024,
+        )
 
 
 def test_hotfix_pair_load_rejects_install_record_before_downloading_pair(
@@ -9626,12 +9843,14 @@ def test_hotfix_recovery_entrypoint_is_explicitly_separate_from_app_only_recover
     assert helper._image_has_recovery_entrypoint("fixed-fixture", managed=managed) is expected
 
 
+@pytest.mark.parametrize("dual_head", [False, True], ids=("v2", "v3"))
 def test_hotfix_apply_persists_a_reloadable_pair_for_public_rollback(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    dual_head: bool,
 ) -> None:
     helper = _helper()
-    target = _hotfix_release_record(helper, monkeypatch)
+    target = _hotfix_release_record(helper, monkeypatch, dual_head=dual_head)
     predecessor = {
         "revision": helper.PRODUCTION_PREDECESSOR_REVISION,
         "transport": helper.GITHUB_RELEASE_TRANSPORT,
@@ -9708,6 +9927,15 @@ def test_hotfix_apply_persists_a_reloadable_pair_for_public_rollback(
             "recovery_prior_pair_manifest_sha256",
         ):
             assert persisted[key] == target[key]
+        if dual_head:
+            for key in (
+                "candidate_image_id",
+                "candidate_source_context_sha256",
+                "reviewed_pr_head_sha",
+            ):
+                assert persisted[key] == target[key]
+        else:
+            assert "reviewed_pr_head_sha" not in persisted
     current_summary = helper._state_summary()["current"]
     assert current_summary["revision"] == target["revision"]
     assert current_summary["helper_source_revision"] == target["helper_source_revision"]
@@ -9716,7 +9944,10 @@ def test_hotfix_apply_persists_a_reloadable_pair_for_public_rollback(
     assert current["revision"] == result["revision"] == predecessor["revision"]
     assert result["candidate_release_revision"] == target["revision"]
     assert result["helper_source_revision"] == target["helper_source_revision"]
-    assert result["recovery_contract"] == helper.HOTFIX_PAIR_CONTRACT
+    assert result["recovery_contract"] == target["recovery_contract"]
+    if dual_head:
+        assert result["reviewed_pr_head_sha"] == target["reviewed_pr_head_sha"]
+        assert current["reviewed_pr_head_sha"] == target["reviewed_pr_head_sha"]
     assert current["image_id"] == predecessor["image_id"]
     assert current["release_role"] == "recovery"
     assert current["candidate_release_revision"] == target["revision"]
@@ -9844,3 +10075,20 @@ def test_temporary_recovery_inspect_isolates_optional_internal_failure(
     }
     assert "private internal diagnostic" not in json.dumps(response)
     assert _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root) == before
+
+
+def test_v3_build_receipt_digest_matches_verified_producer_across_consumers() -> None:
+    """Keep every v3 consumer tied to the directly verified image receipt."""
+    from scripts import hotfix_release_transport, rehearse_schema13
+    from tools.deploy_mcp import pr_rehearsal
+
+    verified_producer_digest = "a73f76fb2792efb88ed88326ff84f8b22db3f09181dc0571f9ba0aea8c561ae1"
+    consumers = {
+        "deployment helper": _helper().HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        "host helper": rehearsal_host_helper.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        "schema-13 rehearsal": rehearse_schema13.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        "release transport": hotfix_release_transport.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        "MCP rehearsal": pr_rehearsal.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+    }
+
+    assert consumers == {name: verified_producer_digest for name in consumers}

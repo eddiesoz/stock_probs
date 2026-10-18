@@ -251,6 +251,18 @@ For R-ASTRA-120, keep task-generated bulk recovery, QA, and build artifacts on t
 `54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; stop if either expected mount is missing or mismatched.
 Do not fall back to the main filesystem or `/tmp`, and do not move active Codex or browser state.
 
+For the R-ASTRA-121 local candidate context, verify the same mounted UUID before creating its
+private directory. Admit a build only with at least 4 GiB free, monitor that mount throughout the
+operation, and stop if free space falls below 1 GiB. Use mode 0700 for private audit scratch
+directories and mode 0600 for private audit receipts, with child umask 022. Preserve Git-tracked
+source-context modes, including executable bits. Keep the approved setup receipt unchanged and pair
+it with a separate exact helper-source binding and review, plus a successful build receipt bound to
+those inputs. The setup receipt alone proves setup only; it does not need to be regenerated with a
+helper digest and does not prove helper contents or a build. For Unix-socket tests, use a unique
+short temporary root and preflight the complete encoded socket path before running the full suite; a
+focused short-path result remains diagnostic evidence. See the [R-ASTRA-121 checkpoint](../../MVP-PLAN.md)
+for the current result and open gates.
+
 1. Copy the source medium to an independent, protected filesystem. Before formatting, verify the
    backup checksum and byte count, the complete file/member inventory, and preserved metadata. If
    any check is missing or fails, stop before formatting.
@@ -1408,3 +1420,28 @@ controls, and readback for the repaired helper, plus exact-release recovery/roll
 unchanged F6 app and host-helper inputs do not require another real-provider/native trial solely
 because helper source changed. The owner canary and guide checks also remain open. See the
 [V10 PR11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v10-actual-host-free-zen-rehearsal-and-current-release-checkpoint-2026-10-17).
+
+The real managed build requires at least 4 GiB free on each checked build filesystem and stops
+below its 1 GiB floor. A passing mocked build-controller unit test does not establish that
+these actual resource requirements are met. See the [F6 disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
+for the separate synthetic-fixture and actual-filesystem results.
+
+For a bounded local-build timeout whose backend stop was initially unverified, the typed
+reconciliation accepts only the supported exact failure tuple, including an explicitly present
+null reservation error and successful historical tag/inventory observations. A later verified
+stop must match the captured builder generation, have PID zero and no worker descendants, and
+pass fresh protected-inventory checks. Keep the original failure receipt unchanged. Releasing
+the reservation does not accept the image or authorize an unchanged build retry; inspect the
+exact failed build history and retain the distinct evidence. The
+[F6 recovery checkpoint](../../MVP-PLAN.md#r-astra-121-f6-typed-timeout-recovery-and-build-history-checkpoint-2026-10-18)
+records the selected QA and actual operation.
+
+The additive format-3 hotfix pair identifies the immutable image source, the separately reviewed
+application test head, and the helper source head. The current candidate image is still labelled
+68c; the c2fe test-only correction does not change that label. Helper admission requires the exact
+approved test delta and ancestor chain. The bootstrap's installed-source transport stays at its
+existing v1 value while the pair format is v3. Use the matching managed-v3 reader for the exact local
+build receipt; its field names differ from the historical producer. Private parser tests and an
+archive scan do not establish installation, deployment or rollback acceptance. Those operations
+remain held pending the exact release gates in the
+[dual-head checkpoint](../../MVP-PLAN.md#r-astra-121-dual-head-receipt-compatibility-and-current-browser-checkpoint-2026-10-18).

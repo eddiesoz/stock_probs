@@ -2003,6 +2003,12 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
   const externalRequests = [];
   const eventStreamPaths = [];
   let baseContextResponse = null;
+  let holdResearchContextResponse = false;
+  let researchContextRequestSeen = false;
+  let releaseResearchContextResponse = null;
+  let researchContextResponseSettled = false;
+  let researchContextResponseError = null;
+  let researchContextHandlerPromise = null;
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (url.origin === "https://example.com") externalRequests.push(url.href);
@@ -2015,6 +2021,23 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
   });
   await page.route("**/api/v1/assistant/context**", async (route) => {
     const url = new URL(route.request().url());
+    if (holdResearchContextResponse && url.searchParams.get("route") === "/research") {
+      holdResearchContextResponse = false;
+      researchContextRequestSeen = true;
+      const responseGate = new Promise((resolve) => { releaseResearchContextResponse = resolve; });
+      researchContextHandlerPromise = (async () => {
+        try {
+          await responseGate;
+          await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Fixture-held context failure" }) });
+        } catch (error) {
+          researchContextResponseError = error instanceof Error ? error.message : String(error);
+        } finally {
+          researchContextResponseSettled = true;
+        }
+      })();
+      await researchContextHandlerPromise;
+      return;
+    }
     if (url.searchParams.get("symbol") === "MSFT") {
       if (!baseContextResponse) throw new Error("The initial workspace context was not captured before instrument selection.");
       const context = baseContextResponse.context;
@@ -2082,7 +2105,16 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
     const sendButton = panel.getByRole("button", { name: "Send question" });
     await panel.getByRole("textbox", { name: "Ask about this page" }).fill(prompt);
     await expect(sendButton).toBeEnabled();
+    const turnResponsePromise = page.waitForResponse((response) => {
+      const request = response.request();
+      const responseUrl = new URL(response.url());
+      return responseUrl.origin === origin
+        && request.method() === "POST"
+        && /^\/api\/v1\/assistant\/conversations\/[^/]+\/turns$/.test(responseUrl.pathname);
+    }, { timeout: 5_000 });
     await sendButton.click();
+    const turnResponse = await turnResponsePromise;
+    expect(turnResponse.status()).toBe(202);
     const card = panel.getByRole("region", { name: "Web page request confirmation" });
     try {
       await expect(card).toBeVisible();
@@ -2218,10 +2250,10 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
     window.dispatchEvent(new Event("workspace-instrument-change"));
   });
   await expect(panel.getByRole("region", { name: "Workspace context" })).toContainText("MSFT · STOCK");
-  await staleContext.card.getByRole("button", { name: "Approve exact URL once" }).click();
   await expect(staleContext.card).toHaveCount(0);
   await expect(panel.getByRole("alert")).toContainText("The page context changed after this URL preview. No URL was sent");
   expect(confirmationRequests).toHaveLength(1);
+  expect(externalRequests).toEqual([]);
   const staleTurn = new URL(staleContext.eventPath, origin).pathname.match(/\/conversations\/([^/]+)\/turns\/([^/]+)\/events$/);
   expect(staleTurn).not.toBeNull();
   const staleActivity = await page.evaluate(async (conversationId) => {
@@ -2245,12 +2277,30 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
     "webfetch-stale-route-preview",
     "Approve exact URL once",
   );
-  await changeRoute("/research");
-  await expect(panel.getByRole("region", { name: "Workspace context" })).toContainText("Research");
-  await staleRouteContext.card.getByRole("button", { name: "Approve exact URL once" }).click();
+  const confirmationsBeforeStaleRoute = confirmationRequests.length;
+  holdResearchContextResponse = true;
+  try {
+    await changeRoute("/research");
+    await expect.poll(() => researchContextRequestSeen).toBe(true);
+    await expect(page).toHaveURL(/\/research(?:\?|$)/);
+    await expect(staleRouteContext.card).toHaveCount(0);
+    await expect(panel.getByRole("alert")).toContainText("The page context changed after this URL preview. No URL was sent");
+    expect(confirmationRequests).toHaveLength(confirmationsBeforeStaleRoute);
+    expect(externalRequests).toEqual([]);
+  } finally {
+    if (researchContextRequestSeen) {
+      browserDiagnostics.expectHttpFailures({ method: "GET", path: "/api/v1/assistant/context", status: 503 });
+    }
+    releaseResearchContextResponse?.();
+    if (researchContextRequestSeen) {
+      await expect.poll(() => researchContextResponseSettled, { timeout: 5000 }).toBe(true);
+      await researchContextHandlerPromise;
+      expect(researchContextResponseError).toBeNull();
+    }
+  }
   await expect(staleRouteContext.card).toHaveCount(0);
-  await expect(panel.getByRole("alert")).toContainText("The page context changed after this URL preview. No URL was sent");
-  expect(confirmationRequests).toHaveLength(1);
+  expect(confirmationRequests).toHaveLength(confirmationsBeforeStaleRoute);
+  expect(externalRequests).toEqual([]);
   const staleRouteTurn = new URL(staleRouteContext.eventPath, origin).pathname.match(/\/conversations\/([^/]+)\/turns\/([^/]+)\/events$/);
   expect(staleRouteTurn).not.toBeNull();
   const staleRouteActivity = await page.evaluate(async (conversationId) => {
@@ -2267,14 +2317,14 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
 
   await changeRoute("/overview");
   await expect(panel.getByRole("region", { name: "Workspace context" })).toContainText("Overview");
-  const decline = await requestPreview(
-    "fixture webfetch stale decline",
-    "Synthetic web page request was declined; no external request was made.",
-    "webfetch-stale-decline-preview",
-    "Decline request",
-  );
   await changeRoute("/research");
   await expect(panel.getByRole("region", { name: "Workspace context" })).toContainText("Research");
+  const decline = await requestPreview(
+    "fixture webfetch decline",
+    "Synthetic web page request was declined; no external request was made.",
+    "webfetch-current-context-decline-preview",
+    "Decline request",
+  );
   await decline.card.getByRole("button", { name: "Decline request" }).click();
   await expect(panel.getByText(decline.expectedAnswer, { exact: true })).toBeVisible();
   await expectAssistantLiveStatus(panel, "Assistant response complete.");

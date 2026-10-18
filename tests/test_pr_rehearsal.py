@@ -270,6 +270,192 @@ def test_schema13_hotfix_pair_accepts_exact_pr9_candidate_and_5ad_recovery(
     assert assets["recovery"] == recovery_archive
 
 
+def _dual_head_hotfix_manifest(
+    helper_head: str,
+    reviewed_pr9_head: str,
+    candidate_archive: bytes,
+    recovery_archive: bytes,
+) -> dict[str, object]:
+    manifest = _hotfix_pair_manifest(helper_head, candidate_archive, recovery_archive)
+    manifest.update(
+        {
+            "format_version": 3,
+            "contract": controller.HOTFIX_V3_CONTRACT,
+            "reviewed_pr_head_sha": reviewed_pr9_head,
+            "image_source_revision": controller.HOTFIX_V3_IMAGE_SOURCE_REVISION,
+        }
+    )
+    candidate = manifest["candidate"]
+    assert isinstance(candidate, dict)
+    candidate.update(
+        {
+            "asset": (f"signal-ledger-image-{controller.HOTFIX_V3_IMAGE_SOURCE_REVISION}.tar.gz"),
+            "image_id": controller.HOTFIX_V3_IMAGE_ID,
+            "revision": controller.HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            "source_context_sha256": controller.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+            "build_receipt_sha256": controller.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        }
+    )
+    return manifest
+
+
+def test_schema13_dual_head_pair_keeps_test_head_separate_from_candidate_image(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper_head = "a" * 40
+    reviewed_pr9_head = controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+    candidate_archive = b"synthetic current 68c image"
+    recovery_archive = b"synthetic retained 5ad image"
+    monkeypatch.setattr(
+        controller, "HOTFIX_RECOVERY_ARCHIVE_SHA256", hashlib.sha256(recovery_archive).hexdigest()
+    )
+    monkeypatch.setattr(controller, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(recovery_archive))
+    manifest = _dual_head_hotfix_manifest(
+        helper_head, reviewed_pr9_head, candidate_archive, recovery_archive
+    )
+    manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    (
+        tmp_path / f"signal-ledger-image-{controller.HOTFIX_V3_IMAGE_SOURCE_REVISION}.tar.gz"
+    ).write_bytes(candidate_archive)
+    (
+        tmp_path / f"signal-ledger-image-{controller.PRODUCTION_BASELINE['revision']}.tar.gz"
+    ).write_bytes(recovery_archive)
+    (tmp_path / f"signal-ledger-pair-{helper_head}.json").write_bytes(manifest_bytes)
+    monkeypatch.setattr(controller, "ARTIFACT_DIRECTORY", tmp_path)
+
+    verified, assets = controller._artifact_pair(
+        helper_head,
+        candidate_image_id=controller.HOTFIX_V3_IMAGE_ID,
+        candidate_source_context_sha256=controller.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+        recovery_image_id=controller.PRODUCTION_BASELINE["image_id"],
+        recovery_source_context_sha256=controller.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        recovery_overlay_sha256=controller.HOTFIX_EMPTY_OVERLAY_SHA256,
+        pair_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+    )
+
+    assert verified["revision"] == helper_head
+    assert verified["reviewed_pr_head_sha"] == reviewed_pr9_head
+    assert verified["image_source_revision"] == controller.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    assert verified["candidate"]["revision"] == controller.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    assert assets["candidate"] == candidate_archive
+
+    for field, invalid in (
+        ("reviewed_pr_head_sha", "d" * 40),
+        ("image_source_revision", reviewed_pr9_head),
+    ):
+        changed = copy.deepcopy(manifest)
+        changed[field] = invalid
+        raw = json.dumps(changed, sort_keys=True, separators=(",", ":")).encode()
+        (tmp_path / f"signal-ledger-pair-{helper_head}.json").write_bytes(raw)
+        with pytest.raises(controller.RehearsalError, match="pair_manifest_identity_mismatch"):
+            controller._artifact_pair(
+                helper_head,
+                candidate_image_id=controller.HOTFIX_V3_IMAGE_ID,
+                candidate_source_context_sha256=controller.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+                recovery_image_id=controller.PRODUCTION_BASELINE["image_id"],
+                recovery_source_context_sha256=controller.HOTFIX_RECOVERY_CONTEXT_SHA256,
+                recovery_overlay_sha256=controller.HOTFIX_EMPTY_OVERLAY_SHA256,
+                pair_manifest_sha256=hashlib.sha256(raw).hexdigest(),
+            )
+
+
+def test_schema13_host_helper_requires_the_same_explicit_dual_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper_head = "a" * 40
+    reviewed_pr9_head = controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+    candidate_archive = b"synthetic current 68c image"
+    recovery_archive = b"synthetic retained 5ad image"
+    monkeypatch.setattr(
+        host_helper,
+        "HOTFIX_RECOVERY_ARCHIVE_SHA256",
+        hashlib.sha256(recovery_archive).hexdigest(),
+    )
+    monkeypatch.setattr(host_helper, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(recovery_archive))
+    manifest = _dual_head_hotfix_manifest(
+        helper_head, reviewed_pr9_head, candidate_archive, recovery_archive
+    )
+    manifest_bytes = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    candidate_hash = hashlib.sha256(candidate_archive).hexdigest()
+    recovery_hash = hashlib.sha256(recovery_archive).hexdigest()
+    payload = {
+        "candidate_image_id": host_helper.HOTFIX_V3_IMAGE_ID,
+        "recovery_image_id": host_helper.HOTFIX_RECOVERY_BASELINE["image_id"],
+        "candidate_source_context_sha256": host_helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+        "recovery_source_context_sha256": host_helper.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        "recovery_overlay_sha256": host_helper.HOTFIX_EMPTY_OVERLAY_SHA256,
+        "pair_manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "reviewed_pr_head_sha": reviewed_pr9_head,
+        "candidate_archive_sha256": candidate_hash,
+        "recovery_archive_sha256": recovery_hash,
+    }
+    staged_path = tmp_path / "staged.tar.gz"
+
+    def stage_asset(
+        name: str,
+        *,
+        expected_digest: str,
+        role: str,
+        image_id: str,
+        **_kwargs: object,
+    ) -> host_helper.StagedArchive:
+        data = candidate_archive if role == "candidate" else recovery_archive
+        assert hashlib.sha256(data).hexdigest() == expected_digest
+        staged_path.write_bytes(data)
+        return host_helper.StagedArchive(
+            staged_path,
+            expected_digest,
+            len(data),
+            image_id,
+        )
+
+    monkeypatch.setattr(host_helper, "_stage_asset", stage_asset)
+    verified, assets = host_helper._verify_hotfix_pair(
+        payload,
+        helper_head,
+        manifest,
+        manifest_bytes,
+        candidate_hash=candidate_hash,
+        recovery_hash=recovery_hash,
+    )
+
+    assert verified["reviewed_pr_head_sha"] == reviewed_pr9_head
+    assert assets["candidate"].image_id == host_helper.HOTFIX_V3_IMAGE_ID
+    assert assets["candidate"].size == len(candidate_archive)
+
+    changed_payload = {**payload, "reviewed_pr_head_sha": "c" * 40}
+    with pytest.raises(host_helper.RehearsalError, match="pair_manifest_identity_mismatch"):
+        host_helper._verify_hotfix_pair(
+            changed_payload,
+            helper_head,
+            manifest,
+            manifest_bytes,
+            candidate_hash=candidate_hash,
+            recovery_hash=recovery_hash,
+        )
+
+    changed_manifest = {**manifest, "reviewed_pr_head_sha": "d" * 40}
+    changed_manifest_bytes = json.dumps(
+        changed_manifest, sort_keys=True, separators=(",", ":")
+    ).encode()
+    changed_manifest_payload = {
+        **payload,
+        "reviewed_pr_head_sha": "d" * 40,
+        "pair_manifest_sha256": hashlib.sha256(changed_manifest_bytes).hexdigest(),
+    }
+    with pytest.raises(host_helper.RehearsalError, match="pair_manifest_identity_mismatch"):
+        host_helper._verify_hotfix_pair(
+            changed_manifest_payload,
+            helper_head,
+            changed_manifest,
+            changed_manifest_bytes,
+            candidate_hash=candidate_hash,
+            recovery_hash=recovery_hash,
+        )
+
+
 def test_schema12_to_13_v1_pair_manifest_remains_accepted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1807,8 +1993,8 @@ def test_v2_review_pins_use_helper_pr11_and_candidate_pr9_without_pr2(
     }
 
 
-@pytest.mark.parametrize(("format_version", "expected_pull_number"), [(1, 2), (2, 11)])
-def test_controller_pair_dispatch_keeps_v1_pr2_and_v2_pr11(
+@pytest.mark.parametrize(("format_version", "expected_pull_number"), [(1, 2), (2, 11), (3, 11)])
+def test_controller_pair_dispatch_preserves_v1_and_v2_v3_source_contracts(
     monkeypatch: pytest.MonkeyPatch,
     format_version: int,
     expected_pull_number: int,
@@ -1820,6 +2006,8 @@ def test_controller_pair_dispatch_keeps_v1_pr2_and_v2_pr11(
         "candidate": {"archive_sha256": "c" * 64},
         "recovery": {"archive_sha256": "d" * 64},
     }
+    if format_version == 3:
+        manifest["reviewed_pr_head_sha"] = controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
     config = controller.RehearsalConfig(
         Path("/unused/identity"),
         Path("/unused/known-hosts"),
@@ -1846,7 +2034,7 @@ def test_controller_pair_dispatch_keeps_v1_pr2_and_v2_pr11(
     monkeypatch.setattr(
         controller,
         "verify_hotfix_pull_request",
-        lambda: events.append("pr9"),
+        lambda *_args: events.append("pr9"),
     )
     monkeypatch.setattr(
         controller,
@@ -1857,6 +2045,11 @@ def test_controller_pair_dispatch_keeps_v1_pr2_and_v2_pr11(
         controller,
         "_verify_local_reviewed_source",
         lambda *_args, **_kwargs: events.append("v1-source-check"),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_verify_local_v3_pr_lineage",
+        lambda *_args, **_kwargs: events.append("v3-lineage"),
     )
     monkeypatch.setattr(
         controller,
@@ -1891,13 +2084,16 @@ def test_controller_pair_dispatch_keeps_v1_pr2_and_v2_pr11(
             pair_manifest_sha256=pair_digest,
         )
 
-    expected_contract = controller.HOTFIX_CONTRACT if format_version == 2 else None
+    expected_contract = controller.HOTFIX_CONTRACT if format_version in {2, 3} else None
     assert ("source-stage", expected_contract) in events
     assert ("host-payload", expected_pull_number) in events
     if format_version == 1:
         assert "pr2" in events and "pr11" not in events and "pr9" not in events
     else:
         assert "pr11" in events and "pr9" in events and "pr2" not in events
+        if format_version == 3:
+            assert "v3-lineage" in events
+            assert manifest["reviewed_pr_head_sha"] == controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
 
 
 def test_review_pin_cli_rejects_path_arguments(
@@ -2248,7 +2444,7 @@ def test_host_installed_manifest_binds_v1_pr2_and_v2_pr11_separately(
         )
 
 
-def test_host_v1_and_v2_runner_keep_disjoint_fixed_helper_pull_numbers(
+def test_host_v1_v2_and_v3_runner_keep_contracts_and_require_v3_lineage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     events: list[tuple[str, object]] = []
@@ -2260,8 +2456,11 @@ def test_host_v1_and_v2_runner_keep_disjoint_fixed_helper_pull_numbers(
     def helper_pr(revision: str) -> None:
         events.append(("helper_pr11", revision))
 
-    def candidate_pr() -> None:
-        events.append(("candidate_pr9", None))
+    def candidate_pr(reviewed_pr_head_sha: str | None) -> None:
+        events.append(("candidate_pr9", reviewed_pr_head_sha))
+
+    def candidate_lineage(reviewed_pr_head_sha: str, helper_revision: str) -> None:
+        events.append(("candidate_lineage", (reviewed_pr_head_sha, helper_revision)))
 
     def stop_before_runtime() -> dict[str, object]:
         raise RuntimeError("stop before any runtime work")
@@ -2269,6 +2468,7 @@ def test_host_v1_and_v2_runner_keep_disjoint_fixed_helper_pull_numbers(
     monkeypatch.setattr(host_helper, "_verify_installed_source", installed_source)
     monkeypatch.setattr(host_helper, "_verify_helper_source_pull_request", helper_pr)
     monkeypatch.setattr(host_helper, "_verify_hotfix_pull_request", candidate_pr)
+    monkeypatch.setattr(host_helper, "_verify_v3_pr_lineage", candidate_lineage)
     monkeypatch.setattr(host_helper, "_production_container", stop_before_runtime)
     common = {
         "repository": host_helper.REPOSITORY,
@@ -2289,6 +2489,26 @@ def test_host_v1_and_v2_runner_keep_disjoint_fixed_helper_pull_numbers(
     ]
 
     events.clear()
+    with pytest.raises(RuntimeError, match="stop before any runtime work"):
+        host_helper._run_pair_v2(
+            {
+                **common,
+                "pull_number": host_helper.HELPER_SOURCE_PR_NUMBER,
+                "reviewed_pr_head_sha": host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            },
+            format_version=3,
+        )
+    assert events == [
+        ("installed", host_helper.HOTFIX_CONTRACT),
+        ("helper_pr11", "c" * 40),
+        ("candidate_pr9", host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA),
+        (
+            "candidate_lineage",
+            (host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA, "c" * 40),
+        ),
+    ]
+
+    events.clear()
     monkeypatch.setattr(
         host_helper,
         "_verify_pull_request",
@@ -2301,6 +2521,339 @@ def test_host_v1_and_v2_runner_keep_disjoint_fixed_helper_pull_numbers(
     with pytest.raises(RuntimeError, match="stop after v1 PR gate"):
         host_helper._run_pair_v1({**common, "pull_number": host_helper.PULL_NUMBER})
     assert events == [("installed", None), ("legacy_pr2", "c" * 40)]
+
+
+def _valid_host_v3_lineage_responses() -> dict[str, object]:
+    image_source = host_helper.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    reviewed_head = host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+    helper_head = "a" * 40
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
+    new_line = (
+        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
+    )
+    root_base, root_head = "b" * 40, "c" * 40
+    nested_base, nested_head = "d" * 40, "e" * 40
+    base_blob, head_blob = "f" * 40, "1" * 40
+    return {
+        f"/repos/{host_helper.REPOSITORY}/compare/{image_source}...{reviewed_head}?per_page=1": {
+            "status": "ahead",
+            "ahead_by": 1,
+            "behind_by": 0,
+            "total_commits": 1,
+            "base_commit": {
+                "sha": image_source,
+                "commit": {"tree": {"sha": root_base}},
+            },
+            "commits": [{"sha": reviewed_head, "commit": {"tree": {"sha": root_head}}}],
+            "files": [
+                {
+                    "filename": path,
+                    "status": "modified",
+                    "additions": 1,
+                    "deletions": 1,
+                    "changes": 2,
+                    "sha": head_blob,
+                    "patch": (f"@@ -12 +12 @@\n-{old_line}\n+{new_line}\n"),
+                }
+            ],
+        },
+        f"/repos/{host_helper.REPOSITORY}/compare/{reviewed_head}...{helper_head}?per_page=1": {
+            "status": "ahead",
+            "ahead_by": 2,
+            "behind_by": 0,
+            "total_commits": 2,
+        },
+        f"/repos/{host_helper.REPOSITORY}/git/trees/{root_base}": {
+            "truncated": False,
+            "tree": [{"path": "tests", "mode": "040000", "type": "tree", "sha": nested_base}],
+        },
+        f"/repos/{host_helper.REPOSITORY}/git/trees/{root_head}": {
+            "truncated": False,
+            "tree": [{"path": "tests", "mode": "040000", "type": "tree", "sha": nested_head}],
+        },
+        f"/repos/{host_helper.REPOSITORY}/git/trees/{nested_base}": {
+            "truncated": False,
+            "tree": [
+                {
+                    "path": path.rsplit("/", 1)[1],
+                    "mode": "100644",
+                    "type": "blob",
+                    "sha": base_blob,
+                }
+            ],
+        },
+        f"/repos/{host_helper.REPOSITORY}/git/trees/{nested_head}": {
+            "truncated": False,
+            "tree": [
+                {
+                    "path": path.rsplit("/", 1)[1],
+                    "mode": "100644",
+                    "type": "blob",
+                    "sha": head_blob,
+                }
+            ],
+        },
+    }
+
+
+def test_host_v3_lineage_binds_exact_delta_to_regular_commit_tree_blobs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = _valid_host_v3_lineage_responses()
+    requests: list[str] = []
+
+    def read(path: str) -> object:
+        requests.append(path)
+        return responses[path]
+
+    monkeypatch.setattr(host_helper, "_read_v3_github_json", read)
+    host_helper._verify_v3_pr_lineage(
+        host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+        "a" * 40,
+    )
+    assert len(requests) == 6
+    assert requests[0].endswith("?per_page=1")
+    assert requests[1].endswith("?per_page=1")
+    assert all("/git/trees/" in request for request in requests[2:])
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        ("extra_file", "reviewed_pr_test_diff_mismatch"),
+        ("suffix_patch", "reviewed_pr_test_diff_mismatch"),
+        ("wrong_head_blob", "reviewed_pr_test_diff_mismatch"),
+        ("head_symlink", "reviewed_pr_tree_identity_mismatch"),
+        ("duplicate_path", "reviewed_pr_tree_invalid"),
+        ("oversized_tree", "reviewed_pr_tree_invalid"),
+        ("truncated_tree", "reviewed_pr_tree_invalid"),
+        ("unknown_entry_field", "reviewed_pr_tree_invalid"),
+        ("duplicate_blob", "reviewed_pr_test_diff_mismatch"),
+    ],
+)
+def test_host_v3_lineage_rejects_inconsistent_diff_or_tree_proof(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    error: str,
+) -> None:
+    responses = _valid_host_v3_lineage_responses()
+    compare_path = (
+        f"/repos/{host_helper.REPOSITORY}/compare/"
+        f"{host_helper.HOTFIX_V3_IMAGE_SOURCE_REVISION}..."
+        f"{host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA}?per_page=1"
+    )
+    root_head = "c" * 40
+    nested_head = "e" * 40
+    if mutation == "extra_file":
+        compare = responses[compare_path]
+        assert isinstance(compare, dict)
+        compare["files"].append(dict(compare["files"][0]))
+    elif mutation == "suffix_patch":
+        compare = responses[compare_path]
+        assert isinstance(compare, dict)
+        compare["files"][0]["patch"] += "+assert True # approved URL\n"
+    elif mutation == "wrong_head_blob":
+        compare = responses[compare_path]
+        assert isinstance(compare, dict)
+        compare["files"][0]["sha"] = "9" * 40
+    elif mutation == "head_symlink":
+        responses[f"/repos/{host_helper.REPOSITORY}/git/trees/{nested_head}"]["tree"][0]["mode"] = (
+            "120000"
+        )
+    elif mutation == "duplicate_path":
+        nested = responses[f"/repos/{host_helper.REPOSITORY}/git/trees/{nested_head}"]
+        nested["tree"].append(dict(nested["tree"][0]))
+    elif mutation == "oversized_tree":
+        root = responses[f"/repos/{host_helper.REPOSITORY}/git/trees/{root_head}"]
+        assert isinstance(root, dict)
+        root["tree"] = [
+            {"path": f"entry-{index}", "mode": "100644", "type": "blob", "sha": "f" * 40}
+            for index in range(2049)
+        ]
+    elif mutation == "truncated_tree":
+        responses[f"/repos/{host_helper.REPOSITORY}/git/trees/{root_head}"]["truncated"] = True
+    elif mutation == "unknown_entry_field":
+        responses[f"/repos/{host_helper.REPOSITORY}/git/trees/{root_head}"]["tree"][0][
+            "unexpected"
+        ] = "value"
+    elif mutation == "duplicate_blob":
+        compare = responses[compare_path]
+        assert isinstance(compare, dict)
+        compare["files"][0]["sha"] = "f" * 40
+    else:
+        raise AssertionError(mutation)
+
+    monkeypatch.setattr(host_helper, "_read_v3_github_json", lambda path: responses[path])
+    with pytest.raises(host_helper.RehearsalError, match=error):
+        host_helper._verify_v3_pr_lineage(
+            host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            "a" * 40,
+        )
+
+
+def test_host_v3_lineage_rejects_unpinned_head_before_api(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        host_helper,
+        "_read_v3_github_json",
+        lambda _path: pytest.fail("unpinned manifest head must fail before API access"),
+    )
+    with pytest.raises(host_helper.RehearsalError, match="hotfix_pr_head_unreviewed"):
+        host_helper._verify_v3_pr_lineage("9" * 40, "a" * 40)
+
+
+def test_host_v3_github_reader_rejects_duplicate_json_keys_and_routes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Response:
+        status = 200
+
+        def read(self, maximum: int) -> bytes:
+            assert maximum == host_helper.MAX_PR_RESPONSE + 1
+            return b'{"status":"ahead","status":"behind"}'
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com" and timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            assert method == "GET"
+            assert path.endswith("?per_page=1")
+            assert "Authorization" not in headers
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(host_helper.http.client, "HTTPSConnection", Connection)
+    route = (
+        f"/repos/{host_helper.REPOSITORY}/compare/"
+        f"{host_helper.HOTFIX_V3_IMAGE_SOURCE_REVISION}..."
+        f"{host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA}?per_page=1"
+    )
+    with pytest.raises(host_helper.RehearsalError, match="v3_lineage_invalid"):
+        host_helper._read_v3_github_json(route)
+    with pytest.raises(host_helper.RehearsalError, match="v3_lineage_route_invalid"):
+        host_helper._read_v3_github_json("/repos/eddiesoz/stock_probs/issues")
+
+
+def test_host_v3_github_reader_rejects_oversized_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Response:
+        status = 200
+
+        def read(self, maximum: int) -> bytes:
+            assert maximum == host_helper.MAX_PR_RESPONSE + 1
+            return b" " * maximum
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com" and timeout == 10
+            self.closed = False
+            connections.append(self)
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            assert method == "GET"
+            assert path.startswith(f"/repos/{host_helper.REPOSITORY}/compare/")
+            assert "Authorization" not in headers
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            self.closed = True
+
+    connections: list[Connection] = []
+    monkeypatch.setattr(host_helper.http.client, "HTTPSConnection", Connection)
+    route = (
+        f"/repos/{host_helper.REPOSITORY}/compare/"
+        f"{host_helper.HOTFIX_V3_IMAGE_SOURCE_REVISION}..."
+        f"{host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA}?per_page=1"
+    )
+    with pytest.raises(host_helper.RehearsalError, match="v3_lineage_unavailable"):
+        host_helper._read_v3_github_json(route)
+    assert len(connections) == 1 and connections[0].closed is True
+
+
+@pytest.mark.parametrize(
+    ("head_mode", "same_blob", "error"),
+    [
+        ("100644", False, None),
+        ("120000", False, "reviewed_pr_tree_identity_mismatch"),
+        ("100644", True, "reviewed_pr_test_diff_mismatch"),
+    ],
+)
+def test_controller_v3_admission_requires_exact_delta_and_regular_blobs(
+    monkeypatch: pytest.MonkeyPatch,
+    head_mode: str,
+    same_blob: bool,
+    error: str | None,
+) -> None:
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
+    new_line = (
+        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
+    )
+    commands: list[list[str]] = []
+    base_blob, head_blob = "f" * 40, "1" * 40
+    if same_blob:
+        head_blob = base_blob
+
+    def run_fixed(command: list[str], *, timeout: float, input_bytes: bytes | None = None) -> bytes:
+        assert timeout == 10 and input_bytes is None
+        commands.append(command)
+        if command[1] == "merge-base":
+            return b""
+        if command[1] == "diff":
+            if "--name-status" in command:
+                return f"M\t{path}\n".encode()
+            if "--numstat" in command:
+                return f"1\t1\t{path}\n".encode()
+            if "--summary" in command:
+                return b""
+            if "--unified=0" in command:
+                return f"-{old_line}\n+{new_line}\n".encode()
+        if command[1] == "ls-tree":
+            commit_sha = command[4]
+            mode = (
+                head_mode if commit_sha == controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA else "100644"
+            )
+            blob_sha = (
+                head_blob if commit_sha == controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA else base_blob
+            )
+            return f"{mode} blob {blob_sha}\t{path}\0".encode()
+        raise AssertionError(command)
+
+    monkeypatch.setattr(controller, "_run_fixed", run_fixed)
+    if error is None:
+        controller._verify_local_v3_pr_lineage(
+            controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            "a" * 40,
+        )
+        assert len(commands) == 8
+    else:
+        with pytest.raises(controller.RehearsalError, match=error):
+            controller._verify_local_v3_pr_lineage(
+                controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+                "a" * 40,
+            )
+
+
+def test_controller_rejects_unpinned_pr9_before_local_git(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        controller,
+        "_run_fixed",
+        lambda *_args, **_kwargs: pytest.fail("unpinned head must fail before Git"),
+    )
+    with pytest.raises(controller.RehearsalError, match="reviewed_pr_head_invalid"):
+        controller._verify_local_v3_pr_lineage("9" * 40, "a" * 40)
 
 
 def test_bootstrap_install_requires_fixed_reviewed_manifest_digest() -> None:
@@ -4566,6 +5119,7 @@ def test_bootstrap_e1_prior_helper_refresh_rolls_back_and_retries_candidate(
     "extra",
     [
         {"helper_source_contract": "pr=11"},
+        {"helper_source_contract": "schema13_same_schema_hotfix_v3"},
         {"helper_source_contract": bootstrap.HELPER_SOURCE_CONTRACT, "pull_number": 11},
     ],
 )
@@ -6206,6 +6760,67 @@ def test_controller_requires_actual_enabled_candidate_native_evidence() -> None:
     evidence = controller._validated_native_evidence(_controller_native_evidence())
 
     assert evidence == _controller_native_evidence()
+
+
+def test_common_host_response_preserves_v1_and_strictly_binds_v2_v3_identity() -> None:
+    response: dict[str, object] = {
+        "reviewed_head_sha": "a" * 40,
+        "pair_manifest_sha256": "b" * 64,
+        "candidate_image_id": "sha256:" + "c" * 64,
+        "recovery_image_id": "sha256:" + "d" * 64,
+        "same_disposable_volume": True,
+        "production_mutation": False,
+        "candidate_container_removed": True,
+        "recovery_container_removed": True,
+        "volume_removed": True,
+        "images_retained": True,
+        "architecture": "x86_64",
+    }
+    common = {
+        "reviewed_head_sha": "a" * 40,
+        "reviewed_pr_head_sha": None,
+        "pair_manifest_sha256": "b" * 64,
+        "candidate_image_id": "sha256:" + "c" * 64,
+        "recovery_image_id": "sha256:" + "d" * 64,
+    }
+
+    controller._validate_common_host_response(response, format_version=1, **common)
+
+    v2 = {
+        **response,
+        "contract": controller.HOTFIX_CONTRACT,
+        "candidate_revision": controller.HOTFIX_CANDIDATE_REVISION,
+        "candidate_source_context_sha256": controller.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "candidate_build_receipt_sha256": controller.HOTFIX_BUILD_RECEIPT_SHA256,
+    }
+    controller._validate_common_host_response(v2, format_version=2, **common)
+
+    v3 = {
+        **response,
+        "contract": controller.HOTFIX_V3_CONTRACT,
+        "candidate_revision": controller.HOTFIX_V3_IMAGE_SOURCE_REVISION,
+        "candidate_source_context_sha256": controller.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+        "candidate_build_receipt_sha256": controller.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        "reviewed_pr_head_sha": controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+        "reviewed_pr_lineage_verified": True,
+    }
+    controller._validate_common_host_response(
+        v3,
+        format_version=3,
+        **{**common, "reviewed_pr_head_sha": controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA},
+    )
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validate_common_host_response(
+            {**v3, "reviewed_pr_head_sha": "e" * 40},
+            format_version=3,
+            **{**common, "reviewed_pr_head_sha": "e" * 40},
+        )
+    with pytest.raises(controller.RehearsalError, match="host_response_invalid"):
+        controller._validate_common_host_response(
+            response,
+            format_version=3,
+            **{**common, "reviewed_pr_head_sha": controller.HOTFIX_V3_REVIEWED_PR_HEAD_SHA},
+        )
 
 
 @pytest.mark.parametrize(

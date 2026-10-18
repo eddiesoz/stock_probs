@@ -29,11 +29,13 @@ ASSISTANT_ROLLOUT_MODES = frozenset({"disabled", "owner_canary", "invited"})
 ASSISTANT_READY_SCHEMA = 13
 LOCAL_IMAGE_REPOSITORY = "signal-ledger"
 HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
+HOTFIX_V3_CANDIDATE_REVISION = "68c225a25a76c4bd65c6309e00dd13200a1d4678"
 HOTFIX_RECOVERY_REVISION = "5ad2c3fddfce5a5a631b72cd832a53f24757c44a"
 TEMPORARY_RECOVERY_SOURCE_REVISION = "63597953c9d1ab387563dadfe705b78a2861a426"
 TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB = 128 * 1024
 TEMPORARY_RECOVERY_STARTUP_FLOOR_KIB = 512 * 1024
 HOTFIX_PAIR_CONTRACT = "schema13_same_schema_hotfix_v1"
+HOTFIX_PAIR_CONTRACT_V3 = "schema13_same_schema_hotfix_v3"
 HOST = re.compile(r"^[A-Za-z0-9.-]{1,253}$")
 USER = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 MAX_RESPONSE_BYTES = 65_536
@@ -69,16 +71,30 @@ def _valid_hotfix_identity(
         "recovery_contract",
         "helper_source_revision",
         "candidate_release_revision",
+        "reviewed_pr_head_sha",
     }
-    if requested_revision != HOTFIX_CANDIDATE_REVISION:
+    if requested_revision == HOTFIX_CANDIDATE_REVISION:
+        expected_contract = HOTFIX_PAIR_CONTRACT
+    elif requested_revision == HOTFIX_V3_CANDIDATE_REVISION:
+        expected_contract = HOTFIX_PAIR_CONTRACT_V3
+    else:
         return not any(field in response for field in identity_fields)
     helper_revision = response.get("helper_source_revision")
     if (
-        response.get("recovery_contract") != HOTFIX_PAIR_CONTRACT
+        response.get("recovery_contract") != expected_contract
         or not isinstance(helper_revision, str)
         or REVISION.fullmatch(helper_revision) is None
         or helper_revision == requested_revision
     ):
+        return False
+    reviewed_pr_head_sha = response.get("reviewed_pr_head_sha")
+    if requested_revision == HOTFIX_V3_CANDIDATE_REVISION:
+        if (
+            not isinstance(reviewed_pr_head_sha, str)
+            or REVISION.fullmatch(reviewed_pr_head_sha) is None
+        ):
+            return False
+    elif "reviewed_pr_head_sha" in response:
         return False
     if not rollback:
         return "candidate_release_revision" not in response
@@ -769,7 +785,10 @@ class DeployController:
             payload["image_id"] = image_id
         response = self._invoke("rollback", payload, timeout=900)
         expected_response_revision = revision
-        if revision == HOTFIX_CANDIDATE_REVISION and response.get("release_role") == "recovery":
+        if (
+            revision in {HOTFIX_CANDIDATE_REVISION, HOTFIX_V3_CANDIDATE_REVISION}
+            and response.get("release_role") == "recovery"
+        ):
             expected_response_revision = HOTFIX_RECOVERY_REVISION
         if (
             response.get("revision") != expected_response_revision
@@ -820,7 +839,7 @@ class DeployController:
             if current.get("release_role", "candidate") != "candidate":
                 raise DeployError("assistant_recovery_image_disabled")
             local_revision = self._local_rollout_revision()
-            if revision == HOTFIX_CANDIDATE_REVISION:
+            if revision in {HOTFIX_CANDIDATE_REVISION, HOTFIX_V3_CANDIDATE_REVISION}:
                 helper_revision = current.get("helper_source_revision")
                 pair_manifest_sha256 = current.get("pair_manifest_sha256")
                 if (

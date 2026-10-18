@@ -26,6 +26,12 @@ HELPER_SOURCE_PR_NUMBER = 11
 HOTFIX_PR_NUMBER = 9
 HOTFIX_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
+HOTFIX_V3_CONTRACT = "schema13_same_schema_hotfix_v3"
+HOTFIX_V3_IMAGE_SOURCE_REVISION = "68c225a25a76c4bd65c6309e00dd13200a1d4678"
+HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "c2fe99cbd486b93958c6d5c398da9fc25ddd7075"
+HOTFIX_V3_IMAGE_ID = "sha256:c3ac6f43749404e36e0ae94a8d749ccafe4c882216db09484c1c34f6fbad5f78"
+HOTFIX_V3_IMAGE_CONTEXT_SHA256 = "e0e79be05acad60f4220c3152c32ba5c5b31aa7c394e36cf28de30fcf31d7458"
+HOTFIX_V3_BUILD_RECEIPT_SHA256 = "a73f76fb2792efb88ed88326ff84f8b22db3f09181dc0571f9ba0aea8c561ae1"
 HOTFIX_CANDIDATE_IMAGE_ID = (
     "sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196"
 )
@@ -1067,8 +1073,16 @@ def verify_helper_source_pull_request(reviewed_head_sha: str) -> dict[str, objec
     }
 
 
-def verify_hotfix_pull_request() -> dict[str, object]:
-    """Require the fixed PR #9 hotfix candidate to remain open at its accepted image head."""
+def verify_hotfix_pull_request(reviewed_pr_head_sha: str | None = None) -> dict[str, object]:
+    """Require PR #9 to remain open at its explicitly bound reviewed test head."""
+
+    expected_head_sha = (
+        HOTFIX_CANDIDATE_REVISION if reviewed_pr_head_sha is None else reviewed_pr_head_sha
+    )
+    if REVISION.fullmatch(expected_head_sha) is None:
+        raise RehearsalError("hotfix_pr_head_invalid")
+    if reviewed_pr_head_sha is not None and expected_head_sha != HOTFIX_V3_REVIEWED_PR_HEAD_SHA:
+        raise RehearsalError("hotfix_pr_head_unreviewed")
 
     connection = http.client.HTTPSConnection("api.github.com", timeout=10)
     try:
@@ -1105,7 +1119,7 @@ def verify_hotfix_pull_request() -> dict[str, object]:
         or not isinstance(base, dict)
         or base.get("ref") != "main"
         or not isinstance(head, dict)
-        or head.get("sha") != HOTFIX_CANDIDATE_REVISION
+        or head.get("sha") != expected_head_sha
         or not isinstance(source_repository, dict)
         or source_repository.get("full_name") != REPOSITORY
     ):
@@ -1115,7 +1129,7 @@ def verify_hotfix_pull_request() -> dict[str, object]:
         "pull_number": HOTFIX_PR_NUMBER,
         "state": "open",
         "base": "main",
-        "head_sha": HOTFIX_CANDIDATE_REVISION,
+        "head_sha": expected_head_sha,
         "draft": payload.get("draft") is True,
     }
 
@@ -1141,11 +1155,16 @@ def _read_regular_file(path: Path, *, maximum: int, label: str) -> bytes:
     return data
 
 
-def _hotfix_pair_asset_names(reviewed_head_sha: str) -> dict[str, str]:
-    """Return the fixed, versioned source archive names for the schema-13 hotfix pair."""
+def _hotfix_pair_asset_names(reviewed_head_sha: str, *, format_version: int = 2) -> dict[str, str]:
+    """Return fixed archive names while keeping helper and image revisions distinct."""
 
+    if format_version not in {2, 3}:
+        raise RehearsalError("pair_manifest_version_unsupported")
+    candidate_revision = (
+        HOTFIX_V3_IMAGE_SOURCE_REVISION if format_version == 3 else HOTFIX_CANDIDATE_REVISION
+    )
     return {
-        "candidate": f"signal-ledger-image-{HOTFIX_CANDIDATE_REVISION}.tar.gz",
+        "candidate": f"signal-ledger-image-{candidate_revision}.tar.gz",
         "recovery": f"signal-ledger-image-{PRODUCTION_BASELINE['revision']}.tar.gz",
         "manifest": f"signal-ledger-pair-{reviewed_head_sha}.json",
     }
@@ -1164,7 +1183,17 @@ def _artifact_pair_hotfix(
 ) -> tuple[dict[str, object], dict[str, bytes]]:
     """Validate the additive same-schema contract against fixed candidate and recovery pins."""
 
-    names = _hotfix_pair_asset_names(reviewed_head_sha)
+    if not isinstance(manifest, dict):
+        raise RehearsalError("pair_manifest_invalid")
+    format_version = manifest.get("format_version")
+    if type(format_version) is not int or format_version not in {2, 3}:
+        raise RehearsalError("pair_manifest_version_unsupported")
+    v3 = format_version == 3
+    image_revision = HOTFIX_V3_IMAGE_SOURCE_REVISION if v3 else HOTFIX_CANDIDATE_REVISION
+    image_id = HOTFIX_V3_IMAGE_ID if v3 else HOTFIX_CANDIDATE_IMAGE_ID
+    image_context = HOTFIX_V3_IMAGE_CONTEXT_SHA256 if v3 else HOTFIX_CANDIDATE_CONTEXT_SHA256
+    build_receipt = HOTFIX_V3_BUILD_RECEIPT_SHA256 if v3 else HOTFIX_BUILD_RECEIPT_SHA256
+    names = _hotfix_pair_asset_names(reviewed_head_sha, format_version=format_version)
     try:
         candidate_archive = _read_regular_file(
             ARTIFACT_DIRECTORY / names["candidate"],
@@ -1179,31 +1208,37 @@ def _artifact_pair_hotfix(
     except RehearsalError:
         raise
 
-    if not isinstance(manifest, dict):
-        raise RehearsalError("pair_manifest_invalid")
     candidate = manifest.get("candidate")
     recovery = manifest.get("recovery")
     helper_source = manifest.get("helper_source")
     transition = manifest.get("transition")
     overlay = manifest.get("recovery_overlay")
+    expected_root_keys = {
+        "format_version",
+        "contract",
+        "repository",
+        "revision",
+        "helper_source",
+        "candidate",
+        "recovery",
+        "transition",
+        "recovery_overlay",
+    }
+    if v3:
+        expected_root_keys.update({"reviewed_pr_head_sha", "image_source_revision"})
     expected = (
-        set(manifest)
-        == {
-            "format_version",
-            "contract",
-            "repository",
-            "revision",
-            "helper_source",
-            "candidate",
-            "recovery",
-            "transition",
-            "recovery_overlay",
-        }
-        and type(manifest.get("format_version")) is int
-        and manifest.get("format_version") == 2
-        and manifest.get("contract") == HOTFIX_CONTRACT
+        set(manifest) == expected_root_keys
+        and manifest.get("contract") == (HOTFIX_V3_CONTRACT if v3 else HOTFIX_CONTRACT)
         and manifest.get("repository") == REPOSITORY
         and manifest.get("revision") == reviewed_head_sha
+        and (
+            not v3
+            or (
+                isinstance(manifest.get("reviewed_pr_head_sha"), str)
+                and manifest["reviewed_pr_head_sha"] == HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+                and manifest.get("image_source_revision") == image_revision
+            )
+        )
         and isinstance(helper_source, dict)
         and set(helper_source) == {"pull_number", "revision"}
         and type(helper_source.get("pull_number")) is int
@@ -1227,17 +1262,17 @@ def _artifact_pair_hotfix(
         and candidate.get("archive_sha256") == hashlib.sha256(candidate_archive).hexdigest()
         and type(candidate.get("archive_size")) is int
         and candidate.get("archive_size") == len(candidate_archive)
-        and candidate.get("image_id") == HOTFIX_CANDIDATE_IMAGE_ID == candidate_image_id
+        and candidate.get("image_id") == image_id == candidate_image_id
         and candidate.get("platform") == "linux/amd64"
         and type(candidate.get("pull_number")) is int
         and candidate.get("pull_number") == HOTFIX_PR_NUMBER
-        and candidate.get("revision") == HOTFIX_CANDIDATE_REVISION
+        and candidate.get("revision") == image_revision
         and type(candidate.get("schema_version")) is int
         and candidate.get("schema_version") == 13
         and candidate.get("source_context_sha256")
-        == HOTFIX_CANDIDATE_CONTEXT_SHA256
+        == image_context
         == candidate_source_context_sha256
-        and candidate.get("build_receipt_sha256") == HOTFIX_BUILD_RECEIPT_SHA256
+        and candidate.get("build_receipt_sha256") == build_receipt
         and isinstance(recovery, dict)
         and set(recovery)
         == {
@@ -1332,7 +1367,7 @@ def _artifact_pair(
         manifest: object = json.loads(manifest_bytes)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RehearsalError("pair_manifest_invalid") from exc
-    if isinstance(manifest, dict) and manifest.get("format_version") == 2:
+    if isinstance(manifest, dict) and manifest.get("format_version") in {2, 3}:
         return _artifact_pair_hotfix(
             reviewed_head_sha,
             manifest=manifest,
@@ -1498,10 +1533,16 @@ def write_review_pins_from_current_pair() -> dict[str, str]:
         recovery_overlay_sha256=overlay,
         pair_manifest_sha256=pair_manifest_sha256,
     )
-    if manifest_value.get("format_version") == 2:
+    if manifest_value.get("format_version") in {2, 3}:
         _verify_local_helper_checkout(reviewed_head_sha)
         verify_helper_source_pull_request(reviewed_head_sha)
-        verify_hotfix_pull_request()
+        verify_hotfix_pull_request(
+            manifest_value.get("reviewed_pr_head_sha")
+            if manifest_value.get("format_version") == 3
+            else None
+        )
+        if manifest_value.get("format_version") == 3:
+            _verify_local_v3_pr_lineage(manifest_value["reviewed_pr_head_sha"], reviewed_head_sha)
     else:
         _verify_local_reviewed_source(
             reviewed_head_sha,
@@ -1614,6 +1655,131 @@ def _verify_local_helper_checkout(reviewed_head_sha: str) -> None:
         raise RehearsalError("reviewed_local_source_mismatch")
     if changes:
         raise RehearsalError("reviewed_local_source_dirty")
+
+
+def _local_v3_test_blob_sha(commit_sha: str) -> str:
+    """Require the fixed PR #9 regression path to be a regular tracked blob."""
+
+    if REVISION.fullmatch(commit_sha) is None:
+        raise RehearsalError("reviewed_pr_tree_invalid")
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    raw = _run_fixed(
+        [
+            "/usr/bin/git",
+            "ls-tree",
+            "-z",
+            "--full-tree",
+            commit_sha,
+            "--",
+            path,
+        ],
+        timeout=10,
+    )
+    records = raw[:-1].split(b"\0") if raw.endswith(b"\0") else []
+    if len(records) != 1:
+        raise RehearsalError("reviewed_pr_tree_identity_mismatch")
+    metadata, separator, reported_path = records[0].partition(b"\t")
+    fields = metadata.split(b" ")
+    if (
+        separator != b"\t"
+        or reported_path != path.encode("ascii")
+        or len(fields) != 3
+        or fields[0] != b"100644"
+        or fields[1] != b"blob"
+        or re.fullmatch(rb"[0-9a-f]{40}", fields[2]) is None
+    ):
+        raise RehearsalError("reviewed_pr_tree_identity_mismatch")
+    return fields[2].decode("ascii")
+
+
+def _verify_local_v3_pr_lineage(reviewed_pr_head_sha: str, helper_sha: str) -> None:
+    """Prove the exact PR #9 delta and both ancestry links before staging or admission."""
+
+    if (
+        reviewed_pr_head_sha != HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+        or REVISION.fullmatch(helper_sha) is None
+    ):
+        raise RehearsalError("reviewed_pr_head_invalid")
+    for base, descendant in (
+        (HOTFIX_V3_IMAGE_SOURCE_REVISION, reviewed_pr_head_sha),
+        (reviewed_pr_head_sha, helper_sha),
+    ):
+        _run_fixed(["/usr/bin/git", "merge-base", "--is-ancestor", base, descendant], timeout=10)
+
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    names = _run_fixed(
+        [
+            "/usr/bin/git",
+            "diff",
+            "--name-status",
+            "--no-renames",
+            HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            reviewed_pr_head_sha,
+        ],
+        timeout=10,
+    )
+    counts = _run_fixed(
+        [
+            "/usr/bin/git",
+            "diff",
+            "--numstat",
+            "--no-renames",
+            HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            reviewed_pr_head_sha,
+        ],
+        timeout=10,
+    )
+    modes = _run_fixed(
+        [
+            "/usr/bin/git",
+            "diff",
+            "--summary",
+            "--no-renames",
+            HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            reviewed_pr_head_sha,
+            "--",
+            path,
+        ],
+        timeout=10,
+    )
+    patch = _run_fixed(
+        [
+            "/usr/bin/git",
+            "diff",
+            "--no-ext-diff",
+            "--no-renames",
+            "--unified=0",
+            HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            reviewed_pr_head_sha,
+            "--",
+            path,
+        ],
+        timeout=10,
+    )
+    try:
+        changed_lines = [
+            line
+            for line in patch.decode("utf-8", errors="strict").splitlines()
+            if (line.startswith("+") and not line.startswith("+++"))
+            or (line.startswith("-") and not line.startswith("---"))
+        ]
+    except UnicodeDecodeError as exc:
+        raise RehearsalError("reviewed_pr_diff_invalid") from exc
+    expected_changed_lines = [
+        '-    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"',
+        '+    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"',
+    ]
+    if (
+        names != f"M\t{path}\n".encode()
+        or counts != f"1\t1\t{path}\n".encode()
+        or modes != b""
+        or changed_lines != expected_changed_lines
+    ):
+        raise RehearsalError("reviewed_pr_test_diff_mismatch")
+    base_blob = _local_v3_test_blob_sha(HOTFIX_V3_IMAGE_SOURCE_REVISION)
+    reviewed_blob = _local_v3_test_blob_sha(reviewed_pr_head_sha)
+    if base_blob == reviewed_blob:
+        raise RehearsalError("reviewed_pr_test_diff_mismatch")
 
 
 def _ssh_prefix(config: RehearsalConfig) -> list[str]:
@@ -1803,6 +1969,66 @@ def _stage_source_bundle(
         raise RehearsalError("bootstrap_install_failed")
 
 
+def _validate_common_host_response(
+    response: dict[str, object],
+    *,
+    format_version: int,
+    reviewed_head_sha: str,
+    reviewed_pr_head_sha: str | None,
+    pair_manifest_sha256: str,
+    candidate_image_id: str,
+    recovery_image_id: str,
+) -> None:
+    """Preserve v1's response shape and apply fixed-image identity checks only to v2/v3."""
+
+    if type(format_version) is not int or format_version not in {1, 2, 3}:
+        raise RehearsalError("host_response_invalid")
+    invalid = (
+        response.get("reviewed_head_sha") != reviewed_head_sha
+        or response.get("pair_manifest_sha256") != pair_manifest_sha256
+        or response.get("candidate_image_id") != candidate_image_id
+        or response.get("recovery_image_id") != recovery_image_id
+        or response.get("same_disposable_volume") is not True
+        or response.get("production_mutation") is not False
+        or response.get("candidate_container_removed") is not True
+        or response.get("recovery_container_removed") is not True
+        or response.get("volume_removed") is not True
+        or response.get("images_retained") is not True
+        or response.get("architecture") not in {"x86_64", "aarch64"}
+    )
+    if format_version in {2, 3}:
+        invalid = invalid or (
+            response.get("contract")
+            != (HOTFIX_V3_CONTRACT if format_version == 3 else HOTFIX_CONTRACT)
+            or response.get("candidate_revision")
+            != (
+                HOTFIX_V3_IMAGE_SOURCE_REVISION
+                if format_version == 3
+                else HOTFIX_CANDIDATE_REVISION
+            )
+            or response.get("candidate_source_context_sha256")
+            != (
+                HOTFIX_V3_IMAGE_CONTEXT_SHA256
+                if format_version == 3
+                else HOTFIX_CANDIDATE_CONTEXT_SHA256
+            )
+            or response.get("candidate_build_receipt_sha256")
+            != (
+                HOTFIX_V3_BUILD_RECEIPT_SHA256
+                if format_version == 3
+                else HOTFIX_BUILD_RECEIPT_SHA256
+            )
+        )
+    if format_version == 3:
+        invalid = invalid or (
+            reviewed_pr_head_sha != HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+            or response.get("reviewed_pr_head_sha") != HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+            or response.get("reviewed_pr_lineage_verified") is not True
+        )
+    if invalid:
+        raise RehearsalError("host_response_invalid")
+
+
 def rehearse_pr_pair(
     *,
     reviewed_head_sha: str,
@@ -1832,10 +2058,14 @@ def rehearse_pr_pair(
     helper_source_receipt: dict[str, object] | None = None
     pr_receipt: dict[str, object] | None = None
     hotfix_pr_receipt: dict[str, object] | None = None
-    if manifest.get("format_version") == 2:
+    if manifest.get("format_version") in {2, 3}:
         _verify_local_helper_checkout(reviewed_head_sha)
         helper_source_receipt = verify_helper_source_pull_request(reviewed_head_sha)
-        hotfix_pr_receipt = verify_hotfix_pull_request()
+        hotfix_pr_receipt = verify_hotfix_pull_request(
+            manifest.get("reviewed_pr_head_sha") if manifest.get("format_version") == 3 else None
+        )
+        if manifest.get("format_version") == 3:
+            _verify_local_v3_pr_lineage(manifest["reviewed_pr_head_sha"], reviewed_head_sha)
     else:
         pr_receipt = verify_pull_request(reviewed_head_sha)
         _verify_local_reviewed_source(
@@ -1845,7 +2075,7 @@ def rehearse_pr_pair(
             recovery_overlay_sha256=recovery_overlay_sha256,
         )
     source_assets, source_hashes = _source_bundle(
-        include_production_helper=manifest.get("format_version") == 2
+        include_production_helper=manifest.get("format_version") in {2, 3}
     )
     _ensure_incoming_directories(config)
     try:
@@ -1856,7 +2086,7 @@ def rehearse_pr_pair(
             source_assets,
             source_hashes,
             helper_source_contract=(
-                HOTFIX_CONTRACT if manifest.get("format_version") == 2 else None
+                HOTFIX_CONTRACT if manifest.get("format_version") in {2, 3} else None
             ),
         )
         _stage_assets(config, reviewed_head_sha, assets)
@@ -1868,7 +2098,7 @@ def rehearse_pr_pair(
         "payload": {
             "repository": REPOSITORY,
             "pull_number": (
-                HELPER_SOURCE_PR_NUMBER if manifest.get("format_version") == 2 else PULL_NUMBER
+                HELPER_SOURCE_PR_NUMBER if manifest.get("format_version") in {2, 3} else PULL_NUMBER
             ),
             "reviewed_head_sha": reviewed_head_sha,
             "candidate_image_id": candidate_image_id,
@@ -1879,6 +2109,11 @@ def rehearse_pr_pair(
             "pair_manifest_sha256": pair_manifest_sha256,
             "candidate_archive_sha256": manifest["candidate"]["archive_sha256"],
             "recovery_archive_sha256": manifest["recovery"]["archive_sha256"],
+            **(
+                {"reviewed_pr_head_sha": manifest["reviewed_pr_head_sha"]}
+                if manifest.get("format_version") == 3
+                else {}
+            ),
         },
     }
     encoded = json.dumps(request, separators=(",", ":"), allow_nan=False).encode("utf-8")
@@ -1903,23 +2138,20 @@ def rehearse_pr_pair(
             code = "host_rehearsal_failed"
         details = _safe_host_failure_details(response)
         raise RehearsalError(code, details=details)
-    common_response_valid = (
-        response.get("reviewed_head_sha") != reviewed_head_sha
-        or response.get("pair_manifest_sha256") != pair_manifest_sha256
-        or response.get("candidate_image_id") != candidate_image_id
-        or response.get("recovery_image_id") != recovery_image_id
-        or response.get("same_disposable_volume") is not True
-        or response.get("production_mutation") is not False
-        or response.get("candidate_container_removed") is not True
-        or response.get("recovery_container_removed") is not True
-        or response.get("volume_removed") is not True
-        or response.get("images_retained") is not True
-        or response.get("architecture") not in {"x86_64", "aarch64"}
+    format_version = manifest.get("format_version")
+    _validate_common_host_response(
+        response,
+        format_version=format_version,
+        reviewed_head_sha=reviewed_head_sha,
+        reviewed_pr_head_sha=(
+            manifest.get("reviewed_pr_head_sha") if format_version == 3 else None
+        ),
+        pair_manifest_sha256=pair_manifest_sha256,
+        candidate_image_id=candidate_image_id,
+        recovery_image_id=recovery_image_id,
     )
-    if common_response_valid:
-        raise RehearsalError("host_response_invalid")
     native_evidence: dict[str, object] = {}
-    if manifest.get("format_version") == 2 and (
+    if manifest.get("format_version") in {2, 3} and (
         response.get("schema13_same_schema_verified") is not True
         or type(response.get("migration_commands_executed")) is not int
         or response.get("migration_commands_executed") != 0
@@ -1934,7 +2166,7 @@ def rehearse_pr_pair(
         or hotfix_pr_receipt is None
     ):
         raise RehearsalError("host_response_invalid")
-    if manifest.get("format_version") == 2:
+    if manifest.get("format_version") in {2, 3}:
         native_evidence = _validated_native_evidence(response)
     if manifest.get("format_version") == 1 and (
         response.get("recovery_process_isolation_verified") is not True
@@ -1943,7 +2175,7 @@ def rehearse_pr_pair(
     production_baseline_value = response.get("production_baseline")
     production_baseline = (
         _validated_v2_production_baseline(production_baseline_value)
-        if manifest.get("format_version") == 2
+        if manifest.get("format_version") in {2, 3}
         else _validated_production_baseline(production_baseline_value)
     )
     resource_evidence = _validated_resource_evidence(response)
@@ -1951,7 +2183,7 @@ def rehearse_pr_pair(
         "status": "pass",
         "rehearsal": (
             "pr_bound_schema13_same_schema_hotfix"
-            if manifest.get("format_version") == 2
+            if manifest.get("format_version") in {2, 3}
             else "pr_bound_schema13_pair"
         ),
         "pull_request": (
@@ -1959,7 +2191,7 @@ def rehearse_pr_pair(
                 "helper_source": helper_source_receipt,
                 "hotfix_candidate": hotfix_pr_receipt,
             }
-            if manifest.get("format_version") == 2
+            if manifest.get("format_version") in {2, 3}
             else pr_receipt
         ),
         "reviewed_head_sha": reviewed_head_sha,
@@ -2009,8 +2241,11 @@ def rehearse_pr_pair(
             **resource_evidence,
         },
     }
-    if manifest.get("format_version") == 2:
+    if manifest.get("format_version") in {2, 3}:
         result["hotfix_candidate_pull_number"] = HOTFIX_PR_NUMBER
+    if manifest.get("format_version") == 3:
+        result["image_source_revision"] = manifest["image_source_revision"]
+        result["reviewed_pr_head_sha"] = manifest["reviewed_pr_head_sha"]
     return result
 
 

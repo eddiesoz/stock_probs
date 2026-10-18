@@ -290,7 +290,7 @@ test("WebFetch approval refreshes page context and removes a stale preview befor
   const post = confirm.indexOf("const result = await assistantRequest", compare);
   const endpoint = confirm.indexOf("/webfetch-previews/", post);
   assert.ok(refresh >= 0 && compare > refresh && post > compare && endpoint > post);
-  assert.match(confirm, /setWebFetchPreviews\(\(current\) => current\.filter\(\(item\) => item\.preview_id !== preview\.preview_id\)\)/);
+  assert.match(confirm, /updateWebFetchPreviews\(\(current\) => current\.filter\(\(item\) => item\.preview_id !== preview\.preview_id\)\)/);
   assert.match(confirm, /No URL was sent; ask again for a fresh preview/);
   assert.match(confirm, /confirmationContext \? \{ context: confirmationContext \} : \{\}/);
 });

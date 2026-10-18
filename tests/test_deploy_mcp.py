@@ -17,11 +17,14 @@ from controller import (  # noqa: E402
     FIREWALL_RESOURCE,
     HOTFIX_CANDIDATE_REVISION,
     HOTFIX_PAIR_CONTRACT,
+    HOTFIX_PAIR_CONTRACT_V3,
+    HOTFIX_V3_CANDIDATE_REVISION,
     MAX_RESPONSE_BYTES,
     DeployConfig,
     DeployController,
     DeployError,
     _run_bounded_ssh,
+    _valid_hotfix_identity,
     _validate_firewall_plan,
 )
 
@@ -727,6 +730,62 @@ def test_hotfix_rollout_checks_helper_head_but_sends_candidate_app_identity(
             600,
         )
     ]
+
+
+def test_dual_head_identity_requires_separate_test_head_and_image_revision() -> None:
+    helper_revision = "a" * 40
+    reviewed_pr_head_sha = "b" * 40
+    candidate = {
+        "revision": HOTFIX_V3_CANDIDATE_REVISION,
+        "recovery_contract": HOTFIX_PAIR_CONTRACT_V3,
+        "helper_source_revision": helper_revision,
+        "reviewed_pr_head_sha": reviewed_pr_head_sha,
+    }
+
+    assert _valid_hotfix_identity(candidate, HOTFIX_V3_CANDIDATE_REVISION)
+    assert not _valid_hotfix_identity(
+        {key: value for key, value in candidate.items() if key != "reviewed_pr_head_sha"},
+        HOTFIX_V3_CANDIDATE_REVISION,
+    )
+    assert not _valid_hotfix_identity(
+        {**candidate, "reviewed_pr_head_sha": "not-a-commit"},
+        HOTFIX_V3_CANDIDATE_REVISION,
+    )
+    assert not _valid_hotfix_identity(
+        {
+            **candidate,
+            "recovery_contract": HOTFIX_PAIR_CONTRACT,
+        },
+        HOTFIX_V3_CANDIDATE_REVISION,
+    )
+    assert not _valid_hotfix_identity(
+        {
+            "revision": HOTFIX_CANDIDATE_REVISION,
+            "recovery_contract": HOTFIX_PAIR_CONTRACT,
+            "helper_source_revision": helper_revision,
+            "reviewed_pr_head_sha": reviewed_pr_head_sha,
+        },
+        HOTFIX_CANDIDATE_REVISION,
+    )
+
+
+def test_dual_head_rollback_response_keeps_candidate_revision_explicit() -> None:
+    helper_revision = "a" * 40
+    reviewed_pr_head_sha = "b" * 40
+    response = {
+        "recovery_contract": HOTFIX_PAIR_CONTRACT_V3,
+        "helper_source_revision": helper_revision,
+        "reviewed_pr_head_sha": reviewed_pr_head_sha,
+        "candidate_release_revision": HOTFIX_V3_CANDIDATE_REVISION,
+        "release_role": "recovery",
+        "revision": "5ad2c3fddfce5a5a631b72cd832a53f24757c44a",
+    }
+    assert _valid_hotfix_identity(response, HOTFIX_V3_CANDIDATE_REVISION, rollback=True)
+    assert not _valid_hotfix_identity(
+        {key: value for key, value in response.items() if key != "reviewed_pr_head_sha"},
+        HOTFIX_V3_CANDIDATE_REVISION,
+        rollback=True,
+    )
 
 
 @pytest.mark.parametrize(
