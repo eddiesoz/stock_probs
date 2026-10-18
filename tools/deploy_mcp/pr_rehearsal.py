@@ -2146,17 +2146,17 @@ def rehearse_pr_pair(
         include_production_helper=manifest.get("format_version") in {2, 3}
     )
     _ensure_incoming_directories(config)
+    _stage_source_bundle(
+        config,
+        reviewed_head_sha,
+        pair_manifest_sha256,
+        source_assets,
+        source_hashes,
+        helper_source_contract=(
+            HOTFIX_CONTRACT if manifest.get("format_version") in {2, 3} else None
+        ),
+    )
     try:
-        _stage_source_bundle(
-            config,
-            reviewed_head_sha,
-            pair_manifest_sha256,
-            source_assets,
-            source_hashes,
-            helper_source_contract=(
-                HOTFIX_CONTRACT if manifest.get("format_version") in {2, 3} else None
-            ),
-        )
         _stage_assets(config, reviewed_head_sha, assets)
     except RehearsalError:
         _cleanup_staged_assets(config, reviewed_head_sha)

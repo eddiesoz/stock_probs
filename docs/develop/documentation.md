@@ -85,7 +85,11 @@ The scoped three-module verifier selection later passed independently (669/669);
 658/659 failure remains preserved. Independent boundary source/security review passed with no
 blockers for the unchanged bootstrap 2/11 contract and dedicated PR #9 verifier check. These results
 remain scoped checks, not canonical, package, host, rollback, or release acceptance; use the
-checkpoint for exact bindings.
+checkpoint for exact bindings. The subsequent PR11 actual-host access attempt **Failed**; a later
+independent three-module source selection passed 675/675, but no helper installation occurred in
+that attempt. The later exact-0499 source/bootstrap repair passed independent integrated review
+and the three-module selection (696/696), while actual-host installation and retry remain pending.
+The separate home-group repair and its limits are recorded in the [latest host-access checkpoint](../../MVP-PLAN.md#r-astra-121-pr-11-actual-host-home-group-guard-and-recovery-checkpoint-2026-10-18).
 
 For failed code-only deployment compensation, count the prior release as restored only after it
 passes readiness with its exact prior schema and assistant disabled, then persist a matching

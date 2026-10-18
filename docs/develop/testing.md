@@ -1110,3 +1110,21 @@ three-module **Pass** (669/669, one Docker test excluded). The builder also repo
 bootstrap 2/11 contract and dedicated PR #9 verifier check. These are selected-scope checks, not
 canonical, host, rollback, or release acceptance. The checkpoint records the earlier separate 633-count
 builder attempt and exact receipts.
+
+### PR11 deployment-home guard checks
+
+Before the deployment helper acquires its operation lock, validate the fixed deployment account's
+home and primary GID through read-only metadata. Require the expected root-owned 0750 home and fail
+closed before the lock on missing or unsafe metadata; the guard must not change home ownership or
+mode. Keep `STATE_ROOT` ownership separate. Test the guard's normal and mismatch paths without live
+SSH, and treat host access repair, typed inspect, application state, and release acceptance as
+separate evidence. See the [PR11 host-access checkpoint](../../MVP-PLAN.md#r-astra-121-pr-11-actual-host-home-group-guard-and-recovery-checkpoint-2026-10-18).
+
+For R-ASTRA-121 PR #11, the independent three-module source selection later passed 675/675 with
+zero failures, errors, or skips and one Docker integration test deselected. Its selected source
+pins were unchanged; independent source review and static checks passed the two-file guard scope.
+The later exact-0499 admission and source-install cleanup-order repair passed independent integrated source/test
+review (696/696, one real-Docker selector deselected) with unchanged pins. An earlier integrated
+review failure remains preserved in the checkpoint. These are source/test checks only: no helper
+installation or host acceptance follows, and the actual-host failure and separate home-group repair
+remain distinct evidence.

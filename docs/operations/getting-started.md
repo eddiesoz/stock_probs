@@ -133,6 +133,20 @@ source/response QA and exact helper installation/readback checks pass. An author
 bounded operator trial then provides actual-host acceptance evidence; do not require a
 successful trial before attempting the trial.
 
+Before acquiring the deployment lock, validate the fixed deploy account's home and primary GID
+read-only. Require the expected root-owned 0750 home and fail closed before lock acquisition on
+unsafe or unavailable metadata; never chown the account home as an implicit lock setup. A necessary
+host-access repair is a separate explicitly authorized operation that preserves root ownership,
+mode, keys, and application state, followed by a fresh typed inspect. The PR11
+[host-access checkpoint](../../MVP-PLAN.md#r-astra-121-pr-11-actual-host-home-group-guard-and-recovery-checkpoint-2026-10-18)
+records the failed actual-host attempt, that no helper installation occurred during it, and the
+separate home-group repair with a fresh typed inspect. The independent 675-test source selection
+and later 696-test three-module selection with integrated source review do not establish host
+acceptance or installation.
+The exact-0499 allowance retains the existing PR 2/11 mapping and install allowlist; it is not a
+general prior-helper exception. Actual-host retry remains pending. These facts do not establish app
+deployment, rollout, or release acceptance.
+
 A restored predecessor can be acknowledged for one explicit successor only when its closed
 record has `failure_code=host_command_failed`, canonical `failed_at` and `restored_at` values,
 the exact original 5ad image and current-record marker, and valid startup facts. For this retryable

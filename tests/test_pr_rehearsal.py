@@ -2142,11 +2142,21 @@ def test_v2_review_pins_use_helper_pr11_and_candidate_pr9_without_pr2(
     }
 
 
-@pytest.mark.parametrize(("format_version", "expected_pull_number"), [(1, 2), (2, 11), (3, 11)])
+@pytest.mark.parametrize(
+    ("format_version", "expected_pull_number", "stage_failure"),
+    [
+        (1, 2, None),
+        (2, 11, None),
+        (3, 11, None),
+        (2, 11, "source"),
+        (2, 11, "assets"),
+    ],
+)
 def test_controller_pair_dispatch_preserves_v1_and_v2_v3_source_contracts(
     monkeypatch: pytest.MonkeyPatch,
     format_version: int,
     expected_pull_number: int,
+    stage_failure: str | None,
 ) -> None:
     revision = "a" * 40
     pair_digest = "b" * 64
@@ -2206,13 +2216,24 @@ def test_controller_pair_dispatch_preserves_v1_and_v2_v3_source_contracts(
         lambda **_kwargs: ({"bootstrap": b"b"}, {"bootstrap": "e" * 64}),
     )
     monkeypatch.setattr(controller, "_ensure_incoming_directories", lambda _config: None)
+
+    def stage_source_bundle(*_args: object, **kwargs: object) -> None:
+        events.append(("source-stage", kwargs["helper_source_contract"]))
+        if stage_failure == "source":
+            raise controller.RehearsalError("fixture_source_stage")
+
+    def stage_assets(*_args: object) -> None:
+        events.append("asset-stage")
+        if stage_failure == "assets":
+            raise controller.RehearsalError("fixture_archive_stage")
+
+    monkeypatch.setattr(controller, "_stage_source_bundle", stage_source_bundle)
+    monkeypatch.setattr(controller, "_stage_assets", stage_assets)
     monkeypatch.setattr(
         controller,
-        "_stage_source_bundle",
-        lambda *_args, **kwargs: events.append(("source-stage", kwargs["helper_source_contract"])),
+        "_cleanup_staged_assets",
+        lambda *_args: events.append("cleanup-staged-assets"),
     )
-    monkeypatch.setattr(controller, "_stage_assets", lambda *_args: events.append("asset-stage"))
-    monkeypatch.setattr(controller, "_cleanup_staged_assets", lambda *_args: None)
     monkeypatch.setattr(controller, "_ssh_prefix", lambda _config: ["ssh"])
 
     def stop_at_host(command: list[str], **kwargs: object) -> bytes:
@@ -2231,7 +2252,12 @@ def test_controller_pair_dispatch_preserves_v1_and_v2_v3_source_contracts(
 
     monkeypatch.setattr(controller, "_run_fixed", stop_at_host)
 
-    with pytest.raises(controller.RehearsalError, match="fixture_host_boundary"):
+    expected_failure = {
+        "source": "fixture_source_stage",
+        "assets": "fixture_archive_stage",
+        None: "fixture_host_boundary",
+    }[stage_failure]
+    with pytest.raises(controller.RehearsalError, match=expected_failure):
         controller.rehearse_pr_pair(
             reviewed_head_sha=revision,
             candidate_image_id="sha256:" + "1" * 64,
@@ -2244,6 +2270,16 @@ def test_controller_pair_dispatch_preserves_v1_and_v2_v3_source_contracts(
 
     expected_contract = controller.HOTFIX_CONTRACT if format_version in {2, 3} else None
     assert ("source-stage", expected_contract) in events
+    if stage_failure == "source":
+        assert "asset-stage" not in events
+        assert "cleanup-staged-assets" not in events
+        assert not any(isinstance(event, tuple) and event[0] == "host-payload" for event in events)
+        return
+    if stage_failure == "assets":
+        assert events.count("asset-stage") == 1
+        assert events.count("cleanup-staged-assets") == 1
+        assert not any(isinstance(event, tuple) and event[0] == "host-payload" for event in events)
+        return
     assert ("host-payload", expected_pull_number) in events
     if format_version == 1:
         assert "pr2" in events and "pr11" not in events and "pr9" not in events
@@ -3442,6 +3478,7 @@ def test_bootstrap_install_locks_use_fixed_order_and_contention_blocks_install_w
     monkeypatch.setattr(bootstrap, "STATE_ROOT", rehearsal_root)
     monkeypatch.setattr(bootstrap, "DEPLOY_LOCK", deploy_lock)
     monkeypatch.setattr(bootstrap, "REHEARSAL_LOCK", rehearsal_lock)
+    monkeypatch.setattr(bootstrap, "_check_deployment_state_directory", lambda: None)
     monkeypatch.setattr(bootstrap, "_safe_directory", lambda *_args, **_kwargs: None)
 
     original_open = os.open
@@ -3496,6 +3533,224 @@ def test_bootstrap_install_locks_use_fixed_order_and_contention_blocks_install_w
     finally:
         original_flock(descriptor, bootstrap.fcntl.LOCK_UN)
         os.close(descriptor)
+
+
+BootstrapInstallLockFixture = tuple[
+    Path,
+    list[Path],
+    list[tuple[object, ...]],
+    list[str],
+    list[tuple[Path, int, dict[str, object]]],
+]
+
+
+def _patch_bootstrap_deployment_lock_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    root_metadata: SimpleNamespace,
+    *,
+    deployment_home: str | None = None,
+    deployment_gid: int = 987,
+) -> BootstrapInstallLockFixture:
+    deploy_root = tmp_path / "production-state"
+    rehearsal_root = tmp_path / "rehearsal-state"
+    deploy_root.mkdir(mode=0o750)
+    deploy_root.chmod(0o750)
+    rehearsal_root.mkdir(mode=0o750)
+    deploy_lock = deploy_root / "deploy.lock"
+    rehearsal_lock = rehearsal_root / "rehearsal.lock"
+    deploy_lock.touch(mode=0o640)
+    deploy_lock.chmod(0o640)
+    rehearsal_lock.touch(mode=0o600)
+    rehearsal_lock.chmod(0o600)
+    monkeypatch.setattr(bootstrap, "DEPLOY_STATE_ROOT", deploy_root)
+    monkeypatch.setattr(bootstrap, "STATE_ROOT", rehearsal_root)
+    monkeypatch.setattr(bootstrap, "DEPLOY_LOCK", deploy_lock)
+    monkeypatch.setattr(bootstrap, "REHEARSAL_LOCK", rehearsal_lock)
+
+    accounts = {
+        "signal-ledger-deploy": SimpleNamespace(
+            pw_uid=999,
+            pw_gid=deployment_gid,
+            pw_dir=str(deploy_root) if deployment_home is None else deployment_home,
+        )
+    }
+    account_lookups: list[str] = []
+
+    def get_account(name: str) -> SimpleNamespace:
+        account_lookups.append(name)
+        return accounts[name]
+
+    monkeypatch.setattr(bootstrap.pwd, "getpwnam", get_account)
+    opened: list[Path] = []
+    descriptor_metadata: dict[int, SimpleNamespace] = {}
+    real_os = os
+
+    def tracked_open(path: str | Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = real_os.open(path, flags, mode)
+        normalized = Path(path)
+        opened.append(normalized)
+        if normalized == deploy_root:
+            descriptor_metadata[descriptor] = root_metadata
+        elif normalized == deploy_lock:
+            descriptor_metadata[descriptor] = SimpleNamespace(
+                st_mode=stat.S_IFREG | 0o640,
+                st_uid=0,
+                st_gid=987,
+            )
+        elif normalized == rehearsal_lock:
+            descriptor_metadata[descriptor] = SimpleNamespace(
+                st_mode=stat.S_IFREG | 0o600,
+                st_uid=0,
+                st_gid=0,
+            )
+        return descriptor
+
+    def tracked_fstat(descriptor: int) -> object:
+        return descriptor_metadata.get(descriptor, real_os.fstat(descriptor))
+
+    permission_changes: list[tuple[object, ...]] = []
+    safe_directory_calls: list[tuple[Path, int, dict[str, object]]] = []
+
+    def record_permission_change(*args: object) -> None:
+        permission_changes.append(args)
+
+    def record_safe_directory(
+        path: Path,
+        mode: int,
+        *,
+        create: bool,
+        group: str | None = None,
+    ) -> None:
+        safe_directory_calls.append((path, mode, {"create": create, "group": group}))
+
+    monkeypatch.setattr(
+        bootstrap,
+        "os",
+        SimpleNamespace(
+            O_RDONLY=os.O_RDONLY,
+            O_DIRECTORY=os.O_DIRECTORY,
+            O_NOFOLLOW=os.O_NOFOLLOW,
+            O_CLOEXEC=os.O_CLOEXEC,
+            O_RDWR=os.O_RDWR,
+            O_CREAT=os.O_CREAT,
+            open=tracked_open,
+            fstat=tracked_fstat,
+            close=os.close,
+            fchown=record_permission_change,
+            fchmod=record_permission_change,
+        ),
+    )
+    monkeypatch.setattr(bootstrap, "_safe_directory", record_safe_directory)
+    return deploy_root, opened, permission_changes, account_lookups, safe_directory_calls
+
+
+def test_bootstrap_install_locks_validates_deploy_home_without_mutating_it(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    deploy_root, opened, permission_changes, account_lookups, safe_calls = (
+        _patch_bootstrap_deployment_lock_environment(
+            monkeypatch,
+            tmp_path,
+            SimpleNamespace(st_mode=stat.S_IFDIR | 0o750, st_uid=0, st_gid=987),
+        )
+    )
+    before = deploy_root.stat()
+
+    with bootstrap._install_locks():
+        pass
+
+    after = deploy_root.stat()
+    assert opened == [
+        deploy_root,
+        deploy_root / "deploy.lock",
+        deploy_root.parent / "rehearsal-state" / "rehearsal.lock",
+    ]
+    assert account_lookups == ["signal-ledger-deploy"]
+    assert permission_changes == []
+    assert safe_calls == [
+        (
+            tmp_path / "rehearsal-state",
+            0o750,
+            {"create": False, "group": "signalops"},
+        )
+    ]
+    assert (before.st_uid, before.st_gid, stat.S_IMODE(before.st_mode)) == (
+        after.st_uid,
+        after.st_gid,
+        stat.S_IMODE(after.st_mode),
+    )
+
+
+@pytest.mark.parametrize(
+    ("st_mode", "st_uid", "st_gid"),
+    [
+        (stat.S_IFDIR | 0o750, 0, 1000),
+        (stat.S_IFREG | 0o750, 0, 987),
+        (stat.S_IFDIR | 0o770, 0, 987),
+        (stat.S_IFDIR | 0o750, 1000, 987),
+    ],
+    ids=["wrong-group", "wrong-type", "wrong-mode", "wrong-owner"],
+)
+def test_bootstrap_install_locks_rejects_unsafe_deploy_root_before_maintenance(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    st_mode: int,
+    st_uid: int,
+    st_gid: int,
+) -> None:
+    deploy_root, opened, permission_changes, account_lookups, safe_calls = (
+        _patch_bootstrap_deployment_lock_environment(
+            monkeypatch,
+            tmp_path,
+            SimpleNamespace(st_mode=st_mode, st_uid=st_uid, st_gid=st_gid),
+        )
+    )
+
+    with (
+        pytest.raises(bootstrap.InstallError, match="install_directory_unsafe"),
+        bootstrap._install_locks(),
+    ):
+        pytest.fail("unsafe deployment directory must not admit installation")
+
+    assert opened == [deploy_root]
+    assert account_lookups == ["signal-ledger-deploy"]
+    assert permission_changes == []
+    assert safe_calls == []
+
+
+@pytest.mark.parametrize(
+    ("deployment_home", "deployment_gid"),
+    [("/var/lib/elsewhere", 987), (None, 0)],
+    ids=["wrong-home", "root-primary-group"],
+)
+def test_bootstrap_install_locks_rejects_invalid_deploy_account_before_directory_open(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    deployment_home: str | None,
+    deployment_gid: int,
+) -> None:
+    deploy_root, opened, permission_changes, account_lookups, safe_calls = (
+        _patch_bootstrap_deployment_lock_environment(
+            monkeypatch,
+            tmp_path,
+            SimpleNamespace(st_mode=stat.S_IFDIR | 0o750, st_uid=0, st_gid=987),
+            deployment_home=deployment_home,
+            deployment_gid=deployment_gid,
+        )
+    )
+
+    with (
+        pytest.raises(bootstrap.InstallError, match="install_directory_unsafe"),
+        bootstrap._install_locks(),
+    ):
+        pytest.fail("invalid deployment account must not admit installation")
+
+    assert opened == []
+    assert account_lookups == ["signal-ledger-deploy"]
+    assert permission_changes == []
+    assert safe_calls == []
 
 
 @pytest.mark.parametrize("rollback_fails", [False, True], ids=["restored", "unverified"])
@@ -4264,6 +4519,33 @@ def _known_h2_install_fixture(
     return original, helper, manifest_path, expected_fields, sidecars
 
 
+def _known_0499_install_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[bytes, bytes, Path, dict[str, object], dict[Path, bytes]]:
+    """Build the exact 0499 receipt shape with isolated installed files."""
+    original, _prior_helper, manifest_path, _prior_fields, sidecars = _known_677_install_fixture(
+        monkeypatch, tmp_path
+    )
+    helper = b"installed helper bytes for the exact 0499 provenance fixture"
+    bootstrap.PRODUCTION_HELPER.write_bytes(helper)
+    bootstrap.PRODUCTION_HELPER.chmod(0o750)
+    expected_fields = dict(bootstrap.KNOWN_INSTALLED_0499_INSTALL_MANIFEST)
+    expected_files = dict(expected_fields["files"])
+    for path, contents in sidecars.items():
+        expected_files[path.name] = hashlib.sha256(contents).hexdigest()
+    helper_digest = hashlib.sha256(helper).hexdigest()
+    expected_files["production-deploy-helper.py"] = helper_digest
+    expected_fields["files"] = expected_files
+    expected_fields["previous_production_helper_sha256"] = hashlib.sha256(original).hexdigest()
+    manifest_path.write_bytes(_installed_manifest_bytes(expected_fields))
+    manifest_path.chmod(0o640)
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_0499_PRODUCTION_HELPER_SHA256", helper_digest)
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_0499_INSTALLED_FILES", expected_files)
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_0499_INSTALL_MANIFEST", expected_fields)
+    return original, helper, manifest_path, expected_fields, sidecars
+
+
 def _candidate_digest_retry_fixture(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -4598,6 +4880,155 @@ def test_bootstrap_rejects_drifted_h2_install_provenance(
     if malformation == "sidecar":
         path = next(path for path in sidecars if path.name == "native_driver.py")
         path.write_bytes(b"unreviewed H2 sidecar drift")
+        path.chmod(0o640)
+
+    with pytest.raises(bootstrap.InstallError, match="production_helper_manifest_mismatch"):
+        bootstrap._prepare_previous_production_helper(
+            b"reviewed successor production helper bytes",
+            candidate_manifest_fields={
+                **expected_fields,
+                "reviewed_head_sha": "a" * 40,
+                "reviewed_pair_manifest_sha256": "b" * 64,
+            },
+        )
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert stat.S_IMODE(bootstrap.PREVIOUS_PRODUCTION_HELPER.stat().st_mode) == 0o600
+
+
+def test_bootstrap_pins_exact_0499_install_provenance_and_accepts_successor_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    assert bootstrap.KNOWN_INSTALLED_0499_PRODUCTION_HELPER_SHA256 == (
+        "a6d0a3f7f755a74a7a41351aa05cb7b5b5a7a87232f5edd559d06fddf2566e45"
+    )
+    assert bootstrap.KNOWN_INSTALLED_0499_REVIEWED_HEAD_SHA == (
+        "0499d902784ab2f835f9ec80b1422cdfc64b8099"
+    )
+    assert bootstrap.KNOWN_INSTALLED_0499_PAIR_MANIFEST_SHA256 == (
+        "f0f52b12df5ce5d52039264647927c1d15b03d25dea6094fdc8aa67915663557"
+    )
+    assert bootstrap.KNOWN_INSTALLED_0499_INSTALLED_FILES == {
+        "host_helper.py": "16640749679c8ca995d2f1740d6364523e82e940fe7c8be59f5fe0b0878cf6f4",
+        "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+        "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+        "production-deploy-helper.py": bootstrap.KNOWN_INSTALLED_0499_PRODUCTION_HELPER_SHA256,
+    }
+    assert bootstrap.KNOWN_INSTALLED_0499_INSTALL_MANIFEST == {
+        "format_version": 1,
+        "repository": bootstrap.REPOSITORY,
+        "pull_number": bootstrap.HELPER_SOURCE_PR_NUMBER,
+        "reviewed_head_sha": bootstrap.KNOWN_INSTALLED_0499_REVIEWED_HEAD_SHA,
+        "reviewed_pair_manifest_sha256": bootstrap.KNOWN_INSTALLED_0499_PAIR_MANIFEST_SHA256,
+        "files": bootstrap.KNOWN_INSTALLED_0499_INSTALLED_FILES,
+        "helper_source_contract": bootstrap.HELPER_SOURCE_CONTRACT,
+        "previous_production_helper_sha256": (
+            "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+        ),
+    }
+
+    original, helper, manifest_path, installed_fields, sidecars = _known_0499_install_fixture(
+        monkeypatch, tmp_path
+    )
+    old_manifest = manifest_path.read_bytes()
+    successor_fields = {
+        **installed_fields,
+        "reviewed_head_sha": "a" * 40,
+        "reviewed_pair_manifest_sha256": "b" * 64,
+    }
+
+    assert bootstrap._prepare_previous_production_helper(
+        b"reviewed successor production helper bytes",
+        candidate_manifest_fields=successor_fields,
+    ) == (helper, bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256)
+    assert manifest_path.read_bytes() == old_manifest
+    assert {path: path.read_bytes() for path in sidecars} == sidecars
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+
+
+def test_bootstrap_0499_completed_candidate_retry_requires_exact_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    original, helper, manifest_path, installed_fields, sidecars = _known_0499_install_fixture(
+        monkeypatch, tmp_path
+    )
+    successor_fields = dict(installed_fields)
+    successor_files = dict(installed_fields["files"])
+    successor_fields.update(
+        {
+            "reviewed_head_sha": "a" * 40,
+            "reviewed_pair_manifest_sha256": "b" * 64,
+            "files": successor_files,
+        }
+    )
+    for path in sidecars:
+        contents = f"completed 0499 successor {path.name}".encode()
+        path.write_bytes(contents)
+        path.chmod(0o750 if path.name == "host_helper.py" else 0o640)
+        successor_files[path.name] = hashlib.sha256(contents).hexdigest()
+    successor_fields["files"] = successor_files
+    manifest_path.write_bytes(_installed_manifest_bytes(successor_fields))
+    manifest_path.chmod(0o640)
+    completed_manifest = manifest_path.read_bytes()
+
+    assert bootstrap._prepare_previous_production_helper(
+        helper,
+        candidate_manifest_fields=successor_fields,
+    ) == (helper, bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256)
+    assert manifest_path.read_bytes() == completed_manifest
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    [
+        "head",
+        "pair",
+        "files",
+        "contract",
+        "predecessor",
+        "missing",
+        "duplicate",
+        "mode",
+        "sidecar",
+        "unknown-field",
+    ],
+)
+def test_bootstrap_rejects_drifted_0499_install_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    malformation: str,
+) -> None:
+    original, _helper, manifest_path, expected_fields, sidecars = _known_0499_install_fixture(
+        monkeypatch, tmp_path
+    )
+    malformed = dict(expected_fields)
+    malformed_files = dict(expected_fields["files"])
+    malformed["files"] = malformed_files
+    if malformation == "head":
+        malformed["reviewed_head_sha"] = "f" * 40
+    elif malformation == "pair":
+        malformed["reviewed_pair_manifest_sha256"] = "f" * 64
+    elif malformation == "files":
+        malformed_files["host_helper.py"] = "0" * 64
+    elif malformation == "contract":
+        malformed["helper_source_contract"] = "wrong-contract"
+    elif malformation == "predecessor":
+        malformed["previous_production_helper_sha256"] = "f" * 64
+    elif malformation == "unknown-field":
+        malformed["unexpected"] = "value"
+    if malformation == "missing":
+        manifest_path.unlink()
+    else:
+        raw = _installed_manifest_bytes(malformed)
+        if malformation == "duplicate":
+            raw = b'{"format_version":1,' + raw[1:]
+        manifest_path.write_bytes(raw)
+        manifest_path.chmod(0o644 if malformation == "mode" else 0o640)
+    if malformation == "sidecar":
+        path = next(path for path in sidecars if path.name == "native_driver.py")
+        path.write_bytes(b"unreviewed 0499 sidecar drift")
         path.chmod(0o640)
 
     with pytest.raises(bootstrap.InstallError, match="production_helper_manifest_mismatch"):
@@ -7749,6 +8180,165 @@ def test_production_headroom_floors_are_unchanged_and_fail_closed(monkeypatch) -
     monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.RUN_RESERVE_KIB - 1)
     with pytest.raises(host_helper.RehearsalError, match="host_memory_reserve_breached"):
         host_helper._check_production([0])
+
+
+def _patch_deployment_lock_filesystem(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    root_metadata: SimpleNamespace,
+    *,
+    deployment_home: str | None = None,
+) -> tuple[Path, list[Path], list[str]]:
+    production_root = tmp_path / "production-state"
+    production_root.mkdir(mode=0o750)
+    production_root.chmod(0o750)
+    lock_path = production_root / "deploy.lock"
+    monkeypatch.setattr(host_helper, "PRODUCTION_STATE_ROOT", production_root)
+    monkeypatch.setattr(host_helper, "DEPLOYMENT_LOCK_FILE", lock_path)
+
+    accounts = {
+        "signal-ledger-deploy": SimpleNamespace(
+            pw_uid=999,
+            pw_gid=987,
+            pw_dir=(str(production_root) if deployment_home is None else deployment_home),
+        ),
+        "signalops": SimpleNamespace(
+            pw_uid=1000,
+            pw_gid=1000,
+            pw_dir="/var/lib/signal-ledger-pr-rehearsal",
+        ),
+    }
+    account_lookups: list[str] = []
+
+    def get_account(name: str) -> SimpleNamespace:
+        account_lookups.append(name)
+        return accounts[name]
+
+    monkeypatch.setattr(host_helper.pwd, "getpwnam", get_account)
+    monkeypatch.setattr(
+        host_helper.grp,
+        "getgrnam",
+        lambda _name: pytest.fail("lock admission must use the deploy user's primary GID"),
+    )
+
+    opened_paths: list[Path] = []
+    descriptors: dict[int, object] = {}
+    original_open = os.open
+    original_fstat = os.fstat
+
+    def tracked_open(
+        path: str | Path,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        descriptor = (
+            original_open(path, flags, mode, dir_fd=dir_fd)
+            if dir_fd is not None
+            else original_open(path, flags, mode)
+        )
+        opened_paths.append(Path(path))
+        if Path(path) == production_root:
+            descriptors[descriptor] = root_metadata
+        elif Path(path) == lock_path:
+            descriptors[descriptor] = SimpleNamespace(
+                st_mode=stat.S_IFREG | 0o640,
+                st_uid=0,
+                st_gid=1000,
+            )
+        return descriptor
+
+    def tracked_fstat(descriptor: int) -> object:
+        if descriptor in descriptors:
+            return descriptors[descriptor]
+        return original_fstat(descriptor)
+
+    def reject_permission_change(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("deployment lock admission must not change production-home permissions")
+
+    monkeypatch.setattr(host_helper.os, "open", tracked_open)
+    monkeypatch.setattr(host_helper.os, "fstat", tracked_fstat)
+    monkeypatch.setattr(host_helper.os, "fchown", reject_permission_change)
+    monkeypatch.setattr(host_helper.os, "fchmod", reject_permission_change)
+    return production_root, opened_paths, account_lookups
+
+
+def test_deployment_operation_lock_preserves_production_home_and_uses_deploy_primary_gid(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    production_root, opened_paths, account_lookups = _patch_deployment_lock_filesystem(
+        monkeypatch,
+        tmp_path,
+        SimpleNamespace(st_mode=stat.S_IFDIR | 0o750, st_uid=0, st_gid=987),
+    )
+    before = production_root.stat()
+
+    descriptor = host_helper._deployment_operation_lock()
+    try:
+        after = production_root.stat()
+        assert opened_paths == [production_root, production_root / "deploy.lock"]
+        assert account_lookups == ["signal-ledger-deploy"]
+        assert (
+            before.st_uid,
+            before.st_gid,
+            stat.S_IMODE(before.st_mode),
+        ) == (
+            after.st_uid,
+            after.st_gid,
+            stat.S_IMODE(after.st_mode),
+        )
+    finally:
+        os.close(descriptor)
+
+
+@pytest.mark.parametrize(
+    ("st_mode", "st_uid", "st_gid"),
+    [
+        (stat.S_IFDIR | 0o750, 0, 1000),
+        (stat.S_IFREG | 0o750, 0, 987),
+        (stat.S_IFDIR | 0o770, 0, 987),
+        (stat.S_IFDIR | 0o750, 1000, 987),
+    ],
+)
+def test_deployment_operation_lock_rejects_unsafe_production_home_before_lock_open(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    st_mode: int,
+    st_uid: int,
+    st_gid: int,
+) -> None:
+    production_root, opened_paths, account_lookups = _patch_deployment_lock_filesystem(
+        monkeypatch,
+        tmp_path,
+        SimpleNamespace(st_mode=st_mode, st_uid=st_uid, st_gid=st_gid),
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="deployment_lock_unsafe"):
+        host_helper._deployment_operation_lock()
+
+    assert opened_paths == [production_root]
+    assert account_lookups == ["signal-ledger-deploy"]
+
+
+def test_deployment_operation_lock_rejects_deploy_account_with_different_home(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    production_root, opened_paths, account_lookups = _patch_deployment_lock_filesystem(
+        monkeypatch,
+        tmp_path,
+        SimpleNamespace(st_mode=stat.S_IFDIR | 0o750, st_uid=0, st_gid=987),
+        deployment_home="/home/signal-ledger-deploy",
+    )
+
+    with pytest.raises(host_helper.RehearsalError, match="deployment_lock_unsafe"):
+        host_helper._deployment_operation_lock()
+
+    assert opened_paths == []
+    assert account_lookups == ["signal-ledger-deploy"]
+    assert production_root.exists()
 
 
 def test_hotfix_production_guard_requires_ready_disabled_loopback_maintenance_state(

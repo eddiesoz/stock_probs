@@ -298,6 +298,7 @@ INSTALL_ROOT = Path("/usr/local/libexec/signal-ledger-pr-rehearsal")
 INSTALLED_MANIFEST = INSTALL_ROOT / "installed.json"
 LOCK_FILE = STATE_ROOT / "rehearsal.lock"
 DEPLOYMENT_LOCK_FILE = Path("/var/lib/signal-ledger/deploy.lock")
+DEPLOYMENT_ACCOUNT = "signal-ledger-deploy"
 PRODUCTION_HELPER = Path("/usr/local/libexec/signal-ledger-deploy-helper")
 MAX_PRODUCTION_HELPER_BYTES = 512 * 1024
 PREVIOUS_PRODUCTION_HELPER_SHA256 = (
@@ -4603,11 +4604,52 @@ def _operation_lock() -> int:
     return descriptor
 
 
+def _validate_production_state_root() -> None:
+    """Validate the fixed production home without changing its ownership or mode."""
+
+    try:
+        deploy_account = pwd.getpwnam(DEPLOYMENT_ACCOUNT)
+    except KeyError as exc:
+        raise RehearsalError("deployment_lock_unavailable") from exc
+    expected_gid = deploy_account.pw_gid
+    if (
+        type(deploy_account.pw_uid) is not int
+        or deploy_account.pw_uid <= 0
+        or type(expected_gid) is not int
+        or expected_gid <= 0
+        or deploy_account.pw_dir != str(PRODUCTION_STATE_ROOT)
+    ):
+        raise RehearsalError("deployment_lock_unsafe")
+
+    try:
+        descriptor = os.open(
+            PRODUCTION_STATE_ROOT,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+        )
+    except OSError as exc:
+        raise RehearsalError("deployment_lock_unavailable") from exc
+    try:
+        try:
+            info = os.fstat(descriptor)
+        except OSError as exc:
+            raise RehearsalError("deployment_lock_unavailable") from exc
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != 0
+            or info.st_gid != expected_gid
+            or stat.S_IMODE(info.st_mode) != 0o750
+        ):
+            raise RehearsalError("deployment_lock_unsafe")
+    finally:
+        with suppress(OSError):
+            os.close(descriptor)
+
+
 def _deployment_operation_lock() -> int:
     """Share the production helper's fixed lock before a PR11 maintenance rehearsal."""
 
     try:
-        _safe_directory(PRODUCTION_STATE_ROOT, 0o750, create=False, group="signalops")
+        _validate_production_state_root()
         descriptor = os.open(
             DEPLOYMENT_LOCK_FILE,
             os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,

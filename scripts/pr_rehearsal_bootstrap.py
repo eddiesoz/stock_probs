@@ -257,6 +257,31 @@ KNOWN_INSTALLED_H2_INSTALL_MANIFEST = {
     "helper_source_contract": HELPER_SOURCE_CONTRACT,
     "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
 }
+# Exact PR11 helper installation read back after the 0499d90 host pair.
+# This allowlist binds the helper digest to that fixed source and pair tuple.
+KNOWN_INSTALLED_0499_PRODUCTION_HELPER_SHA256 = (
+    "a6d0a3f7f755a74a7a41351aa05cb7b5b5a7a87232f5edd559d06fddf2566e45"
+)
+KNOWN_INSTALLED_0499_REVIEWED_HEAD_SHA = "0499d902784ab2f835f9ec80b1422cdfc64b8099"
+KNOWN_INSTALLED_0499_PAIR_MANIFEST_SHA256 = (
+    "f0f52b12df5ce5d52039264647927c1d15b03d25dea6094fdc8aa67915663557"
+)
+KNOWN_INSTALLED_0499_INSTALLED_FILES = {
+    "host_helper.py": "16640749679c8ca995d2f1740d6364523e82e940fe7c8be59f5fe0b0878cf6f4",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_0499_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_0499_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_0499_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_0499_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_0499_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -316,6 +341,43 @@ def _safe_directory(path: Path, mode: int, *, create: bool, group: str | None = 
             if info.st_gid != expected_gid:
                 os.fchown(descriptor, 0, expected_gid)
         os.fchmod(descriptor, mode)
+    finally:
+        os.close(descriptor)
+
+
+def _check_deployment_state_directory() -> None:
+    """Verify the deployment helper's state root without changing its ownership."""
+
+    try:
+        deployment_account = pwd.getpwnam("signal-ledger-deploy")
+    except KeyError as exc:
+        raise InstallError("install_directory_unsafe") from exc
+    if (
+        type(deployment_account.pw_uid) is not int
+        or deployment_account.pw_uid <= 0
+        or type(deployment_account.pw_gid) is not int
+        or deployment_account.pw_gid <= 0
+        or deployment_account.pw_dir != str(DEPLOY_STATE_ROOT)
+    ):
+        raise InstallError("install_directory_unsafe")
+    try:
+        descriptor = os.open(
+            DEPLOY_STATE_ROOT,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+        )
+    except OSError as exc:
+        raise InstallError("install_directory_unsafe") from exc
+    try:
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != 0
+            or info.st_gid != deployment_account.pw_gid
+            or stat.S_IMODE(info.st_mode) != 0o750
+        ):
+            raise InstallError("install_directory_unsafe")
+    except OSError as exc:
+        raise InstallError("install_directory_unsafe") from exc
     finally:
         os.close(descriptor)
 
@@ -469,7 +531,7 @@ def _install_locks() -> Iterator[None]:
 
     descriptors: list[int] = []
     try:
-        _safe_directory(DEPLOY_STATE_ROOT, 0o750, create=False, group="signalops")
+        _check_deployment_state_directory()
         _safe_directory(STATE_ROOT, 0o750, create=False, group="signalops")
         for path, mode in ((DEPLOY_LOCK, 0o640), (REHEARSAL_LOCK, 0o600)):
             try:
@@ -673,6 +735,11 @@ def _prepare_previous_production_helper(
                 _require_installed_manifest(candidate_manifest_fields)
             except InstallError:
                 _require_installed_manifest(KNOWN_INSTALLED_H2_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_0499_PRODUCTION_HELPER_SHA256:
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                _require_installed_manifest(KNOWN_INSTALLED_0499_INSTALL_MANIFEST)
         elif current_digest == candidate_digest:
             _require_installed_manifest(candidate_manifest_fields)
         elif current_digest != PREVIOUS_PRODUCTION_HELPER_SHA256:
