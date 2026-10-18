@@ -7052,3 +7052,17 @@ governance entries), `.dev-venv/bin/python scripts/check-doc-coverage.py --root 
 `git diff --check -- MVP-PLAN.md docs/develop/testing.md`. Its initial run **Failed** on a newly
 introduced blank line at the plan EOF; that blank line was removed and the final run **Passed**.
 Documentation tests were not run.
+
+### R-ASTRA-121 shared local browser-fixture startup watchdog (2026-10-18)
+
+The shared fixture watchdog uses a 30-second startup deadline, matching the unchanged
+Playwright webServer timeout. Each readiness fetch is bounded by the smaller of one
+second and the remaining deadline, with a 1 ms floor; retry sleep is capped to remaining
+time, and early child exit is surfaced immediately. Independent source/pure QA passed
+each of four selected lifecycle suites (9/9 per suite) and fixture/test syntax checks.
+The review found feature-specific behavior, R1 diagnostics/counters, and R4 hooks
+preserved. Exact bindings and results are recorded in
+/var/tmp/r12r/f6-readiness-watchdog-qa-a1d4423c-752f-4728-835f-0d524238e444/receipt.json
+(SHA-256 70c83123439384ef87e4de1b7bb851c3c30026e0f93b7e64c93d5ebe61e329e6). This is
+fixture-source/pure-test evidence only: no app, browser, build, or provider run occurred,
+and previously recorded actual browser failures remain open.

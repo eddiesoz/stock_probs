@@ -17,6 +17,8 @@ function loadLaunchApplication(options = {}) {
   const timerDelays = [];
   const filesystemCalls = [];
   const readinessCalls = [];
+  const readinessTimeouts = [];
+  const fetchAborts = [];
   const spawnError = options.spawnError || null;
 
   class FakeChild extends EventEmitter {
@@ -100,10 +102,40 @@ function loadLaunchApplication(options = {}) {
     Date: class extends Date {
       static now() { return now; }
     },
-    fetch: async (url) => {
+    AbortSignal: {
+      timeout(timeoutMs) {
+        readinessTimeouts.push(timeoutMs);
+        const abortListeners = [];
+        return {
+          timeoutMs,
+          addEventListener(eventName, callback) {
+            if (eventName === "abort") abortListeners.push(callback);
+          },
+          expire() {
+            for (const callback of abortListeners) callback();
+          },
+        };
+      },
+    },
+    fetch: async (url, requestOptions = {}) => {
       readinessCalls.push(url);
+      if (options.stallFirstFetch && readinessCalls.length === 1) {
+        return new Promise((_resolve, reject) => {
+          requestOptions.signal.addEventListener("abort", () => {
+            fetchAborts.push(requestOptions.signal.timeoutMs);
+            reject(new Error("readiness request timed out"));
+          });
+          queueMicrotask(() => {
+            now += requestOptions.signal.timeoutMs;
+            requestOptions.signal.expire();
+          });
+        });
+      }
       if (options.fetchError) throw new Error("fixture fetch unavailable");
-      return { ok: options.ready !== false };
+      const ready = options.readyAfterMs === undefined
+        ? options.ready !== false
+        : now >= options.readyAfterMs;
+      return { ok: ready, status: ready ? 200 : 503 };
     },
     setTimeout(callback, delay) {
       timerDelays.push(delay);
@@ -132,25 +164,47 @@ function loadLaunchApplication(options = {}) {
     children,
     filesystemCalls,
     readinessCalls,
+    readinessTimeouts,
+    fetchAborts,
     timerDelays,
     get now() { return now; },
   };
 }
 
-test("initial child exit preserves readiness error and leaves no live child", async () => {
+test("initial child exit preserves its error without waiting through the readiness budget", async () => {
   const harness = loadLaunchApplication({ exitCodeBeforeReady: 7, fetchError: true });
   await assert.rejects(harness.launch(), /Fixture application exited early \(7\):/);
   assert.equal(harness.children.length, 1);
   assert.deepEqual(harness.children[0].killCalls, []);
   assert.equal(harness.readinessCalls.length, 1);
+  assert.equal(harness.now, 0);
   assert.deepEqual(harness.filesystemCalls.map(([kind]) => kind), ["rm", "mkdir"]);
 });
 
-test("readiness timeout awaits SIGTERM cleanup for a still-live child", async () => {
+test("readiness may complete after the old ten-second watchdog window", async () => {
+  const harness = loadLaunchApplication({ readyAfterMs: 12_000 });
+  const application = await harness.launch("slow-start-runtime");
+  assert.equal(application.url, "http://127.0.0.1:45678");
+  assert.ok(harness.now > 10_000 && harness.now < 30_000);
+  await application.stop();
+});
+
+test("a stalled readiness request is aborted within one second before retrying", async () => {
+  const harness = loadLaunchApplication({ stallFirstFetch: true });
+  const application = await harness.launch("stalled-readiness-runtime");
+  assert.equal(harness.fetchAborts.length, 1);
+  assert.ok(harness.fetchAborts[0] > 0 && harness.fetchAborts[0] <= 1_000);
+  assert.ok(harness.readinessTimeouts.every((timeoutMs) => timeoutMs > 0 && timeoutMs <= 1_000));
+  assert.ok(harness.readinessCalls.length >= 2);
+  await application.stop();
+});
+
+test("readiness timeout awaits SIGTERM cleanup at the shared thirty-second budget", async () => {
   const harness = loadLaunchApplication({ ready: false });
   await assert.rejects(harness.launch(), /Fixture application did not become ready:/);
-  assert.equal(harness.readinessCalls.length, 200);
-  assert.equal(harness.now, 10_000);
+  assert.equal(harness.now, 30_000);
+  assert.ok(harness.readinessCalls.length > 200);
+  assert.ok(harness.readinessTimeouts.every((timeoutMs) => timeoutMs > 0 && timeoutMs <= 1_000));
   assert.ok(harness.timerDelays.includes(5000));
   assert.deepEqual(harness.children[0].killCalls, ["SIGTERM"]);
   assert.equal(harness.children[0].exitCode, 0);
