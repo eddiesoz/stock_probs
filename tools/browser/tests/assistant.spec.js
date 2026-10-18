@@ -274,6 +274,144 @@ async function expectAssistantLiveStatusAbsent(panel, message) {
   await expect(announcer).not.toHaveText(message);
 }
 
+const assistantCancellationStatusPattern = /^Response cancelled\.(?: Saved conversation history remains available\.| Review the saved conversation for its final state\.)$/;
+const assistantTurnStatuses = new Set(["queued", "running", "streaming", "pending", "completed", "cancelled", "failed", "timed_out"]);
+
+async function readAssistantTurnStatus(page, origin, conversationId, turnId, timeout = 5_000) {
+  const detailPath = `/api/v1/assistant/conversations/${encodeURIComponent(conversationId)}?message_page=1&action_page=1&event_page=1`;
+  const response = await page.context().request.get(new URL(detailPath, origin).toString(), { timeout });
+  if (!response.ok()) return { httpStatus: response.status(), turnStatus: "http_error" };
+  const detail = await response.json();
+  const turn = Array.isArray(detail.turns) ? detail.turns.find((item) => item.id === turnId) : null;
+  const turnStatus = typeof turn?.status === "string"
+    ? (assistantTurnStatuses.has(turn.status) ? turn.status : "other")
+    : "missing";
+  return { httpStatus: response.status(), turnStatus };
+}
+
+async function assertAssistantCancellationStatus(panel) {
+  const visibleStatus = panel.locator("p").filter({ hasText: assistantCancellationStatusPattern });
+  const announcer = panel.locator('span.sr-only[aria-live="polite"]');
+  await expect(visibleStatus).toHaveCount(1);
+  await expect(visibleStatus).toBeVisible();
+  await expect(visibleStatus).not.toHaveAttribute("role", "status");
+  await expect(visibleStatus).toHaveText(assistantCancellationStatusPattern);
+  await expect(panel.locator('[aria-live="polite"]')).toHaveCount(1);
+  await expect(announcer).toHaveCount(1);
+  await expect(announcer).toHaveText(assistantCancellationStatusPattern);
+  await expect(panel.getByRole("button", { name: "Stop response" })).toHaveCount(0);
+  const composer = panel.getByRole("textbox", { name: "Ask about this page" });
+  await expect(composer).toBeVisible();
+  await expect(composer).toBeEditable();
+  const sendButton = panel.getByRole("button", { name: "Send question" });
+  await expect(sendButton).toBeVisible();
+  const prompt = await composer.inputValue();
+  if (prompt.trim()) await expect(sendButton).toBeEnabled();
+  else await expect(sendButton).toBeDisabled();
+}
+
+async function withAssistantCancellationObservation(page, panel, testInfo, turnIdentity, assertion) {
+  try {
+    await assertion();
+  } catch (error) {
+    const schema = "assistant-cancel-status-observation/v1";
+    let observation = { schema, observationUnavailable: true };
+    try {
+      const browserState = await page.evaluate(() => {
+        const panelElement = document.querySelector('[data-testid="assistant-panel"]');
+        if (!panelElement) throw new Error("assistant panel unavailable");
+        const statusPattern = /^(?:Response cancelled\.|Assistant response complete\.|The assistant turn ended without a completed answer\.|The response stream ended without a completion event\.|The response did not finish\.|Ready when you are\.)/i;
+        const boundedText = (element) => (element.innerText || element.textContent || "")
+          .replace(/\s+/g, " ").trim().slice(0, 240);
+        const visible = (element) => {
+          const style = window.getComputedStyle(element);
+          return element.getClientRects().length > 0 && style.display !== "none"
+            && style.visibility === "visible" && Number(style.opacity) > 0;
+        };
+        const visibleStatusParagraphs = Array.from(panelElement.querySelectorAll("p"))
+          .filter((element) => visible(element) && statusPattern.test(boundedText(element)))
+          .slice(0, 8).map(boundedText);
+        const politeLiveRegionStrings = Array.from(panelElement.querySelectorAll('[aria-live="polite"]'))
+          .map(boundedText).filter((text) => statusPattern.test(text)).slice(0, 8);
+        const buttons = Array.from(panelElement.querySelectorAll("button"));
+        const buttonName = (button) => (button.getAttribute("aria-label") || button.textContent || "")
+          .replace(/\s+/g, " ").trim();
+        const stopButtons = buttons.filter((button) => buttonName(button) === "Stop response");
+        const sendButtons = buttons.filter((button) => buttonName(button) === "Send question");
+        return {
+          visibleStatusParagraphs,
+          politeLiveRegionStrings,
+          stopButtonCount: stopButtons.length,
+          stopButtonEnabled: stopButtons.some((button) => !button.disabled),
+          sendButtonCount: sendButtons.length,
+          sendButtonEnabled: sendButtons.some((button) => !button.disabled),
+        };
+      });
+      let savedTurnStatus = "not_requested";
+      if (turnIdentity) {
+        try {
+          savedTurnStatus = (await readAssistantTurnStatus(
+            page,
+            turnIdentity.origin,
+            turnIdentity.conversationId,
+            turnIdentity.turnId,
+            1_500,
+          )).turnStatus;
+        } catch {
+          savedTurnStatus = "unavailable";
+        }
+      }
+      observation = { schema, observationUnavailable: false, ...browserState, savedTurnStatus };
+    } catch {
+      observation = { schema, observationUnavailable: true };
+    }
+    try {
+      await testInfo.attach("assistant-cancellation-observation.json", {
+        body: Buffer.from(JSON.stringify(observation, null, 2)),
+        contentType: "application/json",
+      });
+    } catch {
+      // Preserve the original assertion failure if the optional diagnostic cannot be attached.
+    }
+    throw error;
+  }
+}
+
+async function cancelAssistantWebFetchTurn(page, panel, testInfo, origin, eventPath, browserDiagnostics) {
+  const eventUrl = new URL(eventPath, origin);
+  expect(eventUrl.origin).toBe(origin);
+  const match = eventUrl.pathname.match(/^\/api\/v1\/assistant\/conversations\/([^/]+)\/turns\/([^/]+)\/events$/);
+  expect(match).not.toBeNull();
+  const [, conversationId, turnId] = match;
+  const turnIdentity = { origin, conversationId, turnId };
+  await withAssistantCancellationObservation(page, panel, testInfo, turnIdentity, async () => {
+    browserDiagnostics.expectRequestAborts({ method: "GET", path: eventUrl.pathname, count: 1 });
+    const cancelPath = `/api/v1/assistant/conversations/${encodeURIComponent(conversationId)}/turns/${encodeURIComponent(turnId)}/cancel`;
+    const cancelResponsePromise = page.waitForResponse((response) => {
+      const responseUrl = new URL(response.url());
+      return responseUrl.origin === origin && response.request().method() === "POST"
+        && responseUrl.pathname === cancelPath;
+    }, { timeout: 5_000 }).then(
+      (response) => ({ response }),
+      (error) => ({ error }),
+    );
+    await panel.getByRole("button", { name: "Stop response" }).click();
+    const cancelOutcome = await cancelResponsePromise;
+    if (cancelOutcome.error) throw cancelOutcome.error;
+    const cancelResponse = cancelOutcome.response;
+    expect(cancelResponse.status()).toBe(200);
+    expect(await cancelResponse.json()).toMatchObject({ turn_id: turnId, status: "cancelled" });
+    const savedTurn = await readAssistantTurnStatus(page, origin, conversationId, turnId);
+    expect(savedTurn.httpStatus).toBe(200);
+    expect(savedTurn.turnStatus).toBe("cancelled");
+    await assertAssistantCancellationStatus(panel);
+  });
+}
+
+async function expectAssistantCancellationStatus(page, panel, testInfo) {
+  await withAssistantCancellationObservation(page, panel, testInfo, null, () => assertAssistantCancellationStatus(panel));
+}
+
 async function chooseFixtureModel(panel) {
   const selector = panel.getByRole("combobox", { name: "Assistant model" });
   if (await selector.inputValue() !== model.id) await selector.selectOption(model.id);
@@ -2264,9 +2402,7 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
       .map((item) => item.data?.name).filter((name) => typeof name === "string");
   }, staleTurn[1]);
   expect(staleActivity.some((name) => /web.?fetch/i.test(name))).toBe(false);
-  browserDiagnostics.expectRequestAborts({ method: "GET", path: staleContext.eventPath, count: 1 });
-  await panel.getByRole("button", { name: "Stop response" }).click();
-  await expectAssistantLiveStatus(panel, "Response cancelled. Saved conversation history remains available.");
+  await cancelAssistantWebFetchTurn(page, panel, testInfo, origin, staleContext.eventPath, browserDiagnostics);
 
   await changeRoute("/overview");
   await expect(panel.getByRole("region", { name: "Workspace context" })).toContainText("Overview");
@@ -2311,9 +2447,7 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
       .map((item) => item.data?.name).filter((name) => typeof name === "string");
   }, staleRouteTurn[1]);
   expect(staleRouteActivity.some((name) => /web.?fetch/i.test(name))).toBe(false);
-  browserDiagnostics.expectRequestAborts({ method: "GET", path: staleRouteContext.eventPath, count: 1 });
-  await panel.getByRole("button", { name: "Stop response" }).click();
-  await expectAssistantLiveStatus(panel, "Response cancelled. Saved conversation history remains available.");
+  await cancelAssistantWebFetchTurn(page, panel, testInfo, origin, staleRouteContext.eventPath, browserDiagnostics);
 
   await changeRoute("/overview");
   await expect(panel.getByRole("region", { name: "Workspace context" })).toContainText("Overview");
@@ -2340,9 +2474,7 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
     "webfetch-cancel-preview",
     "Approve exact URL once",
   );
-  browserDiagnostics.expectRequestAborts({ method: "GET", path: cancellation.eventPath, count: 1 });
-  await panel.getByRole("button", { name: "Stop response" }).click();
-  await expectAssistantLiveStatus(panel, "Response cancelled. Saved conversation history remains available.");
+  await cancelAssistantWebFetchTurn(page, panel, testInfo, origin, cancellation.eventPath, browserDiagnostics);
   await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Can I ask after cancelling the preview?");
   await expect(panel.getByRole("button", { name: "Send question" })).toBeEnabled();
   await panel.getByRole("textbox", { name: "Ask about this page" }).fill("");
@@ -3741,7 +3873,7 @@ test("assistant keeps focus through send and cancel, and ignores stale focus han
   await expect(panel.getByRole("button", { name: "Stop response" })).toBeFocused();
 
   await panel.getByRole("button", { name: "Stop response" }).press("Enter");
-  await expectAssistantLiveStatus(panel, "Response cancelled. Saved conversation history remains available.");
+  await expectAssistantCancellationStatus(page, panel, testInfo);
   await expect(composer).toBeFocused();
   await expect(panel.getByRole("button", { name: "Stop response" })).toHaveCount(0);
 
@@ -3755,7 +3887,7 @@ test("assistant keeps focus through send and cancel, and ignores stale focus han
     await expect(panel).toHaveAttribute("aria-modal", "true");
     await expect(panel.getByRole("button", { name: "Stop response" })).toBeFocused();
     await panel.getByRole("button", { name: "Stop response" }).press("Enter");
-    await expectAssistantLiveStatus(panel, "Response cancelled. Saved conversation history remains available.");
+    await expectAssistantCancellationStatus(page, panel, testInfo);
     await expect(composer).toBeFocused();
     return;
   }

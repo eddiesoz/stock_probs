@@ -10287,3 +10287,45 @@ The private v2/v3 comparator attempts also **Failed** on that same fixture-start
 The fixture-only readiness watchdog repair passed independent source and pure QA: its 30,000 ms readiness deadline matches the unchanged Playwright `webServer` budget; each fetch uses `AbortSignal.timeout(max(1, min(1000 ms, remaining_ms)))`, rejects success after child exit or deadline, and caps retry sleep by remaining time. The fake-clock/process/fetch lifecycle suite passed 9/9; fixture and test syntax checks and the scoped diff check also passed. Independent receipt `/var/tmp/r12r/f6-fixture-readiness-watchdog-20261018/independent-qa-v1/receipt.json` SHA-256 `04fed037b05d967d4ef602ef62ff09a68191eba6b7cab981b5e084886c636761` records review `2026-10-18T18:03:01Z`–`18:04:24Z` and focused checks `18:03:47Z`–`18:03:48Z` on Node `v22.22.2`, x86_64 Linux. Bound inputs: `fixtures.js` SHA-256 `dcfeace7a1b50f41de204aa50cda471d297c3976c86c156fa935be97d4f2747f`, `fixtures-lifecycle.unit.js` SHA-256 `0754816c6d70934a96d56dfb00a5274251596acd8194ee0fb4e2b5d85c20b8c4`, and unchanged Playwright config SHA-256 `519f00d3ac2ab455f91677413faa652424140fb98a6c0df1bf04534b1f83f55c` (`timeout=30000`). This is source/pure QA only: no app, browser, provider, database, or server was launched. The actual focused F04 browser run is **Pending** after authorization; its cause remains **Unproven**. Product and provider deadlines are unchanged; no keeper or SQL integration is claimed.
 
 The coordinator reports R2 PR #8 pushed clean at `d977acf57adc7fcdb191092d84879ff3e42d68d8` and R3 PR #13 pushed clean at `0d741f93e0c6cc79d803722b5417c996e57dbe4f`; all seven features remain active. Current native acceptance, current canonical gate, actual combined 1 GB resources, PR-bound rollback, and release remain **Pending**. No application deployment, merge, email, or resize occurred; the existing 1 GB host, backups, and US$15 monthly total cap remain unchanged.
+
+### R-ASTRA-121 F6 WebFetch cancellation-status checkpoint (2026-10-18)
+
+The repaired test-only cancellation contract received independent source QA **Pass**. It
+recognizes exactly the two cancellation notices defined by the existing assistant panel;
+keeps one visible notice paragraph outside role=status and verifies one polite announcer.
+It checks that the composer is visible/editable and Send is enabled only for a nonempty
+prompt. Each of the three WebFetch cancellation paths requires the exact turn-event GET's expected aborted-request count,
+an exact same-origin HTTP 200 cancel response with matching turn ID and
+cancelled status, and a read-only saved-conversation check showing that turn as cancelled.
+The source QA reviewed only the browser test path and pinned five product-source files;
+application, frontend, and image inputs were not changed. Receipt
+/var/tmp/r12r/f6-cancel-status-source-qa-95530963-b523-4228-9e90-addb472b04a9/receipt.json
+(SHA-256 ba278d2b03acdffccae6dcc8c957f6565e04ca6e3fc20f968298607acbb5155d).
+
+Earlier focused evidence remains distinct. Browser selector attempt v2 **Failed at setup**:
+no tests matched, no target test executed, and the runner exited 1. Its terminal receipt is
+/var/tmp/r12r/f6-focused-webfetch-0b214bb-20261018T181325Z/terminal-v2.json
+(SHA-256 12174e9fc15a66a6271773d1aae77ae6fe8f9f87b8177068ac6e4245dc2bdc55). The v3
+mobile WebFetch case **Failed** when its cancellation assertion expected one visible
+notice paragraph and received zero; the cause remains **Unproven**. Its terminal receipt is
+/var/tmp/r12r/f6-focused-webfetch-0b214bb-20261018T181325Z/terminal-v3.json
+(SHA-256 0deeabeea3ed3d1215126febd34988ae3cd9a21fe0bb5b73008afc4e8eef66d8). Parent source
+review v1 separately **Failed** with three P2 findings: the empty-prompt Send assertion
+needed to require disabled Send, the visible notice had to remain outside role=status, and
+the pending response rejection handler had to be attached before the Stop click. Receipt
+/var/tmp/r12r/f6-cancel-status-observation-prep-20261018T182602Z/parent-review-v1.json
+(SHA-256 b3239c9d76f46335c6c1914b90c884c8101ad8d532d3b90d5699337750358f69).
+
+The focused v4 mobile-Chromium WebFetch case **Passed**: one test, zero unexpected,
+skipped, or flaky results; case duration 39.598 seconds and runner duration 46.647 seconds.
+The exact worktree head was 0b214bb47886cc7e9db73edccc8648b9af38b678. The run verified
+416 source/browser bindings, 150 context bindings, and 53 served-stage pairs before and
+after; the bound test-spec SHA-256 was
+374f58cb48ae40126bc9c9265f9e727905885747bca5672c6dd5dab18c6e799c. Terminal
+/var/tmp/r12r/f6-focused-webfetch-0b214bb-20261018T181325Z/terminal-v4.json has SHA-256
+2c86687f624540922c1d2b86a70ec8e7942410a124bf7fb239231be774a4259a; its Playwright report
+/var/tmp/r12r/f6-focused-webfetch-0b214bb-20261018T181325Z/playwright-json-v4.json has
+SHA-256 dd14e4f7082ddf5e5ba3dcfe0f12869ca4e537aa317de0143137cb3af071f56d. Independent terminal/report/cleanup review **Passed for this single-case scope only**; its receipt is /var/tmp/r12r/f6-focused-webfetch-0b214bb-20261018T181325Z/independent-terminal-review-v4-20261018T184852Z.json (SHA-256 f333d1e8e342a43d203ce3fe82e4241f99921732dfb76fbcc981cd8229767cef). It did not replay the case or inspect source. The report listed a 30-second project timeout while the case took 39.598 seconds; the test itself retains its existing test.setTimeout(180_000) override, which was outside that terminal-only review scope. This single selected case does not
+change the recorded full-200 **Fail** or establish a full-browser pass. Native-host,
+current-canonical, rollback, resource, and release gates remain pending; no deployment,
+merge, email, or resize occurred.
