@@ -742,7 +742,7 @@ def test_chat_proxy_emits_only_complete_normalized_provider_events(
         b'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
         b"data: [DONE]\n\n"
     )
-    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"
+    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"
     assert captured["headers"]["accept"] == "text/event-stream"
     assert captured["headers"]["authorization"] == "Bearer public"
     assert captured["body"]["model"] == model_id.removeprefix("opencode-zen/")
