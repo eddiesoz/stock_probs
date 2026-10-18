@@ -7872,6 +7872,163 @@ def test_temporary_recovery_next_cycle_accepts_only_explicitly_bound_restored_ho
     assert "failure_code" not in operation
 
 
+def _legacy_omitted_startup_predecessor_fixture(helper) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build synthetic metadata to exercise the exact legacy identity guard."""
+
+    operation_id = helper.TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_OPERATION_ID
+    original = {
+        "assistant_rollout_mode": "invited",
+        "revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+        "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "schema_version": 13,
+        "deployed_at": "2026-10-18T21:00:00+00:00",
+    }
+    prior = {
+        "phase": "restored",
+        "operation_id": operation_id,
+        "assistant_rollout_mode": "disabled",
+        "restored_image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "restored_at": "2026-10-18T21:01:00+00:00",
+        "failure_code": "host_command_failed",
+        "failed_at": "2026-10-18T21:02:00+00:00",
+        "original_record": original,
+    }
+    current = {
+        **original,
+        "temporary_recovery_restored_operation_id": operation_id,
+    }
+    return prior, current
+
+
+def _pin_synthetic_legacy_predecessor_hash(
+    helper, prior: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> str:
+    """Bind the test-only legacy digest to synthetic canonical metadata."""
+
+    digest = helper._canonical_value_sha256(prior)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_SHA256", digest)
+    return digest
+
+
+def test_temporary_recovery_accepts_only_synthetic_metadata_bound_to_exact_legacy_pin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the exact-ID/hash exception without claiming the fixture is production data."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+    assert helper.TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_OPERATION_ID == (
+        "98ce0f645a558df329fd911b958e12a4"
+    )
+    assert helper.TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_SHA256 == (
+        "2b3f6c9e5886b1a25d1cd864f77b95b694224faff986648cf2bef1457c250dc3"
+    )
+    synthetic_digest = _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+    assert synthetic_digest != "2b3f6c9e5886b1a25d1cd864f77b95b694224faff986648cf2bef1457c250dc3"
+
+    helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
+def test_temporary_recovery_legacy_omission_rejects_unmatched_production_digest() -> None:
+    """Do not accept an omitted-field record unless its canonical bytes match the pin."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_state_invalid"):
+        helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("operation_id", "0" * 32),
+        ("failure_code", "temporary_recovery_backup_unverified"),
+        ("failed_at", "not-a-time"),
+        ("phase", "failed"),
+        ("restored_image_id", "sha256:" + "0" * 64),
+    ],
+)
+def test_temporary_recovery_legacy_omission_rejects_wrong_identity_or_state(
+    field: str,
+    replacement: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the legacy exception bound to its exact identity and restored state."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+    prior[field] = replacement
+    if field == "operation_id":
+        current["temporary_recovery_restored_operation_id"] = replacement
+    _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_state_invalid"):
+        helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
+@pytest.mark.parametrize(
+    ("present_field", "value"),
+    [("startup_floor_kib", 600_000), ("start_admission_allowed", True)],
+)
+def test_temporary_recovery_legacy_omission_rejects_one_sided_startup_fields(
+    present_field: str,
+    value: int | bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A legacy hash never makes a partially present startup pair valid."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+    prior[present_field] = value
+    _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_state_invalid"):
+        helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
+def test_temporary_recovery_legacy_digest_binds_every_prior_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing otherwise valid predecessor metadata invalidates its exact digest."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+    pinned_digest = _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+    prior["restored_at"] = "2026-10-18T21:01:01+00:00"
+    assert helper._canonical_value_sha256(prior) != pinned_digest
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_state_invalid"):
+        helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
+@pytest.mark.parametrize(
+    "mismatch", ["current_link", "current_image", "original_current", "original_image"]
+)
+def test_temporary_recovery_legacy_exception_keeps_current_record_checks(
+    mismatch: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The legacy field omission does not bypass restored-link or record-equality checks."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+    _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+    if mismatch == "current_link":
+        current["temporary_recovery_restored_operation_id"] = "0" * 32
+    elif mismatch == "current_image":
+        current["image_id"] = "sha256:" + "0" * 64
+    else:
+        if mismatch == "original_current":
+            prior["original_record"]["revision"] = "f" * 40
+        else:
+            prior["original_record"]["image_id"] = "sha256:" + "0" * 64
+        _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_current_mismatch"):
+        helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
 @pytest.mark.parametrize(
     "invalid_prior",
     [

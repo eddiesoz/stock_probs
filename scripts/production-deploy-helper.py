@@ -81,6 +81,11 @@ PRODUCTION_PREDECESSOR_REVISION = "5ad2c3fddfce5a5a631b72cd832a53f24757c44a"
 PRODUCTION_PREDECESSOR_IMAGE_ID = (
     "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1"
 )
+# One restored retryable predecessor predates the persisted startup observation fields.
+TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_OPERATION_ID = "98ce0f645a558df329fd911b958e12a4"
+TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_SHA256 = (
+    "2b3f6c9e5886b1a25d1cd864f77b95b694224faff986648cf2bef1457c250dc3"
+)
 HOTFIX_PAIR_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOTFIX_PAIR_CONTRACT_V3 = "schema13_same_schema_hotfix_v3"
 # The installed bootstrap record tracks its source transport independently of the pair format.
@@ -6039,6 +6044,12 @@ def _validate_restored_temporary_recovery_predecessor(
         "startup_floor_kib",
         "start_admission_allowed",
     } <= prior.keys()
+    legacy_omitted_startup = (
+        not any(field in prior for field in ("startup_floor_kib", "start_admission_allowed"))
+        and has_retryable_failure
+        and prior.get("operation_id") == TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_OPERATION_ID
+        and _canonical_value_sha256(prior) == TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_SHA256
+    )
     paired_null_startup = (
         startup_fields_present and startup_floor is None and start_admission is None
     )
@@ -6049,7 +6060,11 @@ def _validate_restored_temporary_recovery_predecessor(
         and type(start_admission) is bool
         and start_admission is (startup_floor >= TEMPORARY_RECOVERY_STARTUP_FLOOR_KIB)
     )
-    if not (measured_startup or (has_retryable_failure and paired_null_startup)):
+    if not (
+        measured_startup
+        or (has_retryable_failure and paired_null_startup)
+        or legacy_omitted_startup
+    ):
         raise HostError("temporary_recovery_prior_state_invalid")
 
     original = prior.get("original_record")

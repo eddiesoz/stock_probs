@@ -282,6 +282,30 @@ KNOWN_INSTALLED_0499_INSTALL_MANIFEST = {
     "helper_source_contract": HELPER_SOURCE_CONTRACT,
     "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
 }
+# Exact PR11 helper installation read back from the 959fd2b source bundle.
+KNOWN_INSTALLED_959_PRODUCTION_HELPER_SHA256 = (
+    "7a2fc916425d2a0d9b9af49ad9d3bea5f5053b109f2279df05a3dab09a3c4bc3"
+)
+KNOWN_INSTALLED_959_REVIEWED_HEAD_SHA = "959fd2b327a818830c952e3a47bbb96c12cc537b"
+KNOWN_INSTALLED_959_PAIR_MANIFEST_SHA256 = (
+    "0d4f45ad262e56b969067326c95b7c352f0b25d1d2348e7e8abc5642d7ff8343"
+)
+KNOWN_INSTALLED_959_INSTALLED_FILES = {
+    "host_helper.py": "df2bc7cfab51de427909b0ef9017d636b1cd22903a97521ffdec8eef8c8dd7eb",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_959_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_959_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_959_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_959_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_959_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -740,6 +764,11 @@ def _prepare_previous_production_helper(
                 _require_installed_manifest(candidate_manifest_fields)
             except InstallError:
                 _require_installed_manifest(KNOWN_INSTALLED_0499_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_959_PRODUCTION_HELPER_SHA256:
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                _require_installed_manifest(KNOWN_INSTALLED_959_INSTALL_MANIFEST)
         elif current_digest == candidate_digest:
             _require_installed_manifest(candidate_manifest_fields)
         elif current_digest != PREVIOUS_PRODUCTION_HELPER_SHA256:

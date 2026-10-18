@@ -10364,3 +10364,76 @@ The follow-on PR #11 bootstrap repair admits only the exact reviewed 0499 instal
 The builder reported 687 tests passing with one real-Docker selection deselected; terminal receipt `/var/tmp/r12r/pr11-bootstrap-0499-qa-20261018T2210Z/terminal-receipt.json`, SHA-256 `eedeb67885e88c70ef70dba763ac7f63d612c391d4aa72d21731b7755ac2a3bd`. The earlier integrated independent review **Failed** on the guard/cleanup ordering; receipt `/var/tmp/r12r/pr11-bootstrap-0499-independent-review-20261018T2032Z/assessment.json`, SHA-256 `fcaeab691f10ef782161ffc6256bf9df2d681f05c4e299c49604c8affa9bf86e`. Subsequent independent integrated QA **Passed** the repaired three-module scope: 696 passed, zero failures/errors/skips, one real-Docker selector deselected, 20 code/test/import pins unchanged, and the four authored documentation paths excluded. It ran `2026-10-18T20:39:44.329201Z`–`20:40:11.008228Z`. Source review confirmed the non-mutating deployment-home guard, strict exact-0499 admission, unchanged PR 2/11 mapping, and failure-safe source-install/archive cleanup ordering. Test receipt `/var/tmp/r12r/pr11-cleanup-order-independent-20261018T2033Z/receipt.json`, SHA-256 `683d29b4d4e11b9e890b01e23ce2bc88d1e54ae11c785e992e873b9d4ffb1c1a`; source assessment `/var/tmp/r12r/pr11-cleanup-order-independent-review-20261018T2042Z/assessment.json`, SHA-256 `9d9caa94b937e6acc596eb396bba13e63d5ff88487f3243d571e05e44833f346`; static receipt `/var/tmp/r12r/pr11-cleanup-order-independent-static-20261018T2041Z/receipt.json`, SHA-256 `f46e130dc521331c5b6afe6f8c520af60ba2d9bb9d38a23bb247b49adbaaadeb`. These are source/test and offline-replay evidence only. No actual-host retry, helper installation, current-image answer, deployment, or production mutation followed.
 
 Adjacent F6 evidence is a separate six-flow diagnostic, not the full browser gate. Its v2 desktop/mobile execution passed 12/12 with zero failures, skips, or retries (`2026-10-18T20:35:35.035380Z`–`20:37:45.884216Z`); the v1 setup failure remains separate because it used a baseline hash instead of the approved overlay and ran no app/browser checks. The v2 terminal `/var/tmp/r12r/f6-six-diagnostic-launch-review-20261018T202820Z-1c811678-56fd-46ed-8312-cdc0882d7036/execution-v2/terminal.json` has SHA-256 `071be92ca1efd27da998a84e3313f659a078e10ed22d8603e680be0655697c5b`; source/context/stage bindings remained 416/150/53, and the private fixture's 63-source/106-stage binding remained unchanged. Parent review verified cleanup (dead unit, empty cgroup, closed port), SHA-256 `13a8ad61495dc3166220c31baed020cab6bd239b8a92e6ed1b2a233d02cd290a`. Independent terminal review remains **Pending**. The full-200 run remains **Fail** at 190 passed, seven failed, three skipped; causes remain **Unproven**, and no full-browser or native acceptance follows.
+
+
+### R-ASTRA-121 PR #11 legacy startup-field compatibility (2026-10-18)
+
+The bounded next-cycle attempt on the reviewed helper head `959fd2b327a818830c952e3a47bbb96c12cc537b`
+**Failed** before a pair or model call. The user unit ran at `2026-10-18T22:07:26Z`–`22:07:30Z`
+and exited 1; the driver recorded `stage=start`, `remote_operation_failed`, and `pair_calls=0`.
+Initial and post-start inspect responses retained the exact original 5ad image, schema 13,
+ready/enabled assistant, invited rollout and loopback-only binding. The prior recovery operation
+remained restored. The controller discards the host's specific error code, so the historical start
+call's specific rejection remains **Unproven**. Parent terminal receipt:
+`/var/tmp/r12r/f6-next-cycle-prep-r3-20261018T220051Z-7768af8f-43d7-4da6-8794-a9302511559d/parent-terminal-observation-v1.json`,
+SHA-256 `6112cbb84d39604c822106ea93d9f735aa99f5c05f907b3a809e18b15c3b0eaf`.
+The independent terminal review and immutable driver-hash correction remain separate:
+`/var/tmp/r12r/f6-next-cycle-r3-independent-terminal-review-20261018T221012Z-3433a4c9/receipt.json`
+(SHA-256 `8868ba8aaeff146c3bcc8e73ad67c27f0cebc26bd39c35531ca0487f1d09f797`) and
+`/var/tmp/r12r/f6-next-cycle-r3-driver-hash-correction-20261018T221111Z-4e99a62f/correction-supplement.json`
+(SHA-256 `c44e5cb44fe2660a015a8533d2243e25fa5d2574800638e7508f9f6604e3e2e0`).
+
+A separate read-only metadata probe at `2026-10-18T22:15:43.041259Z`–`22:15:44.292479Z`
+completed with SSH exit 0 and reproduced a validator **Fail**, `temporary_recovery_prior_state_invalid`.
+It verified the installed public helper digest and ran only three extracted, hash-pinned pure
+declarations against two bounded root-owned metadata records under a shared lock. Both startup
+keys were absent in the prior record; the displayed operation view had projected them as null.
+No database, key, environment-file or backup payload was read, and no state was changed.
+Evidence is `/var/tmp/r12r/r4-validator-metadata-probe-20261018T224000Z/actual-terminal-v1.json`.
+Independent source-safety review **Passed** before execution, receipt
+`/var/tmp/r12r/r4-validator-metadata-probe-independent-qa-1d5a0813-541d-46d9-9358-e1aeeb6b2b69/receipt.json`,
+SHA-256 `e7df8a41c5ed18a670b8ff1083d44205646eea4ea6e38713765ac3aadcb68e5e`.
+This reproduces a necessary preflight blocker; it does not recover the discarded error response
+from the earlier mutating call.
+
+The candidate repair admits this omission only for the exact known legacy operation ID and
+canonical record hash. Existing paired-null and measured startup forms, restored image/time,
+retryable failure, original/current equality and operation-link checks remain mandatory. It does
+not edit the historical record. Builder-focused checks **Passed** 20 tests (295 deselected,
+two warnings), Ruff and format; positive coverage uses synthetic metadata with only the expected
+digest replaced and does not recreate production bytes. Independent repair QA **Passed** its scoped source review, 29 selected tests, Ruff, format and
+scoped diff checks. Receipt
+`/var/tmp/r12r/pr11-helper-independent-qa-96354eec-ceb5-4c0b-89b0-dddd66ad66dd/receipt.json`,
+SHA-256 `2c50d0bd2ffd11076d241e7ddf79c3f310556a6624b39f7dede4044fe401d74c`,
+records the unavailable exact pytest start time and preserves the missing worktree-interpreter
+setup attempt separately. The source review completed by `2026-10-18T22:24:38Z`; no full helper
+suite or host call ran. Installation remains **Pending**. Application and frontend bytes are
+unchanged; no model answer,
+actual combined 1 GB, recovery-pair, canonical, rollback or release acceptance follows. No candidate
+app deployment, merge, resize or email occurred; the existing 1 GB host, backups and US$15 total
+monthly cap remain unchanged.
+
+The separate installed-source probe **Passed** at `2026-10-18T22:36:34.233206Z`–
+`22:36:35.341123Z` with transport exit 0. It read only the installed manifest and four public
+source files under shared locks, confirming exact helper head `959fd2b327a818830c952e3a47bbb96c12cc537b`,
+pair SHA-256 `0d4f45ad262e56b969067326c95b7c352f0b25d1d2348e7e8abc5642d7ff8343`, and the
+expected prior-helper backup digest. The four installed source hashes match that public Git commit.
+Terminal: `/var/tmp/r12r/r4-installed-source-probe-20261018T222757Z/actual-terminal-v1.json`;
+manifest SHA-256 `cdfb76924bd4f395e0cae0288b4ffd08b5a5bd9910fb143fc276b43ce3bacf50`.
+Independent pre-execution source-safety review **Passed**, receipt
+`/var/tmp/r12r/r4-installed-probe-source-qa-8995c9ed-47f2-4820-a2d6-25c01de8e262/receipt.json`,
+SHA-256 `07bd5bc28f588b6a574b4cafe91d1818066ecb0b9a51a2802e1739f94383a271`.
+
+The bootstrap successor repair admits only the exact observed 959 installed manifest or an exact
+completed candidate receipt for that helper digest. It retains the root-owned manifest/live-source
+checks, fixed prior-helper backup digest and size, and PR 2/11 mapping. Builder checks **Passed**
+19 selected 959/0499 tests plus lint, security-selected lint, format, syntax and scoped diff checks.
+These use synthetic installed files for execution and separately assert the public tuple; they do
+not reproduce production installation. Independent QA **Passed** 128 bootstrap tests at
+`2026-10-18T22:45:12Z`–`22:45:17Z` and one separate PR 2/11 mapping test at
+`22:45:32Z`–`22:45:35Z`, plus source review, lint, security-selected lint, format and diff checks.
+Source-review receipt `/var/tmp/r12r/pr11-bootstrap-independent-qa-20261018T2245Z/source-review.json`
+has SHA-256 `220ebec61e818d17fb1707951fbb38fa46c42887d50ffa3684849f2bf9062ecf`.
+The raw security selection retained 766 S101 assertion diagnostics; the project selection ignoring
+S101 passed. Missing immutable-backup rejection is source-reviewed, without an explicit deletion
+test. Installation remains **Pending**; no actual-host acceptance follows.

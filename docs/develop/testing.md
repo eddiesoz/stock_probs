@@ -698,7 +698,7 @@ passes are neither actual archive/image acceptance nor a successful host transit
 results are recorded in the [MVP plan](../../MVP-PLAN.md).
 
 For a next-cycle retry, cover the one allowed restored failure code (`host_command_failed`),
-canonical paired failure/restoration timestamps, exact original image/current linkage, and both
+canonical paired failure/restoration timestamps, exact original image/current linkage, and the normal
 accepted startup-field forms: a paired null for that retryable failure or a measured pair consistent
 with the existing 128 MiB reserve and 512 MiB floor. Exercise the shared validator at both start
 admission and inspect-proof generation. Mutated/unknown failure codes, partial timestamp or startup
@@ -706,6 +706,20 @@ pairs, mismatched images/current markers, and malformed history must reject with
 immutable predecessor bytes. Instrument the successor path to verify that the existing source, image,
 schema, signed-backup, reserve, and startup checks still run. These focused synthetic checks do not
 establish a production retry or host acceptance.
+
+One restored predecessor predates both persisted startup fields. Admit their joint absence only
+for the exact pinned legacy operation ID and canonical whole-record SHA-256 in the helper; retain
+all restored-state, retryable-failure, original/current image and operation-link checks. A one-sided
+omission, another record, or any altered prior field must still reject. Do not rewrite the historical
+record to add fields. Test the hash guard with synthetic metadata by replacing only the expected
+digest constant, computing the real canonical hash, and verifying mutations reject; this does not
+represent production record bytes or actual-host acceptance.
+
+For helper installation, retain exact predecessor manifest provenance as well as code digests.
+The known 959 installation is accepted only with its exact reviewed head, pair digest, four live
+source hashes and existing prior-helper backup. Test nearby head/pair/file/contract mutations and
+changed live code as failures; an exact completed candidate receipt remains separately admissible.
+A public-source metadata read is not helper installation or native acceptance.
 
 For the PR #11 container profile, read optional Docker inspect keys such as `HostConfig.Init` by
 map index so a missing field does not fail the template; missing/null and `false` are accepted,
