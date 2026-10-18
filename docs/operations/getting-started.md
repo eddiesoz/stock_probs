@@ -1437,11 +1437,23 @@ exact failed build history and retain the distinct evidence. The
 records the selected QA and actual operation.
 
 The additive format-3 hotfix pair identifies the immutable image source, the separately reviewed
-application test head, and the helper source head. The current candidate image is still labelled
-68c; the c2fe test-only correction does not change that label. Helper admission requires the exact
-approved test delta and ancestor chain. The bootstrap's installed-source transport stays at its
-existing v1 value while the pair format is v3. Use the matching managed-v3 reader for the exact local
-build receipt; its field names differ from the historical producer. Private parser tests and an
-archive scan do not establish installation, deployment or rollback acceptance. Those operations
-remain held pending the exact release gates in the
-[dual-head checkpoint](../../MVP-PLAN.md#r-astra-121-dual-head-receipt-compatibility-and-current-browser-checkpoint-2026-10-18).
+PR #9 application head, and the PR #11 helper head. The current reviewed PR #9 head is
+`68973cbfb8520458f76cbcb4f1edf3c0b149168c`; it does not relabel the candidate image sourced from
+`68c225a25a76c4bd65c6309e00dd13200a1d4678` (`sha256:c3ac6f43749404e36e0ae94a8d749ccafe4c882216db09484c1c34f6fbad5f78`,
+context `e0e79be05acad60f4220c3152c32ba5c5b31aa7c394e36cf28de30fcf31d7458`). Pin the exact
+reviewed three-commit chain and six regular-file delta, including modes and blob IDs; preserve the
+test patch replacing one old URL expectation with one expected official inference URL (one removed
+line and one added line); this is not a URL-guard occurrence count. The same bound tuple is
+required by all four consumers; this is not a general documentation or test waiver. The bootstrap's
+installed-source transport stays at its existing v1 value while the pair format is v3. If the
+reviewed head changes, create a fresh manifest/digest and helper-head binding before reopening the
+package. Reuse the previously scanned archive only after confirming its bytes, digest, and every
+source pin remain exact; do not relabel the image. Use the matching managed-v3 reader for the exact
+local build receipt; its field names differ from the historical producer. Parser and lineage checks
+alone do not establish a package build, installation, host operation, deployment or rollback
+acceptance. An earlier parent three-module check **Failed** at 658/659, followed by a scoped
+independent three-module **Pass** at 669/669; the earlier failure remains preserved. Independent
+boundary source/security review passed with no blockers for the unchanged bootstrap 2/11 contract
+and dedicated PR #9 verifier check. Pre-edit byte-copy compliance is **Unavailable**; exact details are in the
+[PR #11 lineage checkpoint](../../MVP-PLAN.md#r-astra-121-pr-11-format-3-lineage-rebind-2026-10-18)
+along with the full chain and remaining gates.

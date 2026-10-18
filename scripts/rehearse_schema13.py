@@ -7,6 +7,7 @@ import argparse
 import fnmatch
 import gzip
 import hashlib
+import http.client
 import importlib.util
 import json
 import os
@@ -38,6 +39,8 @@ HOTFIX_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOTFIX_V3_CONTRACT = "schema13_same_schema_hotfix_v3"
 HELPER_SOURCE_PR_NUMBER = 11
 HOTFIX_PR_NUMBER = 9
+FIXED_PR_REPOSITORY = "eddiesoz/stock_probs"
+REVIEWED_PR_RESPONSE_LIMIT = 64 * 1024
 HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
 HOTFIX_V3_IMAGE_SOURCE_REVISION = "68c225a25a76c4bd65c6309e00dd13200a1d4678"
 HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "68973cbfb8520458f76cbcb4f1edf3c0b149168c"
@@ -2896,12 +2899,62 @@ def _verify_local_pr_head(repository_root: Path, expected_sha: str) -> None:
         raise RehearsalError("the reviewed PR checkout could not be verified")
 
 
+def _verify_fixed_hotfix_pr(expected_sha: str) -> None:
+    """Verify the exact open PR-9 head without widening the bootstrap allowlist."""
+
+    if not isinstance(expected_sha, str) or re.fullmatch(r"[0-9a-f]{40}", expected_sha) is None:
+        raise RehearsalError("reviewed_pr_invalid")
+    try:
+        connection = http.client.HTTPSConnection("api.github.com", timeout=10)
+        try:
+            connection.request(
+                "GET",
+                f"/repos/{FIXED_PR_REPOSITORY}/pulls/{HOTFIX_PR_NUMBER}",
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "signal-ledger-schema13-rehearsal",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+            response = connection.getresponse()
+            raw = response.read(REVIEWED_PR_RESPONSE_LIMIT + 1)
+            if response.status != 200 or len(raw) > REVIEWED_PR_RESPONSE_LIMIT:
+                raise RehearsalError("reviewed_pr_unavailable")
+        finally:
+            connection.close()
+    except RehearsalError:
+        raise
+    except (OSError, TimeoutError, http.client.HTTPException) as exc:
+        raise RehearsalError("reviewed_pr_unavailable") from exc
+    try:
+        payload: object = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RehearsalError("reviewed_pr_invalid") from exc
+    if not isinstance(payload, dict):
+        raise RehearsalError("reviewed_pr_invalid")
+    base = payload.get("base")
+    head = payload.get("head")
+    head_repository = head.get("repo") if isinstance(head, dict) else None
+    if (
+        type(payload.get("number")) is not int
+        or payload.get("number") != HOTFIX_PR_NUMBER
+        or payload.get("state") != "open"
+        or not isinstance(base, dict)
+        or base.get("ref") != "main"
+        or not isinstance(head, dict)
+        or head.get("sha") != expected_sha
+        or not isinstance(head_repository, dict)
+        or head_repository.get("full_name") != FIXED_PR_REPOSITORY
+    ):
+        raise RehearsalError("reviewed_pr_mismatch")
+
+
 def _verify_reviewed_pr(
     repository_root: Path,
     expected_sha: str,
     pull_number: int = 2,
 ) -> None:
-    """Verify the fixed PR #2 build source or PR #11 v2 helper source."""
+    """Verify one fixed build, helper, or hotfix pull request."""
 
     if type(pull_number) is not int or pull_number not in {
         2,
@@ -2909,6 +2962,9 @@ def _verify_reviewed_pr(
         HELPER_SOURCE_PR_NUMBER,
     }:
         raise RehearsalError("the fixed reviewed PR verifier is unavailable")
+    if pull_number == HOTFIX_PR_NUMBER:
+        _verify_fixed_hotfix_pr(expected_sha)
+        return
 
     scripts_directory = repository_root / "scripts"
     verifier_path = scripts_directory / "pr_rehearsal_bootstrap.py"

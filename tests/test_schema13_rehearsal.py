@@ -1459,24 +1459,36 @@ def test_fixed_pr_verifier_uses_only_the_approved_api_endpoint_and_head(
         "base": {"ref": "main"},
         "head": {"sha": reviewed_sha, "repo": {"full_name": "eddiesoz/stock_probs"}},
     }
+    hotfix_payload = {
+        "number": rehearsal.HOTFIX_PR_NUMBER,
+        "state": "open",
+        "base": {"ref": "main"},
+        "head": {"sha": reviewed_sha, "repo": {"full_name": "eddiesoz/stock_probs"}},
+    }
 
     class Response:
         status = 200
 
+        def __init__(self, response_payload: dict[str, object]) -> None:
+            self.response_payload = response_payload
+
         def read(self, size: int) -> bytes:
             assert size == 64 * 1024 + 1
-            return json.dumps(payload).encode()
+            return json.dumps(self.response_payload).encode()
 
     class Connection:
         def __init__(self, host: str, *, timeout: int) -> None:
             assert host == "api.github.com"
             assert timeout == 10
+            self.response_payload = payload
 
         def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
             requests.append((method, path, headers))
+            if path == f"/repos/eddiesoz/stock_probs/pulls/{rehearsal.HOTFIX_PR_NUMBER}":
+                self.response_payload = hotfix_payload
 
         def getresponse(self) -> Response:
-            return Response()
+            return Response(self.response_payload)
 
         def close(self) -> None:
             pass
@@ -1486,10 +1498,32 @@ def test_fixed_pr_verifier_uses_only_the_approved_api_endpoint_and_head(
     assert requests[0][0:2] == ("GET", "/repos/eddiesoz/stock_probs/pulls/2")
 
     requests.clear()
-    with pytest.raises(rehearsal.RehearsalError, match="fixed reviewed PR verifier is unavailable"):
-        rehearsal._verify_reviewed_pr(repository, reviewed_sha, rehearsal.HOTFIX_PR_NUMBER)
+    rehearsal._verify_reviewed_pr(repository, reviewed_sha, rehearsal.HOTFIX_PR_NUMBER)
+    assert requests[0][0:2] == (
+        "GET",
+        f"/repos/eddiesoz/stock_probs/pulls/{rehearsal.HOTFIX_PR_NUMBER}",
+    )
+    assert requests[0][2] == {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "signal-ledger-schema13-rehearsal",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    for invalid_pull_number in (12, True, 9.0):
+        requests.clear()
+        with pytest.raises(
+            rehearsal.RehearsalError,
+            match="fixed reviewed PR verifier is unavailable",
+        ):
+            rehearsal._verify_reviewed_pr(repository, reviewed_sha, invalid_pull_number)
+        assert requests == []
+
+    requests.clear()
+    with pytest.raises(rehearsal.RehearsalError, match="reviewed_pr_invalid"):
+        rehearsal._verify_reviewed_pr(repository, "B" * 40, rehearsal.HOTFIX_PR_NUMBER)
     assert requests == []
 
+    requests.clear()
     rehearsal._verify_reviewed_pr(
         repository,
         reviewed_sha,
@@ -1500,9 +1534,143 @@ def test_fixed_pr_verifier_uses_only_the_approved_api_endpoint_and_head(
         f"/repos/eddiesoz/stock_probs/pulls/{rehearsal.HELPER_SOURCE_PR_NUMBER}",
     )
 
+    requests.clear()
     payload["head"]["sha"] = "c" * 40
     with pytest.raises(rehearsal.RehearsalError, match="reviewed_pr_mismatch"):
         rehearsal._verify_reviewed_pr(repository, reviewed_sha)
+
+
+@pytest.mark.parametrize(
+    ("status", "response_body", "expected_error"),
+    [
+        (503, b"{}", "reviewed_pr_unavailable"),
+        (200, b"{", "reviewed_pr_invalid"),
+        (200, b"[]", "reviewed_pr_invalid"),
+        (200, b"x" * (64 * 1024 + 1), "reviewed_pr_unavailable"),
+    ],
+)
+def test_fixed_hotfix_pr_verifier_preserves_bounded_response_errors(
+    status: int,
+    response_body: bytes,
+    expected_error: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Response:
+        def __init__(self) -> None:
+            self.status = status
+
+        def read(self, size: int) -> bytes:
+            assert size == rehearsal.REVIEWED_PR_RESPONSE_LIMIT + 1
+            return response_body
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            assert method == "GET"
+            assert (
+                path == f"/repos/{rehearsal.FIXED_PR_REPOSITORY}/pulls/{rehearsal.HOTFIX_PR_NUMBER}"
+            )
+            assert headers["Accept"] == "application/vnd.github+json"
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(http.client, "HTTPSConnection", Connection)
+    with pytest.raises(rehearsal.RehearsalError, match=expected_error):
+        rehearsal._verify_reviewed_pr(Path("/unused"), "b" * 40, rehearsal.HOTFIX_PR_NUMBER)
+
+
+@pytest.mark.parametrize(
+    "response_payload",
+    [
+        {
+            "number": 9,
+            "state": "closed",
+            "base": {"ref": "main"},
+            "head": {"sha": "b" * 40, "repo": {"full_name": "eddiesoz/stock_probs"}},
+        },
+        {
+            "number": 9,
+            "state": "open",
+            "base": {"ref": "release"},
+            "head": {"sha": "b" * 40, "repo": {"full_name": "eddiesoz/stock_probs"}},
+        },
+        {
+            "number": 9,
+            "state": "open",
+            "base": {"ref": "main"},
+            "head": {"sha": "c" * 40, "repo": {"full_name": "eddiesoz/stock_probs"}},
+        },
+        {
+            "number": 9,
+            "state": "open",
+            "base": {"ref": "main"},
+            "head": {"sha": "b" * 40, "repo": {"full_name": "attacker/stock_probs"}},
+        },
+        {
+            "number": 10,
+            "state": "open",
+            "base": {"ref": "main"},
+            "head": {"sha": "b" * 40, "repo": {"full_name": "eddiesoz/stock_probs"}},
+        },
+    ],
+)
+def test_fixed_hotfix_pr_verifier_rejects_unreviewed_pull_request_metadata(
+    response_payload: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Response:
+        status = 200
+
+        def read(self, size: int) -> bytes:
+            assert size == rehearsal.REVIEWED_PR_RESPONSE_LIMIT + 1
+            return json.dumps(response_payload).encode()
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            assert method == "GET"
+            assert (
+                path == f"/repos/{rehearsal.FIXED_PR_REPOSITORY}/pulls/{rehearsal.HOTFIX_PR_NUMBER}"
+            )
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(http.client, "HTTPSConnection", Connection)
+    with pytest.raises(rehearsal.RehearsalError, match="reviewed_pr_mismatch"):
+        rehearsal._verify_reviewed_pr(Path("/unused"), "b" * 40, rehearsal.HOTFIX_PR_NUMBER)
+
+
+def test_fixed_hotfix_pr_verifier_maps_transport_errors_to_safe_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            raise TimeoutError("private transport detail")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(http.client, "HTTPSConnection", Connection)
+    with pytest.raises(rehearsal.RehearsalError, match="reviewed_pr_unavailable") as captured:
+        rehearsal._verify_reviewed_pr(Path("/unused"), "b" * 40, rehearsal.HOTFIX_PR_NUMBER)
+    assert "private transport detail" not in str(captured.value)
 
 
 def test_build_image_delegates_to_bounded_helper_with_fixed_identity(

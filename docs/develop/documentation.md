@@ -73,6 +73,20 @@ no OpenCode process, not an absent executable or package. Link current statuses 
 [E21 evidence ledger](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint);
 the persisted applied state must keep every field needed to select the format-2 rollback path.
 
+The additive format-3 pair contract is a separate provenance layer; it does not change the format-2
+persisted rollback contract. Keep the immutable image source, reviewed PR #9 test/application head,
+and PR #11 helper head distinct. A changed PR #9 head needs a new manifest and helper-head binding;
+never relabel an existing image or package. Link current lineage and acceptance status to the
+[PR #11 format-3 checkpoint](../../MVP-PLAN.md#r-astra-121-pr-11-format-3-lineage-rebind-2026-10-18).
+The checkpoint retracts an earlier claim that pre-edit byte copies for seven helper files existed:
+only hashes were recorded, so that preservation status is **Unavailable**. The later exact-Git-byte
+recovery occurred post-edit and does not retroactively satisfy the pre-edit requirement.
+The scoped three-module verifier selection later passed independently (669/669); the earlier
+658/659 failure remains preserved. Independent boundary source/security review passed with no
+blockers for the unchanged bootstrap 2/11 contract and dedicated PR #9 verifier check. These results
+remain scoped checks, not canonical, package, host, rollback, or release acceptance; use the
+checkpoint for exact bindings.
+
 For failed code-only deployment compensation, count the prior release as restored only after it
 passes readiness with its exact prior schema and assistant disabled, then persist a matching
 disabled current record before reporting success. If readiness, schema, assistant state, or record

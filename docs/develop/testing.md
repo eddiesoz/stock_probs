@@ -992,11 +992,20 @@ alias. The exact-tag/canonical-alias repair later passed 56 independent focused 
 retained-archive parser smoke; the smoke mocked `fstat.st_uid` and did not test actual root-owned
 admission. Direct Docker integration was skipped. After independent artifact review and exact helper
 installation, stage the fixed root-owned files and manifest-bound approval. The typed temporary
-recovery protocol then verifies actual archive admission before changing the application. The full F6 200-case aggregate remains **Fail**
+recovery protocol then verifies actual archive admission before changing the application. The earlier F6 200-case aggregate remains **Fail**
 (195 passed, two failed, three expected skips); two of 24 raw-axe attachments are missing, so that
 attachment result is **Unavailable**. A separate focused four-case desktop/mobile follow-up passed
 with four raw-axe snapshots containing zero violations/incompletes; it does not replace the failed
 aggregate. See the [latest PR11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-installed-helper-local-6359-profile-and-archive-parser-checkpoint-2026-10-16).
+
+The subsequent ordinary full-200 run on frozen reviewed PR #9 head
+`68973cbfb8520458f76cbcb4f1edf3c0b149168c` **Failed**: 190 passed, seven failed, three skipped,
+zero flaky, zero not run, exit 1 (`2026-10-18T19:20:13.055Z`–`19:41:00.732Z`). This was not a
+timeout. All 416 source, 150 context, and 53 stage bindings remained unchanged; cleanup was reported
+**Pass**. The seven failures remain under triage and their cause is **Unproven**. Terminal
+`/var/tmp/r12r/f6-full200-ordinary-68973cb-prep-20261018T190022Z-b1351d9b/run-v3/terminal.json`,
+SHA-256 `9cde895372ffac0c9f474741026adf821aca70b4e38fbc4ae8c73f657eb01f51`. No release acceptance
+follows. See the [PR #11/F6 checkpoint](../../MVP-PLAN.md#r-astra-121-pr-11-format-3-lineage-rebind-2026-10-18).
 
 ### PR11 authentication across container restarts
 
@@ -1020,9 +1029,10 @@ invited, ready, loopback-only production state; it did not deploy the F6 applica
 [V10 ledger](../../MVP-PLAN.md#r-astra-121-pr11-v10-actual-host-free-zen-rehearsal-and-current-release-checkpoint-2026-10-17)
 contains source, pair-manifest, terminal, and restoration bindings.
 
-Keep the full 200-case browser result **Fail** (195 passed, two failed, three expected skips) and its
+Keep the earlier 200-case browser result **Fail** (195 passed, two failed, three expected skips) and its
 raw axe aggregate **Unavailable** because one expected attachment is missing. Independent fixture
-repair checks passed, but the repaired browser cases have not rerun. The first canonical attempt
+repair checks had passed, but the repaired browser cases had not rerun at that historical checkpoint;
+the later full-200 failure is recorded above. The first canonical attempt
 was interrupted and remains **Fail**. The corrected `TASK_ID=R-ASTRA-120` run also **Failed** with
 exit 1: JUnit recorded 3,580 tests (3,574 passed, two failed, four skipped); the console separately
 reported four deselected, and backend coverage was 85.70%.
@@ -1079,13 +1089,24 @@ image or native assistant result follows. See the
 
 ### Dual-head release and actual producer receipt checks
 
-Format-3 pair tests keep the image-source revision separate from the reviewed PR #9 head and helper
-head. Negative cases reject a different patch, additional source change, executable/symlink test
-blob, invalid lineage and mismatched installed source transport. The managed-v3 receipt tests use
-the producer's exact 14-key shape; the real fixed receipt must also pass through the consumer
-without overriding its expected identity. Legacy receipt and pair-format paths retain separate
-controls. The 31-test independent private-candidate Pass and actual receipt probe are source/contract
-evidence, not host, Docker, rollback or release acceptance. The current full F6 browser aggregate
-remains Fail (188 passed, nine failed, three expected skips); preserve each failure and run focused
-discriminating checks before another aggregate. See the
-[dual-head checkpoint](../../MVP-PLAN.md#r-astra-121-dual-head-receipt-compatibility-and-current-browser-checkpoint-2026-10-18).
+A format-3 pair binds the immutable image-source revision, the reviewed PR #9 application head,
+and the PR #11 helper head as separate identities. All four consumers—the host helper, deploy MCP
+controller, schema-13 rehearsal, and hotfix transport—must enforce the same reviewed commit chain
+and exact regular-file delta. Compare the raw Git diff and numstat, including paths, modes, and blob
+IDs; preserve the approved test patch replacing one old URL expectation with one expected official
+inference URL (one removed line and one added line); this is not a URL-guard occurrence count. Any
+additional file, mode change, commit, or test change fails closed. A changed reviewed head requires
+a fresh manifest and helper-head binding; a scanned archive can be reused only when its exact bytes,
+digest, and all source pins still match. The managed-v3 reader must accept the producer's exact
+14-key receipt shape without overriding its expected identity; legacy receipt and pair-format paths
+retain separate controls. This narrow lineage allowance is not a general documentation or test
+waiver, and selected source/pure tests do not establish image, host, rollback, or release acceptance.
+See the [PR #11 lineage checkpoint](../../MVP-PLAN.md#r-astra-121-pr-11-format-3-lineage-rebind-2026-10-18)
+for the current reviewed head and evidence status. Preserve the parent three-module **Fail**
+(658 passed, one failed, one real-Docker test deselected) separately from the later independent
+three-module **Pass** (669/669, one Docker test excluded). The builder also reported a corrected
+669-test Pass, but no original terminal receipt was preserved. The independent 669 result verifies
+20 pins; independent boundary source/security review then passed with no blockers for the unchanged
+bootstrap 2/11 contract and dedicated PR #9 verifier check. These are selected-scope checks, not
+canonical, host, rollback, or release acceptance. The checkpoint records the earlier separate 633-count
+builder attempt and exact receipts.
