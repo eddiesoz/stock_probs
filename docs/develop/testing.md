@@ -516,6 +516,13 @@ full-browser, axe, screenshot/design, provider/native, physical-mobile, or relea
 See the [truncation notice checkpoint](../../MVP-PLAN.md#r-astra-121-r1-truncation-notice-selected-browser-checkpoint-2026-10-18)
 for exact run identity, receipts, preserved failures, and bounds.
 
+A separate owner-authenticated TestClient/SQLite selection subsequently passed six cases for
+actual 6,000/6,001-character replies, exact draft truncation and its flag, no automatic save,
+explicit reviewed saving, oversized reasoning/excerpts rejected without a write, and cross-owner
+assistant-message reads and attachments rejected with 404. This closes those selected backend
+coverage gaps; it does not expand the browser run's scope. See the
+[backend boundary checkpoint](../../MVP-PLAN.md#r-astra-121-r1-assistant-draft-backend-boundary-checkpoint-2026-10-18).
+
 ## Assistant verification (`R-ASTRA-120`)
 
 Use focused checks to isolate their boundaries. `tests/test_assistant_delete_session_boundary.py`

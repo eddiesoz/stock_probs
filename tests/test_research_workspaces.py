@@ -679,6 +679,131 @@ def test_selected_assistant_reply_is_owner_checked_draft_not_automatic_save(rese
     )
 
 
+def _insert_assistant_reply(repo, owner_user_id, content):
+    conversation_id, turn_id, message_id = (str(uuid4()) for _ in range(3))
+    with repo.connect() as connection:
+        connection.execute(
+            "INSERT INTO assistant_conversations "
+            "(id, user_id, title, context_json, context_version, created_at, updated_at) "
+            "VALUES (?, ?, 'Boundary test', '{}', ?, ?, ?)",
+            (conversation_id, owner_user_id, "0" * 64, NOW.isoformat(), NOW.isoformat()),
+        )
+        connection.execute(
+            "INSERT INTO assistant_turns "
+            "(id, conversation_id, user_id, status, model_id, policy_version, context_json, "
+            "context_version, created_at) "
+            "VALUES (?, ?, ?, 'completed', 'fixture', 'v1', '{}', ?, ?)",
+            (turn_id, conversation_id, owner_user_id, "0" * 64, NOW.isoformat()),
+        )
+        connection.execute(
+            "INSERT INTO assistant_messages VALUES (?, ?, ?, 1, ?, 'assistant', ?, ?)",
+            (message_id, conversation_id, turn_id, owner_user_id, content, NOW.isoformat()),
+        )
+        connection.commit()
+    return message_id
+
+
+@pytest.mark.parametrize(("reply_length", "expected_truncated"), [(6000, False), (6001, True)])
+def test_assistant_thesis_draft_honors_6000_character_boundary_and_requires_save(
+    research_client, reply_length, expected_truncated
+):
+    repo = research_client.app.state.service.repository
+    content = "R" * reply_length
+    message_id = _insert_assistant_reply(repo, 1, content)
+
+    response = research_client.get("/api/v1/theses/draft", params={"message_id": message_id})
+    assert response.status_code == 200, response.text
+    draft = response.json()
+    assert draft["reasoning"] == content[:6000]
+    assert draft["evidence"] == [
+        {"kind": "assistant", "reference": message_id, "excerpt": content[:6000]}
+    ]
+    assert draft["truncated"] is expected_truncated
+    assert research_client.get("/api/v1/theses").json()["total"] == 0
+
+    if reply_length == 6001:
+        too_long_reasoning = research_client.post(
+            "/api/v1/theses", json={**thesis(), "reasoning": content}
+        )
+        too_long_excerpt = research_client.post(
+            "/api/v1/theses",
+            json={
+                **thesis(),
+                "evidence": [{"kind": "assistant", "reference": message_id, "excerpt": content}],
+            },
+        )
+        assert too_long_reasoning.status_code == 422
+        assert too_long_excerpt.status_code == 422
+        assert research_client.get("/api/v1/theses").json()["total"] == 0
+
+    saved = research_client.post(
+        "/api/v1/theses",
+        json={**thesis(), "reasoning": draft["reasoning"], "evidence": draft["evidence"]},
+    )
+    assert saved.status_code == 201, saved.text
+    assert saved.json()["data"]["reasoning"] == content[:6000]
+    assert saved.json()["data"]["evidence"][0]["excerpt"] == content[:6000]
+    assert research_client.get("/api/v1/theses").json()["total"] == 1
+
+
+def test_authenticated_member_cannot_read_or_attach_another_owners_assistant_reply(settings):
+    configured = replace(
+        settings,
+        auth_mode="local",
+        auth_public_origin="http://testserver",
+        research_features_enabled=True,
+        research_features_canary_only=False,
+        bootstrap_username="owner",
+        bootstrap_password="research-development-owner-password",  # noqa: S106
+        bootstrap_member_username="member",
+        bootstrap_member_password="research-development-member-password",  # noqa: S106
+    )
+    app = create_app(configured, FixtureProvider(), lambda: NOW)
+    private_content = "Owner-only assistant reply with private reasoning."
+    with TestClient(app) as owner:
+        owner_login = owner.post(
+            "/api/v1/auth/local/login",
+            json={"username": "owner", "password": "research-development-owner-password"},
+        )
+        assert owner_login.status_code == 200, owner_login.text
+        repo = app.state.service.repository
+        with repo.connect() as connection:
+            owner_user_id = connection.execute(
+                "SELECT id FROM users WHERE login = ?", ("owner",)
+            ).fetchone()[0]
+        message_id = _insert_assistant_reply(repo, owner_user_id, private_content)
+        owner_draft = owner.get("/api/v1/theses/draft", params={"message_id": message_id})
+        assert owner_draft.status_code == 200
+        assert owner_draft.json()["reasoning"] == private_content
+
+        with TestClient(app) as member:
+            member_login = member.post(
+                "/api/v1/auth/local/login",
+                json={"username": "member", "password": "research-development-member-password"},
+            )
+            assert member_login.status_code == 200, member_login.text
+            member_draft = member.get("/api/v1/theses/draft", params={"message_id": message_id})
+            assert member_draft.status_code == 404
+            assert private_content not in member_draft.text
+            attachment = member.post(
+                "/api/v1/theses",
+                json={
+                    **thesis(),
+                    "evidence": [
+                        {
+                            "kind": "assistant",
+                            "reference": message_id,
+                            "excerpt": private_content,
+                        }
+                    ],
+                },
+                headers={"x-csrf-token": member_login.json()["csrf_token"]},
+            )
+            assert attachment.status_code == 404
+            assert private_content not in attachment.text
+            assert member.get("/api/v1/theses").json()["total"] == 0
+
+
 def test_preview_quota_rejects_before_provider_io(research_client):
     payload = {
         "instruments": [

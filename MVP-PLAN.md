@@ -7198,3 +7198,31 @@ UUID-verified SD mount in `/var/tmp/r12r/R1-truncation-notice-docs-baseline-2026
 (directory `0700`, files `0600`; observed shell umask `0002`). Baseline SHA-256: `MVP-PLAN.md`
 `11f35b47db135593de50d3b1863a5fea372d05daf1db482522cba884afe0dbfa`;
 `docs/develop/testing.md` `88bb6145aa27b214372108c0c3d81ae78101f5bfa5735a955c1bde810723c15d`.
+
+### R-ASTRA-121 R1 assistant draft backend boundary checkpoint (2026-10-18)
+
+The test-only follow-up adds actual 6,000/6,001-character assistant replies to the existing
+SQLite fixtures. It verifies the exact first 6,000 characters and truncation flag in reasoning
+and evidence, no thesis write from reading a draft, and an explicit successful reviewed save.
+Oversized reasoning and evidence excerpts each return 422 without a write. A separate local
+owner/member authentication case verifies that another owner's assistant-message UUID cannot
+be read or attached: both operations return 404 without leaking reply text or saving a thesis.
+No product source changed.
+
+Builder focused QA passed 6/6 at `23:26:56Z`–`23:27:16Z`; its initial collection attempt without
+`PYTHONPATH=src` ran no tests and remains a setup failure. Independent Luna QA passed the six
+selected cases, exit 0, with zero failures/errors/skips, at
+`2026-10-18T23:30:14Z`–`23:30:32Z` on native Linux x86_64, Python 3.11.15 and pytest 9.1.1,
+using explicit worktree `PYTHONPATH=src`, verified SD scratch and child umask `022`. Ruff check,
+format check and scoped diff check passed. All 38 selected source/test/import/configuration/
+migration pins were unchanged. The parent reviewed the complete test delta with no blocker.
+
+Independent receipt:
+`/var/tmp/r12r/r1-thesis-assistant-boundary-independent-20261018T233013Z-429761/independent-qa-receipt.json`,
+SHA-256 `cd03c9d8ada1b360d25dcddc96939caa803edcbb9aa32a7436197261701021a0`.
+JUnit SHA-256 `ffd8166ab3b884562594379dc55fc9cfb27364dfa7498bb5c4cc94819d876269`;
+test source SHA-256 `b3791351cf96868b0756298a276b2d767f5f3c79b5039982c99e0b94ef97bc9f`.
+This is focused TestClient/fixture SQLite evidence. The approved frontend build and selected
+browser evidence retain their original bindings; no new build, browser, live provider, deployment
+or release acceptance is claimed. Owned documentation baselines are preserved in
+`/var/tmp/r12r/r1-boundary-parent-docs-baseline-d620b01d-a92e-48e8-a38b-9c86f228932a/`.
