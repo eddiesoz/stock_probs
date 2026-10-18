@@ -10,7 +10,7 @@ fictional data, incidental labels, and logos are not product requirements. See t
 
 | Release | Complete user-facing scope | Current status |
 | --- | --- | --- |
-| 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | Draft PR #7; approved-design refinements and nine affected browser/axe cases passed after preserved failures; prior non-success cases retain their original bindings. Current aggregate, runtime and release gates remain open |
+| 1 | Owner-specific thesis cards/revisions/evidence; two-to-four instrument comparisons with immutable saved snapshots | Draft PR #7; approved-design refinements and nine affected browser/axe cases passed after preserved failures; a later source-only change adds a visible notice for shortened assistant excerpts. That notice has no current browser/build result. Current aggregate, runtime and release gates remain open |
 | 2 | Multiple-account transaction ledger, derived portfolio dashboard, dated CAD/USD display, deterministic saved what-if scenarios | In progress in a separate managed checkout; no release acceptance |
 | 3 | Bounded persistent scheduler, 15-minute price checks, crossing alerts/inbox/optional verified email, automatic daily-or-longer forecast outcomes and report card | Pending |
 | 4 | Personal What changed? briefing, explicit current-headline loading, optional deterministic daily digest, consent-preserving assistant handoffs | Pending |
@@ -7121,3 +7121,20 @@ dependency; lazy loading does not make it optional to install. Receipt
 /var/tmp/r12r/r1-provider-lazy-import-independent-qa-20261018T182642Z-501c76e3/independent-qa-receipt.json
 (SHA-256 8ed56c7eb523be88c4070a8a08ee5130c163e74ea82b99c7eace380d84922577). No live
 provider, app, browser, build, or canonical gate ran; earlier failures remain preserved.
+
+### R-ASTRA-121 R1 selected-reply truncation notice (2026-10-18)
+
+The thesis draft now shows a status notice when the owner-selected assistant reply API reports
+`truncated=true`. It tells the owner that the reply was shortened to fit the draft and directs them
+to reopen the saved conversation to review the complete reply. The notice uses the existing thesis
+notice style and leaves the editable draft, review warning, and explicit **Save reviewed thesis**
+action in place. The component clears the notice state when starting a manual draft, opening an
+existing thesis, cancelling, or saving. Component SHA-256:
+`1a1a68d11542d3812cf86f5f9b9615c33599a748353145a087e146c5abd08b6d`.
+
+The parent reviewed the integrated component diff and found no blocker. The builder reported
+`npm run typecheck -- --pretty false` and `git diff --check` exits of `0`; counts, UTC
+window, and a saved terminal receipt are **Unavailable**. The earlier selected-reply Playwright result recorded above predates this
+component change and does not verify the notice. No frontend build/stage, browser or axe run was
+performed for this change; current rendered behavior and its acceptance remain **Pending**. No
+assistant runtime, provider, deployment, or release result is inferred.

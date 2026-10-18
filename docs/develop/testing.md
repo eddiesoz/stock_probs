@@ -483,7 +483,10 @@ frontend and synthetic fixture checks.
 The thesis page opens an editable assistant prompt; submitting it requires an explicit user action.
 A selected completed assistant reply can prefill the editable thesis form with its evidence. The
 `GET /api/v1/theses/draft` handler requires an owner and retrieves only an assistant message owned
-by that user. Saving the thesis remains an explicit form action.
+by that user. When the response says `truncated: true`, the form displays a status notice that the
+reply was shortened to fit the draft and tells the owner to reopen the saved conversation to read
+the complete reply. The editable draft and explicit **Save reviewed thesis** action remain; the
+notice does not save the thesis.
 
 The current cases in `tools/browser/tests/assistant.spec.js` assert those boundaries with a
 dedicated `assistantResearchApplication` fixture. It starts the same synthetic assistant QA server
@@ -498,6 +501,9 @@ write. This does not combine separate results into a four-case pass or establish
 full-app accessibility, live-provider, physical-mobile, deployment, or release acceptance. The
 source hash, task IDs, receipts, and preserved failures are in the [R1 assistant-to-thesis
 follow-up](../../MVP-PLAN.md#r-astra-121-r1-assistant-to-thesis-selected-reply-browser-follow-up-2026-10-18).
+That selected-reply browser result predates the later visible truncation notice, so it does not
+verify the notice's rendered state. The notice source change has no current browser or build result;
+see the [truncation notice checkpoint](../../MVP-PLAN.md#r-astra-121-r1-selected-reply-truncation-notice-2026-10-18).
 
 ## Assistant verification (`R-ASTRA-120`)
 
