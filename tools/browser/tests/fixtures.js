@@ -18,24 +18,88 @@ async function freeLoopbackPort() {
   return port;
 }
 
-async function waitForReadiness(url, processState, label) {
-  const deadline = Date.now() + 10_000;
+const READINESS_DIAGNOSTIC_MAX_BYTES = 1024;
+const READINESS_STATUS_CLASSES = Object.freeze(["1xx", "2xx", "3xx", "4xx", "5xx", "other"]);
+const READINESS_SIGNAL_LABELS = new Set([
+  "SIGABRT", "SIGALRM", "SIGBUS", "SIGFPE", "SIGHUP", "SIGILL", "SIGINT",
+  "SIGKILL", "SIGPIPE", "SIGQUIT", "SIGSEGV", "SIGTERM", "SIGTRAP", "SIGUSR1", "SIGUSR2",
+]);
+
+function readinessStatusClass(status) {
+  if (!Number.isInteger(status) || status < 100 || status > 599) return "other";
+  return `${Math.floor(status / 100)}xx`;
+}
+
+function boundedInteger(value, maximum) {
+  return Number.isSafeInteger(value) && value >= 0 ? Math.min(value, maximum) : 0;
+}
+
+function serializeReadinessFailureDiagnostic(observation, processState, child, elapsedMs) {
+  const statusClasses = Object.fromEntries(READINESS_STATUS_CLASSES.map((name) => [
+    name,
+    boundedInteger(observation?.statusClasses?.[name], 100_000),
+  ]));
+  const exitCode = Number.isInteger(processState?.exit) && processState.exit >= 0 && processState.exit <= 255
+    ? processState.exit
+    : Number.isInteger(child?.exitCode) && child.exitCode >= 0 && child.exitCode <= 255
+      ? child.exitCode
+      : null;
+  const observedSignal = processState?.signal ?? child?.signalCode ?? null;
+  const signal = observedSignal === null ? null : READINESS_SIGNAL_LABELS.has(observedSignal) ? observedSignal : "other";
+  const payload = {
+    schema_version: 1,
+    elapsed_ms: Number.isFinite(elapsedMs) ? Math.round(Math.min(60_000, Math.max(0, elapsedMs)) * 1000) / 1000 : 0,
+    child: {
+      alive: Boolean(child && child.exitCode === null && child.signalCode === null && processState?.exit === null),
+      exit_code: exitCode,
+      signal,
+    },
+    readiness: {
+      attempt_count: boundedInteger(observation?.attemptCount, 100_000),
+      status_classes: statusClasses,
+      connection_error_count: boundedInteger(observation?.connectionErrorCount, 100_000),
+    },
+  };
+  const serialized = JSON.stringify(payload);
+  if (Buffer.byteLength(serialized, "utf8") > READINESS_DIAGNOSTIC_MAX_BYTES) {
+    throw new Error("Readiness diagnostic exceeds its fixed output cap.");
+  }
+  return serialized;
+}
+
+const READINESS_TIMEOUT_MS = 30_000;
+const READINESS_REQUEST_TIMEOUT_MS = 1_000;
+
+async function waitForReadiness(url, processState, label, observation = null) {
+  const deadline = Date.now() + READINESS_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (processState.exit !== null) {
       throw new Error(`${label} exited early (${processState.exit}): ${processState.stderr}`);
     }
+    if (observation) observation.attemptCount += 1;
     try {
-      const response = await fetch(`${url}/api/v1/readiness`);
-      if (response.ok) return;
+      const requestTimeoutMs = Math.max(1, Math.min(READINESS_REQUEST_TIMEOUT_MS, deadline - Date.now()));
+      const response = await fetch(`${url}/api/v1/readiness`, {
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+      if (observation) observation.statusClasses[readinessStatusClass(response.status)] += 1;
+      if (response.ok && processState.exit === null && Date.now() < deadline) return;
     } catch (_) {
+      if (observation) observation.connectionErrorCount += 1;
       // A refused connection is expected while the local process binds its loopback port.
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    if (processState.exit !== null) {
+      throw new Error(`${label} exited early (${processState.exit}): ${processState.stderr}`);
+    }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(50, remainingMs)));
+    }
   }
   throw new Error(`${label} did not become ready: ${processState.stderr}`);
 }
 
-async function launchApplication(testInfo, runtimeName, pythonArguments, label, environment = {}) {
+async function launchApplication(testInfo, runtimeName, pythonArguments, label, environment = {}, options = {}) {
   const port = await freeLoopbackPort();
   const url = `http://127.0.0.1:${port}`;
   const runtime = testInfo.outputPath(runtimeName);
@@ -47,7 +111,13 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
 
   async function start() {
     if (child) throw new Error(`${label} is already running.`);
-    processState = { exit: null, stderr: "" };
+    processState = { exit: null, stderr: "", signal: null };
+    const observation = options.startupDiagnostic ? {
+      startedAt: performance.now(),
+      attemptCount: 0,
+      statusClasses: Object.fromEntries(READINESS_STATUS_CLASSES.map((name) => [name, 0])),
+      connectionErrorCount: 0,
+    } : null;
     child = spawn(path.join(root, ".dev-venv/bin/python"), pythonArguments(port), {
       cwd: root,
       env: {
@@ -64,11 +134,32 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
     runningChild.stderr.on("data", (chunk) => {
       processState.stderr = `${processState.stderr}${chunk}`.slice(-16_384);
     });
-    runningChild.once("exit", (code) => {
+    runningChild.once("exit", (code, signal) => {
       processState.exit = code;
+      processState.signal = signal;
       if (child === runningChild) child = null;
     });
-    await waitForReadiness(url, processState, label);
+    try {
+      await waitForReadiness(url, processState, label, observation);
+    } catch (startupError) {
+      if (observation && testInfo && typeof testInfo.attach === "function") {
+        try {
+          const body = serializeReadinessFailureDiagnostic(
+            observation,
+            processState,
+            runningChild,
+            performance.now() - observation.startedAt,
+          );
+          await testInfo.attach("assistant-research-startup-readiness.json", {
+            body: Buffer.from(body, "utf8"),
+            contentType: "application/json",
+          });
+        } catch (_) {
+          // A diagnostic attachment must never replace the original startup failure.
+        }
+      }
+      throw startupError;
+    }
   }
 
   async function stop() {
@@ -107,6 +198,8 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
 }
 
 exports.expect = base.expect;
+exports._readinessStatusClass = readinessStatusClass;
+exports._serializeReadinessFailureDiagnostic = serializeReadinessFailureDiagnostic;
 exports.test = base.test.extend({
   browserDiagnostics: [async ({ page }, use) => {
     const consoleErrors = [];
@@ -198,10 +291,20 @@ exports.test = base.test.extend({
           if (typeof path !== "string" || !/^\/api\/v1\/assistant\/conversations\/[^/]+\/turns\/[^/]+\/events$/.test(path)) {
             throw new Error("Only an exact assistant turn-event path can use the finite-stream classification.");
           }
-          if (finiteAssistantStreams.includes(path)) {
+          let pageOrigin;
+          try {
+            const currentPageUrl = new URL(page.url());
+            if (currentPageUrl.protocol !== "http:" && currentPageUrl.protocol !== "https:") {
+              throw new Error("unsupported page origin");
+            }
+            pageOrigin = currentPageUrl.origin;
+          } catch (_) {
+            throw new Error("Finite assistant streams require a current HTTP(S) page origin.");
+          }
+          if (finiteAssistantStreams.some((stream) => stream.path === path)) {
             throw new Error("A finite assistant stream path was classified more than once.");
           }
-          finiteAssistantStreams.push(path);
+          finiteAssistantStreams.push({ path, origin: pageOrigin });
         },
       });
     } finally {
@@ -236,11 +339,16 @@ exports.test = base.test.extend({
       base.expect(pageErrors, "uncaught page errors").toEqual([]);
 
       const finiteStreamAborts = [];
-      for (const path of finiteAssistantStreams) {
+      for (const { path, origin } of finiteAssistantStreams) {
         const requests = assistantStreamNetworkEvents.filter((item) => item.kind === "request" && item.path === path);
         const responses = assistantStreamNetworkEvents.filter((item) => item.kind === "response" && item.path === path);
         const finished = assistantStreamNetworkEvents.filter((item) => item.kind === "finished" && item.path === path);
         const failed = assistantStreamNetworkEvents.filter((item) => item.kind === "failed" && item.path === path);
+        const matchingPathEvents = assistantStreamNetworkEvents.filter((item) => item.path === path);
+        base.expect(
+          matchingPathEvents.map((item) => new URL(item.url).origin),
+          `finite assistant stream events for ${path} must stay on the page origin`,
+        ).toEqual(matchingPathEvents.map(() => origin));
         base.expect(requests, `expected one finite assistant stream request for ${path}`).toHaveLength(1);
         base.expect(responses, `expected one HTTP response for ${path}`).toHaveLength(1);
         base.expect(responses[0]).toMatchObject({ status: 200 });
@@ -285,6 +393,21 @@ exports.test = base.test.extend({
       "assistant-runtime",
       (port) => [path.join(root, "tools/browser/assistant_qa_server.py"), "--port", String(port)],
       "Assistant FastAPI browser fixture",
+    );
+    try {
+      await use({ url: application.url, logs: application.logs });
+    } finally {
+      await application.stop();
+    }
+  },
+  assistantResearchApplication: async ({}, use, testInfo) => {
+    const application = await launchApplication(
+      testInfo,
+      "assistant-research-runtime",
+      (port) => [path.join(root, "tools/browser/assistant_qa_server.py"), "--port", String(port)],
+      "Assistant research browser fixture",
+      { STOCK_PROBS_RESEARCH_FEATURES_ENABLED: "1" },
+      { startupDiagnostic: true },
     );
     try {
       await use({ url: application.url, logs: application.logs });

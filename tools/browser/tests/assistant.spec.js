@@ -258,6 +258,83 @@ async function expectAssistantLiveStatus(panel, message) {
   await expect(announcer).toHaveText(message);
 }
 
+const ASSISTANT_HTTP_OPERATION_TIMEOUT_MS = 5_000;
+
+function withAssistantHttpDeadline(promise, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} exceeded the 5 second HTTP-operation bound.`)),
+        ASSISTANT_HTTP_OPERATION_TIMEOUT_MS);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+function observeAssistantHttpOperation(page, origin, predicate, label) {
+  let matchingRequests = 0;
+  let resolveRequest;
+  const requestPromise = new Promise((resolve) => { resolveRequest = resolve; });
+  let firstEntry = null;
+  const onRequest = (request) => {
+    const url = new URL(request.url());
+    if (url.origin !== origin || !predicate(request, url)) return;
+    matchingRequests += 1;
+    if (matchingRequests !== 1) return;
+    const responseOutcome = withAssistantHttpDeadline(request.response(), label).then(
+      (response) => ({ ok: true, response }),
+      (error) => ({ ok: false, error }),
+    );
+    firstEntry = { request, responseOutcome };
+    resolveRequest(firstEntry);
+  };
+  page.on("request", onRequest);
+  return {
+    async wait() {
+      const entry = await withAssistantHttpDeadline(requestPromise, `${label} request`);
+      const outcome = await entry.responseOutcome;
+      if (!outcome.ok) throw outcome.error;
+      if (!outcome.response) throw new Error(`${label} completed without an HTTP response.`);
+      return { request: entry.request, response: outcome.response };
+    },
+    count: () => matchingRequests,
+    dispose: () => page.off("request", onRequest),
+  };
+}
+
+async function submitNewAssistantTurn(page, origin, sendButton) {
+  const operations = {
+    conversation: observeAssistantHttpOperation(page, origin, (request, url) => (
+      request.method() === "POST" && url.pathname === "/api/v1/assistant/conversations"
+    ), "assistant conversation creation"),
+    turn: observeAssistantHttpOperation(page, origin, (request, url) => (
+      request.method() === "POST" && /^\/api\/v1\/assistant\/conversations\/[0-9a-f-]+\/turns$/i.test(url.pathname)
+    ), "assistant turn submission"),
+  };
+  try {
+    await sendButton.click();
+    const conversation = await operations.conversation.wait();
+    expect(conversation.response.status(), "the explicit send must create its conversation").toBe(201);
+    const createdPayload = await conversation.response.json();
+    const conversationId = createdPayload.conversation?.conversation?.id;
+    expect(conversationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    const submitted = await operations.turn.wait();
+    expect(submitted.response.status(), "the explicit turn request must be accepted").toBe(202);
+    const turnConversationId = submitted.request.url().match(/\/api\/v1\/assistant\/conversations\/([0-9a-f-]+)\/turns$/i)?.[1];
+    expect(turnConversationId).toBe(conversationId);
+    for (const [name, operation] of Object.entries(operations)) {
+      expect(operation.count(), `${name} should occur once during explicit turn submission`).toBe(1);
+    }
+    return {
+      createdConversation: conversation.request,
+      submittedTurn: submitted.request,
+      acceptedTurn: submitted.response,
+    };
+  } finally {
+    for (const operation of Object.values(operations)) operation.dispose();
+  }
+}
+
 async function expectAssistantLiveStatusAbsent(panel, message) {
   await expect(panel.locator("p").filter({ hasText: message })).toHaveCount(0);
   const announcer = panel.locator('span.sr-only[aria-live="polite"]');
@@ -271,7 +348,42 @@ async function chooseFixtureModel(panel) {
   if (await selector.inputValue() !== model.id) await selector.selectOption(model.id);
 }
 
-async function openRealAssistant(page, origin, { requireModelAndContextReady = false } = {}) {
+async function saveFixtureModelConsent(page, panel, origin) {
+  const consentOperation = observeAssistantHttpOperation(page, origin, (request, url) => (
+    request.method() === "PUT"
+    && url.pathname === `/api/v1/assistant/models/${encodeURIComponent(model.id)}/consent`
+  ), "assistant model privacy consent");
+  const modelsOperation = observeAssistantHttpOperation(page, origin, (request, url) => (
+    request.method() === "GET" && url.pathname === "/api/v1/assistant/models"
+  ), "assistant model refresh after consent");
+  try {
+    await panel.getByRole("button", { name: "Save privacy choice" }).click();
+    const consentResult = await consentOperation.wait();
+    expect(consentResult.response.status(), "explicit consent must be accepted before model refresh").toBe(200);
+    const modelsResult = await modelsOperation.wait();
+    expect(modelsResult.response.status(), "models must refresh after consent before reporting success").toBe(200);
+    expect(consentOperation.count()).toBe(1);
+    expect(modelsOperation.count()).toBe(1);
+  } finally {
+    consentOperation.dispose();
+    modelsOperation.dispose();
+  }
+  await expectAssistantLiveStatus(panel, "Model privacy consent saved for this policy version.");
+}
+
+async function chooseFixtureModelForFreshPanel(page, panel, origin) {
+  const selector = panel.getByRole("combobox", { name: "Assistant model" });
+  await expect(selector).toBeEnabled();
+  await chooseFixtureModel(panel);
+  await expect(selector).toHaveValue(model.id);
+  const consent = panel.getByRole("checkbox", { name: /I accept this model's privacy terms/ });
+  if (await consent.count()) {
+    await consent.check();
+    await saveFixtureModelConsent(page, panel, origin);
+  }
+}
+
+async function openRealAssistant(page, origin, { requireModelAndContextReady = false, route = "/overview" } = {}) {
   await page.context().addCookies([
     { name: "signal_ledger_session", value: "browser-assistant-fixture-session-not-a-production-credential", url: origin, httpOnly: true, sameSite: "Lax" },
     { name: "signal_ledger_csrf", value: "browser-assistant-fixture-csrf-token-not-a-production-credential", url: origin, sameSite: "Lax" },
@@ -284,7 +396,7 @@ async function openRealAssistant(page, origin, { requireModelAndContextReady = f
     ? page.waitForResponse((response) => response.request().method() === "GET"
       && new URL(response.url()).pathname === "/api/v1/assistant/context")
     : null;
-  await page.goto(`${origin}/overview`);
+  await page.goto(`${origin}${route}`);
   await page.getByRole("button", { name: "Open Ledger assistant" }).click();
   const panel = page.getByTestId("assistant-panel");
   await expect(panel).toBeVisible();
@@ -306,8 +418,7 @@ async function openRealAssistant(page, origin, { requireModelAndContextReady = f
   const consent = panel.getByRole("checkbox", { name: /I accept this model's privacy terms/ });
   if (await consent.count()) {
     await consent.check();
-    await panel.getByRole("button", { name: "Save privacy choice" }).click();
-    await expectAssistantLiveStatus(panel, "Model privacy consent saved for this policy version.");
+    await saveFixtureModelConsent(page, panel, origin);
   }
   return panel;
 }
@@ -1690,6 +1801,181 @@ test("assistant ignores delayed conversation, pagination, and stream responses a
   await page.evaluate(() => window.__releaseAssistantAStream());
   await expect(panel.getByText("B selected conversation message", { exact: true })).toBeVisible();
   await expect(panel.getByText("STALE A stream must not appear in B", { exact: true })).toHaveCount(0);
+});
+
+test("thesis assistant handoff opens an editable prompt and requires an explicit send", async ({ page, assistantResearchApplication: assistantApplication, browserDiagnostics }) => {
+  const origin = assistantApplication.url;
+  const assistantWrites = [];
+  const thesisWrites = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.origin !== origin) return;
+    const method = request.method();
+    if (method === "POST" && (url.pathname === "/api/v1/assistant/conversations"
+        || (url.pathname.startsWith("/api/v1/assistant/conversations/") && url.pathname.endsWith("/turns")))) {
+      assistantWrites.push({ path: url.pathname, body: request.postDataJSON() });
+    }
+    if (["POST", "PUT"].includes(method) && url.pathname.startsWith("/api/v1/theses")) {
+      thesisWrites.push({ method, path: url.pathname, body: request.postDataJSON() });
+    }
+  });
+  const panel = await openRealAssistant(page, origin, {
+    route: "/research/theses",
+    requireModelAndContextReady: true,
+  });
+  await panel.getByRole("button", { name: "Close assistant", exact: true }).click();
+  await page.getByRole("button", { name: "New thesis", exact: true }).click();
+  await page.getByLabel("Instrument symbol", { exact: true }).fill("SPY");
+  await page.getByRole("button", { name: "Ask assistant to draft", exact: true }).click();
+  await chooseFixtureModelForFreshPanel(page, panel, origin);
+  const composer = panel.getByRole("textbox", { name: "Ask about this page" });
+  await expect(composer).toHaveValue("Help me draft an investment thesis for SPY. Separate reasoning, evidence, risks and what would change my mind. Ask for missing information; do not invent evidence or save anything.");
+  await expect(composer).toBeEditable();
+  expect(assistantWrites).toHaveLength(0);
+  expect(thesisWrites).toHaveLength(0);
+
+  const editedPrompt = "Draft a thesis for SPY using only the information available in this research workspace.";
+  await composer.fill(editedPrompt);
+  await expect(panel.getByRole("button", { name: "Send question", exact: true })).toBeEnabled();
+  const { createdConversation, submittedTurn, acceptedTurn } = await submitNewAssistantTurn(
+    page,
+    origin,
+    panel.getByRole("button", { name: "Send question", exact: true }),
+  );
+  expect(acceptedTurn.status()).toBe(202);
+  const turnPathMatch = new URL(acceptedTurn.url()).pathname.match(/^(\/api\/v1\/assistant\/conversations\/[^/]+)\/turns$/);
+  const turnId = (await acceptedTurn.json()).turn?.id;
+  expect(turnPathMatch).not.toBeNull();
+  expect(turnId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  const eventPath = `${turnPathMatch[1]}/turns/${encodeURIComponent(turnId)}/events`;
+  expect(createdConversation.postDataJSON().context).toMatchObject({ route: "/research/theses" });
+  expect(submittedTurn.postDataJSON()).toMatchObject({ prompt: editedPrompt, context: { route: "/research/theses" } });
+  await expectAssistantLiveStatus(panel, "Assistant response complete.");
+  await expect(panel.getByText("Synthetic research response from the local browser fixture.", { exact: true })).toBeVisible();
+  browserDiagnostics.expectCompletedAssistantEventStream({ path: eventPath });
+  expect(assistantWrites).toHaveLength(2);
+  expect(thesisWrites).toHaveLength(0);
+});
+
+test("selected assistant reply opens an owner-scoped editable thesis draft and saves only on review", async ({ page, assistantResearchApplication: assistantApplication, browserDiagnostics }) => {
+  const origin = assistantApplication.url;
+  const assistantWrites = [];
+  const thesisWrites = [];
+  const draftReads = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.origin !== origin) return;
+    const method = request.method();
+    if (method === "POST" && (url.pathname === "/api/v1/assistant/conversations"
+        || (url.pathname.startsWith("/api/v1/assistant/conversations/") && url.pathname.endsWith("/turns")))) {
+      assistantWrites.push({ path: url.pathname, body: request.postDataJSON() });
+    }
+    if (method === "GET" && url.pathname === "/api/v1/theses/draft") draftReads.push(url.searchParams.get("message_id"));
+    if (["POST", "PUT"].includes(method) && url.pathname.startsWith("/api/v1/theses")) {
+      thesisWrites.push({ method, path: url.pathname, body: request.postDataJSON() });
+    }
+  });
+  const panel = await openRealAssistant(page, origin, {
+    route: "/research/theses",
+    requireModelAndContextReady: true,
+  });
+  await panel.getByRole("button", { name: "Close assistant", exact: true }).click();
+  const ownerSession = await page.evaluate(async () => {
+    const response = await fetch("/api/v1/auth/session");
+    return { status: response.status, body: await response.json() };
+  });
+  expect(ownerSession).toMatchObject({ status: 200, body: { authenticated: true, user: { role: "admin" } } });
+  await page.getByRole("button", { name: "New thesis", exact: true }).click();
+  await page.getByLabel("Instrument symbol", { exact: true }).fill("SPY");
+  await page.getByRole("button", { name: "Ask assistant to draft", exact: true }).click();
+  await chooseFixtureModelForFreshPanel(page, panel, origin);
+  const composer = panel.getByRole("textbox", { name: "Ask about this page" });
+  const prompt = "Draft a brief research thesis for SPY using only this fixture's available information.";
+  await composer.fill(prompt);
+  const { createdConversation, submittedTurn, acceptedTurn } = await submitNewAssistantTurn(
+    page,
+    origin,
+    panel.getByRole("button", { name: "Send question", exact: true }),
+  );
+  expect(acceptedTurn.status()).toBe(202);
+  const turnPathMatch = new URL(acceptedTurn.url()).pathname.match(/^(\/api\/v1\/assistant\/conversations\/[^/]+)\/turns$/);
+  const turnId = (await acceptedTurn.json()).turn?.id;
+  expect(turnPathMatch).not.toBeNull();
+  expect(turnId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  const eventPath = `${turnPathMatch[1]}/turns/${encodeURIComponent(turnId)}/events`;
+  expect(createdConversation.postDataJSON().context).toMatchObject({ route: "/research/theses" });
+  expect(submittedTurn.postDataJSON()).toMatchObject({ prompt, context: { route: "/research/theses" } });
+  await expectAssistantLiveStatus(panel, "Assistant response complete.");
+  const reply = "Synthetic research response from the local browser fixture.";
+  await expect(panel.getByText(reply, { exact: true })).toBeVisible();
+  browserDiagnostics.expectCompletedAssistantEventStream({ path: eventPath });
+  const handoff = panel.getByRole("link", { name: "Use this reply as an editable thesis draft", exact: true });
+  await expect(handoff).toBeVisible();
+  const href = await handoff.getAttribute("href");
+  expect(href).toMatch(/^\/research\/theses\?assistant_message=/);
+  const messageId = new URL(href, origin).searchParams.get("assistant_message");
+  expect(messageId).toMatch(/^[0-9a-f-]{36}$/i);
+  const selectedDraftResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === "GET"
+      && url.pathname === "/api/v1/theses/draft"
+      && url.searchParams.get("message_id") === messageId;
+  });
+  await handoff.click();
+  const draftResponse = await selectedDraftResponse;
+  expect(draftResponse.status()).toBe(200);
+  expect(draftReads).toContain(messageId);
+  expect(await draftResponse.json()).toEqual({
+    reasoning: reply,
+    truncated: false,
+    evidence: [{ kind: "assistant", reference: messageId, excerpt: reply }],
+  });
+  const closeAssistant = page.getByRole("button", { name: "Close assistant", exact: true });
+  if (await closeAssistant.count()) await closeAssistant.click();
+  const reasoning = page.getByRole("textbox", { name: "My thesis", exact: true });
+  await expect(reasoning).toHaveValue(reply);
+  await expect(reasoning).toBeEditable();
+  await page.getByLabel("Instrument symbol", { exact: true }).fill("SPY");
+  await page.getByRole("combobox", { name: "Instrument type", exact: true }).selectOption("etf");
+  const title = "Reviewed SPY fixture thesis";
+  await page.getByLabel("Title", { exact: true }).fill(title);
+  const evidence = page.getByRole("group", { name: "Attach a record you reviewed", exact: true });
+  const selectedEvidenceItem = evidence.getByRole("listitem").filter({ hasText: `assistant · ${messageId}` });
+  await expect(selectedEvidenceItem).toHaveCount(1);
+  await expect(selectedEvidenceItem).toBeVisible();
+  await evidence.getByRole("button", { name: "Remove attachment", exact: true }).click();
+  await expect(selectedEvidenceItem).toHaveCount(0);
+  await evidence.getByRole("combobox", { name: "Evidence type", exact: true }).selectOption("assistant");
+  await evidence.getByLabel("Record ID", { exact: true }).fill(messageId);
+  await evidence.getByRole("button", { name: "Attach evidence", exact: true }).click();
+  await expect(selectedEvidenceItem).toHaveCount(1);
+  await expect(selectedEvidenceItem).toBeVisible();
+  const reviewedReasoning = "Reviewed: the fixture reply is only a draft and needs independent evidence.";
+  await reasoning.fill(reviewedReasoning);
+  expect(thesisWrites).toHaveLength(0);
+
+  const saveResponsePromise = page.waitForResponse((response) => response.request().method() === "POST"
+    && new URL(response.url()).pathname === "/api/v1/theses");
+  await page.getByRole("button", { name: "Save reviewed thesis", exact: true }).click();
+  const saveResponse = await saveResponsePromise;
+  expect(saveResponse.status()).toBe(201);
+  expect(thesisWrites).toHaveLength(1);
+  expect(thesisWrites[0].method).toBe("POST");
+  expect(thesisWrites[0].body.evidence).toEqual([{ kind: "assistant", reference: messageId }]);
+  const saved = await saveResponse.json();
+  expect(saved.data).toMatchObject({
+    symbol: "SPY",
+    asset_type: "etf",
+    title,
+    reasoning: reviewedReasoning,
+    evidence: [{ kind: "assistant", reference: messageId, excerpt: reply }],
+  });
+  await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+  const savedEvidence = page.locator("details").filter({ hasText: `Selected assistant message · ${messageId}` });
+  await expect(savedEvidence).toBeVisible();
+  await savedEvidence.getByText(`Selected assistant message · ${messageId}`, { exact: true }).click();
+  await expect(savedEvidence.getByText(reply, { exact: true })).toBeVisible();
+  expect(assistantWrites).toHaveLength(2);
 });
 
 test("real FastAPI assistant flow keeps route-only context and reopens durable proposal and tool receipts", async ({ page, assistantApplication, browserDiagnostics }, testInfo) => {

@@ -1,15 +1,22 @@
 """Quote and chart provider capabilities remain bounded and honestly labelled."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
+from stock_probs import provider as provider_module
 from stock_probs.domain import DomainError
 from stock_probs.provider import FixtureProvider, YahooProvider
 from stock_probs.service import ForecastService
 
 NOW = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
+
+
+def _patch_yfinance(monkeypatch, **constructors):
+    module = SimpleNamespace(**constructors)
+    monkeypatch.setattr(provider_module, "_load_yfinance", lambda: module)
 
 
 class QuoteTicker:
@@ -109,7 +116,7 @@ def test_fixture_clock_quote_chart_and_service_handoffs_are_deterministic():
 
 def test_yahoo_quote_is_delay_labelled(monkeypatch):
     QuoteTicker.calls = []
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", QuoteTicker)
+    _patch_yfinance(monkeypatch, Ticker=QuoteTicker)
     provider = YahooProvider(timeout=2, clock=lambda: NOW)
 
     quote = provider.quote_snapshot("SPY", "etf", NOW)
@@ -135,7 +142,7 @@ def test_yahoo_quote_is_delay_labelled(monkeypatch):
 
 
 def test_yahoo_quote_excludes_the_minute_starting_at_the_reference_boundary(monkeypatch):
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", BoundaryQuoteTicker)
+    _patch_yfinance(monkeypatch, Ticker=BoundaryQuoteTicker)
     provider = YahooProvider(timeout=2, clock=lambda: NOW)
 
     quote = provider.quote_snapshot("SPY", "etf", NOW)
@@ -146,7 +153,7 @@ def test_yahoo_quote_excludes_the_minute_starting_at_the_reference_boundary(monk
 
 
 def test_yahoo_quote_without_a_completed_minute_is_provider_unavailable(monkeypatch):
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", BoundaryQuoteTicker)
+    _patch_yfinance(monkeypatch, Ticker=BoundaryQuoteTicker)
     monkeypatch.setattr(BoundaryQuoteTicker, "starts", ("2025-01-10 12:03",))
     monkeypatch.setattr(BoundaryQuoteTicker, "closes", (101.0,))
 
@@ -160,7 +167,7 @@ def test_yahoo_quote_without_a_completed_minute_is_provider_unavailable(monkeypa
 
 def test_yahoo_chart_passes_requested_range_to_daily_history(monkeypatch):
     QuoteTicker.calls = []
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", QuoteTicker)
+    _patch_yfinance(monkeypatch, Ticker=QuoteTicker)
 
     chart = YahooProvider(timeout=2, clock=lambda: NOW).historical_bars(
         "SPY", "etf", now=NOW, range="3mo"
@@ -201,7 +208,7 @@ def test_market_depth_is_not_a_provider_or_service_capability():
 def test_yahoo_missing_delay_metadata_never_becomes_a_live_or_fifteen_minute_claim(
     monkeypatch,
 ):
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", QuoteTicker)
+    _patch_yfinance(monkeypatch, Ticker=QuoteTicker)
     original = QuoteTicker.history
 
     def history_without_delay(self, **kwargs):
@@ -219,7 +226,7 @@ def test_yahoo_missing_delay_metadata_never_becomes_a_live_or_fifteen_minute_cla
 
 
 def test_yahoo_missing_optional_quote_values_remain_unavailable(monkeypatch):
-    monkeypatch.setattr("stock_probs.provider.yf.Ticker", QuoteTicker)
+    _patch_yfinance(monkeypatch, Ticker=QuoteTicker)
     original = QuoteTicker.history
 
     def history_without_optional_values(self, **kwargs):

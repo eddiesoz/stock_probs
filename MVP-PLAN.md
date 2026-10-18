@@ -639,6 +639,44 @@ physical-mobile, screen-reader, actual-host resource, recovery or release result
 complete security/browser, exact-PR schema-compatible rollback, 1 GB, owner canary and release gates
 remain open. No merge, deployment, rollout, resize or email follows.
 
+### R-ASTRA-121 R1 assistant-to-thesis browser regression source checkpoint (2026-10-17)
+
+The first authored source checkpoint (now historical) used base
+`501c76e3619b22a6198ced8f6ec8834c644c1e62`; its two cases in
+`tools/browser/tests/assistant.spec.js` had SHA-256
+`eac0423b0458621eaf3c28c563cbe2b1be57aa6f03e04d5a686b0dc3c4daa4d0`. The fixture helper now
+accepts a route argument while preserving `/overview` as its default.
+
+The first case is written to assert that **Ask assistant to draft** opens editable prompt text
+without sending a turn or writing a thesis; only the explicit **Send question** action submits the
+edited prompt, after which the local fixture returns a synthetic completed answer. The second is
+written to select that reply, follow the thesis draft link, check the owner-scoped
+`GET /api/v1/theses/draft` response and editable form, and verify that no thesis write occurs
+before **Save reviewed thesis**. The explicit save is expected to produce exactly one `POST` with
+status `201` and the selected assistant message as evidence. The current API source requires an
+owner and matches the assistant message by both message ID and user ID; the thesis form loads the
+returned reasoning and evidence for review.
+
+For that first authored snapshot, only a JavaScript syntax check (`node --check`) was reported
+as **Pass**. The Playwright cases had not run; no application/server, frontend build, or provider
+execution was recorded. The successor fixture repair below updates source setup only; it does not
+establish browser or release acceptance.
+
+#### R1 assistant research-fixture successor (2026-10-17)
+
+Parent source review found that research features default to disabled, so the existing shared
+assistant fixture could not expose the thesis route. The builder added a dedicated
+`assistantResearchApplication` fixture that uses the same synthetic assistant QA server with
+`STOCK_PROBS_RESEARCH_FEATURES_ENABLED=1`; the existing `assistantApplication` fixture is
+unchanged. The current browser spec SHA-256 is
+`1517dee954e57f457180b04b9b7a8ac002b7835a27cf5ababfaa53fe2e48f0be`, and the fixture SHA-256 is
+`643c95ceedc1965dbbcc0ac4c49b8dbaa7d3fa28ba585ba6037909f3af05b7de`.
+
+Both JavaScript syntax checks exited `0`. No application/server, Playwright, frontend build, or
+provider execution has occurred for this successor; independent browser QA remains **Pending**.
+This repairs fixture availability before execution and does not establish that either browser case
+passes.
+
 ## Status And Scope
 
 This is the implementation contract for the planned local Linux stock probability web app. The supported target is Linux x86-64/amd64 and ARM64/aarch64, with low-resource operation as a release constraint. The current host is native x86_64; no native ARM64 or physical ARM64 performance result is claimed. ARM64 verification first uses local native ARM64 hardware if available, otherwise local QEMU/OCI multi-arch execution may verify packaging, runtime, functional, build, and tool behavior only when every result is labelled **emulated ARM64**. Emulation is not native/physical ARM64 or original-laptop resource evidence. Repository presence is an observation, not acceptance evidence.
@@ -6995,3 +7033,91 @@ The authored-document freeze /var/tmp/r12r/auth-write-docs-final-freeze-6dc91acc
 R1's documentation/map commit is 7f67505129ba7c36028ef739e426518891d3cf51, clean locally and not published; commit receipt SHA-256 33147dac376b3b865b4bd5fde7e35682ecea59937b7ea12b67dae79a205601e2. Other unmatched auth-related paths remain outside this narrow closure: tests/test_backup_cli.py, tests/test_comparison_corporate_actions.py, and tests/test_repository_backup.py. The helper's map entry does not assert that the helper exists in R1 or that its tests ran.
 
 This closes only the two-path documentation routing check, not comprehensive auth-delta, security, or release coverage. The seven visible features and free-Zen-through-OpenCode work remain active; this note claims no product, provider, runtime, production, deployment, publication, or release acceptance.
+
+### R-ASTRA-121 R1 assistant-to-thesis selected-reply browser follow-up (2026-10-18)
+
+Task `R-ASTRA-121`, R1 feature worktree at `501c76e3619b22a6198ced8f6ec8834c644c1e62`.
+Before these documentation edits, the exact bytes of the two owned files were copied to
+`/var/tmp/r12r/R1-evidence-docs-baseline-20261018T0352Z/` on UUID-verified SD mount
+`54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`; the directory mode was `0700`, files mode `0600`, and
+the copy and worktree hashes matched. Baseline SHA-256: `MVP-PLAN.md`
+`d75720492beb52ea2eb28324bd641a70efbf93730f382883e02c4b243fcc9a85` and
+`docs/develop/testing.md`
+`b2d8b213b0f552be572ca74ac3c891dba877028332615465c8158a881188181b`.
+The current test-only source is `tools/browser/tests/assistant.spec.js`, SHA-256
+`6329782ed8c45d015f5481842c7b1f0f6c4ac9a59a90a300b9f3adebd29aaa28`. It checks the
+fixture-backed assistant reply handoff into an editable owner thesis draft, removal and re-addition
+of the selected assistant evidence, and the explicit **Save reviewed thesis** action; no thesis
+write is expected before Save.
+
+The first corrected four-case attempt **Failed** at `0/4`: the test helper read the conversation
+creation response from the wrong envelope accessor (`conversation.id` rather than the nested
+`conversation.conversation.id`). Parent terminal
+`/var/tmp/r12r/r1-thesis-v5-parent-actual-launch-0ae0c7b4-30ee-4542-8ec9-871972d9c603/parent-terminal.json`,
+SHA-256 `16a2e1b3d654c27c01a2b498cc08a179b09079ffa082d03ddfc9de495ca29d50`, records that result.
+After the accessor correction, the four-case run **Failed** at `2/4`: both handoff cases passed,
+while both selected-reply cases failed because the old evidence-type label selector did not resolve
+the accessible combobox. Parent terminal
+`/var/tmp/r12r/r1-envelope-parent-launch-2e19e551-f85d-48e5-a403-1f8dfab18d37/parent-terminal.json`,
+SHA-256 `9c5cb7283cf99fd3758a5e6804993ac3ede1a904156b08e332316f423edcaf89`, preserves the failure.
+
+The final source adjustment changed that locator to the exact named combobox. Independent static
+source/runner QA **Passed** for its declared scope at
+`2026-10-18T03:50:29.350716Z`–`03:53:00.905980Z`; receipt
+`/var/tmp/r12r/r1-reply-evidence-static-qa-20261018T0352Z/receipt.json`, SHA-256
+`33f8897dcc75316d3c2debe1f9bd8916758d564977126ebe6296faaeb04b53c7`. This receipt did not run
+Playwright. The parent-run fixture-only browser execution **Passed** only the selected-reply test
+on desktop Chromium and mobile Chromium viewport emulation (`2` passed, `0` failed/skipped/flaky,
+`0` retries), native Linux x86_64, fixture provider only. Its execution window was
+`2026-10-18T03:51:43.302982Z`–`03:52:16.540974Z`; parent terminal
+`/var/tmp/r12r/r1-reply-parent-launch-0310cae2-884a-40ce-86b9-4adfc36a71ef/parent-terminal.json`,
+SHA-256 `9d3fbee6f7f2f30ba748706dd572a9eaf54d4f402f4d3af73c3ead975fc75972`, records that run and
+cleanup. Independent terminal QA audited the run artifacts and bindings; it did not replay
+Playwright. That review **Passed** at `2026-10-18T03:52:26.187687876Z`–`03:53:38.459328Z` in receipt
+`/var/tmp/r12r/r1-reply-evidence-terminal-qa-20261018T0353Z/receipt.json`, SHA-256
+`99a5077a1b39a49b985d3d0cfbcc01810995cfc9104341982b14f8ce1d100bf0`. The parent and independent
+terminal records bind the run to `157` unchanged source paths and `55` unchanged served/export
+pairs; the child was reaped, its process group was absent, and the unit was inactive with exit `0`.
+
+The approved frontend build/stage receipt was reused for its existing scope: exit `0`, `55` served/
+export pairs, `2026-10-17T17:03:12.863017Z`–`17:03:45.007889Z`, at
+`/var/tmp/r12r/r1-aria-approved-build-da38e83a-faa0-4f28-bcab-2ea8c9bf218d/terminal.json`,
+SHA-256 `6078057b2a2ca98d727322c409b69df48c478887dae782858303398c64bbd955`. No additional build,
+provider probe, or full gate was run for this test-locator-only update. Do not combine the separate
+handoff passes with the selected-reply rerun into a four-case **Pass**. Full browser and full-app
+accessibility acceptance, physical-mobile evidence, and release acceptance remain unestablished.
+The main production observation remains release `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`,
+schema 13, invited; no deployment, merge, email, or resize occurred.
+
+Documentation checks for task `R-ASTRA-121` passed: `.dev-venv/bin/python scripts/validate_docs.py`
+reported `9` categories, `14` topics, and `8` project-skill governance entries;
+`python3 scripts/check-doc-coverage.py --root . --map documentation-map.json` checked `172` mapped
+files; and `git diff --check -- MVP-PLAN.md docs/develop/testing.md` exited `0`. Documentation
+tests, product tests, a new build, provider probe, and full gate were not run for this documentation
+follow-up.
+
+### R-ASTRA-121 shared local browser-fixture startup watchdog (2026-10-18)
+
+The shared fixture watchdog uses a 30-second startup deadline, matching the unchanged
+Playwright webServer timeout. Each readiness fetch is bounded by the smaller of one
+second and the remaining deadline, with a 1 ms floor; retry sleep is capped to remaining
+time, and early child exit is surfaced immediately. Independent source/pure QA passed
+each of four selected lifecycle suites (9/9 per suite) and fixture/test syntax checks.
+The review found feature-specific behavior, R1 diagnostics/counters, and R4 hooks
+preserved. Exact bindings and results are recorded in
+/var/tmp/r12r/f6-readiness-watchdog-qa-a1d4423c-752f-4728-835f-0d524238e444/receipt.json
+(SHA-256 70c83123439384ef87e4de1b7bb851c3c30026e0f93b7e64c93d5ebe61e329e6). This is
+fixture-source/pure-test evidence only: no app, browser, build, or provider run occurred,
+and previously recorded actual browser failures remain open.
+
+### R1 provider lazy-import follow-up (2026-10-18)
+
+Independent selected source/provider QA **Passed**: 54 tests, with zero failures, errors,
+or skips; 29 explicit source pins were unchanged. The run completed
+2026-10-18T18:27:41Z–18:27:55Z. Yahoo and curl transports load lazily at operation time.
+Input validation precedes dependency loading, and ImportError/OSError are mapped to a
+sanitized provider_unavailable 503. yfinance==1.7.0 remains a required pyproject.toml
+dependency; lazy loading does not make it optional to install. Receipt
+/var/tmp/r12r/r1-provider-lazy-import-independent-qa-20261018T182642Z-501c76e3/independent-qa-receipt.json
+(SHA-256 8ed56c7eb523be88c4070a8a08ee5130c163e74ea82b99c7eace380d84922577). No live
+provider, app, browser, build, or canonical gate ran; earlier failures remain preserved.

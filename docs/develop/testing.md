@@ -478,6 +478,27 @@ Node remains build-only in the container, while the candidate OpenCode/Bun assis
 privately in that same application container. Keep native runtime checks separate from static
 frontend and synthetic fixture checks.
 
+## R1 thesis assistant handoff browser coverage
+
+The thesis page opens an editable assistant prompt; submitting it requires an explicit user action.
+A selected completed assistant reply can prefill the editable thesis form with its evidence. The
+`GET /api/v1/theses/draft` handler requires an owner and retrieves only an assistant message owned
+by that user. Saving the thesis remains an explicit form action.
+
+The current cases in `tools/browser/tests/assistant.spec.js` assert those boundaries with a
+dedicated `assistantResearchApplication` fixture. It starts the same synthetic assistant QA server
+with research features enabled for these cases; the existing `assistantApplication` fixture is
+unchanged. The first corrected four-case run **Failed** at 0/4 because its helper used the wrong
+conversation-creation response envelope. After correcting that accessor, a four-case run **Failed**
+at 2/4: both handoff cases passed and both selected-reply cases failed at the old evidence-type
+label selector. A later parent-run fixture-only execution passed the affected selected-reply case 2/2
+on desktop Chromium and mobile Chromium viewport emulation. It asserted an editable draft, evidence
+removal and re-addition, no thesis write before Save, and one explicit **Save reviewed thesis**
+write. This does not combine separate results into a four-case pass or establish full-browser,
+full-app accessibility, live-provider, physical-mobile, deployment, or release acceptance. The
+source hash, task IDs, receipts, and preserved failures are in the [R1 assistant-to-thesis
+follow-up](../../MVP-PLAN.md#r-astra-121-r1-assistant-to-thesis-selected-reply-browser-follow-up-2026-10-18).
+
 ## Assistant verification (`R-ASTRA-120`)
 
 Use focused checks to isolate their boundaries. `tests/test_assistant_delete_session_boundary.py`
@@ -500,6 +521,13 @@ After E727's parent-applied patch, this tracked command passed 7/7 synthetic cas
 synchronous spawn failure and readiness failure with mocked child-process, network, and filesystem
 interfaces; it does not verify real child-process readiness, asynchronous child error events, or OS
 process reaping. The full browser aggregate must still pass separately.
+
+Shared local browser-fixture startup watchdogs use a 30-second overall deadline, matching
+the existing Playwright webServer timeout. Each readiness fetch uses a timeout of at least
+1 ms and otherwise no longer than the smaller of one second and the remaining deadline.
+Retry sleep is capped to the remaining budget, and an early child exit is surfaced
+immediately. This documents fixture orchestration only; passing lifecycle unit tests do not
+establish application or browser acceptance.
 
 The supervised native probe retains only normalized diagnostics. Model-discovery warnings use
 closed outcome names and bounded numeric counters for catalog reads and the activation barrier;
