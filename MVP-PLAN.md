@@ -7066,3 +7066,23 @@ preserved. Exact bindings and results are recorded in
 (SHA-256 70c83123439384ef87e4de1b7bb851c3c30026e0f93b7e64c93d5ebe61e329e6). This is
 fixture-source/pure-test evidence only: no app, browser, build, or provider run occurred,
 and previously recorded actual browser failures remain open.
+
+### R-ASTRA-121 R2 zero-FX cash accounting regression (2026-10-18)
+
+The reachable CAD 100 + USD 0 + missing-FX case was reproduced before the fix: the scenario was
+complete with total CAD 100 while its cash subtotal was null. Decimal zero now displays as zero and
+keeps the known CAD 100 cash subtotal without inventing an FX rate; a nonzero foreign-currency
+amount without FX remains incomplete. The builder reported 20 focused tests **Passed**. Independent
+QA **Passed** 20 scenario/FX/store tests (exit 0, `2026-10-18T20:54:16Z`–`20:54:32Z`); receipt
+`/var/tmp/r12r/r2-zero-fx-independent-qa-8bf43c7f-a65f-48ee-a797-2bd410e76003/independent-qa-receipt.json`,
+SHA-256 `3670700480aa2ac16396b1d4d9e9188cdcc17766e910861deeb05796d760a1b0`; JUnit
+`/var/tmp/r12r/r2-zero-fx-independent-qa-8bf43c7f-a65f-48ee-a797-2bd410e76003/junit.xml`,
+SHA-256 `803c97dedc677b2f742226492d8970c9cfc456e6b4897f2d77c3afe150f1e0d4`.
+
+The receipt's displayed command string duplicated `python`; a narrow static supplement confirmed the
+actual direct virtualenv-interpreter argv and original exit/stdout artifacts, all with exit 0. This
+was not a pytest rerun. Supplement `/var/tmp/r12r/r2-zero-fx-independent-qa-8bf43c7f-a65f-48ee-a797-2bd410e76003/static-argv-supplement-20261018T205452Z.json`,
+SHA-256 `0c407de94c373cf9324bbdeb0b3f8d31c230d3dd2ebf077015f5bd19add85ca9`. Weighted-cost, import,
+and owner results are reused only for unchanged pins. The prior six CSV functional runs remain
+**Pass** for their original scope; the recorder privacy finding remains **Fail** and is not repaired
+by this accounting change. No full, browser, provider, recovery, or release acceptance follows.

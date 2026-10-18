@@ -170,6 +170,32 @@ def test_missing_fx_for_nonzero_cash_keeps_total_and_allocations_unavailable():
     assert all(row["allocation_percent"] is None for row in result["cash"])
 
 
+def test_zero_cash_without_fx_is_known_zero_and_preserves_cash_subtotal():
+    """An exact zero needs no exchange rate, but nonzero foreign cash still does."""
+    book = {
+        "cash": [
+            {"account_id": "tfsa", "currency": "CAD", "amount": "100"},
+            {"account_id": "tfsa", "currency": "USD", "amount": "0"},
+        ],
+        "positions": [],
+        "realized": [],
+    }
+
+    result = valuation(book, [], {})
+
+    assert result["complete"]
+    assert result["total_value"] == "100"
+    assert result["known_subtotal"] == "100"
+    assert result["cash_value"] == "100"
+    assert result["missing_inputs"] == []
+    assert [(row["currency"], row["amount"]) for row in result["cash"]] == [
+        ("CAD", "100"),
+        ("USD", "0"),
+    ]
+    assert [row["display_value"] for row in result["cash"]] == ["100", "0"]
+    assert [row["allocation_percent"] for row in result["cash"]] == ["100", "0"]
+
+
 def test_cash_funded_reallocation_retains_value_before_shocks():
     frozen = baseline()
     result = simulate(

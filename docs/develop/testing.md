@@ -407,6 +407,12 @@ release acceptance. See the
 [R2-CASH-01 checkpoint](../../MVP-PLAN.md#r2-cash-01-accounting-and-scenario-regression-acceptance)
 for its exact command, receipts, and limitations.
 
+The zero-FX regression also checks that Decimal-zero foreign cash displays as zero and does not
+invalidate a known CAD cash subtotal; nonzero foreign-currency cash without an FX rate remains
+incomplete. It must not synthesize an FX rate. See the
+[R2 zero-FX checkpoint](../../MVP-PLAN.md#r-astra-121-r2-zero-fx-cash-accounting-regression-2026-10-18)
+for the scoped run and its limits.
+
 The six selected PR #8 backend checks later passed independent fixture QA at commit
 `ee5260b7b617398b0ca214ca6d21388afc96b8d8`. They cover baseline export bounds and malformed saved
 data, provider-free replay, owner/CSRF/canary session enforcement, saved-row immutability, and

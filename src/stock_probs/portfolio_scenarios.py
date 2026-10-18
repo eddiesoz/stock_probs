@@ -47,6 +47,8 @@ def _valuation(
             return None
 
     def converted(amount: Decimal, currency: str) -> Decimal | None:
+        if amount.is_zero():
+            return Decimal("0")
         origin, destination = rate(currency), rate(display_currency)
         return None if origin is None or destination is None else amount * origin / destination
 
