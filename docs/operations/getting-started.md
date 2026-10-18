@@ -1101,3 +1101,9 @@ typed recorded-image rollback. Before enabling the assistant again, restore the 
 candidate and verify disabled readiness, then use owner-canary followed by invited rollout.
 Recovery registration or historical disposable-volume evidence alone does not authorize treating
 it as a tested production baseline or a proven memory saving.
+
+A complete archive scan may succeed after a verified public-binary allowance is updated. Retain the
+original rejected export unchanged and use a separately reviewed fixed-identity recovery publication
+operation before treating its partial as a release artifact. Do not rename it manually or claim the
+original export succeeded. See the
+[current variant checkpoint](../../MVP-PLAN.md#r-astra-121-current-opencode-variant-archive-scan-2026-10-18).

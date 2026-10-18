@@ -64,9 +64,10 @@ PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, frozenset[str], tuple[tuple[in
         frozenset({"596ec35e2ca0ebcba9fd8343ff0a51625af548786257815f24b41f7e08613314"}),
         ((44_773, 44_803), (44_820, 44_850)),
     ),
-    # The OpenCode members share four public spans with official Bun 1.4.2.
-    # Their span digests match this pinned provenance receipt:
-    # 775b9247341e7dc7bed348063cc7e56995ec86af0ac2a58d2892b9790eeefb85.
+    # OpenCode members share four public spans with official Bun 1.4.2, as recorded in public
+    # provenance receipt 775b9247341e7dc7bed348063cc7e56995ec86af0ac2a58d2892b9790eeefb85.
+    # The V3 current-image comparison-receipt.json SHA-256 is:
+    # 98122a7041dd0eaf48fc83d6ca3ed908e81536a663e215d35ddb116c24453948.
     # Each complete binary is pinned separately; every other byte and added match remains scanned.
     "usr/local/bin/opencode": (
         212_784_608,
@@ -76,6 +77,7 @@ PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, frozenset[str], tuple[tuple[in
                 "dc6d6963ce86d02f265d6e630417f835ef8732feacfaaecd0c3cd8a2b82e7a98",
                 "c22fce743cf6ab15d056d5b589d1307fb5c05ed2129949bef5491af775c2c3ad",
                 "2e83651d990f60987c17e1b20961190f1f80d86a4f160de2e2795014fc68577e",
+                "6406a273965dcf1d3d6755711e276b2e8a3336ab084e92ea45e0e2a4a692ff3c",
             }
         ),
         (

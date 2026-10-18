@@ -661,3 +661,10 @@ startup floor remains unchanged. T9 separately failed at 519,432 KiB; its twelve
 observations do not change that result. No post-repair host retry, native answer, fresh image, or actual
 1 GB acceptance is established. See [E22](../../MVP-PLAN.md#r-astra-121-e22-startup-reserve-preflight-repair-checkpoint)
 and [E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-startup-wait-checker-checkpoint).
+
+The current OpenCode allowance adds one complete executable hash to the existing exact
+`usr/local/bin/opencode` member rule. Test all other bytes, changed spans, wrong path/size/hash and
+additional word-adjacent matches as failures. Independent selected controls and the complete archive
+scan have separate receipts in the
+[current variant checkpoint](../../MVP-PLAN.md#r-astra-121-current-opencode-variant-archive-scan-2026-10-18);
+a scan Pass does not repair or publish an earlier failed export receipt.

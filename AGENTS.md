@@ -2345,3 +2345,8 @@ other bytes and matches remain scanned. The cached official Bun receipt supports
 comparisons, not whole-binary identity or OpenCode provenance. E31 records the preserved strict-scan
 failures and later private candidate/recovery scan passes. Those scans do not establish public
 publication, an actual-host rehearsal, rollback, deployment or release acceptance.
+
+For compiled-binary scanner allowances, verify the complete current executable digest as well as
+exact member path, size and public match spans. An additional binary variant does not exempt any
+other bytes or word-adjacent credential-like match. Preserve an earlier rejected export and require
+a fresh complete archive scan; a passing scan alone does not publish or validate the old export receipt.

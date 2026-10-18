@@ -571,3 +571,8 @@ Rehearsal baseline changes require the mapped testing, configuration and operati
 schema-12 pair seed; an exact image allowlist is a guard, not evidence that the image served
 production or met the resource floors. Keep source checks, local disposable compatibility, signed
 backup verification and actual-host observations separate in the [E19 ledger](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+The current compiled OpenCode variant is documented in the
+[current variant scan checkpoint](../../MVP-PLAN.md#r-astra-121-current-opencode-variant-archive-scan-2026-10-18).
+Keep complete binary identity and public span evidence separate from full archive scanning and
+publication. Preserve rejected-export receipts when later source-specific scanning succeeds.

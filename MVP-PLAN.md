@@ -7294,3 +7294,24 @@ only to the two identified private archives with the exact source and binary pin
 source/archive-scanner evidence; it does not establish a new image build, native/runtime or
 provider behavior, publication, actual-host rehearsal, rollback, deployment, or release
 acceptance. No production change or email is claimed.
+
+### R-ASTRA-121 current OpenCode variant archive scan (2026-10-18)
+
+The exact current OpenCode member is 212,784,608 bytes, SHA-256
+`6406a273965dcf1d3d6755711e276b2e8a3336ab084e92ea45e0e2a4a692ff3c`. Its four flagged
+spans match the previously verified official Bun public bytes at the same offsets. The actual
+comparison receipt is SHA-256 `98122a7041dd0eaf48fc83d6ca3ed908e81536a663e215d35ddb116c24453948`.
+The scanner adds only that complete-binary digest under the existing exact path/size/span rule;
+all prior variants and all other scanning remain unchanged. The added-match test now uses a
+word-adjacent synthetic match. Independent candidate QA passed four selected tests plus Ruff/format;
+receipt SHA-256 `b44d83eff16e2c211a22cdb304d1c04ed3876f8e0153daefeb83cb1b9265b115`.
+
+The complete 13-layer scan passed for child-scan scope on the retained 202,159,074-byte archive,
+SHA-256 `61570a2c29c464c09f8876552e84de4719e4805a76653a50f919e7dbe727117f`. Independent
+review SHA-256 `7d916f87768c8c5c2755b483538faea9d74c1ee2e9fd6b6ebe7d0333001f4501` verifies
+the child exit, exact input identities, bounded output and disk observations. Effective systemd
+bounds and terminal/cgroup readback are unavailable after transient-unit collection; the mistaken
+defaults-based claim was withdrawn in correction SHA-256
+`bb11caca712a81a776c9e7d549b9b709b055430d414fbf6bbd3ba48a7411046c`. The original failed
+export receipt and partial remain unpromoted. A separately reviewed recovery publication operation
+is pending; no Docker rebuild, deployment, rollout, resize or email occurred.

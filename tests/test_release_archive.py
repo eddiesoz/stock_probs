@@ -547,6 +547,7 @@ def test_release_archive_verifier_pins_exact_opencode_variants() -> None:
             "dc6d6963ce86d02f265d6e630417f835ef8732feacfaaecd0c3cd8a2b82e7a98",
             "c22fce743cf6ab15d056d5b589d1307fb5c05ed2129949bef5491af775c2c3ad",
             "2e83651d990f60987c17e1b20961190f1f80d86a4f160de2e2795014fc68577e",
+            "6406a273965dcf1d3d6755711e276b2e8a3336ab084e92ea45e0e2a4a692ff3c",
         }
     )
     assert spans == (
@@ -600,7 +601,7 @@ def test_release_archive_verifier_rejects_extra_opencode_match_span(
 ) -> None:
     contents, spans = _spdx_test_source()
     extra_match = b"sk-" + b"C" * 20
-    changed = contents + b" extra " + extra_match
+    changed = contents + b" prefix" + extra_match + b"suffix"
     _configure_opencode_test_allowlist(
         monkeypatch,
         changed,
