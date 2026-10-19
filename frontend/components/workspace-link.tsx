@@ -11,6 +11,11 @@ import { instrumentChangeEvent, instrumentFromSearch, instrumentHref } from "./w
 export function WorkspaceLink({ path, children, current, className }: Readonly<{ path: string; children: ReactNode; current?: boolean; className?: string }>) {
   const [href, setHref] = useState(path);
   const [active, setActive] = useState(current);
+  const refreshActivationHref = (anchor: HTMLAnchorElement) => {
+    const next = instrumentHref(path, instrumentFromSearch(window.location.search));
+    anchor.setAttribute("href", next);
+    setHref(next);
+  };
   useEffect(() => {
     const sync = () => {
       setHref(instrumentHref(path, instrumentFromSearch(window.location.search)));
@@ -24,7 +29,20 @@ export function WorkspaceLink({ path, children, current, className }: Readonly<{
       window.removeEventListener(instrumentChangeEvent, sync);
     };
   }, [current, path]);
-  return <a className={className} href={href} aria-current={active ? "page" : undefined}>{children}</a>;
+  return <a
+    className={className}
+    href={href}
+    aria-current={active ? "page" : undefined}
+    onPointerDown={event => refreshActivationHref(event.currentTarget)}
+    onClick={event => refreshActivationHref(event.currentTarget)}
+    onAuxClick={event => refreshActivationHref(event.currentTarget)}
+    onContextMenu={event => refreshActivationHref(event.currentTarget)}
+    onKeyDown={event => {
+      if (event.key === "Enter" || event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
+        refreshActivationHref(event.currentTarget);
+      }
+    }}
+  >{children}</a>;
 }
 
 // Announced via an aria-live status region so a programmatic URL identity change is perceivable

@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import test from "node:test";
+import vm from "node:vm";
 
 import { instrumentFromSearch, instrumentHref } from "../../components/workspace-context-url.ts";
 import { manualHoldingErrors, portfolioFromPayload, portfolioMutation } from "./portfolio-data.ts";
+
+const require = createRequire(import.meta.url);
+const ts = require("typescript");
 
 test("instrument identity round-trips through workspace URLs", () => {
   const instrument = instrumentFromSearch("?symbol=spy&asset_type=etf&exchange=arca&provider=fixture&display_name=SPDR%20S%26P%20500");
@@ -20,6 +25,84 @@ test("instrument identity round-trips through workspace URLs", () => {
   );
   assert.equal(instrumentFromSearch("?symbol=SPY&asset_type=etf"), null);
   assert.throws(() => instrumentHref("https://example.com", instrument), /must be local/);
+});
+
+test("workspace links refresh identity synchronously before native activation", async () => {
+  const source = await readFile(new URL("../../components/workspace-link.tsx", import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      jsx: ts.JsxEmit.ReactJSX,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: "workspace-link.tsx",
+    reportDiagnostics: true,
+  });
+  assert.deepEqual(compiled.diagnostics, []);
+
+  const state = { search: "" };
+  const fakeWindow = { location: { get search() { return state.search; } } };
+  const react = {
+    useEffect() {},
+    useState(initial) { return [initial, () => {}]; },
+  };
+  const jsxRuntime = {
+    jsx(type, props) { return { type, props }; },
+    jsxs(type, props) { return { type, props }; },
+  };
+  const module = { exports: {} };
+  const localRequire = name => {
+    if (name === "react") return react;
+    if (name === "react/jsx-runtime") return jsxRuntime;
+    if (name === "./workspace-context-url") {
+      return awaitlessWorkspaceContext;
+    }
+    throw new Error(`Unexpected workspace-link import: ${name}`);
+  };
+  const awaitlessWorkspaceContext = await import("../../components/workspace-context-url.ts");
+  vm.runInNewContext(compiled.outputText, {
+    exports: module.exports,
+    module,
+    require: localRequire,
+    window: fakeWindow,
+  });
+  const rendered = module.exports.WorkspaceLink({ path: "/tools/forecast", children: "Forecast" });
+  assert.equal(rendered.type, "a");
+  assert.equal(rendered.props.href, "/tools/forecast");
+
+  const anchor = {
+    attributes: new Map([['href', rendered.props.href]]),
+    setAttribute(name, value) { this.attributes.set(name, value); },
+  };
+  const activate = handler => handler({
+    currentTarget: anchor,
+    key: "Enter",
+    metaKey: true,
+    shiftKey: true,
+    preventDefault() { throw new Error("native activation must remain available"); },
+    stopPropagation() { throw new Error("native activation must remain available"); },
+  });
+  const initialSearch = "?symbol=SPY&asset_type=etf&exchange=arca&provider=fixture&display_name=SPDR%20S%26P%20500";
+  const changedSearch = "?symbol=SHOP.TO&asset_type=stock&exchange=tsx&provider=fixture&display_name=Shopify";
+  state.search = initialSearch;
+  activate(rendered.props.onClick);
+  assert.equal(
+    anchor.attributes.get("href"),
+    instrumentHref("/tools/forecast", instrumentFromSearch(initialSearch)),
+    "the first activation must update the server-rendered fallback even before useEffect runs",
+  );
+
+  state.search = changedSearch;
+  activate(rendered.props.onPointerDown);
+  assert.equal(
+    anchor.attributes.get("href"),
+    instrumentHref("/tools/forecast", instrumentFromSearch(changedSearch)),
+    "activation must use the latest instrument identity rather than a stale rendered href",
+  );
+  activate(rendered.props.onAuxClick);
+  activate(rendered.props.onContextMenu);
+  activate(rendered.props.onKeyDown);
+  assert.equal(anchor.attributes.get("href"), instrumentHref("/tools/forecast", instrumentFromSearch(changedSearch)));
 });
 
 test("manual portfolio input rejects invalid holdings and parses bounded local records", () => {
