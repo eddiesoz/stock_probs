@@ -2,22 +2,27 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from importlib.resources import files
+from uuid import uuid4
 
 import pytest
 
 import stock_probs.repository as repository_module
 from stock_probs.backup import BackupError, BackupManager
 from stock_probs.domain import DomainError, calculate_forecasts
+from stock_probs.portfolio_ledger import Entry
+from stock_probs.portfolio_store import PortfolioStore
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import SCHEMA_VERSION, Repository, RepositoryError
+from stock_probs.research import ResearchStore
 from stock_probs.service import ForecastService
 
 NOW = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
@@ -367,10 +372,193 @@ def test_backup_representative_counts_are_internal_physical_row_semantics(settin
     manifest, _, staging = manager.verify(created["name"])
     try:
         assert repository.representative_counts() == expected
-        assert manifest["counts"] == expected
+        assert manifest["format_version"] == 3
+        assert manifest["counts"] == {
+            **expected,
+            "research_theses": 0,
+            "research_thesis_revisions": 0,
+            "research_comparisons": 0,
+            "portfolio_accounts": 0,
+            "portfolio_batches": 0,
+            "portfolio_transactions": 0,
+            "portfolio_snapshots": 0,
+            "portfolio_scenarios": 0,
+            "portfolio_fx_cache": 0,
+            "portfolio_fx_fetch_state": 0,
+        }
         assert set(expected).isdisjoint({"events", "runs", "inputs", "results", "forecasts"})
     finally:
         staging.cleanup()
+
+
+def test_schema_fifteen_restore_preserves_all_research_portfolio_and_fx_rows(settings):
+    """A recognized old signed shape verifies, but cannot rewind any schema-14/15 records."""
+
+    repository, _ = _service(settings)
+    manager = BackupManager(repository, settings.backup_dir)
+    before = manager.create("before-r1-r2-records.spbackup")
+    research = ResearchStore(repository)
+    thesis = research.save_thesis(
+        OWNER_USER_ID,
+        {
+            "symbol": "SPY",
+            "asset_type": "etf",
+            "title": "Research record after snapshot",
+            "reasoning": "An owner-created thesis must survive restore.",
+            "risks": "The earlier snapshot does not contain this record.",
+            "invalidation": "The record is intentionally retained.",
+            "evidence": [],
+        },
+        NOW,
+    )
+    with pytest.raises(BackupError, match="saved research history"):
+        manager.restore(before["name"], promote=True)
+    assert research.get(OWNER_USER_ID, "theses", thesis["id"]) == thesis
+
+    before_portfolio = manager.create("before-portfolio-records.spbackup")
+    manifest, database, staging = manager.verify(before_portfolio["name"])
+    try:
+        legacy_counts = {
+            key: manifest["counts"][key] for key in repository_module._REPRESENTATIVE_STORAGE_KEYS
+        }
+        historical = {**manifest, "format_version": 1, "counts": legacy_counts}
+        manager._package(
+            database,
+            historical,
+            manager._trust_key(create=False),
+            manager._artifact_path("historical-schema15.spbackup"),
+        )
+    finally:
+        staging.cleanup()
+
+    historical_manifest, _, historical_staging = manager.verify("historical-schema15.spbackup")
+    try:
+        assert historical_manifest["format_version"] == 1
+        assert set(historical_manifest["counts"]) == repository_module._REPRESENTATIVE_STORAGE_KEYS
+    finally:
+        historical_staging.cleanup()
+
+    portfolio = PortfolioStore(repository, allow_development_noauth=True)
+    account = portfolio.create_account(OWNER_USER_ID, "TFSA", "tfsa", str(uuid4()), NOW)
+    entry = Entry(
+        id=str(uuid4()),
+        account=account["id"],
+        effective_date=date(2025, 1, 10),
+        kind="deposit",
+        currency="CAD",
+        amount="100",
+    )
+    preview = portfolio.preview(OWNER_USER_ID, [entry])
+    portfolio.commit(
+        OWNER_USER_ID,
+        str(uuid4()),
+        str(uuid4()),
+        [entry],
+        preview["account_revisions"],
+        set(),
+        NOW,
+    )
+    account = portfolio.accounts(OWNER_USER_ID)[0]
+    snapshot_data = {
+        "captured_at": NOW.isoformat(),
+        "display_currency": "CAD",
+        "accounts": [{"id": account["id"], "revision": account["revision"]}],
+        "book": {
+            "cash": [{"account_id": account["id"], "currency": "CAD", "amount": "100"}],
+            "positions": [],
+            "realized": [],
+        },
+        "quotes": [],
+        "fx": {},
+    }
+    snapshot = portfolio.save_snapshot(
+        OWNER_USER_ID,
+        str(uuid4()),
+        "a" * 64,
+        snapshot_data,
+        {account["id"]: account["revision"]},
+        NOW,
+    )
+    scenario = portfolio.save_scenario(
+        OWNER_USER_ID, str(uuid4()), snapshot["id"], "Frozen simulation", {}, NOW
+    )
+    with repository.connect() as connection:
+        connection.execute(
+            "INSERT INTO portfolio_fx_cache "
+            "(publication_date,provider,fetched_at,rates_json) VALUES (?,?,?,?)",
+            ("2025-01-10", "Bank of Canada", NOW.isoformat(), '{"USD":"1.43"}'),
+        )
+        connection.execute(
+            "INSERT INTO portfolio_fx_fetch_state "
+            "(provider,last_attempt_at,last_attempt_date,last_result) VALUES (?,?,?,?)",
+            ("Bank of Canada", NOW.isoformat(), "2025-01-10", "successful"),
+        )
+        connection.commit()
+
+    restore_tables = (
+        repository_module._RESEARCH_RESTORE_EFFECT_TABLES
+        + repository_module._PORTFOLIO_RESTORE_EFFECT_TABLES
+    )
+    with sqlite3.connect(settings.database_path) as connection:
+        state = []
+        for table, columns, order_columns in restore_tables:
+            selected = ", ".join(columns)
+            rows = connection.execute(
+                f"SELECT {selected} FROM {table} ORDER BY {order_columns}"  # noqa: S608
+            ).fetchall()
+            state.append((table, [tuple(row) for row in rows]))
+    expected_digest = hashlib.sha256(
+        json.dumps(state, separators=(",", ":"), ensure_ascii=True).encode()
+    ).hexdigest()
+    assert (
+        BackupManager._restore_effect_digest(
+            settings.database_path, restore_tables, "Portfolio history or FX state"
+        )
+        == expected_digest
+    )
+
+    expected_portfolio_tables = {
+        "portfolio_accounts",
+        "portfolio_batches",
+        "portfolio_transactions",
+        "portfolio_snapshots",
+        "portfolio_scenarios",
+        "portfolio_fx_cache",
+        "portfolio_fx_fetch_state",
+    }
+    assert {table for table, _, _ in repository_module._PORTFOLIO_RESTORE_EFFECT_TABLES} == (
+        expected_portfolio_tables
+    )
+    assert repository_module._is_backup_storage_counts(
+        {key: 0 for key in repository_module._RESEARCH_BACKUP_STORAGE_KEYS}, 2, 14
+    )
+    assert not repository_module._is_backup_storage_counts(
+        {key: 0 for key in repository_module._RESEARCH_BACKUP_STORAGE_KEYS - {"research_theses"}},
+        2,
+        14,
+    )
+    assert not repository_module._is_backup_storage_counts(
+        {key: 0 for key in repository_module._REPRESENTATIVE_STORAGE_KEYS - {"outcomes"}},
+        1,
+        15,
+    )
+    assert portfolio.scenario(OWNER_USER_ID, scenario["id"]) is not None
+
+    with pytest.raises(BackupError, match="portfolio history or FX state"):
+        manager.restore("historical-schema15.spbackup", promote=True)
+
+    assert portfolio.accounts(OWNER_USER_ID)[0]["id"] == account["id"]
+    assert portfolio.transactions(OWNER_USER_ID, 1, 10)["total"] == 1
+    assert portfolio.snapshot(OWNER_USER_ID, snapshot["id"]) is not None
+    assert portfolio.scenario(OWNER_USER_ID, scenario["id"]) is not None
+    assert research.get(OWNER_USER_ID, "theses", thesis["id"]) == thesis
+    with repository.connect() as connection:
+        assert connection.execute("SELECT count(*) FROM portfolio_fx_cache").fetchone()[0] == 1
+        fetch_state_count = connection.execute(
+            "SELECT count(*) FROM portfolio_fx_fetch_state"
+        ).fetchone()[0]
+        assert fetch_state_count == 1
+    assert not settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
 
 
 def test_failed_event_insert_rolls_back_new_input_and_results(settings):
@@ -1058,8 +1246,8 @@ def test_failed_restore_serializes_second_repository_write_and_preserves_active_
         assert release.wait(timeout=5)
         return candidate
 
-    def fail_promoted_counts(path):
-        counts = original_counts(path)
+    def fail_promoted_counts(path, format_version=1):
+        counts = original_counts(path, format_version)
         if (
             path == settings.database_path
             and settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
@@ -1175,10 +1363,10 @@ def test_backup_error_keeps_injected_path_detail_out_of_public_structure(setting
     manager = BackupManager(repository, settings.backup_dir)
     sensitive = "/srv/private/stock.sqlite3 authorization=do-not-publish"
 
-    def fail_counts(path):
+    def fail_counts(path, format_version=1):
         raise OSError(sensitive)
 
-    monkeypatch.setattr(repository, "representative_counts", fail_counts)
+    monkeypatch.setattr(repository, "backup_counts", fail_counts)
     with pytest.raises(BackupError, match="representative-count") as failure:
         manager._counts(settings.database_path)
 

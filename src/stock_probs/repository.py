@@ -72,6 +72,161 @@ _REPRESENTATIVE_STORAGE_TABLES: Final = (
     "outcomes",
 )
 _REPRESENTATIVE_STORAGE_KEYS: Final = frozenset(_REPRESENTATIVE_STORAGE_TABLES)
+_RESEARCH_STORAGE_TABLES: Final = (
+    "research_theses",
+    "research_thesis_revisions",
+    "research_comparisons",
+)
+_PORTFOLIO_STORAGE_TABLES: Final = (
+    "portfolio_accounts",
+    "portfolio_batches",
+    "portfolio_transactions",
+    "portfolio_snapshots",
+    "portfolio_scenarios",
+    "portfolio_fx_cache",
+    "portfolio_fx_fetch_state",
+)
+_RESEARCH_BACKUP_STORAGE_TABLES: Final = (
+    *_REPRESENTATIVE_STORAGE_TABLES,
+    *_RESEARCH_STORAGE_TABLES,
+)
+_PORTFOLIO_BACKUP_STORAGE_TABLES: Final = (
+    *_RESEARCH_BACKUP_STORAGE_TABLES,
+    *_PORTFOLIO_STORAGE_TABLES,
+)
+_BACKUP_STORAGE_TABLES_BY_FORMAT: Final = {
+    1: _REPRESENTATIVE_STORAGE_TABLES,
+    2: _RESEARCH_BACKUP_STORAGE_TABLES,
+    3: _PORTFOLIO_BACKUP_STORAGE_TABLES,
+}
+_RESEARCH_BACKUP_STORAGE_KEYS: Final = frozenset(_RESEARCH_BACKUP_STORAGE_TABLES)
+_PORTFOLIO_BACKUP_STORAGE_KEYS: Final = frozenset(_PORTFOLIO_BACKUP_STORAGE_TABLES)
+
+
+def _is_backup_storage_counts(value: object, format_version: int, schema_version: int) -> bool:
+    """Accept only the exact signed count shape known for a historical/current schema."""
+
+    if type(format_version) is not int or type(schema_version) is not int:
+        return False
+    if format_version == 1:
+        expected = _REPRESENTATIVE_STORAGE_KEYS
+    elif format_version == 2 and schema_version == 14:
+        expected = _RESEARCH_BACKUP_STORAGE_KEYS
+    elif format_version == 3 and schema_version >= 15:
+        expected = _PORTFOLIO_BACKUP_STORAGE_KEYS
+    else:
+        return False
+    return (
+        isinstance(value, dict)
+        and set(value) == expected
+        and all(type(count) is int and count >= 0 for count in value.values())
+    )
+
+
+_RESEARCH_RESTORE_EFFECT_TABLES: Final = (
+    (
+        "research_theses",
+        (
+            "id",
+            "owner_user_id",
+            "idempotency_key",
+            "request_sha256",
+            "revision",
+            "payload_json",
+            "created_at",
+            "updated_at",
+        ),
+        "id",
+    ),
+    (
+        "research_thesis_revisions",
+        ("thesis_id", "owner_user_id", "revision", "payload_json", "recorded_at"),
+        "thesis_id, revision",
+    ),
+    (
+        "research_comparisons",
+        ("id", "owner_user_id", "idempotency_key", "payload_json", "created_at"),
+        "id",
+    ),
+)
+_PORTFOLIO_RESTORE_EFFECT_TABLES: Final = (
+    (
+        "portfolio_accounts",
+        (
+            "id",
+            "owner_user_id",
+            "idempotency_key",
+            "request_sha256",
+            "label",
+            "account_type",
+            "revision",
+            "archived",
+            "created_at",
+            "updated_at",
+        ),
+        "id",
+    ),
+    (
+        "portfolio_batches",
+        (
+            "id",
+            "owner_user_id",
+            "idempotency_key",
+            "preview_id",
+            "request_sha256",
+            "receipt_json",
+            "created_at",
+        ),
+        "id",
+    ),
+    (
+        "portfolio_transactions",
+        (
+            "sequence",
+            "id",
+            "owner_user_id",
+            "account_id",
+            "batch_id",
+            "effective_date",
+            "payload_json",
+            "duplicate_sha256",
+            "replaces_id",
+            "manual_holding_key",
+            "created_at",
+        ),
+        "sequence",
+    ),
+    (
+        "portfolio_snapshots",
+        ("id", "owner_user_id", "idempotency_key", "request_sha256", "payload_json", "created_at"),
+        "id",
+    ),
+    (
+        "portfolio_scenarios",
+        (
+            "id",
+            "owner_user_id",
+            "baseline_id",
+            "idempotency_key",
+            "request_sha256",
+            "title",
+            "assumptions_json",
+            "result_json",
+            "created_at",
+        ),
+        "id",
+    ),
+    (
+        "portfolio_fx_cache",
+        ("publication_date", "provider", "fetched_at", "rates_json"),
+        "publication_date",
+    ),
+    (
+        "portfolio_fx_fetch_state",
+        ("provider", "last_attempt_at", "last_attempt_date", "last_result"),
+        "provider",
+    ),
+)
 
 
 def _is_representative_storage_counts(value: object) -> TypeGuard[_RepresentativeStorageCounts]:
@@ -3903,6 +4058,21 @@ class Repository:
     ) -> _RepresentativeStorageCounts:
         """Count fixed internal storage tables; these keys are not domain record vocabulary."""
 
+        return cast(
+            _RepresentativeStorageCounts,
+            self.backup_counts(database_path, format_version=1),
+        )
+
+    def backup_counts(
+        self, database_path: Path | None = None, *, format_version: int
+    ) -> dict[str, int]:
+        """Count the fixed tables required by one exact signed backup format."""
+
+        if type(format_version) is not int:
+            raise RepositoryOperationalError("Backup count format is invalid.")
+        tables = _BACKUP_STORAGE_TABLES_BY_FORMAT.get(format_version)
+        if tables is None:
+            raise RepositoryOperationalError("Backup count format is unsupported.")
         path = database_path or self.database_path
         # Staging databases are private to backup code; only the active canonical path shares
         # the promotion lock with independent repository and manager instances.
@@ -3921,10 +4091,9 @@ class Repository:
                     table: int(
                         connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # noqa: S608
                     )
-                    for table in _REPRESENTATIVE_STORAGE_TABLES
+                    for table in tables
                 }
-                # Construction from the fixed allowlist narrows this beyond dict[str, int].
-                return cast(_RepresentativeStorageCounts, counts)
+                return counts
             except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
                 raise RepositoryOperationalError(
                     "Representative database counts could not be read."

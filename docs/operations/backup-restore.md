@@ -69,6 +69,14 @@ inspection, and checks SQLite integrity, foreign keys, migrations, schema, and c
 the active database's integrity and representative counts before reporting success; a failed
 post-swap check restores the verified rollback copy.
 
+Before R2 promotion, the candidate compares active and staged research, portfolio, and FX state.
+The comparison covers theses and revisions, saved comparisons, portfolio accounts and transactions,
+baselines, scenarios, and the FX cache/fetch state; any difference blocks promotion. Verification
+without `--promote` does not run this comparison. Restore is point-in-time, not a merge, and does not
+carry arbitrary post-backup rows forward. The bounded comparison streams a digest over fixed,
+ordered rows to avoid constructing a whole-table in-memory serialization; it is not a resource-limit
+claim. See [R-ASTRA-121 restore-guard evidence](../../MVP-PLAN.md#r-astra-121-r2-restore-rewind-guard-and-baseline-export-documentation-2026-10-19).
+
 An existing `.pre-restore.sqlite3` rollback file blocks promotion only; verification without
 `--promote` still works. After a successful promotion, failure to remove the retained rollback is
 reported as `"rollback_cleanup_required": true`; resolve that file before another promotion.

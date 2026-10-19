@@ -7086,3 +7086,35 @@ SHA-256 `0c407de94c373cf9324bbdeb0b3f8d31c230d3dd2ebf077015f5bd19add85ca9`. Weig
 and owner results are reused only for unchanged pins. The prior six CSV functional runs remain
 **Pass** for their original scope; the recorder privacy finding remains **Fail** and is not repaired
 by this accounting change. No full, browser, provider, recovery, or release acceptance follows.
+
+### R-ASTRA-121 R2 restore rewind guard and baseline export documentation (2026-10-19)
+
+Before R2 `--promote`, restore compares the active and staged research tables, portfolio accounts,
+batches, transactions, saved baselines and scenarios, and FX cache/fetch state. It refuses
+promotion if any of that retained state would change. Restore is point-in-time and does not merge
+arbitrary post-backup rows. The comparison streams a digest over fixed, ordered, read-only table
+rows instead of allocating a whole-table serialization; this is not a memory-limit or resource
+acceptance claim.
+
+The saved What-if baseline now has owner-scoped JSON and CSV downloads. Both export only the frozen
+baseline and make no quote or FX refresh. JSON is bounded to 270,336 UTF-8 bytes. CSV flattens the
+record into `field_path,value_json` rows, neutralizes spreadsheet formulas, and is bounded to
+1,048,576 UTF-8 bytes. Both formats retain the saved account revisions, quote observations and
+dated FX inputs; reopening or exporting does not change the baseline.
+
+For the restore guard, the source-freeze receipt records three selected R1 tests and one selected R2
+test passing, with Ruff check and `git diff --check` in both worktrees. R2 `backup.py` and
+`tests/test_repository_backup.py` were pinned at SHA-256
+`dbddd6ea8ad39ccd6ba3018c8d1a11ea2fdf8ed628898596bbca088e0f68a83d` and
+`908793827d35540c12c7e6d643d3bd383dce980256e60f7c8466d2177dcd62a4`. Receipt
+`/var/tmp/r12r/r1-r2-streaming-digest-freeze-20261019T053921Z-26a90e1a/receipt.json`, SHA-256
+`578cf6072d62d80811ae2d9fd83df3ec1258c74acb9352667e564b02d430710d`. Independent QA passed two
+focused R1 pytest cases and five focused R2 pytest cases; the nine-file source review reported no
+findings. Corrected receipt
+`/var/tmp/r12r/r1-r2-independent-source-review-20261019T0541Z-1fc3b9eb-5c43-48a9-9d9e-1f2f60cb54e5/qa-result-20261019T0606Z-corrected.json`, SHA-256
+`0c9b9e2c8deb2e4fdafb29fadbaed469191be8aeff326b269cc5c2b05f1d77d8`. The initial draft remains
+preserved with an invalid R2 `backup.py` hash transcription; the corrected receipt supersedes that
+pin comparison. No full suite, frontend/browser, provider, runtime, recovery-release or design
+acceptance is claimed.
+
+Documentation checks for this update passed: `scripts/validate_docs.py` reported 9 categories, 14 topics and 8 project skill governance entries; complete and change-aware documentation coverage each checked 193 mapped files, with 4 changed paths; scoped `git diff --check` exited 0. Documentation tests were not run.

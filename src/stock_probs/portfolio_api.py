@@ -24,6 +24,7 @@ from stock_probs.portfolio_store import PortfolioStore, encoded
 
 _Result = TypeVar("_Result")
 MAX_BASELINE_EXPORT_BYTES = 270_336
+MAX_BASELINE_CSV_EXPORT_BYTES = 1_048_576
 
 
 class PortfolioModel(BaseModel):
@@ -638,8 +639,10 @@ def install_ledger_routes(
         return row
 
     @app.get("/api/v1/portfolio/snapshots/{baseline_id}/export")
-    def export_baseline(request: Request, baseline_id: UUID) -> Response:
-        """Download one owner-scoped immutable baseline with its capture provenance."""
+    def export_baseline(
+        request: Request, baseline_id: UUID, format: Literal["csv", "json"] = "json"
+    ) -> Response:
+        """Download one owner-scoped immutable baseline without refreshing portfolio inputs."""
         frozen = baseline(request, baseline_id)
         data = frozen.get("data")
         accounts = data.get("accounts") if isinstance(data, dict) else None
@@ -669,21 +672,65 @@ def install_ledger_routes(
             "account_revisions": {account["id"]: account["revision"] for account in accounts},
             "data": data,
         }
-        body = encoded(export_data)
-        if len(body.encode("utf-8")) > MAX_BASELINE_EXPORT_BYTES:
-            raise DomainError(
-                "baseline_export_too_large",
-                "The saved baseline exceeds the export size limit.",
-                status_code=413,
-            )
-        return Response(
-            body,
-            media_type="application/json",
-            headers={
-                "Cache-Control": "no-store",
-                "Content-Disposition": 'attachment; filename="signal-ledger-baseline.json"',
-            },
-        )
+        filename = f"signal-ledger-baseline.{format}"
+        headers = {
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+        }
+        if format == "json":
+            body = encoded(export_data)
+            if len(body.encode("utf-8")) > MAX_BASELINE_EXPORT_BYTES:
+                raise DomainError(
+                    "baseline_export_too_large",
+                    "The saved baseline exceeds the export size limit.",
+                    status_code=413,
+                )
+            return Response(body, media_type="application/json", headers=headers)
+
+        lines: list[str] = []
+        output_bytes = 0
+
+        def append_row(path: str, value: object) -> None:
+            nonlocal output_bytes
+            encoded_value = encoded(safe_csv_cell(value) if isinstance(value, str) else value)
+            line = io.StringIO(newline="")
+            csv.writer(line).writerow((safe_csv_cell(path), encoded_value))
+            text = line.getvalue()
+            output_bytes += len(text.encode("utf-8"))
+            if output_bytes > MAX_BASELINE_CSV_EXPORT_BYTES:
+                raise DomainError(
+                    "baseline_export_too_large",
+                    "The saved baseline exceeds the CSV export size limit.",
+                    status_code=413,
+                )
+            lines.append(text)
+
+        def visit(value: object, path: str) -> None:
+            if isinstance(value, dict):
+                if not value:
+                    append_row(path, value)
+                    return
+                for key in sorted(value):
+                    child_path = f"{path}.{key}" if path else str(key)
+                    visit(value[key], child_path)
+                return
+            if isinstance(value, list):
+                if not value:
+                    append_row(path, value)
+                    return
+                for index, item in enumerate(value):
+                    visit(item, f"{path}[{index}]")
+                return
+            append_row(path, value)
+
+        header = io.StringIO(newline="")
+        csv.writer(header).writerow(("field_path", "value_json"))
+        header_text = header.getvalue()
+        output_bytes = len(header_text.encode("utf-8"))
+        lines.append(header_text)
+        visit(export_data, "")
+        return Response("".join(lines), media_type="text/csv", headers=headers)
 
     @app.post("/api/v1/portfolio/snapshots/{baseline_id}/simulate")
     def scenario_preview(

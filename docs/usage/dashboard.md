@@ -255,12 +255,14 @@ allocation use deterministic arithmetic. Save a named scenario to reopen its ori
 and assumptions without fetching new quotes. **Simulation only** stays visible; no scenario
 control changes your ledger. Freeze a new baseline explicitly when you want updated inputs.
 
-Choose **Export baseline JSON** for the selected baseline to download the file
-`signal-ledger-baseline.json`. It contains the frozen account revisions, balances, quote
-observations and dated FX. Export is read-only: it makes no provider calls and never
-refreshes or replaces the baseline. Freeze a new baseline to capture updated inputs;
-see the [API reference](../reference/api.md#portfolio-baseline-json-export) for the
-response contract.
+Choose **Export baseline JSON** or **Export baseline CSV** for the selected baseline. Both
+formats download only that owner’s frozen account revisions, balances, quote observations and
+dated FX; exporting makes no provider calls and never refreshes or replaces the baseline. JSON
+retains the versioned record envelope. CSV flattens nested values into `field_path,value_json`
+rows and neutralizes spreadsheet formulas. JSON is limited to 270,336 UTF-8 bytes and CSV to
+1,048,576 UTF-8 bytes. Freeze a new baseline explicitly to capture updated inputs; see the
+[API reference](../reference/api.md#portfolio-baseline-json-and-csv-export) for the response
+contract.
 
 Ledger CSV/JSON and saved-scenario JSON exports retain native records and frozen evidence. CSV
 exports neutralize spreadsheet formulas. Feature-specific local checks are recorded in the

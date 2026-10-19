@@ -1,5 +1,8 @@
 """Exercise real application routing, local fixture authentication and reviewed ledger commits."""
 
+import csv
+import io
+import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -8,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from stock_probs.api import create_app
+from stock_probs.portfolio_market import PortfolioMarket
 from stock_probs.provider import FixtureProvider
 
 
@@ -76,6 +80,10 @@ def test_baseline_export_enforces_response_bound(portfolio_client, monkeypatch):
 
     assert response.status_code == 413, response.text
     assert response.json()["error"]["code"] == "baseline_export_too_large"
+    monkeypatch.setattr("stock_probs.portfolio_api.MAX_BASELINE_CSV_EXPORT_BYTES", 1)
+    csv_response = client.get(f"/api/v1/portfolio/snapshots/{saved.json()['id']}/export?format=csv")
+    assert csv_response.status_code == 413, csv_response.text
+    assert csv_response.json()["error"]["code"] == "baseline_export_too_large"
 
 
 def test_baseline_export_fails_closed_for_invalid_saved_data(portfolio_client, monkeypatch):
@@ -119,9 +127,11 @@ def test_real_routes_preview_commit_retry_and_atomic_unfunded_rejection(portfoli
     assert client.get("/api/v1/portfolio/balances").json()["book"]["cash"][0]["amount"] == "1000"
 
 
-def test_baseline_and_scenario_replay_are_provider_free_and_do_not_commit(portfolio_client):
+def test_baseline_and_scenario_replay_are_provider_free_and_do_not_commit(
+    portfolio_client, monkeypatch
+):
     client = portfolio_client
-    identifier = account(client)
+    identifier = account(client, '=HYPERLINK("https://example.com")')
     commit(client, preview(client, identifier))
     payload = {
         "idempotency_key": str(uuid4()),
@@ -139,14 +149,19 @@ def test_baseline_and_scenario_replay_are_provider_free_and_do_not_commit(portfo
         raise AssertionError("Saved reads and durable retries must not call the quote provider")
 
     provider.quote_snapshot = forbidden
+    monkeypatch.setattr(PortfolioMarket, "collect", forbidden)
     assert client.post("/api/v1/portfolio/snapshots", json=payload).json() == baseline
-    exported = client.get(f"/api/v1/portfolio/snapshots/{baseline['id']}/export")
-    assert exported.status_code == 200, exported.text
+    repository = client.app.state.repository
+    counts_before_export = repository.backup_counts(format_version=3)
+    exported = client.get(f"/api/v1/portfolio/snapshots/{baseline['id']}/export?format=json")
+    csv_export = client.get(f"/api/v1/portfolio/snapshots/{baseline['id']}/export?format=csv")
+    assert exported.status_code == csv_export.status_code == 200
     assert exported.headers["content-type"].startswith("application/json")
     assert exported.headers["content-disposition"] == (
         'attachment; filename="signal-ledger-baseline.json"'
     )
     assert exported.headers["cache-control"] == "no-store"
+    assert exported.headers["x-content-type-options"] == "nosniff"
     export_data = exported.json()
     assert export_data["format_version"] == 1
     assert export_data["record_type"] == "portfolio_baseline"
@@ -160,6 +175,17 @@ def test_baseline_and_scenario_replay_are_provider_free_and_do_not_commit(portfo
     assert "owner_user_id" not in export_data
     assert "idempotency_key" not in export_data
     assert "request_sha256" not in export_data
+    assert csv_export.headers["content-type"].startswith("text/csv")
+    assert csv_export.headers["content-disposition"] == (
+        'attachment; filename="signal-ledger-baseline.csv"'
+    )
+    assert csv_export.headers["cache-control"] == "no-store"
+    assert csv_export.headers["x-content-type-options"] == "nosniff"
+    rows = csv.DictReader(io.StringIO(csv_export.text))
+    values = {row["field_path"]: json.loads(row["value_json"]) for row in rows}
+    assert values["data.accounts[0].label"] == '\'=HYPERLINK("https://example.com")'
+    assert values["data.book.positions"] == []
+    assert repository.backup_counts(format_version=3) == counts_before_export
     assumptions = {
         "price_shocks": [{"symbol": "SPY", "asset_type": "etf", "percent": "-20"}],
         "usd_cad_percent": "1.25",
@@ -409,5 +435,7 @@ def test_real_local_fixture_sessions_enforce_owner_csrf_and_canary(settings):
         )
         assert baseline_response.status_code == 201, baseline_response.text
         baseline_id = baseline_response.json()["id"]
-        assert admin.get(f"/api/v1/portfolio/snapshots/{baseline_id}/export").status_code == 200
-        assert member.get(f"/api/v1/portfolio/snapshots/{baseline_id}/export").status_code == 404
+        for export_format in ("json", "csv"):
+            path = f"/api/v1/portfolio/snapshots/{baseline_id}/export?format={export_format}"
+            assert admin.get(path).status_code == 200
+            assert member.get(path).status_code == 404

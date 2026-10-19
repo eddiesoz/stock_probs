@@ -26,10 +26,11 @@ from typing import Any, TypeVar
 
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.repository import (
+    _PORTFOLIO_RESTORE_EFFECT_TABLES,
+    _RESEARCH_RESTORE_EFFECT_TABLES,
     SCHEMA_VERSION,
     Repository,
-    _is_representative_storage_counts,
-    _RepresentativeStorageCounts,
+    _is_backup_storage_counts,
 )
 
 ARTIFACT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\.spbackup$")
@@ -376,11 +377,87 @@ class BackupManager:
         finally:
             os.close(descriptor)
 
-    def _counts(self, path: Path) -> _RepresentativeStorageCounts:
+    @staticmethod
+    def _count_format_for_schema(schema_version: int) -> int:
+        """Select the exact backup count shape available to this schema."""
+
+        if schema_version >= 15:
+            return 3
+        if schema_version >= 14:
+            return 2
+        return 1
+
+    def _counts(self, path: Path, format_version: int = 1) -> dict[str, int]:
         try:
-            return self.repository.representative_counts(path)
+            return self.repository.backup_counts(path, format_version=format_version)
         except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
             raise BackupError("Artifact representative-count verification failed.") from exc
+
+    def _counts_match_manifest(self, path: Path, manifest: dict[str, Any]) -> bool:
+        """Compare exact recognized table counts without accepting arbitrary key subsets."""
+
+        schema_version = manifest.get("schema_version")
+        format_version = manifest.get("format_version")
+        declared = manifest.get("counts")
+        if (
+            type(schema_version) is not int
+            or type(format_version) is not int
+            or not _is_backup_storage_counts(declared, format_version, schema_version)
+        ):
+            return False
+        actual = self._counts(path, format_version)
+        return all(actual.get(table) == count for table, count in declared.items())
+
+    @staticmethod
+    def _restore_effect_digest(
+        path: Path, tables: tuple[tuple[str, tuple[str, ...], str], ...], label: str
+    ) -> str:
+        """Fingerprint fixed persistence rows through a read-only SQLite connection."""
+
+        try:
+            connection = sqlite3.connect(
+                f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=5.0
+            )
+            try:
+                connection.execute("PRAGMA query_only = ON")
+                digest = hashlib.sha256()
+                encoder = json.JSONEncoder(separators=(",", ":"), ensure_ascii=True)
+                digest.update(b"[")
+                for table_index, (table, columns, order_columns) in enumerate(tables):
+                    if table_index:
+                        digest.update(b",")
+                    digest.update(b"[")
+                    for chunk in encoder.iterencode(table):
+                        digest.update(chunk.encode("ascii"))
+                    digest.update(b",[")
+                    selected = ", ".join(columns)
+                    cursor = connection.execute(
+                        f"SELECT {selected} FROM {table} ORDER BY {order_columns}"  # noqa: S608
+                    )
+                    for row_index, row in enumerate(cursor):
+                        if row_index:
+                            digest.update(b",")
+                        for chunk in encoder.iterencode(tuple(row)):
+                            digest.update(chunk.encode("ascii"))
+                    digest.update(b"]]")
+                digest.update(b"]")
+            finally:
+                connection.close()
+            return digest.hexdigest()
+        except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
+            raise BackupError(f"{label} state could not be compared safely for restore.") from exc
+
+    def _require_state_match(
+        self,
+        staged_database: Path,
+        tables: tuple[tuple[str, tuple[str, ...], str], ...],
+        label: str,
+        refusal: str,
+    ) -> None:
+        active_digest = self._restore_effect_digest(self.repository.database_path, tables, label)
+        staged_digest = self._restore_effect_digest(staged_database, tables, label)
+        if not hmac.compare_digest(active_digest, staged_digest):
+            raise BackupError(refusal)
 
     def _online_snapshot(self, snapshot: Path) -> None:
         """Use SQLite's consistent online API with a callback-enforced wall-clock bound."""
@@ -467,11 +544,12 @@ class BackupManager:
                 ensure_private_file(snapshot)
                 schema_checksum = self._integrity(snapshot, expected_version=schema_version)
                 _check_deadline()
-                counts = self._counts(snapshot)
+                format_version = self._count_format_for_schema(schema_version)
+                counts = self._counts(snapshot, format_version)
                 _check_deadline()
                 manifest = {
                     "format": "stock-probs-backup",
-                    "format_version": 1,
+                    "format_version": format_version,
                     "schema_version": schema_version,
                     "schema_sha256": schema_checksum,
                     "created_at": datetime.now(UTC).isoformat(),
@@ -642,7 +720,7 @@ class BackupManager:
         if (
             manifest["format"] != "stock-probs-backup"
             or type(manifest["format_version"]) is not int
-            or manifest["format_version"] != 1
+            or manifest["format_version"] not in {1, 2, 3}
             or type(manifest["schema_version"]) is not int
             or not 1 <= manifest["schema_version"] <= SCHEMA_VERSION
         ):
@@ -665,7 +743,9 @@ class BackupManager:
         ):
             raise BackupError("Artifact database size is invalid.")
         counts = manifest["counts"]
-        if not _is_representative_storage_counts(counts):
+        if not _is_backup_storage_counts(
+            counts, manifest["format_version"], manifest["schema_version"]
+        ):
             raise BackupError("Artifact representative counts are invalid.")
         try:
             created_at = datetime.fromisoformat(manifest["created_at"])
@@ -821,7 +901,7 @@ class BackupManager:
                 )
                 if active_schema != schema:
                     raise BackupError("Artifact failed schema compatibility checks.")
-            if self._counts(database) != manifest["counts"]:
+            if not self._counts_match_manifest(database, manifest):
                 raise BackupError("Artifact representative counts do not match its manifest.")
             _check_deadline()
             return manifest, database, staging
@@ -948,7 +1028,7 @@ class BackupManager:
 
     def _stage_promotion(
         self, staged_database: Path, current: Path, manifest: dict[str, Any]
-    ) -> Path:
+    ) -> tuple[Path, dict[str, int]]:
         """Copy into the database filesystem and reverify before touching the active name."""
 
         descriptor, candidate_name = tempfile.mkstemp(
@@ -957,13 +1037,23 @@ class BackupManager:
         os.close(descriptor)
         candidate = Path(candidate_name)
         try:
+            if self._checksum(staged_database) != manifest["database_sha256"]:
+                raise BackupError(
+                    "Staged database checksum does not match its authenticated manifest."
+                )
             shutil.copyfile(staged_database, candidate)
             candidate.chmod(0o600)
             self._sync_file(candidate)
+            if self._checksum(candidate) != manifest["database_sha256"]:
+                raise BackupError(
+                    "Staged database copy checksum does not match its authenticated manifest."
+                )
             self._integrity(candidate, expected_schema=manifest["schema_sha256"])
-            if self._counts(candidate) != manifest["counts"]:
+            format_version = manifest["format_version"]
+            staged_counts = self._counts(staged_database, format_version)
+            if self._counts(candidate, format_version) != staged_counts:
                 raise BackupError("Staged database failed representative-count verification.")
-            return candidate
+            return candidate, staged_counts
         except Exception:
             candidate.unlink(missing_ok=True)
             raise
@@ -1007,7 +1097,19 @@ class BackupManager:
                     raise BackupError(
                         "A prior restore rollback file exists; resolve it before promotion."
                     )
-                candidate = self._stage_promotion(staged_database, current, manifest)
+                self._require_state_match(
+                    staged_database,
+                    _RESEARCH_RESTORE_EFFECT_TABLES,
+                    "Research history",
+                    "Restore would change saved research history.",
+                )
+                self._require_state_match(
+                    staged_database,
+                    _PORTFOLIO_RESTORE_EFFECT_TABLES,
+                    "Portfolio history or FX state",
+                    "Restore would change saved portfolio history or FX state.",
+                )
+                candidate, staged_counts = self._stage_promotion(staged_database, current, manifest)
                 # Checkpoint while the old active file still owns its name and remains usable.
                 with self.repository.connect() as connection:
                     connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -1023,11 +1125,15 @@ class BackupManager:
                 rollback_temporary.chmod(0o600)
                 self._sync_file(rollback_temporary)
                 # A rollback is useful only after proving its copied pages and rows match active.
-                active_counts = self._counts(current)
-                self._integrity(
-                    rollback_temporary, expected_schema=manifest["schema_sha256"]
-                )
-                if self._counts(rollback_temporary) != active_counts:
+                active_count_format = self._count_format_for_schema(SCHEMA_VERSION)
+                active_schema = self._integrity(current, expected_version=SCHEMA_VERSION)
+                active_counts = self._counts(current, active_count_format)
+                active_database_sha256 = self._checksum(current)
+                self._integrity(rollback_temporary, expected_schema=active_schema)
+                if (
+                    self._counts(rollback_temporary, active_count_format) != active_counts
+                    or self._checksum(rollback_temporary) != active_database_sha256
+                ):
                     raise BackupError("Restore rollback staging failed verification.")
                 os.replace(rollback_temporary, rollback)
                 rollback_temporary = None
@@ -1038,15 +1144,27 @@ class BackupManager:
                     candidate = None
                     self._sync_directory(current.parent)
                     self._integrity(current, expected_schema=manifest["schema_sha256"])
-                    if self._counts(current) != manifest["counts"]:
+                    if (
+                        self._counts(current, manifest["format_version"]) != staged_counts
+                        or self._checksum(current) != manifest["database_sha256"]
+                    ):
                         raise BackupError(
-                            "Promoted database failed representative-count verification."
+                            "Promoted database failed checksum or representative-count "
+                            "verification."
                         )
                 except Exception as promotion_error:
                     # Atomic rollback restores the prior active bytes after any post-swap failure.
                     try:
                         os.replace(rollback, current)
                         self._sync_directory(current.parent)
+                        self._integrity(current, expected_schema=active_schema)
+                        if (
+                            self._counts(current, active_count_format) != active_counts
+                            or self._checksum(current) != active_database_sha256
+                        ):
+                            raise BackupError(
+                                "Restored active database failed rollback verification."
+                            )
                     except OSError as rollback_error:
                         raise BackupError(
                             "Restore promotion failed; preserved rollback could not be promoted."

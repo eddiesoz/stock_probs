@@ -31,7 +31,7 @@ and saved baselines/scenarios retain their original inputs.
 | `POST /api/v1/portfolio/valuation` | Explicit dated quote/FX collection; CAD/USD display and optional owned account filter. |
 | `GET/POST /api/v1/portfolio/snapshots` | List or deliberately freeze a baseline; POST uses a UUID key and optional additional instruments. |
 | `GET /api/v1/portfolio/snapshots/{id}` | Reopen immutable owned inputs without provider calls. |
-| `GET /api/v1/portfolio/snapshots/{baseline_id}/export` | Download an owner-scoped immutable baseline as JSON; provider-free and bounded to 270,336 bytes. |
+| `GET /api/v1/portfolio/snapshots/{baseline_id}/export` (`format=json` or `format=csv`) | Download an owner-scoped immutable baseline; JSON is bounded to 270,336 bytes, CSV to 1,048,576 bytes and formula-neutralized; JSON is the default. |
 | `POST /api/v1/portfolio/snapshots/{id}/simulate` | Deterministic price/FX shocks and cash-funded hypothetical allocations, with no transaction mutation. |
 | `GET/POST /api/v1/scenarios` | Paginated saved scenarios; explicit creation requires an owned baseline, assumptions and UUID key. |
 | `GET /api/v1/scenarios/{id}` | Reopen original scenario inputs and result. |
@@ -59,22 +59,25 @@ persisted attempt per day. Prior dated rates disclose a failed refresh; rates ol
 unavailable. Unsupported currency conversion remains explicitly unavailable. Actual exchange
 paid/received amounts remain immutable native records.
 
-### Portfolio baseline JSON export
+### Portfolio baseline JSON and CSV export
 
-`GET /api/v1/portfolio/snapshots/{baseline_id}/export` downloads one saved baseline owned by the
-signed-in account. Ownership is derived from the session. The read-only request does not refresh
-quotes or FX and does not change the baseline.
+`GET /api/v1/portfolio/snapshots/{baseline_id}/export` downloads a saved baseline owned by the
+signed-in account. Ownership comes from the session. The read-only request makes no quote or FX
+calls and does not change the baseline. Add `?format=csv` for CSV; `format=json` is the default.
 
-A successful `200` response is `application/json` with `Cache-Control: no-store` and
-`Content-Disposition: attachment; filename="signal-ledger-baseline.json"`. The JSON envelope
-contains `format_version` (`1`), `record_type` (`"portfolio_baseline"`), `baseline_id`, `created_at`,
-`captured_at`, `account_revisions` (account IDs mapped to the captured revisions), and `data` (the
-frozen baseline, including its captured account, quote and dated-FX inputs). Reopening or exporting
-it preserves those original inputs; it never updates automatically.
+Both formats return `200` with `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and a
+format-specific attachment filename. JSON contains the versioned `portfolio_baseline` envelope,
+including the baseline ID, capture times, captured account revisions, and frozen account, quote and
+dated-FX inputs. Its UTF-8 body is limited to 270,336 bytes.
 
-The UTF-8 response body is limited to 270,336 bytes. A missing or non-owned baseline returns
-`404`; an oversized body returns a generic `413`. Malformed required baseline structure returns
-a generic `500`.
+CSV has the header `field_path,value_json`. It walks the saved envelope in stable key order and
+flattens nested objects and arrays into path/value rows; each value is JSON-encoded. Spreadsheet
+formula neutralization applies to field paths and string values. The UTF-8 CSV body is limited to
+1,048,576 bytes.
+
+A missing or non-owned baseline returns `404`; an oversized body returns `413`; malformed required
+baseline structure returns a generic `500`. Reopening or exporting retains the original captured
+inputs. Freeze a new baseline explicitly to collect updated quotes or FX.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
