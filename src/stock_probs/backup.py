@@ -26,6 +26,7 @@ from typing import Any, TypeVar
 
 from stock_probs.config import ensure_private_directory, ensure_private_file
 from stock_probs.repository import (
+    _RESEARCH_RESTORE_EFFECT_TABLES,
     SCHEMA_VERSION,
     Repository,
     _is_backup_storage_counts,
@@ -375,6 +376,61 @@ class BackupManager:
             return self.repository.backup_counts(path, format_version=format_version)
         except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
             raise BackupError("Artifact representative-count verification failed.") from exc
+
+    @staticmethod
+    def _restore_effect_digest(
+        path: Path, tables: tuple[tuple[str, tuple[str, ...], str], ...], label: str
+    ) -> str:
+        """Fingerprint fixed owner research rows before replacing the active snapshot."""
+
+        try:
+            connection = sqlite3.connect(
+                f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=5.0
+            )
+            try:
+                connection.execute("PRAGMA query_only = ON")
+                digest = hashlib.sha256()
+                encoder = json.JSONEncoder(separators=(",", ":"), ensure_ascii=True)
+                digest.update(b"[")
+                for table_index, (table, columns, order_columns) in enumerate(tables):
+                    if table_index:
+                        digest.update(b",")
+                    digest.update(b"[")
+                    for chunk in encoder.iterencode(table):
+                        digest.update(chunk.encode("ascii"))
+                    digest.update(b",[")
+                    selected = ", ".join(columns)
+                    cursor = connection.execute(
+                        f"SELECT {selected} FROM {table} ORDER BY {order_columns}"  # noqa: S608
+                    )
+                    for row_index, row in enumerate(cursor):
+                        if row_index:
+                            digest.update(b",")
+                        for chunk in encoder.iterencode(tuple(row)):
+                            digest.update(chunk.encode("ascii"))
+                    digest.update(b"]]")
+                digest.update(b"]")
+            finally:
+                connection.close()
+            return digest.hexdigest()
+        except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
+            raise BackupError(f"{label} state could not be compared safely for restore.") from exc
+
+    def _require_research_state_match(self, staged_database: Path) -> None:
+        """Reject point-in-time restores that would rewind saved theses or comparisons."""
+
+        active_digest = self._restore_effect_digest(
+            self.repository.database_path,
+            _RESEARCH_RESTORE_EFFECT_TABLES,
+            "Research history",
+        )
+        staged_digest = self._restore_effect_digest(
+            staged_database,
+            _RESEARCH_RESTORE_EFFECT_TABLES,
+            "Research history",
+        )
+        if not hmac.compare_digest(active_digest, staged_digest):
+            raise BackupError("Restore would change saved research history.")
 
     @staticmethod
     def _count_format_for_schema(schema_version: int) -> int:
@@ -1016,6 +1072,7 @@ class BackupManager:
                     raise BackupError(
                         "A prior restore rollback file exists; resolve it before promotion."
                     )
+                self._require_research_state_match(staged_database)
                 candidate, staged_counts = self._stage_promotion(staged_database, current, manifest)
                 # Checkpoint while the old active file still owns its name and remains usable.
                 with self.repository.connect() as connection:

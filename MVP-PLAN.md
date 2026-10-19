@@ -7260,3 +7260,28 @@ are in `/var/tmp/r12r/r1-calendar-parent-docs-baseline-03177c89-8e38-4663-be21-b
 These are focused offline backend/source checks, not live Yahoo, current full-gate, browser,
 production or release acceptance. The approved frontend evidence retains only its original input
 bindings; no new frontend build or browser result is claimed.
+
+### R-ASTRA-121 R1 restore rewind guard and streaming digest follow-up (2026-10-19)
+
+Before an explicit R1 `--promote`, restore compares the active and staged rows for theses,
+thesis revisions, and saved comparisons. It refuses promotion if those saved research records would
+change. Restore remains point-in-time: it does not merge arbitrary records added after the backup.
+The comparison uses a fixed table/column list and incrementally hashes canonical ordered rows, so it
+does not build a whole-table serialization in memory. This focused implementation detail is not a
+whole-application memory or resource acceptance claim.
+
+The source-freeze receipt records three selected R1 backup tests passing, plus Ruff check and
+`git diff --check`; R1 `backup.py` and `tests/test_repository_backup.py` were pinned at SHA-256
+`aa2042d81fddb8d0eeec62ff755800a9154c266bf18b1efe95e6c007135472dc` and
+`22520382e0c973b89b896c080b7975adbd9752c2c6021d671d75671085df72e5`. Receipt
+`/var/tmp/r12r/r1-r2-streaming-digest-freeze-20261019T053921Z-26a90e1a/receipt.json`, SHA-256
+`578cf6072d62d80811ae2d9fd83df3ec1258c74acb9352667e564b02d430710d`. Independent QA passed two
+focused R1 pytest cases and five focused R2 pytest cases; the nine-file source review reported no
+findings. Corrected receipt
+`/var/tmp/r12r/r1-r2-independent-source-review-20261019T0541Z-1fc3b9eb-5c43-48a9-9d9e-1f2f60cb54e5/qa-result-20261019T0606Z-corrected.json`, SHA-256
+`0c9b9e2c8deb2e4fdafb29fadbaed469191be8aeff326b269cc5c2b05f1d77d8`. The initial draft remains
+preserved with an invalid R2 `backup.py` hash transcription; the corrected receipt supersedes that
+pin comparison. No full suite, schema-compatible recovery rehearsal, browser, provider, runtime or
+release acceptance is claimed.
+
+Documentation checks for this update passed: `scripts/validate_docs.py` reported 9 categories, 14 topics and 8 project skill governance entries; complete and change-aware documentation coverage each checked 172 mapped files, with 2 changed paths; scoped `git diff --check` exited 0. Documentation tests were not run.

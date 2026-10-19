@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -379,6 +380,96 @@ def test_backup_representative_counts_are_internal_physical_row_semantics(settin
         assert set(expected).isdisjoint({"events", "runs", "inputs", "results", "forecasts"})
     finally:
         staging.cleanup()
+
+
+def test_restore_cannot_rewind_research_records_added_after_snapshot(settings):
+    """Promotion is point-in-time and cannot erase a thesis or comparison created later."""
+
+    repository = Repository(settings.database_path)
+    repository.migrate()
+    research = ResearchStore(repository, allow_development_noauth=True)
+    manager = BackupManager(repository, settings.backup_dir)
+    before_research = manager.create("before-research-history.spbackup")
+
+    thesis = research.save_thesis(
+        OWNER_USER_ID,
+        {
+            "symbol": "SPY",
+            "asset_type": "etf",
+            "title": "Saved after the snapshot",
+            "reasoning": "An owner-created record must survive recovery.",
+            "risks": "The snapshot predates this record.",
+            "invalidation": "The record is intentionally retained.",
+            "evidence": [],
+        },
+        NOW,
+    )
+    comparison = research.save_comparison(
+        OWNER_USER_ID,
+        str(uuid4()),
+        {
+            "preview_id": str(uuid4()),
+            "captured_at": NOW.isoformat(),
+            "instruments": [{"symbol": "SPY"}],
+        },
+        NOW,
+    )
+
+    with pytest.raises(BackupError, match="saved research history"):
+        manager.restore(before_research["name"], promote=True)
+
+    assert research.get(OWNER_USER_ID, "theses", thesis["id"]) == thesis
+    assert research.get(OWNER_USER_ID, "comparisons", comparison["id"]) == comparison
+    assert not settings.database_path.with_suffix(".pre-restore.sqlite3").exists()
+
+
+def test_restore_effect_digest_stream_matches_canonical_research_json(settings):
+    """Streaming restore fingerprints retain the prior canonical JSON digest exactly."""
+
+    repository = Repository(settings.database_path)
+    repository.migrate()
+    research = ResearchStore(repository, allow_development_noauth=True)
+    research.save_thesis(
+        OWNER_USER_ID,
+        {
+            "symbol": "SPY",
+            "asset_type": "etf",
+            "title": "Thèse — café",
+            "reasoning": "A bounded fixture with quotes: \"x\" and a newline.\nSecond line.",
+            "risks": "Fixture risk",
+            "invalidation": "Fixture invalidation",
+            "evidence": [],
+        },
+        NOW,
+    )
+    research.save_comparison(
+        OWNER_USER_ID,
+        str(uuid4()),
+        {
+            "preview_id": str(uuid4()),
+            "captured_at": NOW.isoformat(),
+            "instruments": [{"symbol": "SPY"}],
+        },
+        NOW,
+    )
+
+    tables = repository_module._RESEARCH_RESTORE_EFFECT_TABLES
+    with sqlite3.connect(settings.database_path) as connection:
+        state = []
+        for table, columns, order_columns in tables:
+            selected = ", ".join(columns)
+            rows = connection.execute(
+                f"SELECT {selected} FROM {table} ORDER BY {order_columns}"  # noqa: S608
+            ).fetchall()
+            state.append((table, [tuple(row) for row in rows]))
+    expected = hashlib.sha256(
+        json.dumps(state, separators=(",", ":"), ensure_ascii=True).encode()
+    ).hexdigest()
+
+    actual = BackupManager._restore_effect_digest(
+        settings.database_path, tables, "Research history"
+    )
+    assert actual == expected
 
 
 def test_schema_fourteen_backup_verifies_research_rows_before_and_after_restore(settings):

@@ -86,6 +86,12 @@ passed scoped R1 backup QA but do not establish the schema-compatible recovery i
 post-migration schema-14 data-retention rehearsal or research-rollout binding. They are candidate
 evidence, not a claim that the R1 release is available. See the [R-ASTRA-121 evidence](../../MVP-PLAN.md#r-astra-121-r1-schema-14-backup-count-and-staged-integrity-follow-up-2026-10-16).
 
+Before promotion, the R1 candidate compares active and staged thesis, thesis-revision, and
+comparison records. Promotion is refused if those saved research rows differ. Verification without
+`--promote` leaves the active database unchanged and does not run this comparison. Restore is a
+point-in-time operation, not a merge: it does not bring arbitrary post-backup rows forward. See
+[R-ASTRA-121 restore-guard evidence](../../MVP-PLAN.md#r-astra-121-r1-restore-rewind-guard-and-streaming-digest-follow-up-2026-10-19).
+
 An existing `.pre-restore.sqlite3` rollback file blocks promotion only; verification without
 `--promote` still works. After a successful promotion, failure to remove the retained rollback is
 reported as `"rollback_cleanup_required": true`; resolve that file before another promotion.

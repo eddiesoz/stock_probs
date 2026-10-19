@@ -82,6 +82,32 @@ _BACKUP_STORAGE_TABLES_BY_FORMAT: Final = {
     2: _RESEARCH_BACKUP_STORAGE_TABLES,
 }
 _RESEARCH_BACKUP_STORAGE_KEYS: Final = frozenset(_RESEARCH_BACKUP_STORAGE_TABLES)
+_RESEARCH_RESTORE_EFFECT_TABLES: Final = (
+    (
+        "research_theses",
+        (
+            "id",
+            "owner_user_id",
+            "idempotency_key",
+            "request_sha256",
+            "revision",
+            "payload_json",
+            "created_at",
+            "updated_at",
+        ),
+        "id",
+    ),
+    (
+        "research_thesis_revisions",
+        ("thesis_id", "owner_user_id", "revision", "payload_json", "recorded_at"),
+        "thesis_id, revision",
+    ),
+    (
+        "research_comparisons",
+        ("id", "owner_user_id", "idempotency_key", "payload_json", "created_at"),
+        "id",
+    ),
+)
 
 
 def _is_representative_storage_counts(value: object) -> TypeGuard[_RepresentativeStorageCounts]:
