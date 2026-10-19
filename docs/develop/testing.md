@@ -523,6 +523,7 @@ explicit reviewed saving, oversized reasoning/excerpts rejected without a write,
 assistant-message reads and attachments rejected with 404. This closes those selected backend
 coverage gaps; it does not expand the browser run's scope. See the
 [backend boundary checkpoint](../../MVP-PLAN.md#r-astra-121-r1-assistant-draft-backend-boundary-checkpoint-2026-10-18).
+
 Comparison calendar regressions in `test_provider.py` and `test_research_workspaces.py` cover
 shared missing sessions, common-window boundaries, holidays/early closes, unavailable calendars,
 and provider-local labels across UTC date boundaries. The focused ten-case independent run and
