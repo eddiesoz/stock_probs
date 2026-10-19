@@ -50,7 +50,7 @@ soupsieve==2.9.2
 starlette==1.7.0
 typing-extensions==4.16.0
 typing-inspection==0.4.4
-urllib3==2.7.0
+urllib3==2.8.0
 uvicorn==0.35.0
 webauthn==3.0.1
 websockets==17.1
