@@ -484,6 +484,186 @@ def _prepare_price_outbox(store):
     return notification, preferences, enqueued_at, outbox
 
 
+def test_crossing_atomically_enqueues_verified_optin_email_and_replay_deduplicates(
+    monitoring_store,
+):
+    store = monitoring_store
+    preferences = _enable_price_email(store, MONDAY)
+    _, claim, observation, received = _trigger_alert(store, MONDAY)
+
+    notifications = store.list_notifications(1)["items"]
+    assert len(notifications) == 1
+    notification = notifications[0]
+    with store.repository.connect() as connection:
+        outbox_rows = connection.execute(
+            "SELECT id,notification_id,preference_revision,address_id,state,attempts,payload_json "
+            "FROM notification_outbox"
+        ).fetchall()
+        assert len(outbox_rows) == 1
+        outbox = outbox_rows[0]
+        assert outbox["notification_id"] == notification["id"]
+        assert outbox["preference_revision"] == preferences["revision"]
+        assert outbox["address_id"] == preferences["address_id"]
+        assert outbox["state"] == "queued" and outbox["attempts"] == 0
+        payload = json.loads(outbox["payload_json"])
+        assert payload["notification_id"] == notification["id"]
+        assert "fixture@example.invalid" not in outbox["payload_json"]
+        assert (
+            connection.execute(
+                "SELECT count(*) FROM monitoring_jobs WHERE kind='mail' AND resource_id=?",
+                (outbox["id"],),
+            ).fetchone()[0]
+            == 1
+        )
+
+    replay = store.record_price_observation(
+        1,
+        notification["payload"]["alert_id"],
+        claim,
+        observation,
+        received,
+        received,
+        next_due_at=received + timedelta(minutes=1),
+    )
+    assert replay["replayed"] is True
+    with store.repository.connect() as connection:
+        assert connection.execute("SELECT count(*) FROM notifications").fetchone()[0] == 1
+        assert connection.execute("SELECT count(*) FROM notification_outbox").fetchone()[0] == 1
+        assert (
+            connection.execute("SELECT count(*) FROM monitoring_jobs WHERE kind='mail'").fetchone()[
+                0
+            ]
+            == 1
+        )
+
+
+@pytest.mark.parametrize("eligibility_change", ["opted_out", "address_unverified"])
+def test_crossing_keeps_inbox_notification_without_ineligible_email_job(
+    monitoring_store, eligibility_change
+):
+    store = monitoring_store
+    preferences = _enable_price_email(store, MONDAY)
+    if eligibility_change == "opted_out":
+        store.set_notification_preferences(
+            1,
+            preferences["revision"],
+            alert_email=False,
+            digest_email=False,
+            address_id=preferences["address_id"],
+            now=MONDAY + timedelta(seconds=1),
+        )
+    else:
+        with store.repository.connect() as connection:
+            connection.execute(
+                "UPDATE notification_addresses SET verified_at=NULL WHERE id=? AND owner_user_id=1",
+                (preferences["address_id"],),
+            )
+            connection.commit()
+
+    _trigger_alert(store, MONDAY)
+
+    assert len(store.list_notifications(1)["items"]) == 1
+    with store.repository.connect() as connection:
+        assert connection.execute("SELECT count(*) FROM notification_outbox").fetchone()[0] == 0
+        assert (
+            connection.execute("SELECT count(*) FROM monitoring_jobs WHERE kind='mail'").fetchone()[
+                0
+            ]
+            == 0
+        )
+
+
+def test_uncertain_crossing_delivery_is_not_requeued_after_restart_or_observation_replay(
+    monitoring_store,
+):
+    store = monitoring_store
+    _enable_price_email(store, MONDAY)
+    _, price_claim, observation, received = _trigger_alert(store, MONDAY)
+    notification = store.list_notifications(1)["items"][0]
+    mail_claim = store.claim_due_notification_outbox(
+        "mail-worker", received, limit=1, lease_seconds=30
+    )[0]
+    submission = store.mark_notification_outbox_submission_started(
+        1, mail_claim, received + timedelta(seconds=1)
+    )
+    uncertain = store.finalize_notification_outbox(
+        1,
+        submission,
+        "uncertain",
+        received + timedelta(seconds=2),
+        failure_code="smtp_outcome_unknown",
+    )
+
+    restarted = MonitoringStore(store.repository, write_authorization_mode="test_no_auth")
+    replay = restarted.record_price_observation(
+        1,
+        notification["payload"]["alert_id"],
+        price_claim,
+        observation,
+        received,
+        received,
+        next_due_at=received + timedelta(minutes=1),
+    )
+
+    assert replay["replayed"] is True
+    assert uncertain["state"] == "uncertain"
+    assert (
+        restarted.claim_due_notification_outbox(
+            "mail-worker-again", received + timedelta(hours=1), limit=1, lease_seconds=30
+        )
+        == []
+    )
+    with store.repository.connect() as connection:
+        rows = connection.execute(
+            "SELECT state,attempts FROM notification_outbox WHERE notification_id=?",
+            (notification["id"],),
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [("uncertain", 1)]
+        assert (
+            connection.execute("SELECT count(*) FROM monitoring_jobs WHERE kind='mail'").fetchone()[
+                0
+            ]
+            == 1
+        )
+
+
+def test_crossing_rejects_revoked_owner_before_creating_notification_or_email(monitoring_store):
+    store = monitoring_store
+    _enable_price_email(store, MONDAY)
+    alert = store.create_alert(1, str(uuid4()), _config(repeating=True), MONDAY)
+    _enable_jobs(store)
+    baseline, _, _, received = _price_step(store, alert["id"], MONDAY, "99")
+    assert baseline["disposition"] == "initial"
+    due = received + timedelta(minutes=1)
+    claim = _claim_price(store, alert["id"], due)
+    crossed_at = due + timedelta(seconds=1)
+    observation = PriceObservation("SPY", "101", "USD", due, "fixture provider")
+    with store.repository.connect() as connection:
+        connection.execute("UPDATE users SET status='disabled' WHERE id=1")
+        connection.commit()
+
+    with pytest.raises(MonitoringStoreError, match="owner is unavailable"):
+        store.record_price_observation(
+            1,
+            alert["id"],
+            claim,
+            observation,
+            crossed_at,
+            crossed_at,
+            next_due_at=crossed_at + timedelta(minutes=1),
+        )
+
+    with store.repository.connect() as connection:
+        assert connection.execute("SELECT count(*) FROM notifications").fetchone()[0] == 0
+        assert connection.execute("SELECT count(*) FROM notification_outbox").fetchone()[0] == 0
+        assert (
+            connection.execute("SELECT count(*) FROM monitoring_jobs WHERE kind='mail'").fetchone()[
+                0
+            ]
+            == 0
+        )
+
+
 def test_notification_outbox_enqueue_is_owner_bound_idempotent_and_persisted(monitoring_store):
     store = monitoring_store
     notification, preferences, enqueued_at, created = _prepare_price_outbox(store)
@@ -913,18 +1093,19 @@ def test_observation_notification_job_and_alert_checkpoint_rollback_as_one_trans
     _enable_jobs(store)
     first, _, _, received = _price_step(store, alert["id"], MONDAY, "99")
     assert first["disposition"] == "initial"
+    _enable_price_email(store, received)
     due = received + timedelta(minutes=1)
     claim = _claim_price(store, alert["id"], due)
     received = due + timedelta(seconds=1)
     observation = PriceObservation("SPY", "101", "USD", due, "fixture provider")
     with store.repository.connect() as connection:
         connection.execute(
-            "CREATE TRIGGER test_block_price_notification BEFORE INSERT ON notifications "
-            "WHEN NEW.kind='price_alert' BEGIN SELECT RAISE(ABORT,'test notification failure'); END"
+            "CREATE TRIGGER test_block_price_email BEFORE INSERT ON notification_outbox "
+            "BEGIN SELECT RAISE(ABORT,'test outbox failure'); END"
         )
         connection.commit()
     before = store.get_alert(1, alert["id"])
-    with pytest.raises(sqlite3.IntegrityError, match="test notification failure"):
+    with pytest.raises(sqlite3.IntegrityError, match="test outbox failure"):
         store.record_price_observation(
             1,
             alert["id"],
@@ -950,7 +1131,15 @@ def test_observation_notification_job_and_alert_checkpoint_rollback_as_one_trans
         ).fetchone()
         assert job["lease_token"] == claim["lease_token"]
         assert job["active_request_id"] == claim["request_id"]
-        connection.execute("DROP TRIGGER test_block_price_notification")
+        assert connection.execute("SELECT count(*) FROM notifications").fetchone()[0] == 0
+        assert connection.execute("SELECT count(*) FROM notification_outbox").fetchone()[0] == 0
+        assert (
+            connection.execute("SELECT count(*) FROM monitoring_jobs WHERE kind='mail'").fetchone()[
+                0
+            ]
+            == 0
+        )
+        connection.execute("DROP TRIGGER test_block_price_email")
         connection.commit()
     accepted = store.record_price_observation(
         1,
@@ -964,6 +1153,13 @@ def test_observation_notification_job_and_alert_checkpoint_rollback_as_one_trans
     assert accepted["disposition"] == "triggered"
     assert len(store.list_notifications(1)["items"]) == 1
     with store.repository.connect() as connection:
+        assert connection.execute("SELECT count(*) FROM notification_outbox").fetchone()[0] == 1
+        assert (
+            connection.execute("SELECT count(*) FROM monitoring_jobs WHERE kind='mail'").fetchone()[
+                0
+            ]
+            == 1
+        )
         observation_row = connection.execute(
             "SELECT disposition,state_revision_before,state_revision_after,request_sh"
             "a256,receipt_sha256 "

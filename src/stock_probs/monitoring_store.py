@@ -1175,65 +1175,131 @@ class MonitoringStore:
             ).fetchone()
             if address is None:
                 raise MonitoringStoreError("A current verified notification address is required.")
-            payload_json = _canonical_json(
-                {
-                    "notification_id": identifier,
-                    "notification_kind": notification["kind"],
-                    "notification": json.loads(notification["payload_json"]),
-                },
-                MAX_OUTBOX_PAYLOAD_BYTES,
+            return self._enqueue_notification_outbox_in_transaction(
+                connection,
+                owner,
+                notification,
+                expected_preference_revision=expected_preferences,
+                address_id=preferences["address_id"],
+                delivery_version=version,
+                now_text=now_text,
+                ignore_existing=False,
             )
-            dedupe = _sha256(["notification_email", owner, identifier, version])
-            existing = connection.execute(
-                "SELECT * FROM notification_outbox WHERE notification_id=? AND delivery_version=?",
-                (identifier, version),
-            ).fetchone()
-            if existing is not None:
-                if (
-                    existing["owner_user_id"] != owner
-                    or existing["preference_revision"] != expected_preferences
-                    or existing["address_id"] != preferences["address_id"]
-                    or existing["payload_json"] != payload_json
-                    or existing["dedupe_sha256"] != dedupe
-                ):
-                    raise MonitoringConflictError(
-                        "This notification delivery version already has different content "
-                        "or ownership."
-                    )
+
+    def _enqueue_notification_outbox_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        owner: int,
+        notification: sqlite3.Row,
+        *,
+        expected_preference_revision: int,
+        address_id: str,
+        delivery_version: int,
+        now_text: str,
+        ignore_existing: bool,
+    ) -> dict[str, Any]:
+        """Create the outbox and delivery job on the caller's active transaction."""
+
+        identifier = notification["id"]
+        payload_json = _canonical_json(
+            {
+                "notification_id": identifier,
+                "notification_kind": notification["kind"],
+                "notification": json.loads(notification["payload_json"]),
+            },
+            MAX_OUTBOX_PAYLOAD_BYTES,
+        )
+        dedupe = _sha256(["notification_email", owner, identifier, delivery_version])
+        existing = connection.execute(
+            "SELECT * FROM notification_outbox WHERE notification_id=? AND delivery_version=?",
+            (identifier, delivery_version),
+        ).fetchone()
+        if existing is not None:
+            if ignore_existing:
+                # In particular, never turn a duplicate crossing into a retry of an uncertain send.
                 return self._outbox_summary(existing)
-            outbox_id = str(uuid4())
-            job_id = str(uuid4())
-            connection.execute(
-                "INSERT INTO monitoring_jobs(id,owner_user_id,kind,resource_id,due_at) "
-                "VALUES (?,?,'mail',?,?)",
-                (job_id, owner, outbox_id, now_text),
-            )
-            connection.execute(
-                "INSERT INTO notification_outbox(id,owner_user_id,notification_id,delivery_version,"
-                "preference_revision,job_id,dedupe_sha256,address_id,kind,payload_json,state,next_attempt_at,"
-                "created_at,transitioned_at) VALUES (?,?,?,?,?,?,?,?,?,?,'queued',?,?,?)",
-                (
-                    outbox_id,
-                    owner,
-                    identifier,
-                    version,
-                    expected_preferences,
-                    job_id,
-                    dedupe,
-                    preferences["address_id"],
-                    notification["kind"],
-                    payload_json,
-                    now_text,
-                    now_text,
-                    now_text,
-                ),
-            )
-            self._ensure_queue(connection, owner, now_text)
-            row = connection.execute(
-                "SELECT * FROM notification_outbox WHERE id=? AND owner_user_id=?",
-                (outbox_id, owner),
-            ).fetchone()
-            return self._outbox_summary(row)
+            if (
+                existing["owner_user_id"] != owner
+                or existing["preference_revision"] != expected_preference_revision
+                or existing["address_id"] != address_id
+                or existing["payload_json"] != payload_json
+                or existing["dedupe_sha256"] != dedupe
+            ):
+                raise MonitoringConflictError(
+                    "This notification delivery version already has different content or ownership."
+                )
+            return self._outbox_summary(existing)
+
+        outbox_id = str(uuid4())
+        job_id = str(uuid4())
+        connection.execute(
+            "INSERT INTO monitoring_jobs(id,owner_user_id,kind,resource_id,due_at) "
+            "VALUES (?,?,'mail',?,?)",
+            (job_id, owner, outbox_id, now_text),
+        )
+        connection.execute(
+            "INSERT INTO notification_outbox(id,owner_user_id,notification_id,delivery_version,"
+            "preference_revision,job_id,dedupe_sha256,address_id,kind,payload_json,state,next_attempt_at,"
+            "created_at,transitioned_at) VALUES (?,?,?,?,?,?,?,?,?,?,'queued',?,?,?)",
+            (
+                outbox_id,
+                owner,
+                identifier,
+                delivery_version,
+                expected_preference_revision,
+                job_id,
+                dedupe,
+                address_id,
+                notification["kind"],
+                payload_json,
+                now_text,
+                now_text,
+                now_text,
+            ),
+        )
+        self._ensure_queue(connection, owner, now_text)
+        row = connection.execute(
+            "SELECT * FROM notification_outbox WHERE id=? AND owner_user_id=?",
+            (outbox_id, owner),
+        ).fetchone()
+        return self._outbox_summary(row)
+
+    def _enqueue_crossing_email_if_eligible(
+        self,
+        connection: sqlite3.Connection,
+        owner: int,
+        notification_id: str,
+        now_text: str,
+    ) -> None:
+        """Queue a crossing email only for a currently active owner's verified opt-in."""
+
+        eligibility = self._outbox_eligibility(connection, owner)
+        if (
+            eligibility is None
+            or eligibility["status"] != "active"
+            or (self.admin_only and eligibility["role"] != "admin")
+            or eligibility["revision"] is None
+            or eligibility["alert_email"] != 1
+            or eligibility["address_id"] is None
+            or eligibility["verified_at"] is None
+        ):
+            return
+        notification = connection.execute(
+            "SELECT id,kind,payload_json FROM notifications WHERE id=? AND owner_user_id=?",
+            (notification_id, owner),
+        ).fetchone()
+        if notification is None or notification["kind"] != "price_alert":
+            raise MonitoringConflictError("The crossing notification is unavailable for enqueue.")
+        self._enqueue_notification_outbox_in_transaction(
+            connection,
+            owner,
+            notification,
+            expected_preference_revision=eligibility["revision"],
+            address_id=eligibility["address_id"],
+            delivery_version=1,
+            now_text=now_text,
+            ignore_existing=True,
+        )
 
     def mark_notification_outbox_submission_started(
         self,
@@ -2540,12 +2606,18 @@ class MonitoringStore:
                 ),
             )
             if evaluation.disposition == "triggered":
-                self._insert_crossing_notification(
+                notification_id = self._insert_crossing_notification(
                     connection,
                     owner,
                     row,
                     generation,
                     observation,
+                    received,
+                )
+                self._enqueue_crossing_email_if_eligible(
+                    connection,
+                    owner,
+                    notification_id,
                     received,
                 )
             changed = connection.execute(

@@ -7723,3 +7723,33 @@ SHA-256 `1f97a7399d3b81c7eaa3f80c316d72581dcc4183d2e4d8bf9c01a08a7f827630`. Thes
 are separate from the v14 four-case browser/axe Pass; the earlier full-24 browser aggregate remains
 **Fail**, and no current full-suite, full-app accessibility, provider/runtime, production, or release
 acceptance follows.
+
+
+### R-ASTRA-121 R3 crossing-to-email enqueue repair (2026-10-19)
+
+Source review found that price crossings created inbox notifications but did not enqueue email for
+verified, opted-in users. The fixed SQLite regression first **Failed** with one inbox notification
+and zero outbox rows. The repair creates the notification, eligible email outbox entry, and delivery
+job in the same transaction. Eligibility uses the active owner, current opt-in revision, and the
+owner's selected verified address. Duplicate observations preserve existing delivery state,
+including uncertain submissions; a one-shot alert still queues its crossing before disabling itself.
+
+Builder verification **Passed** 73 store/delivery tests, Ruff, format, and diff checks. Independent
+QA separately **Passed** 73 tests with zero failures, errors, or skips at
+`2026-10-19T02:51:57.703Z`–`02:54:11.588Z`, both Ruff selections, format, diff, and the unchanged
+74-row source/import binding. The tests cover verified opt-in, opt-out, unverified addresses,
+revoked owners, duplicate/restart handling, uncertain submission, and rollback at outbox insertion.
+Independent receipt `/var/tmp/r12r/r3-alert-crossing-independent-qa-20261019T0248Z/independent-r3-review-receipt.json`
+has SHA-256 `b7f20772c7dcb90b85bd7d0ac650b7fc34b4302aabfa5e4147c9b8bfe5efe4cb`.
+Parent integrated source review **Passed** for the complete two-file change and called eligibility
+helpers; receipt SHA-256 is `70af1e022c92c8f82a95261f9f1db8a15f0b9da1e281e77039fa5da633d9f82a`.
+
+The repaired store SHA-256 is `6a283f81ea9bfa8d003b65e1d9320465a484b1acd1dbdbd9a96a4f0903d25c61`;
+the test SHA-256 is `adc36f9921f90eeb36f7c3ec9e21e306894619a05cdeed0e1151fd6c6f002869`.
+Recovery copies and the builder receipt are preserved in
+`/var/tmp/r12r/r3-alert-crossing-baseline-267945ba-a8ab-43de-a831-4e0e970ce995/`.
+No UI or schema changed. These are focused backend results, separate from the preceding v14
+four-case browser/axe Pass and the earlier full-24 browser **Fail**. No live SMTP, scheduler,
+provider, current full browser/canonical, production, or release acceptance follows. No merge,
+deployment, resize, rollout, or email occurred; the existing 1 GB host, backups, and US$15 monthly
+total cap remain unchanged.
