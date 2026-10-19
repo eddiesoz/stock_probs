@@ -7226,3 +7226,37 @@ This is focused TestClient/fixture SQLite evidence. The approved frontend build 
 browser evidence retain their original bindings; no new build, browser, live provider, deployment
 or release acceptance is claimed. Owned documentation baselines are preserved in
 `/var/tmp/r12r/r1-boundary-parent-docs-baseline-d620b01d-a92e-48e8-a38b-9c86f228932a/`.
+
+### R-ASTRA-121 R1 comparison calendar completeness repair (2026-10-19)
+
+Comparison snapshots now retain supported-calendar evidence for omitted daily sessions, including
+sessions missing from every compared series. Gap counts are restricted to the actual common
+coverage; weekends, holidays, and dates outside that window do not count. Annualized daily
+volatility is unavailable when a scheduled session is missing or calendar coverage cannot be
+established. For valid exchange timezones outside the supported calendar set, comparisons retain
+provider-local daily labels and explicitly mark scheduled-session completeness unavailable;
+ordinary chart and forecast normalization keep their strict calendar requirement. The existing
+comparison warnings display the reason for suppressed volatility. No frontend source changed.
+
+The first independent review preserved a **Fail**: an offline London comparison raised
+`unsupported_market` before unavailable metadata could be returned. That receipt remains unchanged
+at `/var/tmp/r12r/r1-session-gap-independent-qa-20261019T000900Z/qa-receipt.json`, SHA-256
+`d9e481308610f39083059a5a3ea8e3be8f3634f8588bb813d0e4422a55cb9c96`.
+The repaired comparison-only fallback passed ten focused tests independently on native Linux
+x86_64, Python 3.11.15 and pytest 9.1.1, with explicit worktree `PYTHONPATH=src`, SD scratch and
+child umask `022`, at `2026-10-19T00:16:38Z`–`00:16:44Z`: zero failures, errors or skips.
+A separate offline London entrypoint diagnostic passed at `00:19:21Z`; Tokyo fixtures verify
+that a local provider date survives even when its UTC date is the preceding day. Ruff lint,
+selected security lint, format check and scoped diff check passed. An initial ad-hoc London
+fixture identity error remains recorded as a QA setup failure.
+
+Independent supplemental receipt:
+`/var/tmp/r12r/r1-unsupported-calendar-independent-qa-20261019T001609Z/qa-receipt-r1-unsupported-calendar-20261019T001948Z.json`,
+SHA-256 `bf9717d040709c7cb7bbf266d394bb45f365a0858827c345c60840b0d2c03359`;
+JUnit SHA-256 `c181458d373079c0c4a1839fdd58a09fadba850ef9c7564cfe1b06ebcc4504b0`.
+The parent reviewed the complete four-file implementation/test delta and the unchanged API/UI
+metadata and warning flow, with no blocker. Recovery bytes precede edits; documentation baselines
+are in `/var/tmp/r12r/r1-calendar-parent-docs-baseline-03177c89-8e38-4663-be21-bfbcb1a4f434`.
+These are focused offline backend/source checks, not live Yahoo, current full-gate, browser,
+production or release acceptance. The approved frontend evidence retains only its original input
+bindings; no new frontend build or browser result is claimed.

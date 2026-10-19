@@ -657,7 +657,10 @@ def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
     for item, mapped, evidence in zip(series, mappings, action_evidence, strict=True):
         dates = sorted(day for day in mapped if common[0] <= day <= common[-1])
         prices = [mapped[day] for day in dates]
-        missing_observations = len(union_dates - set(dates))
+        calendar_available, scheduled_gaps = _comparison_session_gaps(item, common[0], common[-1])
+        missing_observations = (
+            len(scheduled_gaps) if calendar_available else len(union_dates - set(dates))
+        )
         normalized = [mapped[day] / mapped[common[0]] * 100 for day in common]
         if any(not math.isfinite(value) or value <= 0 for value in normalized):
             raise DomainError(
@@ -692,6 +695,16 @@ def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
                 "A price discontinuity was inferred from unadjusted closes; "
                 "price change, volatility, and drawdown are unavailable."
             )
+        elif not calendar_available:
+            suppression_reason = (
+                "Scheduled-session completeness could not be established; "
+                "volatility is unavailable."
+            )
+        elif missing_observations > 0:
+            suppression_reason = (
+                f"The supported market calendar identifies {missing_observations} missing "
+                "scheduled session(s); volatility is unavailable."
+            )
         peak, drawdown = prices[0], 0.0
         for value in prices:
             peak = max(peak, value)
@@ -714,13 +727,30 @@ def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
                 "excluded_chart_sessions": len(dates) - len(common),
                 "common_sample_count": len(common),
                 "missing_observations": missing_observations,
+                "session_completeness": {
+                    "status": (
+                        "unavailable"
+                        if not calendar_available
+                        else "gaps_detected"
+                        if missing_observations
+                        else "complete"
+                    ),
+                    "missing_scheduled_sessions": (
+                        missing_observations if calendar_available else None
+                    ),
+                },
                 "normalized": [
                     {"date": day, "value": value}
                     for day, value in zip(common, normalized, strict=True)
                 ],
                 "price_change": None if discontinuity else prices[-1] / prices[0] - 1,
                 "volatility": None
-                if discontinuity or missing_observations > 0 or len(returns) < 2
+                if (
+                    discontinuity
+                    or not calendar_available
+                    or missing_observations > 0
+                    or len(returns) < 2
+                )
                 else statistics.stdev(returns) * math.sqrt(252),
                 "max_drawdown": None if discontinuity else drawdown,
                 "quality": (
@@ -744,3 +774,56 @@ def compare_series(series: list[dict[str, Any]]) -> dict[str, Any]:
             "Distributions and corporate actions may affect comparisons."
         ),
     }
+
+
+def _comparison_session_gaps(
+    item: dict[str, Any], common_start: str, common_end: str
+) -> tuple[bool, set[str]]:
+    """Read provider calendar evidence and restrict it to the shared comparison window."""
+
+    evidence = item.get("session_completeness")
+    if not isinstance(evidence, dict):
+        return False, set()
+    status = evidence.get("status")
+    missing_dates = evidence.get("missing_dates")
+    if status == "unavailable" and missing_dates is None:
+        return False, set()
+    if status != "available" or not isinstance(missing_dates, list):
+        raise DomainError(
+            "provider_market_data_invalid",
+            "Scheduled-session completeness is invalid.",
+            status_code=502,
+        )
+    gaps: set[str] = set()
+    seen: set[str] = set()
+    for value in missing_dates:
+        if not isinstance(value, str):
+            raise DomainError(
+                "provider_market_data_invalid",
+                "Scheduled-session dates are invalid.",
+                status_code=502,
+            )
+        try:
+            parsed = date.fromisoformat(value)
+        except ValueError as error:
+            raise DomainError(
+                "provider_market_data_invalid",
+                "Scheduled-session dates are invalid.",
+                status_code=502,
+            ) from error
+        if parsed.isoformat() != value:
+            raise DomainError(
+                "provider_market_data_invalid",
+                "Scheduled-session dates are invalid.",
+                status_code=502,
+            )
+        if value in seen:
+            raise DomainError(
+                "provider_market_data_invalid",
+                "Scheduled-session dates are duplicated.",
+                status_code=502,
+            )
+        seen.add(value)
+        if common_start <= value <= common_end:
+            gaps.add(value)
+    return True, gaps

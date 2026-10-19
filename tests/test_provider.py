@@ -10,8 +10,9 @@ import pandas as pd
 import pytest
 
 from stock_probs import provider as provider_module
-from stock_probs.domain import DomainError
+from stock_probs.domain import Bar, DomainError
 from stock_probs.provider import MAX_NEWS_BODY_BYTES, FixtureProvider, YahooProvider
+from stock_probs.research import compare_series
 
 
 def _patch_yfinance(monkeypatch, **constructors):
@@ -131,9 +132,9 @@ def test_yfinance_adapter_uses_exact_bounded_queries(monkeypatch):
     assert data.provider_metadata["daily_data_granularity"] == "1d"
     assert data.query["intraday"]["start"] == (now - timedelta(days=59)).isoformat()
     assert data.query["intraday"]["end"] == (now + timedelta(days=1)).isoformat()
-    assert data.query["intraday"]["returned_coverage"] == data.provider_metadata[
-        "intraday_coverage"
-    ]
+    assert (
+        data.query["intraday"]["returned_coverage"] == data.provider_metadata["intraday_coverage"]
+    )
     assert isinstance(data.provider_metadata["regular_session"]["start"], float)
     assert data.fetched_at == response_at
     assert data.query["requested_as_of"] == now.isoformat()
@@ -339,6 +340,126 @@ def test_daily_rows_use_the_scheduled_early_close_and_ignore_non_sessions():
     assert bars[0].timestamp.isoformat() == "2024-11-29T13:00:00-05:00"
 
 
+def test_comparison_calendar_reports_only_missing_scheduled_sessions():
+    bars = (
+        Bar(datetime.fromisoformat("2024-11-26T16:00:00-05:00"), 100.0, 0),
+        Bar(datetime.fromisoformat("2024-11-29T13:00:00-05:00"), 101.0, 0),
+        Bar(datetime.fromisoformat("2024-12-02T16:00:00-05:00"), 102.0, 0),
+    )
+
+    assert provider_module._missing_daily_session_dates(bars, "America/New_York") == ["2024-11-27"]
+    assert provider_module._missing_daily_session_dates(bars, "Europe/London") is None
+
+
+def test_yahoo_comparison_carries_scheduled_session_completeness(monkeypatch):
+    provider = YahooProvider()
+    response_at = datetime.fromisoformat("2024-11-30T12:00:00+00:00")
+    frame = pd.DataFrame(
+        {"Close": [100.0, 101.0]},
+        index=pd.DatetimeIndex(
+            [
+                pd.Timestamp("2024-11-26", tz="America/New_York"),
+                pd.Timestamp("2024-11-29", tz="America/New_York"),
+            ]
+        ),
+    )
+    identity = SimpleNamespace(
+        timezone="America/New_York",
+        canonical_symbol="TEST",
+        provider="Yahoo Finance",
+    )
+    monkeypatch.setattr(
+        provider,
+        "_capability_history",
+        lambda *args, **kwargs: (frame, {"exchangeDataDelayedBy": 0}, identity, response_at),
+    )
+
+    result = provider.historical_comparison("TEST", "stock", response_at)
+
+    assert result["series"]["session_completeness"] == {
+        "status": "available",
+        "missing_dates": ["2024-11-27"],
+    }
+
+
+def test_yahoo_comparison_retains_provider_dates_for_unsupported_calendar(monkeypatch):
+    provider = YahooProvider()
+    response_at = datetime.fromisoformat("2024-12-05T12:00:00+00:00")
+    index = pd.DatetimeIndex(
+        [
+            pd.Timestamp("2024-12-03", tz="Asia/Tokyo"),
+            pd.Timestamp("2024-12-04", tz="Asia/Tokyo"),
+        ]
+    )
+    frame = pd.DataFrame({"Close": [100.0, 101.0]}, index=index)
+    identity = SimpleNamespace(
+        timezone="Asia/Tokyo",
+        canonical_symbol="TEST.T",
+        provider="Yahoo Finance",
+    )
+    monkeypatch.setattr(
+        provider,
+        "_capability_history",
+        lambda *args, **kwargs: (frame, {"exchangeDataDelayedBy": 0}, identity, response_at),
+    )
+
+    result = provider.historical_comparison("TEST.T", "stock", response_at)
+
+    assert result["series"]["session_completeness"] == {
+        "status": "unavailable",
+        "missing_dates": None,
+    }
+    first_timestamp = result["series"]["bars"][0]["timestamp"]
+    assert first_timestamp == "2024-12-03T00:00:00+09:00"
+    assert datetime.fromisoformat(first_timestamp).astimezone(UTC).date().isoformat() == (
+        "2024-12-02"
+    )
+
+    comparison = compare_series(
+        [
+            {
+                "symbol": result["series"]["symbol"],
+                "identity": {"currency": "JPY"},
+                "source": result["series"]["provider"],
+                "as_of": result["series"]["as_of"],
+                "range": result["series"]["range"],
+                "adjustment_basis": result["series"]["adjustment_basis"],
+                "label": result["series"]["label"],
+                "bars": result["series"]["bars"],
+                "session_completeness": result["series"]["session_completeness"],
+                "action_evidence": result["action_evidence"],
+            },
+            {
+                "symbol": "OTHER.T",
+                "identity": {"currency": "JPY"},
+                "source": "Yahoo Finance",
+                "as_of": response_at.isoformat(),
+                "range": result["series"]["range"],
+                "adjustment_basis": "unadjusted closes",
+                "label": "Provider fixture.",
+                "bars": [
+                    {"timestamp": "2024-12-03T16:00:00+09:00", "close": 200.0},
+                    {"timestamp": "2024-12-04T16:00:00+09:00", "close": 202.0},
+                ],
+                "session_completeness": {"status": "unavailable", "missing_dates": None},
+            },
+        ]
+    )
+
+    assert comparison["dates"] == ["2024-12-03", "2024-12-04"]
+    item = next(value for value in comparison["instruments"] if value["symbol"] == "TEST.T")
+    assert item["session_completeness"] == {
+        "status": "unavailable",
+        "missing_scheduled_sessions": None,
+    }
+    assert item["volatility"] is None
+    assert "could not be established" in item["metric_suppression_reason"]
+
+    with pytest.raises(DomainError) as failure:
+        provider.historical_bars("TEST.T", "stock", response_at)
+    assert failure.value.code == "unsupported_market"
+
+
 def test_non_finite_provider_prices_are_not_normalized_as_market_bars():
     """NaN and infinity cannot enter immutable provider fingerprints."""
 
@@ -420,9 +541,7 @@ def test_yfinance_metadata_is_reused_from_timeout_bounded_history(monkeypatch):
 
     _patch_yfinance(monkeypatch, Ticker=FakeTicker)
 
-    data = YahooProvider(timeout=0.25).fetch(
-        "SPY", "etf", datetime(2025, 1, 3, 15, 0, tzinfo=UTC)
-    )
+    data = YahooProvider(timeout=0.25).fetch("SPY", "etf", datetime(2025, 1, 3, 15, 0, tzinfo=UTC))
 
     assert data.provider_metadata["data_granularity"] == "5m"
 
@@ -519,9 +638,7 @@ def test_yahoo_news_uses_one_request_local_exact_bounded_get(monkeypatch):
     _patch_curl_requests(monkeypatch, fake_curl_session(handler))
     as_of = datetime(2025, 1, 10, 17, 3, tzinfo=UTC)
 
-    result = YahooProvider(timeout=20, monotonic_clock=lambda: 100.0).fetch_news(
-        " spy ", 2, as_of
-    )
+    result = YahooProvider(timeout=20, monotonic_clock=lambda: 100.0).fetch_news(" spy ", 2, as_of)
 
     assert len(sessions) == len(calls) == 1
     url, options = calls[0]
@@ -630,9 +747,7 @@ def test_fixture_news_loader_ignores_metadata_and_keeps_symbol_entries():
 
 def test_yahoo_news_bounds_optional_related_symbols(monkeypatch):
     def handler(_session, _url, kwargs):
-        payload = _news_payload(
-            [_news_item(relatedTickers=[f"S{index}" for index in range(40)])]
-        )
+        payload = _news_payload([_news_item(relatedTickers=[f"S{index}" for index in range(40)])])
         kwargs["content_callback"](payload)
 
     _patch_curl_requests(monkeypatch, fake_curl_session(handler))

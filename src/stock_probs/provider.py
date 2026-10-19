@@ -742,7 +742,7 @@ class YahooProvider:
         frame, metadata, identity, response_at = self._capability_history(
             symbol, asset_type, period=requested_range, interval="1d", actions=True
         )
-        bars = self._daily_bars(frame, identity.timezone)
+        bars = self._daily_bars(frame, identity.timezone, preserve_provider_date_labels=True)
         if not bars:
             raise DomainError(
                 "provider_market_data_invalid",
@@ -764,8 +764,12 @@ class YahooProvider:
             delay_minutes=delay_minutes if delayed else None,
             label=label,
         )
+        series_payload = series.as_dict()
+        series_payload["session_completeness"] = _daily_session_completeness(
+            bars, identity.timezone
+        )
         return {
-            "series": series.as_dict(),
+            "series": series_payload,
             "action_evidence": self._comparison_action_evidence(
                 frame,
                 identity.timezone,
@@ -857,7 +861,16 @@ class YahooProvider:
         }
 
     @staticmethod
-    def _daily_bars(frame: Any, timezone: str) -> tuple[Bar, ...]:
+    def _daily_bars(
+        frame: Any, timezone: str, *, preserve_provider_date_labels: bool = False
+    ) -> tuple[Bar, ...]:
+        """Normalize daily rows, optionally retaining dates for comparison-only markets.
+
+        Forecast and ordinary chart paths require a supported session calendar. A comparison can
+        still display provider daily rows for another valid exchange timezone, while its
+        completeness metadata marks the calendar unavailable and downstream volatility stays
+        suppressed.
+        """
         zone = ZoneInfo(timezone)
         bars = []
         for timestamp, row in frame.iterrows():
@@ -871,7 +884,16 @@ class YahooProvider:
                 if raw_timestamp.tzinfo
                 else raw_timestamp.date()
             )
-            session_close = scheduled_session_close(session_date, timezone)
+            try:
+                session_close = scheduled_session_close(session_date, timezone)
+            except DomainError as error:
+                if not preserve_provider_date_labels or error.code != "unsupported_market":
+                    raise
+                session_close = (
+                    raw_timestamp.astimezone(zone)
+                    if raw_timestamp.tzinfo
+                    else datetime.combine(session_date, time.min, zone)
+                )
             if session_close is not None:
                 bars.append(Bar(session_close, float(close), 0))
         return tuple(sorted(bars, key=lambda item: item.timestamp))
@@ -1459,8 +1481,13 @@ class FixtureProvider:
         """Keep fixture charts provider-free and label absent action evidence explicitly."""
 
         series = self.historical_bars(symbol, asset_type, now, range=range)
+        data = self.fetch(symbol, asset_type, series.as_of)
+        series_payload = series.as_dict()
+        series_payload["session_completeness"] = _daily_session_completeness(
+            series.bars, data.timezone
+        )
         return {
-            "series": series.as_dict(),
+            "series": series_payload,
             "action_evidence": {
                 "status": "no_reported_action_evidence",
                 "provider": series.provider,
@@ -1649,6 +1676,39 @@ def _missing_daily_sessions(bars: tuple[Bar, ...], timezone: str) -> int:
             missing += 1
         day += timedelta(days=1)
     return missing
+
+
+def _missing_daily_session_dates(bars: tuple[Bar, ...], timezone: str) -> list[str] | None:
+    """Return omitted supported-market sessions, or None when coverage is unprovable."""
+
+    if len(bars) < 2:
+        return None
+    zone = ZoneInfo(timezone)
+    observed = {bar.timestamp.astimezone(zone).date() for bar in bars}
+    day = min(observed)
+    final_day = max(observed)
+    missing: list[str] = []
+    while day <= final_day:
+        try:
+            session_close = scheduled_session_close(day, timezone)
+        except DomainError as error:
+            if error.code == "unsupported_market":
+                return None
+            raise
+        if session_close is not None and day not in observed:
+            missing.append(day.isoformat())
+        day += timedelta(days=1)
+    return missing
+
+
+def _daily_session_completeness(bars: tuple[Bar, ...], timezone: str) -> dict[str, object]:
+    """Distinguish a checked empty gap list from unavailable calendar evidence."""
+
+    missing_dates = _missing_daily_session_dates(bars, timezone)
+    return {
+        "status": "available" if missing_dates is not None else "unavailable",
+        "missing_dates": missing_dates,
+    }
 
 
 def _latest_scheduled_completed_end(now: datetime, timezone: str) -> datetime | None:

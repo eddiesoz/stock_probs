@@ -297,7 +297,15 @@ def test_cross_owner_reads_are_absent_and_raw_revisions_cannot_be_replaced(setti
         )
 
 
-def series(symbol, values):
+def series(symbol, values, dates=None):
+    if dates is None:
+        dates = [
+            "2026-10-01",
+            "2026-10-02",
+            "2026-10-05",
+            "2026-10-06",
+            "2026-10-07",
+        ][: len(values)]
     return {
         "symbol": symbol,
         "identity": {"currency": "CAD"},
@@ -307,9 +315,10 @@ def series(symbol, values):
         "label": "Simulated",
         "range": "1mo",
         "bars": [
-            {"timestamp": f"2026-10-{index + 1:02d}T12:00:00+00:00", "close": value}
-            for index, value in enumerate(values)
+            {"timestamp": f"{day}T12:00:00+00:00", "close": value}
+            for day, value in zip(dates, values, strict=True)
         ],
+        "session_completeness": {"status": "available", "missing_dates": []},
     }
 
 
@@ -336,6 +345,7 @@ def test_annualized_volatility_requires_complete_observed_sessions():
 
     gap = series("B", [200, 205, 199, 210, 207])
     gap["bars"].pop(1)
+    gap["session_completeness"]["missing_dates"] = ["2026-10-02"]
     result = compare_series([series("A", [100, 102, 98, 105, 107]), gap])
     items = {item["symbol"]: item for item in result["instruments"]}
 
@@ -345,6 +355,65 @@ def test_annualized_volatility_requires_complete_observed_sessions():
     assert items["B"]["max_drawdown"] is not None
     assert items["A"]["missing_observations"] == 0
     assert items["A"]["volatility"] is not None
+
+
+def test_calendar_identifies_a_session_omitted_by_every_series():
+    dates = ["2026-10-01", "2026-10-02", "2026-10-06", "2026-10-07"]
+    left = series("A", [100, 102, 104, 106], dates)
+    right = series("B", [200, 201, 205, 207], dates)
+    for item in (left, right):
+        item["session_completeness"]["missing_dates"] = ["2026-10-05"]
+
+    result = compare_series([left, right])
+    items = {item["symbol"]: item for item in result["instruments"]}
+
+    assert "2026-10-05" not in result["dates"]
+    for item in items.values():
+        assert item["missing_observations"] == 1
+        assert item["session_completeness"] == {
+            "status": "gaps_detected",
+            "missing_scheduled_sessions": 1,
+        }
+        assert item["volatility"] is None
+
+
+def test_calendar_gaps_outside_actual_common_coverage_are_excluded():
+    left = series(
+        "A",
+        [100, 102, 104, 106, 108],
+        ["2026-10-01", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-09"],
+    )
+    left["session_completeness"]["missing_dates"] = ["2026-10-02", "2026-10-08"]
+    right = series(
+        "B",
+        [200, 205, 207],
+        ["2026-10-05", "2026-10-06", "2026-10-07"],
+    )
+
+    result = compare_series([left, right])
+    items = {item["symbol"]: item for item in result["instruments"]}
+
+    assert result["dates"] == ["2026-10-05", "2026-10-06", "2026-10-07"]
+    assert items["A"]["missing_observations"] == 0
+    assert items["A"]["session_completeness"]["status"] == "complete"
+    assert items["A"]["volatility"] is not None
+
+
+def test_unavailable_calendar_does_not_claim_complete_session_coverage():
+    left = series("A", [100, 102, 104])
+    right = series("B", [200, 205, 207])
+    for item in (left, right):
+        item["session_completeness"] = {"status": "unavailable", "missing_dates": None}
+
+    result = compare_series([left, right])
+
+    for item in result["instruments"]:
+        assert item["session_completeness"] == {
+            "status": "unavailable",
+            "missing_scheduled_sessions": None,
+        }
+        assert item["volatility"] is None
+        assert "could not be established" in item["metric_suppression_reason"]
 
 
 @pytest.mark.parametrize("prices", [[1e-308, 1e308], [1e308, 1e-308]])

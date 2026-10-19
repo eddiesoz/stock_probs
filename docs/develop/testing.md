@@ -516,12 +516,20 @@ full-browser, axe, screenshot/design, provider/native, physical-mobile, or relea
 See the [truncation notice checkpoint](../../MVP-PLAN.md#r-astra-121-r1-truncation-notice-selected-browser-checkpoint-2026-10-18)
 for exact run identity, receipts, preserved failures, and bounds.
 
-A separate owner-authenticated TestClient/SQLite selection subsequently passed six cases for
+A separate TestClient/SQLite selection, including a dedicated owner/member authentication case,
+subsequently passed six cases for
 actual 6,000/6,001-character replies, exact draft truncation and its flag, no automatic save,
 explicit reviewed saving, oversized reasoning/excerpts rejected without a write, and cross-owner
 assistant-message reads and attachments rejected with 404. This closes those selected backend
 coverage gaps; it does not expand the browser run's scope. See the
 [backend boundary checkpoint](../../MVP-PLAN.md#r-astra-121-r1-assistant-draft-backend-boundary-checkpoint-2026-10-18).
+Comparison calendar regressions in `test_provider.py` and `test_research_workspaces.py` cover
+shared missing sessions, common-window boundaries, holidays/early closes, unavailable calendars,
+and provider-local labels across UTC date boundaries. The focused ten-case independent run and
+separate London diagnostic passed offline; calendar uncertainty suppresses volatility and remains
+explicit in the saved result and existing warnings. The earlier unsupported-calendar failure is
+preserved. See the [calendar completeness checkpoint](../../MVP-PLAN.md#r-astra-121-r1-comparison-calendar-completeness-repair-2026-10-19)
+for exact bindings and limitations; no new frontend, live-provider or release acceptance follows.
 
 ## Assistant verification (`R-ASTRA-120`)
 
