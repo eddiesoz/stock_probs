@@ -783,3 +783,12 @@ reservation-release scope. A subsequent exact build-history read showed the nati
 frontend and Python-package steps completed before the overall assembly deadline; no completed
 image or native assistant result follows. See the
 [F6 recovery and history checkpoint](../../MVP-PLAN.md#r-astra-121-f6-typed-timeout-recovery-and-build-history-checkpoint-2026-10-18).
+
+### Print media synchronization
+
+The M04 responsive/accessibility journey waits at most five seconds for each emulated print
+surface to compute black text on white before recording Light/Dark samples. It retains the
+original theme-parity and white-background assertions and its existing 90-second test budget.
+This makes the browser state transition explicit; it is not a product CSS change or a confirmed
+root cause for the earlier aggregate-only print mismatch. The original single-case reproduction
+passed unchanged, while that earlier complete browser aggregate remains failed.
