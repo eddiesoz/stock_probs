@@ -987,3 +987,18 @@ failure-only attachment does not establish a cause, and a later diagnostic pass 
 failed aggregate. Do not infer disk causation from traced syscall duration or extend browser bounds
 to conceal unresolved latency. See the
 [F6 completion/browser evidence checkpoint](../../MVP-PLAN.md#r-astra-121-f6-completion-barrier-and-bounded-browser-failure-evidence-2026-10-21).
+
+
+Keep spawn-based lock helpers free of application/CLI imports they do not use. Import those modules
+inside the individual tests that require them, retaining every lock, startup, join and critical-
+section assertion. Measure import-only footprint separately from runtime acceptance and preserve the
+original failed aggregate beside a passing affected module; reduced footprint does not prove the
+original failure's cause.
+
+Approval-focused browser journeys may prepare a conversation through the existing UI before their
+per-turn response waiter, while a separate journey continues to cover automatic creation on Send.
+Do not increase response, fixture or case bounds. When adding a fixed anonymous fixture checkpoint,
+include it in the existing bounded attachment allowlist; an omitted consumer stage cannot be
+reconstructed into a delivered attachment. Distinguish fixture-start, pre-MCP and later context
+failures before assigning a shared cause. See the
+[F6 backup/browser checkpoint](../../MVP-PLAN.md#r-astra-121-f6-backup-spawn-imports-and-focused-browser-failure-checkpoint-2026-10-21).

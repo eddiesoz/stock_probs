@@ -260,6 +260,11 @@ class _Runtime:
                 flush=True,
             )
             await asyncio.sleep(6)
+            print(
+                json.dumps({"qa_stage": "response_delay_completed", "monotonic": time.monotonic()}),
+                file=sys.stderr,
+                flush=True,
+            )
         await emit(
             {
                 "type": "meta",

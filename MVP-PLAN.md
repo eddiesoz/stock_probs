@@ -9346,3 +9346,78 @@ gates remain open. PRs #9/#11 remain draft; the helper manifest still binds the 
 The original 5ad production image and invited rollout remain restored. No candidate promotion,
 merge, resize or email occurred. The 1 GB host, backups, US$15 monthly total cap and active overall
 goal remain unchanged; free Zen restoration precedes the seven-feature plan.
+
+
+### R-ASTRA-121 F6 backup spawn imports and focused browser failure checkpoint (2026-10-21)
+
+The clean pushed `1e134da0ad68ad4fe960714e2ea8911e3ee8d8aa` canonical attempt **Failed**,
+`22:51:55Z`–`23:25:57Z`, exit 2 after one deliberate SIGINT: terminal output reports 1,530 Python
+passes, one failure, four deselected and 86 warnings. Python completion and final coverage are
+unavailable; documentation and 75 frontend checks are completed subchecks only. The retire-key
+cross-process backup-lock case exhausted its unchanged 30-second child-start wait before reaching
+the lock-critical assertions. The child was alive at the deadline and later exited successfully;
+its exact signal time and the failure cause remain **Unproven**. Contemporaneous low available RAM
+and nearly exhausted swap do not establish causation. Raw JUnit has inconsistent suite/testcase
+counts; retain the terminal's 1,530-pass count rather than infer an extra pass.
+Canonical receipt SHA-256 `20dc363ef0556bbb387e6a130b65106f082735d8c9720e7523b50529bd139661`;
+parent terminal SHA-256 `ae795f3da6a0365a9fc7da5d018859661215cdbf1dd917772f8fefa65ae87e5b`.
+All 417 source/test pins, 150 image inputs and 53 served/export pairs stayed unchanged. The owned
+unit/cgroup and known processes were absent; the private pytest directory remains retained.
+
+The unchanged exact failed case subsequently passed one covered independent reproduction. A
+separate measured import diagnostic found that the backup test module loaded API/CLI dependencies
+in every spawned lock helper. Moving those two imports into the 11 tests that use them reduced
+import-only RSS from 92,966,912 to 46,526,464 bytes. Parent AST comparison retained all 114 assertions,
+all lock/start/join bounds, and every other AST node after removing the moved imports. This is a
+test-only footprint repair, not a demonstrated cause of the original timeout. Parent affected-module
+coverage passed 26/26, `23:32:30Z`–`23:33:32Z`. Independent affected-module coverage passed 26/26,
+`23:35:16Z`–`23:36:35Z`, with all 417 pins unchanged during that run; Ruff/security/format and syntax
+checks passed. Independent receipt SHA-256
+`1f4ca63f35d1fdd90f9e99c8c4856ba8ac61d9e9fc33c1a4355e8d38f52a3506`.
+Its post-run memory snapshot is **Unavailable** because the pre-created metadata file remained empty.
+These selected passes do not replace the failed canonical aggregate.
+
+The WebFetch approval-focused browser journey now creates a conversation through the existing UI
+before its per-turn response waiter. The separate receipt journey retains automatic creation on
+Send. Existing five-second response/action waits, fixture and case bounds remain unchanged. The
+synthetic server adds one anonymous monotonic checkpoint after its existing six-second delay;
+the attachment consumer now includes that fixed stage. The consumer entry was initially omitted,
+so the passing mobile attachment below does not contain that separate delay-completed marker.
+The final consumer correction passed independent one-line diff/privacy review and Node syntax,
+receipt SHA-256 `4b1d711b844587d8cc5d742abc50248f60c1c75530ef0e588f4c5c502a7fd998`.
+Its initial report-assembly assertion failure remains recorded. This is static scope only; the
+correction has not been replayed.
+
+The focused desktop/emulated-mobile four-case run **Failed**, `23:37:56.758Z`–`23:40:53.533Z`:
+one passed, three failed, zero skips/retries/flaky. Desktop receipt completion exhausted its
+30-second case budget before a workspace-summary result. Desktop WebFetch timed out during fixture
+setup before its test body. Mobile receipt passed in 22.892 seconds, including MCP HTTP 200 and
+completion after the synthetic delay. Mobile WebFetch progressed through initial approvals but
+later exhausted a five-second turn-response wait alongside a five-second context route-fetch
+timeout. Their causal relationship and underlying failure causes remain **Unproven**. No deadline
+increase or application repair follows. All 417 source pins, 150 image inputs and 53 served/export
+pairs matched at terminal review. The unit/cgroup, three known fixture PIDs and four known ports
+were absent; the setup failure supplied no fourth PID, so direct PID proof for that fixture is
+unavailable. No blanket temporary-directory cleanup acceptance is claimed.
+Parent terminal SHA-256 `bf06fd513d37b6cdd8d89a50ba73fbd9337aaec7a60a23f36f0cb47d1d19850d`;
+independent artifact/source interpretation SHA-256
+`ba57f65e030d55aefcfa4a9f6493b250e5e5f723d75c3f67b05193e785f83636`.
+Independent review did not replay clicks, re-probe cleanup or recompute the parent's full pin maps.
+
+A separate network-none, one-shot import-only diagnostic on exact candidate image `76aecf54`
+measured the attached native probe before/after importing auth for two public fixture cookie names:
+RSS 38,072,320 to 45,658,112 bytes, a 7,585,792-byte increase. No app, supervisor, server or provider
+was started. The exact owned container was absent after completion. Container umask was not observed;
+this is import-overhead evidence only, not runtime-profile, host-failure-cause or actual 1 GB acceptance.
+Receipt SHA-256 `2c0f01a799fb5738d2419e633acbf14fc7d18639b260f272c41300cd6aa614c3`.
+No probe repair or actual-host retry occurred in this checkpoint.
+
+Fresh read-only production inspect/status reconfirmed the original `5ad2c3f`/`78746f` image,
+schema 13, invited rollout, app/assistant ready and loopback-only. Snapshot SHA-256
+`b8cb3f5cf3ea017636963f32e30b9aa5d643f25de74f12d91e4e47c82442c35f`.
+The new free-Zen fix is not deployed. Existing e40 image/native/shutdown results retain their
+original exact scope. PRs #9/#11 remain draft and the helper manifest still binds historical PR #9
+head `7f`; current canonical/full-browser/security/accessibility, genuine authenticated UI, actual
+combined 1 GB, PR-bound recovery/rollback, final guide and release gates remain open. No candidate
+promotion, merge, resize or email occurred. The active overall goal, seven-feature dependency order,
+existing 1 GB host, backups and US$15 monthly total cap remain unchanged.

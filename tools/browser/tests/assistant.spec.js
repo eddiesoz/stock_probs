@@ -2058,7 +2058,7 @@ test("real FastAPI assistant flow keeps route-only context and reopens durable p
   await testInfo.attach("real-flow-runtime-checkpoints.json", {
     body: Buffer.from(JSON.stringify(assistantApplication.logs().split("\n").map((line) => {
       try { return JSON.parse(line); } catch { return null; }
-    }).filter((entry) => ["fixture_started", "turn_started", "workspace_summary_received", "response_delay_started", "runtime_completed"].includes(entry?.qa_stage)), null, 2)),
+    }).filter((entry) => ["fixture_started", "turn_started", "workspace_summary_received", "response_delay_started", "response_delay_completed", "runtime_completed"].includes(entry?.qa_stage)), null, 2)),
     contentType: "application/json",
   });
   await expect.poll(() => eventStreamResponse).not.toBeNull();
@@ -2210,6 +2210,18 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
   await panel.getByRole("checkbox", { name: /I accept this model's privacy terms/ }).check();
   await panel.getByRole("button", { name: "Save privacy choice" }).click();
   await expectAssistantLiveStatus(panel, "Model privacy consent saved for this policy version.");
+
+  // Prepare this approval-focused journey before its per-turn response wait.
+  await panel.getByRole("button", { name: "Open conversation history" }).click();
+  const conversationCreated = page.waitForResponse((response) => {
+    const responseUrl = new URL(response.url());
+    return responseUrl.origin === origin
+      && responseUrl.pathname === "/api/v1/assistant/conversations"
+      && response.request().method() === "POST";
+  }, { timeout: 5_000 });
+  await panel.getByRole("button", { name: "New conversation" }).click();
+  expect((await conversationCreated).status()).toBe(201);
+  await expectAssistantLiveStatus(panel, "New conversation created. No assistant request has been sent.");
 
   async function assertServerEndedStream(eventPath) {
     await expect.poll(async () => page.evaluate(async (path) => {
