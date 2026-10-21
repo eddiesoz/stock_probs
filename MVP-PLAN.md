@@ -8598,3 +8598,59 @@ Native-health, authenticated UI, complete browser/security/accessibility, canoni
 1 GB, recovery/rollback, final-guide and release gates remain open. The overall goal stays active;
 Zen restoration precedes the seven-feature releases, with the existing 1 GB host, backups and
 US$15 total monthly cap unchanged.
+
+
+### R-ASTRA-121 F6 active-lease candidate native timeout checkpoint (2026-10-21)
+
+The reviewed probe coordination checkpoint was pushed as clean PR #9 head
+`61ea48a59acf931c1c84fc2b55dd06f998008ae9`. Its managed Linux/amd64 build passed for image
+`sha256:23f1c0190842c65214f89cf9838fcd39a7042d69b0edb272e4794d13962b8533`, with unchanged packaged
+context `ae60eb4653afd870c9f628861dbec0c79720c66f5882c31eccedde072ef8ea38`: all 416 source/browser
+records, 150 packaged inputs and 53 served/export pairs matched before and after the native run.
+The image remains bound to that revision; this documentation record does not create a new image.
+Managed build receipt is `f22c773f6a040d27d0571c35874d248375d5f53e2e554041b535e670a955ca7f`;
+parent build terminal is `773d173e9e8da9a4aa9ad1524480ad7a05e69e64ba01f125b842823782addf5f`.
+The exact unused predecessor retirement passed with receipt
+`9ed9faa0d271bbd20cf44d6f179e42fe4647c4acee43881cd52b942081730f97`, retaining production and recovery.
+The builder stopped at its recorded generation, with its worker cgroup absent.
+
+Independent prelaunch review caught a false numeric statement in the parent's supplement:
+the bound managed receipt has 14 fields, while the immutable v1 supplement reported Pass and
+claimed 15. Its independent disposition remains **Fail**. The exact field-set checks in the
+launcher were correct; correction `7b238e851e9c35a6aaf43d28bd944e0409fb8dddfe9b1e7876d2f97812a5335e`
+records the true 14-field contract and retains v1. Independent corrected prelaunch review
+`40323ce51d4f33bb344e8463132109929f261970a070faf8d1b8c445fe7ebdc9` passed identity scope only.
+No build or native trial was repeated for that metadata correction. Parent review then authorized
+one functional attempt with unchanged 120-second turn, 150-second observation, 180-second producer,
+600-second outer, 768 MiB/one-CPU bounds, and zero trial retries.
+
+That one native attempt **Failed** (unit exit 2; native child exit 1). Schema-13 app/assistant
+readiness passed after 25 attempts in 12,692 ms. Both owners reached matching model-selection
+predicates and one matching owner-bound workspace-summary receipt, then timed out at 121,228 ms
+and 120,705 ms without an answer, search approval/source or fetch approval/source. Literal
+selected-model identity was not retained. Both conversation deletions eventually returned HTTP
+200; owner 0 required four attempts with three pending observations, while owner 1 required one.
+The active-search checkpoint was never reached, so this run did not exercise the repaired DAC
+ordering. The previous unidentified Docker-exec failure remains unexplained.
+
+All 110 app-health samples reported ready; worker samples were 106 ready and four starting.
+The uncorrelated `worker_not_ready` supervisor warning and CPU throttling do not establish cause.
+Two anonymous timing rows show sanitized second-request chunks through 119,864 ms and 119,522 ms;
+they have no owner mapping and prove neither upstream status nor a native completion cause. The
+local 768 MiB failure sample peaked at 487,464,960 bytes with zero high/max/OOM deltas; it is not
+actual combined 1 GB acceptance. Parent terminal receipt is
+`27c2463645b28e0b2c4b2fa59aaf5dbe79371fa4452a98d4d88a53fbcb77087a`.
+Exact container/network ID and name, volume, user-unit cgroup, helper PID and retained loopback
+port `32774` absence passed. The parent's initial case-sensitive volume error classifier failed
+before publication; its raw Docker observations remain preserved and were classified with exact
+per-kind errors without repeating Docker or native execution. This is parent result-integrity
+review, not independent native acceptance.
+
+Evidence is under `/var/tmp/r12r/f6-native-61ea48a-fb03bd9f6aa54324b7df2ba2f0a74ada/` and
+`/var/tmp/r12r/f6-image-61ea48a-f06e9068f315401cb119f548498988aa/`. The next bounded action is
+source-only inspection of the existing model-completion path against these retained timings;
+no unchanged native retry, new observer/harness or timeout increase follows. All native-health,
+shutdown, authenticated UI, complete browser/security/accessibility, canonical, actual-host 1 GB,
+recovery/rollback, final-guide and release gates remain open. The overall goal stays active and
+Zen restoration still precedes all seven feature releases. Production, the 1 GB host, backups
+and US$15 total monthly cap are unchanged; no merge, deploy, rollout, resize or email occurred.

@@ -39,8 +39,8 @@ files; a matching local export alone does not identify the running package.
 
 At the native active-search checkpoint, finish the owner-bound private-file and process permission
 checks before sending `continue`. These checks repeatedly require the active owner lease and its
-exact worker config; resuming the child can complete the turn and revoke that lease. A denied
-boundary must stop the child without resuming it. Keep the original turn and observation deadlines,
+exact worker config; resuming the child can complete the turn and revoke that lease. A failed
+permission check must stop the child without resuming it. Keep the original turn and observation deadlines,
 then require the final answer, deletion and cache-purge assertions. The
 [coordination repair record](../../MVP-PLAN.md#r-astra-121-f6-active-lease-probe-coordination-repair-2026-10-21)
 does not establish the cause of an earlier native failure or successful runtime restoration.
