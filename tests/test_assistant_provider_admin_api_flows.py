@@ -1013,9 +1013,7 @@ def test_active_event_stream_stops_before_emitting_after_session_revocation(
                     )
                     response = browser.get(events_path, params={"after": 0})
                 assert response.status_code == 200, response.text
-                assert response.content == (
-                    b'id: 1\nevent: token\ndata: {"text":"first synthetic chunk"}\n\n'
-                )
+                assert response.content == b""
                 assert projected_events == [(1, {"text": "first synthetic chunk"})]
                 assert timeline == ["project:1", "repository-revoke:committed"]
                 session_record = application.state.repository.auth_get_session(

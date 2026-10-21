@@ -943,3 +943,13 @@ also fail closed. The authorizer permits one fresh state/authorization read only
 exactly owner-bound closure; no provider call is retried. Preserve the original empty-stream failure
 and the earlier unrelated native transport failure separately. See the
 [completion-transition ledger](../../MVP-PLAN.md#r-astra-121-f6-sse-completion-transition-repair-2026-10-21).
+
+
+Provider HTTP fixture assertions must await the asynchronous authorization callback both before
+and after revocation. When a session is revoked during SSE event projection, require zero emitted
+bytes and retain the exact committed-revocation timeline and denied follow-up request. For the
+complete-write concurrency fixture, interleave finite write/read waves rather than assuming that
+a continuously queued burst gets fair acquisition of the repository lock. Retain the same total
+writes/reads and verify the production timeout boundary separately; do not extend that bound or
+retry failed writes to make the fixture pass. See the
+[native and canonical reconciliation ledger](../../MVP-PLAN.md#r-astra-121-f6-native-verification-and-canonical-fixture-reconciliation-2026-10-21).

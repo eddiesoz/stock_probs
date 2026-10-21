@@ -9023,3 +9023,106 @@ canonical, actual-host 1 GB, recovery/rollback, final guide and release gates re
 restoration stays first, followed by all seven features in the four-release plan; the overall goal
 remains active. Production, the existing 1 GB host, backups and US$15 monthly total cap remain
 unchanged; no merge, deployment, rollout, resize or email occurred.
+
+
+### R-ASTRA-121 F6 native verification and canonical fixture reconciliation (2026-10-21)
+
+Clean pushed application head `e40dbc3b721080057a2ab2b9b23565ebf4d85982` built image
+`sha256:76aecf5483a38a0328f8560e1ae6a09d90f248e712d1dc719f765a224c7ccd2a`, context
+`16dba274c8485b69d3c798ea5f9a587c980eb37dbf6c0e64db2bcbc49ab8bf6c`, tag
+`stock-probs:local-e40dbc3b7210-16dba274c848-4eb1f134ea7b`, at
+`2026-10-21T17:01:42.962395Z`. The managed receipt SHA-256 is
+`b7810ed4ff96e96207a88886c8d9d1ec81625dc6d73ee1cd0d45121f25fd9ced`.
+The exact unused `6f84863a…` predecessor was retired through the maintained locked
+`--no-prune` receipt/readback/acknowledgment procedure; retirement receipt SHA-256 is
+`a9a2b360ff56038e42cd7200612878c7e8c4ba173d0b0f201fffdfec7c4fce6e`.
+Production `78746f60…` and recovery `893788c1…` stayed protected, with two managed images before
+building and three after. Build/source/stage review passed 416 source/browser inputs, 150
+packaged inputs and all 53 served/export pairs. The exact owned builder generation was stopped.
+
+The first submitted launcher **Failed before runtime** at exit 1: the parent terminal envelope
+recorded the outer systemd dispatch where the existing validator requires the mediated
+`local-compose.sh build` command. The initial prelaunch identity review missed that semantic
+mismatch. No runtime marker, candidate fixture or provider call was reached. The original terminal
+and invocation remain immutable. Supplemental terminal SHA-256
+`0b83000549af7733a5c28805e6c47cecc54a3fa90195602f7ca4efa0064e34d5` changes only that field;
+the actual dispatch remains in `launch-v1.json`. The exact existing read-only validator rejected
+the original and accepted the supplement. The launcher changed only the terminal path/digest.
+Independent supplemental review passed, preserving its initial wrong-field comparator failure.
+No application source, image, deadline or acceptance assertion changed in that correction.
+
+The single genuine native functional run **Passed** at exit 0,
+`2026-10-21T17:16:55.533698Z`–`17:18:32.275768Z`, using
+`opencode-zen/minimax-m3.1-flash-free`. Both fixture owners completed nonempty answers (286 and
+573 bytes) with matching workspace-summary receipts. The search owner approved native search
+and exact-URL guarded fetch: nine reported source events include that one fetch; attribution
+was not independently verified. Cross-owner and forged internal MCP lookups returned 404.
+Both conversation deletes returned 200 on their first attempt. All 69 app-health samples were
+ready at schema 13; worker samples were 61 ready, seven starting and one unavailable. The local
+768 MiB/one-CPU sample peaked at 516,804,608 bytes with zero high/max/OOM deltas; it is not actual
+combined 1 GB acceptance or proof of the earlier transport failures' cause.
+
+The maintained same-image active-search shutdown run **Passed** at exit 0,
+`2026-10-21T17:24:32.925138Z`–`17:25:21.742295Z`. It cancelled the pending turn, preserved the
+same app process/readiness, two saved records and private history, denied all six assistant
+endpoints with 503, retained zero search approvals, and removed the worker processes/home data.
+`active_search_scan_acknowledged=false` with `active_scan_ack_invalid` leaves provider execution
+count **Unavailable**; no provider nonexecution claim follows. Its local 768 MiB sample is separate
+from actual-host 1 GB acceptance. Exact parent ID/name, port, PID and cgroup cleanup checks passed
+for both runs. Independent result/cleanup-observation integrity reviews passed their declared
+scopes; fresh reviewer live Docker cleanup verification remained unavailable/skipped. Initial
+reviewer command-field, newline and absent-stage assumptions remain preserved as failed receipts.
+Parent integrated runtime review SHA-256 is
+`0398c71ded09ccef57657477f62956fac1c616758b3f062901fc78664ca91b22`.
+
+The subsequent mandatory canonical `check` **Failed** at exit 1 on clean native x86_64 head
+`e40dbc3`, `2026-10-21T17:27:10Z`–`18:09:02Z`: 3,691 passed, three failed, four skipped, four
+deselected, 104 warnings and 85.85% coverage. Documentation and all 75 frontend checks passed as
+subchecks; Python did not complete the profile. All 416/150 source bindings and 53 served/export
+pairs remained unchanged, and the known gate/Python PIDs and unit cgroup were absent. The receipt
+is `test-results/local-gates/R-ASTRA-121-20261021T172710Z/evidence.json`; parent terminal SHA-256 is
+`1bb12cd19b4367ebe1e8c6906c17c068ddddb43b462d8ec65cf82c6173076e40`. No aggregate Pass follows.
+
+All three failed selectors reproduced before repair. Two tests retained stale contracts: one
+called the now-async provider authorization callback synchronously, and one expected a token after
+revocation committed during event projection. They now await the callback before/after revocation
+and require zero emitted bytes while retaining the exact projection/revocation timeline and denied
+follow-up request. The concurrent history fixture also reproduced its five-second coordination-lock
+timeout. Its old continuously queued 100-write burst assumed lock fairness. The fixture now
+interleaves 20 finite waves of five writes and one read, retaining all 100 immutable-write, 20-read,
+page-size, identity and ordering assertions and adding read-total bounds. Production repository
+code, its five-second coordination bound and the original ten-second future waits are unchanged;
+no sleep or retry is added. The original timeout remains preserved without a storage-cause claim.
+
+Builder verification passed the three repaired selectors plus the unchanged same-database timeout
+and different-database independence controls: five passed, zero failures/errors/skips, with 158
+unchanged inputs. Ruff and format passed. Independent Luna selected QA passed the same five
+selectors and Ruff/security/format checks with all 158 inputs unchanged; its receipt SHA-256 is
+`cc17225e83e4980a496a0402bc214019901504728709649d3dae7fe561b30064`. The actual pytest
+worktree and normal `022` mask are confirmed by cwd supplement SHA-256
+`675d815609902def9803f12875bf18f5df06837bd8cbcd4c36cdfabdbae0ef23`. Its historical
+canonical readback remains **Unavailable** because it checked the primary-repository path; the
+parent separately verified the actual worktree receipt. Parent integrated source/evidence review
+passed, SHA-256 `7445c8c23159043c9508c20a0db2660f9de8e37af752c0a3dd00eaeffe387a15`.
+Exact baselines, red/green commands, exits and JUnit are in
+`/var/tmp/r12r/f6-canonical-contract-repair-ed0cfc849e074db39ea74d3e57851dfc/`.
+Build evidence is in `/var/tmp/r12r/f6-image-e40dbc3-7c42e52cbe6f472f8f5699e47bc961a2/`;
+native/shutdown evidence is in
+`/var/tmp/r12r/f6-native-e40dbc3-40b41237e2c34d6b9e70b01b076a8ef3/`.
+
+The fixture repair changes no application or asset input. Native/shutdown and frontend results
+retain their original bindings; the failed canonical is preserved and its mandatory rerun remains
+required. The maintained browser selection then **Passed** all eight desktop/emulated-mobile
+cases for four previously failing real-app/EOF flows, without the private diagnostic preload:
+zero failures, skips, retries or flaky results, from `2026-10-21T18:25:20.127Z` for 158.693 seconds.
+All 416 current source/browser bindings, 150 packaged inputs and 53 served/export pairs stayed
+unchanged. Known runner/app PIDs and the owned unit cgroup were absent, and the main loopback
+port refused connections. Parent terminal receipt SHA-256 is
+`acf53ce31fe591d2dcdbeb7daa5995bf4d2155a8bbe3f83684b83e6dc4e22ef6`, in
+`/var/tmp/r12r/f6-browser-affected-e40dbc3-4b94692abe9644c0ab8f22d4bcdf1126/`. These are
+synthetic-assistant real-FastAPI checks; genuine authenticated model UI remains unverified.
+Current full browser/security/accessibility, authenticated UI,
+actual-host 1 GB, recovery/PR-bound rollback, final guide and release gates remain open. Free Zen
+restoration remains first, followed by all seven features in the four-release plan. The overall goal
+is active; the existing 1 GB host, backups and US$15 monthly total cap are unchanged. No merge,
+production deployment, rollout, resize or email occurred.
