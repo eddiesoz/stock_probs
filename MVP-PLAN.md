@@ -8295,3 +8295,69 @@ actual combined 1 GB, PR-bound recovery/rollback, final guide, authenticated liv
 and release gates remain open. The free Zen repair still precedes all seven feature releases.
 The 1 GB host, backups and US$15 monthly total cap are unchanged; no production mutation, merge,
 deployment, rollout, resize or email occurred.
+
+### R-ASTRA-121 F6 MiniMax native failure and bounded poll repair (2026-10-21)
+
+The reviewed `858192b63c3c9c41c7b8647cc2c61cba696f5205` candidate built successfully as
+`sha256:6e15a84b39bffacacb2327b3c0c80ebf646458761df5e4a24bfde81d4672f1c7`, context
+`b16b6bcd2f1d53721c2f29476dccd2a039cd4596d9584a31602ccfebcace358c`. Parent and independent
+reviews passed 416 source/browser, 150 image-context and 53 served/export bindings, plus the
+unchanged native launcher logic. The owned builder was stopped at its recorded generation.
+Build receipt SHA-256 is `bc8f0abcb68587be8bd63f932c404f73594b73eaff9348dbbfdc8f3aacda3337`;
+parent build terminal is `2125d019e8091e9e7821a9d93e9209dab257f85098980e8e8425637ffadab5a0`.
+Independent build/launcher receipt `ee3c658c11f8906f3c955e686b30531f00014a3ba0733b65b16a5b877cd3f678`
+has a separate user-unit correction supplement
+`062c2979cd8ed6edcbe3419d943f4f0b82d4d6df090514778824fd47f7d1ab2b`: the original reviewer
+queried the system manager; the correct user unit was active/exited, PID 0, success, exit 0,
+with its exact cgroup absent. The original observation remains preserved.
+
+The sole MiniMax native attempt **Failed** at exit 2. Readiness passed in 14.577 seconds.
+Both owners matched the selected model and workspace-summary digest, but neither produced an
+answer, search preview/source, or guarded-fetch source. The driver stopped at
+`turn_poll_and_search_confirmation` with `transport_readtimeout`; its last snapshots still
+reported both turns running after approximately 55.8 seconds. No final conversation-delete
+or owner-isolation result follows. The raw `same_supervised_app_reachable=false` is an initial
+default, not an observed outage: the final health check was not reached. The parent interpretation
+supplement and independent terminal review preserve that distinction.
+
+The failure-only sampler recorded app readiness 39 ready/four unavailable samples and worker
+readiness 30 ready/eight starting/five unavailable samples. Peak memory was 527,052,800 of
+805,306,368 bytes, with zero high/max/OOM deltas; throttling does not prove cause or actual
+combined 1 GB acceptance. Anonymous timing rows were empty. The runtime cause remains **Unproven**.
+Exact owned container/network/volume and user-unit cgroup cleanup passed independently; the
+allocated-port replay remains unavailable because the exact port was not retained. Parent terminal
+SHA-256 is `4ae7daa5c0dd0eea21197865c539e559d4a2b0b00262c5a16b2397770254d50e`; independent
+terminal integrity/cleanup receipt is `3f323552a7d0dc4156fa8d0a2539a3d08d526fe83a9e691f6de7b3c608252d78`.
+
+A focused synthetic reproduction demonstrated that the existing conversation-observation helper
+aborts after one read timeout even when the next read would succeed: three of eleven initial
+regressions failed, eight passed. The repair permits at most two retries only for that owner's
+read-only conversation poll in the existing polling phase and original observation window.
+At request start, eight-second read/two-second connect caps shrink to remaining polling time;
+retry admission and at most 100 ms backoff retain the original deadline. HTTPX's per-phase
+inactivity limits do not guarantee a hard total request duration. The deadline gates polling
+and retry admission.
+Mutations, readiness calls, other routes, authorization/protocol errors and connection errors
+are not retried. Application turn deadlines, answer/search/fetch criteria and resource gates are
+unchanged. This is probe robustness, not a runtime cause or recovered native acceptance.
+Private baseline, reproduction and scoped test evidence are under
+`/var/tmp/r12r/f6-poll-observation-repair-9cd077a36b64485687ba9baf48f2ca3b/`.
+
+The repaired builder run passed all 453 supervised-probe tests, including 13 new bounded-poll
+regressions; Ruff, formatting, authored-documentation validation and four-change coverage passed.
+An extra security-rule invocation over the entire assertion-heavy test module reported existing
+test assertions; it is not a security Pass. The probe implementation's separate
+security-rule check passed. These are synthetic/source checks only.
+
+Independent review `cdd275ad0ad09b3c3a3f9d3867bdc26e3cff64e2b7d8a9a60fd6aa0a6db1273c`
+passed the 453-test and declared static scope but **Failed** the wording/test-name scope: the
+original description overstated an absolute request-duration guarantee. The wording and test
+label now describe request-start timeout caps and retry admission accurately; no behavior changed.
+The original finding is retained and its narrow re-review remains pending.
+
+Fresh independent repair review and subsequent exact-bound native verification remain pending
+at this authored checkpoint. No unchanged trial was repeated and no active kill ran. The prior
+full-browser aggregate remains **Fail**; canonical, complete security/accessibility, actual-host
+1 GB, recovery/rollback, final guide, authenticated owner and release gates remain open. Free Zen
+restoration still precedes all seven feature releases. The 1 GB host, backups and US$15 monthly
+total cap are unchanged; no merge, deployment, rollout, resize or email occurred.

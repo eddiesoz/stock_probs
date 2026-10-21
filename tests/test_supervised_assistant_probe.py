@@ -39,6 +39,136 @@ sys.modules[NATIVE_SPEC.name] = native_probe
 NATIVE_SPEC.loader.exec_module(native_probe)
 
 
+def _conversation_poll_request(outcomes: list[object], **changes: object):
+    """Exercise the attached driver's real request function without starting a runtime."""
+
+    from collections.abc import Mapping
+
+    import httpx
+
+    tree = ast.parse(NATIVE_MODULE_PATH.read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "request"
+    )
+    calls: list[dict[str, object]] = []
+    clock = type("Clock", (), {"now": 100.0})()
+    clock.monotonic = lambda: clock.now
+    clock.sleep = lambda seconds: setattr(clock, "now", clock.now + seconds)
+
+    class Client:
+        def request(self, method: str, path: str, **kwargs: object):
+            calls.append({"method": method, "path": path, **kwargs})
+            outcome = outcomes.pop(0)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return httpx.Response(int(outcome), json={})
+
+    path = "/api/v1/assistant/conversations/owned-conversation"
+    namespace = {
+        "httpx": httpx,
+        "Mapping": Mapping,
+        "clients": [Client()],
+        "validated_users": [{"session_cookie": "fixture-session", "csrf_cookie": "fixture-csrf"}],
+        "SESSION_COOKIE_NAME": "session",
+        "CSRF_COOKIE_NAME": "csrf",
+        "_AttachedProbeFailure": native_probe._AttachedProbeFailure,
+        "_attached_json": native_probe._attached_json,
+        "failure_stage": "turn_poll_and_search_confirmation",
+        "conversations": ["owned-conversation"],
+        "deadline": 150.0,
+        "time": clock,
+        **changes,
+    }
+    module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+    exec(compile(module, str(NATIVE_MODULE_PATH), "exec"), namespace)  # noqa: S102
+    return namespace["request"], path, calls, clock
+
+
+@pytest.mark.parametrize("timeout_count", [1, 2])
+def test_attached_conversation_poll_recovers_bounded_read_timeout(timeout_count: int) -> None:
+    import httpx
+
+    request, path, calls, _clock = _conversation_poll_request(
+        [*[httpx.ReadTimeout("synthetic") for _ in range(timeout_count)], 200]
+    )
+    response, payload = request(0, "GET", path)
+    assert response.status_code == 200 and payload == {}
+    assert len(calls) == timeout_count + 1
+
+
+def test_attached_conversation_poll_stops_after_three_read_attempts() -> None:
+    import httpx
+
+    request, path, calls, _clock = _conversation_poll_request(
+        [httpx.ReadTimeout("synthetic") for _ in range(4)]
+    )
+    with pytest.raises(native_probe._AttachedProbeFailure, match="transport_readtimeout"):
+        request(0, "GET", path)
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize("changes", [{"deadline": 100.0}, {"deadline": 100.05}])
+def test_attached_conversation_poll_stops_retry_admission_at_deadline(changes) -> None:
+    import httpx
+
+    request, path, calls, clock = _conversation_poll_request(
+        [httpx.ReadTimeout("synthetic"), 200], **changes
+    )
+    with pytest.raises(native_probe._AttachedProbeFailure, match="transport_readtimeout"):
+        request(0, "GET", path)
+    assert clock.now <= changes["deadline"]
+    assert len(calls) <= 1
+
+
+@pytest.mark.parametrize(
+    "method,path,kwargs,stage",
+    [
+        ("POST", None, {}, "turn_poll_and_search_confirmation"),
+        ("GET", "/api/v1/assistant/status", {}, "turn_poll_and_search_confirmation"),
+        ("GET", None, {"csrf": True}, "turn_poll_and_search_confirmation"),
+        ("GET", None, {"body": {}}, "turn_poll_and_search_confirmation"),
+        ("GET", None, {}, "model_inventory"),
+    ],
+)
+def test_attached_conversation_poll_does_not_retry_other_requests(method, path, kwargs, stage):
+    import httpx
+
+    request, owned_path, calls, _clock = _conversation_poll_request(
+        [httpx.ReadTimeout("synthetic"), 200], failure_stage=stage
+    )
+    with pytest.raises(native_probe._AttachedProbeFailure, match="transport_readtimeout"):
+        request(0, method, path or owned_path, **kwargs)
+    assert len(calls) == 1
+
+
+def test_attached_conversation_poll_preserves_http_authorization_failure() -> None:
+    request, path, calls, _clock = _conversation_poll_request([403, 200])
+    response, payload = request(0, "GET", path)
+    with pytest.raises(native_probe._AttachedProbeFailure):
+        native_probe._attached_require(response, payload, {200})
+    assert len(calls) == 1
+
+
+def test_attached_conversation_poll_does_not_retry_connection_errors() -> None:
+    import httpx
+
+    request, path, calls, _clock = _conversation_poll_request(
+        [httpx.ConnectError("synthetic"), 200]
+    )
+    with pytest.raises(native_probe._AttachedProbeFailure, match="transport_connecterror"):
+        request(0, "GET", path)
+    assert len(calls) == 1
+
+
+def test_attached_conversation_poll_caps_each_attempt_to_remaining_time() -> None:
+    request, path, calls, _clock = _conversation_poll_request([200], deadline=101.5)
+    request(0, "GET", path)
+    assert calls[0]["timeout"].read == 1.5
+    assert calls[0]["timeout"].connect == 1.5
+
+
 @pytest.mark.parametrize("deadline", [None, 1234.5])
 def test_live_probe_preserves_location_verification_deadline(deadline: float | None) -> None:
     """Instrumentation must not prevent native dispatch or remove its deadline."""

@@ -823,3 +823,20 @@ next catalog candidate adds the currently documented MiniMax M3.1 Flash Free mod
 selects it for the same full native test. LongCat remains reviewed and selectable; no automatic
 fallback is added. The new row uses the existing OpenAI-compatible adapter and requires the
 existing privacy and billing acknowledgements. A fresh image and native result remain required.
+
+The `858192b` MiniMax image passed its build/source/stage bindings but failed the sole native
+trial during conversation polling. Both owners had matching model and summary receipts, with
+no completed answer or search/fetch source. One read timeout aborted the observation while the
+last snapshots still reported running turns. The default `same_supervised_app_reachable=false`
+does not establish an outage: the final health request was not reached. The runtime cause remains
+unproven; keep the original Fail and its separate successful fixture cleanup.
+
+The attached probe now permits at most two retries after a read timeout only for the current
+owner's read-only conversation poll in that phase. At request start, the original eight-second
+read/two-second connect caps shrink to the remaining polling time. Retry admission and at most
+100 ms backoff use the original deadline without resetting it. These per-phase inactivity limits
+do not guarantee a hard total request duration. The deadline gates polling and retry admission.
+The probe never retries mutations, readiness requests, authorization/protocol failures,
+or connection errors. The 120-second application turns, two-owner answer/tool criteria and
+separate readiness/resource gates are unchanged. Synthetic recovery tests do not establish a
+recovered native run or the timeout cause.
