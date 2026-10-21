@@ -11600,3 +11600,51 @@ The local repair adds only this complete receipt/digest tuple and one predecesso
 The post-failure read-only production result retained original 5ad/image7874, schema 13, ready assistant/app, invited rollout and loopback-only, with the historical failed-rollout record still visible. The candidate image and application inputs are unchanged. Current canonical/full-browser failures, actual combined 1 GB, recovery/PR rollback, complete security/accessibility, authenticated UI and release gates remain open. No application deployment, GitHub PR merge, resize, rollout or email occurred. The existing backups and US$15 monthly total cap remain unchanged.
 
 Independent bootstrap repair review **Passed** 140 selected tests (12 new predecessor-specific cases), Ruff/security/format/diff and 14 unchanged source/import/asset pins. Receipt `/var/tmp/r12r/f6-bootstrap-independent-qa-27dc12e3-5938-4d3c-84c7-931cb10f062e/independent-review-v1.json`, SHA-256 `ff44e1c0674d62dbc918c920e33869c6baaa4c8bcd124eddd4d5cbe2df0bcab9`, reconciles the exact raw installed receipt separately from its outer readback JSON and all four Git blobs. Parent integrated audit verified 29 unique references and all 140 JUnit cases; receipt SHA-256 `5339c8bfce1c09177506a52840d110f6586f952120039cbccd9864f5fbd8b738`. Reviewer timestamp-normalization and exact-path lookup mistakes remain audit notes. This is selected source/test/provenance acceptance only; the repaired helper has not established an actual-host pair or resource result.
+
+
+### R-ASTRA-121 F6 attached native probe import footprint repair (2026-10-21)
+
+The actual-host c38 pair failure remains **Fail**, `host_memory_reserve_breached`; the original
+5ad production image and invited rollout were restored separately. No exact upstream/resource cause
+or candidate release acceptance is inferred. The parent subsequently measured the exact candidate
+image's attached HTTP probe: importing application auth only for two public cookie-name constants
+increased RSS by about 7.2 MiB. This was a no-app import-only diagnostic, not a host retry.
+
+The attached probe now assigns the exact public HTTP wire cookie names locally instead of importing
+application auth. The new regression prevents application imports on malformed-input handling and
+binds both literal names to the maintained auth constants. Both tests failed on the original source
+and passed after repair. The baseline command retained JUnit but omitted exact UTC/umask/TMPDIR
+metadata; those bindings remain **Unavailable** for that attempt. Parent AST comparison confirms the
+entire probe is unchanged outside the removed import and two assignments, including every request,
+authorization, input bound, deadline and acceptance condition. Application source and image bytes
+are unchanged. No assertion or resource floor was relaxed.
+Independent selected import/wire/request/poll/model/delete QA passed 30/30 with zero failures,
+errors or skips, `23:56:46Z`–`23:56:51Z`, native x86_64, Python 3.11.15, explicit SD TMPDIR/H
+PYTHONPATH and normal umask 022. All 19 selected pins stayed unchanged. Independent AST/source,
+Ruff/security/format/diff checks passed. Receipt SHA-256
+`c44c11ede1dd678d9857bcaa9f0125eab5c61a68ae9f86c63cfdad09c3f635e8`.
+The earlier passing run's environment binding remains unavailable; its repeated narrow run corrects
+only that gap. Preserve the reviewer evidence-file precreation and wrong-path search failures;
+no test/source repair was needed. Parent personally reviewed the integrated diff and verified the
+independent referenced artifacts before checkpointing.
+
+A fresh exact-image, network-none comparison called the actual attached function with malformed
+input, starting no app, supervisor, server or provider. Original-source RSS rose from 37,806,080 to
+45,142,016 bytes and loaded auth; repaired-source RSS rose from 37,912,576 to 37,937,152 bytes with
+auth absent. Both rejected the input with the original stdin_invalid/input_validation result.
+Both ran as UID/GID 10001 with observed umask 022 and were absent by exact container ID afterward.
+Measurement receipt SHA-256 `76630c74ce965f46e2b18981001a7ae1d18e3ac4d60eecdbfff47e6df03838d3`;
+parent source/test review SHA-256
+`d67b205b34c4a8b80bdd3b41c52fb0585de3c93d24d84fe315576645eef95cad`.
+Packet: `/var/tmp/r12r/f6-attached-probe-import-repair-2483d6bb0ca34beaa8102ebbf28eec18/`.
+This is checker footprint evidence only, not a demonstrated cause of the host failure or actual
+combined 1 GB acceptance. No host retry, helper installation or candidate rollout occurred.
+
+PR #9's separate test/fixture checkpoint is pushed at `8622e303d63a6d2bc419ef6a97a2fb9601a63f7e`.
+Its latest canonical run remains failed at 1,530 passes/one failure before interruption; the backup
+import-placement repair subsequently passed 26/26 affected tests independently. Its latest focused
+browser run remains failed at one pass/three failures; current full browser/security/accessibility,
+genuine authenticated UI, resource, PR-bound recovery/rollback, guide and release gates stay open.
+The helper manifest still binds historical PR #9 head 7f; no later-head binding is inferred.
+The overall goal remains active, with free Zen restoration preceding seven features. Existing
+1 GB host, backups and US$15 monthly total cap remain unchanged; no merge, resize or email occurred.

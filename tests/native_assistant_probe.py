@@ -5312,7 +5312,10 @@ def _attached_reviewed_model_row(rows: object, reviewed_model_id: str) -> Mappin
 def run_attached_existing_app_probe() -> int:
     """Drive two isolated synthetic owners through an already supervised candidate app."""
 
-    from stock_probs.auth import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME
+    # Public HTTP wire names; a contract test binds them to application auth constants.
+    # Keep the attached driver independent of the app's auth/import dependency graph.
+    SESSION_COOKIE_NAME = "signal_ledger_session"
+    CSRF_COOKIE_NAME = "signal_ledger_csrf"
 
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     raw = sys.stdin.buffer.readline(_ATTACH_MAX_STDIN_BYTES + 1)

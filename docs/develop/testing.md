@@ -1339,3 +1339,11 @@ The F6 e40 archive exception is bound to the exact OpenCode path, size, complete
 
 
 The 40ece bootstrap regression first reproduced `production_helper_drift`. The repaired bootstrap selector passed 140 cases locally, including exact predecessor/retry acceptance and nine receipt, helper, sidecar, backup and mode rejection cases. Source/root ownership is simulated by the existing unprivileged fixture; live root metadata and public Git bytes are separate provenance evidence. Independent verification and a fresh actual-host result remain required.
+
+
+The attached native probe is an HTTP client for an already supervised app. Keep its public cookie
+wire names bound by a cross-module test while avoiding application imports solely to obtain those
+names. A malformed-input regression must fail closed without loading app code. Preserve all request,
+authorization, deadline and acceptance checks. Compare footprint on the exact image without starting
+an application or provider; report that measurement separately from actual-host resource acceptance.
+See the [attached-probe footprint checkpoint](../../MVP-PLAN.md#r-astra-121-f6-attached-native-probe-import-footprint-repair-2026-10-21).
