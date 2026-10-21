@@ -1336,3 +1336,6 @@ gate. See the [current helper lineage checkpoint](../../MVP-PLAN.md#r-astra-121-
 
 
 The F6 e40 archive exception is bound to the exact OpenCode path, size, complete digest and four SHA-verified official Bun spans. Keep the original rejected scan and provenance comparison; changed bytes, missing spans and extra matches must fail closed. The 81-case selected archive/transport run does not replace canonical, browser, actual-host resource/recovery or release gates. See the current-image archive scanner checkpoint in `MVP-PLAN.md`.
+
+
+The 40ece bootstrap regression first reproduced `production_helper_drift`. The repaired bootstrap selector passed 140 cases locally, including exact predecessor/retry acceptance and nine receipt, helper, sidecar, backup and mode rejection cases. Source/root ownership is simulated by the existing unprivileged fixture; live root metadata and public Git bytes are separate provenance evidence. Independent verification and a fresh actual-host result remain required.

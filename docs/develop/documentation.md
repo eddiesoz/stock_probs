@@ -864,3 +864,6 @@ files or successful synthetic checks do not establish installed-helper or actual
 
 
 For a changed-size release binary, the archive scanner may retain another exact path/size/digest variant only after public provenance verifies every admitted match span. Record the original rejection, independent source and archive review, and the updated transport consumer digest. Preserve image/application identity separately from the helper revision and reuse unchanged archive bytes when rebinding only the helper manifest. These checks do not promote unresolved canonical, browser, actual-host resource/recovery or release gates.
+
+
+Bootstrap predecessor admission needs an exact root-owned installed receipt and all file digests tied to public Git ancestry, plus the immutable original helper backup. Keep generic preparation failures separate from directly observed component errors and record rollback/readback scope. The 40ece predecessor repair adds one complete prior-state tuple; it changes no image, runtime, resource floor or release gate.

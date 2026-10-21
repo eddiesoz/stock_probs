@@ -306,6 +306,28 @@ KNOWN_INSTALLED_959_INSTALL_MANIFEST = {
     "helper_source_contract": HELPER_SOURCE_CONTRACT,
     "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
 }
+# Root-owned readback and all four public Git files bind this prior PR11 installation.
+# The immutable original helper backup remains separately required below.
+KNOWN_INSTALLED_40ECE_PRODUCTION_HELPER_SHA256 = (
+    "7510e96b0bf99693ce7ef2559dad91e3efa44d28f157a4511e842d0debbb80ef"
+)
+KNOWN_INSTALLED_40ECE_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": "40ece76d70f267c9fa1058a152a86216b3e50dfb",
+    "reviewed_pair_manifest_sha256": (
+        "499da7990d8e7b47b9868c53dcc3e8cb8aa9725c8f00ba8b25de4449b6b59abc"
+    ),
+    "files": {
+        "host_helper.py": "df2bc7cfab51de427909b0ef9017d636b1cd22903a97521ffdec8eef8c8dd7eb",
+        "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+        "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+        "production-deploy-helper.py": KNOWN_INSTALLED_40ECE_PRODUCTION_HELPER_SHA256,
+    },
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -769,6 +791,11 @@ def _prepare_previous_production_helper(
                 _require_installed_manifest(candidate_manifest_fields)
             except InstallError:
                 _require_installed_manifest(KNOWN_INSTALLED_959_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_40ECE_PRODUCTION_HELPER_SHA256:
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                _require_installed_manifest(KNOWN_INSTALLED_40ECE_INSTALL_MANIFEST)
         elif current_digest == candidate_digest:
             _require_installed_manifest(candidate_manifest_fields)
         elif current_digest != PREVIOUS_PRODUCTION_HELPER_SHA256:

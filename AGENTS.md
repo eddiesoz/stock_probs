@@ -2721,3 +2721,6 @@ This narrow admission does not waive aggregate, native, resource, recovery, roll
 
 
 For rebuilt archive binaries with a changed size, retain existing exact scanner variants and admit a new variant only by exact member path, size, full digest and complete public match spans. Verify each match hash against a checksum-verified official public artifact; unexpected or missing spans and changed binary digests must fail closed. Keep rejected scans and failed diagnostic attempts visible. Update the scanner consumer pin and discriminate lineage rejection fixtures with otherwise valid current callback patches. These scoped checks do not establish actual-host or release acceptance.
+
+
+Before admitting another installed helper predecessor, verify the exact root-owned receipt, every installed file digest/mode, its public Git source bytes and ancestry, and the immutable original backup. Register only that complete prior-state tuple; retain strict unknown-drift rejection, transaction locks and rollback. A generic failed preparation and a later component diagnostic remain separate results; no native/resource acceptance follows from source transfer or bootstrap tests.

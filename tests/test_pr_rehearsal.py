@@ -10253,3 +10253,165 @@ def test_memory_reserve_diagnostic_preserves_exact_phase_and_floor(phase, floor)
 )
 def test_memory_reserve_diagnostic_rejects_untyped_or_unknown_facts(failure):
     assert controller._safe_memory_reserve_failure(failure) is None
+
+
+def _known_40ece_install_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[bytes, bytes, Path, dict[str, object], dict[Path, bytes]]:
+    original, _helper, manifest_path, _fields, sidecars = _known_677_install_fixture(
+        monkeypatch, tmp_path
+    )
+    helper = b"exact 40ece installed helper fixture bytes"
+    bootstrap.PRODUCTION_HELPER.write_bytes(helper)
+    bootstrap.PRODUCTION_HELPER.chmod(0o750)
+    files = {path.name: hashlib.sha256(data).hexdigest() for path, data in sidecars.items()}
+    digest = hashlib.sha256(helper).hexdigest()
+    files["production-deploy-helper.py"] = digest
+    fields = {
+        "format_version": 1,
+        "repository": "eddiesoz/stock_probs",
+        "pull_number": 11,
+        "reviewed_head_sha": "40ece76d70f267c9fa1058a152a86216b3e50dfb",
+        "reviewed_pair_manifest_sha256": (
+            "499da7990d8e7b47b9868c53dcc3e8cb8aa9725c8f00ba8b25de4449b6b59abc"
+        ),
+        "files": files,
+        "helper_source_contract": "schema13_same_schema_hotfix_v1",
+        "previous_production_helper_sha256": hashlib.sha256(original).hexdigest(),
+    }
+    manifest_path.write_bytes(_installed_manifest_bytes(fields))
+    manifest_path.chmod(0o640)
+    monkeypatch.setattr(
+        bootstrap, "KNOWN_INSTALLED_40ECE_PRODUCTION_HELPER_SHA256", digest, raising=False
+    )
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_40ECE_INSTALL_MANIFEST", fields, raising=False)
+    return original, helper, manifest_path, fields, sidecars
+
+
+def test_bootstrap_accepts_exact_40ece_predecessor_without_mutating_it(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    original, helper, manifest_path, fields, sidecars = _known_40ece_install_fixture(
+        monkeypatch, tmp_path
+    )
+    old_manifest = manifest_path.read_bytes()
+    assert bootstrap._prepare_previous_production_helper(
+        b"reviewed successor helper bytes",
+        candidate_manifest_fields={**fields, "reviewed_head_sha": "a" * 40},
+    ) == (helper, bootstrap.PREVIOUS_PRODUCTION_HELPER_SHA256)
+    assert manifest_path.read_bytes() == old_manifest
+    assert bootstrap.PRODUCTION_HELPER.read_bytes() == helper
+    assert bootstrap.PREVIOUS_PRODUCTION_HELPER.read_bytes() == original
+    assert {path: path.read_bytes() for path in sidecars} == sidecars
+
+
+def test_bootstrap_40ece_pin_matches_the_verified_root_receipt() -> None:
+    assert bootstrap.KNOWN_INSTALLED_40ECE_PRODUCTION_HELPER_SHA256 == (
+        "7510e96b0bf99693ce7ef2559dad91e3efa44d28f157a4511e842d0debbb80ef"
+    )
+    assert bootstrap.KNOWN_INSTALLED_40ECE_INSTALL_MANIFEST == {
+        "format_version": 1,
+        "repository": "eddiesoz/stock_probs",
+        "pull_number": 11,
+        "reviewed_head_sha": "40ece76d70f267c9fa1058a152a86216b3e50dfb",
+        "reviewed_pair_manifest_sha256": (
+            "499da7990d8e7b47b9868c53dcc3e8cb8aa9725c8f00ba8b25de4449b6b59abc"
+        ),
+        "files": {
+            "host_helper.py": "df2bc7cfab51de427909b0ef9017d636b1cd22903a97521ffdec8eef8c8dd7eb",
+            "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+            "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+            "production-deploy-helper.py": (
+                "7510e96b0bf99693ce7ef2559dad91e3efa44d28f157a4511e842d0debbb80ef"
+            ),
+        },
+        "helper_source_contract": "schema13_same_schema_hotfix_v1",
+        "previous_production_helper_sha256": (
+            "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["head", "pair", "files", "contract", "extra", "helper", "sidecar", "backup", "mode"],
+)
+def test_bootstrap_rejects_drift_around_exact_40ece_predecessor(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    _original, _helper, manifest_path, fields, sidecars = _known_40ece_install_fixture(
+        monkeypatch, tmp_path
+    )
+    malformed = {**fields, "files": dict(fields["files"])}
+    error = "production_helper_manifest_mismatch"
+    if mutation == "head":
+        malformed["reviewed_head_sha"] = "f" * 40
+    elif mutation == "pair":
+        malformed["reviewed_pair_manifest_sha256"] = "f" * 64
+    elif mutation == "files":
+        malformed["files"]["host_helper.py"] = "0" * 64
+    elif mutation == "contract":
+        malformed["helper_source_contract"] = "unreviewed"
+    elif mutation == "extra":
+        malformed["unreviewed"] = True
+    elif mutation == "helper":
+        bootstrap.PRODUCTION_HELPER.write_bytes(b"unreviewed current helper")
+        error = "production_helper_drift"
+    elif mutation == "sidecar":
+        next(iter(sidecars)).write_bytes(b"unreviewed sidecar")
+    elif mutation == "backup":
+        bootstrap.PREVIOUS_PRODUCTION_HELPER.write_bytes(b"unreviewed original backup")
+        error = "production_helper_backup_mismatch"
+    else:
+        bootstrap.PRODUCTION_HELPER.chmod(0o640)
+        error = "production_helper_file_unsafe"
+    manifest_path.write_bytes(_installed_manifest_bytes(malformed))
+    manifest_path.chmod(0o640)
+    paths = [
+        bootstrap.PRODUCTION_HELPER,
+        bootstrap.PREVIOUS_PRODUCTION_HELPER,
+        manifest_path,
+        *sidecars,
+    ]
+    before = {path: (path.read_bytes(), stat.S_IMODE(path.stat().st_mode)) for path in paths}
+    with pytest.raises(bootstrap.InstallError, match=error):
+        bootstrap._prepare_previous_production_helper(
+            b"reviewed successor helper",
+            candidate_manifest_fields={**fields, "reviewed_head_sha": "a" * 40},
+        )
+    assert {
+        path: (path.read_bytes(), stat.S_IMODE(path.stat().st_mode)) for path in paths
+    } == before
+
+
+def test_bootstrap_accepts_completed_40ece_candidate_retry_only_with_exact_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _original, helper, manifest_path, fields, _sidecars = _known_40ece_install_fixture(
+        monkeypatch, tmp_path
+    )
+    candidate_fields = {
+        **fields,
+        "reviewed_head_sha": "a" * 40,
+        "reviewed_pair_manifest_sha256": "b" * 64,
+    }
+    manifest_path.write_bytes(_installed_manifest_bytes(candidate_fields))
+    assert (
+        bootstrap._prepare_previous_production_helper(
+            helper, candidate_manifest_fields=candidate_fields
+        )[0]
+        == helper
+    )
+    with pytest.raises(bootstrap.InstallError, match="production_helper_manifest_mismatch"):
+        bootstrap._prepare_previous_production_helper(
+            helper,
+            candidate_manifest_fields={
+                **candidate_fields,
+                "reviewed_pair_manifest_sha256": "c" * 64,
+            },
+        )
