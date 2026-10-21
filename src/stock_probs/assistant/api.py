@@ -2425,11 +2425,39 @@ def create_assistant_router(
             after_value = parsed_header_cursor
         else:
             after_value = after or 0
-        assistant.storage.get_turn(initial.user.id, conversation_id, turn_id)
-        latest = assistant.storage.latest_event_sequence(initial.user.id, conversation_id, turn_id)
+        await run_in_threadpool(
+            assistant.storage.get_turn, initial.user.id, conversation_id, turn_id
+        )
+        latest = await run_in_threadpool(
+            assistant.storage.latest_event_sequence, initial.user.id, conversation_id, turn_id
+        )
         if after_value > latest + 1:
             raise AssistantUnavailable("event_cursor_ahead", 409)
         cookie = request.cookies.get(SESSION_COOKIE_NAME)
+
+        def authorize_stream_event() -> tuple[AuthContext, dict[str, object]]:
+            """Check current authorization after all potentially waiting event projection."""
+
+            current = auth_manager.authenticate(cookie, datetime.now(UTC))
+            assistant.require_access(current)
+            current_turn = assistant.storage.get_turn(current.user.id, conversation_id, turn_id)
+            if current_turn.get("status") in {"queued", "running"}:
+                lease_ref = assistant.storage.execution_for_turn(
+                    current.user.id, conversation_id, turn_id
+                )
+                lease = (
+                    assistant.storage.execution_lease(str(lease_ref["execution_id"]))
+                    if lease_ref
+                    else None
+                )
+                if lease is None or not assistant._execution_current(
+                    current.user.id,
+                    str(lease["execution_id"]),
+                    str(current_turn["model_id"]),
+                    str(current_turn["policy_version"]),
+                ):
+                    raise AssistantUnavailable("session_revoked", 403)
+            return current, current_turn
 
         async def events():
             cursor = after_value
@@ -2437,64 +2465,28 @@ def create_assistant_router(
                 if await request.is_disconnected():
                     return
                 try:
-                    current = auth_manager.authenticate(cookie, datetime.now(UTC))
-                    assistant.require_access(current)
-                    current_turn = assistant.storage.get_turn(
-                        current.user.id, conversation_id, turn_id
-                    )
-                    if current_turn.get("status") in {"queued", "running"}:
-                        lease_ref = assistant.storage.execution_for_turn(
-                            current.user.id, conversation_id, turn_id
-                        )
-                        lease = (
-                            assistant.storage.execution_lease(str(lease_ref["execution_id"]))
-                            if lease_ref
-                            else None
-                        )
-                        if lease is None or not assistant._execution_current(
-                            current.user.id,
-                            str(lease["execution_id"]),
-                            str(current_turn["model_id"]),
-                            str(current_turn["policy_version"]),
-                        ):
-                            return
-                    batch = assistant.storage.events_after(
-                        current.user.id, conversation_id, turn_id, after=cursor, limit=100
+                    current, current_turn = await run_in_threadpool(authorize_stream_event)
+                    batch = await run_in_threadpool(
+                        assistant.storage.events_after,
+                        current.user.id,
+                        conversation_id,
+                        turn_id,
+                        after=cursor,
+                        limit=100,
                     )
                 except Exception:
                     return
                 if batch:
                     for event in batch:
-                        # Revalidate on every emitted chunk; a long stream cannot rely on its
-                        # initial role, current session, TOTP factor, or model-consent snapshot.
+                        projected = await run_in_threadpool(
+                            assistant.project_event_for_browser, current, event
+                        )
+                        # Projection can wait on storage; check again before releasing bytes.
                         try:
-                            current = auth_manager.authenticate(cookie, datetime.now(UTC))
-                            assistant.require_access(current)
-                            current_turn = assistant.storage.get_turn(
-                                current.user.id, conversation_id, turn_id
-                            )
-                            if current_turn.get("status") in {"queued", "running"}:
-                                lease_ref = assistant.storage.execution_for_turn(
-                                    current.user.id, conversation_id, turn_id
-                                )
-                                lease = (
-                                    assistant.storage.execution_lease(
-                                        str(lease_ref["execution_id"])
-                                    )
-                                    if lease_ref
-                                    else None
-                                )
-                                if lease is None or not assistant._execution_current(
-                                    current.user.id,
-                                    str(lease["execution_id"]),
-                                    str(current_turn["model_id"]),
-                                    str(current_turn["policy_version"]),
-                                ):
-                                    return
+                            await run_in_threadpool(authorize_stream_event)
                         except Exception:
                             return
                         cursor = int(event["sequence"])
-                        projected = assistant.project_event_for_browser(current, event)
                         data = json.dumps(
                             projected["data"], ensure_ascii=False, separators=(",", ":")
                         )
@@ -2503,20 +2495,26 @@ def create_assistant_router(
                             return
                     continue
                 if current_turn.get("status") not in {"queued", "running"}:
-                    terminal_cursor = assistant.storage.latest_event_sequence(
-                        current.user.id, conversation_id, turn_id
+                    terminal_cursor = await run_in_threadpool(
+                        assistant.storage.latest_event_sequence,
+                        current.user.id,
+                        conversation_id,
+                        turn_id,
                     )
-                    has_complete = any(
-                        item["type"] == "complete"
-                        for item in assistant.storage.events_after(
-                            current.user.id,
-                            conversation_id,
-                            turn_id,
-                            after=max(0, terminal_cursor - 2),
-                            limit=4,
-                        )
+                    terminal_events = await run_in_threadpool(
+                        assistant.storage.events_after,
+                        current.user.id,
+                        conversation_id,
+                        turn_id,
+                        after=max(0, terminal_cursor - 2),
+                        limit=4,
                     )
+                    has_complete = any(item["type"] == "complete" for item in terminal_events)
                     if not has_complete and cursor <= terminal_cursor:
+                        try:
+                            await run_in_threadpool(authorize_stream_event)
+                        except Exception:
+                            return
                         status = str(current_turn.get("status", "failed"))
                         completion = json.dumps({"status": status})
                         yield (

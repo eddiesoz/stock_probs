@@ -980,6 +980,93 @@ def test_two_users_cannot_read_each_others_assistant_events_or_history(settings:
         assert owner_stream.status_code == 404
 
 
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_public_event_storage_wait_preserves_application_health(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, health_path: str
+) -> None:
+    """An SSE storage wait must not monopolize the application's event loop."""
+
+    app = _make_app(settings, _ScriptedRuntime())
+    entered = threading.Event()
+    release = threading.Event()
+    returned = threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80070)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        storage = app.state.assistant.storage
+        original = storage.events_after
+
+        def delayed_events_after(*args: object, **kwargs: object) -> list[dict[str, object]]:
+            entered.set()
+            release.wait(timeout=1.5)
+            returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(storage, "events_after", delayed_events_after)
+        event_path = (
+            f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/events"
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            stream = executor.submit(browser.get, event_path)
+            try:
+                assert entered.wait(timeout=3), "SSE request did not reach storage"
+                health = browser.get(health_path)
+                assert health.status_code == 200
+                assert health.json()["status"] == (
+                    "ready" if health_path.endswith("readiness") else "ok"
+                )
+                assert not returned.is_set(), "health waited for SSE storage to return"
+            finally:
+                release.set()
+                response = stream.result(timeout=5)
+            assert response.status_code == 200
+            assert "event: complete" in response.text
+
+
+def test_public_event_projection_wait_rechecks_revoked_session(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A session revoked during browser projection cannot receive the pending token."""
+
+    marker = "must-not-reach-revoked-projection:"
+    runtime = _ScriptedRuntime([{"type": "token", "data": {"text": marker + "x" * 400}}])
+    app = _make_app(settings, runtime)
+    entered = threading.Event()
+    release = threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80071)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assistant = app.state.assistant
+        original = assistant.project_event_for_browser
+
+        def delayed_projection(current: object, event: Mapping[str, object]) -> dict[str, object]:
+            if event.get("type") == "token":
+                entered.set()
+                release.wait(timeout=3)
+            return original(current, event)
+
+        monkeypatch.setattr(assistant, "project_event_for_browser", delayed_projection)
+        event_path = (
+            f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/events"
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            stream = executor.submit(browser.get, event_path)
+            try:
+                assert entered.wait(timeout=3), "SSE request did not reach token projection"
+                app.state.repository.auth_revoke_session(
+                    str(identity["token_hash"]), _NOW.isoformat()
+                )
+            finally:
+                release.set()
+                response = stream.result(timeout=5)
+            assert response.status_code == 200
+            assert marker not in response.text
+
+
 def test_public_event_stream_stops_after_live_session_revocation(settings: Settings) -> None:
     """A live SSE response stops before yielding further events after session revocation."""
 

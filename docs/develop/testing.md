@@ -923,3 +923,14 @@ The exact five-object cleanup and parent terminal binding review passed. See the
 [native-result ledger](../../MVP-PLAN.md#r-astra-121-f6-low-effort-candidate-native-result-2026-10-21)
 for bounds, original failures and remaining release gates. Both answers do not establish aggregate
 reliability, authenticated browser acceptance or actual combined 1 GB host acceptance.
+
+
+F6 event-stream responsiveness checks hold the real public SSE route's storage read and require
+both liveness and readiness to answer before that read returns. Both cases failed before moving
+stream reads to the existing Starlette worker pool. A second regression revokes the session while
+browser-event projection waits and requires the pending token to be withheld. The first offload
+candidate failed that regression; final per-event authorization now runs after projection, with
+fresh session, access, turn and execution checks before bytes are emitted. Existing live-stream
+revocation, owner isolation, cursor/replay and UTF-8/output-bound checks remain part of the affected
+scope. These deterministic checks do not establish the earlier native health transport failures'
+cause or replace the required newly bound native image test.

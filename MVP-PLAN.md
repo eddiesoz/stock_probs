@@ -8887,3 +8887,62 @@ accessibility/browser, canonical, actual-host 1 GB, recovery/rollback, final gui
 remain open. The overall goal stays active; free Zen restoration precedes all seven feature
 releases. Production, the 1 GB host, backups and US$15 total monthly cap remain unchanged; no merge,
 deployment, rollout, resize or email occurred.
+
+
+### R-ASTRA-121 F6 public event-stream responsiveness repair (2026-10-21)
+
+Following the retained `004c163` native aggregate **Fail**, a deterministic public SSE reproduction
+held `events_after` at its storage boundary. Both `/api/v1/health` and `/api/v1/readiness` waited for
+that synchronous read to return on the shared event loop: two expected regression failures, exit 1,
+with source/test bytes unchanged. This demonstrates event-loop blocking in this path, not SQLite
+contention or the specific cause of the native trial's two transport failures. Their cause remains
+**Unproven**. No unchanged provider retry or health/deadline relaxation follows.
+
+The route now moves its blocking initial cursor/turn reads, polling authorization, event reads,
+browser projection and terminal-recovery reads to the existing Starlette worker pool. A local sync
+callback performs fresh session, rollout/access, turn and active-execution checks after projection
+and immediately before each emitted event. The same guard runs before a synthesized completion.
+Cursors, owner isolation, 100-event batches, 0.25-second poll interval, no-store response, original
+120-second turns and provider/token/resource limits are unchanged. No dependency, observer, native
+launcher, runtime or model-policy change is included. This does not claim worker-pool saturation,
+forced-shutdown cancellation or complete asynchronous storage repair.
+
+The first offload candidate passed the two responsiveness cases and existing live revocation case,
+but a new projection-wait regression **Failed**: revocation during the added projection await still
+released the pending token. Moving final authorization after projection repaired that race. The
+existing release-contract test initially failed because it expected the first projected event to
+be released after revocation; its expectation was strengthened to require zero events, preserving
+the rejection of all later events. The original failure remains recorded. The auth-clock test seam
+adds only the new callback name so synthetic HTTP records retain their existing injected clock.
+
+On native x86_64, the final source passed all **30 event-flow tests**, including the new health and
+projection races, owner isolation, malformed/secret output, UTF-8 limits and live revocation. Three
+selected API tests passed for expired-session rejection, UTF-8 output and confirmation-phrase
+expiry/replay. The separate three-case replay/cursor/ownership selection passed after strengthening
+the stale expectation. These are separate affected selections, not a canonical aggregate. The
+30+3 selections ran at `2026-10-21T16:01:15.160221Z`–`16:03:55.707466Z`, with 153 input pins unchanged;
+the final three replay cases ran at `16:05:14.734483Z`–`16:05:26.797786Z`, with 155 pins unchanged.
+All final runs exited 0 with zero failures, errors or skips under normal child umask `022`.
+Ruff, format, scoped security rules allowing assertions, diff checks and the maintained comment
+audit passed. Independent source/test verification passed the same 30+3+3 selections, with all
+155 pins unchanged and zero findings in its declared source-review scope. Its receipt SHA-256 is
+`928591c8ddfbaea2ce2b5e6c46fc2d045d4e5639860197e062b136aa32121d68`, under
+`/var/tmp/r12r/f6-event-stream-independent-qa-0e1da10c-c2ae-4c63-8842-09f11ff4dabc/`.
+The review's initial pin-summary parser failed on a mapping/list assumption before hashing;
+the original diagnostic is preserved and the corrected mapping comparison passed. Parent personally
+reviewed the integrated diff and verified the independent JUnit, log and input-snapshot hashes/counts;
+no scoped blocker was found. Parent review SHA-256: `2b70a65c07b9331ccd4b1532c0a753ecb0888e5bbf99ce94952c57e250fc5eaa`.
+
+Exact source/test and documentation baselines, JUnit, command/exit records and original failed
+results are under `/var/tmp/r12r/f6-event-stream-responsiveness-bf417a59979a44128ebe8de0aa4f96c1/`.
+The 30+3 terminal SHA-256 is
+`f385bd90b5e484fe7274cacbd9e2b281dfc336fabb71b9c088648d06788f01b6`;
+final replay terminal SHA-256 is
+`f9441ecbd26325aee08c33196f546839ccdede6c661b09a4454fd2409f5afc63`.
+No rebuilt image or native result exists for this repair. Unchanged frontend evidence is retained
+only for its original bindings; the failed full browser aggregate remains preserved. Required
+native reliability/shutdown, authenticated UI, security/accessibility/browser, canonical, actual-host
+1 GB, recovery/rollback, final guide and release gates remain open. Free Zen restoration remains
+first, then all seven approved features in the four-release plan; the overall goal remains active.
+Production, the existing 1 GB host, backups and US$15 monthly cap remain unchanged; no merge,
+deployment, rollout, resize or email occurred.

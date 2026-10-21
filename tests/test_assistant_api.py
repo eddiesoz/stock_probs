@@ -91,6 +91,7 @@ class _AssistantHTTPDatetime(datetime):
             "live_assistant_session",
             "live_oauth_admin",
             "events",
+            "authorize_stream_event",
         }:
             if tz is None:
                 return NOW.replace(tzinfo=None)
