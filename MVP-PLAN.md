@@ -9284,3 +9284,65 @@ genuine authenticated UI, actual combined 1 GB, PR-bound recovery/rollback, guid
 remain open. No candidate promotion, merge, resize or email occurred. The original production image
 and invited rollout are restored; the existing 1 GB host, backups and US$15 monthly total cap remain.
 Free Zen restoration still precedes the seven features, and the overall goal remains active.
+
+
+### R-ASTRA-121 F6 completion barrier and bounded browser failure evidence (2026-10-21)
+
+The clean `9e0680b` canonical attempt **Failed** at exit 2, `21:58:20Z`–`22:24:03Z`:
+1,439 Python passes, one failure, four deselected and 15 warnings. One deliberate SIGINT stopped
+the known-failing run. Python completion, final coverage and the canonical completion contract
+are unavailable; documentation and 75 frontend checks are subchecks only. The revoked completion-
+transition case failed its three-second completion assertion before revocation ran; cleanup's
+five-second future timeout then hid that assertion. No revocation leak or product cause follows.
+Canonical receipt SHA-256 `97e21bdeebfff00c949dbe57042e28e86a8802f0710db3bdb0860b8570ef7d79`;
+JUnit SHA-256 `c1250209e6657bef43450e843f345dd171a3478c13849352253dc6ea691ff87a`.
+All 417 source/test pins, 150 image inputs and 53 served/export pairs stayed unchanged.
+
+The unchanged revoked case and all three completion states subsequently passed covered diagnostics.
+Existing syscall tracing observed fsync latency, but scheduling/tracing overhead and the missing
+original-run trace prevent a storage-cause claim. Independent source review identified equal,
+independent three-second release/completion timers as a fixture synchronization weakness. The test
+now holds the worker until its parent's protected finally explicitly releases it; entry/completion
+assertions remain three seconds and future cleanup remains five seconds. It preserves the primary
+failure and records only a secondary cleanup exception's type. All 11 original assertions and the
+module outside the owned function remain unchanged. The first independent review **Failed** because
+only TimeoutError was preserved; the repair catches ordinary Exception. Final independent source,
+three covered cases, Ruff/security/format/diff and 147 unchanged pins **Passed**, `22:44:51Z`–
+`22:45:09Z` for pytest. Final receipt SHA-256
+`84da9ccad9c457a681b16fbbc5ba04172a655e76e0462a6729bb8770567bf865`;
+parent integrated review SHA-256 `d16732c19b145ff9b40e2804a70b9adf689815db29ab5acbe4664ea3853960b8`.
+This fixture repair does not prove the original aggregate's cause or replace a fresh canonical gate.
+
+A separate original-order 22-case browser diagnostic with existing syscall tracing **Failed**:
+19 passed, three failed. Failures were an unexpected synthetic stream abort, real-fixture status
+HTTP 500, and disabled model selection. The HTTP 500 resource contained only generic internal_error;
+its exception was unavailable because fixture stderr was not persisted. The trace observed slow
+fsync calls but does not establish their ownership or the original failure's cause.
+Packet: `/var/tmp/r12r/f6-browser-prefix22-io-f894e518beba4284a2a0b2c6f3586a4f/`.
+
+The existing synthetic-app fixture now attaches its already bounded stderr tail on an unexpected
+Playwright outcome. A nested finally always stops the owned app, including attachment failure.
+Node syntax, nine existing lifecycle cases and independent source/static review **Passed**; the
+lifecycle tests do not directly simulate attachment failure. Independent receipt SHA-256
+`3946a63dc394bd208fb0a114426a71145dae295efa6a9d33487b3450cfe97c12`.
+No application source or deadline changed. The next same-order, untraced diagnostic **Failed** at
+20 passed/two failed, zero skips/retries/flaky, `22:45:49Z` with 185.117 seconds reported duration.
+The HTTP 500 did not recur. Receipt-flow completion exhausted the 30-second case budget after MCP
+HTTP 200 and the six-second synthetic delay-start marker, without a runtime-completed marker.
+The first WebFetch submission exhausted its five-second response wait; existing network metadata
+shows serial context/conversation/list/detail/turn requests and an eventual HTTP 202. No precise
+latency cause or product repair is established. Preserve the failed result rather than increasing
+its deadlines. Parent terminal SHA-256
+`3c74ed0a62df7040c71f7f18990be86d8edb79a23b48683c8bc66516f329e5a8`;
+supplemental first-submission correction/network metadata SHA-256
+`fe706c8aba0ed4471d9cd60ef5b91f15cb743dcab2f365f5a831b6c554c7ee7a`.
+All 417 source/test pins, 150 image inputs and 53 served/export pairs remained unchanged through
+terminal review; the service/cgroup, two known fixture PIDs and three known ports were absent.
+
+These changes are test/fixture-only; existing e40 image, genuine free-Zen native and shutdown
+receipts retain their original scope. Complete canonical/browser/security/accessibility,
+authenticated genuine UI, actual combined 1 GB, PR-bound recovery/rollback, final guide and release
+gates remain open. PRs #9/#11 remain draft; the helper manifest still binds the earlier PR #9 head.
+The original 5ad production image and invited rollout remain restored. No candidate promotion,
+merge, resize or email occurred. The 1 GB host, backups, US$15 monthly total cap and active overall
+goal remain unchanged; free Zen restoration precedes the seven-feature plan.

@@ -972,3 +972,18 @@ A passing subset does not repair a failed aggregate or prove a latency cause. Ke
 admission separate from later reserve readings, and verify restoration of the original image and
 rollout mode independently of a failed pair trial. See the
 [F6 host/fixture checkpoint](../../MVP-PLAN.md#r-astra-121-f6-host-reserve-failure-and-held-await-fixture-setup-2026-10-21).
+
+
+For the completion-transition SSE regression, keep the worker held until the parent's protected
+finally explicitly releases it. Equal independent release/completion timers can end the intended
+interleaving early. Retain the original entry, completion and future-result deadlines. Cleanup must
+preserve a primary assertion when an ordinary secondary future exception occurs, recording only its
+exception type; without a primary failure, propagate cleanup errors. Preserve the original failed
+aggregate and earlier review finding beside the final selected pass.
+
+On unexpected assistant browser-fixture outcomes, attach the existing bounded synthetic stderr tail
+and stop the app in a nested finally even if attachment fails. Keep those artifacts private. A
+failure-only attachment does not establish a cause, and a later diagnostic pass cannot replace a
+failed aggregate. Do not infer disk causation from traced syscall duration or extend browser bounds
+to conceal unresolved latency. See the
+[F6 completion/browser evidence checkpoint](../../MVP-PLAN.md#r-astra-121-f6-completion-barrier-and-bounded-browser-failure-evidence-2026-10-21).

@@ -300,7 +300,16 @@ exports.test = base.test.extend({
     try {
       await use({ url: application.url, logs: application.logs });
     } finally {
-      await application.stop();
+      try {
+        if (testInfo.status !== testInfo.expectedStatus) {
+          await testInfo.attach("assistant-fixture-stderr", {
+            body: Buffer.from(application.logs(), "utf8"),
+            contentType: "text/plain",
+          });
+        }
+      } finally {
+        await application.stop();
+      }
     }
   },
   unexpectedFailureApplication: async ({}, use, testInfo) => {
