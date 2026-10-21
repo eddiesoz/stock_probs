@@ -8654,3 +8654,64 @@ shutdown, authenticated UI, complete browser/security/accessibility, canonical, 
 recovery/rollback, final-guide and release gates remain open. The overall goal stays active and
 Zen restoration still precedes all seven feature releases. Production, the 1 GB host, backups
 and US$15 total monthly cap are unchanged; no merge, deploy, rollout, resize or email occurred.
+
+
+### R-ASTRA-121 F6 native reasoning-continuation repair (2026-10-21)
+
+Source-only diagnosis after the `61ea48a` native timeouts found a concrete compatible-chat
+contract gap. MiniMax documents that M3.1 Flash tool continuations must preserve assistant
+`reasoning_content`. The app sanitizer discarded that field, and both internal history validators
+rejected its replay. The pinned V2 native adapter supports the round trip: its compatible route
+uses `packages/ai/src/protocols/openai-chat.ts`, which reads reasoning deltas and replays the
+observed reasoning field, while core message conversion retains private reasoning parts. These
+are source observations, not proof that this caused the retained native timeout.
+
+The primary sources are the [MiniMax continuation contract](https://platform.minimax.io/docs/api-reference/text-openai-api)
+and [pinned V2 protocol source](https://github.com/anomalyco/opencode/blob/ca27d3328fcd0d470588149c902a963452f1abaf/packages/ai/src/protocols/openai-chat.ts).
+Public source files were fetched at the manifest-pinned commit and checked against their Git blob
+hashes. An earlier inspection of `@ai-sdk/openai-compatible` 2.0.41 was supporting source only;
+it is not the active V2 adapter. The corrected proof explicitly identifies
+`@opencode/ai/providers/openai-compatible`; no dependency was installed or changed.
+
+The implementation preserves bounded `reasoning_content` through SSE sanitization and internal
+assistant-history validation, including native tool continuations. It shares the original 65,536-byte
+history budget and 16,384-byte per-delta limit. Malformed, NUL, surrogate, oversized and
+non-assistant values fail closed. The existing secret-stream guard now tracks this field on an
+independent choice/channel, including word-adjacent credential fragments across events. Unknown
+provider metadata remains excluded. Private reasoning is still omitted from app token events and
+timeout logs; an existing runtime control now explicitly verifies the event boundary. No provider,
+model, account, consent, ownership, tool, deadline, byte-budget, observer or launcher change follows.
+
+The frozen focused selection recorded **13 expected failures among 26 cases** before repair,
+then **26 passed**, zero failures/errors/skips, afterward. Some negative cases define the new
+field's safe constraints; they are not prior credential-leak findings, because the old sanitizer
+dropped the field entirely. The complete affected provider/API modules then passed **366 tests**,
+zero failures/errors/skips, exit 0, in 434.138 seconds, with the five declared source/test pins
+unchanged. Full-scope terminal receipt is
+`79a90e06ce86c7c4300104d72b9f5e0984c03f20b6981115c4869a9c38ff4ab0`.
+Ruff, formatting, scoped security rules (permitting test assertions), documentation validation and
+diff checks passed. The initial two fixture-line-length findings were repaired before final lint.
+Independent source/security review and the selected rerun passed: 26 tests, exit 0, with 153
+explicit source/import/test pins unchanged on native x86_64 and Python 3.11.15. Review traced
+fresh model-bound native sessions and visible-only stored role/text history: upstream cross-model
+reasoning replay is not reachable through this app flow. Parent integrated diff and evidence
+review found no blocker for this scoped source checkpoint. Independent receipt SHA-256 is
+`74901c7ebdb650b59912baf546e1c1eb8d6d99a0f85b2124eebb433ed9955ac3`;
+parent integrated receipt is `cd97db5c52deca77123a64170eb015aca58468b4f61f998cff63870d348c3c19`.
+This does not establish native success.
+
+Exact pre-edit baselines, public source provenance, frozen JUnit, commands and terminal records
+are under `/var/tmp/r12r/f6-native-reasoning-contract-d0790d4d0bcc4103aa6523dddba7aee3/`.
+The actual-native-adapter source proof is
+`37760e805eb9ef17ed7d6a0840915ea5c87e104ef79fddddbb5b202cbf4c3245`.
+The earlier role-only 62-byte frame calculation was synthetic: aggregate retained native byte
+counts do not prove which fields were present upstream. No raw provider content was captured.
+
+No new image or native trial has run for this source repair. The latest native result remains
+**Fail**, with cause **Unproven**. After independent and parent integrated review, a fresh source-bound
+image and one discriminating native check are required before the release aggregate. Unchanged
+frontend evidence remains bound to its original inputs; the failed full browser aggregate is retained.
+All native completion/shutdown, authenticated UI, security/accessibility/browser, canonical, actual-host
+1 GB, recovery/rollback, final-guide and release gates remain open. The overall goal stays active;
+Zen restoration precedes all seven feature releases. Production, the 1 GB host, backups and US$15
+total monthly cap remain unchanged; no merge, deployment, rollout, resize or email occurred.

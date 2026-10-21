@@ -685,7 +685,10 @@ def test_provider_proxy_accepts_bounded_native_tool_continuation_fixture():
     )
 
 
-def test_provider_proxy_accepts_only_captured_native_websearch_descriptor():
+@pytest.mark.parametrize("reasoning", [None, "Plan the synthetic search before its tool result."])
+def test_provider_proxy_accepts_only_captured_native_websearch_descriptor(
+    reasoning: str | None,
+) -> None:
     """The pinned V2 builtin schema is exact; query size stays app-bounded at call time."""
 
     app_tools = AssistantToolGateway.list_tools()
@@ -785,9 +788,11 @@ def test_provider_proxy_accepts_only_captured_native_websearch_descriptor():
         {"role": "tool", "tool_call_id": "call_search", "content": "Search results."},
         {"role": "assistant", "content": "Here is the summary."},
     ]
-    assert (
-        _validated_provider_request({**baseline, "messages": wire_messages}, app_tools) is not None
-    )
+    if reasoning is not None:
+        wire_messages[1]["reasoning_content"] = reasoning
+    continuation = _validated_provider_request({**baseline, "messages": wire_messages}, app_tools)
+    assert continuation is not None
+    assert continuation["messages"] == wire_messages
     for arguments in (
         json.dumps({"query": "x" * 1001}),
         '{"query":"first","query":"second"}',

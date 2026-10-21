@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 import pytest
 
 from stock_probs.assistant import model_catalog, providers
-from stock_probs.assistant.api import _native_websearch_declaration
+from stock_probs.assistant.api import _native_websearch_declaration, _validated_provider_request
 from stock_probs.assistant.model_catalog import (
     AssistantModelCatalog,
     ModelCatalogAuthorizationError,
@@ -209,8 +209,9 @@ def _native_compatible_declarations(
     return declarations
 
 
+@pytest.mark.parametrize("reasoning", [None, "Retain the synthetic tool-call reasoning."])
 def test_provider_proxy_preserves_valid_native_tool_continuation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reasoning: str | None
 ) -> None:
     """Forward only app-validated assistant tool calls and their matching MCP results."""
 
@@ -221,6 +222,8 @@ def test_provider_proxy_preserves_valid_native_tool_continuation(
     manager = _chat_compat_manager(settings, tmp_path / "assistant-vault")
     manager.set_credential("openai", "synthetic-provider-key")
     tools, messages = _message_fixture()
+    if reasoning is not None:
+        messages[2]["reasoning_content"] = reasoning
     captured: dict[str, object] = {}
 
     async def fake_stream(
@@ -236,6 +239,11 @@ def test_provider_proxy_preserves_valid_native_tool_continuation(
         captured["body"] = json.loads(body)
         captured["timeout_seconds"] = timeout_seconds
         captured["max_response_bytes"] = max_response_bytes
+        if reasoning is not None:
+            yield (
+                b'data: {"choices":[{"index":0,"delta":'
+                b'{"reasoning_content":"Check the returned summary."}}]}\n\n'
+            )
         yield (
             b'data: {"choices":[{"index":0,"delta":{"content":"done"},"finish_reason":"stop"}]}\n\n'
         )
@@ -260,10 +268,17 @@ def test_provider_proxy_preserves_valid_native_tool_continuation(
 
     chunks = asyncio.run(exercise())
 
-    assert chunks == [
+    expected_chunks = [
         b'data: {"choices":[{"index":0,"delta":{"content":"done"},"finish_reason":"stop"}]}\n\n',
         b"data: [DONE]\n\n",
     ]
+    if reasoning is not None:
+        expected_chunks.insert(
+            0,
+            b'data: {"choices":[{"index":0,"delta":'
+            b'{"reasoning_content":"Check the returned summary."}}]}\n\n',
+        )
+    assert chunks == expected_chunks
     assert captured["url"] == "https://api.openai.com/v1/chat/completions"
     request = captured["body"]
     assert isinstance(request, dict)
@@ -273,6 +288,118 @@ def test_provider_proxy_preserves_valid_native_tool_continuation(
     assert request["model"] == _TEST_MODEL_ID.removeprefix("openai/")
     assert request["store"] is False
     assert request["max_tokens"] == native_output_token_budget()
+
+
+def test_compatible_stream_preserves_reasoning_without_provider_metadata() -> None:
+    """Keep native continuation state while dropping unrelated provider metadata."""
+    value = {
+        "id": "discard-provider-metadata",
+        "choices": [
+            {
+                "index": 0,
+                "delta": {
+                    "role": "assistant",
+                    "reasoning_content": "Check the synthetic summary.",
+                    "provider_metadata": "discard-this-too",
+                },
+            }
+        ],
+    }
+    sanitized = providers._sanitize_openai_sse_data(json.dumps(value))
+    assert sanitized is not None
+    assert json.loads(sanitized) == {
+        "choices": [
+            {
+                "index": 0,
+                "delta": {
+                    "role": "assistant",
+                    "reasoning_content": "Check the synthetic summary.",
+                },
+            }
+        ]
+    }
+
+
+@pytest.mark.parametrize("other_choice", [0, 1])
+def test_compatible_reasoning_secret_fragments_stay_channel_bound(other_choice: int) -> None:
+    """A different visible channel must not release a hidden credential prefix."""
+    guard = providers._SecretStreamGuard(
+        "synthetic-provider-secret", protocol="openai-compatible-chat"
+    )
+
+    def frame(choice: int, field: str, text: str) -> bytes:
+        payload = {"choices": [{"index": choice, "delta": {field: text}}]}
+        return ("data: " + json.dumps(payload, separators=(",", ":")) + "\n\n").encode()
+
+    assert guard.push(frame(0, "reasoning_content", "prefixsynthetic-provider-")) == ()
+    field = "content" if other_choice == 0 else "reasoning_content"
+    assert (
+        guard.push(frame(other_choice, field, "Unrelated filler longer than the credential.")) == ()
+    )
+    with pytest.raises(ProviderUnavailable, match="provider_response_secret_rejected"):
+        guard.push(frame(0, "reasoning_content", "secretsuffix"))
+
+
+@pytest.mark.parametrize(
+    "reasoning",
+    [None, True, 1, {}, [], "bad\x00text", "\ud800"],
+    ids=["null", "boolean", "integer", "mapping", "list", "nul", "surrogate"],
+)
+def test_compatible_reasoning_history_rejects_malformed_values(reasoning: object) -> None:
+    """Reject malformed hidden history at both internal request boundaries."""
+    messages = [{"role": "assistant", "content": "Answer.", "reasoning_content": reasoning}]
+    with pytest.raises(ProviderUnavailable, match="provider_request_invalid"):
+        providers._validated_messages(messages, set())
+    assert (
+        _validated_provider_request(
+            {"model": "assistant-selected", "stream": True, "messages": messages}, []
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("role", ["system", "user"])
+def test_compatible_reasoning_history_is_assistant_only(role: str) -> None:
+    """System and user messages cannot supply an assistant's reasoning state."""
+    messages = [{"role": role, "content": "Input.", "reasoning_content": "Hidden input."}]
+    with pytest.raises(ProviderUnavailable, match="provider_request_invalid"):
+        providers._validated_messages(messages, set())
+    assert (
+        _validated_provider_request(
+            {"model": "assistant-selected", "stream": True, "messages": messages}, []
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("reasoning_bytes", [65_535, 65_536])
+def test_compatible_reasoning_shares_existing_history_byte_budget(reasoning_bytes: int) -> None:
+    """Reasoning consumes the original shared UTF-8 history budget."""
+    messages = [{"role": "assistant", "content": "a", "reasoning_content": "x" * reasoning_bytes}]
+    body = {"model": "assistant-selected", "stream": True, "messages": messages}
+    if reasoning_bytes == 65_535:
+        assert providers._validated_messages(messages, set()) == messages
+        normalized = _validated_provider_request(body, [])
+        assert normalized is not None
+        assert normalized["messages"] == messages
+    else:
+        with pytest.raises(ProviderUnavailable, match="provider_request_invalid"):
+            providers._validated_messages(messages, set())
+        assert _validated_provider_request(body, []) is None
+
+
+@pytest.mark.parametrize(
+    "reasoning",
+    [True, 1, {}, [], "bad\x00text", "\ud800", "x" * 16_385],
+    ids=["boolean", "integer", "mapping", "list", "nul", "surrogate", "oversized"],
+)
+def test_compatible_reasoning_delta_rejects_malformed_or_oversized_values(
+    reasoning: object,
+) -> None:
+    """Keep the existing per-delta size and safe-text boundaries for hidden output."""
+    payload = {"choices": [{"index": 0, "delta": {"reasoning_content": reasoning}}]}
+    with pytest.raises(ProviderUnavailable, match="provider_response_invalid"):
+        providers._sanitize_openai_sse_data(json.dumps(payload))
 
 
 def test_openai_compatible_proxy_rejects_unbounded_output_counts(tmp_path: Path) -> None:

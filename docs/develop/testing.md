@@ -32,6 +32,16 @@ legacy `/zen/v1` route and `/inference/openai/v1` must preserve known-model excl
 paths on the same host fail closed, while similarly named unrelated hosts are not globally banned.
 Keep session revalidation and stream cancellation covered without a live provider request.
 
+Compatible-chat streams must preserve bounded `reasoning_content` inside the native session so
+the adapter can replay it in assistant tool continuations. It shares the existing history byte
+budget and per-delta limit; malformed values and non-assistant history fields fail closed. Cover
+fragmented credential rejection on its independent choice/channel, and verify that reasoning
+never enters app token events or timeout logs. The pinned V2 adapter supports this field; see
+the [MiniMax continuation contract](https://platform.minimax.io/docs/api-reference/text-openai-api).
+Preserve the fresh model-bound native session per execution and visible-only app history projection;
+private native reasoning must not be replayed into a later app turn after model selection changes.
+A protocol regression pass does not establish the cause of a live timeout or a completed answer.
+
 For an isolated worktree, set `PYTHONPATH` to its absolute `src` directory and set
 `STOCK_PROBS_BROWSER_RUNTIME` to a task-owned disposable directory. A shared editable environment
 can otherwise import another checkout. Bind actual served asset bytes as well as local staged

@@ -1483,18 +1483,31 @@ def _validated_provider_request(
             )
             continue
 
+        reasoning_fields: set[str] = set()
+        if "reasoning_content" in message:
+            reasoning = message["reasoning_content"]
+            if role != "assistant" or not isinstance(reasoning, str) or "\x00" in reasoning:
+                return None
+            reasoning_length = _utf8_length(reasoning)
+            if reasoning_length is None:
+                return None
+            text_bytes += reasoning_length
+            if text_bytes > _PROXY_MAX_MESSAGE_BYTES:
+                return None
+            reasoning_fields.add("reasoning_content")
+
         has_calls = "tool_calls" in message
         if has_calls:
             calls = message.get("tool_calls")
             if (
                 role != "assistant"
-                or set(message) != {"role", "content", "tool_calls"}
+                or set(message) != {"role", "content", "tool_calls"} | reasoning_fields
                 or (content is not None and not isinstance(content, str))
                 or not isinstance(calls, list)
                 or not 1 <= len(calls) <= _PROXY_MAX_TOOL_CALLS
             ):
                 return None
-        elif set(message) != {"role", "content"} or not isinstance(content, str):
+        elif set(message) != {"role", "content"} | reasoning_fields or not isinstance(content, str):
             return None
         if role != "assistant" and set(message) != {"role", "content"}:
             return None
@@ -1511,6 +1524,8 @@ def _validated_provider_request(
             return None
 
         normalized_message: dict[str, object] = {"role": role, "content": content}
+        if reasoning_fields:
+            normalized_message["reasoning_content"] = message["reasoning_content"]
         if has_calls:
             normalized_calls: list[dict[str, object]] = []
             for call in calls:

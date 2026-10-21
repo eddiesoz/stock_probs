@@ -288,6 +288,16 @@ this model; the app cannot verify per-request provider handling. Existing explic
 billing acknowledgements remain required, and no data-collection permission or automatic
 fallback is introduced. A failed LongCat trial is retained separately from this model review.
 
+The compatible-chat bridge preserves only bounded assistant `reasoning_content` needed for
+native tool continuations, using the same history and stream budgets as ordinary text. It is
+private native-session state, excluded from app token events and timeout logs. The secret-stream
+guard tracks its independent choice/channel before releasing bytes; unrelated provider metadata
+remains excluded. This preserves the [vendor continuation contract](https://platform.minimax.io/docs/api-reference/text-openai-api)
+without changing provider destinations, ownership, consent or tool permissions. Each app execution
+creates a fresh model-bound native session; later app turns reconstruct only stored visible role/text
+history, so private native reasoning is not carried across model selections. Source and synthetic
+checks do not establish live-provider completion or native timeout causation.
+
 The following E167–E777 records preserve earlier scoped findings and failures. They are historical;
 the E847/E849/E850 scopes above supersede only the bindings and checks they explicitly cover.
 
