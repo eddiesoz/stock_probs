@@ -8499,3 +8499,59 @@ security/accessibility/browser, canonical, actual-host 1 GB, recovery/rollback, 
 authenticated owner and release gates remain open. The free Zen restoration still precedes all
 seven feature releases. The 1 GB host, backups and US$15 total monthly cap are unchanged; no merge,
 production deployment, rollout, resize or email occurred.
+
+### R-ASTRA-121 F6 provider-authorization image and failed native checkpoint (2026-10-21)
+
+The reviewed stream repair was pushed as clean PR #9 head
+`ddccd0ca194570db33474cc3b6930dcc8d33de28`. Its managed Linux/amd64 build passed source/context/
+stage binding for image `sha256:d135eef90d4e2c83ad7b7a297d8698d279f03dbec970de0c9a16082b88883e88`,
+context `ae60eb4653afd870c9f628861dbec0c79720c66f5882c31eccedde072ef8ea38`: 416 source/browser
+records, 150 packaged inputs and 53 served/export pairs matched. Only `assistant/api.py` changed
+among packaged inputs. Managed receipt is
+`1463e4af97547de624921f61bdfbc29f9ada4d3eefed57ee0be14402ed41f989`; parent build terminal is
+`54d49df903a4613b3de352b1c21e0031b4c444f397818356f9cb6258df25cb44`. The owned builder stopped
+at its bound generation. Exact unused predecessor retirement passed while retaining production
+and recovery images; its receipt is
+`2b1cb776735f87b254b69edaeb42557fc84399a1015dd76282015fd8aacd5161`. This is build evidence,
+not runtime or combined 1 GB acceptance. The image remains bound to `ddccd0c`; this authored
+documentation follow-up does not create new image evidence.
+
+Prelaunch review failures remain preserved. One verifier read a prohibited token file while
+searching directory metadata; it did not output the contents, and no token digest or contents
+were copied into repository evidence. Its overall **Fail** is retained in sanitized receipt
+`d20269bd0fed845982e47d3989d0e7243e88d8d420a7eed4e6e60023fa0f442d`; it did not authorize
+execution. Fresh review `e9805b90c841bc34d462b9038aaa305c2d96d0a53c9a03891942da1b91939b75`
+used explicit safe paths and matched source/image/launcher bindings. Parent review rejected its
+system-manager query for a user unit; the corrected independent
+`systemctl --user` query confirmed active/exited, PID 0, exit 0 and success, in supplement
+`809d7586126e0a3c7206c307e0747dba494cf4181884e10bf065896bcbc5dcc0`. The original wrong-manager
+conclusion and the first overly narrow stopped-state classification remain preserved. Parent
+review then authorized one functional attempt with the unchanged two-owner, 768 MiB/one-CPU,
+120-second turn, 150-second observation and 600-second outer bounds, and zero trial retries.
+The constant-substitution preparer's earlier reverse-order comparison failure also remains
+preserved; it occurred before launcher/plan publication or runtime, and the corrected comparison
+proved exact unchanged launcher logic.
+
+The one native attempt **Failed** at exit 2. Its readiness preflight passed schema 13 app/assistant
+readiness after 29 attempts in 14,763 ms, then a fixed Docker exec command exited 2 with zero
+projected stdout and stderr. The exact failed command/phase, completed answers, tool behavior,
+health samples and resource observations are **Unavailable**; cause remains **Unproven**. No
+seed-stage or no-model-call conclusion follows. Parent terminal receipt is
+`93779d834f1a4df4c5550e2c7eaecb78388f1f7e30ef024eb506894048788f24`. Exact container and
+network ID/name, volume, user-unit cgroup and helper-PID absence passed, including refusal on
+`127.0.0.1:32773`, whose mapping was retained from the exact live container. Independent result
+integrity passed its declared scope while retaining native **Fail**; cleanup classification
+supplement `ce2183585e19c897db5c256d7eaba6061e86125afeeee5a2102adbb82ce3b30a` corrected an
+overly strict byte-empty predicate against original whitespace-only stdout with explicit
+not-found errors. No Docker checks or native trial were repeated for that classification repair.
+All 518 unique source/context/stage files and eight launcher pins remained unchanged. Evidence
+is under `/var/tmp/r12r/f6-native-ddccd0c-8e1725031cd04bf69d20c55ed9d3775a/`.
+
+No retry or active kill ran. The next bounded action is source-only review of the existing fixed
+Docker-exec paths and a focused reproduction in existing tests if a concrete guard can be
+identified; no new observer/harness, weakened criterion or timeout increase is authorized by this
+failed result. Native-health, current-image kill, authenticated UI, complete browser/security/
+accessibility, canonical, actual-host 1 GB, recovery/rollback, final-guide and release gates stay
+open. The full Zen restoration precedes the seven-feature releases. Production, the 1 GB host,
+backups and US$15 total monthly cap remain unchanged; no merge, deployment, rollout, resize or
+email occurred.
