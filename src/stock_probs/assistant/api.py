@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import ipaddress
 import json
 import math
 import re
 import unicodedata
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
 from typing import NoReturn
@@ -18,6 +19,7 @@ from urllib.parse import parse_qsl, urlsplit
 from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
 from starlette.types import Send
 
 from stock_probs.assistant import net
@@ -40,6 +42,7 @@ from stock_probs.assistant.schemas import (
     AssistantConversationUpdateRequest,
     AssistantCustomProviderEndpointRequest,
     AssistantModelAdminPolicyRequest,
+    AssistantModelPolicy,
     AssistantOAuthAttemptCallbackRequest,
     AssistantOAuthAttemptCompleteRequest,
     AssistantOAuthAttemptCreateRequest,
@@ -412,9 +415,19 @@ def _defer_provider_close(task: asyncio.Task[bytes], upstream: object) -> None:
         return
 
 
+_ProviderAuthorizationCheck = Callable[[], bool | Awaitable[bool]]
+
+
+async def _provider_proxy_authorized(check: _ProviderAuthorizationCheck) -> bool:
+    """Await live authorization without running synchronous storage I/O on the event loop."""
+
+    result = check() if inspect.iscoroutinefunction(check) else await run_in_threadpool(check)
+    return await result if inspect.isawaitable(result) else result
+
+
 async def _provider_proxy_chunks(
     upstream: AsyncIterator[bytes],
-    is_current: Callable[[], bool],
+    is_current: _ProviderAuthorizationCheck,
 ) -> AsyncIterator[bytes]:
     """Bridge one bounded provider stream and preserve failures as an interrupted stream."""
 
@@ -423,7 +436,7 @@ async def _provider_proxy_chunks(
     next_chunk: asyncio.Task[bytes] | None = None
     try:
         while True:
-            if not is_current():
+            if not await _provider_proxy_authorized(is_current):
                 raise _ProviderProxyProtocolError(
                     stage="proxy_guard", error_code="request_superseded"
                 )
@@ -514,7 +527,7 @@ async def _provider_proxy_chunks(
                 raise _ProviderProxyProtocolError(
                     stage="proxy_validation", error_code="chunk_too_large"
                 )
-            if not is_current():
+            if not await _provider_proxy_authorized(is_current):
                 raise _ProviderProxyProtocolError(
                     stage="proxy_guard", error_code="request_superseded"
                 )
@@ -629,7 +642,7 @@ class _ProviderProxyStreamingResponse(StreamingResponse):
         self,
         content: AsyncIterator[bytes],
         *,
-        authorization_check: Callable[[], bool],
+        authorization_check: _ProviderAuthorizationCheck,
         denied: Response,
         media_type: str,
         headers: dict[str, str],
@@ -651,7 +664,7 @@ class _ProviderProxyStreamingResponse(StreamingResponse):
                 initial_error = exc
 
             try:
-                still_authorized = self._authorization_check()
+                still_authorized = await _provider_proxy_authorized(self._authorization_check)
             except Exception:
                 still_authorized = False
             if not still_authorized:
@@ -718,7 +731,7 @@ def _is_initial_provider_status_failure(
 
 async def _provider_proxy_stream_response(
     upstream: AsyncIterator[bytes],
-    authorization_check: Callable[[], bool],
+    authorization_check: _ProviderAuthorizationCheck,
     *,
     runtime: object,
     execution_id: str,
@@ -745,7 +758,7 @@ async def _provider_proxy_stream_response(
 
 async def _provider_proxy_chunks_with_timing(
     upstream: AsyncIterator[bytes],
-    is_current: Callable[[], bool],
+    is_current: _ProviderAuthorizationCheck,
     *,
     runtime: object,
     execution_id: str,
@@ -3075,6 +3088,32 @@ def create_assistant_router(
             raise AssistantUnavailable("oauth_authorization_required", 403)
         return {"provider": _json_safe_provider(result)}
 
+    def provider_execution_context(
+        execution_id: str, capability: str
+    ) -> tuple[Mapping[str, object], Mapping[str, object], AssistantModelPolicy] | None:
+        """Read and validate the leased provider context together on a worker thread."""
+
+        try:
+            lease = assistant.storage.validate_execution_capability(
+                execution_id, capability, now=assistant.now()
+            )
+            user_id = int(lease["user_id"])
+            turn = assistant.storage.get_turn(
+                user_id, str(lease["conversation_id"]), str(lease["turn_id"])
+            )
+            model_id = str(turn["model_id"])
+            policy_version = str(turn["policy_version"])
+            policy = assistant.policy(model_id, owner_id=user_id)
+            if (
+                not assistant.validate_execution_session(lease)
+                or not assistant._execution_current(user_id, execution_id, model_id, policy_version)
+                or policy.policy_version != policy_version
+            ):
+                return None
+        except Exception:
+            return None
+        return lease, turn, policy
+
     async def internal_native_provider_proxy(
         execution_id: str,
         request: Request,
@@ -3110,29 +3149,20 @@ def create_assistant_router(
         if not authorization.startswith("Bearer ") or len(authorization) > 512:
             return denied
         capability = authorization[7:]
-        try:
-            lease = assistant.storage.validate_execution_capability(
-                execution_id, capability, now=assistant.now()
-            )
-            user_id = int(lease["user_id"])
-            turn = assistant.storage.get_turn(
-                user_id, str(lease["conversation_id"]), str(lease["turn_id"])
-            )
-            model_id = str(turn["model_id"])
-            policy_version = str(turn["policy_version"])
-            policy = assistant.policy(model_id, owner_id=user_id)
-        except Exception:
+        execution = await run_in_threadpool(provider_execution_context, execution_id, capability)
+        if execution is None:
             return denied
-        if (
-            not assistant.validate_execution_session(lease)
-            or not assistant._execution_current(user_id, execution_id, model_id, policy_version)
-            or policy.policy_version != policy_version
-            or (policy.provider_id == "openai-chatgpt" and not native_session_id)
-        ):
+        lease, turn, policy = execution
+        user_id = int(lease["user_id"])
+        model_id = str(turn["model_id"])
+        policy_version = str(turn["policy_version"])
+        if policy.provider_id == "openai-chatgpt" and not native_session_id:
             return denied
 
-        def authorization_check() -> bool:
-            return assistant._execution_current(user_id, execution_id, model_id, policy_version)
+        async def authorization_check() -> bool:
+            return await run_in_threadpool(
+                assistant._execution_current, user_id, execution_id, model_id, policy_version
+            )
 
         content_length = request.headers.get("content-length")
         if content_length is not None:
@@ -3173,7 +3203,7 @@ def create_assistant_router(
                     "The provider request is outside its fixed contract.",
                 ),
             )
-        if not authorization_check():
+        if not await authorization_check():
             return denied
 
         manager = assistant.providers
@@ -3281,25 +3311,14 @@ def create_assistant_router(
         if not authorization.startswith("Bearer ") or len(authorization) > 512:
             return denied
         capability = authorization[7:]
-        try:
-            lease = assistant.storage.validate_execution_capability(
-                execution_id, capability, now=assistant.now()
-            )
-            user_id = int(lease["user_id"])
-            turn = assistant.storage.get_turn(
-                user_id, str(lease["conversation_id"]), str(lease["turn_id"])
-            )
-            model_id = str(turn["model_id"])
-            policy_version = str(turn["policy_version"])
-            policy = assistant.policy(model_id, owner_id=user_id)
-        except Exception:
+        execution = await run_in_threadpool(provider_execution_context, execution_id, capability)
+        if execution is None:
             return denied
-        if (
-            not assistant.validate_execution_session(lease)
-            or not assistant._execution_current(user_id, execution_id, model_id, policy_version)
-            or policy.policy_version != policy_version
-            or (policy.provider_id == "openai-chatgpt" and not native_session_id)
-        ):
+        lease, turn, policy = execution
+        user_id = int(lease["user_id"])
+        model_id = str(turn["model_id"])
+        policy_version = str(turn["policy_version"])
+        if policy.provider_id == "openai-chatgpt" and not native_session_id:
             return denied
 
         native_runtime_metadata = None
@@ -3308,8 +3327,10 @@ def create_assistant_router(
             if native_runtime_metadata is None:
                 return denied
 
-        def authorization_check() -> bool:
-            if not assistant._execution_current(user_id, execution_id, model_id, policy_version):
+        async def authorization_check() -> bool:
+            if not await run_in_threadpool(
+                assistant._execution_current, user_id, execution_id, model_id, policy_version
+            ):
                 return False
             if policy.provider_id != "opencode-zen":
                 return True
@@ -3326,7 +3347,7 @@ def create_assistant_router(
                 status_code=400,
                 content=_error("invalid_provider_request", "The provider request is invalid."),
             )
-        if not authorization_check():
+        if not await authorization_check():
             return denied
         restricted_guard = getattr(assistant.runtime, "restricted_native_tools_ready", None)
         include_restricted = (
@@ -3396,7 +3417,7 @@ def create_assistant_router(
                 provider_context["native_session_affinity"] = native_identity["x-session-affinity"]
             if "x-session-id" in native_identity:
                 provider_context["native_session_id_alias"] = native_identity["x-session-id"]
-            if not authorization_check():
+            if not await authorization_check():
                 return denied
             upstream = proxy(
                 policy.provider_id,

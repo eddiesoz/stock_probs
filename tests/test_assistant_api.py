@@ -7843,7 +7843,7 @@ def test_internal_provider_proxy_uses_db_model_and_closes_on_bad_capability(sett
             assert "native_user_agent" not in call_context
             assert "native_client" not in call_context
             assert callable(call_context["authorization_check"])
-            assert call_context["authorization_check"]() is True
+            assert asyncio.run(call_context["authorization_check"]()) is True
 
             rejected = owner_client.post(
                 f"/api/v1/assistant/internal/provider/{execution_id}/chat/completions",
@@ -8272,6 +8272,166 @@ def test_internal_provider_proxy_rechecks_revoked_session_after_prefetch(setting
             browser.close()
 
 
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+@pytest.mark.parametrize("guard", ["before_upstream", "before_yield", "before_headers"])
+@pytest.mark.parametrize("callback_kind", ["sync", "async"])
+def test_provider_authorization_wait_preserves_application_health(
+    settings, health_path, guard, callback_kind
+):
+    """A denied stream's synchronous authorization wait must not stall unrelated HTTP."""
+
+    import httpx
+
+    entered = threading.Event()
+    release = threading.Event()
+    returned = threading.Event()
+    upstream_started = False
+    upstream_closed = False
+    checks = 0
+    sent: list[dict[str, object]] = []
+
+    def authorize() -> bool:
+        nonlocal checks
+        checks += 1
+        if guard == "before_yield" and checks == 1:
+            return True
+        entered.set()
+        release.wait(timeout=1.0)
+        returned.set()
+        return False
+
+    async def async_authorize() -> bool:
+        return await asyncio.to_thread(authorize)
+
+    callback = authorize if callback_kind == "sync" else async_authorize
+
+    async def upstream():
+        nonlocal upstream_started, upstream_closed
+        upstream_started = True
+        try:
+            yield b"data: private fixture chunk\n\n"
+        finally:
+            upstream_closed = True
+
+    async def send(message):
+        sent.append(message)
+
+    async def consume() -> None:
+        if guard == "before_headers":
+            response = assistant_api._ProviderProxyStreamingResponse(
+                upstream(),
+                authorization_check=callback,
+                denied=assistant_api.JSONResponse(status_code=404, content={"error": "denied"}),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-store"},
+            )
+            await response.stream_response(send)
+        else:
+            with pytest.raises(assistant_api._ProviderProxyProtocolError) as failure:
+                async for chunk in _provider_proxy_chunks(upstream(), callback):
+                    sent.append({"body": chunk})
+            assert failure.value.error_code == "request_superseded"
+
+    application = create_app(settings, FixtureProvider())
+
+    async def exercise() -> None:
+        async with (
+            application.router.lifespan_context(application),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=application), base_url="http://127.0.0.1"
+            ) as concurrent,
+        ):
+            stream = asyncio.create_task(consume())
+            try:
+                assert await asyncio.to_thread(entered.wait, 2.0)
+                health = await asyncio.wait_for(concurrent.get(health_path), timeout=2.0)
+                assert health.status_code == 200
+                assert health.json()["status"] == (
+                    "ready" if health_path.endswith("readiness") else "ok"
+                )
+                assert not returned.is_set()
+                assert sent == []
+            finally:
+                release.set()
+                await asyncio.wait_for(stream, timeout=2.0)
+
+    asyncio.run(exercise())
+    assert all(b"private fixture chunk" not in item.get("body", b"") for item in sent)
+    if guard == "before_headers":
+        assert sent[0]["status"] == 404
+    assert upstream_started is (guard != "before_upstream")
+    assert upstream_closed is upstream_started
+
+
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+@pytest.mark.parametrize("route", ["chat/completions", "v1/responses"])
+def test_provider_lease_lookup_wait_preserves_application_health(
+    settings, monkeypatch, health_path, route, record_property
+):
+    """Initial provider lease reads must finish before denial without blocking other HTTP."""
+
+    import httpx
+
+    entered = threading.Event()
+    release = threading.Event()
+    returned = threading.Event()
+    application = create_app(settings, FixtureProvider())
+
+    def delayed_lease_lookup(*_args, **_kwargs):
+        entered.set()
+        release.wait(timeout=1.0)
+        returned.set()
+        raise assistant_storage.AssistantStorageNotFound()
+
+    monkeypatch.setattr(
+        application.state.assistant.storage,
+        "validate_execution_capability",
+        delayed_lease_lookup,
+    )
+
+    async def exercise() -> None:
+        async with (
+            application.router.lifespan_context(application),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=application), base_url="http://127.0.0.1"
+            ) as concurrent,
+        ):
+            request = asyncio.create_task(
+                concurrent.post(
+                    "/api/v1/assistant/internal/provider/" + "a" * 32 + "/" + route,
+                    headers={
+                        "Authorization": "Bearer " + "b" * 48,
+                        "session-id": NATIVE_SESSION_FIXTURE,
+                    },
+                    json={"model": "assistant-selected", "stream": True},
+                )
+            )
+            try:
+                # Startup admission is separate from health responsiveness while storage waits.
+                admission_started = asyncio.get_running_loop().time()
+                lookup_entered = await asyncio.to_thread(entered.wait, 5.0)
+                record_property(
+                    "lease_lookup_admission_seconds",
+                    asyncio.get_running_loop().time() - admission_started,
+                )
+                early_response = request.result() if request.done() else None
+                assert lookup_entered, (
+                    (early_response.status_code, early_response.text)
+                    if early_response is not None
+                    else "provider fixture request has not completed or reached lease lookup"
+                )
+                health = await asyncio.wait_for(concurrent.get(health_path), timeout=2.0)
+                assert health.status_code == 200
+                assert not returned.is_set()
+            finally:
+                release.set()
+                denied = await asyncio.wait_for(request, timeout=2.0)
+            assert denied.status_code == 404
+            assert denied.json()["error"]["code"] == "not_found"
+
+    asyncio.run(exercise())
+
+
 def test_provider_proxy_response_closes_iterator_when_send_is_cancelled():
     async def exercise() -> None:
         class Upstream:
@@ -8546,7 +8706,7 @@ def test_internal_provider_proxy_forwards_only_valid_native_zen_identity(
             }.intersection(context)
             authorization_check = context["authorization_check"]
             assert callable(authorization_check)
-            assert authorization_check() is True
+            assert asyncio.run(authorization_check()) is True
 
             for field, value in (
                 ("x-opencode-session", None),
@@ -8599,7 +8759,7 @@ def test_internal_provider_proxy_forwards_only_valid_native_zen_identity(
             assert cross_execution.status_code == 404
             assert len(providers.calls) == 1
             runtime.native_provider_sessions.pop(other_execution_id)
-            assert authorization_check() is False
+            assert asyncio.run(authorization_check()) is False
             runtime.native_provider_sessions[execution_id] = (
                 NATIVE_SESSION_FIXTURE,
                 NATIVE_PROJECT_FIXTURE,
@@ -9008,7 +9168,7 @@ def test_internal_provider_authorization_callback_rechecks_live_state_once(
             callback = providers.call_contexts[-1]["authorization_check"]
             assert callable(callback)
             checks_before = validation_count
-            assert callback()
+            assert asyncio.run(callback()) is True
             assert validation_count == checks_before + 1
             assert not assistant._execution_current(
                 int(other_owner["user_id"]),
@@ -9036,7 +9196,7 @@ def test_internal_provider_authorization_callback_rechecks_live_state_once(
                 )
 
             checks_before = validation_count
-            assert not callback()
+            assert asyncio.run(callback()) is False
             assert validation_count == checks_before + 1
         finally:
             browser.close()
@@ -9204,7 +9364,7 @@ def test_internal_vendor_provider_routes_bind_exact_path_query_lease_and_bound_j
                 assert context["app_session_id"] == owner["session_id"]
                 assert context["native_session_id"] == "ses_native_vendor_fixture_01"
                 assert callable(context["authorization_check"])
-                assert context["authorization_check"]() is True
+                assert asyncio.run(context["authorization_check"]()) is True
 
             large_body = {**body, "input": "x" * 20_000}
             for url, _path_model_id, _query in route_cases:

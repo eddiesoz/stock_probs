@@ -855,3 +855,28 @@ handlers. A bounded independent probe observed AnyIO-scope cancellation waiting 
 while direct `asyncio.Task.cancel()` could return before it finished. Uvicorn uses direct task
 cancellation after its graceful-shutdown timeout. Absolute request-gate retention through forced
 shutdown is therefore not claimed; the complete ASGI shutdown/restore interaction was not run.
+
+The provider-authorization concurrency regression in `tests/test_assistant_api.py` holds each
+stream guard before upstream read, before chunk yield, or before headers. The first six synchronous
+cases failed before the repair: unrelated liveness/readiness completed only after authorization
+returned. All six passed after moving synchronous checks off the event loop. Expanded coverage
+also checks awaited callbacks and initial lease lookup on the actual native/compatible-chat HTTP
+routes; all 16 cases passed, with denial and upstream cleanup retained. The provider manager already
+accepts awaited authorization callbacks, so both internal routes pass a fresh awaited execution
+check through transport and response guards. Callback fixtures now await that result without
+weakening their true/false assertions. Worker-pool and database contention, forced-cancellation
+limits, and the unproven native timeout cause remain separate; these are synthetic local checks.
+The initial full affected run retained one lease-lookup case that never reached its held lookup
+and six stale callback-test failures. The six assertions were corrected to await actual checks;
+all six plus four unchanged lookup cases passed a focused rerun. The original setup failure
+remains recorded with an unproven cause; a focused pass does not replace a complete affected run.
+
+Repeated full-scope lookup setup failures left the fixture request pending before its held lookup;
+a 74-case provider subset did not reproduce them. The lookup fixture separates a five-second
+setup admission bound from the unchanged two-second health deadline and records admission time
+in JUnit. Health must still answer before the one-second authorization hold returns; denial and
+no-byte-release criteria remain. The setup delay cause and prior failures remain recorded.
+The complete affected rerun passed 175 tests with 518 stable input hashes; its previously failing
+lookup entry took 2.001108 seconds, just beyond the old setup bound, then passed the unchanged
+health/denial criteria. Independent lease/guard re-review passed all 16 cases. This source evidence
+does not establish native runtime health or replace the required newly bound image run.

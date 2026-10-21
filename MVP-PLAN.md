@@ -8421,3 +8421,81 @@ their original scope. Authenticated owner UI, complete browser/security/accessib
 actual-host 1 GB, recovery/rollback, final guide and release gates remain open. Free Zen restoration
 precedes the seven-feature release plan. The 1 GB host, backups and US$15 monthly total cap remain
 unchanged; no merge, production deployment, rollout, resize or email occurred.
+
+### R-ASTRA-121 F6 current-image health failure and provider authorization repair (2026-10-21)
+
+Clean pushed head `4ca9269b2c6e73b32860bc30b7fb9a7d72cc3181` built image
+`sha256:84a46578ba717de7f5b734c1533b52dac8e7dfad15804a57e2f9ace063c55220`, context
+`00645c4499337286efbccf1674df6e6998b62defad5c70cd415ffb0ce026af9f`, with only `api.py`
+changed among 150 packaged inputs. All 416 source/browser bindings and 53 served/export pairs
+matched. The successful managed receipt is
+`74da052dc1b0c88ac1c6296e2f9e3fb3699f844c71baef1b3eb54e4d8eaebf40`; parent terminal is
+`53279526751d23d7526cad725ba7a973e02a4f735bc38fee86e4fccf55ce31a2`. The initial parent
+receipt-preparation check **Failed** on an incorrect 26-field assumption; the unchanged launcher's
+actual 25-field schema passed the corrected check without rebuilding. An inherited manifest note
+named an older revision; supplemental metadata corrected that prose without replacing the frozen
+manifest or its current file facts. The owned builder stopped at its bound generation. Independent
+prelaunch review passed its 11 declared checks in receipt
+`6d03a9f30a7f30cffcc01949c5a8761c7e0479fa92485c38bb2f026d9c327a92`.
+
+The sole native trial **Failed** overall at exit 2. Its driver scope passed: both genuine free
+MiniMax turns completed with 534-byte and 1,077-byte answers and matching owner-summary receipts;
+search and exact-URL guarded fetch, cross-owner/forged-MCP 404 boundaries, and both first-attempt
+conversation deletes at HTTP 200 passed. Nine combined source events include one guarded fetch;
+attribution remains unverified. One accumulated health sample had a transport failure, alongside
+61 ready samples. Its time was not retained, and no actual schema mismatch was observed.
+A single `worker_startup_failure` / `request_timeout` warning at `supervisor_status` is not tied
+to that health sample. Anonymous timing rows cannot be mapped to owners. Peak memory was
+517,758,976 of 805,306,368 bytes, with zero high/max/OOM deltas; this is not actual combined 1 GB
+acceptance. The cause remains **Unproven**, and the auth middleware repair did not resolve this run's
+health gate. Exact container/network/volume and unit-cgroup cleanup passed, including refusal on
+the loopback port retained from the live exact container. Parent terminal is
+`56cb191cf9c4a69c583aba8e76156ab985480ddaf0a3c456237e9b53a6c5e49d`; independent integrity
+supplement is `af095636ef787d76c6714174ae4b42ecdcd566a2705162b28cdef9a828ac78fd`. The original
+review aggregate **Fail** from comparing descriptive Pass labels against literal `Pass` remains
+preserved; the supplement corrects review interpretation only. No native retry or active kill ran.
+
+Source review confirms runtime status is cached; readiness does not synchronously query the worker.
+It also identified synchronous provider authorization/storage work on the async stream path.
+Six focused regressions reproduced starvation before upstream reads, chunk yields and response
+headers: both liveness and readiness waited until authorization returned. All six passed after
+the scoped repair; expanded synchronous/async callback and initial-lease HTTP-route coverage passed
+16 cases with fresh 416-input bindings. The application now loads and validates the leased provider
+context in the worker pool, and both proxy routes pass awaited fresh execution checks through the
+existing provider manager and stream guards. No authorization checkpoint, protocol/owner binding,
+turn budget or resource predicate is removed. These synthetic results prove the scoped defect and
+repair, not the native timeout cause. The first full affected run **Failed** at 168 passes and
+seven failures with all 518 inputs unchanged: six stale test consumers truth-tested the new async
+callback without executing it, and one lease-lookup readiness case never entered its held lookup.
+The latter setup cause remains **Unproven**. Independent QA separately passed all 16 concurrency
+cases but failed six of 17 selected route/manager cases on the same stale callback consumer. Its
+original Fail is preserved. The two stale assertions now await the callback and retain exact
+true/false and validation-count criteria; all six repaired cases and four unchanged lookup cases
+passed a focused rerun with 518 stable inputs. That rerun does not erase the earlier setup failure.
+Independent re-review passed the six corrected consumers and all 16 concurrency cases. Two
+subsequent full affected runs each **Failed** at 174 passes and the same lookup setup failure,
+with 518 unchanged inputs per run. A diagnostic assertion confirmed that the request was still
+pending before lease lookup, rather than an early rejection; its exact delay cause remains
+**Unproven**. A 74-case provider subset passed without reproducing it. The fixture now allows
+five seconds to reach its held lookup and records that admission duration in JUnit; its two-second
+health deadline, one-second held callback, denial and no-byte-release assertions are unchanged.
+No native/runtime deadline or release predicate changed. The final complete affected run
+**Passed** all 175 tests at exit 0, with no failures, errors or skips and all 518 input hashes
+unchanged. It recorded the previously failing lookup entry at 2.001108 seconds, beyond the former
+setup bound; the other three entries took 0.259–0.289 seconds. That supports the fixture admission
+adjustment, not a native latency cause. Terminal receipt is
+`5800ac2d9ebcd57c20fab8520e39a953e04599cb9639b061c46daec099311271`. Independent fixture
+re-review passed all 16 lease/guard cases with 0.258–0.635-second lookup entries in receipt
+`98d0c5aed9d481582408bd856b193a4cb5408a017f15a489da3649fa3ef0d56a`; earlier corrected
+consumer/guard re-review is `5ce9582928ff3edcaa50882fdcab701103b7799d5a56941b91fb61511ef7a867`.
+Ruff, formatting, scoped security rules, documentation validation/coverage and diff checks passed.
+The parent personally reviewed the integrated source/test diff and exact evidence and found no
+blocker for this scoped source checkpoint. All three failed affected aggregates and the initial
+independent Fail remain preserved; no runtime or release acceptance follows. Exact evidence is under
+`/var/tmp/r12r/f6-stream-authorization-repair-d74efa1be1954aa6bc7165a9d152bd08/`.
+
+The new source requires a newly bound image/native run. Current native-health, kill, complete
+security/accessibility/browser, canonical, actual-host 1 GB, recovery/rollback, final guide,
+authenticated owner and release gates remain open. The free Zen restoration still precedes all
+seven feature releases. The 1 GB host, backups and US$15 total monthly cap are unchanged; no merge,
+production deployment, rollout, resize or email occurred.
