@@ -128,7 +128,7 @@ HOTFIX_PAIR_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOTFIX_PAIR_CONTRACT_V3 = "schema13_same_schema_hotfix_v3"
 SCANNER_PATH = ROOT / "scripts" / "verify-release-archive.py"
 # PR12 is the reviewed scanner that inspects every archive member and Docker config metadata.
-RELEASE_SCANNER_SHA256 = "75e3f8c07e62a36fb0e11ad8ef48996971148a890688bbb31bd9eb0d3d791670"
+RELEASE_SCANNER_SHA256 = "9b7c1a4a227220282d90b6d3e8fc3d4e5b6904bf3774bf31530c84713df4585e"
 DOWNLOAD_TIMEOUT_SECONDS = 180
 COMMAND_OUTPUT_LIMIT = 16_384
 
@@ -454,7 +454,7 @@ def _v3_pr9_delta_matches(raw_diff: str, numstat: str) -> bool:
 
 
 def _prove_reviewed_pr9_head(reviewed_pr_head_sha: str, helper_revision: str) -> None:
-    """Require the exact approved single-line test repair atop the immutable image source."""
+    """Require the exact approved callback-test patch atop the immutable image source."""
 
     if not _valid(REVISION_PATTERN, reviewed_pr_head_sha):
         raise PublicationError("reviewed_pr_head_invalid")

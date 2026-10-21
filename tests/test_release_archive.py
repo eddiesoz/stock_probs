@@ -558,6 +558,50 @@ def test_release_archive_verifier_pins_exact_opencode_variants() -> None:
     )
 
 
+def test_release_archive_verifier_pins_smaller_opencode_variant() -> None:
+    digests, spans = verifier.PINNED_PUBLIC_MATCH_VARIANTS[("usr/local/bin/opencode", 187_966_944)]
+    assert digests == frozenset(
+        {"92dc756cb73a48d6ea040ee3b8226bba2291b3c1ea552a71f7a09d955f35c93d"}
+    )
+    assert spans == verifier.PINNED_PUBLIC_MATCH_SOURCES["usr/local/bin/opencode"][2]
+
+
+@pytest.mark.parametrize("mutation", ["none", "digest", "path", "size", "extra", "missing"])
+def test_release_archive_verifier_variant_remains_exact(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    contents, spans = _spdx_test_source()
+    monkeypatch.setattr(verifier, "PINNED_PUBLIC_MATCH_SOURCES", {})
+    monkeypatch.setattr(
+        verifier,
+        "PINNED_PUBLIC_MATCH_VARIANTS",
+        {
+            ("usr/local/bin/opencode", len(contents)): (
+                frozenset({hashlib.sha256(contents).hexdigest()}),
+                spans,
+            ),
+        },
+    )
+    name = "usr/local/bin/opencode"
+    size = len(contents)
+    if mutation == "digest":
+        contents = contents[:-1] + b"y"
+    elif mutation == "path":
+        name = "usr/local/bin/other"
+    elif mutation == "size":
+        size += 1
+    elif mutation == "extra":
+        contents += b" sk-" + b"C" * 20
+    elif mutation == "missing":
+        contents = b"z" * len(contents)
+    if mutation == "none":
+        assert verifier._scan_member(name, io.BytesIO(contents), size) == len(contents)
+    else:
+        with pytest.raises(verifier.ArchiveError):
+            verifier._scan_member(name, io.BytesIO(contents), size)
+
+
 def _configure_opencode_test_allowlist(
     monkeypatch: pytest.MonkeyPatch,
     contents: bytes,

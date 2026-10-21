@@ -1333,3 +1333,6 @@ correct regular file at the head tree; unexpected presence, missing head, symlin
 modified-file status fails closed. Preserve exact callback patch lines across consumers.
 A focused synthetic Pass does not replace a failed broader aggregate, live host rehearsal or release
 gate. See the [current helper lineage checkpoint](../../MVP-PLAN.md#r-astra-121-f6-current-helper-lineage-repair-2026-10-21).
+
+
+The F6 e40 archive exception is bound to the exact OpenCode path, size, complete digest and four SHA-verified official Bun spans. Keep the original rejected scan and provenance comparison; changed bytes, missing spans and extra matches must fail closed. The 81-case selected archive/transport run does not replace canonical, browser, actual-host resource/recovery or release gates. See the current-image archive scanner checkpoint in `MVP-PLAN.md`.

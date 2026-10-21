@@ -558,7 +558,7 @@ def test_reviewed_candidate_and_original_5ad_recovery_pins_are_exact() -> None:
     )
     assert transport.HOTFIX_CANDIDATE_ARCHIVE_SIZE == 202_160_947
     assert transport.RELEASE_SCANNER_SHA256 == (
-        "75e3f8c07e62a36fb0e11ad8ef48996971148a890688bbb31bd9eb0d3d791670"
+        "9b7c1a4a227220282d90b6d3e8fc3d4e5b6904bf3774bf31530c84713df4585e"
     )
     assert transport.PRODUCTION_PREDECESSOR_REVISION == "5ad2c3fddfce5a5a631b72cd832a53f24757c44a"
     assert transport.PRODUCTION_PREDECESSOR_IMAGE_ID == (
@@ -976,7 +976,8 @@ def _hotfix_v3_delta_text(mutation: str | None = None) -> tuple[str, str]:
         additions,
         deletions,
     ) in transport.HOTFIX_V3_REVIEWED_PR9_FILE_DELTA:
-        old_mode, new_mode = "100644", "100644"
+        old_mode, new_mode = ("000000" if base_blob == "0" * 40 else "100644"), "100644"
+        status = "A" if base_blob == "0" * 40 else "M"
         if mutation == "base_mode" and filename == target:
             old_mode = "120000"
         elif mutation == "head_mode" and filename == target:
@@ -985,7 +986,7 @@ def _hotfix_v3_delta_text(mutation: str | None = None) -> tuple[str, str]:
             head_blob = base_blob
         elif mutation == "wrong_blob" and filename == target:
             head_blob = "3" * 40
-        raw_records.append(f":{old_mode} {new_mode} {base_blob} {head_blob} M\0{filename}\0")
+        raw_records.append(f":{old_mode} {new_mode} {base_blob} {head_blob} {status}\0{filename}\0")
         if mutation == "wrong_numstat" and filename == target:
             additions += 1
         stat_records.append(f"{additions}\t{deletions}\t{filename}\0")
@@ -999,15 +1000,23 @@ def _hotfix_v3_delta_text(mutation: str | None = None) -> tuple[str, str]:
     return raw_diff, numstat
 
 
-def test_v3_test_head_proof_requires_only_the_approved_one_line_change(
+def _reviewed_callback_patch() -> str:
+    return (
+        '-        assert context["authorization_check"]() is True\n'
+        '+        authorization_check = context["authorization_check"]\n'
+        "+        assert callable(authorization_check)\n"
+        "+        assert asyncio.run(authorization_check()) is True\n"
+        '-        assert context["authorization_check"]() is False\n'
+        "+        assert asyncio.run(authorization_check()) is False\n"
+    )
+
+
+def test_v3_test_head_proof_requires_only_the_approved_callback_patch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     commands: list[list[str]] = []
     path = "tests/test_assistant_final_boundary_coverage.py"
-    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
-    new_line = (
-        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
-    )
+    patch_lines = _reviewed_callback_patch()
     raw_diff, numstat = _hotfix_v3_delta_text()
     outputs = [
         "",
@@ -1015,7 +1024,7 @@ def test_v3_test_head_proof_requires_only_the_approved_one_line_change(
         "\n".join(transport.HOTFIX_V3_REVIEWED_PR9_COMMITS) + "\n",
         raw_diff,
         numstat,
-        (f"diff --git a/{path} b/{path}\n@@ -41 +41 @@\n-{old_line}\n+{new_line}\n"),
+        (f"diff --git a/{path} b/{path}\n@@ -41 +41 @@\n{patch_lines}"),
     ]
 
     def command(argv: list[str], *, timeout: int = 30) -> str:
@@ -1111,15 +1120,12 @@ def test_v3_test_head_proof_rejects_other_diff_shapes(
         "truncated_raw",
     ],
 )
-def test_v3_test_head_proof_requires_the_exact_regular_six_file_delta(
+def test_v3_test_head_proof_requires_the_exact_regular_seven_file_delta(
     monkeypatch: pytest.MonkeyPatch,
     mutation: str,
 ) -> None:
     path = "tests/test_assistant_final_boundary_coverage.py"
-    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
-    new_line = (
-        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
-    )
+    patch_lines = _reviewed_callback_patch()
     raw_diff, numstat = _hotfix_v3_delta_text(mutation)
     outputs = [
         "",
@@ -1127,7 +1133,7 @@ def test_v3_test_head_proof_requires_the_exact_regular_six_file_delta(
         "\n".join(transport.HOTFIX_V3_REVIEWED_PR9_COMMITS) + "\n",
         raw_diff,
         numstat,
-        f"diff --git a/{path} b/{path}\n@@ -41 +41 @@\n-{old_line}\n+{new_line}\n",
+        f"diff --git a/{path} b/{path}\n@@ -41 +41 @@\n{patch_lines}",
     ]
     calls = 0
 

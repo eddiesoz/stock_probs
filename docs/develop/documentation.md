@@ -861,3 +861,6 @@ Git metadata and host GitHub/tree proof must agree on prior absence and exact re
 Record failed broader commands beside focused repairs and keep pending independent/host/release
 checks explicit. Maintain this policy in `AGENTS.md` when changing lineage admission; matching
 files or successful synthetic checks do not establish installed-helper or actual-host acceptance.
+
+
+For a changed-size release binary, the archive scanner may retain another exact path/size/digest variant only after public provenance verifies every admitted match span. Record the original rejection, independent source and archive review, and the updated transport consumer digest. Preserve image/application identity separately from the helper revision and reuse unchanged archive bytes when rebinding only the helper manifest. These checks do not promote unresolved canonical, browser, actual-host resource/recovery or release gates.

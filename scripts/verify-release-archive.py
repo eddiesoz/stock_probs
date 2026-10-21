@@ -90,6 +90,24 @@ PINNED_PUBLIC_MATCH_SOURCES: dict[str, tuple[int, frozenset[str], tuple[tuple[in
 }
 
 
+# The smaller e40 build retains exactly the four official Bun spans above. Public archive and
+# binary digests plus every match hash are bound by comparison receipt
+# 51cdf637fb69bc04670e52d8933dbf296008390f76a710f3ec55504a85062cf3.
+PINNED_PUBLIC_MATCH_VARIANTS: dict[
+    tuple[str, int], tuple[frozenset[str], tuple[tuple[int, int], ...]]
+] = {
+    ("usr/local/bin/opencode", 187_966_944): (
+        frozenset({"92dc756cb73a48d6ea040ee3b8226bba2291b3c1ea552a71f7a09d955f35c93d"}),
+        (
+            (1_169_954, 1_169_988),
+            (1_184_754, 1_184_859),
+            (16_825_067, 16_825_502),
+            (16_849_344, 16_852_808),
+        ),
+    ),
+}
+
+
 class ArchiveError(ValueError):
     """A safe image-archive verification failure."""
 
@@ -144,7 +162,11 @@ def _scan_stream(
 def _scan_member(name: str, stream: object, size: int) -> int:
     source_pin = PINNED_PUBLIC_MATCH_SOURCES.get(name)
     if source_pin is None or size != source_pin[0]:
-        return _scan_stream(stream)
+        variant = PINNED_PUBLIC_MATCH_VARIANTS.get((name, size))
+        if variant is None:
+            return _scan_stream(stream)
+        expected_sha256s, exempt_spans = variant
+        return _scan_stream(stream, exempt_spans=exempt_spans, expected_sha256s=expected_sha256s)
     _, expected_sha256s, exempt_spans = source_pin
     return _scan_stream(
         stream,

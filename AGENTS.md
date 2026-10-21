@@ -2718,3 +2718,6 @@ requires exact added-file status, zero base blob, regular-file head mode/blob an
 host review must prove absence at the base tree and the exact regular file at the head tree.
 Unexpected presence, missing head, changed mode, extra path or mismatched metadata fails closed.
 This narrow admission does not waive aggregate, native, resource, recovery, rollback or release gates.
+
+
+For rebuilt archive binaries with a changed size, retain existing exact scanner variants and admit a new variant only by exact member path, size, full digest and complete public match spans. Verify each match hash against a checksum-verified official public artifact; unexpected or missing spans and changed binary digests must fail closed. Keep rejected scans and failed diagnostic attempts visible. Update the scanner consumer pin and discriminate lineage rejection fixtures with otherwise valid current callback patches. These scoped checks do not establish actual-host or release acceptance.
