@@ -257,6 +257,7 @@ def _run_native_compile(
             f"--target={build_target}",
             f"--outdir={output_dir}",
             "--skip-install",
+            "--skip-web-ui",
         ],
         cwd=source_root,
         env=_native_compile_environment(work, version),

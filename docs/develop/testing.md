@@ -752,8 +752,15 @@ The next native-build candidate fixes Bun's `--smol` mode only for the final bui
 and its child processes. Check that a host-supplied `BUN_OPTIONS` cannot alter that command's
 environment and that package installation/source tests retain their prior environment. The pinned
 Bun documentation describes a garbage-collection tradeoff rather than a hard memory cap. The
-embedded app build and final compiler still use the same source pins, arguments, targets and
-deadlines; a source test pass does not establish lower memory use or a successful image.
+final compiler retains the pinned source, targets and deadlines; a source test pass does not
+establish lower memory use or a successful image.
+
+Signal Ledger uses the upstream `--skip-web-ui` build flag to omit OpenCode's embedded web
+interface. Signal Ledger serves its own frontend and uses the native assistant API, MCP tools,
+search and provider paths. The pinned upstream build script supports this flag; native patch
+tests still run before compilation. This avoids the embedded Vite app build that exited with
+signal 137 and BuildKit `cannot allocate memory` in the failed `a0bbfec` local build. It does not
+raise the builder limits or establish a successful replacement image or runtime result.
 
 Build-controller unit cases that isolate command or backend-stop failures supply a synthetic
 `check_space` result alongside their mocked build operations. This avoids depending on the

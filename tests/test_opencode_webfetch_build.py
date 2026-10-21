@@ -205,7 +205,7 @@ def test_build_environment_does_not_inherit_credentials_or_project_overrides(
     assert "synthetic-secret-marker" not in repr(environment)
 
 
-def test_native_compile_launch_uses_fixed_smol_without_host_bun_options(
+def test_native_compile_launch_uses_headless_smol_without_host_bun_options(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("BUN_OPTIONS", "--preload=/host/injected.js")
@@ -239,6 +239,7 @@ def test_native_compile_launch_uses_fixed_smol_without_host_bun_options(
             "--target=opencode-linux-x64-baseline",
             f"--outdir={output_dir}",
             "--skip-install",
+            "--skip-web-ui",
         ],
         "cwd": source_root,
         "env": {
