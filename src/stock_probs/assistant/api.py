@@ -2435,7 +2435,7 @@ def create_assistant_router(
             raise AssistantUnavailable("event_cursor_ahead", 409)
         cookie = request.cookies.get(SESSION_COOKIE_NAME)
 
-        def authorize_stream_event() -> tuple[AuthContext, dict[str, object]]:
+        def authorize_stream_event() -> tuple[AuthContext, dict[str, object]] | None:
             """Check current authorization after all potentially waiting event projection."""
 
             current = auth_manager.authenticate(cookie, datetime.now(UTC))
@@ -2456,8 +2456,31 @@ def create_assistant_router(
                     str(current_turn["model_id"]),
                     str(current_turn["policy_version"]),
                 ):
+                    closed = (
+                        assistant.storage.execution_lease(str(lease_ref["execution_id"]))
+                        if lease_ref
+                        else None
+                    )
+                    if (
+                        closed is not None
+                        and closed.get("status") == "closed"
+                        and closed.get("user_id") == current.user.id
+                        and closed.get("conversation_id") == conversation_id
+                        and closed.get("turn_id") == turn_id
+                    ):
+                        return None
                     raise AssistantUnavailable("session_revoked", 403)
             return current, current_turn
+
+        async def rechecked_stream_context() -> tuple[AuthContext, dict[str, object]]:
+            """Re-read a normal completion transition with fresh authorization before emission."""
+
+            # A worker may see lease closure before the event loop commits terminal status.
+            for _ in range(2):
+                current = await run_in_threadpool(authorize_stream_event)
+                if current is not None:
+                    return current
+            raise AssistantUnavailable("session_revoked", 403)
 
         async def events():
             cursor = after_value
@@ -2465,7 +2488,7 @@ def create_assistant_router(
                 if await request.is_disconnected():
                     return
                 try:
-                    current, current_turn = await run_in_threadpool(authorize_stream_event)
+                    current, current_turn = await rechecked_stream_context()
                     batch = await run_in_threadpool(
                         assistant.storage.events_after,
                         current.user.id,
@@ -2483,7 +2506,7 @@ def create_assistant_router(
                         )
                         # Projection can wait on storage; check again before releasing bytes.
                         try:
-                            await run_in_threadpool(authorize_stream_event)
+                            await rechecked_stream_context()
                         except Exception:
                             return
                         cursor = int(event["sequence"])
@@ -2512,7 +2535,7 @@ def create_assistant_router(
                     has_complete = any(item["type"] == "complete" for item in terminal_events)
                     if not has_complete and cursor <= terminal_cursor:
                         try:
-                            await run_in_threadpool(authorize_stream_event)
+                            await rechecked_stream_context()
                         except Exception:
                             return
                         status = str(current_turn.get("status", "failed"))

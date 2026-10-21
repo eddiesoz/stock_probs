@@ -934,3 +934,12 @@ fresh session, access, turn and execution checks before bytes are emitted. Exist
 revocation, owner isolation, cursor/replay and UTF-8/output-bound checks remain part of the affected
 scope. These deterministic checks do not establish the earlier native health transport failures'
 cause or replace the required newly bound native image test.
+
+
+The completion-transition regression pauses the public SSE worker's execution recheck while the
+real test runtime finishes. A completed turn must still deliver its saved terminal event; revocation
+during that transition must deliver no bytes. A closed lease without settled terminal state must
+also fail closed. The authorizer permits one fresh state/authorization read only for a normal,
+exactly owner-bound closure; no provider call is retried. Preserve the original empty-stream failure
+and the earlier unrelated native transport failure separately. See the
+[completion-transition ledger](../../MVP-PLAN.md#r-astra-121-f6-sse-completion-transition-repair-2026-10-21).

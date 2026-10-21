@@ -576,3 +576,12 @@ session. Moving I/O off the event loop does not cache session or consent decisio
 increase limits, or establish native health acceptance. Worker-pool saturation and forced-shutdown
 cancellation remain separate limits; no absolute request-gate retention through forced shutdown is
 claimed. The original failed health and projection-race regressions remain in the F6 evidence ledger.
+
+
+For a normal lease closure racing with terminal turn persistence, the SSE authorizer allows at most
+one fresh state read with full session/access validation. Only the exact owner/conversation/turn
+closure qualifies; revocation, unknown leases and an unsettled result fail closed. This recovers
+owner-visible terminal history without reopening the execution's tool capability or reusing an
+old authorization decision. Completion, concurrent revocation and unsettled closure are separate
+regression cases; this source evidence does not establish native reliability or the earlier health
+transport failures' cause.

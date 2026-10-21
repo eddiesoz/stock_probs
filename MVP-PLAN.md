@@ -8946,3 +8946,80 @@ native reliability/shutdown, authenticated UI, security/accessibility/browser, c
 first, then all seven approved features in the four-release plan; the overall goal remains active.
 Production, the existing 1 GB host, backups and US$15 monthly cap remain unchanged; no merge,
 deployment, rollout, resize or email occurred.
+
+
+### R-ASTRA-121 F6 reviewed SSE candidate build (2026-10-21)
+
+Clean pushed head `4c038e45a1be9131aab581b80204569862238742` built on native x86_64 as
+`sha256:6f84863a4cfbd9b74034f4c5d0330f49c866ff5b7766ceb1147bb14519b1d681`, context
+`7b1ecbb4bdb3a2b0dd3ba303c598bf7e0285e513d50d22fa507c9895aa9a6c5d`, tag
+`stock-probs:local-4c038e45a1be-7b1ecbb4bdb3-d478b4d0d96a`. The managed build completed at
+`2026-10-21T16:29:14.345902Z`; its user unit exited 0 with result `success`, PID 0 and empty
+cgroup. Parent build/source/stage review passed with 416 source/browser inputs, 150 packaged
+inputs and all 53 served/export pairs unchanged at that terminal checkpoint. The exact owned
+BuildKit generation was stopped and its worker cgroup was absent. The source remained unchanged
+through that review; the subsequent completion-transition regression and repair below make this
+image historical for the newly changed API. No native trial ran on this image.
+
+Before building, the exact unused prior image `sha256:152679ac90bca53e3779c9b966ce488989500340b9295c536d89290ae977eb59`
+was retired with `docker image rm --no-prune` through the maintained locked select/receipt/readback/
+acknowledgment procedure. Fresh build provenance, tag identity, container references and bounded
+RootFS inventory passed; the target had 13 layers and no equal-layer or prefix-child ambiguity.
+Only that full ID was removed. Production `78746f60…` and recovery `893788c1…` stayed protected;
+the managed set was two images before the build and three after it. Retirement receipt SHA-256:
+`1b8f84c34510ad8da2fa67492b2a92954810b1b328c2546819676b8b399d6a32`, with private task packet
+`/var/tmp/r12r/f6-image-1526-retirement-285f433eb76f4f74ae97e4af46989af6/`.
+
+Build packet: `/var/tmp/r12r/f6-image-4c038e4-2f11e15223cf49f7befbf78fd6aeb483/`.
+The actual managed build receipt SHA-256 is
+`2dda52216aa5fc0aeabe34e93a0c04b70f2df33e9f207fec96ce1191ace48ce2`;
+parent terminal SHA-256 is
+`307e3c7c8f1c224a6765cc3781dcbb4264dd3cdde77f0e7748975549bbff8bf0`.
+The build retained the configured resource/disk guards and verified SD UUID; it is build-identity
+and source/stage evidence, not native, runtime-resource, actual combined 1 GB or release acceptance.
+No frontend rebuild or unchanged provider trial occurred.
+
+
+### R-ASTRA-121 F6 SSE completion-transition repair (2026-10-21)
+
+A pre-native source audit of the worker-pool handoff identified a completion transition to test.
+The deterministic public SSE regression held its worker execution recheck after reading a running
+turn, allowed the real runtime to finish and commit completion, then resumed the recheck. On the
+`4c038e4` API it **Failed**: HTTP 200 carried an empty stream instead of the saved terminal event.
+The exact red command exited 1 with one failure and no error or skip; 155 inputs remained unchanged.
+This is a demonstrated race in the new SSE handoff. It does not explain the earlier `004c163`
+native health transport failures, which predate that handoff and retain an **Unproven** cause.
+The planned native trial was held rather than using provider time against the demonstrated race.
+
+The authorizer now distinguishes only an exact owner/conversation/turn-bound normally closed lease
+from a revoked or invalid lease. That normal-close observation permits one fresh authorization/
+turn-state read after returning to the event loop, so the stream can observe committed terminal
+state. Both observations still authenticate the current session and enforce access; active turns
+retain execution and policy checks. Revoked/unknown leases are denied, and an unsettled normal close
+fails closed after the bounded recheck. No cached permit, tool authority, provider retry, model call,
+new observer, deadline extension or poll/byte/resource-limit change is added. Existing terminal
+history access remains owner/session-bound; a closed execution never regains permission to run tools.
+
+The regression covers normal completion, session revocation during completion and a normally closed
+lease without terminal turn state. The final source passed **33 event-flow tests**, three selected
+API tests and three replay/cursor/revocation tests as separate affected selections, with zero
+failures, errors or skips and 155 unchanged inputs under child umask `022`. The test window was
+`2026-10-21T16:38:42.201872Z`–`16:41:40.684349Z`. These selections are not a canonical aggregate.
+Independent Luna QA **Passed** the same 33+3+3 selections with zero failures, errors or skips,
+Ruff check/format/security and all 155 before/after bindings. Its test window was
+`2026-10-21T16:44:06.561227Z`–`16:46:56.660236Z`; independent receipt SHA-256 is
+`cf131ffc9cc092940362107541eec464a457b04a680747968a85f008e6e5ff2a`.
+Parent integrated source/evidence review **Passed**, verifying all 13 referenced artifact digests,
+JUnit counts and current 155 inputs; its private receipt SHA-256 is
+`3a5be12b89237b819e412ff3907122e248b7eee8be18b5b0e21c948957777ca1`.
+These remain selected source/test checks, with no native or release acceptance.
+
+Exact current baselines, the red failure, command/exit records and JUnit are in
+`/var/tmp/r12r/f6-stream-terminal-transition-a210f6f2f12e4b89b8a1cad042823bb9/`.
+A newly bound image and native check remain required after source review. The `4c038e4` build above
+has no native acceptance, and the older `004c163` aggregate remains **Fail** despite both completed
+answers. Required native reliability/shutdown, authenticated UI, security/accessibility/browser,
+canonical, actual-host 1 GB, recovery/rollback, final guide and release gates remain open. Free Zen
+restoration stays first, followed by all seven features in the four-release plan; the overall goal
+remains active. Production, the existing 1 GB host, backups and US$15 monthly total cap remain
+unchanged; no merge, deployment, rollout, resize or email occurred.
