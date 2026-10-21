@@ -37,6 +37,14 @@ For an isolated worktree, set `PYTHONPATH` to its absolute `src` directory and s
 can otherwise import another checkout. Bind actual served asset bytes as well as local staged
 files; a matching local export alone does not identify the running package.
 
+At the native active-search checkpoint, finish the owner-bound private-file and process permission
+checks before sending `continue`. These checks repeatedly require the active owner lease and its
+exact worker config; resuming the child can complete the turn and revoke that lease. A denied
+boundary must stop the child without resuming it. Keep the original turn and observation deadlines,
+then require the final answer, deletion and cache-purge assertions. The
+[coordination repair record](../../MVP-PLAN.md#r-astra-121-f6-active-lease-probe-coordination-repair-2026-10-21)
+does not establish the cause of an earlier native failure or successful runtime restoration.
+
 ## Reviewing incomplete contrast results
 
 Keep raw axe violations and incomplete results in the evidence. An incomplete result needs

@@ -3157,13 +3157,12 @@ def test_worker_cache_markers_follow_native_attached_probe_contract() -> None:
 
 
 @pytest.mark.parametrize("fail_dac", [False, True])
-def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
+def test_native_active_search_checks_dac_before_resuming_owner_turn(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fail_dac: bool
 ) -> None:
     owner1_cookie = "B" * 43
     config_path = f"/run/assistant/worker-locations/{'2' * 32}/opencode.json"
     ack_path = tmp_path / "acknowledged"
-    release_path = tmp_path / "release"
     checkpoint = {
         "mode": "attach-existing-app",
         "phase": "active_search_wait",
@@ -3180,13 +3179,11 @@ def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
     checkpoint_line = json.dumps(checkpoint, separators=(",", ":"))
     driver_script = "\n".join(
         (
-            "import pathlib,sys,time",
+            "import pathlib,sys",
             "sys.stdin.readline()",
             f"sys.stdout.write({checkpoint_line!r}+'\\n'); sys.stdout.flush()",
             "if sys.stdin.readline() != '{\"continue\":true}\\n': sys.exit(2)",
             f"pathlib.Path({str(ack_path)!r}).write_text('ack')",
-            f"release=pathlib.Path({str(release_path)!r})",
-            "while not release.exists(): time.sleep(0.01)",
             f"sys.stdout.write({final_line!r}+'\\n'); sys.stdout.flush()",
         )
     )
@@ -3249,7 +3246,8 @@ def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
 
     def active_config(_candidate: object, cookie: str) -> str:
         assert cookie == owner1_cookie
-        assert not ack_sent["value"]
+        if ack_sent["value"]:
+            raise probe.ProbeError("synthetic owner lease ended after resume")
         events.append("active_config")
         return config_path
 
@@ -3258,11 +3256,10 @@ def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
     ) -> dict[str, object]:
         assert users[1]["session_cookie"] == owner1_cookie
         assert path == config_path
-        assert ack_sent["value"]
         events.append("dac")
+        probe._require_active_owner_config(_candidate, owner1_cookie, path)
         if fail_dac:
             raise probe.ProbeError("synthetic DAC denial")
-        release_path.write_text("release")
         return {"worker_uid_10002": "denied"}
 
     monkeypatch.setattr(probe, "_scan_worker_cache", scan_cache)
@@ -3293,7 +3290,15 @@ def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
         with pytest.raises(probe.ProbeError, match="synthetic DAC denial"):
             probe._run_native_driver(candidate, users)
         assert cache_scans == ["checkpoint"]
-        assert events == ["active_health", "cache_checkpoint", "active_config", "ack", "dac"]
+        assert events == [
+            "active_health",
+            "cache_checkpoint",
+            "active_config",
+            "dac",
+            "active_config",
+        ]
+        assert not ack_sent["value"]
+        assert not ack_path.exists()
         assert launched and launched[0].poll() is not None
     else:
         driver, _resources, _config, dac, cache = probe._run_native_driver(candidate, users)
@@ -3306,11 +3311,15 @@ def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
             "active_health",
             "cache_checkpoint",
             "active_config",
-            "ack",
             "dac",
+            "active_config",
+            "ack",
             "cache_purge",
             "returned",
         ]
+        assert ack_path.read_text() == "ack"
+    assert launched[0].stdin is not None
+    assert launched[0].stdin._stream.closed
 
 
 def test_active_config_is_selected_from_owner_one_session_lease(

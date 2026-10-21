@@ -8555,3 +8555,46 @@ accessibility, canonical, actual-host 1 GB, recovery/rollback, final-guide and r
 open. The full Zen restoration precedes the seven-feature releases. Production, the 1 GB host,
 backups and US$15 total monthly cap remain unchanged; no merge, deployment, rollout, resize or
 email occurred.
+
+
+### R-ASTRA-121 F6 active-lease probe coordination repair (2026-10-21)
+
+Source-only review after the failed `ddccd0c` native trial found a concrete ordering race in the
+existing native probe. It resumed the child at active search before the mandatory DAC checks,
+although those checks repeatedly require the active owner lease and its exact worker config.
+The resumed child can complete and delete its conversation before the checks finish. The old
+regression artificially held the child after acknowledgment until the mocked checks released it,
+masking this case. E805's historical selected Pass remains valid only for its original scope;
+it did not cover immediate post-resume lease termination. This is a reproduced probe defect,
+not a proven explanation of the prior native trial's unidentified Docker-exec failure.
+
+The existing regression now removes that artificial delay, models lease termination upon resume,
+and exercises the actual active-config recheck. Both parameter cases failed before the repair.
+The producer now finishes all existing owner-bound DAC checks before sending `continue`; denial
+stops the child without acknowledgment. The final receipt and purge assertions, security checks,
+120-second native turn, 150-second observation and outer bounds are unchanged. No application,
+UI, provider policy, diagnostic observer or launcher logic changed. The focused repaired run
+passed 2 cases; the complete existing probe module passed **453 tests**, zero failures/errors/
+skips, exit 0, with four explicit source/import pins unchanged. Ruff check/format and diff checks
+passed. Independent read-only QA passed six selected subprocess, active-config and private-boundary
+cases with zero failures/errors/skips, retaining all four source/import pins. Its receipt is
+`d552919a1ccd70edb86ce6399343c4fd758d73ee6984602734010d921501675c`. The initial system-Python
+attempt could not load pytest; its raw log was overwritten by the corrected project-interpreter
+run, so that setup artifact is **Unavailable**. The successful run retains its own JUnit and pins.
+Parent review personally checked the integrated diff and evidence and passed this synthetic scope;
+live timing margin and the native failure cause remain unproven.
+
+Exact baselines, failing logs, JUnit and frozen full-scope evidence are under
+`/var/tmp/r12r/f6-active-lease-coordination-b9b66651d1c647e8b578b623da99b931/`.
+Builder receipt SHA-256 is `412dc86743c5232cfabaf3f68ed1439a8bbb81d48cd35a5d4f3bb4b2446cb595`.
+The red run lacked a contemporaneous hash of the modified test and used default pytest `/tmp`;
+those limitations are retained. The full passing run bound its final source/test bytes and used
+verified SD-backed temporary storage with child umask `022`. All 150 packaged image inputs and
+53 served/export pairs remain unchanged; no frontend rebuild or browser rerun was warranted.
+
+The latest actual native result remains **Fail**, with cause **Unproven**. No new native trial,
+active kill, production operation, merge, rollout, resize or email occurred in this repair.
+Native-health, authenticated UI, complete browser/security/accessibility, canonical, actual-host
+1 GB, recovery/rollback, final-guide and release gates remain open. The overall goal stays active;
+Zen restoration precedes the seven-feature releases, with the existing 1 GB host, backups and
+US$15 total monthly cap unchanged.
