@@ -8777,3 +8777,50 @@ All completion/shutdown, authenticated UI, security/accessibility/browser, canon
 1 GB, recovery/rollback, final-guide and release gates remain open. The overall goal stays active;
 free Zen restoration precedes all seven feature releases. Production, the 1 GB host, backups and
 US$15 total monthly cap remain unchanged; no merge, deployment, rollout, resize or email occurred.
+
+
+### R-ASTRA-121 F6 MiniMax interactive effort default (2026-10-21)
+
+After the retained `020121b` native **Fail**, source diagnosis confirmed the compatible bridge
+sent no effort parameter. [MiniMax documents](https://platform.minimax.io/docs/api-reference/text-openai-api)
+that M3.1 Flash defaults to `reasoning_effort=max`, supports `low` through `max`, and that deeper
+thinking has higher latency. This is a concrete request-default mismatch with the app's bounded
+interactive use, not proof of the timeout cause. The previous native run remains **Fail** with
+cause **Unproven**; no unchanged trial retry follows.
+
+The narrow implementation adds `reasoning_effort=low` only for provider `opencode-zen` and exact
+upstream model `minimax-m3.1-flash-free`. It keeps the genuine native OpenCode/Zen route, original
+4,096-token ceiling, 120-second deadline, tool approvals, consent and transport authorization.
+The request schema remains closed: callers cannot supply a new effort field. Other Zen models,
+a similarly named model, a paid MiniMax identity and the same model name at a different provider
+receive no effort override. No model policy, routing manifest, dependency, account, supervisor,
+observer, acceptance assertion or launcher change is included.
+
+Pinned public Zen source confirms its OpenAI variant parser reads `reasoning_effort`; same-format
+body conversion and the compatible-provider modifier preserve that field. These files were fetched
+at `ca27d3328fcd0d470588149c902a963452f1abaf` and Git-blob verified. They do not establish the
+external service's deployed revision or that it honors the parameter on a live request.
+
+The five-model/provider regression initially recorded two failures: the expected missing default
+and a synthetic OpenAI fixture that had not selected compatible protocol. That fixture was aligned
+with the existing compatible-manager pattern; the corrected pre-repair run retained one expected
+failure and four passes. After repair, the affected selection passed **32 tests**, zero failures,
+errors or skips, including native tool continuation/reasoning, fixed Zen route/auth headers,
+authorization cancellation and output-token bounds. A formatting-only fixture check failed first;
+the formatter-required adjacent literal join was applied, and the final frozen 32-case run passed
+again. All 151 explicit packaged/test pins remained unchanged across that final run. Ruff, format
+and scoped security rules permitting test assertions passed. Independent source/test review
+passed with zero findings and the same 32-case selection, 151 pins unchanged. Its receipt SHA-256
+is `afe89593b5370b0e32f62673b61e9d7c26a0c06f05b885a2a50b46440ca7a0b6`. Parent integrated source/evidence review
+passed; its receipt SHA-256 is `2e5b7004867e34ac40f6ed57aa2aee48403e8e9acd40243f4960dda5134fe958`.
+These are scoped source/test results only.
+
+Exact five-file baselines, public-source provenance, original failed results and frozen JUnit are
+under `/var/tmp/r12r/f6-minimax-effort-contract-36fccd4312f44052a8914cce3bda2600/`.
+No image or native trial has run for this effort change; a fresh image and a discriminating native
+check follow source review. Unchanged original frontend evidence is reused only for its bound inputs;
+the failed full browser aggregate remains retained. Completion/shutdown, authenticated UI, security,
+accessibility/browser, canonical, actual-host 1 GB, recovery/rollback, final-guide and release gates
+remain open. The overall goal stays active; free Zen live restoration precedes all seven feature
+releases. Production, the existing 1 GB host, backups and US$15 total monthly cap remain unchanged;
+no merge, deployment, rollout, resize or email occurred.

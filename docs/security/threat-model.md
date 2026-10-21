@@ -296,7 +296,10 @@ remains excluded. This preserves the [vendor continuation contract](https://plat
 without changing provider destinations, ownership, consent or tool permissions. Each app execution
 creates a fresh model-bound native session; later app turns reconstruct only stored visible role/text
 history, so private native reasoning is not carried across model selections. Source and synthetic
-checks do not establish live-provider completion or native timeout causation.
+checks do not establish live-provider completion or native timeout causation. The exact reviewed
+free Zen MiniMax M3.1 Flash route uses a fixed low reasoning effort for interactive turns, while
+retaining the existing token cap and deadline. Other model/provider identities are unchanged;
+this does not add a caller-controlled request field, provider destination or data-sharing permission.
 
 The following E167–E777 records preserve earlier scoped findings and failures. They are historical;
 the E847/E849/E850 scopes above supersede only the bindings and checks they explicitly cover.

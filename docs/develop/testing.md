@@ -40,6 +40,9 @@ never enters app token events or timeout logs. The pinned V2 adapter supports th
 the [MiniMax continuation contract](https://platform.minimax.io/docs/api-reference/text-openai-api).
 Preserve the fresh model-bound native session per execution and visible-only app history projection;
 private native reasoning must not be replayed into a later app turn after model selection changes.
+For the exact reviewed free Zen MiniMax M3.1 Flash route, assert the fixed `reasoning_effort=low`
+interactive default, unchanged token/deadline limits, and no effort field on other model/provider
+identities. The public request schema stays closed; this is not a browser-supplied option.
 A protocol regression pass does not establish the cause of a live timeout or a completed answer.
 
 For an isolated worktree, set `PYTHONPATH` to its absolute `src` directory and set

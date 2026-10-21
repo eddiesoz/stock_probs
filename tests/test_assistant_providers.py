@@ -605,6 +605,72 @@ def test_zen_proxy_uses_fixed_route_and_native_public_bearer_without_changing_ot
     assert providers._provider_headers("anthropic", None) == {}
 
 
+@pytest.mark.parametrize(
+    ("provider_id", "suffix", "expected_effort"),
+    [
+        ("opencode-zen", "minimax-m3.1-flash-free", "low"),
+        ("opencode-zen", "longcat-flash-chat", None),
+        ("opencode-zen", "minimax-m3.1-flash", None),
+        ("opencode-zen", "other-minimax-m3.1-flash-free", None),
+        ("openai", "minimax-m3.1-flash-free", None),
+    ],
+)
+def test_zen_minimax_interactive_reasoning_effort_is_model_scoped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider_id: str,
+    suffix: str,
+    expected_effort: str | None,
+) -> None:
+    """Avoid the free model's max-effort default without changing other routes or budgets."""
+
+    model_id = f"{provider_id}/{suffix}"
+    manager = _policy_manager(tmp_path, _policy_model(model_id, provider_id=provider_id))
+    if provider_id == "openai":
+        manager._definitions[provider_id]["protocol"] = "openai-compatible-chat"
+        manager.set_credential(provider_id, "synthetic-provider-key")
+    captured: dict[str, object] = {}
+
+    async def fake_stream(
+        url: str,
+        *,
+        headers: object,
+        body: bytes,
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ):
+        captured["body"] = json.loads(body)
+        yield (
+            b'data: {"choices":[{"index":0,"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n'
+        )
+        yield b"data: [DONE]\n\n"
+
+    monkeypatch.setattr(providers, "stream_public_https", fake_stream)
+    messages = [{"role": "user", "content": "Synthetic effort regression."}]
+
+    async def exercise() -> None:
+        stream = manager.proxy_chat_completion(
+            provider_id,
+            model_id,
+            {"model": "assistant-selected", "messages": messages, "stream": True},
+            app_tools=AssistantToolGateway.list_tools() if provider_id == "opencode-zen" else None,
+            **(_native_zen_context() if provider_id == "opencode-zen" else {}),
+            authorization_check=lambda: True,
+        )
+        assert [chunk async for chunk in stream][-1] == b"data: [DONE]\n\n"
+
+    asyncio.run(exercise())
+    request = captured["body"]
+    assert isinstance(request, dict)
+    assert request.get("reasoning_effort") == expected_effort
+    if expected_effort is None:
+        assert "reasoning_effort" not in request
+    assert request["model"] == suffix
+    assert request["messages"] == messages
+    assert request["max_tokens"] == native_output_token_budget()
+    assert request["store"] is False
+
+
 def test_zen_route_keeps_authorization_revalidation_and_stream_cancellation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

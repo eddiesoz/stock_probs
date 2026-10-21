@@ -2893,6 +2893,9 @@ class AssistantProviderManager:
             if parameter_name in body:
                 upstream[parameter_name] = body[parameter_name]
         upstream["max_tokens"] = validated_max_tokens
+        if provider_id == "opencode-zen" and native_model_id == "minimax-m3.1-flash-free":
+            # This model defaults to max thinking; keep app turns at interactive depth.
+            upstream["reasoning_effort"] = "low"
         if clean_tools is not None:
             upstream["tools"] = clean_tools
         encoded = json.dumps(
